@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { dayLabel } from '../lib/day-breaks';
+  import { dayDate, dayLabel } from '../lib/day-breaks';
   import { longDay } from '../lib/format';
 
   /** Where the conversation changes day: the day on a small chip across the column (`dayBreaks`). */
@@ -8,7 +8,7 @@
 
 <div class="day" data-testid="day-divider">
   <span class="rule"></span>
-  <time class="ui-label" datetime={new Date(at).toISOString().slice(0, 10)} title={longDay(at)}>{dayLabel(at)}</time>
+  <time class="ui-label" datetime={dayDate(at)} title={longDay(at)}>{dayLabel(at)}</time>
   <span class="rule"></span>
 </div>
 

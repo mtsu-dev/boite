@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { dayBreaks, dayLabel } from './day-breaks';
+import { dayBreaks, dayDate, dayLabel } from './day-breaks';
 
 const NOW = new Date(2026, 9, 31, 12, 0).getTime();
 const at = (day: number, hour: number) => new Date(2026, 9, day, hour).getTime();
@@ -18,4 +18,15 @@ test('a day reads today, yesterday, or spelled out with its year when it is anot
   expect(dayLabel(at(30, 23), NOW)).toBe('Yesterday');
   expect(dayLabel(at(29, 9), NOW)).toMatch(/Thursday.*29|29.*Thursday/);
   expect(dayLabel(new Date(2025, 11, 31).getTime(), NOW)).toMatch(/2025$/);
+});
+
+test('the machine-readable day is the local day the chip names, not the UTC one', () => {
+  const zone = process.env.TZ;
+  process.env.TZ = 'Asia/Tokyo';
+  try {
+    // 00:30 in Tokyo is still the day before in UTC.
+    expect(dayDate(new Date(2026, 9, 31, 0, 30).getTime())).toBe('2026-10-31');
+  } finally {
+    if (zone === undefined) delete process.env.TZ; else process.env.TZ = zone;
+  }
 });

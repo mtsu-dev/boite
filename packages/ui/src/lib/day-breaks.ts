@@ -35,3 +35,9 @@ export function dayLabel(at: number, now = Date.now()): string {
   const long = longDay(at);
   return new Date(at).getFullYear() === new Date(now).getFullYear() ? long : fill(strings.chat.day.withYear, { day: long, year: String(new Date(at).getFullYear()) });
 }
+
+/** The local day as `YYYY-MM-DD`, for a `<time datetime>`: the day the chip names, not the UTC one. */
+export function dayDate(at: number): string {
+  const date = new Date(at);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}

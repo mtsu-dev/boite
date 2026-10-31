@@ -128,6 +128,16 @@ test('an automatic compaction that went through leaves the timeline for a mark o
   expect(agentTimeline.build(timeline.slice(2), turns, undefined).timeline.map(m => m.id)).toContain('ak');
 });
 
+test('each automatic compaction after the same turn leaves its own mark, with or without counts', () => {
+  const counted: MessagePart = { type: 'compaction', trigger: 'auto', preTokens: 76_000, postTokens: 9_700 };
+  const bare: MessagePart = { type: 'compaction', trigger: 'auto', preTokens: null, postTokens: null };
+  const turns = [turn('a', { queuedAt: 1 }), turn('k', { queuedAt: 2, execution: exec('compact', true) }), turn('n', { queuedAt: 3, execution: exec('compact', true) }), turn('o', { queuedAt: 4, execution: exec('compact', true) })];
+  const timeline = [message('ua', 'a', 'user', [text('1')]), message('aa', 'a', 'assistant', [text('one')]),
+    message('uk', 'k', 'system', [text('/compact')]), message('ak', 'k', 'assistant', [counted]),
+    message('un', 'n', 'system', [text('/compact')]), message('uo', 'o', 'system', [text('/compact')])];
+  expect(new AgentTimeline().build(timeline, turns, undefined).compactions.get('a')).toEqual([counted, bare, bare]);
+});
+
 test("in an ordinary thread a settled wake folds its steps and narration, the user's turns never do", () => {
   const agentTimeline = new AgentTimeline();
   const compacted = { type: 'compaction', trigger: 'auto', preTokens: 180_000, postTokens: 12_000 } as const;

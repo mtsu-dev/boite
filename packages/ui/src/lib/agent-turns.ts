@@ -236,14 +236,15 @@ export function foldCompactions(timeline: Message[], turns: readonly Turn[]): { 
   if (after.size === 0) return { timeline, compactions: NO_COMPACTIONS };
   const compactions = new Map<string, CompactionPart[]>();
   const kept: Message[] = [];
+  const counted = new Set<string>();
   for (const message of timeline) {
     const owner = after.get(message.turnId);
     if (owner === undefined) { kept.push(message); continue; }
     const parts = message.parts.filter((part): part is CompactionPart => part.type === 'compaction');
-    if (parts.length) compactions.set(owner, [...(compactions.get(owner) ?? []), ...parts]);
+    if (parts.length) { compactions.set(owner, [...(compactions.get(owner) ?? []), ...parts]); counted.add(message.turnId); }
   }
-  // A compaction whose record holds no counts still says it happened.
-  for (const owner of after.values()) if (!compactions.has(owner)) compactions.set(owner, [{ type: 'compaction', trigger: 'auto', preTokens: null, postTokens: null }]);
+  // A compaction whose record holds no counts still says it happened, one mark each.
+  for (const [turnId, owner] of after) if (!counted.has(turnId)) compactions.set(owner, [...(compactions.get(owner) ?? []), { type: 'compaction', trigger: 'auto', preTokens: null, postTokens: null }]);
   return { timeline: kept, compactions };
 }
 
