@@ -119,19 +119,29 @@ test('a move carries the bot, its memory, routines, projects and the end of its 
   expect(second).toContain('And now?');
 }, 60_000);
 
-test('a bot on its way to another machine joins no team meanwhile', async () => {
+test('a bot on its way to another machine joins no team meanwhile, and its archived team stays archived', async () => {
   const { desk, owner, pcId } = await group();
   const { agent } = await makeAgent(desk, owner);
   await owner.call('client.preferences', { app: 'app-desktop-0001', language: 'en', experiments: ['teams'], labels: {} });
+  const old = desk.core.teams.create({ name: 'Old crew', members: [agent.id] });
+  desk.core.teams.archive({ teamId: old.id, archived: true });
   const request = desk.core.coordination.request.bind(desk.core.coordination);
-  let joined: unknown = null;
+  let joined: unknown = null, restored: unknown = null;
   desk.core.coordination.request = async (peer: CoordinationPeer, operation, payload) => {
-    if (operation === 'bot.move') joined = await thrown(Promise.resolve().then(() => desk.core.teams.create({ name: 'Crew', members: [agent.id] })));
+    if (operation === 'bot.move') {
+      joined = await thrown(Promise.resolve().then(() => desk.core.teams.create({ name: 'Crew', members: [agent.id] })));
+      restored = await thrown(Promise.resolve().then(() => desk.core.teams.archive({ teamId: old.id, archived: false })));
+    }
     return request(peer, operation, payload);
   };
   await owner.call('agents.move', { agentId: agent.id, machine: pcId });
   expect(joined).toThrow(`${agent.name} is moving to another machine; a team holds bots of one machine`);
-  expect(desk.core.teams.list()).toEqual([]);
+  expect(restored).toThrow(`Old crew has members on or going to another machine: ${agent.name}; remove them before restoring it`);
+  // Once it left, the team comes back only without it.
+  expect(await thrown(Promise.resolve().then(() => desk.core.teams.archive({ teamId: old.id, archived: false })))).toThrow('remove them before restoring it');
+  desk.core.teams.removeMember({ teamId: old.id, botId: agent.id });
+  expect(desk.core.teams.archive({ teamId: old.id, archived: false })).toMatchObject({ archived: false, members: [] });
+  expect(desk.core.teams.list().map(team => team.name)).toEqual(['Old crew']);
 }, 60_000);
 
 test('the same request reaching the target twice makes one bot, and the same requestId answers the first move again', async () => {

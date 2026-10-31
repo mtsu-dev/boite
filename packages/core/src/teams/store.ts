@@ -283,6 +283,9 @@ export class TeamStore {
     const team = this.#require(params.teamId);
     if (typeof params.archived !== 'boolean') throw invalidParams('archived: expected a boolean');
     if (team.archived === params.archived) return team;
+    // A member moving or moved to another machine has no thread here to read the team: restoring waits for its removal.
+    const gone = params.archived ? [] : team.members.filter(member => this.#core.workforce.moves.moving(member.botId) || this.#core.workforce.records.find('profile', member.botId) === null);
+    if (gone.length > 0) throw refused(`${team.name} has members on or going to another machine: ${gone.map(member => member.name).join(', ')}; remove them before restoring it, a team holds bots of one machine`, { field: 'teamId', reason: 'moving', members: gone.map(member => member.botId) });
     const saved = this.#save(team, { archived: params.archived });
     if (params.archived) this.#core.coordination.teamLetters.reject(team.id, null, `The team ${team.name} was archived`);
     else this.#kickMembers(saved);
