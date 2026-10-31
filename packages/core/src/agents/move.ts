@@ -141,6 +141,9 @@ export class BotMoves {
     const peer = memberNamed(this.#core, text(params.machine, 'machine', 200), 'agents.move');
     if (agent.status === 'archived') throw refused(`agents.move: ${agent.name} is archived; restore it before moving it`, { field: 'agentId', expected: 'an active or paused bot' });
     if (this.#moving.has(agent.id)) throw refused(`agents.move: ${agent.name} is already moving to another machine`, { field: 'agentId', reason: 'moving' });
+    // A team holds members of one machine (docs/teams.md): moving one would leave its posts with nobody to read them.
+    const teams = this.#core.teams.namesOf(agent.id);
+    if (teams.length > 0) throw refused(`agents.move: ${agent.name} belongs to the team${teams.length > 1 ? 's' : ''} ${teams.map(name => JSON.stringify(name)).join(', ')}; remove it from ${teams.length > 1 ? 'them' : 'it'} first, a team holds bots of one machine`, { field: 'agentId', reason: 'team', teams });
     const session = this.#store.sessionOf(agent.id);
     const thread = session === null ? null : this.#core.journal.getThread(session.threadId);
     if (thread !== null) this.#idle(agent, thread);

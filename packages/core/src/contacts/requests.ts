@@ -17,6 +17,7 @@ import { checkNormalizedRemote, gitRemoteOf } from './git-remote.ts';
 import type { ContactStore } from './store.ts';
 import { contactFace } from './face.ts';
 import { memberThreadId } from './member-address.ts';
+import { contactAnswer } from './answers.ts';
 
 const REQUESTS = 'contacts:requests';
 /** Requests waiting at once, per contact and direction. */
@@ -312,7 +313,7 @@ export class ContactRequests {
    * its contact moved to this Bots host goes back to that member (`group-link.ts`).
    */
   #notify(request: ContactRequest, name: string, threads: AgentContact[]): void {
-    if (request.from.coreId === this.#core.coordination.card().coreId) { this.#core.coordination.contactAnswer(request, name, threads); return; }
+    if (request.from.coreId === this.#core.coordination.card().coreId) { contactAnswer(this.#core, request, name, threads); return; }
     // Kept until the member heard it: the contacts' timer offers it again (`host-asks.ts`).
     this.#mark(request.id, true);
     void this.tellMember(request, name, threads);

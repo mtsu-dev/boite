@@ -107,6 +107,12 @@ export class TeamStore {
     return team;
   }
 
+  /** The live teams a bot of this machine belongs to, whether the experiment is on or off: a move must not strand them. */
+  namesOf(botId: string): string[] {
+    const key = this.#key(botId);
+    return this.#all().filter(team => !team.archived && team.members.some(member => member.key === key)).map(team => team.name);
+  }
+
   #all(): Team[] { return (this.#db.query('SELECT * FROM teams ORDER BY created_at').all() as TeamRow[]).map(row => this.#team(row)); }
 
   /** The team a bot names, by id or name, among the teams it belongs to; the owner names any. */

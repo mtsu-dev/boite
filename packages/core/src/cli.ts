@@ -519,12 +519,8 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
         throw error;
       }
     },
-    contacts: async () => {
-      await contactsCommand(client, threadId, rest, { ...(parsed.project === undefined ? {} : { project: parsed.project }), ...(parsed.model === undefined ? {} : { model: parsed.model }), ...(parsed.effort === undefined ? {} : { effort: parsed.effort }), worktree: parsed.worktree }, print);
-    },
-    workflow: async () => {
-      await workflowCommand(client, threadId, rest, io, print, parsed.requestId);
-    },
+    contacts: async () => { await contactsCommand(client, threadId, rest, { ...(parsed.project === undefined ? {} : { project: parsed.project }), ...(parsed.model === undefined ? {} : { model: parsed.model }), ...(parsed.effort === undefined ? {} : { effort: parsed.effort }), worktree: parsed.worktree }, print); },
+    workflow: async () => { await workflowCommand(client, threadId, rest, io, print, parsed.requestId); },
     where: async () => {
       const where = await client.call('agent.where', { threadId });
       print(

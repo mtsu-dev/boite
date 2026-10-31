@@ -20,6 +20,7 @@ import { checkNormalizedRemote, gitRemoteOf } from './git-remote.ts';
 import { GROUP_LETTER_TTL_MS } from './group-link.ts';
 import { given, MAX_PENDING, NO_BOT, THREAD_ID, want, type HostAsk, type StoredRequest } from './requests.ts';
 import type { ContactStore } from './store.ts';
+import { contactNotice } from './answers.ts';
 
 /** The member's first offer must come back before the caller's own request times out. */
 const OFFER_MS = 3500;
@@ -176,7 +177,7 @@ export class ContactHostAsks {
       Object.assign(current, { status: 'refused', reason: reason.slice(0, 500), decidedAt: Date.now() });
     });
     if (!request) return;
-    this.#core.coordination.contactNotice(request.coreId, 'Contacts', request.id, request.from.threadId, 'Your request to a contact', `Your request ${request.id} was not sent: ${request.reason}`);
+    contactNotice(this.#core, request.coreId, 'Contacts', request.id, request.from.threadId, 'Your request to a contact', `Your request ${request.id} was not sent: ${request.reason}`);
   }
 
   // -- The Bots host.

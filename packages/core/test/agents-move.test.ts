@@ -146,7 +146,7 @@ test('the same request reaching the target twice makes one bot, and the same req
   expect(await thrown(request(pcPeer, 'bot.move', { ...sent, requestId: 'another' }))).toThrow(`already holds a bot ${agent.id}`);
 }, 60_000);
 
-test('a move is refused, with nothing changed here, for this machine, an unknown one, a turn in flight, a target without an account or with its own built-in', async () => {
+test('a move is refused, with nothing changed here, for this machine, an unknown one, a team member, a turn in flight, a target without an account or with its own built-in', async () => {
   const { desk, pc, owner, pcOwner, deskId, pcId, pcProject } = await group();
   const { agent, threadId } = await makeAgent(desk, owner, { projectIds: [`${pcId}/${pcProject.id}`] });
   await owner.call('agents.routine.save', { value: { agentId: agent.id, name: 'Round', prompt: 'Look around.', schedule: { kind: 'interval', everyMinutes: 30 }, enabled: true, nextAt: null, lastTurnId: null, lastScheduledAt: null } });
@@ -157,6 +157,18 @@ test('a move is refused, with nothing changed here, for this machine, an unknown
   unchanged();
   expect(await thrown(owner.call('agents.move', { agentId: agent.id, machine: 'nowhere' }))).toThrow('no machine nowhere in this group');
   unchanged();
+
+  // A team member stays, even once the Teams experiment is off; an archived team lets it go.
+  await owner.call('client.preferences', { app: 'app-desktop-0001', language: 'en', experiments: ['teams'], labels: {} });
+  const crew = desk.core.teams.create({ name: 'Crew', members: [agent.id] });
+  await owner.call('client.preferences', { app: 'app-desktop-0001', language: 'en', experiments: [], labels: {} });
+  const teamed = await owner.call('agents.move', { agentId: agent.id, machine: pcId }).catch(error => error as { message: string; rpc: { data: Record<string, unknown> } });
+  expect((teamed as { message: string }).message).toContain('belongs to the team "Crew"; remove it from it first');
+  expect((teamed as { rpc: { data: Record<string, unknown> } }).rpc.data).toMatchObject({ reason: 'team', teams: ['Crew'] });
+  unchanged();
+  await owner.call('client.preferences', { app: 'app-desktop-0001', language: 'en', experiments: ['teams'], labels: {} });
+  desk.core.teams.archive({ teamId: crew.id, archived: true });
+  expect(desk.core.teams.namesOf(agent.id)).toEqual([]);
 
   // A turn in flight: refused with its reason.
   driver!.restore();

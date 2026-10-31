@@ -39,6 +39,7 @@ import { MAX_RELATIONS } from './relations.ts';
 import type { StoredRequest } from './requests.ts';
 import type { ContactStore, StoredContact } from './store.ts';
 import { fingerprintWords } from './words.ts';
+import { contactAnswer } from './answers.ts';
 
 /** How long a letter or a request to a contact behind a Bots host may wait for it: the host may be off for days. */
 export const GROUP_LETTER_TTL_MS = 7 * 24 * 3_600_000;
@@ -186,7 +187,7 @@ export class ContactGroupLink {
     const requests = this.#store.requests.list().filter(entry => !(entry.id === id && entry.direction === 'out'));
     this.#store.requests.save([...requests, { ...request, coreId, id, direction: 'out' }]);
     this.#store.changed();
-    this.#core.coordination.contactAnswer(request, text(raw?.name, 'hand.name', 100), threads);
+    contactAnswer(this.#core, request, text(raw?.name, 'hand.name', 100), threads);
     return { ok: true };
   }
 

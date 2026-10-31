@@ -786,7 +786,9 @@ With no signed-in account at all it refuses: "agents.move: <machine> has no
 signed-in account to run <bot>; sign in there first". It also refuses a bot id
 it already holds from another request, and a built-in bot whose kind it
 already has live. The source refuses a move to itself, to a machine outside
-the group, of an archived bot, and of a bot whose thread or a sub-thread has a
+the group, of an archived bot, of a member of a team that is not archived
+(`reason: 'team'`, the team names in `teams`; a team holds bots of one
+machine, [teams](teams.md)), and of a bot whose thread or a sub-thread has a
 turn running or queued (`reason: 'turn-in-flight'`).
 
 The target creates the bot and a new thread whose earlier turns are the
