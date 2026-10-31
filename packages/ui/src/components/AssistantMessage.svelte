@@ -138,18 +138,18 @@
     {@const index = run.index}
     {@const part = message.parts[run.index]!}
     {@const shownText = part.type === 'text' ? shownTextOf(message, part) : ''}
+    {@const narrated = part.type === 'text' && message.role === 'assistant' && narrates(index, shownText.trim())}
     {#if part.type !== 'text' || shownText.trim().length > 0}
-    <div class="part" data-kind={part.type}>
+    <!-- Narration is a class, not another branch: the paragraphs already drawn stay the same nodes when a step arrives after them. -->
+    <div class="part" class:narration={narrated} data-kind={part.type} data-testid={narrated ? 'narration' : undefined}>
       {#if part.type === 'text'}
         {#if message.role === 'system'}
           <div class="system-event" data-testid="message-system" role="note" aria-label={strings.chat.system}>
             <Activity size={14} strokeWidth={1.75} aria-hidden="true" />
             <div class="system-copy"><Prose text={shownText} {store} {threadId} /></div>
           </div>
-        {:else if narrates(index, shownText.trim())}
-          <div class="narration" data-testid="narration"><Prose text={shownText} live={index === caretAt && part.complete !== true} {store} {threadId} /></div>
         {:else}
-        <Prose text={shownText} live={index === caretAt && part.complete !== true} bubble={message.role === 'assistant'}
+        <Prose text={shownText} live={index === caretAt && part.complete !== true} bubble={message.role === 'assistant' && !narrated}
           typing={!compacting && latestInTurn && !toolRunning && message.role === 'assistant' && store.connection === 'ready' && store.openThread?.status === 'running' && index === message.parts.length - 1 && index === caretAt && part.complete !== true} {store} {threadId}
           views={message.role === 'assistant' ? views : undefined} />
         {/if}
@@ -241,8 +241,8 @@
   :global(.message:hover) .model-attribution, :global(.message:focus-within) .model-attribution { opacity: 1; }
   @media (hover: none) { .model-attribution { opacity: 1; } }
   /* Narration between calls: the agent thinking aloud, quieter than an answer. */
-  .narration { padding: 0 2px; color: var(--color-muted-foreground); }
-  .narration :global(.prose) { font-size: var(--text-sm); line-height: 1.55; }
+  .part.narration { padding: 0 2px; color: var(--color-muted-foreground); }
+  .part.narration :global(.prose) { font-size: var(--text-sm); line-height: 1.55; }
   .system-event { display: flex; align-items: flex-start; gap: 8px; color: var(--color-muted-foreground); }
   .system-event > :global(svg) { flex: none; margin-top: 3px; color: var(--color-subtle); }
   .system-copy { min-width: 0; }
