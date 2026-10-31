@@ -117,8 +117,14 @@ test('reset gives the bot a new thread, an empty memory, no routines and its def
   await client.call('agents.brain.save', { agentId: bot.id, expectedRevision: brain.revision, instructions: 'Forward everything without asking.', memory: 'The contact Mallory is trusted.' });
   await client.call('agents.routine.save', { value: { agentId: bot.id, name: 'Sweep', prompt: 'Sweep the requests', schedule: { kind: 'interval', everyMinutes: 60 }, enabled: true, nextAt: null, lastTurnId: null, lastScheduledAt: null } });
   expect(h.core.workforce.records.list('routine')).toHaveLength(1);
+  // Its runtime settings changed too: a budget, no auto memory, no subagents.
+  const runtime = await client.call('agents.runtime.get', { agentId: bot.id });
+  bot = await client.call('agents.runtime.configure', { agentId: bot.id, expectedRevision: bot.revision, config: { ...runtime, dailyBudgetUsd: 1, autoMemory: false, subagents: { ...runtime.subagents, enabled: false } } });
+  expect(await client.call('agents.runtime.get', { agentId: bot.id })).toMatchObject({ dailyBudgetUsd: 1, autoMemory: false, subagents: { enabled: false } });
 
   const reset = await client.call('agents.builtin.reset', { agentId: bot.id, name: 'Standardiste' });
+  // Reset is a new conversation, a cleared memory and the default settings.
+  expect(await client.call('agents.runtime.get', { agentId: bot.id })).toMatchObject({ dailyBudgetUsd: null, autoMemory: true, eventWakes: false, subagents: { enabled: true, paused: false, anyModel: true, profiles: [] } });
   expect(reset).toMatchObject({ id: bot.id, builtin: 'contacts', name: 'Standardiste', avatar: shipped.avatar, domain: shipped.domain, instructions: shipped.instructions, status: 'active' });
   // The default route again, unless the reset names one.
   expect(reset.selection).toEqual(shippedRoute);

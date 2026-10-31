@@ -177,6 +177,8 @@ export class AgentRuntime {
   /** `wake` with the reason it did not start. */
   attempt(agent: AgentProfile, wake: AgentWake): { turn?: Turn; held?: WakeHeld } {
     if (this.#closed || this.#core.stopping) return { held: 'paused' };
+    // A bot on its way to another machine is held as a busy one: its routines, events and facts wait, then go with it or stay.
+    if (this.#store.moves.moving(agent.id)) return { held: 'busy' };
     const paused = this.#refusal(agent);
     if (paused !== null) return { held: paused };
     let thread: ThreadSummary;
@@ -222,6 +224,9 @@ export class AgentRuntime {
     if (thread.parentThreadId) return;
     const agent = this.#store.agentOfThread(thread.id);
     if (!agent) return;
+    if (this.#store.moves.moving(agent.id)) {
+      throw refused(`Held ${SOURCE_TEXT[source]}: ${agent.name} is moving to another machine.`, { reason: AGENT_HELD, threadId: thread.id, source, held: 'busy' });
+    }
     const held = this.#refusal(agent);
     const over = held === null ? this.#spent(agent, thread.id) : null;
     const key = `${agent.id}:${source}`;
@@ -253,7 +258,7 @@ export class AgentRuntime {
       const agent = this.#store.agentOfThread(threadId);
       const thread = this.#core.journal.getThread(threadId);
       if (!agent || !thread || thread.archived) { this.#waiting.delete(threadId); continue; }
-      if (this.#refusal(agent) !== null || this.#spent(agent, threadId) !== null || this.#atWork(thread)) continue;
+      if (this.#store.moves.moving(agent.id) || this.#refusal(agent) !== null || this.#spent(agent, threadId) !== null || this.#atWork(thread)) continue;
       const [key, retry] = held.entries().next().value!;
       held.delete(key);
       if (held.size === 0) this.#waiting.delete(threadId);
@@ -265,6 +270,7 @@ export class AgentRuntime {
   start(agent: AgentProfile, wake: AgentWake): Turn {
     const thread = this.#core.threads.require(this.#store.open(agent.id).threadId);
     if (this.#atWork(thread)) throw refused(`${agent.name} is at work; run it again once its turn ends`, { threadId: thread.id, field: 'routineId' });
+    if (this.#store.moves.moving(agent.id)) throw refused(`${agent.name} is moving to another machine; run it there once it arrives`, { threadId: thread.id, field: 'routineId', reason: 'moving' });
     return this.#begin(thread, wake);
   }
 

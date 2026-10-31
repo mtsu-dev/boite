@@ -201,3 +201,63 @@ test('the Contacts bot moves: the target answers for it and this machine no long
   expect(desk.core.workforce.builtinThread('contacts')).toBeNull();
   expect(desk.core.workforce.builtin('contacts')).toBeNull();
 }, 60_000);
+
+test('an answer lost on the way back: the same requestId finishes the move here instead of a second bot there', async () => {
+  const { desk, pc, owner, pcId } = await group();
+  const { agent, threadId } = await makeAgent(desk, owner);
+  const request = desk.core.coordination.request.bind(desk.core.coordination);
+  let lose = true;
+  desk.core.coordination.request = async (peer: CoordinationPeer, operation, payload) => {
+    const answer = await request(peer, operation, payload);
+    if (operation === 'bot.move' && lose) { lose = false; throw new Error('the connection dropped'); }
+    return answer;
+  };
+  // The target made the bot, this machine never heard it: both hold it, and this one says to try again.
+  expect(await thrown(owner.call('agents.move', { agentId: agent.id, machine: pcId, requestId: 'lost' }))).toThrow('the same requestId tries again');
+  expect(desk.core.workforce.records.find('profile', agent.id)).not.toBeNull();
+  expect(pc.core.workforce.records.find('profile', agent.id)).not.toBeNull();
+  // A fact filed here after that goes with the retry.
+  desk.core.workforce.fact(agent.id, { key: 'after', text: 'Filed after the lost answer.', urgent: false });
+  const moved = await owner.call('agents.move', { agentId: agent.id, machine: pcId, requestId: 'lost' });
+  expect(moved.threadId).toBe(pc.core.workforce.sessionOf(agent.id)!.threadId);
+  expect(pc.core.workforce.records.list('profile').filter(p => p.id === agent.id)).toHaveLength(1);
+  expect(pc.core.agentRuntime.facts(agent.id).map(f => f.key)).toEqual(['after']);
+  expect(desk.core.workforce.records.find('profile', agent.id)).toBeNull();
+  expect(desk.core.journal.getThread(threadId)?.archived).toBe(true);
+  expect(desk.core.agentRuntime.facts(agent.id)).toHaveLength(0);
+}, 60_000);
+
+test('facts filed while the bot travels go after it, nothing wakes it here meanwhile, and a lost second leg keeps them here', async () => {
+  const { desk, pc, owner, pcId } = await group();
+  const { agent } = await makeAgent(desk, owner);
+  desk.core.workforce.fact(agent.id, { key: 'before', text: 'Filed before the move.', urgent: false });
+  const request = desk.core.coordination.request.bind(desk.core.coordination);
+  const sent: string[][] = [];
+  let probe: unknown;
+  desk.core.coordination.request = async (peer: CoordinationPeer, operation, payload) => {
+    if (operation !== 'bot.move') return request(peer, operation, payload);
+    sent.push((payload as { facts: { key: string }[] }).facts.map(f => f.key));
+    if (sent.length === 1) {
+      // During the network wait: a fact arrives, and a wake asked now is held.
+      desk.core.workforce.fact(agent.id, { key: 'during', text: 'Filed during the move.', urgent: true });
+      probe = desk.core.agentRuntime.attempt(desk.core.workforce.records.get('profile', agent.id), { kind: 'event', label: 'Probe', prompt: 'Wake up.', requestId: 'probe' });
+    }
+    if (sent.length === 2) throw new Error('the network went down');
+    return request(peer, operation, payload);
+  };
+  expect(await thrown(owner.call('agents.move', { agentId: agent.id, machine: pcId, requestId: 'late' }))).toThrow('did not answer');
+  expect(probe).toEqual({ held: 'busy' });
+  expect(sent).toEqual([['before'], ['before', 'during']]);
+  // The second leg never arrived: the late fact and the bot stay here.
+  expect(desk.core.workforce.records.find('profile', agent.id)).not.toBeNull();
+  expect(desk.core.agentRuntime.facts(agent.id).map(f => f.key)).toEqual(['before', 'during']);
+  expect(pc.core.agentRuntime.facts(agent.id).map(f => f.key)).toEqual(['before']);
+  // Wakes run here again once the move gave up.
+  expect(desk.core.workforce.moves.moving(agent.id)).toBe(false);
+
+  await owner.call('agents.move', { agentId: agent.id, machine: pcId, requestId: 'late' });
+  expect(sent).toHaveLength(3);
+  expect(pc.core.agentRuntime.facts(agent.id).map(f => [f.key, f.text])).toEqual([['before', 'Filed before the move.'], ['during', 'Filed during the move.']]);
+  expect(desk.core.workforce.records.find('profile', agent.id)).toBeNull();
+  expect(desk.core.agentRuntime.facts(agent.id)).toHaveLength(0);
+}, 60_000);
