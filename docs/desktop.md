@@ -71,7 +71,7 @@ it (offline, the registry down) or predates `desktop.tool`, an agent-desktop on
 the agent's `PATH` runs instead; with neither, the command fails with the
 reason. A refusal is final: under the `agentDesktop` policy, or on a machine
 without the desktop's programs, no agent-desktop runs, and a desktop that was
-already running when the policy came takes no command but `stop`.
+already running when the policy came takes only `status` and `stop`.
 
 ## The desktop
 

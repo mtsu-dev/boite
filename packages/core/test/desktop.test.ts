@@ -68,7 +68,10 @@ test('--help after -- is text to type, so the command still runs on the desktop'
   expect(asked).toEqual(['desktop.status']);
 });
 
-test('a desktop the policy turned off takes no more commands, and only a failed install falls back to an agent-desktop on PATH', async () => {
+// agent-desktop has Linux builds only; these fakes are shell scripts with POSIX modes, run from a ':' PATH.
+const posix = process.platform !== 'win32';
+
+test.skipIf(!posix)('a desktop the policy turned off takes no more commands, and only a failed install falls back to an agent-desktop on PATH', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'boite-desktop-path-'));
   try {
     writeFileSync(join(dir, 'agent-desktop'), '#!/bin/sh\necho own "$@"\n');
@@ -210,7 +213,7 @@ test('agent-desktop\'s guide and help speak boite desktop, and its prose and app
   expect(inBoiteWords('`AGENT_DESKTOP_HOME` or `~/.agent-desktop` stays')).toBe('`AGENT_DESKTOP_HOME` or `~/.agent-desktop` stays');
 });
 
-describe('the agent-desktop Boite installs', () => {
+describe.skipIf(!posix)('the agent-desktop Boite installs', () => {
   const sha = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
   let dir: string, harness: TestCore;
 
