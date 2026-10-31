@@ -29,6 +29,7 @@ import { deviceCommand } from './device-cli.ts';
 import { WINDOW_REQUEST_TIMEOUT_MS, windowCommand } from './window-cli.ts';
 import { secretCommand } from './secret-cli.ts';
 import { agentsCommand, AgentsUsage, WAIT_MAX_S } from './agents-cli.ts';
+import { contactsCommand } from './contacts/cli.ts';
 import type { RpcParams } from '@boite/contracts';
 import { contextRequest, parse, requiredText, Usage, type Parsed } from './cli-args.ts';
 import { issueCommand, logsCommand } from './logs-cli.ts';
@@ -165,10 +166,11 @@ ${CONTROL_HELP}
   threads wait [thread]          the next message (--timeout <s>, default 90)
   threads inbox                  every exchange and its delivery state
                                  <thread>: <thread-id>, <machine>/<thread-id>
-  threads contacts               other owners' Boites linked as contacts and
-                                 the projects each opened to you
-  threads ask <contact> <text>   request project access; the remote Boite can
-                                 decide automatically; send messages with threads send
+  threads contacts               other owners' Boites linked as contacts
+  threads ask <text>             ask the Contacts bot for a contact's thread
+                                 (--contact <c>, --to <c>/<thread>, --new, --share);
+                                 the answer names the thread to write to
+  contacts [help]                the Contacts bot's own commands
   bot memory                     a bot's MEMORY.md and its path
   bot remember <fact>            add a dated line to MEMORY.md
   bot routines                   its routines: schedule, next run, last outcome
@@ -511,6 +513,9 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
         if (error instanceof AgentsUsage) throw new Usage(error.message);
         throw error;
       }
+    },
+    contacts: async () => {
+      await contactsCommand(client, threadId, rest, { ...(parsed.project === undefined ? {} : { project: parsed.project }), ...(parsed.model === undefined ? {} : { model: parsed.model }), ...(parsed.effort === undefined ? {} : { effort: parsed.effort }), worktree: parsed.worktree }, print);
     },
     workflow: async () => {
       await workflowCommand(client, threadId, rest, io, print, parsed.requestId);

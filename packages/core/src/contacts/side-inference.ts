@@ -1,4 +1,4 @@
-/** The Contacts concierge and activity reviewer share the driver's tool-free query path. */
+/** The activity reviewer's tool-free query path through the driver. */
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { AGENT_ENV, TOOL_FREE_CONTEXT, type ThreadSummary } from '@boite/contracts';

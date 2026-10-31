@@ -26,8 +26,13 @@ export const CONTACT_MAIL_SCENARIOS: Record<string, Scenario> = {
     const thread = await env.call('threads.create', { projectId: project.id, providerId: 'echo', accountId: account.id, title: 'Asks a contact', permissionMode: 'acceptEdits' });
     const status = async (id: string) => (await env.call('collaboration.get', { threadId: thread.id })).messages.find(letter => letter.id === id)?.status;
     const held = async () => (await env.call('contacts.get', {})).mail ?? [];
+    // A thread's ask waits for this owner's Contacts bot, which sends it on; the contact has none, so its owner decides.
+    const bot = await env.call('agents.builtin.ensure', { kind: 'contacts' });
+    const { threadId: botThread } = await env.call('agents.open', { agentId: bot.id });
+    const operator = await env.peer({ agentThreadId: botThread });
     const answered = async (text: string) => {
-      await env.call('collaboration.ask', { threadId: thread.id, contact: coreId, text });
+      const request = await env.call('collaboration.ask', { threadId: thread.id, contact: coreId, text });
+      await operator.call('contacts.bot.forward', { threadId: botThread, id: request.id, contact: coreId });
       const incoming = async () => (await contact.call('contacts.get', {})).requests.find(request => request.direction === 'in' && request.status === 'pending' && request.text === text);
       await until(async () => Boolean(await incoming()), 'the contact never received the request');
       await contact.call('contacts.decide', { id: (await incoming())!.id, accept: false, reason: `No: ${text}` });

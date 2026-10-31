@@ -102,6 +102,46 @@ function sameAddress(a: AgentAddress, b: AgentAddress): boolean {
   return a.coreId === b.coreId && a.threadId === b.threadId;
 }
 
+/**
+ * `threads ask` words: `--contact <name>`, `--to <contact>/<thread-id>`,
+ * `--new` (a new thread there), `--share` (a project opened), `--wait`,
+ * `--timeout <s>`; the rest is the request. `ask <contact> <text>`, the old
+ * form, still reaches the core, which takes a leading contact name off.
+ */
+export function askArgs(words: string[]): { text: string; contact?: string; target?: string; want?: 'thread' | 'share'; wait: boolean; timeout?: number } {
+  const out: { text: string; contact?: string; target?: string; want?: 'thread' | 'share'; wait: boolean; timeout?: number } = { text: '', wait: false };
+  const text: string[] = [];
+  for (let index = 0; index < words.length; index += 1) {
+    const word = words[index] ?? '';
+    const value = (): string => {
+      const next = words[index + 1];
+      if (next === undefined || next === '' || next.startsWith('--')) throw new AgentsUsage(`${word} needs a value`);
+      index += 1;
+      return next;
+    };
+    if (word === '--contact') out.contact = value();
+    else if (word === '--to') {
+      const to = value();
+      const slash = to.lastIndexOf('/');
+      if (slash <= 0 || slash === to.length - 1) throw new AgentsUsage(`--to: expected <contact>/<thread-id>, got ${to}`);
+      out.target = to;
+    } else if (word === '--new' || word === '--share') {
+      const want = word === '--new' ? 'thread' : 'share';
+      if (out.want && out.want !== want) throw new AgentsUsage('--new and --share exclude each other');
+      out.want = want;
+    } else if (word === '--wait') out.wait = true;
+    else if (word === '--timeout') {
+      const seconds = Number(value());
+      if (!Number.isFinite(seconds) || seconds < 0 || seconds > WAIT_MAX_S) throw new AgentsUsage(`--timeout: expected 0 to ${WAIT_MAX_S} seconds`);
+      out.timeout = seconds;
+    } else if (word.startsWith('--')) throw new AgentsUsage(`threads ask: unknown flag ${word}; it reads --contact, --to, --new, --share, --wait and --timeout`);
+    else text.push(word);
+  }
+  out.text = text.join(' ').trim();
+  if (!out.text) throw new AgentsUsage('threads ask needs the request text: who or what you need, and why');
+  return out;
+}
+
 export async function agentsCommand(client: CoreClient, threadId: string, rest: string[], options: AgentsOptions, print: Printer): Promise<void> {
   const want = (index: number, what: string): string => {
     const value = rest[index];
@@ -116,14 +156,14 @@ export async function agentsCommand(client: CoreClient, threadId: string, rest: 
     const to = resolveAgent(target, agents, self.coreId);
     return { to, self, contact: agents.find(agent => sameAddress(agent, to)) };
   };
-  const timeoutMs = (): number => {
-    const seconds = options.timeout ?? WAIT_DEFAULT_S;
+  const timeoutMs = (given = options.timeout): number => {
+    const seconds = given ?? WAIT_DEFAULT_S;
     if (!Number.isFinite(seconds) || seconds < 0 || seconds > WAIT_MAX_S) throw new AgentsUsage(`--timeout: expected 0 to ${WAIT_MAX_S} seconds`);
     return Math.round(seconds * 1000);
   };
-  const waitFor = async (from: AgentAddress | undefined, self: AgentAddress): Promise<string[]> => {
-    const { letters } = await client.call('collaboration.wait', { threadId, ...(from ? { from } : {}), timeoutMs: timeoutMs() });
-    if (letters.length === 0) return [`no answer within ${Math.round(timeoutMs() / 1000)}s; it will arrive later as a message`];
+  const waitFor = async (from: AgentAddress | undefined, self: AgentAddress, seconds = options.timeout): Promise<string[]> => {
+    const { letters } = await client.call('collaboration.wait', { threadId, ...(from ? { from } : {}), timeoutMs: timeoutMs(seconds) });
+    if (letters.length === 0) return [`no answer within ${Math.round(timeoutMs(seconds) / 1000)}s; it will arrive later as a message`];
     return letters.map(letter => letterLine(letter, self));
   };
 
@@ -188,18 +228,17 @@ export async function agentsCommand(client: CoreClient, threadId: string, rest: 
     ], current);
   } else if (action === 'contacts') {
     const contacts = await client.call('collaboration.contacts', { threadId });
-    const lines = contacts.map(contact => `${contact.name}  (${contact.link}, opened to you: ${contact.projects.length ? contact.projects.join(', ') : 'no project yet'})`);
+    const lines = contacts.map(contact => `${contact.name}  (${contact.link}${contact.projects.length ? `, opened to you: ${contact.projects.join(', ')}` : ''})`);
     if (lines.length === 0) lines.push("no contact; the user links other owners' Boites in Contacts");
-    else lines.push('Their threads in opened projects are in boite threads as <contact>/<thread-id>. Request project access with threads ask <contact> <text>; the remote Boite can decide automatically. Message an agent conversation with threads send.');
+    else lines.push('Ask with boite threads ask <what you need> [--contact <name>] [--to <contact>/<thread-id>] [--new]: the Contacts bot finds the thread, and its answer names the one to write to with threads send.');
     print(lines, contacts);
   } else if (action === 'ask') {
-    const contact = want(1, 'a contact from threads contacts');
-    const body = rest.slice(2).join(' ');
-    if (!body) throw new AgentsUsage('threads ask needs the request text: the project or work you need a thread for');
-    const request = await client.call('collaboration.ask', { threadId, contact, text: body });
-    const lines = [`request ${request.id} to ${request.contact}: ${request.status}${request.gitRemote ? ` (sent with your git remote ${request.gitRemote})` : ''}`, 'This requests project access; the remote Boite can decide automatically. Use threads send to message an agent conversation.'];
-    if (options.wait) lines.push(...await waitFor({ coreId: request.coreId, threadId: request.id }, { coreId: request.from.coreId, threadId }));
-    else lines.push('The answer comes back to this thread as a message: the project opened and its threads, or the reason for a refusal.');
+    const { text: body, contact, target, want: wanted, wait, timeout } = askArgs(rest.slice(1));
+    const request = await client.call('collaboration.ask', { threadId, text: body, ...(contact ? { contact } : {}), ...(target ? { target } : {}), ...(wanted ? { want: wanted } : {}) });
+    const lines = [`request ${request.id}${request.contact ? ` for ${request.contact}` : ''}: ${request.status}${request.gitRemote ? ` (sent with your git remote ${request.gitRemote})` : ''}`,
+      'The Contacts bot reads it and finds the contact and the thread.'];
+    if (wait || options.wait) lines.push(...await waitFor(undefined, (await view()).self, timeout ?? options.timeout));
+    else lines.push('The answer comes back to this thread as a message: the thread to write to with threads send, or the reason for a refusal.');
     print(lines, request);
   } else throw new AgentsUsage('threads expects list, find, read, send, reply, log, wait, inbox, contacts or ask');
 }

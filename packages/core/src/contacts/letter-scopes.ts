@@ -64,22 +64,30 @@ function waitingMail(core: Core, threadId: string): AgentLetter[] {
 
 /**
  * How this thread takes contact mail sent outside a shared project, which has
- * no boundary Boite can enforce. It is `cleared` once its contact is trusted or
- * the owner delivered that very letter, and `held` for the owner otherwise,
- * unless the thread runs tool-free, which reads it and holds its history instead.
+ * no boundary Boite can enforce. It is `cleared` once its contact is trusted,
+ * the owner delivered that very letter, or the Contacts bot put the two
+ * threads in touch, and `held` for the owner otherwise, unless the thread runs
+ * tool-free, which reads it and holds its history instead. A relation's mail
+ * was approved when the bot made it (by the owner too, for a contact not
+ * trusted), so it sets no legacy hold. A letter the antivirus flagged is held
+ * until the bot or the owner decides it, inside a shared project too.
  */
 export function contactMailGate(core: Core, threadId: string): {cleared: (letter: AgentLetter) => boolean; held: (letter: AgentLetter) => boolean} {
   const thread = core.journal.getThread(threadId);
   const toolFree = thread !== null && core.providers.get(thread.providerId)?.protocol === 'echo' && thread.permissionMode === 'default';
   const approved = storedScope(core, threadId)?.trusted ?? [];
-  const cleared = (letter: AgentLetter) => Boolean(letter.contact) && !letter.sharedProjectId
-    && (core.contacts.find(letter.contact!.coreId)?.trusted === true || approved.includes(approval(letter)));
-  return {cleared, held: letter => Boolean(letter.contact) && !letter.sharedProjectId && !toolFree && !cleared(letter)};
+  const flagged = (letter: AgentLetter) => core.contacts.flags.holds(letter.id);
+  const related = (letter: AgentLetter) => letter.origin === 'contact'
+    ? core.contacts.relations.forRequest(letter.contact!.coreId, letter.from.threadId)?.local.threadId === threadId
+    : core.contacts.reach.byRelation(threadId, letter.contact!.coreId, letter.from.threadId);
+  const cleared = (letter: AgentLetter) => Boolean(letter.contact) && !letter.sharedProjectId && !flagged(letter)
+    && (core.contacts.find(letter.contact!.coreId)?.trusted === true || approved.includes(approval(letter)) || related(letter));
+  return {cleared, held: letter => Boolean(letter.contact) && (flagged(letter) || !letter.sharedProjectId && !toolFree && !cleared(letter))};
 }
 
-/** The contact mail every thread here holds for the owner, oldest first, at most 50. */
+/** The contact mail every thread here holds for the owner, oldest first, at most 50; what the Contacts bot decides is its own. */
 export function heldMail(core: Core): HeldContactLetter[] {
-  const rows = core.journal.db.query("SELECT data FROM coordination_letters WHERE status='received' AND direction='in' AND json_type(data,'$.contact')='object' AND json_type(data,'$.sharedProjectId') IS NULL ORDER BY created_at").all() as {data: string}[];
+  const rows = core.journal.db.query("SELECT data FROM coordination_letters WHERE status='received' AND direction='in' AND json_type(data,'$.contact')='object' ORDER BY created_at").all() as {data: string}[];
   const held: HeldContactLetter[] = [], gates = new Map<string, ReturnType<typeof contactMailGate>>();
   for (const row of rows) {
     const letter = JSON.parse(row.data) as AgentLetter, threadId = letter.to.threadId;
@@ -87,7 +95,7 @@ export function heldMail(core: Core): HeldContactLetter[] {
     if (letter.expiresAt <= Date.now() || !thread || thread.archived) continue;
     const gate = gates.get(threadId) ?? contactMailGate(core, threadId);
     gates.set(threadId, gate);
-    if (!gate.held(letter)) continue;
+    if (!gate.held(letter) || !core.contacts.flags.forOwner(letter.id)) continue;
     const coreId = letter.contact!.coreId;
     held.push({id: letter.id, coreId, contact: core.contacts.find(coreId)?.name ?? letter.contact!.name, from: letter.from.title, threadId, thread: thread.title, text: letter.text, createdAt: letter.createdAt, expiresAt: letter.expiresAt});
     if (held.length === 50) break;
@@ -105,6 +113,7 @@ export function decideMail(core: Core, id: unknown, accept: unknown): {ok: true}
   const row = core.journal.db.query("SELECT data FROM coordination_letters WHERE id=? AND direction='in' AND status='received'").get(id) as {data: string} | null;
   const letter = row ? JSON.parse(row.data) as AgentLetter : null;
   if (!letter || letter.expiresAt <= Date.now() || !contactMailGate(core, letter.to.threadId).held(letter)) throw invalidParams('id: expected a contact letter waiting for the owner', {field: 'id'});
+  core.contacts.flags.closeLetter(letter.id, accept);
   if (!accept) {
     core.coordination.refuseHeld(letter, 'Refused by the owner');
     return {ok: true};

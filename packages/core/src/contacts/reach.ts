@@ -6,6 +6,7 @@
 import type { ContactGrant, ModelTier } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { refused } from '../errors.ts';
+import { contactsBot } from './bot.ts';
 import type { ContactStore } from './store.ts';
 import { attestedTier, modelTier, tierAllowed } from './tier.ts';
 
@@ -38,14 +39,50 @@ export class ContactReach {
   /** This core's projects opened to this contact. */
   granted(coreId: string): string[] { return [...new Set(this.#grantsHere(coreId).map(grant => grant.projectId))]; }
 
-  /** A contact's letter may reach this thread: its project is opened to the contact, or the thread wrote to it lately. */
-  mayReach(coreId: string, threadId: string): boolean {
+  /**
+   * A contact's letter may reach this thread: the Contacts bots put the two
+   * threads in touch (`fromThreadId`, the sender), its project is opened to
+   * the contact, or the thread wrote to it lately.
+   */
+  mayReach(coreId: string, threadId: string, fromThreadId?: string): boolean {
     const thread = this.#core.journal.getThread(threadId);
     if (!thread || thread.archived || !this.#contacts.isContact(coreId)) return false;
+    if (fromThreadId !== undefined && this.byRelation(threadId, coreId, fromThreadId)) return true;
     if (thread.projectId && this.#contacts.policyRevoked(coreId, thread.projectId)) return false;
     if (this.#grantFor(coreId, threadId)) return true;
     const at = this.#recent()[threadId]?.[coreId];
     return typeof at === 'number' && Date.now() - at <= REPLY_WINDOW_MS;
+  }
+
+  /**
+   * The Contacts bots put this thread here and that contact's thread in touch:
+   * a relation joins them, or one end is a Contacts bot writing to the other
+   * side's bot, or to a thread in a request or a relation with it.
+   */
+  byRelation(localThreadId: string, coreId: string, remoteThreadId: string): boolean {
+    const relations = this.#contacts.relations.of(coreId);
+    if (relations.some(relation => relation.local.threadId === localThreadId && relation.remote.threadId === remoteThreadId)) return true;
+    const ours = contactsBot(this.#core)?.threadId;
+    const theirs = this.#contacts.find(coreId)?.bot?.threadId;
+    const requests = this.#contacts.requests.list().filter(request => request.coreId === coreId);
+    if (ours === localThreadId) {
+      return remoteThreadId === theirs || relations.some(relation => relation.remote.threadId === remoteThreadId)
+        || requests.some(request => request.direction === 'in' && request.from.threadId === remoteThreadId);
+    }
+    return theirs === remoteThreadId && (relations.some(relation => relation.local.threadId === localThreadId)
+      || requests.some(request => request.direction === 'out' && request.from.threadId === localThreadId));
+  }
+
+  /**
+   * With a Contacts bot, a thread here writes to a contact's thread only once
+   * the bots put them in touch, or inside a shared project, whose own rules
+   * hold. The bot itself writes wherever the contact lets it.
+   */
+  checkSend(threadId: string, to: { coreId: string; threadId: string }, shared: boolean): void {
+    if (shared || !this.#contacts.has(to.coreId)) return;
+    const bot = contactsBot(this.#core);
+    if (bot === null || bot.threadId === threadId || this.byRelation(threadId, to.coreId, to.threadId)) return;
+    throw refused('to: a contact\'s thread takes letters only from a thread the Contacts bot put in touch with it; ask the bot with boite threads ask', { field: 'to', expected: 'a thread in relation, or boite threads ask' });
   }
 
   mayRead(coreId: string, threadId: string): boolean { return this.#grantFor(coreId, threadId)?.readThreads === true; }
