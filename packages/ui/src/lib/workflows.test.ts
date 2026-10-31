@@ -46,6 +46,9 @@ test('fake local and remote workflow questions update the parent summary without
     await client.call('questions.answer', { threadId: childId, questionId: question.questionId, optionIds: [], text: 'Custom' });
     expect(await links()).toEqual([]);
   } finally { registerCore(machine); }
+  expect(await links()).toEqual([
+    { threadId: remoteId, title: machine.thread(remoteId).title, machine: { coreId: 'workflow-question-pc', name: 'PC' } },
+  ]);
   await pc.call('questions.answer', { threadId: remoteId, questionId: remote.questionId, optionIds: [], text: 'Built-in' });
   expect(await links()).toEqual([]);
 });
