@@ -1,18 +1,34 @@
+<script module lang="ts">
+  import type { Turn } from '@boite/contracts';
+  /** The turns that open on a wake divider rather than a prompt. */
+  export type WakeKind = 'routine' | 'event' | 'pull-request' | 'delegation' | 'coordination' | 'background' | 'resume';
+  const KINDS: readonly string[] = ['routine', 'event', 'pull-request', 'delegation', 'coordination', 'background', 'resume'];
+  /** The wake a turn opened on, or undefined when the user or a compaction opened it. */
+  export function wakeKind(turn: Pick<Turn, 'execution'> | undefined): WakeKind | undefined {
+    const operation = turn?.execution?.operation;
+    return operation !== undefined && KINDS.includes(operation) ? operation as WakeKind : undefined;
+  }
+</script>
+
 <script lang="ts">
-  import { CalendarClock, ChevronRight, Zap } from '@lucide/svelte';
+  import { Activity, Bot, CalendarClock, ChevronRight, GitPullRequest, MessagesSquare, RotateCw, Zap } from '@lucide/svelte';
   import type { Message, MessagePart } from '@boite/contracts';
   import { clockTime, fullTime } from '../lib/format';
   import { promptText } from '../lib/message-display';
   import { strings } from '../lib/strings';
 
   /**
-   * A turn the core started on a persistent agent's thread by itself: a
-   * routine came due, or something happened on its desk or in its projects.
+   * A turn the core started by itself: on a persistent agent's thread a
+   * routine came due or something happened on its desk or in its projects;
+   * on any thread a watched pull request changed, a delegated agent, another
+   * agent or background work wrote back, or the core resumed after a restart.
    * It opens with one thin divider across the column, the label the core
    * gave it, its icon and its time on it, in place of a prompt bubble the
    * user never wrote. The prompt the agent read unfolds under it.
    */
-  let { message, kind }: { message: Message; kind: 'routine' | 'event' } = $props();
+  let { message, kind }: { message: Message; kind: WakeKind } = $props();
+  const ICONS = { routine: CalendarClock, event: Zap, 'pull-request': GitPullRequest, delegation: Bot, coordination: MessagesSquare, background: Activity, resume: RotateCw };
+  const Icon = $derived(ICONS[kind]);
   let open = $state(false);
   const part = $derived(message.parts.find((p): p is Extract<MessagePart, { type: 'text' }> => p.type === 'text'));
   const label = $derived(part ? promptText(part).trim() || strings.chat.wake[kind] : strings.chat.wake[kind]);
@@ -23,7 +39,7 @@
 <div class="wake" data-kind={kind} data-testid="wake-marker">
   <span class="rule"></span>
   <button type="button" class="ghost small label" aria-expanded={prompt ? open : undefined} disabled={!prompt} title={prompt ? (open ? strings.chat.wakeHide : strings.chat.wakeShow) : undefined} onclick={() => (open = !open)}>
-    {#if kind === 'routine'}<CalendarClock size={13} strokeWidth={1.75} />{:else}<Zap size={13} strokeWidth={1.75} />{/if}
+    <Icon size={13} strokeWidth={1.75} />
     <span class="ui-label text">{label}</span>
     <time datetime={new Date(message.createdAt).toISOString()} title={fullTime(message.createdAt)}>{clockTime(message.createdAt)}</time>
     {#if prompt}<span class="fold-caret" class:open aria-hidden="true"><ChevronRight size={12} /></span>{/if}
@@ -67,7 +83,7 @@
   .label:hover:not(:disabled), .label:focus-visible { background: none; }
   .label:hover:not(:disabled) .text, .label:focus-visible .text { color: var(--color-foreground); }
   .label :global(svg) { color: var(--color-subtle); }
-  .wake[data-kind='event'] .label :global(svg) { color: var(--color-live); }
+  .wake[data-kind='event'] .label :global(svg), .wake[data-kind='pull-request'] .label :global(svg) { color: var(--color-live); }
   .text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-muted-foreground); transition: color var(--dur-2) var(--ease-out-quint); }
   time { flex: none; color: var(--color-subtle); font-variant-numeric: tabular-nums; }
   .fold { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--dur-3) var(--ease-out-quint); }

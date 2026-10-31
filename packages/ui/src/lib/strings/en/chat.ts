@@ -102,6 +102,8 @@ export const strings = {
     compaction: 'Context compacted, {pre} to {post} tokens',
     compactionNoPost: 'Context compacted from {pre} tokens',
     compactionUnknown: 'Context compacted',
+    /** On the line of the run a compaction fell in. */
+    compactedMark: 'compacted {pre} → {post}', compactedMarkBare: 'context compacted',
     compactionManual: 'by hand',
     /** Beside a compaction a copy of the session made while the conversation went on. */
     compactionBackground: 'in the background',
@@ -109,15 +111,18 @@ export const strings = {
     moveExplained: 'Move explained to the agent',
     moveShow: 'Show what the agent was told',
     moveHide: 'Hide what the agent was told',
-    wake: { routine: 'Routine', event: 'Woken up' },
-    wakeShow: 'Show what the bot read',
-    wakeHide: 'Hide what the bot read',
+    /** The divider a turn Boite opened by itself starts with, when the core gave it no words of its own. */
+    wake: { routine: 'Routine', event: 'Woken up', 'pull-request': 'Pull request update', delegation: 'Agent delegation', coordination: 'Agent coordination', background: 'Background work finished', resume: 'Resumed after a restart' },
+    wakeShow: 'Show what the agent read',
+    wakeHide: 'Hide what the agent read',
+    /** The divider where a conversation changes day. */
+    day: { today: 'Today', yesterday: 'Yesterday', withYear: '{day} {year}' },
     /** A bot's finished turn: its steps folded above its answer, or a wake that had nothing for the user. */
     fold: {
       worked: 'Worked {time}', workedBare: 'Worked',
       stepOne: '1 step', stepMany: '{count} steps',
       seconds: '{count} s', minutes: '{count} min', hours: '{hours} h {minutes} min',
-      quiet: 'Nothing to report',
+      quiet: 'Checked, nothing to report', quietWith: 'Checked: {reason}',
       showSteps: 'Show the steps', hideSteps: 'Hide the steps',
       showTurn: 'Show the whole turn', hideTurn: 'Fold this turn',
       memory: { running: 'Updating its memory', done: 'Memory updated', unchanged: 'Memory checked, nothing to change', error: 'Memory update failed' },

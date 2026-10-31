@@ -2,7 +2,7 @@
   import { onDestroy } from 'svelte';
   import { Clock, Info, Minimize2, ScanEye } from '@lucide/svelte';
   import type { Store } from '../lib/store.svelte';
-  import { effectiveCompaction, threadActive, type ThreadCapabilities } from '@boite/contracts';
+  import { effectiveCompaction, threadActive, type ThreadCapabilities, type ThreadStats } from '@boite/contracts';
   import { fill, strings } from '../lib/strings';
   import { contextLimit, contextPercent, contextLevel } from '../lib/tokens';
   import { count, time } from '../lib/format';
@@ -58,6 +58,19 @@
     void store.threadCapabilities(id).then(value => { if (current) capabilities = value; })
       .catch(() => { if (current) capabilityFailed = true; })
       .finally(() => { if (current) capabilityPending = false; });
+    return () => { current = false; };
+  });
+  /** The whole thread's compactions and prompts, read while the popup is open and again after each turn. */
+  let stats = $state<ThreadStats | null>(null);
+  $effect(() => {
+    const id = thread?.id;
+    const status = thread?.status;
+    void status;
+    stats = null;
+    if (!popup.open || !id || store.connection !== 'ready') return;
+    let current = true;
+    // A core without the method answers null; a failed read leaves the lines out, the popup still works.
+    void store.threadStats(id).then(value => { if (current) stats = value; }).catch(() => {});
     return () => { current = false; };
   });
   const supported = $derived(protocol !== 'acp' || thread?.commands?.some(command => command.name === 'compact'));
@@ -139,6 +152,12 @@
           <p class="note">{strings.thread.contextMeasured} · {time(context.at)}</p>
         </div>
       {:else}<p class="note">{strings.thread.contextNoReading}</p>{/if}
+      {#if stats}
+        <dl class="stats" data-testid="context-stats">
+          <div data-testid="context-compactions"><dt>{strings.thread.contextCompactions}</dt><dd class="mono">{exact(stats.compactions)}</dd></div>
+          <div data-testid="context-prompts"><dt>{strings.thread.contextPrompts}</dt><dd class="mono">{exact(stats.prompts)}</dd></div>
+        </dl>
+      {/if}
       <button type="button" class="compact" data-testid="context-compact" disabled={reason !== null} title={reason ?? strings.composer.compact} onclick={() => void compact()}><Minimize2 size={14} /><span class="ui-label">{strings.composer.compact}</span></button>
       {#if reason}<p class="note">{reason}</p>{/if}
       {#if protocol === 'claude-sdk'}
@@ -198,6 +217,8 @@
   dd { margin: 0; }
   i { width: 7px; height: 7px; border-radius: var(--radius-sm); }
   .note { font-size: var(--text-xs); line-height: 1.5; color: var(--color-muted-foreground); margin: 8px 0 0; }
+  .stats { margin: 12px 0 0; padding-top: 10px; border-top: 1px solid var(--color-border); }
+  .stats div { margin: 4px 0; }
   .compact, .shape { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; margin-top: 14px; font-size: var(--text-sm); }
   .shape { margin-top: 8px; }
   @media (max-width: 720px) { .reading-info { width: 30px; height: 30px; margin: -6px -4px; } }

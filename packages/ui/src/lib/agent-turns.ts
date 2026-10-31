@@ -1,5 +1,6 @@
 import { SvelteSet } from 'svelte/reactivity';
-import type { AgentStatus, Message, MessagePart, Turn } from '@boite/contracts';
+import { continuesRequest, queueOrder, type AgentStatus, type Message, type MessagePart, type Turn } from '@boite/contracts';
+import type { CompactionPart } from './tool-groups';
 import { fill, strings } from './strings';
 import { AgentsView } from './agents.svelte';
 import type { Store } from './store.svelte';
@@ -9,7 +10,7 @@ import type { Store } from './store.svelte';
  * shows its answer, its steps (the calls, the reasoning and the narration
  * between them) folded away, the count on the quiet line under the answer
  * ("2 min · 4 steps"), and a wake that had nothing for the user folds whole
- * to one "Nothing to report" line. A running turn stays open and live. A
+ * to one "Checked: <what it checked>" line. A running turn stays open and live. A
  * click on the count or the line opens the turn as it ran.
  */
 
@@ -46,11 +47,11 @@ export function stepsLabel(count: number): string {
   return count === 1 ? strings.chat.fold.stepOne : fill(strings.chat.fold.stepMany, { count: String(count) });
 }
 
-/** The row's words: "Worked 3 min · 14 steps", or "Nothing to report · <reason> · 3 steps". */
+/** The row's words: "Worked 3 min · 14 steps", or "Checked: <reason> · 3 steps", the work it did first. */
 export function foldText(fold: TurnFold): string {
   const t = strings.chat.fold;
   const steps = fold.steps > 0 ? [stepsLabel(fold.steps)] : [];
-  if (fold.kind === 'quiet') return [t.quiet, ...(fold.reason ? [fold.reason] : []), ...steps].join(' · ');
+  if (fold.kind === 'quiet') return [fold.reason ? fill(t.quietWith, { reason: fold.reason }) : t.quiet, ...steps].join(' · ');
   return [fold.ms === null ? t.workedBare : fill(t.worked, { time: workedTime(fold.ms) }), ...steps].join(' · ');
 }
 
@@ -92,6 +93,8 @@ export class TurnFolds {
   #trimmed = new WeakMap<Message, { key: string; message: Message }>();
   /** The folds of the last build, by row id. */
   folds: ReadonlyMap<string, TurnFold> = new Map();
+  /** The compactions a closed fold left out with its steps, by turn: its line carries them instead. */
+  compactions: ReadonlyMap<string, CompactionPart[]> = new Map();
 
   /**
    * `timeline` with each finished turn folded: the steps left out of its
@@ -99,7 +102,7 @@ export class TurnFolds {
    * quiet wake down to one row alone. The turns in `opened` keep every
    * message. The same array comes back when nothing folds.
    */
-  build(timeline: readonly Message[], turns: readonly Turn[], opened: ReadonlySet<string>): Message[] {
+  build(timeline: readonly Message[], turns: readonly Turn[], opened: ReadonlySet<string>, foldable: (turn: Turn) => boolean = () => true): Message[] {
     const folds = new Map<string, TurnFold>();
     const byTurn = new Map<string, Message[]>();
     for (const message of timeline) {
@@ -108,7 +111,7 @@ export class TurnFolds {
     }
     for (const turn of turns) {
       const messages = byTurn.get(turn.id);
-      if (!messages || !settled(turn)) continue;
+      if (!messages || !settled(turn) || !foldable(turn)) continue;
       const steps = messages.reduce((sum, message) => sum + (message.role === 'assistant' ? message.parts.filter(part => part.type === 'tool').length : 0), 0);
       const reason = quietReason(turn, messages);
       if (reason === null && steps === 0) continue;
@@ -116,7 +119,13 @@ export class TurnFolds {
       folds.set(FOLD_PREFIX + turn.id, { turnId: turn.id, kind: reason === null ? 'worked' : 'quiet', steps, ms, reason: reason ?? '', open: opened.has(turn.id) });
     }
     this.folds = folds;
+    const hidden = new Map<string, CompactionPart[]>();
+    this.compactions = hidden;
     if (folds.size === 0) return timeline as Message[];
+    const hide = (turnId: string, parts: readonly MessagePart[]) => {
+      const found = parts.filter((part): part is CompactionPart => part.type === 'compaction');
+      if (found.length) hidden.set(turnId, [...(hidden.get(turnId) ?? []), ...found]);
+    };
 
     const out: Message[] = [];
     const placed = new Set<string>();
@@ -134,8 +143,12 @@ export class TurnFolds {
       // A quiet wake's row comes before its opening line; a worked turn gets no row, its count sits under the answer.
       if (fold.kind === 'quiet' && !placed.has(id)) { placed.add(id); out.push(this.#row(id, fold, message)); }
       if (fold.open) { out.push(message); continue; }
-      if (fold.kind === 'quiet' || message.role !== 'assistant') { if (fold.kind !== 'quiet') out.push(message); continue; }
+      if (fold.kind === 'quiet' || message.role !== 'assistant') {
+        if (fold.kind !== 'quiet') out.push(message); else if (message.role === 'assistant') hide(fold.turnId, message.parts);
+        continue;
+      }
       const kept = this.#trim(message, at, lastStep.get(fold.turnId));
+      if (kept !== message) hide(fold.turnId, message.parts.filter(part => !kept?.parts.includes(part)));
       if (kept) out.push(kept);
     }
     return out;
@@ -154,7 +167,8 @@ export class TurnFolds {
   #trim(message: Message, at: number, last: Step | undefined): Message | null {
     // Messages after the one holding the last step are all answer, by their order: two can share a millisecond.
     const cut = last?.message === message ? last.index : last && at < last.at ? message.parts.length : -1;
-    const parts = message.parts.filter((part, index) => index > cut || !(isStep(part) || narration(part)));
+    // A compaction among the steps goes with them: the summary line carries its mark (`compactions`).
+    const parts = message.parts.filter((part, index) => index > cut || !(isStep(part) || narration(part) || part.type === 'compaction'));
     if (parts.length === message.parts.length) return message;
     if (parts.length === 0) return null;
     const key = `${cut}|${parts.length}`;
@@ -190,22 +204,81 @@ export function memoryPassOf(store: Store, threadId: string): MemoryPass | null 
   return AgentsView.of(store).snapshot?.status?.find(status => status.threadId === threadId)?.memory ?? null;
 }
 
-const NO_FOLDS: ReadonlyMap<string, TurnFold> = new Map();
+const NO_COMPACTIONS: ReadonlyMap<string, CompactionPart[]> = new Map();
 
-/** A persistent agent's thread as it reads: its finished turns folded, and the turn its last memory pass followed, whose summary line carries the mark. */
+/**
+ * A turn Boite opened to carry on the user's request in an ordinary thread:
+ * a pull request it watches changed, a delegated agent or background work
+ * wrote back. Once settled its steps fold like a bot's, its answer stays.
+ */
+export function wakeFolds(turn: Turn): boolean {
+  return continuesRequest(turn) && turn.execution?.operation !== 'compact';
+}
+
+/** A compaction Boite ran by itself that went through: housekeeping, said on the line of the turn before it. */
+const quietCompaction = (turn: Turn) => turn.execution?.operation === 'compact' && turn.execution.automatic === true && turn.status === 'done';
+
+/**
+ * `timeline` without the automatic compactions that went through, and what
+ * each compacted, by the turn shown before it: that turn's line carries the
+ * mark. One with no turn before it in the held page stays where it is.
+ */
+export function foldCompactions(timeline: Message[], turns: readonly Turn[]): { timeline: Message[]; compactions: ReadonlyMap<string, CompactionPart[]> } {
+  if (!turns.some(quietCompaction)) return { timeline, compactions: NO_COMPACTIONS };
+  const shown = new Set(timeline.map(message => message.turnId));
+  const after = new Map<string, string>();
+  let before: string | null = null;
+  for (const turn of [...turns].sort(queueOrder)) {
+    if (!shown.has(turn.id)) continue;
+    if (quietCompaction(turn)) { if (before !== null) after.set(turn.id, before); continue; }
+    if (turn.execution?.operation !== 'keepalive') before = turn.id;
+  }
+  if (after.size === 0) return { timeline, compactions: NO_COMPACTIONS };
+  const compactions = new Map<string, CompactionPart[]>();
+  const kept: Message[] = [];
+  const counted = new Set<string>();
+  for (const message of timeline) {
+    const owner = after.get(message.turnId);
+    if (owner === undefined) { kept.push(message); continue; }
+    const parts = message.parts.filter((part): part is CompactionPart => part.type === 'compaction');
+    if (parts.length) { compactions.set(owner, [...(compactions.get(owner) ?? []), ...parts]); counted.add(message.turnId); }
+  }
+  // A compaction whose record holds no counts still says it happened, one mark each.
+  for (const [turnId, owner] of after) if (!counted.has(turnId)) compactions.set(owner, [...(compactions.get(owner) ?? []), { type: 'compaction', trigger: 'auto', preTokens: null, postTokens: null }]);
+  return { timeline: kept, compactions };
+}
+
+/**
+ * A thread as it reads. A persistent agent's: its finished turns folded, and
+ * the turn its last memory pass followed, whose summary line carries the mark.
+ * Any other: the turns Boite opened to carry a request on fold their steps
+ * (`wakeFolds`). Both: an automatic compaction that went through is a mark
+ * on the line of the turn before it (`foldCompactions`).
+ */
 export class AgentTimeline {
   #folds = new TurnFolds();
-  /** `pass` undefined: not an agent's own thread, and the timeline stays as it is. */
+  /** `pass` undefined: not an agent's own thread. */
   build(timeline: Message[], turns: readonly Turn[], pass: MemoryPass | null | undefined): ShapedTimeline {
-    if (pass === undefined) return { timeline, folds: NO_FOLDS, memoryTurnId: null, pass: null };
-    const shaped = this.#folds.build(timeline, turns, openedTurns);
-    return { timeline: shaped, folds: this.#folds.folds, memoryTurnId: pass ? memoryTurn(turns, pass) : null, pass };
+    const { timeline: kept, compactions: after } = foldCompactions(timeline, turns);
+    const shaped = pass === undefined ? this.#folds.build(kept, turns, openedTurns, wakeFolds) : this.#folds.build(kept, turns, openedTurns);
+    const compactions = joinCompactions(this.#folds.compactions, after);
+    return { timeline: shaped, folds: this.#folds.folds, compactions, memoryTurnId: pass ? memoryTurn(turns, pass) : null, pass: pass ?? null };
   }
+}
+
+/** A turn's own folded compactions, then the automatic ones that followed it. */
+function joinCompactions(own: ReadonlyMap<string, CompactionPart[]>, after: ReadonlyMap<string, CompactionPart[]>): ReadonlyMap<string, CompactionPart[]> {
+  if (own.size === 0) return after;
+  const joined = new Map(own);
+  for (const [turnId, parts] of after) joined.set(turnId, [...(joined.get(turnId) ?? []), ...parts]);
+  return joined;
 }
 
 export interface ShapedTimeline {
   timeline: Message[];
   folds: ReadonlyMap<string, TurnFold>;
+  /** The compactions a turn's line carries: those folded with its steps, then the automatic ones that followed it. */
+  compactions: ReadonlyMap<string, CompactionPart[]>;
   /** The turn the last memory pass followed. */
   memoryTurnId: string | null;
   pass: MemoryPass | null;
@@ -217,10 +290,12 @@ export function toggleTurn(turnId: string): void {
   else openedTurns.add(turnId);
 }
 
-/** What a turn's summary line carries in an agent's thread: its folded steps, opened from the line, and the mark of the memory pass that followed it. */
-export function summaryMarks(shaped: ShapedTimeline, turnId: string, openDesk: () => void): { steps?: { count: number; open: boolean; toggle: () => void }; memory?: { pass: MemoryPass; open: () => void } } {
+/** What a turn's summary line carries: its folded steps, opened from the line, the compactions that followed it, and in an agent's thread the mark of the memory pass that followed it. */
+export function summaryMarks(shaped: ShapedTimeline, turnId: string, openDesk: () => void): { steps?: { count: number; open: boolean; toggle: () => void }; memory?: { pass: MemoryPass; open: () => void }; compactions?: CompactionPart[] } {
   const fold = shaped.folds.get(FOLD_PREFIX + turnId);
+  const compactions = shaped.compactions.get(turnId);
   return {
+    ...(compactions ? { compactions } : {}),
     ...(fold?.kind === 'worked' ? { steps: { count: fold.steps, open: fold.open, toggle: () => toggleTurn(turnId) } } : {}),
     ...(shaped.memoryTurnId === turnId && shaped.pass ? { memory: { pass: shaped.pass, open: openDesk } } : {}),
   };

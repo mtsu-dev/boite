@@ -768,6 +768,14 @@ export const SCENARIOS: Record<string, Scenario> = {
     await refusedWith(env.call('threads.restore', { threadId: kept.id }), RpcErrorCode.NotFound, ['threadId']);
     await refusedWith(env.call('threads.remove', { threadId: 'thr_missing' }), RpcErrorCode.NotFound, ['threadId']);
   },
+  'threads.stats counts the prompts sent and refuses a missing conversation': async env => {
+    const setup = await echo(env), created = await thread(env, setup);
+    same(await env.call('threads.stats', { threadId: created.id }), { threadId: created.id, compactions: 0, prompts: 0 }, 'a new conversation');
+    await finishedTurn(env, created.id);
+    await finishedTurn(env, created.id);
+    same(await env.call('threads.stats', { threadId: created.id }), { threadId: created.id, compactions: 0, prompts: 2 }, 'after two echo turns');
+    await refusedWith(env.call('threads.stats', { threadId: 'thr_missing' }), RpcErrorCode.NotFound, ['threadId']);
+  },
   'projects.remove archives each thread before removing it': async (env) => {
     const setup = await echo(env);
     const created = await thread(env, setup);

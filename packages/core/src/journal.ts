@@ -29,6 +29,7 @@ import type { AccountRow, MessageRow, ProcessRow, ProjectIconRow, ProjectRow, Th
 import type { DetectedIcon as StoredProjectIcon } from './project-icons.ts';
 import { copyStoredParts, foldStreamingParts, messageOfError, StreamBuffer } from './journal/stream-buffer.ts';
 import { requestSince } from './journal/request-since.ts';
+import { threadStats } from './journal/thread-stats.ts';
 import { usageByBucket, usageByThread, usageOfTree, type UsageGroupRow, type UsageSumRow, type UsageThreadRow } from './journal/usage-sums.ts';
 import { sent, type Projection } from './journal/sent.ts';
 import { threadSessions, type NativeSession } from './threads/native-sessions.ts';
@@ -489,6 +490,11 @@ export class Journal {
   /** When the user's current request started (`journal/request-since.ts`). */
   requestSince(threadId: string): number | null {
     return requestSince(this.db, threadId);
+  }
+
+  /** The compactions and prompts of a whole thread (`journal/thread-stats.ts`). */
+  threadStats(threadId: string): { compactions: number; prompts: number } {
+    return threadStats(this.db, threadId);
   }
 
   /** The asynchronous questions asked and never answered or skipped, oldest first (`journal/questions.ts`). */

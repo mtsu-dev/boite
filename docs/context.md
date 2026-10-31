@@ -619,6 +619,23 @@ and `postTokens` is null when the agent did not say what
 was left. An imported Claude Code session does not carry its compactions:
 the transcript reader keeps prompts, answers and tool calls only.
 
+The chat draws no full-width divider for it. Inside a run of tool calls, the
+compaction joins the run: the `Ran N commands` line carries a
+`compacted 201.2K → 13.4K` mark whose label gives the full sentence. Outside a
+run it stays a one-line divider. A settled automatic compaction turn draws no
+row of its own: its mark goes on the summary line of the turn before it, or on
+that turn's fold row when the turn folded. Manual, running and failed
+compaction turns keep their row.
+
+The context popup counts what the loaded pages cannot: `threads.stats` returns
+the thread's compactions and the prompts the user sent. The core counts the
+part's opening, `{"type":"compaction","trigger":"`, in the stored JSON
+(`journal/thread-stats.ts`): about 130 ms on a 42 MB thread of 2,751 messages,
+where parsing each part took 1.1 s. A quote inside a JSON string is escaped, so
+tool output cannot match; a tool input object nesting that exact opening would.
+The popup reads it again after each turn while open. A paired phone may call
+it; an agent may not. A core without the method leaves the two lines out.
+
 ## The colours
 
 The filled portion always uses the chosen accent, from zero to full capacity.

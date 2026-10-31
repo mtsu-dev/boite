@@ -71,24 +71,32 @@ test('a failed turn keeps its duration and timestamps without claiming it comple
 });
 
 test('a turn that carries on after monitoring counts from the user request, its own share on hover', () => {
-  // The user's turn began 30 minutes before Boite woke the agent for this one.
-  const request = STARTED - 1_800_000;
-  running = mount(TurnSummary, { target: document.body, props: { turn: turn(), requestStartedAt: request } });
+  // The user's request worked 30 minutes before Boite woke the agent for this one.
+  running = mount(TurnSummary, { target: document.body, props: { turn: turn(), workedBefore: 1_800_000 } });
   flushSync();
   const shown = document.querySelector('[data-testid=turn-elapsed]');
   expect(shown?.textContent).toBe('Worked for 34m 41s');
   expect(shown?.getAttribute('title')).toBe('This reply alone: 4m 41s');
 });
 
-test('a request start after the turn began, from a clock skew, falls back to the turn', () => {
-  running = mount(TurnSummary, { target: document.body, props: { turn: turn(), requestStartedAt: STARTED + 60_000 } });
+test('a wake on a watched pull request the next day counts the work, not the night between', () => {
+  // The user's turn worked 20 minutes; a cache ping went out while a reviewer worked; the pull request's watch woke the agent 18 hours later for 6 more.
+  const execution = (operation: 'pull-request' | 'delegation' | 'keepalive') => ({ ...compactExecution, operation, automatic: undefined });
+  const user = turn({ id: 'user', finishedAt: STARTED + 1_200_000 });
+  const ping = turn({ id: 'ping', queuedAt: STARTED + 1_500_000, startedAt: STARTED + 1_500_000, finishedAt: STARTED + 1_510_000, execution: execution('keepalive') });
+  const review = turn({ id: 'review', queuedAt: STARTED + 1_800_000, startedAt: STARTED + 1_800_000, finishedAt: STARTED + 2_100_000, execution: execution('delegation') });
+  const wake = turn({ id: 'wake', queuedAt: STARTED + 64_800_000, startedAt: STARTED + 64_800_000, finishedAt: STARTED + 65_160_000, execution: execution('pull-request') });
+  const store = { connection: 'ready', clockOffset: 0, openThread: { id: 't-1', status: 'idle', turns: [user, ping, review, wake] } } as unknown as Store;
+  const message = { id: 'answer', role: 'assistant', turnId: 'wake', parts: [] } as unknown as Message;
+  running = mount(MessageTurnSummary, { target: document.body, props: { store, threadId: 't-1', turn: wake, turns: [user, ping, review, wake], message, messages: [message] } });
   flushSync();
-  expect(text('turn-elapsed')).toBe('Worked for 4m 41s');
-  expect(document.querySelector('[data-testid=turn-elapsed]')?.getAttribute('title')).toBeNull();
+  // 20 min, the 10 min the review ran in the background (the ping does not cut it), its 5 min turn, then the wake's own 6 min.
+  expect(text('turn-elapsed')).toBe('Worked for 41m 00s');
+  expect(document.querySelector('[data-testid=turn-elapsed]')?.getAttribute('title')).toBe('This reply alone: 6m 00s');
 });
 
 test('a compaction keeps its own duration whatever request it follows', () => {
-  running = mount(TurnSummary, { target: document.body, props: { turn: turn({ execution: compactExecution }), requestStartedAt: STARTED - 1_800_000 } });
+  running = mount(TurnSummary, { target: document.body, props: { turn: turn({ execution: compactExecution }), workedBefore: 1_800_000 } });
   flushSync();
   expect(text('turn-elapsed')).toBe('Compacted in 4m 41s');
   expect(document.querySelector('[data-testid=turn-elapsed]')?.getAttribute('title')).toBeNull();

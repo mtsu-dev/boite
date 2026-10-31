@@ -211,7 +211,7 @@ test('compaction stays distinct on desktop and phone, then yields to normal work
   await page.waitFor(`!document.querySelector('[data-testid="turn-summary"].compacting')`);
   expect(await page.evaluate(`document.querySelector('[data-testid="turn-elapsed"]').textContent`)).toBe('Compacted in 11s');
   await update(`
-    const turn=thread.turns[0]; delete turn.execution.operation; turn.status='running'; turn.startedAt=Date.now()-120000; turn.finishedAt=null; thread.status='running';
+    const turn=thread.turns[0]; delete turn.execution.operation; delete turn.execution.automatic; turn.status='running'; turn.startedAt=Date.now()-120000; turn.finishedAt=null; thread.status='running';
     thread.progress={turnId:turn.id,phase:'compacting',detail:null,at:Date.now(),providerAt:Date.now()};
     thread.messages[0].role='user'; thread.messages[0].parts=[{type:'text',text:'Continue checking the layout.'}];
     thread.messages.push({...window.__compactionAnswer,state:'streaming',parts:[{type:'text',text:'A **finished** paragraph.\\n\\nAn **unfinished paragraph'}]});

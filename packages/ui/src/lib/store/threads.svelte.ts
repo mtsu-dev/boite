@@ -91,6 +91,20 @@ export class Threads {
     }
   }
 
+  /** The whole thread's compactions and prompts for the context popup; null from a core that predates `threads.stats`. */
+  async stats(threadId: ThreadId) {
+    const client = this.ctx.client;
+    const generation = this.ctx.clientGeneration;
+    if (!client) return null;
+    try {
+      const stats = await client.call('threads.stats', { threadId });
+      return this.ctx.currentClient(client, generation) ? stats : null;
+    } catch (error) {
+      if (error instanceof RpcFailure && error.code === RpcErrorCode.MethodNotFound) return null;
+      throw error;
+    }
+  }
+
   async recoverTurn(threadId: ThreadId, turnId: string, action: 'resume' | 'discard'): Promise<void> {
     const client = this.ctx.client;
     const generation = this.ctx.clientGeneration;

@@ -17,7 +17,7 @@
   import ChatFile from './ChatFile.svelte';
   import InlineView from './InlineView.svelte';
   import ToolGroup from './ToolGroup.svelte';
-  import { activityShown, runKey, type ActivityPart } from '../lib/tool-groups';
+  import { activityShown, compactionText, runKey, type ActivityPart, type CompactionPart } from '../lib/tool-groups';
   import { MessageRuns } from '../lib/memory-timeline';
   import { chatPrefs } from '../lib/chat-prefs.svelte';
   import { shownText as shownTextOf } from '../lib/timeline-rows';
@@ -60,6 +60,9 @@
     views?: readonly Message[];
   } = $props();
 
+  /** Longer than this, a text before a step is a report of its own and keeps its bubble. */
+  const NARRATION_MAX = 320;
+
   function lastTextIndex(message: Message): number {
     return message.parts.findLastIndex(part => part.type === 'text');
   }
@@ -72,6 +75,13 @@
   const compacting = $derived(execution?.operation === 'compact' ||
     store.openThread?.progress?.turnId === message.turnId && store.openThread.progress.phase === 'compacting');
   const caretAt = $derived(message.state === 'streaming' ? lastTextIndex(message) : -1);
+  /**
+   * The agent's last step in this message. A short text before it is
+   * narration between calls ("Now the tests"), drawn muted without a bubble:
+   * only what it says after its last step reads as an answer.
+   */
+  const lastStepAt = $derived(message.role === 'assistant' ? message.parts.findLastIndex(part => part.type === 'tool' || part.type === 'thinking') : -1);
+  const narrates = (index: number, text: string) => index < lastStepAt && text.length <= NARRATION_MAX;
   const end = $derived(to ?? message.parts.length);
   // A run over the same parts stays the same object, so a new part does not redraw the groups above it.
   const runList = new MessageRuns();
@@ -97,29 +107,41 @@
 {#if ping}
   {#if from === 0}<KeepaliveMarker turn={ping} count={keepaliveRun(store.openThread?.turns ?? [], ping.id)} />{/if}
 {/if}
+{#snippet compaction(part: CompactionPart)}
+  <div class="compaction" data-testid="compaction-part" data-trigger={part.trigger}>
+    <span class="rule"></span>
+    <span class="label">{compactionText(part)}</span>
+    <span class="rule"></span>
+  </div>
+{/snippet}
 <div class="parts">
   {#each runs as run (run.kind === 'memory' ? run.key : runKey(run))}
     {#if run.kind === 'memory'}
       <MemoryRow event={run.events[0]!} events={run.events} onconfigure={store.owner ? () => store.showSettings('resources', 'limits') : undefined} />
     {:else if run.kind === 'activity'}
       {@const activity = run.indices.map((at) => message.parts[at]).filter((part): part is ActivityPart => part?.type === 'tool' || part?.type === 'thinking' || part?.type === 'permission')}
+      {@const compactions = run.indices.map((at) => message.parts[at]).filter((part): part is CompactionPart => part?.type === 'compaction')}
       {@const lastAt = run.indices.at(-1) ?? -1}
       {@const tail = message.parts[lastAt]}
       {@const thinkingLive = message.state === 'streaming' && lastAt === message.parts.length - 1 && tail?.type === 'thinking' && tail.finishedAt == null}
       {#if activityShown(activity, thinkingLive)}
       <div class="part" data-kind={activity.every((part) => part.type === 'thinking') ? 'thinking' : 'tool'}>
-        <ToolGroup parts={activity} {thinkingLive} {isBackground} {store} {threadId}
+        <ToolGroup parts={activity} {compactions} {thinkingLive} {isBackground} {store} {threadId}
           loadOutput={toolId => store.loadToolOutput(threadId, message.id, toolId)}
           permissionRequest={requestId => store.permissionRequests[requestId] ?? null}
           answerPermission={(requestId, decision) => store.answer(requestId, decision)} />
       </div>
+      {:else}
+        {#each compactions as part, at (at)}<div class="part" data-kind="compaction">{@render compaction(part)}</div>{/each}
       {/if}
     {:else if message.parts[run.index]}
     {@const index = run.index}
     {@const part = message.parts[run.index]!}
     {@const shownText = part.type === 'text' ? shownTextOf(message, part) : ''}
+    {@const narrated = part.type === 'text' && message.role === 'assistant' && narrates(index, shownText.trim())}
     {#if part.type !== 'text' || shownText.trim().length > 0}
-    <div class="part" data-kind={part.type}>
+    <!-- Narration is a class, not another branch: the paragraphs already drawn stay the same nodes when a step arrives after them. -->
+    <div class="part" class:narration={narrated} data-kind={part.type} data-testid={narrated ? 'narration' : undefined}>
       {#if part.type === 'text'}
         {#if message.role === 'system'}
           <div class="system-event" data-testid="message-system" role="note" aria-label={strings.chat.system}>
@@ -127,7 +149,7 @@
             <div class="system-copy"><Prose text={shownText} {store} {threadId} /></div>
           </div>
         {:else}
-        <Prose text={shownText} live={index === caretAt && part.complete !== true} bubble={message.role === 'assistant'}
+        <Prose text={shownText} live={index === caretAt && part.complete !== true} bubble={message.role === 'assistant' && !narrated}
           typing={!compacting && latestInTurn && !toolRunning && message.role === 'assistant' && store.connection === 'ready' && store.openThread?.status === 'running' && index === message.parts.length - 1 && index === caretAt && part.complete !== true} {store} {threadId}
           views={message.role === 'assistant' ? views : undefined} />
         {/if}
@@ -189,19 +211,7 @@
       {:else if part.type === 'secret_request'}
         <Deferred part={parts.SecretCard}>{#snippet children(SecretCard)}<SecretCard {store} threadId={message.threadId} {part} />{/snippet}</Deferred>
       {:else if part.type === 'compaction'}
-        <div class="compaction" data-testid="compaction-part" data-trigger={part.trigger}>
-          <span class="rule"></span>
-          <span class="label">
-            {part.preTokens === null ? strings.chat.compactionUnknown : part.postTokens === null
-              ? strings.chat.compactionNoPost.replace('{pre}', formatTokens(part.preTokens))
-              : strings.chat.compaction
-                  .replace('{pre}', formatTokens(part.preTokens))
-                  .replace('{post}', formatTokens(part.postTokens))}
-            {#if part.trigger === 'manual'}({strings.chat.compactionManual}){/if}
-            {#if part.background}({strings.chat.compactionBackground}){/if}
-          </span>
-          <span class="rule"></span>
-        </div>
+        {@render compaction(part)}
       {:else if part.type === 'hook'}
         <!-- The user's own hook ended the turn: a line of the timeline, not an error. -->
         {@const label = part.outcome === 'blocked' ? strings.chat.hookBlocked : strings.chat.hookStopped}
@@ -230,6 +240,9 @@
   /* Read on demand, as a message's time and buttons are. */
   :global(.message:hover) .model-attribution, :global(.message:focus-within) .model-attribution { opacity: 1; }
   @media (hover: none) { .model-attribution { opacity: 1; } }
+  /* Narration between calls: the agent thinking aloud, quieter than an answer. */
+  .part.narration { padding: 0 2px; color: var(--color-muted-foreground); }
+  .part.narration :global(.prose) { font-size: var(--text-sm); line-height: 1.55; }
   .system-event { display: flex; align-items: flex-start; gap: 8px; color: var(--color-muted-foreground); }
   .system-event > :global(svg) { flex: none; margin-top: 3px; color: var(--color-subtle); }
   .system-copy { min-width: 0; }

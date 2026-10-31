@@ -13,7 +13,8 @@
    * or came from, in the order they started, with what was last said. A row
    * says first which way the burst went: what this agent sent sits on its side,
    * what reached it on the right in the accent, as in the discussion itself. A
-   * row opens that discussion in the panel, on the burst's first letter.
+   * row opens that discussion in the panel, on the burst's first letter. Two
+   * lines a row: which way and with whom, then what was last said.
    */
   let { store, group }: { store: Store; group: AgentMailGroup } = $props();
   /** Past this many conversations, the rest is one line that opens the list. */
@@ -44,15 +45,15 @@
       data-testid="agent-discussion-row" data-peer={discussion.key} data-count={discussion.entries.length} data-way={way}
       title={strings.agentMessages.open}
       onclick={() => store.panel.openMessages(discussion.key, discussion.entries[0]!.letter.id)}>
-      <AgentAvatar title={discussion.title} providerId={discussion.providerId} status={discussion.status} resident={discussion.resident} agent={discussion.agent} size={28} />
+      <AgentAvatar title={discussion.title} providerId={discussion.providerId} status={discussion.status} resident={discussion.resident} agent={discussion.agent} size={22} />
       <span class="body">
-        <span class="kicker" data-testid="agent-discussion-way">
-          {#if way === 'out'}<Forward size={13} strokeWidth={2} aria-hidden="true" />
-          {:else if way === 'in'}<CornerDownLeft size={13} strokeWidth={2} aria-hidden="true" />
-          {:else}<ArrowLeftRight size={13} strokeWidth={2} aria-hidden="true" />{/if}
-          <span>{kicker(way, discussion)}</span>
-        </span>
         <span class="top">
+          <span class="kicker" data-testid="agent-discussion-way">
+            {#if way === 'out'}<Forward size={13} strokeWidth={2} aria-hidden="true" />
+            {:else if way === 'in'}<CornerDownLeft size={13} strokeWidth={2} aria-hidden="true" />
+            {:else}<ArrowLeftRight size={13} strokeWidth={2} aria-hidden="true" />{/if}
+            <span>{kicker(way, discussion)}</span>
+          </span>
           <strong class="title" data-testid="agent-discussion-title">{discussion.title}</strong>
           {#if discussion.contact}<RemoteChip name={discussion.contact} human={discussion.entries.every(entry => entry.letter.origin === 'contact-human')} />{/if}
           {#if tag}<span class="tag" data-relation={tag}>{strings.agentMessages.relation[tag]}</span>{/if}
@@ -83,7 +84,7 @@
   .exchanges { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
   .discussion {
     display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 10px;
-    width: min(100%, 560px); height: auto; min-height: var(--control); padding: 8px 10px 8px 9px;
+    width: min(100%, 560px); height: auto; min-height: var(--control); padding: 5px 10px 5px 8px;
     border: 1px solid var(--color-border); border-radius: var(--radius-lg); border-bottom-left-radius: var(--radius-sm); background: var(--color-surface-2);
     color: var(--color-muted-foreground); box-shadow: var(--shadow-e1); text-align: left; font-size: var(--text-sm); white-space: normal;
     transition: background var(--dur-1) var(--ease-out-quint), border-color var(--dur-1) var(--ease-out-quint), transform var(--dur-1) var(--ease-out-quint);
@@ -94,11 +95,11 @@
   .discussion.in { align-self: flex-end; border-color: color-mix(in oklch, var(--color-accent) 55%, transparent); border-bottom-left-radius: var(--radius-lg); border-bottom-right-radius: var(--radius-sm); background: var(--color-accent-soft); }
   .discussion.in:hover { background: color-mix(in oklch, var(--color-accent) 18%, var(--color-surface-2)); border-color: var(--color-accent); }
   .discussion.resident { border-left: 2px solid var(--color-resident); }
-  .kicker { min-width: 0; display: flex; align-items: center; gap: 5px; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; }
+  .kicker { flex: none; max-width: 40%; min-width: 0; display: inline-flex; align-items: center; align-self: center; gap: 5px; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; }
   .kicker :global(svg) { flex: none; }
   .kicker > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .in .kicker { color: var(--color-accent); }
-  .body { min-width: 0; display: grid; gap: 2px; }
+  .body { min-width: 0; display: grid; gap: 1px; }
   /* The title keeps its line; the tag and the place wrap under it when the row is narrow. */
   .top { min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; }
   .title { flex: 0 1 auto; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-foreground); font-weight: 600; }
