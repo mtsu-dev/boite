@@ -192,6 +192,6 @@ test('boite contacts sends each command\'s words to its method, as the bot typed
     ['contacts.bot.flag', { threadId: 'thr_bot', id: 'cflag_1', deliver: false, reason: 'Not ours' }],
   ]);
   expect(printed[0]).toBe('requests (0):');
-  expect(run(['refuse', 'creq_1'])).rejects.toThrow('contacts refuse needs the reason');
-  expect(run(['dance'])).rejects.toThrow('contacts expects forward');
+  expect(await thrown(run(['refuse', 'creq_1']))).toThrow('contacts refuse needs the reason');
+  expect(await thrown(run(['dance']))).toThrow('contacts expects forward');
 });
