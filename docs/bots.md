@@ -728,6 +728,20 @@ most once a second, the first change at once, while a bot works (a step, a
 card, a title, an answer) and when its desk changes (a watched thread's turn,
 card, row, stall or pull request).
 
+## Built-in bots
+
+A built-in bot is one Boite ships (`AgentProfile.builtin`), one of each kind
+per core. The first is the Contacts bot (`contacts`,
+[contacts](contacts.md#the-contacts-bot)), created by the Contacts switch
+through `agents.builtin.ensure`, which returns the existing one when called
+again. Its row and header carry a Built-in badge. Its domain and instructions
+are Boite's: the settings show them read-only, `agents.profile.save` and
+setting cards refuse a change to them, and a new Boite version rewrites them
+in place. The owner renames it, picks its robot, model, effort and permission
+mode, and pauses it. It is never archived; Reset (`agents.builtin.reset`)
+archives its thread and starts a new one, empties its memory, removes its
+routines and gives back its default name and robot, keeping its route.
+
 ## Migration
 
 Bots saved before this model keep working (`agents/migration.ts`, run once at

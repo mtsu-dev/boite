@@ -236,47 +236,97 @@ These counts include local cards and the explicitly associated shared cards.
 Local cards stay private. The [shared board protocol](board.md#shared-board-protocol)
 requires both endpoint owners' board consent.
 
-An agent requests access to a contact's project with
-`boite threads ask <contact> "<text>"` (`collaboration.ask`): "an agent on a
-project like X". To message an agent conversation, use `boite threads send`.
-The access request carries the agent's git remote when its checkout has one.
-On the contact's side it waits
-in the Contacts page: the owner accepts by opening one project, or refuses with
-a reason. A request from a contact marked trusted can open a project without
-the owner:
+Every request between this owner's agents and a contact's goes through the
+[Contacts bot](#the-contacts-bot) of each side. An agent never browses a
+contact's threads: it says what it needs and gets back the one thread to
+write to.
 
-1. a request whose git remote matches exactly one local project opens that
-   project (`decidedBy: 'match'`);
-2. otherwise the concierge looks: one inference on the delegation profile
-   named `concierge`, else Opus 5.5 at high effort, given the request and the
-   project list as JSON data. It answers with the project to open
-   (`decidedBy: 'concierge'`) or declines. Only the owner refuses: a request
-   the concierge declines waits for the owner like any other, since it may be
-   a question for the owner in person, and the concierge's reason stays in
-   this core's log. If it fails, takes over 3 minutes or ends without a
-   verdict, the request waits for the owner too.
+## The Contacts bot
 
-The concierge runs on the driver's side-question path: no tools, no MCP
-servers, hooks or settings, nothing persisted, in an empty folder under the
-data directory. Its processes get no Boite token or thread id, not even one the
-core inherited from an agent that started it. A request cannot make it read a
-file. A
-profile on a protocol without that path (pi, Codex, ACP) never runs it: the
-request waits for the owner and the log says why. It creates no thread; a
-request it opened shows that verdict. It never grants `readThreads`.
+Turning on the Contacts experiment creates a built-in [bot](bots.md#built-in-bots),
+named Operator in English and Standardiste in French
+(`agents.builtin.ensure { kind: 'contacts' }`), on the window's machine and on
+every connected owner machine that has a contact. It is the switchboard: the
+one thread that sends, receives and settles requests. Its domain and
+instructions are Boite's; the owner renames it, picks its robot, model,
+effort and permission mode, pauses it or resets it, never archives it.
 
-Each request a contact sends gets an id of this core; the contact's own id is
-kept only to recognize its retries and to answer it, so two contacts, or a
-contact reusing an id of this core's requests, never reach each other's
-request. The decision comes back to the asking thread as a
-message (`origin: 'contact'`): the project opened and its threads, or the
-reason for the refusal. Match and concierge decisions identify the remote
-Boite as answering automatically; only an explicit owner decision is attributed
-to the owner. An automatic response does not mean the owner read the request.
-When the contact's core refuses the ask itself (a tier, a full queue), the
-answer names the remote Boite. That message, like any
-contact mail outside a shared project, waits for this owner unless the contact
-is trusted here ([Human letters and file boundaries](#human-letters-and-file-boundaries)).
+```mermaid
+sequenceDiagram
+  participant A as Asking thread
+  participant O as Our Operator
+  participant R as Their Operator
+  participant T as Their thread
+  A->>O: boite threads ask "<who or what>"
+  O->>R: forward (contact.ask: want, target)
+  alt contact not trusted
+    R->>R: card to its owner (Accept / Refuse)
+  end
+  R->>T: connect an existing thread, or start one
+  R-->>A: answer names the thread (relation)
+  A->>T: boite threads send <contact>/<thread>
+  T->>A: replies
+```
+
+1. An agent asks with `boite threads ask "<what it needs>"`
+   (`collaboration.ask`): `--to <contact>/<thread-id>` when it knows the
+   thread, `--contact <name>` to name the contact, `--new` for a new thread
+   on one of the contact's projects, `--share` to have a project opened to
+   it. The request waits for this core's bot (`stage: 'bot'`), which wakes on
+   it, picks the contact and the words that let the other bot find the thread,
+   and forwards it (`contacts.bot.forward`). Without a Contacts bot on this
+   core the ask is refused with the way to create one.
+2. The contact's core keeps the request for its own bot. A contact marked
+   trusted is settled by the bot alone. For one that is not, the bot raises a
+   card for its owner (`contacts.bot.askOwner`), and only the owner's Accept,
+   never an agent's answer, lets it act; Refuse refuses the request.
+3. The bot settles it: `connect` puts the asking thread in relation with an
+   existing thread, `start` starts a thread on a project with a brief and puts
+   it in relation, `refuse` answers with a reason. Opening a project,
+   `share`, is always a card for the owner, trusted or not; their Yes grants
+   it as `contacts.grant` would, without reading conversations.
+4. The answer comes back to the asking thread as a message naming the thread
+   it now works with. Both threads write to each other with
+   `boite threads send <contact>/<thread-id>`.
+
+A relation (`ContactRelation`) joins two threads, one per side, and lets
+letters through for as long as it lasts, whatever projects are opened. It
+carries no file, read or command: each thread works in its own checkout.
+Either bot cuts it (`contacts.bot.cut`), and the owner ends one from the
+contact's page (`contacts.cutRelation`); archiving a thread or removing the
+contact ends its relations. The two bots may always write to each other: the
+sync announces each side's bot (`Contact.bot`), with the `contactsBot`
+capability. A contact on an older Boite gets no forwarded request: its owner
+must update.
+
+An ordinary thread reaches a contact's thread only through a relation, or
+replies within 7 days to one that wrote to it. Directory, search and reads of
+a contact's threads are the bot's. Shared projects keep their own rules
+([completion protocol](#completion-protocol)).
+
+### Antivirus
+
+Every contact letter is scanned before it reaches an agent, by a fixed table
+of patterns in English and French (`contacts/flags.ts`, no model): a request
+for a secret, a key or a credentials file (`secret`), a destructive command
+(`destructive`) and words written to steer an agent (`injection`). A match
+holds the letter, records a `ContactFlag` and wakes the bot with the letter
+quoted as data. A refusal at a shared project's boundary (`boundary`) and the
+activity reviewer's doubt (`review`) wake it the same way, with nothing held.
+
+The bot reads it and decides: deliver the letter (`contacts.bot.flag` with
+`deliver`), refuse it (its sender reads the reason), write to the other bot or
+thread first, or cut the contact's relations and projects
+(`contacts.bot.cut`), which leaves the contact and its link to the owner.
+Without a bot, a flagged letter waits for the owner as held mail.
+
+The decision comes back to the asking thread as a message (`origin:
+'contact'`). Bot decisions are attributed to the contact's bot; only an
+explicit owner decision is attributed to the owner. A request a contact's
+core refuses itself (a tier, a full queue) names the remote Boite. Contact
+mail outside a shared project or a relation, like any request answer, waits
+for this owner unless the contact is trusted here
+([Human letters and file boundaries](#human-letters-and-file-boundaries)).
 
 ## What an agent knows
 
@@ -356,9 +406,11 @@ names), `funnel.ts` (the routes on Tailscale Funnel), `funnel-check.ts`
 (whether the internet reaches them), `join.ts` (both sides
 of a join), `invite.ts` (the link format), `words.ts`
 (fingerprint words), `tier.ts`, `git-remote.ts` (read from the git config
-files, no process), `concierge.ts` and `tailscale.ts`. `contacts.*` are
+files, no process), `bot.ts` (the Contacts bot's methods and relations),
+`flags.ts` (the antivirus patterns) and `tailscale.ts`. `contacts.*` are
 owner-only for administration; `contacts.sendHuman` also permits paired devices.
-Agents call `collaboration.contacts` and `collaboration.ask`.
+Agents call `collaboration.contacts` and `collaboration.ask`; the Contacts
+bot's thread alone calls `contacts.bot.*`.
 `packages/core/test/contacts.test.ts` links two cores over loopback, and
 `contacts-parts.test.ts` covers the pieces, the Tailscale client against a
 stubbed `fetch`. `contacts-group.test.ts` links a contact to one machine of a two-machine
@@ -497,7 +549,7 @@ The owner offers one local registered project and one exact advertised remote
 endpoint with `sharedProjects.offer`. Persist a fresh association ID, both
 endpoints and the proposing project's existing execution core as immutable
 board authority. The other owner accepts or declines with
-`sharedProjects.decide`; a trusted contact/concierge cannot accept it. Each
+`sharedProjects.decide`; a trusted contact or the Contacts bot cannot accept it. Each
 endpoint independently controls its grant revision, board consent and compute
 policy. Association does not turn on `readThreads` or compute. Both current
 project grants and explicit board consent are required for board traffic.
@@ -847,7 +899,7 @@ capability; dropping a board goal releases the parent's process boundary, while
 its captured descendants and consumed letter history stay scoped.
 
 Claude and echo currently implement the tool-free `sideQuestion` used by
-`contacts/concierge.ts`; Codex, ACP, Muse and pi do not. A reviewer on a route
+the activity reviewer (`contacts/review.ts`); Codex, ACP, Muse and pi do not. A reviewer on a route
 without that capability records unavailable and starts no ordinary tool-using
 turn. This is separate from whether that route can run protected compute.
 Windows jobs track descendants; Linux/macOS track direct children/process
@@ -959,7 +1011,8 @@ This feed adds no timer, SDK or model process.
 fallback model. Provider/account/model/effort and `revokeOnViolation` stay
 host-local. Unsupported tool-free routes record unavailable, never start an
 ordinary turn. Claude and echo support this query path; Codex, ACP, Muse and pi
-do not. The concierge and reviewer share `contacts/side-inference.ts`.
+do not. The reviewer runs through `contacts/side-inference.ts`, and a doubt
+it records wakes the Contacts bot as a `review` flag.
 
 Schema 43 persists configuration revisions, admitted event work and reasoned
 verdicts. Only activity attributed to the associated remote endpoint is

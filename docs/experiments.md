@@ -79,6 +79,12 @@ of a client's experiments.
 
 ## Contacts
 
+Contacts needs Bots: its switch stays greyed while Bots is off, and turning
+Bots off turns Contacts off too. Turning it on creates the Contacts bot
+([contacts](contacts.md#the-contacts-bot)) on the window's machine and on
+every connected owner machine with a contact, once; turning it off leaves the
+bot on the core, like any bot. A paired phone only flips its own switch.
+
 The contacts column and the Contacts page ([contacts](contacts.md)). On a
 desktop window the contacts stand in a column on the right edge, the thread
 list keeping the left one: one row per contact with its link and what it asks.

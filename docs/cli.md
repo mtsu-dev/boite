@@ -487,10 +487,22 @@ boite workflow output|templates|save|start
 boite help
 ```
 
-`threads ask` requests access to a contact's project. The remote Boite can
-answer automatically through a git remote match or its concierge; the answer
-identifies an automatic response separately from an explicit owner decision.
-Use `threads send <contact>/<thread-id> <text>` to message an agent conversation.
+`threads ask "<what you need>"` hands a request for a contact to this
+machine's Contacts bot ([contacts](contacts.md#the-contacts-bot)): `--to
+<contact>/<thread-id>` names the thread, `--contact <name>` the contact,
+`--new` asks for a new thread, `--share` for a project opened to you. The
+answer comes back as a message naming the thread to write to with `threads
+send <contact>/<thread-id> <text>`; an explicit owner decision is told apart
+from the bot's.
+
+`boite contacts` is the Contacts bot's own group, refused to any other
+thread: `view` (the default: requests, relations, flags, contacts and
+projects), `forward <request> <contact> [--to <thread-id>] [--text <text>]`,
+`connect <request> <thread-id>`, `start <request> <project> <brief> [--model
+<m>] [--effort <e>] [--worktree]`, `share <request> <project> <reason>`,
+`ask-owner <request> <proposal>`, `refuse <request> <reason>`, `cut <contact>
+[--relation <id>] [--project <p>] <reason>`, `deliver <flag>` and `block <flag>
+[reason]`.
 
 The context flags, `--context light|neutral`, `--keep|--drop <parts>`,
 `--tools <Tool,...>` and `--rules <text>` or `--rules-file <path>`, start the
