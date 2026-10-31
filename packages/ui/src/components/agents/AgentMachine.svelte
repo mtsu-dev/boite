@@ -1,13 +1,13 @@
 <script lang="ts">
   import { ChevronDown } from '@lucide/svelte';
   import type { AgentProfile } from '@boite/contracts';
+  import { moveEnded, moveRefusedForGood, moveRequestId } from '../../lib/agent-move';
   import { openAgent, type AgentsView } from '../../lib/agents.svelte';
   import { confirm } from '../../lib/confirm.svelte';
   import { errorText } from '../../lib/errors';
   import { GroupLinks } from '../../lib/group-links.svelte';
   import type { MenuItem } from '../../lib/menu';
   import { RpcFailure } from '../../lib/rpc-error';
-  import { secureId } from '../../lib/secure-id';
   import { fill, strings } from '../../lib/strings';
   import { listedName, workspace, type Machine } from '../../lib/workspace.svelte';
   import Menu from '../Menu.svelte';
@@ -16,7 +16,8 @@
    * Where a bot lives, and the way to move it: the menu lists the other
    * connected machines of its group. A pick asks in the app's dialog, then
    * `agents.move` runs on the machine that holds the bot, and the Bots page
-   * opens it on its new machine. A refusal is told in the toast.
+   * opens it on its new machine. A refusal is told in the toast. A try that
+   * did not finish keeps its `requestId` for the next one (`agent-move`).
    */
   let { view, agent }: { view: AgentsView; agent: AgentProfile } = $props();
   const labels = $derived(strings.agents.move);
@@ -51,14 +52,17 @@
     const client = store.client;
     if (!client) { store.error = strings.connection.unavailable; return; }
     moving = true;
+    const source = here?.id ?? store.machineId;
     try {
-      await client.call('agents.move', { agentId: agent.id, machine: coreId, requestId: secureId() });
+      await client.call('agents.move', { agentId: agent.id, machine: coreId, requestId: moveRequestId(source, agent.id, coreId) });
     } catch (error) {
+      if (moveRefusedForGood(error)) moveEnded(source, agent.id, coreId);
       const busy = error instanceof RpcFailure && (error.data as { reason?: unknown } | undefined)?.reason === 'turn-in-flight';
       store.error = busy ? fill(labels.turnInFlight, { name: agent.name }) : errorText(error);
       moving = false;
       return;
     }
+    moveEnded(source, agent.id, coreId);
     // The bot now lives there: the Bots page follows it, and this sheet goes with the page it was on.
     await workspace.select(target.store);
     target.store.showAgents();

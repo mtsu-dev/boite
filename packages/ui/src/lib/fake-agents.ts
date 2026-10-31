@@ -65,6 +65,8 @@ interface BotParcel {
   routines: AgentRoutine[];
   config: AgentRuntimeConfig | undefined;
   from: string;
+  /** The move's `requestId`: the target answers it again with the thread it made the first time. */
+  requestId: string;
 }
 
 /**
@@ -75,6 +77,9 @@ interface BotParcel {
  */
 export class FakeAgents {
   private profiles = new Map<string, AgentProfile>();
+  /** Moves this core finished, by `requestId`, and the ones it took in, by source and `requestId`: the same id answers the same move. */
+  private movedOut = new Map<string, RpcResult<'agents.move'>>();
+  private movedIn = new Map<string, string>();
   private sessions = new Map<string, AgentSession>();
   private routines = new Map<string, AgentRoutine>();
   private watches: AgentWatch[] = [];
@@ -336,6 +341,9 @@ export class FakeAgents {
    * the bot. The fake carries no conversation excerpts and no projects.
    */
   private move(p: RpcParams<'agents.move'>): RpcResult<'agents.move'> {
+    const requestId = typeof p.requestId === 'string' ? p.requestId : this.nextId('mov');
+    const done = this.movedOut.get(requestId);
+    if (done) return structuredClone(done);
     const agent = this.profile(p.agentId);
     const found = this.runner?.member?.(typeof p.machine === 'string' ? p.machine : '');
     if (!found) this.refuse('agents.move.machine: this machine is in no group; --machine names another machine of its group');
@@ -353,6 +361,7 @@ export class FakeAgents {
       routines: [...this.routines.values()].filter(r => r.agentId === agent.id).map(r => structuredClone(r)),
       config: structuredClone(this.configs.get(agent.id)),
       from: this.runner?.selfName?.() ?? 'this machine',
+      requestId,
     };
     const landed = found.agents.receive(parcel, found.name);
     for (const [id, session] of [...this.sessions]) {
@@ -366,11 +375,15 @@ export class FakeAgents {
     this.configs.delete(agent.id);
     this.problems.delete(agent.id);
     this.bump();
-    return { agentId: agent.id, machine: found.coreId, threadId: landed, projectIds: [], groupProjects: [] };
+    const result = { agentId: agent.id, machine: found.coreId, threadId: landed, projectIds: [], groupProjects: [] };
+    this.movedOut.set(requestId, structuredClone(result));
+    return result;
   }
   /** The target's side of a move: refused before anything is written, then the bot and a new thread. */
   receive(parcel: BotParcel, here: string): string {
     const moved = parcel.profile;
+    const again = this.movedIn.get(`${parcel.from}:${parcel.requestId}`);
+    if (again && this.profiles.has(moved.id)) return again;
     if (this.profiles.has(moved.id)) this.refuse(`agents.move: ${here} already holds a bot ${moved.id}; it came by another move or was never removed there`);
     if (moved.builtin && this.builtin(moved.builtin)) this.refuse(`agents.move: ${here} already has its own ${moved.builtin} bot; reset or pause one of them, a machine runs one of each built-in bot`);
     let selection = moved.selection;
@@ -388,6 +401,7 @@ export class FakeAgents {
       this.routines.set(copy.id, copy);
     }
     const threadId = this.makeThread(agent);
+    this.movedIn.set(`${parcel.from}:${parcel.requestId}`, threadId);
     this.place(agent);
     this.bump();
     return threadId;
@@ -440,7 +454,7 @@ export class FakeAgents {
     this.bump();
     return structuredClone(agent);
   }
-  /** The core's `reset`: Boite's name, robot, texts and default route, empty memory, no routines and a new thread, the old one archived. */
+  /** The core's `reset`: Boite's name, robot, texts and default route, default runtime settings, empty memory, no routines and a new thread, the old one archived. */
   private resetBuiltin(p: RpcParams<'agents.builtin.reset'>): AgentProfile {
     const previous = this.profile(p.agentId);
     if (!previous.builtin) this.refuse(`agentId: ${previous.name} is not a built-in bot; only a built-in bot is reset`);
@@ -450,6 +464,8 @@ export class FakeAgents {
     const selection = p.selection ? this.builtinRoute(p.selection, previous.selection) : this.runner?.defaultRoute?.() ? this.builtinRoute(undefined) : previous.selection;
     const agent = this.stamp({ ...previous, name, avatar: '', domain: shipped.domain, instructions: shipped.instructions, selection, status: previous.status === 'archived' ? 'active' as const : previous.status }, previous, 'agent') as AgentProfile;
     this.profiles.set(agent.id, agent);
+    // Its runtime settings too: no budget, auto memory and subagents on, as `runtime` reads them with none saved.
+    this.configs.delete(agent.id);
     for (const [id, session] of [...this.sessions]) {
       if (session.agentId !== agent.id) continue;
       this.runner?.archive?.(session.threadId);

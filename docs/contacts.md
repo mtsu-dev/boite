@@ -341,8 +341,9 @@ write to.
 
 Turning on the Contacts experiment creates a built-in [bot](bots.md#built-in-bots),
 named Operator in English and Standardiste in French
-(`agents.builtin.ensure { kind: 'contacts' }`), on the window's machine and on
-every connected owner machine that has a contact. It is the switchboard: the
+(`agents.builtin.ensure { kind: 'contacts' }`), once for the group: on the
+Bots machine, or with no Bots role on the Settings machine, else on the
+window's machine ([machines](machines.md)). It is the switchboard: the
 one thread that sends, receives and settles requests. Its domain and
 instructions are Boite's; the owner renames it, picks its robot, model,
 effort and permission mode, pauses it or resets it, never archives it.

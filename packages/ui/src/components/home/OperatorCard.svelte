@@ -5,7 +5,9 @@
   import { confirm } from '../../lib/confirm.svelte';
   import type { ContactsView } from '../../lib/contacts.svelte';
   import { ago, count } from '../../lib/format';
+  import { botsHostAway } from '../../lib/operator';
   import { fill, strings } from '../../lib/strings';
+  import { workspace } from '../../lib/workspace.svelte';
   import BuiltinBadge from '../agents/BuiltinBadge.svelte';
   import InfoTip from '../InfoTip.svelte';
 
@@ -13,7 +15,8 @@
    * The Operator on the Contacts page: a link to the bot, the threads it put
    * in touch with a contact's, each with an End, and the flags it still has to
    * decide. Flags are the bot's to settle: the page shows them and opens its
-   * conversation, nothing more.
+   * conversation, nothing more. With no bot here while the group's Bots
+   * machine is offline, one line says where it is.
    */
   let { view, now }: { view: ContactsView; now: number } = $props();
   const labels = $derived(strings.contacts.bot);
@@ -23,6 +26,7 @@
   const name = $derived((bot && agentDirectory(store).agents.find(agent => agent.id === bot.agentId)?.name) || strings.agents.builtin.name.contacts);
   const relations = $derived(data?.relations ?? []);
   const flags = $derived((data?.flags ?? []).filter(flag => flag.status === 'open'));
+  const away = $derived(bot ? null : botsHostAway(store, workspace.machinesOr(store).map(machine => machine.store)));
 
   function openThread(threadId: string) {
     store.showChat();
@@ -39,12 +43,13 @@
   }
 </script>
 
-{#if bot || relations.length || flags.length}
+{#if bot || relations.length || flags.length || away}
   <section class="card operator" data-testid="home-bot">
     <h2 class="ui-label-box">
       <span class="ui-label">{name}</span><BuiltinBadge /><InfoTip topic={name} text={labels.tip} />
       {#if bot}<button type="button" class="ghost small open" title={fill(labels.openTip, { name })} onclick={() => store.showAgents(bot.agentId)} data-testid="home-bot-open"><MessageSquare size={14} strokeWidth={1.75} /><span class="ui-label">{labels.open}</span></button>{/if}
     </h2>
+    {#if away}<p class="hint away" data-testid="home-bot-away">{fill(strings.agents.builtin.away, { name, machine: away })}</p>{/if}
 
     <div class="group" data-testid="home-relations">
       <h3 class="ui-label-box"><span class="ui-label">{labels.relations}</span><InfoTip topic={labels.relations} text={labels.relationsTip} /></h3>
@@ -82,6 +87,7 @@
 <style>
   .operator h2 { display: flex; align-items: center; gap: 8px; }
   .operator h2 .open { margin-left: auto; }
+  .away { margin: 0 0 12px; }
   .group { display: grid; gap: 2px; }
   .group + .group { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--color-border); }
   h3 { display: flex; align-items: center; gap: 4px; margin: 0 0 4px; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }

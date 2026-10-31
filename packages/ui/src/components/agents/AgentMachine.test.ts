@@ -5,7 +5,7 @@ import { AgentsView } from '../../lib/agents.svelte';
 import { confirm } from '../../lib/confirm.svelte';
 import { setExperiment } from '../../lib/experiments';
 import { FakeClient } from '../../lib/fake-client';
-import { RpcFailure } from '../../lib/rpc-error';
+import { droppedFailure, RpcFailure } from '../../lib/rpc-error';
 import { Store, store as primary } from '../../lib/store.svelte';
 import { fill, strings } from '../../lib/strings';
 import { workspace } from '../../lib/workspace.svelte';
@@ -25,6 +25,7 @@ afterEach(async () => {
   workspace.machines = [];
   workspace.active = primary;
   setExperiment('resident-agents', false);
+  localStorage.clear();
   document.body.innerHTML = '';
 });
 
@@ -121,4 +122,47 @@ test('a member whose Boite cannot take a bot is shut in the menu and says to upd
   expect(item.disabled).toBe(true);
   expect(item.title).toBe(fill(strings.agents.move.older, { machine: 'Second' }));
   expect(item.textContent).toContain(strings.agents.move.olderShort);
+});
+
+test('a move that did not finish keeps its requestId through a reload, and a new one starts after it moved or was refused for good', async () => {
+  const { first, second, bot, view } = await setup();
+  const real = first.client.call.bind(first.client);
+  const ids: string[] = [];
+  const answers: (Error | null)[] = [
+    // The target refused it, having read it: that move is over.
+    new RpcFailure({ code: RpcErrorCode.Refused, message: 'agents.move: Second has no signed-in account to run Operator; sign in there first', data: { field: 'machine' } }),
+    // The target made the bot and its answer was lost: the next try must be the same move.
+    new RpcFailure({ code: RpcErrorCode.Refused, message: 'agents.move: Second did not answer (timeout); the bot stays here, and the same requestId tries again without moving it twice', data: { field: 'machine', reason: 'unreachable' } }),
+    droppedFailure('the connection dropped'),
+    null,
+  ];
+  vi.spyOn(first.client, 'call').mockImplementation(async (method, params) => {
+    if (method === 'agents.move') {
+      ids.push((params as { requestId: string }).requestId);
+      const answer = answers.shift();
+      if (answer) throw answer;
+    }
+    return real(method, params);
+  });
+  const attempt = async (count: number) => {
+    pick('second');
+    await vi.waitFor(() => expect(confirm.current).not.toBeNull());
+    confirm.answer(true);
+    await vi.waitFor(() => expect(ids).toHaveLength(count));
+    await settle();
+  };
+  await attempt(1);
+  await attempt(2);
+  expect(ids[1]).not.toBe(ids[0]);
+  // A reload: the page is drawn again from scratch, and the unfinished move keeps its id.
+  await unmount(component!);
+  component = mount(AgentMachine, { target: document.body, props: { view, agent: bot } });
+  await settle();
+  await attempt(3);
+  expect(ids[2]).toBe(ids[1]);
+  await attempt(4);
+  expect(ids[3]).toBe(ids[1]);
+  await vi.waitFor(() => expect(workspace.active).toBe(second.store));
+  // It moved: nothing is kept for it any more.
+  expect(localStorage.getItem('boite.agentMoves')).toBeNull();
 });

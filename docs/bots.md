@@ -761,7 +761,9 @@ an older one is refused with "update Boite on <machine>". The request carries:
   `skills/` stays behind;
 - its routines (name, prompt, schedule, on or off, a spent one-shot stays
   spent), whose next occurrence the target computes again;
-- the facts still waiting for it, filed there to wait for its next turn;
+- the facts still waiting for it, filed there to wait for its next turn
+  (the target remembers which it filed for that `requestId`,
+  `agents:moved-in-facts:<source>:<requestId>`, and never files one twice);
 - the end of its conversation as text excerpts (`messageExcerpt`, the
   builder of a fresh session's history), newest first, at most 200 messages
   and 48,000 characters;
@@ -794,7 +796,15 @@ from <source> to <target> on <ISO date>. Your memory, notes, routines and the
 end of your conversation came with you; the projects of <source> are reached
 as <source>/<project> through the group."
 
-The source changes nothing until the target answers that it holds the bot.
+From the snapshot to the end of the move, the source holds the bot's wakes
+(`BotMoves.moving`): a due routine, an event or a waking fact waits as it
+would for a busy thread, Run now is refused, and other autonomous turns are
+held. A fact filed while the request travels is not lost: once the target
+answers, the source sends the same request again with the facts it now holds,
+up to three times (`MOVE_FACT_ROUNDS`, then `reason: 'facts-arriving'`), and
+the target files those it has not had for that request.
+
+The source changes nothing until the target has the bot and every fact.
 Then it adds the line "Moved to <machine>" to the old thread and archives it,
 which stays readable; it removes the profile, its routines, its session, its
 waiting facts and its settings, and renames its brain folder to
@@ -802,7 +812,14 @@ waiting facts and its settings, and renames its brain folder to
 `builtinThread` answers on the target and is null on the source. The
 `requestId` defaults to a new one per call; the same one again returns the
 first answer from both machines, so a move whose answer was lost is retried
-without making a second bot.
+without making a second bot: the target answers with the bot it made (and
+files the facts the source gathered since), and the source then archives and
+removes its copy. A refusal or a silence keeps the bot and its facts on the
+source. The Machine row keeps one `requestId` per bot and target in the
+window's storage (`boite.agentMoves`, `lib/agent-move.ts`) until the move
+succeeds or a refusal that read the request ends it; after a lost answer, a
+silent target (`reason: 'unreachable'`), a busy bot or a dropped connection,
+the next try, even after a reload, sends the same id.
 
 ## Built-in bots
 
@@ -816,7 +833,9 @@ setting cards refuse a change to them, and a new Boite version rewrites them
 in place. The owner renames it, picks its robot, model, effort and permission
 mode, and pauses it. It is never archived; Reset (`agents.builtin.reset`)
 archives its thread and starts a new one, empties its memory, removes its
-routines and gives back its default name and robot, keeping its route.
+routines and gives back its default name, robot and route (or the route the
+reset names) and its default runtime settings (`agents:runtime:<id>` is
+dropped: no daily budget, event wakes off, auto memory and subagents on).
 
 ## Migration
 

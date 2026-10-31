@@ -126,7 +126,8 @@ export class BuiltinBots {
   /**
    * `agents.builtin.reset`: default name, robot and route (model, effort,
    * permission mode), active again, Boite's text, an empty
-   * memory and brain notes, no routines, and a new thread with its
+   * memory and brain notes, no routines, the default runtime settings (no
+   * daily budget, auto memory and subagents on), and a new thread with its
    * introduction; the old thread is archived, with whatever ran on it. Facts
    * still waiting for the bot stay: a request in flight is not lost.
    */
@@ -142,9 +143,13 @@ export class BuiltinBots {
     // Boite's text first, through the records: the save below refuses any other domain or instructions.
     const current = agent.domain === shipped.domain && agent.instructions === shipped.instructions
       ? agent : this.#store.records.update('profile', id, revision, { ...value, domain: shipped.domain, instructions: shipped.instructions });
-    const saved = this.#store.saveProfile({
-      id, expectedRevision: current.revision,
-      value: { ...value, name, avatar: shipped.avatar, domain: shipped.domain, instructions: shipped.instructions, status: 'active', selection },
+    // The runtime settings go with the profile: without them `config` reads the defaults, and no old route policy judges the new route.
+    const saved = this.#store.records.transaction(() => {
+      this.#core.journal.deleteSetting(`agents:runtime:${id}`);
+      return this.#store.saveProfile({
+        id, expectedRevision: current.revision,
+        value: { ...value, name, avatar: shipped.avatar, domain: shipped.domain, instructions: shipped.instructions, status: 'active', selection },
+      });
     });
     for (const routine of this.#store.records.list('routine').filter(r => r.agentId === id)) this.#store.records.remove('routine', routine.id);
     const brain = this.#store.resident.brain(id);
