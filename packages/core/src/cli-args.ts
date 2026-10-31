@@ -58,6 +58,9 @@ const NUMBER_OPTIONS = ['timeout', 'last', 'before'] as const;
 /** What every command reads wherever it stands, until a command's own text begins. */
 const GLOBAL_FLAGS = ['--json', '--thread', '--data-dir', '--core', '--channel'];
 
+/** The `boite desktop` commands that take no text of their own (desktop-cli.ts). */
+const DESKTOP_FIXED = new Set(['help', 'status', 'start', 'stop', 'env']);
+
 /**
  * Commands that parse their own flags: every other word reaches them as typed.
  * `help` keeps `--help` the CLI's. `text` says the command's own text has
@@ -71,10 +74,15 @@ const OWNED: { owns: (positional: string[]) => boolean; help: boolean; text?: (p
   { owns: ([command]) => command === 'logs' || command === 'issue', help: true },
   // window-cli.ts: its --title names a window, not a thread.
   { owns: ([command, action]) => command === 'window' && action !== undefined, help: true },
+  // desktop-cli.ts: `run` and agent-desktop's verbs own every word after them; status, start, stop, env and help take no text, so a global after them stays the CLI's.
+  { owns: ([command, action]) => command === 'desktop' && action !== undefined && DESKTOP_FIXED.has(action), help: true },
+  { owns: ([command, action]) => command === 'desktop' && action !== undefined && !DESKTOP_FIXED.has(action), help: false, text: positional => positional.length >= 2, terminator: true },
   // view-cli.ts: the script and scheme flags of `view check`.
   { owns: ([command, action]) => command === 'view' && action === 'check', help: true },
   // agents-cli.ts: `threads ask` reads --contact, --to, --new, --share, --wait and --timeout itself.
   { owns: ([command, action]) => (command === 'threads' || command === 'agents') && action === 'ask', help: true },
+  // team-cli.ts: --before, --reply, --name, --members and --brief are its own.
+  { owns: ([command, action]) => command === 'team' && action !== undefined, help: true },
   // secret-cli.ts; after `--` every word is the child command's.
   { owns: ([command]) => command === 'secret', help: false, text: positional => positional.includes('--'), terminator: true },
 ];

@@ -10,6 +10,7 @@
 import { COMPOSER_SCENARIOS } from './composer.ts';
 import { CONTACT_MAIL_SCENARIOS } from './contact-mail.ts';
 import { SHARED_SCENARIOS } from './shared-projects.ts';
+import { TEAM_SCENARIOS } from './teams.ts';
 import {
   GROUP_INVITE_PREFIX,
   PROJECT_NAME_MAX,
@@ -159,6 +160,7 @@ export const SCENARIOS: Record<string, Scenario> = {
   ...SHARED_SCENARIOS,
   ...COMPOSER_SCENARIOS,
   ...CONTACT_MAIL_SCENARIOS,
+  ...TEAM_SCENARIOS,
   'artifacts.viewBlock reuses HTML and refuses empty or oversized UTF-8 input': async (env) => {
     const html = '<p>Shared view</p>';
     const { url } = await env.call('artifacts.viewBlock', { html });
@@ -343,6 +345,20 @@ export const SCENARIOS: Record<string, Scenario> = {
     await refusedWith(env.call('browser.remoteFrame', { threadId, maxWidth: 99 }), RpcErrorCode.Refused);
     await refusedWith(env.call('browser.remoteFrame', { threadId }), RpcErrorCode.Refused);
     await refusedWith(env.call('browser.remoteInput', { threadId, frameId: 'none', input: { kind: 'key', key: 'Enter' } }), RpcErrorCode.Refused);
+  },
+  'the virtual desktop refuses bad input before starting anything and has nothing to stop': async env => {
+    const setup = await echo(env);
+    const { id: threadId } = await thread(env, setup);
+    // Nothing here starts a desktop: every call is refused or answered before one would.
+    const status = await env.call('desktop.status', { threadId });
+    same([status.session, typeof status.support.available], [null, 'boolean'], 'a conversation with no desktop');
+    await refusedWith(env.call('desktop.start', { threadId, width: 10 }), RpcErrorCode.InvalidParams);
+    await refusedWith(env.call('desktop.run', { threadId, command: [], cwd: setup.projectPath }), RpcErrorCode.InvalidParams);
+    await refusedWith(env.call('desktop.run', { threadId, command: ['true'], cwd: 'relative' }), RpcErrorCode.InvalidParams);
+    same(await env.call('desktop.stop', { threadId }), { stopped: false }, 'a stop with no desktop');
+    // An archived conversation gets no agent-desktop: refused before any download.
+    await env.call('threads.archive', { threadId, archived: true });
+    await refusedWith(env.call('desktop.tool', { threadId }), RpcErrorCode.Refused);
   },
   'YOLO keeps permission requests out of the core and fake conversation': async env => {
     const setup = await echo(env);

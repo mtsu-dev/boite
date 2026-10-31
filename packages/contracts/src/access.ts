@@ -293,6 +293,14 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
   ['delegation.stop', 'stop its own children or itself, never unrelated work'],
   ['delegation.resume', "continue its own stopped children and lift its team's pause when it set it or a restart did, or after a Stop once the owner wrote again; never the owner's Settings pause"],
   ['workflows.list', 'the runs of its own thread, or of its parent for a step'],
+  // Teams (docs/teams.md): a bot reaches the teams it is a member of, filtered to the posts it may see.
+  ['teams.list', 'the teams its own bot is a member of, with their members'],
+  ['teams.read', 'the posts of a team of its own bot that it may see: group posts and its own private ones'],
+  ['teams.say', 'a group post in a team of its own bot, as that bot; wakes only the members it names'],
+  ['teams.dm', 'a private post in a team of its own bot to one member or the owner'],
+  ['teams.propose', 'a card asking the owner to create a team; nothing is created until the owner applies it'],
+  ['teams.invite', 'a card asking the owner to add a bot to one of its teams; nobody joins until the owner applies it'],
+  ['teams.leave', 'a card asking the owner to take its own bot out of a team; it stays until the owner applies it'],
   ['workflows.get', 'one run of its own thread, or of its parent for a step'],
   ['workflows.check', 'validating a plan against its own profiles, without starting anything'],
   ['workflows.start', 'a graph of child threads on its own model or its owner-approved profiles, with concurrency set in its plan'],
@@ -367,6 +375,13 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
   ['windows.clip', 'a contact sheet of a few seconds of such a window, on the same terms as windows.screenshot'],
   ['windows.watch', 'showing such a window in its own conversation\'s Window panel; nothing is captured until the person watching presses Show'],
   ['windows.close', 'emptying its own conversation\'s Window panel'],
+  // The virtual desktop is Boite's own X server in memory, never the user's screen; a thread under execution
+  // protection is refused there (desktop/service.ts), since what it starts would run outside that protection.
+  ['desktop.status', 'whether this machine can start its conversation\'s virtual desktop and what runs on it'],
+  ['desktop.start', 'an X server in memory for its own conversation, which it could start from its shell anyway, kept until it stops it or the conversation is archived'],
+  ['desktop.run', 'a program on that desktop, as its shell would start it, kept past the turn until the desktop stops'],
+  ['desktop.stop', 'stopping its own conversation\'s desktop and what runs on it'],
+  ['desktop.tool', 'the path of the pinned agent-desktop Boite installs for its desktop commands, which it could download itself'],
   // windows.frame stays with the owner and paired devices: the stream is for the person watching, a screenshot gives
   // the agent the window. windows.consent, windows.allowlist and windows.revoke are the owner's: the agent asks, never answers.
   // devices.stream and devices.clipboard stay with the owner and paired devices: the video is for the person

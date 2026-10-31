@@ -6,6 +6,7 @@ import type { BrowserRpcMethods, BrowserRpcEvents, BrowserProfile } from './brow
 import type { PullRequestsRpcMethods, PullRequestsRpcEvents, PullRequestWatch } from './pull-requests';
 import type { MobileDevicesRpcMethods, MobileDevicesRpcEvents } from './mobile-devices';
 import type { WindowsRpcMethods, WindowsRpcEvents } from './windows';
+import type { DesktopRpcMethods } from './desktop';
 import type { CoreLogContext, CoreLogLevel, CoreLogRecord, CoreLogsQuery, DiagnosticsRpcMethods } from './diagnostics';
 export * from './diagnostics';
 export * from './pull-requests';
@@ -13,6 +14,7 @@ export * from './browser';
 export * from './browser-remote';
 export * from './mobile-devices';
 export * from './windows';
+export * from './desktop';
 export * from './agents';
 export { nextAgentOccurrence } from './agent-schedule';
 export * from './workflows';
@@ -53,6 +55,7 @@ import type { TraceRpcEvents, TraceRpcMethods } from './trace';
 import type { TurnsRpcEvents, TurnsRpcMethods } from './turns';
 import type { UsageRpcMethods } from './usage';
 import type { PolicyRpcEvents, PolicyRpcMethods } from './policy';
+import type { TeamsRpcEvents, TeamsRpcMethods } from './teams';
 export * from './ids';
 export * from './providers';
 export * from './local-acp';
@@ -90,6 +93,7 @@ export * from './terminals';
 export * from './shared-projects';
 export * from './wire';
 export * from './policy';
+export * from './teams';
 
 /**
  * Boite 2 wire contract: the JSON-RPC methods and events between the core
@@ -122,6 +126,7 @@ export interface RpcMethods extends
   PullRequestsRpcMethods,
   MobileDevicesRpcMethods,
   WindowsRpcMethods,
+  DesktopRpcMethods,
   DiagnosticsRpcMethods,
   ProvidersRpcMethods,
   AccountsRpcMethods,
@@ -155,6 +160,7 @@ export interface RpcMethods extends
   HooksRpcMethods,
   SharedProjectsRpcMethods,
   TerminalsRpcMethods,
+  TeamsRpcMethods,
   PolicyRpcMethods {}
 
 export type RpcMethodName = keyof RpcMethods;
@@ -195,6 +201,7 @@ export interface RpcEvents extends
   HooksRpcEvents,
   SharedProjectsRpcEvents,
   TerminalsRpcEvents,
+  TeamsRpcEvents,
   PolicyRpcEvents {}
 
 export type RpcEventName = keyof RpcEvents;

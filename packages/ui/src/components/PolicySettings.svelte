@@ -20,7 +20,7 @@
     analytics: 'privacy', issueReports: 'privacy', dictation: 'privacy', 'previews.remoteResources': 'privacy',
     'updates.app': 'updates', 'updates.server': 'updates', 'updates.agents': 'updates',
     'providers.allow': 'providers', 'providers.deny': 'providers', gateway: 'providers', 'gateway.allowedBaseUrls': 'providers', quotaReads: 'providers',
-    'plugins.install': 'tools', 'plugins.recommended': 'tools', agentBrowser: 'tools', 'agentBrowser.searchUrl': 'tools', pullRequests: 'tools',
+    'plugins.install': 'tools', 'plugins.recommended': 'tools', agentBrowser: 'tools', 'agentBrowser.searchUrl': 'tools', agentDesktop: 'tools', pullRequests: 'tools',
     'network.lan': 'network', 'network.tailscaleServe': 'network', 'network.groups': 'network', 'network.contacts': 'network', 'network.push': 'network'
   };
   const ORDER: Group[] = ['privacy', 'updates', 'providers', 'tools', 'network'];

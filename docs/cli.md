@@ -239,6 +239,18 @@ the window id. An app the project has not allowed waits up to 10 minutes for
 the owner's consent card, so window requests time out after 11 minutes. Details
 and limits are in [windows.md](windows.md).
 
+## Virtual desktop
+
+`boite desktop help` lists the commands. On a Linux machine with Xvfb, the
+conversation gets a private desktop in memory: `run <program>` starts a GUI app
+there that outlives the turn, and every other word runs agent-desktop on it
+(`snapshot -i`, `click @ref`, `type`, `press`, `screenshot`) to read the app's
+accessibility tree and act on it. Boite installs a pinned agent-desktop the
+first time; nothing is installed by hand. `env` prints the desktop's variables for the
+agent's own tools and `stop` ends it; archiving the conversation stops it too.
+Nothing reaches the user's screen, keyboard or speakers. Details and limits are
+in [desktop.md](desktop.md).
+
 ## Pull requests linked to a conversation
 
 `boite pr link <url>` verifies a GitHub pull request and saves its link in the
@@ -474,6 +486,7 @@ boite bot schedule <json>
 boite bot unschedule <routine-id>
 boite bot watch|unwatch <thread-id>
 boite bot event <bot> [--key <key>] <text>
+boite team list|say|dm|read|propose|invite|leave
 boite delegate models [--machine <name>]
 boite delegate profiles|list
 boite delegate spawn <brief> [--model <provider/model>] [--effort <level>] [--speed <tier>] [--profile <id>] [--title <t>] [--worktree] [--machine <name> [--project <name>]] [context flags]
@@ -516,6 +529,10 @@ parent's checkout ([delegation](delegation.md#children-in-their-own-worktree)).
 Coordination commands are documented in [coordination](coordination.md#agent-commands),
 child controls in [delegation](delegation.md#agent-commands), and plan/output
 commands in [workflows](workflows.md#commands).
+
+`team` lets a bot talk with the other bots of its teams, behind the Teams
+experiment: group or private posts, reading, and cards that ask the owner to
+create, join or leave a team ([teams](teams.md#commands)).
 
 Bots schedule work from their own conversation. `bot schedule` accepts `name`, `prompt`, and `schedule`,
 for example `{"kind":"daily","time":"09:00","timezone":"Europe/Paris"}`.
