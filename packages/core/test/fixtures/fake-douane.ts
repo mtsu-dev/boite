@@ -31,12 +31,24 @@ if (!hostname || !port) {
   process.exit(2);
 }
 const version = process.env.FAKE_DOUANE_VERSION ?? '0.3.0';
+const clientFile = `${config}.client-key`;
+const clientsRequired = process.env.FAKE_DOUANE_CLIENT_KEYS === '1';
 
 Bun.serve({
   hostname, port: Number(port),
-  fetch(request) {
+  async fetch(request) {
     const path = new URL(request.url).pathname;
     if (path === '/health') return Response.json({ status: 'ok', version, service: 'douane' });
+    if (clientsRequired && path === '/admin/api/clients' && request.method === 'POST') {
+      if (existsSync(clientFile)) return new Response('client already created', { status: 409 });
+      const body = await request.json() as { name?: string; access?: { all?: boolean } };
+      if (body.name !== 'Boite' || body.access?.all !== true) return new Response('bad client', { status: 400 });
+      const key = 'dk_fixture-local-client';
+      writeFileSync(clientFile, key);
+      return Response.json({ key, client: { name: 'Boite' } }, { status: 201 });
+    }
+    if (clientsRequired && path.startsWith('/v1/') && (!existsSync(clientFile) || request.headers.get('authorization') !== `Bearer ${readFileSync(clientFile, 'utf8')}`)) return new Response('client key required', { status: 401 });
+    if (path === '/v1/quotas') return Response.json({ object: 'quotas', updated_at: null, providers: [] });
     if (path === '/v1/models') return Response.json({ object: 'list', data: [{ id: 'claude-sonnet-5', object: 'model', supported_endpoint_types: ['anthropic'] }] });
     // What the core left in its environment: a gateway gets no owner token and no agent variable.
     if (path === '/debug/env') return Response.json({ token: process.env.BOITE_TOKEN !== undefined, thread: process.env.BOITE_THREAD_ID !== undefined, cwd: process.cwd() });

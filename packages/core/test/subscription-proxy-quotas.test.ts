@@ -203,6 +203,20 @@ test('local accounts stay stored and come back unchanged when the proxy goes off
   expect(after.map(({ id, label, isolationDir }) => ({ id, label, isolationDir }))).toEqual(before.map(({ id, label, isolationDir }) => ({ id, label, isolationDir })));
 });
 
+test('remote Douane reports a missing client key without creating a client through its admin API', async () => {
+  const paths: string[] = [];
+  gateway = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch(request) {
+    paths.push(new URL(request.url).pathname);
+    return new Response('private response', { status: 401 });
+  } });
+  harness = await startTestCore({ settings: { subscriptionProxy: config(`http://127.0.0.1:${gateway.port}/v1`) } });
+  const owner = await harness.connect();
+  const state = await owner.call('subscriptionProxy.quotas', {});
+  expect(state.error).toContain('valid client API key (HTTP 401)');
+  expect(state.error).not.toContain('private response');
+  expect(paths).toEqual(['/v1/quotas']);
+});
+
 test('a new key is asked again at once, whether saved alone or with the configuration', async () => {
   const seen: string[] = [];
   gateway = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch(request) {
