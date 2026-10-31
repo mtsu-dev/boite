@@ -5,7 +5,7 @@
  * in a fresh temporary directory, never a machine path.
  */
 import { afterEach, expect, spyOn, test } from 'bun:test';
-import { chmodSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AGENT_ENV, POLICY_KEYS, RpcErrorCode, type AdminPolicy, type PolicyKey } from '@boite/contracts';
@@ -146,14 +146,14 @@ test('locked keys keep false switches, enum values and empty lists distinct from
     analytics: 'basic', updates: { app: 'off', server: 'check', agents: 'auto' },
     providers: { allow: [], deny: [] }, gateway: { allowedBaseUrls: [] },
     quotaReads: false, plugins: { install: false, recommended: false }, issueReports: false,
-    dictation: 'local', previews: { remoteResources: false }, agentBrowser: { searchUrl: 'https://search.example/?q={query}' },
+    dictation: 'local', previews: { remoteResources: false }, agentBrowser: { searchUrl: 'https://search.example/?q={query}' }, agentDesktop: false,
     network: { lan: false, tailscaleServe: false, groups: false, contacts: false, push: false }, pullRequests: false,
   };
   expect(lockedKeys(policy)).toEqual(POLICY_KEYS.filter(key => key !== 'gateway' && key !== 'agentBrowser'));
   expect(lockedKeys({ gateway: false, agentBrowser: false })).toEqual(['gateway', 'agentBrowser']);
   expect(lockedKeys({
     updates: {}, providers: {}, plugins: { install: true, recommended: true }, previews: { remoteResources: true },
-    gateway: true, agentBrowser: true, quotaReads: true, issueReports: true, pullRequests: true,
+    gateway: true, agentBrowser: true, agentDesktop: true, quotaReads: true, issueReports: true, pullRequests: true,
     network: { lan: true, tailscaleServe: true, groups: true, contacts: true, push: true },
   })).toEqual([]);
 });
@@ -457,6 +457,40 @@ test('agentBrowser: false refuses the agent browser, CLI included; searchUrl rea
   const search = await core({ agentBrowser: { searchUrl: 'https://search.corp.example/?q={query}' } });
   expect((await search.client.call('policy.get', {})).values.agentBrowser).toEqual({ searchUrl: 'https://search.corp.example/?q={query}' });
   expect(parsePolicy(JSON.stringify({ agentBrowser: { searchUrl: 'http://plain.example/?q={query}' } }), 'p.json')).toMatchObject({ values: { agentBrowser: false }, problems: [{ field: 'agentBrowser.searchUrl' }] });
+});
+
+test('agentDesktop: false refuses the desktop and the agent-desktop download, CLI included; status and stop stay open', async () => {
+  const { harness, client } = await core({ agentDesktop: false });
+  const { threadId } = await echoThread(harness, client);
+  await refusedBy(client.call('desktop.start', { threadId }), 'agentDesktop');
+  await refusedBy(client.call('desktop.run', { threadId, command: ['xterm'], cwd: harness.dataDir }), 'agentDesktop');
+  await refusedBy(client.call('desktop.tool', { threadId }), 'agentDesktop');
+  // What was started before the file came can still be seen and stopped.
+  expect((await client.call('desktop.status', { threadId })).support).toMatchObject({ available: false, reason: expect.stringContaining('agentDesktop') });
+  expect(await client.call('desktop.stop', { threadId })).toEqual({ stopped: false });
+  let error = '';
+  const code = await runCli(['desktop', 'run', 'xterm'], {
+    cwd: harness.dataDir, env: { [AGENT_ENV.threadId]: threadId, [AGENT_ENV.coreUrl]: harness.url, [AGENT_ENV.token]: harness.core.agents.tokenFor(threadId) },
+    out: () => {}, err: text => error += text,
+  });
+  expect(code).not.toBe(0);
+  expect(error).toContain('key agentDesktop in');
+  // An agent-desktop of the agent's own on PATH does not get past the refusal either.
+  const bin = join(harness.dataDir, 'own-bin');
+  const ran = join(harness.dataDir, 'own-ran');
+  mkdirSync(bin);
+  writeFileSync(join(bin, 'agent-desktop'), `#!/bin/sh\ntouch '${ran}'\n`);
+  chmodSync(join(bin, 'agent-desktop'), 0o755);
+  for (const words of [['skills', 'get', 'desktop'], ['click', '@s1:e1']]) {
+    let refusal = '';
+    const exit = await runCli(['desktop', ...words], {
+      cwd: harness.dataDir, env: { PATH: `${bin}:/usr/bin:/bin`, [AGENT_ENV.threadId]: threadId, [AGENT_ENV.coreUrl]: harness.url, [AGENT_ENV.token]: harness.core.agents.tokenFor(threadId) },
+      out: () => {}, err: text => refusal += text,
+    });
+    expect(exit).not.toBe(0);
+    expect(refusal).toContain('agentDesktop');
+  }
+  expect(existsSync(ran)).toBe(false);
 });
 
 test('network.lan: false keeps the core on loopback whatever the setting or the command line', async () => {

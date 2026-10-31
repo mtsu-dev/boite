@@ -65,6 +65,7 @@ export const STRICTEST_POLICY: AdminPolicy = Object.freeze({
   dictation: 'off',
   previews: { remoteResources: false },
   agentBrowser: false,
+  agentDesktop: false,
   network: { lan: false, tailscaleServe: false, groups: false, contacts: false, push: false },
   pullRequests: false,
 }) as AdminPolicy;
@@ -185,6 +186,7 @@ export function parsePolicy(text: string | null, file: string): Parsed {
         values.agentBrowser = search === null ? false : { searchUrl: search };
         break;
       }
+      case 'agentDesktop': values.agentDesktop = flag('agentDesktop', value); break;
       case 'network': {
         const network = section('network', value, ['lan', 'tailscaleServe', 'groups', 'contacts', 'push']);
         if (network === null) { values.network = { ...strict.network }; break; }
@@ -195,7 +197,7 @@ export function parsePolicy(text: string | null, file: string): Parsed {
         break;
       }
       case 'pullRequests': values.pullRequests = flag('pullRequests', value); break;
-      default: problem(key, 'one of analytics, updates, providers, gateway, quotaReads, plugins, issueReports, dictation, previews, agentBrowser, network, pullRequests', 'an unknown key');
+      default: problem(key, 'one of analytics, updates, providers, gateway, quotaReads, plugins, issueReports, dictation, previews, agentBrowser, agentDesktop, network, pullRequests', 'an unknown key');
     }
   }
   return { values, problems, failedClosed: false };
@@ -245,6 +247,7 @@ const FORBIDS: Record<PolicyKey, string> = {
   'previews.remoteResources': 'Remote resources in previews',
   agentBrowser: 'The agent browser',
   'agentBrowser.searchUrl': 'This search address',
+  agentDesktop: 'The agent desktop',
   'network.lan': 'Listening on the local network',
   'network.tailscaleServe': 'Tailscale HTTPS serving',
   'network.groups': 'Groups',
@@ -365,6 +368,7 @@ export class PolicyStore {
   dictation(): 'local' | 'off' | null { return this.values.dictation ?? null; }
   remotePreviewResourcesOff(): boolean { return this.values.previews?.remoteResources === false; }
   agentBrowserOff(): boolean { return this.values.agentBrowser === false; }
+  agentDesktopOff(): boolean { return this.values.agentDesktop === false; }
   searchUrl(): string | null { return typeof this.values.agentBrowser === 'object' ? this.values.agentBrowser.searchUrl : null; }
   networkOff(item: 'lan' | 'tailscaleServe' | 'groups' | 'contacts' | 'push'): boolean { return this.values.network?.[item] === false; }
   pullRequestsOff(): boolean { return this.values.pullRequests === false; }
