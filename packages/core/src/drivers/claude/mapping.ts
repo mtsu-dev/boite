@@ -116,14 +116,18 @@ export function resultText(content: unknown): string {
  * Restored counts only grow, so a bucket under the one `before` held means the
  * save was not restored whole. A compaction's own usage is empty, so its gap
  * may be its summary request alone: it reads as restored only when `proven`,
- * an earlier result of the session having shown this CLI version restoring.
+ * an earlier result of the session having shown this CLI version restoring,
+ * and never as a CLI that started from zero, since an older, smaller save
+ * plus the summary looks the same.
  */
 export function restoredCost(result: SDKResultMessage, before: AgentTotals, proven = false): number | null {
   const total = typeof result.total_cost_usd === 'number' ? result.total_cost_usd : 0;
   if (before.costUsd <= 0 || before.tokens <= 0 || total <= 0) return 0;
   const turn = ownTokens(result);
   const restored = heldTokens(result) - turn;
-  if (restored >= before.tokens && total >= before.costUsd && holdsAll(result, before.held)) return turn > 0 || proven ? before.costUsd : null;
+  const whole = restored >= before.tokens && total >= before.costUsd && holdsAll(result, before.held);
+  if (turn === 0) return whole && proven ? before.costUsd : null;
+  if (whole) return before.costUsd;
   return restored < before.tokens / 2 ? 0 : null;
 }
 

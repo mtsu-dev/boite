@@ -394,8 +394,9 @@ matches a model and computes the cost.
   least what the session's last turn saved. A compaction has no own usage to
   tell its summary request from restored totals, so a cold one reads as
   restored only after a turn with tokens showed the same Claude Code version
-  restoring (`agentTotals.restores`); before that it records no tokens and no
-  cost. Claude Code 2.1.316 restored a resumed session's totals from its
+  restoring (`agentTotals.restores`); before that, or when it holds less than
+  the session did, it records no tokens and no cost, since an older save plus
+  the summary looks like a fresh start. Claude Code 2.1.316 restored a resumed session's totals from its
   transcript on every cold resume probed on 2026-10-31, a compaction and a
   resume after another session in the same folder included. A turn an older core recorded without `buckets` and without tokens
   adds nothing: before 2026-10-13 such turns were charged a resumed session's

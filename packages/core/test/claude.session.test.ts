@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { Options } from '@anthropic-ai/claude-agent-sdk';
 import type { Turn } from '@boite/contracts';
 import { connect } from '../src/client.ts';
+import { restoredCost } from '../src/drivers/claude/mapping.ts';
 import { waitFor } from './harness.ts';
 import {
   answerEach,
@@ -393,6 +394,16 @@ describe('claude driver', () => {
     // What the CLI restored is unknown, so the turn charges nothing it cannot account for.
     expect(usage?.costUsdEquivalent).toBeNull();
     expect(usage).toMatchObject({ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 });
+  });
+
+  test('a cold compaction holding less than half the session is unknown, not a CLI that started from zero', () => {
+    // A small older save plus the summary request looks like a fresh start; reading it as one would charge the save
+    // to the compaction. Sessions recorded before per-bucket totals carry no `held` to compare buckets with.
+    const result = sdk({ ...(success('sess-old-save') as object), total_cost_usd: 0.3,
+      usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+      modelUsage: { 'claude-opus-5-5': { inputTokens: 10_000, outputTokens: 500, cacheReadInputTokens: 19_500, cacheCreationInputTokens: 0, webSearchRequests: 0, costUSD: 0, contextWindow: 1_000_000, maxOutputTokens: 128_000 } } });
+    if (result.type !== 'result') throw new Error('expected a result');
+    for (const proven of [false, true]) expect(restoredCost(result, { costUsd: 1, tokens: 100_000 }, proven)).toBeNull();
   });
 
   test('a resumed CLI that restored less than the journal holds leaves the turn unpriced instead of charging the session again', async () => {
