@@ -59,6 +59,12 @@ test('every word after a desktop command is its own: agent-desktop flags and the
   expect(parse(['desktop', 'run', 'google-chrome', '--force-renderer-accessibility', '--', '--thread', 'x']).positional)
     .toEqual(['desktop', 'run', 'google-chrome', '--force-renderer-accessibility', '--', '--thread', 'x']);
   expect(parse(['--json', 'desktop', 'status']).json).toBe(true);
+  // status, start, stop, env and help take no text: a global after them stays the CLI's.
+  const status = parse(['desktop', 'status', '--json', '--thread', 'thr_x']);
+  expect(status.json).toBe(true);
+  expect(status.thread).toBe('thr_x');
+  expect(status.positional).toEqual(['desktop', 'status']);
+  expect(parse(['desktop', 'stop', '--json']).positional).toEqual(['desktop', 'stop']);
 });
 
 test('--help after -- is text to type, so the command still runs on the desktop', async () => {
