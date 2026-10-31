@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { Options } from '@anthropic-ai/claude-agent-sdk';
 import type { Turn } from '@boite/contracts';
 import { connect } from '../src/client.ts';
+import { restoredCost } from '../src/drivers/claude/mapping.ts';
 import { waitFor } from './harness.ts';
 import {
   answerEach,
@@ -309,6 +310,100 @@ describe('claude driver', () => {
     expect(costs[5]).toBeCloseTo(0, 10);
     expect(costs[6]).toBeCloseTo(0.02, 10);
     expect(costs[7]).toBeNull();
+  });
+
+  for (const warmProcessMinutes of [0, 5]) test(`a compaction records the tokens and cache lifetimes its running totals grew by, which its own usage leaves at zero (warm ${warmProcessMinutes} min)`, async () => {
+    const client = await harness.connect();
+    const threadId = await claudeThread(client);
+    await client.call('settings.set', { warmProcessMinutes });
+
+    // Claude Code 2.1.316, measured 2026-10-31: `/compact` answers with a zeroed `usage` and no
+    // iterations, while `modelUsage` and `total_cost_usd` grow by the summary request. A cold
+    // process restores the session's totals, which the second turn's own usage shows; a warm
+    // one keeps counting from its last result.
+    const held = (input: number, output: number, read: number, write: number, hour: number) => ({
+      'claude-opus-5-5': { inputTokens: input, outputTokens: output, cacheReadInputTokens: read, cacheCreationInputTokens: write,
+        cacheCreationEphemeral5mInputTokens: write - hour, cacheCreationEphemeral1hInputTokens: hour, webSearchRequests: 0, costUSD: 0, contextWindow: 1_000_000, maxOutputTokens: 128_000 },
+    });
+    const zeroed = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, cache_creation: { ephemeral_1h_input_tokens: 0, ephemeral_5m_input_tokens: 0 } };
+    const results = [
+      { total_cost_usd: 0.1155885, modelUsage: held(2, 4, 0, 14_422, 14_422),
+        usage: { input_tokens: 2, output_tokens: 4, cache_read_input_tokens: 0, cache_creation_input_tokens: 14_422, cache_creation: { ephemeral_1h_input_tokens: 14_422, ephemeral_5m_input_tokens: 0 } } },
+      { total_cost_usd: 0.1194049, modelUsage: held(5, 10, 14_422, 14_522, 14_522),
+        usage: { input_tokens: 3, output_tokens: 6, cache_read_input_tokens: 14_422, cache_creation_input_tokens: 100, cache_creation: { ephemeral_1h_input_tokens: 100, ephemeral_5m_input_tokens: 0 } } },
+      { total_cost_usd: 0.1594049, modelUsage: held(2_013, 551, 28_847, 17_522, 16_522), usage: zeroed },
+    ];
+    let turn = 0;
+    scripted(() => undefined, (fake) => {
+      fake.emit(init('sess-compact-usage'));
+      fake.emit(sdk({ ...(success('sess-compact-usage') as object), ...results[turn++] }));
+    });
+
+    const first = client.next('turn.finished', (finished) => finished.threadId === threadId, 10000);
+    await client.call('turns.start', { threadId, prompt: 'first' });
+    expect((await first).usage).toMatchObject({ cacheWriteTokens: 14_422, cacheWriteHourTokens: 14_422 });
+    const second = client.next('turn.finished', (finished) => finished.threadId === threadId, 10000);
+    await client.call('turns.start', { threadId, prompt: 'second' });
+    expect((await second).usage?.costUsdEquivalent).toBeCloseTo(0.0038164, 10);
+
+    const compacted = client.next('turn.finished', (finished) => finished.threadId === threadId, 10000);
+    await client.call('threads.compact', { threadId });
+    const usage = (await compacted).usage;
+
+    expect(queries).toHaveLength(warmProcessMinutes === 0 ? 3 : 1);
+    expect(calls.flatMap((call) => call.prompts)).toEqual(['first', 'second', '/compact']);
+    expect(usage).toMatchObject({ inputTokens: 2_008, outputTokens: 541, cacheReadTokens: 14_425, cacheWriteTokens: 3_000, cacheWriteHourTokens: 2_000 });
+    expect(usage?.costUsdEquivalent).toBeCloseTo(0.04, 10);
+  });
+
+  for (const [when, versions] of [['before a turn with tokens showed the CLI restoring', ['2.1.316', '2.1.316']], ['when only another CLI version was seen restoring', ['2.1.316', '2.1.316', '2.2.0']]] as const) test(`a cold compaction is not read as a restored session ${when}, even when every count grew`, async () => {
+    const client = await harness.connect();
+    const threadId = await claudeThread(client);
+
+    // The resumed CLI restored nothing, so the compaction's totals hold only the summary request, which outweighs
+    // the turns before it in every bucket. With no own usage to measure against, nothing tells it from a restore.
+    const held = (input: number, output: number, read: number, write: number) => ({
+      'claude-opus-5-5': { inputTokens: input, outputTokens: output, cacheReadInputTokens: read, cacheCreationInputTokens: write,
+        cacheCreationEphemeral5mInputTokens: 0, cacheCreationEphemeral1hInputTokens: write, webSearchRequests: 0, costUSD: 0, contextWindow: 1_000_000, maxOutputTokens: 128_000 },
+    });
+    const zeroed = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
+    const turns = [
+      { total_cost_usd: 0.1155885, modelUsage: held(2, 4, 0, 14_422),
+        usage: { input_tokens: 2, output_tokens: 4, cache_read_input_tokens: 0, cache_creation_input_tokens: 14_422, cache_creation: { ephemeral_1h_input_tokens: 14_422, ephemeral_5m_input_tokens: 0 } } },
+      // Restored: the totals hold the first turn plus this one's own usage.
+      { total_cost_usd: 0.1194049, modelUsage: held(5, 10, 14_422, 14_522),
+        usage: { input_tokens: 3, output_tokens: 6, cache_read_input_tokens: 14_422, cache_creation_input_tokens: 100, cache_creation: { ephemeral_1h_input_tokens: 100, ephemeral_5m_input_tokens: 0 } } },
+    ].slice(0, versions.length - 1);
+    const results = [...turns, { total_cost_usd: 0.2, modelUsage: held(40_000, 541, 14_425, 20_000), usage: zeroed }];
+    let turn = 0;
+    scripted(() => undefined, (fake) => {
+      fake.emit(init('sess-compact-fresh', versions[turn]));
+      fake.emit(sdk({ ...(success('sess-compact-fresh') as object), ...results[turn++] }));
+    });
+
+    for (const prompt of ['first', 'second'].slice(0, turns.length)) {
+      const done = client.next('turn.finished', (finished) => finished.threadId === threadId, 10000);
+      await client.call('turns.start', { threadId, prompt });
+      await done;
+    }
+    const compacted = client.next('turn.finished', (finished) => finished.threadId === threadId, 10000);
+    await client.call('threads.compact', { threadId });
+    const usage = (await compacted).usage;
+
+    expect(queries).toHaveLength(versions.length);
+    // What the CLI restored is unknown, so the turn charges nothing it cannot account for.
+    expect(usage?.costUsdEquivalent).toBeNull();
+    expect(usage).toMatchObject({ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 });
+  });
+
+  test('a cold compaction holding less than half the session is unknown, not a CLI that started from zero', () => {
+    // A small older save plus the summary request looks like a fresh start; reading it as one would charge the save
+    // to the compaction. Sessions recorded before per-bucket totals carry no `held` to compare buckets with.
+    const result = sdk({ ...(success('sess-old-save') as object), total_cost_usd: 0.3,
+      usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+      modelUsage: { 'claude-opus-5-5': { inputTokens: 10_000, outputTokens: 500, cacheReadInputTokens: 19_500, cacheCreationInputTokens: 0, webSearchRequests: 0, costUSD: 0, contextWindow: 1_000_000, maxOutputTokens: 128_000 } } });
+    if (result.type !== 'result') throw new Error('expected a result');
+    for (const proven of [false, true]) expect(restoredCost(result, { costUsd: 1, tokens: 100_000 }, proven)).toBeNull();
   });
 
   test('a resumed CLI that restored less than the journal holds leaves the turn unpriced instead of charging the session again', async () => {

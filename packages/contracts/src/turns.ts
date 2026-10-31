@@ -1,7 +1,7 @@
 import type { ThreadId, Timestamp, TurnId } from './ids';
 import type { Attachment, PreviewReference } from './messages';
 import type { ThreadStatus, ThreadSummary } from './threads';
-import type { Usage } from './usage';
+import type { AgentTotals, Usage } from './usage';
 
 export type TurnStatus = 'queued' | 'running' | 'done' | 'stopped' | 'error';
 
@@ -61,7 +61,7 @@ export interface Turn {
    * the sum of the session's turns. Absent on other drivers and on turns
    * finished before it was recorded.
    */
-  agentTotals?: { costUsd: number; tokens: number } | null;
+  agentTotals?: AgentTotals | null;
   /**
    * A persistent agent's `routine` or `event` turn that had nothing for the
    * user: the final text block of its last answer opened, or ended, with a line
