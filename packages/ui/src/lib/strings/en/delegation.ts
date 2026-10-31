@@ -3,6 +3,8 @@ export const strings = {
     off: 'Off',
     paused: 'Paused',
     heading: 'Subagents',
+    hasQuestion: 'A subagent has a question',
+    answerQuestion: 'Open {title} to answer',
     nativeHeading: 'Started by the provider',
     nativeNoResult: 'No result reported yet.',
     processHeading: 'Started from a command',

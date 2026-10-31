@@ -822,6 +822,7 @@ Never terminate processes by executable name or a path pattern.
 | Scroll following and virtualized history | `tests/e2e/chat-scroll.test.ts` |
 | Context, compaction and turn receipts | `tests/e2e/chat-context.test.ts` |
 | Readability, tools, answered questions, high contrast | `tests/e2e/readability.test.ts` |
+| Sidebar alerts and subagent answer routing | `tests/e2e/subagent-questions.test.ts` |
 | Draft durability, overlays and reduced motion | `tests/e2e/drafts-overlays.test.ts` |
 | Provider transfer over fixture ACP | `tests/e2e/model-switch.test.ts` |
 | Folder picker and absent project | `tests/e2e/project-picker.test.ts`, `folder-gone.test.ts` |

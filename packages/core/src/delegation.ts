@@ -31,7 +31,7 @@ export const PERMISSION_WAKE_MS = 30_000;
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 /** Load and the derived live fields arrive in thread.updated without changing team history. */
 function teamState(thread: ThreadSummary): string {
-  const { load, progress, runningSince, requestSince, backgroundWork, backgroundWait, pendingMove, moveNote, pendingAnswers, openQuestions, retry, pullRequestWatches, ...stored } = thread;
+  const { load, progress, runningSince, requestSince, backgroundWork, backgroundWait, pendingMove, moveNote, pendingAnswers, openQuestions, subagentQuestions, retry, pullRequestWatches, ...stored } = thread;
   return JSON.stringify(Object.fromEntries(Object.entries(stored).sort(([left], [right]) => left.localeCompare(right))));
 }
 /** A family of ordinary threads. No extra orchestrator model or provider process. */
@@ -199,6 +199,16 @@ export class Delegation {
     return true;
   }
   #rows(rootId: string): AgentRow[] { return this.#core.journal.db.query('SELECT * FROM delegated_agents WHERE root_id = ? ORDER BY rowid').all(rootId) as AgentRow[]; }
+  /** Compact sidebar links, independent of which conversation a client subscribes to. */
+  questions(rootId: string): NonNullable<ThreadSummary['subagentQuestions']> {
+    const local = [...new Set(this.#core.threads.listQuestions().map(question => question.threadId))].flatMap(threadId => {
+      const child = this.#core.journal.getThread(threadId);
+      return child?.parentThreadId === rootId && !child.archived ? [{ threadId, title: child.title }] : [];
+    });
+    const remote = this.remote.members(rootId, true).filter(agent => !agent.thread.archived && agent.needsInput?.some(input => input.kind === 'question'))
+      .map(agent => ({ threadId: agent.thread.id, title: agent.thread.title, machine: agent.machine! }));
+    return [...local, ...remote];
+  }
   #lastTurn(threadId: string): Turn | null { return taskTurn(this.#core, threadId); }
   /** The bounded final answer of a finished turn, or its error. */
   result(turn: Turn | null): string | null { return turnResult(this.#core, turn); }
@@ -614,7 +624,7 @@ export class Delegation {
   }
   /** Is this thread a delegated agent the parent spawned, rather than a workflow step or a reviewer? */
   delegated(threadId: string): boolean { return this.#core.journal.db.query('SELECT 1 FROM delegated_agents WHERE thread_id = ?').get(threadId) !== null; }
-  /** A delegated agent asked something: its parent learns at once. */
+  /** Every child updates its sidebar alert; an ordinary delegate also tells its parent by mail. */
   #asked(request: QuestionRequest): void {
     const child = this.#core.journal.getThread(request.threadId);
     if (child && this.remote.parentOf(child.id)) {
@@ -622,9 +632,9 @@ export class Delegation {
       if (answerable(request)) this.#wake(child, request.id, questionWake(child, request));
       return;
     }
-    if (!child?.parentThreadId || !answerable(request) || !this.delegated(child.id)) return;
+    if (!child?.parentThreadId) return;
     this.#changed(child.parentThreadId);
-    this.#wake(child, request.id, questionWake(child, request));
+    if (answerable(request) && this.delegated(child.id)) this.#wake(child, request.id, questionWake(child, request));
   }
   /** A permission request: the parent learns of it only if the user has not answered it in a moment. */
   #permissionAsked(request: PermissionRequest): void {
@@ -650,7 +660,7 @@ export class Delegation {
     }
     const row = this.#core.journal.db.query("SELECT data FROM delegation_messages WHERE sender_id = ? AND request_id = ?").get(threadId, `question:${requestId}`) as LetterRow | null;
     const thread = this.#core.journal.getThread(threadId);
-    if (thread?.parentThreadId && this.delegated(threadId)) this.#changed(thread.parentThreadId);
+    if (thread?.parentThreadId) this.#changed(thread.parentThreadId);
     if (!row) return;
     const letter = JSON.parse(row.data) as AgentLetter;
     if (letter.status === 'received') this.#update(letter, 'expired', 'The question closed before it was delivered');
@@ -817,6 +827,8 @@ export class Delegation {
     queueMicrotask(() => {
       this.#pendingChanges.delete(rootId);
       if (!this.#live()) return;
+      const root = this.#core.journal.getThread(rootId);
+      if (root) this.#core.bus.emit('thread.updated', withLoad(this.#core, root));
       this.#core.bus.emit('delegation.changed', { threadId: rootId });
       for (const row of this.#rows(rootId)) this.#core.bus.emit('delegation.changed', { threadId: row.thread_id });
     });

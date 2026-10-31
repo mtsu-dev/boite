@@ -141,7 +141,7 @@ test('another thread\'s question comes up open over one folded here, as many que
   expect(document.querySelector('[data-testid=activity-question]:not([hidden])')!.getAttribute('data-question')).toBe('second');
 });
 
-test('a sub-agent\'s questions and permission wait in its parent\'s dock, named, opened, never answered by the parent\'s composer', () => {
+test('a subagent\'s questions stay out of its parent\'s dock while permissions still link to the child', () => {
   const question = (id: string, threadId: string, async: boolean): QuestionRequest => ({
     id, threadId, turnId: 'turn', text: `Which way for ${id}?`, options: [{ id: 'a', label: 'A' }], allowText: true, multiple: false, ...(async ? { async: true } : {}), createdAt: 1
   });
@@ -155,23 +155,8 @@ test('a sub-agent\'s questions and permission wait in its parent\'s dock, named,
     store.pendingPermissions = [{ id: 'perm', threadId: 'child', turnId: 'turn', toolName: 'Bash', input: { command: 'bun run migrate' }, description: 'Run it', createdAt: 2 }];
   });
   const docked = () => [...document.querySelectorAll<HTMLElement>('[data-testid=activity-question]')];
-  expect(docked().map(card => card.dataset['question'])).toEqual(['own', 'child-async', 'child-stop']);
-  expect(document.querySelector('[data-testid=activity-question-index]')!.textContent).toBe('1 of 3');
+  expect(docked().map(card => card.dataset['question'])).toEqual(['own']);
   const shown = () => document.querySelector<HTMLElement>('[data-testid=activity-question]:not([hidden])')!;
-  expect(shown().dataset['question']).toBe('own');
-  document.querySelector<HTMLButtonElement>('[data-testid=activity-question-prev]')!.click();
-  flushSync();
-  // Navigating to a child's question shows whose it is, without handing it to this composer.
-  expect(shown().dataset['question']).toBe('child-stop');
-  expect(shown().querySelector('[data-testid=activity-subagent-question]')!.textContent).toContain('Asked by Migrate the keys');
-  expect(shown().querySelector('[data-testid=question-write]')).toBeNull();
-  expect(document.querySelector('[data-testid=composer-reply]')).toBeNull();
-  expect(replyTarget(store)).toBeNull();
-  shown().querySelector<HTMLButtonElement>('[data-testid=activity-open-subagent]')!.click();
-  expect(open).toHaveBeenCalledWith('child');
-  // Back on its own question, the composer answers that one again.
-  document.querySelector<HTMLButtonElement>('[data-testid=activity-question-next]')!.click();
-  flushSync();
   expect(shown().dataset['question']).toBe('own');
   expect(shown().querySelector('[data-testid=activity-subagent-question]')).toBeNull();
   expect(replyTarget(store)?.id).toBe('own');

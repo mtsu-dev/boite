@@ -159,6 +159,9 @@ export class Threads {
   #workingChildren = $derived(workingChildren(this.threads));
   /** The thread's delegated agents still at work or asking the user; null when none is. */
   subagents(threadId: ThreadId): WorkingChildren | null { return this.#workingChildren.get(threadId) ?? null; }
+
+  /** The owning core projects local and remote children even when another conversation is open. */
+  subagentQuestions(threadId: ThreadId): NonNullable<ThreadSummary['subagentQuestions']> { return this.rowOf(threadId)?.subagentQuestions ?? []; }
   /** A move waits on the children at work; one that only asks, its turn over, does not hold it. */
   moveBlocked(threadId: ThreadId): boolean { return (this.#workingChildren.get(threadId)?.count ?? 0) > 0; }
 
@@ -424,7 +427,7 @@ export class Threads {
       permissionRead?.apply(permissions);
       questionRead?.apply(questions);
       secretRead?.apply(secrets);
-      // Its sub-agents asking the user show in its dock: their requests are read the same way.
+      // Read child requests too, so the sidebar can link to their unanswered questions.
       if (options.requests !== false) this.ctx.requests.readChildren(client, threadId);
       if (thread.unread) {
         await client.call('threads.markRead', { threadId });

@@ -25,6 +25,7 @@
   import { closeSwipedRow, swipeRow } from '../lib/swipe-row';
   import ThreadPullRequest from './ThreadPullRequest.svelte';
   import ThreadHeadline from './ThreadHeadline.svelte';
+  import SubagentQuestions from './SubagentQuestions.svelte';
   import DisplayOptions from './DisplayOptions.svelte';
   import RecentGroup from './RecentGroup.svelte';
   import RecentDone from './RecentDone.svelte';
@@ -274,6 +275,7 @@
           </div>
         {/if}
         <div class="row-body" use:swipeRow>
+          <div class="row-heading">
           <button class="ghost thread" class:offline={row.machine.store.connection !== 'ready'} data-testid="mobile-thread-{row.thread.id}" onclick={() => { show('chat'); void workspace.select(row.machine.store, row.thread.id); }}>
             <span class="tile"><ThreadPicture owner={row.machine.store} thread={row.thread} size={18} /></span>
             <span class="summary"><ThreadHeadline owner={row.machine.store} thread={row.thread} wrap picture={false} /><span class="detail" title={row.thread.branch ?? undefined}>{[grouped ? null : projectName(row.project), several ? row.machine.label : null, row.thread.branch].filter(Boolean).join(' · ')}</span></span>
@@ -281,6 +283,8 @@
           </button>
           <ThreadPullRequest owner={row.machine.store} thread={row.thread} />
           <Menu items={items} onpick={(action) => rowAction(row.machine.store, row.thread, action, row.machine.id)} label={strings.sidebar.threadMenu} placement="bottom" variant="ghost" testid="mobile-thread-menu-{row.thread.id}"><Ellipsis size={18} /></Menu>
+          </div>
+          <SubagentQuestions machine={row.machine} threadId={row.thread.id} onopen={() => show('chat')} />
         </div>
       </div>
     {/snippet}
@@ -438,7 +442,8 @@
     .swipe .ui-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .swipe.pin { background: var(--color-surface-3); color: var(--color-foreground); }
     .swipe.archive { background: var(--color-accent); color: var(--color-accent-ink); }
-    .row-body { position: relative; display: flex; align-items: center; padding-right: 4px; touch-action: pan-y; transform: translateX(var(--swipe, 0px)); transition: transform var(--dur-3) var(--ease-out-quint); background: var(--color-background); }
+    .row-body { position: relative; display: flow-root; touch-action: pan-y; transform: translateX(var(--swipe, 0px)); transition: transform var(--dur-3) var(--ease-out-quint); background: var(--color-background); }
+    .row-heading { display: flex; align-items: center; padding-right: 4px; }
     .project-group .row-body { background: var(--color-surface); }
     .row-body:global(.dragging) { transition: none; }
     .row-body :global(.menu) { flex: none; }

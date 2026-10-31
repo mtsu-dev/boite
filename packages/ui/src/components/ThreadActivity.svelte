@@ -31,18 +31,16 @@
    * a running turn would push them out of sight. Several stack behind a pager;
    * each keeps what was picked or typed while another is on screen.
    *
-   * A sub-agent has no row of its own, so whatever its conversation asks the
-   * user, stopped or not, waits here too, named by the child's title with a
-   * way into it. Its question is answered from its card, never from this
-   * thread's composer (`replyTarget` keeps to the open thread); a permission
-   * is answered in the child's own conversation.
+   * A subagent's questions link to its conversation from the sidebar. Only
+   * this thread's questions belong beside this thread's composer. Child
+   * permissions and secret requests still provide a way into their owner.
    */
   let children = $derived(new Map(store.openThread ? store.threads.filter((row) => row.parentThreadId === store.openThread?.id && !row.archived).map((row) => [row.id, row] as const) : []));
   type DockRequest = QuestionRequest & { secret?: SecretRequest };
   let asked: DockRequest[] = $derived.by(() => {
     const threadId = store.openThread?.id;
     if (!threadId) return [];
-    const questions: DockRequest[] = store.pendingQuestions.filter((question) => (question.async === true && question.threadId === threadId) || children.has(question.threadId));
+    const questions: DockRequest[] = store.pendingQuestions.filter((question) => question.async === true && question.threadId === threadId);
     const secrets: DockRequest[] = store.pendingSecrets
       .filter((request) => request.threadId === threadId || children.has(request.threadId))
       .map((secret) => ({ id: secret.id, threadId: secret.threadId, turnId: secret.turnId, text: secret.reason, options: [], allowText: false, multiple: false, createdAt: secret.createdAt, secret }));

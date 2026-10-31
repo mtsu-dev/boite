@@ -197,10 +197,10 @@ export class RemoteDelegation {
     return this.#roots.has(rootId) && this.#records(rootId).some(record => record.requestId === requestId);
   }
 
-  /** The children of this parent on other machines, as `delegate list` shows them. */
-  members(rootId: string): DelegatedAgent[] {
+  /** Team children elsewhere; sidebar questions also include workflow steps. */
+  members(rootId: string, includeWorkflows = false): DelegatedAgent[] {
     if (!this.#roots.has(rootId)) return [];
-    return this.#records(rootId).flatMap(record => (record.childId !== null && record.state !== null && !record.workflow ? [this.#member(rootId, record)] : []));
+    return this.#records(rootId).flatMap(record => (record.childId !== null && record.state !== null && (includeWorkflows || !record.workflow) ? [this.#member(rootId, record)] : []));
   }
 
   /** Whether a child of this parent on another machine is at work, as far as that machine reported. */

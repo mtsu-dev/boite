@@ -76,6 +76,24 @@ const TWIN_MODELS: ModelInfo[] = [
   { id: 'twin-b', name: 'Twin B', effort: { levels: [{ id: 'low', label: 'Low' }, { id: 'max', label: 'Max' }], default: 'max' } },
 ];
 
+test('remote child questions update the parent sidebar summary and clear after another client answers', async () => {
+  answering();
+  const { desk, pc, owner, pcOwner, threadId, pcId, spawn } = await setup();
+  const child = await spawn('Read the notes', '--project', 'notes', '--request-id', 'sidebar-question');
+  await waitFor(() => pc.core.threads.require(child.thread.id).status === 'idle');
+  let alerts: unknown;
+  owner.on('thread.updated', row => { if (row.id === threadId) alerts = row.subagentQuestions; });
+  const question = await pcOwner.call('questions.ask', { threadId: child.thread.id, text: 'Which index?', options: [] });
+  await waitFor(() => desk.core.delegation.remote.members(threadId).some(agent => agent.needsInput?.some(input => input.kind === 'question')));
+  const row = (await owner.call('threads.list', {})).find(row => row.id === threadId)!;
+  const expected = [{ threadId: child.thread.id, title: child.thread.title, machine: { coreId: pcId, name: child.machine!.name } }];
+  expect(row.subagentQuestions).toEqual(expected);
+  await waitFor(() => Array.isArray(alerts) && alerts.length > 0);
+  expect(alerts).toEqual(expected);
+  await pcOwner.call('questions.answer', { threadId: child.thread.id, questionId: question.questionId, optionIds: [], text: 'custom index' });
+  await waitFor(() => Array.isArray(alerts) && alerts.length === 0);
+});
+
 /** A second provider on the echo driver, signed in, that the parent does not run on. */
 async function twinProvider(h: TestCore, owner: CoreClient): Promise<void> {
   const shipped = JSON.parse(readFileSync(join(import.meta.dir, '../src/providers/shipped/echo.json'), 'utf8')) as Record<string, unknown>;
