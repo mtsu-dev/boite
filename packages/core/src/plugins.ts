@@ -41,7 +41,7 @@ import {
 } from './plugins/manifest.ts';
 import { PluginApps } from './plugins/apps.ts';
 import { DOUANE_PLUGIN, PluginGateways } from './plugins/gateway.ts';
-import { prepareGatewayClient } from './subscription-proxy-auth.ts';
+import { prepareLocalProxyKey } from './subscription-proxy-auth.ts';
 import { recoverActivation, switchRelease, type Activation } from './plugins/activation.ts';
 import { PluginLanes } from './plugins/lanes.ts';
 import { checkRef, fetchManifest, normalizeSourceUrl } from './plugins/source.ts';
@@ -253,7 +253,9 @@ export class PluginStore {
       },
       changed: (id) => this.#emit(id),
       moved: (id, port) => { if (id === DOUANE_PLUGIN) core.settings.followGateway(port); },
-      ready: (id, isCurrent) => prepareGatewayClient(core, id, isCurrent),
+      ready: async (id, isCurrent) => {
+        if (id === DOUANE_PLUGIN) { await prepareLocalProxyKey(core, isCurrent); core.quotas.gateway.reset(); }
+      },
     });
   }
 

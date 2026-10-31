@@ -12,6 +12,11 @@ export function proxyKey(core: Core): string {
   return typeof key === 'string' && key ? key : 'boite-subscription-proxy';
 }
 
+export function hasProxyKey(core: Core): boolean {
+  const key = core.journal.getSetting(KEY_SETTING);
+  return typeof key === 'string' && key.length > 0;
+}
+
 export function validateProxyKey(key: unknown): asserts key is string | null {
   if (key !== null && (typeof key !== 'string' || key.length > 4096 || !key.trim() || /[\u0000-\u0020\u007f]/.test(key))) {
     throw invalidParams('subscriptionProxy.key must be null or a non-empty token without whitespace');
@@ -23,10 +28,9 @@ export function writeProxyKey(core: Core, key: string | null): void {
   else core.journal.setSetting(KEY_SETTING, key);
 }
 
-/** Client setup failure leaves the dashboard running so the owner can supply a key. */
-export async function prepareGatewayClient(core: Core, id: string, isCurrent: () => boolean): Promise<void> {
-  if (id !== 'douane') return;
-  try { await ensureLocalProxyKey(core, isCurrent); core.quotas.gateway.reset(); }
+/** A client setup failure does not undo a completed save or stop the dashboard. */
+export async function prepareLocalProxyKey(core: Core, isCurrent?: () => boolean): Promise<void> {
+  try { await ensureLocalProxyKey(core, isCurrent); }
   catch { core.log('warn', 'Could not create the local Douane client key; set a client API key in the subscription proxy settings.'); }
 }
 

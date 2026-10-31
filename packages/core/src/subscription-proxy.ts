@@ -6,7 +6,7 @@ import type { Core } from './core.ts';
 import { invalidParams, refused, unavailable, RpcFailure } from './errors.ts';
 import { isOpenCode, OPENCODE_V2 } from './providers/opencode.ts';
 import { profileFor } from './providers/resolve.ts';
-import { ensureLocalProxyKey, proxyKey, validateProxyKey as validateKey, writeProxyKey as writeKey, PROXY_AUTH_ERROR } from './subscription-proxy-auth.ts';
+import { ensureLocalProxyKey, prepareLocalProxyKey, hasProxyKey, proxyKey, validateProxyKey as validateKey, writeProxyKey as writeKey, PROXY_AUTH_ERROR } from './subscription-proxy-auth.ts';
 export { proxyKey } from './subscription-proxy-auth.ts';
 
 /** The gateway models both OpenCode versions were last offered, kept so a restart can start a turn on one. */
@@ -335,8 +335,8 @@ export function registerSubscriptionProxy(core: Core): void {
     catch { throw unavailable('Subscription proxy key could not be saved'); }
     // The last answer was read with the previous key.
     core.quotas.gateway.reset();
-    await ensureLocalProxyKey(core);
-    return { configured: key !== null };
+    await prepareLocalProxyKey(core);
+    return { configured: hasProxyKey(core) };
   });
   core.router.register('subscriptionProxy.quotas', ({ refresh }) => {
     if (refresh !== undefined && typeof refresh !== 'boolean') throw invalidParams('subscriptionProxy.quotas refresh must be a boolean');
@@ -354,7 +354,7 @@ export function registerSubscriptionProxy(core: Core): void {
     }
     // A new key can change the answer even when the settings did not.
     if (key !== undefined) core.quotas.gateway.reset();
-    if (core.plugins.gateways.running('douane')) await ensureLocalProxyKey(core);
+    await prepareLocalProxyKey(core);
     return core.settings.get();
   });
   core.router.register('subscriptionProxy.setEnabled', async ({ enabled }) => {
@@ -362,7 +362,7 @@ export function registerSubscriptionProxy(core: Core): void {
     const proxy = core.settings.get().subscriptionProxy;
     if (!proxy?.baseUrl) throw refused('no subscription proxy is configured: the owner sets one up in Settings > Accounts', { field: 'subscriptionProxy' });
     if (proxy.enabled !== enabled) core.settings.set({ subscriptionProxy: { ...proxy, enabled } });
-    await ensureLocalProxyKey(core);
+    await prepareLocalProxyKey(core);
     return core.settings.get();
   });
 }

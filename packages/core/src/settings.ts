@@ -3,7 +3,7 @@ import type { Core } from './core.ts';
 import { writesTitles } from './drivers/index.ts';
 import { invalidParams } from './errors.ts';
 import { DOUANE_PLUGIN } from './plugins/gateway.ts';
-import { ensureLocalProxyKey } from './subscription-proxy-auth.ts';
+import { prepareLocalProxyKey } from './subscription-proxy-auth.ts';
 import { announceMachineSetting } from './threads/group-spawn.ts';
 import { isAbsolute, resolve } from 'node:path';
 
@@ -182,7 +182,7 @@ export function registerSettingsMethods(core: Core): void {
   core.router.register('settings.get', () => core.settings.get());
   core.router.register('settings.set', async (params) => {
     core.settings.set(params);
-    if (params.subscriptionProxy !== undefined) await ensureLocalProxyKey(core);
+    if (params.subscriptionProxy !== undefined) await prepareLocalProxyKey(core);
     return core.settings.get();
   });
   // One read and one write in the same turn of the event loop: no save from another window lands between them.

@@ -155,6 +155,32 @@ test.each(['subscriptionProxy.setEnabled', 'settings.set'] as const)('%s provisi
   expect(subscriptionProxyEnv(harness!.core, harness!.core.providers.require('claude')).ANTHROPIC_AUTH_TOKEN).toBe('dk_fixture-local-client');
 }, 30_000);
 
+test.each(['settings.set', 'subscriptionProxy.configure', 'subscriptionProxy.setEnabled', 'subscriptionProxy.key'] as const)('%s reports its saved mutation when local client creation fails', async (method) => {
+  process.env.FAKE_DOUANE_CLIENT_KEYS = '1';
+  const { owner } = await core();
+  await owner.call('subscriptionProxy.configure', { subscriptionProxy: { ...LOCAL, enabled: false } });
+  await owner.call('plugins.install', { id: 'douane' });
+  await gatewayIs(owner, 'running');
+  fetchSpy?.mockRestore();
+  fetchSpy = spyOn(globalThis, 'fetch').mockImplementation((async (input: string | URL | Request, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    return url.endsWith('/admin/api/clients') ? new Response('private fixture response', { status: 503 }) : realFetch(input, init);
+  }) as typeof fetch);
+  if (method === 'subscriptionProxy.key') {
+    await owner.call('subscriptionProxy.configure', { subscriptionProxy: LOCAL, key: 'dk_manual-fixture' });
+    expect(await owner.call(method, { key: null })).toEqual({ configured: false });
+  } else if (method === 'subscriptionProxy.setEnabled') {
+    expect((await owner.call(method, { enabled: true })).subscriptionProxy?.enabled).toBe(true);
+  } else {
+    expect((await owner.call(method, { subscriptionProxy: LOCAL })).subscriptionProxy?.enabled).toBe(true);
+  }
+  expect((await owner.call('settings.get', {})).subscriptionProxy?.enabled).toBe(true);
+  expect(harness!.core.journal.getSetting('subscription-proxy-key')).toBeUndefined();
+  const logs = JSON.stringify(await owner.call('core.logs', {}));
+  expect(logs).toContain('Could not create the local Douane client key');
+  expect(logs).not.toContain('private fixture response');
+}, 30_000);
+
 test('an absent or stopped plugin cannot create a client on a different server occupying its port', async () => {
   const { owner, port } = await core();
   await owner.call('subscriptionProxy.configure', { subscriptionProxy: LOCAL });
@@ -189,7 +215,7 @@ test('a saved local client key is kept on 401 and removing it creates a working 
   expect(await thrown(readSubscriptionProxyModels(harness!.core, claude))).toThrow('subscription proxy settings');
   expect(subscriptionProxyEnv(harness!.core, claude).ANTHROPIC_AUTH_TOKEN).toBe('dk_owner-key');
   expect(existsSync(join(harness!.dataDir, 'douane', 'douane.toml.client-key'))).toBe(false);
-  await owner.call('subscriptionProxy.key', { key: null });
+  expect(await owner.call('subscriptionProxy.key', { key: null })).toEqual({ configured: true });
   expect(subscriptionProxyEnv(harness!.core, claude).ANTHROPIC_AUTH_TOKEN).toBe('dk_fixture-local-client');
   expect((await owner.call('subscriptionProxy.quotas', { refresh: true })).status).toBe('ready');
   expect(subscriptionProxyEnv(harness!.core, claude).ANTHROPIC_AUTH_TOKEN).toBe('dk_fixture-local-client');
