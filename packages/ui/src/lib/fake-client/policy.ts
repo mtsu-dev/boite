@@ -23,6 +23,7 @@ export const MANAGED_POLICY: AdminPolicy = {
   issueReports: false,
   dictation: 'local',
   agentBrowser: { searchUrl: 'https://search.example.com/?q={query}' },
+  agentDesktop: false,
   network: { lan: false, tailscaleServe: false, groups: false, contacts: false, push: false },
   pullRequests: false
 };
@@ -39,6 +40,7 @@ const STRICTEST: AdminPolicy = {
   dictation: 'off',
   previews: { remoteResources: false },
   agentBrowser: false,
+  agentDesktop: false,
   network: { lan: false, tailscaleServe: false, groups: false, contacts: false, push: false },
   pullRequests: false
 };
@@ -60,6 +62,7 @@ export function lockedKeysOf(values: AdminPolicy): PolicyKey[] {
   if (values.previews?.remoteResources === false) on.push('previews.remoteResources');
   if (values.agentBrowser === false) on.push('agentBrowser');
   if (typeof values.agentBrowser === 'object') on.push('agentBrowser.searchUrl');
+  if (values.agentDesktop === false) on.push('agentDesktop');
   for (const item of ['lan', 'tailscaleServe', 'groups', 'contacts', 'push'] as const) if (values.network?.[item] === false) on.push(`network.${item}`);
   if (values.pullRequests === false) on.push('pullRequests');
   return on;
@@ -77,7 +80,7 @@ export function policyFixture(kind: string | null): PolicyState {
     case 'managed': return fakePolicy(MANAGED_POLICY);
     case 'broken': return fakePolicy({ ...MANAGED_POLICY, updates: { ...MANAGED_POLICY.updates, app: 'off' } }, [
       { file: FILE, field: 'updates.app', expected: '"off" or "check" or "auto"', message: `${FILE}: updates.app is "weekly"; expected "off" or "check" or "auto"` },
-      { file: FILE, field: 'telemetry', expected: 'one of analytics, updates, providers, gateway, quotaReads, plugins, issueReports, dictation, previews, agentBrowser, network, pullRequests', message: `${FILE}: telemetry is an unknown key` }
+      { file: FILE, field: 'telemetry', expected: 'one of analytics, updates, providers, gateway, quotaReads, plugins, issueReports, dictation, previews, agentBrowser, agentDesktop, network, pullRequests', message: `${FILE}: telemetry is an unknown key` }
     ]);
     case 'closed': return fakePolicy(STRICTEST, [
       { file: FILE, field: '(file)', expected: 'a JSON object', message: `${FILE}: not valid JSON (Unexpected token } in JSON at position 212); every policy key takes its strictest value until it is fixed` }
@@ -106,7 +109,7 @@ const FORBIDS: Record<PolicyKey, string> = {
   analytics: 'Usage analytics', 'updates.app': 'Desktop app updates', 'updates.server': 'Server updates', 'updates.agents': 'Agent updates',
   'providers.allow': 'This provider', 'providers.deny': 'This provider', gateway: 'The subscription gateway', 'gateway.allowedBaseUrls': 'This gateway address',
   quotaReads: 'Quota reads', 'plugins.install': 'Plugin installs', 'plugins.recommended': 'Recommended plugin checks', issueReports: 'Issue reports',
-  dictation: 'Dictation', 'previews.remoteResources': 'Remote resources in previews', agentBrowser: 'The agent browser', 'agentBrowser.searchUrl': 'This search address',
+  dictation: 'Dictation', 'previews.remoteResources': 'Remote resources in previews', agentBrowser: 'The agent browser', 'agentBrowser.searchUrl': 'This search address', agentDesktop: 'The agent desktop',
   'network.lan': 'Listening on the local network', 'network.tailscaleServe': 'Tailscale HTTPS serving', 'network.groups': 'Groups', 'network.contacts': 'Contacts',
   'network.push': 'Push notifications', pullRequests: 'Pull request reads'
 };
@@ -172,6 +175,7 @@ const gatewayOff = (values: AdminPolicy) => values.gateway === false;
 const plugins = when('plugins.install', values => values.plugins?.install === false);
 const dictationOff = when('dictation', values => values.dictation === 'off');
 const browserOff = when('agentBrowser', values => values.agentBrowser === false);
+const desktopOff = when('agentDesktop', values => values.agentDesktop === false);
 const pullRequestsOff = when('pullRequests', values => values.pullRequests === false);
 const updatesOff = (values: AdminPolicy, kind: 'app' | 'server' | 'agents') => values.updates?.[kind] === 'off';
 
@@ -234,6 +238,9 @@ const RULES: Partial<Record<RpcMethodName, Rule>> = {
   'contacts.tailscaleKey': when('network.contacts', (values, params) => params.key !== null && values.network?.contacts === false),
   'threads.linkPullRequest': pullRequestsOff,
   'threads.watchPullRequest': pullRequestsOff,
+  'desktop.start': desktopOff,
+  'desktop.run': desktopOff,
+  'desktop.tool': desktopOff,
 };
 
 /** The methods the fake gate holds a rule for: the parity test compares them with the core's. */

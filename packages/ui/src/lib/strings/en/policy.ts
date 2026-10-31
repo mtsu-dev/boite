@@ -44,6 +44,7 @@ export const strings = {
       'previews.remoteResources': 'Remote resources in previews',
       agentBrowser: 'Agent browser',
       'agentBrowser.searchUrl': 'Address bar search',
+      agentDesktop: 'Agent desktop',
       'network.lan': 'Local network access',
       'network.tailscaleServe': 'Tailscale HTTPS',
       'network.groups': 'Groups',

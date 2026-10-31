@@ -28,6 +28,7 @@ const gatewayAt = (core: Core, baseUrl: unknown): [PolicyKey, string?] | null =>
 const groupsOff = when('network.groups', core => core.policy.networkOff('groups'));
 const contactsOff = when('network.contacts', core => core.policy.networkOff('contacts'));
 const browserOff = when('agentBrowser', core => core.policy.agentBrowserOff());
+const desktopOff = when('agentDesktop', core => core.policy.agentDesktopOff());
 const pullRequestsOff = when('pullRequests', core => core.policy.pullRequestsOff());
 const dictationOff = when('dictation', core => core.policy.dictation() === 'off');
 const pushOff = when('network.push', core => core.policy.networkOff('push'));
@@ -85,6 +86,11 @@ const RULES: Partial<Record<RpcMethodName, Rule>> = {
 
   'push.subscribe': pushOff,
   'push.test': pushOff,
+
+  // Status and stop stay open: a desktop started before the policy can still be seen and stopped.
+  'desktop.start': desktopOff,
+  'desktop.run': desktopOff,
+  'desktop.tool': desktopOff,
 
   'browser.command': browserOff,
   'browser.importCookies': browserOff,

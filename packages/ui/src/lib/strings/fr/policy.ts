@@ -46,6 +46,7 @@ export const fr: Translation = {
       'previews.remoteResources': 'Ressources distantes dans les aperçus',
       agentBrowser: 'Navigateur des agents',
       'agentBrowser.searchUrl': 'Recherche de la barre d’adresse',
+      agentDesktop: 'Bureau des agents',
       'network.lan': 'Accès au réseau local',
       'network.tailscaleServe': 'HTTPS Tailscale',
       'network.groups': 'Groupes',

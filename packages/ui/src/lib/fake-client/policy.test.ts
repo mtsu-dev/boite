@@ -54,6 +54,12 @@ test('a local ACP provider preserves Windows file paths and a searched executabl
   }
 });
 
+test('agentDesktop: false shows in the desktop status with the core sentence, and the tool refuses by policy', async ({ createClient }) => {
+  const client = await createClient({ delayMs: 0, policy: fakePolicy({ agentDesktop: false }) });
+  expect((await client.call('desktop.status', { threadId: 't-trace' })).support).toEqual({ available: false, reason: 'the machine policy turns it off (key agentDesktop)' });
+  await expect(client.call('desktop.tool', { threadId: 't-trace' })).rejects.toMatchObject({ code: RpcErrorCode.Refused, data: { policy: 'agentDesktop' } });
+});
+
 test('the address bar searches where the policy says, the default otherwise', () => {
   const search = policySearch(policyFixture('managed'));
   expect(search).toBe('https://search.example.com/?q={query}');
