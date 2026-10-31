@@ -274,9 +274,10 @@ export interface AgentsRpcMethods {
    */
   'agents.builtin.ensure': { params: { kind: AgentBuiltin; name?: string; selection?: AgentSelection }; result: AgentProfile };
   /**
-   * A built-in bot back to how Boite ships it: default name and robot, its
-   * memory emptied, its routines removed and a new thread, the old one
-   * archived. Its route stays unless `selection` names another; `name` is the
+   * A built-in bot back to how Boite ships it: default name, robot and route
+   * (model, effort, permission mode), active again, its memory emptied, its
+   * routines removed and a new thread, the old one archived. `selection`
+   * replaces the default route; `name` is the
    * default name in the client's language. Owner only.
    */
   'agents.builtin.reset': { params: { agentId: string; name?: string; selection?: AgentSelection }; result: AgentProfile };

@@ -29,10 +29,10 @@ export const CONTACT_MAIL_SCENARIOS: Record<string, Scenario> = {
     // A thread's ask waits for this owner's Contacts bot, which sends it on; the contact has none, so its owner decides.
     const bot = await env.call('agents.builtin.ensure', { kind: 'contacts' });
     const { threadId: botThread } = await env.call('agents.open', { agentId: bot.id });
-    const operator = await env.peer({ agentThreadId: botThread });
     const answered = async (text: string) => {
       const request = await env.call('collaboration.ask', { threadId: thread.id, contact: coreId, text });
-      await operator.call('contacts.bot.forward', { threadId: botThread, id: request.id, contact: coreId });
+      // The bot's own call, made here on its thread; the fake's agent connections share no bot state.
+      await env.call('contacts.bot.forward', { threadId: botThread, id: request.id, contact: coreId });
       const incoming = async () => (await contact.call('contacts.get', {})).requests.find(request => request.direction === 'in' && request.status === 'pending' && request.text === text);
       await until(async () => Boolean(await incoming()), 'the contact never received the request');
       await contact.call('contacts.decide', { id: (await incoming())!.id, accept: false, reason: `No: ${text}` });

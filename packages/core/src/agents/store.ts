@@ -174,11 +174,11 @@ export class AgentStore {
   }
   /** The built-in bot of that kind on this core, not archived, or null. */
   builtin(kind: AgentBuiltin): AgentProfile | null { return this.builtins.live(kind); }
-  /** Its own thread while it is live and the thread exists: the one thread that may act as it (contacts/bot.ts). */
+  /** Its own thread while it is live and the thread exists unarchived: the one thread that may act as it (contacts/bot.ts). */
   builtinThread(kind: AgentBuiltin): string | null {
     const agent = this.builtins.live(kind);
     const threadId = agent === null ? undefined : this.sessionOf(agent.id)?.threadId;
-    return threadId !== undefined && this.#threads.get(threadId) === agent!.id && this.core.journal.getThread(threadId) !== null ? threadId : null;
+    return threadId !== undefined && this.#threads.get(threadId) === agent!.id && this.core.journal.getThread(threadId)?.archived === false ? threadId : null;
   }
   /** The agent of a thread an agent calls from, or the refusal naming what was expected. */
   #callerAgent(threadId: string, method: string): AgentProfile {

@@ -18,13 +18,9 @@ type Card = { kind: 'share' | 'owner'; requestId: string; projectId?: string };
 
 /** This owner's Contacts bot, when one is live: its profile and the thread it works in. */
 export function contactsBot(core: Core): { agentId: string; threadId: string; name: string } | null {
-  for (const agent of core.workforce.records.list('profile')) {
-    if (agent.builtin !== 'contacts' || agent.status === 'archived') continue;
-    const threadId = core.workforce.sessionOf(agent.id)?.threadId;
-    const thread = threadId ? core.journal.getThread(threadId) : null;
-    if (thread && !thread.archived) return { agentId: agent.id, threadId: thread.id, name: agent.name };
-  }
-  return null;
+  const agent = core.workforce.builtin('contacts');
+  const threadId = core.workforce.builtinThread('contacts');
+  return agent === null || threadId === null ? null : { agentId: agent.id, threadId, name: agent.name };
 }
 
 /** Wakes the bot with one event; nothing happens without a bot. `key` is unique per event. */
