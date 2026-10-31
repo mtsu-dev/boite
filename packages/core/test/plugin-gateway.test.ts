@@ -13,7 +13,7 @@ import { startTestCore, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
 
 const FAKE = join(import.meta.dir, 'fixtures', 'fake-douane.ts');
-const ENV = [DOUANE_BINARY_ENV, 'FAKE_DOUANE_VERSION', 'FAKE_DOUANE_CRASH_FILE', 'FAKE_DOUANE_IN_FLIGHT_FILE', 'FAKE_DOUANE_RUNS_FILE', 'BOITE_TOKEN'] as const;
+const ENV = [DOUANE_BINARY_ENV, 'FAKE_DOUANE_VERSION', 'FAKE_DOUANE_CLIENT_KEYS', 'FAKE_DOUANE_CRASH_FILE', 'FAKE_DOUANE_IN_FLIGHT_FILE', 'FAKE_DOUANE_RUNS_FILE', 'BOITE_TOKEN'] as const;
 const LOCAL: SubscriptionProxy = { enabled: true, kind: 'douane', mode: 'local', baseUrl: 'http://gateway.invalid', dashboardUrl: 'http://gateway.invalid/' };
 const ARTIFACT = 'https://plugins.example.invalid/douane';
 const realFetch = globalThis.fetch;
@@ -126,6 +126,73 @@ test('an installed gateway runs on loopback without the owner token, and the loc
   await owner.call('plugins.gateway', { id: 'douane', action: 'stop' });
   expect((await owner.call('subscriptionProxy.movePlan', { target: 'plugin' })).origin).toBeNull();
   expect(await thrown(owner.call('subscriptionProxy.move', { ids: ['x'], target: 'plugin' }))).toThrow('start the Douane plugin first');
+}, 30_000);
+
+test('local Douane creates one client key before discovery, quotas and agent environments, and reuses it after restart', async () => {
+  process.env.FAKE_DOUANE_CLIENT_KEYS = '1';
+  const { owner } = await core();
+  await owner.call('subscriptionProxy.configure', { subscriptionProxy: LOCAL });
+  await owner.call('plugins.install', { id: 'douane' });
+  await gatewayIs(owner, 'running');
+  const claude = harness!.core.providers.require('claude');
+  expect(subscriptionProxyEnv(harness!.core, claude).ANTHROPIC_AUTH_TOKEN).toBe('dk_fixture-local-client');
+  expect((await readSubscriptionProxyModels(harness!.core, claude))?.map(model => model.id)).toEqual(['claude-sonnet-5']);
+  expect((await owner.call('subscriptionProxy.quotas', { refresh: true })).status).toBe('ready');
+  expect(JSON.stringify(await owner.call('settings.get', {}))).not.toContain('dk_fixture-local-client');
+  await owner.call('plugins.gateway', { id: 'douane', action: 'restart' });
+  expect((await owner.call('subscriptionProxy.quotas', { refresh: true })).status).toBe('ready');
+  expect(subscriptionProxyEnv(harness!.core, claude).ANTHROPIC_AUTH_TOKEN).toBe('dk_fixture-local-client');
+}, 30_000);
+
+test.each(['subscriptionProxy.setEnabled', 'settings.set'] as const)('%s provisions a local key before a cached-model agent captures its environment', async (method) => {
+  process.env.FAKE_DOUANE_CLIENT_KEYS = '1';
+  const { owner } = await core();
+  await owner.call('subscriptionProxy.configure', { subscriptionProxy: { ...LOCAL, enabled: false } });
+  await owner.call('plugins.install', { id: 'douane' });
+  await gatewayIs(owner, 'running');
+  if (method === 'subscriptionProxy.setEnabled') await owner.call(method, { enabled: true });
+  else await owner.call(method, { subscriptionProxy: LOCAL });
+  expect(subscriptionProxyEnv(harness!.core, harness!.core.providers.require('claude')).ANTHROPIC_AUTH_TOKEN).toBe('dk_fixture-local-client');
+}, 30_000);
+
+test('an absent or stopped plugin cannot create a client on a different server occupying its port', async () => {
+  const { owner, port } = await core();
+  await owner.call('subscriptionProxy.configure', { subscriptionProxy: LOCAL });
+  let posts = 0;
+  const occupy = (port: number) => Bun.serve({ hostname: '127.0.0.1', port, fetch(request) {
+    if (request.method === 'POST') posts++;
+    return Response.json({ key: 'dk_unmanaged-service', providers: [], updated_at: null });
+  } });
+  const occupied = occupy(port);
+  held.push(occupied);
+  await owner.call('subscriptionProxy.quotas', { refresh: true });
+  expect(posts).toBe(0);
+  occupied.stop(true);
+  await owner.call('plugins.install', { id: 'douane' });
+  const plugin = await gatewayIs(owner, 'running');
+  await owner.call('plugins.gateway', { id: 'douane', action: 'stop' });
+  held.push(occupy(plugin.gateway!.port));
+  await owner.call('subscriptionProxy.quotas', { refresh: true });
+  expect(posts).toBe(0);
+  expect(harness!.core.journal.getSetting('subscription-proxy-key')).toBeUndefined();
+}, 30_000);
+
+test('a saved local client key is kept on 401 and removing it creates a working key', async () => {
+  process.env.FAKE_DOUANE_CLIENT_KEYS = '1';
+  const { owner } = await core();
+  await owner.call('plugins.install', { id: 'douane' });
+  await gatewayIs(owner, 'running');
+  await owner.call('subscriptionProxy.configure', { subscriptionProxy: LOCAL, key: 'dk_owner-key' });
+  const failed = await owner.call('subscriptionProxy.quotas', { refresh: true });
+  expect(failed).toMatchObject({ status: 'unavailable', error: expect.stringContaining('valid client API key (HTTP 401)') });
+  const claude = harness!.core.providers.require('claude');
+  expect(await thrown(readSubscriptionProxyModels(harness!.core, claude))).toThrow('subscription proxy settings');
+  expect(subscriptionProxyEnv(harness!.core, claude).ANTHROPIC_AUTH_TOKEN).toBe('dk_owner-key');
+  expect(existsSync(join(harness!.dataDir, 'douane', 'douane.toml.client-key'))).toBe(false);
+  await owner.call('subscriptionProxy.key', { key: null });
+  expect(subscriptionProxyEnv(harness!.core, claude).ANTHROPIC_AUTH_TOKEN).toBe('dk_fixture-local-client');
+  expect((await owner.call('subscriptionProxy.quotas', { refresh: true })).status).toBe('ready');
+  expect(subscriptionProxyEnv(harness!.core, claude).ANTHROPIC_AUTH_TOKEN).toBe('dk_fixture-local-client');
 }, 30_000);
 
 test('a crash starts it again; a core start runs it only while it starts with Boite; uninstall keeps its data', async () => {

@@ -268,10 +268,13 @@ test('the Douane plugin: its row in Plugins and the proxy card pointing at it, a
     await local.waitFor('document.querySelector("[data-testid=subscription-proxy-settings]")');
     await local.click('[data-testid="subscription-proxy-local"]');
     await local.waitFor('document.querySelector("[data-testid=subscription-proxy-plugin]")?.dataset.state === "running"');
+    expect(await local.evaluate('document.querySelector("[data-testid=subscription-proxy-key]")?.type')).toBe('password');
+    await local.type('[data-testid="subscription-proxy-key"]', 'dk_local-fixture');
     await local.click('[data-testid="subscription-proxy-enabled"]');
     await local.click('[data-testid="subscription-proxy-save"]');
     await local.waitFor('document.querySelector("[data-testid=subscription-proxy-result]")?.textContent.includes("saved")');
     expect(await local.text('[data-testid=subscription-proxy-plugin]')).toContain('Douane 0.3.0 answers on 127.0.0.1:8787.');
+    expect(await local.evaluate('document.querySelector("[data-testid=subscription-proxy-key]").value')).toBe('');
     await local.waitFor('window.__inView("[data-testid=subscription-proxy-settings]")');
     await shot('boite-douane-proxy-desktop.png');
 
@@ -285,7 +288,8 @@ test('the Douane plugin: its row in Plugins and the proxy card pointing at it, a
     await local.waitFor('document.querySelector("[data-testid=subscription-proxy-settings]")');
     await local.evaluate('document.querySelector("[data-testid=subscription-proxy-settings]").closest("details").open = true');
     await local.waitFor('document.querySelector("[data-testid=subscription-proxy-plugin]")?.dataset.state === "running"');
-    await local.waitFor('window.__inView("[data-testid=subscription-proxy-plugin]")');
+    await local.waitFor('window.__inView("[data-testid=subscription-proxy-key]")');
+    expect(await local.evaluate('document.querySelector("[data-testid=subscription-proxy-key]")?.type')).toBe('password');
     expect(await local.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
     await shot('boite-douane-proxy-phone.png');
     expect(local.errors()).toEqual([]);
