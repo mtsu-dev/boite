@@ -113,7 +113,8 @@ export class BuiltinBots {
   }
 
   /**
-   * `agents.builtin.reset`: default name and robot, Boite's text, an empty
+   * `agents.builtin.reset`: default name, robot and route (model, effort,
+   * permission mode), active again, Boite's text, an empty
    * memory and brain notes, no routines, and a new thread with its
    * introduction; the old thread is archived, with whatever ran on it. Facts
    * still waiting for the bot stay: a request in flight is not lost.
@@ -125,13 +126,14 @@ export class BuiltinBots {
     const shipped = BUILTIN_TEXT[agent.builtin];
     const name = params.name === undefined ? shipped.name : text(params.name, 'name', 100);
     if (params.selection !== undefined) object(params.selection, 'selection');
+    const selection = params.selection ?? this.#defaultSelection(agent.builtin, 'reset');
     const { id, revision, createdAt: _createdAt, updatedAt: _updatedAt, ...value } = agent;
     // Boite's text first, through the records: the save below refuses any other domain or instructions.
     const current = agent.domain === shipped.domain && agent.instructions === shipped.instructions
       ? agent : this.#store.records.update('profile', id, revision, { ...value, domain: shipped.domain, instructions: shipped.instructions });
     const saved = this.#store.saveProfile({
       id, expectedRevision: current.revision,
-      value: { ...value, name, avatar: shipped.avatar, domain: shipped.domain, instructions: shipped.instructions, status: agent.status === 'archived' ? 'active' : agent.status, selection: params.selection ?? agent.selection },
+      value: { ...value, name, avatar: shipped.avatar, domain: shipped.domain, instructions: shipped.instructions, status: 'active', selection },
     });
     for (const routine of this.#store.records.list('routine').filter(r => r.agentId === id)) this.#store.records.remove('routine', routine.id);
     const brain = this.#store.resident.brain(id);
@@ -151,10 +153,10 @@ export class BuiltinBots {
    * The route a new bot takes on the Bots page: the machine's signed-in
    * account of an available provider and its default model, free to act.
    */
-  #defaultSelection(kind: AgentBuiltin): AgentSelection {
+  #defaultSelection(kind: AgentBuiltin, method: 'ensure' | 'reset' = 'ensure'): AgentSelection {
     const available = new Set(this.#core.providers.available().map(summary => summary.id));
     const account = loggedInAccount(this.#core.accounts.list().filter(entry => available.has(entry.providerId)));
-    if (account === undefined) throw refused(`agents.builtin.ensure: no signed-in account on this machine can run the ${kind} bot; sign in to a provider in Settings, then turn it on again`, { field: 'selection', expected: 'a signed-in account' });
+    if (account === undefined) throw refused(`agents.builtin.${method}: no signed-in account on this machine can run the ${kind} bot; sign in to a provider in Settings, then turn it on again`, { field: 'selection', expected: 'a signed-in account' });
     return { providerId: account.providerId, accountId: account.id, model: null, effort: null, permissionMode: 'bypassPermissions' };
   }
 }

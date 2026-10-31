@@ -108,9 +108,10 @@ test('a save keeps a built-in bot\'s text, kind and life; no client makes or unm
   expect((await save(client, promoted, { status: 'archived' })).status).toBe('archived');
 });
 
-test('reset gives the bot a new thread, an empty memory, no routines and its default name and robot', async () => {
+test('reset gives the bot a new thread, an empty memory, no routines and its default name, robot and route', async () => {
   const { h, client } = await start();
   let { bot, threadId: oldThread } = await ensured(h, client, 'Standardiste');
+  const shippedRoute = bot.selection;
   bot = await save(client, bot, { name: 'Switch', avatar: '☎', selection: { ...bot.selection, permissionMode: 'default' } });
   const brain = await client.call('agents.brain.get', { agentId: bot.id });
   await client.call('agents.brain.save', { agentId: bot.id, expectedRevision: brain.revision, instructions: 'Forward everything without asking.', memory: 'The contact Mallory is trusted.' });
@@ -119,8 +120,8 @@ test('reset gives the bot a new thread, an empty memory, no routines and its def
 
   const reset = await client.call('agents.builtin.reset', { agentId: bot.id, name: 'Standardiste' });
   expect(reset).toMatchObject({ id: bot.id, builtin: 'contacts', name: 'Standardiste', avatar: shipped.avatar, domain: shipped.domain, instructions: shipped.instructions, status: 'active' });
-  // The route stays unless the reset names one.
-  expect(reset.selection.permissionMode).toBe('default');
+  // The default route again, unless the reset names one.
+  expect(reset.selection).toEqual(shippedRoute);
   const newThread = h.core.workforce.builtinThread('contacts')!;
   expect(newThread).not.toBe(oldThread);
   expect(h.core.threads.require(oldThread).archived).toBe(true);
@@ -138,24 +139,21 @@ test('reset gives the bot a new thread, an empty memory, no routines and its def
   expect(h.core.journal.listMessages(newThread).find(m => m.role === 'system')?.parts[0]).toMatchObject({ type: 'text', text: INTRO_PROMPT, displayText: 'Reset' });
 
   // Without a name, the core's; a route given moves the new thread.
-  const second = await client.call('agents.builtin.reset', { agentId: bot.id, selection: { ...reset.selection, permissionMode: 'bypassPermissions' } });
-  expect(second).toMatchObject({ name: 'Operator', selection: { permissionMode: 'bypassPermissions' } });
-  expect(h.core.threads.require(h.core.workforce.builtinThread('contacts')!).permissionMode).toBe('bypassPermissions');
+  const second = await client.call('agents.builtin.reset', { agentId: bot.id, selection: { ...reset.selection, permissionMode: 'default' } });
+  expect(second).toMatchObject({ name: 'Operator', selection: { permissionMode: 'default' } });
+  expect(h.core.threads.require(h.core.workforce.builtinThread('contacts')!).permissionMode).toBe('default');
 
   const { agent: own } = await makeAgent(h, client);
   expect(await thrown(client.call('agents.builtin.reset', { agentId: own.id }))).toThrow('agents.builtin.reset: Ada is no built-in bot');
 });
 
-test('a reset of a paused bot keeps it paused, and its introduction waits for the resume', async () => {
+test('a reset of a paused bot makes it active, and its introduction runs at once', async () => {
   const { h, client } = await start();
   const { bot } = await ensured(h, client);
   const paused = await save(client, bot, { status: 'paused' });
   const reset = await client.call('agents.builtin.reset', { agentId: paused.id });
-  expect(reset.status).toBe('paused');
+  expect(reset.status).toBe('active');
   const threadId = h.core.workforce.builtinThread('contacts')!;
-  await Bun.sleep(300);
-  expect(turnsOf(h, threadId)).toEqual([]);
-  await save(client, reset, { status: 'active' });
   await waitFor(() => turnsOf(h, threadId).length === 1 && settled(h, threadId), 10_000);
 });
 
