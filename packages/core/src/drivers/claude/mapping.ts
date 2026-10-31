@@ -113,15 +113,26 @@ export function resultText(content: unknown): string {
  * or the sum of its turns when they predate that. Returns the part of the
  * total that earlier turns already account for, or null when an older save
  * came back: what it restored is unknown, so this turn's own share is too.
+ * Restored counts only grow, so a bucket under the one `before` held means the
+ * save was not restored whole; a compaction, whose own usage is empty, could
+ * otherwise pass a large summary request for the restored session.
  */
-export function restoredCost(result: SDKResultMessage, before: { costUsd: number; tokens: number }): number | null {
+export function restoredCost(result: SDKResultMessage, before: AgentTotals): number | null {
   const total = typeof result.total_cost_usd === 'number' ? result.total_cost_usd : 0;
   if (before.costUsd <= 0 || before.tokens <= 0 || total <= 0) return 0;
   const own = mapUsage(result, 0);
   const turn = own.inputTokens + own.outputTokens + own.cacheReadTokens + own.cacheWriteTokens;
   const restored = heldTokens(result) - turn;
-  if (restored >= before.tokens && total >= before.costUsd) return before.costUsd;
+  if (restored >= before.tokens && total >= before.costUsd && holdsAll(result, before.held)) return before.costUsd;
   return restored < before.tokens / 2 ? 0 : null;
+}
+
+/** Whether every bucket of the result's `modelUsage` holds at least `held`; true when `held` is unknown. */
+function holdsAll(result: SDKResultMessage, held: AgentTotals['held']): boolean {
+  if (held === undefined) return true;
+  const now = heldUsage(result);
+  return now.inputTokens >= held.inputTokens && now.outputTokens >= held.outputTokens
+    && now.cacheReadTokens >= held.cacheReadTokens && now.cacheWriteTokens >= held.cacheWriteTokens;
 }
 
 /** Every token of the result's `modelUsage`: the CLI's running count, restored totals included. */

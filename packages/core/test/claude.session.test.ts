@@ -349,6 +349,41 @@ describe('claude driver', () => {
     expect(usage?.costUsdEquivalent).toBeCloseTo(0.04, 10);
   });
 
+  test('a cold compaction whose CLI started from zero is not read as a restored session, even when it alone outweighs it', async () => {
+    const client = await harness.connect();
+    const threadId = await claudeThread(client);
+
+    // The first turn wrote its cache. The resumed CLI restored nothing, so the compaction's totals hold only the
+    // summary request: more tokens and cost than the whole first turn, but none of its cache writes.
+    const held = (input: number, output: number, read: number, write: number) => ({
+      'claude-opus-5-5': { inputTokens: input, outputTokens: output, cacheReadInputTokens: read, cacheCreationInputTokens: write,
+        cacheCreationEphemeral5mInputTokens: 0, cacheCreationEphemeral1hInputTokens: write, webSearchRequests: 0, costUSD: 0, contextWindow: 1_000_000, maxOutputTokens: 128_000 },
+    });
+    const zeroed = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
+    const results = [
+      { total_cost_usd: 0.1155885, modelUsage: held(2, 4, 0, 14_422),
+        usage: { input_tokens: 2, output_tokens: 4, cache_read_input_tokens: 0, cache_creation_input_tokens: 14_422, cache_creation: { ephemeral_1h_input_tokens: 14_422, ephemeral_5m_input_tokens: 0 } } },
+      { total_cost_usd: 0.2, modelUsage: held(40_000, 541, 14_425, 0), usage: zeroed },
+    ];
+    let turn = 0;
+    scripted(() => undefined, (fake) => {
+      fake.emit(init('sess-compact-fresh'));
+      fake.emit(sdk({ ...(success('sess-compact-fresh') as object), ...results[turn++] }));
+    });
+
+    const first = client.next('turn.finished', (finished) => finished.threadId === threadId, 10000);
+    await client.call('turns.start', { threadId, prompt: 'first' });
+    await first;
+    const compacted = client.next('turn.finished', (finished) => finished.threadId === threadId, 10000);
+    await client.call('threads.compact', { threadId });
+    const usage = (await compacted).usage;
+
+    expect(queries).toHaveLength(2);
+    // What the CLI restored is unknown, so the turn charges nothing it cannot account for.
+    expect(usage?.costUsdEquivalent).toBeNull();
+    expect(usage).toMatchObject({ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 });
+  });
+
   test('a resumed CLI that restored less than the journal holds leaves the turn unpriced instead of charging the session again', async () => {
     const client = await harness.connect();
     const threadId = await claudeThread(client);
