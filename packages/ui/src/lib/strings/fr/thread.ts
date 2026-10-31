@@ -29,6 +29,8 @@ export const fr: Translation = {
     contextNoBreakdown: 'Cet agent ne détaille pas sa consommation.',
     contextNoReading: "Aucune mesure reçue de cet agent pour l'instant.",
     contextMeasured: 'Dernière mesure',
+    contextCompactions: 'Compactions',
+    contextPrompts: 'Messages envoyés',
     cacheTitle: 'Cache de prompt',
     cacheChipWarm: (left: string) => `Cache de prompt chaud, encore environ ${left}`,
     cacheChipMaybe: (most: string) => `Cache de prompt peut-être encore chaud, ${most} au plus`,

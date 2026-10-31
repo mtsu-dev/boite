@@ -372,6 +372,17 @@ checks that at desktop and phone widths. Completed tasks and goals fade out on t
 prompt, and newly reported work brings the task list back. Loop details show
 the latest 50 iterations with their outcome and up to 4000 characters of result.
 
+A subagent's question stays in its own conversation. The parent's chatbar,
+above the message input, shows "A subagent has a question" with the child's
+title on desktop and phone. Clicking it opens the child on the machine that
+owns it, where choices and written answers use that child's composer. This
+includes workflow steps and children on other machines. The parent's own
+questions keep their answer controls in the chatbar; child questions only
+provide a link. Child permissions and secret requests still link to the
+child's conversation from the dock.
+`tests/e2e/subagent-questions.test.ts` checks blocking and asynchronous written
+answers against a temporary core on desktop and a paired phone.
+
 The core owns this work, so switching threads or closing a client does not
 cancel it. A goal continues through scheduled turns until the agent emits
 `[BOITE_GOAL_COMPLETE]` on its own line. The prompt requests that marker only
@@ -607,6 +618,23 @@ is `auto` or `manual`; `preTokens` is null when no prior count is known,
 and `postTokens` is null when the agent did not say what
 was left. An imported Claude Code session does not carry its compactions:
 the transcript reader keeps prompts, answers and tool calls only.
+
+The chat draws no full-width divider for it. Inside a run of tool calls, the
+compaction joins the run: the `Ran N commands` line carries a
+`compacted 201.2K → 13.4K` mark whose label gives the full sentence. Outside a
+run it stays a one-line divider. A settled automatic compaction turn draws no
+row of its own: its mark goes on the summary line of the turn before it, or on
+that turn's fold row when the turn folded. Manual, running and failed
+compaction turns keep their row.
+
+The context popup counts what the loaded pages cannot: `threads.stats` returns
+the thread's compactions and the prompts the user sent. The core counts the
+part's opening, `{"type":"compaction","trigger":"`, in the stored JSON
+(`journal/thread-stats.ts`): about 130 ms on a 42 MB thread of 2,751 messages,
+where parsing each part took 1.1 s. A quote inside a JSON string is escaped, so
+tool output cannot match; a tool input object nesting that exact opening would.
+The popup reads it again after each turn while open. A paired phone may call
+it; an agent may not. A core without the method leaves the two lines out.
 
 ## The colours
 

@@ -26,34 +26,31 @@
 </div>
 
 <style>
+  /* Drawn like a wake divider: a quiet line, the icon alone in the accent. */
   .spawn {
     align-self: stretch;
     display: flex;
     align-items: center;
-    gap: 10px;
-    margin: 6px 0;
+    gap: 12px;
+    margin: 4px 0;
     font-size: var(--text-xs);
-    color: var(--color-accent);
+    color: var(--color-muted-foreground);
   }
-  .rule {
-    flex: 1;
-    min-width: 12px;
-    height: 1px;
-    background: color-mix(in oklch, var(--color-accent) 45%, transparent);
-  }
+  .rule { flex: 1; min-width: 12px; height: 1px; background: var(--color-border); }
   .label {
     flex: 0 1 auto;
     min-width: 0;
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    color: var(--color-accent);
+    color: var(--color-muted-foreground);
     font-size: var(--text-xs);
-    font-weight: 600;
+    font-weight: 500;
     overflow-wrap: anywhere;
     white-space: normal;
     text-align: center;
     height: auto;
   }
-  .label :global(svg) { flex: none; }
+  button.label:hover, button.label:focus-visible { color: var(--color-foreground); }
+  .label :global(svg) { flex: none; color: var(--color-accent); }
 </style>

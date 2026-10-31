@@ -10,7 +10,8 @@ afterEach(async () => { if (mounted) await unmount(mounted); mounted = undefined
 const q = <T extends Element = HTMLElement>(id: string) => document.querySelector<T>(`[data-testid="${id}"]`);
 
 test('the plugin choice saves local mode at the Douane plugin\'s port and says it runs', async ({ ready }) => {
-  const { store } = await ready({ delayMs: 0 });
+  const { store, client } = await ready({ delayMs: 0 });
+  const call = vi.spyOn(client, 'call');
   mounted = mount(SubscriptionProxySettings, { target: document.body, props: { store } });
   flushSync();
   expect(q('subscription-proxy-remote')?.getAttribute('aria-pressed')).toBe('true');
@@ -18,9 +19,12 @@ test('the plugin choice saves local mode at the Douane plugin\'s port and says i
 
   q('subscription-proxy-local')!.click();
   flushSync();
-  // The plugin's URLs come from the core: no address or key to type.
+  // The plugin's URLs come from the core, but its client key can be supplied.
   expect(q('subscription-proxy-url')).toBeNull();
-  expect(q('subscription-proxy-key')).toBeNull();
+  const input = q<HTMLInputElement>('subscription-proxy-key')!;
+  expect(input).not.toBeNull();
+  input.value = 'dk_manual-fixture';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
   await vi.waitFor(() => expect(q('subscription-proxy-plugin')?.dataset.state).toBe('running'));
   expect(q('subscription-proxy-plugin')?.textContent).toContain('Douane 0.3.0 answers on 127.0.0.1:8787.');
   expect(q('subscription-proxy-open-plugins')).toBeNull();
@@ -29,6 +33,7 @@ test('the plugin choice saves local mode at the Douane plugin\'s port and says i
   q('subscription-proxy-save')!.click();
   await vi.waitFor(() => expect(store.settings?.subscriptionProxy?.mode).toBe('local'));
   expect(store.settings?.subscriptionProxy).toMatchObject({ enabled: true, kind: 'douane', baseUrl: 'http://127.0.0.1:8787/v1', dashboardUrl: 'http://127.0.0.1:8787/admin/' });
+  expect(call).toHaveBeenCalledWith('subscriptionProxy.configure', expect.objectContaining({ key: 'dk_manual-fixture' }));
 
   // Back to a remote gateway: the address typed before is there again.
   q('subscription-proxy-remote')!.click();

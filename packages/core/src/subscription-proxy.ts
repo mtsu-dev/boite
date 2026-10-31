@@ -6,8 +6,9 @@ import type { Core } from './core.ts';
 import { invalidParams, refused, unavailable, RpcFailure } from './errors.ts';
 import { isOpenCode, OPENCODE_V2 } from './providers/opencode.ts';
 import { profileFor } from './providers/resolve.ts';
+import { ensureLocalProxyKey, prepareLocalProxyKey, hasProxyKey, proxyKey, validateProxyKey as validateKey, writeProxyKey as writeKey, PROXY_AUTH_ERROR } from './subscription-proxy-auth.ts';
+export { proxyKey } from './subscription-proxy-auth.ts';
 
-const KEY_SETTING = 'subscription-proxy-key';
 /** The gateway models both OpenCode versions were last offered, kept so a restart can start a turn on one. */
 const OPENCODE_MODELS_SETTING = 'subscription-proxy-opencode-models';
 export const PROXY_URL_ENV = 'BOITE_SUBSCRIPTION_PROXY_URL';
@@ -129,12 +130,6 @@ export function proxyApiUrl(proxy: SubscriptionProxy): string {
   return `${proxy.baseUrl.replace(/\/v1\/?$/, '').replace(/\/$/, '')}/v1`;
 }
 
-/** The gateway key stays out of settings snapshots, journal events and process arguments. */
-export function proxyKey(core: Core): string {
-  const key = core.journal.getSetting(KEY_SETTING);
-  return typeof key === 'string' && key ? key : 'boite-subscription-proxy';
-}
-
 export function subscriptionProxyEnv(core: Core, provider: ProviderDescriptor): Record<string, string> {
   const proxy = activeSubscriptionProxy(core, provider);
   if (!proxy) return {};
@@ -245,12 +240,14 @@ export function proprietaryFamily(id: string): ModelFamily | null {
 
 /** Discovery is a bounded HTTP read on the core, so a phone uses its host's gateway. */
 export async function readSubscriptionProxyModels(core: Core, provider: ProviderDescriptor): Promise<ModelInfo[] | null> {
+  if (!activeSubscriptionProxy(core, provider)) return null;
+  await ensureLocalProxyKey(core);
+  const proxy = activeSubscriptionProxy(core, provider);
+  if (!proxy) return null;
   if (provider.id === 'muse') {
     // Its own MSP catalog carries native model ids and efforts, through Douane's Muse endpoint.
     return null;
   }
-  const proxy = activeSubscriptionProxy(core, provider);
-  if (!proxy) return null;
   // Grok's CLI reads the gateway's list itself and takes no model outside it: its discovery is the whole catalog.
   if (provider.id === GROK) return null;
   let response: Response;
@@ -260,7 +257,10 @@ export async function readSubscriptionProxyModels(core: Core, provider: Provider
       signal: AbortSignal.timeout(15_000), redirect: 'error',
     });
   } catch { throw unavailable('Subscription proxy model discovery could not reach the configured API URL'); }
-  if (!response.ok) throw unavailable(`Subscription proxy model discovery returned HTTP ${response.status}`);
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => {});
+    throw unavailable(response.status === 401 && proxy.kind === 'douane' ? PROXY_AUTH_ERROR : `Subscription proxy model discovery returned HTTP ${response.status}`);
+  }
   // Do not propagate a gateway's raw body: it can echo a credential.
   let body: { data?: unknown };
   try { body = await response.json() as { data?: unknown }; }
@@ -328,36 +328,25 @@ function openCodeModels(core: Core, proxy: SubscriptionProxy, rows: Record<strin
   return catalog.map((model) => ({ id: `${proxy.kind}/${model.id}`, name: model.name }));
 }
 
-function validateKey(key: unknown): asserts key is string | null {
-  if (key !== null && (typeof key !== 'string' || key.length > 4096 || !key.trim() || /[\u0000-\u0020\u007f]/.test(key))) {
-    throw invalidParams('subscriptionProxy.key must be null or a non-empty token without whitespace');
-  }
-}
-
-function writeKey(core: Core, key: string | null): void {
-  if (key === null) core.journal.deleteSetting(KEY_SETTING);
-  else core.journal.setSetting(KEY_SETTING, key);
-}
-
 export function registerSubscriptionProxy(core: Core): void {
-  core.router.register('subscriptionProxy.key', ({ key }) => {
+  core.router.register('subscriptionProxy.key', async ({ key }) => {
     validateKey(key);
     try { writeKey(core, key); }
     catch { throw unavailable('Subscription proxy key could not be saved'); }
     // The last answer was read with the previous key.
     core.quotas.gateway.reset();
-    return { configured: key !== null };
+    await prepareLocalProxyKey(core);
+    return { configured: hasProxyKey(core) };
   });
   core.router.register('subscriptionProxy.quotas', ({ refresh }) => {
     if (refresh !== undefined && typeof refresh !== 'boolean') throw invalidParams('subscriptionProxy.quotas refresh must be a boolean');
     return core.quotas.gateway.read(refresh === true);
   });
-  core.router.register('subscriptionProxy.configure', ({ subscriptionProxy, key }) => {
+  core.router.register('subscriptionProxy.configure', async ({ subscriptionProxy, key }) => {
     if (!subscriptionProxy || typeof subscriptionProxy !== 'object') throw invalidParams('subscriptionProxy configuration is required');
     if (key !== undefined) validateKey(key);
-    let settings;
     try {
-      settings = core.settings.set({ subscriptionProxy }, key === undefined ? undefined : () => writeKey(core, key));
+      core.settings.set({ subscriptionProxy }, key === undefined ? undefined : () => writeKey(core, key));
     } catch (error) {
       if (error instanceof RpcFailure) throw error;
       // A storage error must not expose a bound private value to the caller or logs.
@@ -365,13 +354,15 @@ export function registerSubscriptionProxy(core: Core): void {
     }
     // A new key can change the answer even when the settings did not.
     if (key !== undefined) core.quotas.gateway.reset();
-    return settings;
+    await prepareLocalProxyKey(core);
+    return core.settings.get();
   });
-  core.router.register('subscriptionProxy.setEnabled', ({ enabled }) => {
+  core.router.register('subscriptionProxy.setEnabled', async ({ enabled }) => {
     if (typeof enabled !== 'boolean') throw invalidParams('subscriptionProxy.setEnabled enabled must be a boolean', { field: 'enabled' });
     const proxy = core.settings.get().subscriptionProxy;
     if (!proxy?.baseUrl) throw refused('no subscription proxy is configured: the owner sets one up in Settings > Accounts', { field: 'subscriptionProxy' });
-    if (proxy.enabled === enabled) return core.settings.get();
-    return core.settings.set({ subscriptionProxy: { ...proxy, enabled } });
+    if (proxy.enabled !== enabled) core.settings.set({ subscriptionProxy: { ...proxy, enabled } });
+    await prepareLocalProxyKey(core);
+    return core.settings.get();
   });
 }

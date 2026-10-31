@@ -82,7 +82,7 @@
       if (!checked.ok) throw new Error(checked.message);
       store.settings = await client.call('subscriptionProxy.configure', {
         subscriptionProxy: checked.patch.subscriptionProxy!,
-        ...(!local && (key || clearKey) ? { key: clearKey ? null : key } : {}),
+        ...(key || clearKey ? { key: clearKey ? null : key } : {}),
       });
       key = ''; clearKey = false;
       result = strings.subscriptionProxy.saved;
@@ -115,24 +115,21 @@
         {/if}
       </div>
     {/if}
-    <form onsubmit={(event) => { event.preventDefault(); void save(); }}>
-      <div class="actions"><button type="submit" class="primary small" disabled={busy || !store.owner || blocked} data-testid="subscription-proxy-save"><span class="ui-label">{strings.subscriptionProxy.save}</span></button><GatewayOpenButton {store} /></div>
-      {#if result}<p class="hint" class:error={failed} role="status" data-testid="subscription-proxy-result">{result}</p>{/if}
-    </form>
-  {:else}
-  <div class="actions" role="group" aria-label={strings.subscriptionProxy.heading}>
-    <button type="button" class="quiet small" aria-pressed={config.kind === 'douane'} onclick={() => choose('douane')} data-testid="subscription-proxy-douane"><span class="ui-label">Douane</span></button>
-    <button type="button" class="quiet small" aria-pressed={config.kind === 'cliproxyapi'} onclick={() => choose('cliproxyapi')} data-testid="subscription-proxy-cliproxyapi"><span class="ui-label">CLIProxyAPI</span></button>
-  </div>
+  {/if}
   <form onsubmit={(event) => { event.preventDefault(); void save(); }}>
-    <label><span class="ui-label">{strings.subscriptionProxy.baseUrl}</span><input type="url" bind:value={config.baseUrl} required data-testid="subscription-proxy-url" /></label>
-    <label><span class="ui-label">{strings.subscriptionProxy.dashboardUrl}</span><input type="url" bind:value={config.dashboardUrl} required data-testid="subscription-proxy-dashboard" /></label>
+    {#if !local}
+      <div class="actions" role="group" aria-label={strings.subscriptionProxy.heading}>
+        <button type="button" class="quiet small" aria-pressed={config.kind === 'douane'} onclick={() => choose('douane')} data-testid="subscription-proxy-douane"><span class="ui-label">Douane</span></button>
+        <button type="button" class="quiet small" aria-pressed={config.kind === 'cliproxyapi'} onclick={() => choose('cliproxyapi')} data-testid="subscription-proxy-cliproxyapi"><span class="ui-label">CLIProxyAPI</span></button>
+      </div>
+      <label><span class="ui-label">{strings.subscriptionProxy.baseUrl}</span><input type="url" bind:value={config.baseUrl} required data-testid="subscription-proxy-url" /></label>
+      <label><span class="ui-label">{strings.subscriptionProxy.dashboardUrl}</span><input type="url" bind:value={config.dashboardUrl} required data-testid="subscription-proxy-dashboard" /></label>
+    {/if}
     <label><span class="ui-label-box"><span class="ui-label">{strings.subscriptionProxy.key}</span><InfoTip topic={strings.subscriptionProxy.key} text={strings.subscriptionProxy.keyHint} /></span><input type="password" bind:value={key} autocomplete="new-password" disabled={clearKey} data-testid="subscription-proxy-key" /></label>
     <label class="clear-key"><input type="checkbox" bind:checked={clearKey} /><span class="ui-label">{strings.subscriptionProxy.clearKey}</span></label>
-    <div class="actions"><button type="submit" class="primary small" disabled={busy || blocked} data-testid="subscription-proxy-save"><span class="ui-label">{strings.subscriptionProxy.save}</span></button><GatewayOpenButton {store} /></div>
+    <div class="actions"><button type="submit" class="primary small" disabled={busy || !store.owner || blocked} data-testid="subscription-proxy-save"><span class="ui-label">{strings.subscriptionProxy.save}</span></button><GatewayOpenButton {store} /></div>
     {#if result}<p class="hint" class:error={failed} role="status" data-testid="subscription-proxy-result">{result}</p>{/if}
   </form>
-  {/if}
   {#if movable}
     <div class="move">
       <button type="button" class="ghost small" disabled={gatewayOff} onclick={() => moving = true} data-testid="gateway-move-open"><span class="ui-label">{strings.subscriptionProxy.move.open}</span></button>

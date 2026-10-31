@@ -11,7 +11,7 @@ export function questionWake(child: ThreadSummary, question: QuestionRequest): s
     question.async === true
       ? `It keeps working meanwhile. ${question.options.length ? `boite delegate send ${child.id} "<option>" with an option label answers it; any other text reaches it as an ordinary message.` : `It reads boite delegate send ${child.id} "<text>" as an ordinary message.`}`
       : `It is blocked until it gets an answer. Your next boite delegate send ${child.id} "<answer>" answers it (${delegationAnswerForm(question)}).`,
-    'Answer from the task and the user\'s instructions; ask the user when they do not settle it.',
+    'Answer only if the task and the user\'s instructions settle it. Otherwise leave it open: the user can open this subagent from its parent\'s chatbar alert and answer there. Do not ask the user again in the parent conversation.',
   ].join('\n');
 }
 

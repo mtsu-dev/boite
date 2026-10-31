@@ -265,3 +265,37 @@ test('a permission with no call of its name stays its own line inside the run', 
     expect(document.querySelector('[data-testid=tool-permission]')).toBeNull();
   } finally { store.detach(); client.close(); }
 });
+
+test('a compaction between calls rides on their line instead of taking a row', async () => {
+  const client = new FakeClient({ delayMs: 0 });
+  const store = new Store(); store.attach(client);
+  try {
+    await store.connect(); await store.open('t-trace');
+    const last = store.openThread!.messages.at(-1)!;
+    const call = (id: string) => ({ type: 'tool' as const, toolId: id, name: 'Bash', input: { command: `echo ${id}` }, output: 'ok', status: 'done' as const });
+    const message: Message = { ...last, id: 'm-mid-compaction', role: 'assistant', state: 'complete', parts: [call('a'), { type: 'compaction', trigger: 'auto', preTokens: 201_200, postTokens: 13_400 }, call('b'), { type: 'text', text: 'Done.' }] };
+    mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: message.threadId, message, signedOut: null, showModel: false } });
+    flushSync();
+    expect(document.querySelector('[data-testid=compaction-part]')).toBeNull();
+    expect(document.querySelectorAll('[data-testid=tool-group]')).toHaveLength(1);
+    const mark = document.querySelector('[data-testid=tool-group-compaction]');
+    expect(mark?.textContent?.trim()).toBe('compacted 201.2K → 13.4K');
+    expect(mark?.getAttribute('title')).toBe('Context compacted, 201.2K to 13.4K tokens');
+  } finally { store.detach(); client.close(); }
+});
+
+test('a short text between calls reads as narration, what follows the last call as the answer', async () => {
+  const client = new FakeClient({ delayMs: 0 });
+  const store = new Store(); store.attach(client);
+  try {
+    await store.connect(); await store.open('t-trace');
+    const last = store.openThread!.messages.at(-1)!;
+    const call = (id: string) => ({ type: 'tool' as const, toolId: id, name: 'Bash', input: { command: `echo ${id}` }, output: 'ok', status: 'done' as const });
+    const report = 'A long report the agent wrote before going on. '.repeat(10);
+    const message: Message = { ...last, id: 'm-narration', role: 'assistant', state: 'complete', parts: [{ type: 'text', text: 'Now the tests.' }, call('a'), { type: 'text', text: report }, call('b'), { type: 'text', text: 'Fixed.' }] };
+    mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: message.threadId, message, signedOut: null, showModel: false } });
+    flushSync();
+    expect([...document.querySelectorAll('[data-testid=narration]')].map(node => node.textContent?.trim())).toEqual(['Now the tests.']);
+    expect([...document.querySelectorAll('.answer-bubble')].map(node => node.textContent?.trim().slice(0, 6))).toEqual(['A long', 'Fixed.']);
+  } finally { store.detach(); client.close(); }
+});

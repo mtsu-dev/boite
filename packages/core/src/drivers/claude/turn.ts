@@ -1,5 +1,5 @@
 import type { SDKAssistantMessage, SDKMessage, SDKResultMessage } from '@anthropic-ai/claude-agent-sdk';
-import type { MessageId, MessagePart, ToolDocument, ToolStatus, Usage } from '@boite/contracts';
+import type { AgentTotals, MessageId, MessagePart, ToolDocument, ToolStatus, Usage } from '@boite/contracts';
 import type { PromptCacheLife, ToolPatch, TurnContext, TurnRefusal, TurnResult } from '../types.ts';
 import { isoTime } from './diagnostics.ts';
 import {
@@ -15,11 +15,12 @@ import {
   FORBIDDEN,
   forbiddenReason,
   mapUsage,
+  NOTHING_HELD,
   requestTokens,
   resultText,
   subagentOf,
 } from './mapping.ts';
-import type { StreamEvent } from './mapping.ts';
+import type { HeldUsage, StreamEvent } from './mapping.ts';
 import { hookEndPart } from './hooks.ts';
 import { PROMPT_EFFORT } from './query.ts';
 import type { ClaudeSession } from './session.ts';
@@ -109,8 +110,11 @@ export class ClaudeTurn {
   #lastEntry: string | null = null;
   #usage: Usage | null = null;
   #costBefore: number | null = 0;
+  /** The CLI's running token totals before this turn, null when unknown. */
+  #heldBefore: HeldUsage | null = NOTHING_HELD;
+  #restores: string | null = null;
   /** The CLI's running totals as its result for this turn left them. */
-  #agentTotals: { costUsd: number; tokens: number } | null = null;
+  #agentTotals: AgentTotals | null = null;
   /** What the last API request of the turn carried, the context meter's reading. */
   #contextTokens: number | null = null;
   /** The lifetime of the last cache write the main loop made in this turn. */
@@ -194,9 +198,11 @@ export class ClaudeTurn {
 
   // -- messages -------------------------------------------------------------
 
-  /** What the CLI process had already charged to earlier turns when this one's result arrived. */
-  noteCostBefore(costUsd: number | null): void {
+  /** What the CLI process had already charged to earlier turns, the tokens it held and whether it restored them, when this one's result arrived. */
+  noteCostBefore(costUsd: number | null, held: HeldUsage | null, restores: string | null): void {
     this.#costBefore = costUsd;
+    this.#heldBefore = held;
+    this.#restores = restores;
   }
 
   handle(message: SDKMessage): void {
@@ -449,8 +455,8 @@ export class ClaudeTurn {
   }
 
   #handleResult(message: SDKResultMessage): void {
-    this.#usage = mapUsage(message, this.#costBefore);
-    this.#agentTotals = agentTotalsOf(message);
+    this.#usage = mapUsage(message, this.#costBefore, this.#heldBefore);
+    this.#agentTotals = agentTotalsOf(message, this.#restores);
     if (this.#contextTokens !== null) {
       this.ctx.context({ tokens: this.#contextTokens, window: contextWindowOf(message, this.ctx.thread.model) });
     }

@@ -266,8 +266,8 @@ export function sdk(message: unknown): SDKMessage {
   return message as SDKMessage;
 }
 
-export function init(sessionId: string): SDKMessage {
-  return sdk({ type: 'system', subtype: 'init', session_id: sessionId, model: 'claude-opus-5', tools: [] });
+export function init(sessionId: string, version = '2.1.316'): SDKMessage {
+  return sdk({ type: 'system', subtype: 'init', session_id: sessionId, model: 'claude-opus-5', tools: [], claude_code_version: version });
 }
 
 export function streamEvent(sessionId: string, event: unknown): SDKMessage {

@@ -278,6 +278,8 @@ export interface ThreadSummary {
    * row reads this to say the thread needs the user. Missing on older cores.
    */
   openQuestions?: number;
+  /** Unanswered child questions, including children on another machine. No question text; missing on older cores. */
+  subagentQuestions?: { threadId: ThreadId; title: string; machine?: { coreId: string; name: string } }[];
   unread: boolean;
   archived: boolean;
   /** Kept above the other threads of its project in the sidebar, whatever runs. */
@@ -576,6 +578,18 @@ export type ThreadListChanges =
   | { kind: 'full'; cursor: ListCursor; threads: ThreadSummary[] }
   | { kind: 'changes'; cursor: ListCursor; threads: ThreadSummary[]; removed: ThreadId[] };
 
+/**
+ * Counts over a whole conversation, which a client holding a page of it
+ * cannot make: the context popup shows them.
+ */
+export interface ThreadStats {
+  threadId: ThreadId;
+  /** Every compaction of the context, by hand or automatic, mid-turn ones included. */
+  compactions: number;
+  /** The messages the user sent. */
+  prompts: number;
+}
+
 export interface ThreadsRpcMethods {
   /** Owner-only, private bounded diagnostic history, including earlier runs. */
   'journal.inspect': { params: { cursor?: JournalInspectionCursor | null; limit?: number }; result: JournalInspection };
@@ -658,6 +672,8 @@ export interface ThreadsRpcMethods {
   'threads.agentShape': { params: { threadId: ThreadId }; result: AgentShape };
   /** Supported operations and their current availability for this thread. */
   'threads.capabilities': { params: { threadId: ThreadId }; result: ThreadCapabilities };
+  /** What the whole conversation holds, past the pages a client loaded: its compactions and the prompts sent (`ThreadStats`). */
+  'threads.stats': { params: { threadId: ThreadId }; result: ThreadStats };
   /**
    * The thread with its last `MESSAGE_PAGE` messages and the cursor for what is
    * behind them. Opening a thousand-message thread costs one page, not the lot.

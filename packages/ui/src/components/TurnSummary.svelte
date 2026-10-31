@@ -10,6 +10,7 @@
   import { page } from '../lib/page-hidden.svelte';
   import { Brain, Check, ChevronRight, LoaderCircle, Square, CircleAlert } from '@lucide/svelte';
   import { stepsLabel } from '../lib/agent-turns';
+  import { compactionMark, compactionText, type CompactionPart } from '../lib/tool-groups';
   import type { BackgroundTask, ThreadProgress, Turn } from '@boite/contracts';
   import { clockTime, elapsed, exactTime, formatTokens } from '../lib/format';
   import { totalTokens } from '../lib/usage';
@@ -17,14 +18,14 @@
   import { backgroundLabel } from '../lib/background';
   import { secondClock } from '../lib/clock.svelte';
   import type { Snippet } from 'svelte';
-  let { turn, requestStartedAt = null, clockOffset = 0, progress, waiting = false, activeTool = false, activeContent = false, background = [], stop, pointed = false, steps, memory, actions }: {
+  let { turn, workedBefore = 0, clockOffset = 0, progress, waiting = false, activeTool = false, activeContent = false, background = [], stop, pointed = false, steps, memory, compactions = [], actions }: {
     turn: Turn;
     /**
-     * When the user's request this turn belongs to started, earlier than the
-     * turn's own start when Boite opened it to carry on after background work.
-     * The elapsed time counts from there.
+     * What the user's request this turn belongs to worked before it, in ms,
+     * when Boite opened it to carry that request on (`requestWork`). The
+     * elapsed time adds the turn's own.
      */
-    requestStartedAt?: number | null;
+    workedBefore?: number;
     /** How far the core's clock runs ahead of this device's: every time here is the core's. */
     clockOffset?: number;
     progress?: ThreadProgress | null;
@@ -43,6 +44,8 @@
     steps?: SummarySteps;
     /** The memory pass that followed this turn: a small mark whose tooltip says what changed. */
     memory?: SummaryMemory;
+    /** The automatic compactions that went through after this turn, said on its line (`foldCompactions`). */
+    compactions?: CompactionPart[];
     /** The turn's own buttons (copy, retry, fork), at the end of the line. */
     actions?: Snippet;
   } = $props();
@@ -61,9 +64,8 @@
     return waiting ? strings.notify.needsYou : strings.chat.working;
   });
   const own = $derived(turn.startedAt === null ? null : Math.max(0, (turn.finishedAt ?? now) - turn.startedAt));
-  // A compaction reports its own duration; work counts from the user's request.
-  const since = $derived(compactOperation || turn.startedAt === null ? turn.startedAt : Math.min(requestStartedAt ?? turn.startedAt, turn.startedAt));
-  const spent = $derived(since === null ? null : Math.max(0, (turn.finishedAt ?? now) - since));
+  // A compaction reports its own duration; work counts what the user's request worked before this turn.
+  const spent = $derived(own === null ? null : own + (compactOperation ? 0 : Math.max(0, workedBefore)));
   /** This turn's own share, shown on hover when the request spans several turns. */
   const ownLabel = $derived(own !== null && spent !== null && spent - own >= 1000 ? fill(strings.chat.turnOwnTime, { time: elapsed(own) }) : undefined);
   /** A compaction inside a turn counts from when its phase began, which an older core does not send. */
@@ -86,7 +88,7 @@
   /** The mark's tooltip: what the pass did, then its summary. */
   const memoryTitle = $derived(memory ? [fold.memory[memory.pass.status], ...(memory.pass.summary && memory.pass.status !== 'running' ? [memory.pass.summary] : [])].join(' · ') : '');
   /** A line that counts steps or carries a memory mark reads at rest: it is what the agent did, not a measurement. */
-  const marked = $derived(!!steps || !!memory);
+  const marked = $derived(!!steps || !!memory || compactions.length > 0);
 </script>
 
 {#snippet metric(id: string, text: string | null, title?: string, quiet = false)}
@@ -140,6 +142,9 @@
           </button>
         {/if}
       </span>
+    {/if}
+    {#if !running}
+      {#each compactions as part, at (at)}{@render metric('turn-compaction', compactionMark(part), compactionText(part), true)}{/each}
     {/if}
     {#if total > 0}
       {@render metric('turn-tokens', `${formatTokens(total)} ${strings.units.tokens}`, breakdown)}

@@ -1,6 +1,7 @@
 import type { MessagePart } from '@boite/contracts';
 import { planOf } from './plan';
 import { fill, strings } from './strings';
+import { formatTokens } from './format';
 import { describeTool, fileName, partialSummaryOf, summaryOf, type ToolFamily } from './tool-summary';
 
 /*
@@ -20,6 +21,24 @@ export type PermissionStep = Extract<MessagePart, { type: 'permission' }>;
 
 /** What an activity run holds: the calls, the reasoning between them and the permissions they asked. */
 export type ActivityPart = ToolPart | ThinkingStep | PermissionStep;
+
+/** A compaction of the context, which rides on the activity run it fell in. */
+export type CompactionPart = Extract<MessagePart, { type: 'compaction' }>;
+
+/** The whole sentence of a compaction: "Context compacted, 201K to 13K tokens (by hand)". */
+export function compactionText(part: CompactionPart): string {
+  const t = strings.chat;
+  const said = part.preTokens === null ? t.compactionUnknown : part.postTokens === null
+    ? fill(t.compactionNoPost, { pre: formatTokens(part.preTokens) })
+    : fill(t.compaction, { pre: formatTokens(part.preTokens), post: formatTokens(part.postTokens) });
+  return [said, ...(part.trigger === 'manual' ? [`(${t.compactionManual})`] : []), ...(part.background ? [`(${t.compactionBackground})`] : [])].join(' ');
+}
+
+/** The few words a compaction adds to its run's line: "compacted 201K → 13K". */
+export function compactionMark(part: CompactionPart): string {
+  const t = strings.chat;
+  return part.preTokens === null || part.postTokens === null ? t.compactedMarkBare : fill(t.compactedMark, { pre: formatTokens(part.preTokens), post: formatTokens(part.postTokens) });
+}
 
 /** One entry of a message's parts as the timeline draws it: a part on its own, or a run of activity. */
 export type PartRun = { kind: 'part'; index: number } | { kind: 'activity'; indices: number[] };
@@ -120,7 +139,8 @@ export function partRuns(parts: readonly MessagePart[], from = 0, to = parts.len
         continue;
       }
     }
-    const folds = part.type === 'thinking' || part.type === 'permission' || (part.type === 'tool' && planOf(part.name, part.input) === null);
+    // A compaction mid-turn rides on the run it fell in: its line says so, it takes no row of its own.
+    const folds = part.type === 'thinking' || part.type === 'permission' || part.type === 'compaction' || (part.type === 'tool' && planOf(part.name, part.input) === null);
     let run: { kind: 'activity'; indices: number[] } | null = null;
     if (!folds) {
       open = null;

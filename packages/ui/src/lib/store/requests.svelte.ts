@@ -27,7 +27,7 @@ export class Requests {
 
   /**
    * The two records exist for the cards of the thread on the screen, so they
-   * hold that thread and its direct children, whose questions its dock shows,
+   * hold that thread and its direct children, whose requests its sidebar links to,
    * and nothing else. Called when a thread opens, when the chat goes to a
    * draft, and when a thread is archived or removed: before this, a page left
    * open all day kept every request it had ever been told about.
@@ -41,10 +41,10 @@ export class Requests {
 
   /**
    * The requests of the open thread's direct children that wait on the user,
-   * read from the core: the parent's dock carries them, and a child's
+   * read from the core: the parent's sidebar and dock link to them, and a child's
    * `question.asked` or `permission.requested` may have gone out before this
    * page listened. `only` reads that one child, the one that just turned to
-   * the user. A refused or failed read leaves the dock as it was.
+   * the user. A refused or failed read leaves the requests as they were.
    */
   readChildren(client: Client, parentId: ThreadId, only?: ThreadId): void {
     for (const child of this.ctx.threads.threads) {

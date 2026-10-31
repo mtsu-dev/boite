@@ -1,7 +1,7 @@
 import type { ThreadId, Timestamp, TurnId } from './ids';
 import type { Attachment, PreviewReference } from './messages';
 import type { ThreadStatus, ThreadSummary } from './threads';
-import type { Usage } from './usage';
+import type { AgentTotals, Usage } from './usage';
 
 export type TurnStatus = 'queued' | 'running' | 'done' | 'stopped' | 'error';
 
@@ -61,7 +61,7 @@ export interface Turn {
    * the sum of the session's turns. Absent on other drivers and on turns
    * finished before it was recorded.
    */
-  agentTotals?: { costUsd: number; tokens: number } | null;
+  agentTotals?: AgentTotals | null;
   /**
    * A persistent agent's `routine` or `event` turn that had nothing for the
    * user: the final text block of its last answer opened, or ended, with a line
@@ -110,6 +110,39 @@ export function requestStarts(turns: readonly Pick<Turn, 'id' | 'queuedAt' | 'st
     starts.set(turn.id, since);
   }
   return starts;
+}
+
+/**
+ * How long the request each turn belongs to had worked before that turn
+ * started, in ms: the turns of the request (`requestStarts`) that ran before
+ * it, and the time between two of them while the agent's own work went on,
+ * background work it left or an agent it delegated to. Waiting on a pull
+ * request's watch, another owner's agent, a restart or a compaction counts
+ * nothing: a review that lands the next morning did not make the request
+ * work all night. A cache ping is skipped: the wait for a delegated agent
+ * runs on across it. A turn that opens a request, or never started, maps to 0.
+ */
+export function requestWork(turns: readonly Pick<Turn, 'id' | 'queuedAt' | 'startedAt' | 'finishedAt' | 'execution'>[]): Map<TurnId, number> {
+  const work = new Map<TurnId, number>();
+  let prior = 0;
+  let last: Pick<Turn, 'startedAt' | 'finishedAt'> | null = null;
+  for (const turn of [...turns].sort(queueOrder)) {
+    // A cache ping is its own: it neither ends the request nor breaks a wait across it.
+    if (turn.startedAt === null || turn.execution?.operation === 'keepalive') {
+      work.set(turn.id, 0);
+      continue;
+    }
+    if (!continuesRequest(turn) || last === null) prior = 0;
+    else {
+      const ended = Math.min(last.finishedAt ?? turn.startedAt, turn.startedAt);
+      const operation = turn.execution?.operation;
+      const ownWork = operation === 'background' || operation === 'delegation';
+      prior += Math.max(0, ended - last.startedAt!) + (ownWork ? Math.max(0, turn.startedAt - ended) : 0);
+    }
+    work.set(turn.id, prior);
+    last = turn;
+  }
+  return work;
 }
 
 /** The thread statuses that mean one of its turns is still under way. */

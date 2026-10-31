@@ -72,8 +72,9 @@ face moves with it.
 A routine
 or event turn opens with a thin divider across the column (its icon, label and
 time); a quiet turn, done (a failed or stopped wake keeps its error in view),
-folds to one such divider, `Nothing to report · <reason> · N steps`, that
-expands to the whole turn. A finished turn that made calls folds them, with the
+folds to one such divider, `Checked: <reason> · N steps` behind a check mark,
+that expands to the whole turn. An automatic compaction that went through takes
+no row: the line of the turn before it says `compacted 51K → 11K`. A finished turn that made calls folds them, with the
 reasoning and the narration between them, out of the column, so the answer
 reads as the bot's message; the quiet line under the answer carries the time
 it worked, when it finished, the count (`4 steps`, a click opens them above the

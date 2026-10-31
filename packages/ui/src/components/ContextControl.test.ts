@@ -127,3 +127,16 @@ test('a late capability reply cannot enable the next thread control', async ({ r
   await Promise.resolve(); flushSync();
   expect(control().disabled).toBe(true);
 });
+
+test('the popup counts every compaction and prompt of the thread, the mid-turn ones included', async ({ ready }) => {
+  const { store } = await ready({ readability: true });
+  await store.open('t-readable');
+  view = mount(ContextControl, { target: document.body, props: { store } });
+  flushSync(); open();
+  const row = (id: string) => document.querySelector<HTMLElement>(`[data-testid="${id}"]`);
+  await vi.waitFor(() => expect(row('context-stats')).not.toBeNull());
+  expect(row('context-compactions')!.querySelector('dt')!.textContent).toBe('Compactions');
+  // One inside the first request's work, one automatic between turns.
+  expect(row('context-compactions')!.querySelector('dd')!.textContent).toBe('2');
+  expect(row('context-prompts')!.textContent).toBe('Messages sent2');
+});

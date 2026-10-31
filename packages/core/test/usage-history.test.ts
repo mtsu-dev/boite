@@ -183,6 +183,30 @@ test('usage.history prices tokens at the public rates, whatever running total th
   expect(history.threads.find((thread) => thread.threadId === echo.id)?.usage.costUsdEquivalent).toBeCloseTo(3 * cost(hour.rates) + cost(fiveMinutes.rates) + mixed + 0.4, 10);
 });
 
+test('a turn that reported a cost and no tokens keeps that cost when its row is priced at the rates', async () => {
+  const { echo } = await threads();
+  const journal = harness.core.journal;
+  const day = D0 + 3_600_000;
+  const model = { providerId: 'claude', model: 'claude-opus-5-5' };
+  const priced: Usage = { inputTokens: 1_000, outputTokens: 2_000, cacheReadTokens: 1_000_000, cacheWriteTokens: 100_000, cacheWriteHourTokens: 100_000, buckets: 1, costUsdEquivalent: 1 };
+  // A Claude compaction an earlier core recorded: the CLI reported zero tokens and charged the summary request.
+  const compaction: Usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, buckets: 1, costUsdEquivalent: 0.21 };
+  journal.putTurn(turn(echo, day, priced, model));
+  journal.putTurn(turn(echo, day + 1, compaction, model));
+  journal.putTurn(turn(echo, day + 2, { ...compaction, costUsdEquivalent: null }, model));
+  // An older core charged a stopped turn the resumed session's whole total: that figure stays out.
+  journal.putTurn(turn(echo, day + 3, { ...legacy(0, 0, 0, 0), costUsdEquivalent: 180.78 }, model));
+
+  const client = await harness.connect();
+  const history = await client.call('usage.history', { edges: EDGES });
+  const hour = priceOf('claude-opus-5-5', true)!.rates;
+  const rated = (1_000 * hour.input + 2_000 * hour.output + 1_000_000 * hour.cacheRead + 100_000 * hour.cacheWrite) / 1_000_000;
+  const [row] = history.rows;
+  expect(row).toMatchObject({ turns: 4, reported: 4, estimated: 1 });
+  expect(row!.usage.costUsdEquivalent).toBeCloseTo(rated + 0.21, 10);
+  expect(history.threads[0]!.usage.costUsdEquivalent).toBeCloseTo(rated + 0.21, 10);
+});
+
 test('usage.history reads turns an older core recorded with the provider\'s current protocol and counts them as estimated', async () => {
   const { codex } = await threads();
   const journal = harness.core.journal;
