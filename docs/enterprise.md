@@ -51,6 +51,7 @@ Windows registry policies are not read yet; the file is the only source.
 | `dictation` | `"local"`, `"off"` | `local` refuses cloud transcription engines and the cloud fallback. `off` refuses dictation and its downloads. |
 | `previews.remoteResources` | `false` | Agent-made HTML previews and views may load only their own files: a content security policy blocks remote scripts, images, styles, fonts and requests. |
 | `agentBrowser` | `false`, or `{ "searchUrl": "https://...{query}..." }` | `false` refuses every agent browser command, from an agent, the CLI or the panel. `searchUrl` is the address used for text typed in the browser's address bar that is not a URL; it must be https and contain `{query}`. |
+| `agentDesktop` | `false` | Refuses the agents' [virtual desktop](desktop.md): starting one, running a program on it and the agent-desktop download. Its status and stop stay open. |
 | `network.lan` | `false` | The core listens on loopback only, whatever the setting or `--lan`/`--host` say. An explicit loopback `--host` is kept. |
 | `network.tailscaleServe` | `false` | Serving the core over Tailscale HTTPS is refused. |
 | `network.groups` | `false` | Creating, joining and inviting to groups is refused, group exchanges with other machines stop, the extra tailnet listener closes, and the group settings are off. Adding a device of the user's own (the pairing link of Settings > Devices) stays available. |
@@ -90,6 +91,7 @@ Local models only, nothing leaves the machine but what the user opens:
   "dictation": "local",
   "previews": { "remoteResources": false },
   "agentBrowser": false,
+  "agentDesktop": false,
   "network": { "lan": false, "tailscaleServe": false, "groups": false, "contacts": false, "push": false },
   "pullRequests": false
 }

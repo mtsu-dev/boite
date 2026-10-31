@@ -43,6 +43,8 @@ export interface AdminPolicy {
   };
   /** False refuses the agent browser; `searchUrl` replaces the address bar's search for text that is not an address. */
   agentBrowser?: boolean | { searchUrl: string };
+  /** False refuses the agents' virtual desktop and the download of the agent-desktop tool it runs. */
+  agentDesktop?: boolean;
   network?: {
     /** False keeps the core on loopback: no LAN listening. */
     lan?: boolean;
@@ -71,6 +73,7 @@ export const POLICY_KEYS = [
   'dictation',
   'previews.remoteResources',
   'agentBrowser', 'agentBrowser.searchUrl',
+  'agentDesktop',
   'network.lan', 'network.tailscaleServe', 'network.groups', 'network.contacts', 'network.push',
   'pullRequests',
 ] as const;

@@ -239,6 +239,18 @@ the window id. An app the project has not allowed waits up to 10 minutes for
 the owner's consent card, so window requests time out after 11 minutes. Details
 and limits are in [windows.md](windows.md).
 
+## Virtual desktop
+
+`boite desktop help` lists the commands. On a Linux machine with Xvfb, the
+conversation gets a private desktop in memory: `run <program>` starts a GUI app
+there that outlives the turn, and every other word runs agent-desktop on it
+(`snapshot -i`, `click @ref`, `type`, `press`, `screenshot`) to read the app's
+accessibility tree and act on it. Boite installs a pinned agent-desktop the
+first time; nothing is installed by hand. `env` prints the desktop's variables for the
+agent's own tools and `stop` ends it; archiving the conversation stops it too.
+Nothing reaches the user's screen, keyboard or speakers. Details and limits are
+in [desktop.md](desktop.md).
+
 ## Pull requests linked to a conversation
 
 `boite pr link <url>` verifies a GitHub pull request and saves its link in the
@@ -514,6 +526,11 @@ Bots schedule work from their own conversation. `bot schedule` accepts `name`, `
 for example `{"kind":"daily","time":"09:00","timezone":"Europe/Paris"}`.
 Other schedules use `{"kind":"interval","everyMinutes":60}` or
 `{"kind":"once","at":1790240400000}` with a Unix timestamp in milliseconds.
+Monthly reminders use `{"kind":"monthly","day":14,"time":"09:00","timezone":"Europe/Paris"}`.
+Yearly reminders use `{"kind":"yearly","month":11,"day":14,"time":"09:00","timezone":"Europe/Paris"}`.
+Dates absent from a month or year are skipped, including February 29 in non-leap years.
+For a one-time request such as November 14, use `once` with the timestamp for
+that date, year and time in the user's timezone. Save it before confirming it.
 To edit or pause a routine, include its `id`, `expectedRevision` and `enabled`.
 The host enqueues occurrences even when clients are closed. An unfinished
 occurrence blocks overlap and missed intervals never create a catch-up burst.
