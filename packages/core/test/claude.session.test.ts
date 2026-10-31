@@ -318,7 +318,8 @@ describe('claude driver', () => {
 
     // Claude Code 2.1.316, measured 2026-10-31: `/compact` answers with a zeroed `usage` and no
     // iterations, while `modelUsage` and `total_cost_usd` grow by the summary request. A cold
-    // process restores the session's totals; a warm one keeps counting from its last result.
+    // process restores the session's totals, which the second turn's own usage shows; a warm
+    // one keeps counting from its last result.
     const held = (input: number, output: number, read: number, write: number, hour: number) => ({
       'claude-opus-5-5': { inputTokens: input, outputTokens: output, cacheReadInputTokens: read, cacheCreationInputTokens: write,
         cacheCreationEphemeral5mInputTokens: write - hour, cacheCreationEphemeral1hInputTokens: hour, webSearchRequests: 0, costUSD: 0, contextWindow: 1_000_000, maxOutputTokens: 128_000 },
@@ -327,7 +328,9 @@ describe('claude driver', () => {
     const results = [
       { total_cost_usd: 0.1155885, modelUsage: held(2, 4, 0, 14_422, 14_422),
         usage: { input_tokens: 2, output_tokens: 4, cache_read_input_tokens: 0, cache_creation_input_tokens: 14_422, cache_creation: { ephemeral_1h_input_tokens: 14_422, ephemeral_5m_input_tokens: 0 } } },
-      { total_cost_usd: 0.1555885, modelUsage: held(2_010, 545, 14_425, 17_422, 16_422), usage: zeroed },
+      { total_cost_usd: 0.1194049, modelUsage: held(5, 10, 14_422, 14_522, 14_522),
+        usage: { input_tokens: 3, output_tokens: 6, cache_read_input_tokens: 14_422, cache_creation_input_tokens: 100, cache_creation: { ephemeral_1h_input_tokens: 100, ephemeral_5m_input_tokens: 0 } } },
+      { total_cost_usd: 0.1594049, modelUsage: held(2_013, 551, 28_847, 17_522, 16_522), usage: zeroed },
     ];
     let turn = 0;
     scripted(() => undefined, (fake) => {
@@ -338,23 +341,26 @@ describe('claude driver', () => {
     const first = client.next('turn.finished', (finished) => finished.threadId === threadId, 10000);
     await client.call('turns.start', { threadId, prompt: 'first' });
     expect((await first).usage).toMatchObject({ cacheWriteTokens: 14_422, cacheWriteHourTokens: 14_422 });
+    const second = client.next('turn.finished', (finished) => finished.threadId === threadId, 10000);
+    await client.call('turns.start', { threadId, prompt: 'second' });
+    expect((await second).usage?.costUsdEquivalent).toBeCloseTo(0.0038164, 10);
 
     const compacted = client.next('turn.finished', (finished) => finished.threadId === threadId, 10000);
     await client.call('threads.compact', { threadId });
     const usage = (await compacted).usage;
 
-    expect(queries).toHaveLength(warmProcessMinutes === 0 ? 2 : 1);
-    expect(calls.flatMap((call) => call.prompts)).toEqual(['first', '/compact']);
+    expect(queries).toHaveLength(warmProcessMinutes === 0 ? 3 : 1);
+    expect(calls.flatMap((call) => call.prompts)).toEqual(['first', 'second', '/compact']);
     expect(usage).toMatchObject({ inputTokens: 2_008, outputTokens: 541, cacheReadTokens: 14_425, cacheWriteTokens: 3_000, cacheWriteHourTokens: 2_000 });
     expect(usage?.costUsdEquivalent).toBeCloseTo(0.04, 10);
   });
 
-  test('a cold compaction whose CLI started from zero is not read as a restored session, even when it alone outweighs it', async () => {
+  test('a cold compaction is not read as a restored session before a turn of its own showed the CLI restoring, even when every count grew', async () => {
     const client = await harness.connect();
     const threadId = await claudeThread(client);
 
-    // The first turn wrote its cache. The resumed CLI restored nothing, so the compaction's totals hold only the
-    // summary request: more tokens and cost than the whole first turn, but none of its cache writes.
+    // The resumed CLI restored nothing, so the compaction's totals hold only the summary request, which outweighs
+    // the first turn in every bucket. With no own usage to measure against, nothing tells it from a restore.
     const held = (input: number, output: number, read: number, write: number) => ({
       'claude-opus-5-5': { inputTokens: input, outputTokens: output, cacheReadInputTokens: read, cacheCreationInputTokens: write,
         cacheCreationEphemeral5mInputTokens: 0, cacheCreationEphemeral1hInputTokens: write, webSearchRequests: 0, costUSD: 0, contextWindow: 1_000_000, maxOutputTokens: 128_000 },
@@ -363,7 +369,7 @@ describe('claude driver', () => {
     const results = [
       { total_cost_usd: 0.1155885, modelUsage: held(2, 4, 0, 14_422),
         usage: { input_tokens: 2, output_tokens: 4, cache_read_input_tokens: 0, cache_creation_input_tokens: 14_422, cache_creation: { ephemeral_1h_input_tokens: 14_422, ephemeral_5m_input_tokens: 0 } } },
-      { total_cost_usd: 0.2, modelUsage: held(40_000, 541, 14_425, 0), usage: zeroed },
+      { total_cost_usd: 0.2, modelUsage: held(40_000, 541, 14_425, 20_000), usage: zeroed },
     ];
     let turn = 0;
     scripted(() => undefined, (fake) => {

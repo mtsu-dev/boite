@@ -43,6 +43,12 @@ export interface AgentTotals {
    * older core recorded.
    */
   held?: Omit<Usage, 'buckets' | 'costUsdEquivalent'>;
+  /**
+   * The process behind these totals, or one before it, resumed the session
+   * and restored its totals, as a result with tokens of its own showed. Only
+   * then does a later result with none, a compaction, read as restored.
+   */
+  restores?: true;
 }
 
 /** Public API prices in US dollars per million tokens. */

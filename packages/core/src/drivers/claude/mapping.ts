@@ -114,16 +114,16 @@ export function resultText(content: unknown): string {
  * total that earlier turns already account for, or null when an older save
  * came back: what it restored is unknown, so this turn's own share is too.
  * Restored counts only grow, so a bucket under the one `before` held means the
- * save was not restored whole; a compaction, whose own usage is empty, could
- * otherwise pass a large summary request for the restored session.
+ * save was not restored whole. A compaction's own usage is empty, so its gap
+ * may be its summary request alone: it reads as restored only when `before`
+ * says an earlier result of the session already showed a restore.
  */
 export function restoredCost(result: SDKResultMessage, before: AgentTotals): number | null {
   const total = typeof result.total_cost_usd === 'number' ? result.total_cost_usd : 0;
   if (before.costUsd <= 0 || before.tokens <= 0 || total <= 0) return 0;
-  const own = mapUsage(result, 0);
-  const turn = own.inputTokens + own.outputTokens + own.cacheReadTokens + own.cacheWriteTokens;
+  const turn = ownTokens(result);
   const restored = heldTokens(result) - turn;
-  if (restored >= before.tokens && total >= before.costUsd && holdsAll(result, before.held)) return before.costUsd;
+  if (restored >= before.tokens && total >= before.costUsd && holdsAll(result, before.held)) return turn > 0 || before.restores ? before.costUsd : null;
   return restored < before.tokens / 2 ? 0 : null;
 }
 
@@ -169,10 +169,17 @@ export function heldUsage(result: SDKResultMessage): HeldUsage {
  * restores. None from a result with nothing counted: a startup error reports
  * zeroed totals that say nothing about what the session's transcript holds.
  */
-export function agentTotalsOf(result: SDKResultMessage): AgentTotals | null {
+export function agentTotalsOf(result: SDKResultMessage, restores = false): AgentTotals | null {
   if (typeof result.total_cost_usd !== 'number') return null;
   const tokens = heldTokens(result);
-  return result.total_cost_usd > 0 || tokens > 0 ? { costUsd: result.total_cost_usd, tokens, held: heldUsage(result) } : null;
+  if (result.total_cost_usd <= 0 && tokens <= 0) return null;
+  return { costUsd: result.total_cost_usd, tokens, held: heldUsage(result), ...(restores ? { restores: true as const } : {}) };
+}
+
+/** Every token the result's own `usage` counts, zero for a compaction. */
+export function ownTokens(result: SDKResultMessage): number {
+  const own = mapUsage(result, 0);
+  return own.inputTokens + own.outputTokens + own.cacheReadTokens + own.cacheWriteTokens;
 }
 
 /**

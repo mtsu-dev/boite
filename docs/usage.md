@@ -391,8 +391,10 @@ matches a model and computes the cost.
   totals before the turn are unknown, a resumed session whose last turn saved
   none, the turn keeps zero tokens and the usage page adds the cost it
   reported. A cold process counts as restored only when every bucket holds at
-  least what the session's last turn saved, so a compaction whose CLI started
-  from zero is not charged as a restored session; it records no cost. A turn an older core recorded without `buckets` and without tokens
+  least what the session's last turn saved. A compaction has no own usage to
+  tell its summary request from restored totals, so a cold one reads as
+  restored only after a turn with tokens showed the session's CLI restoring
+  (`agentTotals.restores`); before that it records no tokens and no cost. A turn an older core recorded without `buckets` and without tokens
   adds nothing: before 2026-10-13 such turns were charged a resumed session's
   whole total.
 - A model the list does not know, including a provider's default model
