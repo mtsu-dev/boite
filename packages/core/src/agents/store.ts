@@ -1,7 +1,8 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { builtinSettingRefusal } from '@boite/contracts';
 import type {
-  AgentBrain, AgentProfile, AgentRoutine, AgentSave, AgentSession, AgentStatus, AgentWatch, AgentsSnapshot, RpcParams, ThreadSummary, Turn,
+  AgentBrain, AgentBuiltin, AgentProfile, AgentRoutine, AgentSave, AgentSession, AgentStatus, AgentWatch, AgentsSnapshot, RpcParams, ThreadSummary, Turn,
 } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { invalidParams, messageOf, refused } from '../errors.ts';
@@ -21,6 +22,7 @@ import { agentContextIf, deskPullRequest, deskState, linkedPullRequests } from '
 import { EVENT_PROMPT_MAX, eventPrompt, finalText, midnight, type AgentFact, type AgentWake } from './runtime.ts';
 import { agentSpend, rootThread } from './spend.ts';
 import { migrateAgents } from './migration.ts';
+import { BuiltinBots } from './builtin.ts';
 import { boolean, ids, integer, object, oneOf, quoted, text } from './validation.ts';
 
 const DEFAULT_LIMITS: AgentsSnapshot['limits'] = { paused: false };
@@ -69,6 +71,8 @@ export class AgentStore {
   readonly groupHost: GroupBotHost;
   readonly memory: MemoryKeeper;
   readonly settingCards: AgentSettingCards;
+  /** The bots Boite ships (builtin.ts). */
+  readonly builtins: BuiltinBots;
   /**
    * Today's sums per agent thread, read again after any turn or row change of
    * that thread and at midnight: a snapshot a second while an agent works
@@ -83,6 +87,12 @@ export class AgentStore {
     // Stewards became agents with projects; their grants have nothing left to grant.
     core.journal.db.query("DELETE FROM settings WHERE key LIKE 'steward:%'").run();
     migrateAgents(core, this);
+    this.builtins = new BuiltinBots(core, this, {
+      createThread: (agent, lost) => this.#createThread(agent, lost),
+      wakeSoon: (agent, key, label, prompt) => this.#wakeSoon(agent, key, label, prompt),
+      introPrompt: INTRO_PROMPT,
+    });
+    this.builtins.refresh();
     for (const session of this.records.list('session')) this.#threads.set(session.threadId, session.agentId);
     this.entrusted = new AgentEntrustments(core, this);
     this.projects = new AgentProjects(core, this); this.group = new GroupBots(core, this); this.groupHost = new GroupBotHost(core); this.memory = new MemoryKeeper(core, this); this.settingCards = new AgentSettingCards(core, this);
@@ -155,6 +165,14 @@ export class AgentStore {
   sessionOf(agentId: string): AgentSession | null {
     return this.records.list('session').find(session => session.agentId === agentId) ?? null;
   }
+  /** The built-in bot of that kind on this core, not archived, or null. */
+  builtin(kind: AgentBuiltin): AgentProfile | null { return this.builtins.live(kind); }
+  /** Its own thread while it is live and the thread exists: the one thread that may act as it (contacts/bot.ts). */
+  builtinThread(kind: AgentBuiltin): string | null {
+    const agent = this.builtins.live(kind);
+    const threadId = agent === null ? undefined : this.sessionOf(agent.id)?.threadId;
+    return threadId !== undefined && this.#threads.get(threadId) === agent!.id && this.core.journal.getThread(threadId) !== null ? threadId : null;
+  }
   /** The agent of a thread an agent calls from, or the refusal naming what was expected. */
   #callerAgent(threadId: string, method: string): AgentProfile {
     const agent = this.agentOfThread(threadId);
@@ -215,13 +233,19 @@ export class AgentStore {
     if (this.core.agentRuntime.wake(agent.id, { kind: 'event', label, prompt, requestId: `${key}-${agent.revision}-${agent.id.slice(-40)}` }) === null) this.core.agentRuntime.queue(agent.id, key, { label, prompt });
   }
 
-  saveProfile(params: AgentSave<AgentProfile>): AgentProfile {
+  /**
+   * `builtin` is builtin.ts creating a bot Boite ships; no RPC passes it, so
+   * neither `agents.profile.save` nor `agents.create` makes one, and a save
+   * keeps the kind the bot already had whatever the client sends.
+   */
+  saveProfile(params: AgentSave<AgentProfile>, builtin?: AgentBuiltin): AgentProfile {
     const v = params.value;
     object(v, 'profile'); object(v.selection, 'selection');
     const provider = this.core.providers.require(text(v.selection.providerId, 'selection.providerId', 100));
     const account = this.core.accounts.require(text(v.selection.accountId, 'selection.accountId', 160));
     if (account.providerId !== provider.id) throw refused('selection.accountId: account belongs to another provider');
     const previous = params.id ? this.records.get('profile', params.id) : null;
+    const kind = previous === null ? builtin : previous.builtin;
     // A model and level the agent already runs were checked when chosen. A list read later
     // may drop that id (a gateway renamed it), which must not block an unrelated change.
     const kept = previous !== null && previous.selection.providerId === provider.id && previous.selection.accountId === account.id
@@ -248,7 +272,14 @@ export class AgentStore {
       name: text(v.name, 'name', 100), domain: text(v.domain, 'domain', 500, true), instructions: text(v.instructions, 'instructions', 32000, true),
       avatar: text(v.avatar, 'avatar', 40, true), status: oneOf(v.status, 'status', ['active', 'paused', 'archived']), projectIds,
       selection: { providerId: provider.id, accountId: account.id, model, effort, permissionMode: oneOf(v.selection.permissionMode, 'permissionMode', ['default', 'acceptEdits', 'plan', 'bypassPermissions', 'yolo', 'dontAsk']) },
+      ...(kind === undefined ? {} : { builtin: kind }),
     };
+    // A built-in bot's text is Boite's (builtin.ts) and it is never put away: only reset.
+    if (previous?.builtin !== undefined) {
+      if (value.domain !== previous.domain) throw refused(builtinSettingRefusal(previous, 'domain', value.domain)!, { field: 'domain', expected: previous.domain });
+      if (value.instructions !== previous.instructions) throw refused(builtinSettingRefusal(previous, 'instructions', value.instructions)!, { field: 'instructions' });
+    }
+    if (kind !== undefined && value.status === 'archived') throw refused(builtinSettingRefusal({ builtin: kind }, 'status', 'archived')!, { field: 'status', expected: ['active', 'paused'] });
     const saved = previous === null ? this.records.create('profile', value) : this.records.update('profile', previous.id, integer(params.expectedRevision, 'expectedRevision', 1, Number.MAX_SAFE_INTEGER), value);
     this.group.profileChanged(previous, saved);
     if (previous === null) {
@@ -553,6 +584,9 @@ export function registerPersistentAgents(core: Core): void {
   const store = core.workforce;
   core.router.register('agents.snapshot', p => store.snapshot(p.threadId, p.desk));
   core.router.register('agents.profile.save', p => store.saveProfile(p));
+  // Owner only, as every method access.ts names for no device or agent.
+  core.router.register('agents.builtin.ensure', p => store.builtins.ensure(p));
+  core.router.register('agents.builtin.reset', p => store.builtins.reset(p));
   core.router.register('agents.open', p => store.open(p.agentId));
   core.router.register('agents.runtime.get', p => store.resident.config(p.agentId));
   core.router.register('agents.runtime.configure', p => store.resident.configure(p));

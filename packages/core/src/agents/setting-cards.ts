@@ -10,7 +10,7 @@
  * contracts/agent-setting-requests.ts, where the in-memory client reads them.
  */
 import {
-  agentModelRoute, agentSettingAnswerText, agentSettingProposal, agentSettingValue, AGENT_SETTING_KEYS, AGENT_STATUSES, checkAgentSettingRequest, normalizeAgentSetting, settledAgentSetting,
+  agentModelRoute, agentSettingAnswerText, agentSettingProposal, agentSettingValue, AGENT_SETTING_KEYS, AGENT_STATUSES, builtinSettingRefusal, checkAgentSettingRequest, normalizeAgentSetting, settledAgentSetting,
   type AgentProfile, type AgentSettingApplyParams, type AgentSettingAsk, type AgentSettingContext, type AgentSettingReading,
   type AccountId, type AgentSettingChoice, type AgentSettingRequestParams, type AgentSettingsReading, type AgentSettingsReadParams,
   type ProviderId, type QuestionAnswer, type RequestId,
@@ -190,6 +190,9 @@ export class AgentSettingCards {
     if (ask === undefined) throw notFound(`agents.settings.apply: ${String(params.questionId)} is no open agent setting card of thread ${String(params.threadId)}`, { field: 'questionId' });
     const agent = this.#store.records.get('profile', ask.agentId);
     if (agent.status === 'archived') throw refused(`agents.settings.apply: ${agent.name} is archived`, { field: 'questionId' });
+    // A card drawn before the bot was Boite's, or edited on Apply: a built-in bot's text and archive stay locked.
+    const locked = builtinSettingRefusal(agent, ask.key, params.value ?? ask.value);
+    if (locked !== null) throw refused(locked, { field: 'questionId', key: ask.key });
     const ctx = this.#context(agent, true);
     let value = ask.value;
     // A name is checked again: another card may have given it to a bot since this one was drawn.
