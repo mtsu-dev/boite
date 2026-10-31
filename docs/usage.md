@@ -427,7 +427,10 @@ them: when the result's `modelUsage` holds those tokens on top of its own, the
 turn is charged the difference; when it holds less than half of them, the CLI
 started from zero and the turn is charged the whole total. Anything between, or
 a total below the saved one, means an older save came back: the turn's share is
-unknown, so it records no cost and the usage page prices its tokens. A result
+unknown, so it records no cost and the usage page prices its tokens. A
+compaction reports no tokens of its own to set apart, so it is charged the
+difference only on a whole restore its CLI version already showed, and is
+never read as a fresh start: any other case records no cost. A result
 with zeroed totals, as a startup error reports, records none. Turns recorded
 before `agentTotals` fall back to the sum of the session's turns.
 The ACP `usage_update` cost is the session's running total in the same way,
