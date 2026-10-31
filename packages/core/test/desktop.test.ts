@@ -253,14 +253,15 @@ describe('the agent-desktop Boite installs', () => {
     const tool = new AgentDesktopTool(tools, harness.core.procs, { release: pinned, arch: 'x64', fetch });
     // Two commands at once share one download.
     const [path, again] = await Promise.all([tool.path(), tool.path()]);
-    expect(path).toBe(join(tools, 'agent-desktop-9.9.9', 'agent-desktop'));
+    expect(dirname(dirname(path))).toBe(join(tools, 'agent-desktop-9.9.9'));
     expect(again).toBe(path);
     expect(fetched).toEqual([pinned.url]);
-    expect(readdirSync(join(tools, 'agent-desktop-9.9.9')).sort()).toEqual(['agent-desktop', 'agent-desktop-linux-clipboard-owner']);
+    expect(readdirSync(dirname(path)).sort()).toEqual(['agent-desktop', 'agent-desktop-linux-clipboard-owner']);
     expect(statSync(path).mode & 0o777).toBe(0o755);
     expect(Bun.spawnSync([path, 'version']).stdout.toString()).toBe('agent-desktop version\n');
     // Nothing staged is left beside it.
     expect(readdirSync(tools)).toEqual(['agent-desktop-9.9.9']);
+    expect(readdirSync(join(tools, 'agent-desktop-9.9.9'))).toHaveLength(1);
     const next = new AgentDesktopTool(tools, harness.core.procs, { release: pinned, arch: 'x64', fetch });
     expect(await next.path()).toBe(path);
     expect(fetched).toHaveLength(1);
@@ -272,30 +273,37 @@ describe('the agent-desktop Boite installs', () => {
       const { pinned, fetch } = release(tamper);
       const tool = new AgentDesktopTool(tools, harness.core.procs, { release: pinned, arch: 'x64', fetch });
       expect(await thrown(tool.path())).toThrow(tamper.archive ? 'does not match its pinned SHA-256; nothing was installed' : 'package/bin/agent-desktop-linux-x64 does not match its pinned SHA-256');
-      expect(existsSync(join(tools, 'agent-desktop-9.9.9'))).toBe(false);
-      expect(existsSync(tools) ? readdirSync(tools) : []).toEqual([]);
+      const folder = join(tools, 'agent-desktop-9.9.9');
+      expect(existsSync(folder) ? readdirSync(folder) : []).toEqual([]);
     }
     const { pinned, fetched, fetch } = release();
+    const damaged = await new AgentDesktopTool(tools, harness.core.procs, { release: pinned, arch: 'x64', fetch }).path();
+    writeFileSync(damaged, 'truncated');
     const path = await new AgentDesktopTool(tools, harness.core.procs, { release: pinned, arch: 'x64', fetch }).path();
-    writeFileSync(path, 'truncated');
-    expect(await new AgentDesktopTool(tools, harness.core.procs, { release: pinned, arch: 'x64', fetch }).path()).toBe(path);
     expect(fetched).toHaveLength(2);
     expect(sha(readFileSync(path))).toBe(pinned.builds.x64![0]!.sha256);
+    expect(existsSync(dirname(damaged))).toBe(false);
     expect(await thrown(new AgentDesktopTool(tools, harness.core.procs, { release: pinned, arch: 'riscv64', fetch }).path())).toThrow('has no Linux build for riscv64');
   });
 
-  test('two cores installing into one data dir at once keep the first install, which nothing deletes under the other', async () => {
+  test('cores sharing a data dir never remove an install another returned, even while one repairs a damaged install', async () => {
     const { pinned, fetched, fetch } = release();
     const tools = join(dir, 'tools');
-    const [first, second] = [0, 1].map(() => new AgentDesktopTool(tools, harness.core.procs, { release: pinned, arch: 'x64', fetch }));
-    const both = [first!.path(), second!.path()];
-    const path = await Promise.race(both);
-    const published = statSync(path).ino;
-    expect(await Promise.all(both)).toEqual([path, path]);
+    const tool = () => new AgentDesktopTool(tools, harness.core.procs, { release: pinned, arch: 'x64', fetch });
+    const intact = (path: string) => existsSync(path) && sha(readFileSync(path)) === pinned.builds.x64![0]!.sha256;
+    // Two at once: each keeps the install it made, both stay.
+    const [first, second] = await Promise.all([tool().path(), tool().path()]);
     expect(fetched).toHaveLength(2);
-    // The later core found an intact install and dropped its own copy instead of swapping the folder.
-    expect(statSync(path).ino).toBe(published);
-    expect(readdirSync(tools)).toEqual(['agent-desktop-9.9.9']);
+    expect([intact(first), intact(second)]).toEqual([true, true]);
+    // Both damaged, then two cores repair at once: each removes only damaged folders, and what each returns stays.
+    writeFileSync(first, 'truncated');
+    writeFileSync(second, 'truncated');
+    const repaired = await Promise.all([tool().path(), tool().path()]);
+    expect(repaired.map(intact)).toEqual([true, true]);
+    expect(existsSync(first) || existsSync(second)).toBe(false);
+    // A later core finds one of them without a download.
+    expect(repaired).toContain(await tool().path());
+    expect(fetched).toHaveLength(4);
   });
 });
 

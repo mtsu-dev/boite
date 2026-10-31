@@ -3,10 +3,10 @@
  * first use: one pinned npm release, checked against the digests below, so no
  * agent installs a tool, and every machine runs the version the CLI's help
  * describes. Only the Linux binary and its clipboard helper are kept, in
- * `<data dir>/tools/agent-desktop-<version>/`. See docs/desktop.md.
+ * `<data dir>/tools/agent-desktop-<version>/<install id>/`. See docs/desktop.md.
  */
 import { createHash, randomBytes } from 'node:crypto';
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ProcRegistry } from '../procs.ts';
 import { messageOf } from '../errors.ts';
@@ -50,7 +50,13 @@ export interface AgentDesktopToolOptions {
   fetch?: (url: string, init: RequestInit) => Promise<Response>;
 }
 
-/** The installed agent-desktop: found, checked once per core, or fetched by the first call that needs it. */
+/**
+ * The installed agent-desktop: found, checked once per core, or fetched by the
+ * first call that needs it. Each install is a folder of its own under
+ * `agent-desktop-<version>/`, renamed there whole and never changed after, so
+ * cores sharing a data dir need no lock: two installing at once both keep
+ * theirs, and only a folder whose files no longer match is removed.
+ */
 export class AgentDesktopTool {
   readonly #root: string;
   readonly #procs: Pick<ProcRegistry, 'spawn'>;
@@ -75,43 +81,26 @@ export class AgentDesktopTool {
     if (this.#verified) return this.#verified;
     const build = this.#release.builds[this.#arch];
     if (!build) throw new Error(`agent-desktop ${this.#release.version} has no Linux build for ${this.#arch}`);
-    if (this.#intact(build)) return (this.#verified = join(this.#root, 'agent-desktop'));
+    const found = this.#find(build);
+    if (found) return (this.#verified = found);
     this.#installing ??= this.#install(build).finally(() => { this.#installing = null; });
     return this.#installing;
   }
 
-  #intact(build: { name: string; sha256: string }[]): boolean {
-    return build.every(file => {
-      const path = join(this.#root, file.name);
-      return existsSync(path) && sha256(readFileSync(path)) === file.sha256;
-    });
-  }
-
-  /**
-   * Renames the checked folder into place. Another core sharing the data dir
-   * may have published first: its intact install is kept and this copy dropped.
-   * A damaged one is renamed aside before removal, so no core deletes a folder
-   * another just published under the final name.
-   */
-  #publish(folder: string, parent: string, build: { name: string; sha256: string }[]): void {
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        renameSync(folder, this.#root);
-        return;
-      } catch (error) {
-        const code = (error as NodeJS.ErrnoException).code;
-        if (code !== 'ENOTEMPTY' && code !== 'EEXIST') throw error;
-      }
-      if (this.#intact(build)) return;
-      const aside = join(parent, `.agent-desktop-old-${randomBytes(6).toString('hex')}`);
-      try {
-        renameSync(this.#root, aside);
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-      }
-      rmSync(aside, { recursive: true, force: true });
+  /** An intact install's binary. A published folder is always complete, so one that does not match was damaged: it goes. */
+  #find(build: { name: string; sha256: string }[]): string | null {
+    if (!existsSync(this.#root)) return null;
+    for (const name of readdirSync(this.#root).sort()) {
+      if (name.startsWith('.')) continue;
+      const folder = join(this.#root, name);
+      const intact = build.every(file => {
+        const path = join(folder, file.name);
+        return existsSync(path) && sha256(readFileSync(path)) === file.sha256;
+      });
+      if (intact) return join(folder, 'agent-desktop');
+      rmSync(folder, { recursive: true, force: true });
     }
-    throw new Error(`${this.#root} kept changing while it was installed`);
+    return null;
   }
 
   async #install(build:{ entry: string; name: string; sha256: string }[]): Promise<string> {
@@ -126,10 +115,11 @@ export class AgentDesktopTool {
     const archive = new Uint8Array(await response.arrayBuffer());
     if (sha256(archive) !== this.#release.sha256) throw new Error(`the agent-desktop ${version} archive from ${url} does not match its pinned SHA-256; nothing was installed`);
 
-    // Staged beside the final folder, then renamed: a crash leaves a stray folder, never a half-written tool.
-    const parent = join(this.#root, '..');
-    mkdirSync(parent, { recursive: true, mode: 0o700 });
-    const staging = join(parent, `.agent-desktop-${randomBytes(6).toString('hex')}`);
+    // Staged beside the final folder, then renamed: a crash leaves a stray dot folder, never a half-written tool.
+    mkdirSync(this.#root, { recursive: true, mode: 0o700 });
+    const id = randomBytes(6).toString('hex');
+    const staging = join(this.#root, `.staging-${id}`);
+    const published = join(this.#root, id);
     mkdirSync(staging, { mode: 0o700 });
     try {
       const tgz = join(staging, 'release.tgz');
@@ -145,12 +135,12 @@ export class AgentDesktopTool {
         writeFileSync(target, bytes, { mode: 0o755 });
         chmodSync(target, 0o755);
       }
-      this.#publish(folder, parent, build);
+      renameSync(folder, published);
     } catch (error) {
       throw new Error(`agent-desktop ${version} could not be installed: ${messageOf(error)}`);
     } finally {
       rmSync(staging, { recursive: true, force: true });
     }
-    return (this.#verified = join(this.#root, 'agent-desktop'));
+    return (this.#verified = join(published, 'agent-desktop'));
   }
 }

@@ -57,12 +57,13 @@ first command that needs the tool, has the core fetch one pinned release
 (`AGENT_DESKTOP_RELEASE` in `packages/core/src/desktop/agent-desktop.ts`) from
 the npm registry. The core checks the archive's SHA-256, unpacks the Linux
 binary for the machine's CPU (x64 or arm64) and its clipboard helper with
-`tar`, checks each file's SHA-256 and moves them together into
-`<data dir>/tools/agent-desktop-<version>/`. An archive or a file that does not
-match installs nothing. Concurrent commands share one download, and a later
-core checks the installed files and reuses them. Two cores sharing a data dir
-may both download: the first to publish wins, and the other keeps that intact
-install instead of replacing a folder the first may be running.
+`tar`, checks each file's SHA-256 and moves them together into a folder of
+their own, `<data dir>/tools/agent-desktop-<version>/<install id>/`. An archive
+or a file that does not match installs nothing. Concurrent commands share one
+download, and a later core checks the installed files and reuses them. An
+install folder is never changed once in place, so cores sharing a data dir need
+no lock: two that download at once each keep their own, and a core removes only
+a folder whose files no longer match, then installs a fresh one.
 
 The CLI asks the core for that path (`desktop.tool`) and runs it from the
 agent's shell with the desktop's environment. When the core could not install
