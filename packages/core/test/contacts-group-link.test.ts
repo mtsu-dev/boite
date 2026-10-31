@@ -224,7 +224,8 @@ test('a member without a Contacts bot asks through the Bots host: queued while t
   expect(x.core.contacts.requests.list().some(request => request.id === stale.id)).toBe(false);
   await waitFor(() => requestOn(a, queued.id)?.stage !== 'host', 10000);
   // X's bot sends it to C, which reads A's thread at its alias on X; C's refusal comes back to A's thread.
-  await waitFor(() => x.core.contacts.linkOf(cId) === 'connected', 20000);
+  // A hand tried before X read the roster waits 30 s for its retry: offer it again until C follows.
+  await waitFor(() => { if (!x.core.contacts.has(cId)) a.core.contacts.groupLink.sweep(true); return x.core.contacts.linkOf(cId) === 'connected'; }, 20000);
   await xClient.call('contacts.bot.forward', { threadId: xBot.threadId, id: queued.id, contact: x.core.contacts.find(cId)!.name });
   const incoming = () => c.core.contacts.requests.list().find(request => request.direction === 'in' && request.text === 'Who runs the build farm?');
   await waitFor(() => incoming() !== undefined, 10000);
