@@ -500,6 +500,18 @@ test('a link that shares the inviter, pasted without an API key, offers the shar
   expect(one('contact-join-share')).toBeNull();
 });
 
+test('with the group\'s Bots machine offline and no Operator here, the card says where it is', async () => {
+  const store = await draw();
+  expect((await contacts(store)).bot).toBeFalsy();
+  const self = store.group?.self ?? 'core-home';
+  store.group = { id: 'grp', name: 'Home', self, cores: [{ coreId: self, name: 'Home' }, { coreId: 'core-tower', name: 'Tower' }], botsHome: 'core-tower' } as unknown as NonNullable<Store['group']>;
+  await vi.waitFor(() => { flushSync(); expect(one('home-bot-away')).not.toBeNull(); });
+  expect(one('home-bot-away')!.textContent).toBe(fill(strings.agents.builtin.away, { name: strings.agents.builtin.name.contacts, machine: 'Tower' }));
+  // This machine as the Bots machine: it is reached, the line goes.
+  store.group = { ...store.group!, botsHome: self };
+  await vi.waitFor(() => { flushSync(); expect(one('home-bot-away')).toBeNull(); });
+});
+
 test('the Operator card links the bot, lists the threads in touch with an End that asks first, and shows open flags read-only', async () => {
   const store = await draw();
   await store.client!.call('agents.builtin.ensure', { kind: 'contacts', name: strings.agents.builtin.name.contacts });

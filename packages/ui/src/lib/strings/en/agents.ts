@@ -6,11 +6,13 @@ export const strings = {
       badgeTip: 'Boite\'s own bot. It is never archived, only reset.',
       locked: 'Boite\'s; reset to restore',
       reset: 'Reset',
-      resetHint: 'Back to how Boite ships it: a new conversation, memory and routines cleared, name, robot, model and effort back to defaults.',
+      resetHint: 'Back to how Boite ships it: a new conversation, memory and routines cleared, name, robot, model, effort and settings back to defaults.',
       resetTitle: 'Reset "{name}"?',
-      resetBody: 'It starts a new conversation and the old one is archived. Its memory and routines are cleared, and its name, robot, model and effort go back to their defaults.',
+      resetBody: 'It starts a new conversation and the old one is archived. Its memory and routines are cleared, and its name, robot, model, effort and settings (daily budget, auto memory, subagents) go back to their defaults.',
       /** The name each built-in bot gets, in this language. */
-      name: { contacts: 'Operator' }
+      name: { contacts: 'Operator' },
+      /** The group's Bots machine holds the built-in bot and this window does not reach it. */
+      away: '{name} is on {machine}, offline for now: none is made elsewhere meanwhile.'
     },
     /** Moving a bot to another machine of the group, from its settings. */
     move: {

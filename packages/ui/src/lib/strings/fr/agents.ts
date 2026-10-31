@@ -7,10 +7,11 @@ export const fr: Translation = {
       badgeTip: 'Le bot de Boite. Il n\'est jamais archivé, seulement réinitialisé.',
       locked: 'Fourni par Boite ; réinitialisez pour le rétablir',
       reset: 'Réinitialiser',
-      resetHint: 'Revient à l\'état livré par Boite : une nouvelle conversation, mémoire et routines effacées, nom, robot, modèle et effort par défaut.',
+      resetHint: 'Revient à l\'état livré par Boite : une nouvelle conversation, mémoire et routines effacées, nom, robot, modèle, effort et réglages par défaut.',
       resetTitle: 'Réinitialiser « {name} » ?',
-      resetBody: 'Il commence une nouvelle conversation et l\'ancienne est archivée. Sa mémoire et ses routines sont effacées, et son nom, son robot, son modèle et son effort reviennent à leurs valeurs par défaut.',
-      name: { contacts: 'Standardiste' }
+      resetBody: 'Il commence une nouvelle conversation et l\'ancienne est archivée. Sa mémoire et ses routines sont effacées, et son nom, son robot, son modèle, son effort et ses réglages (budget quotidien, mémoire automatique, sous-agents) reviennent à leurs valeurs par défaut.',
+      name: { contacts: 'Standardiste' },
+      away: '{name} est sur {machine}, hors ligne pour l\'instant : rien n\'est recréé ailleurs en attendant.'
     },
     move: {
       label: 'Machine',

@@ -305,9 +305,12 @@ and the card says to update it.
 The Bots page creates a new bot there while this window reaches that machine
 as its owner, else on the machine the page shows
 ([bots](bots.md#the-page)). The Contacts switch makes the group's one Contacts
-bot on the Bots machine, else on the Settings machine, else on the window's
-machine, and makes none while any connected owner machine already lists it
-(`operatorHost`, `lib/operator.ts`). Bots made before stay where they are;
+bot on the Bots machine and only there: while that machine is offline it
+makes none, since the bot may be there out of sight, and the Operator card of
+the Contacts page says "<bot> is on <machine>, offline for now"
+(`botsHostAway`). With no Bots role it makes it on the Settings machine while
+that one is connected, else on the window's machine. It makes none while any
+connected owner machine already lists one (`operatorHost`, `lib/operator.ts`). Bots made before stay where they are;
 each one moves from its settings ([moving a bot](bots.md#moving-a-bot-to-another-machine)).
 
 The contact lists (`contactRows`, `lib/contacts.svelte.ts`) show the group as
