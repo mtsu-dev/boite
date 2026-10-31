@@ -761,9 +761,10 @@ an older one is refused with "update Boite on <machine>". The request carries:
   `skills/` stays behind;
 - its routines (name, prompt, schedule, on or off, a spent one-shot stays
   spent), whose next occurrence the target computes again;
-- the facts still waiting for it, filed there to wait for its next turn
-  (the target remembers which it filed for that `requestId`,
-  `agents:moved-in-facts:<source>:<requestId>`, and never files one twice);
+- the facts still waiting for it, filed there to wait for its next turn,
+  each with the time the source wrote that version (`written`, rising with
+  every write on the source, so a key set back to an earlier text is still
+  the newest);
 - the end of its conversation as text excerpts (`messageExcerpt`, the
   builder of a fresh session's history), newest first, at most 200 messages
   and 48,000 characters;
@@ -802,7 +803,19 @@ would for a busy thread, Run now is refused, and other autonomous turns are
 held. A fact filed while the request travels is not lost: once the target
 answers, the source sends the same request again with the facts it now holds,
 up to three times (`MOVE_FACT_ROUNDS`, then `reason: 'facts-arriving'`), and
-the target files those it has not had for that request.
+the target files, per key, a version newer than the one it filed for that
+request; a version the bot already read there is not told twice.
+
+Every request carries the whole bot. The target keeps a print of each part it
+applied for the `requestId` (`agents:moved-in-parts:<source>:<requestId>`:
+profile, route, settings, routines, each brain file, and the version of each
+fact by key). The same request again, while it holds the bot, applies only
+the parts whose print changed: what the source wrote after a lost answer
+(memory, notes, routines, a rename, settings, facts) replaces the target's
+copy of that part, and a part the source left alone keeps what the target
+wrote meanwhile. A route the target cannot run keeps the one the bot has
+there. The conversation is not carried again: turns held on the source after
+a lost answer stay in its archived thread.
 
 The source changes nothing until the target has the bot and every fact.
 Then it adds the line "Moved to <machine>" to the old thread and archives it,
@@ -813,9 +826,13 @@ waiting facts and its settings, and renames its brain folder to
 `requestId` defaults to a new one per call; the same one again returns the
 first answer from both machines, so a move whose answer was lost is retried
 without making a second bot: the target answers with the bot it made (and
-files the facts the source gathered since), and the source then archives and
+applies what the source changed since), and the source then archives and
 removes its copy. A refusal or a silence keeps the bot and its facts on the
-source. The Machine row keeps one `requestId` per bot and target in the
+source. From the first send to the end, the source remembers the request as
+unfinished (`agents:moving-out:<requestId>`, `BotMoves.unfinished`); a
+refusal the target read clears it, a silence or a lost answer does not, so the
+Contacts bot's move ([contacts](contacts.md)) sends the same request again at
+each sweep until the source's half is done. The Machine row keeps one `requestId` per bot and target in the
 window's storage (`boite.agentMoves`, `lib/agent-move.ts`) until the move
 succeeds or a refusal that read the request ends it; after a lost answer, a
 silent target (`reason: 'unreachable'`), a busy bot or a dropped connection,

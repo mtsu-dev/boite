@@ -271,9 +271,11 @@ sequenceDiagram
    (`contact.hand { action: 'bot' }`); if not, it moves its bot there with
    `agents.move`, under the request id `contacts-bot-<role revision>-<host
    prefix>`, so a retry or a restart sends the same move and the host takes it
-   once. Until the host answers that it holds a bot, the member keeps its bot
-   and its contact links, and tries again 30 seconds later or when the group
-   changes. If the member that announced its bot leaves the group before the
+   once. Until the host answers that it holds a bot and the member finished
+   its half of the move, the member keeps its bot and its contact links, and
+   tries again 30 seconds later or when the group changes; after a lost
+   answer it sends that same move again rather than asking, so it never keeps
+   a second Contacts bot. If the member that announced its bot leaves the group before the
    bot arrived, the Bots host starts a fresh one
    (`agents.builtin.ensure { kind: 'contacts' }`).
 2. Every 30 seconds, and at once when the group changes, a member that is not
