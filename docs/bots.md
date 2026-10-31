@@ -728,6 +728,67 @@ most once a second, the first change at once, while a bot works (a step, a
 card, a title, an answer) and when its desk changes (a watched thread's turn,
 card, row, stall or pull request).
 
+## Moving a bot to another machine
+
+`agents.move` (`{agentId, machine, requestId?}`, owner only) sends a bot to
+another machine of the group in one sealed, member-only request (`bot.move`,
+`packages/core/src/agents/move.ts`). The target must have `features.botMove`;
+an older one is refused with "update Boite on <machine>". The request carries:
+
+- the profile without what only the source knows (account, session, thread
+  and record ids): name, domain, instructions, robot, status, built-in kind,
+  route (provider, model, effort, permission mode) and projects;
+- its saved settings: auto memory, event wakes, daily budget and the
+  subagent switches (allowed routes and subagent profiles start again from
+  the new route);
+- the brain files `AGENTS.md`, `MEMORY.md` and `memories-archive.md`, at most
+  96,000 bytes together, refused past it with the file named (`brain.<file>`);
+  `skills/` stays behind;
+- its routines (name, prompt, schedule, on or off, a spent one-shot stays
+  spent), whose next occurrence the target computes again;
+- the facts still waiting for it, filed there to wait for its next turn;
+- the end of its conversation as text excerpts (`messageExcerpt`, the
+  builder of a fresh session's history), newest first, at most 200 messages
+  and 48,000 characters;
+- the source machine's name and core id.
+
+The whole request stays under 180,000 bytes of JSON.
+
+Projects are written as the target sees them: `<target-id>/<project>` becomes
+the target's own `<project>`, one of the source's becomes
+`<source-id>/<project>`, any other keeps its form; a local project the target
+does not have, or its drafts, is left out. The answer lists them
+(`projectIds`) and those of the source (`groupProjects`), which work while the
+source keeps `groupBots` on.
+
+The target runs the bot on its signed-in account of the same provider, with
+the same model and effort when it lists them and that provider's defaults
+otherwise; without one, on its own default route, as a new built-in bot gets.
+With no signed-in account at all it refuses: "agents.move: <machine> has no
+signed-in account to run <bot>; sign in there first". It also refuses a bot id
+it already holds from another request, and a built-in bot whose kind it
+already has live. The source refuses a move to itself, to a machine outside
+the group, of an archived bot, and of a bot whose thread or a sub-thread has a
+turn running or queued (`reason: 'turn-in-flight'`).
+
+The target creates the bot and a new thread whose earlier turns are the
+carried excerpts; its first turn sends them to a fresh session, as a fork
+does. No wake runs on arrival and a paused bot stays paused. Its next prompt
+(not a slash command or a compaction) carries a move note, once: "You moved
+from <source> to <target> on <ISO date>. Your memory, notes, routines and the
+end of your conversation came with you; the projects of <source> are reached
+as <source>/<project> through the group."
+
+The source changes nothing until the target answers that it holds the bot.
+Then it adds the line "Moved to <machine>" to the old thread and archives it,
+which stays readable; it removes the profile, its routines, its session, its
+waiting facts and its settings, and renames its brain folder to
+`<folder>-moved-<date>`. A built-in bot moves the same way: afterwards
+`builtinThread` answers on the target and is null on the source. The
+`requestId` defaults to a new one per call; the same one again returns the
+first answer from both machines, so a move whose answer was lost is retried
+without making a second bot.
+
 ## Built-in bots
 
 A built-in bot is one Boite ships (`AgentProfile.builtin`), one of each kind

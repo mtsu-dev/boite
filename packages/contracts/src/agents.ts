@@ -121,6 +121,18 @@ export interface AgentProfile extends AgentRecord {
    */
   builtin?: AgentBuiltin;
 }
+export interface AgentMoveParams { agentId: string; machine: string; requestId?: string }
+export interface AgentMoveResult {
+  agentId: string;
+  /** The target's core id. */
+  machine: string;
+  /** The bot's new thread on the target. */
+  threadId: string;
+  /** Its projects as the target holds them: local ids, or `<core-id>/<project-id>` for another machine's. */
+  projectIds: string[];
+  /** Those of the machine it left: they work while that machine keeps `groupBots` on. */
+  groupProjects: string[];
+}
 /** The bots Boite ships. One of each per core at most. */
 export const AGENT_BUILTINS = ['contacts'] as const;
 export type AgentBuiltin = typeof AGENT_BUILTINS[number];
@@ -268,6 +280,17 @@ export interface AgentsRpcMethods {
    * default name in the client's language. Owner only.
    */
   'agents.builtin.reset': { params: { agentId: string; name?: string; selection?: AgentSelection }; result: AgentProfile };
+  /**
+   * Moves a bot to another machine of the owner's group (`features.botMove`
+   * there): its profile, brain files, routines, the end of its conversation and
+   * the facts waiting for it. The other machine creates it first; then this one
+   * archives the old thread with a line naming where it went and removes the
+   * bot. `machine` is the target's core id, a prefix of it or its name.
+   * `requestId` makes a retry return the same result. Refused for this machine,
+   * an unknown member, a turn in flight (`reason: 'turn-in-flight'`) and a
+   * target without a signed-in account. Owner only.
+   */
+  'agents.move': { params: AgentMoveParams; result: AgentMoveResult };
   /** The agent's thread, created again if it was lost. */
   'agents.open': { params: { agentId: string }; result: { threadId: string } };
   'agents.runtime.get': { params: { agentId: string }; result: AgentRuntimeConfig };

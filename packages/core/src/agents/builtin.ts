@@ -8,7 +8,7 @@
  * is `agents.builtin.reset`.
  */
 import { join } from 'node:path';
-import { AGENT_BUILTINS, type AgentBuiltin, type AgentProfile, type AgentSelection, type AgentSession, type RpcParams } from '@boite/contracts';
+import { AGENT_BUILTINS, type Account, type AgentBuiltin, type AgentProfile, type AgentSelection, type AgentSession, type RpcParams } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { refused } from '../errors.ts';
 import { loggedInAccount } from '../delegation/routes.ts';
@@ -16,6 +16,17 @@ import { rewriteBrainFile } from './brain-files.ts';
 import { BRAIN_FILES } from './resident.ts';
 import type { AgentStore } from './store.ts';
 import { object, oneOf, text } from './validation.ts';
+
+/**
+ * The account a bot takes when nothing names one: the machine's signed-in
+ * account of an available provider (`loggedInAccount`), or undefined. A new
+ * built-in bot and a bot moved in from a machine whose provider this one
+ * lacks (`agents/move.ts`) both run on it.
+ */
+export function defaultAccount(core: Core, providerId?: string): Account | undefined {
+  const available = new Set(core.providers.available().map(summary => summary.id));
+  return loggedInAccount(core.accounts.list().filter(entry => available.has(entry.providerId) && (providerId === undefined || entry.providerId === providerId)));
+}
 
 /** What Boite gives a built-in bot of each kind. `name` is the fallback when the client names none in its language. */
 export interface BuiltinText { name: string; avatar: string; domain: string; instructions: string }
@@ -154,8 +165,7 @@ export class BuiltinBots {
    * account of an available provider and its default model, free to act.
    */
   #defaultSelection(kind: AgentBuiltin, method: 'ensure' | 'reset' = 'ensure'): AgentSelection {
-    const available = new Set(this.#core.providers.available().map(summary => summary.id));
-    const account = loggedInAccount(this.#core.accounts.list().filter(entry => available.has(entry.providerId)));
+    const account = defaultAccount(this.#core);
     if (account === undefined) throw refused(`agents.builtin.${method}: no signed-in account on this machine can run the ${kind} bot; sign in to a provider in Settings, then turn it on again`, { field: 'selection', expected: 'a signed-in account' });
     return { providerId: account.providerId, accountId: account.id, model: null, effort: null, permissionMode: 'bypassPermissions' };
   }

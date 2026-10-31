@@ -150,6 +150,8 @@ A bot of one member looking after projects of another
 same sealed requests: no key or token of either machine is copied to the
 other, and the member holding the projects lets bots in only while its own
 `groupBots` switch is on.
+A whole bot moves to another member with `agents.move`, one sealed `bot.move`
+request whatever `groupBots` says ([bots](bots.md#moving-a-bot-to-another-machine)).
 
 What a client says to a core is not sealed. That link is as private as its
 transport: WireGuard on a tailnet, TLS on an HTTPS address. A core that listens

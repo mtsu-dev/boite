@@ -26,6 +26,17 @@ function textPart(part: MessagePart): string {
   }
 }
 
+/**
+ * A message as a history excerpt carries it: its portable parts as text, each
+ * and the whole cut to `ENTRY_LIMIT`, empty when nothing portable is left. A
+ * bot moving to another machine carries its last messages this way
+ * (`agents/move.ts`).
+ */
+export function messageExcerpt(message: Message, fileReference: (file: Extract<MessagePart, { type: 'file' }>, place: PartPlace) => string = file => `[File: ${file.name ?? 'attachment'}]`): string {
+  const text = message.parts.map((part, partIndex) => part.type === 'file' ? fileReference(part, { messageId: message.id, partIndex }) : textPart(part)).filter(Boolean).map((part) => excerpt(part, ENTRY_LIMIT)).join('\n');
+  return text ? excerpt(text, ENTRY_LIMIT) : '';
+}
+
 /** Where a file part sits, so a caller can reuse what it made for the same part before. */
 export interface PartPlace { messageId: string; partIndex: number }
 
@@ -72,8 +83,8 @@ export function continuationInput(
     if (message.parts.some(part => part.type === 'file' || part.type === 'tool' || textPart(part) !== '')) entries += 1;
   }
   const entry = (message: Message): string | null => {
-    const text = message.parts.map((part, partIndex) => part.type === 'file' ? fileReference(part, { messageId: message.id, partIndex }) : textPart(part)).filter(Boolean).map((part) => excerpt(part, ENTRY_LIMIT)).join('\n');
-    return text ? `[${message.role}, ${message.state}]\n${excerpt(text, ENTRY_LIMIT)}` : null;
+    const text = messageExcerpt(message, fileReference);
+    return text ? `[${message.role}, ${message.state}]\n${text}` : null;
   };
   const first: string[] = [];
   let firstSize = 0;

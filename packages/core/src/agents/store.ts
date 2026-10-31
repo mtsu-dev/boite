@@ -23,6 +23,7 @@ import { EVENT_PROMPT_MAX, eventPrompt, finalText, midnight, type AgentFact, typ
 import { agentSpend, rootThread } from './spend.ts';
 import { migrateAgents } from './migration.ts';
 import { BuiltinBots } from './builtin.ts';
+import { BotMoves } from './move.ts';
 import { boolean, ids, integer, object, oneOf, quoted, text } from './validation.ts';
 
 const DEFAULT_LIMITS: AgentsSnapshot['limits'] = { paused: false };
@@ -73,6 +74,8 @@ export class AgentStore {
   readonly settingCards: AgentSettingCards;
   /** The bots Boite ships (builtin.ts). */
   readonly builtins: BuiltinBots;
+  /** A bot sent to another machine of the group, or taken from one (move.ts). */
+  readonly moves: BotMoves;
   /**
    * Today's sums per agent thread, read again after any turn or row change of
    * that thread and at midnight: a snapshot a second while an agent works
@@ -93,6 +96,10 @@ export class AgentStore {
       introPrompt: INTRO_PROMPT,
     });
     this.builtins.refresh();
+    this.moves = new BotMoves(core, this, {
+      createThread: (agent, lost) => this.#createThread(agent, lost),
+      forgetThread: threadId => { this.#threads.delete(threadId); this.#todays.delete(threadId); },
+    });
     for (const session of this.records.list('session')) this.#threads.set(session.threadId, session.agentId);
     this.entrusted = new AgentEntrustments(core, this);
     this.projects = new AgentProjects(core, this); this.group = new GroupBots(core, this); this.groupHost = new GroupBotHost(core); this.memory = new MemoryKeeper(core, this); this.settingCards = new AgentSettingCards(core, this);
@@ -587,6 +594,7 @@ export function registerPersistentAgents(core: Core): void {
   // Owner only, as every method access.ts names for no device or agent.
   core.router.register('agents.builtin.ensure', p => store.builtins.ensure(p));
   core.router.register('agents.builtin.reset', p => store.builtins.reset(p));
+  core.router.register('agents.move', p => store.moves.move(p));
   core.router.register('agents.open', p => store.open(p.agentId));
   core.router.register('agents.runtime.get', p => store.resident.config(p.agentId));
   core.router.register('agents.runtime.configure', p => store.resident.configure(p));
