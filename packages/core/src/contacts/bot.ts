@@ -11,6 +11,7 @@ import { text } from '../coordination-letter.ts';
 import type { Core } from '../core.ts';
 import { invalidParams, messageOf, refused } from '../errors.ts';
 import { gitRemoteOf } from './git-remote.ts';
+import { contactFace } from './face.ts';
 
 /** Cards the bot drew for the owner, by question id, so their answer acts after a restart too. */
 const CARDS = 'contacts:cards';
@@ -36,7 +37,8 @@ function requireBot(core: Core, threadId: unknown, method: string): { agentId: s
 }
 
 const dashed = (name: string): string => name.replace(/\s+/g, '-');
-const host = (core: Core): string => (core.info().hostname ?? 'Boite').slice(0, 100);
+/** What a contact reads as this owner's name: the group's once it has a Bots host. */
+const host = (core: Core): string => contactFace(core);
 
 export function botView(core: Core): ContactsBotView {
   const contacts = core.contacts.list().map(contact => ({

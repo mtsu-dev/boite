@@ -29,7 +29,8 @@ invites. A Headscale inviter can only invite someone on its own tailnet.
 
 1. The inviter's **Invite a contact** (`contacts.invite`) makes a one-time link
    valid 24 hours: `boite://contact#` then the inviter's core id, signing
-   key, sealing key, machine name, tailnet URL, a one-time token and the
+   key, sealing key, machine name (the group's name once the group has a
+   Bots host, [below](#group-to-group)), tailnet URL, a one-time token and the
    Tailscale share link. With a Tailscale API key stored
    (`contacts.tailscaleKey`), the core creates the share itself
    (`POST /api/v2/device/{id}/device-invites`, single use); without one the
@@ -237,7 +238,72 @@ Local cards stay private. The [shared board protocol](board.md#shared-board-prot
 requires both endpoint owners' board consent.
 
 Every request between this owner's agents and a contact's goes through the
-[Contacts bot](#the-contacts-bot) of each side. An agent never browses a
+[Contacts bot](#the-contacts-bot) of each side.
+
+## Group to group
+
+Once a group has a Bots host (`Group.botsHome`, [groups](groups.md)), a
+contact sees the group as one Boite named after the group: the card, the sync
+(`contact.sync` carries `group`), the bot's host, the flags' owner, the
+directory's machine labels and the letters' `from.machine` all read
+`Group.name`, never a member's host name (`contacts/face.ts`). The Bots host is
+the group's single entry: every contact link of another member moves there by
+itself, and its projects stay reachable through it, as in
+[Projects of the other machines of the group](#projects-of-the-other-machines-of-the-group).
+
+```mermaid
+sequenceDiagram
+  participant A as Member (old link)
+  participant X as Bots host
+  participant C as Contact
+  A->>X: contact.hand (record, grants, requests), sealed, members only
+  X-->>A: X's card, X's signature over the move
+  A->>C: contact.move (X's card, X's signature), signed by A's key
+  C->>X: dial X with the hello
+  C-->>A: ok, or unreachable
+  A->>A: forget the contact once it accepted
+```
+
+1. Every 30 seconds, and at once when the group changes, a member that is not
+   the Bots host hands each contact whose sync announced `groupLink: 1` to the
+   Bots host (`contact.hand`, a sealed operation only a current member may
+   send). Its grants on its own projects become grants with `machine` set to
+   the member, the requests come along. The Bots host refuses a contact that
+   is itself or one of the group's machines.
+2. The Bots host keeps the record waiting for the contact's hello (one hour),
+   and answers with its card `{coreId, publicKey, box, url, machine}` and its
+   signature over `boite-contact-move\n` followed by
+   `[old core id, Bots host core id, contact core id]` as JSON.
+3. The member sends `contact.move { card, signature }` to the contact, in its
+   own signed envelope. The contact checks both signatures, refuses a card
+   that names itself or one of its own group's machines, and dials the Bots
+   host before switching. If it cannot within 3.5 s it answers
+   `unreachable: <reason>`, keeps the old link, and the member tries again 10
+   minutes later.
+4. When it can, the contact re-keys everything to the Bots host: the record
+   (trust, notes, grants and capabilities kept), requests, relations, flags,
+   the 7-day reply window, revoked projects, gateway mailboxes and the letters
+   it holds. Then it drops the old link. The member forgets the contact only
+   after that answer, keeping its relations and flags; its threads still reach
+   the contact through the Bots host's copy (`relay.mirror`).
+
+The Bots host's Contacts page lists the contacts still linked to another
+member, with `heldBy`, that member's core id. An answer to a request a member
+had sent before the move reaches it through the Bots host
+(`contact.hand { action: 'answer' }`).
+
+A contact on an older Boite never announces `groupLink`: it stays linked to
+the member that invited it, served as before. Its letters keep the 15 minute
+expiry.
+
+The Bots host may be off for days. A letter to a contact that announced
+`groupLink`, sent directly or through a member, expires after 7 days instead
+of 15 minutes, and the receiver accepts that window from any contact. An ask
+or an answer to such a contact retries every 30 seconds for 7 days; then the
+ask becomes refused with "Not delivered: <name> stayed unreachable for 7 days"
+and the answer is dropped. A reply into a gateway mailbox
+([Contacts through your group](#contacts-through-your-group)) keeps 15
+minutes. An agent never browses a
 contact's threads: it says what it needs and gets back the one thread to
 write to.
 
@@ -407,14 +473,17 @@ names), `funnel.ts` (the routes on Tailscale Funnel), `funnel-check.ts`
 of a join), `invite.ts` (the link format), `words.ts`
 (fingerprint words), `tier.ts`, `git-remote.ts` (read from the git config
 files, no process), `bot.ts` (the Contacts bot's methods and relations),
-`flags.ts` (the antivirus patterns) and `tailscale.ts`. `contacts.*` are
+`flags.ts` (the antivirus patterns), `group-link.ts` (contacts moving to the
+Bots host), `face.ts` (the name a contact reads) and `tailscale.ts`. `contacts.*` are
 owner-only for administration; `contacts.sendHuman` also permits paired devices.
 Agents call `collaboration.contacts` and `collaboration.ask`; the Contacts
 bot's thread alone calls `contacts.bot.*`.
 `packages/core/test/contacts.test.ts` links two cores over loopback, and
 `contacts-parts.test.ts` covers the pieces, the Tailscale client against a
 stubbed `fetch`. `contacts-group.test.ts` links a contact to one machine of a two-machine
-group and opens it a project of the other. `contacts-funnel.test.ts` drives the Funnel mounts through
+group and opens it a project of the other. `contacts-group-link.test.ts`
+moves a contact from one member to the Bots host and checks the forged and
+unreachable moves. `contacts-funnel.test.ts` drives the Funnel mounts through
 the fake CLI (`test/fixtures/fake-tailscale.ts`) and checks their reachability
 through stubbed DNS and requests, never the internet. `magic-dns.test.ts` covers
 the tailnet name lookup against a resolver on loopback.
@@ -772,7 +841,8 @@ Details. `contacts.decideMail`, owner only, delivers one letter as written,
 recording a digest of its sender and content in the thread's letter scope, or
 rejects it, which its sender reads. Marking the contact trusted delivers what
 waits from it. Held mail expires like any letter: 15 minutes for agent and
-human mail, 6 hours for a request answer. A tool-free thread (echo in default
+human mail (7 days from a contact whose group has a Bots host,
+[Group to group](#group-to-group)), 6 hours for a request answer. A tool-free thread (echo in default
 mode) reads it at once and takes the hold below.
 
 Legacy correspondence and pre-policy consumed history have no captured file

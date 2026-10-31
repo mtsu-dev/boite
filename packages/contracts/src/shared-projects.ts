@@ -12,6 +12,12 @@ export interface ContactCapabilities {
   humanLetters?: 1;
   /** The peer routes requests through its Contacts bot and keeps relations (`ContactRelation`). */
   contactsBot?: 1;
+  /**
+   * The peer follows a group's one entry: it takes `contact.move`, which hands
+   * its link from one machine of this owner's group to the group's Bots host,
+   * and reads `group` on the sync as this owner's name.
+   */
+  groupLink?: 1;
 }
 
 /**

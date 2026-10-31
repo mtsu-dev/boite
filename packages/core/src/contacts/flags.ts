@@ -12,6 +12,7 @@ import type { Core } from '../core.ts';
 import { invalidParams, refused } from '../errors.ts';
 import { newId } from '../ids.ts';
 import { contactsBot, tellBot } from './bot.ts';
+import { contactFace } from './face.ts';
 
 const FLAGS = 'contacts:flags';
 const MAX_FLAGS = 200;
@@ -151,6 +152,13 @@ export class ContactFlags {
     this.#save(flags);
   }
 
+  /** The contact moved to another core of its owner's group (`group-link.ts`): its flags follow it. */
+  rekey(from: string, to: string, name: string): void {
+    const flags = this.list();
+    if (!flags.some(flag => flag.coreId === from)) return;
+    this.#save(flags.map(flag => flag.coreId === from ? { ...flag, coreId: to, contact: name } : flag));
+  }
+
   /** What the bot cut: its open flags close as `cut`, and their letters are refused. */
   cut(coreId: string, which: (flag: ContactFlag) => boolean = () => true): void {
     const flags = this.list();
@@ -172,7 +180,7 @@ export class ContactFlags {
     return row ? JSON.parse(row.data) as AgentLetter : null;
   }
 
-  #owner(): string { return (this.#core.info().hostname ?? 'Boite').slice(0, 100); }
+  #owner(): string { return contactFace(this.#core); }
 
   close(): void { this.#off?.(); this.#off = null; }
 }

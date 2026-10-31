@@ -254,6 +254,14 @@ export interface Contact {
   capabilities?: ContactCapabilities;
   /** The contact's own Contacts bot, as its core announced it on the sync: the one thread of theirs this core's bot may always write to. */
   bot?: { threadId: ThreadId; title: string };
+  /** The group name the contact's core announced on the sync: its whole group reads as one Boite of that name. Absent for a single machine or an older core. */
+  group?: string;
+  /**
+   * Owner-facing only, never sent to a contact: the member of this owner's
+   * group that holds the link, when it is not this core. The Bots host lists
+   * the contacts other members hold with it, so the owner reads one list.
+   */
+  heldBy?: string;
 }
 /** An invitation a contact joins with. One use; whoever holds it can join, so it travels like a password. */
 export interface ContactInvite {

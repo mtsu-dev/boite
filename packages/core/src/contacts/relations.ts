@@ -104,6 +104,17 @@ export class ContactRelations {
     this.#core.journal.setSetting(ENDED, queue);
   }
 
+  /** The contact moved to another core of its owner's group (`group-link.ts`): its relations follow it, its threads under their new address. */
+  rekey(from: string, to: string, name: string, address: (thread: AgentContact) => AgentContact): void {
+    const relations = this.list();
+    if (relations.some(relation => relation.coreId === from)) this.#save(relations.map(relation => relation.coreId !== from ? relation : { ...relation, coreId: to, contact: name, remote: address(relation.remote) }));
+    const queue = this.#ended();
+    if (!(from in queue)) return;
+    queue[to] = [...(queue[to] ?? []), ...queue[from]!];
+    delete queue[from];
+    this.#core.journal.setSetting(ENDED, queue);
+  }
+
   /** The contact is removed: its relations end without telling it, and nothing waits to be told. */
   forget(coreId: string): void {
     const queue = this.#ended();

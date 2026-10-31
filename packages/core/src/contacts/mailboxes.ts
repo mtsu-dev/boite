@@ -13,6 +13,7 @@ import { PeerRefusal, type Operation } from '../coordination-wire.ts';
 import { refused, unavailable, messageOf, RpcFailure } from '../errors.ts';
 import { REPLY_WINDOW_MS } from './reach.ts';
 import { checkNormalizedRemote } from './git-remote.ts';
+import { contactFace } from './face.ts';
 
 type ContactSummary = RpcResult<'collaboration.contacts'>[number];
 interface SourceRoute { threadId: string; coreId: string; via: string; name: string; stamp: string; admission: number }
@@ -43,6 +44,11 @@ export class ContactMailboxes {
   #self(): string { return this.#core.coordination.card().coreId; }
   #sources(): SourceRoute[] { return this.#core.journal.getSetting(SOURCES) as SourceRoute[] ?? []; }
   #mailboxes(): Mailbox[] { return this.#core.journal.getSetting(MAILBOXES) as Mailbox[] ?? []; }
+  /** The contact moved to another core of its owner's group (`group-link.ts`): routes and mailboxes here name the new one. */
+  rekey(from: string, to: string, name: string): void {
+    if (this.#sources().some(entry => entry.coreId === from)) this.#core.journal.setSetting(SOURCES, this.#sources().map(entry => entry.coreId === from ? { ...entry, coreId: to, name } : entry));
+    if (this.#mailboxes().some(entry => entry.coreId === from)) this.#core.journal.setSetting(MAILBOXES, this.#mailboxes().map(entry => entry.coreId === from ? { ...entry, coreId: to, name } : entry));
+  }
   #member(coreId: string): CoordinationPeer {
     const peer = this.#core.group.peers().find(entry => entry.coreId === coreId);
     if (!peer) throw refused('route: expected a current member of this owner\'s group');
@@ -244,7 +250,8 @@ export class ContactMailboxes {
     this.#timestamps(canonical, LETTER_TTL_MS);
     const contact = this.#contact(address(canonical.to, 'letter.to').coreId);
     const box = this.#mailbox(from, contact, canonical.createdAt);
-    const wire: AgentLetter = { ...canonical, from: { ...from, coreId: this.#self(), threadId: box.id }, contact: { coreId: contact.coreId, name: contact.name } };
+    // The contact reads this owner's name, never the initiating member's (`face.ts`).
+    const wire: AgentLetter = { ...canonical, from: { ...from, coreId: this.#self(), threadId: box.id, machine: contactFace(this.#core) }, contact: { coreId: contact.coreId, name: contact.name } };
     const stored = this.#store(box.id, 'out', wire, canonical);
     const currentWire = { ...stored.wire, from: wire.from };
     let answer: AgentLetter;
