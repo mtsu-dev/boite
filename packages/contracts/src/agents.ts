@@ -111,7 +111,19 @@ export interface AgentProfile extends AgentRecord {
    * woken when one it runs ends, fails, asks, waits on a permission or stalls.
    */
   projectIds?: string[];
+  /**
+   * A bot Boite ships rather than one the owner wrote. `contacts` is the
+   * Contacts bot: the one thread that sends, receives and settles every
+   * request between this owner's agents and a contact's (docs/contacts.md).
+   * Its `domain` and `instructions` are the core's and refuse an edit; its
+   * name, robot, route and pause stay the owner's. It is never archived,
+   * only reset (`agents.builtin.reset`). Missing on an owner's bot.
+   */
+  builtin?: AgentBuiltin;
 }
+/** The bots Boite ships. One of each per core at most. */
+export const AGENT_BUILTINS = ['contacts'] as const;
+export type AgentBuiltin = typeof AGENT_BUILTINS[number];
 /** The agent's own thread. One per agent, created with it. */
 export interface AgentSession extends AgentRecord {
   agentId: string;
@@ -240,6 +252,22 @@ export interface AgentsRpcMethods {
    * unknown model or project, or drafts.
    */
   'agents.create': { params: AgentCreateParams; result: AgentCreateResult };
+  /**
+   * The built-in bot of `kind` on this core, created when it is missing (the
+   * Contacts switch turned on): its name, robot and route come filled in, its
+   * thread starts with its introduction. Calling it again returns the same
+   * bot, paused or not. `selection` picks its route and `name` its name on
+   * creation only: the client names it in the language it speaks
+   * (Operator, Standardiste). Owner only.
+   */
+  'agents.builtin.ensure': { params: { kind: AgentBuiltin; name?: string; selection?: AgentSelection }; result: AgentProfile };
+  /**
+   * A built-in bot back to how Boite ships it: default name and robot, its
+   * memory emptied, its routines removed and a new thread, the old one
+   * archived. Its route stays unless `selection` names another; `name` is the
+   * default name in the client's language. Owner only.
+   */
+  'agents.builtin.reset': { params: { agentId: string; name?: string; selection?: AgentSelection }; result: AgentProfile };
   /** The agent's thread, created again if it was lost. */
   'agents.open': { params: { agentId: string }; result: { threadId: string } };
   'agents.runtime.get': { params: { agentId: string }; result: AgentRuntimeConfig };

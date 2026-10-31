@@ -10,6 +10,8 @@ export interface ContactCapabilities {
   sharedProjects?: typeof SHARED_PROJECT_VERSION;
   /** The peer preserves server-attested contact-human letters instead of treating them as owner input. */
   humanLetters?: 1;
+  /** The peer routes requests through its Contacts bot and keeps relations (`ContactRelation`). */
+  contactsBot?: 1;
 }
 
 /**
