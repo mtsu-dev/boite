@@ -7,6 +7,7 @@ import { describeTool, type ToolFamily } from './tool-summary';
 import { experimentOn } from './experiments.svelte';
 import { noteUpkeep } from './agent-upkeep';
 import { agentDirectory } from './agent-directory.svelte';
+import { confirm } from './confirm.svelte';
 
 /**
  * A persistent agent is a thread with an identity: its conversation is its
@@ -60,6 +61,19 @@ export function agentRows(snapshot: AgentsSnapshot | null): AgentRowData[] {
 export type AgentMood = 'working' | 'queued' | 'waiting' | 'error' | 'unread' | 'idle' | 'asleep';
 
 /** The ring of a state (`liveState`), with answers not read yet over a rest. */
+/**
+ * Resets a built-in bot once the owner confirmed it in the app's dialog: Boite's
+ * name in the language the app speaks, its robot, an empty memory and a new
+ * conversation. Null when the owner cancelled or the core refused (the view shows why).
+ */
+export async function resetBuiltin(view: AgentsView, agent: AgentProfile): Promise<AgentProfile | null> {
+  if (!agent.builtin) return null;
+  const labels = strings.agents.builtin;
+  const yes = await confirm.ask({ title: fill(labels.resetTitle, { name: agent.name }), body: labels.resetBody, confirmLabel: labels.reset, cancelLabel: strings.common.cancel, danger: true });
+  if (!yes) return null;
+  return await view.call('agents.builtin.reset', { agentId: agent.id, name: labels.name[agent.builtin] });
+}
+
 export function moodOf(state: AgentStatus['state'], unread = 0): AgentMood {
   if (state === 'paused') return 'asleep';
   if (state === 'archived') return 'idle';

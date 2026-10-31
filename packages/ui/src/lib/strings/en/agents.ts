@@ -1,5 +1,17 @@
 export const strings = {
   agents: {
+    /** A bot Boite ships: its badge, its locked fields and its Reset. */
+    builtin: {
+      badge: 'Built-in',
+      badgeTip: 'Boite\'s own bot. It is never archived, only reset.',
+      locked: 'Boite\'s; reset to restore',
+      reset: 'Reset',
+      resetHint: 'Back to how Boite ships it: a new conversation, memory and routines cleared, name, robot, model and effort back to defaults.',
+      resetTitle: 'Reset "{name}"?',
+      resetBody: 'It starts a new conversation and the old one is archived. Its memory and routines are cleared, and its name, robot, model and effort go back to their defaults.',
+      /** The name each built-in bot gets, in this language. */
+      name: { contacts: 'Operator' }
+    },
     brain: "Brain",
     defaultModel: "Default model",
     allowedModels: "Allowed models for this bot",

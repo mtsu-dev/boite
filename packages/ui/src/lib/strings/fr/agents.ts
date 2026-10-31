@@ -2,6 +2,16 @@ import type { Translation } from '../../i18n.svelte';
 
 export const fr: Translation = {
   agents: {
+    builtin: {
+      badge: 'Intégré',
+      badgeTip: 'Le bot de Boite. Il n\'est jamais archivé, seulement réinitialisé.',
+      locked: 'Fourni par Boite ; réinitialisez pour le rétablir',
+      reset: 'Réinitialiser',
+      resetHint: 'Revient à l\'état livré par Boite : une nouvelle conversation, mémoire et routines effacées, nom, robot, modèle et effort par défaut.',
+      resetTitle: 'Réinitialiser « {name} » ?',
+      resetBody: 'Il commence une nouvelle conversation et l\'ancienne est archivée. Sa mémoire et ses routines sont effacées, et son nom, son robot, son modèle et son effort reviennent à leurs valeurs par défaut.',
+      name: { contacts: 'Standardiste' }
+    },
     brain: "Cerveau",
     defaultModel: "Modèle par défaut",
     allowedModels: "Modèles autorisés pour ce bot",

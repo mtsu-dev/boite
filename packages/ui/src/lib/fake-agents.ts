@@ -1,6 +1,7 @@
 import { nextAgentOccurrence, RpcErrorCode, AGENT_MEMORY_MAX, AGENT_ROUTINE_NAME_MAX, AGENT_ROUTINE_PROMPT_MAX, AGENT_ROUTINES_MAX } from '@boite/contracts';
+import { BUILTIN_BOTS, BUILTIN_LOCKED, BUILTIN_NEVER_ARCHIVED } from './fake-client/builtin-bots';
 import type {
-  AgentAccountGrant, AgentBrain, AgentBrainRoot, AgentEntrustment, AgentProfile, AgentRecord, AgentRoutine, AgentRuntimeConfig, AgentSchedule,
+  AgentAccountGrant, AgentBuiltin, AgentBrain, AgentBrainRoot, AgentEntrustment, AgentProfile, AgentRecord, AgentRoutine, AgentRuntimeConfig, AgentSchedule,
   AgentSelection, AgentSession, AgentStatus, AgentWatch, AgentsRpcMethods, AgentsSnapshot, RpcParams, RpcResult, Thread, Turn
 } from '@boite/contracts';
 import { RpcFailure } from './client';
@@ -44,6 +45,10 @@ export interface AgentRunner {
   occupied?: (path: string) => boolean;
   /** Validate new choices against the host catalog while retaining previously approved choices. */
   checkRoute?: (value: AgentSelection, previous?: Pick<AgentSelection, 'providerId' | 'accountId' | 'model' | 'effort'>) => void;
+  /** Archives a thread, as a built-in bot's reset does to its old one. */
+  archive?: (threadId: string) => void;
+  /** The route a new thread takes on this core: a built-in bot created with none named runs there. */
+  defaultRoute?: () => AgentSelection | null;
 }
 
 /**
@@ -110,6 +115,13 @@ export class FakeAgents {
   referencesProject(_projectId: string): boolean { return false; }
   /** An agent's profile as stored, or null once removed: what an agent setting card reads. */
   profileOf(id: string): AgentProfile | null { const row = this.profiles.get(id); return row ? structuredClone(row) : null; }
+  /** The live built-in bot of that kind, as the core's `AgentStore.builtin`. */
+  builtin(kind: AgentBuiltin): AgentProfile | null {
+    const row = [...this.profiles.values()].sort(byCreation).find(a => a.builtin === kind && a.status !== 'archived');
+    return row ? structuredClone(row) : null;
+  }
+  /** That bot's own thread: the only one the `contacts.bot.*` calls answer. */
+  builtinThread(kind: AgentBuiltin): string | null { const row = this.builtin(kind); return row ? this.threadOf(row.id) : null; }
   /** Every agent not archived, oldest first. */
   liveProfiles(): AgentProfile[] { return [...this.profiles.values()].filter(a => a.status !== 'archived').sort(byCreation).map(a => structuredClone(a)); }
   configOf(id: string): AgentRuntimeConfig { return this.runtime(id); }
@@ -282,6 +294,8 @@ export class FakeAgents {
   private readonly handlers: AgentHandlers = {
     'agents.snapshot': p => this.snapshot(p.threadId, p.desk),
     'agents.profile.save': p => this.saveProfile(p, true),
+    'agents.builtin.ensure': p => this.ensureBuiltin(p),
+    'agents.builtin.reset': p => this.resetBuiltin(p),
     'agents.open': p => this.openAgent(p.agentId),
     'agents.runtime.get': p => this.runtime(p.agentId),
     'agents.runtime.configure': p => this.configureRuntime(p),
@@ -303,8 +317,14 @@ export class FakeAgents {
     if (typeof p.value.name !== 'string' || !p.value.name.trim()) this.refuse('name: expected nonempty text');
     const previous = p.id ? this.profile(p.id) : null;
     if (previous && previous.revision !== p.expectedRevision) this.refuse('profile revision changed');
-    const { id: _id, revision: _revision, createdAt: _created, updatedAt: _updated, ...value } = p.value as AgentProfile;
-    const agent = this.stamp(value, previous ?? undefined, 'agent') as AgentProfile;
+    const { id: _id, revision: _revision, createdAt: _created, updatedAt: _updated, builtin: _builtin, ...value } = p.value as AgentProfile;
+    // A save never makes or unmakes a built-in bot, and a built-in keeps Boite's domain and instructions.
+    if (previous?.builtin) {
+      if (value.domain !== previous.domain) this.refuse(BUILTIN_LOCKED('domain'));
+      if (value.instructions !== previous.instructions) this.refuse(BUILTIN_LOCKED('instructions'));
+      if (value.status === 'archived') this.refuse(BUILTIN_NEVER_ARCHIVED);
+    }
+    const agent = this.stamp(previous?.builtin ? { ...value, builtin: previous.builtin } : value, previous ?? undefined, 'agent') as AgentProfile;
     this.profiles.set(agent.id, agent);
     this.place(agent);
     if (!previous) {
@@ -316,6 +336,65 @@ export class FakeAgents {
     }
     this.bump();
     return structuredClone(agent);
+  }
+  /** The core's `ensure`: the live built-in of that kind, else one made now with Boite's texts and its first turn. */
+  private ensureBuiltin(p: RpcParams<'agents.builtin.ensure'>): AgentProfile {
+    const shipped = Object.hasOwn(BUILTIN_BOTS, p.kind) ? BUILTIN_BOTS[p.kind] : undefined;
+    if (!shipped) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `kind: expected one of ${Object.keys(BUILTIN_BOTS).join(', ')}`, data: { field: 'kind' } });
+    const name = this.builtinName(p.name, shipped.name);
+    const live = this.builtin(p.kind);
+    if (live) return live;
+    // Archived before (it should not happen): it comes back as it was.
+    const archived = [...this.profiles.values()].sort(byCreation).find(a => a.builtin === p.kind);
+    if (archived) {
+      const agent = this.stamp({ ...archived, status: 'active' as const }, archived, 'agent') as AgentProfile;
+      this.profiles.set(agent.id, agent);
+      this.bump();
+      return structuredClone(agent);
+    }
+    const selection = this.builtinRoute(p.selection);
+    const created = this.saveProfile({ value: { name, domain: shipped.domain, instructions: shipped.instructions, avatar: '', status: 'active', projectIds: [], selection } }, true);
+    // `saveProfile` never makes a built-in from a client's value: the core marks it here.
+    const agent = { ...this.profile(created.id), builtin: p.kind };
+    this.profiles.set(agent.id, agent);
+    this.bump();
+    return structuredClone(agent);
+  }
+  /** The core's `reset`: Boite's name, robot, texts and default route, empty memory, no routines and a new thread, the old one archived. */
+  private resetBuiltin(p: RpcParams<'agents.builtin.reset'>): AgentProfile {
+    const previous = this.profile(p.agentId);
+    if (!previous.builtin) this.refuse(`agentId: ${previous.name} is not a built-in bot; only a built-in bot is reset`);
+    const shipped = BUILTIN_BOTS[previous.builtin];
+    const name = this.builtinName(p.name, shipped.name);
+    // Its default settings come back too: the machine's default route, unless the client named one.
+    const selection = p.selection ? this.builtinRoute(p.selection, previous.selection) : this.runner?.defaultRoute?.() ? this.builtinRoute(undefined) : previous.selection;
+    const agent = this.stamp({ ...previous, name, avatar: '', domain: shipped.domain, instructions: shipped.instructions, selection, status: previous.status === 'archived' ? 'active' as const : previous.status }, previous, 'agent') as AgentProfile;
+    this.profiles.set(agent.id, agent);
+    for (const [id, session] of [...this.sessions]) {
+      if (session.agentId !== agent.id) continue;
+      this.runner?.archive?.(session.threadId);
+      this.sessions.delete(id);
+    }
+    for (const [id, routine] of [...this.routines]) if (routine.agentId === agent.id) this.routines.delete(id);
+    const brain = this.brains.get(agent.id);
+    this.brains.set(agent.id, { path: '', instructions: shipped.instructions, memory: '', revision: String(Number(brain?.revision ?? 0) + 1) });
+    this.problems.delete(agent.id);
+    this.makeThread(agent);
+    this.wake(agent.id, `You were just reset. Introduce yourself in two sentences, read your instructions, create the routines they call for, then say what you will do and when.\n\nYour instructions:\n${agent.instructions}`, 'event', 'Just created');
+    this.bump();
+    return structuredClone(agent);
+  }
+  private builtinName(given: unknown, fallback: string): string {
+    if (given === undefined) return fallback;
+    if (typeof given !== 'string' || !given.trim() || given.trim().length > 100) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'name: expected 1 to 100 characters' });
+    return given.trim();
+  }
+  /** A route named for a built-in is checked like any bot's; none named takes the core's default for a new thread. */
+  private builtinRoute(given: AgentSelection | undefined, previous?: AgentSelection): AgentSelection {
+    if (given) { this.runner?.checkRoute?.(given, previous); return structuredClone(given); }
+    const route = this.runner?.defaultRoute?.();
+    if (!route) this.refuse('selection: no signed-in account on this machine to run the bot; sign in to a provider first');
+    return { ...route, permissionMode: 'bypassPermissions' };
   }
   private openAgent(agentId: string): RpcResult<'agents.open'> {
     const agent = this.profile(agentId);
@@ -382,6 +461,7 @@ export class FakeAgents {
     const brain = this.getBrain(p.agentId);
     if (brain.revision !== p.expectedRevision) this.refuse('brain revision changed');
     if (p.memory.length > AGENT_MEMORY_MAX) this.refuse(`memory: expected at most ${AGENT_MEMORY_MAX} characters`);
+    if (this.profile(p.agentId).builtin && p.instructions !== brain.instructions) this.refuse(BUILTIN_LOCKED('instructions'));
     const saved = { ...brain, instructions: p.instructions, memory: p.memory, revision: String(Number(brain.revision) + 1) };
     this.brains.set(p.agentId, saved);
     return structuredClone(saved);

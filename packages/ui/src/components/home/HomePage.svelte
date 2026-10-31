@@ -10,6 +10,7 @@
   import ContactPage from './ContactPage.svelte';
   import ContactSettings from './ContactSettings.svelte';
   import MailCard from './MailCard.svelte';
+  import OperatorCard from './OperatorCard.svelte';
   import RequestCard from './RequestCard.svelte';
 
   /**
@@ -51,6 +52,8 @@
           <p>{labels.intro}</p>
         </div>
       </header>
+
+      <OperatorCard {view} {now} />
 
       {#if data.mail?.length}
         <section class="card" data-testid="home-mail">

@@ -18,6 +18,8 @@
    * runs; the brain is MEMORY.md and AGENTS.md.
    */
   let { view, agent, pane, onclose }: { view: AgentsView; agent: AgentProfile; pane: AgentPane | null; onclose: () => void } = $props();
+  /** Its thread: a reset gives a built-in bot a new one, and the forms start again from what Boite put back. */
+  const session = $derived(view.snapshot?.sessions.find(s => s.agentId === agent.id)?.threadId ?? '');
   const labels = $derived(strings.agents);
   const sheet = new Closing();
   /** What the sheet shows while it plays its exit: the pane it had. */
@@ -42,7 +44,7 @@
       <button type="button" class="ghost icon" aria-label={strings.common.close} title={strings.common.close} onclick={onclose} data-testid="agent-sheet-close"><X size={16} strokeWidth={1.75} /></button>
     </header>
     <div class="agent-sheet-body">
-      {#key `${agent.id}:${shown}`}
+      {#key `${agent.id}:${shown}:${session}`}
         {#if shown === 'brain'}
           <AgentBrainEditor {view} agentId={agent.id} />
         {:else}
