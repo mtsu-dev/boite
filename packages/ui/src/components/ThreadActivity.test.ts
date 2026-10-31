@@ -4,14 +4,16 @@ import type { QuestionRequest, Thread, ThreadActivity, ThreadSummary } from '@bo
 import { Store } from '../lib/store.svelte';
 import { replyTarget } from '../lib/question-reply.svelte';
 import ThreadActivityView from './ThreadActivity.svelte';
+import { workspace } from '../lib/workspace.svelte';
 
 let view: ReturnType<typeof mount> | undefined;
 afterEach(() => {
   if (view) unmount(view, { outro: false });
   view = undefined;
+  vi.restoreAllMocks();
   document.body.innerHTML = '';
 });
-function render(activity: ThreadActivity) {
+function render(activity: ThreadActivity | null) {
   const store = new Store();
   store.connection = 'ready';
   store.openThread = { id: 'thread', activity } as Thread;
@@ -167,6 +169,40 @@ test('a subagent\'s questions stay out of its parent\'s dock while permissions s
   expect(wait.textContent).toContain('Run a command');
   wait.querySelector<HTMLButtonElement>('[data-testid=activity-open-subagent]')!.click();
   expect(open).toHaveBeenLastCalledWith('child');
+});
+
+test('the chatbar links child questions on their owning machine without taking the parent reply', async () => {
+  const store = render(null);
+  const select = vi.spyOn(workspace, 'select').mockResolvedValue(undefined);
+  const remoteStore = new Store();
+  vi.spyOn(workspace, 'machineOf').mockReturnValue({ id: 'other-machine', label: 'Other machine', store: remoteStore });
+  flushSync(() => { store.threads = [{ id: 'thread', subagentQuestions: [
+    { threadId: 'child', title: 'Check the parser' },
+    { threadId: 'child', title: 'Remote parser', machine: { coreId: 'other-core', name: 'Other machine' } }
+  ] } as ThreadSummary]; });
+  const bar = document.querySelector('[data-testid=thread-activity]')!;
+  expect(bar).not.toBeNull();
+  expect(bar.classList.contains('hidden')).toBe(false);
+  expect(bar.classList.contains('inline')).toBe(true);
+  const alerts = bar.querySelectorAll<HTMLButtonElement>('[data-testid=subagent-question-alert]');
+  expect(alerts).toHaveLength(2);
+  expect(alerts[0]!.textContent).toContain('A subagent has a question');
+  expect(alerts[0]!.textContent).toContain('Check the parser');
+  expect(replyTarget(store)).toBeNull();
+  alerts[0]!.click();
+  expect(select).toHaveBeenCalledExactlyOnceWith(store, 'child');
+  expect(alerts[1]!.disabled).toBe(true);
+  flushSync(() => { remoteStore.connection = 'ready'; });
+  expect(alerts[1]!.disabled).toBe(false);
+  alerts[1]!.click();
+  expect(select).toHaveBeenLastCalledWith(remoteStore, 'child');
+  flushSync(() => { store.pendingQuestions = [question('own', 1)]; });
+  expect(replyTarget(store)?.id).toBe('own');
+  flushSync(() => { store.threads = [{ id: 'thread', subagentQuestions: [] } as unknown as ThreadSummary]; });
+  expect(document.querySelector('[data-testid=subagent-question-alert]')).toBeNull();
+  expect(replyTarget(store)?.id).toBe('own');
+  flushSync(() => { store.pendingQuestions = []; });
+  expect(document.querySelector('[data-testid=thread-activity]')).toBeNull();
 });
 
 test('a blocked goal asks for an answer and its reply button focuses the composer', () => {

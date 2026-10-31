@@ -76,10 +76,10 @@ const TWIN_MODELS: ModelInfo[] = [
   { id: 'twin-b', name: 'Twin B', effort: { levels: [{ id: 'low', label: 'Low' }, { id: 'max', label: 'Max' }], default: 'max' } },
 ];
 
-test('remote child questions update the parent sidebar summary and clear after another client answers', async () => {
+test('remote child questions update the parent question summary and clear after another client answers', async () => {
   answering();
   const { desk, pc, owner, pcOwner, threadId, pcId, spawn } = await setup();
-  const child = await spawn('Read the notes', '--project', 'notes', '--request-id', 'sidebar-question');
+  const child = await spawn('Read the notes', '--project', 'notes', '--request-id', 'chatbar-question');
   await waitFor(() => pc.core.threads.require(child.thread.id).status === 'idle');
   let alerts: unknown;
   owner.on('thread.updated', row => { if (row.id === threadId) alerts = row.subagentQuestions; });

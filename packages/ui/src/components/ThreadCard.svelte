@@ -10,7 +10,6 @@
   import { focusOnMount } from '../lib/actions';
   import { strings } from '../lib/strings';
   import ThreadHeadline from './ThreadHeadline.svelte';
-  import SubagentQuestions from './SubagentQuestions.svelte';
   import { trackThreadPullRequest } from '../lib/thread-pull-request.svelte';
   import PullRequestBadge from './PullRequestBadge.svelte';
   import { projectName } from '../lib/format';
@@ -153,7 +152,6 @@
       onclick={menu}><Ellipsis size={15} /></button
     >
   </div>
-  <SubagentQuestions {machine} threadId={thread.id} />
 {/if}
 
 <style>

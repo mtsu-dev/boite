@@ -168,7 +168,7 @@ test('a child question reaches the windows that have its parent open, and no oth
     let alerts: unknown;
     otherWindow.on('thread.updated', row => { if (row.id === s.threadId) alerts = row.subagentQuestions; });
     otherWindow.onAny(name => { if (name.startsWith('question.')) seen.push(name); });
-    // Before: only a window subscribed to the child, which no sidebar row opens, heard of it.
+    // Before: only a window subscribed to the child, which a parent chatbar link need not open, heard of it.
     const asked = parentWindow.next('question.asked');
     const ticket = s.ask({ text: 'Keep the old index?' });
     expect(await asked).toMatchObject({ id: ticket.questionId, threadId: s.childId });

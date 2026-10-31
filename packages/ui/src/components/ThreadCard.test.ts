@@ -4,7 +4,6 @@ import { flushSync, mount, unmount } from 'svelte';
 import { FakeClient } from '../lib/fake-client';
 import { Store } from '../lib/store.svelte';
 import ThreadCard from './ThreadCard.svelte';
-import { workspace } from '../lib/workspace.svelte';
 
 let mounted: ReturnType<typeof mount> | undefined;
 let client: FakeClient;
@@ -18,32 +17,14 @@ afterEach(async () => {
   vi.restoreAllMocks(); document.body.innerHTML = ''; localStorage.clear();
 });
 
-test('a sidebar question alert opens its subagent on the owning machine and leaves after the answer', async () => {
+test('child question links stay out of sidebar thread rows', async () => {
   client = new FakeClient({ delayMs: 0 });
   store = new Store(); store.attach(client); await store.connect();
   const thread = store.threads.find(row => !row.parentThreadId && row.projectId)!;
   const project = store.projects.find(row => row.id === thread.projectId)!;
-  const child = { ...thread, id: 'asking-child', title: 'Check the parser', parentThreadId: thread.id, archived: false, openQuestions: 1 };
-  store.threads = [...store.threads, child, { ...child, id: 'archived-child', archived: true }, { ...child, id: 'other-child', parentThreadId: 'another-parent' }];
-  thread.subagentQuestions = [{ threadId: child.id, title: child.title }, { threadId: child.id, title: 'Remote parser', machine: { coreId: 'other-core', name: 'Other machine' } }];
+  thread.subagentQuestions = [{ threadId: 'child', title: 'Check the parser' }];
   vi.spyOn(client, 'call').mockResolvedValue(null as never);
-  const select = vi.spyOn(workspace, 'select').mockResolvedValue(undefined);
-  const remoteStore = new Store();
-  vi.spyOn(workspace, 'machineOf').mockReturnValue({ id: 'other-machine', label: 'Other machine', store: remoteStore });
   mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'remote', label: 'Remote', store }, project, thread, now: Date.now(), showProject: false } });
-  await settle();
-  const alerts = document.querySelectorAll<HTMLButtonElement>('[data-testid=subagent-question-alert]');
-  expect(alerts).toHaveLength(2);
-  expect(alerts[0]!.textContent).toContain('A subagent has a question');
-  expect(alerts[0]!.textContent).toContain('Check the parser');
-  alerts[0]!.click(); await settle();
-  expect(select).toHaveBeenCalledExactlyOnceWith(store, child.id);
-  expect(alerts[1]!.disabled).toBe(true);
-  remoteStore.connection = 'ready'; await settle();
-  expect(alerts[1]!.disabled).toBe(false);
-  alerts[1]!.click(); await settle();
-  expect(select).toHaveBeenLastCalledWith(remoteStore, child.id);
-  store.threads = store.threads.map(row => row.id === thread.id ? { ...row, subagentQuestions: [] } : row);
   await settle();
   expect(document.querySelector('[data-testid=subagent-question-alert]')).toBeNull();
 });

@@ -6,7 +6,7 @@ import { BrowserPage } from './lib/cdp.ts';
 import { mintPairing, pairingUrlOf, startCore } from './lib/core.ts';
 import { ensureProductionUi } from './lib/prod-ui.ts';
 
-test('sidebar alerts open the child and written answers reach only that child on desktop and paired phone', async () => {
+test('chatbar alerts open the child and written answers reach only that child on desktop and paired phone', async () => {
   ensureProductionUi();
   const core = await startCore();
   const client = await connect(core.url, core.token);
@@ -17,8 +17,9 @@ test('sidebar alerts open the child and written answers reach only that child on
     const project = await client.call('projects.add', { path: core.dataDir, name: 'Parser' });
     const account = (await client.call('accounts.list', {})).find(entry => entry.providerId === 'echo')!;
     const parent = await client.call('threads.create', { projectId: project.id, providerId: 'echo', accountId: account.id, title: 'Review the parser' });
-    const other = await client.call('threads.create', { projectId: project.id, providerId: 'echo', accountId: account.id, title: 'Read the docs' });
     await client.call('delegation.configure', { threadId: parent.id, config: { ...DEFAULT_DELEGATION_CONFIG, enabled: true } });
+    // Keep the parent working so Echo does not parse notification wording as a new question.
+    await client.call('turns.start', { threadId: parent.id, prompt: 'Review the parser. [sleep:120000]' });
     for (const mobile of [false, true]) {
       page = await BrowserPage.launch({ url: mobile ? await mintPairing(core) : pairingUrlOf(core), windowSize: { width: 1280, height: 900 } });
       await page.waitFor('document.querySelector("[data-testid=status-connection]")?.dataset.state === "ready"');
@@ -28,19 +29,16 @@ test('sidebar alerts open the child and written answers reach only that child on
         await page.send('Emulation.setTouchEmulationEnabled', { enabled: true });
       }
       for (const async of [false, true]) {
-        if (mobile) await page.click('[data-testid=mobile-back]');
-        await page.click(`[data-testid=${mobile ? `mobile-thread-${other.id}` : 'thread-row'}]${mobile ? '' : `[data-thread-id="${other.id}"]`}`);
-        const child = await client.call('delegation.spawn', { threadId: parent.id, task: async ? 'Inspect the parser' : '[question]', title: 'Check parser options', requestId: `ask-${mobile}-${async}` });
+        const child = await client.call('delegation.spawn', { threadId: parent.id, task: async ? '[sleep:120000] Inspect the parser' : '[question]', title: 'Check parser options', requestId: `ask-${mobile}-${async}` });
         await client.call('threads.subscribe', { threadId: child.thread.id });
         if (async) {
-          const settled = await client.call('delegation.wait', { threadId: parent.id, agentId: child.thread.id, timeoutMs: 10000 });
-          expect(settled.timedOut).toBe(false);
           await client.call('questions.ask', { threadId: child.thread.id, text: 'Which parser should we use?', options: ['Built-in', 'Custom'] });
         }
-        const alert = `${mobile ? '[data-testid=mobile-list] ' : ''}[data-testid=subagent-question-alert][data-child-id="${child.thread.id}"]`;
-        if (mobile) await page.click('[data-testid=mobile-back]');
+        const alert = `[data-testid=composer] [data-testid=subagent-question-alert][data-child-id="${child.thread.id}"]`;
         await page.waitFor(`document.querySelector('${alert}')`);
         expect(await page.evaluate(`!!document.querySelector('[data-testid=activity-question][data-thread="${child.thread.id}"]')`)).toBe(false);
+        expect(await page.evaluate('!!document.querySelector("[data-testid=composer-reply]")')).toBe(false);
+        expect(await page.evaluate('Array.from(document.querySelectorAll("[data-testid=subagent-question-alert]")).every(alert => alert.closest("[data-testid=composer]"))')).toBe(true);
         await page.waitFor(`document.querySelector('${alert}').getBoundingClientRect().x >= 0`);
         await page.evaluate('Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])');
         if (!async) await page.screenshot(join(import.meta.dir, `.artifacts/subagent-alert-${mobile ? 'phone' : 'desktop'}.png`));

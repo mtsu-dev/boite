@@ -66,7 +66,7 @@ function restartable(): string {
 
 const JSON_BLOCK = (value: unknown) => `Here it is.\n\`\`\`json\n${JSON.stringify(value)}\n\`\`\``;
 
-test('local and remote workflow questions update the parent sidebar while their steps keep running', async () => {
+test('local and remote workflow questions update the parent chatbar summary while their steps keep running', async () => {
   scripted(() => null);
   const { desk, pc, owner, threadId, pcId, machine, onPc, run } = await setup();
   const pcOwner = await pc.connect();

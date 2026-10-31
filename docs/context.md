@@ -372,14 +372,14 @@ checks that at desktop and phone widths. Completed tasks and goals fade out on t
 prompt, and newly reported work brings the task list back. Loop details show
 the latest 50 iterations with their outcome and up to 4000 characters of result.
 
-A subagent's question stays in its own conversation. The parent's sidebar row
-shows "A subagent has a question" with the child's title; on a phone the same
-alert appears in the conversation list. Clicking it opens the child on the
-machine that owns it, where choices and written answers use that child's
-composer. This includes workflow steps and children on other machines, even
-while another conversation is open. The parent's dock keeps only its own
-questions. Child permissions and secret requests still link to the child's
-conversation from the dock.
+A subagent's question stays in its own conversation. The parent's chatbar,
+above the message input, shows "A subagent has a question" with the child's
+title on desktop and phone. Clicking it opens the child on the machine that
+owns it, where choices and written answers use that child's composer. This
+includes workflow steps and children on other machines. The parent's own
+questions keep their answer controls in the chatbar; child questions only
+provide a link. Child permissions and secret requests still link to the
+child's conversation from the dock.
 `tests/e2e/subagent-questions.test.ts` checks blocking and asynchronous written
 answers against a temporary core on desktop and a paired phone.
 

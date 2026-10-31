@@ -15,6 +15,7 @@
   import { settingHeading } from '../lib/setting-requests';
   import AgentSettingCard from './AgentSettingCardLoader.svelte';
   import GoalChecklist from './GoalChecklistLoader.svelte';
+  import SubagentQuestions from './SubagentQuestions.svelte';
 
   let { store, reserveInComposer = false, onroom }: {
     store: Store;
@@ -31,11 +32,12 @@
    * a running turn would push them out of sight. Several stack behind a pager;
    * each keeps what was picked or typed while another is on screen.
    *
-   * A subagent's questions link to its conversation from the sidebar. Only
-   * this thread's questions belong beside this thread's composer. Child
-   * permissions and secret requests still provide a way into their owner.
+   * A subagent's questions link to its conversation from this chatbar. Only
+   * this thread's questions use this composer's answers. Child permissions
+   * and secret requests still provide a way into their owner.
    */
   let children = $derived(new Map(store.openThread ? store.threads.filter((row) => row.parentThreadId === store.openThread?.id && !row.archived).map((row) => [row.id, row] as const) : []));
+  let childQuestions = $derived(store.openThread ? store.subagentQuestions(store.openThread.id) : []);
   type DockRequest = QuestionRequest & { secret?: SecretRequest };
   let asked: DockRequest[] = $derived.by(() => {
     const threadId = store.openThread?.id;
@@ -55,7 +57,7 @@
   let shown = $derived(asked.find((question) => question.id === shownId) ?? asked[0]);
   let at = $derived(shown ? asked.indexOf(shown) : 0);
   let questionOpen = $state(true);
-  let inline = $derived(asked.length > 0 || waits.length > 0);
+  let inline = $derived(asked.length > 0 || waits.length > 0 || childQuestions.length > 0);
   // Start with the oldest pending question. New arrivals keep the current
   // question, its answers and its folded state; explicit navigation still wins.
   // The dock stays mounted when switching threads, so reset its selection then.
@@ -83,7 +85,7 @@
     if (next) shownId = next.id;
   }
 
-  let visible = $derived(Boolean(asked.length > 0 || waits.length > 0 || activity?.goal && !activity.goal.dismissed || activity?.loop || activity?.tasks.length && !activity.tasksDismissed));
+  let visible = $derived(Boolean(asked.length > 0 || waits.length > 0 || childQuestions.length > 0 || activity?.goal && !activity.goal.dismissed || activity?.loop || activity?.tasks.length && !activity.tasksDismissed));
   // Keep completed content mounted during the fade out, without occupying chat space.
   let tasks = $derived(activity?.tasksDismissed && visible ? [] : activity?.tasks ?? []);
   let goal = $derived(activity?.goal?.dismissed && visible ? null : activity?.goal);
@@ -201,8 +203,11 @@
   </div>
 {/snippet}
 
-{#if activity || asked.length > 0 || waits.length > 0}
-  <section class="activity" class:inline class:reserved={reserveInComposer} class:hidden={!visible} use:measure data-testid="thread-activity" aria-label={shown ? strings.activity.question : strings.activity.tasks} inert={!visible}>
+{#if activity || asked.length > 0 || waits.length > 0 || childQuestions.length > 0}
+  <section class="activity" class:inline class:reserved={reserveInComposer} class:hidden={!visible} use:measure data-testid="thread-activity" aria-label={shown || childQuestions.length ? strings.activity.question : strings.activity.tasks} inert={!visible}>
+    {#if childQuestions.length > 0 && store.openThread}
+      <div class="child-questions"><SubagentQuestions {store} threadId={store.openThread.id} /></div>
+    {/if}
     {#if shown}
       <div class="questions" data-testid="activity-questions" data-count={asked.length}>
         <div class="activity-row question-row">
@@ -434,7 +439,7 @@
   .activity.inline { position: relative; bottom: auto; inset-inline: auto; z-index: auto; background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; border: none; border-bottom: 1px solid var(--color-border); border-radius: 0; box-shadow: none; padding: 8px 4px 4px; }
   .activity-row { display: flex; align-items: center; gap: 8px; min-height: var(--control); min-width: 0; padding: 0 2px 0 8px; }
   /* The questions sit above the goal, the loop and the tasks, a hairline between. */
-  .questions + :is(.entry, .tasks-toggle, .waits), .waits + :is(.entry, .tasks-toggle) { margin-top: 4px; border-top: 1px solid var(--color-border); padding-top: 4px; }
+  .child-questions + :is(.questions, .entry, .tasks-toggle, .waits), .questions + :is(.entry, .tasks-toggle, .waits), .waits + :is(.entry, .tasks-toggle) { margin-top: 4px; border-top: 1px solid var(--color-border); padding-top: 4px; }
   /* A sub-agent's request: whose it is, muted, and the way into its conversation on the right. */
   .from-child, .wait { display: flex; align-items: center; gap: 8px; min-height: var(--control); min-width: 0; padding: 0 2px 0 8px; }
   .from-child { color: var(--color-muted-foreground); }
