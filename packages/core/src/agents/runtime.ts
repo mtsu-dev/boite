@@ -55,8 +55,13 @@ export interface AgentFact {
   threadIds?: string[];
 }
 
-/** `deferred`: it arrived while it could wake nothing, so it stays out of the hourly cap. */
-interface HeldFact { key: string; text: string; at: number; notBefore: number; threadIds?: string[]; deferred?: boolean; urgent?: true }
+/**
+ * `deferred`: it arrived while it could wake nothing, so it stays out of the hourly cap.
+ * `written`: when this version was filed, rising with every write on this core, so a key
+ * set back to an earlier text still reads as newer (`bot.move` files the latest per key).
+ * One saved by an older core has none: its `at` stands for it.
+ */
+interface HeldFact { key: string; text: string; at: number; notBefore: number; written?: number; threadIds?: string[]; deferred?: boolean; urgent?: true }
 interface HeldEvent { key: string; label: string; prompt: string; at: number }
 /** What waits for the agent's thread to be free, kept across restarts. */
 interface Pending { facts: HeldFact[]; events: HeldEvent[] }
@@ -139,12 +144,18 @@ export class AgentRuntime {
   readonly #told = new Set<string>();
   /** Fact times per agent in the last hour, and the drops said in its thread. Reset by a restart. */
   readonly #sent = new Map<string, { at: number[]; told: number[] }>();
+  /** The last `HeldFact.written` given: the next is later, even within one millisecond. */
+  #written = 0;
 
   readonly #core: Core;
   constructor(core: Core) {
     this.#core = core;
     for (const row of core.journal.db.query("SELECT key, value FROM settings WHERE key LIKE 'agents:pending:%'").all() as { key: string; value: string }[]) {
-      try { this.pending.set(row.key.slice(PENDING.length), JSON.parse(row.value) as Pending); }
+      try {
+        const pending = JSON.parse(row.value) as Pending;
+        this.pending.set(row.key.slice(PENDING.length), pending);
+        for (const fact of pending.facts) this.#written = Math.max(this.#written, fact.written ?? 0);
+      }
       catch (error) { core.log('warn', `agent pending wakes ${row.key}: ${messageOf(error)}`); }
     }
     this.#off = core.bus.onAny((name, payload) => {
@@ -308,6 +319,7 @@ export class AgentRuntime {
     if (counted) sent.at.push(now);
     const held: HeldFact = {
       key: fact.key, text: fact.text, at: previous?.at ?? now, notBefore: previous?.notBefore ?? now + (fact.delay ?? NOTICE_BATCH_MS),
+      written: this.#written = Math.max(now, this.#written + 1),
       ...(!wakes ? { deferred: true } : {}), ...(fact.urgent ? { urgent: true as const } : {}), ...(fact.threadIds ? { threadIds: [...fact.threadIds] } : {}),
     };
     let facts = previous ? pending.facts.map(f => f.key === fact.key ? held : f) : [...pending.facts, held];
@@ -335,7 +347,7 @@ export class AgentRuntime {
   }
 
   /** The facts still waiting for an agent, oldest first. */
-  facts(agentId: string): readonly { key: string; text: string; at: number; threadIds?: string[] }[] { return this.pending.get(agentId)?.facts ?? []; }
+  facts(agentId: string): readonly { key: string; text: string; at: number; written?: number; threadIds?: string[] }[] { return this.pending.get(agentId)?.facts ?? []; }
 
   /** The threads a fact tells of; one saved by an older core names them only in its text. */
   factThreads(fact: { text: string; threadIds?: string[] }): string[] {

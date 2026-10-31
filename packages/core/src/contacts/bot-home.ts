@@ -5,7 +5,10 @@
  * any contact link (`group-link.ts`). The move's request id comes from the
  * role's roster revision, so a restart sends the same move again and the host
  * takes it once. The links go only once the host answered that it holds a
- * bot; until then this core keeps both.
+ * bot and this core finished its half of the move (`BotMoves.unfinished`):
+ * after a lost answer the host holds the bot while this core still does, so
+ * the next sweep sends the same move until it ends here; until then this core
+ * keeps both.
  *
  * The host hears first that a bot is coming. If the member that announced it
  * leaves the group before the bot arrived, the host makes a fresh one
@@ -58,12 +61,15 @@ export class ContactBotHome {
   async #send(host: CoordinationPeer, key: string): Promise<void> {
     this.#next = Date.now() + RETRY_MS;
     const holds = async (): Promise<boolean> => ((await this.#core.coordination.request(host, 'contact.hand', { action: 'bot' })) as { bot?: unknown } | null)?.bot === true;
-    // The host learns a bot is coming, or already runs its own: then this one stays here and the links may go.
-    if (!await holds()) {
+    const moves = this.#core.workforce.moves;
+    const requestId = botMoveId(this.#revision(), host.coreId);
+    // A move sent before and not finished here goes again as it was: the host may hold the bot from it.
+    // Otherwise the host learns a bot is coming, or already runs its own: then this one stays here and the links may go.
+    if (moves.unfinished(requestId) || !await holds()) {
       const bot = contactsBot(this.#core);
       if (bot !== null) {
-        try { await this.#core.workforce.moves.move({ agentId: bot.agentId, machine: host.coreId, requestId: botMoveId(this.#revision(), host.coreId) }); }
-        catch (error) { if (!await holds().catch(() => false)) throw error; }
+        try { await moves.move({ agentId: bot.agentId, machine: host.coreId, requestId }); }
+        catch (error) { if (moves.unfinished(requestId) || !await holds().catch(() => false)) throw error; }
       }
     }
     if (contactsBot(this.#core) !== null) this.#core.log('warn', `contacts: ${host.name} runs its own Contacts bot; the one here stays, with no contact`, { source: 'contacts' });

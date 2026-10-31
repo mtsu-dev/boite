@@ -216,12 +216,24 @@ test('an answer lost on the way back: the same requestId finishes the move here 
   expect(await thrown(owner.call('agents.move', { agentId: agent.id, machine: pcId, requestId: 'lost' }))).toThrow('the same requestId tries again');
   expect(desk.core.workforce.records.find('profile', agent.id)).not.toBeNull();
   expect(pc.core.workforce.records.find('profile', agent.id)).not.toBeNull();
-  // A fact filed here after that goes with the retry.
+  // Meanwhile the bot lives on in both places. Here: a fact, its memory, a routine and a new name; there: its instructions.
   desk.core.workforce.fact(agent.id, { key: 'after', text: 'Filed after the lost answer.', urgent: false });
+  const ours = await owner.call('agents.brain.get', { agentId: agent.id });
+  mkdirSync(ours.path, { recursive: true });
+  writeFileSync(join(ours.path, 'MEMORY.md'), 'Written after the lost answer.\n');
+  await owner.call('agents.routine.save', { value: { agentId: agent.id, name: 'Evening round', prompt: 'Close the shed.', schedule: { kind: 'interval', everyMinutes: 120 }, enabled: true, nextAt: null, lastTurnId: null, lastScheduledAt: null } });
+  const profile = desk.core.workforce.records.get('profile', agent.id);
+  await owner.call('agents.profile.save', { id: agent.id, expectedRevision: profile.revision, value: { ...(({ id: _i, revision: _r, createdAt: _c, updatedAt: _u, ...rest }) => rest)(profile), name: 'Ada the Second' } });
+  const theirs = pc.core.workforce.brainOf({ agentId: agent.id });
+  writeFileSync(join(theirs.path, 'AGENTS.md'), 'Written there after it arrived.\n');
   const moved = await owner.call('agents.move', { agentId: agent.id, machine: pcId, requestId: 'lost' });
   expect(moved.threadId).toBe(pc.core.workforce.sessionOf(agent.id)!.threadId);
   expect(pc.core.workforce.records.list('profile').filter(p => p.id === agent.id)).toHaveLength(1);
   expect(pc.core.agentRuntime.facts(agent.id).map(f => f.key)).toEqual(['after']);
+  // What changed here since the first try went with the retry; what it did not change keeps what the target wrote.
+  expect(pc.core.workforce.brainOf({ agentId: agent.id })).toMatchObject({ memory: 'Written after the lost answer.\n', instructions: 'Written there after it arrived.\n' });
+  expect(pc.core.workforce.records.list('routine').filter(r => r.agentId === agent.id).map(r => r.name)).toEqual(['Evening round']);
+  expect(pc.core.workforce.records.get('profile', agent.id).name).toBe('Ada the Second');
   expect(desk.core.workforce.records.find('profile', agent.id)).toBeNull();
   expect(desk.core.journal.getThread(threadId)?.archived).toBe(true);
   expect(desk.core.agentRuntime.facts(agent.id)).toHaveLength(0);
@@ -260,4 +272,26 @@ test('facts filed while the bot travels go after it, nothing wakes it here meanw
   expect(pc.core.agentRuntime.facts(agent.id).map(f => [f.key, f.text])).toEqual([['before', 'Filed before the move.'], ['during', 'Filed during the move.']]);
   expect(desk.core.workforce.records.find('profile', agent.id)).toBeNull();
   expect(desk.core.agentRuntime.facts(agent.id)).toHaveLength(0);
+}, 60_000);
+
+test('a fact set to another text and back while the bot travels ends there with its latest text', async () => {
+  const { desk, pc, owner, pcId } = await group();
+  const { agent } = await makeAgent(desk, owner);
+  const set = (text: string) => desk.core.agentRuntime.fact(agent.id, { key: 'door', text, urgent: false, replace: true });
+  set('The door is open.');
+  const request = desk.core.coordination.request.bind(desk.core.coordination);
+  const legs: string[] = [];
+  desk.core.coordination.request = async (peer: CoordinationPeer, operation, payload) => {
+    if (operation !== 'bot.move') return request(peer, operation, payload);
+    legs.push((payload as { facts: { text: string }[] }).facts.map(f => f.text).join(' '));
+    const answer = await request(peer, operation, payload);
+    // While each leg travels, the fact changes: shut, then open again.
+    if (legs.length === 1) set('The door is shut.');
+    if (legs.length === 2) set('The door is open.');
+    return answer;
+  };
+  await owner.call('agents.move', { agentId: agent.id, machine: pcId, requestId: 'door' });
+  expect(legs).toEqual(['The door is open.', 'The door is shut.', 'The door is open.']);
+  expect(pc.core.agentRuntime.facts(agent.id).map(f => [f.key, f.text])).toEqual([['door', 'The door is open.']]);
+  expect(desk.core.workforce.records.find('profile', agent.id)).toBeNull();
 }, 60_000);
