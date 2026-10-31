@@ -205,6 +205,9 @@ test('the Contacts bot moves: the target answers for it and this machine no long
 test('an answer lost on the way back: the same requestId finishes the move here instead of a second bot there', async () => {
   const { desk, pc, owner, pcId } = await group();
   const { agent, threadId } = await makeAgent(desk, owner);
+  // Subagents on before the move, so turning them off later shows on the thread there.
+  const first = await owner.call('agents.runtime.get', { agentId: agent.id });
+  await owner.call('agents.runtime.configure', { agentId: agent.id, expectedRevision: desk.core.workforce.records.get('profile', agent.id).revision, config: { ...first, subagents: { ...first.subagents, enabled: true } } });
   const request = desk.core.coordination.request.bind(desk.core.coordination);
   let lose = true;
   desk.core.coordination.request = async (peer: CoordinationPeer, operation, payload) => {
@@ -216,6 +219,7 @@ test('an answer lost on the way back: the same requestId finishes the move here 
   expect(await thrown(owner.call('agents.move', { agentId: agent.id, machine: pcId, requestId: 'lost' }))).toThrow('the same requestId tries again');
   expect(desk.core.workforce.records.find('profile', agent.id)).not.toBeNull();
   expect(pc.core.workforce.records.find('profile', agent.id)).not.toBeNull();
+  expect(pc.core.delegation.config(pc.core.workforce.sessionOf(agent.id)!.threadId).enabled).toBe(true);
   // Meanwhile the bot lives on in both places. Here: a fact, its memory, a routine and a new name; there: its instructions.
   desk.core.workforce.fact(agent.id, { key: 'after', text: 'Filed after the lost answer.', urgent: false });
   const ours = await owner.call('agents.brain.get', { agentId: agent.id });
