@@ -67,7 +67,7 @@ import {
 } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import { FakeAgents } from '../fake-agents';
-import { checkEffort, checkModel } from './checks';
+import { checkEffort, checkModel, defaultModel } from './checks';
 import { modelsOf } from './provider-catalog';
 import { settleAgentSettings } from './agent-settings';
 import type { FakeFinishedTurn } from '../fake-usage';
@@ -401,6 +401,20 @@ export class FakeContext {
       goal: (threadId, objective) => {
         const methods = activityMethods(this);
         void (objective === null ? methods['threads.activity.control']({ threadId, kind: 'goal', action: 'remove' }) : methods['threads.activity.set']({ threadId, goal: { objective } })).catch(() => {});
+      },
+      archive: threadId => {
+        const thread = this.threads.get(threadId);
+        if (!thread || thread.archived) return;
+        thread.archived = true;
+        thread.archivedAt = this.now();
+        this.touch(thread);
+      },
+      // As the Bots page fills a new bot: the first available account and its default model.
+      defaultRoute: () => {
+        const account = this.accounts.find(a => a.status === 'ok' && this.providers.some(p => p.id === a.providerId && p.available));
+        const provider = account && this.providers.find(p => p.id === account.providerId);
+        const model = provider ? modelsOf(this, provider.id, account.id).find(m => m.default === true)?.id ?? defaultModel(provider) : null;
+        return account && model ? { providerId: account.providerId, accountId: account.id, model, effort: null, permissionMode: 'bypassPermissions' } : null;
       },
       // A project's folder holds files: a brain root refuses it.
       occupied: path => this.projects.some(p => p.path.replace(/[\\/]+$/, '') === path),
