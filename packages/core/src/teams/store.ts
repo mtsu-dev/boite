@@ -141,8 +141,14 @@ export class TeamStore {
 
   #key(botId: string): TeamParty { return teamMemberKey(this.#self, botId); }
 
-  /** A bot of this machine, by id or name. `<machine>/<bot>` waits for a later version. */
+  /** A bot of this machine, by id or name. `<machine>/<bot>` waits for a later version; a bot on its way to another machine joins nothing. */
   #bot(ref: unknown, field = 'members'): AgentProfile {
+    const bot = this.#find(ref, field);
+    if (this.#core.workforce.moves.moving(bot.id)) throw refused(`${field}: ${bot.name} is moving to another machine; a team holds bots of one machine`, { field, reason: 'moving' });
+    return bot;
+  }
+
+  #find(ref: unknown, field: string): AgentProfile {
     const wanted = typeof ref === 'string' ? ref.trim() : '';
     if (!wanted) throw invalidParams(`${field}: expected a bot name or id`);
     if (wanted.includes('/')) throw refused(LATER, { field });

@@ -119,6 +119,21 @@ test('a move carries the bot, its memory, routines, projects and the end of its 
   expect(second).toContain('And now?');
 }, 60_000);
 
+test('a bot on its way to another machine joins no team meanwhile', async () => {
+  const { desk, owner, pcId } = await group();
+  const { agent } = await makeAgent(desk, owner);
+  await owner.call('client.preferences', { app: 'app-desktop-0001', language: 'en', experiments: ['teams'], labels: {} });
+  const request = desk.core.coordination.request.bind(desk.core.coordination);
+  let joined: unknown = null;
+  desk.core.coordination.request = async (peer: CoordinationPeer, operation, payload) => {
+    if (operation === 'bot.move') joined = await thrown(Promise.resolve().then(() => desk.core.teams.create({ name: 'Crew', members: [agent.id] })));
+    return request(peer, operation, payload);
+  };
+  await owner.call('agents.move', { agentId: agent.id, machine: pcId });
+  expect(joined).toThrow(`${agent.name} is moving to another machine; a team holds bots of one machine`);
+  expect(desk.core.teams.list()).toEqual([]);
+}, 60_000);
+
 test('the same request reaching the target twice makes one bot, and the same requestId answers the first move again', async () => {
   const { desk, pc, owner, pcId } = await group();
   const { agent } = await makeAgent(desk, owner);
