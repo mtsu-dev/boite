@@ -464,16 +464,10 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
       const result = await deviceCommand(rest, io, client, threadId, parsed.timeout);
       print(result.lines, result.value);
     },
-    window: async () => {
-      const result = await windowCommand(rest, io, client, threadId);
-      print(result.lines, result.value);
-    },
+    window: async () => childOutput(await windowCommand(rest, io, client, threadId), parsed.json, io, print),
     desktop: async () => childOutput(await (await import('./desktop-cli.ts')).desktopCommand(rest, io, client, threadId), parsed.json, io, print),
     secret: async () => childOutput(await secretCommand(rest, io, client, threadId), parsed.json, io, print),
-    team: async () => {
-      const result = await teamCommand(rest, client, threadId, parsed.requestId);
-      print(result.lines, result.value);
-    },
+    team: async () => childOutput(await teamCommand(rest, client, threadId, parsed.requestId), parsed.json, io, print),
     // `boite --limit 5 logs` parsed them as globals: they come first, so the command's own flags still win.
     // A global `--level` yields to the command's own `--min-level`, which it would otherwise override.
     logs: () => logsCommand([...(parsed.limit === undefined ? [] : ['--limit', String(parsed.limit)]), ...(parsed.level === undefined || rest.some(entry => entry === '--min-level' || entry.startsWith('--min-level=')) ? [] : ['--level', parsed.level]), ...rest], client, threadId, agentCaller, io.cwd, print),
