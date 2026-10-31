@@ -144,11 +144,11 @@ export class ContactMembers {
   /** The member's thread a relation joins with the contact's sending thread, whatever is opened to the contact. */
   locateRelation(contactId: string, threadId: unknown, fromThreadId: unknown): { member: CoordinationPeer; threadId: string } | null {
     if (typeof threadId !== 'string' || typeof fromThreadId !== 'string' || !this.#core.contacts.relations.joins(contactId, threadId, fromThreadId)) return null;
-    return this.#aliasOf(threadId);
+    return this.aliasOf(threadId);
   }
 
-  /** The member and its own thread id behind `<thread>~<prefix>`. */
-  #aliasOf(threadId: string): { member: CoordinationPeer; threadId: string } | null {
+  /** The member and its own thread id behind `<thread>~<prefix>`, among the machines of the group now. */
+  aliasOf(threadId: string): { member: CoordinationPeer; threadId: string } | null {
     const at = threadId.lastIndexOf(MARK);
     if (at <= 0 || threadId.length - at - 1 !== PREFIX) return null;
     const prefix = threadId.slice(at + 1);

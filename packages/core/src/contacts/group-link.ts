@@ -16,7 +16,10 @@
  * The relations the member's threads hold with the contact's go with it: the
  * Bots host keeps each under the thread's address there, `<thread>~<prefix>`,
  * the same address the contact re-keys its side to, and relays their letters
- * to the member with no project opened (`members.ts`).
+ * to the member with no project opened (`members.ts`). The role may move on:
+ * a hand names the member behind each thread it keys by, so the next host
+ * keeps a member's thread at its address there, and the member itself at its
+ * plain id, which the contact strips the host's own suffix down to.
  */
 import { verify } from 'node:crypto';
 import type { AgentContact, AgentLetter, ContactRelation, ContactRequest, CoordinationPeer } from '@boite/contracts';
@@ -61,6 +64,8 @@ export function moveInput(from: string, to: string, contact: string): Buffer {
 interface MoveCard { coreId: string; publicKey: string; box: string; url: string; machine: string }
 /** A relation the Bots host takes over, its local thread already at the member's address here. */
 type HandedRelation = Pick<ContactRelation, 'id' | 'local' | 'remote' | 'requestId'>;
+/** A local thread as a hand carries it: the machine of the group it lives on, and its own id there. */
+interface Owned { member: string; threadId: string }
 interface Incoming { from: string; at: number; contact: StoredContact; requests: StoredRequest[]; relations?: HandedRelation[] }
 
 function within<T>(job: Promise<T>, ms: number, what: string): Promise<T> {
@@ -115,8 +120,17 @@ export class ContactGroupLink {
     // This member's own projects become the host's relayed ones: it still answers for them.
     const grants = contact.grants.map(grant => grant.machine ? grant : { ...grant, machine: self, name: grant.name ?? this.#core.journal.getProject(grant.projectId)?.name.slice(0, 200) ?? grant.projectId });
     const { role: _role, url: _url, fingerprint: _print, syncPending: _sync, ...kept } = contact;
-    const requests = this.#store.requests.list().filter(request => request.coreId === contact.coreId);
-    const relations = this.#store.relations.of(contact.coreId).map(({ id, local, remote, requestId }) => ({ id, local, remote, requestId }));
+    // A thread kept at a member's address here, as an earlier Bots host, goes as that member's own.
+    const requests = this.#store.requests.list().filter(request => request.coreId === contact.coreId).map(request => {
+      const owned = request.relation && this.#owner(request.relation.local.threadId);
+      return owned ? { ...request, relation: { ...request.relation!, local: { ...request.relation!.local, threadId: owned.threadId }, member: owned.member } } : request;
+    });
+    const relations = this.#store.relations.of(contact.coreId).flatMap(({ id, local, remote, requestId }) => {
+      const owned = this.#owner(local.threadId);
+      if (owned) return [{ id, member: owned.member, local: { ...local, threadId: owned.threadId }, remote, requestId }];
+      this.#core.log('warn', `contacts: relation ${id} with ${contact.name} stays behind, its thread's machine left the group`, { source: 'contacts' });
+      return [];
+    });
     const answer = await this.#core.coordination.request(host, 'contact.hand', { action: 'hand', contact: { ...kept, grants }, requests, relations }) as { card?: unknown; signature?: unknown; held?: unknown; linked?: unknown } | null;
     if (answer?.held === true && answer.linked === true) { this.release(contact.coreId, host.coreId); return; }
     const raw = answer?.card as Partial<MoveCard> | undefined;
@@ -132,6 +146,13 @@ export class ContactGroupLink {
       throw error;
     }
     this.release(contact.coreId, host.coreId);
+  }
+
+  /** The machine and its own id behind a thread here: this core's, or a member's kept at its address here. */
+  #owner(threadId: string): Owned | null {
+    if (!ALIASED.test(threadId)) return { member: this.#self(), threadId };
+    const at = this.#store.members.aliasOf(threadId);
+    return at ? { member: at.member.coreId, threadId: at.threadId } : null;
   }
 
   /**
@@ -184,7 +205,8 @@ export class ContactGroupLink {
     const contact = this.#checkContact(raw.contact, peer.coreId);
     if (contact.coreId === self || this.#core.group.peers().some(entry => entry.coreId === contact.coreId)) throw refused('hand.contact: that core is a machine of this group');
     if (!Array.isArray(raw.requests) || raw.requests.length > 256) throw invalidParams('hand.requests: expected up to 256 requests');
-    const requests = (raw.requests as StoredRequest[]).filter(request => request?.coreId === contact.coreId && typeof request.id === 'string' && (request.direction === 'in' || request.direction === 'out'));
+    const requests = (raw.requests as StoredRequest[]).filter(request => request?.coreId === contact.coreId && typeof request.id === 'string' && (request.direction === 'in' || request.direction === 'out'))
+      .map(request => this.#placeRequest(request, peer.coreId));
     const relations = this.#checkRelations(raw.relations, contact, peer.coreId);
     const held = this.#store.find(contact.coreId);
     if (held) this.#merge(contact, requests, relations);
@@ -259,19 +281,39 @@ export class ContactGroupLink {
     }
   }
 
+  /**
+   * A thread a hand names, at its address here: this core's own at its plain
+   * id, another member's at `<thread>~<prefix>`. `member` is the machine it
+   * lives on, the member that handed it when absent (an older hand).
+   */
+  #place(member: unknown, threadId: unknown, from: string, field: string): string {
+    const owner = member === undefined ? from : text(member, `${field}.member`, 100);
+    const self = this.#self();
+    if (owner !== self && !this.#core.group.peers().some(peer => peer.coreId === owner)) throw invalidParams(`${field}.member: expected a machine of this group`);
+    const id = text(threadId, `${field}.local.threadId`, 128);
+    // The machine's own id: an address is made here, never taken from the hand.
+    if (ALIASED.test(id)) throw invalidParams(`${field}.local.threadId: expected a thread of ${owner}, not an address`);
+    return owner === self ? id : memberThreadId(owner, id);
+  }
+
+  /** A handed request's relation names its thread at its address here; one that cannot be placed is left out. */
+  #placeRequest(request: StoredRequest, from: string): StoredRequest {
+    if (!request.relation) return request;
+    const { member, ...relation } = request.relation as ContactRelation & { member?: unknown };
+    try { return { ...request, relation: { ...relation, local: { ...relation.local, threadId: this.#place(member, relation.local?.threadId, from, `hand.requests.${request.id}.relation`) } } }; }
+    catch { const { relation: _relation, ...rest } = request; return rest; }
+  }
+
   #checkRelations(value: unknown, contact: StoredContact, from: string): HandedRelation[] {
     if (value === undefined) return [];
     if (!Array.isArray(value) || value.length > MAX_RELATIONS) throw invalidParams(`hand.relations: expected up to ${MAX_RELATIONS} relations`);
     const remote: CoordinationPeer = { coreId: contact.coreId, name: contact.name, url: '', publicKey: '' };
     return value.map((raw, index) => {
-      const relation = raw as Partial<ContactRelation> | null;
+      const relation = raw as (Partial<ContactRelation> & { member?: unknown }) | null;
       const field = `hand.relations[${index}]`;
-      const threadId = text(relation?.local?.threadId, `${field}.local.threadId`, 128);
-      // A thread of the member that handed it, never one it relays for another member.
-      if (ALIASED.test(threadId)) throw invalidParams(`${field}.local.threadId: expected a thread of ${from}`);
       return {
         id: text(relation?.id, `${field}.id`, 100), requestId: text(relation?.requestId, `${field}.requestId`, 100),
-        local: { threadId: memberThreadId(from, threadId), title: text(relation?.local?.title, `${field}.local.title`, 200) },
+        local: { threadId: this.#place(relation?.member, relation?.local?.threadId, from, field), title: text(relation?.local?.title, `${field}.local.title`, 200) },
         remote: checkRemoteContact(relation?.remote as AgentContact, remote),
       };
     });
@@ -323,13 +365,18 @@ export class ContactGroupLink {
     return { ok: true };
   }
 
-  /** Everything keyed by the old core id now names the new one; its threads keep their address as `<thread>~<prefix>`. */
+  /**
+   * Everything keyed by the old core id now names the new one; its threads
+   * keep their address as `<thread>~<prefix>`, and the new core's own threads,
+   * which the old one kept at such an address, go back to their plain id.
+   */
   #follow(old: StoredContact, card: MoveCard, existing: StoredContact | undefined): void {
     const from = old.coreId, to = card.coreId;
     const self = this.#core.coordination.card();
     const renamed = old.name === old.machine ? card.machine : old.name;
     const name = existing?.name ?? renamed;
-    const thread = (threadId: string): string => ALIASED.test(threadId) ? threadId : memberThreadId(from, threadId);
+    const own = memberThreadId(to, '');
+    const thread = (threadId: string): string => !ALIASED.test(threadId) ? memberThreadId(from, threadId) : threadId.endsWith(own) ? threadId.slice(0, -own.length) : threadId;
     const address = <T extends { coreId: string; threadId: string; machine?: string }>(value: T): T => value.coreId !== from ? value
       : { ...value, coreId: to, threadId: thread(value.threadId), ...(value.machine === undefined ? {} : { machine: name }) };
     if (existing) this.#store.drop(from);

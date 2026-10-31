@@ -282,8 +282,13 @@ sequenceDiagram
    send). Its grants on its own projects become grants with `machine` set to
    the member, the requests come along, and so do its relations with the
    contact: the Bots host keeps each one at the member thread's alias
-   `<thread>~<member prefix>`. The Bots host refuses a contact that is itself
-   or one of the group's machines.
+   `<thread>~<member prefix>`. When the role moves on, the old Bots host hands
+   its contacts the same way: each relation, and each request's relation,
+   names the machine its thread lives on (`member`, a full core id; a hand
+   from an older core without it means the sender), so the next host keeps a member's thread at
+   that member's alias and its own threads at their plain id. A `member`
+   outside the group, or a thread id already in alias form, is refused. The
+   Bots host refuses a contact that is itself or one of the group's machines.
 3. The Bots host keeps the record waiting for the contact's hello (one hour),
    and answers with its card `{coreId, publicKey, box, url, machine}` and its
    signature over `boite-contact-move\n` followed by
@@ -296,7 +301,9 @@ sequenceDiagram
    minutes later.
 5. When it can, the contact re-keys everything to the Bots host: the record
    (trust, notes, grants and capabilities kept), requests, relations (the
-   member's threads read `<thread>~<member prefix>` at the Bots host), flags,
+   member's threads read `<thread>~<member prefix>` at the Bots host, and the
+   Bots host's own threads, which the old host kept at its alias, go back to
+   their plain id), flags,
    the 7-day reply window, revoked projects, gateway mailboxes and the letters
    it holds. Then it drops the old link. The member forgets the contact only
    after that answer, keeping its flags; its relations with that contact now

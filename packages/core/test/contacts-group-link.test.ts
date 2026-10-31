@@ -303,3 +303,50 @@ test('a member that announced its Contacts bot leaves the group before sending i
   await waitFor(() => contactsBot(x.core) !== null, 10000);
   expect(x.core.journal.getSetting('contacts:bot-coming')).toBeUndefined();
 }, 60000);
+
+test('the Bots role moves on, from X to a third member Y, then back to A: a relation made before the first move still carries letters both ways, and the contact names the current host', async () => {
+  const { a, x, c, aClient, cClient, aId, xId, cId } = await setup();
+  const y = await startTestCore();
+  cores.push(y);
+  named(y, 'pc-yankee');
+  y.core.contacts.selfUrl = async () => y.url;
+  y.core.contacts.setSettings({ minTier: 2 });
+  const yId = y.core.coordination.card().coreId;
+  await y.core.group.join((await a.core.group.invite()).invite);
+  const members = [a, x, y];
+  await waitFor(() => members.every(side => side.core.group.peers().length === 2), 10000);
+  const aThread = await thread(aClient, (await project(a, aClient, 'alpha')).id, 'Alpha work');
+  const cThread = await thread(cClient, (await project(c, cClient, 'mine')).id, 'Guest work');
+  remoteOn(a, aThread);
+  remoteOn(c, cThread);
+  a.core.contacts.relations.add({ id: 'crel_before', coreId: cId, contact: a.core.contacts.find(cId)!.name, local: { threadId: aThread, title: 'Alpha work' }, remote: c.core.coordination.describe(cThread), requestId: 'creq_before' });
+  c.core.contacts.relations.add({ id: 'crel_before', coreId: aId, contact: c.core.contacts.find(aId)!.name, local: { threadId: cThread, title: 'Guest work' }, remote: a.core.coordination.describe(aThread), requestId: 'creq_before' });
+
+  let holder = a;
+  const steps: [TestCore, string][] = [[x, xId], [y, yId], [a, aId]];
+  for (const [step, [host, hostId]] of steps.entries()) {
+    await aClient.call('group.botsHome', { coreId: hostId });
+    await waitFor(() => members.every(side => side.core.group.roleOf('botsHome') === hostId), 10000);
+    // A hand that reached the host before it read the new roster waits 30 s: offered again every second instead.
+    const before = holder.core.coordination.card().coreId, from = holder;
+    let swept = 0;
+    await waitFor(() => {
+      if (Date.now() - swept > 1000) { swept = Date.now(); from.core.contacts.groupLink.sweep(true); }
+      return c.core.contacts.find(hostId) !== undefined && !from.core.contacts.has(cId) && host.core.contacts.has(cId);
+    }, 30000);
+    holder = host;
+    // C names the current host only, and holds the relation with A's thread at its address there.
+    expect(c.core.contacts.find(before)).toBeUndefined();
+    const at = hostId === aId ? aThread : memberThreadId(aId, aThread);
+    expect(c.core.contacts.relations.list()).toEqual([expect.objectContaining({ id: 'crel_before', coreId: hostId, remote: expect.objectContaining({ coreId: hostId, threadId: at }) })]);
+    expect(host.core.contacts.relations.list()).toEqual([expect.objectContaining({ id: 'crel_before', coreId: cId, local: expect.objectContaining({ threadId: at }) })]);
+    for (const other of members.filter(side => side !== host)) expect(other.core.contacts.relations.list()).toEqual([]);
+    await waitFor(() => host.core.contacts.linkOf(cId) === 'connected', 10000);
+    if (hostId !== aId) await waitFor(() => a.core.contacts.members.relayedOf(cId).some(entry => entry.via === hostId && (entry.relations?.length ?? 0) > 0), 10000);
+    const out = await c.core.coordination.send({ threadId: cThread, to: { coreId: hostId, threadId: at }, text: `To alpha ${step}`, requestId: crypto.randomUUID() });
+    await waitFor(() => letters(a, aThread).some(letter => letter.id === out.id), 10000);
+    await a.core.coordination.send({ threadId: aThread, to: { coreId: cId, threadId: cThread }, text: `From alpha ${step}`, requestId: crypto.randomUUID() });
+    await waitFor(() => letters(c, cThread).some(letter => letter.text === `From alpha ${step}`), 10000);
+    expect(letters(c, cThread).find(letter => letter.text === `From alpha ${step}`)!.from).toMatchObject({ coreId: hostId, threadId: at });
+  }
+}, 180000);
