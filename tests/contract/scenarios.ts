@@ -354,6 +354,9 @@ export const SCENARIOS: Record<string, Scenario> = {
     await refusedWith(env.call('desktop.run', { threadId, command: [], cwd: setup.projectPath }), RpcErrorCode.InvalidParams);
     await refusedWith(env.call('desktop.run', { threadId, command: ['true'], cwd: 'relative' }), RpcErrorCode.InvalidParams);
     same(await env.call('desktop.stop', { threadId }), { stopped: false }, 'a stop with no desktop');
+    // An archived conversation gets no agent-desktop: refused before any download.
+    await env.call('threads.archive', { threadId, archived: true });
+    await refusedWith(env.call('desktop.tool', { threadId }), RpcErrorCode.Refused);
   },
   'YOLO keeps permission requests out of the core and fake conversation': async env => {
     const setup = await echo(env);
