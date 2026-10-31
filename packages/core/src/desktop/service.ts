@@ -26,7 +26,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 import type { Core } from '../core.ts';
-import { invalidParams, messageOf, refused } from '../errors.ts';
+import { invalidParams, messageOf, refused, unavailable } from '../errors.ts';
 import type { SpawnedProcess } from '../process-spawn-types.ts';
 import type { Connection } from '../router.ts';
 import { AgentDesktopTool } from './agent-desktop.ts';
@@ -245,7 +245,8 @@ export class VirtualDesktops {
     try {
       return { path: await this.#agentDesktop.path(), version: this.#agentDesktop.version };
     } catch (error) {
-      throw refused(messageOf(error), { threadId });
+      // Unavailable, not refused: the CLI may then run an agent-desktop of the agent's own.
+      throw unavailable(messageOf(error), { threadId });
     }
   }
 

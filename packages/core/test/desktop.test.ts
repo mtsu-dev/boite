@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { AGENT_ENV, virtualDesktopCommandError, virtualDesktopSizeError } from '@boite/contracts';
+import { AGENT_ENV, RpcErrorCode, virtualDesktopCommandError, virtualDesktopSizeError } from '@boite/contracts';
 import { runCli } from '../src/cli.ts';
 import { desktopCommand, inBoiteWords } from '../src/desktop-cli.ts';
 import { AgentDesktopTool, type AgentDesktopRelease } from '../src/desktop/agent-desktop.ts';
@@ -66,6 +66,33 @@ test('--help after -- is text to type, so the command still runs on the desktop'
   const client = { call: async (method: string) => { asked.push(method); return { session: null, support: { available: true } }; } } as unknown as Parameters<typeof desktopCommand>[2];
   expect(await thrown(desktopCommand(['type', '@e1', '--', '--help'], { cwd: '/', env: { PATH: '' }, out: () => {}, err: () => {} }, client, 'thr'))).toThrow('no desktop yet');
   expect(asked).toEqual(['desktop.status']);
+});
+
+test('a desktop the policy turned off takes no more commands, and only a failed install falls back to an agent-desktop on PATH', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'boite-desktop-path-'));
+  try {
+    writeFileSync(join(dir, 'agent-desktop'), '#!/bin/sh\necho own "$@"\n');
+    chmodSync(join(dir, 'agent-desktop'), 0o755);
+    const io = { cwd: dir, env: { PATH: `${dir}:/usr/bin:/bin` }, out: () => {}, err: () => {} };
+    const session = { display: ':9', width: 1280, height: 800, apps: [], env: { DISPLAY: ':9' } };
+    const fails = (code: number) => Object.assign(new Error(`tool ${code}`), { rpc: { code, message: `tool ${code}` } });
+    const client = (status: { available: boolean; reason?: string }, tool: number) => ({
+      call: async (method: string) => {
+        if (method === 'desktop.status') return { session, support: status };
+        throw fails(tool);
+      },
+    }) as unknown as Parameters<typeof desktopCommand>[2];
+    // Still running when the policy file came: the CLI refuses before any agent-desktop runs.
+    const off = { available: false, reason: 'the machine policy turns it off (key agentDesktop)' };
+    expect(await thrown(desktopCommand(['launch', 'xterm'], io, client(off, RpcErrorCode.Refused), 'thr'))).toThrow('key agentDesktop');
+    expect(await thrown(desktopCommand(['skills', 'get', 'desktop'], io, client(off, RpcErrorCode.Refused), 'thr'))).toThrow(`tool ${RpcErrorCode.Refused}`);
+    // The download failed, or an older core lacks desktop.tool: the agent's own agent-desktop runs.
+    for (const code of [RpcErrorCode.Unavailable, RpcErrorCode.MethodNotFound]) {
+      expect((await desktopCommand(['click', '@s1:e1'], io, client({ available: true }, code), 'thr')).output?.stdout).toBe('own click @s1:e1\n');
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 /** A desktop whose four programs are fakes the test holds: Xvfb's readiness and openbox's stop wait on gates. */
@@ -175,6 +202,12 @@ test('agent-desktop\'s guide and help speak boite desktop, and its prose and app
   expect(inBoiteWords('```\\nagent-desktop snapshot -i\\nagent-desktop click @s1:e2\\n```')).toBe('```\\nboite desktop snapshot -i\\nboite desktop click @s1:e2\\n```');
   expect(inBoiteWords('Usage: agent-desktop snapshot [OPTIONS]')).toBe('Usage: boite desktop snapshot [OPTIONS]');
   expect(inBoiteWords('Use the agent-desktop CLI. requirements:\\n  - agent-desktop\\n')).toBe('Use the agent-desktop CLI. requirements:\\n  - agent-desktop\\n');
+  // Lines of the real 1.0.2 `--help` (indented examples) and of its platform guide (a command substitution).
+  expect(inBoiteWords('Start here:\n  agent-desktop skills get desktop     Core guide\nExamples:\n  agent-desktop click @s8f3k2p9:e5\n'))
+    .toBe('Start here:\n  boite desktop skills get desktop     Core guide\nExamples:\n  boite desktop click @s8f3k2p9:e5\n');
+  expect(inBoiteWords('```bash\\nsession_id=$(agent-desktop session start --name doc)\\n  agent-desktop session end "$session_id"\\n```'))
+    .toBe('```bash\\nsession_id=$(boite desktop session start --name doc)\\n  boite desktop session end "$session_id"\\n```');
+  expect(inBoiteWords('`AGENT_DESKTOP_HOME` or `~/.agent-desktop` stays')).toBe('`AGENT_DESKTOP_HOME` or `~/.agent-desktop` stays');
 });
 
 describe('the agent-desktop Boite installs', () => {
@@ -249,6 +282,20 @@ describe('the agent-desktop Boite installs', () => {
     expect(fetched).toHaveLength(2);
     expect(sha(readFileSync(path))).toBe(pinned.builds.x64![0]!.sha256);
     expect(await thrown(new AgentDesktopTool(tools, harness.core.procs, { release: pinned, arch: 'riscv64', fetch }).path())).toThrow('has no Linux build for riscv64');
+  });
+
+  test('two cores installing into one data dir at once keep the first install, which nothing deletes under the other', async () => {
+    const { pinned, fetched, fetch } = release();
+    const tools = join(dir, 'tools');
+    const [first, second] = [0, 1].map(() => new AgentDesktopTool(tools, harness.core.procs, { release: pinned, arch: 'x64', fetch }));
+    const both = [first!.path(), second!.path()];
+    const path = await Promise.race(both);
+    const published = statSync(path).ino;
+    expect(await Promise.all(both)).toEqual([path, path]);
+    expect(fetched).toHaveLength(2);
+    // The later core found an intact install and dropped its own copy instead of swapping the folder.
+    expect(statSync(path).ino).toBe(published);
+    expect(readdirSync(tools)).toEqual(['agent-desktop-9.9.9']);
   });
 });
 

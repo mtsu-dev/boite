@@ -62,6 +62,8 @@ export interface DesktopRpcMethods {
   /**
    * The agent-desktop binary the CLI runs, which Boite downloads (a pinned
    * release, checked by digest) the first time a conversation needs it.
+   * Refused under the `agentDesktop` policy or without the desktop's
+   * programs; unavailable when the download or the install failed.
    */
   'desktop.tool': { params: { threadId: string }; result: { path: string; version: string } };
 }

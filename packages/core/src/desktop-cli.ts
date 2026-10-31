@@ -6,7 +6,7 @@
  * The agent-desktop is the pinned build the core installs (desktop.tool), or
  * one on the agent's PATH when that install is refused. See docs/desktop.md.
  */
-import { VIRTUAL_DESKTOP_SIZE, type VirtualDesktopApp, type VirtualDesktopSession, type VirtualDesktopSupport } from '@boite/contracts';
+import { RpcErrorCode, VIRTUAL_DESKTOP_SIZE, type VirtualDesktopApp, type VirtualDesktopSession, type VirtualDesktopSupport } from '@boite/contracts';
 import type { CoreClient } from './client.ts';
 import type { CliIo } from './cli.ts';
 import { Usage } from './cli-args.ts';
@@ -22,12 +22,13 @@ export const DESKTOP_HELP = `boite desktop <command> [args]
                                  (eval "$(boite desktop env)"; bun test)
   stop                           stop the desktop and every app on it
   <agent-desktop command>        anything else runs agent-desktop on the desktop:
+    list-apps                              the names --app takes, not always the program's
     snapshot --app <name> -i --compact     the accessibility tree with @refs
     click @ref | type @ref "text" | press ctrl+s | set-value @ref "v"
     type --headed @ref "text"              real keys, safe on this private display, for
                                            a web field with no text action of its own
     find --role button --name Save | wait --text Done
-    screenshot --app <name> shot.png       then boite attach shot.png
+    screenshot --app <name> shot.png       then boite attach shot.png, from this folder
     skills get desktop                     agent-desktop's own guide, in boite desktop words
 A Linux machine only: Xvfb in memory, openbox, its own D-Bus and accessibility
 bus. Nothing reaches the user's screen, keyboard or speakers. Chrome, Electron,
@@ -65,12 +66,17 @@ export function findAgentDesktop(env: CliIo['env']): string | null {
   return Bun.which('agent-desktop', { PATH: env['PATH'] ?? env['Path'] ?? '' });
 }
 
-/** The pinned agent-desktop Boite installs; one on PATH only when the core cannot give it. */
+/**
+ * The pinned agent-desktop Boite installs. One on PATH only when the core could
+ * not install it, or is too old to know desktop.tool; never past a refusal, such
+ * as the machine policy turning the desktop off.
+ */
 async function agentDesktopBinary(io: CliIo, client: CoreClient, threadId: string): Promise<string> {
   try {
     return (await client.call('desktop.tool', { threadId })).path;
   } catch (error) {
-    const own = findAgentDesktop(io.env);
+    const code = (error as { rpc?: { code?: number } }).rpc?.code;
+    const own = code === RpcErrorCode.Unavailable || code === RpcErrorCode.MethodNotFound ? findAgentDesktop(io.env) : null;
     if (own) return own;
     throw error;
   }
@@ -79,10 +85,11 @@ async function agentDesktopBinary(io: CliIo, client: CoreClient, threadId: strin
 /**
  * agent-desktop's guides and help name its own command; here the same words
  * go through `boite desktop`, which aims them at this conversation's desktop.
- * Only a command form is rewritten: in code, at a line start or after `Usage: `.
+ * Only a command form is rewritten: in code or `$(...)`, at an indented line
+ * start (a JSON-escaped `\n` included) or after `Usage: `.
  */
 export function inBoiteWords(text: string): string {
-  return text.replace(/(`|\\n|^|Usage: )agent-desktop (?=[\w@<[-])/gm, '$1boite desktop ');
+  return text.replace(/(`|\$\(|(?:^|\\n)[ \t]*|Usage: )agent-desktop (?=[\w@<[-])/gm, '$1boite desktop ');
 }
 
 function size(rest: string[]): { width?: number; height?: number } {
@@ -156,7 +163,9 @@ export async function desktopCommand(args: string[], io: CliIo, client: CoreClie
       const flags = rest.includes('--') ? rest.slice(0, rest.indexOf('--')) : rest;
       if (OFFLINE.has(command) || flags.includes('--help') || flags.includes('-h')) return agentDesktop(await agentDesktopBinary(io, client, threadId), args, io, null);
       const { session, support } = await client.call('desktop.status', { threadId });
-      if (!session) throw new Error(support.available ? 'no desktop yet: boite desktop run <app> starts one with the app' : supportLines(support)[0]!);
+      // The policy can turn the desktop off while one runs: nothing more acts on it, only stop.
+      if (!support.available) throw new Error(supportLines(support)[0]!);
+      if (!session) throw new Error('no desktop yet: boite desktop run <app> starts one with the app');
       return agentDesktop(await agentDesktopBinary(io, client, threadId), args, io, session.env);
     }
   }

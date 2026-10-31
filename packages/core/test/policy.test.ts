@@ -5,7 +5,7 @@
  * in a fresh temporary directory, never a machine path.
  */
 import { afterEach, expect, spyOn, test } from 'bun:test';
-import { chmodSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AGENT_ENV, POLICY_KEYS, RpcErrorCode, type AdminPolicy, type PolicyKey } from '@boite/contracts';
@@ -475,6 +475,22 @@ test('agentDesktop: false refuses the desktop and the agent-desktop download, CL
   });
   expect(code).not.toBe(0);
   expect(error).toContain('key agentDesktop in');
+  // An agent-desktop of the agent's own on PATH does not get past the refusal either.
+  const bin = join(harness.dataDir, 'own-bin');
+  const ran = join(harness.dataDir, 'own-ran');
+  mkdirSync(bin);
+  writeFileSync(join(bin, 'agent-desktop'), `#!/bin/sh\ntouch '${ran}'\n`);
+  chmodSync(join(bin, 'agent-desktop'), 0o755);
+  for (const words of [['skills', 'get', 'desktop'], ['click', '@s1:e1']]) {
+    let refusal = '';
+    const exit = await runCli(['desktop', ...words], {
+      cwd: harness.dataDir, env: { PATH: `${bin}:/usr/bin:/bin`, [AGENT_ENV.threadId]: threadId, [AGENT_ENV.coreUrl]: harness.url, [AGENT_ENV.token]: harness.core.agents.tokenFor(threadId) },
+      out: () => {}, err: text => refusal += text,
+    });
+    expect(exit).not.toBe(0);
+    expect(refusal).toContain('agentDesktop');
+  }
+  expect(existsSync(ran)).toBe(false);
 });
 
 test('network.lan: false keeps the core on loopback whatever the setting or the command line', async () => {

@@ -60,12 +60,17 @@ binary for the machine's CPU (x64 or arm64) and its clipboard helper with
 `tar`, checks each file's SHA-256 and moves them together into
 `<data dir>/tools/agent-desktop-<version>/`. An archive or a file that does not
 match installs nothing. Concurrent commands share one download, and a later
-core checks the installed files and reuses them.
+core checks the installed files and reuses them. Two cores sharing a data dir
+may both download: the first to publish wins, and the other keeps that intact
+install instead of replacing a folder the first may be running.
 
 The CLI asks the core for that path (`desktop.tool`) and runs it from the
-agent's shell with the desktop's environment. When the core cannot give one,
-being offline or refused by the `agentDesktop` policy, an agent-desktop on the
-agent's `PATH` runs instead; with neither, the command fails with the reason.
+agent's shell with the desktop's environment. When the core could not install
+it (offline, the registry down) or predates `desktop.tool`, an agent-desktop on
+the agent's `PATH` runs instead; with neither, the command fails with the
+reason. A refusal is final: under the `agentDesktop` policy, or on a machine
+without the desktop's programs, no agent-desktop runs, and a desktop that was
+already running when the policy came takes no command but `stop`.
 
 ## The desktop
 

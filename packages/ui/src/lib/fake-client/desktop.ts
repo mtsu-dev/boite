@@ -8,13 +8,17 @@ type Methods = 'desktop.status' | 'desktop.start' | 'desktop.run' | 'desktop.sto
 /** The in-memory client runs no X server: it answers as a machine without the tools would, after the core's checks. */
 const REASON = 'the in-memory client has no virtual desktop';
 
+/** What the core's status says when the machine policy turns the desktop off. */
+const POLICY_REASON = 'the machine policy turns it off (key agentDesktop)';
+
 const invalid = (message: string, data: Record<string, unknown>) => new RpcFailure({ code: RpcErrorCode.InvalidParams, message, data });
 
 export function desktopMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
   return {
     'desktop.status': async ({ threadId }) => {
       ctx.thread(threadId);
-      return { support: { available: false, reason: REASON }, session: null };
+      const off = ctx.policy.present && ctx.policy.values.agentDesktop === false;
+      return { support: { available: false, reason: off ? POLICY_REASON : REASON }, session: null };
     },
     'desktop.start': async ({ threadId, width, height }) => {
       const problem = virtualDesktopSizeError(width, height);

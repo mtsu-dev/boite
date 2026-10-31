@@ -87,7 +87,34 @@ export class AgentDesktopTool {
     });
   }
 
-  async #install(build: { entry: string; name: string; sha256: string }[]): Promise<string> {
+  /**
+   * Renames the checked folder into place. Another core sharing the data dir
+   * may have published first: its intact install is kept and this copy dropped.
+   * A damaged one is renamed aside before removal, so no core deletes a folder
+   * another just published under the final name.
+   */
+  #publish(folder: string, parent: string, build: { name: string; sha256: string }[]): void {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        renameSync(folder, this.#root);
+        return;
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code !== 'ENOTEMPTY' && code !== 'EEXIST') throw error;
+      }
+      if (this.#intact(build)) return;
+      const aside = join(parent, `.agent-desktop-old-${randomBytes(6).toString('hex')}`);
+      try {
+        renameSync(this.#root, aside);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+      rmSync(aside, { recursive: true, force: true });
+    }
+    throw new Error(`${this.#root} kept changing while it was installed`);
+  }
+
+  async #install(build:{ entry: string; name: string; sha256: string }[]): Promise<string> {
     const { url, version } = this.#release;
     let response: Response;
     try {
@@ -118,8 +145,7 @@ export class AgentDesktopTool {
         writeFileSync(target, bytes, { mode: 0o755 });
         chmodSync(target, 0o755);
       }
-      rmSync(this.#root, { recursive: true, force: true });
-      renameSync(folder, this.#root);
+      this.#publish(folder, parent, build);
     } catch (error) {
       throw new Error(`agent-desktop ${version} could not be installed: ${messageOf(error)}`);
     } finally {
