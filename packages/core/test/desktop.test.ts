@@ -279,7 +279,13 @@ describe('the agent-desktop Boite installs', () => {
     const { pinned, fetched, fetch } = release();
     const damaged = await new AgentDesktopTool(tools, harness.core.procs, { release: pinned, arch: 'x64', fetch }).path();
     writeFileSync(damaged, 'truncated');
+    // A file that cannot be read, as one another core removes mid-check, is damage too, not an error.
+    const unreadable = join(tools, 'agent-desktop-9.9.9', 'unreadable');
+    mkdirSync(unreadable);
+    writeFileSync(join(unreadable, 'agent-desktop'), 'x');
+    chmodSync(join(unreadable, 'agent-desktop'), 0o000);
     const path = await new AgentDesktopTool(tools, harness.core.procs, { release: pinned, arch: 'x64', fetch }).path();
+    expect(existsSync(unreadable)).toBe(false);
     expect(fetched).toHaveLength(2);
     expect(sha(readFileSync(path))).toBe(pinned.builds.x64![0]!.sha256);
     expect(existsSync(dirname(damaged))).toBe(false);

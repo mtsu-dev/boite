@@ -44,6 +44,15 @@ const EXTRACT_TIMEOUT_MS = 60_000;
 
 const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 
+/** A file's SHA-256, or null when it cannot be read: missing, unreadable, or removed meanwhile by another core repairing it. */
+function digestOf(path: string): string | null {
+  try {
+    return sha256(readFileSync(path));
+  } catch {
+    return null;
+  }
+}
+
 export interface AgentDesktopToolOptions {
   release?: AgentDesktopRelease;
   arch?: string;
@@ -93,10 +102,7 @@ export class AgentDesktopTool {
     for (const name of readdirSync(this.#root).sort()) {
       if (name.startsWith('.')) continue;
       const folder = join(this.#root, name);
-      const intact = build.every(file => {
-        const path = join(folder, file.name);
-        return existsSync(path) && sha256(readFileSync(path)) === file.sha256;
-      });
+      const intact = build.every(file => digestOf(join(folder, file.name)) === file.sha256);
       if (intact) return join(folder, 'agent-desktop');
       rmSync(folder, { recursive: true, force: true });
     }
