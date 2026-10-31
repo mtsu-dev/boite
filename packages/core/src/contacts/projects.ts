@@ -13,6 +13,7 @@ import { accessRecord, initialAccess, offeredProject, projectRef, sameProject, s
 import { SharedProjectSubscriptions } from './project-subscriptions.ts';
 import { projectContact, checkProjectRoute, projectRoute } from './project-relay.ts';
 import { redactSharedText, redactSharedContact } from './file-policy.ts';
+import { contactFace } from './face.ts';
 
 export interface SharedPeerContext {
   shared: SharedProject;
@@ -381,7 +382,7 @@ export class SharedProjects {
     return this.core.journal.listThreads(ctx.local.projectId).filter(t => !t.archived && this.core.coordination.config(t.id).mode !== 'off' && this.core.coordination.config(t.id).remote)
       .sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 100).map(t => {
         const ref = { project: ctx.local, threadId: t.id, address: projectAddress(ctx.local, t.id) };
-        const agent = { ...redactSharedContact(this.core.coordination.describe(t.id)), ...ref.address, sharedThread: ref };
+        const agent = { ...redactSharedContact(this.core.coordination.describe(t.id)), ...ref.address, sharedThread: ref, machine: contactFace(this.core) };
         return { ref, agent, machine: agent.machine, readThreads: sameProject(ctx.source.project, ctx.local) || this.core.contacts.mayRead(ctx.peerId, t.id) };
       });
   }

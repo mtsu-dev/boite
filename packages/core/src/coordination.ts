@@ -20,6 +20,7 @@ import type { Core } from './core.ts';
 import { invalidParams, messageOf, refused, RpcFailure, unavailable } from './errors.ts';
 import { isAgentHeld } from './agents/runtime.ts';
 import { ContactMailboxes } from './contacts/mailboxes.ts';
+import { GROUP_LETTER_TTL_MS } from './contacts/group-link.ts';
 import { contactsBot } from './contacts/bot.ts';
 import { forwardCoordination } from './coordination-rpc.ts';
 import { trustCoordination, trustedCoordinationPeers } from './coordination-trust.ts';
@@ -409,7 +410,7 @@ export class Coordination {
     if (raced) { if (raced.fingerprint !== fingerprint) throw refused('requestId already used for different content'); return JSON.parse(raced.data) as AgentLetter; }
     const createdAt = Date.now();
     const contact = this.#core.contacts.known(to.coreId) ?? this.mailboxes.route(params.threadId, to.coreId);
-    const letter: AgentLetter = { ...(resident ? { origin: 'resident' as const } : {}), id: randomUUID(), from, to, toTitle, toProject, toMachine, text: body, replyTo: params.replyTo ?? null, createdAt, expiresAt: createdAt + (resident ? RESIDENT_LETTER_TTL_MS : LETTER_TTL_MS), status: 'queued', error: null,
+    const letter: AgentLetter = { ...(resident ? { origin: 'resident' as const } : {}), id: randomUUID(), from, to, toTitle, toProject, toMachine, text: body, replyTo: params.replyTo ?? null, createdAt, expiresAt: createdAt + (resident ? RESIDENT_LETTER_TTL_MS : this.#core.contacts.letterTtl(to.coreId, to.threadId) ?? LETTER_TTL_MS), status: 'queued', error: null,
       ...(contact ? { contact: { coreId: contact.coreId, name: contact.name } } : {}), ...provenance };
     this.#core.journal.append({ type: 'coordination.sent', threadId: from.threadId, version: 1, payload: letter }, () => this.#put(letter, 'out', from.threadId, requestId, fingerprint));
     // It may hear back from that contact for a while, even outside the projects opened to it.
@@ -453,7 +454,7 @@ export class Coordination {
       if (!same(existing.from, from) || !same(existing.to, target) || existing.text !== letter.text || existing.replyTo !== letter.replyTo || (existing.origin === 'contact-human') !== (letter.origin === 'contact-human')) throw refused('message id already used for different content');
       return existing;
     }
-    if (!Number.isSafeInteger(letter.createdAt) || !Number.isSafeInteger(letter.expiresAt) || letter.createdAt > Date.now() + 60_000 || letter.expiresAt <= Date.now() || letter.expiresAt > letter.createdAt + (resident || routed && letter.origin === 'contact' ? RESIDENT_LETTER_TTL_MS : LETTER_TTL_MS)) throw refused('message expired or timestamps invalid');
+    if (!Number.isSafeInteger(letter.createdAt) || !Number.isSafeInteger(letter.expiresAt) || letter.createdAt > Date.now() + 60_000 || letter.expiresAt <= Date.now() || letter.expiresAt > letter.createdAt + (resident || routed && letter.origin === 'contact' ? RESIDENT_LETTER_TTL_MS : peer && this.#core.contacts.isContact(peer.coreId) ? GROUP_LETTER_TTL_MS : LETTER_TTL_MS)) throw refused('message expired or timestamps invalid');
     const origin = resident ? 'resident' as const : routed && letter.origin === 'contact' ? 'contact' as const : undefined;
     const accepted: AgentLetter = { ...(origin ? { origin } : {}), id: letter.id, from, to: this.#self(target.threadId), toTitle: target.title, toProject: target.project, toMachine: target.machine, text: text(letter.text, 'letter.text'), replyTo: letter.replyTo === null ? null : text(letter.replyTo, 'letter.replyTo', 100), createdAt: Date.now(), expiresAt: letter.expiresAt, status: 'received', error: null,
       // The name this owner gave the contact, never the sender's word.
@@ -767,7 +768,7 @@ export class Coordination {
     }
     // Nothing waits on the sweep: a probe or two on the status index, then back to sleep.
     const db = this.#core.journal.db;
-    if (!db.query(SWEEP_PROBES[0]).get() && !db.query(SWEEP_PROBES[1]).get(now - LETTER_TTL_MS, now)) return;
+    if (!db.query(SWEEP_PROBES[0]).get() && !db.query(SWEEP_PROBES[1]).get(now - GROUP_LETTER_TTL_MS, now)) return;
     for (const row of this.rows("status IN ('queued', 'received') AND json_extract(data, '$.expiresAt') <= ?", Date.now())) this.update(JSON.parse(row.data), 'expired', 'Message expired before delivery');
     const threads = this.#core.journal.db.query("SELECT DISTINCT thread_id FROM coordination_letters WHERE direction = 'in' AND status = 'received'").all() as { thread_id: string }[];
     for (const { thread_id } of threads) {

@@ -10,6 +10,8 @@ import { openResponse, SEALED, unpack, type Sealing } from './group/seal.ts';
 
 /** What one core asks another. */
 export type Operation = 'directory' | 'deliver' | 'receipt' | 'search' | 'read' | 'group.sync' | 'group.push' | 'contact.sync' | 'contact.ask' | 'contact.answer' | 'contact.relation' | 'contact.project' | 'contact.route'
+  /** `contact.hand`: between members, a contact's link handed to the group's Bots host; `contact.move`: the old member tells the contact (`contacts/group-link.ts`). */
+  | 'contact.hand' | 'contact.move'
   /** Between members of a group, for a contact one of them is linked to (`contacts/members.ts`). */
   | 'relay.project' | 'relay.mirror' | 'relay.in' | 'relay.out'
   /** Between members of a group: a thread one starts on another, the models it can run on there, and the setting that lets it (`threads/group-spawn.ts`). */

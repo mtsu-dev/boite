@@ -100,7 +100,7 @@ export class PeerDesk {
       this.#core.delegation.remote.heard(peer.coreId);
       if (rate.count > 120) return this.#signed({nonce: envelope.nonce, error: 'peer rate limit'}, 429, sealing);
     } catch { return new Response('invalid signed message', { status: 403 }); }
-    const groupOnly = envelope.operation === 'group.sync' || envelope.operation === 'group.push' || envelope.operation === 'contact.route'
+    const groupOnly = envelope.operation === 'group.sync' || envelope.operation === 'group.push' || envelope.operation === 'contact.route' || envelope.operation === 'contact.hand'
       || envelope.operation === 'thread.start' || envelope.operation.startsWith('delegation.') || envelope.operation.startsWith('setting.') || envelope.operation.startsWith('bot.'); // the group's own: sealed, from a member
     if (this.#core.group.removedPeer(peer.coreId) !== null && (groupOnly || !this.#side.trusted().some(p => p.coreId === peer.coreId))) {
       return this.#signed({ nonce: envelope.nonce, error: 'this machine was removed from the group', gone: true }, 410, sealing);
@@ -124,7 +124,7 @@ export class PeerDesk {
         policedRoutes(this.#core, currentPeer, envelope.operation);
         const member = sealing !== null && this.#core.group.peers().some(p => p.coreId === peer.coreId);
         if (contact && groupOnly) throw refused('operation: a contact takes no part in this core\'s group');
-        if (!contact && envelope.operation.startsWith('contact.') && envelope.operation !== 'contact.route') throw refused('operation: only a contact sends contact operations');
+        if (!contact && envelope.operation.startsWith('contact.') && envelope.operation !== 'contact.route' && envelope.operation !== 'contact.hand') throw refused('operation: only a contact sends contact operations');
         if (!member && envelope.operation.startsWith('relay.')) throw refused('operation: only a machine of this core\'s group relays for a contact');
         if (!member && envelope.operation === 'thread.start') throw refused('operation: only a machine of this core\'s group starts threads here');
         if (!member && envelope.operation.startsWith('delegation.')) throw refused('operation: only a machine of this core\'s group reads its models or runs subagents here');
@@ -132,6 +132,7 @@ export class PeerDesk {
         if (!member && envelope.operation.startsWith('bot.')) throw refused('operation: only a machine of this core\'s group looks after projects here');
         if (contact) result = await this.contact(currentPeer, envelope.operation, envelope.payload, false);
         else if (envelope.operation === 'contact.route') result = await this.#core.coordination.mailboxes.handle(currentPeer, envelope.payload);
+        else if (envelope.operation === 'contact.hand') result = await this.#core.contacts.groupLink.handed(currentPeer, envelope.payload);
         else if (envelope.operation === 'directory') result = this.#side.directory();
         else if (envelope.operation === 'deliver') result = this.#side.receive(envelope.payload as AgentLetter, peer);
         else if (envelope.operation === 'search') {
@@ -248,7 +249,8 @@ export class PeerDesk {
       return this.#core.contacts.answered(peer.coreId, payload, ((threads ?? []) as AgentContact[]).map(entry => checkRemoteContact(entry, peer)), thread);
     }
     if (!relayed && operation === 'contact.relation') return this.#core.contacts.relations.endedByContact(peer.coreId, payload);
-    throw invalidParams(relayed ? 'operation: expected directory, deliver, receipt, search or read' : 'operation: expected directory, deliver, receipt, search, read, contact.sync, contact.ask, contact.answer or contact.relation');
+    if (!relayed && operation === 'contact.move') return this.#core.contacts.groupLink.moved(peer, payload);
+    throw invalidParams(relayed ? 'operation: expected directory, deliver, receipt, search or read' : 'operation: expected directory, deliver, receipt, search, read, contact.sync, contact.ask, contact.answer, contact.relation or contact.move');
   }
   /** The answer, signed, and sealed back to the asker when its request came sealed. */
   #signed(reply: { nonce: string; result?: unknown; error?: string | undefined; gone?: true }, status: number, sealing: Sealing | null = null): Response {

@@ -101,6 +101,19 @@ export class ContactReach {
     this.#core.journal.setSetting(RECENT, recent);
   }
 
+  /** The contact moved to another core of its owner's group (`group-link.ts`): the threads that wrote to it still hear back. */
+  rekey(from: string, to: string): void {
+    const recent = this.#recent();
+    let changed = false;
+    for (const contacts of Object.values(recent)) {
+      if (!(from in contacts)) continue;
+      contacts[to] = Math.max(contacts[to] ?? 0, contacts[from]!);
+      delete contacts[from];
+      changed = true;
+    }
+    if (changed) this.#core.journal.setSetting(RECENT, recent);
+  }
+
   /** The threads `which` names no longer hear back from this contact. */
   forgetReplies(coreId: string, which: (threadId: string) => boolean): void {
     const recent = this.#recent();

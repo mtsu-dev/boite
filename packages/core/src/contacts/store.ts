@@ -32,7 +32,7 @@ import { ContactFunnel } from './funnel.ts';
 import { ContactMembers, type LinkedContacts } from './members.ts';
 import { ContactRelations } from './relations.ts';
 import { ContactRequests } from './requests.ts';
-import type { ContactCard } from './invite.ts';
+import { checkMachine, type ContactCard } from './invite.ts';
 import { createInvite, INVITES, liveInvites, tailnetOrigin } from './invitations.ts';
 import { CONTACT_JOIN_ROUTE, joinContact, joinRequest } from './join.ts';
 import { TailscaleClient } from './tailscale.ts';
@@ -42,6 +42,8 @@ import { fingerprintWords } from './words.ts';
 import type { TextSocket } from '../ws-client.ts';
 import { contactHello, CONTACT_LINK_ROUTE, dialContact, HELLO_INPUT, type ContactSocketData } from './link-hello.ts';
 import { checkedContactOffers, contactOffers } from './offers.ts';
+import { contactFace, groupFace } from './face.ts';
+import { ContactGroupLink, GROUP_LETTER_TTL_MS } from './group-link.ts';
 export { CONTACT_JOIN_ROUTE } from './join.ts';
 const dashedName = (name: string): string => name.replace(/\s+/g, '-').toLowerCase();
 export { CONTACT_LINK_ROUTE } from './link-hello.ts';
@@ -55,7 +57,7 @@ const FLUSH_TICKS = 30;
 const TAILSCALE_CACHE_MS = 60_000;
 
 /** A contact as this core keeps it: the public fields, its keys, and whether its offers are behind. */
-interface StoredContact extends Omit<Contact, 'link'> {
+export interface StoredContact extends Omit<Contact, 'link'> {
   publicKey: string;
   box: string;
   /** Bumped by every grant change; cleared once the contact heard this one. */
@@ -78,6 +80,8 @@ export class ContactStore implements LinkedContacts {
   readonly members: ContactMembers;
   /** What a contact reaches on this core, and the tiers its traffic takes (`reach.ts`). */
   readonly reach: ContactReach;
+  /** Moving contacts to the group's Bots host, and following a contact that moved (`group-link.ts`). */
+  readonly groupLink: ContactGroupLink;
   readonly maxContacts = MAX_CONTACTS;
   /** The origin an invitation gives: this machine's tailnet name. Tests point it at loopback. */
   selfUrl: (share: boolean) => Promise<string> = share => tailnetOrigin(this, this.#core, share);
@@ -120,8 +124,9 @@ export class ContactStore implements LinkedContacts {
     this.funnel.changed = () => this.changed();
     this.members = new ContactMembers(core, this);
     this.reach = new ContactReach(core, this);
-    // A member that leaves the group takes the contacts it relayed out of `peers()`.
-    core.bus.onAny(name => { if (name === 'group.updated') this.reset(); });
+    this.groupLink = new ContactGroupLink(core, this);
+    // A member that leaves the group takes the contacts it relayed out of `peers()`; a new Bots host takes this core's contacts.
+    core.bus.onAny(name => { if (name === 'group.updated') { this.reset(); if (this.#started) this.groupLink.sweep(true); } });
   }
 
   // -- Storage.
@@ -168,6 +173,37 @@ export class ContactStore implements LinkedContacts {
     change(contact);
     this.#save(contacts);
     return contact;
+  }
+
+  /** Stores `record`, in place of `replaces` (its own id by default) or added. */
+  put(record: StoredContact, replaces = record.coreId): void {
+    const contacts = this.list();
+    const at = contacts.findIndex(entry => entry.coreId === replaces);
+    if (at < 0) {
+      const taken = new Set(contacts.map(contact => contact.name.toLowerCase()));
+      let name = record.name;
+      for (let n = 2; taken.has(name.toLowerCase()); n += 1) name = `${record.name} ${n}`;
+      contacts.push({ ...record, name });
+    } else contacts[at] = record;
+    this.#save(contacts);
+    this.relisten();
+  }
+
+  /** Forgets a contact's record and link, nothing else: it moved to another core (`group-link.ts`). */
+  drop(coreId: string): void {
+    this.unlink(coreId);
+    this.#save(this.list().filter(entry => entry.coreId !== coreId));
+  }
+
+  /**
+   * How long a letter to this contact may wait: 7 days behind a Bots host,
+   * which may be off for days; undefined otherwise. A reply into a gateway
+   * mailbox (`cmb_`, `mailboxes.ts`) keeps the 15 minute route window.
+   */
+  letterTtl(coreId: string, threadId = ''): number | undefined {
+    if (threadId.startsWith('cmb_')) return undefined;
+    const contact = this.find(coreId) ?? this.members.relayedOf(coreId)[0];
+    return contact?.capabilities?.groupLink === 1 ? GROUP_LETTER_TTL_MS : undefined;
   }
 
   /** Only this core mints request letters; peer-origin contact letters remain forbidden. */
@@ -232,7 +268,7 @@ export class ContactStore implements LinkedContacts {
 
   /** Listens on the tailnet while a contact may dial in: one is linked as guest, or an invitation is out. */
   wantsTailnet(): boolean {
-    return this.list().some(contact => contact.role === 'host') || this.liveInvites().length > 0;
+    return this.list().some(contact => contact.role === 'host') || this.liveInvites().length > 0 || this.groupLink.waiting();
   }
 
   granted(coreId: string): string[] { return this.reach.granted(coreId); }
@@ -279,7 +315,7 @@ export class ContactStore implements LinkedContacts {
     const bot = contactsBot(this.#core);
     return {
       self: { coreId: this.#core.coordination.card().coreId, machine: this.#machine() },
-      contacts: this.list().map(contact => this.view(contact)),
+      contacts: [...this.list().map(contact => this.view(contact)), ...this.#heldElsewhere()],
       requests: this.requests.shown(),
       settings: this.settings(),
       tailscale: await this.tailscaleState(),
@@ -294,9 +330,20 @@ export class ContactStore implements LinkedContacts {
 
   #machine(): string { return (this.#core.info().hostname ?? 'Boite').slice(0, 100); }
 
+  /** On the Bots host, the contacts other members still hold, for the owner: each names the member as `heldBy`. */
+  #heldElsewhere(): Contact[] {
+    if (this.#core.group.roleOf('botsHome') !== this.#core.coordination.card().coreId) return [];
+    const shown = new Set(this.list().map(contact => contact.coreId));
+    return this.members.relayed().filter(entry => !shown.has(entry.coreId) && shown.add(entry.coreId)).map(entry => ({
+      coreId: entry.coreId, name: entry.name, machine: entry.name, fingerprint: '', role: 'host', trusted: false,
+      grants: entry.grants.map(grant => ({ ...grant, grantedAt: 0, machine: entry.via })), offers: entry.projectOffers ?? [], link: entry.link,
+      lastSeenAt: null, addedAt: 0, ...(entry.capabilities ? { capabilities: entry.capabilities } : {}), heldBy: entry.via,
+    }));
+  }
+
   card(): ContactCard {
     const { coreId, publicKey } = this.#core.coordination.card();
-    return { coreId, publicKey, box: this.#core.group.boxPublic(), machine: this.#machine() };
+    return { coreId, publicKey, box: this.#core.group.boxPublic(), machine: contactFace(this.#core) };
   }
 
   liveInvites(): [string, { expiresAt: number }][] { return liveInvites(this.#core); }
@@ -391,6 +438,14 @@ export class ContactStore implements LinkedContacts {
   #policyKey(coreId: string, projectId: string): string { return `contact-policy-revoked:${JSON.stringify([coreId, projectId])}`; }
   policyRevoked(coreId: string, projectId: string): boolean { return this.#core.journal.getSetting(this.#policyKey(coreId, projectId)) === true; }
   restoreForOwner(coreId: string, projectId: string): void { this.#core.journal.deleteSetting(this.#policyKey(coreId, projectId)); }
+  /** The contact moved to another core (`group-link.ts`): what policy closed to it stays closed. */
+  movePolicy(from: string, to: string): void {
+    for (const project of this.#core.journal.listProjects()) {
+      if (!this.policyRevoked(from, project.id)) continue;
+      this.restoreForOwner(from, project.id);
+      this.#core.journal.setSetting(this.#policyKey(to, project.id), true);
+    }
+  }
   revokeForPolicy(params: RpcParams<'contacts.revoke'>): void {
     this.#core.journal.setSetting(this.#policyKey(params.coreId, params.projectId), true);
     if (this.has(params.coreId)) this.revoke(params);
@@ -510,13 +565,19 @@ export class ContactStore implements LinkedContacts {
   synced(coreId: string, payload: unknown): { ok: true } {
     const checked = checkedContactOffers(coreId, payload);
     const contact = this.find(coreId);
-    const raw = payload as { capabilities?: { sharedProjects?: unknown; humanLetters?: unknown; contactsBot?: unknown }; bot?: { threadId?: unknown; title?: unknown } | null };
+    const raw = payload as { capabilities?: { sharedProjects?: unknown; humanLetters?: unknown; contactsBot?: unknown; groupLink?: unknown }; bot?: { threadId?: unknown; title?: unknown } | null; group?: unknown };
     const rawCaps = raw.capabilities;
-    const capabilities = { ...(rawCaps?.sharedProjects === 1 ? { sharedProjects: 1 as const } : {}), ...(rawCaps?.humanLetters === 1 ? { humanLetters: 1 as const } : {}), ...(rawCaps?.contactsBot === 1 ? { contactsBot: 1 as const } : {}) };
+    const capabilities = { ...(rawCaps?.sharedProjects === 1 ? { sharedProjects: 1 as const } : {}), ...(rawCaps?.humanLetters === 1 ? { humanLetters: 1 as const } : {}), ...(rawCaps?.contactsBot === 1 ? { contactsBot: 1 as const } : {}), ...(rawCaps?.groupLink === 1 ? { groupLink: 1 as const } : {}) };
+    // A group with a Bots host names itself after the group: the contact shows that name, never a machine's.
+    const group = raw.group === undefined || raw.group === null ? undefined : checkMachine(raw.group, 'sync.group');
     const bot = raw.bot === undefined || raw.bot === null ? undefined : { threadId: text(raw.bot.threadId, 'bot.threadId', 128), title: text(raw.bot.title, 'bot.title', 200) };
-    if (contact && (JSON.stringify(contact.offers) !== JSON.stringify(checked) || JSON.stringify(contact.capabilities) !== JSON.stringify(capabilities) || JSON.stringify(contact.bot) !== JSON.stringify(bot))) {
-      this.#mutate(coreId, entry => { entry.offers = checked; entry.capabilities = capabilities; if (bot) entry.bot = bot; else delete entry.bot; });
+    if (contact && (JSON.stringify(contact.offers) !== JSON.stringify(checked) || JSON.stringify(contact.capabilities) !== JSON.stringify(capabilities) || JSON.stringify(contact.bot) !== JSON.stringify(bot) || contact.group !== group)) {
+      this.#mutate(coreId, entry => {
+        entry.offers = checked; entry.capabilities = capabilities; if (bot) entry.bot = bot; else delete entry.bot;
+        if (group !== undefined) { if (entry.name === entry.machine) entry.name = group; entry.machine = group; entry.group = group; } else delete entry.group;
+      });
       this.members.mark(this.members.holdersOf(coreId));
+      if (capabilities.groupLink === 1) this.groupLink.sweep(true);
     }
     return { ok: true };
   }
@@ -554,7 +615,7 @@ export class ContactStore implements LinkedContacts {
       const version = contact.syncPending;
       const bot = contactsBot(this.#core);
       const own = bot ? { bot: { threadId: bot.threadId, title: this.#core.journal.getThread(bot.threadId)?.title.slice(0, 200) || bot.name } } : {};
-      try { await this.#core.coordination.request(peer(), 'contact.sync', { offers: contactOffers(this.#core, contact), capabilities: { sharedProjects: 1, humanLetters: 1, contactsBot: 1 }, ...own }); }
+      try { await this.#core.coordination.request(peer(), 'contact.sync', { offers: contactOffers(this.#core, contact), capabilities: { sharedProjects: 1, humanLetters: 1, contactsBot: 1, groupLink: 1 }, ...own, ...(groupFace(this.#core) ? { group: groupFace(this.#core) } : {}) }); }
       catch (error) { if (!(error instanceof PeerRefusal)) throw error; }
       if (this.find(coreId)?.syncPending === version) this.#mutate(coreId, entry => { delete entry.syncPending; });
     }
@@ -627,13 +688,7 @@ export class ContactStore implements LinkedContacts {
 
   dial(contact: StoredContact): void {
     if (this.#closed || !this.#started || contact.role !== 'guest' || contact.url === undefined || this.#dialed.has(contact.coreId) || this.#core.policy.networkOff('contacts')) return;
-    const self = this.#core.coordination.card();
-    const hello = JSON.stringify({ v: 1, from: self.coreId, to: contact.coreId, at: Date.now(), nonce: randomUUID() });
-    const headers = {
-      'x-boite-peer': self.coreId,
-      'x-boite-hello': Buffer.from(hello).toString('base64url'),
-      'x-boite-signature': this.#core.coordination.signature(Buffer.from(`${HELLO_INPUT}${hello}`)).toString('base64'),
-    };
+    const headers = this.helloHeaders(contact.coreId);
     const coreId = contact.coreId;
     const link: { socket: TextSocket | null; state: 'connecting' | 'connected' } = { socket: null, state: 'connecting' };
     this.#dialed.set(coreId, link);
@@ -658,6 +713,17 @@ export class ContactStore implements LinkedContacts {
       socket.onMessage(text => { this.#background(this.#serve(coreId, socket, text)); });
       socket.onClose(lost);
     }, lost);
+  }
+
+  /** The signed hello a dial to `to` carries in its upgrade's headers. */
+  helloHeaders(to: string): Record<string, string> {
+    const self = this.#core.coordination.card();
+    const hello = JSON.stringify({ v: 1, from: self.coreId, to, at: Date.now(), nonce: randomUUID() });
+    return {
+      'x-boite-peer': self.coreId,
+      'x-boite-hello': Buffer.from(hello).toString('base64url'),
+      'x-boite-signature': this.#core.coordination.signature(Buffer.from(`${HELLO_INPUT}${hello}`)).toString('base64'),
+    };
   }
 
   /** A request of the host, carried down the link: answered by the same handler as one posted to this core. */
@@ -695,6 +761,7 @@ export class ContactStore implements LinkedContacts {
     this.funnel.start(this.#listening && !this.#core.policy.networkOff('contacts'));
     if (this.list().length > 0 || this.liveInvites().length > 0 || this.members.behind()) this.arm();
     this.members.push();
+    this.groupLink.sweep();
   }
 
   arm(): void {
@@ -721,8 +788,10 @@ export class ContactStore implements LinkedContacts {
     this.#ticks += 1;
     for (const contact of contacts) if (contact.role === 'guest' && !this.#dialed.has(contact.coreId) && !this.#backoff.waiting(contact.coreId, 'link')) this.dial(contact);
     if (this.#ticks % FLUSH_TICKS === 0) {
+      this.requests.expire();
       for (const contact of contacts) this.flush(contact.coreId);
       this.members.push();
+      this.groupLink.sweep();
     }
   }
 
@@ -746,11 +815,12 @@ export class ContactStore implements LinkedContacts {
     for (const { socket } of this.#hosted.values()) socket.close(1001, 'core stopping');
     this.#hosted.clear();
     this.members.beginClose();
+    void this.groupLink.close();
     this.flags.close();
   }
 
   async close(): Promise<void> {
     this.beginClose();
-    await Promise.allSettled([...this.#pending, this.funnel.settled(), this.members.settled()]);
+    await Promise.allSettled([...this.#pending, this.funnel.settled(), this.members.settled(), this.groupLink.close()]);
   }
 }

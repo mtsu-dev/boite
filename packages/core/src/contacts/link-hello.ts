@@ -24,7 +24,8 @@ export async function dialContact(core: Core, url: string, headers: Record<strin
 export function contactHello(core: Core, store: ContactStore, request: Request): ContactSocketData['contact'] | Response {
     if (store.isClosed || core.policy.networkOff('contacts') || request.headers.has('origin')) return new Response('forbidden', { status: 403 });
     const guest = request.headers.get('x-boite-peer') ?? '';
-    const contact = store.find(guest);
+    // A contact another machine of the group handed to this one is checked against the handed record, then kept (`group-link.ts`).
+    const contact = store.find(guest) ?? store.groupLink.incoming(guest);
     if (!contact || contact.role !== 'host') return new Response('not a contact that dials this core', { status: 403 });
     try {
       const hello = Buffer.from(request.headers.get('x-boite-hello') ?? '', 'base64url').toString('utf8');
@@ -36,5 +37,6 @@ export function contactHello(core: Core, store: ContactStore, request: Request):
     } catch (error) {
       return new Response(error instanceof RpcFailure ? error.message : 'invalid hello', { status: 403 });
     }
+    if (!store.has(guest)) store.groupLink.commit(guest);
     return { coreId: guest, routeId: `contact:${randomUUID()}` };
 }

@@ -28,6 +28,7 @@ import { projectRoute } from './project-relay.ts';
 import { projectRef } from './project-policy.ts';
 import { memberThreadId } from './member-address.ts';
 import { memberAdmission, projectAdmission } from './admission.ts';
+import { contactFace } from './face.ts';
 export { memberThreadId } from './member-address.ts';
 
 const MIRROR = 'contacts:relayed';
@@ -180,7 +181,7 @@ export class ContactMembers {
 
   /** A member's thread under this core's id. */
   #outward<T extends AgentContact>(entry: T, member: CoordinationPeer): T {
-    return { ...entry, coreId: this.#selfId(), threadId: memberThreadId(member.coreId, entry.threadId), machine: this.#core.info().hostname ?? 'Boite' };
+    return { ...entry, coreId: this.#selfId(), threadId: memberThreadId(member.coreId, entry.threadId), machine: contactFace(this.#core) };
   }
 
   /** Each holder's threads open to the contact, and how many holders did not answer. */
@@ -215,7 +216,7 @@ export class ContactMembers {
     const shown = letter.to;
     const answer = await this.ask(at.member, contactId, 'deliver', { ...letter, to: { coreId: at.member.coreId, threadId: at.threadId } }) as AgentLetter | null;
     if (!answer || answer.id !== letter.id) throw new Error('invalid delivery receipt');
-    return { ...answer, to: shown, toMachine: this.#core.info().hostname ?? 'Boite' };
+    return { ...answer, to: shown, toMachine: contactFace(this.#core) };
   }
 
   /** The receipt of a letter the contact sent a member's thread: the members holding its projects are asked in turn. */
@@ -236,7 +237,7 @@ export class ContactMembers {
     const hit = found.find(entry => entry.letter !== null);
     if (hit) {
       const to = address(hit.letter!.to, 'receipt.to');
-      return { ...hit.letter!, to: { coreId: this.#selfId(), threadId: memberThreadId(hit.member.coreId, to.threadId) }, toMachine: this.#core.info().hostname ?? 'Boite' };
+      return { ...hit.letter!, to: { coreId: this.#selfId(), threadId: memberThreadId(hit.member.coreId, to.threadId) }, toMachine: contactFace(this.#core) };
     }
     if (found.some(entry => entry.down)) throw new Error('a machine holding this contact\'s projects did not answer');
     throw refused('unknown receipt');
@@ -278,7 +279,7 @@ export class ContactMembers {
       from = address(letter?.from, 'letter.from');
       if (from.coreId !== member.coreId) throw refused('letter.from: expected a thread of the asking machine');
       // The member's name stays here, as in `outward`.
-      payload = { ...letter, from: { ...letter.from, coreId: this.#selfId(), threadId: memberThreadId(member.coreId, from.threadId), machine: this.#core.info().hostname ?? 'Boite' } };
+      payload = { ...letter, from: { ...letter.from, coreId: this.#selfId(), threadId: memberThreadId(member.coreId, from.threadId), machine: contactFace(this.#core) } };
     } else if (operation === 'receipt') {
       const receipt = payload as { id?: unknown; fromThreadId?: unknown } | null;
       from = { coreId: member.coreId, threadId: text(receipt?.fromThreadId, 'receipt.fromThreadId', 128) };
@@ -398,7 +399,7 @@ export class ContactMembers {
     return {
       coreId: text(raw.coreId, `${field}.coreId`, 100), name: text(raw.name, `${field}.name`, 100), minTier: checkTier(raw.minTier, `${field}.minTier`), link: raw.link!,
       offers: raw.offers.map((name, index) => text(name, `${field}.offers[${index}]`, 200)),
-      capabilities: { ...(raw.capabilities?.sharedProjects === 1 ? {sharedProjects: 1} : {}), ...(raw.capabilities?.humanLetters === 1 ? {humanLetters: 1} : {}) },
+      capabilities: { ...(raw.capabilities?.sharedProjects === 1 ? {sharedProjects: 1} : {}), ...(raw.capabilities?.humanLetters === 1 ? {humanLetters: 1} : {}), ...(raw.capabilities?.groupLink === 1 ? {groupLink: 1} : {}) },
       projectOffers: Array.isArray(raw.projectOffers) ? raw.projectOffers.slice(0, 256).map(o => ({projectId: text(o.projectId, 'relay.offer.projectId', 128), name: text(o.name, 'relay.offer.name', 200), ...(o.sharedProject ? {sharedProject: projectRef(o.sharedProject)} : {})})) : [],
       grants: raw.grants.map((grant, index) => {
         if (typeof grant?.readThreads !== 'boolean') throw invalidParams(`${field}.grants[${index}].readThreads: expected a boolean`);

@@ -15,6 +15,8 @@ import { newId } from '../ids.ts';
 import { contactsBot, tellBot } from './bot.ts';
 import { checkNormalizedRemote, gitRemoteOf } from './git-remote.ts';
 import type { ContactStore } from './store.ts';
+import { contactFace } from './face.ts';
+import { memberThreadId } from './member-address.ts';
 
 const REQUESTS = 'contacts:requests';
 /** Requests waiting at once, per contact and direction. */
@@ -86,7 +88,8 @@ export class ContactRequests {
    * the thread here the bot put in touch.
    */
   ownsAnswer(letter: AgentLetter): boolean {
-    if (letter.origin !== 'contact' || !this.#store.has(letter.from.coreId)) return false;
+    // Only this core writes its requests: a removed contact's are gone, a moved contact's answer is kept here (`group-link.ts`).
+    if (letter.origin !== 'contact') return false;
     return this.list().some(r => r.coreId === letter.from.coreId && r.id === letter.from.threadId
       && (r.direction === 'out' ? r.status !== 'pending' && r.from.threadId === letter.to.threadId : r.relation?.local.threadId === letter.to.threadId));
   }
@@ -290,8 +293,39 @@ export class ContactRequests {
     delete request.pendingSend;
     this.save(requests);
     this.#store.changed();
-    this.#core.coordination.contactAnswer(this.view(request), name, threads);
+    this.#notify(this.view(request), name, threads);
     return { ok: true };
+  }
+
+  /**
+   * The asking thread hears the answer. A request a member's thread sent before
+   * its contact moved to this Bots host goes back to that member (`group-link.ts`).
+   */
+  #notify(request: ContactRequest, name: string, threads: AgentContact[]): void {
+    const member = request.from.coreId === this.#core.coordination.card().coreId ? undefined : this.#core.group.peers().find(peer => peer.coreId === request.from.coreId);
+    if (!member) { this.#core.coordination.contactAnswer(request, name, threads); return; }
+    this.#core.coordination.request(member, 'contact.hand', { action: 'answer', request, name, threads: threads.slice(0, 20) })
+      .catch(error => this.#core.log('warn', `contacts: ${member.name} did not take the answer to ${request.id} (${messageOf(error)})`, { source: 'contacts' }));
+  }
+
+  /**
+   * What waits for a contact behind a Bots host (`groupLink`) waits 7 days, then
+   * ends: an ask the contact never heard is refused here, an answer is dropped.
+   */
+  expire(now = Date.now()): void {
+    const requests = this.list();
+    const late = requests.filter(request => {
+      const ttl = request.pendingSend ? this.#store.letterTtl(request.coreId) : undefined;
+      return ttl !== undefined && now - (request.direction === 'out' ? request.createdAt : request.decidedAt ?? request.createdAt) > ttl;
+    });
+    if (late.length === 0) return;
+    for (const request of late) {
+      delete request.pendingSend;
+      if (request.direction === 'out' && request.status === 'pending') Object.assign(request, { status: 'refused', reason: `Not delivered: ${request.contact} stayed unreachable for 7 days`, decidedAt: now });
+    }
+    this.save(requests);
+    this.#store.changed();
+    for (const request of late) if (request.direction === 'out') this.#notify(this.view(request), request.contact, []);
   }
 
   /** What an accepted request opened: the project's threads the contact sees. */
@@ -305,7 +339,7 @@ export class ContactRequests {
   #local(relation: ContactRelation): AgentContact {
     try { return this.#core.coordination.describe(relation.local.threadId); } catch {
       const self = this.#core.coordination.card().coreId;
-      return { coreId: self, threadId: relation.local.threadId, title: relation.local.title, machine: this.#core.info().hostname ?? 'Boite', resources: '', status: 'idle', mode: 'brief' };
+      return { coreId: self, threadId: relation.local.threadId, title: relation.local.title, machine: contactFace(this.#core), resources: '', status: 'idle', mode: 'brief' };
     }
   }
 
@@ -317,8 +351,11 @@ export class ContactRequests {
       let refusal: string | null = null;
       try {
         if (request.direction === 'out') {
+          // A thread of another member asks from this Bots host: the contact reads it at its address here.
+          const self = this.#core.coordination.card().coreId;
+          const from = request.from.coreId === self ? request.from : { ...request.from, coreId: self, threadId: memberThreadId(request.from.coreId, request.from.threadId), machine: contactFace(this.#core) };
           await this.#core.coordination.request(peer(), 'contact.ask', {
-            id: request.id, from: request.from, text: request.text, ...(request.gitRemote ? { gitRemote: request.gitRemote } : {}),
+            id: request.id, from, text: request.text, ...(request.gitRemote ? { gitRemote: request.gitRemote } : {}),
             ...(request.want ? { want: request.want } : {}), ...(request.target ? { target: { threadId: request.target.threadId } } : {}),
           });
         } else {
@@ -341,7 +378,7 @@ export class ContactRequests {
       if (refusedAsk) Object.assign(current, { status: 'refused', reason: refusal, decidedAt: Date.now() });
       this.save(requests);
       this.#store.changed();
-      if (refusedAsk) this.#core.coordination.contactAnswer(this.view(current), this.#store.find(coreId)?.name ?? current.contact, []);
+      if (refusedAsk) this.#notify(this.view(current), this.#store.find(coreId)?.name ?? current.contact, []);
     }
     for (const id of this.#store.relations.untold(coreId)) {
       if (closed()) return;
