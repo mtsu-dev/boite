@@ -17,6 +17,18 @@ afterEach(async () => {
   vi.restoreAllMocks(); document.body.innerHTML = ''; localStorage.clear();
 });
 
+test('child question links stay out of sidebar thread rows', async () => {
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  const thread = store.threads.find(row => !row.parentThreadId && row.projectId)!;
+  const project = store.projects.find(row => row.id === thread.projectId)!;
+  thread.subagentQuestions = [{ threadId: 'child', title: 'Check the parser' }];
+  vi.spyOn(client, 'call').mockResolvedValue(null as never);
+  mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'remote', label: 'Remote', store }, project, thread, now: Date.now(), showProject: false } });
+  await settle();
+  expect(document.querySelector('[data-testid=subagent-question-alert]')).toBeNull();
+});
+
 test('cards keep discovering after a merge, pause while hidden, and retain the last answer on errors', async () => {
   client = new FakeClient({ delayMs: 0 });
   store = new Store(); store.attach(client); await store.connect();

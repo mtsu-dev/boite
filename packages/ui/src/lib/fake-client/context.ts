@@ -75,7 +75,7 @@ import { activityMethods, finishActivityTurn } from './activity';
 import { FakeBus } from './bus';
 import { FAKE_TREE } from './files';
 import { seedHooks } from './hooks';
-import { delegationConfig, workflowAnswer, workflowChild } from './delegation';
+import { delegationConfig, watchQuestionParents, workflowAnswer, workflowChild } from './delegation';
 import { FakePlugins } from './plugins';
 import { initialHarnessUpdates } from './provider-installs';
 import { DATA_DIR, T0, toSummary } from './shared';
@@ -381,6 +381,7 @@ export class FakeContext {
     this.brainLinkPermission = options.brainLinkPermission ?? (typeof location !== 'undefined' && new URLSearchParams(location.search).get('brainLinkPermission') === '1');
     this.plainLink = options.plainLink ?? (typeof location !== 'undefined' && new URLSearchParams(location.search).get('plainLink') === '1');
     this.bus = new FakeBus(options.principal ?? 'owner', { threadId: () => this.agentThreadId, projectOf: id => this.threads.get(id)?.projectId ?? null, visibleTodos: (id, todos) => agentTodos(this, id, todos) });
+    watchQuestionParents(this);
     this.agents = new FakeAgents(revision => {
       this.emit('agents.changed', { revision });
       // As the core: a change to any agent may answer a card, settled once per burst after it commits.

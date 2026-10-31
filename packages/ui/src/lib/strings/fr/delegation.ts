@@ -5,6 +5,8 @@ export const fr: Translation = {
     off: 'Désactivés',
     paused: 'En pause',
     heading: 'Sous-agents',
+    hasQuestion: 'Un sous-agent a une question',
+    answerQuestion: 'Ouvrir {title} pour répondre',
     nativeHeading: 'Lancés par le fournisseur',
     nativeNoResult: 'Aucun résultat reçu.',
     processHeading: 'Lancés depuis une commande',

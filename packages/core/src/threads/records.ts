@@ -74,6 +74,7 @@ export function withLoad(core: Core, thread: ThreadSummary): ThreadSummary {
     moveNote: thread.agentSessionId ? null : pendingMoveNote(core, thread.id),
     pendingAnswers: putAway ? [] : [...(core.threads?.deferred?.deferredAnswers.get(thread.id) ?? [])],
     openQuestions: putAway ? 0 : core.threads?.cards?.openAsyncCount(thread.id) ?? 0,
+    subagentQuestions: putAway ? [] : core.delegation?.questions(thread.id) ?? [],
     retry: core.threads?.runner?.retryOf(thread.id) ?? core.threads?.resumes?.retryOf(thread.id) ?? null,
     pullRequestWatches: watches,
   };

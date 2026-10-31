@@ -278,6 +278,8 @@ export interface ThreadSummary {
    * row reads this to say the thread needs the user. Missing on older cores.
    */
   openQuestions?: number;
+  /** Unanswered child questions, including children on another machine. No question text; missing on older cores. */
+  subagentQuestions?: { threadId: ThreadId; title: string; machine?: { coreId: string; name: string } }[];
   unread: boolean;
   archived: boolean;
   /** Kept above the other threads of its project in the sidebar, whatever runs. */

@@ -132,7 +132,7 @@ async function group(delayMs = 0) {
 
 test('a wait on a subagent on another machine ends as soon as it asks a question or an approval there', async () => {
   // Paced there, so the wait is under way before the child asks.
-  const { desk } = await group(20);
+  const { desk, pc } = await group(20);
   for (const [kind, task] of [['question', 'Ask a question first'], ['permission', 'Write the notes [permission]']] as const) {
     const child = await desk.call('delegation.spawn', { threadId: 't-trace', task, machine: 'pc', requestId: kind });
     expect(child.needsInput).toBeUndefined();
@@ -140,6 +140,13 @@ test('a wait on a subagent on another machine ends as soon as it asks a question
     wait.catch(() => {});
     const early = await Promise.race([wait, new Promise(resolve => setTimeout(resolve, 3000, 'still waiting'))]);
     expect(early).toMatchObject({ state: 'needs_input', timedOut: false, agents: [{ needsInput: [expect.objectContaining({ kind })] }] });
+    if (kind === 'question') {
+      const links = async () => (await desk.call('threads.list', {})).find(thread => thread.id === 't-trace')!.subagentQuestions;
+      expect(await links()).toEqual([{ threadId: child.thread.id, title: child.thread.title, machine: { coreId: 'pc', name: 'pc' } }]);
+      const [question] = await pc.call('questions.list', { threadId: child.thread.id });
+      await pc.call('questions.answer', { threadId: child.thread.id, questionId: question!.id, optionIds: [], text: 'Use the custom parser' });
+      expect(await links()).toEqual([]);
+    }
   }
 });
 

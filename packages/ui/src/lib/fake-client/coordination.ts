@@ -8,8 +8,16 @@ import type { FakeContext, FakeMethods } from './context';
 /** Every fake core of this page by id, what a remote letter or directory reaches. */
 const cores = new Map<string, FakeContext>();
 
+/** A workflow's remote question links follow that fake machine's availability. */
+function refreshWorkflowParents(coreId: string): void {
+  for (const owner of cores.values()) for (const root of owner.threads.values()) {
+    if (owner.workflows.childrenThere(root.id).some(child => child.coreId === coreId)) owner.emit('delegation.changed', { threadId: root.id });
+  }
+}
+
 export function registerCore(ctx: FakeContext): void {
   cores.set(ctx.identity.coreId, ctx);
+  refreshWorkflowParents(ctx.identity.coreId);
 }
 
 /** A fake core of this page by its id, which is how one reaches another without a network. */
@@ -18,7 +26,10 @@ export function fakeCore(coreId: string): FakeContext | undefined {
 }
 
 export function unregisterCore(ctx: FakeContext): void {
-  if (cores.get(ctx.identity.coreId) === ctx) cores.delete(ctx.identity.coreId);
+  if (cores.get(ctx.identity.coreId) === ctx) {
+    cores.delete(ctx.identity.coreId);
+    refreshWorkflowParents(ctx.identity.coreId);
+  }
 }
 
 /** Manual links and live group admissions are the two sources of remote trust. */
