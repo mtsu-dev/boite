@@ -63,7 +63,7 @@ export const strings = {
       by: { owner: 'Owner', match: 'Match', concierge: 'Concierge', bot: 'Operator' },
       byTip: { owner: 'Decided by the owner.', match: 'Its git remote matched exactly one project.', concierge: 'Decided by the concierge agent for a trusted contact.', bot: 'Decided by the Operator, Boite\'s built-in bot.' },
       /** Where a pending request stands: with the Operator, or waiting on the owner's answer to its card. */
-      stage: { bot: 'With the Operator', owner: 'Waiting for you' },
+      stage: { bot: 'With the Operator', owner: 'Waiting for you', host: 'On its way to the Bots machine' },
       /** A request the Operator accepted by putting two threads in touch. */
       inTouch: 'In touch with {thread}'
     },

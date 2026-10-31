@@ -61,7 +61,7 @@ export const fr: Translation = {
       refused: 'Refusée',
       by: { owner: 'Propriétaire', match: 'Correspondance', concierge: 'Concierge', bot: 'Standardiste' },
       byTip: { owner: 'Décidé par le propriétaire.', match: 'Son remote git correspondait à un seul projet.', concierge: 'Décidé par l\'agent concierge pour un contact de confiance.', bot: 'Décidé par la Standardiste, le bot intégré de Boite.' },
-      stage: { bot: 'Chez la Standardiste', owner: 'Vous attend' },
+      stage: { bot: 'Chez la Standardiste', owner: 'Vous attend', host: 'En route vers la machine Bots' },
       inTouch: 'En relation avec {thread}'
     },
     bot: {
