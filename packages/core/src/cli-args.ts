@@ -58,6 +58,9 @@ const NUMBER_OPTIONS = ['timeout', 'last', 'before'] as const;
 /** What every command reads wherever it stands, until a command's own text begins. */
 const GLOBAL_FLAGS = ['--json', '--thread', '--data-dir', '--core', '--channel'];
 
+/** The `boite desktop` commands that take no text of their own (desktop-cli.ts). */
+const DESKTOP_FIXED = new Set(['help', 'status', 'start', 'stop', 'env']);
+
 /**
  * Commands that parse their own flags: every other word reaches them as typed.
  * `help` keeps `--help` the CLI's. `text` says the command's own text has
@@ -71,8 +74,9 @@ const OWNED: { owns: (positional: string[]) => boolean; help: boolean; text?: (p
   { owns: ([command]) => command === 'logs' || command === 'issue', help: true },
   // window-cli.ts: its --title names a window, not a thread.
   { owns: ([command, action]) => command === 'window' && action !== undefined, help: true },
-  // desktop-cli.ts: after its command every word is its own, `run`'s program and agent-desktop's flags alike.
-  { owns: ([command, action]) => command === 'desktop' && action !== undefined, help: false, text: positional => positional.length >= 2, terminator: true },
+  // desktop-cli.ts: `run` and agent-desktop's verbs own every word after them; status, start, stop, env and help take no text, so a global after them stays the CLI's.
+  { owns: ([command, action]) => command === 'desktop' && action !== undefined && DESKTOP_FIXED.has(action), help: true },
+  { owns: ([command, action]) => command === 'desktop' && action !== undefined && !DESKTOP_FIXED.has(action), help: false, text: positional => positional.length >= 2, terminator: true },
   // view-cli.ts: the script and scheme flags of `view check`.
   { owns: ([command, action]) => command === 'view' && action === 'check', help: true },
   // team-cli.ts: --before, --reply, --name, --members and --brief are its own.
