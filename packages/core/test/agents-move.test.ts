@@ -224,6 +224,12 @@ test('an answer lost on the way back: the same requestId finishes the move here 
   await owner.call('agents.routine.save', { value: { agentId: agent.id, name: 'Evening round', prompt: 'Close the shed.', schedule: { kind: 'interval', everyMinutes: 120 }, enabled: true, nextAt: null, lastTurnId: null, lastScheduledAt: null } });
   const profile = desk.core.workforce.records.get('profile', agent.id);
   await owner.call('agents.profile.save', { id: agent.id, expectedRevision: profile.revision, value: { ...(({ id: _i, revision: _r, createdAt: _c, updatedAt: _u, ...rest }) => rest)(profile), name: 'Ada the Second' } });
+  // A new model and subagents turned off here: the policy and the thread there follow, not only the profile.
+  for (const side of [desk, pc]) side.core.providers.require('echo').models!.push({ id: 'echo-alt', name: 'Echo alt' });
+  const runtime = await owner.call('agents.runtime.get', { agentId: agent.id });
+  const renamed = desk.core.workforce.records.get('profile', agent.id);
+  const alt = { ...renamed.selection, model: 'echo-alt' };
+  await owner.call('agents.runtime.configure', { agentId: agent.id, expectedRevision: renamed.revision, config: { ...runtime, defaultRoute: alt, allowedRoutes: [{ ...alt, model: 'echo-alt', id: 'default', name: 'Default' }], subagents: { ...runtime.subagents, enabled: false } } });
   const theirs = pc.core.workforce.brainOf({ agentId: agent.id });
   writeFileSync(join(theirs.path, 'AGENTS.md'), 'Written there after it arrived.\n');
   const moved = await owner.call('agents.move', { agentId: agent.id, machine: pcId, requestId: 'lost' });
@@ -234,6 +240,12 @@ test('an answer lost on the way back: the same requestId finishes the move here 
   expect(pc.core.workforce.brainOf({ agentId: agent.id })).toMatchObject({ memory: 'Written after the lost answer.\n', instructions: 'Written there after it arrived.\n' });
   expect(pc.core.workforce.records.list('routine').filter(r => r.agentId === agent.id).map(r => r.name)).toEqual(['Evening round']);
   expect(pc.core.workforce.records.get('profile', agent.id).name).toBe('Ada the Second');
+  const there = pc.core.workforce.records.get('profile', agent.id).selection;
+  expect(there.model).toBe('echo-alt');
+  expect(pc.core.workforce.resident.config(agent.id).allowedRoutes.map(route => route.model)).toEqual(['echo-alt']);
+  expect(pc.core.journal.getThread(moved.threadId)?.model).toBe('echo-alt');
+  expect(pc.core.workforce.resident.config(agent.id).subagents.enabled).toBe(false);
+  expect(pc.core.delegation.config(moved.threadId).enabled).toBe(false);
   expect(desk.core.workforce.records.find('profile', agent.id)).toBeNull();
   expect(desk.core.journal.getThread(threadId)?.archived).toBe(true);
   expect(desk.core.agentRuntime.facts(agent.id)).toHaveLength(0);

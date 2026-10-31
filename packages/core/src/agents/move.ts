@@ -397,10 +397,16 @@ export class BotMoves {
       applied.route = routePrint;
     }
     const agent = this.#store.records.get('profile', before.id);
+    const rerouted = JSON.stringify(before.selection) !== JSON.stringify(agent.selection);
     const settingsPrint = print(payload.settings);
-    if (applied.settings !== settingsPrint) {
-      if (payload.settings !== null) this.#settings(agent.id, agent.selection, payload.settings);
+    if (applied.settings !== settingsPrint || rerouted) {
+      // The runtime policy names the route: a new route rewrites it even when the other settings stayed.
+      const current = this.#store.resident.config(agent.id);
+      const settings = payload.settings ?? { autoMemory: current.autoMemory !== false, eventWakes: current.eventWakes ?? false, dailyBudgetUsd: current.dailyBudgetUsd ?? null,
+        subagents: { enabled: current.subagents.enabled, paused: current.subagents.paused, anyModel: current.subagents.anyModel !== false } };
+      this.#settings(agent.id, agent.selection, settings);
       applied.settings = settingsPrint;
+      this.#syncThread(agent, rerouted);
     }
     const routinesPrint = print(payload.routines);
     if (applied.routines !== routinesPrint) {
@@ -437,6 +443,17 @@ export class BotMoves {
       },
       projectIds, groupProjects,
     };
+  }
+
+  /** The bot's live thread follows an update: its route when it changed, and its delegation from the runtime policy. */
+  #syncThread(agent: AgentProfile, rerouted: boolean): void {
+    const threadId = this.#store.sessionOf(agent.id)?.threadId;
+    if (!threadId || this.#core.journal.getThread(threadId)?.archived !== false) return;
+    const { accountId, model, effort, permissionMode } = agent.selection;
+    try {
+      if (rerouted) this.#core.threads.update({ threadId, accountId, model, effort, permissionMode });
+      this.#core.delegation.configure(threadId, this.#store.resident.config(agent.id).subagents);
+    } catch (error) { this.#core.log('warn', `agent ${agent.id}: its thread kept its route or delegation after a move update: ${error instanceof Error ? error.message : String(error)}`); }
   }
 
   #settings(agentId: string, selection: AgentSelection, settings: MovedSettings): void {
