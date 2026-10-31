@@ -165,6 +165,7 @@
         {@const gone = away(machine) !== null}
         {@const carrier = GroupLinks.carrier(machine, workspace.machines)}
         {@const home = coreId !== undefined && owner.group?.settingsHome === coreId}
+        {@const bots = coreId !== undefined && owner.group?.botsHome === coreId}
         {@const manual = byHand(machine)}
         <li data-core-id={coreId} class="machine-card" class:away={gone} class:lost={away(machine) === 'lost'} data-testid="machine-card" data-group-member={coreId && owner.group?.cores.some(core => core.coreId === coreId) ? "true" : undefined} data-machine-id={machine.id} data-away={away(machine) ?? undefined}>
           <div class="main">
@@ -182,6 +183,7 @@
                   onchange={(event) => { workspace.customize(machine.id, event.currentTarget.value, machine.icon); event.currentTarget.value = machineName(machine); }} />
                 {#if listedName(machine) !== machineName(machine)}<span class="you" data-testid="machine-you">{strings.machines.youTag}</span>{/if}
                 {#if home}<span class="badge" data-testid="machine-home">{strings.machines.homeBadge}</span>{/if}
+                {#if bots}<span class="badge" data-testid="machine-bots">{strings.machines.botsBadge}</span>{/if}
               </span>
               <span class="meta" title={machine.store.localCore ? undefined : carrier !== undefined ? fill(strings.group.through, { machine: machineName(carrier) }) : machine.id}>
                 <span class="dot" class:ready={machine.store.connection === 'ready'} aria-hidden="true"></span>

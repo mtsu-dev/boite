@@ -12,6 +12,18 @@ export const strings = {
       /** The name each built-in bot gets, in this language. */
       name: { contacts: 'Operator' }
     },
+    /** Moving a bot to another machine of the group, from its settings. */
+    move: {
+      label: 'Machine',
+      hint: 'Where it lives. Pick another machine of the group to move it there.',
+      older: 'Update Boite on {machine} to move a bot there.',
+      olderShort: 'Update needed',
+      title: 'Move {name} to {machine}?',
+      body: 'Its memory, notes, routines and the end of its conversation go to {machine}. The old conversation stays archived on {source}. With its next message, {name} reads a note about the move.',
+      confirm: 'Move',
+      moving: 'Moving',
+      turnInFlight: '{name} is in the middle of a turn. Move it once it is done.'
+    },
     brain: "Brain",
     defaultModel: "Default model",
     allowedModels: "Allowed models for this bot",

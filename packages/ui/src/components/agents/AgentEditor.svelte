@@ -11,6 +11,7 @@
   import type { Store } from '../../lib/store.svelte';
   import type { MenuItem } from '../../lib/menu';
   import { workspace } from '../../lib/workspace.svelte';
+  import { botsHost } from '../../lib/operator';
   import ModelPicker from '../ModelPicker.svelte';
   import EffortSlider from '../EffortSlider.svelte';
   import Menu from '../Menu.svelte';
@@ -18,6 +19,7 @@
   import { encodeRobot, robotOf, seededRobot, shuffledRobot } from '../../lib/robots';
   import AgentAvatar from './AgentAvatar.svelte';
   import RobotPicker from './RobotPicker.svelte';
+  import AgentMachine from './AgentMachine.svelte';
 
   /**
    * Creates an agent with its Create button, or edits one in its settings (`embedded`), where
@@ -51,12 +53,12 @@
   let instructions = $state(profile?.instructions ?? '');
   /**
    * The machine a new agent lives on. Agents belong to one core: its accounts, memory and planned
-   * tasks stay there. It starts as the machine this page shows; another one creates the agent on
-   * that core and then opens it there.
+   * tasks stay there. A new one starts on the group's Bots machine while it is connected, else on
+   * the machine this page shows; another one creates the agent on that core and then opens it there.
    */
-  let host = $state<Store>(untrack(() => view.store));
+  let host = $state<Store>(untrack(() => (initial.record ? null : botsHost(view.store, workspace.machines.map(m => m.store))) ?? view.store));
   let moving = $state(false);
-  let selection = $state<ExecutionSelection>({ ...(profile?.selection ?? untrack(() => defaultSelection(view.store))) });
+  let selection = $state<ExecutionSelection>({ ...(profile?.selection ?? untrack(() => defaultSelection(host))) });
   /** A new agent gets a robot of its own at once; an existing one shows the robot it wears. */
   let robot = $state(robotOf(profile?.id ?? '', profile?.avatar ?? '') ?? seededRobot(profile?.id ?? secureId()));
   let robotTouched = $state(!profile);
@@ -268,6 +270,7 @@
       <div class="agent-field"><span>{labels.status}</span>
         <Menu placement="bottom" label={labels.status} items={(builtin ? ['active', 'paused'] as const : ['active', 'paused', 'archived'] as const).map(id => ({ id, label: labels[id], active: status === id }))} onpick={id => void pickStatus(id as AgentProfile['status'])} testid="agent-status"><span class="ui-label">{labels[status]}</span></Menu>
       </div>
+      {#if profile}<AgentMachine {view} agent={stored() ?? profile} />{/if}
       {#if builtin && view.store.owner}
         <div class="agent-field agent-reset">
           <span>{labels.builtin.reset}<small class="hint">{labels.builtin.resetHint}</small></span>

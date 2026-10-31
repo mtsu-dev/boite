@@ -49,6 +49,22 @@ export interface AgentRunner {
   archive?: (threadId: string) => void;
   /** The route a new thread takes on this core: a built-in bot created with none named runs there. */
   defaultRoute?: () => AgentSelection | null;
+  /** Another member of this core's group named by core id, a prefix of it or its name, as `agents.move` finds it. */
+  member?: (machine: string) => FakeMember | { refused: string };
+  /** This core's name in its group, as a moved bot's note says where it came from. */
+  selfName?: () => string;
+}
+
+/** A member of the group as a move sees it: its name, whether it takes bots, and its agents. */
+export interface FakeMember { coreId: string; name: string; botMove: boolean; agents: FakeAgents | undefined }
+
+/** What a move carries from one fake core to another. */
+interface BotParcel {
+  profile: AgentProfile;
+  brain: AgentBrain | undefined;
+  routines: AgentRoutine[];
+  config: AgentRuntimeConfig | undefined;
+  from: string;
 }
 
 /**
@@ -311,7 +327,71 @@ export class FakeAgents {
     'agents.event': p => this.outsideEvent(p),
     'agents.limits.set': p => { this.limits = { paused: p.paused === true }; this.bump(); return { ...this.limits }; },
     'agents.entrust': p => this.entrust(p),
+    'agents.move': p => this.move(p),
   };
+
+  /**
+   * The core's move between two members of the group: the target makes the bot
+   * (same id, a new thread), then this core archives the old thread and drops
+   * the bot. The fake carries no conversation excerpts and no projects.
+   */
+  private move(p: RpcParams<'agents.move'>): RpcResult<'agents.move'> {
+    const agent = this.profile(p.agentId);
+    const found = this.runner?.member?.(typeof p.machine === 'string' ? p.machine : '');
+    if (!found) this.refuse('agents.move.machine: this machine is in no group; --machine names another machine of its group');
+    if ('refused' in found) this.refuse(found.refused);
+    if (agent.status === 'archived') this.refuse(`agents.move: ${agent.name} is archived; restore it before moving it`);
+    if (!found.botMove || !found.agents) this.refuse(`agents.move: update Boite on ${found.name}; it cannot take a bot from another machine yet`);
+    const threadId = this.threadOf(agent.id);
+    const thread = threadId ? this.runner?.thread?.(threadId) : undefined;
+    if (thread?.status === 'running' || thread?.status === 'queued') {
+      throw new RpcFailure({ code: RpcErrorCode.Refused, message: `agents.move: ${agent.name} has a turn running or queued; stop it or let it end before moving the bot`, data: { field: 'agentId', reason: 'turn-in-flight', status: thread.status } });
+    }
+    const parcel: BotParcel = {
+      profile: structuredClone(agent),
+      brain: structuredClone(this.brains.get(agent.id)),
+      routines: [...this.routines.values()].filter(r => r.agentId === agent.id).map(r => structuredClone(r)),
+      config: structuredClone(this.configs.get(agent.id)),
+      from: this.runner?.selfName?.() ?? 'this machine',
+    };
+    const landed = found.agents.receive(parcel, found.name);
+    for (const [id, session] of [...this.sessions]) {
+      if (session.agentId !== agent.id) continue;
+      this.runner?.archive?.(session.threadId);
+      this.sessions.delete(id);
+    }
+    for (const [id, routine] of [...this.routines]) if (routine.agentId === agent.id) this.routines.delete(id);
+    this.profiles.delete(agent.id);
+    this.brains.delete(agent.id);
+    this.configs.delete(agent.id);
+    this.problems.delete(agent.id);
+    this.bump();
+    return { agentId: agent.id, machine: found.coreId, threadId: landed, projectIds: [], groupProjects: [] };
+  }
+  /** The target's side of a move: refused before anything is written, then the bot and a new thread. */
+  receive(parcel: BotParcel, here: string): string {
+    const moved = parcel.profile;
+    if (this.profiles.has(moved.id)) this.refuse(`agents.move: ${here} already holds a bot ${moved.id}; it came by another move or was never removed there`);
+    if (moved.builtin && this.builtin(moved.builtin)) this.refuse(`agents.move: ${here} already has its own ${moved.builtin} bot; reset or pause one of them, a machine runs one of each built-in bot`);
+    let selection = moved.selection;
+    try { this.runner?.checkRoute?.(selection); } catch {
+      const route = this.runner?.defaultRoute?.();
+      if (!route) this.refuse(`agents.move: ${here} has no signed-in account to run ${moved.name}; sign in there first`);
+      selection = { ...route, permissionMode: moved.selection.permissionMode };
+    }
+    const agent: AgentProfile = { ...moved, selection, projectIds: [], revision: moved.revision + 1, updatedAt: Date.now() };
+    this.profiles.set(agent.id, agent);
+    if (parcel.brain) this.brains.set(agent.id, parcel.brain);
+    if (parcel.config) this.configs.set(agent.id, parcel.config);
+    for (const routine of parcel.routines) {
+      const copy = { ...this.stamp(routine, undefined, 'routine'), lastTurnId: null };
+      this.routines.set(copy.id, copy);
+    }
+    const threadId = this.makeThread(agent);
+    this.place(agent);
+    this.bump();
+    return threadId;
+  }
 
   private saveProfile(p: RpcParams<'agents.profile.save'>, wakes: boolean): AgentProfile {
     if (typeof p.value.name !== 'string' || !p.value.name.trim()) this.refuse('name: expected nonempty text');

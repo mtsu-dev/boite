@@ -7,16 +7,24 @@ function owned(store: Store): boolean {
   return store.owner && store.connection === 'ready' && !!store.client;
 }
 
+/** A member of `home`'s group this window may make a bot on, by its core id. */
+function member(home: Store, stores: readonly Store[], coreId: string | undefined): Store | undefined {
+  if (!coreId) return undefined;
+  return [home, ...stores.filter(store => store !== home)].filter(owned).find(store => store.group?.self === coreId);
+}
+
+/** The group's Bots machine while this window reaches it as its owner: where a new bot is made. */
+export function botsHost(home: Store, stores: readonly Store[]): Store | null {
+  return member(home, stores, home.group?.botsHome) ?? null;
+}
+
 /**
- * The machine that hosts the group's one Operator: the group's default
- * settings machine while it is connected, else this window's. The one place
- * that picks it, so a dedicated Bots host can replace the rule here.
+ * The machine that hosts the group's one Operator: the group's Bots machine
+ * while it is connected, else its Settings machine while that one is, else
+ * this window's. The one place that picks it.
  */
 export function operatorHost(home: Store, stores: readonly Store[]): Store | null {
-  const settingsHome = home.group?.settingsHome;
-  const candidates = [home, ...stores.filter(store => store !== home)].filter(owned);
-  return (settingsHome ? candidates.find(store => store.group?.self === settingsHome) : undefined)
-    ?? (owned(home) ? home : null);
+  return botsHost(home, stores) ?? member(home, stores, home.group?.settingsHome) ?? (owned(home) ? home : null);
 }
 
 /**

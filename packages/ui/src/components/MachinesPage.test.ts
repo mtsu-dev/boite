@@ -100,6 +100,24 @@ test('the default machine is one choice for the whole group: the others follow i
   expect(target.store.settings?.asyncQuestions).toBe(true);
 });
 
+test('the Bots role is a second choice for the group, with its own badge beside the Settings one', async () => {
+  const { source, target } = await setup();
+  expect(query('[data-testid="group-bots-pick"]').textContent).toContain(strings.machines.homeNone);
+  query<HTMLButtonElement>('[data-testid="group-bots-pick"]').click();
+  flushSync();
+  query<HTMLElement>('[data-testid="group-bots-pick-menu"] [data-value="target"]').click();
+  await vi.waitFor(() => expect([source.store.group?.botsHome, target.store.group?.botsHome]).toEqual(['target', 'target']));
+  flushSync();
+  expect(query('[data-machine-id="target"] [data-testid="machine-bots"]').textContent).toBe(strings.machines.botsBadge);
+  expect(document.querySelector('[data-machine-id="source"] [data-testid="machine-bots"]')).toBeNull();
+  // The Settings role is untouched, and one machine may hold both.
+  expect(source.store.group?.settingsHome).toBeUndefined();
+  await source.store.setSettingsHome('target');
+  await vi.waitFor(() => { flushSync(); expect(document.querySelector('[data-machine-id="target"] [data-testid="machine-home"]')).not.toBeNull(); });
+  expect(query('[data-machine-id="target"] [data-testid="machine-bots"]').textContent).toBe(strings.machines.botsBadge);
+  expect(query('[data-testid="group-bots-pick"]').textContent).toContain('target');
+});
+
 test('this computer goes by its own name and "(you)", whatever it was called by default', async () => {
   const { source } = await setup();
   source.store.localCore = true;

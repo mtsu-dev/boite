@@ -12,6 +12,17 @@ export const fr: Translation = {
       resetBody: 'Il commence une nouvelle conversation et l\'ancienne est archivée. Sa mémoire et ses routines sont effacées, et son nom, son robot, son modèle et son effort reviennent à leurs valeurs par défaut.',
       name: { contacts: 'Standardiste' }
     },
+    move: {
+      label: 'Machine',
+      hint: 'Là où il vit. Choisissez une autre machine du groupe pour l\'y déplacer.',
+      older: 'Mettez à jour Boite sur {machine} pour y déplacer un bot.',
+      olderShort: 'Mise à jour requise',
+      title: 'Déplacer {name} vers {machine} ?',
+      body: 'Sa mémoire, ses notes, ses routines et la fin de sa conversation partent sur {machine}. L\'ancienne conversation reste archivée sur {source}. À son prochain message, {name} lit une note sur le déplacement.',
+      confirm: 'Déplacer',
+      moving: 'Déplacement',
+      turnInFlight: '{name} est en plein tour. Déplacez-le une fois qu\'il a fini.'
+    },
     brain: "Cerveau",
     defaultModel: "Modèle par défaut",
     allowedModels: "Modèles autorisés pour ce bot",

@@ -108,8 +108,23 @@ opens that summary so its warning stays visible.
 A new bot needs a name and what it does; its robot, model and projects come
 filled in. It is free to act: its permission mode starts on full access (Auto,
 `bypassPermissions`), which the owner may change before Create; a bot saved
-earlier keeps its mode. Creating it opens its thread, where its introduction
-runs live.
+earlier keeps its mode. Its machine starts on the group's **Bots** machine
+when one is picked and this window reaches it as its owner
+([machines](machines.md#the-bots-machine)), else on the machine the page shows;
+bots made before stay where they are. Creating it opens its thread, where its
+introduction runs live.
+
+A bot's settings carry a **Machine** row: where it lives, and a menu of the
+other connected machines of its group (`AgentMachine.svelte`). A member whose
+Boite lacks `features.botMove` is shut in the menu with "Update needed" and
+says why on hover. Picking one asks in the app's dialog what moves (memory,
+notes, routines, the end of the conversation), that the old conversation
+stays archived on this machine, and that the bot reads a note about the move
+with its next message. Confirmed, the client calls `agents.move` on the
+store of the machine that holds the bot and, once it answers, opens the bot
+on its new machine. A refusal shows its message in the toast; a turn in
+flight reads as one short line asking to move it once the turn is done
+([moving a bot](#moving-a-bot-to-another-machine)).
 
 ### Robots
 

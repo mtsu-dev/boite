@@ -68,10 +68,13 @@ out; that machine is told and leaves on its own, or learns it the next time it
 reaches a member. **Leave the group** takes this machine out and tells the
 others first.
 
-The group card also picks the group's **Default machine**, whose settings
-every other member follows. The choice lives in the roster, so every member
-shows it; the copy itself runs from a window that owns both machines
-([machines](machines.md#automatic-settings-synchronization)).
+The group card also gives two roles, each None or one member. **Settings**
+is the member whose settings every other member follows; the copy itself
+runs from a window that owns both machines
+([machines](machines.md#automatic-settings-synchronization)). **Bots** is the
+member that hosts new bots and the Contacts bot, the group's one entry for
+contacts ([machines](machines.md#the-bots-machine)). Both choices live in the
+roster, so every member shows them, and each holder carries its badge.
 
 A machine with no window uses the core's command, on the data directory of
 the running core:

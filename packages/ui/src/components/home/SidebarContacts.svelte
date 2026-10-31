@@ -10,7 +10,7 @@
    * The contacts in a phone's list, under the projects: a section like a
    * project's, one row per contact with its link and what it asks, and Add
    * beside the title. A row opens the contact's page. Every listed machine's
-   * contacts show; the section folds, and remembers it. A desktop window
+   * contacts show, once per group; the section folds, and remembers it. A desktop window
    * shows them in the column on the right instead (ContactsRail).
    */
   let { store, machines }: { store: Store; machines: Machine[] } = $props();
