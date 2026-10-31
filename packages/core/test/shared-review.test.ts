@@ -382,7 +382,8 @@ test('policy revocation cannot be undone by reply windows or a trusted contact a
   await configure(); record('denied'); await waitFor(() => b.h.core.sharedProjects.require(id).state === 'revoked');
   b.h.core.contacts.noteSent(b.threadId, a.coreId);
   expect(b.h.core.contacts.mayReach(a.coreId, b.threadId)).toBe(false);
-  await a.client.call('collaboration.ask', {threadId: a.threadId, contact: b.coreId, text: 'The same repository needs help again.'});
+  // The request as it reaches the host, with the repository it names: nothing opens it but the owner.
+  b.h.core.contacts.asked(a.coreId, {id: 'again-1', text: 'The same repository needs help again.', gitRemote: 'example.invalid/review/blocked'}, a.h.core.coordination.describe(a.threadId));
   await waitFor(() => ((b.h.core.journal.getSetting('contacts:requests') ?? []) as ContactRequest[]).some(r => r.text === 'The same repository needs help again.'));
   expect(b.h.core.contacts.granted(a.coreId)).not.toContain(b.ref.projectId);
   expect(calls()).toBe(1);

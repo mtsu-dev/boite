@@ -243,9 +243,12 @@ export class PeerDesk {
     if (!relayed && operation === 'contact.answer') {
       const threads = (payload as { threads?: unknown } | null)?.threads;
       if (threads !== undefined && (!Array.isArray(threads) || threads.length > 100)) throw invalidParams('answer.threads: expected up to 100 agents');
-      return this.#core.contacts.answered(peer.coreId, payload, ((threads ?? []) as AgentContact[]).map(entry => checkRemoteContact(entry, peer)));
+      const relation = (payload as { relation?: { id?: unknown; thread?: unknown } } | null)?.relation;
+      const thread = relation === undefined ? undefined : { id: relation?.id, thread: checkRemoteContact(relation?.thread as AgentContact, peer) };
+      return this.#core.contacts.answered(peer.coreId, payload, ((threads ?? []) as AgentContact[]).map(entry => checkRemoteContact(entry, peer)), thread);
     }
-    throw invalidParams(relayed ? 'operation: expected directory, deliver, receipt, search or read' : 'operation: expected directory, deliver, receipt, search, read, contact.sync, contact.ask or contact.answer');
+    if (!relayed && operation === 'contact.relation') return this.#core.contacts.relations.endedByContact(peer.coreId, payload);
+    throw invalidParams(relayed ? 'operation: expected directory, deliver, receipt, search or read' : 'operation: expected directory, deliver, receipt, search, read, contact.sync, contact.ask, contact.answer or contact.relation');
   }
   /** The answer, signed, and sealed back to the asker when its request came sealed. */
   #signed(reply: { nonce: string; result?: unknown; error?: string | undefined; gone?: true }, status: number, sealing: Sealing | null = null): Response {

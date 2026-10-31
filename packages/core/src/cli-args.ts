@@ -73,6 +73,8 @@ const OWNED: { owns: (positional: string[]) => boolean; help: boolean; text?: (p
   { owns: ([command, action]) => command === 'window' && action !== undefined, help: true },
   // view-cli.ts: the script and scheme flags of `view check`.
   { owns: ([command, action]) => command === 'view' && action === 'check', help: true },
+  // agents-cli.ts: `threads ask` reads --contact, --to, --new, --share, --wait and --timeout itself.
+  { owns: ([command, action]) => (command === 'threads' || command === 'agents') && action === 'ask', help: true },
   // secret-cli.ts; after `--` every word is the child command's.
   { owns: ([command]) => command === 'secret', help: false, text: positional => positional.includes('--'), terminator: true },
 ];

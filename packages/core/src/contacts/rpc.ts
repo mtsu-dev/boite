@@ -3,6 +3,7 @@ import type { Core } from '../core.ts';
 import { registerSharedProjectMethods } from './projects.ts';
 import { registerSharedBoardMethods } from './board.ts';
 import { registerSharedAccess } from './access-policy.ts';
+import { registerContactsBot } from './bot.ts';
 import { decideMail, heldMail, releaseMail } from './letter-scopes.ts';
 
 export function registerContactMethods(core: Core): void {
@@ -29,4 +30,5 @@ export function registerContactMethods(core: Core): void {
   core.router.register('contacts.tailscaleKey', p => core.contacts.setTailscaleKey(p.key));
   core.router.register('collaboration.contacts', p => core.coordination.mailboxes.contacts(p.threadId));
   core.router.register('collaboration.ask', p => core.coordination.mailboxes.ask(p));
+  registerContactsBot(core);
 }

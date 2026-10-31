@@ -148,6 +148,9 @@ export class SharedReview {
         const revoke = answer.verdict === 'violation' && confirmed && config.revokeOnViolation && this.current(first);
         this.finish(rows, answer, revoke ? 'revoked' : 'none');
         if (revoke) this.core.sharedProjects.revokeForPolicy(first.association_id);
+        // A doubt goes to the Contacts bot as a flag; nothing is held, the reviewer already acted.
+        const actor = answer.verdict === 'suspicious' || answer.verdict === 'violation' ? this.core.sharedAccess.journal.event(first.event_id)?.actor : undefined;
+        if (actor) this.core.contacts.flags.reviewed(actor.project.ownerCoreId, answer.verdict as 'suspicious' | 'violation', answer.reason);
       }));
       this.core.sharedProjects.subscriptions.changed(first.association_id, ['access']);
     }
