@@ -39,3 +39,15 @@ export function capabilityMethods(ctx: FakeContext): Pick<FakeMethods, 'threads.
     },
   };
 }
+
+/** The whole conversation's compactions and prompts, as `journal/thread-stats.ts` counts them in the core. */
+export function threadStatsMethods(ctx: FakeContext): Pick<FakeMethods, 'threads.stats'> {
+  return {
+    'threads.stats': async ({ threadId }) => {
+      const thread = ctx.thread(threadId);
+      const compactions = thread.messages.filter(message => message.role !== 'user')
+        .reduce((sum, message) => sum + message.parts.filter(part => part.type === 'compaction').length, 0);
+      return { threadId, compactions, prompts: thread.messages.filter(message => message.role === 'user').length };
+    }
+  };
+}

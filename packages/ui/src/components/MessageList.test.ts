@@ -246,9 +246,13 @@ test('an agent thread folds a finished turn\'s steps behind the count on its sum
   flushSync();
   const timeline = () => document.querySelector('[data-testid="timeline"]')!.textContent ?? '';
   const folds = () => [...document.querySelectorAll<HTMLElement>('[data-testid="turn-fold"]')];
-  // Its evening routine had nothing to report: one line, its opening and its two calls folded inside.
-  const quiet = folds().find(fold => fold.dataset.kind === 'quiet')!;
-  expect(quiet.textContent).toContain('Nothing to report · 4 issues, 2 pull requests, nothing new · 2 steps');
+  // Its evening routines had nothing to report: one line each, its opening and its calls folded inside.
+  const quiet = folds().find(fold => fold.dataset.kind === 'quiet' && fold.textContent?.includes('4 issues'))!;
+  expect(quiet.textContent).toContain('Checked: 4 issues, 2 pull requests, nothing new · 2 steps');
+  // The automatic compaction after each is a mark on its line, not a row of its own.
+  expect(folds().filter(fold => fold.dataset.kind === 'quiet').map(fold => fold.querySelector('[data-testid="turn-fold-compaction"]')?.textContent)).toEqual(['compacted 51.1K → 10.8K', 'compacted 48.9K → 11.2K']);
+  expect(document.querySelector('[data-testid="compaction-part"]')).toBeNull();
+  expect(timeline()).not.toContain('Automatic compaction');
   expect(document.querySelector('[data-testid="wake-marker"]')).toBeNull();
   expect(timeline()).not.toContain('Nothing needs you tonight');
   expect(document.querySelectorAll('[data-testid="tool-group"], [data-testid="tool-card"]')).toHaveLength(0);
@@ -1562,4 +1566,30 @@ test('a row counts at the height it is drawn, fractions included, so rows measur
   expect(moved).toBeGreaterThan(0);
   // Rounded heights would move it by whole pixels and leave the reader's text a fraction off per row.
   expect(Math.abs(moved - Math.round(moved))).toBeGreaterThan(0.01);
+});
+
+test('a thread over several days reads by day, its wakes on a line each, its compactions on the lines of their turns', async ({ createStore }) => {
+  const { store: owner, client } = createStore({ delayMs: 0, readability: true });
+  owner.attach(client);
+  await owner.connect();
+  await owner.open('t-readable');
+  stubLayout(1200);
+  running = mount(MessageList, { target: document.body, props: { store: owner, threadId: 't-readable', messages: owner.openThread!.messages } });
+  flushSync();
+  const all = (id: string) => [...document.querySelectorAll<HTMLElement>(`[data-testid="${id}"]`)].map(node => node.textContent?.replace(/\s+/g, ' ').trim());
+  // Two days ago, yesterday, today: a divider where the day changes, the first message's day included.
+  expect(all('day-divider').slice(1)).toEqual(['Yesterday', 'Today']);
+  expect(all('day-divider')).toHaveLength(3);
+  // The pull request's watch and the delegation open on a divider of their own, not a message.
+  expect([...document.querySelectorAll('[data-testid="wake-marker"] .text')].map(node => node.textContent)).toEqual(['Pull request update, #904: new comments', 'Pull request update, #904: checks passed', 'Agent delegation']);
+  expect(document.querySelector('[data-testid="message-system"]')).toBeNull();
+  // Neither compaction takes a row: the mid-turn one rides on its run, the automatic one on the line of the turn before.
+  expect(document.querySelector('[data-testid="compaction-part"]')).toBeNull();
+  expect(all('tool-group-compaction')).toEqual(['compacted 201.2K → 13.4K']);
+  expect(all('turn-compaction')).toEqual(['compacted 76K → 9.7K']);
+  // The narration between calls is not an answer.
+  expect(all('narration')).toContain('Tests pass. Sol reviews it before I open the pull request.');
+  // The wakes fold their steps. The request's time adds each turn's own and the hour the delegated review ran, never the night the watch waited.
+  expect(all('turn-steps').length).toBe(3);
+  expect(all('turn-elapsed')).toEqual(['Worked for 22m 00s', 'Worked for 29m 00s', 'Worked for 30m 00s', 'Worked for 1h 38m', 'Worked for 1m 00s']);
 });

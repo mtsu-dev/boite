@@ -1,10 +1,10 @@
 <script lang="ts">
   import { secondClock } from '../lib/clock.svelte';
-  import { Bot, Brain, ChevronRight, FilePen, FileText, Globe, Search, ShieldCheck, ShieldX, SquareTerminal, TriangleAlert, Wrench } from '@lucide/svelte';
+  import { Bot, Brain, ChevronRight, FoldVertical, FilePen, FileText, Globe, Search, ShieldCheck, ShieldX, SquareTerminal, TriangleAlert, Wrench } from '@lucide/svelte';
   import type { PermissionRequest, RequestId } from '@boite/contracts';
   import { fill, strings } from '../lib/strings';
   import { elapsed } from '../lib/format';
-  import { agentSummary, familyOf, liveLabel, pairPermissions, runSpan, runSummary, thinkingShown, ThoughtTitleScan, type ActivityPart, type PermissionStep, type ThinkingStep, type ToolPart } from '../lib/tool-groups';
+  import { agentSummary, compactionMark, compactionText, familyOf, liveLabel, pairPermissions, runSpan, runSummary, thinkingShown, ThoughtTitleScan, type ActivityPart, type CompactionPart, type PermissionStep, type ThinkingStep, type ToolPart } from '../lib/tool-groups';
   import PermissionCard from './PermissionCard.svelte';
   import ThinkingPart from './ThinkingPart.svelte';
   import ToolCard from './ToolCard.svelte';
@@ -24,6 +24,7 @@
    */
   let {
     parts,
+    compactions = [],
     thinkingLive = false,
     isBackground,
     loadOutput,
@@ -33,6 +34,8 @@
     threadId
   }: {
     parts: ActivityPart[];
+    /** The compactions that fell in this run: a mark on its line, no row of their own. */
+    compactions?: CompactionPart[];
     /** The run's last step is reasoning that is still being written. */
     thinkingLive?: boolean;
     /** Whether the work a call started still runs in the background. */
@@ -137,9 +140,9 @@
   />
 {/snippet}
 
-{#if steps.length === 1 && steps[0]}
+{#if steps.length === 1 && steps[0] && compactions.length === 0}
   {@render step(steps[0].part, steps[0].index)}
-{:else if steps.length > 1}
+{:else if steps.length > 0}
   <div class="group" data-testid="tool-group" data-count={steps.length} data-live={live}>
     <button
       type="button"
@@ -147,12 +150,15 @@
       data-testid="tool-group-toggle"
       aria-expanded={open}
       title={open ? strings.chat.toolRunHide : strings.chat.toolRunShow}
-      aria-label={said || issues ? [label, said, issues ? issueLabel : null].filter(Boolean).join(', ') : undefined}
+      aria-label={said || issues || compactions.length ? [label, ...compactions.map(compactionText), said, issues ? issueLabel : null].filter(Boolean).join(', ') : undefined}
       onclick={() => (open = !open)}
     >
       <span class="glyph"><Glyph size={15} strokeWidth={1.75} /></span>
       <span class="label ui-label" class:shimmer={live} data-testid="tool-group-label" title={label}>{label}</span>
       {#if took}<span class="took ui-label" data-testid="tool-group-elapsed">{took}</span>{/if}
+      {#each compactions as part, at (at)}
+        <span class="compacted ui-label" data-testid="tool-group-compaction" title={compactionText(part)}><FoldVertical size={12} strokeWidth={1.75} aria-hidden="true" />{compactionMark(part)}</span>
+      {/each}
       {#if busy}
         <span class="pulse" aria-hidden="true"></span>
       {/if}
@@ -269,6 +275,7 @@
     to { background-position: 0 0; }
   }
 
+  .compacted { flex: none; display: inline-flex; align-items: center; gap: 4px; color: var(--color-subtle); font-size: var(--text-xs); }
   .took {
     flex: none;
     color: var(--color-subtle);

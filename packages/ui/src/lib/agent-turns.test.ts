@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import type { Message, MessagePart, Turn } from '@boite/contracts';
-import { AgentTimeline, FOLD_PREFIX, TurnFolds, foldText, memoryTurn, quietReason } from './agent-turns';
+import { AgentTimeline, FOLD_PREFIX, TurnFolds, foldText, memoryTurn, quietReason, toggleTurn } from './agent-turns';
 
 const turn = (id: string, extra: Partial<Turn> = {}): Turn => ({ id, threadId: 't', status: 'done', queuedAt: 0, startedAt: 0, finishedAt: 180_000, usage: null, error: null, ...extra });
 const message = (id: string, turnId: string, role: Message['role'], parts: MessagePart[], createdAt = 0): Message => ({ id, threadId: 't', turnId, role, state: 'complete', createdAt, parts });
@@ -18,7 +18,7 @@ test('a quiet wake reads its reason from a [quiet] line opening or closing its f
   expect(quietReason(routine('r', { quiet: true }), answer('Done.'))).toBe('');
   expect(quietReason(turn('u'), answer('[quiet] a user turn is never quiet'))).toBeNull();
   expect(quietReason(routine('r', { status: 'running', finishedAt: null }), answer('[quiet] not yet'))).toBeNull();
-  // A wake that failed or was stopped after writing its marker is not "Nothing to report": its error stays in view.
+  // A wake that failed or was stopped after writing its marker is not folded as checked: its error stays in view.
   const failed = [message('a', 'r', 'assistant', [text('[quiet] checked'), { type: 'error', message: 'provider failed' }])];
   expect(quietReason(routine('r', { status: 'error' }), failed)).toBeNull();
   expect(quietReason(routine('r', { status: 'stopped' }), failed)).toBeNull();
@@ -73,7 +73,7 @@ test('an answer stamped in the same millisecond as the last call still shows und
   expect(folded[0]!.parts).toEqual([text('The deployment failed. Please sign in.')]);
 });
 
-test('a quiet wake folds whole, its opening line included, to one "Nothing to report" row that opens the turn again', () => {
+test('a quiet wake folds whole, its opening line included, to one "Checked" row that opens the turn again', () => {
   const folds = new TurnFolds();
   const wake = message('w1', 'r', 'user', [{ type: 'text', text: 'Check the issues.', displayText: 'Routine · Evening review' }], 1);
   const answer = message('a1', 'r', 'assistant', [call('c1'), call('c2'), text('Nothing new.\n\n[quiet] 4 issues, 2 pull requests')], 2);
@@ -84,7 +84,7 @@ test('a quiet wake folds whole, its opening line included, to one "Nothing to re
   expect(folded.map(m => m.id)).toEqual([`${FOLD_PREFIX}r`, 'u2']);
   const fold = folds.folds.get(`${FOLD_PREFIX}r`)!;
   expect(fold.kind).toBe('quiet');
-  expect(foldText(fold)).toBe('Nothing to report · 4 issues, 2 pull requests · 2 steps');
+  expect(foldText(fold)).toBe('Checked: 4 issues, 2 pull requests · 2 steps');
 
   const opened = folds.build(timeline, [routine('r', { quiet: true })], new Set(['r']));
   expect(opened.map(m => m.id)).toEqual([`${FOLD_PREFIX}r`, 'w1', 'a1', 'u2']);
@@ -104,6 +104,47 @@ test('a memory pass marks the last answer the user saw before it, never a quiet 
   expect(shaped.timeline).toBe(timeline);
   expect(shaped.memoryTurnId).toBe('b');
   expect(agentTimeline.build(timeline, turns, null).memoryTurnId).toBeNull();
-  // Not an agent's thread: nothing is shaped.
+  // Not an agent's thread with only the user's turns: nothing is shaped.
   expect(agentTimeline.build(timeline, turns, undefined)).toMatchObject({ timeline, memoryTurnId: null });
+});
+
+const exec = (operation: NonNullable<Turn['execution']>['operation'], automatic = false) => ({ operation, ...(automatic ? { automatic: true } : {}) }) as Turn['execution'];
+
+test('an automatic compaction that went through leaves the timeline for a mark on the line of the turn before it', () => {
+  const agentTimeline = new AgentTimeline();
+  const compaction: MessagePart = { type: 'compaction', trigger: 'auto', preTokens: 76_000, postTokens: 9_700 };
+  const turns = [turn('a', { queuedAt: 1 }), turn('k', { queuedAt: 2, execution: exec('compact', true) }), turn('f', { queuedAt: 3, execution: exec('compact', true), status: 'error' }), turn('m', { queuedAt: 4, execution: exec('compact') })];
+  const timeline = [message('ua', 'a', 'user', [text('1')]), message('aa', 'a', 'assistant', [text('one')]),
+    message('uk', 'k', 'system', [text('/compact')]), message('ak', 'k', 'assistant', [compaction]),
+    message('uf', 'f', 'system', [text('/compact')]), message('af', 'f', 'assistant', [{ type: 'error', message: 'failed' }]),
+    message('um', 'm', 'user', [text('/compact')]), message('am', 'm', 'assistant', [compaction])];
+  const shaped = agentTimeline.build(timeline, turns, undefined);
+  // The failed one and the one the user asked for stay in view.
+  expect(shaped.timeline.map(m => m.id)).toEqual(['ua', 'aa', 'uf', 'af', 'um', 'am']);
+  expect(shaped.compactions.get('a')).toEqual([compaction]);
+  // In a bot's thread too, whatever folds.
+  expect(agentTimeline.build(timeline, turns, null).compactions.get('a')).toEqual([compaction]);
+  // With no turn before it in the page, it stays where it is.
+  expect(agentTimeline.build(timeline.slice(2), turns, undefined).timeline.map(m => m.id)).toContain('ak');
+});
+
+test("in an ordinary thread a settled wake folds its steps and narration, the user's turns never do", () => {
+  const agentTimeline = new AgentTimeline();
+  const compacted = { type: 'compaction', trigger: 'auto', preTokens: 180_000, postTokens: 12_000 } as const;
+  const turns = [turn('u', { queuedAt: 1 }), turn('pr', { queuedAt: 2, execution: exec('pull-request') }), turn('live', { queuedAt: 3, execution: exec('delegation'), status: 'running', finishedAt: null })];
+  const timeline = [message('mu', 'u', 'user', [text('fix it')]), message('au', 'u', 'assistant', [text('Looking.'), call('c0'), text('Fixed.')]),
+    message('wpr', 'pr', 'system', [text('watch')]), message('apr', 'pr', 'assistant', [text('Reading the review.'), call('c1'), compacted, call('c2'), text('Pushed the fix.')]),
+    message('wl', 'live', 'system', [text('mail')]), message('al', 'live', 'assistant', [text('Reading.'), call('c3')])];
+  const shaped = agentTimeline.build(timeline, turns, undefined);
+  expect(shaped.timeline.find(m => m.id === 'au')!.parts).toHaveLength(3);
+  expect(shaped.timeline.find(m => m.id === 'apr')!.parts).toEqual([text('Pushed the fix.')]);
+  expect(shaped.folds.get(`${FOLD_PREFIX}pr`)).toMatchObject({ kind: 'worked', steps: 2 });
+  // A compaction among the folded calls goes with them: the summary line carries it, never a divider of its own.
+  expect(shaped.compactions.get('pr')).toEqual([compacted]);
+  toggleTurn('pr');
+  const opened = agentTimeline.build(timeline, turns, undefined);
+  expect(opened.timeline.find(m => m.id === 'apr')!.parts).toHaveLength(5);
+  expect(opened.compactions.has('pr')).toBe(false);
+  toggleTurn('pr');
+  expect(shaped.timeline.find(m => m.id === 'al')!.parts).toHaveLength(2);
 });

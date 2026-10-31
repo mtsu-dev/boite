@@ -10,8 +10,10 @@
   import { chatPrefs } from '../lib/chat-prefs.svelte';
   import MessageOutline from './MessageOutline.svelte';
   import AgentMessageGroup from './AgentMessageGroup.svelte';
-  import WakeMarker from './WakeMarker.svelte';
+  import WakeMarker, { wakeKind } from './WakeMarker.svelte';
   import TurnFoldRow from './TurnFoldRow.svelte';
+  import DayDivider from './DayDivider.svelte';
+  import { dayBreaks } from '../lib/day-breaks';
   import { AgentTimeline, memoryPassOf, summaryMarks } from '../lib/agent-turns';
   import { groupTimeline } from '../lib/timeline-group';
   import { agentMailFor } from '../lib/agent-mail';
@@ -52,11 +54,7 @@
   const narrow = new MediaQuery('(max-width: 720px)');
   const reveal = new MessageReveal(() => messages, () => narrow.current);
 
-  let {
-    store,
-    threadId,
-    messages
-  }: { store: Store; threadId: string; messages: Message[] } = $props();
+  let { store, threadId, messages }: { store: Store; threadId: string; messages: Message[] } = $props();
   /**
    * The open viewer belongs to the list, not to the row it was opened from: a
    * running turn moves the window of rows, and the row leaving it must not
@@ -99,6 +97,7 @@
   const placed = $derived(viewPlacement.build(filesLast(grouped.timeline, shownTurns), shownTurns, views));
   const shaped = $derived(agentTimeline.build(quietKeepalives(placed, shownTurns), shownTurns, memoryPassOf(store, threadId)));
   const timeline = $derived(shaped.timeline);
+  const days = $derived(dayBreaks(timeline)); // The messages that open a new day, a divider above each.
   const memoryPlacement = $derived(placeMemoryEvents(messages, store.openThread?.id === threadId ? store.openThread.memoryEvents ?? [] : store.delegationThread?.id === threadId ? store.delegationThread.memoryEvents ?? [] : []));
   const memoryRows = $derived(new Map(memoryPlacement.standalone.map((event, index) => [`memory:${event.at}:${event.kind}:${index}`, event])));
   /** What the window lists and measures: a row per message, several for the message of a long turn (lib/timeline-rows.ts). */
@@ -773,10 +772,11 @@
           data-testid={row.first ? 'message' : 'message-rest'}
           data-role={group ? 'agent-mail' : message.role} data-turn={message.turnId}
         >
+          {#if row.first && days.has(message.id)}<DayDivider at={days.get(message.id)!} />{/if}
           {#if row.failures}
             <FailedAttempts {store} {threadId} messages={row.failures} turns={shownTurns} {signedOut} canFork={!narrow.current && forkable && !store.openThread?.incognito} reveal={failureTarget} oninspect={inspectFailures} />
           {:else if quietFold}
-            <TurnFoldRow fold={quietFold} at={message.createdAt} wake={turn?.execution?.operation === 'routine' || turn?.execution?.operation === 'event' ? turn.execution.operation : undefined} />
+            <TurnFoldRow fold={quietFold} at={message.createdAt} compactions={shaped.compactions.get(quietFold.turnId)} />
           {:else if launches.has(message.id)}
             <DelegationActivity {store} agents={launches.get(message.id)!.agents} />
           {:else if workflowRows.has(message.id)}
@@ -790,8 +790,8 @@
             <MoveMarker notice={movedBy(message)!} />
           {:else if startedFrom(message)}
             <SpawnMarker {store} link={startedFrom(message)!} direction="to" />
-          {:else if message.role !== 'assistant' && firstInTurn.get(message.turnId) === message.id && (turn?.execution?.operation === 'routine' || turn?.execution?.operation === 'event')}
-            <WakeMarker {message} kind={turn.execution.operation} />
+          {:else if message.role !== 'assistant' && firstInTurn.get(message.turnId) === message.id && wakeKind(turn) && (message.role === 'system' || turn?.execution?.operation === 'routine' || turn?.execution?.operation === 'event')}
+            <WakeMarker {message} kind={wakeKind(turn)!} />
           {:else if message.role === 'user'}
             <UserMessage {store} {message} {turn} accepted={!!turn} responded={progress.responded(message.turnId)} edit={atRest && !isSending(message) ? () => void editMessage(message) : undefined} />
           {:else}

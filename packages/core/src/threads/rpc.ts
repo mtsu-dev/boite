@@ -92,6 +92,10 @@ export function registerThreadMethods(core: Core, probe: ProviderProbe): void {
     return { ok: true };
   });
   core.router.register('threads.capabilities', params => threadCapabilities(core, params.threadId));
+  core.router.register('threads.stats', params => {
+    core.threads.require(params.threadId);
+    return { threadId: params.threadId, ...core.journal.threadStats(params.threadId) };
+  });
   core.router.register('threads.agentShape', params => agentShape(core, params.threadId));
   const pullRequests = core.pullRequests;
   const linked = core.linkedPullRequests;

@@ -1,16 +1,17 @@
 <script lang="ts">
-  import { CalendarClock, ChevronRight, MoonStar, Sparkles, Zap } from '@lucide/svelte';
+  import { ChevronRight, CircleCheck, FoldVertical, Sparkles } from '@lucide/svelte';
+  import { compactionMark, compactionText, type CompactionPart } from '../lib/tool-groups';
   import { foldText, toggleTurn, type TurnFold } from '../lib/agent-turns';
   import { clockTime, fullTime } from '../lib/format';
   import { strings } from '../lib/strings';
 
   /**
    * One thin divider in place of a whole wake that had nothing for the user
-   * ("Nothing to report · <what it checked> · 3 steps"), its wake's icon and
-   * its time on it. A click opens the turn as it ran, a second folds it. A
+   * ("Checked: <what it checked> · 3 steps"), a check and its time on it,
+   * and what an automatic compaction after it let go. A click opens the turn as it ran, a second folds it. A
    * worked turn has no row: its count sits on the line under its answer.
    */
-  let { fold, at, wake }: { fold: TurnFold; at: number; wake?: 'routine' | 'event' } = $props();
+  let { fold, at, compactions = [] }: { fold: TurnFold; at: number; compactions?: CompactionPart[] } = $props();
   const t = $derived(strings.chat.fold);
   const quiet = $derived(fold.kind === 'quiet');
   const hint = $derived(quiet ? (fold.open ? t.hideTurn : t.showTurn) : (fold.open ? t.hideSteps : t.showSteps));
@@ -23,12 +24,13 @@
   <button type="button" class="ghost small row" aria-expanded={fold.open} title={hint} onclick={toggle} data-testid="turn-fold-toggle">
     <span class="glyph" aria-hidden="true">
       {#if quiet}
-        {#if wake === 'routine'}<CalendarClock size={13} strokeWidth={1.75} />{:else if wake === 'event'}<Zap size={13} strokeWidth={1.75} />{:else}<MoonStar size={13} strokeWidth={1.75} />{/if}
+        <CircleCheck size={13} strokeWidth={1.75} />
       {:else}
         <Sparkles size={13} strokeWidth={1.75} />
       {/if}
     </span>
-    <span class="ui-label text">{foldText(fold)}</span>
+    <span class="ui-label text" title={foldText(fold)}>{foldText(fold)}</span>
+    {#each compactions as part, index (index)}<span class="compacted ui-label" data-testid="turn-fold-compaction" title={compactionText(part)}><FoldVertical size={12} strokeWidth={1.75} aria-hidden="true" />{compactionMark(part)}</span>{/each}
     {#if quiet}<time datetime={new Date(at).toISOString()} title={fullTime(at)}>{clockTime(at)}</time>{/if}
     <span class="fold-caret" class:open={fold.open} aria-hidden="true"><ChevronRight size={12} /></span>
   </button>
@@ -68,5 +70,6 @@
   .row:hover, .row:focus-visible { color: var(--color-foreground); background: none; }
   .glyph { display: inline-flex; color: var(--color-subtle); }
   .text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .compacted { flex: none; display: inline-flex; align-items: center; gap: 4px; color: var(--color-subtle); }
   time { flex: none; color: var(--color-subtle); font-variant-numeric: tabular-nums; }
 </style>

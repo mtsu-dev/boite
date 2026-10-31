@@ -25,7 +25,8 @@ const MINUTE = 60_000;
  * - Iris waits on the user: a deploy failed and it asks for a login, with the
  *   page to open beside the conversation.
  * - Mira rests until its 20:00 routine; its history holds a picture it
- *   attached and yesterday's routine, which had nothing to report.
+ *   attached and the last two evenings' routines, which had nothing to
+ *   report, each followed by an automatic compaction.
  * - Bolt cannot run: its account was removed. Pixel is paused. Each wears a
  *   robot it picked, so the list shows every ring.
  */
@@ -40,9 +41,16 @@ export function seedAgentsDemo(ctx: FakeContext): void {
   // Mira, at rest.
   const mira = ctx.agents.seedAgent({ name: 'Mira', domain: 'Product scout', instructions: 'Keep an eye on the product and tell me what matters, with pictures. Every evening, check new issues and pull requests.', avatar: '', selection, status: 'active', projectIds }, now - 3 * 86_400_000);
   const miraThread = ctx.thread(mira.threadId);
+  const evening = 'Check the new issues and pull requests of the projects I look after and tell me what needs me.';
+  const earlier = exchange(ctx, miraThread, { at: now - 50 * 60 * MINUTE, operation: 'routine', label: 'Routine · Evening review', prompt: evening,
+    answer: 'Read 2 new issues. Nothing needs you tonight.\n\n[quiet] 2 issues, nothing new',
+    steps: [{ tool: 'Bash', input: { command: 'gh issue list --state open --limit 20', description: 'List the open issues' }, output: '#57 Typo on the welcome screen\n#56 Logo blurry on 4K' }] });
+  earlier.quiet = true;
+  ctx.agents.seedQuiet(earlier.id);
+  autoCompaction(ctx, miraThread, now - 50 * 60 * MINUTE + 3 * MINUTE, 51_100, 10_800);
   exchange(ctx, miraThread, { at: now - 26 * 60 * MINUTE, prompt: 'Can you look at the new welcome screen and tell me how it reads?',
     answer: 'It reads well: the title is clear and the button stands out. On a phone the subtitle wraps to three lines, so I would cut it to one sentence. Here is how it looks now.', picture: true });
-  const quiet = exchange(ctx, miraThread, { at: now - 20 * 60 * MINUTE, operation: 'routine', label: 'Routine · Evening review', prompt: 'Check the new issues and pull requests of the projects I look after and tell me what needs me.',
+  const quiet = exchange(ctx, miraThread, { at: now - 20 * 60 * MINUTE, operation: 'routine', label: 'Routine · Evening review', prompt: evening,
     answer: 'Read 4 new issues and 2 pull requests. Nothing needs you tonight.\n\n[quiet] 4 issues, 2 pull requests, nothing new',
     steps: [
       { tool: 'Bash', input: { command: 'gh issue list --state open --limit 20', description: 'List the open issues' }, output: '#61 Settings page scrolls twice\n#60 Dark mode flashes on start\n#58 Export as PDF\n#57 Typo on the welcome screen' },
@@ -50,9 +58,10 @@ export function seedAgentsDemo(ctx: FakeContext): void {
     ] });
   quiet.quiet = true;
   ctx.agents.seedQuiet(quiet.id);
+  autoCompaction(ctx, miraThread, now - 20 * 60 * MINUTE + 3 * MINUTE, 48_900, 11_200);
   exchange(ctx, miraThread, { at: now - 95 * MINUTE, prompt: 'Remember that the welcome screen must fit in three lines on a phone.', answer: 'Noted in my memory: the welcome screen stays under three lines on a phone. I will check it in tonight\'s review.' });
-  const evening = ctx.agents.seedRoutine({ agentId: mira.agent.id, name: 'Evening review', prompt: 'Check the new issues and pull requests of the projects I look after and tell me what needs me.', schedule: { kind: 'daily', time: '20:00', timezone: Intl.DateTimeFormat().resolvedOptions().timeZone } });
-  void evening;
+  const routine = ctx.agents.seedRoutine({ agentId: mira.agent.id, name: 'Evening review', prompt: evening, schedule: { kind: 'daily', time: '20:00', timezone: Intl.DateTimeFormat().resolvedOptions().timeZone } });
+  void routine;
   ctx.agents.seedMemoryPass(mira.agent.id, { threadId: 't-agents-demo-memory-mira', status: 'done', summary: 'Noted that the welcome screen fits in three lines on a phone.', at: now - 92 * MINUTE });
   ctx.agents.seedMemory(mira.agent.id, '- The welcome screen stays under three lines on a phone.\n- The user wants pictures of what changed, not descriptions.');
   miraThread.unread = true;
@@ -142,6 +151,15 @@ function exchange(ctx: FakeContext, thread: Thread, spec: { at: number; prompt: 
   thread.updatedAt = Math.max(thread.updatedAt, spec.at + 2 * MINUTE);
   thread.sessionId ??= `sess-agents-demo-${thread.id}`;
   return turn;
+}
+
+/** A compaction Boite ran by itself after a turn, as the core records it: its `/compact` line, then the counts. */
+function autoCompaction(ctx: FakeContext, thread: Thread, at: number, pre: number, post: number): void {
+  const turn: Turn = { id: `turn-agents-demo-${++ctx.seq}`, threadId: thread.id, status: 'done', queuedAt: at, startedAt: at, finishedAt: at + MINUTE, usage: null, error: null,
+    execution: { ...execution(thread), operation: 'compact', automatic: true } };
+  thread.turns.push(turn);
+  thread.messages.push({ id: `m-${++ctx.seq}`, threadId: thread.id, turnId: turn.id, role: 'system', state: 'complete', createdAt: at, parts: [{ type: 'text', text: '/compact', displayText: 'Automatic compaction' }] });
+  thread.messages.push({ id: `m-${++ctx.seq}`, threadId: thread.id, turnId: turn.id, role: 'assistant', state: 'complete', createdAt: at + MINUTE, parts: [{ type: 'compaction', trigger: 'auto', preTokens: pre, postTokens: post }] });
 }
 
 function execution(thread: Thread, operation?: 'routine' | 'event'): NonNullable<Turn['execution']> {
