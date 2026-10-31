@@ -54,6 +54,8 @@ export interface CoreInfo {
     contactHumanLetters?: 1;
     /** `group.settingsHome` and `Group.settingsHome`: one member's settings, chosen for the whole group, that the others follow. */
     settingsHome?: boolean;
+    /** `group.botsHome` and `Group.botsHome`: the member that hosts the bots and the group's contacts. */
+    botsHome?: boolean;
     /** `threads.listChanges`: a reconnect reads only the threads that changed while it was away. */
     listChanges?: boolean;
   };

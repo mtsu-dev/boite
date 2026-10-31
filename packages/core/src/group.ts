@@ -182,6 +182,7 @@ export class GroupStore {
       ...(device === undefined ? {} : { device }),
       // A home that left the group is no home: the others keep their own settings.
       ...(typeof roster.settingsHome === 'string' && liveCores(roster).some((core) => core.coreId === roster.settingsHome) ? { settingsHome: roster.settingsHome } : {}),
+      ...(typeof roster.botsHome === 'string' && liveCores(roster).some((core) => core.coreId === roster.botsHome) ? { botsHome: roster.botsHome } : {}),
     };
   }
   // -- What the rest of the core reads off the roster.
@@ -680,15 +681,28 @@ export class GroupStore {
   }
 
   /** The member every other one copies its settings from, or null for none. The copy is the clients' to make. */
-  settingsHome(coreId: unknown): Group {
+  settingsHome(coreId: unknown): Group { return this.#setRole('settingsHome', coreId); }
+
+  /** The member that hosts the bots and the Contacts bot, the group's one entry for contacts, or null for none. */
+  botsHome(coreId: unknown): Group { return this.#setRole('botsHome', coreId); }
+
+  /** The member holding a group role, live in the roster, or null. */
+  roleOf(role: 'settingsHome' | 'botsHome'): string | null {
+    const roster = this.roster;
+    const coreId = roster?.[role];
+    return roster && typeof coreId === 'string' && liveCores(roster).some((core) => core.coreId === coreId) ? coreId : null;
+  }
+
+  #setRole(role: 'settingsHome' | 'botsHome', coreId: unknown): Group {
     const roster = this.require();
     if (coreId !== null && (typeof coreId !== 'string' || !liveCores(roster).some((core) => core.coreId === coreId))) {
       throw invalidParams('coreId: expected the id of a machine of this group, or null', { field: 'coreId' });
     }
-    if ((roster.settingsHome ?? null) !== coreId) {
-      const rev = roster.settingsHomeRev ?? 0;
-      if (rev >= Number.MAX_SAFE_INTEGER) throw refused('coreId: the settings home revision has reached its limit', { field: 'coreId' });
-      this.commit({ ...roster, settingsHome: coreId, settingsHomeRev: rev + 1 });
+    const revKey = role === 'settingsHome' ? 'settingsHomeRev' : 'botsHomeRev';
+    if ((roster[role] ?? null) !== coreId) {
+      const rev = roster[revKey] ?? 0;
+      if (rev >= Number.MAX_SAFE_INTEGER) throw refused(`coreId: the ${role === 'settingsHome' ? 'settings home' : 'bots host'} revision has reached its limit`, { field: 'coreId' });
+      this.commit({ ...roster, [role]: coreId, [revKey]: rev + 1 });
     }
     return this.view('owner')!;
   }
