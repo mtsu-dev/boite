@@ -85,7 +85,7 @@ function delegatedAgent(ctx: FakeContext, row: DelegationRow, rootId: ThreadId):
     ...(needsInput.length ? { needsInput } : {}), ...(worktree ? { worktree: structuredClone(worktree) } : {}) };
 }
 
-/** The real core projects sidebar question links in global parent summaries, without subscribing to the child. */
+/** The real core projects chatbar question links in global parent summaries, without subscribing to the child. */
 export function watchQuestionParents(ctx: FakeContext): void {
   let scheduled = false;
   for (const event of ['question.asked', 'question.answered', 'delegation.changed', 'thread.updated'] as const) ctx.bus.observe(event, () => {
@@ -102,7 +102,8 @@ export function watchQuestionParents(ctx: FakeContext): void {
           ...(ctx.delegationAgents.get(rootId) ?? []).filter(row => row.machine),
           ...ctx.workflows.childrenThere(rootId).map(child => ({ threadId: child.threadId, task: '', profileId: CONVERSATION_PROFILE_ID, machine: { coreId: child.coreId, name: fakeCore(child.coreId)?.identity.name ?? child.coreId } })),
         ];
-        const remote = rows.map(row => delegatedAgent(ctx, row, rootId))
+        const remote = rows.filter(row => row.last !== undefined || fakeCore(row.machine!.coreId)?.threads.has(row.threadId))
+          .map(row => delegatedAgent(ctx, row, rootId))
           .filter(agent => !agent.thread.archived && agent.needsInput?.some(input => input.kind === 'question'))
           .map(agent => ({ threadId: agent.thread.id, title: agent.thread.title, ...(agent.machine ? { machine: agent.machine } : {}) }));
         const links = root.archived ? [] : [...local.filter(child => child.parentThreadId === rootId).map(child => ({ threadId: child.id, title: child.title })), ...remote];

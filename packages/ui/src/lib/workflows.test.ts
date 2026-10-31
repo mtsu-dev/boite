@@ -39,7 +39,13 @@ test('fake local and remote workflow questions update the parent summary without
   ]);
   ctx.workflows.finish(run.id, 'scan');
   ctx.workflows.finish(run.id, 'remote');
-  await client.call('questions.answer', { threadId: childId, questionId: question.questionId, optionIds: [], text: 'Custom' });
+  const machine = fakeCore('workflow-question-pc')!;
+  unregisterCore(machine);
+  try {
+    // An unreachable workflow step must not leave the answered local question's link stale.
+    await client.call('questions.answer', { threadId: childId, questionId: question.questionId, optionIds: [], text: 'Custom' });
+    expect(await links()).toEqual([]);
+  } finally { registerCore(machine); }
   await pc.call('questions.answer', { threadId: remoteId, questionId: remote.questionId, optionIds: [], text: 'Built-in' });
   expect(await links()).toEqual([]);
 });
