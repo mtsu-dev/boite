@@ -38,6 +38,31 @@ pub struct ScreenRect {
     pub height: i32,
 }
 
+/// How the ring is drawn, as `windows.point` asked: its corners and how far
+/// outside the control it runs, in CSS pixels.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Look {
+    pub shape: Shape,
+    pub pad: f64,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum Shape {
+    Box,
+    Round,
+}
+
+/// The largest `pad`, as the contract's `WINDOW_POINT_PAD.max`.
+const PAD_MAX: f64 = 24.0;
+/// The `pad` the window's `MARGIN` was sized for.
+const PAD_DEFAULT: f64 = 5.0;
+
+impl Default for Look {
+    fn default() -> Self { Self { shape: Shape::Box, pad: PAD_DEFAULT } }
+}
+
 /// What the page draws, in its own CSS pixels.
 #[derive(Clone, Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -49,21 +74,25 @@ pub struct Layout {
     pub label: String,
     /// The label goes under the box: there was no room above it on the monitor.
     pub below: bool,
+    pub look: Look,
 }
 
 /// Where the window goes in physical pixels, and the box inside it. `scale`
 /// is the monitor's, `monitor` its whole area `(left, top, right, bottom)`.
-pub fn place(rect: ScreenRect, label: &str, scale: f64, monitor: (i32, i32, i32, i32)) -> ((i32, i32, u32, u32), Layout) {
+pub fn place(rect: ScreenRect, label: &str, look: Look, scale: f64, monitor: (i32, i32, i32, i32)) -> ((i32, i32, u32, u32), Layout) {
     let scale = if scale.is_finite() && scale > 0.0 { scale } else { 1.0 };
     let px = |css: f64| (css * scale).round() as i32;
-    let width = (rect.width + 2 * px(MARGIN)).max(px(MIN_WIDTH));
-    let height = rect.height + 2 * px(MARGIN) + px(LABEL_ROOM);
-    let below = rect.top - px(MARGIN) - px(LABEL_ROOM) < monitor.1;
-    let top = if below { rect.top - px(MARGIN) } else { rect.top - px(MARGIN) - px(LABEL_ROOM) };
+    // A wider ring gets a wider margin, so its glow and echo stay in the window.
+    let margin = MARGIN + (look.pad - PAD_DEFAULT).max(0.0);
+    let px_margin = px(margin);
+    let width = (rect.width + 2 * px_margin).max(px(MIN_WIDTH));
+    let height = rect.height + 2 * px_margin + px(LABEL_ROOM);
+    let below = rect.top - px_margin - px(LABEL_ROOM) < monitor.1;
+    let top = if below { rect.top - px_margin } else { rect.top - px_margin - px(LABEL_ROOM) };
     // The window ends at the monitor's bottom: the page keeps the ring inside it, so a control on the taskbar keeps all four sides.
     let height = height.min(monitor.3 - top).max(1);
     // The window stays on the monitor sideways, so a label near the right edge is not cut.
-    let left = (rect.left - px(MARGIN)).min(monitor.2 - width).max(monitor.0);
+    let left = (rect.left - px_margin).min(monitor.2 - width).max(monitor.0);
     let layout = Layout {
         x: f64::from(rect.left - left) / scale,
         y: f64::from(rect.top - top) / scale,
@@ -71,6 +100,7 @@ pub fn place(rect: ScreenRect, label: &str, scale: f64, monitor: (i32, i32, i32,
         height: f64::from(rect.height) / scale,
         label: label.to_owned(),
         below,
+        look,
     };
     ((left, top, width.max(1) as u32, height.max(1) as u32), layout)
 }
@@ -131,8 +161,10 @@ fn monitor_of<R: Runtime>(app: &AppHandle<R>, rect: ScreenRect) -> (f64, (i32, i
 /// command runs on the event loop, and building a window there deadlocks on
 /// Windows, since WebView2 needs that same loop to come up.
 #[tauri::command]
-pub async fn pointer_show(app: AppHandle, webview: Webview, id: String, rect: ScreenRect, label: String) -> Result<(), String> {
+pub async fn pointer_show(app: AppHandle, webview: Webview, id: String, rect: ScreenRect, label: String, look: Option<Look>) -> Result<(), String> {
     only_main(&webview)?;
+    let look = look.unwrap_or_default();
+    if !look.pad.is_finite() || !(0.0..=PAD_MAX).contains(&look.pad) { return Err(format!("pointer pad must be from 0 to {PAD_MAX}, not {}", look.pad)); }
     if id.is_empty() || id.len() > 64 { return Err("pointer id must be 1 to 64 characters".into()); }
     if rect.width <= 0 || rect.height <= 0 || rect.width > 32768 || rect.height > 32768 {
         return Err(format!("pointer rect must have a width and height from 1 to 32768, not {}x{}", rect.width, rect.height));
@@ -156,7 +188,7 @@ pub async fn pointer_show(app: AppHandle, webview: Webview, id: String, rect: Sc
         None => build(&app, &window_label).map_err(|error| format!("the pointer window could not be built: {error}"))?,
     };
     let (scale, monitor) = monitor_of(&app, rect);
-    let ((x, y, width, height), layout) = place(rect, &label, scale, monitor);
+    let ((x, y, width, height), layout) = place(rect, &label, look, scale, monitor);
     window.set_position(PhysicalPosition::new(x, y)).map_err(|error| error.to_string())?;
     window.set_size(PhysicalSize::new(width, height)).map_err(|error| error.to_string())?;
     if let Ok(mut windows) = state.inner.lock() { windows.layouts.insert(window_label.clone(), layout.clone()); }
@@ -257,28 +289,36 @@ mod tests {
 
     #[test]
     fn the_label_goes_above_the_box_where_there_is_room() {
-        let ((x, y, width, height), layout) = place(ScreenRect { left: 400, top: 300, width: 100, height: 30 }, "Click Build", 1.0, FULL_HD);
+        let ((x, y, width, height), layout) = place(ScreenRect { left: 400, top: 300, width: 100, height: 30 }, "Click Build", Look::default(), 1.0, FULL_HD);
         assert_eq!((x, y, width, height), (372, 232, 420, 126));
-        assert_eq!(layout, Layout { x: 28.0, y: 68.0, width: 100.0, height: 30.0, label: "Click Build".into(), below: false });
+        assert_eq!(layout, Layout { x: 28.0, y: 68.0, width: 100.0, height: 30.0, label: "Click Build".into(), below: false, look: Look::default() });
+    }
+
+    #[test]
+    fn a_wider_ring_gets_a_wider_margin() {
+        let look = Look { shape: Shape::Round, pad: 20.0 };
+        let ((x, y, _, _), layout) = place(ScreenRect { left: 400, top: 300, width: 48, height: 48 }, "Muye", look, 1.0, FULL_HD);
+        assert_eq!((x, y), (400 - 43, 300 - 43 - 40));
+        assert_eq!((layout.x, layout.look), (43.0, look));
     }
 
     #[test]
     fn a_box_at_the_top_of_the_monitor_puts_its_label_below() {
-        let (_, layout) = place(ScreenRect { left: 400, top: 10, width: 100, height: 30 }, "File", 1.0, FULL_HD);
+        let (_, layout) = place(ScreenRect { left: 400, top: 10, width: 100, height: 30 }, "File", Look::default(), 1.0, FULL_HD);
         assert!(layout.below);
         assert_eq!(layout.y, 28.0);
     }
 
     #[test]
     fn at_150_percent_the_window_is_in_physical_pixels_and_the_box_in_css_pixels() {
-        let ((x, y, width, height), layout) = place(ScreenRect { left: 600, top: 600, width: 150, height: 45 }, "", 1.5, (0, 0, 2880, 1620));
+        let ((x, y, width, height), layout) = place(ScreenRect { left: 600, top: 600, width: 150, height: 45 }, "", Look::default(), 1.5, (0, 0, 2880, 1620));
         assert_eq!((x, y, width, height), (558, 498, 630, 189));
         assert_eq!((layout.x, layout.y, layout.width, layout.height), (28.0, 68.0, 100.0, 30.0));
     }
 
     #[test]
     fn the_window_stays_on_the_monitor_near_its_right_edge() {
-        let ((x, y, width, height), layout) = place(ScreenRect { left: 1880, top: 1032, width: 40, height: 48 }, "Notifications", 1.0, FULL_HD);
+        let ((x, y, width, height), layout) = place(ScreenRect { left: 1880, top: 1032, width: 40, height: 48 }, "Notifications", Look::default(), 1.0, FULL_HD);
         assert_eq!(y + height as i32, 1080);
         assert_eq!(x + width as i32, 1920);
         assert_eq!(layout.x, f64::from(1880 - x));
@@ -286,7 +326,7 @@ mod tests {
 
     #[test]
     fn a_monitor_left_of_the_primary_keeps_its_negative_coordinates() {
-        let ((x, _, _, _), layout) = place(ScreenRect { left: -1900, top: 400, width: 60, height: 30 }, "Play", 1.0, (-1920, 0, 0, 1080));
+        let ((x, _, _, _), layout) = place(ScreenRect { left: -1900, top: 400, width: 60, height: 30 }, "Play", Look::default(), 1.0, (-1920, 0, 0, 1080));
         assert_eq!(x, -1920);
         assert_eq!(layout.x, 20.0);
     }

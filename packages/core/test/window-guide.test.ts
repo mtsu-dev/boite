@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
-import { AGENT_ENV, type MessagePart } from '@boite/contracts';
+import { AGENT_ENV, type MessagePart, type WindowPointerLook } from '@boite/contracts';
 import { runCli } from '../src/cli.ts';
 import { connect, type CoreClient } from '../src/client.ts';
 import type { NativeControl, NativeWindow, ScreenRect, WindowCapture, WindowGuide } from '../src/platform/types.ts';
@@ -70,7 +70,7 @@ async function eventually(check: () => void, timeoutMs = 2000): Promise<void> {
 describe('window guide', () => {
   let harness: TestCore, owner: CoreClient, agent: CoreClient, app: CoreClient, threadId: string, desk: ReturnType<typeof fakeDesktop>;
   /** Each box the desktop app was told about, in order: where it is now, null once hidden or taken away. */
-  let boxes: { id: string; rect: ScreenRect | null; label: string }[];
+  let boxes: { id: string; rect: ScreenRect | null; label: string; look: WindowPointerLook }[];
 
   beforeEach(async () => {
     harness = await startTestCore();
@@ -143,9 +143,10 @@ describe('window guide', () => {
 
     // "Play" is exact and wins over "Play Mode Options"; "pla" matches both and is refused with their ids.
     const again = answer('once');
-    const named = await agent.call('windows.point', { threadId, target: { id: '101' }, name: 'play', label: 'Press Play' });
+    const named = await agent.call('windows.point', { threadId, target: { id: '101' }, name: 'play', label: 'Press Play', shape: 'round', pad: 12 });
     await again;
-    expect(named.pointer).toMatchObject({ label: 'Press Play', control: { name: 'Play' } });
+    expect(named.pointer).toMatchObject({ label: 'Press Play', control: { name: 'Play' }, look: { shape: 'round', pad: 12 } });
+    await eventually(() => expect(boxes.at(-1)!.look).toEqual({ shape: 'round', pad: 12 }));
     await eventually(() => expect(boxes.map(box => [box.label, box.rect !== null])).toEqual([['Play', false], ['Press Play', true]]));
     const ambiguous = answer('once');
     expect(await thrown(agent.call('windows.point', { threadId, target: { id: '101' }, name: 'pla' }))).toThrow('2 controls of Unity.exe match "pla"; point at one by id:\n  #3 Button "Play"\n  #4 Button "Play Mode Options"');
@@ -225,7 +226,7 @@ describe('window guide', () => {
     tab.on('windows.pointer', box => heard.push(box));
     owner.on('windows.pointer', box => heard.push(box));
     try {
-      await eventually(() => expect(harness.core.subscribers.pointer({ id: 'probe', rect: null, label: '' })).toBe(0));
+      await eventually(() => expect(harness.core.subscribers.pointer({ id: 'probe', rect: null, label: '', look: { shape: 'box', pad: 5 } })).toBe(0));
       const refusal = await thrown(agent.call('windows.point', { threadId, target: { id: '101' }, at: { x: 0, y: 0, width: 10, height: 10, unit: 'px' } }));
       expect(refusal).toThrow('the box is drawn by the Boite desktop app of this computer, and none is open');
       expect(await agent.call('windows.unpoint', { threadId })).toEqual({ cleared: false });

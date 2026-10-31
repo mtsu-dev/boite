@@ -354,6 +354,8 @@ export const SCENARIOS: Record<string, Scenario> = {
     await refusedWith(env.call('windows.point', { threadId, control: 1, name: 'Play' }), RpcErrorCode.InvalidParams, ['field']);
     await refusedWith(env.call('windows.point', { threadId, control: 1, label: 'x'.repeat(81) }), RpcErrorCode.InvalidParams, ['field']);
     await refusedWith(env.call('windows.point', { threadId, control: 1, seconds: 601 }), RpcErrorCode.InvalidParams, ['field']);
+    await refusedWith(env.call('windows.point', { threadId, control: 1, shape: 'star' as 'box' }), RpcErrorCode.InvalidParams, ['field']);
+    await refusedWith(env.call('windows.point', { threadId, control: 1, pad: 25 }), RpcErrorCode.InvalidParams, ['field']);
     await refusedWith(env.call('windows.read', { threadId, target: { id: '1' }, limit: 0 }), RpcErrorCode.InvalidParams, ['field']);
   },
   'YOLO keeps permission requests out of the core and fake conversation': async env => {

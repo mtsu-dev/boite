@@ -139,6 +139,15 @@ export interface WindowControls {
   total: number;
 }
 
+/** The ring's corners: `box` follows the control's own, `round` makes a pill, or a circle around a square control such as an app icon. */
+export type WindowPointerShape = 'box' | 'round';
+
+/** How the ring is drawn: its shape, and how far outside the control it runs, in the screen's CSS pixels. */
+export interface WindowPointerLook {
+  shape: WindowPointerShape;
+  pad: number;
+}
+
 /** The box a conversation draws on the screen with `windows.point`; one at a time. */
 export interface WindowPointer {
   windowId: string;
@@ -151,6 +160,7 @@ export interface WindowPointer {
   height: number;
   /** When the box goes away by itself. */
   expiresAt: number;
+  look: WindowPointerLook;
   /** The control it shows, when it was named by id or by name. */
   control?: { type: string; name: string };
   /**
@@ -171,6 +181,7 @@ export interface WindowPointerBox {
   /** Where the control is on the screen, in physical pixels; null takes the box away. */
   rect: { left: number; top: number; width: number; height: number } | null;
   label: string;
+  look: WindowPointerLook;
 }
 
 /** Why `windows.waitClick` ended without a click. */
@@ -186,6 +197,8 @@ export const WINDOW_READ_LIMIT = { default: 60, max: 400 } as const;
 /** How long a box stays drawn, and how long `windows.waitClick` waits, in seconds. */
 export const WINDOW_POINT_SECONDS = { default: 120, max: 600 } as const;
 export const WINDOW_POINT_LABEL_MAX = 80;
+/** How far outside the control the ring runs, in CSS pixels. */
+export const WINDOW_POINT_PAD = { default: 5, max: 24 } as const;
 /** The longest side of a capture card's thumbnail. */
 export const WINDOW_THUMBNAIL_MAX = 320;
 
@@ -248,7 +261,7 @@ export interface WindowsRpcMethods {
    * conversation's previous box.
    */
   'windows.point': {
-    params: { threadId: string; control?: number; target?: WindowTarget; name?: string; at?: WindowCrop; label?: string; seconds?: number };
+    params: { threadId: string; control?: number; target?: WindowTarget; name?: string; at?: WindowCrop; label?: string; seconds?: number; shape?: WindowPointerShape; pad?: number };
     result: { pointer: WindowPointer };
   };
   /** Waits until the person presses the primary button inside the conversation's box, then takes the box away. */

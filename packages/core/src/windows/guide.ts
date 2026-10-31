@@ -16,6 +16,7 @@
  */
 import {
   WINDOW_POINT_LABEL_MAX,
+  WINDOW_POINT_PAD,
   WINDOW_POINT_SECONDS,
   WINDOW_READ_LIMIT,
   windowCropError,
@@ -120,6 +121,13 @@ export class WindowGuides {
       throw invalidParams(`label must be at most ${WINDOW_POINT_LABEL_MAX} characters with no control characters`, { field: 'label' });
     }
     const seconds = this.#seconds(params.seconds, 'seconds');
+    const shape = params.shape ?? 'box';
+    if (shape !== 'box' && shape !== 'round') throw invalidParams('shape must be box or round', { field: 'shape' });
+    const pad = params.pad ?? WINDOW_POINT_PAD.default;
+    if (typeof pad !== 'number' || !Number.isInteger(pad) || pad < 0 || pad > WINDOW_POINT_PAD.max) {
+      throw invalidParams(`pad must be a whole number of pixels from 0 to ${WINDOW_POINT_PAD.max}`, { field: 'pad' });
+    }
+    const look = { shape, pad };
 
     // Every check that needs no OS comes first: a machine without the guide refuses the same bad call the same way.
     let window: NativeWindow;
@@ -164,12 +172,12 @@ export class WindowGuides {
     // The previous box goes first, so the desktop app hands its window to the new one.
     this.#remove(thread.id, 'cleared');
     const boxId = newId('box_');
-    if (this.#core.subscribers.pointer({ id: boxId, rect: frame.minimized ? null : screen, label: shownLabel }) === 0) {
+    if (this.#core.subscribers.pointer({ id: boxId, rect: frame.minimized ? null : screen, label: shownLabel, look }) === 0) {
       throw refused('the box is drawn by the Boite desktop app of this computer, and none is open: ask the user to open Boite', { code: 'no-app' });
     }
     const pointer: WindowPointer = {
       windowId: window.id, process: window.process, label: shownLabel,
-      x: box.x, y: box.y, width: box.width, height: box.height, expiresAt: Date.now() + seconds * 1000,
+      x: box.x, y: box.y, width: box.width, height: box.height, expiresAt: Date.now() + seconds * 1000, look,
       ...(control ? { control: { type: control.type, name: control.name } } : {}),
       ...(frame.above ? { behind: true as const } : {}),
     };
@@ -315,7 +323,7 @@ export class WindowGuides {
     const screen = frame.minimized ? null : { left: frame.rect.left + shown.pointer.x, top: frame.rect.top + shown.pointer.y, width: shown.pointer.width, height: shown.pointer.height };
     if (sameRect(screen, shown.screen)) return;
     shown.screen = screen;
-    this.#core.subscribers.pointer({ id: shown.boxId, rect: screen, label: shown.pointer.label });
+    this.#core.subscribers.pointer({ id: shown.boxId, rect: screen, label: shown.pointer.label, look: shown.pointer.look });
   }
 
   /** Takes the conversation's box away, or only `only` when given, and ends the waits on it. */
@@ -325,7 +333,7 @@ export class WindowGuides {
     this.#shown.delete(threadId);
     clearInterval(shown.follow);
     clearTimeout(shown.expiry);
-    this.#core.subscribers.pointer({ id: shown.boxId, rect: null, label: shown.pointer.label });
+    this.#core.subscribers.pointer({ id: shown.boxId, rect: null, label: shown.pointer.label, look: shown.pointer.look });
     for (const finish of [...shown.waiters]) finish(why);
     this.#core.logs.info(`Box over window ${shown.window.id} of ${shown.window.process} taken away: ${why}`, { source: 'windows', event: 'window.unpoint', threadId, data: { windowId: shown.window.id, process: shown.window.process, why } });
     return true;

@@ -7,7 +7,7 @@
  */
 import { resolve } from 'node:path';
 import {
-  parseWindowCrop, WINDOW_CLIP_LIMITS, WINDOW_POINT_LABEL_MAX, WINDOW_POINT_SECONDS, WINDOW_READ_LIMIT, WINDOW_SHOT_MAX,
+  parseWindowCrop, WINDOW_CLIP_LIMITS, WINDOW_POINT_LABEL_MAX, WINDOW_POINT_PAD, WINDOW_POINT_SECONDS, WINDOW_READ_LIMIT, WINDOW_SHOT_MAX,
   type DesktopWindow, type RpcParams, type WindowControl, type WindowPointer, type WindowShot, type WindowTarget,
 } from '@boite/contracts';
 import type { CoreClient } from './client.ts';
@@ -34,15 +34,17 @@ export const WINDOW_HELP = `boite window <command> [args] [--json]
                                  the window's enabled controls on screen, one line
                                  each: #id, type, "name", x,y wxh in window pixels.
                                  Up to ${WINDOW_READ_LIMIT.default} by default, ${WINDOW_READ_LIMIT.max} at most
-  point <id> [--label <text>] [--seconds <s>]
-  point <target> --name <name> [--label <text>] [--seconds <s>]
-  point <target> --at x,y,w,h [--label <text>] [--seconds <s>]
+  point <id> [--label <text>] [--seconds <s>] [--round] [--pad <px>]
+  point <target> --name <name> [same options]
+  point <target> --at x,y,w,h [same options]
                                  draw a box with a label (${WINDOW_POINT_LABEL_MAX} characters at most) above
                                  every window to show the user what to click: a
                                  control of the last read (3 for #3), the one control with that
                                  name, or a rectangle in pixels or fractions as --crop
                                  takes it. Click-through, one box per conversation,
-                                 gone after ${WINDOW_POINT_SECONDS.default} s by default (${WINDOW_POINT_SECONDS.max} at most)
+                                 gone after ${WINDOW_POINT_SECONDS.default} s by default (${WINDOW_POINT_SECONDS.max} at most).
+                                 --round draws a pill, a circle around an icon;
+                                 --pad sets the gap around the control (${WINDOW_POINT_PAD.default} px, ${WINDOW_POINT_PAD.max} at most)
   wait-click [--timeout <s>]     wait until the user clicks inside the box, then take
                                  it away; ${WINDOW_POINT_SECONDS.default} s by default
   unpoint                        take the box away
@@ -191,11 +193,15 @@ export async function windowCommand(args: string[], io: CliIo, client: CoreClien
     case 'point': {
       const label = flag(rest, '--label');
       const seconds = number(rest, '--seconds', false);
+      const pad = number(rest, '--pad', true);
+      const roundAt = rest.indexOf('--round');
+      if (roundAt >= 0) rest.splice(roundAt, 1);
       const name = flag(rest, '--name');
       const atText = flag(rest, '--at');
       const at = atText === undefined ? undefined : parseWindowCrop(atText);
       if (at === null) throw new Usage('window point --at takes x,y,w,h in pixels, or in fractions from 0 to 1');
-      const common = { threadId, ...(label === undefined ? {} : { label }), ...(seconds === undefined ? {} : { seconds }) };
+      const common = { threadId, ...(label === undefined ? {} : { label }), ...(seconds === undefined ? {} : { seconds }),
+        ...(roundAt >= 0 ? { shape: 'round' as const } : {}), ...(pad === undefined ? {} : { pad }) };
       const id = /^#?\d+$/.test(rest[0] ?? '') ? Number(rest.shift()!.replace('#', '')) : undefined;
       let params: RpcParams<'windows.point'>;
       if (id !== undefined) {

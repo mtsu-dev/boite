@@ -180,10 +180,15 @@ boite window unpoint
     such as a game or a Unity scene view: the agent finds the place in a small
     screenshot first.
 - The box is drawn by the Boite desktop app of the machine that runs the
-  core, in the app's look: a ring in the user's accent with a label tab on its
-  corner, one entrance and a slow echo, none with reduced motion. It is
-  click-through, takes no focus and has no taskbar button. With no desktop app
-  of that machine open, `point` is refused and asks for one.
+  core, in the app's look: a rounded ring in the user's accent, the label in a
+  bubble whose tail points at the ring, one entrance and a slow echo, none
+  with reduced motion. It is click-through, takes no focus and has no taskbar
+  button. With no desktop app of that machine open, `point` is refused and
+  asks for one.
+- `--round` makes the ring a pill, a circle around a square control such as
+  an app icon or a server in a chat app's sidebar. `--pad <px>` sets how far
+  outside the control the ring runs, 5 CSS pixels by default and 24 at most;
+  the shell widens the window to keep the glow and the echo whole.
 - The box follows its window when the window moves, hides while it is
   minimized, and goes away with it, after `--seconds` (120 by default, 600 at
   most), on `unpoint`, or when the conversation is archived.

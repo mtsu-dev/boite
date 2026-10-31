@@ -16,6 +16,15 @@ import type { ScreenRect, WindowGuide } from '../types.ts';
 import { frameBounds, physicalPixels, windowOf } from './window-capture.ts';
 import { readControls } from './window-controls.ts';
 
+/**
+ * Chromium and Electron apps (Discord, VS Code, Slack, a browser) build their
+ * accessibility tree only once a UIA client asks for it, so the first read
+ * finds nothing: an empty read is tried again for about a second. Measured on
+ * Discord on 2026-10-31: 0 controls, then 112 two seconds later.
+ */
+const EMPTY_RETRIES = 4;
+const EMPTY_WAIT_MS = 250;
+
 const U64 = FFIType.u64;
 const PTR = FFIType.ptr;
 const I32 = FFIType.i32;
@@ -111,7 +120,12 @@ export async function loadWindowGuide(): Promise<WindowGuide | { unavailable: st
     controls: async (id, limit) => {
       const hwnd = windowOf(id);
       if (user32().IsHungAppWindow(hwnd) !== 0) throw new Error('the window is not responding');
-      return physicalPixels(() => readControls(hwnd, limit));
+      let read = physicalPixels(() => readControls(hwnd, limit));
+      for (let attempt = 0; attempt < EMPTY_RETRIES && read.total === 0; attempt++) {
+        await Bun.sleep(EMPTY_WAIT_MS);
+        read = physicalPixels(() => readControls(hwnd, limit));
+      }
+      return read;
     },
     frame: frameOf,
     mouse,

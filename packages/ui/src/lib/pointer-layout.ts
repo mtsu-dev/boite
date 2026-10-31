@@ -4,7 +4,7 @@
  * the shell, which owns the transparent window the box is drawn in
  * (`pointer_window.rs`). That window's page is `PointerApp.svelte`.
  */
-import type { WindowPointerBox } from '@boite/contracts';
+import type { WindowPointerBox, WindowPointerLook } from '@boite/contracts';
 
 /** What the shell tells a pointer page, in that page's CSS pixels: the control, and whether the label goes under it. */
 export interface PointerLayout {
@@ -14,21 +14,41 @@ export interface PointerLayout {
   height: number;
   label: string;
   below: boolean;
+  look: WindowPointerLook;
 }
 
-/** How far outside the control the ring runs, in CSS pixels. */
-export const RING_GAP = 5;
-
-/** The ring around the control, `RING_GAP` outside it, kept inside the window so a control at a screen edge keeps all four sides. */
+/** The ring around the control, `look.pad` outside it, kept inside the window so a control at a screen edge keeps all four sides. */
 export function pointerRing(layout: PointerLayout, size: { width: number; height: number }): { left: number; top: number; width: number; height: number } {
-  const left = Math.max(0, layout.x - RING_GAP);
-  const top = Math.max(0, layout.y - RING_GAP);
-  const right = Math.min(size.width, layout.x + layout.width + RING_GAP);
-  const bottom = Math.min(size.height, layout.y + layout.height + RING_GAP);
+  const pad = layout.look.pad;
+  const left = Math.max(0, layout.x - pad);
+  const top = Math.max(0, layout.y - pad);
+  const right = Math.min(size.width, layout.x + layout.width + pad);
+  const bottom = Math.min(size.height, layout.y + layout.height + pad);
   return { left, top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
 }
 
-type Invoke = (command: string, args: Record<string, unknown>) => Promise<unknown>;
+/** Space between the ring and the label's bubble, in CSS pixels. */
+export const TAG_GAP = 10;
+/** Where the bubble's tail sits from the bubble's left edge, at most. */
+const TAIL_INSET = 22;
+
+/**
+ * The label's bubble above or below the ring. Its tail points at the ring's
+ * middle when the control is small, and near its left edge when it is wide.
+ */
+export function pointerTag(ring: { left: number; top: number; width: number; height: number }, size: { width: number; height: number }, below: boolean): { left: number; top: number | null; bottom: number | null; tail: number; maxWidth: number } {
+  const aim = ring.left + Math.min(ring.width / 2, TAIL_INSET + 6);
+  const left = Math.max(4, aim - TAIL_INSET);
+  return {
+    left,
+    top: below ? ring.top + ring.height + TAG_GAP : null,
+    bottom: below ? null : size.height - ring.top + TAG_GAP,
+    tail: aim - left,
+    maxWidth: Math.max(0, size.width - left - 4)
+  };
+}
+
+type Invoke =(command: string, args: Record<string, unknown>) => Promise<unknown>;
 
 const tauriInvoke: Invoke = async (command, args) => (await import('@tauri-apps/api/core')).invoke(command, args);
 
@@ -45,7 +65,7 @@ export function pointerRequested(from: { localCore: boolean }, box: WindowPointe
   const rect = box.rect;
   queue = queue.then(() => rect === null
     ? invoke('pointer_hide', { id: box.id })
-    : invoke('pointer_show', { id: box.id, rect, label: box.label }))
+    : invoke('pointer_show', { id: box.id, rect, label: box.label, look: box.look }))
     .then(() => undefined, (error: unknown) => { console.warn('windows.pointer failed', error); });
   return queue;
 }
