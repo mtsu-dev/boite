@@ -27,7 +27,8 @@ export const strings = {
     },
     contacts: {
       title: 'Contacts',
-      hint: 'A Home page beside Threads where you link your Boite with another owner\'s through Tailscale, so your agents and theirs work together on the projects each side opens. Not ready for everyday use'
+      hint: 'A Home page beside Threads where you link your Boite with another owner\'s through Tailscale. A built-in bot, the Operator, carries every request between your agents and theirs. Not ready for everyday use',
+      needsBots: 'Needs Bots: the Operator that carries every request is a bot. Turn Bots on first'
     },
     autoGoal: {
       title: 'Automatic goals',

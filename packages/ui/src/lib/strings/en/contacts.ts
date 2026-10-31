@@ -18,7 +18,7 @@ export const strings = {
     rename: 'Rename {name}',
     nameLabel: 'Contact name',
     trusted: 'Trusted',
-    trustedTip: 'Its requests can open a project without you: one whose git remote matches, otherwise the one the concierge agent picks. A request it cannot place waits for you. Its messages reach your agents without waiting for you. Reading conversations is never granted that way.',
+    trustedTip: 'The Operator acts on its requests without asking you: it puts its agents in touch with the right thread, or starts one. Opening a project always asks you. Its messages reach your agents without waiting for you. Reading conversations is never granted that way.',
     youShare: 'You share with {name}',
     theyShare: '{name} shares with you',
     nothingOpen: 'Nothing yet',
@@ -60,8 +60,29 @@ export const strings = {
       decided: 'Decided ({count})',
       accepted: 'Shared {project}',
       refused: 'Refused',
-      by: { owner: 'Owner', match: 'Match', concierge: 'Concierge' },
-      byTip: { owner: 'Decided by the owner.', match: 'Its git remote matched exactly one project.', concierge: 'Decided by the concierge agent for a trusted contact.' }
+      by: { owner: 'Owner', match: 'Match', concierge: 'Concierge', bot: 'Operator' },
+      byTip: { owner: 'Decided by the owner.', match: 'Its git remote matched exactly one project.', concierge: 'Decided by the concierge agent for a trusted contact.', bot: 'Decided by the Operator, Boite\'s built-in bot.' },
+      /** Where a pending request stands: with the Operator, or waiting on the owner's answer to its card. */
+      stage: { bot: 'With the Operator', owner: 'Waiting for you' },
+      /** A request the Operator accepted by putting two threads in touch. */
+      inTouch: 'In touch with {thread}'
+    },
+    /** The Contacts bot's card: the threads it put in touch and what it flagged. */
+    bot: {
+      tip: 'Boite\'s built-in bot. Every request between your agents and your contacts goes through it: it finds the right thread, puts the two in touch and holds letters that look dangerous.',
+      open: 'Open',
+      openTip: 'Open {name}\'s conversation',
+      none: 'No thread works with a contact yet.',
+      relations: 'In touch',
+      relationsTip: 'A thread here and a contact\'s thread the Operator put in touch. They write to each other; no project is opened.',
+      end: 'End',
+      endLabel: 'End the relation between {thread} and {contact}',
+      endTitle: 'End this relation?',
+      endBody: '{thread} and {contact}\'s {remote} stop writing to each other. Both sides forget it.',
+      flags: 'Flags',
+      flagsTip: 'A contact\'s letter or action that looked dangerous. The Operator decides; a flagged letter waits until it does.',
+      openFlags: '{count} open',
+      kind: { secret: 'Secret', destructive: 'Destructive', injection: 'Injection', boundary: 'Boundary', review: 'Review' }
     },
     /** Mail a contact sent outside a shared project, held until the owner delivers it to the agent it was written to. */
     mail: {

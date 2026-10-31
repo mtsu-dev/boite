@@ -29,7 +29,8 @@ export const fr: Translation = {
     },
     contacts: {
       title: 'Contacts',
-      hint: 'Une page Accueil à côté des conversations, où vous reliez votre Boite à celle d\'un autre propriétaire via Tailscale, pour que vos agents et les siens travaillent ensemble sur les projets que chacun ouvre. Pas encore prêt pour un usage quotidien'
+      hint: 'Une page Accueil à côté des conversations, où vous reliez votre Boite à celle d\'un autre propriétaire via Tailscale. Un bot intégré, la Standardiste, porte chaque demande entre vos agents et les siens. Pas encore prêt pour un usage quotidien',
+      needsBots: 'Nécessite les Bots : la Standardiste qui porte chaque demande est un bot. Activez d\'abord les Bots'
     },
     autoGoal: {
       title: 'Objectifs automatiques',

@@ -153,6 +153,13 @@ export class ContactsView {
     return request;
   }
 
+  /** Ends a relation between a thread here and a contact's: both sides forget it, and its letters stop. */
+  async cutRelation(id: string): Promise<boolean> {
+    const done = await this.#run(`relation:${id}`, () => this.#connected().call('contacts.cutRelation', { id }));
+    if (done && this.state?.relations) this.state.relations = this.state.relations.filter(entry => entry.id !== id);
+    return done !== null;
+  }
+
   /** Delivers a held contact letter to its thread, or refuses it. True once the core took the decision. */
   async decideMail(id: string, accept: boolean): Promise<boolean> {
     const done = await this.#run(`mail:${id}`, () => this.#connected().call('contacts.decideMail', { id, accept }));
