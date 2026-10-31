@@ -62,6 +62,8 @@ export class ContactReach {
   byRelation(localThreadId: string, coreId: string, remoteThreadId: string): boolean {
     const relations = this.#contacts.relations.of(coreId);
     if (relations.some(relation => relation.local.threadId === localThreadId && relation.remote.threadId === remoteThreadId)) return true;
+    // A relation the group's Bots host keeps for a thread here, as its copy of the contact names it (`members.ts`).
+    if (this.#contacts.members.relayedOf(coreId).some(entry => entry.relations?.some(relation => relation.threadId === localThreadId && relation.remote === remoteThreadId))) return true;
     const ours = contactsBot(this.#core)?.threadId;
     const theirs = this.#contacts.find(coreId)?.bot?.threadId;
     const requests = this.#contacts.requests.list().filter(request => request.coreId === coreId);

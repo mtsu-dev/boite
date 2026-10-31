@@ -42,8 +42,12 @@ export class ContactRelations {
   }
 
   #save(relations: ContactRelation[]): void {
+    const key = (relation: ContactRelation): string => JSON.stringify([relation.id, relation.coreId, relation.local.threadId, relation.remote.threadId]);
+    const before = this.list(), was = new Set(before.map(key)), now = new Set(relations.map(key));
     this.#core.journal.setSetting(RELATIONS, relations.sort((a, b) => b.createdAt - a.createdAt));
     this.#core.contacts.changed();
+    // A relation of a member's thread, kept here as the group's Bots host: that member's copy of the contact names it.
+    this.#core.contacts.members.relationsChanged([...before.filter(relation => !now.has(key(relation))), ...relations.filter(relation => !was.has(key(relation)))].map(relation => relation.local.threadId));
   }
 
   /** `id` comes from the side that accepted, so both sides name the relation the same way. */
@@ -113,6 +117,12 @@ export class ContactRelations {
     queue[to] = [...(queue[to] ?? []), ...queue[from]!];
     delete queue[from];
     this.#core.journal.setSetting(ENDED, queue);
+  }
+
+  /** The contact moved to the group's Bots host, which keeps its relations now (`group-link.ts`): they leave this core without a word to it. */
+  handOver(coreId: string): void {
+    const relations = this.list();
+    if (relations.some(relation => relation.coreId === coreId)) this.#save(relations.filter(relation => relation.coreId !== coreId));
   }
 
   /** The contact is removed: its relations end without telling it, and nothing waits to be told. */

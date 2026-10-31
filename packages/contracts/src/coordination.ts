@@ -304,9 +304,11 @@ export interface ContactRequest {
   /**
    * Who the request waits on while pending: `bot`, this core's Contacts bot;
    * `owner`, this owner's answer on a card the bot raised (a contact not
-   * trusted, or a project to open). Missing: the contact.
+   * trusted, or a project to open); `host`, kept on a group member without a
+   * Contacts bot until the group's Bots host files it for its bot, retried for
+   * 7 days. Missing: the contact.
    */
-  stage?: 'bot' | 'owner';
+  stage?: 'bot' | 'owner' | 'host';
   /** The owner said yes on the bot's card: the bot may now act on it. */
   approved?: boolean;
   /** The thread the two Contacts bots put the asking thread in relation with, once accepted. */

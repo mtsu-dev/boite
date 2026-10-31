@@ -155,7 +155,9 @@ export class PeerDesk {
           const request = envelope.payload as { contact?: unknown; operation?: unknown; payload?: unknown } | null;
           const relayed = this.#core.contacts.members.adopt(peer.coreId, request?.contact);
           const as = this.#core.contacts.peers().find(p => p.coreId === relayed.coreId);
-          if (!as || relayed.grants.length === 0) throw refused('nothing of this machine is opened to that contact any more');
+          // A relation with a thread here carries letters and their receipts, nothing else.
+          const byRelation = (relayed.relations?.length ?? 0) > 0 && (request?.operation === 'deliver' || request?.operation === 'receipt');
+          if (!as || (relayed.grants.length === 0 && !byRelation)) throw refused('nothing of this machine is opened to that contact any more');
           result = await this.contact(as, request?.operation as string, request?.payload, true);
         } else if (envelope.operation === 'thread.start') result = await this.#core.threads.spawns.startFor(currentPeer, envelope.payload);
         else if (envelope.operation === 'delegation.catalog') result = await this.#core.threads.spawns.catalogFor(envelope.payload);
@@ -204,7 +206,9 @@ export class PeerDesk {
     }
     if (operation === 'deliver') {
       const letter = payload as AgentLetter;
-      const at = relayed ? null : members.locate(peer.coreId, letter?.to?.coreId === this.#side.selfId() ? letter.to.threadId : undefined);
+      const to = letter?.to?.coreId === this.#side.selfId() ? letter.to.threadId : undefined;
+      // A member's thread, through a project opened to the contact or a relation with the sending thread.
+      const at = relayed ? null : members.locate(peer.coreId, to) ?? members.locateRelation(peer.coreId, to, letter?.from?.threadId);
       return at ? members.deliver(peer.coreId, at, letter) : this.#side.receive(letter, peer);
     }
     if (operation === 'search') {

@@ -307,8 +307,10 @@ as its owner, else on the machine the page shows
 ([bots](bots.md#the-page)). The Contacts switch makes the group's one Contacts
 bot on the Bots machine, else on the Settings machine, else on the window's
 machine, and makes none while any connected owner machine already lists it
-(`operatorHost`, `lib/operator.ts`). Bots made before stay where they are;
-each one moves from its settings ([moving a bot](bots.md#moving-a-bot-to-another-machine)).
+(`operatorHost`, `lib/operator.ts`). A change of the role moves the Contacts
+bot to the new Bots machine by itself, before its contact links
+([contacts](contacts.md#group-to-group)). Other bots made before stay where
+they are; each one moves from its settings ([moving a bot](bots.md#moving-a-bot-to-another-machine)).
 
 The contact lists (`contactRows`, `lib/contacts.svelte.ts`) show the group as
 one Boite: a contact that several members hold is one row, keyed by the group

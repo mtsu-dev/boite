@@ -16,6 +16,12 @@
  * retries until the member heard it; each request it relays carries the
  * contact's current copy too, so a member that missed a push answers from
  * what is true now.
+ *
+ * A relation the contact holds with a member's thread (`relations.ts`) lives
+ * on the linked machine under the thread's address there. It carries letters
+ * both ways without any project opened: the copy names it, and the member
+ * takes the contact's letters to that thread, and only from the thread in
+ * relation with it.
  */
 import type { AgentAddress, AgentContact, AgentLetter, Contact, ContactCapabilities, ContactOffer, CoordinationPeer, ModelTier } from '@boite/contracts';
 import { address, text } from '../coordination-letter.ts';
@@ -52,6 +58,8 @@ export interface RelayedEntry {
   grants: { projectId: string; readThreads: boolean }[];
   capabilities?: ContactCapabilities;
   projectOffers?: ContactOffer[];
+  /** The member's threads in relation with the contact's: `threadId` here, `remote` on the contact's core. */
+  relations?: { id: string; threadId: string; remote: string }[];
 }
 /** `via`: the member of the group the contact is linked to. */
 export type RelayedContact = RelayedEntry & { via: string; admission: string };
@@ -133,6 +141,40 @@ export class ContactMembers {
     return member ? { member, threadId: threadId.slice(0, at) } : null;
   }
 
+  /** The member's thread a relation joins with the contact's sending thread, whatever is opened to the contact. */
+  locateRelation(contactId: string, threadId: unknown, fromThreadId: unknown): { member: CoordinationPeer; threadId: string } | null {
+    if (typeof threadId !== 'string' || typeof fromThreadId !== 'string' || !this.#core.contacts.relations.joins(contactId, threadId, fromThreadId)) return null;
+    return this.#aliasOf(threadId);
+  }
+
+  /** The member and its own thread id behind `<thread>~<prefix>`. */
+  #aliasOf(threadId: string): { member: CoordinationPeer; threadId: string } | null {
+    const at = threadId.lastIndexOf(MARK);
+    if (at <= 0 || threadId.length - at - 1 !== PREFIX) return null;
+    const prefix = threadId.slice(at + 1);
+    const member = this.#members().find(entry => entry.coreId.startsWith(prefix));
+    return member ? { member, threadId: threadId.slice(0, at) } : null;
+  }
+
+  /** The contact's relations with this member's threads, under the member's own thread ids. */
+  #relationsWith(contactId: string, memberId: string): NonNullable<RelayedEntry['relations']> {
+    const suffix = `${MARK}${memberId.slice(0, PREFIX)}`;
+    return this.#core.contacts.relations.of(contactId).filter(relation => relation.local.threadId.endsWith(suffix))
+      .map(relation => ({ id: relation.id, threadId: relation.local.threadId.slice(0, -suffix.length), remote: relation.remote.threadId }));
+  }
+
+  /** The members a relation of this contact joins. */
+  #relationMembers(contactId: string): CoordinationPeer[] {
+    return this.#members().filter(member => this.#relationsWith(contactId, member.coreId).length > 0);
+  }
+
+  /** Relations of these threads changed here: the members behind the aliased ones get their copy again. */
+  relationsChanged(threadIds: string[]): void {
+    const prefixes = new Set(threadIds.flatMap(id => { const at = id.lastIndexOf(MARK); return at > 0 && id.length - at - 1 === PREFIX ? [id.slice(at + 1)] : []; }));
+    if (prefixes.size === 0) return;
+    this.mark(this.#members().filter(member => prefixes.has(member.coreId.slice(0, PREFIX))).map(member => member.coreId));
+  }
+
   #entry(contactId: string, memberId: string): RelayedEntry | null {
     const contact = this.#contacts.find(contactId);
     if (!contact) return null;
@@ -141,6 +183,7 @@ export class ContactMembers {
       offers: contact.offers.map(offer => offer.name),
       capabilities: contact.capabilities, projectOffers: contact.offers,
       grants: contact.grants.filter(grant => grant.machine === memberId).map(grant => ({ projectId: grant.projectId, readThreads: grant.readThreads })),
+      relations: this.#relationsWith(contactId, memberId),
     };
   }
 
@@ -173,6 +216,17 @@ export class ContactMembers {
       if (error instanceof PeerRefusal) throw refused(error.message);
       throw new Error(messageOf(error));
     } finally { off(); }
+  }
+
+  /** A letter, or its receipt, between a member's thread and the contact's thread a relation joins it with. */
+  #inRelation(member: CoordinationPeer, contactId: string, operation: Operation, payload: unknown): boolean {
+    const relations = this.#relationsWith(contactId, member.coreId);
+    if (operation === 'deliver') {
+      const letter = payload as Partial<AgentLetter> | null;
+      return relations.some(relation => relation.threadId === letter?.from?.threadId && relation.remote === letter?.to?.threadId);
+    }
+    if (operation === 'receipt') return relations.some(relation => relation.threadId === (payload as { fromThreadId?: unknown } | null)?.fromThreadId);
+    return false;
   }
 
   requestProject(member: CoordinationPeer, contactId: string, payload: unknown): Promise<unknown> {
@@ -227,7 +281,8 @@ export class ContactMembers {
    * leaves the contact to ask again.
    */
   async receipt(contactId: string, payload: unknown): Promise<AgentLetter> {
-    const found = await Promise.all(this.#holders(contactId).map(async member => {
+    const asked = [...new Set([...this.#holders(contactId), ...this.#relationMembers(contactId)])];
+    const found = await Promise.all(asked.map(async member => {
       try {
         const answer = await this.ask(member, contactId, 'receipt', payload) as AgentLetter | null;
         if (!answer || typeof answer !== 'object') return { member, letter: null, down: true };
@@ -254,8 +309,8 @@ export class ContactMembers {
     const operation = request?.operation as Operation;
     if (!RELAYED.includes(operation)) throw invalidParams('relay.operation: expected directory, search, read, deliver, receipt or contact.project');
     if (!this.#contacts.find(contactId)) throw refused('relay.contact: not a contact of this machine any more');
-    // The member's copy may be behind a revoke it missed: this core's grants decide, and the copy is pushed again.
-    if (!this.holdersOf(contactId).includes(member.coreId)) {
+    // The member's copy may be behind a revoke it missed: this core's grants and relations decide, and the copy is pushed again.
+    if (!this.holdersOf(contactId).includes(member.coreId) && !this.#inRelation(member, contactId, operation, request?.payload)) {
       this.mark([member.coreId]);
       throw refused('relay.contact: nothing of this machine is opened to that contact any more');
     }
@@ -344,7 +399,10 @@ export class ContactMembers {
   }
 
   async #tell(member: CoordinationPeer, version: number): Promise<void> {
-    const contacts = this.#contacts.list().flatMap(contact => contact.grants.some(grant => grant.machine === member.coreId) ? [this.#entry(contact.coreId, member.coreId)!] : []);
+    const contacts = this.#contacts.list().flatMap(contact => {
+      const entry = this.#entry(contact.coreId, member.coreId)!;
+      return entry.grants.length > 0 || (entry.relations?.length ?? 0) > 0 ? [entry] : [];
+    });
     try { await within(this.#core.coordination.request(member, 'relay.mirror', { contacts }), RELAY_MS, member.name); }
     catch (error) { if (!(error instanceof PeerRefusal)) throw error; }
     this.#settle(member.coreId, version);
@@ -405,7 +463,17 @@ export class ContactMembers {
         if (typeof grant?.readThreads !== 'boolean') throw invalidParams(`${field}.grants[${index}].readThreads: expected a boolean`);
         return { projectId: text(grant.projectId, `${field}.grants[${index}].projectId`, 128), readThreads: grant.readThreads };
       }),
+      relations: this.#checkRelations(raw.relations, field),
     };
+  }
+
+  #checkRelations(value: unknown, field: string): NonNullable<RelayedEntry['relations']> {
+    if (value === undefined) return [];
+    if (!Array.isArray(value) || value.length > 64) throw invalidParams(`${field}.relations: expected up to 64 relations`);
+    return value.map((relation, index) => ({
+      id: text(relation?.id, `${field}.relations[${index}].id`, 100), threadId: text(relation?.threadId, `${field}.relations[${index}].threadId`, 128),
+      remote: text(relation?.remote, `${field}.relations[${index}].remote`, 160),
+    }));
   }
 
   /** The member names one of its projects for a grant (`relay.project`). */
@@ -436,7 +504,7 @@ export class ContactMembers {
     const before = this.#stored();
     const kept = before.filter(entry => entry.via !== via || (!whole && !entries.some(next => next.coreId === entry.coreId)));
     const admission = memberAdmission(this.#core, via);
-    const next = [...kept, ...entries.filter(entry => entry.grants.length > 0).map(entry => ({ ...entry, via, admission }))];
+    const next = [...kept, ...entries.filter(entry => entry.grants.length > 0 || (entry.relations?.length ?? 0) > 0).map(entry => ({ ...entry, via, admission }))];
     if (JSON.stringify(before) === JSON.stringify(next)) return;
     this.#core.journal.setSetting(MIRROR, next);
     this.#contacts.reset();

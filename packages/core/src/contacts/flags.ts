@@ -15,6 +15,7 @@ import { contactsBot, tellBot } from './bot.ts';
 import { contactFace } from './face.ts';
 
 const FLAGS = 'contacts:flags';
+/** Open flags past which a new flagged letter is refused; an open flag is never evicted, since it may hold a letter. */
 const MAX_FLAGS = 200;
 const DECIDED_KEPT = 50;
 /** What the bot reads of a held letter. */
@@ -76,7 +77,8 @@ export class ContactFlags {
   holds(letterId: string): boolean { return this.list().some(flag => flag.letterId === letterId && flag.status === 'open'); }
 
   #save(flags: ContactFlag[]): void {
-    const open = flags.filter(flag => flag.status === 'open').sort((a, b) => b.at - a.at).slice(0, MAX_FLAGS);
+    // Every open flag stays: dropping one would strand its held letter. Only decided ones make room.
+    const open = flags.filter(flag => flag.status === 'open').sort((a, b) => b.at - a.at);
     const decided = flags.filter(flag => flag.status !== 'open').sort((a, b) => b.at - a.at).slice(0, Math.max(0, Math.min(DECIDED_KEPT, MAX_FLAGS - open.length)));
     this.#core.journal.setSetting(FLAGS, [...open, ...decided]);
     this.#core.contacts.changed();
@@ -117,6 +119,8 @@ export class ContactFlags {
   #openOf(coreId: string, kind: ContactFlag['kind']): boolean { return this.list().some(flag => flag.coreId === coreId && flag.kind === kind && flag.status === 'open'); }
 
   raise(input: Omit<ContactFlag, 'id' | 'at' | 'status'>, letterText?: string): ContactFlag {
+    // A letter flag past the cap is refused before it is stored: its sender reads why, and no held letter loses its flag.
+    if (input.letterId && this.list().filter(flag => flag.status === 'open').length >= MAX_FLAGS) throw refused(`letter: refused, ${MAX_FLAGS} flagged letters already wait for ${this.#owner()}'s decision; retry later`);
     const flag: ContactFlag = { ...input, id: newId('cflag_'), at: Date.now(), status: 'open' };
     this.#save([...this.list(), flag]);
     const thread = flag.threadId ? this.#core.journal.getThread(flag.threadId) : null;

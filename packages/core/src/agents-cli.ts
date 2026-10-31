@@ -236,7 +236,7 @@ export async function agentsCommand(client: CoreClient, threadId: string, rest: 
     const { text: body, contact, target, want: wanted, wait, timeout } = askArgs(rest.slice(1));
     const request = await client.call('collaboration.ask', { threadId, text: body, ...(contact ? { contact } : {}), ...(target ? { target } : {}), ...(wanted ? { want: wanted } : {}) });
     const lines = [`request ${request.id}${request.contact ? ` for ${request.contact}` : ''}: ${request.status}${request.gitRemote ? ` (sent with your git remote ${request.gitRemote})` : ''}`,
-      'The Contacts bot reads it and finds the contact and the thread.'];
+      request.stage === 'host' ? "The group's Bots host, where the Contacts bot lives, has not taken it yet: it waits here and is offered again for 7 days." : 'The Contacts bot reads it and finds the contact and the thread.'];
     if (wait || options.wait) lines.push(...await waitFor(undefined, (await view()).self, timeout ?? options.timeout));
     else lines.push('The answer comes back to this thread as a message: the thread to write to with threads send, or the reason for a refusal.');
     print(lines, request);

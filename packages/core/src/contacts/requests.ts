@@ -20,25 +20,30 @@ import { memberThreadId } from './member-address.ts';
 
 const REQUESTS = 'contacts:requests';
 /** Requests waiting at once, per contact and direction. */
-const MAX_PENDING = 32;
+export const MAX_PENDING = 32;
 const DECIDED_KEPT = 50;
-const THREAD_ID = /^[A-Za-z0-9_-]{1,128}$/;
+/** A thread id, or a group member's thread at its Bots host: `<thread>~<16 hex>` (`memberThreadId`). */
+export const THREAD_ID = /^[A-Za-z0-9_-]{1,128}(~[0-9a-f]{16})?$/;
 const RELATION_ID = /^[A-Za-z0-9_-]{1,100}$/;
 export const NO_BOT = 'turn on Contacts in Settings > Experiments: it creates the Contacts bot';
 
 /**
  * `pendingSend`: an outgoing ask, or the answer to an incoming one, the other side has not received yet.
  * `remoteId`: an incoming request's id on the asking core, for its retries and the answer; `id` is always this core's own.
+ * `pendingHost`: on a member without a Contacts bot, an ask the group's Bots host has not filed yet, with what it names (`host-asks.ts`).
+ * `pendingMember`: on the Bots host, the answer to a member thread's ask that member has not heard yet.
  */
-export type StoredRequest = ContactRequest & { pendingSend?: true; remoteId?: string };
+export type StoredRequest = ContactRequest & { pendingSend?: true; remoteId?: string; pendingHost?: HostAsk; pendingMember?: true };
+/** What a member's ask names, as its thread wrote it, for the Bots host to resolve. */
+export interface HostAsk { contact?: string; target?: string }
 
 type Ask = { contact?: unknown; text: unknown; target?: unknown; want?: unknown };
 
-function want(value: unknown, field: string): ContactRequestWant {
+export function want(value: unknown, field: string): ContactRequestWant {
   if (!CONTACT_REQUEST_WANTS.includes(value as ContactRequestWant)) throw invalidParams(`${field}: expected ${CONTACT_REQUEST_WANTS.join(', ')}`, { field });
   return value as ContactRequestWant;
 }
-const given = (value: unknown): boolean => value !== undefined && value !== null && value !== '';
+export const given = (value: unknown): boolean => value !== undefined && value !== null && value !== '';
 /** How an agent writes a contact in an address: `<name>/<thread-id>`. */
 export const dashed = (name: string): string => name.replace(/\s+/g, '-');
 
@@ -55,14 +60,14 @@ export class ContactRequests {
 
   /** Every pending request and what is still to send, then the last decided ones. */
   save(requests: StoredRequest[]): void {
-    const kept = requests.filter(request => request.status === 'pending' || request.pendingSend);
-    const decided = requests.filter(request => request.status !== 'pending' && !request.pendingSend)
+    const kept = requests.filter(request => request.status === 'pending' || request.pendingSend || request.pendingMember);
+    const decided = requests.filter(request => request.status !== 'pending' && !request.pendingSend && !request.pendingMember)
       .sort((a, b) => (b.decidedAt ?? b.createdAt) - (a.decidedAt ?? a.createdAt)).slice(0, DECIDED_KEPT);
     this.#core.journal.setSetting(REQUESTS, [...kept, ...decided]);
   }
 
   view(request: StoredRequest): ContactRequest {
-    const { pendingSend: _send, remoteId: _remote, ...shown } = request;
+    const { pendingSend: _send, remoteId: _remote, pendingHost: _host, pendingMember: _member, ...shown } = request;
     return shown;
   }
 
@@ -108,9 +113,11 @@ export class ContactRequests {
 
   /**
    * A request as `from`: a thread here, or a virtual mailbox carrying a group
-   * member's attested sender. The bot's own requests go to the contact at once.
+   * member's attested sender, or a member's own thread its Bots host files
+   * under the member's request `id` (`host-asks.ts`). The bot's own requests go
+   * to the contact at once.
    */
-  askFrom(from: AgentContact, ask: Ask, gitRemote?: string): ContactRequest {
+  askFrom(from: AgentContact, ask: Ask, gitRemote?: string, id?: string): ContactRequest {
     const bot = contactsBot(this.#core);
     if (bot === null) throw refused(NO_BOT);
     const byBot = from.coreId === this.#core.coordination.card().coreId && from.threadId === bot.threadId;
@@ -133,7 +140,7 @@ export class ContactRequests {
       throw refused(contact ? `at most ${MAX_PENDING} requests may wait at ${contact.name}; wait for an answer` : `at most ${MAX_PENDING} requests may wait for the Contacts bot; wait for an answer`);
     }
     const request: StoredRequest = {
-      id: newId('creq_'), direction: 'out', coreId, contact: contact?.name ?? '', want: given(ask.want) ? want(ask.want, 'want') : target ? 'talk' : 'thread',
+      id: id ?? newId('creq_'), direction: 'out', coreId, contact: contact?.name ?? '', want: given(ask.want) ? want(ask.want, 'want') : target ? 'talk' : 'thread',
       ...(target ? { target: { threadId: target.threadId } } : {}), ...(byBot ? { pendingSend: true as const } : { stage: 'bot' as const }),
       from, text: body, ...(gitRemote ? { gitRemote } : {}), createdAt: Date.now(), status: 'pending',
     };
@@ -282,7 +289,10 @@ export class ContactRequests {
     if (answer!.status === 'accepted' && relation) {
       let mirror: ContactRelation | undefined;
       try {
-        mirror = this.#store.relations.add({ id: relation.id as string, coreId, contact: name, local: { threadId: request.from.threadId, title: request.from.title }, remote: relation.thread, requestId: request.id });
+        // A member's thread that asked through this Bots host is in relation at its address here, `<thread>~<prefix>`.
+        const self = this.#core.coordination.card().coreId;
+        const local = request.from.coreId === self ? request.from.threadId : memberThreadId(request.from.coreId, request.from.threadId);
+        mirror = this.#store.relations.add({ id: relation.id as string, coreId, contact: name, local: { threadId: local, title: request.from.title }, remote: relation.thread, requestId: request.id });
       } catch (error) { this.#core.log('warn', `contacts: ${messageOf(error)}`, { source: 'contacts' }); }
       Object.assign(request, { status: 'accepted', ...(mirror ? { relation: mirror } : {}) });
       if (answer!.project !== undefined) request.project = { id: text(answer!.project?.id, 'answer.project.id', 128), name: text(answer!.project?.name, 'answer.project.name', 200) };
@@ -302,10 +312,33 @@ export class ContactRequests {
    * its contact moved to this Bots host goes back to that member (`group-link.ts`).
    */
   #notify(request: ContactRequest, name: string, threads: AgentContact[]): void {
-    const member = request.from.coreId === this.#core.coordination.card().coreId ? undefined : this.#core.group.peers().find(peer => peer.coreId === request.from.coreId);
-    if (!member) { this.#core.coordination.contactAnswer(request, name, threads); return; }
-    this.#core.coordination.request(member, 'contact.hand', { action: 'answer', request, name, threads: threads.slice(0, 20) })
-      .catch(error => this.#core.log('warn', `contacts: ${member.name} did not take the answer to ${request.id} (${messageOf(error)})`, { source: 'contacts' }));
+    if (request.from.coreId === this.#core.coordination.card().coreId) { this.#core.coordination.contactAnswer(request, name, threads); return; }
+    // Kept until the member heard it: the contacts' timer offers it again (`host-asks.ts`).
+    this.#mark(request.id, true);
+    void this.tellMember(request, name, threads);
+  }
+
+  /** The member whose thread asked hears the answer; false when it did not, and the request stays marked. */
+  async tellMember(request: ContactRequest, name: string, threads: AgentContact[] = []): Promise<boolean> {
+    const member = this.#core.group.peers().find(peer => peer.coreId === request.from.coreId);
+    // A machine that left the group has no thread to tell.
+    if (!member) { this.#mark(request.id, false); return true; }
+    try { await this.#core.coordination.request(member, 'contact.hand', { action: 'answer', request, name, threads: threads.slice(0, 20) }); }
+    catch (error) {
+      this.#core.log('warn', `contacts: ${member.name} did not take the answer to ${request.id} (${messageOf(error)})`, { source: 'contacts' });
+      if (!(error instanceof PeerRefusal)) return false;
+    }
+    this.#mark(request.id, false);
+    return true;
+  }
+
+  #mark(id: string, pending: boolean): void {
+    const requests = this.list();
+    const request = requests.find(entry => entry.id === id && entry.direction === 'out');
+    if (!request || (request.pendingMember === true) === pending) return;
+    if (pending) request.pendingMember = true; else delete request.pendingMember;
+    this.save(requests);
+    if (pending) this.#store.arm();
   }
 
   /**

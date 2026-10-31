@@ -256,7 +256,9 @@ sequenceDiagram
   participant A as Member (old link)
   participant X as Bots host
   participant C as Contact
-  A->>X: contact.hand (record, grants, requests), sealed, members only
+  A->>X: contact.hand bot: is one coming, or do you hold one?
+  A->>X: agents.move of the Contacts bot, when X holds none
+  A->>X: contact.hand (record, grants, requests, relations), sealed, members only
   X-->>A: X's card, X's signature over the move
   A->>C: contact.move (X's card, X's signature), signed by A's key
   C->>X: dial X with the hello
@@ -264,33 +266,61 @@ sequenceDiagram
   A->>A: forget the contact once it accepted
 ```
 
-1. Every 30 seconds, and at once when the group changes, a member that is not
+1. The Contacts bot goes first (`contacts/bot-home.ts`). A member that runs
+   the built-in contacts bot asks the Bots host whether it holds one
+   (`contact.hand { action: 'bot' }`); if not, it moves its bot there with
+   `agents.move`, under the request id `contacts-bot-<role revision>-<host
+   prefix>`, so a retry or a restart sends the same move and the host takes it
+   once. Until the host answers that it holds a bot, the member keeps its bot
+   and its contact links, and tries again 30 seconds later or when the group
+   changes. If the member that announced its bot leaves the group before the
+   bot arrived, the Bots host starts a fresh one
+   (`agents.builtin.ensure { kind: 'contacts' }`).
+2. Every 30 seconds, and at once when the group changes, a member that is not
    the Bots host hands each contact whose sync announced `groupLink: 1` to the
    Bots host (`contact.hand`, a sealed operation only a current member may
    send). Its grants on its own projects become grants with `machine` set to
-   the member, the requests come along. The Bots host refuses a contact that
-   is itself or one of the group's machines.
-2. The Bots host keeps the record waiting for the contact's hello (one hour),
+   the member, the requests come along, and so do its relations with the
+   contact: the Bots host keeps each one at the member thread's alias
+   `<thread>~<member prefix>`. The Bots host refuses a contact that is itself
+   or one of the group's machines.
+3. The Bots host keeps the record waiting for the contact's hello (one hour),
    and answers with its card `{coreId, publicKey, box, url, machine}` and its
    signature over `boite-contact-move\n` followed by
    `[old core id, Bots host core id, contact core id]` as JSON.
-3. The member sends `contact.move { card, signature }` to the contact, in its
+4. The member sends `contact.move { card, signature }` to the contact, in its
    own signed envelope. The contact checks both signatures, refuses a card
    that names itself or one of its own group's machines, and dials the Bots
    host before switching. If it cannot within 3.5 s it answers
    `unreachable: <reason>`, keeps the old link, and the member tries again 10
    minutes later.
-4. When it can, the contact re-keys everything to the Bots host: the record
-   (trust, notes, grants and capabilities kept), requests, relations, flags,
+5. When it can, the contact re-keys everything to the Bots host: the record
+   (trust, notes, grants and capabilities kept), requests, relations (the
+   member's threads read `<thread>~<member prefix>` at the Bots host), flags,
    the 7-day reply window, revoked projects, gateway mailboxes and the letters
    it holds. Then it drops the old link. The member forgets the contact only
-   after that answer, keeping its relations and flags; its threads still reach
-   the contact through the Bots host's copy (`relay.mirror`).
+   after that answer, keeping its flags; its relations with that contact now
+   live on the Bots host. Its threads still reach the contact through the Bots
+   host's copy (`relay.mirror`). The Bots host tells the member which of its
+   threads are in relation, and relays their letters both ways like a grant's
+   (`relay.in`, `relay.out`).
 
 The Bots host's Contacts page lists the contacts still linked to another
 member, with `heldBy`, that member's core id. An answer to a request a member
 had sent before the move reaches it through the Bots host
-(`contact.hand { action: 'answer' }`).
+(`contact.hand { action: 'answer' }`); the Bots host offers it again every 30
+seconds until the member took it or left the group.
+
+A member without a Contacts bot of its own asks through the Bots host
+(`contacts/host-asks.ts`). `collaboration.ask` keeps the request on the member
+with `stage: 'host'` and offers it to the Bots host (`contact.route { action:
+'host-ask' }`, sealed between members), which files it for its bot under the
+member's request id and thread. The asking thread reads the request as
+queued while the host is off; the member offers it again every 30 seconds for
+7 days, then refuses it with "Not delivered: the group's Bots host stayed
+unreachable for 7 days". The contact reads the asking thread as
+`<thread>~<member prefix>` at the Bots host, and the answer comes back to the
+member as above.
 
 A contact on an older Boite never announces `groupLink`: it stays linked to
 the member that invited it, served as before. Its letters keep the 15 minute
@@ -338,10 +368,13 @@ sequenceDiagram
    (`collaboration.ask`): `--to <contact>/<thread-id>` when it knows the
    thread, `--contact <name>` to name the contact, `--new` for a new thread
    on one of the contact's projects, `--share` to have a project opened to
-   it. The request waits for this core's bot (`stage: 'bot'`), which wakes on
-   it, picks the contact and the words that let the other bot find the thread,
-   and forwards it (`contacts.bot.forward`). Without a Contacts bot on this
-   core the ask is refused with the way to create one.
+   it. A target thread id may be a group member's thread at its Bots host,
+   `<thread>~<16 hex>`. The request waits for this core's bot (`stage:
+   'bot'`), which wakes on it, picks the contact and the words that let the
+   other bot find the thread, and forwards it (`contacts.bot.forward`). On a
+   group member without a bot, the Bots host's bot does it
+   ([Group to group](#group-to-group)). Without a Contacts bot on this core or
+   its group's Bots host the ask is refused with the way to create one.
 2. The contact's core keeps the request for its own bot. A contact marked
    trusted is settled by the bot alone. For one that is not, the bot raises a
    card for its owner (`contacts.bot.askOwner`), and only the owner's Accept,
@@ -384,7 +417,10 @@ The bot reads it and decides: deliver the letter (`contacts.bot.flag` with
 `deliver`), refuse it (its sender reads the reason), write to the other bot or
 thread first, or cut the contact's relations and projects
 (`contacts.bot.cut`), which leaves the contact and its link to the owner.
-Without a bot, a flagged letter waits for the owner as held mail.
+Without a bot, a flagged letter waits for the owner as held mail. A flag
+waiting for a decision is never dropped to make room: at 200 open flags a new
+letter that would be flagged is refused, its sender reads why, and decided
+flags give way first.
 
 The decision comes back to the asking thread as a message (`origin:
 'contact'`). Bot decisions are attributed to the contact's bot; only an

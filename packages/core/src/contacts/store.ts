@@ -44,6 +44,7 @@ import { contactHello, CONTACT_LINK_ROUTE, dialContact, HELLO_INPUT, type Contac
 import { checkedContactOffers, contactOffers } from './offers.ts';
 import { contactFace, groupFace } from './face.ts';
 import { ContactGroupLink, GROUP_LETTER_TTL_MS } from './group-link.ts';
+import { ContactHostAsks } from './host-asks.ts';
 export { CONTACT_JOIN_ROUTE } from './join.ts';
 const dashedName = (name: string): string => name.replace(/\s+/g, '-').toLowerCase();
 export { CONTACT_LINK_ROUTE } from './link-hello.ts';
@@ -82,6 +83,8 @@ export class ContactStore implements LinkedContacts {
   readonly reach: ContactReach;
   /** Moving contacts to the group's Bots host, and following a contact that moved (`group-link.ts`). */
   readonly groupLink: ContactGroupLink;
+  /** A member's asks through the Bots host, and the host's answers to them (`host-asks.ts`). */
+  readonly hostAsks: ContactHostAsks;
   readonly maxContacts = MAX_CONTACTS;
   /** The origin an invitation gives: this machine's tailnet name. Tests point it at loopback. */
   selfUrl: (share: boolean) => Promise<string> = share => tailnetOrigin(this, this.#core, share);
@@ -125,8 +128,9 @@ export class ContactStore implements LinkedContacts {
     this.members = new ContactMembers(core, this);
     this.reach = new ContactReach(core, this);
     this.groupLink = new ContactGroupLink(core, this);
+    this.hostAsks = new ContactHostAsks(core, this);
     // A member that leaves the group takes the contacts it relayed out of `peers()`; a new Bots host takes this core's contacts.
-    core.bus.onAny(name => { if (name === 'group.updated') { this.reset(); if (this.#started) this.groupLink.sweep(true); } });
+    core.bus.onAny(name => { if (name === 'group.updated') { this.reset(); if (this.#started) { this.groupLink.sweep(true); this.hostAsks.retry(); } } });
   }
 
   // -- Storage.
@@ -759,9 +763,10 @@ export class ContactStore implements LinkedContacts {
     this.flags.watch();
     this.#listening = this.wantsTailnet();
     this.funnel.start(this.#listening && !this.#core.policy.networkOff('contacts'));
-    if (this.list().length > 0 || this.liveInvites().length > 0 || this.members.behind()) this.arm();
+    if (this.list().length > 0 || this.liveInvites().length > 0 || this.members.behind() || this.hostAsks.waiting()) this.arm();
     this.members.push();
     this.groupLink.sweep();
+    this.hostAsks.retry();
   }
 
   arm(): void {
@@ -780,7 +785,7 @@ export class ContactStore implements LinkedContacts {
     if (open < this.#openSeen) this.changed();
     this.#openSeen = open;
     // A member's copy still to push keeps the timer, even once the last contact went.
-    if (contacts.length === 0 && open === 0 && !this.members.behind()) {
+    if (contacts.length === 0 && open === 0 && !this.members.behind() && !this.hostAsks.waiting()) {
       if (this.timer !== null) clearInterval(this.timer);
       this.timer = null;
       return;
@@ -792,6 +797,7 @@ export class ContactStore implements LinkedContacts {
       for (const contact of contacts) this.flush(contact.coreId);
       this.members.push();
       this.groupLink.sweep();
+      this.hostAsks.retry();
     }
   }
 
@@ -816,11 +822,12 @@ export class ContactStore implements LinkedContacts {
     this.#hosted.clear();
     this.members.beginClose();
     void this.groupLink.close();
+    void this.hostAsks.close();
     this.flags.close();
   }
 
   async close(): Promise<void> {
     this.beginClose();
-    await Promise.allSettled([...this.#pending, this.funnel.settled(), this.members.settled(), this.groupLink.close()]);
+    await Promise.allSettled([...this.#pending, this.funnel.settled(), this.members.settled(), this.groupLink.close(), this.hostAsks.close()]);
   }
 }

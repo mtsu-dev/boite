@@ -5,6 +5,8 @@ import type { AgentLetter, CoordinationPeer } from '@boite/contracts';
 import type { CoreClient } from '../src/client.ts';
 import { memberThreadId } from '../src/contacts/members.ts';
 import { moveInput } from '../src/contacts/group-link.ts';
+import { botMoveId } from '../src/contacts/bot-home.ts';
+import { contactsBot } from '../src/contacts/bot.ts';
 import { contactsBotOf } from './contacts-fixture.ts';
 import { startTestCore, waitFor, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
@@ -190,4 +192,114 @@ test('with no Bots host, a member keeps its contacts under its own name', async 
   expect(c.core.contacts.find(aId)?.group).toBeUndefined();
   expect(c.core.contacts.has(xId)).toBe(false);
   expect(a.core.contacts.card().machine).toBe('pc-alpha');
+}, 60000);
+
+const remoteOn = (harness: TestCore, threadId: string): void => { harness.core.coordination.configure(threadId, { mode: 'brief', remote: true, resources: '', paused: false }); };
+const requestOn = (harness: TestCore, id: string) => harness.core.contacts.requests.list().find(request => request.id === id && request.direction === 'out');
+
+test('a member without a Contacts bot asks through the Bots host: queued while the host is silent, filed there under its thread and id, refused after 7 days, and answered back', async () => {
+  const { a, x, c, aClient, xClient, cClient, aId, xId, cId } = await setup();
+  const aThread = await thread(aClient, (await project(a, aClient, 'alpha')).id, 'Alpha work');
+  remoteOn(a, aThread);
+  const xBot = await contactsBotOf(x, xClient);
+  await botsHome(a, aClient, x, xId);
+  // X does not answer: the ask waits on A with a status that says so.
+  const real = a.core.coordination.request.bind(a.core.coordination);
+  let silent = true;
+  a.core.coordination.request = (peer, operation, payload) => silent && operation === 'contact.route' ? Promise.reject(new Error('unreachable: test')) : real(peer, operation, payload);
+  const queued = await aClient.call('collaboration.ask', { threadId: aThread, text: 'Who runs the build farm?' });
+  expect(queued).toMatchObject({ status: 'pending', stage: 'host' });
+  expect(x.core.contacts.requests.list().some(request => request.id === queued.id)).toBe(false);
+  const stale = await aClient.call('collaboration.ask', { threadId: aThread, text: 'An old question' });
+  // A week later the host never took the second one: refused, with the reason.
+  const requests = a.core.contacts.requests.list();
+  requests.find(request => request.id === stale.id)!.createdAt -= 8 * 24 * 3_600_000;
+  a.core.contacts.requests.save(requests);
+  silent = false;
+  a.core.contacts.hostAsks.retry();
+  await waitFor(() => x.core.contacts.requests.list().some(request => request.id === queued.id), 10000);
+  expect(x.core.contacts.requests.list().find(request => request.id === queued.id)!.from).toMatchObject({ coreId: aId, threadId: aThread });
+  await waitFor(() => requestOn(a, stale.id)?.status === 'refused', 10000);
+  expect(requestOn(a, stale.id)!.reason).toContain('Bots host stayed unreachable for 7 days');
+  expect(x.core.contacts.requests.list().some(request => request.id === stale.id)).toBe(false);
+  await waitFor(() => requestOn(a, queued.id)?.stage !== 'host', 10000);
+  // X's bot sends it to C, which reads A's thread at its alias on X; C's refusal comes back to A's thread.
+  await waitFor(() => x.core.contacts.linkOf(cId) === 'connected', 20000);
+  await xClient.call('contacts.bot.forward', { threadId: xBot.threadId, id: queued.id, contact: x.core.contacts.find(cId)!.name });
+  const incoming = () => c.core.contacts.requests.list().find(request => request.direction === 'in' && request.text === 'Who runs the build farm?');
+  await waitFor(() => incoming() !== undefined, 10000);
+  expect(incoming()!.from).toMatchObject({ coreId: xId, threadId: memberThreadId(aId, aThread) });
+  await cClient.call('contacts.decide', { id: incoming()!.id, accept: false, reason: 'No contact knows' });
+  await waitFor(() => requestOn(a, queued.id)?.status === 'refused', 10000);
+  expect(requestOn(a, queued.id)!.reason).toBe('No contact knows');
+  await waitFor(() => requestOn(x, queued.id)?.pendingMember === undefined, 10000);
+}, 60000);
+
+test('a relation made before the move carries letters both ways after it, through the Bots host', async () => {
+  const { a, x, c, aClient, cClient, aId, xId, cId } = await setup();
+  const aThread = await thread(aClient, (await project(a, aClient, 'alpha')).id, 'Alpha work');
+  const cThread = await thread(cClient, (await project(c, cClient, 'mine')).id, 'Guest work');
+  remoteOn(a, aThread);
+  remoteOn(c, cThread);
+  // The bots put the two threads in touch; no project is shared.
+  a.core.contacts.relations.add({ id: 'crel_before', coreId: cId, contact: a.core.contacts.find(cId)!.name, local: { threadId: aThread, title: 'Alpha work' }, remote: c.core.coordination.describe(cThread), requestId: 'creq_before' });
+  c.core.contacts.relations.add({ id: 'crel_before', coreId: aId, contact: c.core.contacts.find(aId)!.name, local: { threadId: cThread, title: 'Guest work' }, remote: a.core.coordination.describe(aThread), requestId: 'creq_before' });
+  const before = await c.core.coordination.send({ threadId: cThread, to: { coreId: aId, threadId: aThread }, text: 'Before the move', requestId: crypto.randomUUID() });
+  await waitFor(() => letters(a, aThread).some(letter => letter.id === before.id), 10000);
+
+  await botsHome(a, aClient, x, xId);
+  await waitFor(() => c.core.contacts.find(xId) !== undefined && !a.core.contacts.has(cId), 20000);
+  // C re-keyed its side to X and A's thread alias; X holds the relation at that alias; A keeps none of its own.
+  expect(c.core.contacts.relations.list()).toEqual([expect.objectContaining({ coreId: xId, remote: expect.objectContaining({ coreId: xId, threadId: memberThreadId(aId, aThread) }) })]);
+  expect(x.core.contacts.relations.list()).toEqual([expect.objectContaining({ coreId: cId, local: expect.objectContaining({ threadId: memberThreadId(aId, aThread) }), remote: expect.objectContaining({ threadId: cThread }) })]);
+  expect(a.core.contacts.relations.list()).toEqual([]);
+  await waitFor(() => x.core.contacts.linkOf(cId) === 'connected', 10000);
+  await waitFor(() => a.core.contacts.members.relayedOf(cId).some(entry => (entry.relations?.length ?? 0) > 0), 10000);
+
+  const after = await c.core.coordination.send({ threadId: cThread, to: { coreId: xId, threadId: memberThreadId(aId, aThread) }, text: 'After the move', requestId: crypto.randomUUID() });
+  await waitFor(() => letters(a, aThread).some(letter => letter.id === after.id), 10000);
+  await a.core.coordination.send({ threadId: aThread, to: { coreId: cId, threadId: cThread }, text: 'Back from alpha', requestId: crypto.randomUUID() });
+  await waitFor(() => letters(c, cThread).some(letter => letter.text === 'Back from alpha'), 10000);
+  expect(letters(c, cThread).find(letter => letter.text === 'Back from alpha')!.from).toMatchObject({ coreId: xId, threadId: memberThreadId(aId, aThread) });
+}, 90000);
+
+test('a Bots role change moves the Contacts bot first, under one move id per role revision, and the links follow once the host holds it', async () => {
+  const { a, x, c, aClient, xId, cId } = await setup();
+  await contactsBotOf(a, aClient);
+  const sent: string[] = [];
+  const realMove = a.core.workforce.moves.move.bind(a.core.workforce.moves);
+  let fail = true;
+  a.core.workforce.moves.move = async params => {
+    sent.push(params.requestId ?? '');
+    if (fail) throw new Error('unreachable: test');
+    return realMove(params);
+  };
+  await botsHome(a, aClient, x, xId);
+  await waitFor(() => sent.length > 0, 10000);
+  await Bun.sleep(1000);
+  // The move failed: A keeps its bot and its contact, X holds neither.
+  expect(contactsBot(a.core)).not.toBeNull();
+  expect(contactsBot(x.core)).toBeNull();
+  expect(a.core.contacts.has(cId)).toBe(true);
+  expect(x.core.contacts.has(cId)).toBe(false);
+  fail = false;
+  a.core.contacts.groupLink.sweep(true);
+  await waitFor(() => contactsBot(x.core) !== null && contactsBot(a.core) === null, 20000);
+  await waitFor(() => c.core.contacts.find(xId) !== undefined && !a.core.contacts.has(cId), 20000);
+  const id = botMoveId(a.core.group.roster!.botsHomeRev!, xId);
+  // Every attempt, the failed ones and the one that went, sent the same move.
+  expect(sent.length).toBeGreaterThan(1);
+  expect(new Set(sent)).toEqual(new Set([id]));
+}, 90000);
+
+test('a member that announced its Contacts bot leaves the group before sending it: the Bots host starts a fresh one', async () => {
+  const { a, x, aClient, aId, xId } = await setup();
+  await contactsBotOf(a, aClient);
+  a.core.workforce.moves.move = async () => { throw new Error('unreachable: test'); };
+  await botsHome(a, aClient, x, xId);
+  await waitFor(() => x.core.journal.getSetting('contacts:bot-coming') === aId, 10000);
+  expect(contactsBot(x.core)).toBeNull();
+  x.core.group.remove(aId);
+  await waitFor(() => contactsBot(x.core) !== null, 10000);
+  expect(x.core.journal.getSetting('contacts:bot-coming')).toBeUndefined();
 }, 60000);

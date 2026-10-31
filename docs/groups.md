@@ -73,7 +73,10 @@ is the member whose settings every other member follows; the copy itself
 runs from a window that owns both machines
 ([machines](machines.md#automatic-settings-synchronization)). **Bots** is the
 member that hosts new bots and the Contacts bot, the group's one entry for
-contacts ([machines](machines.md#the-bots-machine)). Both choices live in the
+contacts ([machines](machines.md#the-bots-machine)). Naming another Bots
+member moves the Contacts bot there first, then the contact links and their
+relations; a member without the bot asks its contacts through it
+([contacts](contacts.md#group-to-group)). Both choices live in the
 roster, so every member shows them, and each holder carries its badge.
 
 A machine with no window uses the core's command, on the data directory of

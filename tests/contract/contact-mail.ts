@@ -58,4 +58,26 @@ export const CONTACT_MAIL_SCENARIOS: Record<string, Scenario> = {
     await until(async () => await status(second.id) === 'delivered', 'a delivered letter never reached the agent');
     check(!(await held()).some(letter => letter.id === second.id), 'a delivered letter still waits');
   },
+  'a request may name a group member\'s thread at its Bots host, <thread>~<16 hex>, and nothing looser': async (env: ContractEnv) => {
+    const contact = await env.newContact();
+    await contact.call('contacts.join', { link: (await env.call('contacts.invite', { share: false })).link });
+    for (const side of [env, contact]) await side.call('contacts.settings', { settings: { minTier: 2 } });
+    const coreId = (await contact.call('collaboration.identity', {})).coreId;
+    const account = (await env.call('accounts.list', {})).find(entry => entry.providerId === 'echo')!;
+    const project = await env.call('projects.add', { path: await env.newFolder(), name: 'Alias contract' });
+    const thread = await env.call('threads.create', { projectId: project.id, providerId: 'echo', accountId: account.id, title: 'Names a member thread' });
+    const bot = await env.call('agents.builtin.ensure', { kind: 'contacts' });
+    const { threadId: botThread } = await env.call('agents.open', { agentId: bot.id });
+    const alias = 'thr_member1~0123456789abcdef';
+    const asked = await env.call('collaboration.ask', { threadId: thread.id, target: `${coreId}/${alias}`, text: 'Talk to the member thread' });
+    check(asked.target?.threadId === alias, `the alias target was not kept: ${JSON.stringify(asked.target)}`);
+    for (const bad of ['thr_member1~0123', 'thr_member1~0123456789ABCDEF', 'thr~0123456789abcdef~0123456789abcdef']) {
+      await refused(env.call('collaboration.ask', { threadId: thread.id, target: `${coreId}/${bad}`, text: 'Loose' }), RpcErrorCode.InvalidParams);
+      await refused(env.call('contacts.bot.forward', { threadId: botThread, id: asked.id, contact: coreId, target: bad }), RpcErrorCode.InvalidParams);
+    }
+    await env.call('contacts.bot.forward', { threadId: botThread, id: asked.id, contact: coreId, target: alias });
+    const incoming = async () => (await contact.call('contacts.get', {})).requests.find(request => request.direction === 'in' && request.text === 'Talk to the member thread');
+    await until(async () => Boolean(await incoming()), 'the contact never received the request naming the alias');
+    check((await incoming())!.target?.threadId === alias, `the contact read another target: ${JSON.stringify((await incoming())!.target)}`);
+  },
 };

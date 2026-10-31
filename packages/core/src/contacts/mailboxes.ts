@@ -189,11 +189,13 @@ export class ContactMailboxes {
   }
 
   /**
-   * `boite threads ask`: this core's Contacts bot picks the contact, and a core
-   * without one refuses. A contact another member holds is not routed to that
-   * member's bot yet.
+   * `boite threads ask`: this core's Contacts bot picks the contact. A member
+   * without one asks through the group's Bots host, which holds the bot
+   * (`host-asks.ts`); a core with neither refuses.
    */
-  async ask(params: RpcParams<'collaboration.ask'>): Promise<ContactRequest> { return this.#core.contacts.ask(params); }
+  async ask(params: RpcParams<'collaboration.ask'>): Promise<ContactRequest> {
+    return this.#core.contacts.hostAsks.relays() ? this.#core.contacts.hostAsks.ask(params) : this.#core.contacts.ask(params);
+  }
 
   /** Only a sealed request from a current group member reaches this handler. */
   async handle(peer: CoordinationPeer, payload: unknown): Promise<unknown> {
@@ -213,6 +215,8 @@ export class ContactMailboxes {
       return this.#core.coordination.receiveRouted(letter, route.name);
     }
     const from = checkRemoteContact(p?.from as AgentContact, peer);
+    // A member's thread asks this Bots host's Contacts bot: the member's own request, under its id.
+    if (p.action === 'host-ask') return this.#core.contacts.hostAsks.filed(peer, from, payload);
     if (p.action === 'contacts') return this.#core.contacts.available().flatMap(contact => {
       const direct = this.#core.contacts.find(contact.coreId);
       return direct ? [{...contact, admission: direct.addedAt}] : [];
@@ -243,7 +247,7 @@ export class ContactMailboxes {
       this.#core.journal.setSetting('contacts:mailbox-asks', { ...asks, [key]: request });
       return request;
     }
-    if (p.action !== 'deliver') throw refused('route.action: expected contacts, lookup, ask, deliver or return');
+    if (p.action !== 'deliver') throw refused('route.action: expected contacts, lookup, ask, host-ask, deliver or return');
     const canonical = p.letter!;
     if (!same(address(canonical.from, 'letter.from'), from)) throw refused('letter.from: expected the authenticated initiating conversation');
     this.#core.contacts.checkAttestedTier(from.agent);

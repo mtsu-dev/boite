@@ -229,7 +229,7 @@ function wantOf(value: unknown): ContactRequestWant | undefined {
 /** `<contact>/<thread-id>`, as `boite threads ask --to` writes it. */
 function targetOf(state: ContactsState, value: unknown): { contact: Contact; threadId: string } | undefined {
   if (value === undefined) return undefined;
-  const match = typeof value === 'string' ? /^([^/\s]+)\/([A-Za-z0-9._:-]{1,128})$/.exec(value.trim()) : null;
+  const match = typeof value === 'string' ? /^([^/\s]+)\/([A-Za-z0-9._:-]{1,128}(?:~[0-9a-f]{16})?)$/.exec(value.trim()) : null;
   if (!match) throw invalid('target: expected <contact>/<thread-id>', 'target');
   return { contact: named(state, match[1]), threadId: match[2]! };
 }
@@ -637,7 +637,7 @@ export function contactMethods(ctx: FakeContext) {
       checkContactTier(gateway, thread);
       const body = params.text === undefined ? request.text : text(params.text, 'text', 4000);
       const want = wantOf(params.want);
-      if (params.target !== undefined && (typeof params.target !== 'string' || !/^[A-Za-z0-9._:-]{1,128}$/.test(params.target))) throw invalid('target: expected a thread id of the contact', 'target');
+      if (params.target !== undefined && (typeof params.target !== 'string' || !/^[A-Za-z0-9._:-]{1,128}(?:~[0-9a-f]{16})?$/.test(params.target))) throw invalid('target: expected a thread id of the contact', 'target');
       if (request.coreId !== contact.coreId) pendingCap(state, contact);
       Object.assign(request, { coreId: contact.coreId, contact: contact.name, text: body, ...(want ? { want } : {}), ...(params.target !== undefined ? { target: { threadId: params.target } } : {}) });
       delete request.stage;
