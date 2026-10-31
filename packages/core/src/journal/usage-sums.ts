@@ -15,6 +15,13 @@ export interface UsageSums {
   cache_write_hour_tokens: number;
   /** Null when no turn of the group carried a price. */
   cost: number | null;
+  /**
+   * The cost reported by marked turns (`Usage.buckets`) that counted no
+   * token, which no rate can price: a Claude compaction whose running totals
+   * the driver could not measure (`mapUsage`). An unmarked one is left out:
+   * cores before 2026-10-13 charged such turns a resumed session's whole total.
+   */
+  tokenless_cost: number;
 }
 
 /** Sums of the turns of one provider and model. */
@@ -55,7 +62,10 @@ const USAGE_SUMS = `COUNT(*) AS turns, COUNT(x.usage) AS reported,
   COALESCE(SUM(json_extract(x.usage, '$.cacheReadTokens')), 0) AS cache_read_tokens,
   COALESCE(SUM(json_extract(x.usage, '$.cacheWriteTokens')), 0) AS cache_write_tokens,
   COALESCE(SUM(json_extract(x.usage, '$.cacheWriteHourTokens')), 0) AS cache_write_hour_tokens,
-  SUM(json_extract(x.usage, '$.costUsdEquivalent')) AS cost`;
+  SUM(json_extract(x.usage, '$.costUsdEquivalent')) AS cost,
+  COALESCE(SUM(CASE WHEN json_extract(x.usage, '$.buckets') IS NOT NULL AND COALESCE(json_extract(x.usage, '$.inputTokens'), 0) + COALESCE(json_extract(x.usage, '$.outputTokens'), 0)
+    + COALESCE(json_extract(x.usage, '$.cacheReadTokens'), 0) + COALESCE(json_extract(x.usage, '$.cacheWriteTokens'), 0) = 0
+    THEN json_extract(x.usage, '$.costUsdEquivalent') END), 0) AS tokenless_cost`;
 
 /**
  * The provider and model a turn `t` of thread `th` ran on: its execution

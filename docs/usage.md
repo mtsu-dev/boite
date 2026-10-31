@@ -383,9 +383,16 @@ matches a model and computes the cost.
   the journal keeps one sum per turn, not each request's size, so such usage
   is underestimated.
 - Tokens are what the agent reported for the turn. Claude's `usage` leaves out
-  a compaction summary and the CLI's own side requests, which its
-  `total_cost_usd` includes, so a Claude turn that reported no tokens costs
-  nothing here.
+  the CLI's own side requests, which its `total_cost_usd` includes. A
+  `/compact` result reports a zeroed `usage` (Claude Code 2.1.316, measured
+  2026-10-31) while its `modelUsage` grows by the summary request, so the
+  driver records what the running totals grew by, every model summed, with the
+  one-hour writes `cacheCreationEphemeral1hInputTokens` counted. When the
+  totals before the turn are unknown, a resumed session whose last turn saved
+  none, the turn keeps zero tokens and the usage page adds the cost it
+  reported. A turn an older core recorded without `buckets` and without tokens
+  adds nothing: before 2026-10-13 such turns were charged a resumed session's
+  whole total.
 - A model the list does not know, including a provider's default model
   recorded as null, keeps the cost its agent reported: the Claude SDK's
   `total_cost_usd`, an ACP `usage_update` priced in USD, or pi's reported cost.
@@ -405,7 +412,8 @@ warm process, and a process that resumes a session restores the total its
 transcript saved when the session's last process ended. That save holds only
 what that process counted, so after a process that started from zero it is less
 than the sum of the session's turns. Each turn records the CLI's totals as its
-result left them (`Turn.agentTotals`: the cost and the tokens of `modelUsage`),
+result left them (`Turn.agentTotals`: the cost and the tokens of `modelUsage`,
+summed and as `held` buckets),
 and a cold turn, or a later attempt of the same turn, measures from the last of
 them: when the result's `modelUsage` holds those tokens on top of its own, the
 turn is charged the difference; when it holds less than half of them, the CLI

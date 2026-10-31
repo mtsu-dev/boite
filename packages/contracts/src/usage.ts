@@ -28,6 +28,23 @@ export interface Usage {
   costUsdEquivalent: number | null;
 }
 
+/**
+ * An agent's own running totals as one of its turns ended, for an agent that
+ * saves them with its session and restores them on resume (Claude: the
+ * result's `total_cost_usd` and the tokens of its `modelUsage`).
+ */
+export interface AgentTotals {
+  costUsd: number;
+  /** Every token of the totals, cache included. */
+  tokens: number;
+  /**
+   * The same tokens as `Usage` buckets, which a turn whose own usage reports
+   * nothing (a Claude compaction) is measured against. Absent on turns an
+   * older core recorded.
+   */
+  held?: Omit<Usage, 'buckets' | 'costUsdEquivalent'>;
+}
+
 /** Public API prices in US dollars per million tokens. */
 export interface TokenRates {
   input: number;

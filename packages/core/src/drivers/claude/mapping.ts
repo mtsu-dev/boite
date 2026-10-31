@@ -1,5 +1,5 @@
 import type { SDKAssistantMessageError, SDKMessage, SDKResultMessage, SlashCommand } from '@anthropic-ai/claude-agent-sdk';
-import type { AgentCommand, BackgroundTask, ToolDocument, Usage } from '@boite/contracts';
+import type { AgentCommand, AgentTotals, BackgroundTask, ToolDocument, Usage } from '@boite/contracts';
 import type { PromptCacheLife } from '../types.ts';
 import { stringify } from '../tool-text.ts';
 
@@ -129,22 +129,68 @@ function heldTokens(result: SDKResultMessage): number {
   return Object.values(result.modelUsage ?? {}).reduce((sum, model) => sum + model.inputTokens + model.outputTokens + model.cacheReadInputTokens + model.cacheCreationInputTokens, 0);
 }
 
+export type HeldUsage = NonNullable<AgentTotals['held']>;
+
+export const NOTHING_HELD: HeldUsage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+
+/**
+ * The result's `modelUsage` as `Usage` buckets, every model summed. The CLI
+ * counts the one-hour writes under `cacheCreationEphemeral1hInputTokens` and
+ * prices the other writes at the five-minute rate; a CLI too old to count
+ * them leaves the field out, and Claude Code writes for an hour (`mapUsage`).
+ */
+export function heldUsage(result: SDKResultMessage): HeldUsage {
+  const held = { ...NOTHING_HELD, cacheWriteHourTokens: 0 };
+  for (const model of Object.values(result.modelUsage ?? {})) {
+    const written = model.cacheCreationInputTokens ?? 0;
+    const hour = model.cacheCreationEphemeral1hInputTokens;
+    held.inputTokens += model.inputTokens ?? 0;
+    held.outputTokens += model.outputTokens ?? 0;
+    held.cacheReadTokens += model.cacheReadInputTokens ?? 0;
+    held.cacheWriteTokens += written;
+    held.cacheWriteHourTokens += typeof hour === 'number' ? Math.min(Math.max(0, hour), written) : written;
+  }
+  return held;
+}
+
 /**
  * The CLI's running totals as this result left them, what a later resume
  * restores. None from a result with nothing counted: a startup error reports
  * zeroed totals that say nothing about what the session's transcript holds.
  */
-export function agentTotalsOf(result: SDKResultMessage): { costUsd: number; tokens: number } | null {
+export function agentTotalsOf(result: SDKResultMessage): AgentTotals | null {
   if (typeof result.total_cost_usd !== 'number') return null;
   const tokens = heldTokens(result);
-  return result.total_cost_usd > 0 || tokens > 0 ? { costUsd: result.total_cost_usd, tokens } : null;
+  return result.total_cost_usd > 0 || tokens > 0 ? { costUsd: result.total_cost_usd, tokens, held: heldUsage(result) } : null;
+}
+
+/**
+ * What the running totals grew by since `before`, for a result whose own
+ * `usage` counts nothing although the CLI made a request: `/compact` reports
+ * a zeroed `usage` and adds its summary request to `modelUsage` only. Null
+ * when the totals did not grow, or when `before` is unknown or larger than
+ * what the CLI holds now, which means it restored an older save.
+ */
+export function heldGrowth(result: SDKResultMessage, before: HeldUsage | null): HeldUsage | null {
+  if (before === null || result.modelUsage === undefined) return null;
+  const now = heldUsage(result);
+  const grown = {
+    inputTokens: now.inputTokens - before.inputTokens,
+    outputTokens: now.outputTokens - before.outputTokens,
+    cacheReadTokens: now.cacheReadTokens - before.cacheReadTokens,
+    cacheWriteTokens: now.cacheWriteTokens - before.cacheWriteTokens,
+  };
+  const hour = (now.cacheWriteHourTokens ?? 0) - (before.cacheWriteHourTokens ?? 0);
+  const counts = Object.values(grown);
+  if (counts.some((count) => count < 0) || counts.every((count) => count === 0)) return null;
+  return { ...grown, ...(hour > 0 ? { cacheWriteHourTokens: Math.min(hour, grown.cacheWriteTokens) } : {}) };
 }
 
 /**
  * `costBefore` is what the same CLI process already charged to earlier turns
  * of a warm query, null when that is unknown and so is this turn's cost.
  */
-export function mapUsage(result: SDKResultMessage, costBefore: number | null): Usage {
+export function mapUsage(result: SDKResultMessage, costBefore: number | null, heldBefore: HeldUsage | null = null): Usage {
   const total = typeof result.total_cost_usd === 'number' ? result.total_cost_usd : null;
   const usage = result.usage as
     | {
@@ -159,12 +205,16 @@ export function mapUsage(result: SDKResultMessage, costBefore: number | null): U
   // Claude Code writes its cache for an hour unless the split says otherwise.
   const split = usage?.cache_creation?.ephemeral_1h_input_tokens;
   const hourWrites = typeof split === 'number' ? Math.min(Math.max(0, split), written) : written;
-  return {
+  const own = {
     inputTokens: usage?.input_tokens ?? 0,
     outputTokens: usage?.output_tokens ?? 0,
     cacheReadTokens: usage?.cache_read_input_tokens ?? 0,
     cacheWriteTokens: written,
     ...(hourWrites > 0 ? { cacheWriteHourTokens: hourWrites } : {}),
+  };
+  const silent = own.inputTokens + own.outputTokens + own.cacheReadTokens + own.cacheWriteTokens === 0;
+  return {
+    ...((silent ? heldGrowth(result, heldBefore) : null) ?? own),
     // A total under what was already charged leaves this turn's share unknown:
     // the CLI restored less than the journal holds. Charging the whole total
     // would count the restored turns again, and the journal's sum, read back

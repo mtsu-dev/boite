@@ -1,4 +1,4 @@
-import type { ProviderId, ThreadId, Usage, UsageHistory, UsageHistoryRow, UsageHistoryThread, UsagePrice } from '@boite/contracts';
+import type { AgentTotals, ProviderId, ThreadId, Usage, UsageHistory, UsageHistoryRow, UsageHistoryThread, UsagePrice } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { invalidParams } from './errors.ts';
 import { usageGroups, type UsageGroup, type UsageSums } from './journal/usage-sums.ts';
@@ -89,7 +89,7 @@ export function usageTotal(core: Core, groups: readonly UsageGroup[]): Usage {
 }
 
 /** What an agent session already used: its last reported totals, else its turns (`Journal.sessionUsage`). */
-export function sessionUsage(core: Core, threadId: ThreadId, generation: number, exceptTurnId: string): { costUsd: number; tokens: number } {
+export function sessionUsage(core: Core, threadId: ThreadId, generation: number, exceptTurnId: string): AgentTotals {
   const { reported, groups } = core.journal.sessionUsage(threadId, generation, exceptTurnId);
   if (reported !== null) return reported;
   const usage = usageTotal(core, groups);
@@ -140,11 +140,12 @@ export interface Priced {
  * Codex and Grok report none, and a rate prices every provider the same way.
  * Only what each turn stored decides it, never the provider's descriptor, so
  * editing or removing a provider leaves the turns recorded since as they were.
+ * A turn that reported a cost and no token keeps its cost: rates price none.
  */
 function priced(usage: Usage, sums: UsageSums, model: string | null): Priced {
   const quote = priceUsage(model, usage);
   if (quote === null || sums.reported === 0) return { usage, priced: sums.priced, price: quote?.price ?? null };
-  return { usage: { ...usage, costUsdEquivalent: quote.cost }, priced: sums.reported, price: quote.price };
+  return { usage: { ...usage, costUsdEquivalent: quote.cost + sums.tokenless_cost }, priced: sums.reported, price: quote.price };
 }
 
 /**

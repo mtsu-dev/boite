@@ -2,6 +2,7 @@ import { builtinSkills } from '../builtin-skills.ts';
 import type {
   Account,
   AgentCommand,
+  AgentTotals,
   Attachment,
   Message,
   MessageId,
@@ -535,7 +536,7 @@ export class TurnContexts {
   }
 
   /** What the agent session this turn resumes already used (`usage.ts` `sessionUsage`). */
-  #sessionBefore(thread: ThreadSummary, turnId: TurnId): { costUsd: number; tokens: number } {
+  #sessionBefore(thread: ThreadSummary, turnId: TurnId): AgentTotals {
     if (thread.sessionId === null) return { costUsd: 0, tokens: 0 };
     return sessionUsage(this.#core, thread.id, thread.sessionGeneration ?? 0, turnId);
   }
