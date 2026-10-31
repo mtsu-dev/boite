@@ -112,7 +112,7 @@ export class ClaudeTurn {
   #costBefore: number | null = 0;
   /** The CLI's running token totals before this turn, null when unknown. */
   #heldBefore: HeldUsage | null = NOTHING_HELD;
-  #restores = false;
+  #restores: string | null = null;
   /** The CLI's running totals as its result for this turn left them. */
   #agentTotals: AgentTotals | null = null;
   /** What the last API request of the turn carried, the context meter's reading. */
@@ -199,7 +199,7 @@ export class ClaudeTurn {
   // -- messages -------------------------------------------------------------
 
   /** What the CLI process had already charged to earlier turns, the tokens it held and whether it restored them, when this one's result arrived. */
-  noteCostBefore(costUsd: number | null, held: HeldUsage | null, restores: boolean): void {
+  noteCostBefore(costUsd: number | null, held: HeldUsage | null, restores: string | null): void {
     this.#costBefore = costUsd;
     this.#heldBefore = held;
     this.#restores = restores;

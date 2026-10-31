@@ -115,15 +115,15 @@ export function resultText(content: unknown): string {
  * came back: what it restored is unknown, so this turn's own share is too.
  * Restored counts only grow, so a bucket under the one `before` held means the
  * save was not restored whole. A compaction's own usage is empty, so its gap
- * may be its summary request alone: it reads as restored only when `before`
- * says an earlier result of the session already showed a restore.
+ * may be its summary request alone: it reads as restored only when `proven`,
+ * an earlier result of the session having shown this CLI version restoring.
  */
-export function restoredCost(result: SDKResultMessage, before: AgentTotals): number | null {
+export function restoredCost(result: SDKResultMessage, before: AgentTotals, proven = false): number | null {
   const total = typeof result.total_cost_usd === 'number' ? result.total_cost_usd : 0;
   if (before.costUsd <= 0 || before.tokens <= 0 || total <= 0) return 0;
   const turn = ownTokens(result);
   const restored = heldTokens(result) - turn;
-  if (restored >= before.tokens && total >= before.costUsd && holdsAll(result, before.held)) return turn > 0 || before.restores ? before.costUsd : null;
+  if (restored >= before.tokens && total >= before.costUsd && holdsAll(result, before.held)) return turn > 0 || proven ? before.costUsd : null;
   return restored < before.tokens / 2 ? 0 : null;
 }
 
@@ -169,11 +169,11 @@ export function heldUsage(result: SDKResultMessage): HeldUsage {
  * restores. None from a result with nothing counted: a startup error reports
  * zeroed totals that say nothing about what the session's transcript holds.
  */
-export function agentTotalsOf(result: SDKResultMessage, restores = false): AgentTotals | null {
+export function agentTotalsOf(result: SDKResultMessage, restores: string | null = null): AgentTotals | null {
   if (typeof result.total_cost_usd !== 'number') return null;
   const tokens = heldTokens(result);
   if (result.total_cost_usd <= 0 && tokens <= 0) return null;
-  return { costUsd: result.total_cost_usd, tokens, held: heldUsage(result), ...(restores ? { restores: true as const } : {}) };
+  return { costUsd: result.total_cost_usd, tokens, held: heldUsage(result), ...(restores !== null ? { restores } : {}) };
 }
 
 /** Every token the result's own `usage` counts, zero for a compaction. */

@@ -44,11 +44,11 @@ export interface AgentTotals {
    */
   held?: Omit<Usage, 'buckets' | 'costUsdEquivalent'>;
   /**
-   * The process behind these totals, or one before it, resumed the session
-   * and restored its totals, as a result with tokens of its own showed. Only
-   * then does a later result with none, a compaction, read as restored.
+   * The agent version seen restoring the session's totals on a resume, as a
+   * result with tokens of its own showed. A later result with none, a Claude
+   * compaction, reads as restored only from a process of that version.
    */
-  restores?: true;
+  restores?: string;
 }
 
 /** Public API prices in US dollars per million tokens. */
