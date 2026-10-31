@@ -225,6 +225,19 @@ export function normalizeAgentSetting(key: AgentSettingKey, raw: unknown, ctx: A
   }
 }
 
+/**
+ * Why no card may change this key of a built-in bot (`AgentProfile.builtin`),
+ * or null: its domain and instructions are Boite's, and it is never archived,
+ * only reset. The core's save refuses the same with the same words.
+ */
+export function builtinSettingRefusal(profile: Pick<AgentProfile, 'builtin'>, key: AgentSettingKey, value: unknown): string | null {
+  if (profile.builtin === undefined) return null;
+  if (key === 'domain') return 'domain: a built-in bot\'s domain is Boite\'s; reset it instead';
+  if (key === 'instructions') return 'instructions: a built-in bot\'s instructions are Boite\'s; reset it instead';
+  if (key === 'status' && value === 'archived') return 'status: a built-in bot is never archived; pause or reset it';
+  return null;
+}
+
 export type AgentSettingRequestCheck =
   | { ok: true; reason: string; setting: AgentSettingAsk; options: QuestionOption[] }
   | { ok: false; message: string; data: Record<string, unknown> };
@@ -242,6 +255,8 @@ export function checkAgentSettingRequest(params: Pick<AgentSettingRequestParams,
   if (params.value === undefined) return { ok: false, message: 'a change needs a value', data: { field: 'value' } };
   const normalized = normalizeAgentSetting(key, params.value, ctx);
   if (!normalized.ok) return { ok: false, message: normalized.message, data: { field: 'value', key } };
+  const locked = builtinSettingRefusal(ctx.profile, key, normalized.value);
+  if (locked !== null) return { ok: false, message: locked, data: { field: 'key', key } };
   const previous = agentSettingValue(ctx.profile, ctx.config, key);
   if (sameSetting(normalized.value, previous)) return { ok: false, message: `${ctx.profile.name}'s ${key} is already ${capped(JSON.stringify(previous))}`, data: { field: 'value', key } };
   if (open.some(card => card.agentId === ctx.profile.id && card.key === key)) return { ok: false, message: `a card asking about ${ctx.profile.name}'s ${key} is already open in this thread`, data: { field: 'key', key } };
