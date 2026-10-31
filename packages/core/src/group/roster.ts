@@ -19,7 +19,7 @@
 import type { CoordinationPeer } from '@boite/contracts';
 import { createHash, createPublicKey, verify } from 'node:crypto';
 import { GROUP_MAX_CORES, PAIRING_ROLES, type Os, type PairingRole } from '@boite/contracts';
-import { invalidParams } from '../errors.ts';
+import { invalidParams, refused } from '../errors.ts';
 import { boxSigningInput, checkBox } from './seal.ts';
 import { checkDeviceKey, checkServedOrigins, positive, text, wins, deviceAdmitted, mergeDeviceKeys, mergeServedOrigins, type DeviceKeyEntry, type ServedOrigins } from './device-keys.ts';
 
@@ -400,6 +400,26 @@ export function mergeRosters(local: Roster, remote: Roster): Roster {
     if (typeof home === 'string' && !liveCores(result).some((core) => core.coreId === home)) result = { ...result, ...homeGone(result, home) };
   }
   return sorted(result);
+}
+
+export type GroupRole = 'settingsHome' | 'botsHome';
+
+/** The live member holding a role, or null: a home that left the group is no home. */
+export function liveRole(roster: Roster, role: GroupRole): string | null {
+  const coreId = roster[role];
+  return typeof coreId === 'string' && liveCores(roster).some((core) => core.coreId === coreId) ? coreId : null;
+}
+
+/** The roster with a role given to a live member or cleared (null), at a new revision; the same roster when nothing changes. */
+export function withRole(roster: Roster, role: GroupRole, coreId: unknown): Roster {
+  if (coreId !== null && (typeof coreId !== 'string' || !liveCores(roster).some((core) => core.coreId === coreId))) {
+    throw invalidParams('coreId: expected the id of a machine of this group, or null', { field: 'coreId' });
+  }
+  if ((roster[role] ?? null) === coreId) return roster;
+  const revKey = role === 'settingsHome' ? 'settingsHomeRev' : 'botsHomeRev';
+  const rev = roster[revKey] ?? 0;
+  if (rev >= Number.MAX_SAFE_INTEGER) throw refused(`coreId: the ${role === 'settingsHome' ? 'settings home' : 'bots host'} revision has reached its limit`, { field: 'coreId' });
+  return { ...roster, [role]: coreId, [revKey]: rev + 1 };
 }
 
 /**

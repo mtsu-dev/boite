@@ -32,7 +32,7 @@ import { boundedBody, PeerGone } from './coordination-wire.ts';
 import type { Core } from './core.ts';
 import { invalidParams, messageOf, refused, RpcFailure, unauthorized, unavailable } from './errors.ts';
 import { advertisedAddresses, probeTailnet, tailnetAddress, ticketAddresses, type Tailnet } from './group/addresses.ts';
-import { admissionInput, checkAddress, checkCard, checkRoster, clockOf, CORE_ENTRIES_MAX, DEVICE_ENTRIES_MAX, digestOf, homeOf, liveCores, liveDeviceKeys, liveDevices, memberOrigins, mergeRosters, groupName, homeGone, peerOf, reachOf } from './group/roster.ts';
+import { admissionInput, checkAddress, checkCard, checkRoster, clockOf, CORE_ENTRIES_MAX, DEVICE_ENTRIES_MAX, digestOf, homeOf, liveCores, liveDeviceKeys, liveDevices, memberOrigins, mergeRosters, groupName, homeGone, liveRole, peerOf, reachOf, withRole, type GroupRole } from './group/roster.ts';
 import { deviceAdmissionInput, deviceId, deviceKey, deviceSigned, SERVED_ORIGINS_MAX, type DeviceKeyEntry } from './group/device-keys.ts';
 import type { CoreCard, CoreEntry, DeviceEntry, Roster } from './group/roster.ts';
 import { boxPublic, boxSigningInput, newBoxKey, open, pack, readBoxKey, seal, SEALED, sealedName, sealResponse, unpack } from './group/seal.ts';
@@ -181,8 +181,7 @@ export class GroupStore {
       devices: principal === 'owner' ? devices : devices.filter((entry) => entry.id === device),
       ...(device === undefined ? {} : { device }),
       // A home that left the group is no home: the others keep their own settings.
-      ...(typeof roster.settingsHome === 'string' && liveCores(roster).some((core) => core.coreId === roster.settingsHome) ? { settingsHome: roster.settingsHome } : {}),
-      ...(typeof roster.botsHome === 'string' && liveCores(roster).some((core) => core.coreId === roster.botsHome) ? { botsHome: roster.botsHome } : {}),
+      ...Object.fromEntries((['settingsHome', 'botsHome'] as const).flatMap((role) => (liveRole(roster, role) === null ? [] : [[role, liveRole(roster, role)]]))),
     };
   }
   // -- What the rest of the core reads off the roster.
@@ -687,23 +686,12 @@ export class GroupStore {
   botsHome(coreId: unknown): Group { return this.#setRole('botsHome', coreId); }
 
   /** The member holding a group role, live in the roster, or null. */
-  roleOf(role: 'settingsHome' | 'botsHome'): string | null {
-    const roster = this.roster;
-    const coreId = roster?.[role];
-    return roster && typeof coreId === 'string' && liveCores(roster).some((core) => core.coreId === coreId) ? coreId : null;
-  }
+  roleOf(role: GroupRole): string | null { return this.roster === null ? null : liveRole(this.roster, role); }
 
-  #setRole(role: 'settingsHome' | 'botsHome', coreId: unknown): Group {
+  #setRole(role: GroupRole, coreId: unknown): Group {
     const roster = this.require();
-    if (coreId !== null && (typeof coreId !== 'string' || !liveCores(roster).some((core) => core.coreId === coreId))) {
-      throw invalidParams('coreId: expected the id of a machine of this group, or null', { field: 'coreId' });
-    }
-    const revKey = role === 'settingsHome' ? 'settingsHomeRev' : 'botsHomeRev';
-    if ((roster[role] ?? null) !== coreId) {
-      const rev = roster[revKey] ?? 0;
-      if (rev >= Number.MAX_SAFE_INTEGER) throw refused(`coreId: the ${role === 'settingsHome' ? 'settings home' : 'bots host'} revision has reached its limit`, { field: 'coreId' });
-      this.commit({ ...roster, [role]: coreId, [revKey]: rev + 1 });
-    }
+    const next = withRole(roster, role, coreId);
+    if (next !== roster) this.commit(next);
     return this.view('owner')!;
   }
 
