@@ -9,8 +9,11 @@ import { secureId } from './secure-id';
  * machine it leaves, where a new id would find the bot on both and be refused.
  * The id lives in this window's storage, keyed by the machine that holds the
  * bot, the bot and the target, so it survives a reload and a reconnection.
+ * When storage refuses to write, this page keeps it in memory.
  */
 const STORAGE_KEY = 'boite.agentMoves';
+/** The moves this page keeps itself while storage refuses to write them. */
+let fallback: Record<string, string> | null = null;
 
 /** The refusals after which the same move may still finish: the bot is busy, on its way, or the answer did not come back. */
 const UNFINISHED = new Set(['unreachable', 'moving', 'turn-in-flight', 'unread-answer', 'facts-arriving']);
@@ -18,6 +21,7 @@ const UNFINISHED = new Set(['unreachable', 'moving', 'turn-in-flight', 'unread-a
 const keyOf = (machine: string, agentId: string, target: string) => JSON.stringify([machine, agentId, target]);
 
 function read(): Record<string, string> {
+  if (fallback !== null) return { ...fallback };
   try {
     const raw: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}');
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
@@ -29,7 +33,8 @@ function write(moves: Record<string, string>): void {
   try {
     if (Object.keys(moves).length === 0) localStorage.removeItem(STORAGE_KEY);
     else localStorage.setItem(STORAGE_KEY, JSON.stringify(moves));
-  } catch { /* storage refused: the id lasts as long as this page */ }
+    fallback = null;
+  } catch { fallback = { ...moves }; }
 }
 
 /** The `requestId` of the move of `agentId` from `machine` to `target`: the one still unfinished, else a new one kept now. */

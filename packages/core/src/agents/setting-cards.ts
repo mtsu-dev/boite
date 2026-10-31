@@ -190,9 +190,6 @@ export class AgentSettingCards {
     if (ask === undefined) throw notFound(`agents.settings.apply: ${String(params.questionId)} is no open agent setting card of thread ${String(params.threadId)}`, { field: 'questionId' });
     const agent = this.#store.records.get('profile', ask.agentId);
     if (agent.status === 'archived') throw refused(`agents.settings.apply: ${agent.name} is archived`, { field: 'questionId' });
-    // A card drawn before the bot was Boite's, or edited on Apply: a built-in bot's text and archive stay locked.
-    const locked = builtinSettingRefusal(agent, ask.key, params.value ?? ask.value);
-    if (locked !== null) throw refused(locked, { field: 'questionId', key: ask.key });
     const ctx = this.#context(agent, true);
     let value = ask.value;
     // A name is checked again: another card may have given it to a bot since this one was drawn.
@@ -202,6 +199,9 @@ export class AgentSettingCards {
       if (!normalized.ok) throw refused(normalized.message, { field: 'value', key: ask.key });
       value = normalized.value;
     }
+    // A card drawn before the bot was Boite's, or edited on Apply: a built-in bot's text and archive stay locked, read as they would be saved.
+    const locked = builtinSettingRefusal(agent, ask.key, value);
+    if (locked !== null) throw refused(locked, { field: 'questionId', key: ask.key });
     const saved = this.#write(agent, ctx, ask.key, value);
     this.settle(agent.id);
     return saved;

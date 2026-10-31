@@ -77,6 +77,7 @@ export function contactMailGate(core: Core, threadId: string): {cleared: (letter
   const toolFree = thread !== null && core.providers.get(thread.providerId)?.protocol === 'echo' && thread.permissionMode === 'default';
   const approved = storedScope(core, threadId)?.trusted ?? [];
   const flagged = (letter: AgentLetter) => core.contacts.flags.holds(letter.id);
+  // A routed contact answer names its request as its sender (`answers.ts`, `mailboxes.ts`): the relation that request made.
   const related = (letter: AgentLetter) => letter.origin === 'contact'
     ? core.contacts.relations.forRequest(letter.contact!.coreId, letter.from.threadId)?.local.threadId === threadId
     : core.contacts.reach.byRelation(threadId, letter.contact!.coreId, letter.from.threadId);

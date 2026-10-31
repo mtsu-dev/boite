@@ -111,7 +111,7 @@ export function deliverContactAnswer(ctx: FakeContext, request: ContactRequest):
   if (!thread || thread.archived) return;
   const responder = request.decidedBy === 'owner' ? request.contact : request.decidedBy === 'bot' ? `${request.contact}'s Operator` : `${request.contact}'s Boite${request.decidedBy === 'match' || request.decidedBy === 'concierge' ? ' automatically' : ''}`;
   // As the core: a relation names the exact thread to write to; an opened project names the project.
-  const address = request.relation ? `${request.contact.replace(/\s+/g, '-').toLowerCase()}/${request.relation.remote.threadId}` : '';
+  const address = request.relation ? `${request.contact.replace(/\s+/g, '-')}/${request.relation.remote.threadId}` : '';
   const text = request.status !== 'accepted' ? `${responder} refused your request: ${request.reason ?? 'no reason given'}`
     : request.relation ? `${responder} put you in touch with ${JSON.stringify(request.relation.remote.title)} (${address}). Write to it with boite threads send ${address} <text>.`
     : `${responder} opened its project ${JSON.stringify(request.project?.name ?? '')} to you.`;
