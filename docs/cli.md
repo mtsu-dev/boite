@@ -245,7 +245,8 @@ and limits are in [windows.md](windows.md).
 conversation gets a private desktop in memory: `run <program>` starts a GUI app
 there that outlives the turn, and every other word runs agent-desktop on it
 (`snapshot -i`, `click @ref`, `type`, `press`, `screenshot`) to read the app's
-accessibility tree and act on it. `env` prints the desktop's variables for the
+accessibility tree and act on it. Boite installs a pinned agent-desktop the
+first time; nothing is installed by hand. `env` prints the desktop's variables for the
 agent's own tools and `stop` ends it; archiving the conversation stops it too.
 Nothing reaches the user's screen, keyboard or speakers. Details and limits are
 in [desktop.md](desktop.md).

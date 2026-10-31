@@ -5,7 +5,8 @@
  * carries the accessibility bus, and the apps an agent starts there outlive
  * its turn. The user's screen, session bus and sound are never reached.
  * agent-desktop itself runs from the agent's shell with the environment this
- * returns (desktop-cli.ts). See docs/desktop.md.
+ * returns (desktop-cli.ts), from the pinned build Boite installs
+ * (agent-desktop.ts). See docs/desktop.md.
  */
 import {
   VIRTUAL_DESKTOP_APPS_MAX,
@@ -28,6 +29,7 @@ import type { Core } from '../core.ts';
 import { invalidParams, messageOf, refused } from '../errors.ts';
 import type { SpawnedProcess } from '../process-spawn-types.ts';
 import type { Connection } from '../router.ts';
+import { AgentDesktopTool } from './agent-desktop.ts';
 import { DESKTOP_MARK, DESKTOP_XDG_DIRS, desktopEnv, withDesktopEnv } from './env.ts';
 import { runCommand } from '../run-command.ts';
 
@@ -202,12 +204,14 @@ const CANCELLED = 'its conversation was archived or Boite is stopping';
 export interface VirtualDesktopsOptions {
   tools?: () => DesktopTools | VirtualDesktopSupport;
   tempRoot?: string;
+  agentDesktop?: AgentDesktopTool;
 }
 
 export class VirtualDesktops {
   readonly #core: Core;
   readonly #tools: () => DesktopTools | VirtualDesktopSupport;
   readonly #tempRoot: string;
+  #agentDesktopTool: AgentDesktopTool | undefined;
   readonly #sessions = new Map<string, Session>();
   /** One start per conversation, shared by the calls that arrive meanwhile. */
   readonly #starting = new Map<string, Starting>();
@@ -219,13 +223,36 @@ export class VirtualDesktops {
     this.#core = core;
     this.#tools = options.tools ?? (() => findDesktopTools());
     this.#tempRoot = options.tempRoot ?? tmpdir();
+    this.#agentDesktopTool = options.agentDesktop;
+  }
+
+  // Made on first use: the core sets its data folder after it builds this service.
+  get #agentDesktop(): AgentDesktopTool {
+    return this.#agentDesktopTool ??= new AgentDesktopTool(join(this.#core.dataDir, 'tools'), this.#core.procs);
   }
 
   status({ threadId }: RpcParams<'desktop.status'>, connection?: Connection): RpcResult<'desktop.status'> {
     this.#thread(threadId, connection, true);
-    const tools = this.#tools();
     const session = this.#sessions.get(threadId);
-    return { support: isTools(tools) ? { available: true } : tools, session: session ? this.#describe(session) : null };
+    return { support: this.#support(), session: session ? this.#describe(session) : null };
+  }
+
+  /** The agent-desktop to run, installed on the first call that needs it. */
+  async tool({ threadId }: RpcParams<'desktop.tool'>, connection?: Connection): Promise<RpcResult<'desktop.tool'>> {
+    this.#thread(threadId, connection);
+    const support = this.#support();
+    if (!support.available) throw refused(`no virtual desktop on this machine: ${support.reason}`, { threadId });
+    try {
+      return { path: await this.#agentDesktop.path(), version: this.#agentDesktop.version };
+    } catch (error) {
+      throw refused(messageOf(error), { threadId });
+    }
+  }
+
+  #support(): VirtualDesktopSupport {
+    if (this.#core.policy.agentDesktopOff()) return { available: false, reason: 'the machine policy turns it off (key agentDesktop)' };
+    const tools = this.#tools();
+    return isTools(tools) ? { available: true } : tools;
   }
 
   async start({ threadId, width, height }: RpcParams<'desktop.start'>, connection?: Connection): Promise<RpcResult<'desktop.start'>> {
@@ -341,6 +368,8 @@ export class VirtualDesktops {
     if (pending) return pending.promise;
     const tools = this.#tools();
     if (!isTools(tools)) throw refused(`no virtual desktop on this machine: ${tools.reason}`, { threadId: thread.id, missing: tools.missing });
+    // Fetched while the desktop starts, so the first snapshot does not wait for it.
+    void this.#agentDesktop.path().catch(() => {});
     const starting = { cancelled: false, stack: [] } as unknown as Starting;
     starting.promise = this.#launch(thread.id, tools, width ?? VIRTUAL_DESKTOP_SIZE.defaultWidth, height ?? VIRTUAL_DESKTOP_SIZE.defaultHeight, starting)
       .finally(() => { if (this.#starting.get(thread.id) === starting) this.#starting.delete(thread.id); });

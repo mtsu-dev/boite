@@ -3,7 +3,7 @@ import { RpcFailure } from '../client';
 import { refusal } from './shared';
 import type { FakeContext, FakeMethods } from './context';
 
-type Methods = 'desktop.status' | 'desktop.start' | 'desktop.run' | 'desktop.stop';
+type Methods = 'desktop.status' | 'desktop.start' | 'desktop.run' | 'desktop.stop' | 'desktop.tool';
 
 /** The in-memory client runs no X server: it answers as a machine without the tools would, after the core's checks. */
 const REASON = 'the in-memory client has no virtual desktop';
@@ -32,6 +32,10 @@ export function desktopMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
     'desktop.stop': async ({ threadId }) => {
       ctx.thread(threadId);
       return { stopped: false };
+    },
+    'desktop.tool': async ({ threadId }) => {
+      ctx.thread(threadId);
+      throw refusal(`no virtual desktop on this machine: ${REASON}`, { threadId });
     },
   };
 }

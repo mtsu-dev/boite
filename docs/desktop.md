@@ -24,7 +24,7 @@ boite desktop stop
 ```
 
 - `status` shows the desktop, its apps with their exit codes and log files,
-  what the machine lacks to start one, and where agent-desktop is.
+  and what the machine lacks to start one.
 - `start [--size WxH]` starts the desktop, 1280x800 by default, from 320 to
   3840 pixels a side. `run` starts it too when needed.
 - `run <program> [args...]` starts a program on the desktop in the current
@@ -40,7 +40,9 @@ boite desktop stop
   `snapshot`, `click`, `type`, `press`, `find`, `wait`, `screenshot`,
   `list-windows` and the rest. `boite desktop skills get desktop` prints
   agent-desktop's own guide. Its output and exit code come back unchanged;
-  `--json` wraps them.
+  `--json` wraps them. The guides and `--help` pages name their commands
+  `boite desktop <command>`, the form that reaches this desktop; an app's own
+  text in a snapshot stays as the app wrote it.
 
 agent-desktop's `--headed` sends real keys and clicks through the X server
 instead of accessibility actions. It is safe here, since nobody else uses the
@@ -48,8 +50,22 @@ display: a web page's text field, for one, takes `type` only with it. Refs come
 from the last snapshot. A command that needs the desktop before one
 exists fails with `no desktop yet` and runs nothing.
 
-agent-desktop runs from the agent's shell, found on its `PATH`. Install it with
-`npm i -g agent-desktop`; `status` says when it is missing.
+## agent-desktop
+
+Nobody installs agent-desktop by hand. The first desktop of a core, or the
+first command that needs the tool, has the core fetch one pinned release
+(`AGENT_DESKTOP_RELEASE` in `packages/core/src/desktop/agent-desktop.ts`) from
+the npm registry. The core checks the archive's SHA-256, unpacks the Linux
+binary for the machine's CPU (x64 or arm64) and its clipboard helper with
+`tar`, checks each file's SHA-256 and moves them together into
+`<data dir>/tools/agent-desktop-<version>/`. An archive or a file that does not
+match installs nothing. Concurrent commands share one download, and a later
+core checks the installed files and reuses them.
+
+The CLI asks the core for that path (`desktop.tool`) and runs it from the
+agent's shell with the desktop's environment. When the core cannot give one,
+being offline or refused by the `agentDesktop` policy, an agent-desktop on the
+agent's `PATH` runs instead; with neither, the command fails with the reason.
 
 ## The desktop
 
@@ -107,6 +123,9 @@ Apps on the desktop get this environment, which `env` prints:
   conversation first.
 - An archived conversation can read its status and stop its desktop, but not
   start one or run a program.
+- The [admin policy](enterprise.md) key `agentDesktop: false` refuses starting
+  a desktop, running a program and the agent-desktop download. `status` says
+  so, and `stop` still ends a desktop started before the file.
 
 ## Lifetime
 
@@ -143,7 +162,10 @@ everything itself, such as a game, has none: use `screenshot` and coordinates.
 ## Tests
 
 `packages/core/test/desktop.test.ts` covers the Xauthority layout, the
-environment, tool detection, the validators and the argument parsing. With the
+environment, tool detection, the validators and the argument parsing. A
+release archive built in the test covers the agent-desktop install: one
+download for concurrent calls, executable files, reuse by the next core, and
+nothing installed from an archive or a file whose digest differs. With the
 four tools installed, it also starts a real desktop. It checks that an app sees
 the desktop's display and no Wayland, and that the display refuses a client
 without the cookie. A fake stack covers a stop or an archive that comes while

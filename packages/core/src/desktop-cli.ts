@@ -3,15 +3,14 @@
  * core starts the desktop and the apps on it, which outlive the turn; every
  * other word goes to agent-desktop, run here with the desktop's environment,
  * so its refs, snapshots and screenshots see that desktop and nothing else.
- * See docs/desktop.md.
+ * The agent-desktop is the pinned build the core installs (desktop.tool), or
+ * one on the agent's PATH when that install is refused. See docs/desktop.md.
  */
 import { VIRTUAL_DESKTOP_SIZE, type VirtualDesktopApp, type VirtualDesktopSession, type VirtualDesktopSupport } from '@boite/contracts';
 import type { CoreClient } from './client.ts';
 import type { CliIo } from './cli.ts';
 import { Usage } from './cli-args.ts';
 import { DESKTOP_MARK, withDesktopEnv } from './desktop/env.ts';
-
-export const AGENT_DESKTOP_INSTALL = 'npm i -g agent-desktop';
 
 export const DESKTOP_HELP = `boite desktop <command> [args]
   status                         this conversation's desktop, its apps, and what
@@ -29,11 +28,12 @@ export const DESKTOP_HELP = `boite desktop <command> [args]
                                            a web field with no text action of its own
     find --role button --name Save | wait --text Done
     screenshot --app <name> shot.png       then boite attach shot.png
-    skills get desktop                     agent-desktop's own guide
+    skills get desktop                     agent-desktop's own guide, in boite desktop words
 A Linux machine only: Xvfb in memory, openbox, its own D-Bus and accessibility
 bus. Nothing reaches the user's screen, keyboard or speakers. Chrome, Electron,
 Qt and GTK apps expose their tree there; refs come from the last snapshot.
-Archiving the conversation stops the desktop. agent-desktop: ${AGENT_DESKTOP_INSTALL}`;
+Boite installs agent-desktop itself the first time. Archiving the conversation
+stops the desktop.`;
 
 /** agent-desktop commands that read no desktop. */
 const OFFLINE = new Set(['skills', 'version', 'help', '--help', '-h', '--version', '-V']);
@@ -65,6 +65,26 @@ export function findAgentDesktop(env: CliIo['env']): string | null {
   return Bun.which('agent-desktop', { PATH: env['PATH'] ?? env['Path'] ?? '' });
 }
 
+/** The pinned agent-desktop Boite installs; one on PATH only when the core cannot give it. */
+async function agentDesktopBinary(io: CliIo, client: CoreClient, threadId: string): Promise<string> {
+  try {
+    return (await client.call('desktop.tool', { threadId })).path;
+  } catch (error) {
+    const own = findAgentDesktop(io.env);
+    if (own) return own;
+    throw error;
+  }
+}
+
+/**
+ * agent-desktop's guides and help name its own command; here the same words
+ * go through `boite desktop`, which aims them at this conversation's desktop.
+ * Only a command form is rewritten: in code, at a line start or after `Usage: `.
+ */
+export function inBoiteWords(text: string): string {
+  return text.replace(/(`|\\n|^|Usage: )agent-desktop (?=[\w@<[-])/gm, '$1boite desktop ');
+}
+
 function size(rest: string[]): { width?: number; height?: number } {
   const at = rest.indexOf('--size');
   if (at === -1) return {};
@@ -78,9 +98,7 @@ function done(rest: string[]): void {
   if (rest.length > 0) throw new Usage(`desktop does not take ${rest[0]}\n${DESKTOP_HELP}`);
 }
 
-async function agentDesktop(args: string[], io: CliIo, env: Record<string, string> | null): Promise<DesktopCliResult> {
-  const binary = findAgentDesktop(io.env);
-  if (!binary) throw new Error(`agent-desktop is not installed: ${AGENT_DESKTOP_INSTALL}`);
+async function agentDesktop(binary: string, args: string[], io: CliIo, env: Record<string, string> | null): Promise<DesktopCliResult> {
   const child = Bun.spawn({
     cmd: [binary, ...args],
     cwd: io.cwd,
@@ -89,7 +107,11 @@ async function agentDesktop(args: string[], io: CliIo, env: Record<string, strin
     stdout: 'pipe',
     stderr: 'pipe',
   });
-  const [stdout, stderr, exitCode] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
+  const [raw, rawErr, exitCode] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
+  // Guides and help only: an app's own text in a snapshot stays as the app wrote it.
+  const words = env === null;
+  const stdout = words ? inBoiteWords(raw) : raw;
+  const stderr = words ? inBoiteWords(rawErr) : rawErr;
   return { lines: [stdout.trimEnd()], value: { stdout, stderr, exitCode }, output: { stdout, stderr, exitCode } };
 }
 
@@ -100,10 +122,7 @@ export async function desktopCommand(args: string[], io: CliIo, client: CoreClie
     case 'status': {
       done(rest);
       const status = await client.call('desktop.status', { threadId });
-      const binary = findAgentDesktop(io.env);
-      const lines = [...supportLines(status.support), ...(status.session ? sessionLines(status.session) : ['desktop: not started'])];
-      lines.push(binary ? `agent-desktop: ${binary}` : `agent-desktop: not installed (${AGENT_DESKTOP_INSTALL})`);
-      return { lines, value: { ...status, agentDesktop: binary } };
+      return { lines: [...supportLines(status.support), ...(status.session ? sessionLines(status.session) : ['desktop: not started'])], value: status };
     }
     case 'start': {
       const wanted = size(rest);
@@ -135,10 +154,10 @@ export async function desktopCommand(args: string[], io: CliIo, client: CoreClie
     default: {
       // Words after `--` are text (`type @ref -- --help`), never a request for help.
       const flags = rest.includes('--') ? rest.slice(0, rest.indexOf('--')) : rest;
-      if (OFFLINE.has(command) || flags.includes('--help') || flags.includes('-h')) return agentDesktop(args, io, null);
+      if (OFFLINE.has(command) || flags.includes('--help') || flags.includes('-h')) return agentDesktop(await agentDesktopBinary(io, client, threadId), args, io, null);
       const { session, support } = await client.call('desktop.status', { threadId });
       if (!session) throw new Error(support.available ? 'no desktop yet: boite desktop run <app> starts one with the app' : supportLines(support)[0]!);
-      return agentDesktop(args, io, session.env);
+      return agentDesktop(await agentDesktopBinary(io, client, threadId), args, io, session.env);
     }
   }
 }

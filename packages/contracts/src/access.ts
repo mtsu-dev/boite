@@ -362,6 +362,7 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
   ['desktop.start', 'an X server in memory for its own conversation, which it could start from its shell anyway, kept until it stops it or the conversation is archived'],
   ['desktop.run', 'a program on that desktop, as its shell would start it, kept past the turn until the desktop stops'],
   ['desktop.stop', 'stopping its own conversation\'s desktop and what runs on it'],
+  ['desktop.tool', 'the path of the pinned agent-desktop Boite installs for its desktop commands, which it could download itself'],
   // windows.frame stays with the owner and paired devices: the stream is for the person watching, a screenshot gives
   // the agent the window. windows.consent, windows.allowlist and windows.revoke are the owner's: the agent asks, never answers.
   // devices.stream and devices.clipboard stay with the owner and paired devices: the video is for the person

@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { AGENT_ENV, virtualDesktopCommandError, virtualDesktopSizeError } from '@boite/contracts';
 import { runCli } from '../src/cli.ts';
-import { desktopCommand } from '../src/desktop-cli.ts';
+import { desktopCommand, inBoiteWords } from '../src/desktop-cli.ts';
+import { AgentDesktopTool, type AgentDesktopRelease } from '../src/desktop/agent-desktop.ts';
 import { parse } from '../src/cli-args.ts';
 import { DESKTOP_MARK, desktopEnv, withDesktopEnv } from '../src/desktop/env.ts';
 import { findDesktopTools, markedProcesses, VirtualDesktops, xauthority, type DesktopTools } from '../src/desktop/service.ts';
@@ -76,6 +78,7 @@ function fakeStack() {
   const core = {
     threads: { require: () => thread },
     logs: { info: () => {} },
+    policy: { agentDesktopOff: () => false },
     procs: { protection: { policy: () => null }, spawn: (_scope: string, command: string) => {
       let stdout!: ReadableStreamDefaultController<Uint8Array>, stderr!: ReadableStreamDefaultController<Uint8Array>, exit!: (code: number) => void;
       const exited = new Promise<number>(resolve => { exit = resolve; });
@@ -96,7 +99,9 @@ function fakeStack() {
     } },
   };
   const tools: DesktopTools = { xvfb: 'Xvfb', dbus: 'dbus-daemon', atspi: 'at-spi-bus-launcher', openbox: 'openbox', dbusSend: null };
-  const desktops = new VirtualDesktops(core as unknown as ConstructorParameters<typeof VirtualDesktops>[0], { tools: () => tools });
+  // The real tool would download agent-desktop on the first start.
+  const agentDesktop = { path: async () => '/fake/agent-desktop', version: '0.0.0' } as unknown as AgentDesktopTool;
+  const desktops = new VirtualDesktops(core as unknown as ConstructorParameters<typeof VirtualDesktops>[0], { tools: () => tools, agentDesktop });
   const live = () => spawned.filter(entry => !entry.stopped).length;
   const until = async (done: () => boolean) => { for (let at = 0; !done(); at += 1) { if (at > 2_000) throw new Error('timed out'); await Bun.sleep(1); } };
   return { desktops, thread, spawned, live, until, holdXvfb: () => (gates.xvfb = gate()), holdOpenboxStop: () => (gates.openboxStop = gate()) };
@@ -164,6 +169,89 @@ test('a program still starts with a log after something on the desktop removed t
   expect(stack.live()).toBe(0);
 });
 
+test('agent-desktop\'s guide and help speak boite desktop, and its prose and app text stay as written', () => {
+  expect(inBoiteWords('1. Run `agent-desktop status`. Then `agent-desktop <command> --help`.')).toBe('1. Run `boite desktop status`. Then `boite desktop <command> --help`.');
+  // Code lines inside a JSON envelope, where a newline is the two characters \n.
+  expect(inBoiteWords('```\\nagent-desktop snapshot -i\\nagent-desktop click @s1:e2\\n```')).toBe('```\\nboite desktop snapshot -i\\nboite desktop click @s1:e2\\n```');
+  expect(inBoiteWords('Usage: agent-desktop snapshot [OPTIONS]')).toBe('Usage: boite desktop snapshot [OPTIONS]');
+  expect(inBoiteWords('Use the agent-desktop CLI. requirements:\\n  - agent-desktop\\n')).toBe('Use the agent-desktop CLI. requirements:\\n  - agent-desktop\\n');
+});
+
+describe('the agent-desktop Boite installs', () => {
+  const sha = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
+  let dir: string, harness: TestCore;
+
+  /** A release archive laid out like the npm one, with a binary and its clipboard helper for x64. */
+  const release = (tamper: { archive?: boolean; entry?: boolean } = {}) => {
+    const src = mkdtempSync(join(dir, 'src-'));
+    mkdirSync(join(src, 'package', 'bin'), { recursive: true });
+    const tool = '#!/bin/sh\necho agent-desktop "$@"\n';
+    const helper = '#!/bin/sh\nexit 0\n';
+    writeFileSync(join(src, 'package', 'bin', 'agent-desktop-linux-x64'), tamper.entry ? `${tool}# changed\n` : tool);
+    writeFileSync(join(src, 'package', 'bin', 'helper-x64'), helper);
+    const tgz = join(src, 'r.tgz');
+    expect(Bun.spawnSync(['tar', '-czf', tgz, '-C', src, 'package']).exitCode).toBe(0);
+    const archive = readFileSync(tgz);
+    const pinned: AgentDesktopRelease = {
+      version: '9.9.9', url: 'https://registry.example/agent-desktop-9.9.9.tgz',
+      sha256: tamper.archive ? sha(new TextEncoder().encode('another')) : sha(archive),
+      builds: { x64: [
+        { entry: 'package/bin/agent-desktop-linux-x64', name: 'agent-desktop', sha256: sha(new TextEncoder().encode(tool)) },
+        { entry: 'package/bin/helper-x64', name: 'agent-desktop-linux-clipboard-owner', sha256: sha(new TextEncoder().encode(helper)) },
+      ] },
+    };
+    const fetched: string[] = [];
+    const fetch = async (url: string) => { fetched.push(url); await Bun.sleep(5); return new Response(archive); };
+    return { pinned, fetched, fetch };
+  };
+
+  beforeEach(async () => {
+    harness = await startTestCore();
+    dir = mkdtempSync(join(harness.dataDir, 'tool-'));
+  });
+
+  afterEach(async () => {
+    await harness.stop();
+  });
+
+  test('the pinned release is fetched once, checked, kept executable and reused by the next core', async () => {
+    const { pinned, fetched, fetch } = release();
+    const tools = join(dir, 'tools');
+    const tool = new AgentDesktopTool(tools, harness.core.procs, { release: pinned, arch: 'x64', fetch });
+    // Two commands at once share one download.
+    const [path, again] = await Promise.all([tool.path(), tool.path()]);
+    expect(path).toBe(join(tools, 'agent-desktop-9.9.9', 'agent-desktop'));
+    expect(again).toBe(path);
+    expect(fetched).toEqual([pinned.url]);
+    expect(readdirSync(join(tools, 'agent-desktop-9.9.9')).sort()).toEqual(['agent-desktop', 'agent-desktop-linux-clipboard-owner']);
+    expect(statSync(path).mode & 0o777).toBe(0o755);
+    expect(Bun.spawnSync([path, 'version']).stdout.toString()).toBe('agent-desktop version\n');
+    // Nothing staged is left beside it.
+    expect(readdirSync(tools)).toEqual(['agent-desktop-9.9.9']);
+    const next = new AgentDesktopTool(tools, harness.core.procs, { release: pinned, arch: 'x64', fetch });
+    expect(await next.path()).toBe(path);
+    expect(fetched).toHaveLength(1);
+  });
+
+  test('an archive or a file that does not match its digest installs nothing, and a damaged install is replaced', async () => {
+    const tools = join(dir, 'tools');
+    for (const tamper of [{ archive: true }, { entry: true }]) {
+      const { pinned, fetch } = release(tamper);
+      const tool = new AgentDesktopTool(tools, harness.core.procs, { release: pinned, arch: 'x64', fetch });
+      expect(await thrown(tool.path())).toThrow(tamper.archive ? 'does not match its pinned SHA-256; nothing was installed' : 'package/bin/agent-desktop-linux-x64 does not match its pinned SHA-256');
+      expect(existsSync(join(tools, 'agent-desktop-9.9.9'))).toBe(false);
+      expect(existsSync(tools) ? readdirSync(tools) : []).toEqual([]);
+    }
+    const { pinned, fetched, fetch } = release();
+    const path = await new AgentDesktopTool(tools, harness.core.procs, { release: pinned, arch: 'x64', fetch }).path();
+    writeFileSync(path, 'truncated');
+    expect(await new AgentDesktopTool(tools, harness.core.procs, { release: pinned, arch: 'x64', fetch }).path()).toBe(path);
+    expect(fetched).toHaveLength(2);
+    expect(sha(readFileSync(path))).toBe(pinned.builds.x64![0]!.sha256);
+    expect(await thrown(new AgentDesktopTool(tools, harness.core.procs, { release: pinned, arch: 'riscv64', fetch }).path())).toThrow('has no Linux build for riscv64');
+  });
+});
+
 describe('boite desktop', () => {
   let harness: TestCore, threadId: string, cwd: string;
 
@@ -178,7 +266,9 @@ describe('boite desktop', () => {
 
   const useTools = (tools: () => ReturnType<typeof findDesktopTools>) => {
     const core = harness.core as { desktops: VirtualDesktops };
-    core.desktops = new VirtualDesktops(harness.core, { tools, tempRoot: harness.dataDir });
+    // No download in tests: the CLI falls back to an agent-desktop on PATH, as on a machine that refuses it.
+    const agentDesktop = new AgentDesktopTool(join(harness.dataDir, 'tools'), harness.core.procs, { fetch: async () => { throw new Error('no network in tests'); } });
+    core.desktops = new VirtualDesktops(harness.core, { tools, tempRoot: harness.dataDir, agentDesktop });
   };
 
   beforeEach(async () => {

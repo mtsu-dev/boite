@@ -231,6 +231,7 @@ export function registerAgentMethods(core: Core): void {
   core.router.register('desktop.start', (params, { connection }) => core.desktops.start(params, connection));
   core.router.register('desktop.run', (params, { connection }) => core.desktops.run(params, connection));
   core.router.register('desktop.stop', (params, { connection }) => core.desktops.stop(params, connection));
+  core.router.register('desktop.tool', (params, { connection }) => core.desktops.tool(params, connection));
   core.router.register('windows.consent', (params, { connection }) => core.windows.consent(params, connection));
   core.router.register('windows.allowlist', params => core.windows.allowlist(params));
   core.router.register('windows.revoke', params => core.windows.revoke(params));

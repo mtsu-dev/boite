@@ -59,6 +59,11 @@ export interface DesktopRpcMethods {
   'desktop.run': { params: { threadId: string; command: string[]; cwd: string }; result: { app: VirtualDesktopApp; session: VirtualDesktopSession } };
   /** Stops the desktop and everything started on it. */
   'desktop.stop': { params: { threadId: string }; result: { stopped: boolean } };
+  /**
+   * The agent-desktop binary the CLI runs, which Boite downloads (a pinned
+   * release, checked by digest) the first time a conversation needs it.
+   */
+  'desktop.tool': { params: { threadId: string }; result: { path: string; version: string } };
 }
 
 /** The one problem with a desktop size, or null. */
