@@ -19,7 +19,7 @@ public class BoiteGuideWindow : Form {
     Size = new Size(420, 260);
     TopMost = true;
     Controls.Add(new Button { Text = "Open project", Name = "openProject", Location = new Point(20, 20), Size = new Size(140, 40) });
-    Controls.Add(new Button { Text = "Build", Location = new Point(180, 20), Size = new Size(100, 40) });
+    Controls.Add(new Button { Text = "Build  Settings", Location = new Point(180, 20), Size = new Size(140, 40) });
     Controls.Add(new Button { Text = "Disabled", Location = new Point(20, 80), Size = new Size(100, 40), Enabled = false });
     Controls.Add(new TextBox { Name = "search", Location = new Point(20, 140), Size = new Size(200, 24) });
   }
@@ -79,12 +79,13 @@ describe.skipIf(process.platform !== 'win32')('window guide on Windows', () => {
     expect(total).toBe(controls.length);
     const names = controls.map(control => `${control.type} ${control.name}`);
     expect(names).toContain('Button Open project');
-    expect(names).toContain('Button Build');
+    // Its two spaces read as one, and the letters stay: a name is what the agent says to the person.
+    expect(names).toContain('Button Build Settings');
     expect(names).toContain('Edit ');
     expect(names).not.toContain('Button Disabled');
     const open = controls.find(control => control.name === 'Open project')!;
     expect(open.automationId).toBe('openProject');
-    const build = controls.find(control => control.name === 'Build')!;
+    const build = controls.find(control => control.name === 'Build Settings')!;
     // Same row, left to right, both inside the window's frame, in physical pixels at any scaling.
     expect(build.rect.left).toBeGreaterThan(open.rect.left + open.rect.width - 1);
     expect(Math.abs(build.rect.top - open.rect.top)).toBeLessThan(2);
@@ -98,7 +99,7 @@ describe.skipIf(process.platform !== 'win32')('window guide on Windows', () => {
 
   test('a tracked control answers where it is now, after its window moved', async () => {
     const { controls } = await guide.controls(form.id, 50);
-    const build = controls.find(control => control.name === 'Build')!;
+    const build = controls.find(control => control.name === 'Build Settings')!;
     const tracked = (await guide.track(form.id, build))!;
     expect(tracked).not.toBeNull();
     expect(tracked.rect()).toEqual(build.rect);

@@ -320,7 +320,7 @@ function eachControl(hwnd: bigint, cache: Pointer, visit: (control: NativeContro
         if (width <= 0 || height <= 0) continue;
         const type = INTERACTIVE_TYPES[cachedInt(item, CACHED_CONTROL_TYPE, 'get_CachedControlType', number) ?? 0];
         if (type === undefined) continue;
-        const name = cachedText(item, CACHED_NAME, 'get_CachedName', out).replace(/s+/g, ' ').trim();
+        const name = cachedText(item, CACHED_NAME, 'get_CachedName', out).replace(/\s+/g, ' ').trim();
         const automationId = cachedText(item, CACHED_AUTOMATION_ID, 'get_CachedAutomationId', out);
         // A control with neither is nothing an agent can name to a person.
         if (name === '' && automationId === '') continue;
