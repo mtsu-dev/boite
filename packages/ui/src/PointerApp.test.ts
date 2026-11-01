@@ -12,7 +12,7 @@ const { invoke, listen, handlers } = vi.hoisted(() => {
   };
 });
 vi.mock('@tauri-apps/api/core', () => ({ invoke }));
-vi.mock('@tauri-apps/api/event', () => ({ listen }));
+vi.mock('@tauri-apps/api/webviewWindow', () => ({ getCurrentWebviewWindow: () => ({ listen }) }));
 
 const tauri = window as { __TAURI_INTERNALS__?: unknown };
 const apps: ReturnType<typeof mount>[] = [];

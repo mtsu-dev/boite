@@ -33,9 +33,11 @@
     const stops: (() => void)[] = [];
     let disposed = false;
     void (async () => {
-      const [{ invoke }, { listen }] = await Promise.all([import('@tauri-apps/api/core'), import('@tauri-apps/api/event')]);
-      const moved = await listen<PointerLayout>('pointer://layout', (event) => place(event.payload));
-      const hidden = await listen('pointer://hide', () => { layout = null; });
+      const [{ invoke }, { getCurrentWebviewWindow }] = await Promise.all([import('@tauri-apps/api/core'), import('@tauri-apps/api/webviewWindow')]);
+      // This window's events only: a frame and a box show at once, each in a window of its own.
+      const own = getCurrentWebviewWindow();
+      const moved = await own.listen<PointerLayout>('pointer://layout', (event) => place(event.payload));
+      const hidden = await own.listen('pointer://hide', () => { layout = null; });
       if (disposed) { moved(); hidden(); return; }
       stops.push(moved, hidden);
       // A box placed before this page ran is read once here.
