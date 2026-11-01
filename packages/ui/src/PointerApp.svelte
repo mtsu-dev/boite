@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import BoiteMark from './components/BoiteMark.svelte';
   import { startTheme } from './lib/theme';
   import { pointerRing, pointerTag, type PointerLayout } from './lib/pointer-layout';
 
@@ -7,8 +8,9 @@
    * The box `boite window point` shows the user, in a transparent,
    * click-through window of its own above every other (`pointer_window.rs`).
    * The shell says where the control is in this page's pixels; the page draws
-   * a rounded ring around it in the user's accent and the label in a bubble
-   * whose tail points at the ring. One entrance, then one echo that keeps widening and fading: the
+   * a rounded ring around it in the user's accent and the label on a card of
+   * the app's own surface, signed with the Boite mark, whose tail points at
+   * the ring. One entrance, then one echo that keeps widening and fading: the
    * only motion, and none with reduced motion. Nothing here is clickable.
    */
   let layout = $state<PointerLayout | null>(null);
@@ -51,7 +53,7 @@
       </div>
       {#if layout.label && tag}
         <div class="tag" data-testid="pointer-label" style:left="{tag.left}px" style:top={tag.top === null ? 'auto' : `${tag.top}px`}
-          style:bottom={tag.bottom === null ? 'auto' : `${tag.bottom}px`} style:max-width="{tag.maxWidth}px" style:--tail="{tag.tail}px"><span>{layout.label}</span></div>
+          style:bottom={tag.bottom === null ? 'auto' : `${tag.bottom}px`} style:max-width="{tag.maxWidth}px" style:--tail="{tag.tail}px"><span class="mark"><BoiteMark size={14} /></span><span class="text">{layout.label}</span></div>
       {/if}
     </div>
   {/key}
@@ -97,27 +99,37 @@
     border-radius: var(--radius-full);
   }
 
-  /* The label: a pill in the accent whose tail points at the ring. The
-     drop-shadows follow the tail too, so the bubble reads as one shape. */
+  /* The label: a card of the app's surface with the Boite mark in the accent,
+     as the app's own toasts look, and a tail pointing at the ring. The tail
+     shares the card's edge, so both read as one shape over any app. */
   .tag {
     position: absolute;
     box-sizing: border-box;
-    padding: 7px 14px 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px 7px 10px;
     font-size: var(--text-sm);
-    font-weight: 600;
-    line-height: 1.25;
-    letter-spacing: -0.005em;
-    color: var(--color-accent-ink);
-    background: var(--color-accent);
-    border-radius: var(--radius-full);
-    filter: drop-shadow(0 0 0.5px var(--pointer-halo)) drop-shadow(0 6px 14px var(--pointer-shade));
+    font-weight: 500;
+    line-height: 1.3;
+    color: var(--color-foreground);
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-edge);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 0 0 1px var(--pointer-halo), var(--shadow-e3);
     transform-origin: var(--tail) 100%;
     transition: left var(--dur-2) var(--ease-out-quint), top var(--dur-2) var(--ease-out-quint), bottom var(--dur-2) var(--ease-out-quint);
     animation: pop var(--dur-3) var(--ease-out-quint) var(--dur-1) both;
   }
 
-  .tag span {
-    display: block;
+  .mark {
+    display: flex;
+    flex: none;
+    color: var(--color-accent);
+  }
+
+  .text {
+    min-width: 0;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -127,11 +139,14 @@
     content: '';
     position: absolute;
     left: calc(var(--tail) - 6px);
-    bottom: -5px;
+    bottom: -7px;
     width: 12px;
     height: 12px;
-    background: inherit;
-    border-radius: 0 0 3px 0;
+    box-sizing: border-box;
+    background: var(--color-surface-2);
+    border: solid var(--color-edge);
+    border-width: 0 1px 1px 0;
+    border-bottom-right-radius: 3px;
     transform: rotate(45deg);
   }
 
@@ -141,7 +156,8 @@
 
   [data-below='true'] .tag::after {
     bottom: auto;
-    top: -5px;
+    top: -7px;
+    border-width: 1px 0 0 1px;
     border-radius: 3px 0 0 0;
   }
 

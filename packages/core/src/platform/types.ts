@@ -152,9 +152,22 @@ export interface NativeControl {
  * desktop app's (`windows.pointer`). Like `WindowCapture`, never focuses,
  * raises or sends input to the window it reads. Loaded on first use.
  */
+/**
+ * One control followed live as its window scrolls or lays itself out again,
+ * read from the app on each call: `hidden` while it lies out of view, `gone`
+ * once the app dropped it (a list that recycles its rows), `busy` while the
+ * app does not answer.
+ */
+export interface TrackedControl {
+  rect(): ScreenRect | 'hidden' | 'gone' | 'busy';
+  release(): void;
+}
+
 export interface WindowGuide {
   /** At most `limit` enabled controls on screen, in the tree's order, and how many there were. */
   controls(id: string, limit: number): Promise<{ controls: NativeControl[]; total: number }>;
+  /** The control of window `id` that matches `control` (type, name, automation id, nearest to its rectangle), held live; null when none matches. */
+  track(id: string, control: NativeControl): Promise<TrackedControl | null>;
   /**
    * Where the window lies, or null once it is gone. Throws nothing. `above`:
    * the system keeps the window in a layer over every app's window, as it does

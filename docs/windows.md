@@ -180,16 +180,25 @@ boite window unpoint
     such as a game or a Unity scene view: the agent finds the place in a small
     screenshot first.
 - The box is drawn by the Boite desktop app of the machine that runs the
-  core, in the app's look: a rounded ring in the user's accent, the label in a
-  bubble whose tail points at the ring, one entrance and a slow echo, none
-  with reduced motion. It is click-through, takes no focus and has no taskbar
+  core, in the app's look: a rounded ring in the user's accent, and the label
+  on a card of the app's surface signed with the Boite mark, whose tail points
+  at the ring; one entrance and a slow echo, none with reduced motion. It is click-through, takes no focus and has no taskbar
   button. With no desktop app of that machine open, `point` is refused and
   asks for one.
 - `--round` makes the ring a pill, a circle around a square control such as
   an app icon or a server in a chat app's sidebar. `--pad <px>` sets how far
   outside the control the ring runs, 5 CSS pixels by default and 24 at most;
   the shell widens the window to keep the glow and the echo whole.
-- The box follows its window when the window moves, hides while it is
+- A box on a control (by id or by name) follows the control itself: the core
+  holds its UI Automation element and asks the app where it is every 100 ms,
+  so the box moves when the window scrolls or lays itself out again, and
+  hides while the control is out of view, by the app's word or under the
+  window's edge. An app that drops the element, as a list re-rendering its
+  rows does, gets the box hidden until a control of the same type, name and
+  automation id is found again, looked for once a second near where it was
+  last seen. A box on a rectangle (`--at`) keeps its place in the window: no
+  app says what is drawn there.
+- Every box follows its window when the window moves, hides while it is
   minimized, and goes away with it, after `--seconds` (120 by default, 600 at
   most), on `unpoint`, or when the conversation is archived.
 - `wait-click` returns once the user presses the primary mouse button inside
@@ -272,6 +281,13 @@ the desktop app draws the box.
   refused before the call; UI Automation's connection and transaction timeouts
   (2 s and 5 s) bound a slow one. `AutoSetFocus` is off and no pattern is
   asked for, so nothing in the window changes.
+- `point` on a control finds it once more with live elements
+  (`AutomationElementMode_Full`) and keeps only the match nearest to where it
+  was read. Each tick then asks that element for its current bounding
+  rectangle and whether it is off screen: one cross-process call each, and
+  none while the window is not responding. The element is released with the
+  box. Nothing is injected into the app: UI Automation is the app's own
+  answer, so the box follows the control without code in the app's process.
 - The core sends `windows.pointer` (an id, the control's rectangle in
   physical screen pixels and the label, or no rectangle to take the box away)
   to owner connections named `shell` on the loopback only: a phone, a browser
@@ -307,12 +323,16 @@ Measured on 2026-10-30 (Windows 11, Bun 1.4.3, `bun bench/window-guide.ts
 | Boite, 1920×1032 (WebView2) | 102 | 212 ms | 97 ms |
 
 The Start menu read in 207 ms with 19 controls. Reading where a window lies,
-which a box following its window does every 250 ms, takes under 0.1 ms. RSS
+which a box following its window does every 100 ms, takes under 0.1 ms. RSS
 grows by 3 MB over 200 reads of the taskbar.
+
+Following a control, measured on 2026-10-31 with the same command: finding it
+live took 132 ms in Discord (1920×1020, 125 controls) and 28 ms on the
+taskbar; asking where it is now took 0.3 ms (median of 20) in both.
 
 `packages/core/test/window-guide-windows.test.ts` opens a WinForms window that
 never takes the focus and reads its two buttons and its field but not its
-disabled button. `PointerApp.test.ts` checks the ring and the label, and
+disabled button, then follows a button while the window moves. `PointerApp.test.ts` checks the ring and the label, and
 `pointer_window.rs`'s tests the window's place at 100 % and 150 %, on a
 monitor's edge and on a monitor left of the primary.
 

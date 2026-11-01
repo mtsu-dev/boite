@@ -32,7 +32,7 @@ import {
 import type { Core } from '../core.ts';
 import { invalidParams, messageOf, refused } from '../errors.ts';
 import { newId } from '../ids.ts';
-import type { NativeWindow, ScreenRect, WindowGuide } from '../platform/types.ts';
+import type { NativeWindow, ScreenRect, TrackedControl, WindowGuide } from '../platform/types.ts';
 import type { Connection } from '../router.ts';
 import { cropRect } from './image.ts';
 
@@ -41,9 +41,11 @@ const READ_SCAN = 2_000;
 const FILTER_MAX = 100;
 /** How long a box stays after a wait on it ends without a click, at least. */
 const WAIT_GRACE_MS = 30_000;
+/** How often a box whose control the app dropped looks for it again, in milliseconds. */
+const RETRACK_MS = 1_000;
 
 export interface WindowGuidesOptions {
-  /** How often a box follows its window. */
+  /** How often a box follows its window and its control. */
   followMs?: number;
   /** How often a wait reads the mouse: a click holds the button down for 50 ms or more. */
   mouseMs?: number;
@@ -71,11 +73,25 @@ interface Shown {
   screen: ScreenRect | null;
   follow: ReturnType<typeof setInterval>;
   expiry: ReturnType<typeof setTimeout>;
+  /**
+   * The control, held live, for a box pointed at one: the box follows it as
+   * the window scrolls. Null for a rectangle, or while the app dropped it.
+   */
+  tracked: TrackedControl | null;
+  /** The control the box shows, when it was named by id or by name. */
+  control: WindowControl | null;
+  /** Set once the app dropped the control: the box hides until it is found again. */
+  lost?: { nextAt: number; looking: boolean };
   waiters: Set<(end: WindowWaitEnd | 'clicked') => void>;
 }
 
 const sameRect = (a: ScreenRect | null, b: ScreenRect | null) =>
   a === b || (a !== null && b !== null && a.left === b.left && a.top === b.top && a.width === b.width && a.height === b.height);
+/** A control scrolled under the window's edge is out of view, whatever its app says. */
+const centerInside = (rect: ScreenRect, frame: ScreenRect) => {
+  const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
+  return x >= frame.left && x < frame.left + frame.width && y >= frame.top && y < frame.top + frame.height;
+};
 const controlLine = (control: WindowControl) => `  #${control.id} ${control.type} "${control.name}"`;
 
 export class WindowGuides {
@@ -92,7 +108,7 @@ export class WindowGuides {
     this.#core = core;
     this.#host = host;
     this.#loader = loader;
-    this.#followMs = options.followMs ?? 250;
+    this.#followMs = options.followMs ?? 100;
     this.#mouseMs = options.mouseMs ?? 25;
   }
 
@@ -181,8 +197,13 @@ export class WindowGuides {
       ...(control ? { control: { type: control.type, name: control.name } } : {}),
       ...(frame.above ? { behind: true as const } : {}),
     };
+    let tracked: TrackedControl | null = null;
+    if (control) {
+      try { tracked = await guide.track(window.id, { type: control.type, name: control.name, automationId: control.automationId ?? '', rect: screen }); }
+      catch { /* not followed: the box keeps its place in the window */ }
+    }
     const shown: Shown = {
-      pointer, window, boxId, screen: frame.minimized ? null : screen, waiters: new Set(),
+      pointer, window, boxId, screen: frame.minimized ? null : screen, waiters: new Set(), tracked, control: control ?? null,
       follow: setInterval(() => this.#follow(thread.id, shown, guide), this.#followMs),
       expiry: setTimeout(() => this.#remove(thread.id, 'timeout', shown), seconds * 1000),
     };
@@ -312,7 +333,10 @@ export class WindowGuides {
     return value;
   }
 
-  /** The box goes where its window went, hides while the window is minimized and goes away with it. */
+  /**
+   * The box goes where its control or its window went, hides while the window
+   * is minimized or the control is out of view, and goes away with the window.
+   */
   #follow(threadId: string, shown: Shown, guide: WindowGuide): void {
     if (this.#shown.get(threadId) !== shown) return;
     const frame = guide.frame(shown.window.id);
@@ -320,10 +344,53 @@ export class WindowGuides {
       this.#remove(threadId, 'gone', shown);
       return;
     }
-    const screen = frame.minimized ? null : { left: frame.rect.left + shown.pointer.x, top: frame.rect.top + shown.pointer.y, width: shown.pointer.width, height: shown.pointer.height };
+    let screen: ScreenRect | null;
+    if (frame.minimized) {
+      screen = null;
+    } else if (shown.tracked) {
+      const live = shown.tracked.rect();
+      if (live === 'busy') return;
+      if (live === 'gone') {
+        shown.tracked.release();
+        shown.tracked = null;
+        shown.lost = { nextAt: 0, looking: false };
+        screen = null;
+      } else if (live === 'hidden' || !centerInside(live, frame.rect)) {
+        screen = null;
+      } else {
+        screen = live;
+        Object.assign(shown.pointer, { x: live.left - frame.rect.left, y: live.top - frame.rect.top, width: live.width, height: live.height });
+      }
+    } else if (shown.lost && shown.control) {
+      screen = null;
+      this.#retrack(threadId, shown, guide, frame.rect);
+    } else {
+      screen = { left: frame.rect.left + shown.pointer.x, top: frame.rect.top + shown.pointer.y, width: shown.pointer.width, height: shown.pointer.height };
+    }
     if (sameRect(screen, shown.screen)) return;
     shown.screen = screen;
     this.#core.subscribers.pointer({ id: shown.boxId, rect: screen, label: shown.pointer.label, look: shown.pointer.look });
+  }
+
+  /** Looks again, at most once a second, for the control the app dropped: a list that re-renders its rows, or one scrolled far enough to recycle them. */
+  #retrack(threadId: string, shown: Shown, guide: WindowGuide, frame: ScreenRect): void {
+    const lost = shown.lost!;
+    if (lost.looking || Date.now() < lost.nextAt) return;
+    lost.looking = true;
+    const control = shown.control!;
+    // Near where it was last seen: a list holds rows of the same name.
+    const { pointer } = shown;
+    const near = { left: frame.left + pointer.x, top: frame.top + pointer.y, width: pointer.width, height: pointer.height };
+    void guide.track(shown.window.id, { type: control.type, name: control.name, automationId: control.automationId ?? '', rect: near })
+      .catch(() => null)
+      .then(found => {
+        lost.looking = false;
+        lost.nextAt = Date.now() + RETRACK_MS;
+        if (found === null) return;
+        if (this.#shown.get(threadId) !== shown) { found.release(); return; }
+        shown.tracked = found;
+        delete shown.lost;
+      });
   }
 
   /** Takes the conversation's box away, or only `only` when given, and ends the waits on it. */
@@ -333,6 +400,8 @@ export class WindowGuides {
     this.#shown.delete(threadId);
     clearInterval(shown.follow);
     clearTimeout(shown.expiry);
+    shown.tracked?.release();
+    shown.tracked = null;
     this.#core.subscribers.pointer({ id: shown.boxId, rect: null, label: shown.pointer.label, look: shown.pointer.look });
     for (const finish of [...shown.waiters]) finish(why);
     this.#core.logs.info(`Box over window ${shown.window.id} of ${shown.window.process} taken away: ${why}`, { source: 'windows', event: 'window.unpoint', threadId, data: { windowId: shown.window.id, process: shown.window.process, why } });

@@ -6,7 +6,9 @@
  * interactive types with the six properties `boite window read` prints, in a
  * single cross-process round trip; nothing is read element by element after.
  * The client keeps no live reference to what it read
- * (`AutomationElementMode_None`).
+ * (`AutomationElementMode_None`), except for the one control a box follows:
+ * `trackControl` holds that element and asks the app where it is on each
+ * tick, one cross-process call.
  *
  * UI Automation runs on the calling thread, which is the core's: a window that
  * is not responding is refused before any call, and the connection and
@@ -150,6 +152,8 @@ const ADD_PROPERTY = 3;
 const PUT_AUTOMATION_ELEMENT_MODE = 11;
 // IUIAutomationElement.
 const FIND_ALL_BUILD_CACHE = 8;
+const CURRENT_IS_OFFSCREEN = 38;
+const CURRENT_BOUNDING_RECTANGLE = 43;
 const CACHED_CONTROL_TYPE = 53;
 const CACHED_NAME = 55;
 const CACHED_IS_ENABLED = 60;
@@ -162,6 +166,7 @@ const ARRAY_ELEMENT = 4;
 
 const TREE_SCOPE_DESCENDANTS = 4;
 const AUTOMATION_ELEMENT_MODE_NONE = 0;
+const AUTOMATION_ELEMENT_MODE_FULL = 1;
 const VT_I4 = 3;
 
 const PROPERTY = {
@@ -199,6 +204,8 @@ const TRANSACTION_TIMEOUT_MS = 5_000;
 interface Automation {
   automation: Pointer;
   cache: Pointer;
+  /** The same properties, with live elements: only to find the control a box follows. */
+  liveCache: Pointer;
   condition: Pointer;
 }
 
@@ -225,12 +232,8 @@ function createAutomation(): Automation {
   }
 
   ok(slot(self, CREATE_CACHE_REQUEST, 'IUIAutomation::CreateCacheRequest', SIG_OUT)(self, ptr(out)), 'IUIAutomation::CreateCacheRequest');
-  const cache = taken(out, 'IUIAutomation::CreateCacheRequest');
-  for (const property of Object.values(PROPERTY)) {
-    ok(slot(cache, ADD_PROPERTY, 'IUIAutomationCacheRequest::AddProperty', SIG_SET_I32)(cache, property), 'IUIAutomationCacheRequest::AddProperty');
-  }
-  ok(slot(cache, PUT_AUTOMATION_ELEMENT_MODE, 'IUIAutomationCacheRequest::put_AutomationElementMode', SIG_SET_I32)(cache, AUTOMATION_ELEMENT_MODE_NONE),
-    'IUIAutomationCacheRequest::put_AutomationElementMode');
+  const cache = cacheRequest(self, AUTOMATION_ELEMENT_MODE_NONE);
+  const liveCache = cacheRequest(self, AUTOMATION_ELEMENT_MODE_FULL);
 
   // ControlType == Button OR ControlType == CheckBox OR ...: a VARIANT goes by pointer on x64, being 24 bytes.
   const conditions: Pointer[] = [];
@@ -249,7 +252,19 @@ function createAutomation(): Automation {
   } finally {
     for (const condition of conditions) release(condition);
   }
-  return { automation: self, cache, condition: taken(out, 'IUIAutomation::CreateOrConditionFromNativeArray') };
+  return { automation: self, cache, liveCache, condition: taken(out, 'IUIAutomation::CreateOrConditionFromNativeArray') };
+}
+
+function cacheRequest(self: Pointer, mode: number): Pointer {
+  const out = new BigUint64Array(1);
+  ok(slot(self, CREATE_CACHE_REQUEST, 'IUIAutomation::CreateCacheRequest', SIG_OUT)(self, ptr(out)), 'IUIAutomation::CreateCacheRequest');
+  const cache = taken(out, 'IUIAutomation::CreateCacheRequest');
+  for (const property of Object.values(PROPERTY)) {
+    ok(slot(cache, ADD_PROPERTY, 'IUIAutomationCacheRequest::AddProperty', SIG_SET_I32)(cache, property), 'IUIAutomationCacheRequest::AddProperty');
+  }
+  ok(slot(cache, PUT_AUTOMATION_ELEMENT_MODE, 'IUIAutomationCacheRequest::put_AutomationElementMode', SIG_SET_I32)(cache, mode),
+    'IUIAutomationCacheRequest::put_AutomationElementMode');
+  return cache;
 }
 
 function element(array: Pointer, index: number, out: BigUint64Array): Pointer | null {
@@ -270,14 +285,14 @@ function cachedInt(self: Pointer, index: number, name: string, out: Int32Array):
 }
 
 /**
- * The enabled, on-screen controls of the interactive types inside the window
- * `hwnd`, in the tree's order, with their bounds in physical screen pixels:
- * the calling thread must be per-monitor aware. At most `limit` come back;
- * `total` counts every one that qualified.
+ * Each enabled, on-screen control of the interactive types inside the window
+ * `hwnd`, in the tree's order, with its bounds in physical screen pixels: the
+ * calling thread must be per-monitor aware. `visit` returns true to keep the
+ * element, which the caller then releases.
  */
-export function readControls(hwnd: bigint, limit: number): { controls: NativeControl[]; total: number } {
+function eachControl(hwnd: bigint, cache: Pointer, visit: (control: NativeControl, item: Pointer) => boolean): void {
   automation ??= createAutomation();
-  const { automation: self, cache, condition } = automation;
+  const { automation: self, condition } = automation;
   const out = new BigUint64Array(1);
   ok(slot(self, ELEMENT_FROM_HANDLE, 'IUIAutomation::ElementFromHandle', SIG_HANDLE_OUT)(self, hwnd, ptr(out)), 'IUIAutomation::ElementFromHandle');
   const root = taken(out, 'IUIAutomation::ElementFromHandle');
@@ -286,17 +301,16 @@ export function readControls(hwnd: bigint, limit: number): { controls: NativeCon
     ok(slot(root, FIND_ALL_BUILD_CACHE, 'IUIAutomationElement::FindAllBuildCache', SIG_FIND_ALL_BUILD_CACHE)(root, TREE_SCOPE_DESCENDANTS, condition, cache, ptr(out)),
       'IUIAutomationElement::FindAllBuildCache');
     // No match answers S_OK with no array.
-    if (out[0] === 0n) return { controls: [], total: 0 };
+    if (out[0] === 0n) return;
     found = Number(out[0]) as unknown as Pointer;
     const count = new Int32Array(1);
     ok(slot(found, ARRAY_LENGTH, 'IUIAutomationElementArray::get_Length', SIG_OUT)(found, ptr(count)), 'IUIAutomationElementArray::get_Length');
-    const controls: NativeControl[] = [];
-    let total = 0;
     const number = new Int32Array(1);
     const rect = new Int32Array(4);
     for (let index = 0; index < count[0]!; index += 1) {
       const item = element(found, index, out);
       if (item === null) continue;
+      let keep = false;
       try {
         if (cachedInt(item, CACHED_IS_ENABLED, 'get_CachedIsEnabled', number) === 0) continue;
         if (cachedInt(item, CACHED_IS_OFFSCREEN, 'get_CachedIsOffscreen', number) !== 0) continue;
@@ -306,19 +320,77 @@ export function readControls(hwnd: bigint, limit: number): { controls: NativeCon
         if (width <= 0 || height <= 0) continue;
         const type = INTERACTIVE_TYPES[cachedInt(item, CACHED_CONTROL_TYPE, 'get_CachedControlType', number) ?? 0];
         if (type === undefined) continue;
-        const name = cachedText(item, CACHED_NAME, 'get_CachedName', out).replace(/\s+/g, ' ').trim();
+        const name = cachedText(item, CACHED_NAME, 'get_CachedName', out).replace(/s+/g, ' ').trim();
         const automationId = cachedText(item, CACHED_AUTOMATION_ID, 'get_CachedAutomationId', out);
         // A control with neither is nothing an agent can name to a person.
         if (name === '' && automationId === '') continue;
-        total += 1;
-        if (controls.length < limit) controls.push({ type, name, automationId, rect: { left: rect[0]!, top: rect[1]!, width, height } });
+        keep = visit({ type, name, automationId, rect: { left: rect[0]!, top: rect[1]!, width, height } }, item);
       } finally {
-        release(item);
+        if (!keep) release(item);
       }
     }
-    return { controls, total };
   } finally {
     release(found);
     release(root);
   }
+}
+
+/**
+ * The enabled, on-screen controls of the interactive types inside the window
+ * `hwnd`. At most `limit` come back; `total` counts every one that qualified.
+ */
+export function readControls(hwnd: bigint, limit: number): { controls: NativeControl[]; total: number } {
+  automation ??= createAutomation();
+  const controls: NativeControl[] = [];
+  let total = 0;
+  eachControl(hwnd, automation.cache, control => {
+    total += 1;
+    if (controls.length < limit) controls.push(control);
+    return false;
+  });
+  return { controls, total };
+}
+
+const center = (rect: NativeControl['rect']) => ({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
+
+/**
+ * The control of `hwnd` with `wanted`'s type, name and automation id nearest
+ * to `wanted.rect`, held live: `rect()` asks the app where it is now, so a box
+ * follows it while the window scrolls. Null when none matches.
+ */
+export function trackControl(hwnd: bigint, wanted: NativeControl): { rect(): NativeControl['rect'] | 'hidden' | 'gone' | 'busy'; release(): void } | null {
+  automation ??= createAutomation();
+  const aim = center(wanted.rect);
+  let best: { item: Pointer; distance: number } | null = null;
+  eachControl(hwnd, automation.liveCache, (control, item) => {
+    if (control.type !== wanted.type || control.name !== wanted.name || control.automationId !== wanted.automationId) return false;
+    const at = center(control.rect);
+    const distance = Math.hypot(at.x - aim.x, at.y - aim.y);
+    if (best !== null && best.distance <= distance) return false;
+    if (best !== null) release(best.item);
+    best = { item, distance };
+    return true;
+  });
+  if (best === null) return null;
+  let item: Pointer | null = (best as { item: Pointer }).item;
+  const rect = new Int32Array(4);
+  const number = new Int32Array(1);
+  const failed = (hr: number) => (hr >>> 0) === UIA_E_TIMEOUT ? 'busy' as const : 'gone' as const;
+  return {
+    rect() {
+      if (item === null) return 'gone';
+      let hr = slot(item, CURRENT_BOUNDING_RECTANGLE, 'get_CurrentBoundingRectangle', SIG_OUT)(item, ptr(rect));
+      if (hr < 0) return failed(hr);
+      hr = slot(item, CURRENT_IS_OFFSCREEN, 'get_CurrentIsOffscreen', SIG_OUT)(item, ptr(number));
+      if (hr < 0) return failed(hr);
+      const width = rect[2]! - rect[0]!;
+      const height = rect[3]! - rect[1]!;
+      if (number[0] !== 0 || width <= 0 || height <= 0) return 'hidden';
+      return { left: rect[0]!, top: rect[1]!, width, height };
+    },
+    release() {
+      release(item);
+      item = null;
+    },
+  };
 }

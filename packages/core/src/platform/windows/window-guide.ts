@@ -14,7 +14,7 @@
 import { dlopen, FFIType, ptr } from 'bun:ffi';
 import type { ScreenRect, WindowGuide } from '../types.ts';
 import { frameBounds, physicalPixels, windowOf } from './window-capture.ts';
-import { readControls } from './window-controls.ts';
+import { readControls, trackControl } from './window-controls.ts';
 
 /**
  * Chromium and Electron apps (Discord, VS Code, Slack, a browser) build their
@@ -126,6 +126,17 @@ export async function loadWindowGuide(): Promise<WindowGuide | { unavailable: st
         read = physicalPixels(() => readControls(hwnd, limit));
       }
       return read;
+    },
+    track: async (id, control) => {
+      const hwnd = windowOf(id);
+      if (user32().IsHungAppWindow(hwnd) !== 0) throw new Error('the window is not responding');
+      const live = physicalPixels(() => trackControl(hwnd, control));
+      if (live === null) return null;
+      return {
+        // A hung app is not asked: the call would hold the core's thread until the transaction timeout.
+        rect: () => user32().IsHungAppWindow(hwnd) !== 0 ? 'busy' : physicalPixels(() => live.rect()),
+        release: () => live.release(),
+      };
     },
     frame: frameOf,
     mouse,

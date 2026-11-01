@@ -39,6 +39,13 @@ function fakeDesktop() {
     control('ListItem', 'Hidden asset', 1000, 900),
   ];
   const mouse = { pressed: false, x: 0, y: 0 };
+  /**
+   * The control a box follows, as its app answers: a rectangle, out of view,
+   * or null once the app dropped it. Dropping it ends every element held so
+   * far, as a re-rendered row does; it is found again once it has a rectangle.
+   */
+  const live = { rect: null as ScreenRect | 'hidden' | null, generation: 0, held: 0, asked: [] as NativeControl[] };
+  const drop = () => { live.rect = null; live.generation += 1; };
   const capture: WindowCapture = {
     list: async () => windows.map(window => ({ ...window, minimized: frames.get(window.id)?.minimized ?? window.minimized })),
     capture: async id => { throw goneError(id); },
@@ -54,8 +61,19 @@ function fakeDesktop() {
       return frame ? { rect: { ...frame.rect }, minimized: frame.minimized, above: frame.above } : null;
     },
     mouse: () => ({ ...mouse }),
+    track: async (_id, wanted) => {
+      live.asked.push(wanted);
+      if (live.rect === null) return null;
+      const generation = live.generation;
+      let held = true;
+      live.held += 1;
+      return {
+        rect: () => !held || generation !== live.generation || live.rect === null ? 'gone' : typeof live.rect === 'string' ? live.rect : { ...live.rect },
+        release: () => { if (held) live.held -= 1; held = false; },
+      };
+    },
   };
-  return { windows, frames, mouse, capture, guide };
+  return { windows, frames, mouse, capture, guide, live, drop };
 }
 
 /** Retries an assertion until it holds: the box events reach the desktop app's socket, not the caller's. */
@@ -179,6 +197,42 @@ describe('window guide', () => {
     desk.frames.delete('101');
     expect(await waiting).toEqual({ clicked: false, reason: 'gone' });
     await eventually(() => expect(boxes[0]!.rect).toBeNull());
+  });
+
+  test('a box on a control follows it as the window scrolls, hides out of view, and finds it again once the app re-renders it', async () => {
+    const answered = answer('once');
+    await agent.call('windows.read', { threadId, target: { id: '101' } });
+    await answered;
+    desk.live.rect = { left: 1200, top: 530, width: 40, height: 20 };
+    await agent.call('windows.point', { threadId, control: 3 });
+    expect(desk.live.asked).toEqual([{ type: 'Button', name: 'Play', automationId: 'PlayButton', rect: { left: 1200, top: 530, width: 40, height: 20 } }]);
+    await eventually(() => expect(boxes[0]!.rect).toEqual({ left: 1200, top: 530, width: 40, height: 20 }));
+
+    // The window scrolls: the box moves with the control, and a click is looked for where it is now.
+    desk.live.rect = { left: 1200, top: 600, width: 40, height: 20 };
+    await eventually(() => expect(boxes[0]!.rect).toEqual({ left: 1200, top: 600, width: 40, height: 20 }));
+    // Out of view, by the app's word or under the window's edge (it ends at 800): hidden, still shown.
+    desk.live.rect = 'hidden';
+    await eventually(() => expect(boxes[0]!.rect).toBeNull());
+    desk.live.rect = { left: 1200, top: 805, width: 40, height: 20 };
+    await Bun.sleep(FOLLOW_MS * 5);
+    expect(boxes[0]!.rect).toBeNull();
+    desk.live.rect = { left: 1200, top: 700, width: 40, height: 20 };
+    await eventually(() => expect(boxes[0]!.rect).toEqual({ left: 1200, top: 700, width: 40, height: 20 }));
+
+    // The app drops the element: hidden, then found again near where it was last seen.
+    desk.drop();
+    await eventually(() => expect(boxes[0]!.rect).toBeNull());
+    desk.live.rect = { left: 1210, top: 690, width: 40, height: 20 };
+    await eventually(() => expect(boxes[0]!.rect).toEqual({ left: 1210, top: 690, width: 40, height: 20 }), 3000);
+    expect(desk.live.asked.at(-1)!.rect).toEqual({ left: 1200, top: 700, width: 40, height: 20 });
+
+    const waiting = agent.call('windows.waitClick', { threadId, timeoutSeconds: 5 });
+    await Bun.sleep(20);
+    Object.assign(desk.mouse, { pressed: true, x: 1215, y: 695 });
+    expect(await waiting).toMatchObject({ clicked: true, pointer: { x: 210, y: 190 } });
+    // The element is let go with the box.
+    expect(desk.live.held).toBe(0);
   });
 
   test('wait-click ends on a press inside the box, not on one outside or a button already held', async () => {

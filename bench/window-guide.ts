@@ -3,8 +3,10 @@
  * thread. Windows only. Measures the module's import and load, the first read
  * of a window's controls (COM and UI Automation's setup included), the median
  * of `warm` reads, the median of `warm` reads of where the window lies (what
- * a box following its window costs every 250 ms), and the RSS growth over
- * `leak` reads. The box itself is the desktop app's.
+ * a box following its window costs every 100 ms), the time to find one
+ * control and hold it live and the median of `warm` asks of where it is now
+ * (what a box following its control costs every 100 ms), and the RSS growth
+ * over `leak` reads. The box itself is the desktop app's.
  *
  * The window is the largest one not minimized whose process contains `match`,
  * or the taskbar when `match` is `taskbar`. Nothing is focused, raised or
@@ -51,6 +53,16 @@ for (let index = 0; index < warm; index += 1) reads.push((await timed(() => load
 const frames: number[] = [];
 for (let index = 0; index < warm; index += 1) frames.push((await timed(() => loaded.frame(target.id)))[1]);
 
+const followed = first.controls[Math.floor(first.controls.length / 2)];
+let trackMs = Number.NaN;
+const asks: number[] = [];
+if (followed !== undefined) {
+  const [tracked, took] = await timed(() => loaded.track(target.id, followed));
+  trackMs = took;
+  for (let index = 0; tracked !== null && index < warm; index += 1) asks.push((await timed(() => tracked.rect()))[1]);
+  tracked?.release();
+}
+
 Bun.gc(true);
 const rssBefore = process.memoryUsage().rss;
 for (let index = 0; index < leak; index += 1) await loaded.controls(target.id, 2000);
@@ -61,4 +73,5 @@ console.log(`window: ${target.process} ${target.width}x${target.height}, ${first
 console.log(`import ${ms(importMs)}, load ${ms(loadMs)}`);
 console.log(`first read ${ms(firstMs)}, later read (median of ${warm}) ${ms(median(reads))}`);
 console.log(`where the window lies (median of ${warm}) ${ms(median(frames))}`);
+console.log(`finding a control to follow ${ms(trackMs)}, where it is now (median of ${warm}) ${ms(median(asks))}`);
 console.log(`RSS over ${leak} reads: ${mb(rssAfter - rssBefore)}`);

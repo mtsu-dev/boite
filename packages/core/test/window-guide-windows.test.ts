@@ -96,6 +96,31 @@ describe.skipIf(process.platform !== 'win32')('window guide on Windows', () => {
     expect(await guide.controls(form.id, 1)).toMatchObject({ total });
   });
 
+  test('a tracked control answers where it is now, after its window moved', async () => {
+    const { controls } = await guide.controls(form.id, 50);
+    const build = controls.find(control => control.name === 'Build')!;
+    const tracked = (await guide.track(form.id, build))!;
+    expect(tracked).not.toBeNull();
+    expect(tracked.rect()).toEqual(build.rect);
+    const { dlopen, FFIType } = await import('bun:ffi');
+    const user32 = dlopen('user32.dll', { SetWindowPos: { args: [FFIType.u64, FFIType.u64, FFIType.i32, FFIType.i32, FFIType.i32, FFIType.i32, FFIType.u32], returns: FFIType.i32 } });
+    const frame = guide.frame(form.id)!.rect;
+    // SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE.
+    expect(user32.symbols.SetWindowPos(BigInt(form.id), 0n, frame.left + 30, frame.top + 20, 0, 0, 0x1 | 0x4 | 0x10)).not.toBe(0);
+    try {
+      const moved = guide.frame(form.id)!.rect;
+      const dx = moved.left - frame.left, dy = moved.top - frame.top;
+      expect([dx, dy]).not.toEqual([0, 0]);
+      expect(tracked.rect()).toEqual({ ...build.rect, left: build.rect.left + dx, top: build.rect.top + dy });
+    } finally {
+      user32.symbols.SetWindowPos(BigInt(form.id), 0n, frame.left, frame.top, 0, 0, 0x1 | 0x4 | 0x10);
+      user32.close();
+    }
+    tracked.release();
+    expect(tracked.rect()).toBe('gone');
+    expect(await guide.track(form.id, { ...build, name: 'No such button' })).toBeNull();
+  });
+
   test('a window that is gone has no frame and no controls', async () => {
     expect(guide.frame('1')).toBeNull();
     expect(await guide.controls('1', 5).then(() => 'read', error => (error as Error).message)).toContain('window 1 is gone');
