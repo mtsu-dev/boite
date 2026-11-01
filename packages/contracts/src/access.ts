@@ -378,6 +378,10 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
   ['windows.clip', 'a contact sheet of a few seconds of such a window, on the same terms as windows.screenshot'],
   ['windows.watch', 'showing such a window in its own conversation\'s Window panel; nothing is captured until the person watching presses Show'],
   ['windows.close', 'emptying its own conversation\'s Window panel'],
+  ['windows.read', 'the names, types and places of the controls of such a window, on the same terms as windows.screenshot: text a screenshot of it would show'],
+  ['windows.point', 'one click-through box with a label above a control or part of such a window, so the person sees where to click; it sends the window nothing and takes no focus'],
+  ['windows.waitClick', 'waiting until the person clicks inside its own conversation\'s box; it learns only that the click happened'],
+  ['windows.unpoint', 'taking its own conversation\'s box off the screen'],
   // The virtual desktop is Boite's own X server in memory, never the user's screen; a thread under execution
   // protection is refused there (desktop/service.ts), since what it starts would run outside that protection.
   ['desktop.status', 'whether this machine can start its conversation\'s virtual desktop and what runs on it'],

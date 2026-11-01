@@ -10,14 +10,19 @@ export const strings = {
       waiting: 'Waiting for the first picture…',
       picture: 'Live view of {process}'
     },
+    /** The frame drawn around an app Boite brought to the front to follow its buttons. */
+    pointer: {
+      frame: '{app} stays in front: Boite follows its buttons only while you can see it'
+    },
     capture: {
       screenshot: 'Screenshot', clip: 'Clip of {count} frames', stream: 'Live view',
       open: 'Open the capture of {process}', alt: 'Capture of {process}'
     },
     consent: {
-      asks: '{agent} wants to capture {process}', anAgent: 'An agent',
+      asks: '{agent} wants to capture {process}', asksRead: '{agent} wants to read {process}', anAgent: 'An agent',
       screenshot: 'A screenshot', clip: 'A short clip', stream: 'A live view in the Window panel',
-      waits: 'The capture waits until {time}.',
+      read: 'The names of its buttons and menus, to show you where to click',
+      waits: 'The capture waits until {time}.', readWaits: 'The read waits until {time}.',
       once: 'Allow once', always: 'Always for this project', refuse: 'Refuse',
       allowedOnce: 'Allowed once: {process}', allowedAlways: 'Always allowed in this project: {process}',
       refused: 'Refused: {process}', expired: 'Not answered in time: {process}'

@@ -78,7 +78,8 @@ ${CONTROL_HELP}
   device help                    open an iOS Simulator or Android emulator in the
                                  user's Device panel, capture and drive it
   window help                    capture a desktop window (Unity, a game) as a PNG
-                                 or a contact sheet, or show it in the Window panel
+                                 or a contact sheet, or show it in the Window panel;
+                                 read its controls and point the user at one
   desktop help                   a private virtual desktop (Linux) to run GUI apps
                                  and drive them through agent-desktop
   pr list|refresh                this conversation's linked pull requests

@@ -1,0 +1,158 @@
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import type { Subprocess } from 'bun';
+import type { NativeWindow, WindowCapture, WindowGuide } from '../src/platform/types.ts';
+
+/**
+ * A WinForms form this file owns, in its own powershell.exe, that never takes
+ * the focus: two enabled buttons, a disabled one and a text field.
+ */
+const FORM = `
+using System;
+using System.Drawing;
+using System.Windows.Forms;
+public class BoiteGuideWindow : Form {
+  public BoiteGuideWindow(string title) {
+    Text = title;
+    StartPosition = FormStartPosition.Manual;
+    // Away from the windows window-capture-windows.test.ts opens at the same time near the top-left corner.
+    Location = new Point(760, 420);
+    Size = new Size(420, 260);
+    TopMost = true;
+    Controls.Add(new Button { Text = "Open project", Name = "openProject", Location = new Point(20, 20), Size = new Size(140, 40) });
+    Controls.Add(new Button { Text = "Build  Settings", Location = new Point(180, 20), Size = new Size(140, 40) });
+    Controls.Add(new Button { Text = "Disabled", Location = new Point(20, 80), Size = new Size(100, 40), Enabled = false });
+    Controls.Add(new TextBox { Name = "search", Location = new Point(20, 140), Size = new Size(200, 24) });
+    // A container that grows with the window, as a div with its page.
+    Controls.Add(new GroupBox { Text = "Options", Location = new Point(240, 120), Size = new Size(140, 70), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right });
+  }
+  protected override bool ShowWithoutActivation { get { return true; } }
+  protected override CreateParams CreateParams {
+    get { CreateParams parameters = base.CreateParams; parameters.ExStyle |= 0x08000000; return parameters; }
+  }
+}
+`;
+
+function openWindow(title: string): Subprocess {
+  const script = [
+    "$ErrorActionPreference = 'Stop'",
+    `Add-Type -ReferencedAssemblies System.Windows.Forms,System.Drawing -TypeDefinition @'\n${FORM}\n'@`,
+    `[System.Windows.Forms.Application]::Run((New-Object BoiteGuideWindow -ArgumentList '${title}'))`,
+  ].join('\n');
+  const encoded = Buffer.from(script, 'utf16le').toString('base64');
+  return Bun.spawn(['powershell.exe', '-NoProfile', '-NonInteractive', '-EncodedCommand', encoded], { stdout: 'ignore', stderr: 'pipe', windowsHide: true });
+}
+
+describe.skipIf(process.platform !== 'win32')('window guide on Windows', () => {
+  const tag = `boite-guide-${process.pid}-${Date.now()}`;
+  let proc: Subprocess;
+  let capture: WindowCapture;
+  let guide: WindowGuide;
+  let form: NativeWindow;
+
+  beforeAll(async () => {
+    const { loadWindowCapture } = await import('../src/platform/windows/window-capture.ts');
+    const { loadWindowGuide } = await import('../src/platform/windows/window-guide.ts');
+    const [loadedCapture, loadedGuide] = await Promise.all([loadWindowCapture(), loadWindowGuide()]);
+    if ('unavailable' in loadedCapture) throw new Error(loadedCapture.unavailable);
+    if ('unavailable' in loadedGuide) throw new Error(loadedGuide.unavailable);
+    capture = loadedCapture;
+    guide = loadedGuide;
+    proc = openWindow(tag);
+    // PowerShell loading WinForms takes seconds on a busy machine or CI runner.
+    const deadline = Date.now() + 30_000;
+    while (Date.now() < deadline) {
+      const found = (await capture.list()).find(window => window.pid === proc.pid && window.title === tag);
+      if (found) { form = found; return; }
+      if (proc.exitCode !== null) throw new Error(`test window exited ${proc.exitCode}: ${await new Response(proc.stderr as ReadableStream).text()}`);
+      await Bun.sleep(100);
+    }
+    throw new Error(`test window of pid ${proc.pid} never showed`);
+  }, 45_000);
+
+  afterAll(() => {
+    proc?.kill();
+  });
+
+  test('reads the enabled controls with their names and places inside the window', async () => {
+    const frame = guide.frame(form.id)!;
+    expect(frame.minimized).toBe(false);
+    expect({ width: frame.rect.width, height: frame.rect.height }).toEqual({ width: form.width, height: form.height });
+    const { controls, total } = await guide.controls(form.id, 50);
+    expect(total).toBe(controls.length);
+    const names = controls.map(control => `${control.type} ${control.name}`);
+    expect(names).toContain('Button Open project');
+    // Its two spaces read as one, and the letters stay: a name is what the agent says to the person.
+    expect(names).toContain('Button Build Settings');
+    expect(names).toContain('Edit ');
+    expect(names).not.toContain('Button Disabled');
+    const open = controls.find(control => control.name === 'Open project')!;
+    expect(open.automationId).toBe('openProject');
+    const build = controls.find(control => control.name === 'Build Settings')!;
+    // Same row, left to right, both inside the window's frame, in physical pixels at any scaling.
+    expect(build.rect.left).toBeGreaterThan(open.rect.left + open.rect.width - 1);
+    expect(Math.abs(build.rect.top - open.rect.top)).toBeLessThan(2);
+    for (const control of [open, build]) {
+      expect(control.rect.left).toBeGreaterThanOrEqual(frame.rect.left);
+      expect(control.rect.top).toBeGreaterThanOrEqual(frame.rect.top);
+      expect(control.rect.left + control.rect.width).toBeLessThanOrEqual(frame.rect.left + frame.rect.width);
+    }
+    expect(await guide.controls(form.id, 1)).toMatchObject({ total });
+  });
+
+  test('a tracked control answers where it is now, after its window moved', async () => {
+    const { controls } = await guide.controls(form.id, 50);
+    const build = controls.find(control => control.name === 'Build Settings')!;
+    const tracked = (await guide.track(form.id, build))!;
+    expect(tracked).not.toBeNull();
+    expect(tracked.rect()).toEqual(build.rect);
+    const { dlopen, FFIType } = await import('bun:ffi');
+    const user32 = dlopen('user32.dll', { SetWindowPos: { args: [FFIType.u64, FFIType.u64, FFIType.i32, FFIType.i32, FFIType.i32, FFIType.i32, FFIType.u32], returns: FFIType.i32 } });
+    const frame = guide.frame(form.id)!.rect;
+    // SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE.
+    expect(user32.symbols.SetWindowPos(BigInt(form.id), 0n, frame.left + 30, frame.top + 20, 0, 0, 0x1 | 0x4 | 0x10)).not.toBe(0);
+    try {
+      const moved = guide.frame(form.id)!.rect;
+      const dx = moved.left - frame.left, dy = moved.top - frame.top;
+      expect([dx, dy]).not.toEqual([0, 0]);
+      expect(tracked.rect()).toEqual({ ...build.rect, left: build.rect.left + dx, top: build.rect.top + dy });
+    } finally {
+      user32.symbols.SetWindowPos(BigInt(form.id), 0n, frame.left, frame.top, 0, 0, 0x1 | 0x4 | 0x10);
+      user32.close();
+    }
+    tracked.release();
+    expect(tracked.rect()).toBe('gone');
+    expect(await guide.track(form.id, { ...build, name: 'No such button' })).toBeNull();
+  });
+
+  test('any reads the containers too, and a tracked one answers its new size', async () => {
+    expect((await guide.controls(form.id, 50)).controls.map(control => control.type)).not.toContain('Group');
+    const group = (await guide.controls(form.id, 50, true)).controls.find(control => control.type === 'Group' && control.name === 'Options')!;
+    expect(group).toBeDefined();
+    const tracked = (await guide.track(form.id, group))!;
+    expect(tracked.rect()).toEqual(group.rect);
+    const { dlopen, FFIType } = await import('bun:ffi');
+    const user32 = dlopen('user32.dll', { SetWindowPos: { args: [FFIType.u64, FFIType.u64, FFIType.i32, FFIType.i32, FFIType.i32, FFIType.i32, FFIType.u32], returns: FFIType.i32 } });
+    const frame = guide.frame(form.id)!.rect;
+    // SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE: the window grows to the right, the group with it.
+    expect(user32.symbols.SetWindowPos(BigInt(form.id), 0n, 0, 0, frame.width + 60, frame.height, 0x2 | 0x4 | 0x10)).not.toBe(0);
+    try {
+      const grown = guide.frame(form.id)!.rect.width - frame.width;
+      expect(grown).toBeGreaterThan(0);
+      let now = tracked.rect();
+      for (let attempt = 0; attempt < 20 && typeof now === 'object' && now.width === group.rect.width; attempt++) { await Bun.sleep(25); now = tracked.rect(); }
+      expect(now).toEqual({ ...group.rect, width: group.rect.width + grown });
+    } finally {
+      user32.symbols.SetWindowPos(BigInt(form.id), 0n, 0, 0, frame.width, frame.height, 0x2 | 0x4 | 0x10);
+      user32.close();
+      tracked.release();
+    }
+  });
+
+  test('a window that is gone has no frame and no controls', async () => {
+    expect(guide.frame('1')).toBeNull();
+    expect(await guide.controls('1', 5).then(() => 'read', error => (error as Error).message)).toContain('window 1 is gone');
+    const mouse = guide.mouse();
+    expect(typeof mouse.pressed).toBe('boolean');
+    expect(Number.isInteger(mouse.x) && Number.isInteger(mouse.y)).toBe(true);
+  });
+});

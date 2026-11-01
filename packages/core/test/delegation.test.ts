@@ -326,7 +326,8 @@ test('the parent learns dynamic workflows and coordination within a compact prom
   // Then 78 for naming the Mermaid headers chat draws, so a chart or a schema needs no `boite view help` (8 KB) before it (4479 measured 2026-10-26).
   // Then 130 for the ```view fence: an interactive or animated piece is drawn from the answer, with no command and no help (4609 measured 2026-10-26).
   // Then 46 on Linux for `boite desktop help`: GUI apps the agent runs and clicks on a private desktop (4643 measured 2026-10-31).
-  expect(Buffer.byteLength(prompt.replaceAll(h.dataDir, '<data>'))).toBeLessThan(process.platform === 'linux' ? 4644 : 4610);
+  // Then 20 for ", or point the user at a control" (the line around it shortened): an agent asked to teach an app guides the user through it instead of driving it (4629 measured on Windows 2026-11-01; Linux adds the same 20 to its 4643).
+  expect(Buffer.byteLength(prompt.replaceAll(h.dataDir, '<data>'))).toBeLessThan(process.platform === 'linux' ? 4664 : 4630);
   runs.get(threadId)!.finish();
   await waitFor(() => h.core.threads.require(threadId).status === 'idle');
   await owner.call('turns.start', { threadId, prompt: 'Continue' });

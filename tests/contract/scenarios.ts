@@ -360,6 +360,23 @@ export const SCENARIOS: Record<string, Scenario> = {
     await refusedWith(env.call('browser.remoteFrame', { threadId }), RpcErrorCode.Refused);
     await refusedWith(env.call('browser.remoteInput', { threadId, frameId: 'none', input: { kind: 'key', key: 'Enter' } }), RpcErrorCode.Refused);
   },
+  'the window guide refuses bad input and a box it never drew, before it reads any window': async env => {
+    const setup = await echo(env);
+    const { id: threadId } = await thread(env, setup);
+    // Nothing here reaches the OS: every call is answered or refused before a window would be read or a box drawn.
+    same(await env.call('windows.unpoint', { threadId }), { cleared: false }, 'a conversation with no box');
+    await refusedWith(env.call('windows.waitClick', { threadId }), RpcErrorCode.Refused, ['threadId']);
+    await refusedWith(env.call('windows.point', { threadId, control: 1 }), RpcErrorCode.Refused, ['field']);
+    await refusedWith(env.call('windows.point', { threadId, control: 1, name: 'Play' }), RpcErrorCode.InvalidParams, ['field']);
+    await refusedWith(env.call('windows.point', { threadId, control: 1, label: 'x'.repeat(81) }), RpcErrorCode.InvalidParams, ['field']);
+    await refusedWith(env.call('windows.point', { threadId, control: 1, seconds: 601 }), RpcErrorCode.InvalidParams, ['field']);
+    await refusedWith(env.call('windows.point', { threadId, control: 1, shape: 'star' as 'box' }), RpcErrorCode.InvalidParams, ['field']);
+    await refusedWith(env.call('windows.point', { threadId, control: 1, pad: 25 }), RpcErrorCode.InvalidParams, ['field']);
+    await refusedWith(env.call('windows.point', { threadId, control: 1, notify: 'yes' as unknown as boolean }), RpcErrorCode.InvalidParams, ['field']);
+    await refusedWith(env.call('windows.point', { threadId, control: 1, any: 'yes' as unknown as boolean }), RpcErrorCode.InvalidParams, ['field']);
+    await refusedWith(env.call('windows.read', { threadId, target: { id: '1' }, limit: 0 }), RpcErrorCode.InvalidParams, ['field']);
+    await refusedWith(env.call('windows.read', { threadId, target: { id: '1' }, any: 'yes' as unknown as boolean }), RpcErrorCode.InvalidParams, ['field']);
+  },
   'the virtual desktop refuses bad input before starting anything and has nothing to stop': async env => {
     const setup = await echo(env);
     const { id: threadId } = await thread(env, setup);

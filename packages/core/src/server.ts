@@ -783,6 +783,9 @@ export function startServer(options: ServerOptions): RunningServer {
       }
       return delivered;
     },
+    // Only this machine's desktop app draws on its screen: a phone, a browser tab, a remote shell or a plugin has none of it.
+    pointer: box => [...connections].filter(connection => connection.authenticated && connection.identity.principal === 'owner' && connection.clientName === 'shell' && !connection.remote)
+      .filter(connection => { try { connection.sendEvent('windows.pointer', box); return true; } catch { return false; /* closing */ } }).length,
   };
 
   const broadcast = (name: RpcEventName, payload: EventPayload): void => {

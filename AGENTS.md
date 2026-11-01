@@ -155,7 +155,7 @@ and assertions when making the suite faster.
   and the `boite` command an agent uses to reach them.
 - [Devices](docs/devices.md): SDK detection, `boite device` and the Device panel.
 - [Windows](docs/windows.md): `boite window` captures of desktop windows, consent,
-  exclusions, the Window panel and the backend on each OS.
+  exclusions, the Window panel, the on-screen guide and the backend on each OS.
 - [Virtual desktop](docs/desktop.md): `boite desktop`, a private Linux desktop
   in memory where agent-desktop drives GUI apps, its stack, security and lifetime.
 - [Admin policy](docs/enterprise.md) and [network flows](docs/network.md): the

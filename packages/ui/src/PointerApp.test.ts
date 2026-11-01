@@ -1,0 +1,112 @@
+import { afterEach, expect, test, vi } from 'vitest';
+import { flushSync, mount, unmount } from 'svelte';
+import PointerApp from './PointerApp.svelte';
+import { pointerRequested, type PointerLayout } from './lib/pointer-layout';
+
+const { invoke, listen, handlers } = vi.hoisted(() => {
+  const handlers = new Map<string, (event: { payload: unknown }) => void>();
+  return {
+    handlers,
+    invoke: vi.fn<(command: string, args?: Record<string, unknown>) => Promise<unknown>>(),
+    listen: vi.fn(async (name: string, handler: (event: { payload: unknown }) => void) => { handlers.set(name, handler); return () => handlers.delete(name); })
+  };
+});
+vi.mock('@tauri-apps/api/core', () => ({ invoke }));
+vi.mock('@tauri-apps/api/webviewWindow', () => ({ getCurrentWebviewWindow: () => ({ listen }) }));
+
+const tauri = window as { __TAURI_INTERNALS__?: unknown };
+const apps: ReturnType<typeof mount>[] = [];
+
+afterEach(async () => {
+  for (const app of apps.splice(0)) await unmount(app);
+  invoke.mockReset();
+  handlers.clear();
+  delete tauri.__TAURI_INTERNALS__;
+});
+
+const box = (selector: string) => document.querySelector<HTMLElement>(selector);
+const settle = () => vi.waitFor(() => expect(handlers.has('pointer://hide')).toBe(true));
+
+test('the page draws the ring just outside the control and the label in a bubble pointing at it, above or below', async () => {
+  invoke.mockResolvedValue(null);
+  apps.push(mount(PointerApp, { target: document.body }));
+  await settle();
+  expect(invoke).toHaveBeenCalledWith('pointer_layout');
+  expect(box('[data-testid="pointer"]')).toBeNull();
+
+  const layout: PointerLayout = { x: 28, y: 68, width: 100, height: 30, label: 'Click Build', below: false, look: { shape: 'box', pad: 5 } };
+  handlers.get('pointer://layout')!({ payload: layout });
+  flushSync();
+  const ring = box('.ring')!;
+  expect([ring.style.left, ring.style.top, ring.style.width, ring.style.height]).toEqual(['23px', '63px', '110px', '40px']);
+  expect(box('[data-testid="pointer-label"]')!.textContent).toBe('Click Build');
+  const tag = box('[data-testid="pointer-label"]')!;
+  expect(tag.style.bottom).toBe(`${window.innerHeight - 63 + 10}px`);
+  // A wide control: the tail points near the ring's left edge.
+  expect([tag.dataset.side, tag.style.left, tag.style.getPropertyValue('--tail')]).toEqual(['left', '29px', '22px']);
+
+  // A box at the top of the screen: the label hangs under the ring.
+  handlers.get('pointer://layout')!({ payload: { ...layout, y: 28, below: true } });
+  flushSync();
+  expect(box('[data-testid="pointer"]')!.dataset.below).toBe('true');
+  expect(box('[data-testid="pointer-label"]')!.style.top).toBe(`${23 + 40 + 10}px`);
+
+  // A small control, such as a server icon: the tail points at its middle.
+  handlers.get('pointer://layout')!({ payload: { ...layout, x: 200, width: 30 } });
+  flushSync();
+  expect(Number.parseFloat(box('[data-testid="pointer-label"]')!.style.left) + Number.parseFloat(box('[data-testid="pointer-label"]')!.style.getPropertyValue('--tail'))).toBe(215);
+
+  // A control near the window's right edge, such as a settings button at a screen's corner: the bubble hangs to the left, with room for its text.
+  handlers.get('pointer://layout')!({ payload: { ...layout, x: window.innerWidth - 60, width: 28 } });
+  flushSync();
+  const right = box('[data-testid="pointer-label"]')!;
+  expect([right.dataset.side, right.style.left]).toEqual(['right', 'auto']);
+  expect(window.innerWidth - Number.parseFloat(right.style.right) - Number.parseFloat(right.style.getPropertyValue('--tail'))).toBe(window.innerWidth - 60 + 14);
+  expect(Number.parseFloat(right.style.maxWidth)).toBeGreaterThan(window.innerWidth / 2);
+
+  handlers.get('pointer://hide')!({ payload: null });
+  flushSync();
+  expect(box('[data-testid="pointer"]')).toBeNull();
+});
+
+test('a control at the screen edge keeps its whole ring inside the window, and a page that opens late reads its box', async () => {
+  invoke.mockResolvedValue({ x: 0, y: 0, width: 55, height: 48, label: '', below: false, look: { shape: 'round', pad: 5 } });
+  apps.push(mount(PointerApp, { target: document.body }));
+  await vi.waitFor(() => expect(box('.ring')).not.toBeNull());
+  const ring = box('.ring')!;
+  expect([ring.style.left, ring.style.top, ring.style.width, ring.style.height]).toEqual(['0px', '0px', '60px', '53px']);
+  expect(box('[data-testid="pointer"]')!.dataset.shape).toBe('round');
+  // No label: no bubble.
+  expect(box('[data-testid="pointer-label"]')).toBeNull();
+});
+
+test('a frame around a whole app says why the app was brought to the front, inside its top edge', async () => {
+  invoke.mockResolvedValue(null);
+  apps.push(mount(PointerApp, { target: document.body }));
+  await settle();
+  // A maximized window spills past the monitor: the frame stays inside the page.
+  handlers.get('pointer://layout')!({ payload: { x: -8, y: -8, width: window.innerWidth + 16, height: 600, label: '', below: false, look: { shape: 'box', pad: 0 }, frame: 'Discord' } });
+  flushSync();
+  const frame = box('.frame')!;
+  expect([frame.style.left, frame.style.top, frame.style.width, frame.style.height]).toEqual(['0px', '0px', `${window.innerWidth}px`, '592px']);
+  expect(box('[data-testid="pointer-frame"] .text')!.textContent).toBe('Discord stays in front: Boite follows its buttons only while you can see it');
+  expect(box('.ring')).toBeNull();
+});
+
+test('only the desktop app of the core\'s own machine hands a box to the shell', async () => {
+  const relay = vi.fn(async () => undefined);
+  const shown = { id: 'box_1', rect: { left: 10, top: 20, width: 30, height: 40 }, label: 'Play', look: { shape: 'box' as const, pad: 12 } };
+  await pointerRequested({ localCore: true }, shown, relay);
+  expect(relay).not.toHaveBeenCalled();
+  tauri.__TAURI_INTERNALS__ = {};
+  await pointerRequested({ localCore: false }, shown, relay);
+  expect(relay).not.toHaveBeenCalled();
+  await pointerRequested({ localCore: true }, shown, relay);
+  await pointerRequested({ localCore: true }, { ...shown, rect: null }, relay);
+  await pointerRequested({ localCore: true }, { ...shown, id: 'frame_1', frame: { app: 'Discord', windowId: '42' } }, relay);
+  expect(relay.mock.calls).toEqual([
+    ['pointer_show', { id: 'box_1', rect: shown.rect, label: 'Play', look: shown.look }],
+    ['pointer_hide', { id: 'box_1' }],
+    ['pointer_show', { id: 'frame_1', rect: shown.rect, label: 'Play', look: shown.look, frame: { app: 'Discord', windowId: '42' } }]
+  ]);
+});
