@@ -213,6 +213,10 @@ export class ContactGroupLink {
     if (held) this.#merge(contact, requests, relations);
     else {
       const incoming = this.#incoming().filter(entry => entry.contact.coreId !== contact.coreId && Date.now() - entry.at < INCOMING_MS);
+      // The cap holds for the group's single entry too: the member keeps the contact, still relays for it, and hands it again later.
+      if (this.#store.occupied(contact.coreId) + incoming.length >= this.#store.maxContacts) {
+        throw refused(`contact.hand: this Bots host holds ${this.#store.maxContacts} contacts already, counting those on their way; ${peer.name} keeps ${contact.name} for now`, { field: 'contact', reason: 'full', max: this.#store.maxContacts });
+      }
       this.#core.journal.setSetting(INCOMING, [...incoming, { from: peer.coreId, at: Date.now(), contact, requests, relations }]);
       this.#store.relisten();
     }
@@ -382,7 +386,8 @@ export class ContactGroupLink {
       : { ...value, coreId: to, threadId: thread(value.threadId), ...(value.machine === undefined ? {} : { machine: name }) };
     if (existing) this.#store.drop(from);
     else {
-      this.#store.put({ ...old, coreId: to, name, machine: card.machine, publicKey: card.publicKey, box: card.box, role: 'guest', url: card.url, fingerprint: fingerprintWords(self.publicKey, card.publicKey), syncPending: (old.syncPending ?? 0) + 1 }, from);
+      // A move only ever leads to a Bots host: the contact is a group from now on, before its first sync says so (`letterTtl`).
+      this.#store.put({ ...old, coreId: to, name, machine: card.machine, group: card.machine, publicKey: card.publicKey, box: card.box, role: 'guest', url: card.url, fingerprint: fingerprintWords(self.publicKey, card.publicKey), syncPending: (old.syncPending ?? 0) + 1 }, from);
       setTimeout(() => { if (!this.#closed) this.#store.unlink(from); }, RELEASE_MS).unref?.();
     }
     this.#store.requests.save(this.#store.requests.list().map(request => request.coreId !== from ? request : {

@@ -186,6 +186,31 @@ test('a Bots host the contact cannot reach: the move answers unreachable and the
   expect(x.core.contacts.has(cId)).toBe(false);
 }, 60000);
 
+test('a full Bots host refuses the hand: the member keeps the contact and its link, and the host lists it under the member', async () => {
+  const { a, x, c, aClient, xClient, aId, xId, cId } = await setup();
+  // A project of X opened to C through A: X keeps a copy of the contact A holds.
+  const xray = await project(x, xClient, 'xray');
+  await aClient.call('contacts.grant', { coreId: cId, projectId: xray.id, machine: xId });
+  x.core.contacts.occupied = () => x.core.contacts.maxContacts;
+  const failures: string[] = [];
+  const real = a.core.coordination.request.bind(a.core.coordination);
+  a.core.coordination.request = (peer, operation, payload) => {
+    const sent = real(peer, operation, payload);
+    if (operation === 'contact.hand' && (payload as { action?: string }).action === 'hand') sent.catch(error => { failures.push((error as Error).message); });
+    return sent;
+  };
+  await botsHome(a, aClient, x, xId);
+  // A hand that reached X before X read the new roster fails for that reason first.
+  await waitFor(() => failures.some(failure => failure.includes('holds 32 contacts already')), 20000);
+  expect(a.core.contacts.linked(cId)).toBe(true);
+  expect(c.core.contacts.find(aId)).toBeDefined();
+  expect(c.core.contacts.has(xId)).toBe(false);
+  expect(x.core.contacts.has(cId)).toBe(false);
+  expect(x.core.contacts.groupLink.incoming(cId)).toBeUndefined();
+  await waitFor(() => x.core.contacts.members.relayedOf(cId).length === 1, 10000);
+  expect((await x.core.contacts.state()).contacts.find(contact => contact.coreId === cId)).toMatchObject({ heldBy: aId });
+}, 60000);
+
 test('with no Bots host, a member keeps its contacts under its own name', async () => {
   const { a, x, c, aId, xId, cId } = await setup();
   a.core.contacts.groupLink.sweep(true);

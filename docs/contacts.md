@@ -275,9 +275,12 @@ sequenceDiagram
    its half of the move, the member keeps its bot and its contact links, and
    tries again 30 seconds later or when the group changes; after a lost
    answer it sends that same move again rather than asking, so it never keeps
-   a second Contacts bot. If the member that announced its bot leaves the group before the
-   bot arrived, the Bots host starts a fresh one
-   (`agents.builtin.ensure { kind: 'contacts' }`).
+   a second Contacts bot. If the Bots host already runs its own, the member's
+   bot stays where it is, with no contact left to serve (the log says so), and
+   the owner may archive it; the contacts go to the host as below, each with its
+   requests, which the host's bot reads from then on. If the member that
+   announced its bot leaves the group before the bot arrived, the Bots host
+   starts a fresh one (`agents.builtin.ensure { kind: 'contacts' }`).
 2. Every 30 seconds, and at once when the group changes, a member that is not
    the Bots host hands each contact whose sync announced `groupLink: 1` to the
    Bots host (`contact.hand`, a sealed operation only a current member may
@@ -290,7 +293,11 @@ sequenceDiagram
    from an older core without it means the sender), so the next host keeps a member's thread at
    that member's alias and its own threads at their plain id. A `member`
    outside the group, or a thread id already in alias form, is refused. The
-   Bots host refuses a contact that is itself or one of the group's machines.
+   Bots host refuses a contact that is itself or one of the group's machines,
+   and any new one once it holds the 32 contacts of the [limits](#limits),
+   counting those whose hello it awaits: the member then keeps the contact, its
+   link and its relaying, hands it again 30 seconds later, and the host's
+   Contacts page shows it under that member (`heldBy`).
 3. The Bots host keeps the record waiting for the contact's hello (one hour),
    and answers with its card `{coreId, publicKey, box, url, machine}` and its
    signature over `boite-contact-move\n` followed by
@@ -401,7 +408,7 @@ sequenceDiagram
 A relation (`ContactRelation`) joins two threads, one per side, and lets
 letters through for as long as it lasts, whatever projects are opened. It
 carries no file, read or command: each thread works in its own checkout.
-Either bot cuts it (`contacts.bot.cut`), and the owner ends one from the
+Either bot cuts it (`contacts.bot.cut` with `relation: <id>`), and the owner ends one from the
 contact's page (`contacts.cutRelation`); archiving a thread or removing the
 contact ends its relations. The two bots may always write to each other: the
 sync announces each side's bot (`Contact.bot`), with the `contactsBot`
@@ -425,8 +432,10 @@ activity reviewer's doubt (`review`) wake it the same way, with nothing held.
 
 The bot reads it and decides: deliver the letter (`contacts.bot.flag` with
 `deliver`), refuse it (its sender reads the reason), write to the other bot or
-thread first, or cut the contact's relations and projects
-(`contacts.bot.cut`), which leaves the contact and its link to the owner.
+thread first, or cut the contact's access with `contacts.bot.cut { contact,
+reason }`: `relation: <id>` ends that relation, `project: <id or name>` closes
+that project on every machine of the group, and neither ends every relation
+and closes every project. The contact and its link stay the owner's.
 Without a bot, a flagged letter waits for the owner as held mail. A flag
 waiting for a decision is never dropped to make room: at 200 open flags a new
 letter that would be flagged is refused, its sender reads why, and decided

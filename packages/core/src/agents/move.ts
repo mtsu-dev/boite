@@ -156,7 +156,7 @@ export class BotMoves {
       // No await from the last answer to here: a fact filed now would wait for a later tick, after the bot is gone.
       const leaving = this.#store.records.get('profile', agent.id);
       // The owner wrote to the bot while it travelled: its turn ends here, and the same requestId finishes the move after.
-      if (thread !== null) this.#idle(leaving, thread);
+      if (thread !== null) this.#idle(leaving, thread, requestId);
       this.#leave(leaving, thread, peer);
       this.#core.journal.setSetting(`${MOVED_OUT}${requestId}`, result);
       this.#core.journal.deleteSetting(`${MOVING_OUT}${requestId}`);
@@ -208,14 +208,20 @@ export class BotMoves {
   }
 
   /** A move waits for the bot's thread and every thread below it to be idle, as `threads.move` does. */
-  #idle(agent: AgentProfile, thread: ThreadSummary): void {
+  /**
+   * Refuses while the bot or one of its sub-threads has a turn. `sent`: the
+   * target already holds the bot under that requestId, so the refusal names
+   * it, and only that id finishes the move without a second bot there.
+   */
+  #idle(agent: AgentProfile, thread: ThreadSummary, sent?: string): void {
     const children = this.#core.journal.listChildThreads().filter(child => rootThread(this.#core, child.id) === thread.id);
     const busy = [thread, ...children].find(one => this.#core.threads.isBusy(one.id));
     if (busy === undefined) return;
-    throw refused(busy.id === thread.id
+    const message = busy.id === thread.id
       ? `agents.move: ${agent.name} has a turn running or queued; stop it or let it end before moving the bot`
-      : `agents.move: ${agent.name}'s sub-thread ${busy.id} has a turn running or queued; stop it before moving the bot`, {
-      field: 'agentId', threadId: thread.id, busyThreadId: busy.id, reason: 'turn-in-flight', status: busy.status, expected: 'an idle bot',
+      : `agents.move: ${agent.name}'s sub-thread ${busy.id} has a turn running or queued; stop it before moving the bot`;
+    throw refused(sent === undefined ? message : `${message}; the bot stays here, and the same requestId (${sent}) finishes the move once it ends`, {
+      field: 'agentId', threadId: thread.id, busyThreadId: busy.id, reason: 'turn-in-flight', status: busy.status, expected: 'an idle bot', ...(sent === undefined ? {} : { requestId: sent }),
     });
   }
 

@@ -359,6 +359,35 @@ test('a rename, a memory and a routine the owner saves while the bot travels go 
   expect(desk.core.agentRuntime.facts(busy.id)).toHaveLength(101);
 }, 60_000);
 
+test('a turn the owner starts while the bot travels keeps it here; the refusal names the generated requestId, which finishes the move once the turn ends', async () => {
+  const { desk, pc, owner, pcId } = await group();
+  const { agent, threadId } = await makeAgent(desk, owner);
+  const request = desk.core.coordination.request.bind(desk.core.coordination);
+  desk.core.coordination.request = async (peer: CoordinationPeer, operation, payload) => {
+    const answer = await request(peer, operation, payload);
+    if (operation === 'bot.move' && !desk.core.threads.isBusy(threadId)) {
+      driver!.restore();
+      driver = scripted(() => ({ text: 'Working.', hold: true }));
+      await owner.call('turns.start', { threadId, prompt: 'One more thing.' });
+      await waitFor(() => desk.core.threads.isBusy(threadId));
+    }
+    return answer;
+  };
+  const refusal = await owner.call('agents.move', { agentId: agent.id, machine: pcId }).catch(error => error as { message: string; rpc: { data: Record<string, unknown> } });
+  const data = (refusal as { rpc: { data: Record<string, unknown> } }).rpc.data;
+  const requestId = String(data.requestId);
+  expect(requestId).toStartWith('mov_');
+  expect(data.reason).toBe('turn-in-flight');
+  expect((refusal as { message: string }).message).toContain(`the same requestId (${requestId})`);
+  expect(desk.core.workforce.records.find('profile', agent.id)).not.toBeNull();
+  desk.core.coordination.request = request;
+  driver!.release();
+  await waitFor(() => settled(desk, threadId), 10_000);
+  await owner.call('agents.move', { agentId: agent.id, machine: pcId, requestId });
+  expect(pc.core.workforce.records.list('profile').filter(p => p.id === agent.id)).toHaveLength(1);
+  expect(desk.core.workforce.records.find('profile', agent.id)).toBeNull();
+}, 60_000);
+
 test('a fact set to another text and back while the bot travels ends there with its latest text', async () => {
   const { desk, pc, owner, pcId } = await group();
   const { agent } = await makeAgent(desk, owner);
