@@ -173,7 +173,7 @@ test('cutting a project closes it on every machine that opened one by that name,
   const member = { projectId: 'prj_on_member', readThreads: false, grantedAt: 0, machine: 'member-core', name: project.name };
   const named = spyOn(host.core.contacts, 'named').mockReturnValue({ ...contact, grants: [...contact.grants, member] });
   const revoked: unknown[] = [];
-  const revoke = spyOn(host.core.contacts, 'revoke').mockImplementation(params => { revoked.push(params); return contact; });
+  const revoke = spyOn(host.core.contacts, 'revoke').mockImplementation(params => { revoked.push(params); return host.core.contacts.view(contact); });
   spies.push(named, revoke);
   expect(await hostClient.call('contacts.bot.cut', { threadId: hostBot.threadId, contact: guestName, reason: 'Done with the docs.', project: project.name.toUpperCase() })).toEqual({ relations: 0, projects: 2 });
   expect(revoked).toEqual([{ coreId: guestId, projectId: project.id }, { coreId: guestId, projectId: 'prj_on_member', machine: 'member-core' }]);
