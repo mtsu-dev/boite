@@ -43,7 +43,7 @@ test('the page draws the ring just outside the control and the label in a bubble
   const tag = box('[data-testid="pointer-label"]')!;
   expect(tag.style.bottom).toBe(`${window.innerHeight - 63 + 10}px`);
   // A wide control: the tail points near the ring's left edge.
-  expect([tag.style.left, tag.style.getPropertyValue('--tail')]).toEqual(['29px', '22px']);
+  expect([tag.dataset.side, tag.style.left, tag.style.getPropertyValue('--tail')]).toEqual(['left', '29px', '22px']);
 
   // A box at the top of the screen: the label hangs under the ring.
   handlers.get('pointer://layout')!({ payload: { ...layout, y: 28, below: true } });
@@ -55,6 +55,14 @@ test('the page draws the ring just outside the control and the label in a bubble
   handlers.get('pointer://layout')!({ payload: { ...layout, x: 200, width: 30 } });
   flushSync();
   expect(Number.parseFloat(box('[data-testid="pointer-label"]')!.style.left) + Number.parseFloat(box('[data-testid="pointer-label"]')!.style.getPropertyValue('--tail'))).toBe(215);
+
+  // A control near the window's right edge, such as a settings button at a screen's corner: the bubble hangs to the left, with room for its text.
+  handlers.get('pointer://layout')!({ payload: { ...layout, x: window.innerWidth - 60, width: 28 } });
+  flushSync();
+  const right = box('[data-testid="pointer-label"]')!;
+  expect([right.dataset.side, right.style.left]).toEqual(['right', 'auto']);
+  expect(window.innerWidth - Number.parseFloat(right.style.right) - Number.parseFloat(right.style.getPropertyValue('--tail'))).toBe(window.innerWidth - 60 + 14);
+  expect(Number.parseFloat(right.style.maxWidth)).toBeGreaterThan(window.innerWidth / 2);
 
   handlers.get('pointer://hide')!({ payload: null });
   flushSync();

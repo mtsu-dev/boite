@@ -29,22 +29,29 @@ export function pointerRing(layout: PointerLayout, size: { width: number; height
 
 /** Space between the ring and the label's bubble, in CSS pixels. */
 export const TAG_GAP = 10;
-/** Where the bubble's tail sits from the bubble's left edge, at most. */
+/** Where the bubble's tail sits from the bubble's near edge, at most. */
 const TAIL_INSET = 22;
 
 /**
  * The label's bubble above or below the ring. Its tail points at the ring's
- * middle when the control is small, and near its left edge when it is wide.
+ * middle when the control is small, and near its edge when it is wide. A ring
+ * in the window's right half hangs its bubble to the left, from its right
+ * edge: the window ends at the monitor's edge, so a bubble running right from
+ * a control there would have no room for its text.
  */
-export function pointerTag(ring: { left: number; top: number; width: number; height: number }, size: { width: number; height: number }, below: boolean): { left: number; top: number | null; bottom: number | null; tail: number; maxWidth: number } {
-  const aim = ring.left + Math.min(ring.width / 2, TAIL_INSET + 6);
-  const left = Math.max(4, aim - TAIL_INSET);
+export function pointerTag(ring: { left: number; top: number; width: number; height: number }, size: { width: number; height: number }, below: boolean): { side: 'left' | 'right'; edge: number; top: number | null; bottom: number | null; tail: number; maxWidth: number } {
+  const reach = Math.min(ring.width / 2, TAIL_INSET + 6);
+  const side = ring.left + ring.width / 2 > size.width / 2 ? 'right' : 'left';
+  // `aim` and `edge` are measured from the side the bubble hangs from.
+  const aim = side === 'left' ? ring.left + reach : size.width - (ring.left + ring.width) + reach;
+  const edge = Math.max(4, aim - TAIL_INSET);
   return {
-    left,
+    side,
+    edge,
     top: below ? ring.top + ring.height + TAG_GAP : null,
     bottom: below ? null : size.height - ring.top + TAG_GAP,
-    tail: aim - left,
-    maxWidth: Math.max(0, size.width - left - 4)
+    tail: aim - edge,
+    maxWidth: Math.max(0, size.width - edge - 4)
   };
 }
 

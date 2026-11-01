@@ -52,7 +52,8 @@
         <span class="echo"></span>
       </div>
       {#if layout.label && tag}
-        <div class="tag" data-testid="pointer-label" style:left="{tag.left}px" style:top={tag.top === null ? 'auto' : `${tag.top}px`}
+        <div class="tag" data-testid="pointer-label" data-side={tag.side} style:left={tag.side === 'left' ? `${tag.edge}px` : 'auto'}
+          style:right={tag.side === 'right' ? `${tag.edge}px` : 'auto'} style:top={tag.top === null ? 'auto' : `${tag.top}px`}
           style:bottom={tag.bottom === null ? 'auto' : `${tag.bottom}px`} style:max-width="{tag.maxWidth}px" style:--tail="{tag.tail}px"><span class="mark"><BoiteMark size={14} /></span><span class="text">{layout.label}</span></div>
       {/if}
     </div>
@@ -152,6 +153,20 @@
 
   [data-below='true'] .tag {
     transform-origin: var(--tail) 0;
+  }
+
+  /* Hung from its right edge: the tail is measured from there. */
+  .tag[data-side='right'] {
+    transform-origin: calc(100% - var(--tail)) 100%;
+  }
+
+  [data-below='true'] .tag[data-side='right'] {
+    transform-origin: calc(100% - var(--tail)) 0;
+  }
+
+  .tag[data-side='right']::after {
+    left: auto;
+    right: calc(var(--tail) - 6px);
   }
 
   [data-below='true'] .tag::after {
