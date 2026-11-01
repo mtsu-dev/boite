@@ -254,7 +254,7 @@
       dressing = false;
       edited();
     } catch (error) {
-      view.error = errorText(error);
+      if (choice === avatarChoice) view.error = errorText(error);
     } finally {
       importing = false;
     }

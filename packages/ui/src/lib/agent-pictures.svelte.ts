@@ -41,22 +41,26 @@ class AgentPictures {
    */
   async load(avatar: string): Promise<void> {
     const key = avatar.trim();
-    if (!isAgentPicture(key) || this.urls[key] !== undefined || this.#loading.has(key)) return;
+    if (!isAgentPicture(key) || this.urls[key] !== undefined) return;
+    // Read before any other return: an effect stays subscribed to connections and to the miss, even while a fetch runs.
     const ready = [...new Set(sources())].filter(store => store.client && store.connection === 'ready');
     const missed = this.missing[key];
-    const asked = this.#asked.get(key);
-    if (missed !== undefined && Date.now() - missed < RETRY_MS && ready.every(store => asked?.has(store.client!))) return;
-    if (!ready.length) return;
+    if (this.#loading.has(key)) return;
+    // Within `RETRY_MS` of a miss, only the machines not asked then.
+    const recent = missed !== undefined && Date.now() - missed < RETRY_MS;
+    const asked = recent ? this.#asked.get(key) ?? new Set<object>() : new Set<object>();
+    const fresh = ready.filter(store => !asked.has(store.client!));
+    if (!fresh.length) return;
     this.#loading.add(key);
     try {
-      for (const store of ready) {
+      for (const store of fresh) {
         try {
           const answer = await store.client!.call('agents.picture.get', { avatar: key });
           if (answer.dataUrl.startsWith('data:image/')) { this.#asked.delete(key); this.remember(key, answer.dataUrl); return; }
         } catch { /* another machine may hold it */ }
       }
-      this.#asked.set(key, new Set(ready.map(store => store.client!)));
-      this.missing = { ...this.missing, [key]: Date.now() };
+      this.#asked.set(key, new Set([...asked, ...fresh.map(store => store.client!)]));
+      this.missing = { ...this.missing, [key]: recent ? missed : Date.now() };
     } finally {
       this.#loading.delete(key);
     }

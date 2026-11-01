@@ -1,4 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest';
+import { flushSync } from 'svelte';
 import { agentPictures, pictureSources } from './agent-pictures.svelte';
 import type { Store } from './store.svelte';
 
@@ -34,4 +35,29 @@ test('a picture no machine held is asked of a machine that connects after the mi
   expect(pc.call).toHaveBeenCalledTimes(1);
   expect(agentPictures.url(avatar)).toBe(PNG);
   expect(agentPictures.missing[avatar]).toBeUndefined();
+});
+
+test('an avatar drawn while a fetch runs asks the machine that connected meanwhile once that fetch misses', async () => {
+  const avatar = 'img:44556677eeff0011';
+  let miss: () => void = () => {};
+  const call = vi.fn(() => new Promise<never>((_resolve, reject) => { miss = () => reject(new Error('not found')); }));
+  const desk = { client: { call }, connection: 'ready' } as unknown as Store;
+  const pc = machine(avatar);
+  const sources = $state<Store[]>([desk]);
+  pictureSources(() => sources);
+
+  // As AgentAvatar draws it: an effect that loads the picture.
+  const stop = $effect.root(() => { $effect(() => { void agentPictures.load(avatar); }); });
+  try {
+    flushSync();
+    expect(call).toHaveBeenCalledTimes(1);
+    sources.push(pc.store);
+    flushSync();
+    expect(pc.call).not.toHaveBeenCalled();
+    miss();
+    await vi.waitFor(() => expect(agentPictures.url(avatar)).toBe(PNG));
+    expect(pc.call).toHaveBeenCalledTimes(1);
+  } finally {
+    stop();
+  }
 });
