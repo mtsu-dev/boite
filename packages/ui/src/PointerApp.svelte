@@ -93,7 +93,7 @@
     position: absolute;
     box-sizing: border-box;
     border: 2.5px solid var(--color-accent);
-    border-radius: var(--radius-xl);
+    border-radius: var(--radius-sm);
     box-shadow: 0 0 0 1px var(--pointer-halo), 0 0 22px 4px var(--color-accent-soft);
     transition: left var(--dur-2) var(--ease-out-quint), top var(--dur-2) var(--ease-out-quint),
       width var(--dur-2) var(--ease-out-quint), height var(--dur-2) var(--ease-out-quint);
@@ -104,7 +104,7 @@
     position: absolute;
     inset: -2.5px;
     border: 2px solid var(--color-accent);
-    border-radius: var(--radius-xl);
+    border-radius: var(--radius-sm);
     opacity: 0;
     animation: echo var(--dur-flash) var(--ease-out-quint) var(--dur-3) infinite;
   }

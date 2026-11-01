@@ -183,7 +183,7 @@ boite window unpoint
     such as a game or a Unity scene view: the agent finds the place in a small
     screenshot first.
 - The box is drawn by the Boite desktop app of the machine that runs the
-  core, in the app's look: a rounded ring in the user's accent, and the label
+  core, in the app's look: a ring with small rounded corners in the user's accent, and the label
   on a card of the app's surface signed with the Boite mark, whose tail points
   at the ring; one entrance and a slow echo, none with reduced motion. It is click-through, takes no focus and has no taskbar
   button. With no desktop app of that machine open, `point` is refused and
