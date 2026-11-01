@@ -67,6 +67,12 @@
     void import('./home/SidebarContacts.svelte').then(module => { SidebarContacts = module.default; }).catch(() => {});
     void import('./home/ContactRequestNotice.svelte').then(module => { ContactRequestNotice = module.default; }).catch(() => {});
   });
+  // The teams above the conversations, loaded with their experiment.
+  let SidebarTeams = $state.raw<typeof import('./teams/SidebarTeams.svelte').default>();
+  $effect(() => {
+    if (!experimentOn('teams') || SidebarTeams) return;
+    void import('./teams/SidebarTeams.svelte').then(module => { SidebarTeams = module.default; }).catch(() => {});
+  });
   let search = $state('');
   const query = $derived(search.trim().toLocaleLowerCase());
   const chatting = $derived(screen === 'chat' && !recover && store.page === 'chat');
@@ -99,7 +105,8 @@
   let draftOwner = $derived(listScreen === 'threads' && workspace.view === 'recent' && selected ? selected.machine.store : store);
   let entries = $derived(machines.flatMap(machine => {
     const byId = new Map(machine.store.projects.map(p => [p.id, p]));
-    return machine.store.threads.filter(t => !t.archived && !t.incognito).map(thread => ({ machine, thread, project: thread.projectId === null ? undefined : byId.get(thread.projectId) }));
+    // A team's chat is listed in the Teams section, not among the threads.
+    return machine.store.threads.filter(t => !t.archived && !t.incognito && !t.teamId).map(thread => ({ machine, thread, project: thread.projectId === null ? undefined : byId.get(thread.projectId) }));
   }));
   let waiting = $derived(entries.filter(e => needsUser(e.thread)));
   /** What waits on the user besides the conversation on screen: Back carries its mark. */
@@ -261,6 +268,8 @@
         </div>
       {/if}
     </div>
+    <!-- The owner's teams, above the projects: a team's chat belongs to no project, and has no row among the threads. -->
+    {#if listScreen === 'threads' && SidebarTeams && experimentOn('teams')}<SidebarTeams {machines} {query} onopen={() => show('chat')} />{/if}
     {#snippet threadRow(row: typeof rows[number], grouped = false)}
       {@const items = rowItems(row.machine.store, row.thread)}
       {@const pin = items.find(item => item.id === 'pin')}

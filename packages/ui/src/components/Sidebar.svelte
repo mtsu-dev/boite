@@ -36,7 +36,14 @@
   import ProjectTile from './ProjectTile.svelte';
   import RailFrame from './RailFrame.svelte';
   import { minuteClock } from '../lib/clock.svelte';
+  import { experimentOn } from '../lib/experiments.svelte';
   let { store }: { store: Store } = $props();
+  // The teams above the projects, loaded with their experiment, out of the app's first chunk.
+  let SidebarTeams = $state.raw<typeof import('./teams/SidebarTeams.svelte').default>();
+  $effect(() => {
+    if (!experimentOn('teams') || SidebarTeams) return;
+    void import('./teams/SidebarTeams.svelte').then(module => { SidebarTeams = module.default; }).catch(() => {});
+  });
   const mobile = new MediaQuery('(max-width: 720px)');
   let scrollRoot = $state<HTMLDivElement>();
   let savedScroll = 0;
@@ -172,6 +179,8 @@
 <RailFrame {store} kind="sidebar" label={strings.sidebar.threads} testid="sidebar" drawer bind:scroller={scrollRoot} onscroll={() => { if (showRows && scrollRoot) savedScroll = scrollRoot.scrollTop; }}>
   {#snippet head()}<ProjectViews entries={groups} {store} />{/snippet}
     {#if showRows}
+    <!-- The owner's teams, above the projects: a team's chat belongs to no project. -->
+    {#if SidebarTeams && experimentOn('teams')}<SidebarTeams machines={visible} />{/if}
     {#if groups.length === 0}<p class="empty">{strings.sidebar.noProjects}</p>{/if}
     {#if workspace.view === 'recent'}
       {#each visible as machine (machine.id)}

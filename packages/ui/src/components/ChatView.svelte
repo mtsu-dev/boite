@@ -77,9 +77,17 @@
   // The timeline still needs agent messages after reload, even with settings hidden.
   let threadId = $derived(thread?.id);
   let agentSession = $derived(!!thread?.agentSessionId);
+  /** A team's chat runs no agent: no coordination letters, and its own composer (`teams/TeamChat.svelte`). */
+  let teamChat = $derived(!!thread?.teamId);
   $effect(() => {
     const id = threadId;
-    if (id && !agentSession) untrack(() => void store.loadCoordination(id, false));
+    if (id && !agentSession && !teamChat) untrack(() => void store.loadCoordination(id, false));
+  });
+  // The team chat loads with the first one opened, out of the app's first chunk; a failed load tries again with the next team opened.
+  let TeamChat = $state.raw<typeof import('./teams/TeamChat.svelte').default>();
+  let loadingTeamChat: Promise<void> | undefined;
+  $effect(() => {
+    if (thread?.teamId && !TeamChat) loadingTeamChat ??= import('./teams/TeamChat.svelte').then(module => { TeamChat = module.default; }).catch(() => { loadingTeamChat = undefined; });
   });
   let project = $derived(store.openProject);
   let draftChoice = $derived(store.defaultChoice());
@@ -114,6 +122,8 @@
     <h1>{strings.thread.none}</h1>
     <p class="muted">{strings.thread.noneBody}</p>
   </div>
+{:else if thread?.teamId}
+  {#if TeamChat}{#key thread.id}<TeamChat {store} {thread} />{/key}{/if}
 {:else}
   <!-- The draft's roomier composer belongs to the middle of the column: once
      the prompt is on its way the composer is at the bottom, at its thread size,
