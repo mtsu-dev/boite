@@ -119,6 +119,7 @@ export const fr: Translation = {
     robot: {
       family: 'Style', shape: 'Forme', color: 'Couleur', eyes: 'Yeux', mouth: 'Bouche', top: 'Sur la tête', cheeks: 'Joues', gear: 'Accessoire', shuffle: 'Mélanger', customize: 'Personnaliser', done: 'Terminé',
       option: '{part} {n}', none: 'Aucun', families: { jelly: 'Gelée', bubble: 'Bulle', capsule: 'Capsule', retro: 'Rétro' },
+      picture: 'Utiliser votre propre image', pictureUnreadable: "Ce fichier n'est pas une image lisible par Boite. Choisissez un fichier PNG, JPEG, WebP ou GIF.",
     },
     when: {
       who: 'Bot', pickAgent: 'Choisir un bot', what: 'Que doit-il faire ?', whatPlaceholder: 'Par exemple : résume les nouveaux messages et dis-moi lesquels attendent une réponse.',

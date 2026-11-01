@@ -1,4 +1,4 @@
-import { nextAgentOccurrence, RpcErrorCode, AGENT_MEMORY_MAX, AGENT_ROUTINE_NAME_MAX, AGENT_ROUTINE_PROMPT_MAX, AGENT_ROUTINES_MAX } from '@boite/contracts';
+import { nextAgentOccurrence, RpcErrorCode, AGENT_MEMORY_MAX, AGENT_PICTURE_CODE, AGENT_PICTURE_MAX_BYTES, AGENT_PICTURE_TYPES, isAgentPicture, AGENT_ROUTINE_NAME_MAX, AGENT_ROUTINE_PROMPT_MAX, AGENT_ROUTINES_MAX } from '@boite/contracts';
 import { BUILTIN_BOTS, BUILTIN_LOCKED, BUILTIN_NEVER_ARCHIVED } from './fake-client/builtin-bots';
 import type {
   AgentAccountGrant, AgentBuiltin, AgentBrain, AgentBrainRoot, AgentEntrustment, AgentProfile, AgentRecord, AgentRoutine, AgentRuntimeConfig, AgentSchedule,
@@ -67,6 +67,8 @@ interface BotParcel {
   from: string;
   /** The move's `requestId`: the target answers it again with the thread it made the first time. */
   requestId: string;
+  /** The imported picture the profile wears, as a `data:` URL, as the core's `bot.move` carries it. */
+  picture?: string;
 }
 
 /**
@@ -315,6 +317,12 @@ export class FakeAgents {
   private readonly handlers: AgentHandlers = {
     'agents.snapshot': p => this.snapshot(p.threadId, p.desk),
     'agents.profile.save': p => this.saveProfile(p, true),
+    'agents.picture.put': p => this.putPicture(p.dataUrl),
+    'agents.picture.get': p => {
+      const dataUrl = typeof p.avatar === 'string' && AGENT_PICTURE_CODE.test(p.avatar) ? this.pictures.get(p.avatar) : undefined;
+      if (dataUrl === undefined) throw new RpcFailure({ code: RpcErrorCode.NotFound, message: `avatar: no picture ${String(p.avatar)} on this machine`, data: { field: 'avatar' } });
+      return { dataUrl };
+    },
     'agents.builtin.ensure': p => this.ensureBuiltin(p),
     'agents.builtin.reset': p => this.resetBuiltin(p),
     'agents.open': p => this.openAgent(p.agentId),
@@ -365,6 +373,7 @@ export class FakeAgents {
       config: structuredClone(this.configs.get(agent.id)),
       from: this.runner?.selfName?.() ?? 'this machine',
       requestId,
+      ...(this.pictures.has(agent.avatar.trim()) ? { picture: this.pictures.get(agent.avatar.trim())! } : {}),
     };
     const landed = found.agents.receive(parcel, found.name);
     for (const [id, session] of [...this.sessions]) {
@@ -395,7 +404,12 @@ export class FakeAgents {
       if (!route) this.refuse(`agents.move: ${here} has no signed-in account to run ${moved.name}; sign in there first`);
       selection = { ...route, permissionMode: moved.selection.permissionMode };
     }
-    const agent: AgentProfile = { ...moved, selection, projectIds: [], revision: moved.revision + 1, updatedAt: Date.now() };
+    // Its picture is stored here first, else it wears its robot, as the core's move.ts #picture.
+    let avatar = moved.avatar;
+    if (isAgentPicture(avatar) && !this.pictures.has(avatar.trim())) {
+      try { avatar = parcel.picture === undefined ? '' : this.putPicture(parcel.picture).avatar; } catch { avatar = ''; }
+    }
+    const agent: AgentProfile = { ...moved, avatar, selection, projectIds: [], revision: moved.revision + 1, updatedAt: Date.now() };
     this.profiles.set(agent.id, agent);
     if (parcel.brain) this.brains.set(agent.id, parcel.brain);
     if (parcel.config) this.configs.set(agent.id, parcel.config);
@@ -410,10 +424,39 @@ export class FakeAgents {
     return threadId;
   }
 
+  /** Imported pictures by avatar, as the core keeps them in its data folder (agents/pictures.ts). */
+  private readonly pictures = new Map<string, string>();
+  /** The core's `agents.picture.put`: the same checks, and the same bytes give the same avatar. */
+  private putPicture(dataUrl: unknown): { avatar: string } {
+    const match = typeof dataUrl === 'string' ? /^data:(image\/[a-z]+);base64,([A-Za-z0-9+/]*={0,2})$/.exec(dataUrl) : null;
+    if (!match || !(AGENT_PICTURE_TYPES as readonly string[]).includes(match[1]!)) {
+      throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `dataUrl: expected data:<type>;base64,<bytes> with a type among ${AGENT_PICTURE_TYPES.join(', ')}`, data: { field: 'dataUrl' } });
+    }
+    const bytes = Math.floor(match[2]!.length * 3 / 4) - (match[2]!.match(/=+$/)?.[0].length ?? 0);
+    if (bytes === 0 || bytes > AGENT_PICTURE_MAX_BYTES) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `dataUrl: the picture is ${bytes} bytes; expected 1 to ${AGENT_PICTURE_MAX_BYTES}`, data: { field: 'dataUrl' } });
+    // The header must be the type it claims, as the core's fits() in agents/pictures.ts.
+    let head = '';
+    try { head = atob(match[2]!.slice(0, 16)); } catch { /* refused below */ }
+    const fits = match[1] === 'image/png' ? head.startsWith('\x89PNG')
+      : match[1] === 'image/jpeg' ? head.startsWith('\xff\xd8\xff')
+        : match[1] === 'image/webp' ? head.startsWith('RIFF') && head.slice(8, 12) === 'WEBP'
+          : /^GIF8[79]a/.test(head);
+    if (!fits) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `dataUrl: the bytes are not a ${match[1]} image`, data: { field: 'dataUrl', expected: match[1] } });
+    // Two FNV-1a passes stand in for the core's SHA-256: only "same bytes, same name" matters here.
+    let a = 0x811c9dc5, b = 0x01000193;
+    for (let i = 0; i < match[2]!.length; i++) { const code = match[2]!.charCodeAt(i); a = Math.imul(a ^ code, 0x01000193) >>> 0; b = Math.imul(b ^ code, 0x811c9dc5) >>> 0; }
+    const avatar = `img:${a.toString(16).padStart(8, '0')}${b.toString(16).padStart(8, '0')}`;
+    this.pictures.set(avatar, dataUrl as string);
+    return { avatar };
+  }
+
   private saveProfile(p: RpcParams<'agents.profile.save'>, wakes: boolean): AgentProfile {
     if (typeof p.value.name !== 'string' || !p.value.name.trim()) this.refuse('name: expected nonempty text');
     const previous = p.id ? this.profile(p.id) : null;
     if (previous && previous.revision !== p.expectedRevision) this.refuse('profile revision changed');
+    if (typeof p.value.avatar === 'string' && isAgentPicture(p.value.avatar) && p.value.avatar !== previous?.avatar && !this.pictures.has(p.value.avatar.trim())) {
+      this.refuse(`avatar: ${p.value.avatar} is no picture this machine holds; import it with agents.picture.put first`);
+    }
     const { id: _id, revision: _revision, createdAt: _created, updatedAt: _updated, builtin: _builtin, ...value } = p.value as AgentProfile;
     // A save never makes or unmakes a built-in bot, and a built-in keeps Boite's domain and instructions.
     if (previous?.builtin) {

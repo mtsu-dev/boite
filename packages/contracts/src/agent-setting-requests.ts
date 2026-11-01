@@ -32,6 +32,21 @@ export const AGENT_STATUSES = ['active', 'paused', 'archived'] as const;
  * or the four parts a code had before parts were shared across families (ui/src/lib/robots.ts).
  */
 const ROBOT_CODE = /^bot:[a-d](\.\d{1,2}){4}((\.\d{1,2}){3})?$/;
+/**
+ * A picture the owner imported (`agents.picture.put`): `img:` and the first 16
+ * hex digits of its SHA-256. The bytes stay on the core that stored them and
+ * reach a client through `agents.picture.get`.
+ */
+export const AGENT_PICTURE_CODE = /^img:[0-9a-f]{16}$/;
+/** The largest picture a core stores. The Bots page shrinks a still image to 256 px before it sends it; an animated GIF goes as it is. */
+export const AGENT_PICTURE_MAX_BYTES = 512 * 1024;
+/** The image types a picture may be: no SVG, which carries markup. */
+export const AGENT_PICTURE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'] as const;
+
+/** Whether an avatar names an imported picture rather than a robot or text. */
+export function isAgentPicture(avatar: string): boolean {
+  return AGENT_PICTURE_CODE.test(avatar.trim());
+}
 
 /** The most projects one agent holds, as `agents.profile.save` allows. */
 export const AGENT_PROJECTS_MAX = 50;
@@ -196,11 +211,11 @@ function agentText(raw: unknown, key: 'domain' | 'instructions', max: number): C
   return value === undefined || value.length > max ? { ok: false, message: `${key}: expected text of at most ${max} characters` } : { ok: true, value };
 }
 
-/** Empty draws the robot its id picks; else a robot code, or one or two characters (an emoji, letters) the picture shows as text. */
+/** Empty draws the robot its id picks; else a robot code, an imported picture, or one or two characters (an emoji, letters) the picture shows as text. */
 function agentAvatar(raw: unknown): Checked<string> {
   const value = typeof raw === 'string' ? raw.trim() : undefined;
   const short = value !== undefined && value.length <= AGENT_AVATAR_MAX && [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(value)].length <= 2;
-  return value !== undefined && (short || ROBOT_CODE.test(value)) ? { ok: true, value } : { ok: false, message: 'avatar: expected one or two characters (an emoji, letters), a robot code such as bot:d.1.2.3.4.1.1.0, or "" for the robot its id draws' };
+  return value !== undefined && (short || ROBOT_CODE.test(value) || AGENT_PICTURE_CODE.test(value)) ? { ok: true, value } : { ok: false, message: 'avatar: expected one or two characters (an emoji, letters), a robot code such as bot:d.1.2.3.4.1.1.0, a picture the owner imported (img:<16 hex digits>), or "" for the robot its id draws' };
 }
 
 /** A proposed value as the agent's settings would store it, or why it cannot be. */

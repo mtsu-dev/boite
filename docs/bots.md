@@ -164,6 +164,33 @@ other styles glance from side to side), every style hops while it waits on
 the user, shuts its eyes and breathes slowly asleep, and goes dizzy after a
 failure. Reduced motion stills it.
 
+### Your own picture
+
+Beside Shuffle and Customize, the picture button imports any image in place
+of the robot: a file on the desktop, the gallery or the camera on a phone. The
+form crops a still image to its centred square and shrinks it to 256 px (WebP
+where the browser writes it, else PNG); a GIF of at most 512 KB goes as it
+is and stays animated, a larger one is shrunk to its first frame.
+`agents.picture.put` stores it on the core the bot lives on, in
+`<data>/agent-pictures/<hash>.<ext>`, and answers `img:<hash>`, the first 16
+hex digits of the image's SHA-256, which the profile then saves in `avatar`
+like a robot code. The core keeps only PNG, JPEG, WebP and GIF whose first
+bytes match their type, never SVG, and refuses a save naming a picture it
+does not hold. A picture no bot wears is removed a day after it was stored,
+the next time one is imported.
+
+Snapshots carry only the 20-character avatar. A client asks
+`agents.picture.get` once per picture, which a paired phone may call, and
+draws the `data:` URL in an `<img>`; the hash names the same bytes on every
+machine, so any connected core that holds it answers. The disc stays empty
+while the image loads and shows the robot the bot's id gives when no machine
+holds it, and asks again a minute later or as soon as another machine
+connects. Shuffle or Customize put a robot back. A bot moved to another
+machine takes its picture along when it fits in the room the move's
+`MOVE_PAYLOAD_MAX` leaves after the bot's text, since the whole sealed body
+has one bound; a larger picture, typically a big GIF, stays behind and the
+bot wears its robot there unless that machine already holds the picture.
+
 ## Wakes
 
 A wake is a turn the core starts on the bot's thread, through one entry
@@ -605,7 +632,7 @@ another bot (`--bot <name>`), can propose a change with a card: `boite settings
 bot request <key> <value> --why <reason>`, the same flow as a card about a
 Boite setting ([CLI](cli.md)). The keys are its name, its role (`domain`), its
 instructions (`--instructions-file <path>` for a long text), its picture
-(`avatar`: one or two characters, a robot code, or `""`), its `status`
+(`avatar`: one or two characters, a robot code, a picture the owner imported (`img:<hash>`), or `""`), its `status`
 (`active`, `paused` or `archived`), the projects entrusted to it, its model and
 reasoning effort, the memory pass (`autoMemory`), its automatic event wakes
 for every project and desk fact (`eventWakes`, off by default), its subagents and its daily budget (`dailyBudget`, dollars a
