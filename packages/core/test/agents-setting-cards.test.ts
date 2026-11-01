@@ -271,6 +271,7 @@ test('a bot puts on a picture file at once, dresses another bot by name, and a c
   const text = join(h.dataDir, 'notes.txt');
   writeFileSync(text, 'not an image');
   expect((await run(['settings', 'bot', 'picture', text], self)).err).toContain('is not a PNG, JPEG, WebP or GIF image');
+  expect((await run(['settings', 'bot', 'picture', h.dataDir], self)).err).toContain('is not a file');
   const big = join(h.dataDir, 'big.png');
   writeFileSync(big, Buffer.alloc(AGENT_PICTURE_MAX_BYTES + 1, 0x89));
   expect((await run(['settings', 'bot', 'picture', big], self)).err).toContain('shrink it');

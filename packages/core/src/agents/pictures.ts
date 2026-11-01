@@ -113,7 +113,9 @@ export class AgentPictures {
       } catch { /* gone meanwhile */ }
     }
     // Agents import too: however many they store in a day, the unworn ones stay a bounded few.
+    // The picture being imported takes one of the slots unless a bot wears it already.
+    const room = UNWORN_PICTURES_MAX - (worn.has(keep) ? 0 : 1);
     kept.sort((a, b) => a.at - b.at);
-    for (const { file } of kept.slice(0, Math.max(0, kept.length - (UNWORN_PICTURES_MAX - 1)))) rmSync(file, { force: true });
+    for (const { file } of kept.slice(0, Math.max(0, kept.length - room))) rmSync(file, { force: true });
   }
 }

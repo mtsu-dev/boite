@@ -86,4 +86,7 @@ test('a picture no bot wears is removed a day after it was stored; a worn one st
   expect(existsSync(join(folder, `${worn.slice(4)}.png`))).toBe(true);
   expect(existsSync(join(folder, `${burst[0]!.slice(4)}.png`))).toBe(false);
   expect(existsSync(join(folder, `${burst.at(-1)!.slice(4)}.png`))).toBe(true);
+  // Importing a picture a bot already wears takes no slot: the 32 unworn ones all stay.
+  await owner.call('agents.picture.put', { dataUrl: PNG });
+  expect(readdirSync(folder).filter(name => name !== `${worn.slice(4)}.png`)).toHaveLength(UNWORN_PICTURES_MAX);
 }, 30_000);

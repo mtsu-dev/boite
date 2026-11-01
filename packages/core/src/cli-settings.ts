@@ -39,9 +39,17 @@ export function agentSettingArg(key: string, tokens: string[]): unknown {
  */
 export function pictureDataUrl(path: string): string {
   let size: number;
-  try { size = statSync(path).size; } catch { throw new Usage(`picture: no file at ${path}`); }
+  try {
+    const stat = statSync(path);
+    if (!stat.isFile()) throw new Usage(`picture: ${path} is not a file`);
+    size = stat.size;
+  } catch (error) {
+    if (error instanceof Usage) throw error;
+    throw new Usage(`picture: no file at ${path}`);
+  }
   if (size === 0 || size > AGENT_PICTURE_MAX_BYTES) throw new Usage(`picture: ${path} is ${size} bytes; a bot's picture is at most ${AGENT_PICTURE_MAX_BYTES} (shrink it to about 256x256 first)`);
-  const bytes = readFileSync(path);
+  let bytes: Buffer;
+  try { bytes = readFileSync(path); } catch (error) { throw new Usage(`picture: cannot read ${path}: ${(error as Error).message}`); }
   const head = bytes.subarray(0, 12).toString('latin1');
   const type = head.startsWith('\x89PNG') ? 'image/png'
     : head.startsWith('\xff\xd8\xff') ? 'image/jpeg'
