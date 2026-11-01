@@ -97,11 +97,13 @@ import { strings as contacts } from './strings/en/contacts';
 import { strings as shared } from './strings/en/shared';
 import { strings as windows } from './strings/en/windows';
 import { strings as policy } from './strings/en/policy';
+import { strings as teamRequest } from './strings/en/teamRequest';
 
 export const strings = {
   ...subscriptionProxy,
   ...settingRequest,
   ...agentSettingRequest,
+  ...teamRequest,
   ...remoteBrowser,
   ...agentBrowser,
   ...devicePanel,

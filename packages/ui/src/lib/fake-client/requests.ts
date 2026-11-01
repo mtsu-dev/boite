@@ -109,6 +109,7 @@ export function settleQuestion(
       ...(request.async === true ? { async: true } : {}),
       ...(request.setting === undefined ? {} : { setting: request.setting }),
       ...(request.agentSetting === undefined ? {} : { agentSetting: request.agentSetting }),
+      ...(request.team === undefined ? {} : { team: request.team }),
       ...(request.open === undefined ? {} : { open: request.open }),
       answer
     }
