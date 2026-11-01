@@ -42,7 +42,6 @@
   import { minuteClock } from '../lib/clock.svelte';
   import { contactsShown } from '../lib/contacts-rail.svelte';
   import { ScreenSlide } from '../lib/screen-slide.svelte';
-  import SidebarTeams from './teams/SidebarTeams.svelte';
 
   let { store, recover = false, screen = $bindable('chat'), tabbed = $bindable(false) }: { store: Store; recover?: boolean; screen: 'chat' | 'threads' | 'activity'; tabbed?: boolean } = $props();
   const narrow = new MediaQuery('(max-width: 720px)');
@@ -67,6 +66,12 @@
     if (!contactsShown(store) || SidebarContacts) return;
     void import('./home/SidebarContacts.svelte').then(module => { SidebarContacts = module.default; }).catch(() => {});
     void import('./home/ContactRequestNotice.svelte').then(module => { ContactRequestNotice = module.default; }).catch(() => {});
+  });
+  // The teams above the conversations, loaded with their experiment.
+  let SidebarTeams = $state.raw<typeof import('./teams/SidebarTeams.svelte').default>();
+  $effect(() => {
+    if (!experimentOn('teams') || SidebarTeams) return;
+    void import('./teams/SidebarTeams.svelte').then(module => { SidebarTeams = module.default; }).catch(() => {});
   });
   let search = $state('');
   const query = $derived(search.trim().toLocaleLowerCase());
@@ -264,7 +269,7 @@
       {/if}
     </div>
     <!-- The owner's teams, above the projects: a team's chat belongs to no project, and has no row among the threads. -->
-    {#if listScreen === 'threads' && experimentOn('teams')}<SidebarTeams {machines} {query} onopen={() => show('chat')} />{/if}
+    {#if listScreen === 'threads' && SidebarTeams && experimentOn('teams')}<SidebarTeams {machines} {query} onopen={() => show('chat')} />{/if}
     {#snippet threadRow(row: typeof rows[number], grouped = false)}
       {@const items = rowItems(row.machine.store, row.thread)}
       {@const pin = items.find(item => item.id === 'pin')}
