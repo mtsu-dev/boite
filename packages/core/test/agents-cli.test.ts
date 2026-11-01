@@ -35,6 +35,9 @@ test('threads ask keeps its own flags out of the request text, and the CLI hands
   expect(() => askArgs(['--to', 'thr_abc', 'x'])).toThrow('<contact>/<thread-id>');
   expect(() => askArgs(['--project', 'x', 'y'])).toThrow('unknown flag --project');
   expect(() => askArgs(['--wait'])).toThrow('needs the request text');
+  // After `--`, a word like `--timeout` is the request's, and the CLI hands `--` over.
+  const typed = parse(['threads', 'ask', '--wait', '--', 'how', 'to', 'pass', '--timeout', 'to', 'curl']);
+  expect(askArgs(typed.positional.slice(2))).toEqual({ text: 'how to pass --timeout to curl', wait: true });
   // Other threads commands still refuse a flag they do not know.
   expect(() => parse(['threads', 'send', 'thr_a', 'hi', '--new'])).toThrow('unknown flag --new');
 });

@@ -105,7 +105,8 @@ function sameAddress(a: AgentAddress, b: AgentAddress): boolean {
 /**
  * `threads ask` words: `--contact <name>`, `--to <contact>/<thread-id>`,
  * `--new` (a new thread there), `--share` (a project opened), `--wait`,
- * `--timeout <s>`; the rest is the request. `ask <contact> <text>`, the old
+ * `--timeout <s>`; the rest is the request, and every word after `--` is,
+ * `--wait` included. `ask <contact> <text>`, the old
  * form, still reaches the core, which takes a leading contact name off.
  */
 export function askArgs(words: string[]): { text: string; contact?: string; target?: string; want?: 'thread' | 'share'; wait: boolean; timeout?: number } {
@@ -119,6 +120,7 @@ export function askArgs(words: string[]): { text: string; contact?: string; targ
       index += 1;
       return next;
     };
+    if (word === '--') { text.push(...words.slice(index + 1)); break; }
     if (word === '--contact') out.contact = value();
     else if (word === '--to') {
       const to = value();
@@ -134,7 +136,7 @@ export function askArgs(words: string[]): { text: string; contact?: string; targ
       const seconds = Number(value());
       if (!Number.isFinite(seconds) || seconds < 0 || seconds > WAIT_MAX_S) throw new AgentsUsage(`--timeout: expected 0 to ${WAIT_MAX_S} seconds`);
       out.timeout = seconds;
-    } else if (word.startsWith('--')) throw new AgentsUsage(`threads ask: unknown flag ${word}; it reads --contact, --to, --new, --share, --wait and --timeout`);
+    } else if (word.startsWith('--')) throw new AgentsUsage(`threads ask: unknown flag ${word}; it reads --contact, --to, --new, --share, --wait and --timeout; put the text after -- to keep a word like that`);
     else text.push(word);
   }
   out.text = text.join(' ').trim();

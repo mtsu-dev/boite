@@ -175,10 +175,11 @@ export class ContactsBotMethods {
     }
     if (params.project !== undefined) {
       const wanted = typeof params.project === 'string' ? params.project.trim().toLowerCase() : '';
-      const grant = contact.grants.find(entry => entry.projectId === params.project || (entry.name ?? this.#core.journal.getProject(entry.projectId)?.name ?? '').toLowerCase() === wanted);
-      if (!grant) throw invalidParams(`contacts.bot.cut.project: expected a project open to ${contact.name}`, { field: 'project' });
-      this.#core.contacts.revoke({ coreId: contact.coreId, projectId: grant.projectId, ...(grant.machine ? { machine: grant.machine } : {}) });
-      projects = 1;
+      // One name may be open on several machines of the group: each of them closes.
+      const grants = contact.grants.filter(entry => entry.projectId === params.project || (entry.name ?? this.#core.journal.getProject(entry.projectId)?.name ?? '').toLowerCase() === wanted);
+      if (grants.length === 0) throw invalidParams(`contacts.bot.cut.project: expected a project open to ${contact.name}`, { field: 'project' });
+      for (const grant of grants) this.#core.contacts.revoke({ coreId: contact.coreId, projectId: grant.projectId, ...(grant.machine ? { machine: grant.machine } : {}) });
+      projects = grants.length;
     } else if (all) {
       for (const grant of contact.grants) this.#core.contacts.revoke({ coreId: contact.coreId, projectId: grant.projectId, ...(grant.machine ? { machine: grant.machine } : {}) });
       projects = contact.grants.length;
@@ -222,6 +223,8 @@ export class ContactsBotMethods {
       else this.#core.contacts.requests.mark(card.requestId, { stage: 'bot' });
     } catch (error) {
       this.#core.log('warn', `contacts: the owner's answer to request ${card.requestId} did nothing: ${messageOf(error)}`, { source: 'contacts' });
+      // Its card is gone: the request goes back to the bot rather than waiting on an owner who already answered.
+      try { this.#core.contacts.requests.mark(card.requestId, { stage: 'bot' }); } catch { /* settled or gone meanwhile */ }
     }
   }
 }

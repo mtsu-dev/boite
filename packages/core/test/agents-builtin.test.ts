@@ -6,6 +6,7 @@ import type { AgentProfile } from '@boite/contracts';
 import type { CoreClient } from '../src/client.ts';
 import { BUILTIN_TEXT } from '../src/agents/builtin.ts';
 import { INTRO_PROMPT } from '../src/agents/store.ts';
+import { parse } from '../src/cli-args.ts';
 import { agentValue, echoAccount, makeAgent, scripted, settled, turnsOf } from './agent-fixture.ts';
 import { quietAgent, removeDir, startTestCore, waitFor, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
@@ -44,6 +45,12 @@ async function ensured(h: TestCore, client: CoreClient, name?: string): Promise<
 const shipped = BUILTIN_TEXT.contacts;
 const valueOf = ({ id: _id, revision: _revision, createdAt: _createdAt, updatedAt: _updatedAt, ...value }: AgentProfile) => value;
 const save = (client: CoreClient, agent: AgentProfile, over: Partial<AgentProfile>) => client.call('agents.profile.save', { id: agent.id, expectedRevision: agent.revision, value: { ...valueOf(agent), ...over } });
+
+test('every boite contacts command in the Operator\'s instructions is one the CLI reads', () => {
+  const commands = [...shipped.instructions.matchAll(/`boite contacts ([^`]+)`/g)].map(match => match[1]!.replace(/\[|\]/g, '').split(/\s+/));
+  expect(commands.length).toBeGreaterThan(5);
+  for (const words of commands) expect(() => parse(['contacts', ...words]), words.join(' ')).not.toThrow();
+});
 
 test('ensure makes one Contacts bot per core, with Boite\'s text, full access and its introduction, and returns it again', async () => {
   const { h, client } = await start();

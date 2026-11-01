@@ -510,7 +510,7 @@ from the bot's.
 
 `boite contacts` is the Contacts bot's own group, refused to any other
 thread: `view` (the default: requests, relations, flags, contacts and
-projects), `forward <request> <contact> [--to <thread-id>] [--text <text>]`,
+projects), `forward <request> <contact>[/<thread-id>] [text]`,
 `connect <request> <thread-id>`, `start <request> <project> <brief> [--model
 <m>] [--effort <e>] [--worktree]`, `share <request> <project> <reason>`,
 `ask-owner <request> <proposal>`, `refuse <request> <reason>`, `cut <contact>

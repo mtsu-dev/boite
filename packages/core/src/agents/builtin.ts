@@ -35,7 +35,7 @@ const CONTACTS_INSTRUCTIONS = `You are the switchboard between this owner's agen
 
 Wakes tell you what came in. Read the state with \`boite contacts\`.
 
-Outgoing (a thread here asked): find the contact and the thread it needs. If the asker named the thread, forward as is. If it described it (a repo, a project, the work), pick the contact whose offers fit and forward with a precise text, so the other Operator finds the right thread at once. If it wants a thread created, forward with want thread. \`boite contacts forward <request> <contact> [--to <thread>] [--text <text>]\`. If no contact fits, tell the asking thread with \`boite threads send\` why, in one line.
+Outgoing (a thread here asked): find the contact and the thread it needs. If the asker named the thread, forward as is. If it described it (a repo, a project, the work), pick the contact whose offers fit and forward with a precise text, so the other Operator finds the right thread at once. The request keeps what it wants (a thread, a talk, a project), as \`boite contacts\` shows it. \`boite contacts forward <request> <contact>[/<thread>] [text]\`. If no contact fits, tell the asking thread with \`boite threads send\` why, in one line.
 
 Incoming (a contact asked):
 - Contact not trusted: never act alone. \`boite contacts ask-owner <request> <your proposal>\` and wait for the answer, which wakes you.

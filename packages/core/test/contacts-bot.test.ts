@@ -164,6 +164,35 @@ test('the bot starts a thread for a trusted contact\'s request, refuses another,
   expect(host.core.contacts.requests.list().find(request => request.id === third.id)).toMatchObject({ status: 'accepted', decidedBy: 'owner' });
 }, 60000);
 
+test('cutting a project closes it on every machine that opened one by that name, and an owner answer that failed hands the request back to the bot', async () => {
+  const { host, hostClient, guestClient, guestId, hostBot, guestBot, hostName, guestName, guestThread } = await linked();
+  const project = host.core.journal.listProjects()[0]!;
+  host.core.contacts.grant({ coreId: guestId, projectId: project.id });
+  const contact = host.core.contacts.find(guestId)!;
+  // A group member opened its own project of the same name to this contact.
+  const member = { projectId: 'prj_on_member', readThreads: false, grantedAt: 0, machine: 'member-core', name: project.name };
+  const named = spyOn(host.core.contacts, 'named').mockReturnValue({ ...contact, grants: [...contact.grants, member] });
+  const revoked: unknown[] = [];
+  const revoke = spyOn(host.core.contacts, 'revoke').mockImplementation(params => { revoked.push(params); return contact; });
+  spies.push(named, revoke);
+  expect(await hostClient.call('contacts.bot.cut', { threadId: hostBot.threadId, contact: guestName, reason: 'Done with the docs.', project: project.name.toUpperCase() })).toEqual({ relations: 0, projects: 2 });
+  expect(revoked).toEqual([{ coreId: guestId, projectId: project.id }, { coreId: guestId, projectId: 'prj_on_member', machine: 'member-core' }]);
+  named.mockRestore(); revoke.mockRestore();
+
+  const request = await guestClient.call('collaboration.ask', { threadId: guestThread, contact: hostName, text: 'Open the docs project to us' });
+  await guestClient.call('contacts.bot.forward', { threadId: guestBot.threadId, id: request.id, contact: hostName });
+  await waitFor(() => incomingOf(host, request.id) !== undefined, 10000);
+  const incoming = incomingOf(host, request.id)!;
+  const { questionId } = await hostClient.call('contacts.bot.share', { threadId: hostBot.threadId, id: incoming.id, project: project.name, reason: 'Same docs.' });
+  expect(host.core.contacts.requests.list().find(entry => entry.id === incoming.id)?.stage).toBe('owner');
+  // The project went away between the card and the owner's Yes.
+  const settle = spyOn(host.core.contacts.requests, 'settle').mockImplementation(() => { throw new Error('project archived'); });
+  spies.push(settle);
+  await hostClient.call('questions.answer', { threadId: hostBot.threadId, questionId, optionIds: ['yes'] });
+  await waitFor(() => host.core.contacts.requests.list().find(entry => entry.id === incoming.id)?.stage === 'bot');
+  expect(host.core.contacts.requests.list().find(entry => entry.id === incoming.id)?.status).toBe('pending');
+}, 60000);
+
 test('boite contacts sends each command\'s words to its method, as the bot typed them', async () => {
   const calls: [string, unknown][] = [];
   const client = { call: async (method: string, params: unknown) => {
