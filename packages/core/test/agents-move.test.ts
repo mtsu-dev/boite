@@ -327,6 +327,38 @@ test('facts filed while the bot travels go after it, nothing wakes it here meanw
   expect(desk.core.agentRuntime.facts(agent.id)).toHaveLength(0);
 }, 60_000);
 
+test('a rename, a memory and a routine the owner saves while the bot travels go after it; more facts than a move carries refuse it', async () => {
+  const { desk, pc, owner, pcId } = await group();
+  const { agent } = await makeAgent(desk, owner);
+  const request = desk.core.coordination.request.bind(desk.core.coordination);
+  let legs = 0;
+  desk.core.coordination.request = async (peer: CoordinationPeer, operation, payload) => {
+    if (operation !== 'bot.move') return request(peer, operation, payload);
+    legs += 1;
+    const answer = await request(peer, operation, payload);
+    if (legs === 1) {
+      const current = desk.core.workforce.records.get('profile', agent.id);
+      const { id: _id, revision: _revision, createdAt: _createdAt, updatedAt: _updatedAt, ...value } = current;
+      await owner.call('agents.profile.save', { id: agent.id, expectedRevision: current.revision, value: { ...value, name: 'Renamed on the way' } });
+      const brain = await owner.call('agents.brain.get', { agentId: agent.id });
+      await owner.call('agents.brain.save', { agentId: agent.id, expectedRevision: brain.revision, instructions: brain.instructions, memory: 'Saved on the way.\n' });
+      await owner.call('agents.routine.save', { value: { agentId: agent.id, name: 'Late', prompt: 'Saved on the way.', schedule: { kind: 'interval', everyMinutes: 60 }, enabled: true, nextAt: null, lastTurnId: null, lastScheduledAt: null } });
+    }
+    return answer;
+  };
+  await owner.call('agents.move', { agentId: agent.id, machine: pcId, requestId: 'edits' });
+  expect(legs).toBe(2);
+  expect(pc.core.workforce.records.get('profile', agent.id).name).toBe('Renamed on the way');
+  expect((await (await pc.connect()).call('agents.brain.get', { agentId: agent.id })).memory).toContain('Saved on the way.');
+  expect(pc.core.workforce.records.list('routine').filter(r => r.agentId === agent.id).map(r => r.name)).toEqual(['Late']);
+  desk.core.coordination.request = request;
+
+  const { agent: busy } = await makeAgent(desk, owner, { name: 'Busy' });
+  for (let index = 0; index <= 100; index += 1) desk.core.workforce.fact(busy.id, { key: `k${index}`, text: 'A fact.', urgent: false });
+  expect(await thrown(owner.call('agents.move', { agentId: busy.id, machine: pcId }))).toThrow('101 facts wait for the bot');
+  expect(desk.core.agentRuntime.facts(busy.id)).toHaveLength(101);
+}, 60_000);
+
 test('a fact set to another text and back while the bot travels ends there with its latest text', async () => {
   const { desk, pc, owner, pcId } = await group();
   const { agent } = await makeAgent(desk, owner);

@@ -101,6 +101,20 @@ test('only the Operator\'s thread calls the bot methods; the owner ends a relati
   expect(after.flags!.filter(flag => flag.relationId === relation.id).map(flag => flag.status)).toEqual(['cut']);
 });
 
+test('a renamed contact keeps its relations and flags under the new name; cut refuses a project not open to it, as the core', async () => {
+  const client = await fake();
+  await client.call('agents.builtin.ensure', { kind: 'contacts' });
+  const { bot, contacts } = await client.call('contacts.get', {});
+  const chris = contacts.find(contact => contact.name === 'Chris')!;
+  await client.call('contacts.update', { coreId: chris.coreId, name: 'Christine' });
+  const after = await client.call('contacts.get', {});
+  expect(after.relations!.filter(relation => relation.coreId === chris.coreId).map(relation => relation.contact)).toEqual(after.relations!.filter(relation => relation.coreId === chris.coreId).map(() => 'Christine'));
+  expect(after.flags!.filter(flag => flag.coreId === chris.coreId).every(flag => flag.contact === 'Christine')).toBe(true);
+  expect(after.flags!.some(flag => flag.coreId === chris.coreId)).toBe(true);
+  expect(await refusal(client.call('contacts.bot.cut', { threadId: bot!.threadId, contact: 'Christine', project: 'No such project', reason: 'Done.' }))).toEqual({ code: RpcErrorCode.InvalidParams, field: 'project' });
+  expect(await refusal(client.call('contacts.bot.cut', { threadId: bot!.threadId, contact: 'Christine', project: 7 as never, reason: 'Done.' }))).toEqual({ code: RpcErrorCode.InvalidParams, field: 'project' });
+});
+
 test('a request that names no contact waits for the bot, which picks the contact and forwards it', async () => {
   const [host, guest] = [await fake({ coreId: 'core-host', coreName: 'host' }), await fake({ coreId: 'core-guest', coreName: 'guest' })];
   await host.call('contacts.join', { link: (await guest.call('contacts.invite', { share: false })).link });

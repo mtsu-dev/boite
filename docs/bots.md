@@ -803,11 +803,15 @@ as <source>/<project> through the group."
 From the snapshot to the end of the move, the source holds the bot's wakes
 (`BotMoves.moving`): a due routine, an event or a waking fact waits as it
 would for a busy thread, Run now is refused, and other autonomous turns are
-held. A fact filed while the request travels is not lost: once the target
-answers, the source sends the same request again with the facts it now holds,
-up to three times (`MOVE_FACT_ROUNDS`, then `reason: 'facts-arriving'`), and
-the target files, per key, a version newer than the one it filed for that
-request; a version the bot already read there is not told twice.
+held. What changes while the request travels is not lost: once the target
+answers, the source reads the bot again (a fact filed, a rename, settings,
+brain files, routines) and sends the same request with it, up to three times
+(`MOVE_FACT_ROUNDS`, then `reason: 'facts-arriving'`). The target files, per
+key, a fact version newer than the one it filed for that request; a version
+the bot already read there is not told twice. A move carries at most 100
+waiting facts and refuses more. A turn the owner started on the bot meanwhile
+refuses the end of the move with `reason: 'turn-in-flight'`; the same
+`requestId` finishes it once the turn is over.
 
 Every request carries the whole bot. The target keeps a print of each part it
 applied for the `requestId` (`agents:moved-in-parts:<source>:<requestId>`:

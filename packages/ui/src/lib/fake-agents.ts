@@ -350,10 +350,13 @@ export class FakeAgents {
     if ('refused' in found) this.refuse(found.refused);
     if (agent.status === 'archived') this.refuse(`agents.move: ${agent.name} is archived; restore it before moving it`);
     if (!found.botMove || !found.agents) this.refuse(`agents.move: update Boite on ${found.name}; it cannot take a bot from another machine yet`);
-    const threadId = this.threadOf(agent.id);
-    const thread = threadId ? this.runner?.thread?.(threadId) : undefined;
-    if (thread?.status === 'running' || thread?.status === 'queued') {
-      throw new RpcFailure({ code: RpcErrorCode.Refused, message: `agents.move: ${agent.name} has a turn running or queued; stop it or let it end before moving the bot`, data: { field: 'agentId', reason: 'turn-in-flight', status: thread.status } });
+    // Every thread the move archives must be idle, not only the first.
+    for (const session of this.sessions.values()) {
+      if (session.agentId !== agent.id) continue;
+      const thread = this.runner?.thread?.(session.threadId);
+      if (thread?.status === 'running' || thread?.status === 'queued') {
+        throw new RpcFailure({ code: RpcErrorCode.Refused, message: `agents.move: ${agent.name} has a turn running or queued; stop it or let it end before moving the bot`, data: { field: 'agentId', reason: 'turn-in-flight', status: thread.status } });
+      }
     }
     const parcel: BotParcel = {
       profile: structuredClone(agent),
@@ -370,10 +373,10 @@ export class FakeAgents {
       this.sessions.delete(id);
     }
     for (const [id, routine] of [...this.routines]) if (routine.agentId === agent.id) this.routines.delete(id);
-    this.profiles.delete(agent.id);
-    this.brains.delete(agent.id);
-    this.configs.delete(agent.id);
-    this.problems.delete(agent.id);
+    // As the core: nothing of the bot stays on the machine it left, its desk included.
+    this.watches = this.watches.filter(watch => watch.agentId !== agent.id);
+    this.entrusted = this.entrusted.filter(entry => entry.agentId !== agent.id);
+    for (const map of [this.profiles, this.brains, this.configs, this.problems, this.unread, this.spend, this.passes, this.placed]) map.delete(agent.id);
     this.bump();
     const result = { agentId: agent.id, machine: found.coreId, threadId: landed, projectIds: [], groupProjects: [] };
     this.movedOut.set(requestId, structuredClone(result));

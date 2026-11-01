@@ -67,7 +67,7 @@ export const MOVE_FACTS_MAX = 100;
  * under `MAX_BODY` (262 144), which leaves room for the envelope.
  */
 export const MOVE_PAYLOAD_MAX = 180_000;
-/** How many times a move sends the facts that arrived while it waited, before it gives up and keeps the bot. */
+/** How many times a move sends what changed while it waited (facts, profile, settings, brain, routines), before it gives up and keeps the bot. */
 export const MOVE_FACT_ROUNDS = 3;
 /** The answer that the target read no `bot.move`: its Boite is older than this feature. */
 const OLD_CORE = 'operation: expected';
@@ -154,7 +154,10 @@ export class BotMoves {
       const receipt = await this.#send(agent, peer, payload);
       const result: AgentMoveResult = { agentId: agent.id, machine: peer.coreId, threadId: receipt.threadId, projectIds: receipt.projectIds, groupProjects: receipt.groupProjects };
       // No await from the last answer to here: a fact filed now would wait for a later tick, after the bot is gone.
-      this.#leave(this.#store.records.get('profile', agent.id), thread, peer);
+      const leaving = this.#store.records.get('profile', agent.id);
+      // The owner wrote to the bot while it travelled: its turn ends here, and the same requestId finishes the move after.
+      if (thread !== null) this.#idle(leaving, thread);
+      this.#leave(leaving, thread, peer);
       this.#core.journal.setSetting(`${MOVED_OUT}${requestId}`, result);
       this.#core.journal.deleteSetting(`${MOVING_OUT}${requestId}`);
       return result;
@@ -162,9 +165,10 @@ export class BotMoves {
   }
 
   /**
-   * Sends the bot, then again with the facts filed for it while it waited,
-   * until the target has every fact this machine holds. A refusal or a
-   * silence leaves the bot and its facts here.
+   * Sends the bot, then again with what changed here while it waited (facts,
+   * a rename, settings, brain files, routines), until the target holds the bot
+   * as this machine does. A refusal or a silence leaves the bot here. The
+   * conversation goes once: the target does not carry it again.
    */
   async #send(agent: AgentProfile, peer: CoordinationPeer, payload: BotMovePayload): Promise<Receipt> {
     let sent = payload;
@@ -182,19 +186,25 @@ export class BotMoves {
       if (receipt?.agentId !== agent.id || typeof receipt.threadId !== 'string' || !Array.isArray(receipt.projectIds) || !Array.isArray(receipt.groupProjects)) {
         throw refused(`agents.move: ${peer.name} gave an answer this machine does not read; update Boite on both machines, then move the bot again with the same requestId`, { field: 'machine', requestId: payload.requestId, reason: 'unread-answer' });
       }
-      const facts = this.#facts(agent.id);
-      const carried = new Map(sent.facts.map(fact => [fact.key, fact.written]));
-      if (facts.every(fact => carried.get(fact.key) === fact.written)) return receipt as Receipt;
-      if (round + 1 >= MOVE_FACT_ROUNDS) {
-        throw refused(`agents.move: facts for ${agent.name} kept arriving while it moved; the bot stays here, and the same requestId tries again without moving it twice`, { field: 'agentId', requestId: payload.requestId, reason: 'facts-arriving' });
+      let now: BotMovePayload;
+      try { now = { ...this.#payload(this.#store.records.get('profile', agent.id), null, peer, payload.requestId), history: payload.history }; }
+      catch (error) {
+        throw refused(`agents.move: ${agent.name} changed while it moved: ${error instanceof Error ? error.message : String(error)}; the bot stays here, and the same requestId finishes the move once that is fixed`, { field: 'agentId', requestId: payload.requestId, reason: 'facts-arriving' });
       }
-      sent = { ...payload, facts };
+      if (print(now) === print(sent)) return receipt as Receipt;
+      if (round + 1 >= MOVE_FACT_ROUNDS) {
+        throw refused(`agents.move: ${agent.name} kept changing while it moved (facts, settings, brain or routines); the bot stays here, and the same requestId tries again without moving it twice`, { field: 'agentId', requestId: payload.requestId, reason: 'facts-arriving' });
+      }
+      sent = now;
     }
   }
 
   /** The facts waiting for the bot, as a move carries them. */
   #facts(agentId: string): BotMovePayload['facts'] {
-    return this.#core.agentRuntime.facts(agentId).slice(-MOVE_FACTS_MAX).map(fact => ({ key: fact.key, text: fact.text, written: fact.written ?? fact.at }));
+    const facts = this.#core.agentRuntime.facts(agentId);
+    // The source forgets every one of them once the bot leaves: none may stay behind.
+    if (facts.length > MOVE_FACTS_MAX) throw refused(`agents.move: ${facts.length} facts wait for the bot, more than the ${MOVE_FACTS_MAX} a move carries; let it run once first`, { field: 'agentId', count: facts.length, max: MOVE_FACTS_MAX });
+    return facts.map(fact => ({ key: fact.key, text: fact.text, written: fact.written ?? fact.at }));
   }
 
   /** A move waits for the bot's thread and every thread below it to be idle, as `threads.move` does. */

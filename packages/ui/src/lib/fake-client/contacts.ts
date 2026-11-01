@@ -463,8 +463,12 @@ export function contactMethods(ctx: FakeContext) {
       if (name !== undefined) {
         contact.name = name;
         for (const request of state.requests) if (request.coreId === contact.coreId) request.contact = name;
+        for (const relation of state.relations ?? []) if (relation.coreId === contact.coreId) relation.contact = name;
+        for (const flag of state.flags ?? []) if (flag.coreId === contact.coreId) flag.contact = name;
       }
       if (params.trusted !== undefined) contact.trusted = params.trusted;
+      // As the core's `requests.trusted`: what waited for the owner's card no longer needs one.
+      if (contact.trusted) for (const request of state.requests) if (request.coreId === contact.coreId && request.direction === 'in' && request.status === 'pending' && request.approved === false) request.approved = true;
       offers(contact);
       // As the core: trusted now, its mail goes to its threads.
       if (contact.trusted) releaseFakeMail(ctx, contact.coreId);
@@ -638,8 +642,12 @@ export function contactMethods(ctx: FakeContext) {
       const body = params.text === undefined ? request.text : text(params.text, 'text', 4000);
       const want = wantOf(params.want);
       if (params.target !== undefined && (typeof params.target !== 'string' || !/^[A-Za-z0-9._:-]{1,128}(?:~[0-9a-f]{16})?$/.test(params.target))) throw invalid('target: expected a thread id of the contact', 'target');
-      if (request.coreId !== contact.coreId) pendingCap(state, contact);
-      Object.assign(request, { coreId: contact.coreId, contact: contact.name, text: body, ...(want ? { want } : {}), ...(params.target !== undefined ? { target: { threadId: params.target } } : {}) });
+      const sameContact = request.coreId === contact.coreId;
+      if (!sameContact) pendingCap(state, contact);
+      Object.assign(request, { coreId: contact.coreId, contact: contact.name, text: body, ...(want ? { want } : {}) });
+      // As the core: a thread of the first contact means nothing to another one.
+      if (params.target !== undefined) request.target = { threadId: params.target };
+      else if (!sameContact) delete request.target;
       delete request.stage;
       send(request, thread, contact, gateway);
       changed();
@@ -712,8 +720,12 @@ export function contactMethods(ctx: FakeContext) {
       if (params.relation !== undefined && relations.length === 0) throw invalid(`relation: ${params.relation} is not a relation with ${contact.name}`, 'relation');
       const before = contact.grants.length;
       if (params.relation === undefined) {
-        const wanted = params.project?.toLowerCase();
-        contact.grants = contact.grants.filter(grant => wanted !== undefined && grant.projectId !== params.project && ctx.projects.find(entry => entry.id === grant.projectId)?.name.toLowerCase() !== wanted);
+        // As the core's `bot.ts`: a project by id or name, a member's grant by the name it keeps, every machine's at once.
+        const wanted = typeof params.project === 'string' ? params.project.trim().toLowerCase() : '';
+        const matching = params.project === undefined ? [...contact.grants]
+          : contact.grants.filter(grant => grant.projectId === params.project || (grant.name ?? ctx.projects.find(entry => entry.id === grant.projectId)?.name ?? '').toLowerCase() === wanted);
+        if (params.project !== undefined && matching.length === 0) throw invalid(`project: expected a project open to ${contact.name}`, 'project');
+        contact.grants = contact.grants.filter(grant => !matching.includes(grant));
         offers(contact);
       }
       for (const relation of relations) endRelation(ctx, relation);
