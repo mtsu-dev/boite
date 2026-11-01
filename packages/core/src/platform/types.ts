@@ -164,8 +164,8 @@ export interface TrackedControl {
 }
 
 export interface WindowGuide {
-  /** At most `limit` enabled controls on screen, in the tree's order, and how many there were. */
-  controls(id: string, limit: number): Promise<{ controls: NativeControl[]; total: number }>;
+  /** At most `limit` enabled controls on screen, in the tree's order, and how many there were; `any` adds the containers. */
+  controls(id: string, limit: number, any?: boolean): Promise<{ controls: NativeControl[]; total: number }>;
   /** The control of window `id` that matches `control` (type, name, automation id, nearest to its rectangle), held live; null when none matches. */
   track(id: string, control: NativeControl): Promise<TrackedControl | null>;
   /**

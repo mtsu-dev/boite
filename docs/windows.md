@@ -166,6 +166,12 @@ boite window unpoint
   acts on: buttons, menu items, tabs, list and tree items, fields, check and
   radio boxes, sliders, links. A control with neither a name nor an
   automation id is left out.
+  - `--any` adds the containers: groups, panes, lists, tables, trees, tab
+    bars, toolbars, images, text and documents, a whole area as a web page's
+    div is. `point <target> --name <name> --any` finds one by name; a box on
+    a container follows it as on a control, its size too, so it grows and
+    shrinks with what the area holds. A read with `--any` lists many more
+    lines: narrow it with `--filter`.
   - 60 lines by default, `--limit` up to 400; `--filter` keeps names that
     contain the text, without case. About 10 tokens a line, against
     1,000 to 3,000 for a screenshot.

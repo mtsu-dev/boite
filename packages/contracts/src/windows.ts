@@ -258,7 +258,8 @@ export interface WindowsRpcMethods {
    * numbered for `windows.point`. `filter` keeps the names that contain it,
    * without case. Needs the same consent as a capture, asked as `read`.
    */
-  'windows.read': { params: { threadId: string; target: WindowTarget; filter?: string; limit?: number }; result: WindowControls };
+  /** `any` adds the containers (groups, panes, lists, images, text, documents) to the controls a person acts on. */
+  'windows.read': { params: { threadId: string; target: WindowTarget; filter?: string; limit?: number; any?: boolean }; result: WindowControls };
   /**
    * Draws a box with a label above every window, click-through, until a click
    * inside it ends a `windows.waitClick`, `windows.unpoint` or `seconds`.
@@ -271,7 +272,7 @@ export interface WindowsRpcMethods {
    * conversation as a message, unless a `windows.waitClick` took the click.
    */
   'windows.point': {
-    params: { threadId: string; control?: number; target?: WindowTarget; name?: string; at?: WindowCrop; label?: string; seconds?: number; shape?: WindowPointerShape; pad?: number; notify?: boolean };
+    params: { threadId: string; control?: number; target?: WindowTarget; name?: string; at?: WindowCrop; label?: string; seconds?: number; shape?: WindowPointerShape; pad?: number; notify?: boolean; any?: boolean };
     result: { pointer: WindowPointer };
   };
   /** Waits until the person presses the primary button inside the conversation's box, then takes the box away. */

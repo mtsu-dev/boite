@@ -132,13 +132,13 @@ export async function loadWindowGuide(): Promise<WindowGuide | { unavailable: st
     return { unavailable: `user32 cannot be loaded: ${error instanceof Error ? error.message : String(error)}` };
   }
   return {
-    controls: async (id, limit) => {
+    controls: async (id, limit, any = false) => {
       const hwnd = windowOf(id);
       if (user32().IsHungAppWindow(hwnd) !== 0) throw new Error('the window is not responding');
-      let read = physicalPixels(() => readControls(hwnd, limit));
+      let read = physicalPixels(() => readControls(hwnd, limit, any));
       for (let attempt = 0; attempt < EMPTY_RETRIES && read.total === 0; attempt++) {
         await Bun.sleep(EMPTY_WAIT_MS);
-        read = physicalPixels(() => readControls(hwnd, limit));
+        read = physicalPixels(() => readControls(hwnd, limit, any));
       }
       return read;
     },

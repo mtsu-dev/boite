@@ -30,12 +30,14 @@ export const WINDOW_HELP = `boite window <command> [args] [--json]
                                  (2 by default), as one PNG
   watch <target>                 show the window live in the user's Window panel
   close                          empty the Window panel
-  read <target> [--filter <text>] [--limit <n>]
+  read <target> [--filter <text>] [--limit <n>] [--any]
                                  the window's enabled controls on screen, one line
                                  each: #id, type, "name", x,y wxh in window pixels.
-                                 Up to ${WINDOW_READ_LIMIT.default} by default, ${WINDOW_READ_LIMIT.max} at most
+                                 Up to ${WINDOW_READ_LIMIT.default} by default, ${WINDOW_READ_LIMIT.max} at most.
+                                 --any adds the named containers (Group, Pane, List,
+                                 Image, Text, Document...): a whole area, as a div
   point <id> [--label <text>] [--seconds <s>] [--round] [--pad <px>]
-  point <target> --name <name> [same options]
+  point <target> --name <name> [--any] [same options]
   point <target> --at x,y,w,h [same options]
                                  draw a box with a label (${WINDOW_POINT_LABEL_MAX} characters at most) above
                                  every window to show the user what to click: a
@@ -90,6 +92,15 @@ function target(rest: string[]): WindowTarget {
   const given = [id, process, title].filter(value => value !== undefined).length;
   if (given !== 1) throw new Usage('window needs exactly one of --id, --process or --title');
   return id !== undefined ? { id } : process !== undefined ? { process } : { title: title! };
+}
+
+/** Takes `name`, a flag with no value, out of `rest`: whether it was there. */
+function toggle(rest: string[], name: string): boolean {
+  const at = rest.indexOf(name);
+  if (at === -1) return false;
+  rest.splice(at, 1);
+  if (rest.includes(name)) throw new Usage(`window accepts one ${name}`);
+  return true;
 }
 
 function done(rest: string[]): void {
@@ -186,9 +197,10 @@ export async function windowCommand(args: string[], io: CliIo, client: CoreClien
     case 'read': {
       const filter = flag(rest, '--filter');
       const limit = number(rest, '--limit', true);
+      const any = toggle(rest, '--any');
       const named = target(rest);
       done(rest);
-      const read = await client.call('windows.read', { threadId, target: named, ...(filter === undefined ? {} : { filter }), ...(limit === undefined ? {} : { limit }) });
+      const read = await client.call('windows.read', { threadId, target: named, ...(filter === undefined ? {} : { filter }), ...(limit === undefined ? {} : { limit }), ...(any ? { any } : {}) });
       const lines = [`window: ${read.windowId} (${read.process})`, ...read.controls.map(controlLine)];
       if (read.total === 0) lines.push('controls: none on screen; for an app with no accessibility tree, take a screenshot and point --at');
       else if (read.total > read.controls.length) lines.push(`${read.total - read.controls.length} more: narrow with --filter or raise --limit`);
@@ -198,15 +210,15 @@ export async function windowCommand(args: string[], io: CliIo, client: CoreClien
       const label = flag(rest, '--label');
       const seconds = number(rest, '--seconds', false);
       const pad = number(rest, '--pad', true);
-      const roundAt = rest.indexOf('--round');
-      if (roundAt >= 0) rest.splice(roundAt, 1);
+      const round = toggle(rest, '--round');
+      const any = toggle(rest, '--any');
       const name = flag(rest, '--name');
       const atText = flag(rest, '--at');
       const at = atText === undefined ? undefined : parseWindowCrop(atText);
       if (at === null) throw new Usage('window point --at takes x,y,w,h in pixels, or in fractions from 0 to 1');
       // The agent keeps working: the click arrives later as a message.
       const common = { threadId, notify: true, ...(label === undefined ? {} : { label }), ...(seconds === undefined ? {} : { seconds }),
-        ...(roundAt >= 0 ? { shape: 'round' as const } : {}), ...(pad === undefined ? {} : { pad }) };
+        ...(round ? { shape: 'round' as const } : {}), ...(pad === undefined ? {} : { pad }), ...(any ? { any } : {}) };
       const id = /^#?\d+$/.test(rest[0] ?? '') ? Number(rest.shift()!.replace('#', '')) : undefined;
       let params: RpcParams<'windows.point'>;
       if (id !== undefined) {

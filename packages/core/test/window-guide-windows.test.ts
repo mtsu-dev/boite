@@ -22,6 +22,8 @@ public class BoiteGuideWindow : Form {
     Controls.Add(new Button { Text = "Build  Settings", Location = new Point(180, 20), Size = new Size(140, 40) });
     Controls.Add(new Button { Text = "Disabled", Location = new Point(20, 80), Size = new Size(100, 40), Enabled = false });
     Controls.Add(new TextBox { Name = "search", Location = new Point(20, 140), Size = new Size(200, 24) });
+    // A container that grows with the window, as a div with its page.
+    Controls.Add(new GroupBox { Text = "Options", Location = new Point(240, 120), Size = new Size(140, 70), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right });
   }
   protected override bool ShowWithoutActivation { get { return true; } }
   protected override CreateParams CreateParams {
@@ -120,6 +122,30 @@ describe.skipIf(process.platform !== 'win32')('window guide on Windows', () => {
     tracked.release();
     expect(tracked.rect()).toBe('gone');
     expect(await guide.track(form.id, { ...build, name: 'No such button' })).toBeNull();
+  });
+
+  test('any reads the containers too, and a tracked one answers its new size', async () => {
+    expect((await guide.controls(form.id, 50)).controls.map(control => control.type)).not.toContain('Group');
+    const group = (await guide.controls(form.id, 50, true)).controls.find(control => control.type === 'Group' && control.name === 'Options')!;
+    expect(group).toBeDefined();
+    const tracked = (await guide.track(form.id, group))!;
+    expect(tracked.rect()).toEqual(group.rect);
+    const { dlopen, FFIType } = await import('bun:ffi');
+    const user32 = dlopen('user32.dll', { SetWindowPos: { args: [FFIType.u64, FFIType.u64, FFIType.i32, FFIType.i32, FFIType.i32, FFIType.i32, FFIType.u32], returns: FFIType.i32 } });
+    const frame = guide.frame(form.id)!.rect;
+    // SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE: the window grows to the right, the group with it.
+    expect(user32.symbols.SetWindowPos(BigInt(form.id), 0n, 0, 0, frame.width + 60, frame.height, 0x2 | 0x4 | 0x10)).not.toBe(0);
+    try {
+      const grown = guide.frame(form.id)!.rect.width - frame.width;
+      expect(grown).toBeGreaterThan(0);
+      let now = tracked.rect();
+      for (let attempt = 0; attempt < 20 && typeof now === 'object' && now.width === group.rect.width; attempt++) { await Bun.sleep(25); now = tracked.rect(); }
+      expect(now).toEqual({ ...group.rect, width: group.rect.width + grown });
+    } finally {
+      user32.symbols.SetWindowPos(BigInt(form.id), 0n, 0, 0, frame.width, frame.height, 0x2 | 0x4 | 0x10);
+      user32.close();
+      tracked.release();
+    }
   });
 
   test('a window that is gone has no frame and no controls', async () => {

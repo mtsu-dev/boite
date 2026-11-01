@@ -318,8 +318,9 @@ export function windowsMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
       pending.settle(answer);
       return { ok: true };
     },
-    'windows.read': async ({ threadId, target, filter, limit }) => {
+    'windows.read': async ({ threadId, target, filter, limit, any }) => {
       const thread = active(threadId);
+      if (any !== undefined && typeof any !== 'boolean') throw invalid('any must be true or false', 'any');
       const max = limit ?? WINDOW_READ_LIMIT.default;
       if (!(Number.isInteger(max) && max >= 1 && max <= WINDOW_READ_LIMIT.max)) throw invalid(`limit must be a whole number from 1 to ${WINDOW_READ_LIMIT.max}`, 'limit');
       const window = resolve(thread, target);
@@ -331,7 +332,7 @@ export function windowsMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
       const matching = wanted ? controls.filter(control => control.name.toLowerCase().includes(wanted)) : controls;
       return { windowId: window.id, process: window.process, controls: structuredClone(matching.slice(0, max)), total: matching.length };
     },
-    'windows.point': async ({ threadId, control: id, target, name, at, label = '', seconds = WINDOW_POINT_SECONDS.default, shape = 'box', pad = WINDOW_POINT_PAD.default, notify = false }) => {
+    'windows.point': async ({ threadId, control: id, target, name, at, label = '', seconds = WINDOW_POINT_SECONDS.default, shape = 'box', pad = WINDOW_POINT_PAD.default, notify = false, any }) => {
       const thread = active(threadId);
       if ([id, name, at].filter(value => value !== undefined).length !== 1) throw invalid('point needs exactly one of control, name or at', 'control');
       if (label.length > WINDOW_POINT_LABEL_MAX) throw invalid(`label must be at most ${WINDOW_POINT_LABEL_MAX} characters with no control characters`, 'label');
@@ -339,6 +340,7 @@ export function windowsMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
       if (shape !== 'box' && shape !== 'round') throw invalid('shape must be box or round', 'shape');
       if (!Number.isInteger(pad) || pad < 0 || pad > WINDOW_POINT_PAD.max) throw invalid(`pad must be a whole number of pixels from 0 to ${WINDOW_POINT_PAD.max}`, 'pad');
       if (typeof notify !== 'boolean') throw invalid('notify must be true or false', 'notify');
+      if (any !== undefined && typeof any !== 'boolean') throw invalid('any must be true or false', 'any');
       let window: FakeWindow;
       let box: { x: number; y: number; width: number; height: number };
       let control: WindowControl | undefined;

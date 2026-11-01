@@ -39,6 +39,8 @@ function fakeDesktop() {
     // Scrolled out of the window, though its provider says it is on screen.
     control('ListItem', 'Hidden asset', 1000, 900),
   ];
+  // Read only with `any`: a card that holds the controls, as a div does.
+  const containers: NativeControl[] = [{ type: 'Group', name: 'Card', automationId: '', rect: { left: 1100, top: 600, width: 120, height: 60 } }];
   const mouse = { pressed: false, x: 0, y: 0 };
   /**
    * The control a box follows, as its app answers: a rectangle, out of view,
@@ -55,9 +57,10 @@ function fakeDesktop() {
     frames: id => ({ next: async () => { throw goneError(id); }, close: () => {} }),
   };
   const guide: WindowGuide = {
-    controls: async (id, limit) => {
+    controls: async (id, limit, any) => {
       if (!frames.has(id)) throw new Error('the window closed during the read');
-      return { controls: id === '101' ? controls.slice(0, limit) : [], total: id === '101' ? controls.length : 0 };
+      const all = id !== '101' ? [] : any ? [...controls, ...containers] : controls;
+      return { controls: all.slice(0, limit), total: all.length };
     },
     frame: id => {
       const frame = frames.get(id);
@@ -254,6 +257,26 @@ describe('window guide', () => {
     expect(desk.live.held).toBe(0);
   });
 
+  test('read with any adds the containers, and a box on one grows and shrinks with it', async () => {
+    const answered = answer('always');
+    const plain = await agent.call('windows.read', { threadId, target: { id: '101' } });
+    await answered;
+    expect(plain.controls.map(control => control.type)).not.toContain('Group');
+    const read = await agent.call('windows.read', { threadId, target: { id: '101' }, any: true });
+    expect(read.controls.find(control => control.type === 'Group')).toEqual({ id: 5, type: 'Group', name: 'Card', x: 100, y: 100, width: 120, height: 60 });
+    expect(await thrown(agent.call('windows.point', { threadId, target: { id: '101' }, name: 'card' }))).toThrow('no control of Unity.exe is named "card"');
+
+    desk.live.rect = { left: 1100, top: 600, width: 120, height: 60 };
+    await agent.call('windows.point', { threadId, target: { id: '101' }, name: 'card', any: true });
+    expect(desk.live.asked.at(-1)).toMatchObject({ type: 'Group', name: 'Card' });
+    await eventually(() => expect(boxes.at(-1)!.rect).toEqual({ left: 1100, top: 600, width: 120, height: 60 }));
+    // The card grows as what it holds does, then shrinks back: the box with it, at once.
+    desk.live.rect = { left: 1090, top: 590, width: 160, height: 140 };
+    await eventually(() => expect(boxes.at(-1)!.rect).toEqual({ left: 1090, top: 590, width: 160, height: 140 }), SETTLE_MS / 2);
+    desk.live.rect = { left: 1100, top: 600, width: 120, height: 60 };
+    await eventually(() => expect(boxes.at(-1)!.rect).toEqual({ left: 1100, top: 600, width: 120, height: 60 }), SETTLE_MS / 2);
+  });
+
   test('a Chromium window is framed and brought to the front before its read, and the frame goes once no box shows in it', async () => {
     desk.windows[0]!.className = 'Chrome_WidgetWin_1';
     // The desktop app brings the framed window to the front a moment after it hears of it.
@@ -398,6 +421,7 @@ describe('window guide', () => {
     const read = await run('read', '--id', '101', '--limit', '2');
     await answered;
     expect(read.out).toBe('window: 101 (Unity.exe)\n#1 MenuItem "File" 4,4 40x20\n#2 MenuItem "Edit" 48,4 40x20\n2 more: narrow with --filter or raise --limit\n');
+    expect((await run('read', '--id', '101', '--any', '--filter', 'card')).out).toBe('window: 101 (Unity.exe)\n#5 Group "Card" 100,100 120x60\n');
     expect((await run('point', '2', '--label', 'Open Edit')).out).toMatch(/^pointing at MenuItem "Edit" of window 101 \(Unity.exe\) with "Open Edit" for 120 s\nkeep working: the click, or the box timing out, arrives as a message\n$/);
     expect((await run('point', '--id', '101', '--at', '0,0,0.5,0.5', '--seconds', '30')).out).toMatch(/^pointing at 0,0 200x150 of window 101 \(Unity.exe\) for 30 s\n/);
     expect((await run('point', '--id', '101')).error).toContain('needs an id from window read (3 for #3), or a target with exactly one of --name or --at');

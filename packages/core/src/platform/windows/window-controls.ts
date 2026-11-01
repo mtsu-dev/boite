@@ -197,6 +197,27 @@ export const INTERACTIVE_TYPES: Record<number, string> = {
   50035: 'HeaderItem',
 };
 
+/**
+ * The containers a read takes with `any`: a page's panes, groups and lists, as
+ * a web page's divs, which grow and shrink with what they hold.
+ */
+export const CONTAINER_TYPES: Record<number, string> = {
+  50006: 'Image',
+  50008: 'List',
+  50018: 'Tab',
+  50020: 'Text',
+  50021: 'ToolBar',
+  50023: 'Tree',
+  50025: 'Custom',
+  50026: 'Group',
+  50028: 'DataGrid',
+  50030: 'Document',
+  50033: 'Pane',
+  50036: 'Table',
+};
+const ANY_TYPES: Record<number, string> = { ...INTERACTIVE_TYPES, ...CONTAINER_TYPES };
+const CONTAINER_NAMES = new Set(Object.values(CONTAINER_TYPES));
+
 /** How long UI Automation waits to reach a window's process, and for one answer from it. */
 const CONNECTION_TIMEOUT_MS = 2_000;
 const TRANSACTION_TIMEOUT_MS = 5_000;
@@ -207,6 +228,8 @@ interface Automation {
   /** The same properties, with live elements: only to find the control a box follows. */
   liveCache: Pointer;
   condition: Pointer;
+  /** The interactive types and the containers, for `any`. */
+  anyCondition: Pointer;
 }
 
 let automation: Automation | null = null;
@@ -235,10 +258,15 @@ function createAutomation(): Automation {
   const cache = cacheRequest(self, AUTOMATION_ELEMENT_MODE_NONE);
   const liveCache = cacheRequest(self, AUTOMATION_ELEMENT_MODE_FULL);
 
-  // ControlType == Button OR ControlType == CheckBox OR ...: a VARIANT goes by pointer on x64, being 24 bytes.
+  return { automation: self, cache, liveCache, condition: typeCondition(self, INTERACTIVE_TYPES), anyCondition: typeCondition(self, ANY_TYPES) };
+}
+
+/** ControlType == Button OR ControlType == CheckBox OR ...: a VARIANT goes by pointer on x64, being 24 bytes. */
+function typeCondition(self: Pointer, types: Record<number, string>): Pointer {
+  const out = new BigUint64Array(1);
   const conditions: Pointer[] = [];
   try {
-    for (const type of Object.keys(INTERACTIVE_TYPES).map(Number)) {
+    for (const type of Object.keys(types).map(Number)) {
       const variant = new DataView(new ArrayBuffer(24));
       variant.setUint16(0, VT_I4, true);
       variant.setInt32(8, type, true);
@@ -252,7 +280,7 @@ function createAutomation(): Automation {
   } finally {
     for (const condition of conditions) release(condition);
   }
-  return { automation: self, cache, liveCache, condition: taken(out, 'IUIAutomation::CreateOrConditionFromNativeArray') };
+  return taken(out, 'IUIAutomation::CreateOrConditionFromNativeArray');
 }
 
 function cacheRequest(self: Pointer, mode: number): Pointer {
@@ -285,14 +313,16 @@ function cachedInt(self: Pointer, index: number, name: string, out: Int32Array):
 }
 
 /**
- * Each enabled, on-screen control of the interactive types inside the window
+ * Each enabled, on-screen control of the interactive types (and the containers with `any`) inside the window
  * `hwnd`, in the tree's order, with its bounds in physical screen pixels: the
  * calling thread must be per-monitor aware. `visit` returns true to keep the
  * element, which the caller then releases.
  */
-function eachControl(hwnd: bigint, cache: Pointer, visit: (control: NativeControl, item: Pointer) => boolean): void {
+function eachControl(hwnd: bigint, cache: Pointer, any: boolean, visit: (control: NativeControl, item: Pointer) => boolean): void {
   automation ??= createAutomation();
-  const { automation: self, condition } = automation;
+  const { automation: self } = automation;
+  const condition = any ? automation.anyCondition : automation.condition;
+  const types = any ? ANY_TYPES : INTERACTIVE_TYPES;
   const out = new BigUint64Array(1);
   ok(slot(self, ELEMENT_FROM_HANDLE, 'IUIAutomation::ElementFromHandle', SIG_HANDLE_OUT)(self, hwnd, ptr(out)), 'IUIAutomation::ElementFromHandle');
   const root = taken(out, 'IUIAutomation::ElementFromHandle');
@@ -318,7 +348,7 @@ function eachControl(hwnd: bigint, cache: Pointer, visit: (control: NativeContro
         const width = rect[2]! - rect[0]!;
         const height = rect[3]! - rect[1]!;
         if (width <= 0 || height <= 0) continue;
-        const type = INTERACTIVE_TYPES[cachedInt(item, CACHED_CONTROL_TYPE, 'get_CachedControlType', number) ?? 0];
+        const type = types[cachedInt(item, CACHED_CONTROL_TYPE, 'get_CachedControlType', number) ?? 0];
         if (type === undefined) continue;
         const name = cachedText(item, CACHED_NAME, 'get_CachedName', out).replace(/\s+/g, ' ').trim();
         const automationId = cachedText(item, CACHED_AUTOMATION_ID, 'get_CachedAutomationId', out);
@@ -336,14 +366,14 @@ function eachControl(hwnd: bigint, cache: Pointer, visit: (control: NativeContro
 }
 
 /**
- * The enabled, on-screen controls of the interactive types inside the window
+ * The enabled, on-screen controls of the interactive types (and the containers with `any`) inside the window
  * `hwnd`. At most `limit` come back; `total` counts every one that qualified.
  */
-export function readControls(hwnd: bigint, limit: number): { controls: NativeControl[]; total: number } {
+export function readControls(hwnd: bigint, limit: number, any = false): { controls: NativeControl[]; total: number } {
   automation ??= createAutomation();
   const controls: NativeControl[] = [];
   let total = 0;
-  eachControl(hwnd, automation.cache, control => {
+  eachControl(hwnd, automation.cache, any, control => {
     total += 1;
     if (controls.length < limit) controls.push(control);
     return false;
@@ -362,7 +392,8 @@ export function trackControl(hwnd: bigint, wanted: NativeControl): { rect(): Nat
   automation ??= createAutomation();
   const aim = center(wanted.rect);
   let best: { item: Pointer; distance: number } | null = null;
-  eachControl(hwnd, automation.liveCache, (control, item) => {
+  // A container is found among the containers too, where a read with `any` saw it.
+  eachControl(hwnd, automation.liveCache, CONTAINER_NAMES.has(wanted.type), (control, item) => {
     if (control.type !== wanted.type || control.name !== wanted.name || control.automationId !== wanted.automationId) return false;
     const at = center(control.rect);
     const distance = Math.hypot(at.x - aim.x, at.y - aim.y);

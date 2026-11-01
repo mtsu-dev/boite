@@ -163,8 +163,9 @@ export class WindowGuides {
     this.#frameIdleMs = options.frameIdleMs ?? FRAME_IDLE_MS;
   }
 
-  async read({ threadId, target, filter, limit }: RpcParams<'windows.read'>, connection?: Connection): Promise<RpcResult<'windows.read'>> {
+  async read({ threadId, target, filter, limit, any }: RpcParams<'windows.read'>, connection?: Connection): Promise<RpcResult<'windows.read'>> {
     const thread = this.#host.activeThread(threadId, connection);
+    if (any !== undefined && typeof any !== 'boolean') throw invalidParams('any must be true or false', { field: 'any' });
     if (filter !== undefined && (typeof filter !== 'string' || filter.trim() === '' || filter.length > FILTER_MAX || /\p{Cc}/u.test(filter))) {
       throw invalidParams(`filter must be 1 to ${FILTER_MAX} characters with no control characters`, { field: 'filter' });
     }
@@ -173,7 +174,7 @@ export class WindowGuides {
     const guide = await this.#load();
     const window = await this.#host.grantedWindow(thread, target, 'read', connection);
     await this.#front(thread.id, guide, window);
-    const snapshot = await this.#read(thread, guide, window);
+    const snapshot = await this.#read(thread, guide, window, any === true);
     if (!this.#shown.has(thread.id)) this.#frameLater(thread.id);
     const wanted = filter?.trim().toLowerCase();
     const matching = wanted === undefined ? snapshot.controls : snapshot.controls.filter(control => control.name.toLowerCase().includes(wanted));
@@ -199,6 +200,7 @@ export class WindowGuides {
     const look = { shape, pad };
     const notify = params.notify ?? false;
     if (typeof notify !== 'boolean') throw invalidParams('notify must be true or false', { field: 'notify' });
+    if (params.any !== undefined && typeof params.any !== 'boolean') throw invalidParams('any must be true or false', { field: 'any' });
 
     // Every check that needs no OS comes first: a machine without the guide refuses the same bad call the same way.
     let window: NativeWindow;
@@ -225,7 +227,7 @@ export class WindowGuides {
       const guide = await this.#load();
       window = await this.#host.grantedWindow(thread, target, 'read', connection);
       await this.#front(thread.id, guide, window);
-      const snapshot = await this.#read(thread, guide, window);
+      const snapshot = await this.#read(thread, guide, window, params.any === true);
       control = this.#named(snapshot, name.trim());
       box = control;
     } else {
@@ -361,12 +363,12 @@ export class WindowGuides {
   }
 
   /** Reads the window's controls in its own pixels and keeps them as the conversation's last read. */
-  async #read(thread: ThreadSummary, guide: WindowGuide, window: NativeWindow): Promise<Snapshot> {
+  async #read(thread: ThreadSummary, guide: WindowGuide, window: NativeWindow, any: boolean): Promise<Snapshot> {
     const frame = guide.frame(window.id);
     if (frame === null) throw refused(`window ${window.id} of ${window.process} is gone`, { windowId: window.id, code: 'gone' });
     let found: Awaited<ReturnType<WindowGuide['controls']>>;
     try {
-      found = await guide.controls(window.id, READ_SCAN);
+      found = await guide.controls(window.id, READ_SCAN, any);
     } catch (error) {
       throw refused(`reading the controls of ${window.process} failed: ${messageOf(error)}`, { windowId: window.id });
     }
