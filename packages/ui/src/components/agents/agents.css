@@ -58,6 +58,8 @@
 .agent-portrait { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: none; }
 .agent-portrait-tools { display: flex; gap: 4px; }
 .agent-portrait-tools .active { color: var(--color-accent); background: var(--color-active); }
+/* The file picker opens from its button; the input itself is never drawn. */
+.agent-picture-input { display: none; }
 .agent-identity-name { flex: 1; align-self: center; }
 .agent-dressing { display: flex; flex-direction: column; gap: 12px; padding: 16px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-2); }
 

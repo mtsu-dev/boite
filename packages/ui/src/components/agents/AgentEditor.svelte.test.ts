@@ -66,6 +66,29 @@ test('archiving still asks for the stored agent name, a cancelled archive saves 
   expect(call.mock.calls[1]![1]).toMatchObject({ id: profile.id, expectedRevision: 2, value: { name: 'Renamed Mira', status: 'archived' } });
 });
 
+test('an imported picture is stored on the agent machine, worn and saved in place of the robot; the dice bring a robot back', async () => {
+  const gif = 'data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==';
+  const put = vi.fn(async (_method: string, _params: { dataUrl: string }) => ({ avatar: 'img:00112233aabbccdd' }));
+  const { call, view } = viewOf(profile, { accounts: [], providerOf: () => undefined, projects: [], client: { call: put }, connection: 'ready' });
+  mounted = mount(AgentEditor, { target: document.body, props: { view, record: profile, embedded: true, ondone() {}, oncancel() {} } });
+  await settle();
+  const input = document.querySelector<HTMLInputElement>('[data-testid="agent-picture-input"]')!;
+  Object.defineProperty(input, 'files', { configurable: true, value: [new File([Uint8Array.from(atob(gif.split(',')[1]!), c => c.charCodeAt(0))], 'cat.gif', { type: 'image/gif' })] });
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+  await vi.waitFor(() => expect(call).toHaveBeenCalledOnce());
+  // A small GIF goes as it is, animation and all.
+  expect(put).toHaveBeenCalledWith('agents.picture.put', { dataUrl: gif });
+  expect(call.mock.calls[0]![1]).toMatchObject({ id: profile.id, value: { avatar: 'img:00112233aabbccdd' } });
+  await settle();
+  expect(document.querySelector<HTMLImageElement>('.agent-portrait img.agent-picture')?.src).toBe(gif);
+
+  document.querySelector<HTMLButtonElement>('[data-testid="robot-shuffle"]')!.click();
+  await settle();
+  expect(call).toHaveBeenCalledTimes(2);
+  expect((call.mock.calls[1]![1] as { value: AgentProfile }).value.avatar).toMatch(/^bot:/);
+  expect(document.querySelector('.agent-portrait img.agent-picture')).toBeNull();
+});
+
 test('an agent is entrusted projects of its machine from its main options, the drafts aside', async () => {
   const projects = [{ id: 'p-game', name: 'Game', kind: 'project' }, { id: 'p-drafts', name: 'Drafts', kind: 'drafts' }, { id: 'p-site', name: 'Site', kind: 'project' }];
   const { call, view } = viewOf(profile, { accounts: [], providerOf: () => undefined, projects, draftsProject: projects[1] });

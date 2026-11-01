@@ -257,6 +257,15 @@ export interface AgentsRpcMethods {
    */
   'agents.profile.save': { params: AgentSave<AgentProfile>; result: AgentProfile };
   /**
+   * Stores a picture the owner imported for a bot, as a `data:` URL of a PNG,
+   * JPEG, WebP or GIF of at most `AGENT_PICTURE_MAX_BYTES`. Returns the avatar
+   * that names it (`img:<hash>`), which `agents.profile.save` then takes like a
+   * robot code. The same bytes give the same avatar.
+   */
+  'agents.picture.put': { params: { dataUrl: string }; result: { avatar: string } };
+  /** The bytes of an imported picture as a `data:` URL, for the client that draws it. */
+  'agents.picture.get': { params: { avatar: string }; result: { dataUrl: string } };
+  /**
    * A thread creates a bot the user asked for (`boite settings bot create`),
    * as `agents.profile.save` creates one from the Bots page, with full access.
    * The model resolves as for `boite delegate`; omitted, the bot runs on the

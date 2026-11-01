@@ -1,6 +1,6 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { builtinSettingRefusal } from '@boite/contracts';
+import { builtinSettingRefusal, isAgentPicture } from '@boite/contracts';
 import type {
   AgentBrain, AgentBuiltin, AgentProfile, AgentRoutine, AgentSave, AgentSession, AgentStatus, AgentWatch, AgentsSnapshot, RpcParams, ThreadSummary, Turn,
 } from '@boite/contracts';
@@ -24,6 +24,7 @@ import { agentSpend, rootThread } from './spend.ts';
 import { migrateAgents } from './migration.ts';
 import { BuiltinBots } from './builtin.ts';
 import { BotMoves } from './move.ts';
+import { AgentPictures } from './pictures.ts';
 import { boolean, ids, integer, object, oneOf, quoted, text } from './validation.ts';
 
 const DEFAULT_LIMITS: AgentsSnapshot['limits'] = { paused: false };
@@ -76,6 +77,8 @@ export class AgentStore {
   readonly builtins: BuiltinBots;
   /** A bot sent to another machine of the group, or taken from one (move.ts). */
   readonly moves: BotMoves;
+  /** The pictures the owner imported for bots (pictures.ts). */
+  readonly pictures: AgentPictures;
   /**
    * Today's sums per agent thread, read again after any turn or row change of
    * that thread and at midnight: a snapshot a second while an agent works
@@ -87,6 +90,7 @@ export class AgentStore {
   readonly #off: () => void;
   constructor(readonly core: Core) {
     this.records = new AgentsRepository(core.journal); this.resident = new ResidentAgents(core, this.records); this.routines = new AgentRoutines(core);
+    this.pictures = new AgentPictures(core.dataDir, () => this.records.list('profile').map(agent => agent.avatar));
     // Stewards became agents with projects; their grants have nothing left to grant.
     core.journal.db.query("DELETE FROM settings WHERE key LIKE 'steward:%'").run();
     migrateAgents(core, this);
@@ -285,6 +289,10 @@ export class AgentStore {
     if (previous?.builtin !== undefined) {
       if (value.domain !== previous.domain) throw refused(builtinSettingRefusal(previous, 'domain', value.domain)!, { field: 'domain', expected: previous.domain });
       if (value.instructions !== previous.instructions) throw refused(builtinSettingRefusal(previous, 'instructions', value.instructions)!, { field: 'instructions' });
+    }
+    // An imported picture must be on this machine; one a bot already wears stays, so an unrelated edit still saves.
+    if (isAgentPicture(value.avatar) && value.avatar !== previous?.avatar && !this.pictures.has(value.avatar.trim())) {
+      throw refused(`avatar: ${value.avatar} is no picture this machine holds; import it with agents.picture.put first`, { field: 'avatar', expected: 'the avatar agents.picture.put returned' });
     }
     if (kind !== undefined && value.status === 'archived') throw refused(builtinSettingRefusal({ builtin: kind }, 'status', 'archived')!, { field: 'status', expected: ['active', 'paused'] });
     const saved = previous === null ? this.records.create('profile', value) : this.records.update('profile', previous.id, integer(params.expectedRevision, 'expectedRevision', 1, Number.MAX_SAFE_INTEGER), value);
@@ -591,6 +599,9 @@ export function registerPersistentAgents(core: Core): void {
   const store = core.workforce;
   core.router.register('agents.snapshot', p => store.snapshot(p.threadId, p.desk));
   core.router.register('agents.profile.save', p => store.saveProfile(p));
+  core.router.register('agents.picture.put', p => store.pictures.put(p.dataUrl));
+  // A paired device draws the pictures too (access.ts); only the owner imports one.
+  core.router.register('agents.picture.get', p => store.pictures.get(p.avatar));
   // Owner only, as every method access.ts names for no device or agent.
   core.router.register('agents.builtin.ensure', p => store.builtins.ensure(p));
   core.router.register('agents.builtin.reset', p => store.builtins.reset(p));

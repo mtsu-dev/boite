@@ -1,4 +1,4 @@
-import { nextAgentOccurrence, RpcErrorCode, AGENT_MEMORY_MAX, AGENT_ROUTINE_NAME_MAX, AGENT_ROUTINE_PROMPT_MAX, AGENT_ROUTINES_MAX } from '@boite/contracts';
+import { nextAgentOccurrence, RpcErrorCode, AGENT_MEMORY_MAX, AGENT_PICTURE_CODE, AGENT_PICTURE_MAX_BYTES, AGENT_PICTURE_TYPES, isAgentPicture, AGENT_ROUTINE_NAME_MAX, AGENT_ROUTINE_PROMPT_MAX, AGENT_ROUTINES_MAX } from '@boite/contracts';
 import { BUILTIN_BOTS, BUILTIN_LOCKED, BUILTIN_NEVER_ARCHIVED } from './fake-client/builtin-bots';
 import type {
   AgentAccountGrant, AgentBuiltin, AgentBrain, AgentBrainRoot, AgentEntrustment, AgentProfile, AgentRecord, AgentRoutine, AgentRuntimeConfig, AgentSchedule,
@@ -315,6 +315,12 @@ export class FakeAgents {
   private readonly handlers: AgentHandlers = {
     'agents.snapshot': p => this.snapshot(p.threadId, p.desk),
     'agents.profile.save': p => this.saveProfile(p, true),
+    'agents.picture.put': p => this.putPicture(p.dataUrl),
+    'agents.picture.get': p => {
+      const dataUrl = typeof p.avatar === 'string' && AGENT_PICTURE_CODE.test(p.avatar) ? this.pictures.get(p.avatar) : undefined;
+      if (dataUrl === undefined) throw new RpcFailure({ code: RpcErrorCode.NotFound, message: `avatar: no picture ${String(p.avatar)} on this machine`, data: { field: 'avatar' } });
+      return { dataUrl };
+    },
     'agents.builtin.ensure': p => this.ensureBuiltin(p),
     'agents.builtin.reset': p => this.resetBuiltin(p),
     'agents.open': p => this.openAgent(p.agentId),
@@ -410,10 +416,31 @@ export class FakeAgents {
     return threadId;
   }
 
+  /** Imported pictures by avatar, as the core keeps them in its data folder (agents/pictures.ts). */
+  private readonly pictures = new Map<string, string>();
+  /** The core's `agents.picture.put`: the same checks, and the same bytes give the same avatar. */
+  private putPicture(dataUrl: unknown): { avatar: string } {
+    const match = typeof dataUrl === 'string' ? /^data:(image\/[a-z]+);base64,([A-Za-z0-9+/]*={0,2})$/.exec(dataUrl) : null;
+    if (!match || !(AGENT_PICTURE_TYPES as readonly string[]).includes(match[1]!)) {
+      throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `dataUrl: expected data:<type>;base64,<bytes> with a type among ${AGENT_PICTURE_TYPES.join(', ')}`, data: { field: 'dataUrl' } });
+    }
+    const bytes = Math.floor(match[2]!.length * 3 / 4) - (match[2]!.match(/=+$/)?.[0].length ?? 0);
+    if (bytes === 0 || bytes > AGENT_PICTURE_MAX_BYTES) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `dataUrl: the picture is ${bytes} bytes; expected 1 to ${AGENT_PICTURE_MAX_BYTES}`, data: { field: 'dataUrl' } });
+    // Two FNV-1a passes stand in for the core's SHA-256: only "same bytes, same name" matters here.
+    let a = 0x811c9dc5, b = 0x01000193;
+    for (let i = 0; i < match[2]!.length; i++) { const code = match[2]!.charCodeAt(i); a = Math.imul(a ^ code, 0x01000193) >>> 0; b = Math.imul(b ^ code, 0x811c9dc5) >>> 0; }
+    const avatar = `img:${a.toString(16).padStart(8, '0')}${b.toString(16).padStart(8, '0')}`;
+    this.pictures.set(avatar, dataUrl as string);
+    return { avatar };
+  }
+
   private saveProfile(p: RpcParams<'agents.profile.save'>, wakes: boolean): AgentProfile {
     if (typeof p.value.name !== 'string' || !p.value.name.trim()) this.refuse('name: expected nonempty text');
     const previous = p.id ? this.profile(p.id) : null;
     if (previous && previous.revision !== p.expectedRevision) this.refuse('profile revision changed');
+    if (typeof p.value.avatar === 'string' && isAgentPicture(p.value.avatar) && p.value.avatar !== previous?.avatar && !this.pictures.has(p.value.avatar.trim())) {
+      this.refuse(`avatar: ${p.value.avatar} is no picture this machine holds; import it with agents.picture.put first`);
+    }
     const { id: _id, revision: _revision, createdAt: _created, updatedAt: _updated, builtin: _builtin, ...value } = p.value as AgentProfile;
     // A save never makes or unmakes a built-in bot, and a built-in keeps Boite's domain and instructions.
     if (previous?.builtin) {

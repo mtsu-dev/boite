@@ -122,6 +122,7 @@ export const strings = {
     robot: {
       family: 'Style', shape: 'Shape', color: 'Color', eyes: 'Eyes', mouth: 'Mouth', top: 'Top', cheeks: 'Cheeks', gear: 'Gear', shuffle: 'Shuffle', customize: 'Customize', done: 'Done',
       option: '{part} {n}', none: 'None', families: { jelly: 'Jelly', bubble: 'Bubble', capsule: 'Capsule', retro: 'Retro' },
+      picture: 'Use your own picture', pictureUnreadable: 'This file is not an image Boite can read. Pick a PNG, JPEG, WebP or GIF.',
     },
     when: {
       who: 'Bot', pickAgent: 'Choose a bot', what: 'What should it do?', whatPlaceholder: 'For example: sum up the new messages and tell me what needs an answer.',

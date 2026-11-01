@@ -2,15 +2,19 @@
   import { Target, Users } from '@lucide/svelte';
   import type { AgentProfile } from '@boite/contracts';
   import type { AgentMood } from '../../lib/agents.svelte';
-  import { avatarText, robotColor, robotOf, tintOf } from '../../lib/robots';
+  import { isAgentPicture } from '@boite/contracts';
+  import { avatarText, robotColor, robotOf, seededRobot, tintOf } from '../../lib/robots';
+  import { agentPictures } from '../../lib/agent-pictures.svelte';
   import { threadTone } from '../../lib/thread-state';
   import StatusMark from '../StatusMark.svelte';
   import Deferred, { parts } from '../Deferred.svelte';
   import type { RobotState } from './RobotFace.svelte';
 
   /**
-   * An agent's picture: its robot, or the emoji or letters it chose instead,
-   * on a disc. A group stacks two of its members, a mission shows a target.
+   * An agent's picture: its robot, the image the owner imported, or the emoji
+   * or letters it chose instead, on a disc. A group stacks two of its members,
+   * a mission shows a target. An imported image leaves the disc empty while it
+   * loads, and draws the robot its id picks when no machine holds it.
    *
    * `ring` draws a ring around the disc that says the agent's `mood`: an arc
    * of the accent turning while it works, the waiting colour pulsing while it
@@ -34,20 +38,33 @@
   } = $props();
 
   const grouped = $derived(kind === 'group' || kind === 'team');
-  const robot = $derived(kind === 'profile' ? robotOf(id, avatar) : null);
+  /** The imported image, once loaded: null for a robot or text avatar. */
+  const image = $derived(kind === 'profile' && isAgentPicture(avatar) ? agentPictures.url(avatar) : null);
+  const robot = $derived(kind === 'profile' ? portraitRobot(id, avatar) : null);
+  $effect(() => {
+    if (kind === 'profile') void agentPictures.load(avatar);
+    else for (const member of members.slice(0, 2)) void agentPictures.load(member.avatar);
+  });
+  /** The robot to draw: none for an imported image, unless no machine holds it. */
+  function portraitRobot(seed: string, own: string) {
+    if (!isAgentPicture(own)) return robotOf(seed, own);
+    return agentPictures.missing[own.trim()] !== undefined && !agentPictures.url(own) ? seededRobot(seed) : null;
+  }
   const standing = $derived<AgentMood>(mood ?? (status === 'running' ? 'working' : status === 'waiting' ? 'waiting' : 'idle'));
   const face = $derived<RobotState>(size < 24 ? 'still' : standing === 'working' || standing === 'waiting' || standing === 'error' || standing === 'asleep' ? standing : 'idle');
   /** The ring's resting colour: the robot's body, else the disc's tint. */
   const ringTint = $derived(robot ? robotColor(robot) : tintOf(id));
+  const pictured = $derived(kind === 'profile' && isAgentPicture(avatar) && !robot);
   const radius = $derived(size / 2 + 2.5);
 </script>
 
 {#snippet picture(member: Pick<AgentProfile, 'id' | 'name' | 'avatar'>, state: RobotState)}
-  {@const own = robotOf(member.id, member.avatar)}
-  {#if own}<Deferred part={parts.RobotFace} quiet>{#snippet children(RobotFace)}<RobotFace robot={own} {state} />{/snippet}</Deferred>{:else}<span class="ui-label">{avatarText(member.name, member.avatar)}</span>{/if}
+  {@const own = portraitRobot(member.id, member.avatar)}
+  {@const image = isAgentPicture(member.avatar) ? agentPictures.url(member.avatar) : null}
+  {#if image}<img class="agent-picture" src={image} alt="" draggable="false" />{:else if own}<Deferred part={parts.RobotFace} quiet>{#snippet children(RobotFace)}<RobotFace robot={own} {state} />{/snippet}</Deferred>{:else if !isAgentPicture(member.avatar)}<span class="ui-label">{avatarText(member.name, member.avatar)}</span>{/if}
 {/snippet}
 
-<span class="agent-avatar" class:robot={!!robot} data-kind={kind} data-ring={ring ? standing : null} style:--size="{size}px" style:--tint={kind === 'mission' ? null : tintOf(id)} style:--ring-tint={ring ? ringTint : null} aria-hidden="true">
+<span class="agent-avatar" class:robot={!!robot} class:pictured data-kind={kind} data-ring={ring ? standing : null} style:--size="{size}px" style:--tint={kind === 'mission' ? null : tintOf(id)} style:--ring-tint={ring ? ringTint : null} aria-hidden="true">
   {#if ring}
     <svg class="avatar-ring" aria-hidden="true">
       <circle class="track" cx="50%" cy="50%" r={radius} pathLength="100" />
@@ -56,12 +73,16 @@
   {/if}
   {#if grouped && members.length >= 2}
     {#each members.slice(0, 2) as member, slot (member.id)}
-      <span class="agent-avatar-stack" class:robot={!!robotOf(member.id, member.avatar)} data-slot={slot} style:--tint={tintOf(member.id)}>{@render picture(member, 'still')}</span>
+      <span class="agent-avatar-stack" class:robot={!!portraitRobot(member.id, member.avatar) || !!agentPictures.url(member.avatar)} data-slot={slot} style:--tint={tintOf(member.id)}>{@render picture(member, 'still')}</span>
     {/each}
   {:else if grouped}
     <Users size={Math.round(size * 0.45)} strokeWidth={1.75} />
   {:else if kind === 'mission'}
     <Target size={Math.round(size * 0.45)} strokeWidth={1.75} />
+  {:else if image}
+    <img class="agent-picture" src={image} alt="" draggable="false" />
+  {:else if pictured}
+    <!-- The imported image is on its way: the tinted disc meanwhile. -->
   {:else if robot}
     {@const own = robot}
     <Deferred part={parts.RobotFace} quiet>{#snippet children(RobotFace)}<RobotFace robot={own} state={face} />{/snippet}</Deferred>
@@ -76,6 +97,8 @@
   .agent-avatar { --size: 40px; --tint: var(--series-other); position: relative; width: var(--size); height: var(--size); flex: none; display: grid; place-items: center; border-radius: 50%; background: color-mix(in srgb, var(--tint) 28%, var(--color-surface-2)); color: color-mix(in srgb, var(--tint) 40%, var(--color-foreground)); font-size: calc(var(--size) * 0.38); font-weight: 600; line-height: 1; user-select: none; }
   .agent-avatar.robot, .agent-avatar:has(.agent-avatar-stack) { background: none; }
   .agent-avatar :global(svg.robot) { border-radius: 50%; overflow: hidden; transition: opacity var(--dur-3) var(--ease-out-quint); }
+  /* An imported image fills the disc, cropped to it, whatever its shape. */
+  .agent-picture { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; transition: opacity var(--dur-3) var(--ease-out-quint); }
   .agent-avatar[data-kind='mission'] { border-radius: var(--radius-md); background: var(--color-surface-3); color: var(--color-muted-foreground); }
   .agent-avatar-stack { position: absolute; width: 62%; height: 62%; display: grid; place-items: center; border-radius: 50%; background: color-mix(in srgb, var(--tint) 28%, var(--color-surface-2)); color: color-mix(in srgb, var(--tint) 40%, var(--color-foreground)); font-size: calc(var(--size) * 0.26); box-shadow: 0 0 0 2px var(--ring, var(--color-surface)); }
   .agent-avatar-stack.robot { background: none; }
@@ -102,7 +125,7 @@
   [data-ring='error'] .track { stroke: var(--color-danger); }
   [data-ring='unread'] .track { stroke: var(--color-accent); }
   [data-ring='asleep'] .track { stroke: var(--color-edge); stroke-dasharray: 2 5; stroke-linecap: round; }
-  [data-ring='asleep'] :global(svg.robot) { opacity: 0.7; }
+  [data-ring='asleep'] :is(:global(svg.robot), .agent-picture) { opacity: 0.7; }
   @media (prefers-reduced-motion: reduce) { .agent-avatar .avatar-ring :is(.arc, .track) { animation: none; } }
   :global(html[data-motion='reduced']) .agent-avatar .avatar-ring :is(.arc, .track) { animation: none; }
 </style>

@@ -31,7 +31,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  AGENT_BUILTINS, AGENT_DAILY_BUDGET, AGENT_ROUTINE_NAME_MAX, AGENT_ROUTINE_PROMPT_MAX, AGENT_ROUTINES_MAX,
+  AGENT_BUILTINS, AGENT_DAILY_BUDGET, AGENT_PICTURE_MAX_BYTES, isAgentPicture, AGENT_ROUTINE_NAME_MAX, AGENT_ROUTINE_PROMPT_MAX, AGENT_ROUTINES_MAX,
   type AgentBuiltin, type AgentMoveResult, type AgentProfile, type AgentRoutine, type AgentRuntimeConfig, type AgentSchedule, type AgentSelection, type AgentSession,
   type CoordinationPeer, type Message, type MoveNotice, type RpcParams, type ThreadSummary, type Turn,
 } from '@boite/contracts';
@@ -67,6 +67,8 @@ export const MOVE_FACTS_MAX = 100;
  * under `MAX_BODY` (262 144), which leaves room for the envelope.
  */
 export const MOVE_PAYLOAD_MAX = 180_000;
+/** The longest `data:` URL a moved picture may be: its bytes in base64 and the header. */
+const PICTURE_URL_MAX = Math.ceil(AGENT_PICTURE_MAX_BYTES / 3) * 4 + 64;
 /** How many times a move sends what changed while it waited (facts, profile, settings, brain, routines), before it gives up and keeps the bot. */
 export const MOVE_FACT_ROUNDS = 3;
 /** The answer that the target read no `bot.move`: its Boite is older than this feature. */
@@ -101,6 +103,8 @@ export interface BotMovePayload {
   profile: {
     id: string; name: string; domain: string; instructions: string; avatar: string; status: 'active' | 'paused';
     builtin?: AgentBuiltin; projectIds: string[]; selection: Omit<AgentSelection, 'accountId'>;
+    /** The imported picture its avatar names, as a `data:` URL: the bytes stay on the machine that stored them otherwise. */
+    picture?: string;
   };
   settings: MovedSettings | null;
   brain: Partial<Record<(typeof MOVED_BRAIN_FILES)[number], string>>;
@@ -262,12 +266,14 @@ export class BotMoves {
         id: agent.id, name: agent.name, domain: agent.domain, instructions: agent.instructions, avatar: agent.avatar, status: agent.status === 'paused' ? 'paused' : 'active',
         ...(agent.builtin === undefined ? {} : { builtin: agent.builtin }), projectIds,
         selection: { providerId: agent.selection.providerId, model: agent.selection.model, effort: agent.selection.effort, permissionMode: agent.selection.permissionMode },
+        ...(this.#store.pictures.has(agent.avatar) ? { picture: this.#store.pictures.get(agent.avatar).dataUrl } : {}),
       },
       settings, brain, routines,
       history: thread === null ? { messages: [], omitted: 0 } : this.#history(thread.id),
       facts: this.#facts(agent.id),
     };
-    const bytes = Buffer.byteLength(JSON.stringify(payload));
+    // The picture has its own bound (AGENT_PICTURE_MAX_BYTES): the limit is for the text a bot carries.
+    const bytes = Buffer.byteLength(JSON.stringify({ ...payload, profile: { ...payload.profile, picture: undefined } }));
     if (bytes > MOVE_PAYLOAD_MAX) {
       throw refused(`agents.move: ${agent.name} comes to ${bytes} bytes, more than the ${MOVE_PAYLOAD_MAX} a move carries; shorten its instructions or its brain files first`, { field: 'agentId', bytes, max: MOVE_PAYLOAD_MAX });
     }
@@ -457,11 +463,24 @@ export class BotMoves {
     const shipped = moved.builtin === undefined ? undefined : BUILTIN_TEXT[moved.builtin];
     return {
       value: {
-        name: moved.name, domain: shipped?.domain ?? moved.domain, instructions: shipped?.instructions ?? moved.instructions, avatar: moved.avatar,
+        name: moved.name, domain: shipped?.domain ?? moved.domain, instructions: shipped?.instructions ?? moved.instructions, avatar: this.#picture(moved),
         status: moved.status, projectIds, ...(moved.builtin === undefined ? {} : { builtin: moved.builtin }),
       },
       projectIds, groupProjects,
     };
+  }
+
+  /**
+   * The avatar a moved bot wears here: its picture stored on this machine, or
+   * the robot its id draws when the picture did not come or is refused.
+   */
+  #picture(moved: BotMovePayload['profile']): string {
+    if (!isAgentPicture(moved.avatar)) return moved.avatar;
+    if (moved.picture !== undefined) {
+      try { return this.#store.pictures.put(moved.picture).avatar; }
+      catch (error) { this.#core.log('warn', `agent ${moved.id}: its picture stays behind after a move: ${error instanceof Error ? error.message : String(error)}`); }
+    }
+    return this.#store.pictures.has(moved.avatar) ? moved.avatar : '';
   }
 
   /** The bot's live thread follows an update: its route when it changed, and its delegation from the runtime policy. */
@@ -598,6 +617,7 @@ function readPayload(raw: unknown): BotMovePayload {
     status: oneOf(p.status, 'bot.move.profile.status', ['active', 'paused']),
     ...(p.builtin === undefined ? {} : { builtin: oneOf(p.builtin, 'bot.move.profile.builtin', AGENT_BUILTINS) }),
     projectIds: ids(p.projectIds, 'bot.move.profile.projectIds', 50),
+    ...(p.picture === undefined ? {} : { picture: text(p.picture, 'bot.move.profile.picture', PICTURE_URL_MAX) }),
     selection: {
       providerId: text(s.providerId, 'bot.move.profile.selection.providerId', 100),
       model: s.model === null ? null : text(s.model, 'bot.move.profile.selection.model', 200),

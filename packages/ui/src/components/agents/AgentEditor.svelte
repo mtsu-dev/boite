@@ -2,8 +2,9 @@
   import { errorText } from '../../lib/errors';
   import { secureId } from '../../lib/secure-id';
   import { onMount, untrack } from 'svelte';
-  import { Dices, Lock, Palette, RotateCcw } from '@lucide/svelte';
-  import type { AgentProfile, AgentSelection as ExecutionSelection, RpcParams } from '@boite/contracts';
+  import { Dices, ImagePlus, Lock, Palette, RotateCcw } from '@lucide/svelte';
+  import { AGENT_PICTURE_MAX_BYTES, AGENT_PICTURE_TYPES, isAgentPicture, type AgentProfile, type AgentSelection as ExecutionSelection, type RpcParams } from '@boite/contracts';
+  import { agentPictures, pictureDataUrl } from '../../lib/agent-pictures.svelte';
   import { Autosave, TYPING_MS } from '../../lib/autosave.svelte';
   import { fill, strings } from '../../lib/strings';
   import { confirm } from '../../lib/confirm.svelte';
@@ -62,6 +63,10 @@
   /** A new agent gets a robot of its own at once; an existing one shows the robot it wears. */
   let robot = $state(robotOf(profile?.id ?? '', profile?.avatar ?? '') ?? seededRobot(profile?.id ?? secureId()));
   let robotTouched = $state(!profile);
+  /** The picture the owner imported (`img:<hash>`), worn in place of the robot; null while it wears a robot. */
+  let picture = $state<string | null>(profile && isAgentPicture(profile.avatar) ? profile.avatar.trim() : null);
+  let importing = $state(false);
+  let pictureInput = $state<HTMLInputElement | null>(null);
   let dressing = $state(false);
   let status = $state(profile?.status ?? 'active');
   let saving = $state(false);
@@ -83,7 +88,11 @@
     const usable = !offline && m.store.owner;
     return { id: m.id, label: m.label, active: m.store === host, disabled: !usable, ...(usable ? {} : { hint: offline ? labels.machineOffline : labels.machineNotOwner }) };
   }));
-  const busy = $derived(view.pending || moving || saving);
+  const busy = $derived(view.pending || moving || saving || importing);
+  /** The avatar the form saves: the imported picture, the robot once touched, else what the agent wears. */
+  const avatar = () => picture ?? (robotTouched ? encodeRobot(robot) : profile?.avatar ?? '');
+  /** Back to a robot: dice, the customizer and dropping the picture all leave the picture. */
+  function wearRobot(next: typeof robot) { robot = next; robotTouched = true; picture = null; edited(); }
   /** The projects an agent may be entrusted: those of the machine it lives on, the drafts aside. */
   const entrustable = $derived(host.projects.filter(p => p.id !== host.draftsProject?.id));
 
@@ -103,6 +112,9 @@
     let created: AgentProfile;
     try {
       if (!target.client || target.connection !== 'ready') throw new Error(fill(strings.agents.machineUnreachable, { name: workspace.machines.find(m => m.store === target)?.label ?? strings.machines.local }));
+      // A picture imported before another machine was picked: the same bytes give that machine the same avatar.
+      const image = isAgentPicture(value.avatar) ? agentPictures.url(value.avatar) : null;
+      if (image) await target.client.call('agents.picture.put', { dataUrl: image });
       created = await target.client.call('agents.profile.save', { value: $state.snapshot(value) as typeof value });
     } catch (error) {
       view.error = errorText(error);
@@ -192,14 +204,14 @@
       const projects = (r: AgentProfile) => projectKey(r.projectIds) === projectsRead || projectKey(r.projectIds) === projectKey(base?.projectIds);
       const rebase = !!latest && !!base && fields(latest) === fields(base) && projects(latest);
       const version = base ? { id: base.id, expectedRevision: (rebase ? latest! : base).revision } : {};
-      return { ...version, value: { name, domain, instructions, avatar: robotTouched ? encodeRobot(robot) : profile?.avatar ?? '', selection: creating || !rebase ? selection : latest!.selection, status, projectIds } };
+      return { ...version, value: { name, domain, instructions, avatar: avatar(), selection: creating || !rebase ? selection : latest!.selection, status, projectIds } };
     });
   }
   async function create() {
     if (busy) return;
     saving = true;
     try {
-      if (host !== view.store) return await createOn(host, { name, domain, instructions, avatar: robotTouched ? encodeRobot(robot) : '', selection, status, projectIds });
+      if (host !== view.store) return await createOn(host, { name, domain, instructions, avatar: avatar(), selection, status, projectIds });
       const result = await save(params => view.call('agents.profile.save', params()));
       if (result) ondone(result);
     } finally { saving = false; }
@@ -216,6 +228,31 @@
     ({ name, domain, instructions, status } = result);
     robot = robotOf(result.id, result.avatar) ?? seededRobot(result.id);
     robotTouched = false;
+    picture = isAgentPicture(result.avatar) ? result.avatar.trim() : null;
+  }
+  /**
+   * The image the owner picked becomes the agent's picture: shrunk here
+   * (`pictureDataUrl`), stored by the core the agent lives on, then saved like
+   * a robot. A new agent stores it on the machine picked so far; `createOn`
+   * gives it to another one picked after.
+   */
+  async function importPicture(file: File | undefined) {
+    if (!file || importing) return;
+    importing = true; view.error = '';
+    try {
+      const target = creating ? host : view.store;
+      if (!target.client || target.connection !== 'ready') throw new Error(fill(strings.agents.machineUnreachable, { name: workspace.machines.find(m => m.store === target)?.label ?? strings.machines.local }));
+      const dataUrl = await pictureDataUrl(file, AGENT_PICTURE_MAX_BYTES).catch(() => { throw new Error(labels.robot.pictureUnreadable); });
+      const stored = await target.client.call('agents.picture.put', { dataUrl });
+      agentPictures.remember(stored.avatar, dataUrl);
+      picture = stored.avatar;
+      dressing = false;
+      edited();
+    } catch (error) {
+      view.error = errorText(error);
+    } finally {
+      importing = false;
+    }
   }
   async function write() {
     const result = await save(params => view.save('agents.profile.save', params));
@@ -236,17 +273,23 @@
     <!-- The robot and the name read as one identity: the picture beside the field that names it. -->
     <div class="agent-identity">
       <div class="agent-portrait">
-        <AgentAvatar kind="profile" id={profile?.id ?? ''} {name} avatar={robotTouched ? encodeRobot(robot) : profile?.avatar ?? ''} size={72} />
+        <AgentAvatar kind="profile" id={profile?.id ?? ''} {name} avatar={avatar()} size={72} />
         <div class="agent-portrait-tools">
-          <button type="button" class="ghost icon small" title={labels.robot.shuffle} aria-label={labels.robot.shuffle} onclick={() => { robot = shuffledRobot(secureId(), robot.family); robotTouched = true; edited(); }} data-testid="robot-shuffle"><Dices size={15} strokeWidth={1.75} /></button>
+          <button type="button" class="ghost icon small" title={labels.robot.shuffle} aria-label={labels.robot.shuffle} onclick={() => wearRobot(shuffledRobot(secureId(), robot.family))} data-testid="robot-shuffle"><Dices size={15} strokeWidth={1.75} /></button>
           <button type="button" class="ghost icon small" class:active={dressing} aria-pressed={dressing} title={labels.robot.customize} aria-label={labels.robot.customize} onclick={() => { dressing = !dressing; }} data-testid="robot-customize"><Palette size={15} strokeWidth={1.75} /></button>
+          <!-- Any image of the owner's in place of the robot: a file on the desktop, the gallery or the camera on a phone. -->
+          <button type="button" class="ghost icon small" class:active={!!picture} disabled={importing} title={labels.robot.picture} aria-label={labels.robot.picture} onclick={() => pictureInput?.click()} data-testid="agent-picture"><ImagePlus size={15} strokeWidth={1.75} /></button>
+          <input bind:this={pictureInput} class="agent-picture-input" type="file" accept={AGENT_PICTURE_TYPES.join(',')} tabindex="-1" aria-hidden="true"
+            oninput={event => event.stopPropagation()}
+            onchange={event => { event.stopPropagation(); const input = event.currentTarget; const file = input.files?.[0]; input.value = ''; void importPicture(file); }}
+            data-testid="agent-picture-input" />
         </div>
       </div>
       <label class="agent-field agent-identity-name">{labels.name}<input required maxlength="200" bind:value={name} placeholder={labels.namePlaceholder} data-testid="agent-name" /></label>
     </div>
     {#if dressing}
       <div class="agent-dressing">
-        <RobotPicker {robot} onpick={next => { robot = next; robotTouched = true; edited(); }} />
+        <RobotPicker {robot} onpick={wearRobot} />
         <button type="button" class="ghost small agent-add" onclick={() => { dressing = false; }}>{labels.robot.done}</button>
       </div>
     {/if}

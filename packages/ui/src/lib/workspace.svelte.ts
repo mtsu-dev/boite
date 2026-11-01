@@ -25,6 +25,7 @@ import { AutoSettingsSync } from './auto-settings-sync.svelte';
 import { GroupLinks } from './group-links.svelte';
 import { limitsMachine, setNotificationCore, setPushHomeClient } from './notify';
 import { appPage } from './app-origin';
+import { pictureSources } from './agent-pictures.svelte';
 import { bootWorkspace, byHand, hostOf, primaryMachine } from './workspace-boot';
 
 export interface Machine {
@@ -842,6 +843,8 @@ export class Workspace {
 }
 
 export const workspace = new Workspace();
+// A bot's imported picture comes from the machine on screen first, then the others of the group.
+pictureSources(() => [workspace.active, ...workspace.machines.map(machine => machine.store)]);
 // A toast about a machine this page does not serve names that machine as its pushes do.
 setNotificationCore((store) => {
   const machine = workspace.machines.find((entry) => entry.store === store);
