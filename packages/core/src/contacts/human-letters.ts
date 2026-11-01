@@ -21,7 +21,8 @@ export async function outgoingContact(core: Core, from: AgentContact, to: AgentA
       found = true;
       break;
     }
-    if (!found) throw refused('to: expected an allowed thread of this source project association');
+    // Two threads the Contacts bots put in touch write to each other outside any shared project.
+    if (!found && !core.contacts.reach.byRelation(from.threadId, to.coreId, to.threadId)) throw refused('to: expected an allowed thread of this source project association');
   }
   const sender = scope.from ?? from;
   if (human) { const { agent: _model, ...person } = sender; scope = { ...scope, from: person, origin: 'contact-human' }; }
@@ -36,7 +37,8 @@ export function incomingContact(core: Core, letter: AgentLetter, peer?: Coordina
   if (!contact) return {};
   if (letter.origin !== undefined && !['agent', 'contact-human'].includes(letter.origin)) throw refused('letter.origin: expected contact agent or attested contact-human');
   let sender = letter.from;
-  if (core.sharedProjects.hasContact(contact.coreId)) {
+  const related = letter.sharedProjectId === undefined && sender.sharedThread === undefined && core.contacts.reach.byRelation(letter.to.threadId, contact.coreId, sender.threadId);
+  if (core.sharedProjects.hasContact(contact.coreId) && !related) {
     const shared = core.sharedProjects.require(letter.sharedProjectId!);
     core.sharedProjects.assertActive(shared);
     const { local, remote } = core.sharedProjects.endpoints(shared);

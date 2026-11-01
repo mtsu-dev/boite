@@ -2,6 +2,28 @@ import type { Translation } from '../../i18n.svelte';
 
 export const fr: Translation = {
   agents: {
+    builtin: {
+      badge: 'Intégré',
+      badgeTip: 'Le bot de Boite. Il n\'est jamais archivé, seulement réinitialisé.',
+      locked: 'Fourni par Boite ; réinitialisez pour le rétablir',
+      reset: 'Réinitialiser',
+      resetHint: 'Revient à l\'état livré par Boite : une nouvelle conversation, mémoire et routines effacées, nom, robot, modèle, effort et réglages par défaut.',
+      resetTitle: 'Réinitialiser « {name} » ?',
+      resetBody: 'Il commence une nouvelle conversation et l\'ancienne est archivée. Sa mémoire et ses routines sont effacées, et son nom, son robot, son modèle, son effort et ses réglages (budget quotidien, mémoire automatique, sous-agents) reviennent à leurs valeurs par défaut.',
+      name: { contacts: 'Standardiste' },
+      away: '{name} est sur {machine}, hors ligne pour l\'instant : rien n\'est recréé ailleurs en attendant.'
+    },
+    move: {
+      label: 'Machine',
+      hint: 'Là où il vit. Choisissez une autre machine du groupe pour l\'y déplacer.',
+      older: 'Mettez à jour Boite sur {machine} pour y déplacer un bot.',
+      olderShort: 'Mise à jour requise',
+      title: 'Déplacer {name} vers {machine} ?',
+      body: 'Sa mémoire, ses notes, ses routines et la fin de sa conversation partent sur {machine}. L\'ancienne conversation reste archivée sur {source}. À son prochain message, {name} lit une note sur le déplacement.',
+      confirm: 'Déplacer',
+      moving: 'Déplacement',
+      turnInFlight: '{name} est en plein tour. Déplacez-le une fois qu\'il a fini.'
+    },
     brain: "Cerveau",
     defaultModel: "Modèle par défaut",
     allowedModels: "Modèles autorisés pour ce bot",

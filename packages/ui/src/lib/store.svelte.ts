@@ -281,6 +281,7 @@ export class Store {
   createGroup(...args: Parameters<Pairing['createGroup']>) { return this.#ctx.pairing.createGroup(...args); }
   renameGroup(...args: Parameters<Pairing['renameGroup']>) { return this.#ctx.pairing.renameGroup(...args); }
   setSettingsHome(...args: Parameters<Pairing['setSettingsHome']>) { return this.#ctx.pairing.setSettingsHome(...args); }
+  setBotsHome(...args: Parameters<Pairing['setBotsHome']>) { return this.#ctx.pairing.setBotsHome(...args); }
   joinGroup(...args: Parameters<Pairing['joinGroup']>) { return this.#ctx.pairing.joinGroup(...args); }
   leaveGroup(...args: Parameters<Pairing['leaveGroup']>) { return this.#ctx.pairing.leaveGroup(...args); }
   removeFromGroup(...args: Parameters<Pairing['removeFromGroup']>) { return this.#ctx.pairing.removeFromGroup(...args); }

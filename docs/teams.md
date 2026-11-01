@@ -174,7 +174,11 @@ the posts the bot may see, oldest first, and the command for the older page.
 `propose`, `invite` and `leave` draw a card in the bot's thread and return at
 once; the owner's choice arrives as a message, and without one nothing
 changed. A team is named by id or name. A member written `<machine>/<bot>` is
-refused: members on other machines come in a later version.
+refused: members on other machines come in a later version. For the same
+reason a member of a team that is not archived cannot move to another machine
+([bots](bots.md)), even with the experiment off; a bot on its way joins no
+team, and an archived team whose member moved comes back only once that member
+is removed.
 
 The bots' guide gains three lines while the experiment is on: answer
 `[quiet]` when nothing needs saying, group or private, and when to propose,

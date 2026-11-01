@@ -6,6 +6,7 @@
   import { secondClock } from '../../lib/clock.svelte';
   import type { Machine } from '../../lib/workspace.svelte';
   import MachineIcon from '../MachineIcon.svelte';
+  import BuiltinBadge from './BuiltinBadge.svelte';
 
   /**
    * An agent in the list, the way a messenger draws a chat: its robot in its
@@ -15,8 +16,10 @@
    * has worked, the missed answers or the time of the last one, and the next
    * wake as a small clock while it rests.
    */
-  let { title, open = false, unread = 0, away = false, at, now, detail = '', tone = 'idle', icon, since = null, wake = null, machine, testid, onclick, picture, aside }: {
+  let { title, builtin = false, open = false, unread = 0, away = false, at, now, detail = '', tone = 'idle', icon, since = null, wake = null, machine, testid, onclick, picture, aside }: {
     title: string;
+    /** A bot Boite ships: a small badge after its name. */
+    builtin?: boolean;
     open?: boolean;
     unread?: number;
     /** Its machine is not connected: the machine icon shows its connection state. */
@@ -57,7 +60,7 @@
     <span class="picture">{@render picture()}</span>
     <span class="text">
       <span class="headline">
-        <span class="title">{title}</span>
+        {#if builtin}<span class="name"><span class="title">{title}</span><BuiltinBadge /></span>{:else}<span class="title">{title}</span>{/if}
         {#if aside}{@render aside()}
         {:else if spent !== null}<span class="spent" data-testid="agent-row-spent">{spent}</span>
         {:else if unread > 0}<span class="unread-count" role="img" title={missed} aria-label={missed} data-testid="agent-unread-count">{unread}</span>
@@ -91,6 +94,9 @@
   .title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-foreground); font-weight: 500; }
   .unread .title { font-weight: 600; }
   .unread-count { flex: none; min-width: 18px; height: 18px; padding: 0 5px; display: grid; place-items: center; border-radius: 999px; background: var(--color-accent); color: var(--color-accent-ink); font-size: var(--text-xs); font-weight: 600; }
+  /* A built-in bot's name keeps its badge right after it, the time still on the far right. */
+  .name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
+  .name .title { flex: 0 1 auto; }
   .when { flex: none; color: var(--color-subtle); font-size: var(--text-xs); }
   .spent { flex: none; color: var(--color-accent); font-size: var(--text-xs); font-weight: 600; font-variant-numeric: tabular-nums; }
   .detail-line { display: flex; align-items: center; gap: 5px; min-width: 0; font-size: var(--text-xs); color: var(--color-muted-foreground); }

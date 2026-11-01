@@ -10,7 +10,7 @@
  * contracts/agent-setting-requests.ts, where the in-memory client reads them.
  */
 import {
-  agentModelRoute, agentSettingAnswerText, agentSettingProposal, agentSettingValue, AGENT_SETTING_KEYS, AGENT_STATUSES, checkAgentSettingRequest, normalizeAgentSetting, settledAgentSetting,
+  agentModelRoute, agentSettingAnswerText, agentSettingProposal, agentSettingValue, AGENT_SETTING_KEYS, AGENT_STATUSES, builtinSettingRefusal, checkAgentSettingRequest, normalizeAgentSetting, settledAgentSetting,
   type AgentProfile, type AgentSettingApplyParams, type AgentSettingAsk, type AgentSettingContext, type AgentSettingReading,
   type AccountId, type AgentSettingChoice, type AgentSettingRequestParams, type AgentSettingsReading, type AgentSettingsReadParams,
   type ProviderId, type QuestionAnswer, type RequestId,
@@ -199,6 +199,9 @@ export class AgentSettingCards {
       if (!normalized.ok) throw refused(normalized.message, { field: 'value', key: ask.key });
       value = normalized.value;
     }
+    // A card drawn before the bot was Boite's, or edited on Apply: a built-in bot's text and archive stay locked, read as they would be saved.
+    const locked = builtinSettingRefusal(agent, ask.key, value);
+    if (locked !== null) throw refused(locked, { field: 'questionId', key: ask.key });
     const saved = this.#write(agent, ctx, ask.key, value);
     this.settle(agent.id);
     return saved;

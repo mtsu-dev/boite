@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { ArrowLeft, Brain, Ellipsis, Archive, Pause, Play, LampDesk, Settings2, TriangleAlert } from '@lucide/svelte';
+  import { ArrowLeft, Brain, Ellipsis, Archive, Pause, Play, LampDesk, RotateCcw, Settings2, TriangleAlert } from '@lucide/svelte';
   import type { AgentProfile, AgentStatus, ThreadSummary } from '@boite/contracts';
-  import { moodOf, liveState, liveStep, waitingOn, type AgentsView } from '../../lib/agents.svelte';
+  import { moodOf, liveState, liveStep, resetBuiltin, waitingOn, type AgentsView } from '../../lib/agents.svelte';
   import { confirm } from '../../lib/confirm.svelte';
   import { dateTime } from '../../lib/schedule';
   import type { AgentPane } from '../../lib/store/layout.svelte';
@@ -11,6 +11,7 @@
   import Menu from '../Menu.svelte';
   import Elapsed from '../Elapsed.svelte';
   import AgentAvatar from './AgentAvatar.svelte';
+  import BuiltinBadge from './BuiltinBadge.svelte';
 
   /**
    * The top of an agent's conversation: its robot in its ring (breathing
@@ -47,7 +48,8 @@
     { id: 'brain', label: labels.brain, glyph: Brain },
     ...(store.owner && agent.status !== 'archived' ? [
       agent.status === 'paused' ? { id: 'resume', label: labels.resume, glyph: Play } : { id: 'pause', label: labels.pause, glyph: Pause },
-      { id: 'archive', label: labels.archive, glyph: Archive, danger: true },
+      // A built-in bot is never archived: Reset takes the place of Archive.
+      agent.builtin ? { id: 'reset', label: labels.builtin.reset, glyph: RotateCcw, danger: true } : { id: 'archive', label: labels.archive, glyph: Archive, danger: true },
     ] : []),
   ]);
 
@@ -60,6 +62,7 @@
     if (id === 'settings' || id === 'brain') onpane(id);
     else if (id === 'pause') await setStatus('paused');
     else if (id === 'resume') await setStatus('active');
+    else if (id === 'reset') await resetBuiltin(view, agent);
     else if (id === 'archive' && await confirm.ask({
       title: fill(labels.archiveTitle, { name: agent.name }),
       body: labels.archiveBody,
@@ -79,7 +82,7 @@
   <button type="button" class="ghost agent-head-identity" onclick={() => onpane('settings')} aria-label={fill(labels.settingsOf, { name: agent.name })}>
     <span class="agent-head-robot"><AgentAvatar kind="profile" id={agent.id} name={agent.name} avatar={agent.avatar} mood={moodOf(state)} size={36} ring /></span>
     <span class="agent-head-text">
-      <strong>{agent.name}</strong>
+      {#if agent.builtin}<span class="agent-head-name"><strong>{agent.name}</strong><BuiltinBadge word /></span>{:else}<strong>{agent.name}</strong>{/if}
       <span class="agent-live" data-state={state} aria-live="polite" data-testid="agent-live">
         {#if state === 'working'}
           <span class="agent-live-text">{step ?? labels.state.working}</span>

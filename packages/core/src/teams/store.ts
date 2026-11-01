@@ -107,6 +107,12 @@ export class TeamStore {
     return team;
   }
 
+  /** The live teams a bot of this machine belongs to, whether the experiment is on or off: a move must not strand them. */
+  namesOf(botId: string): string[] {
+    const key = this.#key(botId);
+    return this.#all().filter(team => !team.archived && team.members.some(member => member.key === key)).map(team => team.name);
+  }
+
   #all(): Team[] { return (this.#db.query('SELECT * FROM teams ORDER BY created_at').all() as TeamRow[]).map(row => this.#team(row)); }
 
   /** The team a bot names, by id or name, among the teams it belongs to; the owner names any. */
@@ -135,8 +141,14 @@ export class TeamStore {
 
   #key(botId: string): TeamParty { return teamMemberKey(this.#self, botId); }
 
-  /** A bot of this machine, by id or name. `<machine>/<bot>` waits for a later version. */
+  /** A bot of this machine, by id or name. `<machine>/<bot>` waits for a later version; a bot on its way to another machine joins nothing. */
   #bot(ref: unknown, field = 'members'): AgentProfile {
+    const bot = this.#find(ref, field);
+    if (this.#core.workforce.moves.moving(bot.id)) throw refused(`${field}: ${bot.name} is moving to another machine; a team holds bots of one machine`, { field, reason: 'moving' });
+    return bot;
+  }
+
+  #find(ref: unknown, field: string): AgentProfile {
     const wanted = typeof ref === 'string' ? ref.trim() : '';
     if (!wanted) throw invalidParams(`${field}: expected a bot name or id`);
     if (wanted.includes('/')) throw refused(LATER, { field });
@@ -271,6 +283,9 @@ export class TeamStore {
     const team = this.#require(params.teamId);
     if (typeof params.archived !== 'boolean') throw invalidParams('archived: expected a boolean');
     if (team.archived === params.archived) return team;
+    // A member moving or moved to another machine has no thread here to read the team: restoring waits for its removal.
+    const gone = params.archived ? [] : team.members.filter(member => this.#core.workforce.moves.moving(member.botId) || this.#core.workforce.records.find('profile', member.botId) === null);
+    if (gone.length > 0) throw refused(`${team.name} has members on or going to another machine: ${gone.map(member => member.name).join(', ')}; remove them before restoring it, a team holds bots of one machine`, { field: 'teamId', reason: 'moving', members: gone.map(member => member.botId) });
     const saved = this.#save(team, { archived: params.archived });
     if (params.archived) this.#core.coordination.teamLetters.reject(team.id, null, `The team ${team.name} was archived`);
     else this.#kickMembers(saved);

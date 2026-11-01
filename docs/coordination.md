@@ -188,8 +188,11 @@ threads whose settings allow other machines, and search matches chat only
 where the grant has `readThreads`. `read` needs that grant too. `deliver`
 reaches those threads, or a thread that wrote to the contact in the last 7
 days. A contact never sends `group.sync` or `group.push`, and only a contact
-sends `contact.sync` (the projects opened to the receiver), `contact.ask` and
-`contact.answer` (a request and its decision). Between members of a group,
+sends `contact.sync` (the projects opened to the receiver and its Contacts
+bot), `contact.ask` and `contact.answer` (a request and its decision, with the
+thread a relation joins) and `contact.relation` (a relation ended). Only the
+Contacts bot sends `contact.ask`, and an ordinary thread writes to a contact's
+thread only through a relation ([the Contacts bot](contacts.md#the-contacts-bot)). Between members of a group,
 `relay.*` carries a contact's requests to the member that holds a project
 opened to it, and that member's requests back
 ([contacts](contacts.md#projects-of-the-other-machines-of-the-group)); a
@@ -343,7 +346,7 @@ boite threads reply <message-id> "Wait until the current test finishes."
 boite threads log <thread-id>                   # what the two of you said to each other
 boite threads wait --timeout 120            # the next message addressed to you
 boite threads contacts                      # other owners' Boites and the projects they opened to you
-boite threads ask <contact> "An agent on a project like our parser" --wait
+boite threads ask --contact <name> "An agent on a project like our parser" --wait
 ```
 
 An agent is named by its thread id when it runs on the same core, or by

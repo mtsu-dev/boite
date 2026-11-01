@@ -23,6 +23,10 @@
   const items = $derived<MenuItem[]>(view.store.projects
     .filter(project => project.kind !== 'drafts' && !project.archived)
     .map(project => ({ id: project.id, label: projectName(project), projectTile: { project, store: view.store } })));
+  /** What came of it: the project shared, or the thread put in touch with the asking one. */
+  const outcome = $derived(request.status !== 'accepted' ? labels.refused
+    : request.relation && !request.project ? fill(labels.inTouch, { thread: mine ? request.relation.local.title : request.relation.remote.title })
+    : fill(labels.accepted, { project: request.project?.name ?? '' }));
   const sender = $derived([request.from.title, request.from.project, request.from.agent?.split(/\s+/).slice(1).join(' ')].filter(Boolean).join(' · '));
 
   let refusing = $state(false);
@@ -50,6 +54,7 @@
     </header>
     <p class="text">{request.text}</p>
     <p class="from">{sender}</p>
+    {#if request.stage}<p class="stage" data-stage={request.stage} data-testid="contact-request-stage">{labels.stage[request.stage]}</p>{/if}
     {#if request.gitRemote}<p class="remote" title={labels.remote}><GitBranch size={13} strokeWidth={2} aria-hidden="true" /><span>{request.gitRemote}</span></p>{/if}
     {#if mine}
       {#if refusing}
@@ -77,7 +82,7 @@
   <div class="decided" data-testid="contact-request-{request.id}" data-status={request.status}>
     <span class="mark" class:ok={request.status === 'accepted'}>{#if request.status === 'accepted'}<Check size={13} strokeWidth={2.25} />{:else}<X size={13} strokeWidth={2.25} />{/if}</span>
     <span class="line">
-      <span class="what">{request.status === 'accepted' ? fill(labels.accepted, { project: request.project?.name ?? '' }) : labels.refused}</span>
+      <span class="what" data-testid="contact-request-outcome">{outcome}</span>
       <span class="sub">{fill(mine ? labels.asks : labels.asked, { contact: request.contact })}: {request.status === 'refused' && request.reason ? request.reason : request.text}</span>
     </span>
     {#if request.decidedBy}<span class="by" data-by={request.decidedBy} title={labels.byTip[request.decidedBy]}>{labels.by[request.decidedBy]}</span>{/if}
@@ -115,7 +120,9 @@
   .what { font-size: var(--text-sm); font-weight: 600; }
   .sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-muted-foreground); font-size: var(--text-xs); }
   .by { padding: 2px 8px; border-radius: var(--radius-full); background: var(--color-surface-3); color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; }
-  .by[data-by='concierge'] { background: var(--color-accent-soft); color: var(--color-accent); }
+  .stage { justify-self: start; margin: 0; padding: 1px 8px; border-radius: var(--radius-full); background: var(--color-surface-3); color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; }
+  .stage[data-stage='owner'] { background: var(--color-accent-soft); color: var(--color-accent); }
+  .by[data-by='bot'], .by[data-by='concierge'] { background: var(--color-accent-soft); color: var(--color-accent); }
   .by[data-by='match'] { background: color-mix(in oklch, var(--color-success) 14%, transparent); color: var(--color-success); }
   @media (prefers-reduced-motion: reduce) { .request { animation: none; } }
   :global(html[data-motion='reduced']) .request { animation: none; }

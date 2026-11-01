@@ -10,9 +10,10 @@
 
   /**
    * The contacts on the window's right edge, the projects keeping the left
-   * one: one row per contact of every listed machine, with its link and what
-   * it asks. A row opens the contact's page in the main card; the title opens
-   * the Contacts page (requests, adding one, Tailscale) and Add the same page.
+   * one: one row per contact of every listed machine, a contact several
+   * machines of a group hold listed once, with its link and what it asks. A
+   * row opens the contact's page in the main card; the title opens the
+   * Contacts page (requests, adding one, Tailscale) and Add the same page.
    * The title bar's button folds the column, which stays mounted so the button
    * can still count what waits. It slides in when unfolded, not each time it
    * is drawn: a column open at startup is simply there.
@@ -27,6 +28,7 @@
   $effect(() => () => { contactsRail.waiting = 0; });
 
   const show = (owner: Store, coreId: string | null) => void openContact(owner, coreId);
+  // A row stands for every copy of its contact in the group: it is current on any of them.
   const home = $derived(store.page === 'home' && !store.contact);
 
   // Two frames: the first style the column gets is without `drawn`, so it starts in place.
@@ -46,7 +48,7 @@
   </div>
   <div class="scroll">
     {#each rows as { machine, contact, waiting: asks } (`${machine.id}:${contact.coreId}`)}
-      {@const current = machine.store === workspace.active && store.page === 'home' && store.contact === contact.coreId}
+      {@const current = (machine.store === workspace.active || (!!machine.store.group && machine.store.group.id === workspace.active.group?.id)) && store.page === 'home' && store.contact === contact.coreId}
       <button type="button" class="ghost row" class:current aria-current={current ? 'page' : undefined} data-link={contact.link}
         onclick={() => show(machine.store, contact.coreId)} data-testid="rail-contact" data-core-id={contact.coreId}>
         <span class="avatar" aria-hidden="true">{initialsOf(contact.name)}<span class="dot"></span></span>

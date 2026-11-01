@@ -7,6 +7,7 @@ import { connect } from '../src/client.ts';
 import { Core } from '../src/core.ts';
 import { Coordination, coordinationUrl, LETTER_RETENTION_MS, letterPrompt, SWEEP_PROBES } from '../src/coordination.ts';
 import { senderContext } from '../src/coordination-relation.ts';
+import { contactAnswer } from '../src/contacts/answers.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import { echoThread, startTestCore, waitFor, type TestCore } from './harness.ts';
 import { rejection, thrown } from './settle.ts';
@@ -43,7 +44,7 @@ test('contact answer letters distinguish automatic decisions from explicit owner
   ];
   for (const [decidedBy, status, expected] of cases) {
     const id = `request-${decidedBy ?? 'core'}-${status}`;
-    h.core.coordination.contactAnswer({ id, direction: 'out', coreId: target.coreId, contact: 'Remote', from, text: 'An agent for this project', createdAt: Date.now(), status, decidedBy,
+    contactAnswer(h.core, { id, direction: 'out', coreId: target.coreId, contact: 'Remote', from, text: 'An agent for this project', createdAt: Date.now(), status, decidedBy,
       ...(status === 'accepted' ? { project: { id: 'remote-project', name: 'Shared project' } } : { reason: 'No matching project.' }),
     }, 'Remote', status === 'accepted' ? [target] : []);
     const answer = h.core.coordination.get(a).messages.find(letter => letter.from.threadId === id)!;

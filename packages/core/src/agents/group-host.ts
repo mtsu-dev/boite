@@ -265,7 +265,7 @@ export class GroupBotHost {
   // -- requests ----------------------------------------------------------------
 
   /** A `bot.*` request of a member of the group, refused while `groupBots` is off here. */
-  async handle(peer: CoordinationPeer, operation: Exclude<BotOperation, 'bot.event'>, payload: unknown): Promise<unknown> {
+  async handle(peer: CoordinationPeer, operation: Exclude<BotOperation, 'bot.event' | 'bot.move'>, payload: unknown): Promise<unknown> {
     if (!this.allowed()) throw refused(GROUP_BOTS_OFF);
     if (this.#member(peer.coreId) === null) throw refused('operation: only a machine of this core\'s group looks after projects here');
     const raw = (payload ?? {}) as Record<string, unknown>;

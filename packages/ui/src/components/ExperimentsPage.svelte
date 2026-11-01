@@ -8,6 +8,8 @@
   import { EXPERIMENT_IDS, canFollowDesktop, desktopExperiments, followsDesktop, readExperiments, setExperiment, setFollowDesktop, subscribeExperiments, type ExperimentId } from '../lib/experiments';
   import { experimentCopy } from '../lib/experiment-copy';
   import { strings } from '../lib/strings';
+  import { ensureOperator } from '../lib/operator';
+  import { workspace } from '../lib/workspace.svelte';
   import type { Store } from '../lib/store.svelte';
 
   /**
@@ -23,8 +25,15 @@
   let following = $state(untrack(() => followsDesktop()));
   let heard = $state(untrack(() => desktopExperiments() !== null));
 
+  /** Contacts needs Bots: its switch waits, greyed, until Bots is on. */
+  function locked(id: ExperimentId): boolean {
+    return id === 'contacts' && !enabled.includes('resident-agents');
+  }
+
   function toggle(id: ExperimentId, on: boolean) {
     setExperiment(id, on);
+    // The group's one Operator, made where `operatorHost` says when no machine has it yet.
+    if (id === 'contacts' && on && store) void ensureOperator(store, workspace.machinesOr(store).map(machine => machine.store));
   }
 
   // The desktop app can change them while the page is open.
@@ -57,15 +66,17 @@
 
   <section class="card">
     {#each EXPERIMENT_IDS as id (id)}
-      <label for="{uid}-{id}" class="switch-row" id="settings-{id}">
+      <label for="{uid}-{id}" class="switch-row" class:locked={locked(id)} id="settings-{id}">
         <span class="text">
-          <span class="ui-label-box"><span class="ui-label" id="{uid}-{id}-name">{copy[id].title}</span><InfoTip topic={copy[id].title} text={copy[id].hint} /></span>
+          <span class="ui-label-box"><span class="ui-label" id="{uid}-{id}-name">{copy[id].title}</span><InfoTip topic={copy[id].title} text={locked(id) ? strings.experiments.contacts.needsBots : copy[id].hint} /></span>
         </span>
         <input id="{uid}-{id}" aria-labelledby="{uid}-{id}-name"
           type="checkbox"
           role="switch"
           data-testid="experiment-{id}"
-          checked={enabled.includes(id)}
+          disabled={locked(id)}
+          aria-disabled={locked(id)}
+          checked={enabled.includes(id) && !locked(id)}
           onchange={(event) => toggle(id, event.currentTarget.checked)}
         />
       </label>
@@ -77,3 +88,8 @@
   {#if target && bar}{@render bar()}{/if}
   {#if target}<CacheKeepaliveSettings store={target} /><CompactionSettings store={target} backgroundOnly /><DeviceStreamSettings store={target} />{/if}
 </div>
+
+<style>
+  /* A switch that waits on another: its words grey with it, its "i" still answers. */
+  .switch-row.locked .ui-label { color: var(--color-muted-foreground); }
+</style>

@@ -1,5 +1,31 @@
 export const strings = {
   agents: {
+    /** A bot Boite ships: its badge, its locked fields and its Reset. */
+    builtin: {
+      badge: 'Built-in',
+      badgeTip: 'Boite\'s own bot. It is never archived, only reset.',
+      locked: 'Boite\'s; reset to restore',
+      reset: 'Reset',
+      resetHint: 'Back to how Boite ships it: a new conversation, memory and routines cleared, name, robot, model, effort and settings back to defaults.',
+      resetTitle: 'Reset "{name}"?',
+      resetBody: 'It starts a new conversation and the old one is archived. Its memory and routines are cleared, and its name, robot, model, effort and settings (daily budget, auto memory, subagents) go back to their defaults.',
+      /** The name each built-in bot gets, in this language. */
+      name: { contacts: 'Operator' },
+      /** The group's Bots machine holds the built-in bot and this window does not reach it. */
+      away: '{name} is on {machine}, offline for now: none is made elsewhere meanwhile.'
+    },
+    /** Moving a bot to another machine of the group, from its settings. */
+    move: {
+      label: 'Machine',
+      hint: 'Where it lives. Pick another machine of the group to move it there.',
+      older: 'Update Boite on {machine} to move a bot there.',
+      olderShort: 'Update needed',
+      title: 'Move {name} to {machine}?',
+      body: 'Its memory, notes, routines and the end of its conversation go to {machine}. The old conversation stays archived on {source}. With its next message, {name} reads a note about the move.',
+      confirm: 'Move',
+      moving: 'Moving',
+      turnInFlight: '{name} is in the middle of a turn. Move it once it is done.'
+    },
     brain: "Brain",
     defaultModel: "Default model",
     allowedModels: "Allowed models for this bot",

@@ -334,7 +334,18 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
   ['collaboration.read', 'the conversation of a contact it may already reach, text and tool names only; the user wants agents to help with each other'],
   ['collaboration.wait', 'blocks on its own inbox until a reply arrives'],
   ['collaboration.contacts', 'the contacts it may write to and the project names each opened to this core, never their keys or addresses'],
-  ['collaboration.ask', 'a request as this thread to a contact, which that contact\'s owner or concierge decides; it opens nothing here'],
+  ['collaboration.ask', 'a request as this thread to a contact, handed to this core\'s Contacts bot, which forwards it; it opens nothing here'],
+  // The Contacts bot's own thread only (contacts/bot.ts refuses every other thread): it settles the requests
+  // between this owner's agents and contacts'. Opening a project, and any request of a contact not trusted, takes the owner's card.
+  ['contacts.bot.view', 'the requests, relations, flags, contacts and project names the Contacts bot settles; never keys, addresses or transcripts'],
+  ['contacts.bot.forward', 'sending a request one of this owner\'s threads made to the contact the bot picked'],
+  ['contacts.bot.connect', 'putting a contact\'s asking thread in relation with one thread here: letters only, no files or reads'],
+  ['contacts.bot.start', 'starting one thread on a project here for a contact\'s request, in relation with the asking thread, as boite thread new would'],
+  ['contacts.bot.share', 'a card asking the owner to open a project to a contact; only the owner\'s Yes opens it'],
+  ['contacts.bot.askOwner', 'a card asking the owner whether to act on a request of a contact not trusted'],
+  ['contacts.bot.refuse', 'refusing a contact\'s request with a reason its asking agent reads'],
+  ['contacts.bot.cut', 'ending relations or closing projects a contact reaches here; the contact and its link stay the owner\'s'],
+  ['contacts.bot.flag', 'delivering or refusing a contact\'s letter held by a flag'],
   // Resident methods name the persistent agent's own thread like
   // every agent method; agents/projects.ts holds each call to the projects the
   // owner entrusted to that agent's profile. Any other thread is refused.

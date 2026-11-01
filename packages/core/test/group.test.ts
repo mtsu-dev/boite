@@ -158,6 +158,17 @@ test('the settings home converges by revision then id, and a roster without it k
   // x admitted again later is no home: the cleared revision outranks the stale choice.
   const back: Roster = { ...mergeRosters(removed, chosen), cores: [entry('a', 1), entry(x, 4, { epoch: 2 }), entry(y, 1)] };
   expect(home(mergeRosters(chosen, back))).toEqual([null, 2]);
+  // The bots host converges on its own revision, beside the settings home.
+  const bots = (roster: Roster) => [roster.botsHome, roster.botsHomeRev];
+  const hosted: Roster = { ...chosen, botsHome: y, botsHomeRev: 1 };
+  expect(bots(mergeRosters(hosted, base))).toEqual([y, 1]);
+  expect(bots(mergeRosters(base, hosted))).toEqual([y, 1]);
+  expect(home(mergeRosters(hosted, cleared))).toEqual([null, 2]);
+  expect(bots(mergeRosters(hosted, cleared))).toEqual([y, 1]);
+  expect(digestOf(mergeRosters(hosted, other))).toBe(digestOf(mergeRosters(other, hosted)));
+  const hostRemoved: Roster = { ...base, cores: [entry('a', 1), entry(x, 1), entry(y, 3, { removed: true })] };
+  expect(bots(mergeRosters(hostRemoved, hosted))).toEqual([null, 2]);
+  expect(home(mergeRosters(hostRemoved, hosted))).toEqual([x, 1]);
 });
 
 test('the owner renames a group on either member, and the name survives synchronization and restart', async () => {
@@ -195,12 +206,19 @@ test('the owner renames a group on either member, and the name survives synchron
   await waitFor(() => a.core.group.view('owner')?.settingsHome === undefined);
   expect(checkRoster(a.core.journal.getSetting('group'))).toMatchObject({ settingsHome: null, settingsHomeRev: 2 });
   a.core.group.settingsHome(id(b));
+  // The bots host is a role of its own, chosen and cleared the same way.
+  expect(await owner.call('group.botsHome', { coreId: id(b) })).toMatchObject({ botsHome: id(b), settingsHome: id(b) });
+  await waitFor(() => a.core.group.roleOf('botsHome') === id(b) && b.core.group.view('owner')?.botsHome === id(b));
+  expect(await thrown(phone.call('group.botsHome', { coreId: null }))).toThrow('owner only');
+  expect(await thrown(owner.call('group.botsHome', { coreId: 'f'.repeat(64) }))).toThrow('coreId: expected the id of a machine of this group');
+  expect(() => checkRoster({ ...stored, botsHome: 'nope', botsHomeRev: 1 })).toThrow('roster.botsHome');
   await hangUp(a, phone);
   await hangUp(b, owner);
   await a.core.group.close();
   const back = restart(a).view('owner');
   expect(back?.name).toBe('Studio');
   expect(back?.settingsHome).toBe(id(b));
+  expect(back?.botsHome).toBe(id(b));
 });
 
 test('migration preserves granted transcript reads only for the current group admission', async () => {
@@ -539,6 +557,7 @@ test('a removed machine is told, leaves, and its keys die on the members that st
   await hangUp(a, key);
   expect(a.core.sessions.list(null)).toHaveLength(1);
   expect(a.core.group.settingsHome(id(b)).settingsHome).toBe(id(b));
+  expect(a.core.group.botsHome(id(b)).botsHome).toBe(id(b));
 
   expect(a.core.group.remove(id(b)).cores.map((core) => core.coreId).sort()).toEqual([id(a), id(c)].sort());
   expect(() => a.core.group.remove(id(b))).toThrow('not a machine of this group');
@@ -546,6 +565,8 @@ test('a removed machine is told, leaves, and its keys die on the members that st
   // A home that left reads as none, and cannot be chosen again; the roster forgets it, so b coming back is no home either.
   expect(a.core.group.view('owner')?.settingsHome).toBeUndefined();
   expect([a.core.group.roster?.settingsHome, a.core.group.roster?.settingsHomeRev]).toEqual([null, 2]);
+  expect([a.core.group.roster?.botsHome, a.core.group.roster?.botsHomeRev]).toEqual([null, 2]);
+  expect(a.core.group.roleOf('botsHome')).toBeNull();
   expect(() => a.core.group.settingsHome(id(b))).toThrow('coreId: expected the id of a machine of this group');
   expect(a.core.sessions.list(null)).toEqual([]);
   await waitFor(() => b.core.group.view('owner') === null && members(c).length === 2);

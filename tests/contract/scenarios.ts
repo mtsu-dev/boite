@@ -9,6 +9,7 @@
  */
 import { COMPOSER_SCENARIOS } from './composer.ts';
 import { CONTACT_MAIL_SCENARIOS } from './contact-mail.ts';
+import { CONTACTS_BOT_SCENARIOS } from './contacts-bot.ts';
 import { SHARED_SCENARIOS } from './shared-projects.ts';
 import { TEAM_SCENARIOS } from './teams.ts';
 import {
@@ -160,6 +161,7 @@ export const SCENARIOS: Record<string, Scenario> = {
   ...SHARED_SCENARIOS,
   ...COMPOSER_SCENARIOS,
   ...CONTACT_MAIL_SCENARIOS,
+  ...CONTACTS_BOT_SCENARIOS,
   ...TEAM_SCENARIOS,
   'artifacts.viewBlock reuses HTML and refuses empty or oversized UTF-8 input': async (env) => {
     const html = '<p>Shared view</p>';

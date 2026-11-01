@@ -10,6 +10,14 @@ export interface ContactCapabilities {
   sharedProjects?: typeof SHARED_PROJECT_VERSION;
   /** The peer preserves server-attested contact-human letters instead of treating them as owner input. */
   humanLetters?: 1;
+  /** The peer routes requests through its Contacts bot and keeps relations (`ContactRelation`). */
+  contactsBot?: 1;
+  /**
+   * The peer follows a group's one entry: it takes `contact.move`, which hands
+   * its link from one machine of this owner's group to the group's Bots host,
+   * and reads `group` on the sync as this owner's name.
+   */
+  groupLink?: 1;
 }
 
 /**

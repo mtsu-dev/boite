@@ -29,7 +29,8 @@ invites. A Headscale inviter can only invite someone on its own tailnet.
 
 1. The inviter's **Invite a contact** (`contacts.invite`) makes a one-time link
    valid 24 hours: `boite://contact#` then the inviter's core id, signing
-   key, sealing key, machine name, tailnet URL, a one-time token and the
+   key, sealing key, machine name (the group's name once the group has a
+   Bots host, [below](#group-to-group)), tailnet URL, a one-time token and the
    Tailscale share link. With a Tailscale API key stored
    (`contacts.tailscaleKey`), the core creates the share itself
    (`POST /api/v2/device/{id}/device-invites`, single use); without one the
@@ -236,47 +237,217 @@ These counts include local cards and the explicitly associated shared cards.
 Local cards stay private. The [shared board protocol](board.md#shared-board-protocol)
 requires both endpoint owners' board consent.
 
-An agent requests access to a contact's project with
-`boite threads ask <contact> "<text>"` (`collaboration.ask`): "an agent on a
-project like X". To message an agent conversation, use `boite threads send`.
-The access request carries the agent's git remote when its checkout has one.
-On the contact's side it waits
-in the Contacts page: the owner accepts by opening one project, or refuses with
-a reason. A request from a contact marked trusted can open a project without
-the owner:
+Every request between this owner's agents and a contact's goes through the
+[Contacts bot](#the-contacts-bot) of each side.
 
-1. a request whose git remote matches exactly one local project opens that
-   project (`decidedBy: 'match'`);
-2. otherwise the concierge looks: one inference on the delegation profile
-   named `concierge`, else Opus 5.5 at high effort, given the request and the
-   project list as JSON data. It answers with the project to open
-   (`decidedBy: 'concierge'`) or declines. Only the owner refuses: a request
-   the concierge declines waits for the owner like any other, since it may be
-   a question for the owner in person, and the concierge's reason stays in
-   this core's log. If it fails, takes over 3 minutes or ends without a
-   verdict, the request waits for the owner too.
+## Group to group
 
-The concierge runs on the driver's side-question path: no tools, no MCP
-servers, hooks or settings, nothing persisted, in an empty folder under the
-data directory. Its processes get no Boite token or thread id, not even one the
-core inherited from an agent that started it. A request cannot make it read a
-file. A
-profile on a protocol without that path (pi, Codex, ACP) never runs it: the
-request waits for the owner and the log says why. It creates no thread; a
-request it opened shows that verdict. It never grants `readThreads`.
+Once a group has a Bots host (`Group.botsHome`, [groups](groups.md)), a
+contact sees the group as one Boite named after the group: the card, the sync
+(`contact.sync` carries `group`), the bot's host, the flags' owner, the
+directory's machine labels and the letters' `from.machine` all read
+`Group.name`, never a member's host name (`contacts/face.ts`). The Bots host is
+the group's single entry: every contact link of another member moves there by
+itself, and its projects stay reachable through it, as in
+[Projects of the other machines of the group](#projects-of-the-other-machines-of-the-group).
 
-Each request a contact sends gets an id of this core; the contact's own id is
-kept only to recognize its retries and to answer it, so two contacts, or a
-contact reusing an id of this core's requests, never reach each other's
-request. The decision comes back to the asking thread as a
-message (`origin: 'contact'`): the project opened and its threads, or the
-reason for the refusal. Match and concierge decisions identify the remote
-Boite as answering automatically; only an explicit owner decision is attributed
-to the owner. An automatic response does not mean the owner read the request.
-When the contact's core refuses the ask itself (a tier, a full queue), the
-answer names the remote Boite. That message, like any
-contact mail outside a shared project, waits for this owner unless the contact
-is trusted here ([Human letters and file boundaries](#human-letters-and-file-boundaries)).
+```mermaid
+sequenceDiagram
+  participant A as Member (old link)
+  participant X as Bots host
+  participant C as Contact
+  A->>X: contact.hand bot: is one coming, or do you hold one?
+  A->>X: agents.move of the Contacts bot, when X holds none
+  A->>X: contact.hand (record, grants, requests, relations), sealed, members only
+  X-->>A: X's card, X's signature over the move
+  A->>C: contact.move (X's card, X's signature), signed by A's key
+  C->>X: dial X with the hello
+  C-->>A: ok, or unreachable
+  A->>A: forget the contact once it accepted
+```
+
+1. The Contacts bot goes first (`contacts/bot-home.ts`). A member that runs
+   the built-in contacts bot asks the Bots host whether it holds one
+   (`contact.hand { action: 'bot' }`); if not, it moves its bot there with
+   `agents.move`, under the request id `contacts-bot-<role revision>-<host
+   prefix>`, so a retry or a restart sends the same move and the host takes it
+   once. Until the host answers that it holds a bot and the member finished
+   its half of the move, the member keeps its bot and its contact links, and
+   tries again 30 seconds later or when the group changes; after a lost
+   answer it sends that same move again rather than asking, so it never keeps
+   a second Contacts bot. If the Bots host already runs its own, the member's
+   bot stays where it is, with no contact left to serve (the log says so), and
+   the owner may archive it; the contacts go to the host as below, each with its
+   requests, which the host's bot reads from then on. If the member that
+   announced its bot leaves the group before the bot arrived, the Bots host
+   starts a fresh one (`agents.builtin.ensure { kind: 'contacts' }`).
+2. Every 30 seconds, and at once when the group changes, a member that is not
+   the Bots host hands each contact whose sync announced `groupLink: 1` to the
+   Bots host (`contact.hand`, a sealed operation only a current member may
+   send). Its grants on its own projects become grants with `machine` set to
+   the member, the requests come along, and so do its relations with the
+   contact: the Bots host keeps each one at the member thread's alias
+   `<thread>~<member prefix>`. When the role moves on, the old Bots host hands
+   its contacts the same way: each relation, and each request's relation,
+   names the machine its thread lives on (`member`, a full core id; a hand
+   from an older core without it means the sender), so the next host keeps a member's thread at
+   that member's alias and its own threads at their plain id. A `member`
+   outside the group, or a thread id already in alias form, is refused. The
+   Bots host refuses a contact that is itself or one of the group's machines,
+   and any new one once it holds the 32 contacts of the [limits](#limits),
+   counting those whose hello it awaits: the member then keeps the contact, its
+   link and its relaying, hands it again 30 seconds later, and the host's
+   Contacts page shows it under that member (`heldBy`).
+3. The Bots host keeps the record waiting for the contact's hello (one hour),
+   and answers with its card `{coreId, publicKey, box, url, machine}` and its
+   signature over `boite-contact-move\n` followed by
+   `[old core id, Bots host core id, contact core id]` as JSON.
+4. The member sends `contact.move { card, signature }` to the contact, in its
+   own signed envelope. The contact checks both signatures, refuses a card
+   that names itself or one of its own group's machines, and dials the Bots
+   host before switching. If it cannot within 3.5 s it answers
+   `unreachable: <reason>`, keeps the old link, and the member tries again 10
+   minutes later.
+5. When it can, the contact re-keys everything to the Bots host: the record
+   (trust, notes, grants and capabilities kept), requests, relations (the
+   member's threads read `<thread>~<member prefix>` at the Bots host, and the
+   Bots host's own threads, which the old host kept at its alias, go back to
+   their plain id), flags,
+   the 7-day reply window, revoked projects, gateway mailboxes and the letters
+   it holds. Then it drops the old link. The member forgets the contact only
+   after that answer, keeping its flags; its relations with that contact now
+   live on the Bots host. Its threads still reach the contact through the Bots
+   host's copy (`relay.mirror`). The Bots host tells the member which of its
+   threads are in relation, and relays their letters both ways like a grant's
+   (`relay.in`, `relay.out`).
+
+The Bots host's Contacts page lists the contacts still linked to another
+member, with `heldBy`, that member's core id. An answer to a request a member
+had sent before the move reaches it through the Bots host
+(`contact.hand { action: 'answer' }`); the Bots host offers it again every 30
+seconds until the member took it or left the group.
+
+A member without a Contacts bot of its own asks through the Bots host
+(`contacts/host-asks.ts`). `collaboration.ask` keeps the request on the member
+with `stage: 'host'` and offers it to the Bots host (`contact.route { action:
+'host-ask' }`, sealed between members), which files it for its bot under the
+member's request id and thread. The asking thread reads the request as
+queued while the host is off; the member offers it again every 30 seconds for
+7 days, then refuses it with "Not delivered: the group's Bots host stayed
+unreachable for 7 days". The contact reads the asking thread as
+`<thread>~<member prefix>` at the Bots host, and the answer comes back to the
+member as above.
+
+A contact on an older Boite never announces `groupLink`: it stays linked to
+the member that invited it, served as before. Its letters keep the 15 minute
+expiry.
+
+The Bots host may be off for days. A letter to a contact that announced
+`groupLink`, sent directly or through a member, expires after 7 days instead
+of 15 minutes, and the receiver accepts that window from any contact. An ask
+or an answer to such a contact retries every 30 seconds for 7 days; then the
+ask becomes refused with "Not delivered: <name> stayed unreachable for 7 days"
+and the answer is dropped. A reply into a gateway mailbox
+([Contacts through your group](#contacts-through-your-group)) keeps 15
+minutes. An agent never browses a
+contact's threads: it says what it needs and gets back the one thread to
+write to.
+
+## The Contacts bot
+
+Turning on the Contacts experiment creates a built-in [bot](bots.md#built-in-bots),
+named Operator in English and Standardiste in French
+(`agents.builtin.ensure { kind: 'contacts' }`), once for the group: on the
+Bots machine, or with no Bots role on the Settings machine, else on the
+window's machine ([machines](machines.md)). It is the switchboard: the
+one thread that sends, receives and settles requests. Its domain and
+instructions are Boite's; the owner renames it, picks its robot, model,
+effort and permission mode, pauses it or resets it, never archives it.
+
+```mermaid
+sequenceDiagram
+  participant A as Asking thread
+  participant O as Our Operator
+  participant R as Their Operator
+  participant T as Their thread
+  A->>O: boite threads ask "<who or what>"
+  O->>R: forward (contact.ask: want, target)
+  alt contact not trusted
+    R->>R: card to its owner (Accept / Refuse)
+  end
+  R->>T: connect an existing thread, or start one
+  R-->>A: answer names the thread (relation)
+  A->>T: boite threads send <contact>/<thread>
+  T->>A: replies
+```
+
+1. An agent asks with `boite threads ask "<what it needs>"`
+   (`collaboration.ask`): `--to <contact>/<thread-id>` when it knows the
+   thread, `--contact <name>` to name the contact, `--new` for a new thread
+   on one of the contact's projects, `--share` to have a project opened to
+   it. A target thread id may be a group member's thread at its Bots host,
+   `<thread>~<16 hex>`. The request waits for this core's bot (`stage:
+   'bot'`), which wakes on it, picks the contact and the words that let the
+   other bot find the thread, and forwards it (`contacts.bot.forward`). On a
+   group member without a bot, the Bots host's bot does it
+   ([Group to group](#group-to-group)). Without a Contacts bot on this core or
+   its group's Bots host the ask is refused with the way to create one.
+2. The contact's core keeps the request for its own bot. A contact marked
+   trusted is settled by the bot alone. For one that is not, the bot raises a
+   card for its owner (`contacts.bot.askOwner`), and only the owner's Accept,
+   never an agent's answer, lets it act; Refuse refuses the request.
+3. The bot settles it: `connect` puts the asking thread in relation with an
+   existing thread, `start` starts a thread on a project with a brief and puts
+   it in relation, `refuse` answers with a reason. Opening a project,
+   `share`, is always a card for the owner, trusted or not; their Yes grants
+   it as `contacts.grant` would, without reading conversations.
+4. The answer comes back to the asking thread as a message naming the thread
+   it now works with. Both threads write to each other with
+   `boite threads send <contact>/<thread-id>`.
+
+A relation (`ContactRelation`) joins two threads, one per side, and lets
+letters through for as long as it lasts, whatever projects are opened. It
+carries no file, read or command: each thread works in its own checkout.
+Either bot cuts it (`contacts.bot.cut` with `relation: <id>`), and the owner ends one from the
+contact's page (`contacts.cutRelation`); archiving a thread or removing the
+contact ends its relations. The two bots may always write to each other: the
+sync announces each side's bot (`Contact.bot`), with the `contactsBot`
+capability. A contact on an older Boite gets no forwarded request: its owner
+must update.
+
+An ordinary thread reaches a contact's thread only through a relation, or
+replies within 7 days to one that wrote to it. Directory, search and reads of
+a contact's threads are the bot's. Shared projects keep their own rules
+([completion protocol](#completion-protocol)).
+
+### Antivirus
+
+Every contact letter is scanned before it reaches an agent, by a fixed table
+of patterns in English and French (`contacts/flags.ts`, no model): a request
+for a secret, a key or a credentials file (`secret`), a destructive command
+(`destructive`) and words written to steer an agent (`injection`). A match
+holds the letter, records a `ContactFlag` and wakes the bot with the letter
+quoted as data. A refusal at a shared project's boundary (`boundary`) and the
+activity reviewer's doubt (`review`) wake it the same way, with nothing held.
+
+The bot reads it and decides: deliver the letter (`contacts.bot.flag` with
+`deliver`), refuse it (its sender reads the reason), write to the other bot or
+thread first, or cut the contact's access with `contacts.bot.cut { contact,
+reason }`: `relation: <id>` ends that relation, `project: <id or name>` closes
+that project on every machine of the group, and neither ends every relation
+and closes every project. The contact and its link stay the owner's.
+Without a bot, a flagged letter waits for the owner as held mail. A flag
+waiting for a decision is never dropped to make room: at 200 open flags a new
+letter that would be flagged is refused, its sender reads why, and decided
+flags give way first.
+
+The decision comes back to the asking thread as a message (`origin:
+'contact'`). Bot decisions are attributed to the contact's bot; only an
+explicit owner decision is attributed to the owner. A request a contact's
+core refuses itself (a tier, a full queue) names the remote Boite. Contact
+mail outside a shared project or a relation, like any request answer, waits
+for this owner unless the contact is trusted here
+([Human letters and file boundaries](#human-letters-and-file-boundaries)).
 
 ## What an agent knows
 
@@ -356,13 +527,18 @@ names), `funnel.ts` (the routes on Tailscale Funnel), `funnel-check.ts`
 (whether the internet reaches them), `join.ts` (both sides
 of a join), `invite.ts` (the link format), `words.ts`
 (fingerprint words), `tier.ts`, `git-remote.ts` (read from the git config
-files, no process), `concierge.ts` and `tailscale.ts`. `contacts.*` are
+files, no process), `bot.ts` (the Contacts bot's methods and relations),
+`flags.ts` (the antivirus patterns), `group-link.ts` (contacts moving to the
+Bots host), `face.ts` (the name a contact reads) and `tailscale.ts`. `contacts.*` are
 owner-only for administration; `contacts.sendHuman` also permits paired devices.
-Agents call `collaboration.contacts` and `collaboration.ask`.
+Agents call `collaboration.contacts` and `collaboration.ask`; the Contacts
+bot's thread alone calls `contacts.bot.*`.
 `packages/core/test/contacts.test.ts` links two cores over loopback, and
 `contacts-parts.test.ts` covers the pieces, the Tailscale client against a
 stubbed `fetch`. `contacts-group.test.ts` links a contact to one machine of a two-machine
-group and opens it a project of the other. `contacts-funnel.test.ts` drives the Funnel mounts through
+group and opens it a project of the other. `contacts-group-link.test.ts`
+moves a contact from one member to the Bots host and checks the forged and
+unreachable moves. `contacts-funnel.test.ts` drives the Funnel mounts through
 the fake CLI (`test/fixtures/fake-tailscale.ts`) and checks their reachability
 through stubbed DNS and requests, never the internet. `magic-dns.test.ts` covers
 the tailnet name lookup against a resolver on loopback.
@@ -497,7 +673,7 @@ The owner offers one local registered project and one exact advertised remote
 endpoint with `sharedProjects.offer`. Persist a fresh association ID, both
 endpoints and the proposing project's existing execution core as immutable
 board authority. The other owner accepts or declines with
-`sharedProjects.decide`; a trusted contact/concierge cannot accept it. Each
+`sharedProjects.decide`; a trusted contact or the Contacts bot cannot accept it. Each
 endpoint independently controls its grant revision, board consent and compute
 policy. Association does not turn on `readThreads` or compute. Both current
 project grants and explicit board consent are required for board traffic.
@@ -720,7 +896,8 @@ Details. `contacts.decideMail`, owner only, delivers one letter as written,
 recording a digest of its sender and content in the thread's letter scope, or
 rejects it, which its sender reads. Marking the contact trusted delivers what
 waits from it. Held mail expires like any letter: 15 minutes for agent and
-human mail, 6 hours for a request answer. A tool-free thread (echo in default
+human mail (7 days from a contact whose group has a Bots host,
+[Group to group](#group-to-group)), 6 hours for a request answer. A tool-free thread (echo in default
 mode) reads it at once and takes the hold below.
 
 Legacy correspondence and pre-policy consumed history have no captured file
@@ -847,7 +1024,7 @@ capability; dropping a board goal releases the parent's process boundary, while
 its captured descendants and consumed letter history stay scoped.
 
 Claude and echo currently implement the tool-free `sideQuestion` used by
-`contacts/concierge.ts`; Codex, ACP, Muse and pi do not. A reviewer on a route
+the activity reviewer (`contacts/review.ts`); Codex, ACP, Muse and pi do not. A reviewer on a route
 without that capability records unavailable and starts no ordinary tool-using
 turn. This is separate from whether that route can run protected compute.
 Windows jobs track descendants; Linux/macOS track direct children/process
@@ -959,7 +1136,8 @@ This feed adds no timer, SDK or model process.
 fallback model. Provider/account/model/effort and `revokeOnViolation` stay
 host-local. Unsupported tool-free routes record unavailable, never start an
 ordinary turn. Claude and echo support this query path; Codex, ACP, Muse and pi
-do not. The concierge and reviewer share `contacts/side-inference.ts`.
+do not. The reviewer runs through `contacts/side-inference.ts`, and a doubt
+it records wakes the Contacts bot as a `review` flag.
 
 Schema 43 persists configuration revisions, admitted event work and reasoned
 verdicts. Only activity attributed to the associated remote endpoint is

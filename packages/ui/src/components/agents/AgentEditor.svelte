@@ -2,15 +2,16 @@
   import { errorText } from '../../lib/errors';
   import { secureId } from '../../lib/secure-id';
   import { onMount, untrack } from 'svelte';
-  import { Dices, Palette } from '@lucide/svelte';
+  import { Dices, Lock, Palette, RotateCcw } from '@lucide/svelte';
   import type { AgentProfile, AgentSelection as ExecutionSelection, RpcParams } from '@boite/contracts';
   import { Autosave, TYPING_MS } from '../../lib/autosave.svelte';
   import { fill, strings } from '../../lib/strings';
   import { confirm } from '../../lib/confirm.svelte';
-  import { openAgent, type AgentsView } from '../../lib/agents.svelte';
+  import { openAgent, resetBuiltin, type AgentsView } from '../../lib/agents.svelte';
   import type { Store } from '../../lib/store.svelte';
   import type { MenuItem } from '../../lib/menu';
   import { workspace } from '../../lib/workspace.svelte';
+  import { botsHost } from '../../lib/operator';
   import ModelPicker from '../ModelPicker.svelte';
   import EffortSlider from '../EffortSlider.svelte';
   import Menu from '../Menu.svelte';
@@ -18,6 +19,7 @@
   import { encodeRobot, robotOf, seededRobot, shuffledRobot } from '../../lib/robots';
   import AgentAvatar from './AgentAvatar.svelte';
   import RobotPicker from './RobotPicker.svelte';
+  import AgentMachine from './AgentMachine.svelte';
 
   /**
    * Creates an agent with its Create button, or edits one in its settings (`embedded`), where
@@ -33,6 +35,8 @@
   } = $props();
   const initial = untrack(() => ({ record }));
   const profile = initial.record;
+  /** A bot Boite ships: its role and instructions are Boite's, shown but not editable, and Reset stands where Archive was. */
+  const builtin = profile?.builtin;
   /**
    * A new bot starts on the first available account of the machine it will run on, with that account's default model,
    * free to act: full access, the mode a thread calls Auto. The owner may still pick another.
@@ -49,12 +53,12 @@
   let instructions = $state(profile?.instructions ?? '');
   /**
    * The machine a new agent lives on. Agents belong to one core: its accounts, memory and planned
-   * tasks stay there. It starts as the machine this page shows; another one creates the agent on
-   * that core and then opens it there.
+   * tasks stay there. A new one starts on the group's Bots machine while it is connected, else on
+   * the machine this page shows; another one creates the agent on that core and then opens it there.
    */
-  let host = $state<Store>(untrack(() => view.store));
+  let host = $state<Store>(untrack(() => (initial.record ? null : botsHost(view.store, workspace.machines.map(m => m.store))) ?? view.store));
   let moving = $state(false);
-  let selection = $state<ExecutionSelection>({ ...(profile?.selection ?? untrack(() => defaultSelection(view.store))) });
+  let selection = $state<ExecutionSelection>({ ...(profile?.selection ?? untrack(() => defaultSelection(host))) });
   /** A new agent gets a robot of its own at once; an existing one shows the robot it wears. */
   let robot = $state(robotOf(profile?.id ?? '', profile?.avatar ?? '') ?? seededRobot(profile?.id ?? secureId()));
   let robotTouched = $state(!profile);
@@ -200,6 +204,19 @@
       if (result) ondone(result);
     } finally { saving = false; }
   }
+  /** Reset, confirmed in the app's dialog; the form then shows what Boite put back. */
+  async function reset() {
+    const latest = stored() ?? profile;
+    if (!latest) return;
+    await autosave.flush();
+    const result = await resetBuiltin(view, latest);
+    if (!result) return;
+    base = result;
+    revisionRead = result.revision;
+    ({ name, domain, instructions, status } = result);
+    robot = robotOf(result.id, result.avatar) ?? seededRobot(result.id);
+    robotTouched = false;
+  }
   async function write() {
     const result = await save(params => view.save('agents.profile.save', params));
     if (result) base = result;
@@ -234,8 +251,9 @@
       </div>
     {/if}
 
-    {#if embedded}<label class="agent-field">{labels.domain}<input bind:value={domain} maxlength="500" placeholder={labels.rolePlaceholder} /></label>{/if}
-    <label class="agent-field"><span>{creating ? labels.whatItDoes : labels.instructions}{#if creating}<span class="hint">{labels.whatItDoesHint}</span>{/if}</span><textarea bind:value={instructions} rows="4" maxlength="32000" placeholder={labels.instructionsPlaceholder} data-testid="agent-instructions"></textarea></label>
+    {#if embedded}<label class="agent-field">{labels.domain}<input bind:value={domain} maxlength="500" placeholder={labels.rolePlaceholder} readonly={!!builtin} class:agent-locked-field={!!builtin} data-testid="agent-domain" /></label>{/if}
+    <label class="agent-field"><span>{creating ? labels.whatItDoes : labels.instructions}{#if creating}<span class="hint">{labels.whatItDoesHint}</span>{/if}</span><textarea bind:value={instructions} rows="4" maxlength="32000" placeholder={labels.instructionsPlaceholder} readonly={!!builtin} class:agent-locked-field={!!builtin} data-testid="agent-instructions"></textarea></label>
+    {#if builtin}<p class="hint agent-locked" data-testid="agent-locked"><Lock size={12} strokeWidth={2} aria-hidden="true" />{labels.builtin.locked}</p>{/if}
     <!-- The projects it looks after: it follows their threads, starts new ones and answers for them. -->
     <fieldset class="agent-field" data-testid="agent-projects">
       <legend>{labels.projects}</legend>
@@ -250,8 +268,15 @@
     </fieldset>
     {#if embedded}
       <div class="agent-field"><span>{labels.status}</span>
-        <Menu placement="bottom" label={labels.status} items={(['active', 'paused', 'archived'] as const).map(id => ({ id, label: labels[id], active: status === id }))} onpick={id => void pickStatus(id as AgentProfile['status'])}><span class="ui-label">{labels[status]}</span></Menu>
+        <Menu placement="bottom" label={labels.status} items={(builtin ? ['active', 'paused'] as const : ['active', 'paused', 'archived'] as const).map(id => ({ id, label: labels[id], active: status === id }))} onpick={id => void pickStatus(id as AgentProfile['status'])} testid="agent-status"><span class="ui-label">{labels[status]}</span></Menu>
       </div>
+      {#if profile}<AgentMachine {view} agent={stored() ?? profile} />{/if}
+      {#if builtin && view.store.owner}
+        <div class="agent-field agent-reset">
+          <span>{labels.builtin.reset}<small class="hint">{labels.builtin.resetHint}</small></span>
+          <button type="button" class="danger" disabled={busy} onclick={() => void reset()} data-testid="agent-reset"><RotateCcw size={14} strokeWidth={1.75} /><span class="ui-label">{labels.builtin.reset}</span></button>
+        </div>
+      {/if}
     {/if}
   </section>
 

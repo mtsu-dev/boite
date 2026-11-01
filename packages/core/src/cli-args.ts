@@ -79,6 +79,8 @@ const OWNED: { owns: (positional: string[]) => boolean; help: boolean; text?: (p
   { owns: ([command, action]) => command === 'desktop' && action !== undefined && !DESKTOP_FIXED.has(action), help: false, text: positional => positional.length >= 2, terminator: true },
   // view-cli.ts: the script and scheme flags of `view check`.
   { owns: ([command, action]) => command === 'view' && action === 'check', help: true },
+  // agents-cli.ts: `threads ask` reads --contact, --to, --new, --share, --wait and --timeout itself, and `--` before its text.
+  { owns: ([command, action]) => (command === 'threads' || command === 'agents') && action === 'ask', help: true, terminator: true },
   // team-cli.ts: --before, --reply, --name, --members and --brief are its own.
   { owns: ([command, action]) => command === 'team' && action !== undefined, help: true },
   // secret-cli.ts; after `--` every word is the child command's.

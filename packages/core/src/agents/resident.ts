@@ -14,7 +14,7 @@ import { slugOf } from '../worktree.ts';
 const BRAIN_ROOT = 'agents:brain-root';
 const BRAIN_DIR = 'agents:brain-dir:';
 /** What a new agent's brain starts with. */
-const BRAIN_FILES: Record<string, string> = {
+export const BRAIN_FILES: Readonly<Record<string, string>> = {
   'AGENTS.md': '# Individual brain\n\nKeep reusable procedures in skills/. Durable facts go to MEMORY.md through boite bot remember.\n',
   'MEMORY.md': '',
 };

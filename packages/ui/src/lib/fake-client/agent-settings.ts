@@ -17,6 +17,7 @@ import type { FakeContext } from './context';
 import { pickModel } from './delegation';
 import { modelsOf } from './provider-catalog';
 import { askAgentSetting } from './requests';
+import { BUILTIN_LOCKED, BUILTIN_NEVER_ARCHIVED } from './builtin-bots';
 
 const refused = (message: string, data?: Record<string, unknown>) => new RpcFailure({ code: RpcErrorCode.Refused, message, ...(data ? { data } : {}) });
 /** As the core: a new bot may run on any installed model, whatever the thread's subagent settings. */
@@ -98,6 +99,9 @@ function openOn(ctx: FakeContext, threadId: string): AgentSettingAsk[] {
 /** `agents.settings.request` on a thread whose turn is known; the fake agent's `[agent-settings]` marker comes here too. */
 export function requestAgentSetting(ctx: FakeContext, thread: Thread, turn: Turn, params: AgentSettingRequestParams): { questionId: string; setting: AgentSettingAsk } {
   const agent = agentFor(ctx, thread.id, params.agent);
+  // As the core: a built-in bot's domain and instructions are Boite's, and it is never archived.
+  if (agent.builtin && (params.key === 'domain' || params.key === 'instructions')) throw refused(BUILTIN_LOCKED(params.key), { field: 'key', key: params.key });
+  if (agent.builtin && params.key === 'status' && params.value === 'archived') throw refused(BUILTIN_NEVER_ARCHIVED, { field: 'value', key: 'status' });
   const checked = checkAgentSettingRequest(params, context(ctx, agent), openOn(ctx, thread.id));
   if (!checked.ok) throw refused(checked.message, checked.data);
   return { questionId: askAgentSetting(ctx, thread, turn, checked.reason, checked.options, checked.setting), setting: checked.setting };
