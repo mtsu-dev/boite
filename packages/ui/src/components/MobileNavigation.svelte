@@ -42,6 +42,7 @@
   import { minuteClock } from '../lib/clock.svelte';
   import { contactsShown } from '../lib/contacts-rail.svelte';
   import { ScreenSlide } from '../lib/screen-slide.svelte';
+  import SidebarTeams from './teams/SidebarTeams.svelte';
 
   let { store, recover = false, screen = $bindable('chat'), tabbed = $bindable(false) }: { store: Store; recover?: boolean; screen: 'chat' | 'threads' | 'activity'; tabbed?: boolean } = $props();
   const narrow = new MediaQuery('(max-width: 720px)');
@@ -99,7 +100,8 @@
   let draftOwner = $derived(listScreen === 'threads' && workspace.view === 'recent' && selected ? selected.machine.store : store);
   let entries = $derived(machines.flatMap(machine => {
     const byId = new Map(machine.store.projects.map(p => [p.id, p]));
-    return machine.store.threads.filter(t => !t.archived && !t.incognito).map(thread => ({ machine, thread, project: thread.projectId === null ? undefined : byId.get(thread.projectId) }));
+    // A team's chat is listed in the Teams section, not among the threads.
+    return machine.store.threads.filter(t => !t.archived && !t.incognito && !t.teamId).map(thread => ({ machine, thread, project: thread.projectId === null ? undefined : byId.get(thread.projectId) }));
   }));
   let waiting = $derived(entries.filter(e => needsUser(e.thread)));
   /** What waits on the user besides the conversation on screen: Back carries its mark. */
@@ -261,6 +263,8 @@
         </div>
       {/if}
     </div>
+    <!-- The owner's teams, above the projects: a team's chat belongs to no project, and has no row among the threads. -->
+    {#if listScreen === 'threads' && experimentOn('teams')}<SidebarTeams {machines} {query} onopen={() => show('chat')} />{/if}
     {#snippet threadRow(row: typeof rows[number], grouped = false)}
       {@const items = rowItems(row.machine.store, row.thread)}
       {@const pin = items.find(item => item.id === 'pin')}

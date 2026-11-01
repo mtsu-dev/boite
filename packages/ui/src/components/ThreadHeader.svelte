@@ -172,6 +172,9 @@
             data-testid="thread-rename-input"
             use:focusOnMount
           />
+        {:else if thread.teamId}
+          <!-- A team's chat takes its team's name and no thread action: the core refuses them on a chat that runs no agent. -->
+          <span class="title team" data-testid="thread-title" title={thread.title}><UsersRound size={15} strokeWidth={1.75} /><span class="ui-label">{thread.title}</span></span>
         {:else}
           <button
             type="button"
@@ -272,7 +275,7 @@
         </span>
       {/if}
       <!-- The shell is the owner's: a phone reaches it by this button, not by Ctrl+J. -->
-      {#if thread && store.owner}
+      {#if thread && store.owner && !thread.teamId}
         {@const terminalKey = store.keyLabel('terminal')}
         {#if work.shows('header.terminal')}
         <button
@@ -308,7 +311,7 @@
       <!-- A paired device opens the panel too: the Agents and Workflows surfaces are
            its to follow, and the panel's menu offers only what available() allows. -->
       {#if thread}
-        {#if mobile.current}
+        {#if mobile.current && !thread.teamId}
           <button type="button" class="ghost phone-browser" data-testid="phone-browser-toggle"
             aria-label={strings.rightPanel.browser} aria-pressed={store.panelOpen && store.panel.active?.kind === 'agent-browser'}
             onclick={() => store.panel.open('agent-browser')}>
@@ -351,6 +354,8 @@
   }
 
   .title > .ui-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .title.team { gap: 6px; margin-left: 0; }
+  .title.team > :global(svg) { flex: none; color: var(--color-muted-foreground); }
 
   .title.draft {
     color: var(--color-muted-foreground);
@@ -453,9 +458,9 @@
     /* The title's sheet holds these on a phone. */
     .in-title-menu { display: none; }
     .rename { width: 100%; }
-    /* The thread's title button gives way to its menu; a draft's label has no menu and stays. */
-    .title:not(.draft) { display: none; }
-    .title.draft { max-width: none; }
+    /* The thread's title button gives way to its menu; a draft's label and a team's name have no menu and stay. */
+    .title:not(.draft):not(.team) { display: none; }
+    .title.draft, .title.team { max-width: none; }
     .draft-mark { margin: 0 4px 0 6px; }
     .title-menu { display: flex; min-width: 0; flex: 0 1 auto; margin-left: -6px; }
     .title-menu :global(.menu) { min-width: 0; max-width: 100%; }

@@ -27,6 +27,7 @@
   import DoneThreadNotice from './DoneThreadNotice.svelte';
   import WorktreeGoneNotice from './WorktreeGoneNotice.svelte';
   import ContactHoldNotice from './ContactHoldNotice.svelte';
+  import TeamChat from './teams/TeamChat.svelte';
 
   /** `locked`: the conversation reads but takes nothing more, said in place of the composer (an archived agent's). */
   let { store, locked = null }: { store: Store; locked?: string | null } = $props();
@@ -77,9 +78,11 @@
   // The timeline still needs agent messages after reload, even with settings hidden.
   let threadId = $derived(thread?.id);
   let agentSession = $derived(!!thread?.agentSessionId);
+  /** A team's chat runs no agent: no coordination letters, and its own composer (`teams/TeamChat.svelte`). */
+  let teamChat = $derived(!!thread?.teamId);
   $effect(() => {
     const id = threadId;
-    if (id && !agentSession) untrack(() => void store.loadCoordination(id, false));
+    if (id && !agentSession && !teamChat) untrack(() => void store.loadCoordination(id, false));
   });
   let project = $derived(store.openProject);
   let draftChoice = $derived(store.defaultChoice());
@@ -114,6 +117,8 @@
     <h1>{strings.thread.none}</h1>
     <p class="muted">{strings.thread.noneBody}</p>
   </div>
+{:else if thread?.teamId}
+  {#key thread.id}<TeamChat {store} {thread} />{/key}
 {:else}
   <!-- The draft's roomier composer belongs to the middle of the column: once
      the prompt is on its way the composer is at the bottom, at its thread size,

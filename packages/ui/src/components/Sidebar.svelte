@@ -36,6 +36,8 @@
   import ProjectTile from './ProjectTile.svelte';
   import RailFrame from './RailFrame.svelte';
   import { minuteClock } from '../lib/clock.svelte';
+  import { experimentOn } from '../lib/experiments.svelte';
+  import SidebarTeams from './teams/SidebarTeams.svelte';
   let { store }: { store: Store } = $props();
   const mobile = new MediaQuery('(max-width: 720px)');
   let scrollRoot = $state<HTMLDivElement>();
@@ -172,6 +174,8 @@
 <RailFrame {store} kind="sidebar" label={strings.sidebar.threads} testid="sidebar" drawer bind:scroller={scrollRoot} onscroll={() => { if (showRows && scrollRoot) savedScroll = scrollRoot.scrollTop; }}>
   {#snippet head()}<ProjectViews entries={groups} {store} />{/snippet}
     {#if showRows}
+    <!-- The owner's teams, above the projects: a team's chat belongs to no project. -->
+    {#if experimentOn('teams')}<SidebarTeams machines={visible} />{/if}
     {#if groups.length === 0}<p class="empty">{strings.sidebar.noProjects}</p>{/if}
     {#if workspace.view === 'recent'}
       {#each visible as machine (machine.id)}
