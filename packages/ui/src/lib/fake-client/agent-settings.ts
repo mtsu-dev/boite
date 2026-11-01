@@ -88,6 +88,7 @@ function context(ctx: FakeContext, agent: AgentProfile, refs = false): AgentSett
       const levels = models().find(entry => entry.id === agent.selection.model)?.effort?.levels ?? [];
       return levels.some(level => level.id === effort) ? { ok: true, value: effort } : { ok: false, message: 'the model does not offer this reasoning effort' };
     },
+    picture: avatar => ctx.agents.hasPicture(avatar),
   };
 }
 
@@ -242,6 +243,17 @@ export function agentSettingMethods(ctx: FakeContext): Handlers {
         value = normalized.value;
       }
       const saved = write(ctx, agent, setting.key, value);
+      settleAgentSettings(ctx, agent.id);
+      return saved;
+    },
+    // As the core: a thread dresses a bot, itself or another, with no card.
+    'agents.avatar.set': params => {
+      const thread = ctx.thread(params.threadId);
+      if (thread.archived) throw refused('an archived thread cannot change a bot', { threadId: thread.id });
+      const agent = agentFor(ctx, thread.id, params.agent);
+      const normalized = normalizeAgentSetting('avatar', params.avatar, context(ctx, agent));
+      if (!normalized.ok) throw refused(normalized.message, { field: 'avatar' });
+      const saved = write(ctx, agent, 'avatar', normalized.value);
       settleAgentSettings(ctx, agent.id);
       return saved;
     },

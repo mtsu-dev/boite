@@ -87,6 +87,7 @@ export class AgentSettingCards {
         return ref;
       }),
       effort: effort => checked(() => checkEffort(provider, accountId, agent.selection.model, effort)),
+      picture: avatar => this.#store.pictures.has(avatar),
     };
   }
 
@@ -207,6 +208,23 @@ export class AgentSettingCards {
     return saved;
   }
 
+  /**
+   * A thread dresses a bot, itself or another, with no card: the owner let
+   * agents choose faces on their own (2026-11-01). The value goes through the
+   * checks a card's would, and the cards it answers settle.
+   */
+  setAvatar(params: { threadId: string; agent?: string; avatar: string }): AgentProfile {
+    const thread = this.#core.threads.require(params.threadId);
+    if (thread.archived) throw refused('an archived thread cannot change a bot', { threadId: thread.id });
+    const agent = this.#agentFor(thread.id, params.agent);
+    const ctx = this.#context(agent);
+    const normalized = normalizeAgentSetting('avatar', params.avatar, ctx);
+    if (!normalized.ok) throw refused(normalized.message, { field: 'avatar' });
+    const saved = this.#write(agent, ctx, 'avatar', normalized.value);
+    this.settle(agent.id);
+    return saved;
+  }
+
   #write(agent: AgentProfile, ctx: AgentSettingContext, key: AgentSettingAsk['key'], value: unknown): AgentProfile {
     const save = (next: AgentProfile) => this.#store.saveProfile({ id: agent.id, expectedRevision: agent.revision, value: next });
     const configure = (config: AgentSettingContext['config']) => this.#store.resident.configure({ agentId: agent.id, expectedRevision: agent.revision, config });
@@ -268,4 +286,5 @@ export function registerAgentSettingMethods(core: Core, cards: AgentSettingCards
   core.router.register('agents.settings.read', p => cards.read(p));
   core.router.register('agents.settings.request', p => cards.request(p));
   core.router.register('agents.settings.apply', p => cards.apply(p));
+  core.router.register('agents.avatar.set', p => cards.setAvatar(p));
 }

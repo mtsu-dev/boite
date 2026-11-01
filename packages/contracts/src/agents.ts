@@ -260,11 +260,20 @@ export interface AgentsRpcMethods {
    * Stores a picture the owner imported for a bot, as a `data:` URL of a PNG,
    * JPEG, WebP or GIF of at most `AGENT_PICTURE_MAX_BYTES`. Returns the avatar
    * that names it (`img:<hash>`), which `agents.profile.save` then takes like a
-   * robot code. The same bytes give the same avatar.
+   * robot code. The same bytes give the same avatar. An agent names its own
+   * thread (`threadId`), as every agent call does; the owner needs none.
    */
-  'agents.picture.put': { params: { dataUrl: string }; result: { avatar: string } };
+  'agents.picture.put': { params: { dataUrl: string; threadId?: string }; result: { avatar: string } };
   /** The bytes of an imported picture as a `data:` URL, for the client that draws it. */
   'agents.picture.get': { params: { avatar: string }; result: { dataUrl: string } };
+  /**
+   * A thread dresses a bot at once, with no card (`boite settings bot picture`):
+   * the bot whose conversation it is, or `agent` by id or name. `avatar` is
+   * what `agents.settings.request` takes for the key `avatar`: an `img:` picture
+   * this machine holds, a robot code, one or two characters, or "" for the
+   * robot its id draws. Returns the saved profile.
+   */
+  'agents.avatar.set': { params: { threadId: string; agent?: string; avatar: string }; result: AgentProfile };
   /**
    * A thread creates a bot the user asked for (`boite settings bot create`),
    * as `agents.profile.save` creates one from the Bots page, with full access.

@@ -39,6 +39,8 @@ export interface Parsed {
   domain?: string;
   /** `settings bot create --instructions-file <path>`: its instructions, read from a file. */
   instructionsFile?: string;
+  /** `settings bot request avatar --picture <path>`: an image file the bot wears in place of its robot. */
+  picture?: string;
   /** Another core's address; its token comes from BOITE_TOKEN, never the command line. */
   core?: string;
   /** `thread new --machine <name>`, `settings request --machine <name>`: another machine of the group. */
@@ -153,6 +155,7 @@ export function parse(argv: string[]): Parsed {
     else if (arg === '--bot' || arg === '--agent') parsed.bot = next();
     else if (arg === '--domain') parsed.domain = next();
     else if (arg === '--instructions-file') parsed.instructionsFile = next();
+    else if (arg === '--picture') parsed.picture = next();
     else if (arg === '--core') parsed.core = next();
     else if (arg === '--machine') parsed.machine = next();
     else if (arg === '--key' && parsed.positional[0] === 'bot') parsed.key = next();

@@ -853,7 +853,8 @@ keeps them queued. Creation and instruction-change wakes keep their behavior.
 `settings bot request <key> <value> --why <text>` draws the card. `name`,
 `domain`, `instructions`, `avatar` and `status` take the words as typed
 (`name Gargouille (Sécurité)`), and `instructions --instructions-file <path>`
-reads a file; `projects` takes `+name -name` edits or a whole list
+reads a file, as `avatar --picture <path>` imports an image file for the card
+to propose; `projects` takes `+name -name` edits or a whole list
 (`Notes,Other`, or JSON), resolved by name or id and stored as ids; a project
 of another machine of the group is `<machine>/<name>` (`+skoll/Hearthfall`),
 offered once that machine lets bots in (`groupBots`) and stored as
@@ -886,6 +887,18 @@ refused with that bot's id, as are an unknown model or project. It prints
 `created: <name> (<id>)`, its route, its projects and its conversation, to
 reach it with `boite threads send`; the bot then introduces itself there. The
 MCP tool `boite_bot_create` does the same.
+
+`settings bot picture <image>` gives a bot a face at once, with no card: the
+bot whose conversation calls it, or `--bot <name>` for another bot of the
+machine. The owner asked that agents dress bots themselves (2026-11-01); only
+the avatar changes. An image file, a PNG, JPEG, WebP or GIF of at most 512 KB
+recognized by its first bytes, is imported with `agents.picture.put` and worn
+through `agents.avatar.set`; a larger one is refused with its size, to shrink
+first. Anything that is not a file is taken as an avatar value: a robot code,
+one or two characters, an `img:` picture this machine holds, or `""` for the
+robot the bot's id draws. A value that looks like a path to no file is refused
+with that path. It prints `picture: <name> (<id>) now wears <avatar>`, and any
+open card about that bot's avatar settles.
 
 Exit codes: 0, 1 on a refusal or a failure (`error: ...` on stderr), 2 on a
 usage error (the usage text on stderr).

@@ -24,7 +24,8 @@ type ListedSkill = { name: string; description: string; path: string };
 export const OWN_SETTINGS = 'Your settings are the user\'s, and keeping them right is part of your job: `boite settings bot` lists them. When one no longer fits, propose the change yourself with '
   + '`boite settings bot request <key> <value> --why <reason>`, and `--bot <name>` for another bot\'s: the user\'s words contradict your instructions or role, most of your wakes end in [quiet] (`eventWakes false`), you miss project news your role needs (`eventWakes true`), '
   + 'your model or effort costs more than your work needs or falls short of it, you lack a project, or the user asks for such a change. '
-  + 'Put the evidence in the reason. Never work around a setting in your memory, your routines or the brain. The user applies the card and the outcome comes back as a message.';
+  + 'Put the evidence in the reason. Never work around a setting in your memory, your routines or the brain. The user applies the card and the outcome comes back as a message. '
+  + 'A face needs no card: `boite settings bot picture <image>` dresses you, or `--bot <name>` another bot, at once.';
 
 /**
  * What every bot's thread is told about being a bot, the same for each: it

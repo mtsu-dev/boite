@@ -7,7 +7,8 @@
  * Only PNG, JPEG, WebP and GIF whose first bytes match their type are kept,
  * never SVG, and at most `AGENT_PICTURE_MAX_BYTES`. A picture no bot wears is
  * removed a day after it was stored, the next time one is imported: the form
- * that imported it saves it within that day or drops it.
+ * or the agent that imported it saves it within that day or drops it. Beyond
+ * `UNWORN_PICTURES_MAX` unworn pictures, the oldest go sooner.
  */
 import { createHash } from 'node:crypto';
 import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
@@ -21,6 +22,8 @@ const EXTENSIONS: Record<PictureType, string> = { 'image/png': 'png', 'image/jpe
 const TYPES = Object.fromEntries(Object.entries(EXTENSIONS).map(([type, ext]) => [ext, type as PictureType])) as Record<string, PictureType>;
 /** How long a picture no bot wears is kept: the form that imported it has this long to save it. */
 export const UNWORN_PICTURE_MS = 24 * 60 * 60 * 1000;
+/** At most this many pictures no bot wears, the one being imported included: the oldest go first. */
+export const UNWORN_PICTURES_MAX = 32;
 /** The base64 length of the largest picture, so a larger one is refused before it is decoded. */
 const BASE64_MAX = Math.ceil(AGENT_PICTURE_MAX_BYTES / 3) * 4;
 const DATA_URL = /^data:(image\/[a-z]+);base64,([A-Za-z0-9+/]*={0,2})$/;
@@ -92,17 +95,25 @@ export class AgentPictures {
     return null;
   }
 
-  /** Removes the pictures no bot wears that were stored more than a day ago, and any write left half done. */
+  /** Removes the pictures no bot wears that were stored more than a day ago, the oldest beyond `UNWORN_PICTURES_MAX`, and any write left half done. */
   #prune(keep: string): void {
     const worn = new Set([...this.worn()].filter(avatar => AGENT_PICTURE_CODE.test(avatar)).map(avatar => avatar.slice(4)));
     const before = Date.now() - UNWORN_PICTURE_MS;
     let names: string[];
     try { names = readdirSync(this.#folder); } catch { return; }
+    const kept: { file: string; at: number }[] = [];
     for (const name of names) {
       const hash = name.split('.')[0]!;
       if (hash === keep || worn.has(hash)) continue;
       const file = join(this.#folder, name);
-      try { if (statSync(file).mtimeMs < before) rmSync(file, { force: true }); } catch { /* gone meanwhile */ }
+      try {
+        const at = statSync(file).mtimeMs;
+        if (at < before) rmSync(file, { force: true });
+        else kept.push({ file, at });
+      } catch { /* gone meanwhile */ }
     }
+    // Agents import too: however many they store in a day, the unworn ones stay a bounded few.
+    kept.sort((a, b) => a.at - b.at);
+    for (const { file } of kept.slice(0, Math.max(0, kept.length - (UNWORN_PICTURES_MAX - 1)))) rmSync(file, { force: true });
   }
 }

@@ -126,6 +126,8 @@ export interface AgentSettingContext {
    */
   model: (model: string) => Checked<string>;
   effort: (effort: string | null) => Checked<string | null>;
+  /** Whether this machine holds the imported picture an `img:` avatar names (`agents.picture.put`). */
+  picture: (avatar: string) => boolean;
 }
 
 /** A model as a card names it, `<provider>/<model>`; null runs on the provider's default. */
@@ -212,10 +214,14 @@ function agentText(raw: unknown, key: 'domain' | 'instructions', max: number): C
 }
 
 /** Empty draws the robot its id picks; else a robot code, an imported picture, or one or two characters (an emoji, letters) the picture shows as text. */
-function agentAvatar(raw: unknown): Checked<string> {
+function agentAvatar(raw: unknown, ctx: AgentSettingContext): Checked<string> {
   const value = typeof raw === 'string' ? raw.trim() : undefined;
+  // A picture the bot wears already stays held: an unchanged avatar never fails on it.
+  if (value !== undefined && AGENT_PICTURE_CODE.test(value) && value !== ctx.profile.avatar.trim() && !ctx.picture(value)) {
+    return { ok: false, message: `avatar: ${value} is no picture this machine holds; import the image first (boite settings bot picture <file>)` };
+  }
   const short = value !== undefined && value.length <= AGENT_AVATAR_MAX && [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(value)].length <= 2;
-  return value !== undefined && (short || ROBOT_CODE.test(value) || AGENT_PICTURE_CODE.test(value)) ? { ok: true, value } : { ok: false, message: 'avatar: expected one or two characters (an emoji, letters), a robot code such as bot:d.1.2.3.4.1.1.0, a picture the owner imported (img:<16 hex digits>), or "" for the robot its id draws' };
+  return value !== undefined && (short || ROBOT_CODE.test(value) || AGENT_PICTURE_CODE.test(value)) ? { ok: true, value } : { ok: false, message: 'avatar: expected one or two characters (an emoji, letters), a robot code such as bot:d.1.2.3.4.1.1.0, an imported picture (img:<16 hex digits>), or "" for the robot its id draws' };
 }
 
 /** A proposed value as the agent's settings would store it, or why it cannot be. */
@@ -224,7 +230,7 @@ export function normalizeAgentSetting(key: AgentSettingKey, raw: unknown, ctx: A
     case 'name': return agentName(raw, ctx);
     case 'domain': return agentText(raw, key, AGENT_DOMAIN_MAX);
     case 'instructions': return agentText(raw, key, AGENT_INSTRUCTIONS_MAX);
-    case 'avatar': return agentAvatar(raw);
+    case 'avatar': return agentAvatar(raw, ctx);
     case 'status':
       return typeof raw === 'string' && (AGENT_STATUSES as readonly string[]).includes(raw.trim()) ? { ok: true, value: raw.trim() } : { ok: false, message: `status: expected ${AGENT_STATUSES.join(', ')}` };
     case 'projects': return agentProjectIds(raw, ctx.profile.projectIds ?? [], ctx.projects);
