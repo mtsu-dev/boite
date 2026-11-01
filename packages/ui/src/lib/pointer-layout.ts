@@ -15,6 +15,8 @@ export interface PointerLayout {
   label: string;
   below: boolean;
   look: WindowPointerLook;
+  /** For the frame around a whole window that Boite brought to the front: the app's name. */
+  frame?: string;
 }
 
 /** The ring around the control, `look.pad` outside it, kept inside the window so a control at a screen edge keeps all four sides. */
@@ -72,7 +74,7 @@ export function pointerRequested(from: { localCore: boolean }, box: WindowPointe
   const rect = box.rect;
   queue = queue.then(() => rect === null
     ? invoke('pointer_hide', { id: box.id })
-    : invoke('pointer_show', { id: box.id, rect, label: box.label, look: box.look }))
+    : invoke('pointer_show', { id: box.id, rect, label: box.label, look: box.look, ...(box.frame ? { frame: box.frame } : {}) }))
     .then(() => undefined, (error: unknown) => { console.warn('windows.pointer failed', error); });
   return queue;
 }

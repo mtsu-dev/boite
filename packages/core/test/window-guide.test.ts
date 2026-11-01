@@ -47,6 +47,8 @@ function fakeDesktop() {
    */
   const live = { rect: null as ScreenRect | 'hidden' | null, generation: 0, held: 0, asked: [] as NativeControl[] };
   const drop = () => { live.rect = null; live.generation += 1; };
+  /** The window in front; the desktop app's frame brings one there. */
+  const front = { id: '' };
   const capture: WindowCapture = {
     list: async () => windows.map(window => ({ ...window, minimized: frames.get(window.id)?.minimized ?? window.minimized })),
     capture: async id => { throw goneError(id); },
@@ -62,6 +64,7 @@ function fakeDesktop() {
       return frame ? { rect: { ...frame.rect }, minimized: frame.minimized, above: frame.above } : null;
     },
     mouse: () => ({ ...mouse }),
+    foreground: id => front.id === id,
     track: async (_id, wanted) => {
       live.asked.push(wanted);
       if (live.rect === null) return null;
@@ -74,7 +77,7 @@ function fakeDesktop() {
       };
     },
   };
-  return { windows, frames, mouse, capture, guide, live, drop };
+  return { windows, frames, mouse, capture, guide, live, drop, front };
 }
 
 /** Retries an assertion until it holds: the box events reach the desktop app's socket, not the caller's. */
@@ -89,7 +92,7 @@ async function eventually(check: () => void, timeoutMs = 2000): Promise<void> {
 describe('window guide', () => {
   let harness: TestCore, owner: CoreClient, agent: CoreClient, app: CoreClient, threadId: string, desk: ReturnType<typeof fakeDesktop>;
   /** Each box the desktop app was told about, in order: where it is now, null once hidden or taken away. */
-  let boxes: { id: string; rect: ScreenRect | null; label: string; look: WindowPointerLook }[];
+  let boxes: { id: string; rect: ScreenRect | null; label: string; look: WindowPointerLook; frame?: { app: string; windowId: string } }[];
 
   beforeEach(async () => {
     harness = await startTestCore();
@@ -108,7 +111,7 @@ describe('window guide', () => {
     core.windows.stop();
     core.windows = new DesktopWindows(harness.core, {
       backend: async () => desk.capture, guide: async () => desk.guide, consentTimeoutMs: 60_000,
-      tempRoot: join(harness.dataDir, 'window-temp'), guideTiming: { followMs: FOLLOW_MS, mouseMs: 5, settleMs: SETTLE_MS },
+      tempRoot: join(harness.dataDir, 'window-temp'), guideTiming: { followMs: FOLLOW_MS, mouseMs: 5, settleMs: SETTLE_MS, frameIdleMs: 150 },
     });
     await owner.call('threads.subscribe', { threadId });
     const finished = owner.next('turn.finished', turn => turn.threadId === threadId, 10_000);
@@ -249,6 +252,40 @@ describe('window guide', () => {
     expect(await waiting).toMatchObject({ clicked: true, pointer: { x: 210, y: 190 } });
     // The element is let go with the box.
     expect(desk.live.held).toBe(0);
+  });
+
+  test('a Chromium window is framed and brought to the front before its read, and the frame goes once no box shows in it', async () => {
+    desk.windows[0]!.className = 'Chrome_WidgetWin_1';
+    // The desktop app brings the framed window to the front a moment after it hears of it.
+    app.on('windows.pointer', box => { if (box.frame && box.rect) setTimeout(() => { desk.front.id = box.frame!.windowId; }, 40); });
+    const answered = answer('always');
+    const started = Date.now();
+    const read = await agent.call('windows.read', { threadId, target: { id: '101' } });
+    await answered;
+    expect(read.total).toBe(4);
+    expect(desk.front.id).toBe('101');
+    expect(Date.now() - started).toBeGreaterThanOrEqual(40);
+    await eventually(() => expect(boxes).toMatchObject([{ rect: { left: 1000, top: 500, width: 400, height: 300 }, label: '', frame: { app: 'Unity', windowId: '101' } }]));
+
+    // A box in the window keeps the frame; the frame follows the window.
+    await agent.call('windows.point', { threadId, control: 3 });
+    desk.frames.get('101')!.rect.top += 20;
+    await eventually(() => expect(boxes[0]!.rect).toMatchObject({ top: 520 }));
+    await Bun.sleep(250);
+    expect(boxes[0]!.rect).not.toBeNull();
+    // Gone FRAME_IDLE_MS after the box.
+    await agent.call('windows.unpoint', { threadId });
+    await eventually(() => expect(boxes[0]!.rect).toBeNull(), 1000);
+    expect(boxes.filter(box => box.frame)).toHaveLength(1);
+
+    // A window already in front is framed and read at once; any other app is neither.
+    expect(await agent.call('windows.read', { threadId, target: { id: '101' } })).toMatchObject({ total: 4 });
+    expect(boxes.filter(box => box.frame)).toHaveLength(2);
+    desk.windows[0]!.className = 'UnityContainerWndClass';
+    await eventually(() => expect(boxes.at(-1)!.rect).toBeNull(), 1000);
+    await agent.call('windows.read', { threadId, target: { id: '101' } });
+    await Bun.sleep(50);
+    expect(boxes.filter(box => box.frame)).toHaveLength(2);
   });
 
   test('wait-click ends on a press inside the box, not on one outside or a button already held', async () => {

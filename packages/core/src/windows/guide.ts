@@ -51,6 +51,19 @@ const WAIT_GRACE_MS = 30_000;
  * settled.
  */
 const SETTLE_MS = 450;
+/**
+ * Chromium and Electron apps (Discord, Slack, VS Code) build their controls
+ * only while their window is in front: covered by another, Discord answered no
+ * control at all (2026-11-01). Reading or pointing in one brings it to the
+ * front through the desktop app, which draws a frame around it saying why.
+ */
+const CHROMIUM_CLASS = /^Chrome_WidgetWin_/;
+/** How long a read waits for the desktop app to bring such a window to the front. */
+const FRONT_WAIT_MS = 1_500;
+/** How long that frame stays once no box shows in the window, for the agent's next step. */
+const FRAME_IDLE_MS = 15_000;
+/** How often the frame follows its window. */
+const FRAME_FOLLOW_MS = 100;
 /** How often a box whose control the app dropped looks for it again, in milliseconds. */
 const RETRACK_MS = 1_000;
 
@@ -61,6 +74,8 @@ export interface WindowGuidesOptions {
   mouseMs?: number;
   /** How long a followed control must stay put in its window before its box shows again. */
   settleMs?: number;
+  /** How long the frame around a Chromium window stays once no box shows in it. */
+  frameIdleMs?: number;
 }
 
 /** What `DesktopWindows` lends the guide: its conversation and window checks. */
@@ -99,6 +114,16 @@ interface Shown {
   waiters: Set<(end: WindowWaitEnd | 'clicked') => void>;
 }
 
+/** The frame around a Chromium window a conversation guides in. */
+interface Frame {
+  window: NativeWindow;
+  boxId: string;
+  rect: ScreenRect | null;
+  follow: ReturnType<typeof setInterval>;
+  /** Takes the frame away once no box has shown in the window for `FRAME_IDLE_MS`. */
+  idle: ReturnType<typeof setTimeout> | null;
+}
+
 const sameRect = (a: ScreenRect | null, b: ScreenRect | null) =>
   a === b || (a !== null && b !== null && a.left === b.left && a.top === b.top && a.width === b.width && a.height === b.height);
 /** A control scrolled under the window's edge is out of view, whatever its app says. */
@@ -115,9 +140,11 @@ export class WindowGuides {
   readonly #followMs: number;
   readonly #mouseMs: number;
   readonly #settleMs: number;
+  readonly #frameIdleMs: number;
   #backend?: Promise<WindowGuide | { unavailable: string }>;
   readonly #snapshots = new Map<string, Snapshot>();
   readonly #shown = new Map<string, Shown>();
+  readonly #frames = new Map<string, Frame>();
 
   constructor(core: Core, host: WindowGuideHost, loader: () => Promise<WindowGuide | { unavailable: string }>, options: WindowGuidesOptions = {}) {
     this.#core = core;
@@ -126,6 +153,7 @@ export class WindowGuides {
     this.#followMs = options.followMs ?? 33;
     this.#mouseMs = options.mouseMs ?? 25;
     this.#settleMs = options.settleMs ?? SETTLE_MS;
+    this.#frameIdleMs = options.frameIdleMs ?? FRAME_IDLE_MS;
   }
 
   async read({ threadId, target, filter, limit }: RpcParams<'windows.read'>, connection?: Connection): Promise<RpcResult<'windows.read'>> {
@@ -137,7 +165,9 @@ export class WindowGuides {
     if (!Number.isInteger(max) || max < 1 || max > WINDOW_READ_LIMIT.max) throw invalidParams(`limit must be a whole number from 1 to ${WINDOW_READ_LIMIT.max}`, { field: 'limit' });
     const guide = await this.#load();
     const window = await this.#host.grantedWindow(thread, target, 'read', connection);
+    await this.#front(thread.id, guide, window);
     const snapshot = await this.#read(thread, guide, window);
+    if (!this.#shown.has(thread.id)) this.#frameLater(thread.id);
     const wanted = filter?.trim().toLowerCase();
     const matching = wanted === undefined ? snapshot.controls : snapshot.controls.filter(control => control.name.toLowerCase().includes(wanted));
     return { windowId: window.id, process: window.process, controls: matching.slice(0, max), total: matching.length };
@@ -177,6 +207,7 @@ export class WindowGuides {
         throw refused(`window ${snapshot.window.id} of ${snapshot.window.process} is gone: read again`, { windowId: snapshot.window.id, code: 'gone' });
       }
       box = control;
+      await this.#front(thread.id, await this.#load(), window);
     } else if (name !== undefined) {
       if (target === undefined) throw invalidParams('point by name needs the window\'s target', { field: 'target' });
       if (typeof name !== 'string' || name.trim() === '' || name.length > 260 || /\p{Cc}/u.test(name)) {
@@ -184,6 +215,7 @@ export class WindowGuides {
       }
       const guide = await this.#load();
       window = await this.#host.grantedWindow(thread, target, 'read', connection);
+      await this.#front(thread.id, guide, window);
       const snapshot = await this.#read(thread, guide, window);
       control = this.#named(snapshot, name.trim());
       box = control;
@@ -228,6 +260,8 @@ export class WindowGuides {
     shown.follow.unref?.();
     shown.expiry.unref?.();
     this.#shown.set(thread.id, shown);
+    const framed = this.#frames.get(thread.id);
+    if (framed?.idle) { clearTimeout(framed.idle); framed.idle = null; }
     this.#core.logs.info(`Pointed at a ${control?.type ?? 'rectangle'} of window ${window.id} of ${window.process}`, { source: 'windows', event: 'window.point', threadId: thread.id, data: { windowId: window.id, process: window.process, width: box.width, height: box.height } });
     return { pointer: { ...pointer } };
   }
@@ -282,11 +316,13 @@ export class WindowGuides {
   /** An archived or deleted conversation's box and last read. */
   release(threadId: string): void {
     this.#remove(threadId, 'cleared');
+    this.#hideFrame(threadId);
     this.#snapshots.delete(threadId);
   }
 
   stop(): void {
     for (const threadId of [...this.#shown.keys()]) this.#remove(threadId, 'cleared');
+    for (const threadId of [...this.#frames.keys()]) this.#hideFrame(threadId);
     this.#snapshots.clear();
   }
 
@@ -418,6 +454,68 @@ export class WindowGuides {
       });
   }
 
+  /**
+   * A Chromium or Electron window builds its controls only while in front:
+   * the desktop app brings it there and frames it, saying why, and the read
+   * waits for it. Any other window is read where it is.
+   */
+  async #front(threadId: string, guide: WindowGuide, window: NativeWindow): Promise<void> {
+    if (!CHROMIUM_CLASS.test(window.className)) return;
+    if (!this.#showFrame(threadId, guide, window) || guide.foreground(window.id)) return;
+    const until = Date.now() + FRONT_WAIT_MS;
+    while (Date.now() < until && !guide.foreground(window.id)) await Bun.sleep(50);
+  }
+
+  /** Frames `window` for the conversation, once; false with no desktop app to draw it. */
+  #showFrame(threadId: string, guide: WindowGuide, window: NativeWindow): boolean {
+    const current = this.#frames.get(threadId);
+    if (current?.window.id === window.id && current.window.pid === window.pid) {
+      if (current.idle) { clearTimeout(current.idle); current.idle = null; }
+      return true;
+    }
+    this.#hideFrame(threadId);
+    const at = guide.frame(window.id);
+    const rect = at === null || at.minimized ? null : at.rect;
+    const boxId = newId('frame_');
+    if (this.#send(boxId, rect, window) === 0) return false;
+    const frame: Frame = { window, boxId, rect, idle: null, follow: setInterval(() => this.#followFrame(threadId, frame, guide), FRAME_FOLLOW_MS) };
+    frame.follow.unref?.();
+    this.#frames.set(threadId, frame);
+    this.#core.logs.info(`Framed window ${window.id} of ${window.process} and asked to bring it to the front`, { source: 'windows', event: 'window.frame', threadId, data: { windowId: window.id, process: window.process } });
+    return true;
+  }
+
+  #send(boxId: string, rect: ScreenRect | null, window: NativeWindow): number {
+    return this.#core.subscribers.pointer({ id: boxId, rect, label: '', look: { shape: 'box', pad: 0 }, frame: { app: window.process.replace(/\.exe$/i, ''), windowId: window.id } });
+  }
+
+  #followFrame(threadId: string, frame: Frame, guide: WindowGuide): void {
+    if (this.#frames.get(threadId) !== frame) return;
+    const at = guide.frame(frame.window.id);
+    if (at === null) { this.#hideFrame(threadId); return; }
+    const rect = at.minimized ? null : at.rect;
+    if (sameRect(rect, frame.rect)) return;
+    frame.rect = rect;
+    this.#send(frame.boxId, rect, frame.window);
+  }
+
+  /** The frame goes `FRAME_IDLE_MS` after the last box in it, unless a new box comes first. */
+  #frameLater(threadId: string): void {
+    const frame = this.#frames.get(threadId);
+    if (!frame || frame.idle) return;
+    frame.idle = setTimeout(() => this.#hideFrame(threadId), this.#frameIdleMs);
+    frame.idle.unref?.();
+  }
+
+  #hideFrame(threadId: string): void {
+    const frame = this.#frames.get(threadId);
+    if (!frame) return;
+    this.#frames.delete(threadId);
+    clearInterval(frame.follow);
+    if (frame.idle) clearTimeout(frame.idle);
+    this.#send(frame.boxId, null, frame.window);
+  }
+
   /** Takes the conversation's box away, or only `only` when given, and ends the waits on it. */
   #remove(threadId: string, why: WindowWaitEnd, only?: Shown): boolean {
     const shown = this.#shown.get(threadId);
@@ -427,6 +525,7 @@ export class WindowGuides {
     clearTimeout(shown.expiry);
     shown.tracked?.release();
     shown.tracked = null;
+    this.#frameLater(threadId);
     this.#core.subscribers.pointer({ id: shown.boxId, rect: null, label: shown.pointer.label, look: shown.pointer.look });
     for (const finish of [...shown.waiters]) finish(why);
     this.#core.logs.info(`Box over window ${shown.window.id} of ${shown.window.process} taken away: ${why}`, { source: 'windows', event: 'window.unpoint', threadId, data: { windowId: shown.window.id, process: shown.window.process, why } });

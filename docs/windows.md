@@ -13,7 +13,9 @@ An app the agent itself should run and drive goes on a
 
 Capture is read-only. Boite never restores, raises or focuses a window, never
 sends it input and never draws the cursor. The guide's box is a window of the
-desktop app above the others, which lets every click through.
+desktop app above the others, which lets every click through. The one
+exception is the guide in a Chromium or Electron app, which the desktop app
+brings to the front, framed with the reason ([below](#guiding-the-user)).
 
 ## Commands
 
@@ -206,6 +208,18 @@ boite window unpoint
   automation id is found again, looked for once a second near where it was
   last seen. A box on a rectangle (`--at`) keeps its place in the window: no
   app says what is drawn there.
+- A Chromium or Electron app (window class `Chrome_WidgetWin_*`: Discord,
+  Slack, VS Code, a browser) builds its controls only while it is in front:
+  covered by another window, Discord answered none (2026-11-01). Before
+  `read`, `point <target> --name` or `point <id>` in such a window, the core
+  frames it: the desktop app draws an accent edge around the whole app with a
+  card inside its top edge, "Discord stays in front: Boite follows its buttons
+  only while you can see it", and brings the app to the front once, when the
+  frame first shows. The read waits up to 1.5 s for it. Windows lets the app
+  the user works in hand the foreground over; when the user is in another app,
+  the call only flashes the window's taskbar button and the read finds what it
+  can. The frame follows the window and goes 15 s after the last box in it, so
+  the next step of a lesson keeps it.
 - Every box follows its window when the window moves, hides while it is
   minimized, and goes away with it, after `--seconds` (120 by default, 600 at
   most), on `unpoint`, or when the conversation is archived.

@@ -75,6 +75,39 @@ pub struct Layout {
     /// The label goes under the box: there was no room above it on the monitor.
     pub below: bool,
     pub look: Look,
+    /// For the frame around a whole window: the app's name, which the page writes in its sentence.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub frame: Option<String>,
+}
+
+/// The frame around a whole Chromium or Electron window, as the core asks for
+/// it: the app's name, and the window to bring to the front once.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FrameArg {
+    pub app: String,
+    pub window_id: String,
+}
+
+/// The frame's window: the framed window itself, cut to its monitor, the
+/// sentence drawn inside its top edge, so no margin is needed.
+pub fn place_frame(rect: ScreenRect, app: &str, scale: f64, monitor: (i32, i32, i32, i32)) -> ((i32, i32, u32, u32), Layout) {
+    let scale = if scale.is_finite() && scale > 0.0 { scale } else { 1.0 };
+    let left = rect.left.max(monitor.0);
+    let top = rect.top.max(monitor.1);
+    let right = (rect.left + rect.width).min(monitor.2).max(left + 1);
+    let bottom = (rect.top + rect.height).min(monitor.3).max(top + 1);
+    let layout = Layout {
+        x: f64::from(rect.left - left) / scale,
+        y: f64::from(rect.top - top) / scale,
+        width: f64::from(rect.width) / scale,
+        height: f64::from(rect.height) / scale,
+        label: String::new(),
+        below: false,
+        look: Look { shape: Shape::Box, pad: 0.0 },
+        frame: Some(app.to_owned()),
+    };
+    ((left, top, (right - left) as u32, (bottom - top) as u32), layout)
 }
 
 /// Where the window goes in physical pixels, and the box inside it. `scale`
@@ -101,6 +134,7 @@ pub fn place(rect: ScreenRect, label: &str, look: Look, scale: f64, monitor: (i3
         label: label.to_owned(),
         below,
         look,
+        frame: None,
     };
     ((left, top, width.max(1) as u32, height.max(1) as u32), layout)
 }
@@ -161,8 +195,16 @@ fn monitor_of<R: Runtime>(app: &AppHandle<R>, rect: ScreenRect) -> (f64, (i32, i
 /// command runs on the event loop, and building a window there deadlocks on
 /// Windows, since WebView2 needs that same loop to come up.
 #[tauri::command]
-pub async fn pointer_show(app: AppHandle, webview: Webview, id: String, rect: ScreenRect, label: String, look: Option<Look>) -> Result<(), String> {
+pub async fn pointer_show(app: AppHandle, webview: Webview, id: String, rect: ScreenRect, label: String, look: Option<Look>, frame: Option<FrameArg>) -> Result<(), String> {
     only_main(&webview)?;
+    let framed = match &frame {
+        None => None,
+        Some(FrameArg { app: name, window_id }) => {
+            let name: String = name.chars().filter(|c| !c.is_control()).take(64).collect();
+            let hwnd = window_id.parse::<u64>().map_err(|_| format!("pointer frame windowId must be a window id from `boite window list`, not {window_id:?}"))?;
+            Some((name, hwnd))
+        }
+    };
     let look = look.unwrap_or_default();
     if !look.pad.is_finite() || !(0.0..=PAD_MAX).contains(&look.pad) { return Err(format!("pointer pad must be from 0 to {PAD_MAX}, not {}", look.pad)); }
     if id.is_empty() || id.len() > 64 { return Err("pointer id must be 1 to 64 characters".into()); }
@@ -171,15 +213,15 @@ pub async fn pointer_show(app: AppHandle, webview: Webview, id: String, rect: Sc
     }
     let label: String = label.chars().filter(|c| !c.is_control()).take(80).collect();
     let state = app.state::<PointerState>();
-    let window_label = {
+    let (window_label, first) = {
         let mut windows = state.inner.lock().map_err(|_| "the pointer state is poisoned")?;
         match windows.shown.get(&id) {
-            Some(existing) => existing.clone(),
+            Some(existing) => (existing.clone(), false),
             None => {
                 let reused = windows.spare.pop().map(|(label, _)| label).filter(|label| app.get_webview_window(label).is_some());
                 let label = reused.unwrap_or_else(|| format!("{LABEL_PREFIX}{}", state.built.fetch_add(1, Ordering::AcqRel) + 1));
                 windows.shown.insert(id.clone(), label.clone());
-                label
+                (label, true)
             }
         }
     };
@@ -188,7 +230,10 @@ pub async fn pointer_show(app: AppHandle, webview: Webview, id: String, rect: Sc
         None => build(&app, &window_label).map_err(|error| format!("the pointer window could not be built: {error}"))?,
     };
     let (scale, monitor) = monitor_of(&app, rect);
-    let ((x, y, width, height), layout) = place(rect, &label, look, scale, monitor);
+    let ((x, y, width, height), layout) = match &framed {
+        Some((name, _)) => place_frame(rect, name, scale, monitor),
+        None => place(rect, &label, look, scale, monitor),
+    };
     window.set_position(PhysicalPosition::new(x, y)).map_err(|error| error.to_string())?;
     window.set_size(PhysicalSize::new(width, height)).map_err(|error| error.to_string())?;
     if let Ok(mut windows) = state.inner.lock() { windows.layouts.insert(window_label.clone(), layout.clone()); }
@@ -197,6 +242,14 @@ pub async fn pointer_show(app: AppHandle, webview: Webview, id: String, rect: Sc
     window.show().map_err(|error| error.to_string())?;
     #[cfg(windows)]
     if let Ok(hwnd) = window.hwnd() { crate::platform::overlay::raise(hwnd.0); }
+    // The framed app comes to the front once, when its frame first shows: this app is the one the
+    // user works in, so Windows lets it hand the foreground over.
+    #[cfg(windows)]
+    if let (true, Some((_, framed_hwnd))) = (first, &framed) {
+        if !crate::platform::overlay::bring_to_front(*framed_hwnd) { eprintln!("[shell] window {framed_hwnd} could not be brought to the front"); }
+    }
+    #[cfg(not(windows))]
+    let _ = first;
     keep_on_top(&app);
     Ok(())
 }
@@ -291,7 +344,18 @@ mod tests {
     fn the_label_goes_above_the_box_where_there_is_room() {
         let ((x, y, width, height), layout) = place(ScreenRect { left: 400, top: 300, width: 100, height: 30 }, "Click Build", Look::default(), 1.0, FULL_HD);
         assert_eq!((x, y, width, height), (372, 232, 420, 126));
-        assert_eq!(layout, Layout { x: 28.0, y: 68.0, width: 100.0, height: 30.0, label: "Click Build".into(), below: false, look: Look::default() });
+        assert_eq!(layout, Layout { x: 28.0, y: 68.0, width: 100.0, height: 30.0, label: "Click Build".into(), below: false, look: Look::default(), frame: None });
+    }
+
+    #[test]
+    fn a_frame_covers_its_window_cut_to_the_monitor() {
+        // A maximized window spills 8 px past the monitor on Windows.
+        let ((x, y, width, height), layout) = place_frame(ScreenRect { left: -8, top: -8, width: 1936, height: 1048 }, "Discord", 1.0, FULL_HD);
+        assert_eq!((x, y, width, height), (0, 0, 1920, 1040));
+        assert_eq!((layout.x, layout.y, layout.width, layout.frame.as_deref()), (-8.0, -8.0, 1936.0, Some("Discord")));
+        let ((x, y, width, height), layout) = place_frame(ScreenRect { left: 300, top: 200, width: 900, height: 600 }, "Slack", 1.5, (0, 0, 2880, 1620));
+        assert_eq!((x, y, width, height), (300, 200, 900, 600));
+        assert_eq!((layout.width, layout.height), (600.0, 400.0));
     }
 
     #[test]

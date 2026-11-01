@@ -11,6 +11,9 @@ export const fr: Translation = {
       waiting: 'En attente de la première image…',
       picture: 'Vue en direct de {process}'
     },
+    pointer: {
+      frame: '{app} reste au premier plan : Boite ne suit ses boutons que tant que vous le voyez'
+    },
     capture: {
       screenshot: "Capture d'écran", clip: 'Séquence de {count} images', stream: 'Vue en direct',
       open: 'Ouvrir la capture de {process}', alt: 'Capture de {process}'

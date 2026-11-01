@@ -176,6 +176,8 @@ export interface WindowGuide {
   frame(id: string): { rect: ScreenRect; minimized: boolean; above: boolean } | null;
   /** The primary button's state and the cursor, in physical pixels. */
   mouse(): { pressed: boolean; x: number; y: number };
+  /** Whether window `id` is the one in front, the one the keyboard goes to. */
+  foreground(id: string): boolean;
 }
 
 /** Delete-only access to vaults used by older Boite releases. Never read or store a value. */

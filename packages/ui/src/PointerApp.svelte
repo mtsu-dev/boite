@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import BoiteMark from './components/BoiteMark.svelte';
   import { startTheme } from './lib/theme';
+  import { fill, strings } from './lib/strings';
   import { pointerRing, pointerTag, type PointerLayout } from './lib/pointer-layout';
 
   /**
@@ -45,7 +46,17 @@
   });
 </script>
 
-{#if layout && ring}
+{#if layout?.frame !== undefined}
+  {#key shown}
+    <!-- The frame around a whole app Boite brought to the front, and why, inside its top edge. -->
+    <div class="pointer" data-testid="pointer-frame">
+      <div class="frame" style:left="{Math.max(0, layout.x)}px" style:top="{Math.max(0, layout.y)}px"
+        style:width="{Math.min(size.width, layout.x + layout.width) - Math.max(0, layout.x)}px" style:height="{Math.min(size.height, layout.y + layout.height) - Math.max(0, layout.y)}px">
+        <div class="notice"><span class="mark"><BoiteMark size={14} /></span><span class="text">{fill(strings.windows.pointer.frame, { app: layout.frame })}</span></div>
+      </div>
+    </div>
+  {/key}
+{:else if layout && ring}
   {#key shown}
     <div class="pointer" data-testid="pointer" data-below={layout.below} data-shape={layout.look.shape}>
       <div class="ring" style:left="{ring.left}px" style:top="{ring.top}px" style:width="{ring.width}px" style:height="{ring.height}px">
@@ -176,6 +187,43 @@
     border-radius: 3px 0 0 0;
   }
 
+  /* The frame: a quiet edge in the accent around the whole app, under any box, and the reason on
+     a card of the app's surface hanging from its top edge. */
+  .frame {
+    position: absolute;
+    box-sizing: border-box;
+    border: 2px solid var(--color-accent);
+    border-radius: var(--radius-frame);
+    box-shadow: 0 0 0 1px var(--pointer-halo), inset 0 0 0 1px var(--pointer-halo);
+    animation: settle-frame var(--dur-3) var(--ease-out-quint) both;
+  }
+
+  .notice {
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    translate: -50% 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    box-sizing: border-box;
+    max-width: calc(100% - 32px);
+    padding: 7px 12px 7px 10px;
+    font-size: var(--text-sm);
+    font-weight: 500;
+    line-height: 1.3;
+    color: var(--color-foreground);
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-edge);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 0 0 1px var(--pointer-halo), var(--shadow-e3);
+  }
+
+  @keyframes settle-frame {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
   @keyframes settle {
     from { opacity: 0; transform: scale(1.14); }
     to { opacity: 1; transform: scale(1); }
@@ -192,7 +240,7 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .ring, .tag { animation: none; transition: none; }
+    .ring, .tag, .frame { animation: none; transition: none; }
     .echo { display: none; }
   }
 

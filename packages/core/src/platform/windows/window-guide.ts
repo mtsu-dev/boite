@@ -36,6 +36,8 @@ function loadUser32() {
     GetSystemMetrics: { args: [I32], returns: I32 },
     IsIconic: { args: [U64], returns: I32 },
     IsHungAppWindow: { args: [U64], returns: I32 },
+    GetForegroundWindow: { args: [], returns: U64 },
+    GetAncestor: { args: [U64, FFIType.u32], returns: U64 },
   }).symbols;
 }
 
@@ -98,6 +100,19 @@ function frameOf(id: string): { rect: ScreenRect; minimized: boolean; above: boo
   }
 }
 
+const GA_ROOTOWNER = 3;
+
+/** The window in front is `id`, or a window it owns, such as one of its dialogs. */
+function foreground(id: string): boolean {
+  try {
+    const hwnd = windowOf(id);
+    const front = user32().GetForegroundWindow();
+    return front === hwnd || (front !== 0n && user32().GetAncestor(front, GA_ROOTOWNER) === hwnd);
+  } catch {
+    return false;
+  }
+}
+
 function mouse(): { pressed: boolean; x: number; y: number } {
   const api = user32();
   // GetAsyncKeyState reads the physical buttons: with them swapped, the primary one is the right.
@@ -140,5 +155,6 @@ export async function loadWindowGuide(): Promise<WindowGuide | { unavailable: st
     },
     frame: frameOf,
     mouse,
+    foreground,
   };
 }

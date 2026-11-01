@@ -182,6 +182,12 @@ export interface WindowPointerBox {
   rect: { left: number; top: number; width: number; height: number } | null;
   label: string;
   look: WindowPointerLook;
+  /**
+   * Set on the frame drawn around a whole Chromium or Electron window, which
+   * builds its controls only while it is in front: the desktop app brings that
+   * window to the front once, and the page says why, naming the app.
+   */
+  frame?: { app: string; windowId: string };
 }
 
 /** Why `windows.waitClick` ended without a click. */

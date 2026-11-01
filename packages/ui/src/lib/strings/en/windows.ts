@@ -10,6 +10,10 @@ export const strings = {
       waiting: 'Waiting for the first picture…',
       picture: 'Live view of {process}'
     },
+    /** The frame drawn around an app Boite brought to the front to follow its buttons. */
+    pointer: {
+      frame: '{app} stays in front: Boite follows its buttons only while you can see it'
+    },
     capture: {
       screenshot: 'Screenshot', clip: 'Clip of {count} frames', stream: 'Live view',
       open: 'Open the capture of {process}', alt: 'Capture of {process}'

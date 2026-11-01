@@ -80,6 +80,19 @@ test('a control at the screen edge keeps its whole ring inside the window, and a
   expect(box('[data-testid="pointer-label"]')).toBeNull();
 });
 
+test('a frame around a whole app says why the app was brought to the front, inside its top edge', async () => {
+  invoke.mockResolvedValue(null);
+  apps.push(mount(PointerApp, { target: document.body }));
+  await settle();
+  // A maximized window spills past the monitor: the frame stays inside the page.
+  handlers.get('pointer://layout')!({ payload: { x: -8, y: -8, width: window.innerWidth + 16, height: 600, label: '', below: false, look: { shape: 'box', pad: 0 }, frame: 'Discord' } });
+  flushSync();
+  const frame = box('.frame')!;
+  expect([frame.style.left, frame.style.top, frame.style.width, frame.style.height]).toEqual(['0px', '0px', `${window.innerWidth}px`, '592px']);
+  expect(box('[data-testid="pointer-frame"] .text')!.textContent).toBe('Discord stays in front: Boite follows its buttons only while you can see it');
+  expect(box('.ring')).toBeNull();
+});
+
 test('only the desktop app of the core\'s own machine hands a box to the shell', async () => {
   const relay = vi.fn(async () => undefined);
   const shown = { id: 'box_1', rect: { left: 10, top: 20, width: 30, height: 40 }, label: 'Play', look: { shape: 'box' as const, pad: 12 } };
@@ -90,8 +103,10 @@ test('only the desktop app of the core\'s own machine hands a box to the shell',
   expect(relay).not.toHaveBeenCalled();
   await pointerRequested({ localCore: true }, shown, relay);
   await pointerRequested({ localCore: true }, { ...shown, rect: null }, relay);
+  await pointerRequested({ localCore: true }, { ...shown, id: 'frame_1', frame: { app: 'Discord', windowId: '42' } }, relay);
   expect(relay.mock.calls).toEqual([
     ['pointer_show', { id: 'box_1', rect: shown.rect, label: 'Play', look: shown.look }],
-    ['pointer_hide', { id: 'box_1' }]
+    ['pointer_hide', { id: 'box_1' }],
+    ['pointer_show', { id: 'frame_1', rect: shown.rect, label: 'Play', look: shown.look, frame: { app: 'Discord', windowId: '42' } }]
   ]);
 });
