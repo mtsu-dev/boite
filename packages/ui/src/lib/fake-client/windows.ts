@@ -331,13 +331,14 @@ export function windowsMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
       const matching = wanted ? controls.filter(control => control.name.toLowerCase().includes(wanted)) : controls;
       return { windowId: window.id, process: window.process, controls: structuredClone(matching.slice(0, max)), total: matching.length };
     },
-    'windows.point': async ({ threadId, control: id, target, name, at, label = '', seconds = WINDOW_POINT_SECONDS.default, shape = 'box', pad = WINDOW_POINT_PAD.default }) => {
+    'windows.point': async ({ threadId, control: id, target, name, at, label = '', seconds = WINDOW_POINT_SECONDS.default, shape = 'box', pad = WINDOW_POINT_PAD.default, notify = false }) => {
       const thread = active(threadId);
       if ([id, name, at].filter(value => value !== undefined).length !== 1) throw invalid('point needs exactly one of control, name or at', 'control');
       if (label.length > WINDOW_POINT_LABEL_MAX) throw invalid(`label must be at most ${WINDOW_POINT_LABEL_MAX} characters with no control characters`, 'label');
       if (!(seconds >= 1 && seconds <= WINDOW_POINT_SECONDS.max)) throw invalid(`seconds must lie between 1 and ${WINDOW_POINT_SECONDS.max}`, 'seconds');
       if (shape !== 'box' && shape !== 'round') throw invalid('shape must be box or round', 'shape');
       if (!Number.isInteger(pad) || pad < 0 || pad > WINDOW_POINT_PAD.max) throw invalid(`pad must be a whole number of pixels from 0 to ${WINDOW_POINT_PAD.max}`, 'pad');
+      if (typeof notify !== 'boolean') throw invalid('notify must be true or false', 'notify');
       let window: FakeWindow;
       let box: { x: number; y: number; width: number; height: number };
       let control: WindowControl | undefined;
@@ -372,7 +373,8 @@ export function windowsMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
       const pointer: WindowPointer = {
         windowId: window.id, process: window.process, label: label === '' && control ? control.name : label,
         x: box.x, y: box.y, width: box.width, height: box.height, expiresAt: Date.now() + seconds * 1000, look: { shape, pad },
-        ...(control ? { control: { type: control.type, name: control.name } } : {})
+        ...(control ? { control: { type: control.type, name: control.name } } : {}),
+        ...(notify ? { notify: true as const } : {})
       };
       pointers.set(threadId, { pointer, timer: setTimeout(() => unpoint(threadId, 'timeout'), seconds * 1000), end: new Set() });
       return { pointer: structuredClone(pointer) };

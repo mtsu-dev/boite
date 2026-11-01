@@ -42,13 +42,14 @@ const FILTER_MAX = 100;
 /** How long a box stays after a wait on it ends without a click, at least. */
 const WAIT_GRACE_MS = 30_000;
 /**
- * How long a followed control stays put in its window before its box shows
- * again. Chromium and Electron apps report where a control is in bursts while
- * it scrolls (measured in Discord on 2026-11-01: 4 positions for 12 wheel
- * notches in 0.9 s, up to 356 ms apart, the last ~200 ms after the scroll), so
- * a box drawn on each answer would trail the control. The box hides on the
- * first move instead, which comes within ~20 ms, and shows where the control
- * settled.
+ * How long a followed control of a Chromium or Electron window stays put
+ * before its box shows again. Those apps report where a control is in bursts
+ * while it scrolls (measured in Discord on 2026-11-01: 4 positions for 12
+ * wheel notches in 0.9 s, up to 356 ms apart, the last ~200 ms after the
+ * scroll), so a box drawn on each answer would trail the control. The box
+ * hides on the first move instead, which comes within ~20 ms, and shows where
+ * the control settled. Other apps answer with the control's place at each
+ * step, and their box follows every one.
  */
 const SETTLE_MS = 450;
 /**
@@ -111,8 +112,14 @@ interface Shown {
   seen?: { rect: ScreenRect | null; since: number };
   /** Set once the app dropped the control: the box hides until it is found again. */
   lost?: { nextAt: number; looking: boolean };
-  waiters: Set<(end: WindowWaitEnd | 'clicked') => void>;
+  waiters: Set<(end: BoxEnd) => void>;
+  /** The agent hears how the box ended as a message, when no wait took the click. */
+  notify: boolean;
+  /** Reads the mouse while a wait or `notify` needs the click. */
+  clicks: ReturnType<typeof setInterval> | null;
 }
+
+type BoxEnd = WindowWaitEnd | 'clicked';
 
 /** The frame around a Chromium window a conversation guides in. */
 interface Frame {
@@ -190,6 +197,8 @@ export class WindowGuides {
       throw invalidParams(`pad must be a whole number of pixels from 0 to ${WINDOW_POINT_PAD.max}`, { field: 'pad' });
     }
     const look = { shape, pad };
+    const notify = params.notify ?? false;
+    if (typeof notify !== 'boolean') throw invalidParams('notify must be true or false', { field: 'notify' });
 
     // Every check that needs no OS comes first: a machine without the guide refuses the same bad call the same way.
     let window: NativeWindow;
@@ -244,6 +253,7 @@ export class WindowGuides {
       x: box.x, y: box.y, width: box.width, height: box.height, expiresAt: Date.now() + seconds * 1000, look,
       ...(control ? { control: { type: control.type, name: control.name } } : {}),
       ...(frame.above ? { behind: true as const } : {}),
+      ...(notify ? { notify: true as const } : {}),
     };
     let tracked: TrackedControl | null = null;
     if (control) {
@@ -251,7 +261,7 @@ export class WindowGuides {
       catch { /* not followed: the box keeps its place in the window */ }
     }
     const shown: Shown = {
-      pointer, window, boxId, screen: frame.minimized ? null : screen, waiters: new Set(), tracked, control: control ?? null,
+      pointer, window, boxId, screen: frame.minimized ? null : screen, waiters: new Set(), tracked, control: control ?? null, notify, clicks: null,
       // Settled already where it was read: the box shows at once.
       ...(tracked && !frame.minimized ? { seen: { rect: { left: box.x, top: box.y, width: box.width, height: box.height }, since: 0 } } : {}),
       follow: setInterval(() => this.#follow(thread.id, shown, guide), this.#followMs),
@@ -260,6 +270,7 @@ export class WindowGuides {
     shown.follow.unref?.();
     shown.expiry.unref?.();
     this.#shown.set(thread.id, shown);
+    if (notify) this.#watchClicks(thread.id, shown, guide);
     const framed = this.#frames.get(thread.id);
     if (framed?.idle) { clearTimeout(framed.idle); framed.idle = null; }
     this.#core.logs.info(`Pointed at a ${control?.type ?? 'rectangle'} of window ${window.id} of ${window.process}`, { source: 'windows', event: 'window.point', threadId: thread.id, data: { windowId: window.id, process: window.process, width: box.width, height: box.height } });
@@ -280,32 +291,48 @@ export class WindowGuides {
       shown.expiry = setTimeout(() => this.#remove(thread.id, 'timeout', shown), until - Date.now());
       shown.expiry.unref?.();
     }
-    const end = await new Promise<WindowWaitEnd | 'clicked'>(resolve => {
-      // A button already held when the wait starts is not this click.
-      let held = true;
-      const poll = setInterval(() => {
-        let mouse: { pressed: boolean; x: number; y: number };
-        try { mouse = guide.mouse(); } catch { return; }
-        const at = shown.screen;
-        if (mouse.pressed && !held && at !== null && mouse.x >= at.left && mouse.x < at.left + at.width && mouse.y >= at.top && mouse.y < at.top + at.height) {
-          finish('clicked');
-          return;
-        }
-        held = mouse.pressed;
-      }, this.#mouseMs);
+    const end = await new Promise<BoxEnd>(resolve => {
       const timer = setTimeout(() => finish('timeout'), seconds * 1000);
-      const finish = (reason: WindowWaitEnd | 'clicked') => {
-        clearInterval(poll);
+      const finish = (reason: BoxEnd) => {
         clearTimeout(timer);
         shown.waiters.delete(finish);
+        if (shown.waiters.size === 0 && !shown.notify && shown.clicks) { clearInterval(shown.clicks); shown.clicks = null; }
         resolve(reason);
       };
       shown.waiters.add(finish);
+      this.#watchClicks(thread.id, shown, guide);
     });
-    if (end !== 'clicked') return { clicked: false, reason: end };
-    this.#core.logs.info(`The person clicked the box over window ${shown.window.id} of ${shown.window.process}`, { source: 'windows', event: 'window.click', threadId: thread.id, data: { windowId: shown.window.id, process: shown.window.process } });
-    this.#remove(thread.id, 'cleared', shown);
-    return { clicked: true, pointer: { ...shown.pointer } };
+    return end === 'clicked' ? { clicked: true, pointer: { ...shown.pointer } } : { clicked: false, reason: end };
+  }
+
+  /** Reads the mouse until a press inside the box ends it; a button already held when it starts is not that click. */
+  #watchClicks(threadId: string, shown: Shown, guide: WindowGuide): void {
+    if (shown.clicks) return;
+    let held = true;
+    shown.clicks = setInterval(() => {
+      let mouse: { pressed: boolean; x: number; y: number };
+      try { mouse = guide.mouse(); } catch { return; }
+      const at = shown.screen;
+      if (mouse.pressed && !held && at !== null && mouse.x >= at.left && mouse.x < at.left + at.width && mouse.y >= at.top && mouse.y < at.top + at.height) {
+        this.#core.logs.info(`The person clicked the box over window ${shown.window.id} of ${shown.window.process}`, { source: 'windows', event: 'window.click', threadId, data: { windowId: shown.window.id, process: shown.window.process } });
+        this.#remove(threadId, 'clicked', shown);
+        return;
+      }
+      held = mouse.pressed;
+    }, this.#mouseMs);
+    shown.clicks.unref?.();
+  }
+
+  /** Without a wait to take it, how the box ended reaches the agent as a message, as an answer to `boite ask` does. */
+  #tell(threadId: string, shown: Shown, why: BoxEnd): void {
+    const { pointer } = shown;
+    const what = pointer.control ? `${pointer.control.type} "${pointer.control.name}"` : `the ${pointer.width}x${pointer.height} rectangle at ${pointer.x},${pointer.y}`;
+    const where = `${what} in window ${pointer.windowId} (${pointer.process})`;
+    const text = why === 'clicked' ? `Boite: the user clicked the box on ${where}; the box is gone.`
+      : why === 'timeout' ? `Boite: the box on ${where} timed out without a click.`
+      : `Boite: the window under the box on ${where} closed before a click.`;
+    try { this.#core.threads.deferred.deliverAnswer(threadId, text); }
+    catch (error) { this.#core.logs.warn(`The end of a box could not reach its conversation: ${messageOf(error)}`, { source: 'windows', event: 'window.notify', threadId }); }
   }
 
   unpoint({ threadId }: RpcParams<'windows.unpoint'>, connection?: Connection): RpcResult<'windows.unpoint'> {
@@ -415,7 +442,8 @@ export class WindowGuides {
           : { left: live.left - frame.rect.left, top: live.top - frame.rect.top, width: live.width, height: live.height };
         const now = Date.now();
         if (shown.seen === undefined || !sameRect(inWindow, shown.seen.rect)) shown.seen = { rect: inWindow, since: now };
-        if (inWindow === null || now - shown.seen.since < this.#settleMs) {
+        const settle = CHROMIUM_CLASS.test(shown.window.className) ? this.#settleMs : 0;
+        if (inWindow === null || now - shown.seen.since < settle) {
           screen = null;
         } else {
           screen = live as ScreenRect;
@@ -516,13 +544,18 @@ export class WindowGuides {
     this.#send(frame.boxId, null, frame.window);
   }
 
-  /** Takes the conversation's box away, or only `only` when given, and ends the waits on it. */
-  #remove(threadId: string, why: WindowWaitEnd, only?: Shown): boolean {
+  /**
+   * Takes the conversation's box away, or only `only` when given, and ends the
+   * waits on it. A box the agent took away or replaced tells it nothing.
+   */
+  #remove(threadId: string, why: BoxEnd, only?: Shown): boolean {
     const shown = this.#shown.get(threadId);
     if (!shown || (only !== undefined && shown !== only)) return false;
     this.#shown.delete(threadId);
     clearInterval(shown.follow);
     clearTimeout(shown.expiry);
+    if (shown.clicks) clearInterval(shown.clicks);
+    if (shown.notify && shown.waiters.size === 0 && why !== 'cleared') this.#tell(threadId, shown, why);
     shown.tracked?.release();
     shown.tracked = null;
     this.#frameLater(threadId);

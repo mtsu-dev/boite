@@ -245,8 +245,9 @@ On Windows, the same command guides the user instead of acting for them.
 click-through box with that label above every window; `point <target> --name
 <name>` finds the control itself and `point <target> --at x,y,w,h` takes a
 rectangle for an app with no accessibility tree. `--round` draws a pill or a
-circle and `--pad <px>` sets the gap around the control. `wait-click` returns once the
-user clicks inside the box, and `unpoint` takes the box away. See
+circle and `--pad <px>` sets the gap around the control. `point` returns at once:
+the click, or the box timing out, arrives later as a message, so the agent keeps
+working. `wait-click` blocks until the click instead, and `unpoint` takes the box away. See
 [guiding the user](windows.md#guiding-the-user).
 
 ## Virtual desktop

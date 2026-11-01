@@ -168,6 +168,8 @@ export interface WindowPointer {
    * Start menu: the box stays behind it, so the agent says where to click.
    */
   behind?: true;
+  /** The agent hears of the click, or of the box ending without one, as a message instead of waiting. */
+  notify?: true;
 }
 
 /**
@@ -264,10 +266,12 @@ export interface WindowsRpcMethods {
    * `windows.read`; `name`, the one control of `target` with that name, read
    * as `windows.read` does; `at`, a rectangle of `target` in its pixels or
    * fractions, for an app with no accessibility tree. Replaces the
-   * conversation's previous box.
+   * conversation's previous box. With `notify`, the agent keeps working: the
+   * click, or the box timing out or losing its window first, reaches its
+   * conversation as a message, unless a `windows.waitClick` took the click.
    */
   'windows.point': {
-    params: { threadId: string; control?: number; target?: WindowTarget; name?: string; at?: WindowCrop; label?: string; seconds?: number; shape?: WindowPointerShape; pad?: number };
+    params: { threadId: string; control?: number; target?: WindowTarget; name?: string; at?: WindowCrop; label?: string; seconds?: number; shape?: WindowPointerShape; pad?: number; notify?: boolean };
     result: { pointer: WindowPointer };
   };
   /** Waits until the person presses the primary button inside the conversation's box, then takes the box away. */

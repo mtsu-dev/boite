@@ -148,13 +148,12 @@ the [Device panel](devices.md):
 
 On Windows, an agent can teach the user an app instead of acting for them: it
 reads a window's controls as text, draws a box over the one to press, and
-waits for the user's click there. Nothing is ever clicked, typed or focused
+hears of the user's click there. Nothing is ever clicked, typed or focused
 for the user.
 
 ```sh
 boite window read --process Unity --filter play
 boite window point 3 --label "Press Play"
-boite window wait-click --timeout 120
 boite window point --process Unity --name Window
 boite window point --process Unity --at 0.4,0.3,0.2,0.2 --label "The Scene view"
 boite window unpoint
@@ -194,16 +193,20 @@ boite window unpoint
   outside the control the ring runs, 5 CSS pixels by default and 24 at most;
   the shell widens the window to keep the glow and the echo whole.
 - A box on a control (by id or by name) follows the control itself: the core
-  holds its UI Automation element and asks the app where it is every 33 ms.
-  When the control moves inside its window, as when the window scrolls, the
-  box hides at once and shows again where the control settled, after 450 ms
-  without a move; it stays hidden while the control is out of view, by the
-  app's word or under the window's edge. Chromium and Electron apps report
+  holds its UI Automation element and asks the app where it is every 33 ms,
+  and the box moves to each answer, through a scroll too (measured in the
+  Microsoft Store on 2026-11-01: its tile answered a new place every 6 to
+  20 ms while it scrolled and was never dropped, and the box made 134 moves
+  in a 90 s session without hiding). It stays hidden
+  while the control is out of view, by the app's word or under the window's
+  edge. Chromium and Electron apps (window class `Chrome_WidgetWin_*`) report
   positions in bursts while they scroll (measured in Discord on 2026-11-01:
   4 positions for 12 wheel notches in 0.9 s, up to 356 ms apart, the last
   about 200 ms after the scroll, the first within 20 ms), so a box moved on
-  each answer would trail the control. Dragging the window moves the box at
-  once. An app that drops the element, as a list re-rendering its
+  each answer would trail the control: in their windows, the box hides on
+  the first move inside the window and shows again where the control
+  settled, after 450 ms without a move. Dragging the window moves the box at
+  once in every app. An app that drops the element, as a list re-rendering its
   rows does, gets the box hidden until a control of the same type, name and
   automation id is found again, looked for once a second near where it was
   last seen. A box on a rectangle (`--at`) keeps its place in the window: no
@@ -223,9 +226,15 @@ boite window unpoint
 - Every box follows its window when the window moves, hides while it is
   minimized, and goes away with it, after `--seconds` (120 by default, 600 at
   most), on `unpoint`, or when the conversation is archived.
-- `wait-click` returns once the user presses the primary mouse button inside
-  the box, then takes the box away. A button already held when the wait starts
-  does not count. Without a click within `--timeout` (120 s by default, 600 at
+- `boite window point` returns at once and the agent keeps working, or ends
+  its turn. The click inside the box, or the box timing out or losing its
+  window first, reaches the conversation later as a message starting with
+  `Boite:`, as an answer to `boite ask` does: steered into the running turn,
+  or a turn of its own. A box the agent replaced or took away tells it
+  nothing. The RPC asks for this with `notify: true`.
+- `wait-click` blocks instead: it returns once the user presses the primary
+  mouse button inside the box, then takes the box away, and that click sends
+  no message. A button already held when the wait starts does not count. Without a click within `--timeout` (120 s by default, 600 at
   most), the box stays for another try: a wait keeps it up until at least
   30 s after the wait ends. The agent learns only that the click
   happened.

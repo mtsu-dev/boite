@@ -203,7 +203,7 @@ describe('window guide', () => {
     await eventually(() => expect(boxes[0]!.rect).toBeNull());
   });
 
-  test('a box on a control hides while the window scrolls and shows where the control settled, out of view stays hidden, and a re-rendered control is found again', async () => {
+  test('a box on a control follows each step of a scroll, out of view stays hidden, and a re-rendered control is found again', async () => {
     const answered = answer('once');
     await agent.call('windows.read', { threadId, target: { id: '101' } });
     await answered;
@@ -215,14 +215,14 @@ describe('window guide', () => {
     // Shown at once where it was read, not after a settle.
     expect(boxes[0]!.rect).not.toBeNull();
 
-    // The window scrolls: the box hides on the first move, stays hidden while the control keeps moving, and shows where it settled.
+    // A native app answers with each step of a scroll: the box follows every one at once and never hides.
+    const steps: (ScreenRect | null)[] = [];
+    app.on('windows.pointer', box => { if (box.id === boxes[0]!.id) steps.push(box.rect); });
     desk.live.rect = { left: 1200, top: 600, width: 40, height: 20 };
-    await eventually(() => expect(boxes[0]!.rect).toBeNull());
-    await Bun.sleep(SETTLE_MS / 2);
+    await eventually(() => expect(boxes[0]!.rect).toEqual({ left: 1200, top: 600, width: 40, height: 20 }), SETTLE_MS / 2);
     desk.live.rect = { left: 1200, top: 640, width: 40, height: 20 };
-    await Bun.sleep(SETTLE_MS * 0.75);
-    expect(boxes[0]!.rect).toBeNull();
-    await eventually(() => expect(boxes[0]!.rect).toEqual({ left: 1200, top: 640, width: 40, height: 20 }));
+    await eventually(() => expect(boxes[0]!.rect).toEqual({ left: 1200, top: 640, width: 40, height: 20 }), SETTLE_MS / 2);
+    expect(steps).toEqual([{ left: 1200, top: 600, width: 40, height: 20 }, { left: 1200, top: 640, width: 40, height: 20 }]);
     // Dragging the window moves the box at once: the control stays put in it.
     desk.frames.get('101')!.rect.left += 10;
     desk.live.rect = { left: 1210, top: 640, width: 40, height: 20 };
@@ -267,8 +267,20 @@ describe('window guide', () => {
     expect(Date.now() - started).toBeGreaterThanOrEqual(40);
     await eventually(() => expect(boxes).toMatchObject([{ rect: { left: 1000, top: 500, width: 400, height: 300 }, label: '', frame: { app: 'Unity', windowId: '101' } }]));
 
-    // A box in the window keeps the frame; the frame follows the window.
+    // Chromium reports a scroll in bursts: the box hides on the first move, stays hidden while the control keeps moving, and shows where it settled.
+    desk.live.rect = { left: 1200, top: 530, width: 40, height: 20 };
     await agent.call('windows.point', { threadId, control: 3 });
+    const box = () => boxes.find(entry => !entry.frame)!;
+    await eventually(() => expect(box().rect).toEqual({ left: 1200, top: 530, width: 40, height: 20 }));
+    desk.live.rect = { left: 1200, top: 600, width: 40, height: 20 };
+    await eventually(() => expect(box().rect).toBeNull());
+    await Bun.sleep(SETTLE_MS / 2);
+    desk.live.rect = { left: 1200, top: 640, width: 40, height: 20 };
+    await Bun.sleep(SETTLE_MS * 0.75);
+    expect(box().rect).toBeNull();
+    await eventually(() => expect(box().rect).toEqual({ left: 1200, top: 640, width: 40, height: 20 }));
+
+    // A box in the window keeps the frame; the frame follows the window.
     desk.frames.get('101')!.rect.top += 20;
     await eventually(() => expect(boxes[0]!.rect).toMatchObject({ top: 520 }));
     await Bun.sleep(250);
@@ -319,6 +331,37 @@ describe('window guide', () => {
     expect(await cleared).toEqual({ clicked: false, reason: 'cleared' });
   });
 
+  test('a box pointed with notify tells the agent of the click, or of its end without one, as a message, unless a wait took the click', async () => {
+    // What reached the agent as a prompt: echo says it back, which is not counted.
+    const told = () => harness.core.journal.listMessages(threadId).filter(message => message.role === 'user').flatMap(message => message.parts)
+      .flatMap(part => part.type === 'text' && part.text.startsWith('Boite: ') ? [part.text] : []);
+    const at = { x: 100, y: 100, width: 50, height: 50, unit: 'px' as const };
+    const { pointer } = await agent.call('windows.point', { threadId, target: { id: '101' }, at, notify: true });
+    expect(pointer.notify).toBe(true);
+    await Bun.sleep(20);
+    Object.assign(desk.mouse, { pressed: true, x: 1120, y: 620 });
+    await eventually(() => expect(boxes[0]!.rect).toBeNull());
+    await eventually(() => expect(told()).toEqual(['Boite: the user clicked the box on the 50x50 rectangle at 100,100 in window 101 (Unity.exe); the box is gone.']), 5000);
+
+    // Timed out: said once. Replaced or taken away by the agent: nothing.
+    Object.assign(desk.mouse, { pressed: false });
+    await agent.call('windows.point', { threadId, target: { id: '101' }, at, notify: true, seconds: 1 });
+    await eventually(() => expect(told()).toHaveLength(2), 5000);
+    expect(told()[1]).toBe('Boite: the box on the 50x50 rectangle at 100,100 in window 101 (Unity.exe) timed out without a click.');
+    await agent.call('windows.point', { threadId, target: { id: '101' }, at, notify: true });
+    await agent.call('windows.point', { threadId, target: { id: '101' }, at, notify: true });
+    await agent.call('windows.unpoint', { threadId });
+
+    // A wait takes the click: the agent hears it there, not twice.
+    await agent.call('windows.point', { threadId, target: { id: '101' }, at, notify: true });
+    const waiting = agent.call('windows.waitClick', { threadId, timeoutSeconds: 5 });
+    await Bun.sleep(20);
+    Object.assign(desk.mouse, { pressed: true, x: 1120, y: 620 });
+    expect(await waiting).toMatchObject({ clicked: true });
+    await Bun.sleep(300);
+    expect(told()).toHaveLength(2);
+  }, 15_000);
+
   test('an archived conversation takes its box away', async () => {
     await agent.call('windows.point', { threadId, target: { id: '101' }, at: { x: 0, y: 0, width: 10, height: 10, unit: 'px' } });
     await owner.call('threads.archive', { threadId });
@@ -355,8 +398,8 @@ describe('window guide', () => {
     const read = await run('read', '--id', '101', '--limit', '2');
     await answered;
     expect(read.out).toBe('window: 101 (Unity.exe)\n#1 MenuItem "File" 4,4 40x20\n#2 MenuItem "Edit" 48,4 40x20\n2 more: narrow with --filter or raise --limit\n');
-    expect((await run('point', '2', '--label', 'Open Edit')).out).toMatch(/^pointing at MenuItem "Edit" of window 101 \(Unity.exe\) with "Open Edit" for 120 s\n$/);
-    expect((await run('point', '--id', '101', '--at', '0,0,0.5,0.5', '--seconds', '30')).out).toMatch(/^pointing at 0,0 200x150 of window 101 \(Unity.exe\) for 30 s\n$/);
+    expect((await run('point', '2', '--label', 'Open Edit')).out).toMatch(/^pointing at MenuItem "Edit" of window 101 \(Unity.exe\) with "Open Edit" for 120 s\nkeep working: the click, or the box timing out, arrives as a message\n$/);
+    expect((await run('point', '--id', '101', '--at', '0,0,0.5,0.5', '--seconds', '30')).out).toMatch(/^pointing at 0,0 200x150 of window 101 \(Unity.exe\) for 30 s\n/);
     expect((await run('point', '--id', '101')).error).toContain('needs an id from window read (3 for #3), or a target with exactly one of --name or --at');
     Object.assign(desk.mouse, { pressed: false });
     setTimeout(() => Object.assign(desk.mouse, { pressed: true, x: 1010, y: 510 }), 50);

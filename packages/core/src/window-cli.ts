@@ -44,15 +44,17 @@ export const WINDOW_HELP = `boite window <command> [args] [--json]
                                  takes it. Click-through, one box per conversation,
                                  gone after ${WINDOW_POINT_SECONDS.default} s by default (${WINDOW_POINT_SECONDS.max} at most).
                                  --round draws a pill, a circle around an icon;
-                                 --pad sets the gap around the control (${WINDOW_POINT_PAD.default} px, ${WINDOW_POINT_PAD.max} at most)
+                                 --pad sets the gap around the control (${WINDOW_POINT_PAD.default} px, ${WINDOW_POINT_PAD.max} at most).
+                                 point returns at once: the click, or the box timing
+                                 out, arrives later as a message
   wait-click [--timeout <s>]     wait until the user clicks inside the box, then take
-                                 it away; ${WINDOW_POINT_SECONDS.default} s by default
+                                 it away, with no message; ${WINDOW_POINT_SECONDS.default} s by default
   unpoint                        take the box away
 <target> is --id <id>, --process <name> or --title <part of the title>. Several
 matches are refused with the candidates: pick one by --id. The taskbar is the
 explorer.exe window with no title.
-To teach the user an app, guide instead of acting: read, point, wait-click, then
-read again for the next step. An app with no accessibility tree (a game, a Unity
+To teach the user an app, guide instead of acting: read, point, keep working or
+end the turn, and read again for the next step once the click arrives. An app with no accessibility tree (a game, a Unity
 scene view) lists few controls: take a small screenshot and point --at it.
 An app the project has not allowed waits up to 10 minutes for the owner's answer
 on a consent card. Password managers and the sign-in screen are never captured;
@@ -102,9 +104,11 @@ function pointerLine(pointer: WindowPointer): string {
   const what = pointer.control ? `${pointer.control.type} "${pointer.control.name}"` : `${pointer.x},${pointer.y} ${pointer.width}x${pointer.height}`;
   const label = pointer.label ? ` with "${pointer.label}"` : '';
   const line = `pointing at ${what} of window ${pointer.windowId} (${pointer.process})${label} for ${Math.round((pointer.expiresAt - Date.now()) / 1000)} s`;
+  const told = pointer.notify ? `${line}
+keep working: the click, or the box timing out, arrives as a message` : line;
   // The Start menu and the system's other flyouts lie above every app's window, the box included.
-  return pointer.behind ? `${line}
-the system draws this window above the box, so the user cannot see it: say where to click; wait-click still works` : line;
+  return pointer.behind ? `${told}
+the system draws this window above the box, so the user cannot see it: say where to click; the click still counts` : told;
 }
 
 function windowLine(window: DesktopWindow): string {
@@ -200,7 +204,8 @@ export async function windowCommand(args: string[], io: CliIo, client: CoreClien
       const atText = flag(rest, '--at');
       const at = atText === undefined ? undefined : parseWindowCrop(atText);
       if (at === null) throw new Usage('window point --at takes x,y,w,h in pixels, or in fractions from 0 to 1');
-      const common = { threadId, ...(label === undefined ? {} : { label }), ...(seconds === undefined ? {} : { seconds }),
+      // The agent keeps working: the click arrives later as a message.
+      const common = { threadId, notify: true, ...(label === undefined ? {} : { label }), ...(seconds === undefined ? {} : { seconds }),
         ...(roundAt >= 0 ? { shape: 'round' as const } : {}), ...(pad === undefined ? {} : { pad }) };
       const id = /^#?\d+$/.test(rest[0] ?? '') ? Number(rest.shift()!.replace('#', '')) : undefined;
       let params: RpcParams<'windows.point'>;
