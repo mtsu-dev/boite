@@ -226,6 +226,18 @@ export const SCENARIOS: Record<string, Scenario> = {
     await env.call('agents.profile.save', { id: agent.id, expectedRevision: saved.revision, value: { ...saved, selection: { ...saved.selection, effort: low } } });
     same((await env.call('agents.runtime.get', { agentId: agent.id })).defaultRoute.effort, low, 'effort after a profile save');
   },
+  'agents.avatar.set dresses a bot from its thread at once in a picture this machine holds, and refuses one it does not': async (env) => {
+    const setup = await echo(env);
+    const selection = { providerId: setup.provider.id, accountId: setup.account.id, model: setup.model, effort: null, permissionMode: 'default' as const };
+    const agent = await env.call('agents.profile.save', { value: { name: 'Dressed', domain: '', instructions: '', avatar: '', selection, status: 'active' } });
+    const { threadId } = await env.call('agents.open', { agentId: agent.id });
+    const { avatar } = await env.call('agents.picture.put', { dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=' });
+    const dressed = await env.call('agents.avatar.set', { threadId, avatar });
+    same([dressed.id, dressed.avatar], [agent.id, avatar], 'the bot wears the picture');
+    same((await env.call('agents.snapshot', {})).profiles.find(entry => entry.id === agent.id)?.avatar, avatar, 'the picture read back');
+    same((await refusedWith(env.call('agents.avatar.set', { threadId, avatar: 'img:0123456789abcdef' }), RpcErrorCode.Refused))['field'], 'avatar', 'a picture this machine never stored');
+    same((await env.call('agents.avatar.set', { threadId, avatar: '' })).avatar, '', 'back to the robot');
+  },
   'opening snapshots restore questions, replace subscriptions and omit a proven quiet tail': async env => {
     const { setup, threadId, questionId } = await asked(env);
     const previous = await thread(env, setup, 'previous');
