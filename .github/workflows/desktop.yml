@@ -90,7 +90,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
         with:
           toolchain: stable
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
         with:
           workspaces: apps/shell/src-tauri -> target
           shared-key: desktop-release-v2
@@ -116,7 +116,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
         with:
           toolchain: stable
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
         with:
           workspaces: apps/shell/src-tauri -> target
           # v2: v1 held crates built with an explicit release profile, which no build uses any more.
@@ -224,7 +224,7 @@ jobs:
         with:
           toolchain: stable
           targets: ${{ env.BOITE_TARGET }}
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
         with:
           workspaces: apps/shell/src-tauri -> target
           # Per runner and target: a cache built on Ubuntu 24.04 restored on 22.04 left crates rustc could not load.

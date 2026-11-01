@@ -183,7 +183,7 @@ jobs:
       - name: Preserve LPAC parent prerequisite evidence
         if: always() && runner.os == 'Windows' && needs.changes.outputs.nativeWindows == 'true'
         continue-on-error: true
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: windows-lpac-parent-spike
           path: ${{ runner.temp }}/lpac-parent-spike/
@@ -206,7 +206,7 @@ jobs:
       - name: Preserve NUL access matrix evidence
         if: always() && runner.os == 'Windows' && needs.changes.outputs.nativeWindows == 'true'
         continue-on-error: true
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: windows-null-access-matrix
           path: ${{ runner.temp }}/null-access-matrix/
@@ -229,7 +229,7 @@ jobs:
       - name: Preserve real Null broker evidence
         if: always() && runner.os == 'Windows' && needs.changes.outputs.nativeWindows == 'true'
         continue-on-error: true
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: windows-null-broker-spike
           path: ${{ runner.temp }}/null-broker-spike/
@@ -254,7 +254,7 @@ jobs:
       - name: Preserve DEBUG_PROCESS diagnostic evidence
         if: always() && runner.os == 'Windows' && needs.changes.outputs.nativeWindows == 'true'
         continue-on-error: true
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: windows-debug-map-diagnostic
           path: ${{ runner.temp }}/windows-debug-map/
@@ -279,7 +279,7 @@ jobs:
           if ($failed) { exit 1 }
       - name: Preserve native helper comparison
         if: always() && runner.os == 'Windows' && needs.changes.outputs.nativeWindows == 'true'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: protected-windows-helper-comparison
           path: ${{ runner.temp }}/protected-tool*.exe
