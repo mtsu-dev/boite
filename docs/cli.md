@@ -478,7 +478,8 @@ boite threads reply <message-id> <text> [--wait] [--timeout <s>]
 boite threads log <thread>
 boite threads wait [thread] [--timeout <s>]
 boite threads contacts
-boite threads ask <contact> <text> [--wait] [--timeout <s>]
+boite threads ask [--to <contact>/<thread-id>] [--contact <name>] [--new] [--share] [--wait] [--timeout <s>] [--] <text>
+boite contacts [view]|forward|connect|start|share|ask-owner|refuse|cut|deliver|block
 boite bot memory
 boite bot remember <fact>
 boite bot routines

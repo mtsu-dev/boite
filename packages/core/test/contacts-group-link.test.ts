@@ -86,6 +86,9 @@ test('a Bots host takes a member\'s contact: the contact follows it with its gra
   await cClient.call('contacts.bot.forward', { threadId: cBot.threadId, id: asked.id, contact: c.core.contacts.find(aId)!.name });
   await waitFor(() => a.core.contacts.requests.list().some(request => request.direction === 'in' && request.remoteId === asked.id), 10000);
   await waitFor(() => a.core.contacts.find(cId)?.offers.length === 1, 10000);
+  // Both cores support group links, yet no Bots host stands between them: a letter keeps the 15 minute window.
+  expect(c.core.contacts.letterTtl(aId)).toBeUndefined();
+  expect(a.core.contacts.letterTtl(cId)).toBeUndefined();
 
   await botsHome(a, aClient, x, xId);
   await waitFor(() => c.core.contacts.find(xId) !== undefined && !a.core.contacts.has(cId), 20000);
@@ -105,8 +108,9 @@ test('a Bots host takes a member\'s contact: the contact follows it with its gra
   const out = await c.core.coordination.send({ threadId: cBot.threadId, to: { coreId: xId, threadId: memberThreadId(aId, aThread) }, text: 'Is alpha on 8080?', requestId: crypto.randomUUID() });
   await waitFor(() => letters(a, aThread).some(letter => letter.id === out.id), 10000);
   expect(letters(a, aThread).find(letter => letter.id === out.id)!.from.coreId).toBe(cId);
-  // A letter to a group that may be off waits 7 days, not 15 minutes.
+  // A letter to a group that may be off waits 7 days, not 15 minutes, and so does A's, which goes through its Bots host.
   expect(out.expiresAt - out.createdAt).toBe(7 * 24 * 3_600_000);
+  expect(a.core.contacts.letterTtl(cId)).toBe(7 * 24 * 3_600_000);
 
   // The request settled on X reaches C under X's id.
   x.core.contacts.requests.settle(moved.id, false, undefined, 'Not now', 'owner');

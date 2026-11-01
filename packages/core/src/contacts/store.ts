@@ -200,14 +200,19 @@ export class ContactStore implements LinkedContacts {
   }
 
   /**
-   * How long a letter to this contact may wait: 7 days behind a Bots host,
-   * which may be off for days; undefined otherwise. A reply into a gateway
+   * How long a letter to this contact may wait: 7 days when it waits on a Bots
+   * host, which may be off for days; undefined otherwise. That is the
+   * contact's own group (`group`, sent only while it has a Bots host), or this
+   * group's Bots host relaying a member's letter. Supporting `groupLink` alone
+   * says nothing: every current core announces it. A reply into a gateway
    * mailbox (`cmb_`, `mailboxes.ts`) keeps the 15 minute route window.
    */
   letterTtl(coreId: string, threadId = ''): number | undefined {
     if (threadId.startsWith('cmb_')) return undefined;
-    const contact = this.find(coreId) ?? this.members.relayedOf(coreId)[0];
-    return contact?.capabilities?.groupLink === 1 ? GROUP_LETTER_TTL_MS : undefined;
+    const contact = this.find(coreId);
+    if (contact) return contact.group !== undefined ? GROUP_LETTER_TTL_MS : undefined;
+    const host = this.#core.group.roleOf('botsHome');
+    return host !== null && this.members.relayedOf(coreId).some(entry => entry.via === host) ? GROUP_LETTER_TTL_MS : undefined;
   }
 
   /** Only this core mints request letters; peer-origin contact letters remain forbidden. */
