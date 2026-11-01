@@ -11,6 +11,7 @@ import { thrown } from './settle.ts';
 
 const UNITY = 'C:\\Program Files\\Unity\\Hub\\Editor\\6000.0\\Editor\\Unity.exe';
 const FOLLOW_MS = 10;
+const SETTLE_MS = 120;
 
 function win(id: string, overrides: Partial<NativeWindow> = {}): NativeWindow {
   return { id, pid: Number(id), path: UNITY, process: 'Unity.exe', title: `Scene ${id}`, className: 'UnityContainerWndClass', width: 400, height: 300, minimized: false, ...overrides };
@@ -107,7 +108,7 @@ describe('window guide', () => {
     core.windows.stop();
     core.windows = new DesktopWindows(harness.core, {
       backend: async () => desk.capture, guide: async () => desk.guide, consentTimeoutMs: 60_000,
-      tempRoot: join(harness.dataDir, 'window-temp'), guideTiming: { followMs: FOLLOW_MS, mouseMs: 5 },
+      tempRoot: join(harness.dataDir, 'window-temp'), guideTiming: { followMs: FOLLOW_MS, mouseMs: 5, settleMs: SETTLE_MS },
     });
     await owner.call('threads.subscribe', { threadId });
     const finished = owner.next('turn.finished', turn => turn.threadId === threadId, 10_000);
@@ -199,7 +200,7 @@ describe('window guide', () => {
     await eventually(() => expect(boxes[0]!.rect).toBeNull());
   });
 
-  test('a box on a control follows it as the window scrolls, hides out of view, and finds it again once the app re-renders it', async () => {
+  test('a box on a control hides while the window scrolls and shows where the control settled, out of view stays hidden, and a re-rendered control is found again', async () => {
     const answered = answer('once');
     await agent.call('windows.read', { threadId, target: { id: '101' } });
     await answered;
@@ -208,7 +209,22 @@ describe('window guide', () => {
     expect(desk.live.asked).toEqual([{ type: 'Button', name: 'Play', automationId: 'PlayButton', rect: { left: 1200, top: 530, width: 40, height: 20 } }]);
     await eventually(() => expect(boxes[0]!.rect).toEqual({ left: 1200, top: 530, width: 40, height: 20 }));
 
-    // The window scrolls: the box moves with the control, and a click is looked for where it is now.
+    // Shown at once where it was read, not after a settle.
+    expect(boxes[0]!.rect).not.toBeNull();
+
+    // The window scrolls: the box hides on the first move, stays hidden while the control keeps moving, and shows where it settled.
+    desk.live.rect = { left: 1200, top: 600, width: 40, height: 20 };
+    await eventually(() => expect(boxes[0]!.rect).toBeNull());
+    await Bun.sleep(SETTLE_MS / 2);
+    desk.live.rect = { left: 1200, top: 640, width: 40, height: 20 };
+    await Bun.sleep(SETTLE_MS * 0.75);
+    expect(boxes[0]!.rect).toBeNull();
+    await eventually(() => expect(boxes[0]!.rect).toEqual({ left: 1200, top: 640, width: 40, height: 20 }));
+    // Dragging the window moves the box at once: the control stays put in it.
+    desk.frames.get('101')!.rect.left += 10;
+    desk.live.rect = { left: 1210, top: 640, width: 40, height: 20 };
+    await eventually(() => expect(boxes[0]!.rect).toEqual({ left: 1210, top: 640, width: 40, height: 20 }), SETTLE_MS / 2);
+    desk.frames.get('101')!.rect.left -= 10;
     desk.live.rect = { left: 1200, top: 600, width: 40, height: 20 };
     await eventually(() => expect(boxes[0]!.rect).toEqual({ left: 1200, top: 600, width: 40, height: 20 }));
     // Out of view, by the app's word or under the window's edge (it ends at 800): hidden, still shown.

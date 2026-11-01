@@ -41,6 +41,16 @@ const READ_SCAN = 2_000;
 const FILTER_MAX = 100;
 /** How long a box stays after a wait on it ends without a click, at least. */
 const WAIT_GRACE_MS = 30_000;
+/**
+ * How long a followed control stays put in its window before its box shows
+ * again. Chromium and Electron apps report where a control is in bursts while
+ * it scrolls (measured in Discord on 2026-11-01: 4 positions for 12 wheel
+ * notches in 0.9 s, up to 356 ms apart, the last ~200 ms after the scroll), so
+ * a box drawn on each answer would trail the control. The box hides on the
+ * first move instead, which comes within ~20 ms, and shows where the control
+ * settled.
+ */
+const SETTLE_MS = 450;
 /** How often a box whose control the app dropped looks for it again, in milliseconds. */
 const RETRACK_MS = 1_000;
 
@@ -49,6 +59,8 @@ export interface WindowGuidesOptions {
   followMs?: number;
   /** How often a wait reads the mouse: a click holds the button down for 50 ms or more. */
   mouseMs?: number;
+  /** How long a followed control must stay put in its window before its box shows again. */
+  settleMs?: number;
 }
 
 /** What `DesktopWindows` lends the guide: its conversation and window checks. */
@@ -80,6 +92,8 @@ interface Shown {
   tracked: TrackedControl | null;
   /** The control the box shows, when it was named by id or by name. */
   control: WindowControl | null;
+  /** Where the followed control last was in its window, and since when: the box shows once it stays put. */
+  seen?: { rect: ScreenRect | null; since: number };
   /** Set once the app dropped the control: the box hides until it is found again. */
   lost?: { nextAt: number; looking: boolean };
   waiters: Set<(end: WindowWaitEnd | 'clicked') => void>;
@@ -100,6 +114,7 @@ export class WindowGuides {
   readonly #loader: () => Promise<WindowGuide | { unavailable: string }>;
   readonly #followMs: number;
   readonly #mouseMs: number;
+  readonly #settleMs: number;
   #backend?: Promise<WindowGuide | { unavailable: string }>;
   readonly #snapshots = new Map<string, Snapshot>();
   readonly #shown = new Map<string, Shown>();
@@ -108,8 +123,9 @@ export class WindowGuides {
     this.#core = core;
     this.#host = host;
     this.#loader = loader;
-    this.#followMs = options.followMs ?? 100;
+    this.#followMs = options.followMs ?? 33;
     this.#mouseMs = options.mouseMs ?? 25;
+    this.#settleMs = options.settleMs ?? SETTLE_MS;
   }
 
   async read({ threadId, target, filter, limit }: RpcParams<'windows.read'>, connection?: Connection): Promise<RpcResult<'windows.read'>> {
@@ -204,6 +220,8 @@ export class WindowGuides {
     }
     const shown: Shown = {
       pointer, window, boxId, screen: frame.minimized ? null : screen, waiters: new Set(), tracked, control: control ?? null,
+      // Settled already where it was read: the box shows at once.
+      ...(tracked && !frame.minimized ? { seen: { rect: { left: box.x, top: box.y, width: box.width, height: box.height }, since: 0 } } : {}),
       follow: setInterval(() => this.#follow(thread.id, shown, guide), this.#followMs),
       expiry: setTimeout(() => this.#remove(thread.id, 'timeout', shown), seconds * 1000),
     };
@@ -355,11 +373,18 @@ export class WindowGuides {
         shown.tracked = null;
         shown.lost = { nextAt: 0, looking: false };
         screen = null;
-      } else if (live === 'hidden' || !centerInside(live, frame.rect)) {
-        screen = null;
       } else {
-        screen = live;
-        Object.assign(shown.pointer, { x: live.left - frame.rect.left, y: live.top - frame.rect.top, width: live.width, height: live.height });
+        // In the window's pixels, so dragging the window moves the box at once and only a scroll waits.
+        const inWindow = live === 'hidden' || !centerInside(live, frame.rect) ? null
+          : { left: live.left - frame.rect.left, top: live.top - frame.rect.top, width: live.width, height: live.height };
+        const now = Date.now();
+        if (shown.seen === undefined || !sameRect(inWindow, shown.seen.rect)) shown.seen = { rect: inWindow, since: now };
+        if (inWindow === null || now - shown.seen.since < this.#settleMs) {
+          screen = null;
+        } else {
+          screen = live as ScreenRect;
+          Object.assign(shown.pointer, { x: inWindow.left, y: inWindow.top, width: inWindow.width, height: inWindow.height });
+        }
       }
     } else if (shown.lost && shown.control) {
       screen = null;

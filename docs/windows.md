@@ -192,10 +192,16 @@ boite window unpoint
   outside the control the ring runs, 5 CSS pixels by default and 24 at most;
   the shell widens the window to keep the glow and the echo whole.
 - A box on a control (by id or by name) follows the control itself: the core
-  holds its UI Automation element and asks the app where it is every 100 ms,
-  so the box moves when the window scrolls or lays itself out again, and
-  hides while the control is out of view, by the app's word or under the
-  window's edge. An app that drops the element, as a list re-rendering its
+  holds its UI Automation element and asks the app where it is every 33 ms.
+  When the control moves inside its window, as when the window scrolls, the
+  box hides at once and shows again where the control settled, after 450 ms
+  without a move; it stays hidden while the control is out of view, by the
+  app's word or under the window's edge. Chromium and Electron apps report
+  positions in bursts while they scroll (measured in Discord on 2026-11-01:
+  4 positions for 12 wheel notches in 0.9 s, up to 356 ms apart, the last
+  about 200 ms after the scroll, the first within 20 ms), so a box moved on
+  each answer would trail the control. Dragging the window moves the box at
+  once. An app that drops the element, as a list re-rendering its
   rows does, gets the box hidden until a control of the same type, name and
   automation id is found again, looked for once a second near where it was
   last seen. A box on a rectangle (`--at`) keeps its place in the window: no
@@ -325,7 +331,7 @@ Measured on 2026-10-30 (Windows 11, Bun 1.4.3, `bun bench/window-guide.ts
 | Boite, 1920×1032 (WebView2) | 102 | 212 ms | 97 ms |
 
 The Start menu read in 207 ms with 19 controls. Reading where a window lies,
-which a box following its window does every 100 ms, takes under 0.1 ms. RSS
+which a box following its window does every 33 ms, takes under 0.1 ms. RSS
 grows by 3 MB over 200 reads of the taskbar.
 
 Following a control, measured on 2026-10-31 with the same command: finding it

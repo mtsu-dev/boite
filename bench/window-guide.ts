@@ -3,9 +3,9 @@
  * thread. Windows only. Measures the module's import and load, the first read
  * of a window's controls (COM and UI Automation's setup included), the median
  * of `warm` reads, the median of `warm` reads of where the window lies (what
- * a box following its window costs every 100 ms), the time to find one
+ * a box following its window costs every 33 ms), the time to find one
  * control and hold it live and the median of `warm` asks of where it is now
- * (what a box following its control costs every 100 ms), and the RSS growth
+ * (what a box following its control costs every 33 ms), and the RSS growth
  * over `leak` reads. The box itself is the desktop app's.
  *
  * The window is the largest one not minimized whose process contains `match`,
