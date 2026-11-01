@@ -154,6 +154,16 @@ Owner methods: `teams.create`, `teams.update`, `teams.archive`,
 or name. `teams.create`, `teams.members.add` and `teams.members.remove` take
 the `card` of a bot's proposal, which applies it and settles the card.
 
+The app draws a bot's card (`boite team propose`, `invite` or `leave`) in
+the dock above the bot's composer, with the core's only option, Refuse, and
+an Apply button: Create the team, Add to the team or Remove from the team.
+Apply calls the matching method with the card, so the members are the bot ids
+the card stored. The settled card stays in the conversation as one row: team
+created, member added, member removed or refused. These methods are the
+owner's: a paired phone shows the card and Refuse, and says that only the
+computer running Boite changes teams. A card left unanswered survives a
+restart of the core and an update of the app.
+
 ## Commands
 
 A bot posts, reads and proposes from its own thread; an agent token may only
@@ -200,5 +210,5 @@ invite or leave.
   recipient's own conversation (`collaboration.read`), which shows what that
   bot received, like a message the owner sends it directly. The team chat
   itself stays out of coordination.
-- The app draws no team chat or team settings yet; the contracts and the
-  in-memory client carry the methods for it.
+- The app draws no team chat or team settings yet, only the bots' team cards;
+  the contracts and the in-memory client carry the methods for the rest.

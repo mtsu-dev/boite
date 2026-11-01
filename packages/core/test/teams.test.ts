@@ -468,6 +468,35 @@ test('boite team: a bot lists, posts, reads and asks for cards; the experiment a
   expect(team.members).toHaveLength(2);
 }, 30_000);
 
+test('a bot\'s team card drawn before a restart is applied after it: the team exists, the card closes and the bot reads the outcome', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'boite-teams-'));
+  try {
+    const { h, bots: [ada, bob], key } = await setup(['Ada', 'Bob'], dataDir);
+    teamDriver();
+    expect((await boiteAs(h, ada!.threadId, ['team', 'propose', '--name', 'Pair', '--members', 'Bob', '--brief', 'Release work'])).out).toContain('card: create Pair with Bob');
+    const [card] = h.core.threads.listQuestions(ada!.threadId);
+    // The card names the bots by id, the proposer first, whatever their names hold.
+    expect(card?.team).toEqual({ kind: 'create', by: ada!.agent.id, name: 'Pair', brief: 'Release work', members: [ada!.agent.id, bob!.agent.id] });
+    await cores.pop()!.stop();
+    for (const restore of restores.splice(0).reverse()) restore();
+    const again = await startTestCore({ dataDir }); cores.push(again);
+    const driver = teamDriver();
+    const owner = await again.connect();
+    await experiment(owner);
+    expect(again.core.threads.listQuestions(ada!.threadId)).toEqual([card!]);
+    // The app's Create the team: the card's own name, brief and members, with the card.
+    const pair = await owner.call('teams.create', { name: 'Pair', brief: 'Release work', members: [ada!.agent.id, bob!.agent.id], card: card!.id });
+    expect(pair).toMatchObject({ name: 'Pair', brief: 'Release work', createdBy: key(ada!), members: [{ botId: ada!.agent.id }, { botId: bob!.agent.id }] });
+    expect(again.core.threads.listQuestions(ada!.threadId)).toEqual([]);
+    const part = again.core.journal.listMessages(ada!.threadId).flatMap(message => message.parts).find(entry => entry.type === 'question' && entry.questionId === card!.id);
+    expect(part).toMatchObject({ team: card!.team, answer: { optionIds: [], text: 'applied: the team "Pair" exists, with Ada, Bob' } });
+    await waitFor(() => driver.of(ada!.threadId).some(prompt => prompt.includes('applied: the team "Pair" exists, with Ada, Bob')));
+    // A settled card applies nothing twice.
+    expect((await failure(() => owner.call('teams.create', { name: 'Pair again', members: [bob!.agent.id], card: card!.id }))).message).toContain('is no open team create card');
+    await cores.pop()!.stop();
+  } finally { await removeDir(dataDir); }
+}, 30_000);
+
 // Round 1 of the review: what a crash, a restart or a setting must not lose.
 
 test('a post whose letters were interrupted reaches its recipients once: a retried id or a restart repairs it', async () => {
