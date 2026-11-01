@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test } from 'bun:test';
 import { existsSync, readdirSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { AGENT_PICTURE_MAX_BYTES } from '@boite/contracts';
-import { UNWORN_PICTURE_MS } from '../src/agents/pictures.ts';
+import { UNWORN_PICTURE_MS, UNWORN_PICTURES_MAX } from '../src/agents/pictures.ts';
 import { makeAgent, scripted } from './agent-fixture.ts';
 import { startTestCore, type TestCore } from './harness.ts';
 import { rejection } from './settle.ts';
@@ -71,4 +71,22 @@ test('a picture no bot wears is removed a day after it was stored; a worn one st
   expect(existsSync(join(folder, `${worn.slice(4)}.png`))).toBe(true);
   expect(existsSync(join(folder, `${dropped.slice(4)}.gif`))).toBe(false);
   expect(await refusal(owner.call('agents.picture.get', { avatar: dropped }))).toMatchObject({ data: { field: 'avatar' } });
+
+  // Agents import too: however many land within the day, the unworn ones stay a bounded few, the oldest going first.
+  const variant = (n: number) => `data:image/png;base64,${Buffer.concat([Buffer.from(PNG.split(',')[1]!, 'base64'), Buffer.from([1, n])]).toString('base64')}`;
+  const burst: string[] = [];
+  for (let n = 0; n < UNWORN_PICTURES_MAX + 3; n++) {
+    burst.push((await owner.call('agents.picture.put', { dataUrl: variant(n) })).avatar);
+    // Distinct times, so "oldest" is well defined on a coarse clock.
+    const at = new Date(Date.now() - (UNWORN_PICTURES_MAX + 3 - n) * 1000);
+    utimesSync(join(folder, `${burst.at(-1)!.slice(4)}.png`), at, at);
+  }
+  const unworn = readdirSync(folder).filter(name => name !== `${worn.slice(4)}.png`);
+  expect(unworn.length).toBe(UNWORN_PICTURES_MAX);
+  expect(existsSync(join(folder, `${worn.slice(4)}.png`))).toBe(true);
+  expect(existsSync(join(folder, `${burst[0]!.slice(4)}.png`))).toBe(false);
+  expect(existsSync(join(folder, `${burst.at(-1)!.slice(4)}.png`))).toBe(true);
+  // Importing a picture a bot already wears takes no slot: the 32 unworn ones all stay.
+  await owner.call('agents.picture.put', { dataUrl: PNG });
+  expect(readdirSync(folder).filter(name => name !== `${worn.slice(4)}.png`)).toHaveLength(UNWORN_PICTURES_MAX);
 }, 30_000);

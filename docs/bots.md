@@ -177,7 +177,15 @@ hex digits of the image's SHA-256, which the profile then saves in `avatar`
 like a robot code. The core keeps only PNG, JPEG, WebP and GIF whose first
 bytes match their type, never SVG, and refuses a save naming a picture it
 does not hold. A picture no bot wears is removed a day after it was stored,
-the next time one is imported.
+the next time one is imported, and beyond 32 unworn pictures the oldest go at
+once.
+
+A bot picks a face too: `boite settings bot picture <image>` dresses it, or
+another bot with `--bot <name>`, at once and with no card, because the owner
+let agents choose faces themselves (2026-11-01). The CLI does not resize: an
+image over 512 KB is refused with its size, for the agent to shrink first
+([CLI](cli.md)). `boite settings bot request avatar --picture <image>` asks
+for the same change on a card instead.
 
 Snapshots carry only the 20-character avatar. A client asks
 `agents.picture.get` once per picture, which a paired phone may call, and

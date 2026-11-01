@@ -21,7 +21,7 @@ const QUIET = /^\[quiet\]/i;
  * Agent setting cards live with the threads' questions, and a thread creating a
  * bot resolves its route like a subagent's: `fake-client/agent-settings.ts` answers them.
  */
-export type AgentSettingMethod = Extract<keyof AgentsRpcMethods, `agents.settings.${string}` | 'agents.create'>;
+export type AgentSettingMethod = Extract<keyof AgentsRpcMethods, `agents.settings.${string}` | 'agents.create' | 'agents.avatar.set'>;
 type AgentHandlers = {
   [M in Exclude<keyof AgentsRpcMethods, AgentSettingMethod>]: (params: RpcParams<M>) => RpcResult<M>;
 };
@@ -426,6 +426,8 @@ export class FakeAgents {
 
   /** Imported pictures by avatar, as the core keeps them in its data folder (agents/pictures.ts). */
   private readonly pictures = new Map<string, string>();
+  /** Whether an `img:` avatar names a picture held here, as the core's `AgentPictures.has`. */
+  hasPicture(avatar: string): boolean { return this.pictures.has(avatar); }
   /** The core's `agents.picture.put`: the same checks, and the same bytes give the same avatar. */
   private putPicture(dataUrl: unknown): { avatar: string } {
     const match = typeof dataUrl === 'string' ? /^data:(image\/[a-z]+);base64,([A-Za-z0-9+/]*={0,2})$/.exec(dataUrl) : null;
