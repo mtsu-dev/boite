@@ -114,6 +114,10 @@ test('the owner finds a team in the sidebar and on the phone, reads its posts in
     expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
     await page.settleAnimations();
     await page.screenshot(join(import.meta.dir, '.artifacts', 'team-chat-phone.png'));
+    // A team's chat has no title menu: the phone's header keeps the panel's own button.
+    expect(await page.evaluate(`(() => { const box = document.querySelector('[data-testid=panel-toggle]').getBoundingClientRect(); return box.width > 0 && box.right <= innerWidth; })()`)).toBe(true);
+    await page.click('[data-testid=panel-toggle]');
+    await page.waitFor(`document.querySelector('[data-testid=panel-toggle]')?.getAttribute('aria-pressed') === 'true'`);
     expect(page.errors()).toEqual([]);
   } finally { await page?.close(); await harness.stop(); restore(); }
 }, 90_000);

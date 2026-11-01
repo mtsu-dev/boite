@@ -309,7 +309,8 @@
         </button>
       {/if}
       <!-- A paired device opens the panel too: the Agents and Workflows surfaces are
-           its to follow, and the panel's menu offers only what available() allows. -->
+           its to follow, and the panel's menu offers only what available() allows.
+           A team's chat has no title menu: a phone keeps this button, its one way to the panel. -->
       {#if thread}
         {#if mobile.current && !thread.teamId}
           <button type="button" class="ghost phone-browser" data-testid="phone-browser-toggle"
@@ -320,7 +321,8 @@
         {/if}
         <button
           type="button"
-          class="ghost icon in-title-menu"
+          class="ghost icon"
+          class:in-title-menu={!thread.teamId}
           class:on={store.panelOpen}
           title={`${strings.thread.panelHint}${store.keyHint('panel')}`}
           aria-label={strings.thread.panelHint}

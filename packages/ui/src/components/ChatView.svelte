@@ -83,11 +83,11 @@
     const id = threadId;
     if (id && !agentSession && !teamChat) untrack(() => void store.loadCoordination(id, false));
   });
-  // The team chat loads with the first one opened, out of the app's first chunk; a failed load tries again on the next.
+  // The team chat loads with the first one opened, out of the app's first chunk; a failed load tries again with the next team opened.
   let TeamChat = $state.raw<typeof import('./teams/TeamChat.svelte').default>();
   let loadingTeamChat: Promise<void> | undefined;
   $effect(() => {
-    if (teamChat && !TeamChat) loadingTeamChat ??= import('./teams/TeamChat.svelte').then(module => { TeamChat = module.default; }).catch(() => { loadingTeamChat = undefined; });
+    if (thread?.teamId && !TeamChat) loadingTeamChat ??= import('./teams/TeamChat.svelte').then(module => { TeamChat = module.default; }).catch(() => { loadingTeamChat = undefined; });
   });
   let project = $derived(store.openProject);
   let draftChoice = $derived(store.defaultChoice());
