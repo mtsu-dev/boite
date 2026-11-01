@@ -16,6 +16,43 @@ const plan: WorkflowPlan = {
   ]
 };
 
+test('fake local and remote workflow questions update the parent summary without delegated-agent rows', async ({ createClient }) => {
+  const client = await createClient({ delayMs: 0, coreId: 'workflow-question' });
+  const pc = await createClient({ delayMs: 0, coreId: 'workflow-question-pc', coreName: 'PC' });
+  await client.call('group.create', { name: 'Home' });
+  await pc.call('group.join', { invite: (await client.call('group.invite', {})).invite });
+  await pc.call('settings.set', { groupThreads: true });
+  const ctx = fakeCore('workflow-question')!;
+  let run!: WorkflowRun;
+  ctx.workflows.hold(() => { run = ctx.workflows.start('t-trace', { name: 'Review', steps: [
+    { id: 'scan', task: 'Inspect the parser' },
+    { id: 'remote', machine: 'PC', project: 'notes', task: 'Inspect the lexer' },
+  ] }, 'question-alert', undefined, 'user'); });
+  const childId = run.nodes[0]!.instances[0]!.threadId!;
+  const remoteId = run.nodes[1]!.instances[0]!.machine!.childId!;
+  const question = await client.call('questions.ask', { threadId: childId, text: 'Which parser?', options: [] });
+  const remote = await pc.call('questions.ask', { threadId: remoteId, text: 'Which lexer?', options: [] });
+  const links = async () => (await client.call('threads.list', {})).find(thread => thread.id === 't-trace')!.subagentQuestions;
+  expect(await links()).toEqual([
+    { threadId: childId, title: ctx.thread(childId).title },
+    { threadId: remoteId, title: fakeCore('workflow-question-pc')!.thread(remoteId).title, machine: { coreId: 'workflow-question-pc', name: 'PC' } },
+  ]);
+  ctx.workflows.finish(run.id, 'scan');
+  ctx.workflows.finish(run.id, 'remote');
+  const machine = fakeCore('workflow-question-pc')!;
+  unregisterCore(machine);
+  try {
+    // An unreachable workflow step must not leave the answered local question's link stale.
+    await client.call('questions.answer', { threadId: childId, questionId: question.questionId, optionIds: [], text: 'Custom' });
+    expect(await links()).toEqual([]);
+  } finally { registerCore(machine); }
+  expect(await links()).toEqual([
+    { threadId: remoteId, title: machine.thread(remoteId).title, machine: { coreId: 'workflow-question-pc', name: 'PC' } },
+  ]);
+  await pc.call('questions.answer', { threadId: remoteId, questionId: remote.questionId, optionIds: [], text: 'Built-in' });
+  expect(await links()).toEqual([]);
+});
+
 test.each([undefined, {maxSteps: 24}])('a mixed fake workflow retains ordinary slots without blocking shared work with limits %j', limits => {
   const ctx = new FakeContext({delayMs: 0}); seed(ctx);
   try {

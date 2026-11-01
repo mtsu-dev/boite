@@ -358,6 +358,8 @@ export class GroupBots {
 
   /** A `bot.*` request of a member: its events for this machine's bots, or what its bots ask of this machine. */
   async peer(peer: CoordinationPeer, operation: BotOperation, payload: unknown): Promise<unknown> {
+    // A bot moved here comes whatever `groupBots` says: that switch is about projects, not bots.
+    if (operation === 'bot.move') return this.#store.moves.receive(peer, payload);
     if (operation !== 'bot.event') return this.#core.workforce.groupHost.handle(peer, operation, payload);
     const events = (payload as { events?: unknown } | null)?.events;
     if (!Array.isArray(events) || events.length > OUTBOX_MAX) throw invalidParams(`bot.event.events: expected at most ${OUTBOX_MAX} events`);

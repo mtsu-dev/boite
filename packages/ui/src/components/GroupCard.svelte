@@ -28,7 +28,7 @@
 
   let name = $state('');
   let invitation = $state('');
-  let busy = $state<'join' | 'add' | 'rename' | 'home' | null>(null);
+  let busy = $state<'join' | 'add' | 'rename' | 'home' | 'bots' | null>(null);
   let editing = $state(false);
   let editingId = $state<string | null>(null);
   let renameInput = $state<HTMLInputElement>();
@@ -75,11 +75,14 @@
   });
 
   /**
-   * The default machine: the member every other one takes its settings from,
-   * chosen once for the group, so every member and every window shows it.
+   * The group's two roles, each chosen once for the group so every member and
+   * every window shows it: Settings, the member every other one takes its
+   * settings from, and Bots, the member that hosts new bots and the Contacts
+   * bot, the group's one entry for contacts.
    */
   const NONE = 'none';
   let home = $derived(group?.settingsHome ?? null);
+  let botsHome = $derived(group?.botsHome ?? null);
   /** A member by the name this window gives it, "(you)" for this computer, else the one it gives itself. */
   function memberName(core: GroupCore): string {
     const machine = workspace.machines.find((candidate) => GroupLinks.coreOf(candidate) === core.coreId);
@@ -93,12 +96,19 @@
     ...members.map((core) => ({ id: core.coreId, label: memberName(core), active: core.coreId === home, disabled: !homeReady || busy !== null }))
   ]);
   let homeCore = $derived(members.find((core) => core.coreId === home));
+  let botsReady = $derived(store.core?.features?.botsHome === true);
+  let botsItems = $derived([
+    { id: NONE, label: strings.machines.homeNone, active: botsHome === null, disabled: !botsReady || busy !== null },
+    ...members.map((core) => ({ id: core.coreId, label: memberName(core), active: core.coreId === botsHome, disabled: !botsReady || busy !== null }))
+  ]);
+  let botsCore = $derived(members.find((core) => core.coreId === botsHome));
   /** Members connected here whose Boite predates the choice: they keep their own settings until updated. */
   let behind = $derived(workspace.machines.filter((machine) => machine.store.connection === 'ready' && machine.store.core !== null
     && members.some((core) => core.coreId === GroupLinks.coreOf(machine)) && machine.store.core.features?.settingsHome !== true));
   const pickHome = (id: string) => void run('home', () => store.setSettingsHome(id === NONE ? null : id));
+  const pickBots = (id: string) => void run('bots', () => store.setBotsHome(id === NONE ? null : id));
 
-  async function run(kind: 'join' | 'add' | 'rename' | 'home', work: () => Promise<unknown>) {
+  async function run(kind: 'join' | 'add' | 'rename' | 'home' | 'bots', work: () => Promise<unknown>) {
     if (busy) return;
     busy = kind;
     try {
@@ -196,7 +206,7 @@
           <div class="row">
             <span class="logo"><MachineIcon os={core.os} size={18} /></span>
             <span class="identity">
-              <span class="name">{core.name}{#if core.coreId === home}<span class="badge">{strings.machines.homeBadge}</span>{/if}</span>
+              <span class="name">{core.name}{#if core.coreId === home}<span class="badge">{strings.machines.homeBadge}</span>{/if}{#if core.coreId === botsHome}<span class="badge">{strings.machines.botsBadge}</span>{/if}</span>
               {#if core.addresses[0]}<span class="address">{core.addresses[0]}</span>{/if}
             </span>
             {#if state.label}<span class="status" class:ready={state.ready}>{state.label}</span>{/if}
@@ -235,11 +245,9 @@
       {#if members.length > 1 || !alone}
         <footer>
           {#if members.length > 1}
-            <div class="home" data-testid="group-home">
-              <span class="ui-label-box"><span class="ui-label">{strings.machines.home}</span><InfoTip topic={strings.machines.home} text={strings.machines.homeHint} /></span>
-              <Menu items={homeItems} label={strings.machines.home} placement="bottom" testid="group-home-pick" onpick={pickHome}>
-                <span class="current ui-label" class:chosen={homeCore !== undefined}>{homeCore ? memberName(homeCore) : strings.machines.homeNone}</span><ChevronDown size={13} />
-              </Menu>
+            <div class="roles">
+              {@render role('group-home', strings.machines.home, strings.machines.homeHint, homeItems, homeCore, pickHome)}
+              {@render role('group-bots', strings.machines.bots, strings.machines.botsHint, botsItems, botsCore, pickBots)}
             </div>
           {/if}
           {#if !alone}
@@ -250,6 +258,9 @@
         </footer>
         {#if members.length > 1 && (!homeReady || behind.length > 0)}
           <p class="hint" data-testid="group-home-older">{fill(strings.machines.homeOlder, { machines: (homeReady ? behind.map((machine) => listedName(machine)) : [store.core?.hostname ?? strings.machines.local]).join(', ') })}</p>
+        {/if}
+        {#if members.length > 1 && !botsReady}
+          <p class="hint" data-testid="group-bots-older">{fill(strings.machines.botsOlder, { machine: store.core?.hostname ?? strings.machines.local })}</p>
         {/if}
       {/if}
     {/if}
@@ -270,6 +281,16 @@
     {@render children()}
   </section>
 {/if}
+
+<!-- A role of the group: its name and what it does, then the member that holds it, or None. -->
+{#snippet role(testid: string, label: string, hint: string, items: { id: string; label: string; active: boolean; disabled: boolean }[], chosen: GroupCore | undefined, onpick: (id: string) => void)}
+  <div class="home" data-testid={testid}>
+    <span class="ui-label-box"><span class="ui-label">{label}</span><InfoTip topic={label} text={hint} /></span>
+    <Menu {items} {label} placement="bottom" testid="{testid}-pick" {onpick}>
+      <span class="current ui-label" class:chosen={chosen !== undefined}>{chosen ? memberName(chosen) : strings.machines.homeNone}</span><ChevronDown size={13} />
+    </Menu>
+  </div>
+{/snippet}
 
 <!-- The one way in: a device for this group, and for a machine alone, the link of another group to join. -->
 {#snippet addButton()}
@@ -458,6 +479,13 @@
     gap: 8px 16px;
     padding-top: 12px;
   }
+  .roles {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 20px;
+    min-width: 0;
+  }
   .home {
     display: flex;
     align-items: center;
@@ -501,6 +529,7 @@
     .icon-only { min-width: var(--touch-target); }
     .field button { flex: 1; }
     footer { flex-direction: column; align-items: stretch; }
+    .roles { flex-direction: column; align-items: stretch; }
     .home { justify-content: space-between; }
     .leave { margin-left: 0; justify-content: center; }
   }

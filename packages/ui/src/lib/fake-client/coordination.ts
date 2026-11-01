@@ -8,8 +8,16 @@ import type { FakeContext, FakeMethods } from './context';
 /** Every fake core of this page by id, what a remote letter or directory reaches. */
 const cores = new Map<string, FakeContext>();
 
+/** A workflow's remote question links follow that fake machine's availability. */
+function refreshWorkflowParents(coreId: string): void {
+  for (const owner of cores.values()) for (const root of owner.threads.values()) {
+    if (owner.workflows.childrenThere(root.id).some(child => child.coreId === coreId)) owner.emit('delegation.changed', { threadId: root.id });
+  }
+}
+
 export function registerCore(ctx: FakeContext): void {
   cores.set(ctx.identity.coreId, ctx);
+  refreshWorkflowParents(ctx.identity.coreId);
 }
 
 /** A fake core of this page by its id, which is how one reaches another without a network. */
@@ -18,7 +26,10 @@ export function fakeCore(coreId: string): FakeContext | undefined {
 }
 
 export function unregisterCore(ctx: FakeContext): void {
-  if (cores.get(ctx.identity.coreId) === ctx) cores.delete(ctx.identity.coreId);
+  if (cores.get(ctx.identity.coreId) === ctx) {
+    cores.delete(ctx.identity.coreId);
+    refreshWorkflowParents(ctx.identity.coreId);
+  }
 }
 
 /** Manual links and live group admissions are the two sources of remote trust. */
@@ -98,10 +109,12 @@ function nextMailTime(ctx: FakeContext, threadId: string): number {
 export function deliverContactAnswer(ctx: FakeContext, request: ContactRequest): void {
   const thread = ctx.threads.get(request.from.threadId);
   if (!thread || thread.archived) return;
-  const responder = request.decidedBy === 'owner' ? request.contact : `${request.contact}'s Boite${request.decidedBy === 'match' || request.decidedBy === 'concierge' ? ' automatically' : ''}`;
-  const text = request.status === 'accepted'
-    ? `${responder} opened its project ${JSON.stringify(request.project?.name ?? '')} to you.`
-    : `${responder} refused your request: ${request.reason ?? 'no reason given'}`;
+  const responder = request.decidedBy === 'owner' ? request.contact : request.decidedBy === 'bot' ? `${request.contact}'s Operator` : `${request.contact}'s Boite${request.decidedBy === 'match' || request.decidedBy === 'concierge' ? ' automatically' : ''}`;
+  // As the core: a relation names the exact thread to write to; an opened project names the project.
+  const address = request.relation ? `${request.contact.replace(/\s+/g, '-')}/${request.relation.remote.threadId}` : '';
+  const text = request.status !== 'accepted' ? `${responder} refused your request: ${request.reason ?? 'no reason given'}`
+    : request.relation ? `${responder} put you in touch with ${JSON.stringify(request.relation.remote.title)} (${address}). Write to it with boite threads send ${address} <text>.`
+    : `${responder} opened its project ${JSON.stringify(request.project?.name ?? '')} to you.`;
   const at = nextMailTime(ctx, thread.id);
   const letter: AgentLetter = {
     id: `contact-answer-${request.id}`, origin: 'contact', contact: { coreId: request.coreId, name: request.contact },

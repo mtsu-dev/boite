@@ -489,11 +489,16 @@ the earlier message. Claude background work can keep a session alive after its
 foreground turn and later open a background-completion turn.
 
 A turn Boite opens by itself (background completion, delegation or
-coordination mail, restart resume, automatic compaction) carries on the user's
-last request (`continuesRequest`). Elapsed time counts from that request's
-first turn: `requestStarts` for a chat summary, `ThreadSummary.requestSince`
-for a sidebar row while the agent works or monitors. A shell left running keeps
-its own start, and a compaction its own duration.
+coordination mail, a watched pull request's update, restart resume, automatic
+compaction) carries on the user's last request (`continuesRequest`). A chat
+summary's `Worked for` adds the request's earlier turns to its own
+(`requestWork`): their durations, plus the gap before a background or delegation
+turn, while the agent waited on work it started. A gap before a pull-request,
+coordination, resume or compaction turn counts nothing, so a review that wakes
+the agent the next morning does not count the night. A sidebar row counts from
+the request's first turn (`ThreadSummary.requestSince`) while the agent works or
+monitors. A shell left running keeps its own start, and a compaction its own
+duration.
 
 Native task observations persist with the provider, session generation and
 originating turn. `threads.get` carries the newest 100; the chat lists

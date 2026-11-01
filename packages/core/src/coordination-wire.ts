@@ -9,15 +9,21 @@ import { invalidParams } from './errors.ts';
 import { openResponse, SEALED, unpack, type Sealing } from './group/seal.ts';
 
 /** What one core asks another. */
-export type Operation = 'directory' | 'deliver' | 'receipt' | 'search' | 'read' | 'group.sync' | 'group.push' | 'contact.sync' | 'contact.ask' | 'contact.answer' | 'contact.project' | 'contact.route'
+export type Operation = 'directory' | 'deliver' | 'receipt' | 'search' | 'read' | 'group.sync' | 'group.push' | 'contact.sync' | 'contact.ask' | 'contact.answer' | 'contact.relation' | 'contact.project' | 'contact.route'
+  /** `contact.hand`: between members, a contact's link handed to the group's Bots host; `contact.move`: the old member tells the contact (`contacts/group-link.ts`). */
+  | 'contact.hand' | 'contact.move'
   /** Between members of a group, for a contact one of them is linked to (`contacts/members.ts`). */
   | 'relay.project' | 'relay.mirror' | 'relay.in' | 'relay.out'
   /** Between members of a group: a thread one starts on another, the models it can run on there, and the setting that lets it (`threads/group-spawn.ts`). */
   | 'thread.start' | 'delegation.catalog' | 'delegation.start' | 'delegation.report' | 'delegation.letter' | 'delegation.read' | 'delegation.stop' | 'setting.read' | 'setting.changed'
   /** Between members of a group: a bot of one looks after projects of another, which hears it while its `groupBots` is on (`agents/group-host.ts`). */
   | BotOperation;
-/** What a bot's core asks the machine whose projects it looks after, and the events that machine sends back. */
-export const BOT_OPERATIONS = ['bot.lease', 'bot.threads', 'bot.thread', 'bot.act', 'bot.answer', 'bot.send', 'bot.start', 'bot.event'] as const;
+/**
+ * What a bot's core asks the machine whose projects it looks after, and the
+ * events that machine sends back; `bot.move` hands a whole bot to another
+ * member (`agents/move.ts`), whatever its `groupBots`.
+ */
+export const BOT_OPERATIONS = ['bot.lease', 'bot.threads', 'bot.thread', 'bot.act', 'bot.answer', 'bot.send', 'bot.start', 'bot.event', 'bot.move'] as const;
 export type BotOperation = (typeof BOT_OPERATIONS)[number];
 /** A request as signed: who asks whom, when, once, for what. */
 export type Envelope = { from: string; to: string; at: number; nonce: string; operation: Operation; payload: unknown };

@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from 'bun:test';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { AgentProfile, MessagePart, ModelInfo } from '@boite/contracts';
+import { AGENT_PICTURE_MAX_BYTES, type AgentProfile, type MessagePart, type ModelInfo } from '@boite/contracts';
 import { runCli } from '../src/cli.ts';
 import { connect } from '../src/client.ts';
 import { setDriver } from '../src/drivers/index.ts';
@@ -241,6 +241,49 @@ test('a bot asks to rename itself and to pause, then archive, another bot; the o
   await waitFor(() => cards(worker).length === 0);
   expect(drawn(worker, wake!.id)!.answer).toBeNull();
   expect(profile().status).toBe('active');
+});
+
+test('a bot puts on a picture file at once, dresses another bot by name, and a card proposes one; unknown pictures and bad files are refused', async () => {
+  const { h, owner, self, worker, run, profile, cards } = await setup();
+  const { agent: herald } = await owner.call('agents.create', { threadId: worker, name: 'Herald' });
+  const heraldNow = () => h.core.workforce.records.get('profile', herald.id) as AgentProfile;
+  const png = join(h.dataDir, 'cat.png');
+  writeFileSync(png, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64'));
+
+  // Its own face, from a path relative to its folder, with no card.
+  const own = await run(['settings', 'bot', 'picture', 'cat.png'], self);
+  expect(own.err).toBe('');
+  expect(own.code).toBe(0);
+  expect(profile().avatar).toMatch(/^img:[0-9a-f]{16}$/);
+  expect(own.out).toContain(`now wears ${profile().avatar}`);
+  expect(cards(self)).toHaveLength(0);
+  expect((await owner.call('agents.picture.get', { avatar: profile().avatar })).dataUrl).toStartWith('data:image/png;base64,');
+
+  // Another bot, by name, and back to its robot.
+  expect((await run(['settings', 'bot', 'picture', png, '--bot', 'Herald'], self)).code).toBe(0);
+  expect(heraldNow().avatar).toBe(profile().avatar);
+  expect((await run(['settings', 'bot', 'picture', '', '--bot', 'Herald'], self)).code).toBe(0);
+  expect(heraldNow().avatar).toBe('');
+
+  // A picture this machine never stored, a missing file, a file that is no image and one past the bound change nothing.
+  expect((await run(['settings', 'bot', 'picture', 'img:0123456789abcdef', '--bot', 'Herald'], self)).err).toContain('no picture this machine holds');
+  expect((await run(['settings', 'bot', 'picture', 'dog.png'], self)).err).toContain('no file at');
+  const text = join(h.dataDir, 'notes.txt');
+  writeFileSync(text, 'not an image');
+  expect((await run(['settings', 'bot', 'picture', text], self)).err).toContain('is not a PNG, JPEG, WebP or GIF image');
+  expect((await run(['settings', 'bot', 'picture', h.dataDir], self)).err).toContain('is not a file');
+  const big = join(h.dataDir, 'big.png');
+  writeFileSync(big, Buffer.alloc(AGENT_PICTURE_MAX_BYTES + 1, 0x89));
+  expect((await run(['settings', 'bot', 'picture', big], self)).err).toContain('shrink it');
+  expect(heraldNow().avatar).toBe('');
+
+  // The same file proposed on a card instead; an unknown picture draws none.
+  expect((await run(['settings', 'bot', 'request', 'avatar', 'img:0123456789abcdef', '--bot', 'Herald', '--why', 'A face.'], self)).err).toContain('no picture this machine holds');
+  expect((await run(['settings', 'bot', 'request', 'avatar', '--picture', png, '--bot', 'Herald', '--why', 'A cat suits it.'], self)).code).toBe(0);
+  const [card] = cards(self);
+  expect(card?.agentSetting).toMatchObject({ key: 'avatar', value: profile().avatar });
+  await owner.call('agents.settings.apply', { threadId: self, questionId: card!.id });
+  expect(heraldNow().avatar).toBe(profile().avatar);
 });
 
 test('an agent whose stored model its provider no longer lists still takes a projects card; a new unlisted model is refused', async () => {

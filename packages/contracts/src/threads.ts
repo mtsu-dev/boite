@@ -187,8 +187,10 @@ export interface ThreadSummary {
   pullRequest?: { number: number; url: string; state: 'OPEN' | 'CLOSED' | 'MERGED' } | null;
   id: ThreadId;
   projectId: ProjectId | null;
-  /** Only persistent agent sessions have no project. */
+  /** Only persistent agent sessions and team chats have no project. */
   agentSessionId?: string;
+  /** A team's chat (`docs/teams.md`): it runs no agent, a turn there is one post, and no agent reaches it as a coordination contact. */
+  teamId?: string;
   /**
    * An incognito conversation of the drafts. It works in a folder of the
    * core's data directory rather than the drafts folder, lists stay quiet
@@ -276,6 +278,8 @@ export interface ThreadSummary {
    * row reads this to say the thread needs the user. Missing on older cores.
    */
   openQuestions?: number;
+  /** Unanswered child questions, including children on another machine. No question text; missing on older cores. */
+  subagentQuestions?: { threadId: ThreadId; title: string; machine?: { coreId: string; name: string } }[];
   unread: boolean;
   archived: boolean;
   /** Kept above the other threads of its project in the sidebar, whatever runs. */
@@ -574,6 +578,18 @@ export type ThreadListChanges =
   | { kind: 'full'; cursor: ListCursor; threads: ThreadSummary[] }
   | { kind: 'changes'; cursor: ListCursor; threads: ThreadSummary[]; removed: ThreadId[] };
 
+/**
+ * Counts over a whole conversation, which a client holding a page of it
+ * cannot make: the context popup shows them.
+ */
+export interface ThreadStats {
+  threadId: ThreadId;
+  /** Every compaction of the context, by hand or automatic, mid-turn ones included. */
+  compactions: number;
+  /** The messages the user sent. */
+  prompts: number;
+}
+
 export interface ThreadsRpcMethods {
   /** Owner-only, private bounded diagnostic history, including earlier runs. */
   'journal.inspect': { params: { cursor?: JournalInspectionCursor | null; limit?: number }; result: JournalInspection };
@@ -656,6 +672,8 @@ export interface ThreadsRpcMethods {
   'threads.agentShape': { params: { threadId: ThreadId }; result: AgentShape };
   /** Supported operations and their current availability for this thread. */
   'threads.capabilities': { params: { threadId: ThreadId }; result: ThreadCapabilities };
+  /** What the whole conversation holds, past the pages a client loaded: its compactions and the prompts sent (`ThreadStats`). */
+  'threads.stats': { params: { threadId: ThreadId }; result: ThreadStats };
   /**
    * The thread with its last `MESSAGE_PAGE` messages and the cursor for what is
    * behind them. Opening a thousand-message thread costs one page, not the lot.
@@ -781,6 +799,7 @@ export interface ThreadsRpcMethods {
    * stops its turn and its sub-threads' turns at once and answers; their
    * processes end once those turns have settled. Restoring restarts nothing.
    * `onlyIfIdle: true` marks done, recording its expiry date after refusing active work in the family.
+   * Unsent drafts do not block this explicit action.
    */
   'threads.archive': { params: { threadId: ThreadId; archived?: boolean; onlyIfIdle?: boolean }; result: ThreadSummary };
   /**

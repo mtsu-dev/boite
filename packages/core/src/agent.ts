@@ -227,6 +227,11 @@ export function registerAgentMethods(core: Core): void {
   core.router.register('windows.watch', (params, { connection }) => core.windows.watch(params, connection));
   core.router.register('windows.frame', (params, { connection }) => core.windows.frame(params, connection));
   core.router.register('windows.close', (params, { connection }) => core.windows.close(params, connection));
+  core.router.register('desktop.status', (params, { connection }) => core.desktops.status(params, connection));
+  core.router.register('desktop.start', (params, { connection }) => core.desktops.start(params, connection));
+  core.router.register('desktop.run', (params, { connection }) => core.desktops.run(params, connection));
+  core.router.register('desktop.stop', (params, { connection }) => core.desktops.stop(params, connection));
+  core.router.register('desktop.tool', (params, { connection }) => core.desktops.tool(params, connection));
   core.router.register('windows.consent', (params, { connection }) => core.windows.consent(params, connection));
   core.router.register('windows.allowlist', params => core.windows.allowlist(params));
   core.router.register('windows.revoke', params => core.windows.revoke(params));
@@ -236,7 +241,7 @@ export function registerAgentMethods(core: Core): void {
   core.router.register('windows.unpoint', (params, { connection }) => core.windows.unpoint(params, connection));
   core.router.register('browser.remoteWatch', (params, { connection }) => core.browser.remoteWatch(params, connection));
   core.router.register('browser.remoteStatus', (params, { connection }) => core.browser.remoteStatus(params, connection));
-  core.router.register('browser.command', params => core.browser.command(params));
+  core.router.register('browser.command', (params, { signal }) => core.browser.command(params, signal));
   core.router.register('browser.importCookies', params => core.browser.importCookies(params));
   core.router.register('browser.hostAttach', (_params, { connection }) => core.browser.hostAttach(connection));
   core.router.register('browser.hostDetach', (_params, { connection }) => core.browser.hostDetach(connection));
@@ -318,6 +323,7 @@ export function registerAgentMethods(core: Core): void {
     core.browser.release(threadId);
     core.devices.release(threadId);
     core.windows.release(threadId);
+    core.desktops.release(threadId);
     core.agents.forget(threadId, removed);
     core.subscribers.closeAgents(threadId);
   };

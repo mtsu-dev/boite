@@ -5,7 +5,7 @@ export const fr: Translation = {
     heading: 'Proxy d\'abonnements', enable: 'Utiliser un proxy d\'abonnements',
     hint: 'Claude et Codex utilisent la passerelle de cette machine, Grok aussi derrière Douane, et OpenCode 2 ajoute ses autres modèles aux siens. Limites ouvre son tableau de bord dans Boite. Les autres agents gardent leur configuration.',
     baseUrl: 'URL de l\'API', dashboardUrl: 'URL du tableau de bord des limites', key: 'Clé API (facultative)',
-    keyHint: 'Laissez vide pour garder la clé enregistrée. Utilisez la clé API du proxy, pas sa clé de gestion du tableau de bord.',
+    keyHint: 'Laissez vide pour garder la clé enregistrée. Utilisez la clé API du proxy, pas sa clé de gestion du tableau de bord. En mode local, Boite crée une clé client si aucune clé n’est enregistrée.',
     clearKey: 'Retirer la clé enregistrée', save: 'Enregistrer le proxy', saved: 'Proxy enregistré',
     configure: 'Configurer le proxy', native: 'Voir les limites des comptes',
     showDashboard: 'Voir le tableau du proxy',

@@ -2,6 +2,28 @@ import type { Translation } from '../../i18n.svelte';
 
 export const fr: Translation = {
   agents: {
+    builtin: {
+      badge: 'Intégré',
+      badgeTip: 'Le bot de Boite. Il n\'est jamais archivé, seulement réinitialisé.',
+      locked: 'Fourni par Boite ; réinitialisez pour le rétablir',
+      reset: 'Réinitialiser',
+      resetHint: 'Revient à l\'état livré par Boite : une nouvelle conversation, mémoire et routines effacées, nom, robot, modèle, effort et réglages par défaut.',
+      resetTitle: 'Réinitialiser « {name} » ?',
+      resetBody: 'Il commence une nouvelle conversation et l\'ancienne est archivée. Sa mémoire et ses routines sont effacées, et son nom, son robot, son modèle, son effort et ses réglages (budget quotidien, mémoire automatique, sous-agents) reviennent à leurs valeurs par défaut.',
+      name: { contacts: 'Standardiste' },
+      away: '{name} est sur {machine}, hors ligne pour l\'instant : rien n\'est recréé ailleurs en attendant.'
+    },
+    move: {
+      label: 'Machine',
+      hint: 'Là où il vit. Choisissez une autre machine du groupe pour l\'y déplacer.',
+      older: 'Mettez à jour Boite sur {machine} pour y déplacer un bot.',
+      olderShort: 'Mise à jour requise',
+      title: 'Déplacer {name} vers {machine} ?',
+      body: 'Sa mémoire, ses notes, ses routines et la fin de sa conversation partent sur {machine}. L\'ancienne conversation reste archivée sur {source}. À son prochain message, {name} lit une note sur le déplacement.',
+      confirm: 'Déplacer',
+      moving: 'Déplacement',
+      turnInFlight: '{name} est en plein tour. Déplacez-le une fois qu\'il a fini.'
+    },
     brain: "Cerveau",
     defaultModel: "Modèle par défaut",
     allowedModels: "Modèles autorisés pour ce bot",
@@ -97,10 +119,13 @@ export const fr: Translation = {
     robot: {
       family: 'Style', shape: 'Forme', color: 'Couleur', eyes: 'Yeux', mouth: 'Bouche', top: 'Sur la tête', cheeks: 'Joues', gear: 'Accessoire', shuffle: 'Mélanger', customize: 'Personnaliser', done: 'Terminé',
       option: '{part} {n}', none: 'Aucun', families: { jelly: 'Gelée', bubble: 'Bulle', capsule: 'Capsule', retro: 'Rétro' },
+      picture: 'Utiliser votre propre image', pictureUnreadable: "Ce fichier n'est pas une image lisible par Boite. Choisissez un fichier PNG, JPEG, WebP ou GIF.",
     },
     when: {
       who: 'Bot', pickAgent: 'Choisir un bot', what: 'Que doit-il faire ?', whatPlaceholder: 'Par exemple : résume les nouveaux messages et dis-moi lesquels attendent une réponse.',
-      when: 'Quand ?', modes: { once: 'Une fois', daily: 'Chaque jour', days: 'Certains jours', interval: 'Régulièrement' },
+      when: 'Quand ?', modes: { once: 'Une fois', daily: 'Chaque jour', days: 'Certains jours', monthly: 'Chaque mois', yearly: 'Chaque année', interval: 'Régulièrement' },
+      dayOfMonth: 'Jour du mois', month: 'Mois', missingDate: 'Les mois ou années sans cette date sont ignorés.',
+      monthly: 'Le {day} de chaque mois à {time}', yearly: 'Le {date} de chaque année à {time}',
       inAnHour: 'Dans une heure', thisEvening: 'Ce soir, 18:00', tomorrowMorning: 'Demain, 09:00', dateAndTime: 'Date et heure',
       otherInterval: 'Toutes les', minutesUnit: 'minutes', at: 'À', inThePast: 'Cette date est passée. Choisissez un moment à venir.', pickDays: 'Choisissez au moins un jour.',
       next: 'Prochaine fois : {when}', name: 'Nom', schedule: 'Planifier', newRoutine: 'Ajouter une routine',

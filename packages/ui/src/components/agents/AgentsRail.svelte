@@ -137,7 +137,7 @@
         {@const tone = toneOf(row, thread, !!waitingOn(machine.store, row.status?.threadId))}
         {@const line = lineOf(machine, row, thread, tone)}
         {@const unread = row.status?.unread ?? 0}
-        <AgentRow title={row.profile.name} open={owner === view && active === row.profile.id} {unread} away={machine.store.connection !== 'ready'}
+        <AgentRow title={row.profile.name} builtin={!!row.profile.builtin} open={owner === view && active === row.profile.id} {unread} away={machine.store.connection !== 'ready'}
           at={row.status?.last?.at ?? 0} {now} tone={tone === 'queued' ? 'idle' : tone} detail={line.text} icon={line.icon}
           since={tone === 'working' ? earliest(thread?.requestSince, thread?.runningSince) : null}
           wake={tone === 'idle' && row.profile.status === 'active' && row.status?.nextWake ? row.status.nextWake : null}

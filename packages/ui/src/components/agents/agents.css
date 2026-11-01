@@ -28,6 +28,7 @@
 .agent-head-identity:hover:not(:disabled) { background: var(--color-hover); }
 .agent-head-robot { display: inline-flex; flex: none; }
 .agent-head-text { display: grid; gap: 2px; min-width: 0; }
+.agent-head-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .agent-head-text strong { font-size: var(--text-md); font-weight: 600; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .agent-live { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--text-sm); color: var(--color-muted-foreground); }
 .agent-live-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -57,6 +58,8 @@
 .agent-portrait { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: none; }
 .agent-portrait-tools { display: flex; gap: 4px; }
 .agent-portrait-tools .active { color: var(--color-accent); background: var(--color-active); }
+/* The file picker opens from its button; the input itself is never drawn. */
+.agent-picture-input { display: none; }
 .agent-identity-name { flex: 1; align-self: center; }
 .agent-dressing { display: flex; flex-direction: column; gap: 12px; padding: 16px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-2); }
 
@@ -96,6 +99,10 @@ fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-p
 .agent-field > span:first-child { display: flex; flex-direction: column; gap: 2px; }
 .agent-field legend { padding: 0; margin-bottom: 8px; font-size: var(--text-sm); font-weight: 500; }
 .agent-field input:not([type=checkbox]), .agent-field textarea { width: 100%; box-sizing: border-box; font-weight: 400; }
+/* A built-in bot's role and instructions: Boite's text, read, not typed into. */
+.agent-locked-field { background: var(--color-surface-2); color: var(--color-muted-foreground); cursor: default; }
+.agent-locked { display: flex; align-items: center; gap: 6px; margin: -4px 0 0; }
+.agent-reset > button { align-self: flex-start; }
 .agent-field textarea { resize: vertical; min-height: 64px; font-family: inherit; line-height: 1.6; }
 .agent-field .hint { font-weight: 400; }
 .agent-field .agent-projects-hint { margin: 8px 0 0; font-size: var(--text-xs); }

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { errorText } from '../lib/errors';
-  import { Bot, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleCheck, CircleDot, Hand, KeyRound, ListChecks, ListTodo, MessageCircleQuestionMark, PanelRight, Pause, Play, Repeat, Reply, Settings2, ShieldQuestion, Target, X } from '@lucide/svelte';
+  import { Bot, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleCheck, CircleDot, Hand, KeyRound, ListChecks, ListTodo, MessageCircleQuestionMark, PanelRight, Pause, Play, Repeat, Reply, Settings2, ShieldQuestion, Target, Users, X } from '@lucide/svelte';
   import type { MessagePart, QuestionRequest, SecretRequest, ThreadSummary } from '@boite/contracts';
   import { focusComposer } from '../lib/focus';
   import type { Store } from '../lib/store.svelte';
@@ -13,8 +13,10 @@
   import { openQuestionPage } from '../lib/question-page';
   import SettingRequestCard from './SettingRequestCardLoader.svelte';
   import { settingHeading } from '../lib/setting-requests';
+  import { teamHeading } from '../lib/team-requests';
   import AgentSettingCard from './AgentSettingCardLoader.svelte';
   import GoalChecklist from './GoalChecklistLoader.svelte';
+  import SubagentQuestions from './SubagentQuestions.svelte';
 
   let { store, reserveInComposer = false, onroom }: {
     store: Store;
@@ -31,18 +33,17 @@
    * a running turn would push them out of sight. Several stack behind a pager;
    * each keeps what was picked or typed while another is on screen.
    *
-   * A sub-agent has no row of its own, so whatever its conversation asks the
-   * user, stopped or not, waits here too, named by the child's title with a
-   * way into it. Its question is answered from its card, never from this
-   * thread's composer (`replyTarget` keeps to the open thread); a permission
-   * is answered in the child's own conversation.
+   * A subagent's questions link to its conversation from this chatbar. Only
+   * this thread's questions use this composer's answers. Child permissions
+   * and secret requests still provide a way into their owner.
    */
   let children = $derived(new Map(store.openThread ? store.threads.filter((row) => row.parentThreadId === store.openThread?.id && !row.archived).map((row) => [row.id, row] as const) : []));
+  let childQuestions = $derived(store.openThread ? store.subagentQuestions(store.openThread.id) : []);
   type DockRequest = QuestionRequest & { secret?: SecretRequest };
   let asked: DockRequest[] = $derived.by(() => {
     const threadId = store.openThread?.id;
     if (!threadId) return [];
-    const questions: DockRequest[] = store.pendingQuestions.filter((question) => (question.async === true && question.threadId === threadId) || children.has(question.threadId));
+    const questions: DockRequest[] = store.pendingQuestions.filter((question) => question.async === true && question.threadId === threadId);
     const secrets: DockRequest[] = store.pendingSecrets
       .filter((request) => request.threadId === threadId || children.has(request.threadId))
       .map((secret) => ({ id: secret.id, threadId: secret.threadId, turnId: secret.turnId, text: secret.reason, options: [], allowText: false, multiple: false, createdAt: secret.createdAt, secret }));
@@ -57,7 +58,7 @@
   let shown = $derived(asked.find((question) => question.id === shownId) ?? asked[0]);
   let at = $derived(shown ? asked.indexOf(shown) : 0);
   let questionOpen = $state(true);
-  let inline = $derived(asked.length > 0 || waits.length > 0);
+  let inline = $derived(asked.length > 0 || waits.length > 0 || childQuestions.length > 0);
   // Start with the oldest pending question. New arrivals keep the current
   // question, its answers and its folded state; explicit navigation still wins.
   // The dock stays mounted when switching threads, so reset its selection then.
@@ -85,7 +86,7 @@
     if (next) shownId = next.id;
   }
 
-  let visible = $derived(Boolean(asked.length > 0 || waits.length > 0 || activity?.goal && !activity.goal.dismissed || activity?.loop || activity?.tasks.length && !activity.tasksDismissed));
+  let visible = $derived(Boolean(asked.length > 0 || waits.length > 0 || childQuestions.length > 0 || activity?.goal && !activity.goal.dismissed || activity?.loop || activity?.tasks.length && !activity.tasksDismissed));
   // Keep completed content mounted during the fade out, without occupying chat space.
   let tasks = $derived(activity?.tasksDismissed && visible ? [] : activity?.tasks ?? []);
   let goal = $derived(activity?.goal?.dismissed && visible ? null : activity?.goal);
@@ -203,16 +204,19 @@
   </div>
 {/snippet}
 
-{#if activity || asked.length > 0 || waits.length > 0}
-  <section class="activity" class:inline class:reserved={reserveInComposer} class:hidden={!visible} use:measure data-testid="thread-activity" aria-label={shown ? strings.activity.question : strings.activity.tasks} inert={!visible}>
+{#if activity || asked.length > 0 || waits.length > 0 || childQuestions.length > 0}
+  <section class="activity" class:inline class:reserved={reserveInComposer} class:hidden={!visible} use:measure data-testid="thread-activity" aria-label={shown || childQuestions.length ? strings.activity.question : strings.activity.tasks} inert={!visible}>
+    {#if childQuestions.length > 0 && store.openThread}
+      <div class="child-questions"><SubagentQuestions {store} threadId={store.openThread.id} /></div>
+    {/if}
     {#if shown}
       <div class="questions" data-testid="activity-questions" data-count={asked.length}>
         <div class="activity-row question-row">
-          {#if shown.secret}<KeyRound size={16} />{:else if shown.setting}<Settings2 size={16} />{:else if shown.agentSetting}<Bot size={16} />{:else}<MessageCircleQuestionMark size={16} />{/if}
+          {#if shown.secret}<KeyRound size={16} />{:else if shown.setting}<Settings2 size={16} />{:else if shown.agentSetting}<Bot size={16} />{:else if shown.team}<Users size={16} />{:else}<MessageCircleQuestionMark size={16} />{/if}
           <button type="button" class="ghost objective question-toggle" aria-expanded={questionOpen}
             title={questionOpen ? strings.activity.questionFold : strings.activity.questionUnfold} data-testid="activity-question-toggle"
             onclick={() => (questionOpen = !questionOpen)}>
-            <span class="question-line ui-label">{shown.secret ? shown.secret.name : questionOpen ? (shown.setting ? settingHeading(shown.setting) : shown.agentSetting ? fill(strings.agentSettingRequest.heading, { name: shown.agentSetting.agentName }) : strings.chat.questionAsyncHeading) : shown.text}</span>
+            <span class="question-line ui-label">{shown.secret ? shown.secret.name : questionOpen ? (shown.setting ? settingHeading(shown.setting) : shown.agentSetting ? fill(strings.agentSettingRequest.heading, { name: shown.agentSetting.agentName }) : shown.team ? teamHeading(shown.team) : strings.chat.questionAsyncHeading) : shown.text}</span>
             <ChevronDown size={16} class={questionOpen ? 'turned' : ''} />
           </button>
           {#if shown.secret}
@@ -255,6 +259,18 @@
                   docked
                   respond={(optionId) => store.answerQuestion(question.threadId, question.id, [optionId])}
                 />
+                {:else if question.team}
+                {@const team = question.team}
+                <Deferred part={parts.TeamCard}>{#snippet children(TeamCard)}<TeamCard
+                  {store}
+                  questionId={question.id}
+                  text={question.text}
+                  {team}
+                  answer={null}
+                  pending
+                  docked
+                  respond={(optionId) => store.answerQuestion(question.threadId, question.id, [optionId])}
+                />{/snippet}</Deferred>
                 {:else if question.setting}
                 <SettingRequestCard
                   {store}
@@ -436,7 +452,7 @@
   .activity.inline { position: relative; bottom: auto; inset-inline: auto; z-index: auto; background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; border: none; border-bottom: 1px solid var(--color-border); border-radius: 0; box-shadow: none; padding: 8px 4px 4px; }
   .activity-row { display: flex; align-items: center; gap: 8px; min-height: var(--control); min-width: 0; padding: 0 2px 0 8px; }
   /* The questions sit above the goal, the loop and the tasks, a hairline between. */
-  .questions + :is(.entry, .tasks-toggle, .waits), .waits + :is(.entry, .tasks-toggle) { margin-top: 4px; border-top: 1px solid var(--color-border); padding-top: 4px; }
+  .child-questions + :is(.questions, .entry, .tasks-toggle, .waits), .questions + :is(.entry, .tasks-toggle, .waits), .waits + :is(.entry, .tasks-toggle) { margin-top: 4px; border-top: 1px solid var(--color-border); padding-top: 4px; }
   /* A sub-agent's request: whose it is, muted, and the way into its conversation on the right. */
   .from-child, .wait { display: flex; align-items: center; gap: 8px; min-height: var(--control); min-width: 0; padding: 0 2px 0 8px; }
   .from-child { color: var(--color-muted-foreground); }

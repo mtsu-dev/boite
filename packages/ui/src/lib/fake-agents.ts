@@ -1,19 +1,12 @@
-import { RpcErrorCode, AGENT_MEMORY_MAX, AGENT_ROUTINE_NAME_MAX, AGENT_ROUTINE_PROMPT_MAX, AGENT_ROUTINES_MAX } from '@boite/contracts';
+import { nextAgentOccurrence, RpcErrorCode, AGENT_MEMORY_MAX, AGENT_PICTURE_CODE, AGENT_PICTURE_MAX_BYTES, AGENT_PICTURE_TYPES, isAgentPicture, AGENT_ROUTINE_NAME_MAX, AGENT_ROUTINE_PROMPT_MAX, AGENT_ROUTINES_MAX } from '@boite/contracts';
+import { BUILTIN_BOTS, BUILTIN_LOCKED, BUILTIN_NEVER_ARCHIVED } from './fake-client/builtin-bots';
 import type {
-  AgentAccountGrant, AgentBrain, AgentBrainRoot, AgentEntrustment, AgentProfile, AgentRecord, AgentRoutine, AgentRuntimeConfig, AgentSchedule,
+  AgentAccountGrant, AgentBuiltin, AgentBrain, AgentBrainRoot, AgentEntrustment, AgentProfile, AgentRecord, AgentRoutine, AgentRuntimeConfig, AgentSchedule,
   AgentSelection, AgentSession, AgentStatus, AgentWatch, AgentsRpcMethods, AgentsSnapshot, RpcParams, RpcResult, Thread, Turn
 } from '@boite/contracts';
 import { RpcFailure } from './client';
 
-/** The core's `nextOccurrence` in local time, without its timezone and DST search. */
-export function nextOccurrence(schedule: AgentSchedule, after: number): number | null {
-  if (schedule.kind === 'once') return schedule.at > after ? schedule.at : null;
-  if (schedule.kind === 'interval') return after + schedule.everyMinutes * 60000;
-  const [h = 0, m = 0] = schedule.time.split(':').map(Number), next = new Date(after); next.setHours(h, m, 0, 0);
-  if (next.getTime() <= after) next.setDate(next.getDate() + 1);
-  for (let i = 0; i < 7 && schedule.days?.length && !schedule.days.includes(next.getDay()); i++) next.setDate(next.getDate() + 1);
-  return next.getTime();
-}
+export const nextOccurrence = nextAgentOccurrence;
 
 const byCreation = (a: AgentRecord, b: AgentRecord) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 const DEFAULT_OBJECTIVE = 'Take over this work where it stands and carry it to a verified result.';
@@ -28,7 +21,7 @@ const QUIET = /^\[quiet\]/i;
  * Agent setting cards live with the threads' questions, and a thread creating a
  * bot resolves its route like a subagent's: `fake-client/agent-settings.ts` answers them.
  */
-export type AgentSettingMethod = Extract<keyof AgentsRpcMethods, `agents.settings.${string}` | 'agents.create'>;
+export type AgentSettingMethod = Extract<keyof AgentsRpcMethods, `agents.settings.${string}` | 'agents.create' | 'agents.avatar.set'>;
 type AgentHandlers = {
   [M in Exclude<keyof AgentsRpcMethods, AgentSettingMethod>]: (params: RpcParams<M>) => RpcResult<M>;
 };
@@ -52,6 +45,30 @@ export interface AgentRunner {
   occupied?: (path: string) => boolean;
   /** Validate new choices against the host catalog while retaining previously approved choices. */
   checkRoute?: (value: AgentSelection, previous?: Pick<AgentSelection, 'providerId' | 'accountId' | 'model' | 'effort'>) => void;
+  /** Archives a thread, as a built-in bot's reset does to its old one. */
+  archive?: (threadId: string) => void;
+  /** The route a new thread takes on this core: a built-in bot created with none named runs there. */
+  defaultRoute?: () => AgentSelection | null;
+  /** Another member of this core's group named by core id, a prefix of it or its name, as `agents.move` finds it. */
+  member?: (machine: string) => FakeMember | { refused: string };
+  /** This core's name in its group, as a moved bot's note says where it came from. */
+  selfName?: () => string;
+}
+
+/** A member of the group as a move sees it: its name, whether it takes bots, and its agents. */
+export interface FakeMember { coreId: string; name: string; botMove: boolean; agents: FakeAgents | undefined }
+
+/** What a move carries from one fake core to another. */
+interface BotParcel {
+  profile: AgentProfile;
+  brain: AgentBrain | undefined;
+  routines: AgentRoutine[];
+  config: AgentRuntimeConfig | undefined;
+  from: string;
+  /** The move's `requestId`: the target answers it again with the thread it made the first time. */
+  requestId: string;
+  /** The imported picture the profile wears, as a `data:` URL, as the core's `bot.move` carries it. */
+  picture?: string;
 }
 
 /**
@@ -62,6 +79,9 @@ export interface AgentRunner {
  */
 export class FakeAgents {
   private profiles = new Map<string, AgentProfile>();
+  /** Moves this core finished, by `requestId`, and the ones it took in, by source and `requestId`: the same id answers the same move. */
+  private movedOut = new Map<string, RpcResult<'agents.move'>>();
+  private movedIn = new Map<string, string>();
   private sessions = new Map<string, AgentSession>();
   private routines = new Map<string, AgentRoutine>();
   private watches: AgentWatch[] = [];
@@ -118,6 +138,13 @@ export class FakeAgents {
   referencesProject(_projectId: string): boolean { return false; }
   /** An agent's profile as stored, or null once removed: what an agent setting card reads. */
   profileOf(id: string): AgentProfile | null { const row = this.profiles.get(id); return row ? structuredClone(row) : null; }
+  /** The live built-in bot of that kind, as the core's `AgentStore.builtin`. */
+  builtin(kind: AgentBuiltin): AgentProfile | null {
+    const row = [...this.profiles.values()].sort(byCreation).find(a => a.builtin === kind && a.status !== 'archived');
+    return row ? structuredClone(row) : null;
+  }
+  /** That bot's own thread: the only one the `contacts.bot.*` calls answer. */
+  builtinThread(kind: AgentBuiltin): string | null { const row = this.builtin(kind); return row ? this.threadOf(row.id) : null; }
   /** Every agent not archived, oldest first. */
   liveProfiles(): AgentProfile[] { return [...this.profiles.values()].filter(a => a.status !== 'archived').sort(byCreation).map(a => structuredClone(a)); }
   configOf(id: string): AgentRuntimeConfig { return this.runtime(id); }
@@ -290,6 +317,14 @@ export class FakeAgents {
   private readonly handlers: AgentHandlers = {
     'agents.snapshot': p => this.snapshot(p.threadId, p.desk),
     'agents.profile.save': p => this.saveProfile(p, true),
+    'agents.picture.put': p => this.putPicture(p.dataUrl),
+    'agents.picture.get': p => {
+      const dataUrl = typeof p.avatar === 'string' && AGENT_PICTURE_CODE.test(p.avatar) ? this.pictures.get(p.avatar) : undefined;
+      if (dataUrl === undefined) throw new RpcFailure({ code: RpcErrorCode.NotFound, message: `avatar: no picture ${String(p.avatar)} on this machine`, data: { field: 'avatar' } });
+      return { dataUrl };
+    },
+    'agents.builtin.ensure': p => this.ensureBuiltin(p),
+    'agents.builtin.reset': p => this.resetBuiltin(p),
     'agents.open': p => this.openAgent(p.agentId),
     'agents.runtime.get': p => this.runtime(p.agentId),
     'agents.runtime.configure': p => this.configureRuntime(p),
@@ -305,14 +340,133 @@ export class FakeAgents {
     'agents.event': p => this.outsideEvent(p),
     'agents.limits.set': p => { this.limits = { paused: p.paused === true }; this.bump(); return { ...this.limits }; },
     'agents.entrust': p => this.entrust(p),
+    'agents.move': p => this.move(p),
   };
+
+  /**
+   * The core's move between two members of the group: the target makes the bot
+   * (same id, a new thread), then this core archives the old thread and drops
+   * the bot. The fake carries no conversation excerpts and no projects.
+   */
+  private move(p: RpcParams<'agents.move'>): RpcResult<'agents.move'> {
+    const requestId = typeof p.requestId === 'string' ? p.requestId : this.nextId('mov');
+    const done = this.movedOut.get(requestId);
+    if (done) return structuredClone(done);
+    const agent = this.profile(p.agentId);
+    const found = this.runner?.member?.(typeof p.machine === 'string' ? p.machine : '');
+    if (!found) this.refuse('agents.move.machine: this machine is in no group; --machine names another machine of its group');
+    if ('refused' in found) this.refuse(found.refused);
+    if (agent.status === 'archived') this.refuse(`agents.move: ${agent.name} is archived; restore it before moving it`);
+    if (!found.botMove || !found.agents) this.refuse(`agents.move: update Boite on ${found.name}; it cannot take a bot from another machine yet`);
+    // Every thread the move archives must be idle, not only the first.
+    for (const session of this.sessions.values()) {
+      if (session.agentId !== agent.id) continue;
+      const thread = this.runner?.thread?.(session.threadId);
+      if (thread?.status === 'running' || thread?.status === 'queued') {
+        throw new RpcFailure({ code: RpcErrorCode.Refused, message: `agents.move: ${agent.name} has a turn running or queued; stop it or let it end before moving the bot`, data: { field: 'agentId', reason: 'turn-in-flight', status: thread.status } });
+      }
+    }
+    const parcel: BotParcel = {
+      profile: structuredClone(agent),
+      brain: structuredClone(this.brains.get(agent.id)),
+      routines: [...this.routines.values()].filter(r => r.agentId === agent.id).map(r => structuredClone(r)),
+      config: structuredClone(this.configs.get(agent.id)),
+      from: this.runner?.selfName?.() ?? 'this machine',
+      requestId,
+      ...(this.pictures.has(agent.avatar.trim()) ? { picture: this.pictures.get(agent.avatar.trim())! } : {}),
+    };
+    const landed = found.agents.receive(parcel, found.name);
+    for (const [id, session] of [...this.sessions]) {
+      if (session.agentId !== agent.id) continue;
+      this.runner?.archive?.(session.threadId);
+      this.sessions.delete(id);
+    }
+    for (const [id, routine] of [...this.routines]) if (routine.agentId === agent.id) this.routines.delete(id);
+    // As the core: nothing of the bot stays on the machine it left, its desk included.
+    this.watches = this.watches.filter(watch => watch.agentId !== agent.id);
+    this.entrusted = this.entrusted.filter(entry => entry.agentId !== agent.id);
+    for (const map of [this.profiles, this.brains, this.configs, this.problems, this.unread, this.spend, this.passes, this.placed]) map.delete(agent.id);
+    this.bump();
+    const result = { agentId: agent.id, machine: found.coreId, threadId: landed, projectIds: [], groupProjects: [] };
+    this.movedOut.set(requestId, structuredClone(result));
+    return result;
+  }
+  /** The target's side of a move: refused before anything is written, then the bot and a new thread. */
+  receive(parcel: BotParcel, here: string): string {
+    const moved = parcel.profile;
+    const again = this.movedIn.get(`${parcel.from}:${parcel.requestId}`);
+    if (again && this.profiles.has(moved.id)) return again;
+    if (this.profiles.has(moved.id)) this.refuse(`agents.move: ${here} already holds a bot ${moved.id}; it came by another move or was never removed there`);
+    if (moved.builtin && this.builtin(moved.builtin)) this.refuse(`agents.move: ${here} already has its own ${moved.builtin} bot; reset or pause one of them, a machine runs one of each built-in bot`);
+    let selection = moved.selection;
+    try { this.runner?.checkRoute?.(selection); } catch {
+      const route = this.runner?.defaultRoute?.();
+      if (!route) this.refuse(`agents.move: ${here} has no signed-in account to run ${moved.name}; sign in there first`);
+      selection = { ...route, permissionMode: moved.selection.permissionMode };
+    }
+    // Its picture is stored here first, else it wears its robot, as the core's move.ts #picture.
+    let avatar = moved.avatar;
+    if (isAgentPicture(avatar) && !this.pictures.has(avatar.trim())) {
+      try { avatar = parcel.picture === undefined ? '' : this.putPicture(parcel.picture).avatar; } catch { avatar = ''; }
+    }
+    const agent: AgentProfile = { ...moved, avatar, selection, projectIds: [], revision: moved.revision + 1, updatedAt: Date.now() };
+    this.profiles.set(agent.id, agent);
+    if (parcel.brain) this.brains.set(agent.id, parcel.brain);
+    if (parcel.config) this.configs.set(agent.id, parcel.config);
+    for (const routine of parcel.routines) {
+      const copy = { ...this.stamp(routine, undefined, 'routine'), lastTurnId: null };
+      this.routines.set(copy.id, copy);
+    }
+    const threadId = this.makeThread(agent);
+    this.movedIn.set(`${parcel.from}:${parcel.requestId}`, threadId);
+    this.place(agent);
+    this.bump();
+    return threadId;
+  }
+
+  /** Imported pictures by avatar, as the core keeps them in its data folder (agents/pictures.ts). */
+  private readonly pictures = new Map<string, string>();
+  /** Whether an `img:` avatar names a picture held here, as the core's `AgentPictures.has`. */
+  hasPicture(avatar: string): boolean { return this.pictures.has(avatar); }
+  /** The core's `agents.picture.put`: the same checks, and the same bytes give the same avatar. */
+  private putPicture(dataUrl: unknown): { avatar: string } {
+    const match = typeof dataUrl === 'string' ? /^data:(image\/[a-z]+);base64,([A-Za-z0-9+/]*={0,2})$/.exec(dataUrl) : null;
+    if (!match || !(AGENT_PICTURE_TYPES as readonly string[]).includes(match[1]!)) {
+      throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `dataUrl: expected data:<type>;base64,<bytes> with a type among ${AGENT_PICTURE_TYPES.join(', ')}`, data: { field: 'dataUrl' } });
+    }
+    const bytes = Math.floor(match[2]!.length * 3 / 4) - (match[2]!.match(/=+$/)?.[0].length ?? 0);
+    if (bytes === 0 || bytes > AGENT_PICTURE_MAX_BYTES) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `dataUrl: the picture is ${bytes} bytes; expected 1 to ${AGENT_PICTURE_MAX_BYTES}`, data: { field: 'dataUrl' } });
+    // The header must be the type it claims, as the core's fits() in agents/pictures.ts.
+    let head = '';
+    try { head = atob(match[2]!.slice(0, 16)); } catch { /* refused below */ }
+    const fits = match[1] === 'image/png' ? head.startsWith('\x89PNG')
+      : match[1] === 'image/jpeg' ? head.startsWith('\xff\xd8\xff')
+        : match[1] === 'image/webp' ? head.startsWith('RIFF') && head.slice(8, 12) === 'WEBP'
+          : /^GIF8[79]a/.test(head);
+    if (!fits) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `dataUrl: the bytes are not a ${match[1]} image`, data: { field: 'dataUrl', expected: match[1] } });
+    // Two FNV-1a passes stand in for the core's SHA-256: only "same bytes, same name" matters here.
+    let a = 0x811c9dc5, b = 0x01000193;
+    for (let i = 0; i < match[2]!.length; i++) { const code = match[2]!.charCodeAt(i); a = Math.imul(a ^ code, 0x01000193) >>> 0; b = Math.imul(b ^ code, 0x811c9dc5) >>> 0; }
+    const avatar = `img:${a.toString(16).padStart(8, '0')}${b.toString(16).padStart(8, '0')}`;
+    this.pictures.set(avatar, dataUrl as string);
+    return { avatar };
+  }
 
   private saveProfile(p: RpcParams<'agents.profile.save'>, wakes: boolean): AgentProfile {
     if (typeof p.value.name !== 'string' || !p.value.name.trim()) this.refuse('name: expected nonempty text');
     const previous = p.id ? this.profile(p.id) : null;
     if (previous && previous.revision !== p.expectedRevision) this.refuse('profile revision changed');
-    const { id: _id, revision: _revision, createdAt: _created, updatedAt: _updated, ...value } = p.value as AgentProfile;
-    const agent = this.stamp(value, previous ?? undefined, 'agent') as AgentProfile;
+    if (typeof p.value.avatar === 'string' && isAgentPicture(p.value.avatar) && p.value.avatar !== previous?.avatar && !this.pictures.has(p.value.avatar.trim())) {
+      this.refuse(`avatar: ${p.value.avatar} is no picture this machine holds; import it with agents.picture.put first`);
+    }
+    const { id: _id, revision: _revision, createdAt: _created, updatedAt: _updated, builtin: _builtin, ...value } = p.value as AgentProfile;
+    // A save never makes or unmakes a built-in bot, and a built-in keeps Boite's domain and instructions.
+    if (previous?.builtin) {
+      if (value.domain !== previous.domain) this.refuse(BUILTIN_LOCKED('domain'));
+      if (value.instructions !== previous.instructions) this.refuse(BUILTIN_LOCKED('instructions'));
+      if (value.status === 'archived') this.refuse(BUILTIN_NEVER_ARCHIVED);
+    }
+    const agent = this.stamp(previous?.builtin ? { ...value, builtin: previous.builtin } : value, previous ?? undefined, 'agent') as AgentProfile;
     this.profiles.set(agent.id, agent);
     this.place(agent);
     if (!previous) {
@@ -324,6 +478,67 @@ export class FakeAgents {
     }
     this.bump();
     return structuredClone(agent);
+  }
+  /** The core's `ensure`: the live built-in of that kind, else one made now with Boite's texts and its first turn. */
+  private ensureBuiltin(p: RpcParams<'agents.builtin.ensure'>): AgentProfile {
+    const shipped = Object.hasOwn(BUILTIN_BOTS, p.kind) ? BUILTIN_BOTS[p.kind] : undefined;
+    if (!shipped) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `kind: expected one of ${Object.keys(BUILTIN_BOTS).join(', ')}`, data: { field: 'kind' } });
+    const name = this.builtinName(p.name, shipped.name);
+    const live = this.builtin(p.kind);
+    if (live) return live;
+    // Archived before (it should not happen): it comes back as it was.
+    const archived = [...this.profiles.values()].sort(byCreation).find(a => a.builtin === p.kind);
+    if (archived) {
+      const agent = this.stamp({ ...archived, status: 'active' as const }, archived, 'agent') as AgentProfile;
+      this.profiles.set(agent.id, agent);
+      this.bump();
+      return structuredClone(agent);
+    }
+    const selection = this.builtinRoute(p.selection);
+    const created = this.saveProfile({ value: { name, domain: shipped.domain, instructions: shipped.instructions, avatar: '', status: 'active', projectIds: [], selection } }, true);
+    // `saveProfile` never makes a built-in from a client's value: the core marks it here.
+    const agent = { ...this.profile(created.id), builtin: p.kind };
+    this.profiles.set(agent.id, agent);
+    this.bump();
+    return structuredClone(agent);
+  }
+  /** The core's `reset`: Boite's name, robot, texts and default route, default runtime settings, empty memory, no routines and a new thread, the old one archived. */
+  private resetBuiltin(p: RpcParams<'agents.builtin.reset'>): AgentProfile {
+    const previous = this.profile(p.agentId);
+    if (!previous.builtin) this.refuse(`agentId: ${previous.name} is not a built-in bot; only a built-in bot is reset`);
+    const shipped = BUILTIN_BOTS[previous.builtin];
+    const name = this.builtinName(p.name, shipped.name);
+    // Its default settings come back too: the machine's default route, unless the client named one.
+    const selection = p.selection ? this.builtinRoute(p.selection, previous.selection) : this.runner?.defaultRoute?.() ? this.builtinRoute(undefined) : previous.selection;
+    const agent = this.stamp({ ...previous, name, avatar: '', domain: shipped.domain, instructions: shipped.instructions, selection, status: previous.status === 'archived' ? 'active' as const : previous.status }, previous, 'agent') as AgentProfile;
+    this.profiles.set(agent.id, agent);
+    // Its runtime settings too: no budget, auto memory and subagents on, as `runtime` reads them with none saved.
+    this.configs.delete(agent.id);
+    for (const [id, session] of [...this.sessions]) {
+      if (session.agentId !== agent.id) continue;
+      this.runner?.archive?.(session.threadId);
+      this.sessions.delete(id);
+    }
+    for (const [id, routine] of [...this.routines]) if (routine.agentId === agent.id) this.routines.delete(id);
+    const brain = this.brains.get(agent.id);
+    this.brains.set(agent.id, { path: '', instructions: shipped.instructions, memory: '', revision: String(Number(brain?.revision ?? 0) + 1) });
+    this.problems.delete(agent.id);
+    this.makeThread(agent);
+    this.wake(agent.id, `You were just reset. Introduce yourself in two sentences, read your instructions, create the routines they call for, then say what you will do and when.\n\nYour instructions:\n${agent.instructions}`, 'event', 'Just created');
+    this.bump();
+    return structuredClone(agent);
+  }
+  private builtinName(given: unknown, fallback: string): string {
+    if (given === undefined) return fallback;
+    if (typeof given !== 'string' || !given.trim() || given.trim().length > 100) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'name: expected 1 to 100 characters' });
+    return given.trim();
+  }
+  /** A route named for a built-in is checked like any bot's; none named takes the core's default for a new thread. */
+  private builtinRoute(given: AgentSelection | undefined, previous?: AgentSelection): AgentSelection {
+    if (given) { this.runner?.checkRoute?.(given, previous); return structuredClone(given); }
+    const route = this.runner?.defaultRoute?.();
+    if (!route) this.refuse('selection: no signed-in account on this machine to run the bot; sign in to a provider first');
+    return { ...route, permissionMode: 'bypassPermissions' };
   }
   private openAgent(agentId: string): RpcResult<'agents.open'> {
     const agent = this.profile(agentId);
@@ -390,6 +605,7 @@ export class FakeAgents {
     const brain = this.getBrain(p.agentId);
     if (brain.revision !== p.expectedRevision) this.refuse('brain revision changed');
     if (p.memory.length > AGENT_MEMORY_MAX) this.refuse(`memory: expected at most ${AGENT_MEMORY_MAX} characters`);
+    if (this.profile(p.agentId).builtin && p.instructions !== brain.instructions) this.refuse(BUILTIN_LOCKED('instructions'));
     const saved = { ...brain, instructions: p.instructions, memory: p.memory, revision: String(Number(brain.revision) + 1) };
     this.brains.set(p.agentId, saved);
     return structuredClone(saved);

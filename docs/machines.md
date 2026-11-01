@@ -235,17 +235,17 @@ of pairwise links.
 
 ## Automatic settings synchronization
 
-The group card's **Default machine** picks one member whose settings every
-other member follows, or None. The choice is the group's (`group.settingsHome`,
+The group card's **Settings** role picks one member whose settings every
+other member follows, or None; that member's row carries a Settings badge. The choice is the group's (`group.settingsHome`,
 kept in the roster beside its name and merged the same way: the latest choice
 wins), so every member on current Boite shows the same one, and a member that
-leaves the group stops being the default. A core before `features.settingsHome`
+leaves the group stops holding the role. A core before `features.settingsHome`
 reports no choice and keeps its own settings; the card names it.
 
 A window that owns both machines makes the copy: at once, then after each
-change on the default machine and after each reconnect, while that window is
+change on the settings machine and after each reconnect, while that window is
 open, Settings closed or not. The remote core persists what it receives and
-keeps executing independently when the default machine or this window is
+keeps executing independently when the settings machine or this window is
 offline. Copies saved per window by earlier versions are dropped.
 
 The client copies (`SYNCED_SETTINGS` in the contracts):
@@ -253,7 +253,7 @@ The client copies (`SYNCED_SETTINGS` in the contracts):
 - deleted-history retention, process guards, question mode, short answers,
   tool summaries, automatic compaction and the cache keepalive;
 - **Install updates by itself when nothing runs** (`autoInstallUpdates`), so a
-  server as default machine, which cannot update itself, still carries the
+  server as settings machine, which cannot update itself, still carries the
   choice to every desktop ([updates](updates.md#installing-by-itself));
 - keybindings where the two differ, including unbound commands and restored
   defaults. A failed or canceled copy attempts to restore entries already changed;
@@ -264,7 +264,7 @@ Resource limits, memory protection, process retention, automatic agent updates,
 worktree storage, network access, public URLs, browser origins and provider
 sign-ins stay on their own machine. So does **Threads from the other
 machines**: it says what one machine lets the others do, a choice made per
-machine, and a copy would open every follower as soon as the default machine
+machine, and a copy would open every follower as soon as the settings machine
 opened.
 
 A synced setting changed on a following machine stays there: the change also
@@ -274,7 +274,7 @@ part of the copy goes through `settings.follow`, which leaves out what the
 follower keeps at the moment it writes, so a change saved there from another
 window meanwhile stays. The page
 shows it with a star in the accent colour; clicking the star gives it back and
-copies the default machine's value at once when that machine is connected in
+copies the settings machine's value at once when that machine is connected in
 this window, at its next connection otherwise. Only a change made on that machine
 marks it; the copy itself never does.
 
@@ -284,15 +284,43 @@ Diagnostics) has a machine picker above it once this window has more than one
 machine to pick. Picking another machine shows and
 changes that machine's settings without moving the window or its open
 conversation; Plugins opens on this PC, the others on the window's machine.
-On a machine that follows the default one, a note under the picker says so;
-the default machine says it is the default. Appearance and Experiments belong
+On a machine that follows the settings machine, a note under the picker says
+so; the settings machine says it holds the role. Appearance and Experiments belong
 to the window, Machines to the group, and Usage keeps its own machine filter,
 which can read every machine at once.
 
 Methods absent on an older core are skipped for that part. Automatic brain
-changes require the default machine's `brain.configured` event. A failure names
+changes require the settings machine's `brain.configured` event. A failure names
 its stage; earlier changes stay copied, and the next change or reconnect tries
 again.
+
+## The Bots machine
+
+The group card's **Bots** role picks the member that hosts new bots and the
+Contacts bot, or None (`group.botsHome`, kept in the roster like
+`settingsHome`; `features.botsHome`). That member's row carries a Bots badge,
+and one machine may hold both roles. A core before the role shuts the menu
+and the card says to update it.
+
+The Bots page creates a new bot there while this window reaches that machine
+as its owner, else on the machine the page shows
+([bots](bots.md#the-page)). The Contacts switch makes the group's one Contacts
+bot on the Bots machine and only there: while that machine is offline it
+makes none, since the bot may be there out of sight, and the Operator card of
+the Contacts page says "<bot> is on <machine>, offline for now"
+(`botsHostAway`). With no Bots role it makes it on the Settings machine while
+that one is connected, else on the window's machine. It makes none while any
+connected owner machine already lists one (`operatorHost`, `lib/operator.ts`).
+A change of the role moves the Contacts bot to the new Bots machine by itself,
+before its contact links ([contacts](contacts.md#group-to-group)). Other bots
+made before stay where they are; each one moves from its settings
+([moving a bot](bots.md#moving-a-bot-to-another-machine)).
+
+The contact lists (`contactRows`, `lib/contacts.svelte.ts`) show the group as
+one Boite: a contact that several members hold is one row, keyed by the group
+and the contact's core id, opening on the Bots machine when it holds the
+contact, else on the first machine listed that does, with what waits on every
+copy added up. No row names a machine of ours.
 
 ## Remote terminals
 

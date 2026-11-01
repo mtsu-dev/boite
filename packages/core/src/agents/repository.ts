@@ -80,6 +80,23 @@ export class AgentsRepository {
     return record;
   }
 
+  /**
+   * A record that keeps the id it had on another machine: a bot moved here
+   * (`agents/move.ts`). Refused when that id is already taken.
+   */
+  adopt<K extends AgentEntityKind>(kind: K, id: string, value: AgentDraft<AgentEntities[K]>): AgentEntities[K] {
+    checkKind(kind);
+    if (this.find(kind, id) !== null) throw refused(`${kind} ${id}: already on this machine`, { kind, id });
+    const now = Date.now();
+    const record = { ...value, id, revision: 1, createdAt: now, updatedAt: now } as AgentEntities[K];
+    this.writes += 1;
+    this.journal.append({ type: 'agents.record', threadId: null, version: 1, payload: recordEvent(kind, record) }, db => {
+      db.query('INSERT INTO agent_entities (kind, id, revision, created_at, updated_at, data) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(kind, record.id, record.revision, now, now, JSON.stringify(record));
+    });
+    return record;
+  }
+
   update<K extends AgentEntityKind>(kind: K, id: string, expectedRevision: number, value: AgentDraft<AgentEntities[K]>): AgentEntities[K] {
     return this.transaction(() => {
       const previous = this.get(kind, id);

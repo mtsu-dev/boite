@@ -70,13 +70,22 @@ test('a group contact keeps both sides of its exchange in the initiating convers
   // As the core: routed contact mail outside a shared project holds the recipient.
   expect((await source!.call('threads.get', { threadId: 't-trace' })).contactHold).toEqual({ contacts: [mine[1]!.contact!.name] });
   expect((await gateway!.call('collaboration.get', { threadId: 't-trace' })).messages).toEqual([]);
-  const asked = await source!.call('collaboration.ask', { threadId: 't-trace', contact: 'outside', text: 'An agent for the notes project' });
+  // A request needs the Operator: an ordinary thread's waits for it, the Operator's own goes out through the gateway.
+  await expect(source!.call('collaboration.ask', { threadId: 't-trace', contact: 'outside', text: 'x' })).rejects.toMatchObject({ code: RpcErrorCode.Refused });
+  await source!.call('agents.builtin.ensure', { kind: 'contacts' });
+  const operator = (await source!.call('contacts.get', {})).bot!.threadId;
+  const waiting = await source!.call('collaboration.ask', { threadId: 't-trace', contact: 'outside', text: 'An agent for the notes project' });
+  expect([waiting.stage, waiting.coreId]).toEqual(['bot', 'core-outside']);
+  expect((await outside!.call('contacts.get', {})).requests.some(request => request.text === waiting.text)).toBe(false);
+  const asked = await source!.call('collaboration.ask', { threadId: operator, contact: 'outside', text: 'An agent for the notes project' });
   expect(asked.from.coreId).toBe('core-source');
   const incoming = (await outside!.call('contacts.get', {})).requests.find(request => request.id === asked.id)!;
-  expect(incoming.from).toMatchObject({ coreId: 'core-gateway', threadId: received.from.threadId });
+  expect(incoming.from.coreId).toBe('core-gateway');
   await outside!.call('contacts.decide', { id: incoming.id, accept: true, projectId: 'p-notes' });
-  expect((await source!.call('collaboration.get', { threadId: 't-trace' })).messages.at(-1)).toMatchObject({ origin: 'contact', to: { coreId: 'core-source', threadId: 't-trace' }, status: 'delivered' });
-  expect((await source!.call('collaboration.contacts', { threadId: 't-trace' })).find(contact => contact.coreId === 'core-outside')!.projects).toContain('notes');
+  expect((await source!.call('collaboration.get', { threadId: operator })).messages.at(-1)).toMatchObject({ origin: 'contact', to: { coreId: 'core-source', threadId: operator } });
+  // The Operator reads what each contact opened; an ordinary thread reads names only.
+  expect((await source!.call('collaboration.contacts', { threadId: operator })).find(contact => contact.coreId === 'core-outside')!.projects).toContain('notes');
+  expect((await source!.call('collaboration.contacts', { threadId: 't-trace' })).find(contact => contact.coreId === 'core-outside')!.projects).toEqual([]);
   await outside!.call('contacts.revoke', { coreId: 'core-gateway', projectId: 'p-boite' });
   await expect(source!.call('collaboration.send', { threadId: 't-trace', to: target, text: 'No longer allowed', requestId: 'routed-revoked' })).rejects.toBeInstanceOf(RpcFailure);
 });
@@ -119,6 +128,7 @@ test('a direct contact preserves mutual-trust sends, search and transcript grant
   expect(sent.contact).toBeUndefined();
   expect((await source.call('collaboration.contacts', { threadId: 't-trace' })).map(contact => contact.coreId)).toContain(to.coreId);
   for (const client of [source, target]) await client.call('contacts.settings', { settings: { minTier: 2 } });
+  await source.call('agents.builtin.ensure', { kind: 'contacts' });
   expect((await source.call('collaboration.ask', { threadId: 't-trace', contact: to.coreId, text: 'Open another project' })).coreId).toBe(to.coreId);
 });
 
@@ -282,7 +292,11 @@ test('the tier takes 1, 2 or 3; an agent asks a contact by name and lists what e
   expect(await refusal(client.call('collaboration.ask', { threadId: 't-trace', contact: 'Chris', text: 'An agent on the website' }))).toEqual({ code: RpcErrorCode.Refused, field: 'threadId' });
   expect(await client.call('contacts.settings', { settings: { minTier: 3 } })).toEqual({ minTier: 3 });
   expect(await refusal(client.call('contacts.settings', { settings: { minTier: 4 as never } }))).toEqual({ code: RpcErrorCode.InvalidParams, field: 'settings.minTier' });
-  expect(await client.call('collaboration.contacts', { threadId: 't-trace' })).toEqual([{ name: 'Chris', coreId: 'core-chris', projects: ['website'], link: 'connected' }]);
+  // An ordinary thread reads the names; what each opened is the Operator's to read.
+  expect(await client.call('collaboration.contacts', { threadId: 't-trace' })).toEqual([{ name: 'Chris', coreId: 'core-chris', projects: [], link: 'connected' }]);
+  await client.call('agents.builtin.ensure', { kind: 'contacts' });
+  const operator = (await client.call('contacts.get', {})).bot!.threadId;
+  expect((await client.call('collaboration.contacts', { threadId: operator }))[0]!.projects).toEqual(['website']);
   const asked = await client.call('collaboration.ask', { threadId: 't-trace', contact: 'chris', text: 'An agent on the website' });
   expect([asked.direction, asked.status, asked.contact]).toEqual(['out', 'pending', 'Chris']);
   // Any case, and a name's spaces written as hyphens, like `boite threads ask`.

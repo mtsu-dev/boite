@@ -12,7 +12,8 @@ import { address, LETTER_TTL_MS, RESIDENT_LETTER_TTL_MS, same, text } from '../c
 import { PeerRefusal, type Operation } from '../coordination-wire.ts';
 import { refused, unavailable, messageOf, RpcFailure } from '../errors.ts';
 import { REPLY_WINDOW_MS } from './reach.ts';
-import { checkNormalizedRemote, gitRemoteOf } from './git-remote.ts';
+import { checkNormalizedRemote } from './git-remote.ts';
+import { contactFace } from './face.ts';
 
 type ContactSummary = RpcResult<'collaboration.contacts'>[number];
 interface SourceRoute { threadId: string; coreId: string; via: string; name: string; stamp: string; admission: number }
@@ -43,6 +44,11 @@ export class ContactMailboxes {
   #self(): string { return this.#core.coordination.card().coreId; }
   #sources(): SourceRoute[] { return this.#core.journal.getSetting(SOURCES) as SourceRoute[] ?? []; }
   #mailboxes(): Mailbox[] { return this.#core.journal.getSetting(MAILBOXES) as Mailbox[] ?? []; }
+  /** The contact moved to another core of its owner's group (`group-link.ts`): routes and mailboxes here name the new one. */
+  rekey(from: string, to: string, name: string): void {
+    if (this.#sources().some(entry => entry.coreId === from)) this.#core.journal.setSetting(SOURCES, this.#sources().map(entry => entry.coreId === from ? { ...entry, coreId: to, name } : entry));
+    if (this.#mailboxes().some(entry => entry.coreId === from)) this.#core.journal.setSetting(MAILBOXES, this.#mailboxes().map(entry => entry.coreId === from ? { ...entry, coreId: to, name } : entry));
+  }
   #member(coreId: string): CoordinationPeer {
     const peer = this.#core.group.peers().find(entry => entry.coreId === coreId);
     if (!peer) throw refused('route: expected a current member of this owner\'s group');
@@ -182,28 +188,19 @@ export class ContactMailboxes {
     this.#core.coordination.rejectRoutedLetters(route.threadId, route.coreId, reason);
   }
 
+  /**
+   * `boite threads ask`: this core's Contacts bot picks the contact. A member
+   * without one asks through the group's Bots host, which holds the bot
+   * (`host-asks.ts`); a core with neither refuses.
+   */
   async ask(params: RpcParams<'collaboration.ask'>): Promise<ContactRequest> {
-    const input = text(params.contact, 'contact', 200);
-    const local = this.#core.contacts.list().some(contact => contact.coreId === input || contact.name.toLowerCase() === input.toLowerCase() || contact.name.replace(/\s+/g, '-').toLowerCase() === input.toLowerCase());
-    if (local) return this.#core.contacts.ask(params);
-    const contacts = await this.contacts(params.threadId);
-    const wanted = input.toLowerCase();
-    const found = contacts.filter(contact => contact.coreId === input || contact.name.toLowerCase() === wanted || contact.name.replace(/\s+/g, '-').toLowerCase() === wanted);
-    if (found.length !== 1) throw refused('contact: expected one unambiguous contact from boite threads contacts');
-    const route = this.route(params.threadId, found[0]!.coreId);
-    if (!route) throw refused('route: the group contact route is no longer available');
-    const from = this.#source(params.threadId, true);
-    this.#core.contacts.checkSendTier(params.threadId);
-    const gitRemote = gitRemoteOf(this.#core.threads.require(params.threadId).cwd);
-    const answer = await this.#request(route, { action: 'ask', from, coreId: route.coreId, id: randomUUID(), text: text(params.text, 'text'), ...(gitRemote ? { gitRemote } : {}) }) as ContactRequest;
-    this.#source(params.threadId);
-    return { ...answer, from, coreId: route.coreId, contact: route.name };
+    return this.#core.contacts.hostAsks.relays() ? this.#core.contacts.hostAsks.ask(params) : this.#core.contacts.ask(params);
   }
 
   /** Only a sealed request from a current group member reaches this handler. */
   async handle(peer: CoordinationPeer, payload: unknown): Promise<unknown> {
     this.#member(peer.coreId);
-    const p = payload as { action?: string; from?: AgentContact; coreId?: string; operation?: Operation; payload?: unknown; letter?: AgentLetter; receipt?: boolean; id?: string; text?: string; gitRemote?: string; admission?: number };
+    const p = payload as { action?: string; from?: AgentContact; coreId?: string; operation?: Operation; payload?: unknown; letter?: AgentLetter; receipt?: boolean; id?: string; text?: string; gitRemote?: string; want?: unknown; admission?: number };
     if (p?.action === 'revoke') {
       const route = this.route(text(p.id, 'route.threadId', 128), text(p.coreId, 'route.coreId', 100));
       if (route?.via === peer.coreId && route.admission === p.admission) this.#revokeSource(route, 'The gateway contact route was revoked');
@@ -218,6 +215,8 @@ export class ContactMailboxes {
       return this.#core.coordination.receiveRouted(letter, route.name);
     }
     const from = checkRemoteContact(p?.from as AgentContact, peer);
+    // A member's thread asks this Bots host's Contacts bot: the member's own request, under its id.
+    if (p.action === 'host-ask') return this.#core.contacts.hostAsks.filed(peer, from, payload);
     if (p.action === 'contacts') return this.#core.contacts.available().flatMap(contact => {
       const direct = this.#core.contacts.find(contact.coreId);
       return direct ? [{...contact, admission: direct.addedAt}] : [];
@@ -243,18 +242,20 @@ export class ContactMailboxes {
       const asks = this.#core.journal.getSetting('contacts:mailbox-asks') as Record<string, ContactRequest> ?? {};
       const key = `${box.id}/${id}`;
       if (asks[key]) return asks[key];
-      const request = this.#core.contacts.askFrom({ ...from, coreId: this.#self(), threadId: box.id }, contact.coreId, text(p.text, 'route.ask.text'), p.gitRemote === undefined ? undefined : checkNormalizedRemote(p.gitRemote, 'route.ask.gitRemote'));
+      // This core's Contacts bot settles it like its own threads' requests; without one it is refused.
+      const request = this.#core.contacts.askFrom({ ...from, coreId: this.#self(), threadId: box.id }, { contact: contact.coreId, text: text(p.text, 'route.ask.text'), ...(p.want === undefined ? {} : { want: p.want }) }, p.gitRemote === undefined ? undefined : checkNormalizedRemote(p.gitRemote, 'route.ask.gitRemote'));
       this.#core.journal.setSetting('contacts:mailbox-asks', { ...asks, [key]: request });
       return request;
     }
-    if (p.action !== 'deliver') throw refused('route.action: expected contacts, lookup, ask, deliver or return');
+    if (p.action !== 'deliver') throw refused('route.action: expected contacts, lookup, ask, host-ask, deliver or return');
     const canonical = p.letter!;
     if (!same(address(canonical.from, 'letter.from'), from)) throw refused('letter.from: expected the authenticated initiating conversation');
     this.#core.contacts.checkAttestedTier(from.agent);
     this.#timestamps(canonical, LETTER_TTL_MS);
     const contact = this.#contact(address(canonical.to, 'letter.to').coreId);
     const box = this.#mailbox(from, contact, canonical.createdAt);
-    const wire: AgentLetter = { ...canonical, from: { ...from, coreId: this.#self(), threadId: box.id }, contact: { coreId: contact.coreId, name: contact.name } };
+    // The contact reads this owner's name, never the initiating member's (`face.ts`).
+    const wire: AgentLetter = { ...canonical, from: { ...from, coreId: this.#self(), threadId: box.id, machine: contactFace(this.#core) }, contact: { coreId: contact.coreId, name: contact.name } };
     const stored = this.#store(box.id, 'out', wire, canonical);
     const currentWire = { ...stored.wire, from: wire.from };
     let answer: AgentLetter;

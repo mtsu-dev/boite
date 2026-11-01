@@ -281,6 +281,7 @@ export class Store {
   createGroup(...args: Parameters<Pairing['createGroup']>) { return this.#ctx.pairing.createGroup(...args); }
   renameGroup(...args: Parameters<Pairing['renameGroup']>) { return this.#ctx.pairing.renameGroup(...args); }
   setSettingsHome(...args: Parameters<Pairing['setSettingsHome']>) { return this.#ctx.pairing.setSettingsHome(...args); }
+  setBotsHome(...args: Parameters<Pairing['setBotsHome']>) { return this.#ctx.pairing.setBotsHome(...args); }
   joinGroup(...args: Parameters<Pairing['joinGroup']>) { return this.#ctx.pairing.joinGroup(...args); }
   leaveGroup(...args: Parameters<Pairing['leaveGroup']>) { return this.#ctx.pairing.leaveGroup(...args); }
   removeFromGroup(...args: Parameters<Pairing['removeFromGroup']>) { return this.#ctx.pairing.removeFromGroup(...args); }
@@ -561,6 +562,7 @@ export class Store {
   threadsOf(...args: Parameters<Threads['threadsOf']>) { return this.#ctx.threads.threadsOf(...args); }
   moveBlocked(threadId: ThreadId) { return this.#ctx.threads.moveBlocked(threadId); }
   subagents(threadId: ThreadId) { return this.#ctx.threads.subagents(threadId); }
+  subagentQuestions(threadId: ThreadId) { return this.#ctx.threads.subagentQuestions(threadId); }
   compact(...args: Parameters<Threads['compact']>) { return this.#ctx.threads.compact(...args); }
   rewind(...args: Parameters<Threads['rewind']>) { return this.#ctx.threads.rewind(...args); }
   /** Per thread, the message a rewind in flight removes; the timeline already hides it. */
@@ -603,6 +605,7 @@ export class Store {
     try { await client.call('turns.cancelRetry', { threadId }); } catch (error) { this.#ctx.fail(error); }
   }
   threadCapabilities(...args: Parameters<Threads['capabilities']>) { return this.#ctx.threads.capabilities(...args); }
+  threadStats(...args: Parameters<Threads['stats']>) { return this.#ctx.threads.stats(...args); }
   /** What the thread's last Claude request carried, read from its transcript on this store's machine. */
   agentShape(threadId: ThreadId): Promise<AgentShape> {
     const client = this.#ctx.client;

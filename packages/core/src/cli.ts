@@ -11,7 +11,8 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
-import { AGENT_ENV, AGENT_SETTING_KEYS, SETTINGS_PAGES, VIEW_HELP } from '@boite/contracts';
+import { AGENT_ENV, AGENT_PICTURE_MAX_BYTES, AGENT_SETTING_KEYS, SETTINGS_PAGES, VIEW_HELP } from '@boite/contracts';
+import { agentSettingArg, clipped, pictureDataUrl, settingsPlace, settingValue } from './cli-settings.ts';
 import { VIEW_EXAMPLE } from './view-example.ts';
 import { viewCheckCommand } from './view-cli.ts';
 import type { AgentTask, GitChange, PanelSurface, SettingsReading, Todo } from '@boite/contracts';
@@ -28,7 +29,9 @@ import { browserRecipe } from './browser-recipe.ts';
 import { deviceCommand } from './device-cli.ts';
 import { WINDOW_REQUEST_TIMEOUT_MS, windowCommand } from './window-cli.ts';
 import { secretCommand } from './secret-cli.ts';
+import { teamCommand } from './team-cli.ts';
 import { agentsCommand, AgentsUsage, WAIT_MAX_S } from './agents-cli.ts';
+import { contactsCommand } from './contacts/cli.ts';
 import type { RpcParams } from '@boite/contracts';
 import { contextRequest, parse, requiredText, Usage, type Parsed } from './cli-args.ts';
 import { issueCommand, logsCommand } from './logs-cli.ts';
@@ -77,6 +80,8 @@ ${CONTROL_HELP}
   window help                    capture a desktop window (Unity, a game) as a PNG
                                  or a contact sheet, or show it in the Window panel;
                                  read its controls and point the user at one
+  desktop help                   a private virtual desktop (Linux) to run GUI apps
+                                 and drive them through agent-desktop
   pr list|refresh                this conversation's linked pull requests
   pr link|unlink <url>           attach or remove a PR link; does not change GitHub
   pr watch [<url|number>]        wake this thread when the PR's checks fail or
@@ -141,8 +146,13 @@ ${CONTROL_HELP}
                                  any provider), projects +boite -old
                                  (+<machine>/<name> for a project of another
                                  machine of the group), instructions with
-                                 --instructions-file <path>; the outcome
+                                 --instructions-file <path>, avatar with
+                                 --picture <image>; the outcome
                                  arrives as a message (applied, changed, refused)
+  settings bot picture <image>   give a bot a face at once, no card: yours, or
+                                 --bot <name>; a PNG, JPEG, WebP or GIF of at
+                                 most ${AGENT_PICTURE_MAX_BYTES / 1024} KB, or a robot code, one or two
+                                 characters, "" for the robot its id draws
   settings bot create <name>     create the bot the user asked for, at once,
                                  on your own route or --model <provider/model>
                                  (--effort, --project a,b, --domain <text>,
@@ -166,10 +176,11 @@ ${CONTROL_HELP}
   threads wait [thread]          the next message (--timeout <s>, default 90)
   threads inbox                  every exchange and its delivery state
                                  <thread>: <thread-id>, <machine>/<thread-id>
-  threads contacts               other owners' Boites linked as contacts and
-                                 the projects each opened to you
-  threads ask <contact> <text>   request project access; the remote Boite can
-                                 decide automatically; send messages with threads send
+  threads contacts               other owners' Boites linked as contacts
+  threads ask <text>             ask the Contacts bot for a contact's thread
+                                 (--contact <c>, --to <c>/<thread>, --new, --share);
+                                 the answer names the thread to write to
+  contacts [help]                the Contacts bot's own commands
   bot memory                     a bot's MEMORY.md and its path
   bot remember <fact>            add a dated line to MEMORY.md
   bot routines                   its routines: schedule, next run, last outcome
@@ -182,6 +193,7 @@ ${CONTROL_HELP}
                                  (--key <key>: a later event with the same key
                                  replaces it while it waits); from a terminal
                                  as the owner, or --core with a paired device
+  team <command>                 a bot's teams: post, read, propose (boite team help)
   --request-id <id>              reuse to retry threads send|reply or delegate spawn|send
   delegate models                models, reasoning levels and speeds a subagent can use
                                  (--machine <name>: another machine's, for
@@ -325,45 +337,6 @@ function absolute(cwd: string, path: string): string {
   return isAbsolute(path) ? path : resolve(cwd, path);
 }
 
-/** A value as typed: JSON when it parses (60, true, null, ["a"]), the bare word otherwise. */
-export function settingValue(raw: string): unknown {
-  try {
-    return JSON.parse(raw) as unknown;
-  } catch {
-    return raw;
-  }
-}
-
-/**
- * A bot setting as typed: the text keys take the words as they are, so a
- * name such as `007` stays text; `projects` takes `+name -name` edits or a
- * list (`a,b`, `a b` or JSON), the other keys a value as `settingValue` reads it.
- */
-export function agentSettingArg(key: string, tokens: string[]): unknown {
-  const raw = tokens.join(' ').trim();
-  if (['name', 'domain', 'instructions', 'avatar', 'status'].includes(key)) return raw;
-  if (key !== 'projects') return settingValue(raw);
-  if (raw.startsWith('[') || raw.startsWith('{')) return settingValue(raw);
-  const items = raw.split(/[\s,]+/).filter(item => item.length > 0);
-  const edits = items.filter(item => /^[+-]./.test(item));
-  if (edits.length === 0) return items;
-  if (edits.length !== items.length) throw new Usage('settings bot request projects takes +name -name edits or a list, not both');
-  return { add: edits.filter(item => item.startsWith('+')).map(item => item.slice(1)), remove: edits.filter(item => item.startsWith('-')).map(item => item.slice(1)) };
-}
-
-/** A bot's instructions run to thousands of characters: a listing shows their start; one key or --json gives them whole. */
-function clipped(text: string, max = 160): string {
-  return text.length > max ? `${text.slice(0, max - 1)}… (${text.length} characters)` : text;
-}
-
-/** `resources#limits` into a page and a card. */
-function settingsPlace(raw: string): { page: string; section?: string } {
-  const parts = raw.split('#');
-  if (parts.length > 2) throw new Usage('settings open takes one page, with an optional #card');
-  const [page = '', section] = parts;
-  return section === undefined || section.length === 0 ? { page } : { page, section };
-}
-
 function nextTaskId(tasks: AgentTask[]): string {
   let max = 0;
   for (const task of tasks) {
@@ -393,6 +366,14 @@ function changeRow(change: GitChange): string {
 }
 
 type Printer = (lines: string[], value: unknown) => void;
+
+/** A command that ran a child: the child's own output and code as it gave them, or the lines with --json. */
+function childOutput(result: { lines: string[]; value: unknown; output?: { stdout: string; stderr: string; exitCode: number } }, json: boolean, io: CliIo, print: Printer): number | undefined {
+  if (result.output === undefined || json) { print(result.lines, result.value); return result.output?.exitCode; }
+  if (result.output.stdout) io.out(result.output.stdout);
+  if (result.output.stderr) io.err(result.output.stderr);
+  return result.output.exitCode;
+}
 
 async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: string, print: Printer, caller: Caller): Promise<void | number> {
   const [command, ...rest] = parsed.positional;
@@ -453,17 +434,10 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
       const result = await deviceCommand(rest, io, client, threadId, parsed.timeout);
       print(result.lines, result.value);
     },
-    window: async () => {
-      const result = await windowCommand(rest, io, client, threadId);
-      print(result.lines, result.value);
-    },
-    secret: async () => {
-      const result = await secretCommand(rest, io, client, threadId);
-      if (result.output === undefined || parsed.json) { print(result.lines, result.value); return result.output?.exitCode; }
-      if (result.output.stdout) io.out(result.output.stdout);
-      if (result.output.stderr) io.err(result.output.stderr);
-      return result.output.exitCode;
-    },
+    window: async () => childOutput(await windowCommand(rest, io, client, threadId), parsed.json, io, print),
+    desktop: async () => childOutput(await (await import('./desktop-cli.ts')).desktopCommand(rest, io, client, threadId), parsed.json, io, print),
+    secret: async () => childOutput(await secretCommand(rest, io, client, threadId), parsed.json, io, print),
+    team: async () => childOutput(await teamCommand(rest, client, threadId, parsed.requestId), parsed.json, io, print),
     // `boite --limit 5 logs` parsed them as globals: they come first, so the command's own flags still win.
     // A global `--level` yields to the command's own `--min-level`, which it would otherwise override.
     logs: () => logsCommand([...(parsed.limit === undefined ? [] : ['--limit', String(parsed.limit)]), ...(parsed.level === undefined || rest.some(entry => entry === '--min-level' || entry.startsWith('--min-level=')) ? [] : ['--level', parsed.level]), ...rest], client, threadId, agentCaller, io.cwd, print),
@@ -513,9 +487,8 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
         throw error;
       }
     },
-    workflow: async () => {
-      await workflowCommand(client, threadId, rest, io, print, parsed.requestId);
-    },
+    contacts: async () => { await contactsCommand(client, threadId, rest, { ...(parsed.project === undefined ? {} : { project: parsed.project }), ...(parsed.model === undefined ? {} : { model: parsed.model }), ...(parsed.effort === undefined ? {} : { effort: parsed.effort }), worktree: parsed.worktree }, print); },
+    workflow: async () => { await workflowCommand(client, threadId, rest, io, print, parsed.requestId); },
     where: async () => {
       const where = await client.call('agent.where', { threadId });
       print(
@@ -691,12 +664,30 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
           ], created);
           return;
         }
+        if (rest[1] === 'picture') {
+          if (rest.length !== 3) throw new Usage('settings bot picture takes one image file, or a robot code, one or two characters or "" for the robot its id draws');
+          const wanted = rest[2]!;
+          const file = absolute(io.cwd, wanted);
+          const isFile = wanted.trim() !== '' && existsSync(file);
+          if (!isFile && !/^(bot|img):/.test(wanted) && /[./\\]/.test(wanted)) throw new Usage(`settings bot picture: no file at ${file}`);
+          const avatar = isFile ? (await client.call('agents.picture.put', { threadId, dataUrl: pictureDataUrl(file) })).avatar : wanted;
+          const saved = await client.call('agents.avatar.set', { threadId, avatar, ...agent });
+          print([
+            `picture: ${saved.name} (${saved.id}) now wears ${saved.avatar === '' ? 'the robot its id draws' : saved.avatar}`,
+            'The user sees it at once, in the bot list and its conversation.',
+          ], saved);
+          return;
+        }
         if (rest[1] === 'request') {
           if (parsed.why === undefined || parsed.why.trim().length === 0) throw new Usage('settings bot request needs --why <text>, the reason the user reads on the card');
           const key = want(2, `a key: ${AGENT_SETTING_KEYS.join(', ')}`);
           const fromFile = key === 'instructions' && parsed.instructionsFile !== undefined;
-          if (fromFile ? rest.length > 3 : rest.length < 4) throw new Usage(fromFile ? 'settings bot request instructions takes the text or --instructions-file <path>, not both' : 'settings bot request needs a value after the key');
-          const value = fromFile ? readRules(parsed.instructionsFile!) : agentSettingArg(key, rest.slice(3));
+          if (parsed.picture !== undefined && key !== 'avatar') throw new Usage('--picture goes with settings bot request avatar');
+          const fromPicture = parsed.picture !== undefined;
+          if (fromPicture && rest.length > 3) throw new Usage('settings bot request avatar takes a value or --picture <path>, not both');
+          if (!fromPicture && (fromFile ? rest.length > 3 : rest.length < 4)) throw new Usage(fromFile ? 'settings bot request instructions takes the text or --instructions-file <path>, not both' : 'settings bot request needs a value after the key');
+          const value = fromPicture ? (await client.call('agents.picture.put', { threadId, dataUrl: pictureDataUrl(absolute(io.cwd, parsed.picture!)) })).avatar
+            : fromFile ? readRules(parsed.instructionsFile!) : agentSettingArg(key, rest.slice(3));
           const asked = await client.call('agents.settings.request', { threadId, reason: parsed.why, key, value, ...agent });
           const setting = asked.setting;
           print([
@@ -707,7 +698,7 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
           ], asked);
           return;
         }
-        if (rest.length > 2) throw new Usage('settings bot expects a key, request <key> <value> or create <name>');
+        if (rest.length > 2) throw new Usage('settings bot expects a key, request <key> <value>, picture <image> or create <name>');
         const read = await client.call('agents.settings.read', { threadId, ...agent });
         const shown = rest[1] === undefined ? read.settings : read.settings.filter(reading => reading.key === rest[1]);
         if (shown.length === 0) throw new Usage(`settings bot: unknown key ${rest[1]}; the keys are ${AGENT_SETTING_KEYS.join(', ')}`);

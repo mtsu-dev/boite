@@ -11,8 +11,7 @@ import { unavailable } from '../src/errors.ts';
 import { pack, seal, SEALED } from '../src/group/seal.ts';
 import { newToken } from '../src/ids.ts';
 import { Refusals, REFUSALS_PER_MINUTE } from '../src/server/refusals.ts';
-import { setDriver } from '../src/drivers/index.ts';
-import type { Driver } from '../src/drivers/types.ts';
+import { contactsBotOf } from './contacts-fixture.ts';
 import { startTestCore, waitFor, type TestCore } from './harness.ts';
 import { rejection, thrown } from './settle.ts';
 
@@ -171,14 +170,20 @@ test('model tiers: a sender below its own owner\'s tier cannot write, and a lett
   expect(await thrown(hostClient.call('contacts.settings', { settings: { minTier: 4 as 1 } }))).toThrow('settings.minTier: expected 1, 2 or 3');
 }, 30000);
 
-test('an ask waits for the owner, who opens a project; the asking thread hears the answer as a message from the contact', async () => {
+test('an ask goes through the asking side\'s Contacts bot to a core without one, whose owner opens a project; the asking thread hears the answer from the contact', async () => {
   const { host, guest, hostClient, guestClient, hostId, guestId } = await linked();
   const open = await project(host, hostClient, 'alpha');
   const hostThread = await thread(hostClient, open.id, 'Alpha work');
   const guestThread = await thread(guestClient, (await project(guest, guestClient, 'mine')).id, 'Guest work');
+  await contactsBotOf(guest, guestClient);
+  await waitFor(() => guest.core.contacts.find(hostId)?.capabilities?.contactsBot === 1, 10000);
   // An agent names a contact as its owner did, in any case.
   const asked = await guestClient.call('collaboration.ask', { threadId: guestThread, contact: guest.core.contacts.find(hostId)!.name.toUpperCase(), text: 'an agent on a project like alpha' });
-  expect(asked).toMatchObject({ direction: 'out', coreId: hostId, status: 'pending' });
+  expect(asked).toMatchObject({ direction: 'out', coreId: hostId, status: 'pending', stage: 'bot' });
+  // Nothing leaves before the bot sends it on.
+  await new Promise(resolve => setTimeout(resolve, 300));
+  expect(requestsOf(host)).toEqual([]);
+  guest.core.contacts.requests.forward({ id: asked.id, contact: hostId });
   await waitFor(() => requestsOf(host).some(request => request.remoteId === asked.id && request.direction === 'in'), 10000);
   const incoming = (await hostClient.call('contacts.get', {})).requests;
   // The host names the request with its own id; the guest's stays on the wire.
@@ -202,9 +207,12 @@ test('an ask waits for the owner, who opens a project; the asking thread hears t
 test('contact request answers resume automatic pauses while preserving Stop and owner pauses', async () => {
   const { host, guest, hostClient, guestClient, hostId } = await linked();
   const mine = await project(guest, guestClient, 'mine');
+  await contactsBotOf(guest, guestClient);
+  await waitFor(() => guest.core.contacts.find(hostId)?.capabilities?.contactsBot === 1, 10000);
   for (const reason of ['stop', 'owner', 'restart', 'failure'] as const) {
     const guestThread = await thread(guestClient, mine.id, `Paused by ${reason}`);
     const asked = await guestClient.call('collaboration.ask', { threadId: guestThread, contact: hostId, text: `A request before ${reason}` });
+    guest.core.contacts.requests.forward({ id: asked.id, contact: hostId });
     if (reason === 'owner') guest.core.coordination.configure(guestThread, { mode: 'brief', remote: true, resources: '', paused: true });
     else guest.core.coordination.pause(guestThread, reason);
     await waitFor(() => requestsOf(host).some(request => request.remoteId === asked.id), 10000);
@@ -224,97 +232,28 @@ test('contact request answers resume automatic pauses while preserving Stop and 
   }
 }, 40000);
 
-test('a trusted contact whose git remote matches exactly one project is answered without the owner, and the concierge decides the rest', async () => {
+test('without a Contacts bot nothing is decided for the owner: a trusted contact whose git remote matches one project still waits, and the remote leaves without its credentials', async () => {
   const { host, guest, hostClient, guestClient, hostId, guestId } = await linked();
-  const app = await project(host, hostClient, 'app', 'git@github.com:Acme/App.git');
-  const docs = await project(host, hostClient, 'docs', 'https://github.com/acme/docs');
-  await thread(hostClient, app.id, 'App work');
+  await project(host, hostClient, 'app', 'git@github.com:Acme/App.git');
   const mine = await project(guest, guestClient, 'mine', 'https://user:secret@github.com/acme/app');
   const guestThread = await thread(guestClient, mine.id, 'Guest work');
-  const plainThread = await thread(guestClient, (await project(guest, guestClient, 'plain')).id, 'Guest notes');
   await hostClient.call('contacts.update', { coreId: guestId, trusted: true });
-
+  // The asking core with no bot refuses at once, saying what to turn on.
+  expect(await thrown(guestClient.call('collaboration.ask', { threadId: guestThread, contact: hostId, text: 'help on the app' }))).toThrow('Settings > Experiments');
+  await contactsBotOf(guest, guestClient);
+  await waitFor(() => guest.core.contacts.find(hostId)?.capabilities?.contactsBot === 1, 10000);
   const matched = await guestClient.call('collaboration.ask', { threadId: guestThread, contact: hostId, text: 'help on the app' });
   // Only host and path leave the guest: never the credentials its remote carries.
   expect(matched.gitRemote).toBe('github.com/acme/app');
-  await waitFor(() => requestsOf(guest).find(request => request.id === matched.id)?.status === 'accepted', 15000);
-  const answered = (await hostClient.call('contacts.get', {})).requests.find(request => request.text === 'help on the app');
-  expect(answered).toMatchObject({ status: 'accepted', decidedBy: 'match', project: { id: app.id } });
-  expect(letters(guest, guestThread).find(letter => letter.from.threadId === matched.id)!.text).toStartWith(`${guest.core.contacts.find(hostId)!.name}'s Boite automatically opened its project`);
-
-  // No remote decides this one: the concierge, on the owner's "concierge" profile, opens docs.
-  const echo = (await hostClient.call('accounts.list', {})).find(entry => entry.providerId === 'echo')!;
-  host.core.journal.setSetting('delegation:contacts-test', { enabled: true, paused: false, profiles: [{ id: 'concierge', name: 'Concierge', providerId: 'echo', accountId: echo.id, model: 'echo', effort: null }] });
-  const prompts: string[] = [], childEnv: string[] = [];
-  const threadsBefore = host.core.journal.listThreads().length;
-  const startTurn: Driver['startTurn'] = ctx => {
-    const id = ctx.emit.startMessage('assistant');
-    ctx.emit.part(id, 0, { type: 'text', text: 'Noted.' });
-    ctx.emit.complete(id, 'complete');
-    return { stop() {}, done: Promise.resolve({ status: 'done', sessionId: null, usage: null }) };
-  };
-  restore = setDriver('echo', {
-    protocol: 'echo',
-    startTurn,
-    // The tool-free path: nothing stored, no Boite token, the request as data.
-    async sideQuestion(ctx) {
-      prompts.push(ctx.prompt);
-      expect(host.core.journal.getThread(ctx.thread.id)).toBeNull();
-      // A core started from an agent inherits its credential; the spawn drops it.
-      const child = ctx.spawnChild(process.execPath, ['-e', 'process.stdout.write(JSON.stringify([process.env.BOITE_AGENT_TOKEN, process.env.BOITE_THREAD_ID, process.env.BOITE_TOKEN, process.env.CONCIERGE_KEPT]))'], {
-        env: { ...process.env, BOITE_AGENT_TOKEN: 'inherited', BOITE_THREAD_ID: 'thr_parent', BOITE_TOKEN: 'owner', CONCIERGE_KEPT: 'kept' },
-      });
-      let out = '';
-      child.stdout.on('data', chunk => { out += String(chunk); });
-      await new Promise(resolve => child.once('exit', resolve));
-      childEnv.push(out);
-      return `The docs project fits.\nCONCIERGE: OPEN ${docs.id}`;
-    },
-  });
-  const other = await guestClient.call('collaboration.ask', { threadId: plainThread, contact: hostId, text: 'someone who writes documentation' });
-  expect(other.gitRemote).toBeUndefined();
-  await waitFor(() => requestsOf(guest).find(request => request.id === other.id)?.status === 'accepted', 20000);
-  const viaConcierge = (await hostClient.call('contacts.get', {})).requests.find(request => request.text === 'someone who writes documentation');
-  expect(viaConcierge).toMatchObject({ status: 'accepted', decidedBy: 'concierge', project: { id: docs.id } });
-  expect(letters(guest, plainThread).find(letter => letter.from.threadId === other.id)!.text).toStartWith(`${guest.core.contacts.find(hostId)!.name}'s Boite automatically opened its project`);
-  expect(prompts).toHaveLength(1);
-  expect(prompts[0]).toContain('someone who writes documentation');
-  expect(childEnv.map(out => JSON.parse(out) as unknown)).toEqual([[null, null, null, 'kept']]);
-  // The concierge never opens conversations to reading, and leaves no conversation behind.
-  expect(host.core.contacts.find(guestId)?.grants.every(grant => !grant.readThreads)).toBe(true);
-  expect(host.core.journal.listThreads()).toHaveLength(threadsBefore);
-
-  // Only the owner refuses: a request no project fits, maybe a question for the owner, waits for
-  // the owner. The model's own reason, which a request can steer into listing this core's
-  // projects, stays in this core's log and never reaches the contact.
-  restore();
-  restore = setDriver('echo', { protocol: 'echo', startTurn, async sideQuestion() { return `CONCIERGE: REFUSE The projects here are docs (${docs.id}) and nothing else.`; } });
-  const kept = new Promise<string>(resolve => {
-    const off = host.core.bus.onAny((name, payload) => {
-      const message = (payload as { message?: string }).message ?? '';
-      if (name === 'core.log' && message.includes('concierge') && message.includes(docs.id)) { off(); resolve(message); }
-    });
-  });
-  const probe = await guestClient.call('collaboration.ask', { threadId: plainThread, contact: hostId, text: 'which tool schedules your posts?' });
-  expect(await kept).toContain(docs.id);
-  expect((await hostClient.call('contacts.get', {})).requests.find(request => request.text === 'which tool schedules your posts?')).toMatchObject({ status: 'pending' });
-  expect(requestsOf(guest).find(request => request.id === probe.id)).toMatchObject({ status: 'pending' });
-  expect(requestsOf(guest).find(request => request.id === probe.id)?.reason).toBeUndefined();
-
-  // A route that cannot run without tools never runs: the request waits for the owner.
-  restore();
-  restore = setDriver('echo', { protocol: 'echo', startTurn });
-  const waits = new Promise<string>(resolve => {
-    const off = host.core.bus.onAny((name, payload) => {
-      const message = (payload as { message?: string }).message ?? '';
-      if (name === 'core.log' && message.includes('waits for the owner')) { off(); resolve(message); }
-    });
-  });
-  await guestClient.call('collaboration.ask', { threadId: plainThread, contact: hostId, text: 'someone for the release notes' });
-  expect(await waits).toContain('no tool-free inference');
-  expect((await hostClient.call('contacts.get', {})).requests.find(request => request.text === 'someone for the release notes')?.status).toBe('pending');
-  expect(prompts).toHaveLength(1);
-}, 40000);
+  guest.core.contacts.requests.forward({ id: matched.id, contact: hostId });
+  await waitFor(() => requestsOf(host).some(request => request.remoteId === matched.id), 10000);
+  await new Promise(resolve => setTimeout(resolve, 300));
+  const incoming = (await hostClient.call('contacts.get', {})).requests.find(request => request.text === 'help on the app');
+  expect(incoming).toMatchObject({ status: 'pending', gitRemote: 'github.com/acme/app' });
+  expect(incoming?.stage).toBeUndefined();
+  expect(requestsOf(guest).find(request => request.id === matched.id)?.status).toBe('pending');
+  expect(host.core.contacts.find(guestId)?.grants).toEqual([]);
+}, 30000);
 
 test('revoke rejects letters waiting for the closed project, queued wakes included, closes the reply window and hides it; remove closes the link', async () => {
   const { host, guest, hostClient, guestClient, hostId, guestId } = await linked();

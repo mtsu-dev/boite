@@ -77,7 +77,20 @@ the switch off closes the page if it is open. It hides the page only: bots
 already made keep their threads and routines on the core, which knows nothing
 of a client's experiments.
 
+## Teams
+
+Teams of bots ([teams](teams.md)). The switch gates every `teams.*` method
+and `boite team` command on the core, which reads the desktop app's
+experiments, and the team lines of the bots' guide. Letters already in a
+bot's inbox still go out once it is off. The app draws no team page yet.
+
 ## Contacts
+
+Contacts needs Bots: its switch stays greyed while Bots is off, and turning
+Bots off turns Contacts off too. Turning it on creates the Contacts bot
+([contacts](contacts.md#the-contacts-bot)) on the window's machine and on
+every connected owner machine with a contact, once; turning it off leaves the
+bot on the core, like any bot. A paired phone only flips its own switch.
 
 The contacts column and the Contacts page ([contacts](contacts.md)). On a
 desktop window the contacts stand in a column on the right edge, the thread

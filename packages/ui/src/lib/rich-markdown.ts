@@ -42,8 +42,10 @@ export function richMarkdown(node: HTMLElement, options: RichMarkdownOptions = {
   let current = options;
   const settings = () => current;
   node.setAttribute('data-rich-markdown', '');
+  // An import that lands after the node is gone (a closed chat, a finished test) draws nothing.
+  let live = true;
   const draw = (): void => {
-    if (!node.querySelector(PENDING)) return;
+    if (!live || !node.querySelector(PENDING)) return;
     if (!drawing) {
       void load().then(draw, unavailable);
       return;
@@ -55,6 +57,7 @@ export function richMarkdown(node: HTMLElement, options: RichMarkdownOptions = {
   };
   // The blocks waiting now show their source; a formula's TeX reads as it is.
   const unavailable = (): void => {
+    if (!live) return;
     for (const element of node.querySelectorAll<HTMLElement>(PENDING)) {
       element.dataset.drawn = '';
       element.classList.add('md-source');
@@ -75,6 +78,7 @@ export function richMarkdown(node: HTMLElement, options: RichMarkdownOptions = {
   return {
     update(next: RichMarkdownOptions = {}) { current = next; },
     destroy() {
+      live = false;
       observer.disconnect();
       node.removeEventListener('copy', copy);
     }

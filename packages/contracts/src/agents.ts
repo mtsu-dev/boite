@@ -57,7 +57,14 @@ export const AGENT_ROUTINE_PROMPT_MAX = 4000;
  * A daily schedule with `days` runs only on those weekdays, numbered 0 (Sunday) to 6 in
  * its timezone. Absent means every day; the core drops a list of all seven.
  */
-export type AgentSchedule = { kind: 'once'; at: number } | { kind: 'interval'; everyMinutes: number } | { kind: 'daily'; time: string; timezone: string; days?: number[] };
+export type AgentSchedule =
+  | { kind: 'once'; at: number }
+  | { kind: 'interval'; everyMinutes: number }
+  | { kind: 'daily'; time: string; timezone: string; days?: number[] }
+  /** Months without this day are skipped. */
+  | { kind: 'monthly'; day: number; time: string; timezone: string }
+  /** Invalid dates in a year (February 29) are skipped. */
+  | { kind: 'yearly'; month: number; day: number; time: string; timezone: string };
 export interface AgentRoutine extends AgentRecord {
   agentId: string;
   name: string;
@@ -104,7 +111,31 @@ export interface AgentProfile extends AgentRecord {
    * woken when one it runs ends, fails, asks, waits on a permission or stalls.
    */
   projectIds?: string[];
+  /**
+   * A bot Boite ships rather than one the owner wrote. `contacts` is the
+   * Contacts bot: the one thread that sends, receives and settles every
+   * request between this owner's agents and a contact's (docs/contacts.md).
+   * Its `domain` and `instructions` are the core's and refuse an edit; its
+   * name, robot, route and pause stay the owner's. It is never archived,
+   * only reset (`agents.builtin.reset`). Missing on an owner's bot.
+   */
+  builtin?: AgentBuiltin;
 }
+export interface AgentMoveParams { agentId: string; machine: string; requestId?: string }
+export interface AgentMoveResult {
+  agentId: string;
+  /** The target's core id. */
+  machine: string;
+  /** The bot's new thread on the target. */
+  threadId: string;
+  /** Its projects as the target holds them: local ids, or `<core-id>/<project-id>` for another machine's. */
+  projectIds: string[];
+  /** Those of the machine it left: they work while that machine keeps `groupBots` on. */
+  groupProjects: string[];
+}
+/** The bots Boite ships. One of each per core at most. */
+export const AGENT_BUILTINS = ['contacts'] as const;
+export type AgentBuiltin = typeof AGENT_BUILTINS[number];
 /** The agent's own thread. One per agent, created with it. */
 export interface AgentSession extends AgentRecord {
   agentId: string;
@@ -226,6 +257,24 @@ export interface AgentsRpcMethods {
    */
   'agents.profile.save': { params: AgentSave<AgentProfile>; result: AgentProfile };
   /**
+   * Stores a picture the owner imported for a bot, as a `data:` URL of a PNG,
+   * JPEG, WebP or GIF of at most `AGENT_PICTURE_MAX_BYTES`. Returns the avatar
+   * that names it (`img:<hash>`), which `agents.profile.save` then takes like a
+   * robot code. The same bytes give the same avatar. An agent names its own
+   * thread (`threadId`), as every agent call does; the owner needs none.
+   */
+  'agents.picture.put': { params: { dataUrl: string; threadId?: string }; result: { avatar: string } };
+  /** The bytes of an imported picture as a `data:` URL, for the client that draws it. */
+  'agents.picture.get': { params: { avatar: string }; result: { dataUrl: string } };
+  /**
+   * A thread dresses a bot at once, with no card (`boite settings bot picture`):
+   * the bot whose conversation it is, or `agent` by id or name. `avatar` is
+   * what `agents.settings.request` takes for the key `avatar`: an `img:` picture
+   * this machine holds, a robot code, one or two characters, or "" for the
+   * robot its id draws. Returns the saved profile.
+   */
+  'agents.avatar.set': { params: { threadId: string; agent?: string; avatar: string }; result: AgentProfile };
+  /**
    * A thread creates a bot the user asked for (`boite settings bot create`),
    * as `agents.profile.save` creates one from the Bots page, with full access.
    * The model resolves as for `boite delegate`; omitted, the bot runs on the
@@ -233,6 +282,34 @@ export interface AgentsRpcMethods {
    * unknown model or project, or drafts.
    */
   'agents.create': { params: AgentCreateParams; result: AgentCreateResult };
+  /**
+   * The built-in bot of `kind` on this core, created when it is missing (the
+   * Contacts switch turned on): its name, robot and route come filled in, its
+   * thread starts with its introduction. Calling it again returns the same
+   * bot, paused or not. `selection` picks its route and `name` its name on
+   * creation only: the client names it in the language it speaks
+   * (Operator, Standardiste). Owner only.
+   */
+  'agents.builtin.ensure': { params: { kind: AgentBuiltin; name?: string; selection?: AgentSelection }; result: AgentProfile };
+  /**
+   * A built-in bot back to how Boite ships it: default name, robot and route
+   * (model, effort, permission mode), active again, its memory emptied, its
+   * routines removed and a new thread, the old one archived. `selection`
+   * replaces the default route; `name` is the
+   * default name in the client's language. Owner only.
+   */
+  'agents.builtin.reset': { params: { agentId: string; name?: string; selection?: AgentSelection }; result: AgentProfile };
+  /**
+   * Moves a bot to another machine of the owner's group (`features.botMove`
+   * there): its profile, brain files, routines, the end of its conversation and
+   * the facts waiting for it. The other machine creates it first; then this one
+   * archives the old thread with a line naming where it went and removes the
+   * bot. `machine` is the target's core id, a prefix of it or its name.
+   * `requestId` makes a retry return the same result. Refused for this machine,
+   * an unknown member, a turn in flight (`reason: 'turn-in-flight'`) and a
+   * target without a signed-in account. Owner only.
+   */
+  'agents.move': { params: AgentMoveParams; result: AgentMoveResult };
   /** The agent's thread, created again if it was lost. */
   'agents.open': { params: { agentId: string }; result: { threadId: string } };
   'agents.runtime.get': { params: { agentId: string }; result: AgentRuntimeConfig };

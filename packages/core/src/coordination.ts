@@ -1,15 +1,15 @@
 import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, randomUUID, sign } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { threadActive, defaultCoordinationConfig } from '@boite/contracts';
-import type { AgentAddress, AgentContact, AgentLetter, AgentMatch, AgentTranscript, ContactRequest, CoordinationBridgeResponse, CoordinationConfig, CoordinationPeer, CoordinationView, RpcParams, ThreadStatus } from '@boite/contracts';
+import { threadActive, defaultCoordinationConfig, TEAM_LETTERS_PER_BATCH } from '@boite/contracts';
+import type { AgentAddress, AgentContact, AgentLetter, AgentMatch, AgentTranscript, CoordinationBridgeResponse, CoordinationConfig, CoordinationPeer, CoordinationView, RpcParams, ThreadStatus } from '@boite/contracts';
 import { checkRemoteContact } from './coordination-lookup.ts';
 import { CoordinationLookups } from './coordination-directory.ts';
 import { PeerDesk } from './coordination-peer.ts';
 import { CoordinationBridge } from './coordination-bridge.ts';
 import { dropGroupRead, policedRoutes, policyAllowsLetter } from './coordination-group.ts';
 import { address, coordinationGuide, coordinationUrl, LETTER_TTL_MS, letterPrompt, RESIDENT_LETTER_TTL_MS, same, text } from './coordination-letter.ts';
-import { projectName, senderContext, withProjects, withRelations } from './coordination-relation.ts';
+import { senderContext, withProjects, withRelations } from './coordination-relation.ts';
 import { firstAnswer, PeerGone, PeerRefusal, post, settle, type Answer, type Envelope, type Operation } from './coordination-wire.ts';
 import { checkTailnetName } from './contacts/invite.ts';
 import { outgoingContact, incomingContact } from './contacts/human-letters.ts';
@@ -20,8 +20,11 @@ import type { Core } from './core.ts';
 import { invalidParams, messageOf, refused, RpcFailure, unavailable } from './errors.ts';
 import { isAgentHeld } from './agents/runtime.ts';
 import { ContactMailboxes } from './contacts/mailboxes.ts';
+import { GROUP_LETTER_TTL_MS } from './contacts/group-link.ts';
+import { contactsBot } from './contacts/bot.ts';
 import { forwardCoordination } from './coordination-rpc.ts';
 import { trustCoordination, trustedCoordinationPeers } from './coordination-trust.ts';
+import { TeamLetters } from './coordination-team.ts';
 
 const HOUR = 3_600_000;
 /** How long a delivered, expired, rejected or uncertain letter stays in the journal. */
@@ -44,6 +47,7 @@ type Row = { data: string; fingerprint: string | null };
 export class Coordination {
   readonly bridge = new CoordinationBridge();
   readonly mailboxes: ContactMailboxes;
+  readonly teamLetters: TeamLetters;
   readonly #lookups: CoordinationLookups;
   #key: ReturnType<typeof createPrivateKey> | null = null;
   #publicKey = '';
@@ -71,6 +75,9 @@ export class Coordination {
   constructor(core: Core, threadJsonChecked = false) {
     this.#core = core;
     this.mailboxes = new ContactMailboxes(core);
+    this.teamLetters = new TeamLetters(core, { rows: (where, ...params) => this.rows(where, ...params), update: (letter, status, error) => this.update(letter, status, error), accept: letter => this.acceptLetter(letter),
+      receive: (letter, threadId) => this.#core.journal.append({ type: 'coordination.received', threadId, version: 1, payload: letter }, () => this.#put(letter, 'in', threadId)),
+      kick: threadId => this.#kick(threadId), changed: threadId => this.#changed(threadId), handToWaiter: threadId => this.#handToWaiter(threadId, null), self: threadId => this.#self(threadId) });
     this.#lookups = new CoordinationLookups(core, {
       selfId: () => this.#self('').coreId, config: threadId => this.config(threadId), trusted: () => this.trusted(), localReach: threadId => this.#localReach(threadId),
       contact: (threadId, resident) => this.#contact(threadId, resident), checkLookupAccess: (threadId, remote) => this.checkLookupAccess(threadId, remote), mailboxes: this.mailboxes,
@@ -182,21 +189,20 @@ export class Coordination {
     // The owner's own choice, pause included, is never lifted by a later message.
     this.#core.journal.deleteSetting(`${AUTO_PAUSE_PREFIX}${threadId}`);
     this.#saveConfig(threadId, { mode: config.mode, resources: config.resources, remote: config.remote, paused: config.paused });
-    if (config.paused) this.#core.threads.stopQueuedCoordination(threadId);
+    // Team letters answer to their team (`docs/teams.md`), not to this switch: their wakes and inbox stay.
+    if (config.paused && !this.teamLetters.onlyQueued(threadId)) this.#core.threads.stopQueuedCoordination(threadId);
     if (config.mode === 'off' || !config.remote) {
       const queued = this.rows("thread_id = ? AND status = 'uncertain'", threadId).map(row => JSON.parse(row.data) as AgentLetter)
-        .filter(letter => letter.error === 'Queued for provider delivery' && (config.mode === 'off' || !this.#inProject(letter)));
+        .filter(letter => !letter.team && letter.error === 'Queued for provider delivery' && (config.mode === 'off' || !this.#inProject(letter)));
       for (const target of new Set(queued.filter(letter => letter.to.coreId === this.#self('').coreId).map(letter => letter.to.threadId))) {
         this.#core.threads.stopQueuedCoordination(target);
       }
     }
-    if (config.mode === 'off') {
-      for (const row of this.rows("thread_id = ? AND status IN ('queued', 'received')", threadId)) this.update(JSON.parse(row.data), 'rejected', 'Coordination disabled');
-    } else if (!config.remote) {
-      for (const row of this.rows("thread_id = ? AND status IN ('queued', 'received')", threadId)) {
-        const letter = JSON.parse(row.data) as AgentLetter;
-        if (!this.#inProject(letter)) this.update(letter, 'rejected', 'Cross-project or cross-machine coordination disabled');
-      }
+    for (const row of config.mode === 'off' || !config.remote ? this.rows("thread_id = ? AND status IN ('queued', 'received')", threadId) : []) {
+      const letter = JSON.parse(row.data) as AgentLetter;
+      if (letter.team) continue;
+      if (config.mode === 'off') this.update(letter, 'rejected', 'Coordination disabled');
+      else if (!this.#inProject(letter)) this.update(letter, 'rejected', 'Cross-project or cross-machine coordination disabled');
     }
     return this.get(threadId);
   }
@@ -259,7 +265,8 @@ export class Coordination {
   #contact(threadId: string, resident = false): AgentContact {
     const thread = this.#core.threads.require(threadId);
     const config = this.config(threadId);
-    if (thread.archived || (config.mode === 'off' && !resident)) throw refused('recipient is unavailable or coordination is disabled');
+    // A team chat is no contact: its posts reach only its members, through the team.
+    if (thread.archived || thread.teamId || (config.mode === 'off' && !resident)) throw refused('recipient is unavailable or coordination is disabled');
     const project = thread.projectId === null ? null : this.#core.journal.getProject(thread.projectId);
     return {
       ...this.#self(threadId), title: thread.title.slice(0, 200), machine: this.#core.info().hostname ?? 'Boite', resources: config.resources, status: thread.status, mode: config.mode,
@@ -287,7 +294,7 @@ export class Coordination {
   /** Reachable threads, the most recently active first: an old thread never hides a live one. */
   private localDirectory(projectId?: string): AgentContact[] {
     return this.#core.journal.listThreads(projectId)
-      .filter(t => !t.archived && this.config(t.id).mode !== 'off' && (projectId !== undefined || this.config(t.id).remote))
+      .filter(t => !t.archived && !t.teamId && this.config(t.id).mode !== 'off' && (projectId !== undefined || this.config(t.id).remote))
       .sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 100).map(t => this.#contact(t.id));
   }
   /** What this thread may reach on its own core: its project, and every remote-enabled thread when it is one too. */
@@ -341,8 +348,10 @@ export class Coordination {
   private claim(threadId: string, from: AgentAddress | null): AgentLetter[] {
     return this.admit(threadId, this.#ready(threadId, Infinity, from), batch => {
       if (batch.length > 0) this.#restoreProject(threadId);
+      // A waiter reads a team letter as rendered, never its raw triggers.
+      const { texts } = this.teamLetters.render(threadId, batch, 'seen');
       for (const letter of batch) this.update(letter, 'delivered');
-      return withRelations(this.#core, this.#self('').coreId, threadId, batch.map(letter => ({ ...letter, status: 'delivered' as const })));
+      return withRelations(this.#core, this.#self('').coreId, threadId, batch.map(letter => ({ ...letter, ...(texts.has(letter.id) ? { text: texts.get(letter.id)! } : {}), status: 'delivered' as const })));
     }, () => this.#ready(threadId, Infinity, from, true));
   }
   /**
@@ -401,13 +410,14 @@ export class Coordination {
       if (!same(letter.from, to) || !same(letter.to, from)) throw refused('replyTo must name an incoming message from this recipient');
     }
     const provenance = await outgoingContact(this.#core, from, to, human, connection);
+    if (to.coreId !== from.coreId) this.#core.contacts.reach.checkSend(from.threadId, to, provenance.sharedProjectId !== undefined);
     this.#contact(params.threadId, resident !== null); if (this.config(params.threadId).paused) throw refused('coordination paused by the owner');
     if (to.coreId !== from.coreId && !this.config(params.threadId).remote) throw refused('coordination permissions changed; retry the send');
     const raced = this.rows('thread_id = ? AND request_id = ?', params.threadId, requestId)[0];
     if (raced) { if (raced.fingerprint !== fingerprint) throw refused('requestId already used for different content'); return JSON.parse(raced.data) as AgentLetter; }
     const createdAt = Date.now();
     const contact = this.#core.contacts.known(to.coreId) ?? this.mailboxes.route(params.threadId, to.coreId);
-    const letter: AgentLetter = { ...(resident ? { origin: 'resident' as const } : {}), id: randomUUID(), from, to, toTitle, toProject, toMachine, text: body, replyTo: params.replyTo ?? null, createdAt, expiresAt: createdAt + (resident ? RESIDENT_LETTER_TTL_MS : LETTER_TTL_MS), status: 'queued', error: null,
+    const letter: AgentLetter = { ...(resident ? { origin: 'resident' as const } : {}), id: randomUUID(), from, to, toTitle, toProject, toMachine, text: body, replyTo: params.replyTo ?? null, createdAt, expiresAt: createdAt + (resident ? RESIDENT_LETTER_TTL_MS : this.#core.contacts.letterTtl(to.coreId, to.threadId) ?? LETTER_TTL_MS), status: 'queued', error: null,
       ...(contact ? { contact: { coreId: contact.coreId, name: contact.name } } : {}), ...provenance };
     this.#core.journal.append({ type: 'coordination.sent', threadId: from.threadId, version: 1, payload: letter }, () => this.#put(letter, 'out', from.threadId, requestId, fingerprint));
     // It may hear back from that contact for a while, even outside the projects opened to it.
@@ -435,7 +445,7 @@ export class Coordination {
     if (!peer && letter.origin === 'resident' && !resident) throw refused('the project is no longer entrusted to this bot');
     // A contact reaches the projects opened to it and the threads that wrote to it, nothing else: an unknown thread reads the same.
     const contact = routed ?? (peer ? this.#core.contacts.known(peer.coreId) : undefined);
-    if (contact && !routed && !this.#core.contacts.mayReach(contact.coreId, letter.to.threadId)) throw refused('letter.to: not a thread of a project opened to you');
+    if (contact && !routed && !this.#core.contacts.mayReach(contact.coreId, letter.to.threadId, letter.from?.threadId)) throw refused('letter.to: not a thread of a project opened to you');
     const target = this.#contact(letter.to.threadId, resident);
     const config = this.config(target.threadId);
     const from = peer ? checkRemoteContact(letter.from, peer) : this.#contact(letter.from.threadId, resident);
@@ -451,11 +461,13 @@ export class Coordination {
       if (!same(existing.from, from) || !same(existing.to, target) || existing.text !== letter.text || existing.replyTo !== letter.replyTo || (existing.origin === 'contact-human') !== (letter.origin === 'contact-human')) throw refused('message id already used for different content');
       return existing;
     }
-    if (!Number.isSafeInteger(letter.createdAt) || !Number.isSafeInteger(letter.expiresAt) || letter.createdAt > Date.now() + 60_000 || letter.expiresAt <= Date.now() || letter.expiresAt > letter.createdAt + (resident || routed && letter.origin === 'contact' ? RESIDENT_LETTER_TTL_MS : LETTER_TTL_MS)) throw refused('message expired or timestamps invalid');
+    if (!Number.isSafeInteger(letter.createdAt) || !Number.isSafeInteger(letter.expiresAt) || letter.createdAt > Date.now() + 60_000 || letter.expiresAt <= Date.now() || letter.expiresAt > letter.createdAt + (resident || routed && letter.origin === 'contact' ? RESIDENT_LETTER_TTL_MS : peer && this.#core.contacts.isContact(peer.coreId) ? GROUP_LETTER_TTL_MS : LETTER_TTL_MS)) throw refused('message expired or timestamps invalid');
     const origin = resident ? 'resident' as const : routed && letter.origin === 'contact' ? 'contact' as const : undefined;
     const accepted: AgentLetter = { ...(origin ? { origin } : {}), id: letter.id, from, to: this.#self(target.threadId), toTitle: target.title, toProject: target.project, toMachine: target.machine, text: text(letter.text, 'letter.text'), replyTo: letter.replyTo === null ? null : text(letter.replyTo, 'letter.replyTo', 100), createdAt: Date.now(), expiresAt: letter.expiresAt, status: 'received', error: null,
       // The name this owner gave the contact, never the sender's word.
       ...(contact ? { contact: { coreId: contact.coreId, name: contact.name } } : {}), ...provenance };
+    // The antivirus reads it before any agent here: a match holds it for the Contacts bot.
+    if (accepted.contact) this.#core.contacts.flags.scan(accepted);
     return this.acceptLetter(accepted);
   }
   /** Keeps a letter this core wrote or checked itself, once by its id, then hands it to a thread waiting for it or wakes its thread. */
@@ -486,6 +498,8 @@ export class Coordination {
     this.#core.journal.append({ type: 'coordination.status', threadId: letter.to.coreId === this.#self('').coreId ? letter.to.threadId : letter.from.threadId, version: 1, payload: { id: letter.id, status, error } }, () => {
       // Each endpoint retains its own send or receipt time when acknowledgement metadata arrives.
       this.#core.journal.db.query("UPDATE coordination_letters SET status = ?, data = json_set(?, '$.createdAt', created_at) WHERE id = ?").run(status, JSON.stringify(next), letter.id);
+      // A team letter's snapshot is marked seen or released with its state (`teams/store.ts`).
+      if (next.team && letter.to.coreId === this.#self('').coreId) this.#core.teams.letterChanged(next);
     });
     for (const endpoint of [letter.from, letter.to]) if (endpoint.coreId === this.#coreId) this.#changed(endpoint.threadId);
     // Mail held for the owner came or went: the owner's list of it changed.
@@ -500,30 +514,9 @@ export class Coordination {
     for (const letter of pending.filter(l => (agentThreadId === undefined ? l.from.coreId !== self : l.from.threadId === agentThreadId) && this.#core.workforce.projects.mayReceive(l, l.from.coreId === self) === false)) this.update(letter, 'rejected', reason);
   }
 
-  /**
-   * A contact's owner or core decided a project request (`collaboration.ask`):
-   * this core writes the answer and preserves who made the decision.
-   */
-  contactAnswer(request: ContactRequest, name: string, threads: AgentContact[]): void {
-    const threadId = request.from.threadId;
-    const list = threads.slice(0, 20).map(entry => `${JSON.stringify(entry.title)} (${entry.machine.replace(/\s+/g, '-')}/${entry.threadId}${entry.status === 'idle' ? '' : `, ${entry.status}`})`);
-    const responder = request.decidedBy === 'owner' ? name : `${name}'s Boite${request.decidedBy === 'match' || request.decidedBy === 'concierge' ? ' automatically' : ''}`;
-    const body = request.status === 'accepted'
-      ? `${responder} opened its project ${JSON.stringify(request.project?.name ?? '')} to you. ${list.length ? `Its threads: ${list.join('; ')}.` : 'No thread of it can be reached yet.'} Write to one with boite threads send <contact>/<thread-id> <text>; boite threads shows them.`
-      : `${responder} refused your request: ${request.reason ?? 'no reason given'}`;
-    if (this.mailboxes.answer(request, name, body.slice(0, 4000))) return;
-    const thread = this.#core.journal.getThread(threadId);
-    if (!thread || thread.archived) return;
-    const now = Date.now();
-    const from: AgentContact = { coreId: request.coreId, threadId: request.id, title: `Answer to your request to ${name}`.slice(0, 200), machine: name, resources: '', status: 'idle', mode: 'brief' };
-    const letter: AgentLetter = { origin: 'contact', contact: { coreId: request.coreId, name }, id: randomUUID(), from, to: this.#self(threadId), toTitle: thread.title.slice(0, 200), toProject: projectName(this.#core, threadId),
-      toMachine: this.#core.info().hostname ?? 'Boite', text: body.slice(0, 4000), replyTo: null, createdAt: now, expiresAt: now + RESIDENT_LETTER_TTL_MS, status: 'received', error: null };
-    this.acceptLetter(letter);
-  }
-
   /** A project closed to a contact: its letters waiting for threads it no longer reaches go nowhere. */
   rejectContactLetters(coreId: string, reason: string): void {
-    const unreachable = (letter: AgentLetter): boolean => letter.from.coreId === coreId && !this.#core.contacts.reach.mayReach(coreId, letter.to.threadId);
+    const unreachable = (letter: AgentLetter): boolean => letter.from.coreId === coreId && !this.#core.contacts.reach.mayReach(coreId, letter.to.threadId, letter.from.threadId);
     // A wake already queued for such a letter is stopped, and finds nothing left to deliver if it starts anyway.
     const queued = this.rows("direction = 'in' AND status = 'uncertain'").map(row => JSON.parse(row.data) as AgentLetter)
       .filter(letter => letter.error === 'Queued for provider delivery' && unreachable(letter));
@@ -549,7 +542,9 @@ export class Coordination {
 
   instructions(threadId: string): string {
     const config = this.config(threadId);
-    return config.mode === 'off' ? '' : coordinationGuide(config.paused, config.remote && (this.#core.contacts.list().length > 0 || this.#core.contacts.members.relayed().length > 0 || this.#core.group.peers().length > 0));
+    if (config.mode === 'off') return '';
+    const bot = contactsBot(this.#core);
+    return coordinationGuide(config.paused, config.remote && (this.#core.contacts.list().length > 0 || this.#core.contacts.members.relayed().length > 0 || this.#core.group.peers().length > 0), bot === null ? 'none' : bot.threadId === threadId ? 'self' : 'other');
   }
 
   /** Hook delivery: one batch at a provider's next safe tool boundary. */
@@ -561,7 +556,7 @@ export class Coordination {
     return this.admit(threadId, letters, batch => {
       if (!batch.length) return null;
       this.#restoreProject(threadId);
-      const prompt = letterPrompt(batch, senderContext(this.#core, this.#self('').coreId, threadId));
+      const { prompt } = this.teamLetters.render(threadId, batch, 'seen');
       this.#core.threads.noteCoordination(threadId, turnId, prompt);
       for (const letter of batch) this.update(letter, 'delivered');
       return prompt;
@@ -575,6 +570,7 @@ export class Coordination {
    */
   #ready(threadId: string, limit: number, from: AgentAddress | null = null, local = false): AgentLetter[] {
     const letters: AgentLetter[] = [];
+    let teams = 0;
     let gate: ReturnType<typeof contactMailGate> | undefined;
     const waits = (letter: AgentLetter) => Boolean(letter.contact) && ((gate ??= contactMailGate(this.#core, threadId)).held(letter) || local && !gate.cleared(letter));
     // Its own statement: a cached one left half read at the limit breaks the next selection.
@@ -582,7 +578,8 @@ export class Coordination {
     try {
       for (const row of statement.iterate(threadId) as Iterable<Row>) {
         const letter = JSON.parse(row.data) as AgentLetter;
-        if (letter.expiresAt > Date.now() && !waits(letter) && (from === null || same(letter.from, from)) && this.#mayReceive(letter)) letters.push(letter);
+        // A batch takes at most two team letters; the others wait for the next one.
+        if (letter.expiresAt > Date.now() && !waits(letter) && (from === null || same(letter.from, from)) && this.#mayReceive(letter) && !(letter.team && teams++ >= TEAM_LETTERS_PER_BATCH)) letters.push(letter);
         if (letters.length >= limit) break;
       }
     } finally { statement.finalize(); }
@@ -618,6 +615,8 @@ export class Coordination {
     if (!policyAllowsLetter(this.#core, letter)) return false;
     const thread = this.#core.journal.getThread(letter.to.threadId);
     if (!thread || thread.archived) return false;
+    // A team letter follows its team, not the thread's communication settings.
+    if (letter.team) return this.#core.teams.mayReceive(letter);
     const resident = this.#core.workforce.projects.mayReceive(letter, letter.from.coreId === this.#self('').coreId);
     if (resident !== null) return resident;
     const recipient = this.config(letter.to.threadId);
@@ -630,7 +629,7 @@ export class Coordination {
       const peer = this.trusted().find(peer => peer.coreId === letter.from.coreId);
       if (!peer) return false;
       try { incomingContact(this.#core, letter, peer); } catch { return false; }
-      return !this.#core.contacts.isContact(letter.from.coreId) || this.#core.contacts.mayReach(letter.from.coreId, letter.to.threadId);
+      return !this.#core.contacts.isContact(letter.from.coreId) || this.#core.contacts.mayReach(letter.from.coreId, letter.to.threadId, letter.from.threadId);
     }
     const sender = this.config(letter.from.threadId);
     if (sender.mode === 'off') return false;
@@ -680,27 +679,28 @@ export class Coordination {
     const ready = this.#ready(threadId, BATCH);
     if (!ready.length) return;
     this.#delivering.add(threadId);
-    const prompt = (batch: AgentLetter[]) => letterPrompt(batch, senderContext(this.#core, this.#self('').coreId, threadId));
     const local = () => this.#ready(threadId, BATCH, null, true);
     try {
       if (thread.status === 'running') {
-        const letters = this.admit(threadId, ready, batch => {
+        // A steer's team posts are in flight with its letters: seen once the provider takes them, released otherwise.
+        const steered = this.admit(threadId, ready, batch => {
           if (!batch.length || !this.#core.threads.canSteer(threadId)) return null;
           this.#restoreProject(threadId);
+          const { prompt } = this.teamLetters.render(threadId, batch, 'flight');
           for (const letter of batch) this.update(letter, 'uncertain', 'Awaiting provider acknowledgement');
-          return batch;
+          return { letters: batch, prompt };
         }, local);
-        if (!letters) return;
+        if (!steered) return;
         try {
-          const result = await this.#steer(threadId, prompt(letters));
+          const result = await this.#steer(threadId, steered.prompt);
           if (result === null || this.#closed || this.#core.journal.isClosed()) return;
-          for (const letter of letters) {
+          for (const letter of steered.letters) {
             const current = this.#find(letter.id, 'in');
             if (current?.status === 'uncertain' && current.error === 'Awaiting provider acknowledgement') this.update(current, result.submitted ? 'delivered' : 'received');
           }
         } catch (error) {
           if (this.#closed || this.#core.journal.isClosed()) return;
-          for (const letter of letters) {
+          for (const letter of steered.letters) {
             const current = this.#find(letter.id, 'in');
             if (current?.status === 'uncertain' && current.error === 'Awaiting provider acknowledgement') this.update(current, 'uncertain', messageOf(error));
           }
@@ -709,9 +709,14 @@ export class Coordination {
         let held: RpcFailure | null = null;
         // One transaction records the wake, message states and scheduled turn.
         const woke = this.admit(threadId, ready, batch => batch.length > 0 && this.#core.journal.db.transaction(() => {
+          const { prompt, channel } = this.teamLetters.render(threadId, batch, 'flight', true);
           for (const letter of batch) this.update(letter, 'uncertain', 'Queued for provider delivery');
           this.#core.journal.db.query('INSERT INTO coordination_wakes VALUES (?, ?)').run(threadId, Date.now());
-          this.#core.threads.startTurn(threadId, prompt(batch), { kind: 'coordination' });
+          // An owner's team post wakes the bot as the owner's own message would: no bot pause or budget holds it.
+          const owner = batch.some(letter => letter.team?.owner);
+          const turn = this.#core.threads.startTurn(threadId, prompt, owner ? { kind: 'coordination', owner: true } : { kind: 'coordination' });
+          // The wake's reply envelope: where its final answer goes, fixed now, whatever a steer brings later.
+          if (channel) this.#core.teams.envelope(turn.id, threadId, channel);
           return true;
         })(), refusal => { held = refusal; return local(); });
         // No turn of an idle thread ends to retry its refused contact mail: the refusal pauses coordination until the owner's trust or message.
@@ -756,7 +761,7 @@ export class Coordination {
     }
     // Nothing waits on the sweep: a probe or two on the status index, then back to sleep.
     const db = this.#core.journal.db;
-    if (!db.query(SWEEP_PROBES[0]).get() && !db.query(SWEEP_PROBES[1]).get(now - LETTER_TTL_MS, now)) return;
+    if (!db.query(SWEEP_PROBES[0]).get() && !db.query(SWEEP_PROBES[1]).get(now - GROUP_LETTER_TTL_MS, now)) return;
     for (const row of this.rows("status IN ('queued', 'received') AND json_extract(data, '$.expiresAt') <= ?", Date.now())) this.update(JSON.parse(row.data), 'expired', 'Message expired before delivery');
     const threads = this.#core.journal.db.query("SELECT DISTINCT thread_id FROM coordination_letters WHERE direction = 'in' AND status = 'received'").all() as { thread_id: string }[];
     for (const { thread_id } of threads) {

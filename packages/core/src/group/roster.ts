@@ -19,7 +19,7 @@
 import type { CoordinationPeer } from '@boite/contracts';
 import { createHash, createPublicKey, verify } from 'node:crypto';
 import { GROUP_MAX_CORES, PAIRING_ROLES, type Os, type PairingRole } from '@boite/contracts';
-import { invalidParams } from '../errors.ts';
+import { invalidParams, refused } from '../errors.ts';
 import { boxSigningInput, checkBox } from './seal.ts';
 import { checkDeviceKey, checkServedOrigins, positive, text, wins, deviceAdmitted, mergeDeviceKeys, mergeServedOrigins, type DeviceKeyEntry, type ServedOrigins } from './device-keys.ts';
 
@@ -75,6 +75,13 @@ export interface Roster {
   settingsHome?: string | null;
   /** Omitted by older cores. Concurrent choices converge by revision, then id. */
   settingsHomeRev?: number;
+  /**
+   * The member that hosts the owner's bots and the Contacts bot, the group's
+   * one entry for contacts; null once cleared. Read only with its revision.
+   */
+  botsHome?: string | null;
+  /** Omitted by older cores. Converges like `settingsHomeRev`. */
+  botsHomeRev?: number;
 }
 
 /** Machines a group lists over its life, removed ones included: past it, no new machine is admitted. */
@@ -189,7 +196,8 @@ export function checkRoster(value: unknown): Roster {
     id: text(raw['id'], 'roster.id', 64),
     name: text(raw['name'], 'roster.name', 80),
     ...(raw['nameRev'] === undefined ? {} : { nameRev: positive(raw['nameRev'], 'roster.nameRev') }),
-    ...(raw['settingsHomeRev'] === undefined ? {} : { settingsHome: checkSettingsHome(raw['settingsHome']), settingsHomeRev: positive(raw['settingsHomeRev'], 'roster.settingsHomeRev') }),
+    ...(raw['settingsHomeRev'] === undefined ? {} : { settingsHome: checkHome(raw['settingsHome'], 'settingsHome'), settingsHomeRev: positive(raw['settingsHomeRev'], 'roster.settingsHomeRev') }),
+    ...(raw['botsHomeRev'] === undefined ? {} : { botsHome: checkHome(raw['botsHome'], 'botsHome'), botsHomeRev: positive(raw['botsHomeRev'], 'roster.botsHomeRev') }),
     founder: raw['founder'],
     cores: raw['cores'].map((core) => checkCore(core, 'roster.cores')),
     devices: raw['devices'].map((device) => checkDevice(device, 'roster.devices')),
@@ -225,9 +233,9 @@ export function checkRoster(value: unknown): Roster {
   return sorted(roster);
 }
 
-function checkSettingsHome(value: unknown): string | null {
+function checkHome(value: unknown, field: 'settingsHome' | 'botsHome'): string | null {
   if (value === null || value === undefined) return null;
-  if (typeof value !== 'string' || !/^[0-9a-f]{64}$/.test(value)) throw invalidParams('roster.settingsHome: expected a machine id or null', { field: 'roster.settingsHome' });
+  if (typeof value !== 'string' || !/^[0-9a-f]{64}$/.test(value)) throw invalidParams(`roster.${field}: expected a machine id or null`, { field: `roster.${field}` });
   return value;
 }
 
@@ -295,6 +303,7 @@ function sorted(roster: Roster): Roster {
     name: roster.name,
     ...(roster.nameRev === undefined ? {} : { nameRev: roster.nameRev }),
     ...(roster.settingsHomeRev === undefined ? {} : { settingsHome: roster.settingsHome ?? null, settingsHomeRev: roster.settingsHomeRev }),
+    ...(roster.botsHomeRev === undefined ? {} : { botsHome: roster.botsHome ?? null, botsHomeRev: roster.botsHomeRev }),
     founder: roster.founder,
     cores: [...roster.cores].sort((a, b) => a.coreId.localeCompare(b.coreId)),
     devices: [...roster.devices].sort((a, b) => a.id.localeCompare(b.id)),
@@ -370,11 +379,15 @@ export function mergeRosters(local: Roster, remote: Roster): Roster {
   const localHomeRev = local.settingsHomeRev ?? 0;
   const remoteHomeRev = remote.settingsHomeRev ?? 0;
   const homed = remoteHomeRev > localHomeRev || (remoteHomeRev === localHomeRev && remoteHomeRev > 0 && (remote.settingsHome ?? '') > (local.settingsHome ?? '')) ? remote : local;
+  const localBotsRev = local.botsHomeRev ?? 0;
+  const remoteBotsRev = remote.botsHomeRev ?? 0;
+  const botted = remoteBotsRev > localBotsRev || (remoteBotsRev === localBotsRev && remoteBotsRev > 0 && (remote.botsHome ?? '') > (local.botsHome ?? '')) ? remote : local;
   const merged: Roster = {
     id: local.id,
     name: named.name,
     ...(named.nameRev === undefined ? {} : { nameRev: named.nameRev }),
     ...(homed.settingsHomeRev === undefined ? {} : { settingsHome: homed.settingsHome ?? null, settingsHomeRev: homed.settingsHomeRev }),
+    ...(botted.botsHomeRev === undefined ? {} : { botsHome: botted.botsHome ?? null, botsHomeRev: botted.botsHomeRev }),
     founder: local.founder,
     cores: mergeCores(local.cores, remote.cores),
     devices: mergeDevices(local.devices, remote.devices),
@@ -382,16 +395,42 @@ export function mergeRosters(local: Roster, remote: Roster): Roster {
     origins: mergeServedOrigins(local.origins ?? {}, remote.origins ?? {}),
   };
   // A home chosen on one member while another removed it meets its removal here: every member clears it the same way.
-  const home = merged.settingsHome;
-  return sorted(typeof home === 'string' && !liveCores(merged).some((core) => core.coreId === home) ? { ...merged, ...homeGone(merged, home) } : merged);
+  let result = merged;
+  for (const home of [merged.settingsHome, merged.botsHome]) {
+    if (typeof home === 'string' && !liveCores(result).some((core) => core.coreId === home)) result = { ...result, ...homeGone(result, home) };
+  }
+  return sorted(result);
+}
+
+export type GroupRole = 'settingsHome' | 'botsHome';
+
+/** The live member holding a role, or null: a home that left the group is no home. */
+export function liveRole(roster: Roster, role: GroupRole): string | null {
+  const coreId = roster[role];
+  return typeof coreId === 'string' && liveCores(roster).some((core) => core.coreId === coreId) ? coreId : null;
+}
+
+/** The roster with a role given to a live member or cleared (null), at a new revision; the same roster when nothing changes. */
+export function withRole(roster: Roster, role: GroupRole, coreId: unknown): Roster {
+  if (coreId !== null && (typeof coreId !== 'string' || !liveCores(roster).some((core) => core.coreId === coreId))) {
+    throw invalidParams('coreId: expected the id of a machine of this group, or null', { field: 'coreId' });
+  }
+  if ((roster[role] ?? null) === coreId) return roster;
+  const revKey = role === 'settingsHome' ? 'settingsHomeRev' : 'botsHomeRev';
+  const rev = roster[revKey] ?? 0;
+  if (rev >= Number.MAX_SAFE_INTEGER) throw refused(`coreId: the ${role === 'settingsHome' ? 'settings home' : 'bots host'} revision has reached its limit`, { field: 'coreId' });
+  return { ...roster, [role]: coreId, [revKey]: rev + 1 };
 }
 
 /**
- * A settings home that leaves the group stops being one for good: cleared at a
- * new revision, so the machine coming back later is not the default again.
+ * A settings home or bots host that leaves the group stops being one for good:
+ * cleared at a new revision, so the machine coming back later holds no role again.
  */
-export function homeGone(roster: Roster, coreId: string): Pick<Roster, 'settingsHome' | 'settingsHomeRev'> | Record<string, never> {
-  return roster.settingsHome === coreId ? { settingsHome: null, settingsHomeRev: (roster.settingsHomeRev ?? 0) + 1 } : {};
+export function homeGone(roster: Roster, coreId: string): Pick<Roster, 'settingsHome' | 'settingsHomeRev' | 'botsHome' | 'botsHomeRev'> {
+  return {
+    ...(roster.settingsHome === coreId ? { settingsHome: null, settingsHomeRev: (roster.settingsHomeRev ?? 0) + 1 } : {}),
+    ...(roster.botsHome === coreId ? { botsHome: null, botsHomeRev: (roster.botsHomeRev ?? 0) + 1 } : {}),
+  };
 }
 
 /** A member as agent coordination addresses it: the first address listed, the others are tried by the caller. */

@@ -27,6 +27,8 @@ export const strings = {
     contextNoBreakdown: 'This agent does not report a breakdown.',
     contextNoReading: 'No measurement received from this agent yet.',
     contextMeasured: 'Last measurement',
+    contextCompactions: 'Compactions',
+    contextPrompts: 'Messages sent',
     cacheTitle: 'Prompt cache',
     cacheChipWarm: (left: string) => `Prompt cache warm, about ${left} left`,
     cacheChipMaybe: (most: string) => `Prompt cache maybe still warm, ${most} at most`,

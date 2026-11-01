@@ -112,8 +112,13 @@ test('a message from a contact outside a shared project pops up to be read: Deli
     // Echo in default mode reads contact mail without tools; this one may edit files, so its mail waits.
     await client.call('threads.update', { threadId: 't-trace', permissionMode: 'acceptEdits' });
     await client.call('contacts.decide', { id: 'creq-pending', accept: false, reason: 'Not now' });
+    // The thread's request goes through the Operator, which forwards it; the answer comes back to the thread.
+    const operator = (await client.call('agents.builtin.ensure', { kind: 'contacts' })).id;
+    const botThread = (await client.call('contacts.get', {})).bot!.threadId;
+    expect((await client.call('contacts.get', {})).bot!.agentId).toBe(operator);
     const answered = async (text: string) => {
-      const asked = await client.call('collaboration.ask', { threadId: 't-trace', contact: 'core-sam', text });
+      const waiting = await client.call('collaboration.ask', { threadId: 't-trace', contact: 'core-sam', text });
+      const asked = await client.call('contacts.bot.forward', { threadId: botThread, id: waiting.id, contact: 'core-sam' });
       await sam.call('contacts.decide', { id: asked.id, accept: false, reason: `No: ${text}` });
       await vi.waitFor(() => { flushSync(); expect(one('contact-request-notice')?.dataset.kind).toBe('mail'); });
       expect(one('contact-mail-notice-text')!.textContent).toContain(`No: ${text}`);
@@ -493,4 +498,67 @@ test('a link that shares the inviter, pasted without an API key, offers the shar
   one<HTMLButtonElement>('contact-join')!.click();
   await vi.waitFor(() => { flushSync(); expect(one('contact-joined-words')?.querySelectorAll('li')).toHaveLength(8); });
   expect(one('contact-join-share')).toBeNull();
+});
+
+test('with the group\'s Bots machine offline and no Operator here, the card says where it is', async () => {
+  const store = await draw();
+  expect((await contacts(store)).bot).toBeFalsy();
+  const self = store.group?.self ?? 'core-home';
+  store.group = { id: 'grp', name: 'Home', self, cores: [{ coreId: self, name: 'Home' }, { coreId: 'core-tower', name: 'Tower' }], botsHome: 'core-tower' } as unknown as NonNullable<Store['group']>;
+  await vi.waitFor(() => { flushSync(); expect(one('home-bot-away')).not.toBeNull(); });
+  expect(one('home-bot-away')!.textContent).toBe(fill(strings.agents.builtin.away, { name: strings.agents.builtin.name.contacts, machine: 'Tower' }));
+  // This machine as the Bots machine: it is reached, the line goes.
+  store.group = { ...store.group!, botsHome: self };
+  await vi.waitFor(() => { flushSync(); expect(one('home-bot-away')).toBeNull(); });
+});
+
+test('the Operator card links the bot, lists the threads in touch with an End that asks first, and shows open flags read-only', async () => {
+  const store = await draw();
+  await store.client!.call('agents.builtin.ensure', { kind: 'contacts', name: strings.agents.builtin.name.contacts });
+  await contactsOf(store).refresh();
+  await vi.waitFor(() => { flushSync(); expect(one('home-bot-open')).not.toBeNull(); });
+  const state = await contacts(store);
+  const relation = state.relations![0]!;
+  const flag = state.flags!.find(entry => entry.status === 'open')!;
+  expect(one('home-bot')!.querySelector('[data-testid="agent-builtin-badge"]')).not.toBeNull();
+
+  // A relation: this thread, the contact and its thread.
+  const row = one(`contact-relation-${relation.id}`)!;
+  expect(row.textContent).toContain(relation.local.title);
+  expect(row.textContent).toContain(relation.contact);
+  expect(row.textContent).toContain(relation.remote.title);
+  // An open flag: its kind, its reason and its contact, with no way to settle it here.
+  const flagged = one(`contact-flag-${flag.id}`)!;
+  expect(flagged.textContent).toContain(strings.contacts.bot.kind[flag.kind]);
+  expect(flagged.textContent).toContain(flag.reason);
+  expect(flagged.textContent).toContain(flag.contact);
+  expect([...flagged.querySelectorAll('button')].map(button => button.textContent?.trim())).toEqual([strings.contacts.bot.open]);
+  // It opens the Operator's conversation, where the bot decides.
+  one<HTMLButtonElement>(`contact-flag-open-${flag.id}`)!.click();
+  await vi.waitFor(() => expect(store.openThread?.id).toBe(state.bot!.threadId));
+  store.showHome(null);
+  await vi.waitFor(() => { flushSync(); expect(one(`contact-relation-end-${relation.id}`)).not.toBeNull(); });
+
+  // End asks in the app's dialog; a refusal keeps the relation.
+  one<HTMLButtonElement>(`contact-relation-end-${relation.id}`)!.click();
+  await vi.waitFor(() => expect(confirm.current?.danger).toBe(true));
+  expect(confirm.current!.body).toContain(relation.remote.title);
+  confirm.answer(false);
+  await new Promise(resolve => setTimeout(resolve, 20));
+  expect((await contacts(store)).relations!.map(entry => entry.id)).toContain(relation.id);
+  one<HTMLButtonElement>(`contact-relation-end-${relation.id}`)!.click();
+  await vi.waitFor(() => expect(confirm.current).not.toBeNull());
+  confirm.answer(true);
+  await vi.waitFor(() => { flushSync(); expect(one(`contact-relation-${relation.id}`)).toBeNull(); });
+  const after = await contacts(store);
+  expect(after.relations!.map(entry => entry.id)).not.toContain(relation.id);
+  // Its flags go with it.
+  expect(after.flags!.find(entry => entry.id === flag.id)?.status).toBe('cut');
+  await vi.waitFor(() => { flushSync(); expect(one(`contact-flag-${flag.id}`)).toBeNull(); });
+  expect(one('home-relations')!.textContent).toContain(strings.contacts.bot.none);
+
+  // The link opens the bot on the Bots page, which Contacts never goes without.
+  setExperiment('resident-agents', true);
+  one<HTMLButtonElement>('home-bot-open')!.click();
+  expect(store.page).toBe('agents');
 });

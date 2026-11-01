@@ -9,7 +9,9 @@
  */
 import { COMPOSER_SCENARIOS } from './composer.ts';
 import { CONTACT_MAIL_SCENARIOS } from './contact-mail.ts';
+import { CONTACTS_BOT_SCENARIOS } from './contacts-bot.ts';
 import { SHARED_SCENARIOS } from './shared-projects.ts';
+import { TEAM_SCENARIOS } from './teams.ts';
 import {
   GROUP_INVITE_PREFIX,
   PROJECT_NAME_MAX,
@@ -159,6 +161,8 @@ export const SCENARIOS: Record<string, Scenario> = {
   ...SHARED_SCENARIOS,
   ...COMPOSER_SCENARIOS,
   ...CONTACT_MAIL_SCENARIOS,
+  ...CONTACTS_BOT_SCENARIOS,
+  ...TEAM_SCENARIOS,
   'artifacts.viewBlock reuses HTML and refuses empty or oversized UTF-8 input': async (env) => {
     const html = '<p>Shared view</p>';
     const { url } = await env.call('artifacts.viewBlock', { html });
@@ -221,6 +225,18 @@ export const SCENARIOS: Record<string, Scenario> = {
     // The profile owns the route: a save of the profile is what the runtime reads next.
     await env.call('agents.profile.save', { id: agent.id, expectedRevision: saved.revision, value: { ...saved, selection: { ...saved.selection, effort: low } } });
     same((await env.call('agents.runtime.get', { agentId: agent.id })).defaultRoute.effort, low, 'effort after a profile save');
+  },
+  'agents.avatar.set dresses a bot from its thread at once in a picture this machine holds, and refuses one it does not': async (env) => {
+    const setup = await echo(env);
+    const selection = { providerId: setup.provider.id, accountId: setup.account.id, model: setup.model, effort: null, permissionMode: 'default' as const };
+    const agent = await env.call('agents.profile.save', { value: { name: 'Dressed', domain: '', instructions: '', avatar: '', selection, status: 'active' } });
+    const { threadId } = await env.call('agents.open', { agentId: agent.id });
+    const { avatar } = await env.call('agents.picture.put', { dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=' });
+    const dressed = await env.call('agents.avatar.set', { threadId, avatar });
+    same([dressed.id, dressed.avatar], [agent.id, avatar], 'the bot wears the picture');
+    same((await env.call('agents.snapshot', {})).profiles.find(entry => entry.id === agent.id)?.avatar, avatar, 'the picture read back');
+    same((await refusedWith(env.call('agents.avatar.set', { threadId, avatar: 'img:0123456789abcdef' }), RpcErrorCode.Refused))['field'], 'avatar', 'a picture this machine never stored');
+    same((await env.call('agents.avatar.set', { threadId, avatar: '' })).avatar, '', 'back to the robot');
   },
   'opening snapshots restore questions, replace subscriptions and omit a proven quiet tail': async env => {
     const { setup, threadId, questionId } = await asked(env);
@@ -357,6 +373,20 @@ export const SCENARIOS: Record<string, Scenario> = {
     await refusedWith(env.call('windows.point', { threadId, control: 1, shape: 'star' as 'box' }), RpcErrorCode.InvalidParams, ['field']);
     await refusedWith(env.call('windows.point', { threadId, control: 1, pad: 25 }), RpcErrorCode.InvalidParams, ['field']);
     await refusedWith(env.call('windows.read', { threadId, target: { id: '1' }, limit: 0 }), RpcErrorCode.InvalidParams, ['field']);
+  },
+  'the virtual desktop refuses bad input before starting anything and has nothing to stop': async env => {
+    const setup = await echo(env);
+    const { id: threadId } = await thread(env, setup);
+    // Nothing here starts a desktop: every call is refused or answered before one would.
+    const status = await env.call('desktop.status', { threadId });
+    same([status.session, typeof status.support.available], [null, 'boolean'], 'a conversation with no desktop');
+    await refusedWith(env.call('desktop.start', { threadId, width: 10 }), RpcErrorCode.InvalidParams);
+    await refusedWith(env.call('desktop.run', { threadId, command: [], cwd: setup.projectPath }), RpcErrorCode.InvalidParams);
+    await refusedWith(env.call('desktop.run', { threadId, command: ['true'], cwd: 'relative' }), RpcErrorCode.InvalidParams);
+    same(await env.call('desktop.stop', { threadId }), { stopped: false }, 'a stop with no desktop');
+    // An archived conversation gets no agent-desktop: refused before any download.
+    await env.call('threads.archive', { threadId, archived: true });
+    await refusedWith(env.call('desktop.tool', { threadId }), RpcErrorCode.Refused);
   },
   'YOLO keeps permission requests out of the core and fake conversation': async env => {
     const setup = await echo(env);
@@ -765,6 +795,14 @@ export const SCENARIOS: Record<string, Scenario> = {
     check(!(await env.call('threads.deleted', {})).some(t => t.id === kept.id), 'project removal left a recoverable deletion');
     await refusedWith(env.call('threads.restore', { threadId: kept.id }), RpcErrorCode.NotFound, ['threadId']);
     await refusedWith(env.call('threads.remove', { threadId: 'thr_missing' }), RpcErrorCode.NotFound, ['threadId']);
+  },
+  'threads.stats counts the prompts sent and refuses a missing conversation': async env => {
+    const setup = await echo(env), created = await thread(env, setup);
+    same(await env.call('threads.stats', { threadId: created.id }), { threadId: created.id, compactions: 0, prompts: 0 }, 'a new conversation');
+    await finishedTurn(env, created.id);
+    await finishedTurn(env, created.id);
+    same(await env.call('threads.stats', { threadId: created.id }), { threadId: created.id, compactions: 0, prompts: 2 }, 'after two echo turns');
+    await refusedWith(env.call('threads.stats', { threadId: 'thr_missing' }), RpcErrorCode.NotFound, ['threadId']);
   },
   'projects.remove archives each thread before removing it': async (env) => {
     const setup = await echo(env);

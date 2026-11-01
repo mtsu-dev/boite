@@ -4,7 +4,7 @@ export const strings = {
     enable: 'Use a subscription proxy',
     hint: 'Claude and Codex use this machine\'s gateway, Grok does too behind Douane, and OpenCode 2 adds its other models to its own. Limits opens its dashboard inside Boite. Other agents keep their own configuration.',
     baseUrl: 'API URL', dashboardUrl: 'Limits dashboard URL', key: 'API key (optional)',
-    keyHint: 'Leave empty to keep the saved key. This is the proxy\'s API key, not its dashboard management key.',
+    keyHint: 'Leave empty to keep the saved key. This is the proxy\'s API key, not its dashboard management key. In local mode, Boite creates a client key when none is saved.',
     clearKey: 'Remove saved key', save: 'Save proxy', saved: 'Proxy saved',
     configure: 'Configure proxy', native: 'Show account limits',
     showDashboard: 'Show proxy dashboard',

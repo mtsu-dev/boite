@@ -21,7 +21,7 @@ import type { EventFrames, SocketData } from './server/connection.ts';
 import { OUTBOUND_MAX_BUFFERED_BYTES, ServerConnection } from './server/connection.ts';
 import { loadRowSender } from './server/load-rows.ts';
 import { clientField, logConnectionClosed } from './server/connection-log.ts';
-import { handleFrame } from './server/frame.ts';
+import { handleFrame, refuseFrame } from './server/frame.ts';
 import { authenticateToken } from './server/hello.ts';
 import { FrameQueue } from './server/frame-queue.ts';
 import { Refusals } from './server/refusals.ts';
@@ -443,7 +443,10 @@ export function startServer(options: ServerOptions): RunningServer {
     yield* relays.waitingPeers();
   }
   const frames = new Set<Promise<void>>();
-  const incoming = new FrameQueue((connection, raw) => handleFrame(core, connection, raw));
+  const incoming = new FrameQueue((connection, raw, signal) => handleFrame(core, connection, raw, signal), {
+    refuse: refuseFrame,
+    warn: message => core.logs.record('warn', message, { source: 'rpc', event: 'rpc.detached-refused' }),
+  });
   const peerRequests = new Set<Promise<Response>>();
   const refusals = new Refusals();
   // A client of this machine carried to another member of its group: its key here, never an agent's, opens the way.
@@ -780,16 +783,9 @@ export function startServer(options: ServerOptions): RunningServer {
       }
       return delivered;
     },
-    pointer(box): number {
-      // Only the desktop app of this machine draws on its screen: a phone, a browser tab, a
-      // shell following this core from another computer or a plugin has no screen of this one's.
-      let delivered = 0;
-      for (const connection of connections) {
-        if (!connection.authenticated || connection.identity.principal !== 'owner' || connection.clientName !== 'shell' || connection.remote) continue;
-        try { connection.sendEvent('windows.pointer', box); delivered += 1; } catch { /* closing */ }
-      }
-      return delivered;
-    },
+    // Only this machine's desktop app draws on its screen: a phone, a browser tab, a remote shell or a plugin has none of it.
+    pointer: box => [...connections].filter(connection => connection.authenticated && connection.identity.principal === 'owner' && connection.clientName === 'shell' && !connection.remote)
+      .filter(connection => { try { connection.sendEvent('windows.pointer', box); return true; } catch { return false; /* closing */ } }).length,
   };
 
   const broadcast = (name: RpcEventName, payload: EventPayload): void => {

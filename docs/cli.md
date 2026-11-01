@@ -249,6 +249,18 @@ circle and `--pad <px>` sets the gap around the control. `wait-click` returns on
 user clicks inside the box, and `unpoint` takes the box away. See
 [guiding the user](windows.md#guiding-the-user).
 
+## Virtual desktop
+
+`boite desktop help` lists the commands. On a Linux machine with Xvfb, the
+conversation gets a private desktop in memory: `run <program>` starts a GUI app
+there that outlives the turn, and every other word runs agent-desktop on it
+(`snapshot -i`, `click @ref`, `type`, `press`, `screenshot`) to read the app's
+accessibility tree and act on it. Boite installs a pinned agent-desktop the
+first time; nothing is installed by hand. `env` prints the desktop's variables for the
+agent's own tools and `stop` ends it; archiving the conversation stops it too.
+Nothing reaches the user's screen, keyboard or speakers. Details and limits are
+in [desktop.md](desktop.md).
+
 ## Pull requests linked to a conversation
 
 `boite pr link <url>` verifies a GitHub pull request and saves its link in the
@@ -476,7 +488,8 @@ boite threads reply <message-id> <text> [--wait] [--timeout <s>]
 boite threads log <thread>
 boite threads wait [thread] [--timeout <s>]
 boite threads contacts
-boite threads ask <contact> <text> [--wait] [--timeout <s>]
+boite threads ask [--to <contact>/<thread-id>] [--contact <name>] [--new] [--share] [--wait] [--timeout <s>] [--] <text>
+boite contacts [view]|forward|connect|start|share|ask-owner|refuse|cut|deliver|block
 boite bot memory
 boite bot remember <fact>
 boite bot routines
@@ -484,6 +497,7 @@ boite bot schedule <json>
 boite bot unschedule <routine-id>
 boite bot watch|unwatch <thread-id>
 boite bot event <bot> [--key <key>] <text>
+boite team list|say|dm|read|propose|invite|leave
 boite delegate models [--machine <name>]
 boite delegate profiles|list
 boite delegate spawn <brief> [--model <provider/model>] [--effort <level>] [--speed <tier>] [--profile <id>] [--title <t>] [--worktree] [--machine <name> [--project <name>]] [context flags]
@@ -497,10 +511,22 @@ boite workflow output|templates|save|start
 boite help
 ```
 
-`threads ask` requests access to a contact's project. The remote Boite can
-answer automatically through a git remote match or its concierge; the answer
-identifies an automatic response separately from an explicit owner decision.
-Use `threads send <contact>/<thread-id> <text>` to message an agent conversation.
+`threads ask "<what you need>"` hands a request for a contact to this
+machine's Contacts bot ([contacts](contacts.md#the-contacts-bot)): `--to
+<contact>/<thread-id>` names the thread, `--contact <name>` the contact,
+`--new` asks for a new thread, `--share` for a project opened to you. The
+answer comes back as a message naming the thread to write to with `threads
+send <contact>/<thread-id> <text>`; an explicit owner decision is told apart
+from the bot's.
+
+`boite contacts` is the Contacts bot's own group, refused to any other
+thread: `view` (the default: requests, relations, flags, contacts and
+projects), `forward <request> <contact>[/<thread-id>] [text]`,
+`connect <request> <thread-id>`, `start <request> <project> <brief> [--model
+<m>] [--effort <e>] [--worktree]`, `share <request> <project> <reason>`,
+`ask-owner <request> <proposal>`, `refuse <request> <reason>`, `cut <contact>
+[--relation <id>] [--project <p>] <reason>`, `deliver <flag>` and `block <flag>
+[reason]`.
 
 The context flags, `--context light|neutral`, `--keep|--drop <parts>`,
 `--tools <Tool,...>` and `--rules <text>` or `--rules-file <path>`, start the
@@ -515,10 +541,19 @@ Coordination commands are documented in [coordination](coordination.md#agent-com
 child controls in [delegation](delegation.md#agent-commands), and plan/output
 commands in [workflows](workflows.md#commands).
 
+`team` lets a bot talk with the other bots of its teams, behind the Teams
+experiment: group or private posts, reading, and cards that ask the owner to
+create, join or leave a team ([teams](teams.md#commands)).
+
 Bots schedule work from their own conversation. `bot schedule` accepts `name`, `prompt`, and `schedule`,
 for example `{"kind":"daily","time":"09:00","timezone":"Europe/Paris"}`.
 Other schedules use `{"kind":"interval","everyMinutes":60}` or
 `{"kind":"once","at":1790240400000}` with a Unix timestamp in milliseconds.
+Monthly reminders use `{"kind":"monthly","day":14,"time":"09:00","timezone":"Europe/Paris"}`.
+Yearly reminders use `{"kind":"yearly","month":11,"day":14,"time":"09:00","timezone":"Europe/Paris"}`.
+Dates absent from a month or year are skipped, including February 29 in non-leap years.
+For a one-time request such as November 14, use `once` with the timestamp for
+that date, year and time in the user's timezone. Save it before confirming it.
 To edit or pause a routine, include its `id`, `expectedRevision` and `enabled`.
 The host enqueues occurrences even when clients are closed. An unfinished
 occurrence blocks overlap and missed intervals never create a catch-up burst.
@@ -828,7 +863,8 @@ keeps them queued. Creation and instruction-change wakes keep their behavior.
 `settings bot request <key> <value> --why <text>` draws the card. `name`,
 `domain`, `instructions`, `avatar` and `status` take the words as typed
 (`name Gargouille (Sécurité)`), and `instructions --instructions-file <path>`
-reads a file; `projects` takes `+name -name` edits or a whole list
+reads a file, as `avatar --picture <path>` imports an image file for the card
+to propose; `projects` takes `+name -name` edits or a whole list
 (`Notes,Other`, or JSON), resolved by name or id and stored as ids; a project
 of another machine of the group is `<machine>/<name>` (`+skoll/Hearthfall`),
 offered once that machine lets bots in (`groupBots`) and stored as
@@ -861,6 +897,18 @@ refused with that bot's id, as are an unknown model or project. It prints
 `created: <name> (<id>)`, its route, its projects and its conversation, to
 reach it with `boite threads send`; the bot then introduces itself there. The
 MCP tool `boite_bot_create` does the same.
+
+`settings bot picture <image>` gives a bot a face at once, with no card: the
+bot whose conversation calls it, or `--bot <name>` for another bot of the
+machine. The owner asked that agents dress bots themselves (2026-11-01); only
+the avatar changes. An image file, a PNG, JPEG, WebP or GIF of at most 512 KB
+recognized by its first bytes, is imported with `agents.picture.put` and worn
+through `agents.avatar.set`; a larger one is refused with its size, to shrink
+first. Anything that is not a file is taken as an avatar value: a robot code,
+one or two characters, an `img:` picture this machine holds, or `""` for the
+robot the bot's id draws. A value that looks like a path to no file is refused
+with that path. It prints `picture: <name> (<id>) now wears <avatar>`, and any
+open card about that bot's avatar settles.
 
 Exit codes: 0, 1 on a refusal or a failure (`error: ...` on stderr), 2 on a
 usage error (the usage text on stderr).

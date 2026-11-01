@@ -87,8 +87,11 @@ URLs above, typed by the user) or Douane on this machine, the Douane plugin
 remote, unchanged. In local mode the kind is Douane and the core writes both
 URLs from the plugin's port: `baseUrl` `http://127.0.0.1:<port>/v1` and
 `dashboardUrl` `http://127.0.0.1:<port>/admin/`, and follows the plugin when
-it moves to another port. The proxy key stays the placeholder, since a
-loopback Douane asks clients for no key. `subscriptionProxyOf`, model
+it moves to another port. When no client key is saved, Boite creates a client
+through the managed plugin's local admin API and stores its key privately,
+before discovery, quotas or agents use it. The API key field is available in
+both modes; a saved key is kept, and a rejected key reports how to replace it.
+Older Douane versions without the clients API keep working. `subscriptionProxyOf`, model
 discovery, the gateway account view and Limits then work as with a remote
 Douane.
 

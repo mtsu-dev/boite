@@ -25,6 +25,7 @@ import { AutoSettingsSync } from './auto-settings-sync.svelte';
 import { GroupLinks } from './group-links.svelte';
 import { limitsMachine, setNotificationCore, setPushHomeClient } from './notify';
 import { appPage } from './app-origin';
+import { pictureSources } from './agent-pictures.svelte';
 import { bootWorkspace, byHand, hostOf, primaryMachine } from './workspace-boot';
 
 export interface Machine {
@@ -96,7 +97,10 @@ export const PRIMARY_PATIENCE_MS = 2000;
 /** How long the window keeps its loading screen while another machine may still answer in place of the one it opened on. */
 export const STAND_IN_WAIT_MS = 6000;
 
-export const machineIcons = ['desktop', 'laptop', 'server', 'rack', 'cloud', 'cpu'] as const;
+export const machineIcons = [
+  'desktop', 'laptop', 'phone', 'tablet', 'apple', 'server', 'rack', 'nas',
+  'database', 'cloud', 'cpu', 'router', 'terminal', 'bot', 'gamepad', 'tv', 'house',
+] as const;
 export type MachineIconName = typeof machineIcons[number];
 const PROFILE_KEY = 'boite.machine-profiles';
 function profileKey(machine: Machine): string {
@@ -839,6 +843,8 @@ export class Workspace {
 }
 
 export const workspace = new Workspace();
+// A bot's imported picture comes from the machine on screen first, then the others of the group.
+pictureSources(() => [workspace.active, ...workspace.machines.map(machine => machine.store)]);
 // A toast about a machine this page does not serve names that machine as its pushes do.
 setNotificationCore((store) => {
   const machine = workspace.machines.find((entry) => entry.store === store);

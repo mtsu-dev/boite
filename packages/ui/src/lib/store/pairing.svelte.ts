@@ -141,6 +141,11 @@ export class Pairing {
     return this.#change((client) => client.call('group.settingsHome', { coreId }));
   }
 
+  /** The member that hosts new bots and the Contacts bot, the group's one entry for contacts, or null for none. */
+  setBotsHome(coreId: string | null): Promise<boolean> {
+    return this.#change((client) => client.call('group.botsHome', { coreId }));
+  }
+
   leaveGroup(): Promise<boolean> {
     return this.#change(async (client) => {
       await client.call('group.leave', {});

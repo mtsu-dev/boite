@@ -1,5 +1,5 @@
 import type { Database } from 'bun:sqlite';
-import type { Turn } from '@boite/contracts';
+import type { AgentTotals, Turn } from '@boite/contracts';
 import { parseJson, toTurn, type TurnRow } from './rows.ts';
 import { usageGroups, type UsageGroup } from './usage-sums.ts';
 
@@ -56,12 +56,12 @@ export function sumSessionUsage(db: Database, threadId: string, generation: numb
   const reported = db.query(`SELECT id, agent_totals FROM turns WHERE thread_id = ? AND id <> ? AND agent_totals IS NOT NULL
     AND json_extract(execution, '$.sessionGeneration') = ? ORDER BY rowid DESC LIMIT 1`)
     .get(threadId, exceptTurnId, generation) as { id: string; agent_totals: string } | null;
-  if (reported !== null) return { reported: parseJson<{ costUsd: number; tokens: number }>(reported.agent_totals, `turns.agent_totals of ${reported.id}`), groups: [] };
+  if (reported !== null) return { reported: parseJson<AgentTotals>(reported.agent_totals, `turns.agent_totals of ${reported.id}`), groups: [] };
   return { reported: null, groups: usageGroups(db, { where: "t.thread_id = ? AND t.id <> ? AND json_extract(t.execution, '$.sessionGeneration') = ?" }, threadId, exceptTurnId, generation) };
 }
 
 /** An agent session's last reported totals, or the groups of its turns to sum. */
 export interface SessionUsage {
-  reported: { costUsd: number; tokens: number } | null;
+  reported: AgentTotals | null;
   groups: UsageGroup[];
 }

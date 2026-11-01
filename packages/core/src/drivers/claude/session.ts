@@ -5,7 +5,8 @@ import type { SpawnedChild } from '../../procs.ts';
 import { profileFor, resolveExecutable } from '../../providers/resolve.ts';
 import type { LiveTurnSettings, SessionContext, TurnContext } from '../types.ts';
 import { hookReport } from './hooks.ts';
-import { authenticationFailureOf, authenticationSuspectOf, backgroundKind, commandsOf, isApiRetry, isAuthenticationFailure, restoredCost, subagentOf } from './mapping.ts';
+import { authenticationFailureOf, authenticationSuspectOf, backgroundKind, commandsOf, isApiRetry, isAuthenticationFailure, subagentOf } from './mapping.ts';
+import { RunningTotals } from './totals.ts';
 import { toolGate } from './permissions.ts';
 import { cliEnv, liveSetup, PROMPT_EFFORT, PromptQueue, STDERR_MAX, THINKING_DISPLAY_FLAG } from './query.ts';
 import type { ClaudeDeps, LiveSetup } from './query.ts';
@@ -105,10 +106,7 @@ export class ClaudeSession {
   #loginRejected = false;
   /** An `authentication_failed` frame whose result has not said yet whether it was a 401 or a 403. */
   #authSuspect = false;
-  /** The last `total_cost_usd` this CLI process reported, which the next result includes. */
-  #costSoFar = 0;
-  /** A resumed session's earlier turns, until the first result says whether the CLI restored them. */
-  #carried: { costUsd: number; tokens: number } | null;
+  readonly #totals: RunningTotals;
   /** What the query was last told to be: the options it opened on, plus every setter since. */
   #applied: LiveSetup | null = null;
   /** The setup setters of one turn finish before the next turn's prompt. */
@@ -135,7 +133,7 @@ export class ClaudeSession {
   ) { this.#warmMs = warmMs; this.#deps = deps; this.#hooks = hooks;
     this.#ctx = ctx;
     this.#sessionId = ctx.sessionId;
-    this.#carried = ctx.sessionId === null ? null : (ctx.sessionBefore ?? null);
+    this.#totals = new RunningTotals(ctx.sessionId === null ? null : (ctx.sessionBefore ?? null));
     this.#ready = new Promise<void>((resolve) => {
       this.#markReady = resolve;
     });
@@ -567,7 +565,7 @@ export class ClaudeSession {
     if (message.type === 'system') this.#noteTasks(message);
     // A stop makes the CLI write an error result for the interrupt: that is the stop, not a failure.
     if (!replayed && !(message.type === 'result' && (this.#closing || this.#head()?.isStopped === true))) noteClaudeMessage(this.#head()?.ctx ?? this.#ctx, message, this.#spawnedAt);
-    if (message.type === 'system' && message.subtype === 'init') this.#spawnedAt = null;
+    if (message.type === 'system' && message.subtype === 'init') { this.#spawnedAt = null; this.#totals.started(message.claude_code_version); }
     if (message.type === 'system' && message.subtype === 'init') {
       for (const report of this.#fastReports.splice(0)) report(message.fast_mode_state);
     }
@@ -590,24 +588,16 @@ export class ClaudeSession {
         this.#foreignResults = 0;
       } else {
         this.#foreignResults -= 1;
-        if (typeof message.total_cost_usd === 'number') this.#costSoFar = message.total_cost_usd;
+        this.#totals.counted(message);
         return;
       }
     }
-    // `total_cost_usd` counts from the start of the CLI process, so on a warm
-    // query every result after the first carries the turns before it too. The
-    // turn is told what was already charged before it reads the result. A cold
-    // process that resumed a session starts from that session's restored total.
-    if (message.type === 'result') {
-      const restored = this.#carried === null ? this.#costSoFar : restoredCost(message, this.#carried);
-      if (restored !== null) this.#costSoFar = restored;
-      this.#carried = null;
-      turn.noteCostBefore(restored);
-    }
+    // The turn is told what earlier turns account for before it reads the result.
+    if (message.type === 'result') turn.noteCostBefore(...this.#totals.before(message));
     turn.handle(message);
     // One result per user message: that is the end of this turn, not of the CLI.
     if (message.type === 'result') {
-      if (typeof message.total_cost_usd === 'number') this.#costSoFar = message.total_cost_usd;
+      this.#totals.counted(message);
       // A CLI that could not resume holds no session worth keeping warm: the
       // retry the core sends next must get a query of its own, with no resume.
       if (turn.sessionLost || this.#loginRejected) this.close(null);

@@ -135,6 +135,8 @@ and assertions when making the suite faster.
 - [Workflows](docs/workflows.md): JSON plans of delegated steps and their graph.
 - [Bots](docs/bots.md): Boite's persistent agents, each a thread with a name,
   memory, routines and a desk, their `boite bot` commands and their guide.
+- [Teams](docs/teams.md): bots and the owner in one group, routing, delivery
+  through coordination letters, the reply envelope and `boite team`.
 - [Model switching](docs/model-switching.md) and [context](docs/context.md):
   session reuse, queued turns and compaction.
 - [Phone](docs/phone.md), [Android app](docs/android.md) and [server](docs/server.md):
@@ -154,6 +156,8 @@ and assertions when making the suite faster.
 - [Devices](docs/devices.md): SDK detection, `boite device` and the Device panel.
 - [Windows](docs/windows.md): `boite window` captures of desktop windows, consent,
   exclusions, the Window panel, the on-screen guide and the backend on each OS.
+- [Virtual desktop](docs/desktop.md): `boite desktop`, a private Linux desktop
+  in memory where agent-desktop drives GUI apps, its stack, security and lifetime.
 - [Admin policy](docs/enterprise.md) and [network flows](docs/network.md): the
   machine policy file, its keys and enforcement, and every outbound connection
   with the key that blocks it. A new outbound flow updates both.

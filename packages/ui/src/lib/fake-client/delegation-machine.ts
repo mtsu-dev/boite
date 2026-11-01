@@ -91,6 +91,9 @@ export function spawnThere(ctx: FakeContext, parent: Thread, config: DelegationC
   there.threads.set(id, child);
   if (worktree) there.delegationWorktrees.set(id, worktree);
   there.emit('thread.created', structuredClone(toSummary(child)));
+  for (const event of ['question.asked', 'question.answered'] as const) there.bus.observe(event, request => {
+    if (request.threadId === id) ctx.emit('delegation.changed', { threadId: parent.id });
+  });
   // Its result crosses back to the parent here, once per turn.
   const off = there.bus.observe('turn.finished', turn => {
     if (turn.threadId !== id) return;
@@ -128,6 +131,9 @@ export function workflowThere(ctx: FakeContext, parent: Thread, config: Delegati
   there.threads.set(child.id, child);
   if (worktree) there.delegationWorktrees.set(child.id, worktree);
   there.emit('thread.created', structuredClone(toSummary(child)));
+  for (const event of ['question.asked', 'question.answered'] as const) there.bus.observe(event, request => {
+    if (request.threadId === child.id) ctx.emit('delegation.changed', { threadId: parent.id });
+  });
   return { machine, childId: child.id, providerId: child.providerId, model: child.model, effort: child.effort ?? null, worktree };
 }
 

@@ -2,7 +2,8 @@ import { afterEach, expect, spyOn, test } from 'bun:test';
 import { echoThread, holdAccountTurns, startTestCore, waitFor, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
 import { ContactMailboxes } from '../src/contacts/mailboxes.ts';
-import { Concierge, type ConciergeVerdict } from '../src/contacts/concierge.ts';
+import type { ContactRequest } from '@boite/contracts';
+import { contactsBotOf } from './contacts-fixture.ts';
 
 const cores: TestCore[] = [];
 afterEach(async () => {
@@ -175,58 +176,41 @@ test('forwarding a mailbox backlog bounds deserialization and retries older fail
   }
 }, 30000);
 
-test('a routed ask returns its decision to the initiating thread, including after an automatic pause', async () => {
-  const { a, b, c, bi, ci, ac, source, recipient } = await routed();
-  const asked = await ac.call('collaboration.ask', { threadId: source, contact: ci, text: 'An agent on the opened project' });
-  expect(asked.from).toMatchObject({ coreId: a.core.coordination.card().coreId, threadId: source });
+test('a routed ask waits for the gateway\'s Contacts bot, and the contact\'s answer returns to the initiating thread', async () => {
+  const { a, b, c, ai, bi, ci, ac, source, recipient } = await routed();
+  // Without a Contacts bot, the asking core refuses with what to turn on.
+  expect(await thrown(ac.call('collaboration.ask', { threadId: source, contact: ci, text: 'An agent on the opened project' }))).toThrow('Settings > Experiments');
+  // An older initiating core asks through its gateway once it has a route there, as a first letter makes.
+  await a.core.coordination.send({ threadId: source, to: { coreId: ci, threadId: recipient }, text: 'Which port?', requestId: 'first-letter' });
+  await waitFor(() => c.core.coordination.get(recipient).messages.length > 0, 10000);
+  await contactsBotOf(b, await b.connect());
+  await waitFor(() => b.core.contacts.find(ci)?.capabilities?.contactsBot === 1, 10000);
+  const peer = b.core.group.peers().find(entry => entry.coreId === ai)!;
+  const from = a.core.coordination.describe(source);
+  const ask = (id: string, text: string) => b.core.coordination.mailboxes.handle(peer, { action: 'ask', from, coreId: ci, id, text, admission: b.core.contacts.find(ci)!.addedAt }) as Promise<ContactRequest>;
+  const asked = await ask('ask-1', 'An agent on the opened project');
+  expect(asked).toMatchObject({ direction: 'out', stage: 'bot', status: 'pending', contact: b.core.contacts.find(ci)!.name });
+  // The same ask again is the same request.
+  expect((await ask('ask-1', 'An agent on the opened project')).id).toBe(asked.id);
+  b.core.contacts.requests.forward({ id: asked.id, contact: ci });
   a.core.coordination.pause(source, 'restart');
   const incoming = () => (c.core.journal.getSetting('contacts:requests') as { id: string; remoteId: string }[] ?? []).find(request => request.remoteId === asked.id);
   await waitFor(() => incoming() !== undefined, 10000);
+  // C has no Contacts bot: its owner decides.
   c.core.contacts.decide({ id: incoming()!.id, accept: false, reason: 'No matching project.' });
   await waitFor(() => a.core.coordination.get(source).messages.some(letter => letter.origin === 'contact' && letter.status === 'delivered'), 12000);
   expect(a.core.coordination.get(source).config.paused).toBe(false);
-  expect(a.core.coordination.get(source).messages.find(letter => letter.origin === 'contact')?.text).toContain('No matching project.');
   const name = b.core.contacts.find(ci)!.name;
   expect(a.core.coordination.get(source).messages.find(letter => letter.origin === 'contact')?.text).toStartWith(`${name} refused your request:`);
-  // The gateway forwards the same automatic attribution without inventing an owner reply.
-  c.core.contacts.update({ coreId: bi, trusted: true });
-  const decide = spyOn(Concierge.prototype, 'decide');
-  try {
-    for (const accept of [true, false]) {
-      const verdict = Promise.withResolvers<ConciergeVerdict>();
-      decide.mockReturnValueOnce(verdict.promise);
-      const request = await ac.call('collaboration.ask', { threadId: source, contact: ci, text: `Project access: ${accept}` });
-      a.core.coordination.pause(source, 'restart');
-      verdict.resolve(accept ? { accept: true, projectId: c.core.threads.require(recipient).projectId! } : { accept: false, reason: 'No matching project.' });
-      // Older cores can still send concierge refusals; current cores leave them to the owner.
-      if (!accept) b.core.contacts.answered(ci, { id: request.id, status: 'refused', reason: 'No matching project.', decidedBy: 'concierge', decidedAt: Date.now() }, []);
-      await waitFor(() => a.core.coordination.get(source).messages.some(letter => letter.from.threadId === request.id && letter.status === 'delivered'), 12000);
-      const answer = a.core.coordination.get(source).messages.find(letter => letter.from.threadId === request.id)!;
-      expect(answer.text).toStartWith(`${name}'s Boite automatically ${accept ? 'opened its project' : 'refused your request:'}`);
-      if (accept) expect(answer.text).toContain(recipient);
-      expect(a.core.coordination.get(source).config.paused).toBe(false);
-    }
-  } finally { decide.mockRestore(); }
-  expect(b.core.journal.listThreads()).toHaveLength(0);
+  // An older contact's automatic refusal keeps its attribution through the gateway.
+  const older = await ask('ask-2', 'Project access');
+  b.core.contacts.requests.forward({ id: older.id, contact: ci });
+  b.core.contacts.answered(ci, { id: older.id, status: 'refused', reason: 'No matching project.', decidedBy: 'concierge', decidedAt: Date.now() }, []);
+  await waitFor(() => a.core.coordination.get(source).messages.filter(letter => letter.origin === 'contact' && letter.status === 'delivered').length === 2, 12000);
+  const answer = a.core.coordination.get(source).messages.filter(letter => letter.origin === 'contact').find(letter => letter.text.includes('automatically'))!;
+  expect(answer.text).toStartWith(`${name}'s Boite automatically refused your request:`);
+  expect(b.core.contacts.requests.list().filter(request => request.from.coreId === bi)).toHaveLength(2);
 }, 30000);
-
-test('ask refuses a differently-cased direct core id without treating it as a group route', async () => {
-  const { a, c, ci, source } = await routed();
-  await a.core.contacts.join((await c.core.contacts.invite(false)).link);
-  const error = await thrown(a.core.coordination.mailboxes.ask({ threadId: source, contact: ci.toUpperCase(), text: 'An agent for this project' }));
-  expect(error).toThrow('contact: expected one unambiguous contact');
-});
-
-test('ask refuses a group route removed while contacts are being discovered', async () => {
-  const { a, bi, ci, source } = await routed();
-  const contacts = a.core.coordination.mailboxes.contacts.bind(a.core.coordination.mailboxes);
-  a.core.coordination.mailboxes.contacts = async threadId => {
-    const result = await contacts(threadId);
-    a.core.group.remove(bi);
-    return result;
-  };
-  expect(await thrown(a.core.coordination.mailboxes.ask({ threadId: source, contact: ci, text: 'An agent for this project' }))).toThrow('route: the group contact route is no longer available');
-});
 
 test.each(['remote disabled', 'archived', 'group removed'] as const)('routed read withholds a deferred transcript when the source is %s', async change => {
   const { a, b, c, bi, ci, source, recipient } = await routed();

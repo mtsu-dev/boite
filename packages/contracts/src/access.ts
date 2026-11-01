@@ -28,6 +28,8 @@ export const DEVICE_METHODS: ReadonlySet<RpcMethodName> = new Set<RpcMethodName>
   // The agent's own thread, created again if it was lost: a thread the phone then opens like any other.
   'agents.open',
   'agents.runtime.get', 'agents.brain.get', // Read the same identity settings and memory shown on its host.
+  // A bot's imported picture, drawn on its rows: bounded image bytes the owner stored, named by their hash; no path.
+  'agents.picture.get',
   'agents.event', // A paired script wakes a bot with an outside event, quoted as data; pair one device per service to revoke it alone.
   // Follow and steer an owner-enabled team from the phone, without changing routes or limits.
   // Bounded child results and event-driven waits expose the same family read scope as delegation.get.
@@ -117,6 +119,7 @@ export const DEVICE_METHODS: ReadonlySet<RpcMethodName> = new Set<RpcMethodName>
   'attachments.upload', 'attachments.release',
   'threads.get',
   'threads.capabilities', // Read-only controls for the conversation already visible; never prepares or probes a runtime.
+  'threads.stats', // Two counts over the conversation the phone already reads in full through threads.get pages.
   // A phone can manage continued prompts in the same thread it can already send to.
   'threads.activity.set',
   'threads.activity.control',
@@ -293,6 +296,14 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
   ['delegation.stop', 'stop its own children or itself, never unrelated work'],
   ['delegation.resume', "continue its own stopped children and lift its team's pause when it set it or a restart did, or after a Stop once the owner wrote again; never the owner's Settings pause"],
   ['workflows.list', 'the runs of its own thread, or of its parent for a step'],
+  // Teams (docs/teams.md): a bot reaches the teams it is a member of, filtered to the posts it may see.
+  ['teams.list', 'the teams its own bot is a member of, with their members'],
+  ['teams.read', 'the posts of a team of its own bot that it may see: group posts and its own private ones'],
+  ['teams.say', 'a group post in a team of its own bot, as that bot; wakes only the members it names'],
+  ['teams.dm', 'a private post in a team of its own bot to one member or the owner'],
+  ['teams.propose', 'a card asking the owner to create a team; nothing is created until the owner applies it'],
+  ['teams.invite', 'a card asking the owner to add a bot to one of its teams; nobody joins until the owner applies it'],
+  ['teams.leave', 'a card asking the owner to take its own bot out of a team; it stays until the owner applies it'],
   ['workflows.get', 'one run of its own thread, or of its parent for a step'],
   ['workflows.check', 'validating a plan against its own profiles, without starting anything'],
   ['workflows.start', 'a graph of child threads on its own model or its owner-approved profiles, with concurrency set in its plan'],
@@ -325,7 +336,18 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
   ['collaboration.read', 'the conversation of a contact it may already reach, text and tool names only; the user wants agents to help with each other'],
   ['collaboration.wait', 'blocks on its own inbox until a reply arrives'],
   ['collaboration.contacts', 'the contacts it may write to and the project names each opened to this core, never their keys or addresses'],
-  ['collaboration.ask', 'a request as this thread to a contact, which that contact\'s owner or concierge decides; it opens nothing here'],
+  ['collaboration.ask', 'a request as this thread to a contact, handed to this core\'s Contacts bot, which forwards it; it opens nothing here'],
+  // The Contacts bot's own thread only (contacts/bot.ts refuses every other thread): it settles the requests
+  // between this owner's agents and contacts'. Opening a project, and any request of a contact not trusted, takes the owner's card.
+  ['contacts.bot.view', 'the requests, relations, flags, contacts and project names the Contacts bot settles; never keys, addresses or transcripts'],
+  ['contacts.bot.forward', 'sending a request one of this owner\'s threads made to the contact the bot picked'],
+  ['contacts.bot.connect', 'putting a contact\'s asking thread in relation with one thread here: letters only, no files or reads'],
+  ['contacts.bot.start', 'starting one thread on a project here for a contact\'s request, in relation with the asking thread, as boite thread new would'],
+  ['contacts.bot.share', 'a card asking the owner to open a project to a contact; only the owner\'s Yes opens it'],
+  ['contacts.bot.askOwner', 'a card asking the owner whether to act on a request of a contact not trusted'],
+  ['contacts.bot.refuse', 'refusing a contact\'s request with a reason its asking agent reads'],
+  ['contacts.bot.cut', 'ending relations or closing projects a contact reaches here; the contact and its link stay the owner\'s'],
+  ['contacts.bot.flag', 'delivering or refusing a contact\'s letter held by a flag'],
   // Resident methods name the persistent agent's own thread like
   // every agent method; agents/projects.ts holds each call to the projects the
   // owner entrusted to that agent's profile. Any other thread is refused.
@@ -360,6 +382,13 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
   ['windows.point', 'one click-through box with a label above a control or part of such a window, so the person sees where to click; it sends the window nothing and takes no focus'],
   ['windows.waitClick', 'waiting until the person clicks inside its own conversation\'s box; it learns only that the click happened'],
   ['windows.unpoint', 'taking its own conversation\'s box off the screen'],
+  // The virtual desktop is Boite's own X server in memory, never the user's screen; a thread under execution
+  // protection is refused there (desktop/service.ts), since what it starts would run outside that protection.
+  ['desktop.status', 'whether this machine can start its conversation\'s virtual desktop and what runs on it'],
+  ['desktop.start', 'an X server in memory for its own conversation, which it could start from its shell anyway, kept until it stops it or the conversation is archived'],
+  ['desktop.run', 'a program on that desktop, as its shell would start it, kept past the turn until the desktop stops'],
+  ['desktop.stop', 'stopping its own conversation\'s desktop and what runs on it'],
+  ['desktop.tool', 'the path of the pinned agent-desktop Boite installs for its desktop commands, which it could download itself'],
   // windows.frame stays with the owner and paired devices: the stream is for the person watching, a screenshot gives
   // the agent the window. windows.consent, windows.allowlist and windows.revoke are the owner's: the agent asks, never answers.
   // devices.stream and devices.clipboard stay with the owner and paired devices: the video is for the person
@@ -376,6 +405,8 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
   ['agents.settings.read', 'the settings of one of the owner\'s agents a card may propose to change (name, domain, instructions, avatar, status, projects, model, effort, memory pass, subagents, daily budget), so it reads before it proposes; never their brains or conversations'],
   ['agents.settings.request', 'a card on its own thread proposing a change to one agent setting; only the owner applies it, through agents.settings.apply'],
   ['agents.create', 'creating the bot the user asked its thread for, as the Bots page would, without a card: the owner chose to let threads set bots up on their own (2026-10-24)'],
+  ['agents.picture.put', 'storing an image file for a bot to wear, bounded to 512 KB of PNG, JPEG, WebP or GIF whose bytes match their type; it changes no bot, and unworn pictures are swept (agents/pictures.ts)'],
+  ['agents.avatar.set', 'changing the face of a bot of this machine, its own or another\'s, without a card: the owner asked that agents may dress bots themselves (2026-11-01); only the avatar changes, to a picture this machine holds or a robot, never a name, instructions or access'],
   ['artifacts.publish', 'explicitly sharing a bounded snapshot from its own working directory in its own conversation'],
   ['artifacts.read', 'reading back only a published snapshot belonging to its own conversation'],
   ['artifacts.view', 'showing one HTML page of its own working directory in its own conversation, embedded whole, on an opaque origin that loads and calls nothing'],

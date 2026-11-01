@@ -80,6 +80,14 @@ test('a bot may propose a robot with every shared part, or a four-part code, and
   const { setting } = await client.call('agents.settings.request', { threadId, agent: 'Mira', key: 'avatar', value: 'bot:d.5.16.12.14.3.2.1', reason: 'A new face' });
   expect(setting.value).toBe('bot:d.5.16.12.14.3.2.1');
   expect((await client.call('agents.settings.request', { threadId: await thread(), agent: 'Mira', key: 'avatar', value: 'bot:c.1.2.3.0', reason: 'The old one' })).setting.value).toBe('bot:c.1.2.3.0');
+
+  // As the core: a thread dresses a bot at once with a picture held here; one never stored is refused, on a card too.
+  const { avatar } = await client.call('agents.picture.put', { dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=' });
+  const dressed = await client.call('agents.avatar.set', { threadId, agent: 'Mira', avatar });
+  expect(dressed.avatar).toBe(avatar);
+  await expect(client.call('agents.avatar.set', { threadId, agent: 'Mira', avatar: 'img:0123456789abcdef' })).rejects.toMatchObject({ code: RpcErrorCode.Refused, data: { field: 'avatar' } });
+  await expect(client.call('agents.settings.request', { threadId: await thread(), agent: 'Mira', key: 'avatar', value: 'img:0123456789abcdef', reason: 'r' })).rejects.toMatchObject({ data: { field: 'value', key: 'avatar' } });
+  expect((await client.call('agents.avatar.set', { threadId, agent: 'Mira', avatar: '' })).avatar).toBe('');
 });
 
 test('fake agent setting cards settle from the agent\'s own settings, and the [agent-settings] marker asks for a project', async ({ createClient }) => {

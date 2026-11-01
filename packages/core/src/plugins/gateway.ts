@@ -48,6 +48,8 @@ export interface GatewayHost {
   changed(id: string): void;
   /** The gateway moved to another port: the proxy settings follow it. */
   moved(id: string, port: number): void;
+  /** Prepares the managed client's credentials before agents see the gateway running. */
+  ready?(id: string, isCurrent: () => boolean): Promise<void>;
 }
 
 const realClock: AppClock = {
@@ -335,6 +337,8 @@ export class PluginGateways {
         const response = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(2_000), redirect: 'error' });
         const body = await response.json() as { status?: unknown; version?: unknown };
         if (response.ok && body.status === 'ok' && entry.running === running) {
+          await this.#host.ready?.(id, () => entry.running === running && !this.#closing);
+          if (entry.running !== running || this.#closing) return false;
           // Started: from here an exit is a crash like any other, relaunched.
           Object.assign(running, { relaunch: true });
           Object.assign(entry, { status: 'running', error: null, version: typeof body.version === 'string' && body.version ? body.version.slice(0, 80) : null });

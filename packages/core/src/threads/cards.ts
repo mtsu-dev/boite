@@ -157,6 +157,7 @@ export class ThreadCards {
   skipQuestion(params: { threadId: ThreadId; questionId: RequestId }, by = 'user'): void {
     const pending = this.questions.get(params.questionId);
     if (pending === undefined) throw notFound(`unknown question ${params.questionId}`, params);
+    this.#ownerAnswers(params.questionId, by);
     const request = pending.request;
     if (request.threadId !== params.threadId) {
       throw refused('the question belongs to another thread', { ...params, expected: request.threadId });
@@ -174,6 +175,12 @@ export class ThreadCards {
     pending.resolve(null);
   }
 
+  /** Cards only the owner answers, from the app or a paired device: the Contacts bot's (`contacts/bot.ts`). */
+  readonly ownerOnly = new Set<RequestId>();
+  #ownerAnswers(questionId: RequestId, by: string): void {
+    if (by !== 'user' && this.ownerOnly.has(questionId)) throw refused('only the owner answers this card', { questionId });
+  }
+
   answerQuestion(params: {
     threadId: ThreadId;
     questionId: RequestId;
@@ -183,6 +190,7 @@ export class ThreadCards {
   }, by = 'user'): void {
     const pending = this.questions.get(params.questionId);
     if (pending === undefined) throw notFound(`unknown question ${params.questionId}`, params);
+    this.#ownerAnswers(params.questionId, by);
     const request = pending.request;
     if (request.threadId !== params.threadId) {
       throw refused('the question belongs to another thread', {
@@ -453,6 +461,7 @@ export class ThreadCards {
       ...(ask.async === true ? { async: true } : {}),
       ...(ask.setting === undefined ? {} : { setting: ask.setting }),
       ...(ask.agentSetting === undefined ? {} : { agentSetting: ask.agentSetting }),
+      ...(ask.team === undefined ? {} : { team: ask.team }),
       ...(ask.open === undefined ? {} : { open: ask.open }),
       createdAt: Date.now(),
     };

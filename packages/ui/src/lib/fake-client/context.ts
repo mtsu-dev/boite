@@ -67,7 +67,7 @@ import {
 } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import { FakeAgents } from '../fake-agents';
-import { checkEffort, checkModel } from './checks';
+import { checkEffort, checkModel, defaultModel } from './checks';
 import { modelsOf } from './provider-catalog';
 import { settleAgentSettings } from './agent-settings';
 import type { FakeFinishedTurn } from '../fake-usage';
@@ -75,7 +75,7 @@ import { activityMethods, finishActivityTurn } from './activity';
 import { FakeBus } from './bus';
 import { FAKE_TREE } from './files';
 import { seedHooks } from './hooks';
-import { delegationConfig, workflowAnswer, workflowChild } from './delegation';
+import { delegationConfig, watchQuestionParents, workflowAnswer, workflowChild } from './delegation';
 import { FakePlugins } from './plugins';
 import { initialHarnessUpdates } from './provider-installs';
 import { DATA_DIR, T0, toSummary } from './shared';
@@ -121,6 +121,8 @@ export interface FakeClientOptions {
   heavy?: boolean;
   /** Seeds one thread whose answer holds diagrams and formulas, what `?fake=1&diagrams=1` opens (`diagrams-thread.ts`). */
   diagrams?: boolean;
+  /** Seeds a conversation of a few days with narration, compactions and wakes, what `?fake=1&readability=1` opens (`readability-thread.ts`). */
+  readability?: boolean;
   /** Seeds this many more threads at work, their load sampled every second: what `?fake=1&working=16` shows. */
   working?: number;
   /** Seeds this many more threads at rest, a long sidebar (`working-seed.ts`). */
@@ -366,6 +368,7 @@ export class FakeContext {
   readonly longCopies: number;
   readonly heavy: boolean;
   readonly diagrams: boolean;
+  readonly readability: boolean;
   readonly quotaExtras: boolean;
   readonly plainLink: boolean;
   brainLinkPermission: boolean;
@@ -381,6 +384,7 @@ export class FakeContext {
     this.brainLinkPermission = options.brainLinkPermission ?? (typeof location !== 'undefined' && new URLSearchParams(location.search).get('brainLinkPermission') === '1');
     this.plainLink = options.plainLink ?? (typeof location !== 'undefined' && new URLSearchParams(location.search).get('plainLink') === '1');
     this.bus = new FakeBus(options.principal ?? 'owner', { threadId: () => this.agentThreadId, projectOf: id => this.threads.get(id)?.projectId ?? null, visibleTodos: (id, todos) => agentTodos(this, id, todos) });
+    watchQuestionParents(this);
     this.agents = new FakeAgents(revision => {
       this.emit('agents.changed', { revision });
       // As the core: a change to any agent may answer a card, settled once per burst after it commits.
@@ -402,6 +406,35 @@ export class FakeContext {
         const methods = activityMethods(this);
         void (objective === null ? methods['threads.activity.control']({ threadId, kind: 'goal', action: 'remove' }) : methods['threads.activity.set']({ threadId, goal: { objective } })).catch(() => {});
       },
+      archive: threadId => {
+        const thread = this.threads.get(threadId);
+        if (!thread || thread.archived) return;
+        thread.archived = true;
+        thread.archivedAt = this.now();
+        this.touch(thread);
+      },
+      // As the Bots page fills a new bot: the first available account and its default model.
+      defaultRoute: () => {
+        const account = this.accounts.find(a => a.status === 'ok' && this.providers.some(p => p.id === a.providerId && p.available));
+        const provider = account && this.providers.find(p => p.id === account.providerId);
+        const model = provider ? modelsOf(this, provider.id, account.id).find(m => m.default === true)?.id ?? defaultModel(provider) : null;
+        return account && model ? { providerId: account.providerId, accountId: account.id, model, effort: null, permissionMode: 'bypassPermissions' } : null;
+      },
+      // The group's other members, as the core's `memberNamed` finds one for `agents.move`.
+      member: machine => {
+        const roster = this.roster;
+        if (roster === null) return { refused: 'agents.move.machine: this machine is in no group; --machine names another machine of its group' };
+        const self = this.identity.coreId;
+        const core = roster.cores.find(c => c.coreId === machine) ?? roster.cores.find(c => c.name === machine) ?? roster.cores.find(c => machine.length >= 4 && c.coreId.startsWith(machine));
+        if (core?.coreId === self) return { refused: `agents.move.machine: ${core.name} is this machine; leave --machine out` };
+        if (core === undefined) {
+          const names = roster.cores.filter(c => c.coreId !== self).map(c => c.name);
+          return { refused: `agents.move.machine: no machine ${machine} in this group; ${names.length === 0 ? 'it has no other machine' : `the others are ${names.join(', ')}`}` };
+        }
+        const member = fakeCore(core.coreId);
+        return { coreId: core.coreId, name: core.name, botMove: member?.core.features?.botMove === true, agents: member?.agents };
+      },
+      selfName: () => this.identity.name,
       // A project's folder holds files: a brain root refuses it.
       occupied: path => this.projects.some(p => p.path.replace(/[\\/]+$/, '') === path),
       checkRoute: (value, previous) => {
@@ -450,6 +483,7 @@ export class FakeContext {
     this.longCopies = options.longCopies ?? 0;
     this.heavy = options.heavy ?? false;
     this.diagrams = options.diagrams ?? false;
+    this.readability = options.readability ?? false;
     const coreId = options.coreId ?? `${secureId()}${secureId()}`;
     if (options.desktopApp) {
       this.serverUpdate = { ...this.serverUpdate, mode: 'manual', phase: 'idle', version: null, publishedAt: null, received: 0, total: null, error: null };
@@ -488,7 +522,7 @@ export class FakeContext {
       version: '2.0.0-beta.1',
       coreId,
       protocolVersion: PROTOCOL_VERSION,
-      features: { draftPreparation: true, attachmentUploads: true, threadSnapshots: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, projectBoard: true, settingsHome: true, sharedProjects: 1, listChanges: true },
+      features: { draftPreparation: true, attachmentUploads: true, threadSnapshots: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, projectBoard: true, settingsHome: true, botsHome: true, botMove: true, sharedProjects: 1, listChanges: true },
       os: 'windows',
       channel: 'stable',
       pid: 4242,

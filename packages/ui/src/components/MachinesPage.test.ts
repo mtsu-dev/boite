@@ -100,6 +100,24 @@ test('the default machine is one choice for the whole group: the others follow i
   expect(target.store.settings?.asyncQuestions).toBe(true);
 });
 
+test('the Bots role is a second choice for the group, with its own badge beside the Settings one', async () => {
+  const { source, target } = await setup();
+  expect(query('[data-testid="group-bots-pick"]').textContent).toContain(strings.machines.homeNone);
+  query<HTMLButtonElement>('[data-testid="group-bots-pick"]').click();
+  flushSync();
+  query<HTMLElement>('[data-testid="group-bots-pick-menu"] [data-value="target"]').click();
+  await vi.waitFor(() => expect([source.store.group?.botsHome, target.store.group?.botsHome]).toEqual(['target', 'target']));
+  flushSync();
+  expect(query('[data-machine-id="target"] [data-testid="machine-bots"]').textContent).toBe(strings.machines.botsBadge);
+  expect(document.querySelector('[data-machine-id="source"] [data-testid="machine-bots"]')).toBeNull();
+  // The Settings role is untouched, and one machine may hold both.
+  expect(source.store.group?.settingsHome).toBeUndefined();
+  await source.store.setSettingsHome('target');
+  await vi.waitFor(() => { flushSync(); expect(document.querySelector('[data-machine-id="target"] [data-testid="machine-home"]')).not.toBeNull(); });
+  expect(query('[data-machine-id="target"] [data-testid="machine-bots"]').textContent).toBe(strings.machines.botsBadge);
+  expect(query('[data-testid="group-bots-pick"]').textContent).toContain('target');
+});
+
 test('this computer goes by its own name and "(you)", whatever it was called by default', async () => {
   const { source } = await setup();
   source.store.localCore = true;
@@ -115,6 +133,20 @@ test('this computer goes by its own name and "(you)", whatever it was called by 
   name.dispatchEvent(new Event('change', { bubbles: true }));
   flushSync();
   expect(query<HTMLInputElement>('[data-machine-id="source"] [data-testid="machine-rename"]').value).toBe('Desk');
+});
+
+test('a phone can wear a phone icon, and the choice is saved', async () => {
+  const { target } = await setup();
+  query<HTMLButtonElement>('[data-machine-id="target"] [data-testid="machine-customize"]').click();
+  flushSync();
+  const phone = query<HTMLButtonElement>('[data-machine-id="target"] [data-testid="machine-icon-phone"]');
+  expect(phone.title).toBe(strings.machines.icons.phone);
+  phone.click();
+  flushSync();
+  expect(phone.getAttribute('aria-pressed')).toBe('true');
+  expect(workspace.machines.find(machine => machine.id === target.id)?.icon).toBe('phone');
+  const saved = Object.keys(localStorage).map(key => localStorage.getItem(key)).join('\n');
+  expect(saved).toContain('"icon":"phone"');
 });
 
 test('each row says where its updates stand and one button checks every machine', async () => {

@@ -153,6 +153,13 @@ export class ContactsView {
     return request;
   }
 
+  /** Ends a relation between a thread here and a contact's: both sides forget it, and its letters stop. */
+  async cutRelation(id: string): Promise<boolean> {
+    const done = await this.#run(`relation:${id}`, () => this.#connected().call('contacts.cutRelation', { id }));
+    if (done && this.state?.relations) this.state.relations = this.state.relations.filter(entry => entry.id !== id);
+    return done !== null;
+  }
+
   /** Delivers a held contact letter to its thread, or refuses it. True once the core took the decision. */
   async decideMail(id: string, accept: boolean): Promise<boolean> {
     const done = await this.#run(`mail:${id}`, () => this.#connected().call('contacts.decideMail', { id, accept }));
@@ -279,14 +286,31 @@ export function watchContacts(machines: () => readonly Machine[]): () => Machine
   return () => views;
 }
 
-/** Every listed machine's contacts, in the order each core keeps them. */
+/**
+ * Every listed machine's contacts, in the order each core keeps them, one row
+ * per contact for a whole group: the machines of one group are one Boite to
+ * the owner, so a contact two members both hold is listed once (keyed by the
+ * group and the contact's core id). The row opens on the group's Bots machine
+ * when it holds the contact, else on the first machine listed that does; what
+ * waits on each copy adds up.
+ */
 export function contactRows(views: readonly MachineContacts[]): ContactRow[] {
-  return views.flatMap(({ machine, view }) => (view.state?.contacts ?? []).map(contact => ({
-    machine,
-    contact,
-    waiting: view.state!.requests.filter(request => request.coreId === contact.coreId && request.direction === 'in' && request.status === 'pending').length
-      + (view.state!.mail ?? []).filter(letter => letter.coreId === contact.coreId).length
-  })));
+  const rows = new Map<string, ContactRow>();
+  for (const { machine, view } of views) {
+    const state = view.state;
+    if (!state) continue;
+    const group = machine.store.group;
+    for (const contact of state.contacts) {
+      const waiting = state.requests.filter(request => request.coreId === contact.coreId && request.direction === 'in' && request.status === 'pending').length
+        + (state.mail ?? []).filter(letter => letter.coreId === contact.coreId).length;
+      const key = `${group ? `group:${group.id}` : `machine:${machine.id}`}:${contact.coreId}`;
+      const seen = rows.get(key);
+      if (!seen) { rows.set(key, { machine, contact, waiting }); continue; }
+      const entry = !!group?.botsHome && group.botsHome === group.self;
+      rows.set(key, entry ? { machine, contact, waiting: seen.waiting + waiting } : { ...seen, waiting: seen.waiting + waiting });
+    }
+  }
+  return [...rows.values()];
 }
 
 /** Opens a contact's page, or the page that adds one, on the machine that holds it. */

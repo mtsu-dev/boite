@@ -45,30 +45,30 @@
     "schema": 1,
     "id": "douane",
     "name": "Douane",
-    "version": "0.3.0",
+    "version": "0.3.1",
     "description": "Local gateway for AI coding subscriptions: pools Claude, Codex, Grok, Copilot and API key accounts behind one OpenAI and Anthropic compatible endpoint, with quota tracking and a dashboard.",
     "homepage": "https://github.com/mtsu-dev/douane",
     "executable": "douane",
     "artifacts": {
       "win32-x64": {
-        "url": "https://github.com/mtsu-dev/douane/releases/download/v0.3.0/douane-windows-x64.exe",
-        "sha256": "9dfbdacb3845438b147a33daa9fb000941c756a3afb598bd1b12813627429a81"
+        "url": "https://github.com/mtsu-dev/douane/releases/download/v0.3.1/douane-windows-x64.exe",
+        "sha256": "2b5bc989b8966e48f27d9398f9ce4029c75c283bf2713ef215e52f7f3124ff97"
       },
       "darwin-arm64": {
-        "url": "https://github.com/mtsu-dev/douane/releases/download/v0.3.0/douane-macos-arm64",
-        "sha256": "c1f97fb350a7a56c160e062bdf1d09a93b59946a21eaccb6a2912d836ec65ae8"
+        "url": "https://github.com/mtsu-dev/douane/releases/download/v0.3.1/douane-macos-arm64",
+        "sha256": "e4a19b1fb97f8188b280aed42d6d5b647128e10c41136f5222d06eeaa6510d0a"
       },
       "darwin-x64": {
-        "url": "https://github.com/mtsu-dev/douane/releases/download/v0.3.0/douane-macos-x64",
-        "sha256": "129e1d3e3604f935476cdb5e9cef97fbeabce8e519ce6677a2822a7803235d1b"
+        "url": "https://github.com/mtsu-dev/douane/releases/download/v0.3.1/douane-macos-x64",
+        "sha256": "6e0b48fd80012f53a61a0b64abddcff553d5ed1e511b2d958aaaa16b94ec53f4"
       },
       "linux-x64": {
-        "url": "https://github.com/mtsu-dev/douane/releases/download/v0.3.0/douane-linux-x64",
-        "sha256": "5964cc8f84d0ddfed15954e09d3ceccfe5b5ecb53997b00ab4e15d6e16388210"
+        "url": "https://github.com/mtsu-dev/douane/releases/download/v0.3.1/douane-linux-x64",
+        "sha256": "14eb97eeba38df7c54fc863b4ded62b6afdb33282c237b76c8f8d508ed448e73"
       },
       "linux-arm64": {
-        "url": "https://github.com/mtsu-dev/douane/releases/download/v0.3.0/douane-linux-arm64",
-        "sha256": "cf2bf1869d29616a1b18859f66ba5103d3873b1767ddd049bebb9fd7d19bfa9a"
+        "url": "https://github.com/mtsu-dev/douane/releases/download/v0.3.1/douane-linux-arm64",
+        "sha256": "ed41e0b0caa8c4b7bc5e3dfd1433f23fa26db98d7aa4be2a9f6876e5600ea0d3"
       }
     },
     "provides": {

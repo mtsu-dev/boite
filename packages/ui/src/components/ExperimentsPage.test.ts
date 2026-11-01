@@ -1,9 +1,11 @@
-import { afterEach, beforeEach, expect, onTestFinished, test } from 'vitest';
+import { afterEach, beforeEach, expect, onTestFinished, test, vi } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
 import ExperimentsPage from './ExperimentsPage.svelte';
 import { EXPERIMENTS_STORAGE_KEY, followDesktopOf, heardDesktop, isExperimentEnabled } from '../lib/experiments';
 import { FakeClient } from '../lib/fake-client';
 import { Store } from '../lib/store.svelte';
+import { strings } from '../lib/strings';
+import { workspace } from '../lib/workspace.svelte';
 
 let running: Record<string, unknown> | null = null;
 
@@ -154,7 +156,7 @@ test('a phone has the desktop app\'s experiments until it flips one of its own, 
   await settle();
   expect(query<HTMLInputElement>('[data-testid=experiments-follow]').checked).toBe(false);
   expect(window.localStorage.getItem(EXPERIMENTS_STORAGE_KEY)).toBe('["theme-grain","prompt-cache","whip"]');
-  client.reportDesktopExperiments(['contacts']);
+  client.reportDesktopExperiments(['resident-agents', 'contacts']);
   await settle();
   expect([on('contacts'), on('whip')]).toEqual([false, true]);
 
@@ -231,4 +233,79 @@ test('Automatic goals is off by default; on, its threshold row sits under the sw
   await tick();
   expect(query<HTMLInputElement>('[data-testid=experiment-auto-goal]').checked).toBe(true);
   expect(document.querySelector('[data-testid=auto-goal-settings]')).toBeNull();
+});
+
+test('Contacts waits on Bots: greyed until Bots is on, made with the Operator, and off again with Bots', async () => {
+  const client = new FakeClient({ delayMs: 0 });
+  const store = new Store();
+  store.attach(client);
+  await store.connect();
+  onTestFinished(() => { store.detach(); client.close(); });
+  running = mount(ExperimentsPage, { target: document.body, props: { store } });
+  flushSync();
+  const contacts = () => query<HTMLInputElement>('[data-testid=experiment-contacts]');
+  const bots = () => query<HTMLInputElement>('[data-testid=experiment-resident-agents]');
+
+  // Bots off: the switch cannot be turned on, and its "i" says why.
+  expect([contacts().disabled, contacts().getAttribute('aria-disabled')]).toEqual([true, 'true']);
+  const help = contacts().closest('label')!.querySelector<HTMLButtonElement>('[data-testid=info-tip]')!;
+  help.click();
+  flushSync();
+  expect(document.getElementById(help.getAttribute('aria-describedby')!)?.textContent).toBe(strings.experiments.contacts.needsBots);
+
+  bots().click();
+  flushSync();
+  expect(contacts().disabled).toBe(false);
+  expect((await client.call('contacts.get', {})).bot).toBeNull();
+  const call = vi.spyOn(client, 'call');
+  contacts().click();
+  flushSync();
+  // On, the group's one Operator is made, named in the app's language.
+  await vi.waitFor(async () => expect((await client.call('contacts.get', {})).bot).not.toBeNull());
+  expect(call.mock.calls.filter(([method]) => method === 'agents.builtin.ensure').map(([, params]) => params)).toEqual([{ kind: 'contacts', name: strings.agents.builtin.name.contacts }]);
+  expect(isExperimentEnabled('contacts')).toBe(true);
+
+  // Bots off takes Contacts with it.
+  bots().click();
+  flushSync();
+  await tick();
+  expect([isExperimentEnabled('resident-agents'), isExperimentEnabled('contacts'), contacts().checked, contacts().disabled]).toEqual([false, false, false, true]);
+});
+
+test('turning Contacts on makes nothing when a machine of the group has the Operator, and a failure is told with the switch left on', async () => {
+  const [home, other] = [new FakeClient({ delayMs: 0, coreId: 'core-home' }), new FakeClient({ delayMs: 0, coreId: 'core-other' })];
+  const stores = [new Store(), new Store()];
+  for (const [i, client] of [home, other].entries()) { stores[i]!.attach(client); await stores[i]!.connect(); }
+  onTestFinished(() => { for (const store of stores) store.detach(); home.close(); other.close(); workspace.machines = []; });
+  workspace.machines = [{ id: 'home', label: 'Home', store: stores[0]! }, { id: 'other', label: 'Other', store: stores[1]! }];
+  await other.call('agents.builtin.ensure', { kind: 'contacts' });
+  window.localStorage.setItem(EXPERIMENTS_STORAGE_KEY, '["resident-agents"]');
+  running = mount(ExperimentsPage, { target: document.body, props: { store: stores[0] } });
+  flushSync();
+  const ensured = vi.spyOn(home, 'call');
+  query<HTMLInputElement>('[data-testid=experiment-contacts]').click();
+  await vi.waitFor(() => expect(ensured.mock.calls.some(([method]) => method === 'contacts.get')).toBe(true));
+  await new Promise(resolve => setTimeout(resolve, 20));
+  // One Operator for the whole group: the other machine has it, this one makes none.
+  expect(ensured.mock.calls.some(([method]) => method === 'agents.builtin.ensure')).toBe(false);
+  expect((await home.call('contacts.get', {})).bot).toBeNull();
+
+  // Nobody has one and the core refuses: the error is told and the switch stays on.
+  unmount(running!, { outro: false });
+  running = null;
+  document.body.innerHTML = '';
+  workspace.machines = [];
+  window.localStorage.setItem(EXPERIMENTS_STORAGE_KEY, '["resident-agents"]');
+  ensured.mockRestore();
+  const real = home.call.bind(home);
+  vi.spyOn(home, 'call').mockImplementation(async (method, params) => {
+    if (method === 'agents.builtin.ensure') throw new Error('selection: no signed-in account on this machine to run the bot');
+    return real(method, params);
+  });
+  running = mount(ExperimentsPage, { target: document.body, props: { store: stores[0] } });
+  flushSync();
+  query<HTMLInputElement>('[data-testid=experiment-contacts]').click();
+  await vi.waitFor(() => expect(stores[0]!.error).toContain('no signed-in account'));
+  flushSync();
+  expect([isExperimentEnabled('contacts'), query<HTMLInputElement>('[data-testid=experiment-contacts]').checked]).toEqual([true, true]);
 });

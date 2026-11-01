@@ -1,6 +1,7 @@
 import { subscriptionProxyOf, type AccountQuota, type GatewayQuotaCredit, type GatewayQuotaEntry, type GatewayQuotaProvider, type QuotaWindow, type SubscriptionProxy, type SubscriptionProxyQuotas } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { proxyApiUrl, proxyKey } from './subscription-proxy.ts';
+import { ensureLocalProxyKey, PROXY_AUTH_ERROR } from './subscription-proxy-auth.ts';
 
 /** The native quota cadence: a list within a minute of the last read reuses it. */
 const FRESH_MS = 60_000;
@@ -138,7 +139,7 @@ export async function fetchGatewayQuotas(proxy: SubscriptionProxy, key: string, 
   } catch { throw new Error('Douane quotas could not reach the configured API URL.'); }
   // Never the raw body: a gateway's error page can echo a credential.
   if (response.status === 404) { await response.body?.cancel().catch(() => {}); return null; }
-  if (!response.ok) { await response.body?.cancel().catch(() => {}); throw new Error(`Douane quotas returned HTTP ${response.status}.`); }
+  if (!response.ok) { await response.body?.cancel().catch(() => {}); throw new Error(response.status === 401 ? PROXY_AUTH_ERROR : `Douane quotas returned HTTP ${response.status}.`); }
   const quotas = parseGatewayQuotas(await boundedJson(response, max), names);
   if (quotas.providers.some(pool => pool.providerId === 'meta' && pool.entries.some(entry => entry.status !== 'disabled'))) {
     return { ...quotas, nativeMuse: await nativeMuseRoutes(proxy, key, max) };
@@ -236,6 +237,8 @@ export class GatewayQuotas {
     const running = (async () => {
       let next: SubscriptionProxyQuotas;
       try {
+        await ensureLocalProxyKey(this.core);
+        if (epoch !== this.epoch) return this.state();
         const names = (id: string) => this.core.providers.get(id)?.name ?? null;
         const answer = await fetchGatewayQuotas(proxy, proxyKey(this.core), names, this.max, refresh);
         next = answer ? { status: 'ready', ...answer, checkedAt: Date.now(), error: null } : { ...OFF, status: 'unsupported' };

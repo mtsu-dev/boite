@@ -65,6 +65,12 @@ export interface Group {
    * machine keeps its own. A core before `features.settingsHome` leaves it out.
    */
   settingsHome?: string;
+  /**
+   * The member that hosts the owner's bots: new bots and the Contacts bot live
+   * there, and it is the group's one entry for contacts. Absent: none chosen.
+   * A core before `features.botsHome` leaves it out.
+   */
+  botsHome?: string;
 }
 
 /**
@@ -225,6 +231,8 @@ export interface GroupRpcMethods {
   'group.rename': { params: { name: string }; result: Group };
   /** The member every other one takes its settings from, a live member's id, or null for none. Every member hears of it. Owner only. */
   'group.settingsHome': { params: { coreId: string | null }; result: Group };
+  /** Pick the bots host of the group, or none; owner only. */
+  'group.botsHome': { params: { coreId: string | null }; result: Group };
   /** A one-time invitation another machine joins with. Owner only. */
   'group.invite': { params: Record<string, never>; result: GroupInvite };
   /** Joins the group an invitation names: this core calls the member that minted it. Owner only. */

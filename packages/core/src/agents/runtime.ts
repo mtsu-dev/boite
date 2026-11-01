@@ -55,8 +55,13 @@ export interface AgentFact {
   threadIds?: string[];
 }
 
-/** `deferred`: it arrived while it could wake nothing, so it stays out of the hourly cap. */
-interface HeldFact { key: string; text: string; at: number; notBefore: number; threadIds?: string[]; deferred?: boolean; urgent?: true }
+/**
+ * `deferred`: it arrived while it could wake nothing, so it stays out of the hourly cap.
+ * `written`: when this version was filed, rising with every write on this core, so a key
+ * set back to an earlier text still reads as newer (`bot.move` files the latest per key).
+ * One saved by an older core has none: its `at` stands for it.
+ */
+interface HeldFact { key: string; text: string; at: number; notBefore: number; written?: number; threadIds?: string[]; deferred?: boolean; urgent?: true }
 interface HeldEvent { key: string; label: string; prompt: string; at: number }
 /** What waits for the agent's thread to be free, kept across restarts. */
 interface Pending { facts: HeldFact[]; events: HeldEvent[] }
@@ -139,12 +144,18 @@ export class AgentRuntime {
   readonly #told = new Set<string>();
   /** Fact times per agent in the last hour, and the drops said in its thread. Reset by a restart. */
   readonly #sent = new Map<string, { at: number[]; told: number[] }>();
+  /** The last `HeldFact.written` given: the next is later, even within one millisecond. */
+  #written = 0;
 
   readonly #core: Core;
   constructor(core: Core) {
     this.#core = core;
     for (const row of core.journal.db.query("SELECT key, value FROM settings WHERE key LIKE 'agents:pending:%'").all() as { key: string; value: string }[]) {
-      try { this.pending.set(row.key.slice(PENDING.length), JSON.parse(row.value) as Pending); }
+      try {
+        const pending = JSON.parse(row.value) as Pending;
+        this.pending.set(row.key.slice(PENDING.length), pending);
+        for (const fact of pending.facts) this.#written = Math.max(this.#written, fact.written ?? 0);
+      }
       catch (error) { core.log('warn', `agent pending wakes ${row.key}: ${messageOf(error)}`); }
     }
     this.#off = core.bus.onAny((name, payload) => {
@@ -177,6 +188,8 @@ export class AgentRuntime {
   /** `wake` with the reason it did not start. */
   attempt(agent: AgentProfile, wake: AgentWake): { turn?: Turn; held?: WakeHeld } {
     if (this.#closed || this.#core.stopping) return { held: 'paused' };
+    // A bot on its way to another machine is held as a busy one: its routines, events and facts wait, then go with it or stay.
+    if (this.#store.moves.moving(agent.id)) return { held: 'busy' };
     const paused = this.#refusal(agent);
     if (paused !== null) return { held: paused };
     let thread: ThreadSummary;
@@ -189,6 +202,12 @@ export class AgentRuntime {
       this.#core.log('warn', `agent ${agent.id}: ${wake.label} could not start: ${messageOf(error)}`);
       return { held: 'failed' };
     }
+  }
+
+  /** This bot thread's agent is archived or paused, or bots are: a bot's team letter waits for it (`docs/teams.md`). */
+  holds(threadId: string): boolean {
+    const agent = this.#store.agentOfThread(threadId);
+    return agent !== null && this.#refusal(agent) !== null;
   }
 
   /**
@@ -222,6 +241,9 @@ export class AgentRuntime {
     if (thread.parentThreadId) return;
     const agent = this.#store.agentOfThread(thread.id);
     if (!agent) return;
+    if (this.#store.moves.moving(agent.id)) {
+      throw refused(`Held ${SOURCE_TEXT[source]}: ${agent.name} is moving to another machine.`, { reason: AGENT_HELD, threadId: thread.id, source, held: 'busy' });
+    }
     const held = this.#refusal(agent);
     const over = held === null ? this.#spent(agent, thread.id) : null;
     const key = `${agent.id}:${source}`;
@@ -253,7 +275,7 @@ export class AgentRuntime {
       const agent = this.#store.agentOfThread(threadId);
       const thread = this.#core.journal.getThread(threadId);
       if (!agent || !thread || thread.archived) { this.#waiting.delete(threadId); continue; }
-      if (this.#refusal(agent) !== null || this.#spent(agent, threadId) !== null || this.#atWork(thread)) continue;
+      if (this.#store.moves.moving(agent.id) || this.#refusal(agent) !== null || this.#spent(agent, threadId) !== null || this.#atWork(thread)) continue;
       const [key, retry] = held.entries().next().value!;
       held.delete(key);
       if (held.size === 0) this.#waiting.delete(threadId);
@@ -265,6 +287,7 @@ export class AgentRuntime {
   start(agent: AgentProfile, wake: AgentWake): Turn {
     const thread = this.#core.threads.require(this.#store.open(agent.id).threadId);
     if (this.#atWork(thread)) throw refused(`${agent.name} is at work; run it again once its turn ends`, { threadId: thread.id, field: 'routineId' });
+    if (this.#store.moves.moving(agent.id)) throw refused(`${agent.name} is moving to another machine; run it there once it arrives`, { threadId: thread.id, field: 'routineId', reason: 'moving' });
     return this.#begin(thread, wake);
   }
 
@@ -302,6 +325,7 @@ export class AgentRuntime {
     if (counted) sent.at.push(now);
     const held: HeldFact = {
       key: fact.key, text: fact.text, at: previous?.at ?? now, notBefore: previous?.notBefore ?? now + (fact.delay ?? NOTICE_BATCH_MS),
+      written: this.#written = Math.max(now, this.#written + 1),
       ...(!wakes ? { deferred: true } : {}), ...(fact.urgent ? { urgent: true as const } : {}), ...(fact.threadIds ? { threadIds: [...fact.threadIds] } : {}),
     };
     let facts = previous ? pending.facts.map(f => f.key === fact.key ? held : f) : [...pending.facts, held];
@@ -329,7 +353,7 @@ export class AgentRuntime {
   }
 
   /** The facts still waiting for an agent, oldest first. */
-  facts(agentId: string): readonly { key: string; text: string; at: number; threadIds?: string[] }[] { return this.pending.get(agentId)?.facts ?? []; }
+  facts(agentId: string): readonly { key: string; text: string; at: number; written?: number; threadIds?: string[] }[] { return this.pending.get(agentId)?.facts ?? []; }
 
   /** The threads a fact tells of; one saved by an older core names them only in its text. */
   factThreads(fact: { text: string; threadIds?: string[] }): string[] {

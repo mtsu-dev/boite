@@ -3,7 +3,7 @@ import { afterEach, expect, spyOn, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { WorkflowPlan, WorkflowRun } from '@boite/contracts';
+import type { ThreadSummary, WorkflowPlan, WorkflowRun } from '@boite/contracts';
 import { setDriver } from '../src/drivers/index.ts';
 import type { TurnContext, TurnResult } from '../src/drivers/types.ts';
 import { echoThread, startTestCore, waitFor, type TestCore } from './harness.ts';
@@ -65,6 +65,30 @@ function restartable(): string {
 }
 
 const JSON_BLOCK = (value: unknown) => `Here it is.\n\`\`\`json\n${JSON.stringify(value)}\n\`\`\``;
+
+test('local and remote workflow questions update the parent chatbar summary while their steps keep running', async () => {
+  scripted(() => null);
+  const { desk, pc, owner, threadId, pcId, machine, onPc, run } = await setup();
+  const pcOwner = await pc.connect();
+  const started = await owner.call('workflows.start', { threadId, requestId: 'question-alerts', plan: { name: 'Review', steps: [
+    { id: 'near', task: 'Inspect the parser' },
+    { id: 'far', machine, project: 'notes', task: 'Inspect the lexer' },
+  ] } });
+  await waitFor(() => onPc().length === 1 && run(started.id).nodes.every(node => node.status === 'running'));
+  const localId = run(started.id).nodes[0]!.instances[0]!.threadId!;
+  const remote = onPc()[0]!;
+  let alerts: NonNullable<ThreadSummary['subagentQuestions']> = [];
+  owner.on('thread.updated', row => { if (row.id === threadId) alerts = row.subagentQuestions ?? []; });
+  const near = await owner.call('questions.ask', { threadId: localId, text: 'Which parser?', options: [] });
+  const far = await pcOwner.call('questions.ask', { threadId: remote.id, text: 'Which lexer?', options: [] });
+  await waitFor(() => alerts.length === 2, 1000);
+  expect(alerts).toContainEqual({ threadId: localId, title: desk.core.threads.require(localId).title });
+  expect(alerts).toContainEqual({ threadId: remote.id, title: remote.title, machine: { coreId: pcId, name: pc.core.coordination.identity().name } });
+  await owner.call('questions.answer', { threadId: localId, questionId: near.questionId, optionIds: [], text: 'Built-in' });
+  await pcOwner.call('questions.answer', { threadId: remote.id, questionId: far.questionId, optionIds: [], text: 'Custom' });
+  await waitFor(() => alerts.length === 0, 1000);
+  expect(run(started.id).status).toBe('running');
+});
 
 test('a step on another machine runs there after a step here, and its JSON output feeds the run', async () => {
   const { prompts } = scripted(prompt => {
@@ -195,10 +219,28 @@ test('a restart of the other machine keeps its step at work, and the turn it res
   const childId = onPc()[0]!.id;
   await waitFor(() => run(started.id).nodes[0]!.instances[0]!.machine?.childId === childId);
 
-  await pc.core.threads.handoff.begin(0);
-  await pc.core.delegation.remote.flush(deskId);
-  // Its cut turn is reported stopped, with the restart that resumes it: the step is not over.
-  expect(desk.core.delegation.remote.record(threadId, run(started.id).nodes[0]!.instances[0]!.machine!.requestId)?.state).toMatchObject({ lastTurn: { status: 'stopped' }, restarting: true });
+  await waitFor(() => pc.core.delegation.remote.waiting(deskId).reports === 0);
+  const sending = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  const request = pc.core.coordination.request.bind(pc.core.coordination);
+  let delay = true;
+  pc.core.coordination.request = (async (peer, operation, payload) => {
+    if (operation === 'delegation.report' && delay) { delay = false; sending.resolve(); await release.promise; }
+    return request(peer, operation, payload);
+  }) as typeof pc.core.coordination.request;
+  // A running-state report is already in flight when the handoff stops the
+  // turn. Another flush cannot overtake it with the stopped-state report.
+  pc.core.delegation.remote.restate();
+  const reporting = pc.core.delegation.remote.flush(deskId);
+  await sending.promise;
+  try {
+    await pc.core.threads.handoff.begin(0);
+    await pc.core.delegation.remote.flush(deskId);
+  } finally { release.resolve(); await reporting; }
+  const state = () => desk.core.delegation.remote.record(threadId, run(started.id).nodes[0]!.instances[0]!.machine!.requestId)?.state;
+  // flush is best effort while an earlier report is in flight. Wait for the
+  // stopped-state report to arrive before checking the receiving machine.
+  await waitFor(() => state()?.lastTurn?.status === 'stopped' && state()?.restarting === true);
+  expect(state()).toMatchObject({ lastTurn: { status: 'stopped' }, restarting: true });
   expect(run(started.id)).toMatchObject({ status: 'running', nodes: [{ instances: [{ status: 'running' }] }] });
   const port = Number(new URL(pc.url).port);
   await pc.stop();

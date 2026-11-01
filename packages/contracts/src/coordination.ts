@@ -85,6 +85,13 @@ export interface AgentLetter {
    * follows when that work wakes it. Missing otherwise and on older cores.
    */
   checkpoint?: boolean;
+  /**
+   * A team letter (`docs/teams.md`): the posts of one team that woke this
+   * bot, by seq. Later posts join it while it waits; `owner` when one of them
+   * is the owner's, so its wake is the owner's message and no bot budget
+   * holds it. Its text is rendered from the posts when it is delivered.
+   */
+  team?: { teamId: string; triggers: number[]; owner: boolean };
   id: string;
   from: AgentContact;
   to: AgentAddress;
@@ -237,7 +244,11 @@ export interface Contact {
   role: 'host' | 'guest';
   /** What a guest dials: the host's tailnet name URL. Missing on the host side. */
   url?: string;
-  /** A git remote match, else the concierge, opens a project for its access requests without the owner; the owner decides the rest. */
+  /**
+   * Its requests go to this core's Contacts bot, which settles them alone
+   * (opening a project still takes the owner). Not trusted: the bot asks the
+   * owner before it acts on any of them.
+   */
   trusted: boolean;
   /** Projects this core opened to the contact. */
   grants: ContactGrant[];
@@ -248,6 +259,16 @@ export interface Contact {
   addedAt: Timestamp;
   /** Negotiated on the sealed contact sync, never inferred from a version string. Missing: legacy contact traffic only. */
   capabilities?: ContactCapabilities;
+  /** The contact's own Contacts bot, as its core announced it on the sync: the one thread of theirs this core's bot may always write to. */
+  bot?: { threadId: ThreadId; title: string };
+  /** The group name the contact's core announced on the sync: its whole group reads as one Boite of that name. Absent for a single machine or an older core. */
+  group?: string;
+  /**
+   * Owner-facing only, never sent to a contact: the member of this owner's
+   * group that holds the link, when it is not this core. The Bots host lists
+   * the contacts other members hold with it, so the owner reads one list.
+   */
+  heldBy?: string;
 }
 /** An invitation a contact joins with. One use; whoever holds it can join, so it travels like a password. */
 export interface ContactInvite {
@@ -274,9 +295,31 @@ export interface ContactInvite {
 export interface ContactRequest {
   id: string;
   direction: 'in' | 'out';
+  /** Empty while an outgoing request waits for this core's Contacts bot to pick the contact. */
   coreId: string;
-  /** The contact's local name. */
+  /** The contact's local name; empty like `coreId`. */
   contact: string;
+  /**
+   * What the asking agent wants: `talk` with a thread of the contact (the
+   * one `target` names, or one the contact's bot finds), `thread` a new
+   * thread started on one of the contact's projects, `share` a project
+   * opened to it. Missing on older cores: `share`.
+   */
+  want?: ContactRequestWant;
+  /** The thread the asking agent named exactly, on the side that receives the request. */
+  target?: { threadId: ThreadId; title?: string };
+  /**
+   * Who the request waits on while pending: `bot`, this core's Contacts bot;
+   * `owner`, this owner's answer on a card the bot raised (a contact not
+   * trusted, or a project to open); `host`, kept on a group member without a
+   * Contacts bot until the group's Bots host files it for its bot, retried for
+   * 7 days. Missing: the contact.
+   */
+  stage?: 'bot' | 'owner' | 'host';
+  /** The owner said yes on the bot's card: the bot may now act on it. */
+  approved?: boolean;
+  /** The thread the two Contacts bots put the asking thread in relation with, once accepted. */
+  relation?: ContactRelation;
   /** The agent that asked; on an incoming request, as the contact's core attests it. */
   from: AgentContact;
   text: string;
@@ -288,8 +331,55 @@ export interface ContactRequest {
   project?: { id: ProjectId; name: string };
   /** Why it was refused, written by the owner, or by the concierge on an older core. */
   reason?: string;
-  decidedBy?: 'owner' | 'match' | 'concierge';
+  /** `bot`: the Contacts bot. `match` and `concierge` come from older cores. */
+  decidedBy?: 'owner' | 'bot' | 'match' | 'concierge';
   decidedAt?: Timestamp;
+}
+export const CONTACT_REQUEST_WANTS = ['talk', 'thread', 'share'] as const;
+export type ContactRequestWant = typeof CONTACT_REQUEST_WANTS[number];
+/**
+ * Two threads, one on each side, the Contacts bots put in touch: each may
+ * write to the other with `boite threads send` for as long as it lasts,
+ * whatever projects are opened. A relation lets letters through, never files,
+ * reads or commands: the local thread does the work in its own checkout.
+ * Either side ends it (`contacts.bot.cut`, `contacts.cutRelation`).
+ */
+export interface ContactRelation {
+  id: string;
+  coreId: string;
+  /** The contact's local name. */
+  contact: string;
+  /** This core's thread. */
+  local: { threadId: ThreadId; title: string };
+  /** The contact's thread, as its core announced it. */
+  remote: AgentContact;
+  /** The request that made it, by this core's id. */
+  requestId: string;
+  createdAt: Timestamp;
+}
+export const CONTACT_FLAG_KINDS = ['secret', 'destructive', 'injection', 'boundary', 'review'] as const;
+/**
+ * Something a contact's agent did that this core's Contacts bot must look
+ * at: a letter asking for a secret, a destructive command or words written to
+ * steer an agent (`secret`, `destructive`, `injection`), a refusal at a shared
+ * project's boundary (`boundary`), or the activity reviewer's doubt
+ * (`review`). A flagged letter waits, undelivered, for the bot's verdict.
+ */
+export interface ContactFlag {
+  id: string;
+  coreId: string;
+  contact: string;
+  kind: typeof CONTACT_FLAG_KINDS[number];
+  /** One sentence the core wrote: what matched and where, never a secret's bytes. */
+  reason: string;
+  /** The held letter, when a letter raised it. */
+  letterId?: string;
+  /** The local thread it concerns, when one does. */
+  threadId?: ThreadId;
+  relationId?: string;
+  at: Timestamp;
+  /** `open` until the bot decides: the letter delivered, refused, or the contact's access cut. */
+  status: 'open' | 'delivered' | 'refused' | 'cut';
 }
 export interface ContactSettings {
   /** The least capable model an agent may run on to write to a contact, or to be heard from one. Default 1. */
@@ -346,6 +436,21 @@ export interface ContactsState {
   funnel?: ContactFunnelState | null;
   /** Contact mail waiting for this owner, oldest first, at most 50. Absent from older cores. */
   mail?: HeldContactLetter[];
+  /** The Contacts bot of this core, null before the Contacts switch made it. Absent from older cores. */
+  bot?: { agentId: string; threadId: string } | null;
+  /** Threads in relation with a contact's, newest first. Absent from older cores. */
+  relations?: ContactRelation[];
+  /** Flags still open, then the last 50 decided. Absent from older cores. */
+  flags?: ContactFlag[];
+}
+/** What the Contacts bot reads before it acts (`boite contacts`). */
+export interface ContactsBotView {
+  requests: ContactRequest[];
+  relations: ContactRelation[];
+  flags: ContactFlag[];
+  contacts: { name: string; coreId: string; trusted: boolean; link: Contact['link']; offers: string[]; granted: string[]; bot: boolean }[];
+  /** This core's projects the bot may start a thread on or propose to open, with their git remote. */
+  projects: { id: ProjectId; name: string; gitRemote?: string }[];
 }
 /**
  * A letter a contact not marked trusted wrote outside a shared project, to a
@@ -474,8 +579,37 @@ export interface CoordinationRpcMethods {
   'contacts.tailscaleKey': { params: { key: string | null }; result: ContactTailscale };
   /** The contacts this thread's agent may write to, with the projects each opened to this core. */
   'collaboration.contacts': { params: { threadId: ThreadId }; result: { name: string; coreId: string; projects: string[]; link: Contact['link'] }[] };
-  /** Ask a contact for an agent on a project like `text`. The answer comes back to this thread as a message. */
-  'collaboration.ask': { params: { threadId: ThreadId; contact: string; text: string }; result: ContactRequest };
+  /**
+   * A request to a contact, handed to this core's Contacts bot: it picks the
+   * contact (`contact` when given), forwards it, and the answer comes back to
+   * this thread as a message, with the thread it is put in relation with.
+   * `target` names a contact's thread exactly as `<contact>/<thread-id>`.
+   * Refused while this core has no Contacts bot.
+   */
+  'collaboration.ask': { params: { threadId: ThreadId; contact?: string; text: string; target?: string; want?: ContactRequestWant }; result: ContactRequest };
+  /** What the Contacts bot reads: requests, relations, flags, contacts and projects. Its own thread only. */
+  'contacts.bot.view': { params: { threadId: ThreadId }; result: ContactsBotView };
+  /** The bot sends an outgoing request (`stage: 'bot'`) to `contact`, rewording `text` or naming `target` when it found better. */
+  'contacts.bot.forward': { params: { threadId: ThreadId; id: string; contact: string; text?: string; target?: ThreadId; want?: ContactRequestWant }; result: ContactRequest };
+  /** The bot accepts an incoming request by putting its asking thread in relation with `target`, a thread of this core. */
+  'contacts.bot.connect': { params: { threadId: ThreadId; id: string; target: ThreadId }; result: ContactRequest };
+  /** The bot accepts an incoming request by starting a thread on `project` with `brief`, in relation with the asking thread. */
+  'contacts.bot.start': { params: { threadId: ThreadId; id: string; project: string; brief: string; model?: string; effort?: string; worktree?: boolean }; result: { request: ContactRequest; threadId: ThreadId } };
+  /** A card asking the owner to open `project` to the request's contact; their Yes opens it and accepts the request. Always the owner's. */
+  'contacts.bot.share': { params: { threadId: ThreadId; id: string; project: string; reason: string }; result: { questionId: RequestId } };
+  /** A card asking the owner whether the bot may act on a request of a contact not trusted, with what it proposes. Their No refuses it. */
+  'contacts.bot.askOwner': { params: { threadId: ThreadId; id: string; text: string }; result: { questionId: RequestId } };
+  'contacts.bot.refuse': { params: { threadId: ThreadId; id: string; reason: string }; result: ContactRequest };
+  /**
+   * The bot cuts what a contact reaches here: one relation, one project, or
+   * with neither every relation and project of that contact. The link and
+   * the contact stay; the owner removes those.
+   */
+  'contacts.bot.cut': { params: { threadId: ThreadId; contact: string; relation?: string; project?: string; reason: string }; result: { relations: number; projects: number } };
+  /** The bot's verdict on an open flag: the held letter delivered, or refused (its sender reads why). */
+  'contacts.bot.flag': { params: { threadId: ThreadId; id: string; deliver: boolean; reason?: string }; result: ContactFlag };
+  /** The owner ends a relation from the Contacts page. Owner only. */
+  'contacts.cutRelation': { params: { id: string }; result: { ok: true } };
 }
 
 export interface CoordinationRpcEvents {

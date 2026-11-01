@@ -1,14 +1,15 @@
 <script lang="ts">
-  import { requestStarts, type Message, type Turn } from '@boite/contracts';
+  import { requestWork, type Message, type Turn } from '@boite/contracts';
   import type { Snippet } from 'svelte';
   import type { Store } from '../lib/store.svelte';
   import TurnSummary, { type SummaryMemory, type SummarySteps } from './TurnSummary.svelte';
+  import type { CompactionPart } from '../lib/tool-groups';
 
-  let { store, threadId, turn, turns = [], message, messages, pointed = false, steps, memory, actions }: {
+  let { store, threadId, turn, turns = [], message, messages, pointed = false, steps, memory, compactions, actions }: {
     store: Store;
     threadId: string;
     turn: Turn;
-    /** The shown thread's turns, to find when the request this turn carries on started (`requestStarts`). */
+    /** The shown thread's turns, to count what the request this turn carries on worked before it (`requestWork`). */
     turns?: Turn[];
     message: Message;
     messages: Message[];
@@ -18,6 +19,8 @@
     steps?: SummarySteps;
     /** The memory pass that followed this turn, as a mark on the line. */
     memory?: SummaryMemory;
+    /** The automatic compactions said on this turn's line. */
+    compactions?: CompactionPart[];
     actions?: Snippet;
   } = $props();
 
@@ -29,12 +32,12 @@
     return current.state === 'streaming' && (tail?.type === 'thinking' && tail.finishedAt == null ||
       current.id === message.id && tail?.type === 'text' && tail.complete !== true && tail.text.trim().length > 0);
   }));
-  const requestStartedAt = $derived(requestStarts(turns).get(turn.id) ?? null);
+  const workedBefore = $derived(requestWork(turns).get(turn.id) ?? 0);
 </script>
 
 <TurnSummary
   {turn}
-  {requestStartedAt}
+  {workedBefore}
   clockOffset={store.clockOffset}
   progress={store.openThread?.id === threadId ? store.openThread.progress : undefined}
   activeTool={active.some(current => current.parts.some(part => part.type === 'tool' && part.status === 'running'))}
@@ -45,5 +48,6 @@
   {pointed}
   {steps}
   {memory}
+  {compactions}
   {actions}
 />

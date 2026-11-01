@@ -185,6 +185,37 @@ test('a member says how it is reached, and the default machine is picked once fo
   expect(one('group-home-older')!.textContent).toContain('Second');
 });
 
+test('the Bots machine is a second role picked the same way, shut on a core that cannot store it', async () => {
+  const first = await grouped();
+  const second = await joined();
+  workspace.machines = [...workspace.machines, { id: 'second', label: 'Second', store: second }];
+  flushSync();
+  expect(one('group-home')!.textContent).toContain(strings.machines.home);
+  expect(one('group-bots')!.textContent).toContain(strings.machines.bots);
+  expect(one('group-bots-pick')!.textContent).toContain(strings.machines.homeNone);
+  one<HTMLButtonElement>('group-bots-pick')!.click();
+  flushSync();
+  const options = [...document.querySelectorAll<HTMLElement>('[data-testid="group-bots-pick-menu"] [data-value]')].map((item) => item.dataset.value);
+  expect(options).toEqual(['none', 'core-first', 'core-second']);
+  document.querySelector<HTMLElement>('[data-testid="group-bots-pick-menu"] [data-value="core-second"]')!.click();
+  await vi.waitFor(() => { flushSync(); expect([first.group?.botsHome, second.group?.botsHome]).toEqual(['core-second', 'core-second']); });
+  expect(one('group-bots-pick')!.textContent).toContain('Second');
+  // The Settings role is its own choice.
+  expect(first.group?.settingsHome).toBeUndefined();
+  expect(one('group-home-pick')!.textContent).toContain(strings.machines.homeNone);
+  expect(one('group-bots-older')).toBeNull();
+
+  // A core from before the role: every option is shut and the hint says to update it.
+  first.core = { ...first.core!, features: { ...first.core!.features, botsHome: false } };
+  flushSync();
+  expect(one('group-bots-older')!.textContent).toBe(fill(strings.machines.botsOlder, { machine: first.core!.hostname ?? strings.machines.local }));
+  one<HTMLButtonElement>('group-bots-pick')!.click();
+  flushSync();
+  const shut = [...document.querySelectorAll<HTMLButtonElement>('[data-testid="group-bots-pick-menu"] [data-value]')];
+  expect(shut.length).toBe(3);
+  expect(shut.every((item) => item.disabled || item.getAttribute('aria-disabled') === 'true')).toBe(true);
+});
+
 test('removing a member asks first, then takes it off the list', async () => {
   await grouped();
   const second = await joined();

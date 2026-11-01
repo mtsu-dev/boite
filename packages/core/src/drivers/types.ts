@@ -1,6 +1,7 @@
 import type {
   Account,
   AccountId,
+  AgentTotals,
   CoreLogContext,
   AgentCommand,
   ImageAttachment,
@@ -16,6 +17,7 @@ import type {
   QuestionOption,
   SettingAsk,
   AgentSettingAsk,
+  TeamAsk,
   RequestId,
   ThreadId,
   ThreadSummary,
@@ -71,6 +73,8 @@ export interface QuestionAsk {
   setting?: SettingAsk;
   /** An agent setting card (`agents.settings.request`), always asynchronous. */
   agentSetting?: AgentSettingAsk;
+  /** A bot's team proposal (`teams.propose`, `invite`, `leave`), always asynchronous. */
+  team?: TeamAsk;
   /** A page the card opens (`boite ask --open`). */
   open?: { url: string };
 }
@@ -125,7 +129,7 @@ export interface TurnContext {
    * survive a resume: the last `Turn.agentTotals` the session recorded, else
    * the sum of its finished turns. Absent or zero on a fresh session.
    */
-  sessionBefore?: { costUsd: number; tokens: number };
+  sessionBefore?: AgentTotals;
   /** The isolation environment of this account, empty for the provider's own login. */
   accountEnv: Record<string, string>;
   /**
@@ -274,7 +278,7 @@ export interface TurnResult {
    */
   checkpoint?: { sessionId: string; entry: string };
   /** The agent's running totals as this turn ended (`Turn.agentTotals`). Absent when the driver has none. */
-  agentTotals?: { costUsd: number; tokens: number };
+  agentTotals?: AgentTotals;
   /**
    * The provider refused the turn for availability, not for a fault of the
    * request, and said so unambiguously: `capacity` when the model is at

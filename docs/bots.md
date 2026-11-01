@@ -72,8 +72,9 @@ face moves with it.
 A routine
 or event turn opens with a thin divider across the column (its icon, label and
 time); a quiet turn, done (a failed or stopped wake keeps its error in view),
-folds to one such divider, `Nothing to report · <reason> · N steps`, that
-expands to the whole turn. A finished turn that made calls folds them, with the
+folds to one such divider, `Checked: <reason> · N steps` behind a check mark,
+that expands to the whole turn. An automatic compaction that went through takes
+no row: the line of the turn before it says `compacted 51K → 11K`. A finished turn that made calls folds them, with the
 reasoning and the narration between them, out of the column, so the answer
 reads as the bot's message; the quiet line under the answer carries the time
 it worked, when it finished, the count (`4 steps`, a click opens them above the
@@ -108,8 +109,23 @@ opens that summary so its warning stays visible.
 A new bot needs a name and what it does; its robot, model and projects come
 filled in. It is free to act: its permission mode starts on full access (Auto,
 `bypassPermissions`), which the owner may change before Create; a bot saved
-earlier keeps its mode. Creating it opens its thread, where its introduction
-runs live.
+earlier keeps its mode. Its machine starts on the group's **Bots** machine
+when one is picked and this window reaches it as its owner
+([machines](machines.md#the-bots-machine)), else on the machine the page shows;
+bots made before stay where they are. Creating it opens its thread, where its
+introduction runs live.
+
+A bot's settings carry a **Machine** row: where it lives, and a menu of the
+other connected machines of its group (`AgentMachine.svelte`). A member whose
+Boite lacks `features.botMove` is shut in the menu with "Update needed" and
+says why on hover. Picking one asks in the app's dialog what moves (memory,
+notes, routines, the end of the conversation), that the old conversation
+stays archived on this machine, and that the bot reads a note about the move
+with its next message. Confirmed, the client calls `agents.move` on the
+store of the machine that holds the bot and, once it answers, opens the bot
+on its new machine. A refusal shows its message in the toast; a turn in
+flight reads as one short line asking to move it once the turn is done
+([moving a bot](#moving-a-bot-to-another-machine)).
 
 ### Robots
 
@@ -147,6 +163,41 @@ bot: it blinks at rest, a jelly squishes on the spot while it works (the
 other styles glance from side to side), every style hops while it waits on
 the user, shuts its eyes and breathes slowly asleep, and goes dizzy after a
 failure. Reduced motion stills it.
+
+### Your own picture
+
+Beside Shuffle and Customize, the picture button imports any image in place
+of the robot: a file on the desktop, the gallery or the camera on a phone. The
+form crops a still image to its centred square and shrinks it to 256 px (WebP
+where the browser writes it, else PNG); a GIF of at most 512 KB goes as it
+is and stays animated, a larger one is shrunk to its first frame.
+`agents.picture.put` stores it on the core the bot lives on, in
+`<data>/agent-pictures/<hash>.<ext>`, and answers `img:<hash>`, the first 16
+hex digits of the image's SHA-256, which the profile then saves in `avatar`
+like a robot code. The core keeps only PNG, JPEG, WebP and GIF whose first
+bytes match their type, never SVG, and refuses a save naming a picture it
+does not hold. A picture no bot wears is removed a day after it was stored,
+the next time one is imported, and beyond 32 unworn pictures the oldest go at
+once.
+
+A bot picks a face too: `boite settings bot picture <image>` dresses it, or
+another bot with `--bot <name>`, at once and with no card, because the owner
+let agents choose faces themselves (2026-11-01). The CLI does not resize: an
+image over 512 KB is refused with its size, for the agent to shrink first
+([CLI](cli.md)). `boite settings bot request avatar --picture <image>` asks
+for the same change on a card instead.
+
+Snapshots carry only the 20-character avatar. A client asks
+`agents.picture.get` once per picture, which a paired phone may call, and
+draws the `data:` URL in an `<img>`; the hash names the same bytes on every
+machine, so any connected core that holds it answers. The disc stays empty
+while the image loads and shows the robot the bot's id gives when no machine
+holds it, and asks again a minute later or as soon as another machine
+connects. Shuffle or Customize put a robot back. A bot moved to another
+machine takes its picture along when it fits in the room the move's
+`MOVE_PAYLOAD_MAX` leaves after the bot's text, since the whole sealed body
+has one bound; a larger picture, typically a big GIF, stays behind and the
+bot wears its robot there unless that machine already holds the picture.
 
 ## Wakes
 
@@ -589,7 +640,7 @@ another bot (`--bot <name>`), can propose a change with a card: `boite settings
 bot request <key> <value> --why <reason>`, the same flow as a card about a
 Boite setting ([CLI](cli.md)). The keys are its name, its role (`domain`), its
 instructions (`--instructions-file <path>` for a long text), its picture
-(`avatar`: one or two characters, a robot code, or `""`), its `status`
+(`avatar`: one or two characters, a robot code, a picture the owner imported (`img:<hash>`), or `""`), its `status`
 (`active`, `paused` or `archived`), the projects entrusted to it, its model and
 reasoning effort, the memory pass (`autoMemory`), its automatic event wakes
 for every project and desk fact (`eventWakes`, off by default), its subagents and its daily budget (`dailyBudget`, dollars a
@@ -633,8 +684,14 @@ card. Code: `agents/create.ts`, shared checks in
 ## Routines
 
 Routines (`agents/routines.ts`) belong to one identity and wake it on its own
-thread. Choose a single date, an interval in minutes, or a daily local time
-with an IANA timezone, optionally on chosen weekdays read in that timezone.
+thread. Choose a single date, an interval in minutes, a daily local time
+(optionally on chosen weekdays), a day of each month, or a month and day of
+each year. Recurring calendar schedules use an IANA timezone. Months without
+the requested day are skipped, as are non-leap years for February 29.
+Nonexistent local times at a clock change are skipped. The form previews the
+same next instant as the core, including for routines saved in another timezone.
+The owner can assign these in the schedule editor, or ask the bot in its
+conversation; it saves the reminder through `boite bot schedule` before confirming.
 The core wakes them without an idle model loop. A due routine starts a
 `routine` turn; while the previous occurrence is still queued or running the
 next one is skipped and `nextAt` still advances, and a failed, stopped or quiet
@@ -721,6 +778,123 @@ thread:
 most once a second, the first change at once, while a bot works (a step, a
 card, a title, an answer) and when its desk changes (a watched thread's turn,
 card, row, stall or pull request).
+
+## Moving a bot to another machine
+
+`agents.move` (`{agentId, machine, requestId?}`, owner only) sends a bot to
+another machine of the group in one sealed, member-only request (`bot.move`,
+`packages/core/src/agents/move.ts`). The target must have `features.botMove`;
+an older one is refused with "update Boite on <machine>". The request carries:
+
+- the profile without what only the source knows (account, session, thread
+  and record ids): name, domain, instructions, robot, status, built-in kind,
+  route (provider, model, effort, permission mode) and projects;
+- its saved settings: auto memory, event wakes, daily budget and the
+  subagent switches (allowed routes and subagent profiles start again from
+  the new route);
+- the brain files `AGENTS.md`, `MEMORY.md` and `memories-archive.md`, at most
+  96,000 bytes together, refused past it with the file named (`brain.<file>`);
+  `skills/` stays behind;
+- its routines (name, prompt, schedule, on or off, a spent one-shot stays
+  spent), whose next occurrence the target computes again;
+- the facts still waiting for it, filed there to wait for its next turn,
+  each with the time the source wrote that version (`written`, rising with
+  every write on the source, so a key set back to an earlier text is still
+  the newest);
+- the end of its conversation as text excerpts (`messageExcerpt`, the
+  builder of a fresh session's history), newest first, at most 200 messages
+  and 48,000 characters;
+- the source machine's name and core id.
+
+The whole request stays under 180,000 bytes of JSON.
+
+Projects are written as the target sees them: `<target-id>/<project>` becomes
+the target's own `<project>`, one of the source's becomes
+`<source-id>/<project>`, any other keeps its form; a local project the target
+does not have, or its drafts, is left out. The answer lists them
+(`projectIds`) and those of the source (`groupProjects`), which work while the
+source keeps `groupBots` on.
+
+The target runs the bot on its signed-in account of the same provider, with
+the same model and effort when it lists them and that provider's defaults
+otherwise; without one, on its own default route, as a new built-in bot gets.
+With no signed-in account at all it refuses: "agents.move: <machine> has no
+signed-in account to run <bot>; sign in there first". It also refuses a bot id
+it already holds from another request, and a built-in bot whose kind it
+already has live. The source refuses a move to itself, to a machine outside
+the group, of an archived bot, of a member of a team that is not archived
+(`reason: 'team'`, the team names in `teams`; a team holds bots of one
+machine, [teams](teams.md)), and of a bot whose thread or a sub-thread has a
+turn running or queued (`reason: 'turn-in-flight'`).
+
+The target creates the bot and a new thread whose earlier turns are the
+carried excerpts; its first turn sends them to a fresh session, as a fork
+does. No wake runs on arrival and a paused bot stays paused. Its next prompt
+(not a slash command or a compaction) carries a move note, once: "You moved
+from <source> to <target> on <ISO date>. Your memory, notes, routines and the
+end of your conversation came with you; the projects of <source> are reached
+as <source>/<project> through the group."
+
+From the snapshot to the end of the move, the source holds the bot's wakes
+(`BotMoves.moving`): a due routine, an event or a waking fact waits as it
+would for a busy thread, Run now is refused, and other autonomous turns are
+held. What changes while the request travels is not lost: once the target
+answers, the source reads the bot again (a fact filed, a rename, settings,
+brain files, routines) and sends the same request with it, up to three times
+(`MOVE_FACT_ROUNDS`, then `reason: 'facts-arriving'`). The target files, per
+key, a fact version newer than the one it filed for that request; a version
+the bot already read there is not told twice. A move carries at most 100
+waiting facts and refuses more. A turn the owner started on the bot meanwhile
+refuses the end of the move with `reason: 'turn-in-flight'`; the same
+`requestId` finishes it once the turn is over.
+
+Every request carries the whole bot. The target keeps a print of each part it
+applied for the `requestId` (`agents:moved-in-parts:<source>:<requestId>`:
+profile, route, settings, routines, each brain file, and the version of each
+fact by key). The same request again, while it holds the bot, applies only
+the parts whose print changed: what the source wrote after a lost answer
+(memory, notes, routines, a rename, settings, facts) replaces the target's
+copy of that part, and a part the source left alone keeps what the target
+wrote meanwhile. A route the target cannot run keeps the one the bot has
+there. The conversation is not carried again: turns held on the source after
+a lost answer stay in its archived thread.
+
+The source changes nothing until the target has the bot and every fact.
+Then it adds the line "Moved to <machine>" to the old thread and archives it,
+which stays readable; it removes the profile, its routines, its session, its
+waiting facts and its settings, and renames its brain folder to
+`<folder>-moved-<date>`. A built-in bot moves the same way: afterwards
+`builtinThread` answers on the target and is null on the source. The
+`requestId` defaults to a new one per call; the same one again returns the
+first answer from both machines, so a move whose answer was lost is retried
+without making a second bot: the target answers with the bot it made (and
+applies what the source changed since), and the source then archives and
+removes its copy. A refusal or a silence keeps the bot and its facts on the
+source. From the first send to the end, the source remembers the request as
+unfinished (`agents:moving-out:<requestId>`, `BotMoves.unfinished`); a
+refusal the target read clears it, a silence or a lost answer does not, so the
+Contacts bot's move ([contacts](contacts.md)) sends the same request again at
+each sweep until the source's half is done. The Machine row keeps one `requestId` per bot and target in the
+window's storage (`boite.agentMoves`, `lib/agent-move.ts`) until the move
+succeeds or a refusal that read the request ends it; after a lost answer, a
+silent target (`reason: 'unreachable'`), a busy bot or a dropped connection,
+the next try, even after a reload, sends the same id.
+
+## Built-in bots
+
+A built-in bot is one Boite ships (`AgentProfile.builtin`), one of each kind
+per core. The first is the Contacts bot (`contacts`,
+[contacts](contacts.md#the-contacts-bot)), created by the Contacts switch
+through `agents.builtin.ensure`, which returns the existing one when called
+again. Its row and header carry a Built-in badge. Its domain and instructions
+are Boite's: the settings show them read-only, `agents.profile.save` and
+setting cards refuse a change to them, and a new Boite version rewrites them
+in place. The owner renames it, picks its robot, model, effort and permission
+mode, and pauses it. It is never archived; Reset (`agents.builtin.reset`)
+archives its thread and starts a new one, empties its memory, removes its
+routines and gives back its default name, robot and route (or the route the
+reset names) and its default runtime settings (`agents:runtime:<id>` is
+dropped: no daily budget, event wakes off, auto memory and subagents on).
 
 ## Migration
 

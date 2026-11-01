@@ -213,3 +213,89 @@ test('a thread link in reasoning or a tool document starts from the machine and 
     expect(opened.mock.calls).toEqual([[store, message.threadId, 'boite', 'thr_tkw9n9qt4100rvq2jmg1'], [store, message.threadId, null, 'thr_tkw9n9qt4100rvq2jmg2']]);
   } finally { opened.mockRestore(); store.detach(); client.close(); }
 });
+
+test('a permission is one element with its call: the card stands for the call while it waits, a shield on its line once answered', async () => {
+  const client = new FakeClient({ delayMs: 0 });
+  const store = new Store(); store.attach(client);
+  try {
+    await store.connect(); await store.open('t-trace');
+    const message = store.openThread!.messages.at(-1)!;
+    message.state = 'streaming';
+    message.parts = [
+      { type: 'tool', toolId: 'ls', name: 'Bash', input: { command: 'ls -la' }, output: null, status: 'running', startedAt: 1000 },
+      { type: 'permission', requestId: 'req-ls', toolName: 'Bash', decision: null }
+    ];
+    mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: message.threadId, message, signedOut: null, showModel: false } });
+    flushSync();
+    expect(document.querySelectorAll('.parts > .part')).toHaveLength(1);
+    expect(document.querySelector('[data-testid=permission-card]')?.getAttribute('data-decision')).toBe('pending');
+    expect(document.querySelector('[data-testid=tool-card]')).toBeNull();
+
+    message.parts = [
+      { type: 'tool', toolId: 'ls', name: 'Bash', input: { command: 'ls -la' }, output: 'total 0', status: 'done', startedAt: 1000, finishedAt: 7000 },
+      { type: 'permission', requestId: 'req-ls', toolName: 'Bash', decision: 'allow' }
+    ];
+    flushSync();
+    expect(document.querySelectorAll('.parts > .part')).toHaveLength(1);
+    expect(document.querySelector('[data-testid=permission-card]')).toBeNull();
+    expect(document.querySelectorAll('[data-testid=tool-card]')).toHaveLength(1);
+    const shield = document.querySelector('[data-testid=tool-card] [data-testid=tool-permission]');
+    expect(shield?.getAttribute('data-decision')).toBe('allow');
+    expect(shield?.getAttribute('title')).toBe('Allowed by you');
+  } finally { store.detach(); client.close(); }
+});
+
+test('a permission with no call of its name stays its own line inside the run', async () => {
+  const client = new FakeClient({ delayMs: 0 });
+  const store = new Store(); store.attach(client);
+  try {
+    await store.connect(); await store.open('t-trace');
+    const message = store.openThread!.messages.at(-1)!;
+    message.state = 'complete';
+    message.parts = [
+      { type: 'tool', toolId: 'read', name: 'Read', input: { file_path: 'a.ts' }, output: '', status: 'done' },
+      { type: 'permission', requestId: 'req-x', toolName: 'fake_tool', decision: 'deny' }
+    ];
+    mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: message.threadId, message, signedOut: null, showModel: false } });
+    flushSync();
+    expect(document.querySelectorAll('.parts > .part')).toHaveLength(1);
+    document.querySelector<HTMLButtonElement>('[data-testid=tool-group-toggle]')!.click();
+    flushSync();
+    expect(document.querySelector('[data-testid=permission-card]')?.getAttribute('data-decision')).toBe('deny');
+    expect(document.querySelector('[data-testid=tool-permission]')).toBeNull();
+  } finally { store.detach(); client.close(); }
+});
+
+test('a compaction between calls rides on their line instead of taking a row', async () => {
+  const client = new FakeClient({ delayMs: 0 });
+  const store = new Store(); store.attach(client);
+  try {
+    await store.connect(); await store.open('t-trace');
+    const last = store.openThread!.messages.at(-1)!;
+    const call = (id: string) => ({ type: 'tool' as const, toolId: id, name: 'Bash', input: { command: `echo ${id}` }, output: 'ok', status: 'done' as const });
+    const message: Message = { ...last, id: 'm-mid-compaction', role: 'assistant', state: 'complete', parts: [call('a'), { type: 'compaction', trigger: 'auto', preTokens: 201_200, postTokens: 13_400 }, call('b'), { type: 'text', text: 'Done.' }] };
+    mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: message.threadId, message, signedOut: null, showModel: false } });
+    flushSync();
+    expect(document.querySelector('[data-testid=compaction-part]')).toBeNull();
+    expect(document.querySelectorAll('[data-testid=tool-group]')).toHaveLength(1);
+    const mark = document.querySelector('[data-testid=tool-group-compaction]');
+    expect(mark?.textContent?.trim()).toBe('compacted 201.2K → 13.4K');
+    expect(mark?.getAttribute('title')).toBe('Context compacted, 201.2K to 13.4K tokens');
+  } finally { store.detach(); client.close(); }
+});
+
+test('a short text between calls reads as narration, what follows the last call as the answer', async () => {
+  const client = new FakeClient({ delayMs: 0 });
+  const store = new Store(); store.attach(client);
+  try {
+    await store.connect(); await store.open('t-trace');
+    const last = store.openThread!.messages.at(-1)!;
+    const call = (id: string) => ({ type: 'tool' as const, toolId: id, name: 'Bash', input: { command: `echo ${id}` }, output: 'ok', status: 'done' as const });
+    const report = 'A long report the agent wrote before going on. '.repeat(10);
+    const message: Message = { ...last, id: 'm-narration', role: 'assistant', state: 'complete', parts: [{ type: 'text', text: 'Now the tests.' }, call('a'), { type: 'text', text: report }, call('b'), { type: 'text', text: 'Fixed.' }] };
+    mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: message.threadId, message, signedOut: null, showModel: false } });
+    flushSync();
+    expect([...document.querySelectorAll('[data-testid=narration]')].map(node => node.textContent?.trim())).toEqual(['Now the tests.']);
+    expect([...document.querySelectorAll('.answer-bubble')].map(node => node.textContent?.trim().slice(0, 6))).toEqual(['A long', 'Fixed.']);
+  } finally { store.detach(); client.close(); }
+});

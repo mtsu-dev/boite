@@ -91,6 +91,20 @@ export class Threads {
     }
   }
 
+  /** The whole thread's compactions and prompts for the context popup; null from a core that predates `threads.stats`. */
+  async stats(threadId: ThreadId) {
+    const client = this.ctx.client;
+    const generation = this.ctx.clientGeneration;
+    if (!client) return null;
+    try {
+      const stats = await client.call('threads.stats', { threadId });
+      return this.ctx.currentClient(client, generation) ? stats : null;
+    } catch (error) {
+      if (error instanceof RpcFailure && error.code === RpcErrorCode.MethodNotFound) return null;
+      throw error;
+    }
+  }
+
   async recoverTurn(threadId: ThreadId, turnId: string, action: 'resume' | 'discard'): Promise<void> {
     const client = this.ctx.client;
     const generation = this.ctx.clientGeneration;
@@ -159,6 +173,9 @@ export class Threads {
   #workingChildren = $derived(workingChildren(this.threads));
   /** The thread's delegated agents still at work or asking the user; null when none is. */
   subagents(threadId: ThreadId): WorkingChildren | null { return this.#workingChildren.get(threadId) ?? null; }
+
+  /** The owning core projects local and remote children even when another conversation is open. */
+  subagentQuestions(threadId: ThreadId): NonNullable<ThreadSummary['subagentQuestions']> { return this.rowOf(threadId)?.subagentQuestions ?? []; }
   /** A move waits on the children at work; one that only asks, its turn over, does not hold it. */
   moveBlocked(threadId: ThreadId): boolean { return (this.#workingChildren.get(threadId)?.count ?? 0) > 0; }
 
@@ -424,7 +441,7 @@ export class Threads {
       permissionRead?.apply(permissions);
       questionRead?.apply(questions);
       secretRead?.apply(secrets);
-      // Its sub-agents asking the user show in its dock: their requests are read the same way.
+      // Read child requests too, so the sidebar can link to their unanswered questions.
       if (options.requests !== false) this.ctx.requests.readChildren(client, threadId);
       if (thread.unread) {
         await client.call('threads.markRead', { threadId });

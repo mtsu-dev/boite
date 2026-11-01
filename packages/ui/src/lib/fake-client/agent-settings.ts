@@ -17,6 +17,7 @@ import type { FakeContext } from './context';
 import { pickModel } from './delegation';
 import { modelsOf } from './provider-catalog';
 import { askAgentSetting } from './requests';
+import { BUILTIN_LOCKED, BUILTIN_NEVER_ARCHIVED } from './builtin-bots';
 
 const refused = (message: string, data?: Record<string, unknown>) => new RpcFailure({ code: RpcErrorCode.Refused, message, ...(data ? { data } : {}) });
 /** As the core: a new bot may run on any installed model, whatever the thread's subagent settings. */
@@ -87,6 +88,7 @@ function context(ctx: FakeContext, agent: AgentProfile, refs = false): AgentSett
       const levels = models().find(entry => entry.id === agent.selection.model)?.effort?.levels ?? [];
       return levels.some(level => level.id === effort) ? { ok: true, value: effort } : { ok: false, message: 'the model does not offer this reasoning effort' };
     },
+    picture: avatar => ctx.agents.hasPicture(avatar),
   };
 }
 
@@ -98,6 +100,9 @@ function openOn(ctx: FakeContext, threadId: string): AgentSettingAsk[] {
 /** `agents.settings.request` on a thread whose turn is known; the fake agent's `[agent-settings]` marker comes here too. */
 export function requestAgentSetting(ctx: FakeContext, thread: Thread, turn: Turn, params: AgentSettingRequestParams): { questionId: string; setting: AgentSettingAsk } {
   const agent = agentFor(ctx, thread.id, params.agent);
+  // As the core: a built-in bot's domain and instructions are Boite's, and it is never archived.
+  if (agent.builtin && (params.key === 'domain' || params.key === 'instructions')) throw refused(BUILTIN_LOCKED(params.key), { field: 'key', key: params.key });
+  if (agent.builtin && params.key === 'status' && params.value === 'archived') throw refused(BUILTIN_NEVER_ARCHIVED, { field: 'value', key: 'status' });
   const checked = checkAgentSettingRequest(params, context(ctx, agent), openOn(ctx, thread.id));
   if (!checked.ok) throw refused(checked.message, checked.data);
   return { questionId: askAgentSetting(ctx, thread, turn, checked.reason, checked.options, checked.setting), setting: checked.setting };
@@ -238,6 +243,17 @@ export function agentSettingMethods(ctx: FakeContext): Handlers {
         value = normalized.value;
       }
       const saved = write(ctx, agent, setting.key, value);
+      settleAgentSettings(ctx, agent.id);
+      return saved;
+    },
+    // As the core: a thread dresses a bot, itself or another, with no card.
+    'agents.avatar.set': params => {
+      const thread = ctx.thread(params.threadId);
+      if (thread.archived) throw refused('an archived thread cannot change a bot', { threadId: thread.id });
+      const agent = agentFor(ctx, thread.id, params.agent);
+      const normalized = normalizeAgentSetting('avatar', params.avatar, context(ctx, agent));
+      if (!normalized.ok) throw refused(normalized.message, { field: 'avatar' });
+      const saved = write(ctx, agent, 'avatar', normalized.value);
       settleAgentSettings(ctx, agent.id);
       return saved;
     },

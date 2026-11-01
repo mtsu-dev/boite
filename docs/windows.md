@@ -8,6 +8,8 @@ controls and draw a box showing the user where to click
 ([guiding the user](#guiding-the-user)). iOS Simulators and Android emulators
 go through [`boite device`](devices.md) instead: that command can also drive
 them.
+An app the agent itself should run and drive goes on a
+[virtual desktop](desktop.md).
 
 Capture is read-only. Boite never restores, raises or focuses a window, never
 sends it input and never draws the cursor. The guide's box is a window of the

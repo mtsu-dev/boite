@@ -32,6 +32,21 @@ export const AGENT_STATUSES = ['active', 'paused', 'archived'] as const;
  * or the four parts a code had before parts were shared across families (ui/src/lib/robots.ts).
  */
 const ROBOT_CODE = /^bot:[a-d](\.\d{1,2}){4}((\.\d{1,2}){3})?$/;
+/**
+ * A picture the owner imported (`agents.picture.put`): `img:` and the first 16
+ * hex digits of its SHA-256. The bytes stay on the core that stored them and
+ * reach a client through `agents.picture.get`.
+ */
+export const AGENT_PICTURE_CODE = /^img:[0-9a-f]{16}$/;
+/** The largest picture a core stores. The Bots page shrinks a still image to 256 px before it sends it; an animated GIF goes as it is. */
+export const AGENT_PICTURE_MAX_BYTES = 512 * 1024;
+/** The image types a picture may be: no SVG, which carries markup. */
+export const AGENT_PICTURE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'] as const;
+
+/** Whether an avatar names an imported picture rather than a robot or text. */
+export function isAgentPicture(avatar: string): boolean {
+  return AGENT_PICTURE_CODE.test(avatar.trim());
+}
 
 /** The most projects one agent holds, as `agents.profile.save` allows. */
 export const AGENT_PROJECTS_MAX = 50;
@@ -111,6 +126,8 @@ export interface AgentSettingContext {
    */
   model: (model: string) => Checked<string>;
   effort: (effort: string | null) => Checked<string | null>;
+  /** Whether this machine holds the imported picture an `img:` avatar names (`agents.picture.put`). */
+  picture: (avatar: string) => boolean;
 }
 
 /** A model as a card names it, `<provider>/<model>`; null runs on the provider's default. */
@@ -196,11 +213,15 @@ function agentText(raw: unknown, key: 'domain' | 'instructions', max: number): C
   return value === undefined || value.length > max ? { ok: false, message: `${key}: expected text of at most ${max} characters` } : { ok: true, value };
 }
 
-/** Empty draws the robot its id picks; else a robot code, or one or two characters (an emoji, letters) the picture shows as text. */
-function agentAvatar(raw: unknown): Checked<string> {
+/** Empty draws the robot its id picks; else a robot code, an imported picture, or one or two characters (an emoji, letters) the picture shows as text. */
+function agentAvatar(raw: unknown, ctx: AgentSettingContext): Checked<string> {
   const value = typeof raw === 'string' ? raw.trim() : undefined;
+  // A picture the bot wears already stays held: an unchanged avatar never fails on it.
+  if (value !== undefined && AGENT_PICTURE_CODE.test(value) && value !== ctx.profile.avatar.trim() && !ctx.picture(value)) {
+    return { ok: false, message: `avatar: ${value} is no picture this machine holds; import the image first (boite settings bot picture <file>)` };
+  }
   const short = value !== undefined && value.length <= AGENT_AVATAR_MAX && [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(value)].length <= 2;
-  return value !== undefined && (short || ROBOT_CODE.test(value)) ? { ok: true, value } : { ok: false, message: 'avatar: expected one or two characters (an emoji, letters), a robot code such as bot:d.1.2.3.4.1.1.0, or "" for the robot its id draws' };
+  return value !== undefined && (short || ROBOT_CODE.test(value) || AGENT_PICTURE_CODE.test(value)) ? { ok: true, value } : { ok: false, message: 'avatar: expected one or two characters (an emoji, letters), a robot code such as bot:d.1.2.3.4.1.1.0, an imported picture (img:<16 hex digits>), or "" for the robot its id draws' };
 }
 
 /** A proposed value as the agent's settings would store it, or why it cannot be. */
@@ -209,7 +230,7 @@ export function normalizeAgentSetting(key: AgentSettingKey, raw: unknown, ctx: A
     case 'name': return agentName(raw, ctx);
     case 'domain': return agentText(raw, key, AGENT_DOMAIN_MAX);
     case 'instructions': return agentText(raw, key, AGENT_INSTRUCTIONS_MAX);
-    case 'avatar': return agentAvatar(raw);
+    case 'avatar': return agentAvatar(raw, ctx);
     case 'status':
       return typeof raw === 'string' && (AGENT_STATUSES as readonly string[]).includes(raw.trim()) ? { ok: true, value: raw.trim() } : { ok: false, message: `status: expected ${AGENT_STATUSES.join(', ')}` };
     case 'projects': return agentProjectIds(raw, ctx.profile.projectIds ?? [], ctx.projects);
@@ -223,6 +244,19 @@ export function normalizeAgentSetting(key: AgentSettingKey, raw: unknown, ctx: A
         ? { ok: true, value: raw === null ? null : Math.round(raw * 100) / 100 }
         : { ok: false, message: `dailyBudget: expected dollars a day from ${AGENT_DAILY_BUDGET.min} to ${AGENT_DAILY_BUDGET.max}, or null for no cap` };
   }
+}
+
+/**
+ * Why no card may change this key of a built-in bot (`AgentProfile.builtin`),
+ * or null: its domain and instructions are Boite's, and it is never archived,
+ * only reset. The core's save refuses the same with the same words.
+ */
+export function builtinSettingRefusal(profile: Pick<AgentProfile, 'builtin'>, key: AgentSettingKey, value: unknown): string | null {
+  if (profile.builtin === undefined) return null;
+  if (key === 'domain') return 'domain: a built-in bot\'s domain is Boite\'s; reset it instead';
+  if (key === 'instructions') return 'instructions: a built-in bot\'s instructions are Boite\'s; reset it instead';
+  if (key === 'status' && value === 'archived') return 'status: a built-in bot is never archived; pause or reset it';
+  return null;
 }
 
 export type AgentSettingRequestCheck =
@@ -242,6 +276,8 @@ export function checkAgentSettingRequest(params: Pick<AgentSettingRequestParams,
   if (params.value === undefined) return { ok: false, message: 'a change needs a value', data: { field: 'value' } };
   const normalized = normalizeAgentSetting(key, params.value, ctx);
   if (!normalized.ok) return { ok: false, message: normalized.message, data: { field: 'value', key } };
+  const locked = builtinSettingRefusal(ctx.profile, key, normalized.value);
+  if (locked !== null) return { ok: false, message: locked, data: { field: 'key', key } };
   const previous = agentSettingValue(ctx.profile, ctx.config, key);
   if (sameSetting(normalized.value, previous)) return { ok: false, message: `${ctx.profile.name}'s ${key} is already ${capped(JSON.stringify(previous))}`, data: { field: 'value', key } };
   if (open.some(card => card.agentId === ctx.profile.id && card.key === key)) return { ok: false, message: `a card asking about ${ctx.profile.name}'s ${key} is already open in this thread`, data: { field: 'key', key } };

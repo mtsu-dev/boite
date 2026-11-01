@@ -17,7 +17,7 @@ export const fr: Translation = {
     rename: 'Renommer {name}',
     nameLabel: 'Nom du contact',
     trusted: 'De confiance',
-    trustedTip: 'Ses demandes peuvent ouvrir un projet sans vous : celui dont le remote git correspond, sinon celui que choisit l\'agent concierge. Une demande qu\'il ne sait pas placer vous attend. Ses messages vont à vos agents sans vous attendre. La lecture des conversations n\'est jamais accordée ainsi.',
+    trustedTip: 'La Standardiste traite ses demandes sans vous demander : elle met ses agents en relation avec la bonne conversation, ou en démarre une. Ouvrir un projet vous est toujours demandé. Ses messages vont à vos agents sans vous attendre. La lecture des conversations n\'est jamais accordée ainsi.',
     youShare: 'Vous partagez avec {name}',
     theyShare: '{name} partage avec vous',
     nothingOpen: 'Rien pour l\'instant',
@@ -59,8 +59,26 @@ export const fr: Translation = {
       decided: 'Traitées ({count})',
       accepted: '{project} partagé',
       refused: 'Refusée',
-      by: { owner: 'Propriétaire', match: 'Correspondance', concierge: 'Concierge' },
-      byTip: { owner: 'Décidé par le propriétaire.', match: 'Son remote git correspondait à un seul projet.', concierge: 'Décidé par l\'agent concierge pour un contact de confiance.' }
+      by: { owner: 'Propriétaire', match: 'Correspondance', concierge: 'Concierge', bot: 'Standardiste' },
+      byTip: { owner: 'Décidé par le propriétaire.', match: 'Son remote git correspondait à un seul projet.', concierge: 'Décidé par l\'agent concierge pour un contact de confiance.', bot: 'Décidé par la Standardiste, le bot intégré de Boite.' },
+      stage: { bot: 'Chez la Standardiste', owner: 'Vous attend', host: 'En route vers la machine Bots' },
+      inTouch: 'En relation avec {thread}'
+    },
+    bot: {
+      tip: 'Le bot intégré de Boite. Chaque demande entre vos agents et vos contacts passe par lui : il trouve la bonne conversation, met les deux en relation et retient les lettres qui semblent dangereuses.',
+      open: 'Ouvrir',
+      openTip: 'Ouvrir la conversation de {name}',
+      none: 'Aucune conversation ne travaille encore avec un contact.',
+      relations: 'En relation',
+      relationsTip: 'Une conversation d\'ici et une conversation d\'un contact que la Standardiste a mises en relation. Elles s\'écrivent ; aucun projet n\'est ouvert.',
+      end: 'Terminer',
+      endLabel: 'Terminer la relation entre {thread} et {contact}',
+      endTitle: 'Terminer cette relation ?',
+      endBody: '{thread} et {remote} de {contact} cessent de s\'écrire. Les deux côtés l\'oublient.',
+      flags: 'Alertes',
+      flagsTip: 'Une lettre ou une action d\'un contact qui a semblé dangereuse. La Standardiste décide ; une lettre signalée attend sa décision.',
+      openFlags: '{count} ouvertes',
+      kind: { secret: 'Secret', destructive: 'Destructif', injection: 'Injection', boundary: 'Limite', review: 'Revue' }
     },
     mail: {
       title: 'Messages',

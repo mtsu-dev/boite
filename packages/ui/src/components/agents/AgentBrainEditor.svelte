@@ -18,6 +18,8 @@
   } = $props();
   let brain = $state<AgentBrain | null>(null);
   const labels = $derived(strings.agents);
+  /** A built-in bot's AGENTS.md is Boite's: shown, never edited here. */
+  const builtin = $derived(!!view.snapshot?.profiles.find(p => p.id === agentId)?.builtin);
   onMount(() => { void view.call('agents.brain.get', { agentId }).then(value => { brain = value; }); });
   async function save() { if (brain) { const saved = await view.call('agents.brain.save', { agentId, expectedRevision: brain.revision, instructions: brain.instructions, memory: brain.memory }); if (saved) { brain = saved; ondone?.(saved); } } }
 </script>
@@ -27,7 +29,8 @@
     <h2>{labels.brainFiles}</h2>
     <p class="hint">{labels.brainHint} <code>{brain.path}</code></p>
     <label class="agent-field"><span>{labels.notes}<small class="hint">{labels.notesHint}</small></span><textarea rows="8" maxlength={AGENT_MEMORY_MAX} bind:value={brain.memory} readonly={!view.store.owner} data-testid="agent-brain-memory"></textarea></label>
-    <label class="agent-field"><span>{labels.procedures}<small class="hint">{labels.proceduresHint}</small></span><textarea rows="6" maxlength="32000" bind:value={brain.instructions} readonly={!view.store.owner}></textarea></label>
+    <label class="agent-field"><span>{labels.procedures}<small class="hint">{labels.proceduresHint}</small></span><textarea rows="6" maxlength="32000" bind:value={brain.instructions} readonly={!view.store.owner || builtin} class:agent-locked-field={builtin} data-testid="agent-brain-instructions"></textarea></label>
+    {#if builtin}<p class="hint agent-locked">{labels.builtin.locked}</p>{/if}
     {#if view.store.owner}<div class="agent-form-actions"><button class="primary" disabled={view.pending}><span class="ui-label">{strings.common.save}</span></button>{#if oncancel}<button type="button" class="ghost" onclick={oncancel}>{strings.common.cancel}</button>{/if}</div>{/if}
   </form>
 {/if}

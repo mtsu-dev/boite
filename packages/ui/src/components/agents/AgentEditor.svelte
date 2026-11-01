@@ -2,15 +2,17 @@
   import { errorText } from '../../lib/errors';
   import { secureId } from '../../lib/secure-id';
   import { onMount, untrack } from 'svelte';
-  import { Dices, Palette } from '@lucide/svelte';
-  import type { AgentProfile, AgentSelection as ExecutionSelection, RpcParams } from '@boite/contracts';
+  import { Dices, ImagePlus, Lock, Palette, RotateCcw } from '@lucide/svelte';
+  import { AGENT_PICTURE_MAX_BYTES, AGENT_PICTURE_TYPES, isAgentPicture, type AgentProfile, type AgentSelection as ExecutionSelection, type RpcParams } from '@boite/contracts';
+  import { agentPictures, pictureDataUrl } from '../../lib/agent-pictures.svelte';
   import { Autosave, TYPING_MS } from '../../lib/autosave.svelte';
   import { fill, strings } from '../../lib/strings';
   import { confirm } from '../../lib/confirm.svelte';
-  import { openAgent, type AgentsView } from '../../lib/agents.svelte';
+  import { openAgent, resetBuiltin, type AgentsView } from '../../lib/agents.svelte';
   import type { Store } from '../../lib/store.svelte';
   import type { MenuItem } from '../../lib/menu';
   import { workspace } from '../../lib/workspace.svelte';
+  import { botsHost } from '../../lib/operator';
   import ModelPicker from '../ModelPicker.svelte';
   import EffortSlider from '../EffortSlider.svelte';
   import Menu from '../Menu.svelte';
@@ -18,6 +20,7 @@
   import { encodeRobot, robotOf, seededRobot, shuffledRobot } from '../../lib/robots';
   import AgentAvatar from './AgentAvatar.svelte';
   import RobotPicker from './RobotPicker.svelte';
+  import AgentMachine from './AgentMachine.svelte';
 
   /**
    * Creates an agent with its Create button, or edits one in its settings (`embedded`), where
@@ -33,6 +36,8 @@
   } = $props();
   const initial = untrack(() => ({ record }));
   const profile = initial.record;
+  /** A bot Boite ships: its role and instructions are Boite's, shown but not editable, and Reset stands where Archive was. */
+  const builtin = profile?.builtin;
   /**
    * A new bot starts on the first available account of the machine it will run on, with that account's default model,
    * free to act: full access, the mode a thread calls Auto. The owner may still pick another.
@@ -49,15 +54,21 @@
   let instructions = $state(profile?.instructions ?? '');
   /**
    * The machine a new agent lives on. Agents belong to one core: its accounts, memory and planned
-   * tasks stay there. It starts as the machine this page shows; another one creates the agent on
-   * that core and then opens it there.
+   * tasks stay there. A new one starts on the group's Bots machine while it is connected, else on
+   * the machine this page shows; another one creates the agent on that core and then opens it there.
    */
-  let host = $state<Store>(untrack(() => view.store));
+  let host = $state<Store>(untrack(() => (initial.record ? null : botsHost(view.store, workspace.machines.map(m => m.store))) ?? view.store));
   let moving = $state(false);
-  let selection = $state<ExecutionSelection>({ ...(profile?.selection ?? untrack(() => defaultSelection(view.store))) });
+  let selection = $state<ExecutionSelection>({ ...(profile?.selection ?? untrack(() => defaultSelection(host))) });
   /** A new agent gets a robot of its own at once; an existing one shows the robot it wears. */
   let robot = $state(robotOf(profile?.id ?? '', profile?.avatar ?? '') ?? seededRobot(profile?.id ?? secureId()));
   let robotTouched = $state(!profile);
+  /** The picture the owner imported (`img:<hash>`), worn in place of the robot; null while it wears a robot. */
+  let picture = $state<string | null>(profile && isAgentPicture(profile.avatar) ? profile.avatar.trim() : null);
+  let importing = $state(false);
+  /** Bumped by every avatar choice: an import that lands after a robot was picked meanwhile leaves that robot on. */
+  let avatarChoice = 0;
+  let pictureInput = $state<HTMLInputElement | null>(null);
   let dressing = $state(false);
   let status = $state(profile?.status ?? 'active');
   let saving = $state(false);
@@ -79,7 +90,11 @@
     const usable = !offline && m.store.owner;
     return { id: m.id, label: m.label, active: m.store === host, disabled: !usable, ...(usable ? {} : { hint: offline ? labels.machineOffline : labels.machineNotOwner }) };
   }));
-  const busy = $derived(view.pending || moving || saving);
+  const busy = $derived(view.pending || moving || saving || importing);
+  /** The avatar the form saves: the imported picture, the robot once touched, else what the agent wears. */
+  const avatar = () => picture ?? (robotTouched ? encodeRobot(robot) : profile?.avatar ?? '');
+  /** Back to a robot: dice, the customizer and dropping the picture all leave the picture. */
+  function wearRobot(next: typeof robot) { robot = next; robotTouched = true; picture = null; avatarChoice++; edited(); }
   /** The projects an agent may be entrusted: those of the machine it lives on, the drafts aside. */
   const entrustable = $derived(host.projects.filter(p => p.id !== host.draftsProject?.id));
 
@@ -99,6 +114,9 @@
     let created: AgentProfile;
     try {
       if (!target.client || target.connection !== 'ready') throw new Error(fill(strings.agents.machineUnreachable, { name: workspace.machines.find(m => m.store === target)?.label ?? strings.machines.local }));
+      // A picture imported before another machine was picked: the same bytes give that machine the same avatar.
+      const image = isAgentPicture(value.avatar) ? agentPictures.url(value.avatar) : null;
+      if (image) await target.client.call('agents.picture.put', { dataUrl: image });
       created = await target.client.call('agents.profile.save', { value: $state.snapshot(value) as typeof value });
     } catch (error) {
       view.error = errorText(error);
@@ -188,17 +206,58 @@
       const projects = (r: AgentProfile) => projectKey(r.projectIds) === projectsRead || projectKey(r.projectIds) === projectKey(base?.projectIds);
       const rebase = !!latest && !!base && fields(latest) === fields(base) && projects(latest);
       const version = base ? { id: base.id, expectedRevision: (rebase ? latest! : base).revision } : {};
-      return { ...version, value: { name, domain, instructions, avatar: robotTouched ? encodeRobot(robot) : profile?.avatar ?? '', selection: creating || !rebase ? selection : latest!.selection, status, projectIds } };
+      return { ...version, value: { name, domain, instructions, avatar: avatar(), selection: creating || !rebase ? selection : latest!.selection, status, projectIds } };
     });
   }
   async function create() {
     if (busy) return;
     saving = true;
     try {
-      if (host !== view.store) return await createOn(host, { name, domain, instructions, avatar: robotTouched ? encodeRobot(robot) : '', selection, status, projectIds });
+      if (host !== view.store) return await createOn(host, { name, domain, instructions, avatar: avatar(), selection, status, projectIds });
       const result = await save(params => view.call('agents.profile.save', params()));
       if (result) ondone(result);
     } finally { saving = false; }
+  }
+  /** Reset, confirmed in the app's dialog; the form then shows what Boite put back. */
+  async function reset() {
+    const latest = stored() ?? profile;
+    if (!latest) return;
+    await autosave.flush();
+    const result = await resetBuiltin(view, latest);
+    if (!result) return;
+    base = result;
+    revisionRead = result.revision;
+    ({ name, domain, instructions, status } = result);
+    robot = robotOf(result.id, result.avatar) ?? seededRobot(result.id);
+    robotTouched = false;
+    picture = isAgentPicture(result.avatar) ? result.avatar.trim() : null;
+    avatarChoice++;
+  }
+  /**
+   * The image the owner picked becomes the agent's picture: shrunk here
+   * (`pictureDataUrl`), stored by the core the agent lives on, then saved like
+   * a robot. A new agent stores it on the machine picked so far; `createOn`
+   * gives it to another one picked after.
+   */
+  async function importPicture(file: File | undefined) {
+    if (!file || importing) return;
+    importing = true; view.error = '';
+    const choice = ++avatarChoice;
+    try {
+      const target = creating ? host : view.store;
+      if (!target.client || target.connection !== 'ready') throw new Error(fill(strings.agents.machineUnreachable, { name: workspace.machines.find(m => m.store === target)?.label ?? strings.machines.local }));
+      const dataUrl = await pictureDataUrl(file, AGENT_PICTURE_MAX_BYTES).catch(() => { throw new Error(labels.robot.pictureUnreadable); });
+      const stored = await target.client.call('agents.picture.put', { dataUrl });
+      agentPictures.remember(stored.avatar, dataUrl);
+      if (choice !== avatarChoice) return;
+      picture = stored.avatar;
+      dressing = false;
+      edited();
+    } catch (error) {
+      if (choice === avatarChoice) view.error = errorText(error);
+    } finally {
+      importing = false;
+    }
   }
   async function write() {
     const result = await save(params => view.save('agents.profile.save', params));
@@ -219,23 +278,30 @@
     <!-- The robot and the name read as one identity: the picture beside the field that names it. -->
     <div class="agent-identity">
       <div class="agent-portrait">
-        <AgentAvatar kind="profile" id={profile?.id ?? ''} {name} avatar={robotTouched ? encodeRobot(robot) : profile?.avatar ?? ''} size={72} />
+        <AgentAvatar kind="profile" id={profile?.id ?? ''} {name} avatar={avatar()} size={72} />
         <div class="agent-portrait-tools">
-          <button type="button" class="ghost icon small" title={labels.robot.shuffle} aria-label={labels.robot.shuffle} onclick={() => { robot = shuffledRobot(secureId(), robot.family); robotTouched = true; edited(); }} data-testid="robot-shuffle"><Dices size={15} strokeWidth={1.75} /></button>
+          <button type="button" class="ghost icon small" title={labels.robot.shuffle} aria-label={labels.robot.shuffle} onclick={() => wearRobot(shuffledRobot(secureId(), robot.family))} data-testid="robot-shuffle"><Dices size={15} strokeWidth={1.75} /></button>
           <button type="button" class="ghost icon small" class:active={dressing} aria-pressed={dressing} title={labels.robot.customize} aria-label={labels.robot.customize} onclick={() => { dressing = !dressing; }} data-testid="robot-customize"><Palette size={15} strokeWidth={1.75} /></button>
+          <!-- Any image of the owner's in place of the robot: a file on the desktop, the gallery or the camera on a phone. -->
+          <button type="button" class="ghost icon small" class:active={!!picture} disabled={importing} title={labels.robot.picture} aria-label={labels.robot.picture} onclick={() => pictureInput?.click()} data-testid="agent-picture"><ImagePlus size={15} strokeWidth={1.75} /></button>
+          <input bind:this={pictureInput} class="agent-picture-input" type="file" accept={AGENT_PICTURE_TYPES.join(',')} tabindex="-1" aria-hidden="true"
+            oninput={event => event.stopPropagation()}
+            onchange={event => { event.stopPropagation(); const input = event.currentTarget; const file = input.files?.[0]; input.value = ''; void importPicture(file); }}
+            data-testid="agent-picture-input" />
         </div>
       </div>
       <label class="agent-field agent-identity-name">{labels.name}<input required maxlength="200" bind:value={name} placeholder={labels.namePlaceholder} data-testid="agent-name" /></label>
     </div>
     {#if dressing}
       <div class="agent-dressing">
-        <RobotPicker {robot} onpick={next => { robot = next; robotTouched = true; edited(); }} />
+        <RobotPicker {robot} onpick={wearRobot} />
         <button type="button" class="ghost small agent-add" onclick={() => { dressing = false; }}>{labels.robot.done}</button>
       </div>
     {/if}
 
-    {#if embedded}<label class="agent-field">{labels.domain}<input bind:value={domain} maxlength="500" placeholder={labels.rolePlaceholder} /></label>{/if}
-    <label class="agent-field"><span>{creating ? labels.whatItDoes : labels.instructions}{#if creating}<span class="hint">{labels.whatItDoesHint}</span>{/if}</span><textarea bind:value={instructions} rows="4" maxlength="32000" placeholder={labels.instructionsPlaceholder} data-testid="agent-instructions"></textarea></label>
+    {#if embedded}<label class="agent-field">{labels.domain}<input bind:value={domain} maxlength="500" placeholder={labels.rolePlaceholder} readonly={!!builtin} class:agent-locked-field={!!builtin} data-testid="agent-domain" /></label>{/if}
+    <label class="agent-field"><span>{creating ? labels.whatItDoes : labels.instructions}{#if creating}<span class="hint">{labels.whatItDoesHint}</span>{/if}</span><textarea bind:value={instructions} rows="4" maxlength="32000" placeholder={labels.instructionsPlaceholder} readonly={!!builtin} class:agent-locked-field={!!builtin} data-testid="agent-instructions"></textarea></label>
+    {#if builtin}<p class="hint agent-locked" data-testid="agent-locked"><Lock size={12} strokeWidth={2} aria-hidden="true" />{labels.builtin.locked}</p>{/if}
     <!-- The projects it looks after: it follows their threads, starts new ones and answers for them. -->
     <fieldset class="agent-field" data-testid="agent-projects">
       <legend>{labels.projects}</legend>
@@ -250,8 +316,15 @@
     </fieldset>
     {#if embedded}
       <div class="agent-field"><span>{labels.status}</span>
-        <Menu placement="bottom" label={labels.status} items={(['active', 'paused', 'archived'] as const).map(id => ({ id, label: labels[id], active: status === id }))} onpick={id => void pickStatus(id as AgentProfile['status'])}><span class="ui-label">{labels[status]}</span></Menu>
+        <Menu placement="bottom" label={labels.status} items={(builtin ? ['active', 'paused'] as const : ['active', 'paused', 'archived'] as const).map(id => ({ id, label: labels[id], active: status === id }))} onpick={id => void pickStatus(id as AgentProfile['status'])} testid="agent-status"><span class="ui-label">{labels[status]}</span></Menu>
       </div>
+      {#if profile}<AgentMachine {view} agent={stored() ?? profile} />{/if}
+      {#if builtin && view.store.owner}
+        <div class="agent-field agent-reset">
+          <span>{labels.builtin.reset}<small class="hint">{labels.builtin.resetHint}</small></span>
+          <button type="button" class="danger" disabled={busy} onclick={() => void reset()} data-testid="agent-reset"><RotateCcw size={14} strokeWidth={1.75} /><span class="ui-label">{labels.builtin.reset}</span></button>
+        </div>
+      {/if}
     {/if}
   </section>
 
