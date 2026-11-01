@@ -127,6 +127,13 @@ test('a bot wearing an imported picture takes it along: the target stores the by
   await owner.call('agents.move', { agentId: agent.id, machine: pcId, requestId: 'move-picture' });
   expect((await pcOwner.call('agents.snapshot', {})).profiles.find(p => p.id === agent.id)?.avatar).toBe(avatar);
   expect(await pcOwner.call('agents.picture.get', { avatar })).toEqual({ dataUrl: png });
+
+  // A picture too large for the sealed body stays behind: the bot still moves and wears its robot there.
+  const gif = `data:image/gif;base64,${Buffer.concat([Buffer.from('GIF89a'), Buffer.alloc(300_000)]).toString('base64')}`;
+  const heavy = (await owner.call('agents.picture.put', { dataUrl: gif })).avatar;
+  const { agent: other } = await makeAgent(desk, owner, { avatar: heavy });
+  await owner.call('agents.move', { agentId: other.id, machine: pcId, requestId: 'move-heavy-picture' });
+  expect((await pcOwner.call('agents.snapshot', {})).profiles.find(p => p.id === other.id)?.avatar).toBe('');
 }, 60_000);
 
 test('a bot on its way to another machine joins no team meanwhile, and its archived team stays archived', async () => {

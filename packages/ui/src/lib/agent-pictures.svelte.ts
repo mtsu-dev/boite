@@ -20,6 +20,8 @@ class AgentPictures {
   /** The pictures no connected core held when last asked: drawn as the robot their id picks meanwhile. */
   missing = $state<Record<string, number>>({});
   #loading = new Set<string>();
+  /** The clients each missing picture was last asked of: a client not among them is asked without waiting `RETRY_MS`. */
+  #asked = new Map<string, Set<object>>();
 
   url(avatar: string): string | null { return this.urls[avatar.trim()] ?? null; }
 
@@ -33,24 +35,27 @@ class AgentPictures {
 
   /**
    * Fetches a picture the first time an avatar draws it. The sources and their
-   * connections are read before anything is awaited, so an effect that calls
-   * this asks again once a machine connects.
+   * connections are read before anything returns, so an effect that calls this
+   * runs again once a machine connects, and that machine is asked at once even
+   * within `RETRY_MS` of a miss.
    */
   async load(avatar: string): Promise<void> {
     const key = avatar.trim();
     if (!isAgentPicture(key) || this.urls[key] !== undefined || this.#loading.has(key)) return;
-    const missed = this.missing[key];
-    if (missed !== undefined && Date.now() - missed < RETRY_MS) return;
     const ready = [...new Set(sources())].filter(store => store.client && store.connection === 'ready');
+    const missed = this.missing[key];
+    const asked = this.#asked.get(key);
+    if (missed !== undefined && Date.now() - missed < RETRY_MS && ready.every(store => asked?.has(store.client!))) return;
     if (!ready.length) return;
     this.#loading.add(key);
     try {
       for (const store of ready) {
         try {
           const answer = await store.client!.call('agents.picture.get', { avatar: key });
-          if (answer.dataUrl.startsWith('data:image/')) { this.remember(key, answer.dataUrl); return; }
+          if (answer.dataUrl.startsWith('data:image/')) { this.#asked.delete(key); this.remember(key, answer.dataUrl); return; }
         } catch { /* another machine may hold it */ }
       }
+      this.#asked.set(key, new Set(ready.map(store => store.client!)));
       this.missing = { ...this.missing, [key]: Date.now() };
     } finally {
       this.#loading.delete(key);

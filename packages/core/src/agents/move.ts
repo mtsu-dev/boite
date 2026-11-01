@@ -67,8 +67,8 @@ export const MOVE_FACTS_MAX = 100;
  * under `MAX_BODY` (262 144), which leaves room for the envelope.
  */
 export const MOVE_PAYLOAD_MAX = 180_000;
-/** The longest `data:` URL a moved picture may be: its bytes in base64 and the header. */
-const PICTURE_URL_MAX = Math.ceil(AGENT_PICTURE_MAX_BYTES / 3) * 4 + 64;
+/** The longest `data:` URL a moved picture may be: whatever the payload bound leaves, never more than a stored picture. */
+const PICTURE_URL_MAX = Math.min(MOVE_PAYLOAD_MAX, Math.ceil(AGENT_PICTURE_MAX_BYTES / 3) * 4 + 64);
 /** How many times a move sends what changed while it waited (facts, profile, settings, brain, routines), before it gives up and keeps the bot. */
 export const MOVE_FACT_ROUNDS = 3;
 /** The answer that the target read no `bot.move`: its Boite is older than this feature. */
@@ -272,10 +272,16 @@ export class BotMoves {
       history: thread === null ? { messages: [], omitted: 0 } : this.#history(thread.id),
       facts: this.#facts(agent.id),
     };
-    // The picture has its own bound (AGENT_PICTURE_MAX_BYTES): the limit is for the text a bot carries.
-    const bytes = Buffer.byteLength(JSON.stringify({ ...payload, profile: { ...payload.profile, picture: undefined } }));
+    // The text a bot carries must fit; its picture rides along only in the room left, since the sealed body has one bound
+    // (MAX_BODY). One that does not fit stays behind and the bot wears its robot there, unless that machine already holds it.
+    const { picture, ...profile } = payload.profile;
+    const bytes = Buffer.byteLength(JSON.stringify({ ...payload, profile }));
     if (bytes > MOVE_PAYLOAD_MAX) {
       throw refused(`agents.move: ${agent.name} comes to ${bytes} bytes, more than the ${MOVE_PAYLOAD_MAX} a move carries; shorten its instructions or its brain files first`, { field: 'agentId', bytes, max: MOVE_PAYLOAD_MAX });
+    }
+    if (picture !== undefined && bytes + Buffer.byteLength(JSON.stringify({ picture })) > MOVE_PAYLOAD_MAX) {
+      this.#core.log('info', `agent ${agent.id}: its picture is too large to travel with a move; the target machine draws its robot unless it holds the picture`);
+      return { ...payload, profile };
     }
     return payload;
   }

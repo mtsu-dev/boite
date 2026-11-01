@@ -66,6 +66,8 @@
   /** The picture the owner imported (`img:<hash>`), worn in place of the robot; null while it wears a robot. */
   let picture = $state<string | null>(profile && isAgentPicture(profile.avatar) ? profile.avatar.trim() : null);
   let importing = $state(false);
+  /** Bumped by every avatar choice: an import that lands after a robot was picked meanwhile leaves that robot on. */
+  let avatarChoice = 0;
   let pictureInput = $state<HTMLInputElement | null>(null);
   let dressing = $state(false);
   let status = $state(profile?.status ?? 'active');
@@ -92,7 +94,7 @@
   /** The avatar the form saves: the imported picture, the robot once touched, else what the agent wears. */
   const avatar = () => picture ?? (robotTouched ? encodeRobot(robot) : profile?.avatar ?? '');
   /** Back to a robot: dice, the customizer and dropping the picture all leave the picture. */
-  function wearRobot(next: typeof robot) { robot = next; robotTouched = true; picture = null; edited(); }
+  function wearRobot(next: typeof robot) { robot = next; robotTouched = true; picture = null; avatarChoice++; edited(); }
   /** The projects an agent may be entrusted: those of the machine it lives on, the drafts aside. */
   const entrustable = $derived(host.projects.filter(p => p.id !== host.draftsProject?.id));
 
@@ -229,6 +231,7 @@
     robot = robotOf(result.id, result.avatar) ?? seededRobot(result.id);
     robotTouched = false;
     picture = isAgentPicture(result.avatar) ? result.avatar.trim() : null;
+    avatarChoice++;
   }
   /**
    * The image the owner picked becomes the agent's picture: shrunk here
@@ -239,12 +242,14 @@
   async function importPicture(file: File | undefined) {
     if (!file || importing) return;
     importing = true; view.error = '';
+    const choice = ++avatarChoice;
     try {
       const target = creating ? host : view.store;
       if (!target.client || target.connection !== 'ready') throw new Error(fill(strings.agents.machineUnreachable, { name: workspace.machines.find(m => m.store === target)?.label ?? strings.machines.local }));
       const dataUrl = await pictureDataUrl(file, AGENT_PICTURE_MAX_BYTES).catch(() => { throw new Error(labels.robot.pictureUnreadable); });
       const stored = await target.client.call('agents.picture.put', { dataUrl });
       agentPictures.remember(stored.avatar, dataUrl);
+      if (choice !== avatarChoice) return;
       picture = stored.avatar;
       dressing = false;
       edited();

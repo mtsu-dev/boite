@@ -184,8 +184,12 @@ Snapshots carry only the 20-character avatar. A client asks
 draws the `data:` URL in an `<img>`; the hash names the same bytes on every
 machine, so any connected core that holds it answers. The disc stays empty
 while the image loads and shows the robot the bot's id gives when no machine
-holds it. Shuffle or Customize put a robot back. A bot moved to another
-machine takes its picture along.
+holds it, and asks again a minute later or as soon as another machine
+connects. Shuffle or Customize put a robot back. A bot moved to another
+machine takes its picture along when it fits in the room the move's
+`MOVE_PAYLOAD_MAX` leaves after the bot's text, since the whole sealed body
+has one bound; a larger picture, typically a big GIF, stays behind and the
+bot wears its robot there unless that machine already holds the picture.
 
 ## Wakes
 

@@ -67,6 +67,8 @@ interface BotParcel {
   from: string;
   /** The move's `requestId`: the target answers it again with the thread it made the first time. */
   requestId: string;
+  /** The imported picture the profile wears, as a `data:` URL, as the core's `bot.move` carries it. */
+  picture?: string;
 }
 
 /**
@@ -371,6 +373,7 @@ export class FakeAgents {
       config: structuredClone(this.configs.get(agent.id)),
       from: this.runner?.selfName?.() ?? 'this machine',
       requestId,
+      ...(this.pictures.has(agent.avatar.trim()) ? { picture: this.pictures.get(agent.avatar.trim())! } : {}),
     };
     const landed = found.agents.receive(parcel, found.name);
     for (const [id, session] of [...this.sessions]) {
@@ -401,7 +404,12 @@ export class FakeAgents {
       if (!route) this.refuse(`agents.move: ${here} has no signed-in account to run ${moved.name}; sign in there first`);
       selection = { ...route, permissionMode: moved.selection.permissionMode };
     }
-    const agent: AgentProfile = { ...moved, selection, projectIds: [], revision: moved.revision + 1, updatedAt: Date.now() };
+    // Its picture is stored here first, else it wears its robot, as the core's move.ts #picture.
+    let avatar = moved.avatar;
+    if (isAgentPicture(avatar) && !this.pictures.has(avatar.trim())) {
+      try { avatar = parcel.picture === undefined ? '' : this.putPicture(parcel.picture).avatar; } catch { avatar = ''; }
+    }
+    const agent: AgentProfile = { ...moved, avatar, selection, projectIds: [], revision: moved.revision + 1, updatedAt: Date.now() };
     this.profiles.set(agent.id, agent);
     if (parcel.brain) this.brains.set(agent.id, parcel.brain);
     if (parcel.config) this.configs.set(agent.id, parcel.config);
@@ -426,6 +434,14 @@ export class FakeAgents {
     }
     const bytes = Math.floor(match[2]!.length * 3 / 4) - (match[2]!.match(/=+$/)?.[0].length ?? 0);
     if (bytes === 0 || bytes > AGENT_PICTURE_MAX_BYTES) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `dataUrl: the picture is ${bytes} bytes; expected 1 to ${AGENT_PICTURE_MAX_BYTES}`, data: { field: 'dataUrl' } });
+    // The header must be the type it claims, as the core's fits() in agents/pictures.ts.
+    let head = '';
+    try { head = atob(match[2]!.slice(0, 16)); } catch { /* refused below */ }
+    const fits = match[1] === 'image/png' ? head.startsWith('\x89PNG')
+      : match[1] === 'image/jpeg' ? head.startsWith('\xff\xd8\xff')
+        : match[1] === 'image/webp' ? head.startsWith('RIFF') && head.slice(8, 12) === 'WEBP'
+          : /^GIF8[79]a/.test(head);
+    if (!fits) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `dataUrl: the bytes are not a ${match[1]} image`, data: { field: 'dataUrl', expected: match[1] } });
     // Two FNV-1a passes stand in for the core's SHA-256: only "same bytes, same name" matters here.
     let a = 0x811c9dc5, b = 0x01000193;
     for (let i = 0; i < match[2]!.length; i++) { const code = match[2]!.charCodeAt(i); a = Math.imul(a ^ code, 0x01000193) >>> 0; b = Math.imul(b ^ code, 0x811c9dc5) >>> 0; }
