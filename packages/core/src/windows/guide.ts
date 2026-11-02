@@ -44,8 +44,6 @@ import {
   WINDOW_READ_LIMIT,
   windowCropError,
   windowStepError,
-  type Message,
-  type MessagePart,
   type RpcParams,
   type RpcResult,
   type ThreadSummary,
@@ -67,6 +65,7 @@ import { newId } from '../ids.ts';
 import type { ControlState, NativeWindow, ScreenRect, TrackedControl, WindowGuide } from '../platform/types.ts';
 import type { Connection } from '../router.ts';
 import { centerInside, edgeOf, markerRect, sameRect } from './guide-geometry.ts';
+import { GuideCards, type GuideCard } from './guide-cards.ts';
 import { GuideReads, type Snapshot } from './guide-reads.ts';
 import { cropRect } from './image.ts';
 
@@ -185,13 +184,10 @@ interface Shown {
   known?: Set<string>;
   /** For `window` on a menu item: when the menu closed, the window it opens still to come. */
   menuClosedAt?: number;
-  /** Escape was down at the last look: a press counts once it starts, not while a key held before the box is still down. */
-  escapeHeld: boolean;
   /** The box's card in the conversation, null when it had no turn to show in. */
-  card: { messageId: string; part: GuidePart } | null;
+  card: GuideCard | null;
 }
 
-type GuidePart = Extract<MessagePart, { type: 'window_guide' }>;
 
 type BoxEnd = WindowWaitEnd | 'clicked' | { changed: WindowChange } | { opened: WindowOpened };
 const endName = (end: BoxEnd): WindowGuideEnd => typeof end === 'string' ? end : 'changed' in end ? 'changed' : 'opened';
@@ -225,11 +221,15 @@ export class WindowGuides {
   readonly #valueSettleMs: number;
   #backend?: Promise<WindowGuide | { unavailable: string }>;
   readonly #reads = new GuideReads();
+  readonly #cards: GuideCards;
   readonly #shown = new Map<string, Shown>();
   readonly #frames = new Map<string, Frame>();
+  /** Reads Escape while any box shows; `held` is whether it was down at the last look. */
+  #escape: { held: boolean; timer: ReturnType<typeof setInterval> } | null = null;
 
   constructor(core: Core, host: WindowGuideHost, loader: () => Promise<WindowGuide | { unavailable: string }>, options: WindowGuidesOptions = {}) {
     this.#core = core;
+    this.#cards = new GuideCards(core);
     this.#host = host;
     this.#loader = loader;
     this.#followMs = options.followMs ?? 33;
@@ -383,11 +383,9 @@ export class WindowGuides {
       ...(edge ? { offscreen: edge } : {}),
       ...(step ? { step } : {}),
     };
-    let escapeHeld = true;
-    try { escapeHeld = guide.escape(); } catch { /* read again at the next look */ }
     const shown: Shown = {
       pointer, window, boxId, screen: frame.minimized ? null : drawn, ...(edge && !frame.minimized ? { edge } : {}), waiters: new Set(), tracked, control: control ?? null, popup: control?.popup ?? null, notify, clicks: null,
-      until, watch: null, escapeHeld, card: null, ...(until === 'change' ? { baseline } : {}), ...(known ? { known } : {}),
+      until, watch: null, card: null, ...(until === 'change' ? { baseline } : {}), ...(known ? { known } : {}),
       // Settled already where it was read: the box shows at once.
       ...(tracked && !frame.minimized ? { seen: { rect: { left: box.x, top: box.y, width: box.width, height: box.height }, since: 0 } } : {}),
       follow: setInterval(() => this.#follow(thread.id, shown, guide), this.#followMs),
@@ -396,7 +394,8 @@ export class WindowGuides {
     shown.follow.unref?.();
     shown.expiry.unref?.();
     this.#shown.set(thread.id, shown);
-    shown.card = this.#card(thread.id, shown);
+    this.#watchEscape(guide);
+    shown.card = this.#cards.post(thread.id, shown.boxId, shown.pointer);
     if (until !== 'click') {
       shown.watch = setInterval(() => this.#watchState(thread.id, shown, guide), this.#watchMs);
       shown.watch.unref?.();
@@ -423,7 +422,7 @@ export class WindowGuides {
       shown.expiry = setTimeout(() => this.#remove(thread.id, 'timeout', shown), until - Date.now());
       shown.expiry.unref?.();
       // The card offers its answers for as long as the box now stays.
-      if (shown.card) this.#foldCard(thread.id, shown.card, { expiresAt: until });
+      if (shown.card) this.#cards.fold(thread.id, shown.card, { expiresAt: until });
     }
     const end = await new Promise<BoxEnd>(resolve => {
       const timer = setTimeout(() => finish('timeout'), seconds * 1000);
@@ -454,19 +453,31 @@ export class WindowGuides {
       if (opened) this.#remove(threadId, { opened }, shown);
       return;
     }
+    const changed = this.#changeOf(shown, false);
+    if (changed) this.#changed(threadId, shown, changed);
+  }
+
+  /**
+   * What changed in the box's control since it was drawn. A value counts once
+   * it stayed put for `VALUE_SETTLE_MS`, or at once on the `last` look, taken
+   * as its popup closes. A dropped control is looked for again by `#follow`;
+   * a busy app is asked at the next look.
+   */
+  #changeOf(shown: Shown, last: boolean): WindowChange | null {
     const state = shown.tracked?.state();
-    // A dropped control is looked for again by `#follow`; a busy app is asked at the next look.
-    if (state === undefined || state === 'busy' || state === 'gone') return;
+    if (state === undefined || state === 'busy' || state === 'gone') return null;
     const was = shown.baseline;
-    if (!was) { shown.baseline = state; return; }
+    if (!was) { shown.baseline = state; return null; }
     const differs = <T>(now: T | undefined, before: T | undefined) => now !== undefined && before !== undefined && now !== before;
-    if (differs(state.toggle, was.toggle)) { this.#changed(threadId, shown, 'toggle'); return; }
-    if (differs(state.selected, was.selected)) { this.#changed(threadId, shown, 'selection'); return; }
-    if (!differs(state.value, was.value)) { delete shown.typing; return; }
+    if (differs(state.toggle, was.toggle)) return 'toggle';
+    if (differs(state.selected, was.selected)) return 'selection';
+    if (!differs(state.value, was.value)) { delete shown.typing; return null; }
+    if (last) return 'value';
     const now = Date.now();
     const typing = shown.typing;
     if (typing === undefined || typing.value !== state.value) shown.typing = { value: state.value!, since: now };
-    else if (now - typing.since >= this.#valueSettleMs) this.#changed(threadId, shown, 'value');
+    else if (now - typing.since >= this.#valueSettleMs) return 'value';
+    return null;
   }
 
   #changed(threadId: string, shown: Shown, what: WindowChange): void {
@@ -561,6 +572,12 @@ export class WindowGuides {
     for (const threadId of [...this.#shown.keys()]) this.#remove(threadId, 'cleared');
     for (const threadId of [...this.#frames.keys()]) this.#hideFrame(threadId);
     this.#reads.clear();
+    if (this.#escape) { clearInterval(this.#escape.timer); this.#escape = null; }
+  }
+
+  /** At startup: folds the cards a killed core left open (`GuideCards.recover`). */
+  recover(): void {
+    this.#cards.recover();
   }
 
   async #load(): Promise<WindowGuide> {
@@ -656,11 +673,6 @@ export class WindowGuides {
    */
   #follow(threadId: string, shown: Shown, guide: WindowGuide): void {
     if (this.#shown.get(threadId) !== shown) return;
-    if (this.#escaped(shown, guide)) {
-      this.#core.logs.info(`The person pressed Escape on the box over window ${shown.window.id} of ${shown.window.process}`, { source: 'windows', event: 'window.escape', threadId, data: { windowId: shown.window.id, process: shown.window.process } });
-      this.#remove(threadId, 'dismissed', shown);
-      return;
-    }
     const frame = guide.frame(shown.window.id);
     if (frame === null) {
       // The window that opened may be the one that replaced it.
@@ -681,7 +693,11 @@ export class WindowGuides {
           }
           return;
         }
-        this.#remove(threadId, 'gone', shown);
+        // The click that picks an item can close its dropdown before the next watch: one last look at the item,
+        // which a hidden dropdown still answers, tells a change from a popup closed without one.
+        const changed = shown.until === 'change' ? this.#changeOf(shown, true) : null;
+        if (changed) this.#changed(threadId, shown, changed);
+        else this.#remove(threadId, 'gone', shown);
         return;
       }
       bounds = popup.rect;
@@ -734,46 +750,32 @@ export class WindowGuides {
     this.#core.subscribers.pointer({ id: shown.boxId, rect: screen, label: shown.pointer.label, look: shown.pointer.look, ...(edge ? { edge } : {}), ...(shown.pointer.step ? { step: shown.pointer.step } : {}) });
   }
 
-  /** Whether Escape went down since the last look; a read that fails counts as no press. */
-  #escaped(shown: Shown, guide: WindowGuide): boolean {
-    let down: boolean;
-    try { down = guide.escape(); } catch { return false; }
-    const pressed = down && !shown.escapeHeld;
-    shown.escapeHeld = down;
-    return pressed;
-  }
-
-  /** Posts the box's card, which offers the person Done and I cannot find it; null with no turn to show it in. */
-  #card(threadId: string, shown: Shown): Shown['card'] {
-    const journal = this.#core.journal;
-    if (journal.isClosed()) return null;
-    const turn = journal.runningTurn(threadId) ?? journal.lastTurn(threadId);
-    if (turn === null) return null;
-    const { pointer } = shown;
-    const part: GuidePart = {
-      type: 'window_guide', boxId: shown.boxId, process: pointer.process, label: pointer.label,
-      ...(pointer.control ? { control: { ...pointer.control } } : {}), ...(pointer.step ? { step: { ...pointer.step } } : {}),
-      expiresAt: pointer.expiresAt, end: null,
-    };
-    const message: Message = { id: newId('msg_'), threadId, turnId: turn.id, role: 'assistant', parts: [part], state: 'complete', createdAt: Date.now() };
-    journal.append({ type: 'message.started', threadId, version: 1, payload: message }, () => journal.putMessage(message));
-    this.#core.bus.emit('message.started', message);
-    this.#core.bus.emit('message.completed', { threadId, messageId: message.id, state: 'complete' });
-    return { messageId: message.id, part };
-  }
-
-  /** Rewrites the box's card on every client, as a consent card is folded once answered. */
-  #foldCard(threadId: string, card: NonNullable<Shown['card']>, change: Partial<Pick<GuidePart, 'expiresAt' | 'end'>>): void {
-    const journal = this.#core.journal;
-    card.part = { ...card.part, ...change };
-    // A deleted conversation has no card left to fold.
-    if (journal.isClosed() || journal.getThread(threadId) === null) return;
-    const part = card.part;
-    journal.append(
-      { type: 'message.part', threadId, version: 1, payload: { messageId: card.messageId, partIndex: 0, part } },
-      () => journal.setMessagePart(card.messageId, 0, part),
-    );
-    this.#core.bus.emit('message.part', { threadId, messageId: card.messageId, partIndex: 0, part });
+  /**
+   * Reads Escape once per look for every conversation while a box shows. A
+   * press ends one box, the one drawn last among those on the screen now: two
+   * conversations' boxes do not both end on one key, and a box hidden while
+   * its window is minimized or its control out of view is not one the person
+   * can mean. A key held when a box appears counts only once released and
+   * pressed again; a read that fails counts as no press.
+   */
+  #watchEscape(guide: WindowGuide): void {
+    let held = true;
+    try { held = guide.escape(); } catch { /* read again at the next look */ }
+    if (this.#escape) { this.#escape.held ||= held; return; }
+    const escape = { held, timer: setInterval(() => {
+      if (this.#shown.size === 0) { clearInterval(escape.timer); this.#escape = null; return; }
+      let down: boolean;
+      try { down = guide.escape(); } catch { return; }
+      const pressed = down && !escape.held;
+      escape.held = down;
+      if (!pressed) return;
+      const [threadId, shown] = [...this.#shown].filter(([, candidate]) => candidate.screen !== null).at(-1) ?? [];
+      if (!threadId || !shown) return;
+      this.#core.logs.info(`The person pressed Escape on the box over window ${shown.window.id} of ${shown.window.process}`, { source: 'windows', event: 'window.escape', threadId, data: { windowId: shown.window.id, process: shown.window.process } });
+      this.#remove(threadId, 'dismissed', shown);
+    }, this.#followMs) };
+    escape.timer.unref?.();
+    this.#escape = escape;
   }
 
   /** Looks again, at most once a second, for the control the app dropped: a list that re-renders its rows, or one scrolled far enough to recycle them. */
@@ -872,7 +874,7 @@ export class WindowGuides {
     if (shown.clicks) clearInterval(shown.clicks);
     if (shown.watch) clearInterval(shown.watch);
     if ((shown.notify || answered(why)) && shown.waiters.size === 0 && why !== 'cleared') this.#tell(threadId, shown, why);
-    if (shown.card) this.#foldCard(threadId, shown.card, { end: endName(why) });
+    if (shown.card) this.#cards.fold(threadId, shown.card, { end: endName(why) });
     shown.tracked?.release();
     shown.tracked = null;
     this.#frameLater(threadId);

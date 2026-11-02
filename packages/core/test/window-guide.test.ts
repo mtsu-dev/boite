@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AGENT_ENV, type MessagePart, type WindowEdge, type WindowPointerLook, type WindowPointerStep } from '@boite/contracts';
 import { runCli } from '../src/cli.ts';
@@ -6,7 +8,7 @@ import { connect, type CoreClient } from '../src/client.ts';
 import type { AppWindow, ControlState, NativeControl, NativeWindow, ScreenRect, WindowCapture, WindowGuide } from '../src/platform/types.ts';
 import { goneError } from '../src/platform/window-pixels.ts';
 import { DesktopWindows } from '../src/windows/service.ts';
-import { echoThread, startTestCore, type TestCore } from './harness.ts';
+import { echoThread, removeDir, startTestCore, type TestCore } from './harness.ts';
 import { rejection, thrown } from './settle.ts';
 
 const UNITY = 'C:\\Program Files\\Unity\\Hub\\Editor\\6000.0\\Editor\\Unity.exe';
@@ -110,6 +112,16 @@ function fakeDesktop() {
   return { windows, frames, controls, mouse, keys, capture, guide, live, drop, front, menuFrame, apps };
 }
 
+/** Puts `desk` under the core's window service, with the test's quick timings. */
+function useDesk(harness: TestCore, desk: ReturnType<typeof fakeDesktop>, timing: { watchMs?: number } = {}): void {
+  const core = harness.core as { windows: DesktopWindows };
+  core.windows.stop();
+  core.windows = new DesktopWindows(harness.core, {
+    backend: async () => desk.capture, guide: async () => desk.guide, consentTimeoutMs: 60_000,
+    tempRoot: join(harness.dataDir, 'window-temp'), guideTiming: { followMs: FOLLOW_MS, mouseMs: 5, settleMs: SETTLE_MS, frameIdleMs: 150, watchMs: 10, valueSettleMs: VALUE_SETTLE_MS, ...timing },
+  });
+}
+
 /** Retries an assertion until it holds: the box events reach the desktop app's socket, not the caller's. */
 async function eventually(check: () => void, timeoutMs = 2000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
@@ -138,12 +150,7 @@ describe('window guide', () => {
       // An arrow turned back into the ring loses its edge.
       if (known) { delete known.edge; Object.assign(known, box); } else boxes.push({ ...box });
     });
-    const core = harness.core as { windows: DesktopWindows };
-    core.windows.stop();
-    core.windows = new DesktopWindows(harness.core, {
-      backend: async () => desk.capture, guide: async () => desk.guide, consentTimeoutMs: 60_000,
-      tempRoot: join(harness.dataDir, 'window-temp'), guideTiming: { followMs: FOLLOW_MS, mouseMs: 5, settleMs: SETTLE_MS, frameIdleMs: 150, watchMs: 10, valueSettleMs: VALUE_SETTLE_MS },
-    });
+    useDesk(harness, desk);
     await owner.call('threads.subscribe', { threadId });
     const finished = owner.next('turn.finished', turn => turn.threadId === threadId, 10_000);
     await owner.call('turns.start', { threadId, prompt: 'hello' });
@@ -582,6 +589,61 @@ describe('window guide', () => {
     expect(told()[1]).toBe('Boite: the box on Button "Play" in window 101 (Unity.exe) timed out without a change.');
   }, 15_000);
 
+  test('a box with until change on a dropdown item hears the pick that closed the dropdown, before its next look', async () => {
+    // No look of its own comes in time: only the last one, as the popup closes, can see the pick.
+    useDesk(harness, desk, { watchMs: 60_000 });
+    desk.frames.set('303', desk.menuFrame);
+    const answered = answer('always');
+    await agent.call('windows.read', { threadId, target: { id: '101' }, filter: 'build' });
+    await answered;
+    desk.live.rect = { left: 990, top: 530, width: 40, height: 20 };
+    desk.live.state = { selected: false };
+    await agent.call('windows.point', { threadId, control: 1, until: 'change' });
+    let waiting = agent.call('windows.waitClick', { threadId, timeoutSeconds: 5 });
+    await Bun.sleep(20);
+    // One click picks the item and hides the dropdown, whose item still answers.
+    desk.live.state = { selected: true };
+    desk.frames.delete('303');
+    expect(await waiting).toMatchObject({ clicked: false, changed: 'selection' });
+    expect(desk.live.held).toBe(0);
+
+    // Closed with nothing picked: gone.
+    desk.frames.set('303', desk.menuFrame);
+    await agent.call('windows.point', { threadId, control: 1, until: 'change' });
+    waiting = agent.call('windows.waitClick', { threadId, timeoutSeconds: 5 });
+    await Bun.sleep(20);
+    desk.frames.delete('303');
+    expect(await waiting).toEqual({ clicked: false, reason: 'gone' });
+  });
+
+  test('one Escape press ends only the box drawn last among those on the screen, across conversations', async () => {
+    const at = { x: 100, y: 100, width: 50, height: 50, unit: 'px' as const };
+    const { threadId: otherId } = await echoThread(harness, owner);
+    const other = await connect(harness.url, harness.core.agents.tokenFor(otherId), { client: { name: 'boite-cli', version: 'test' } });
+    try {
+      await agent.call('windows.point', { threadId, target: { id: '101' }, at });
+      await other.call('windows.point', { threadId: otherId, target: { id: '101' }, at });
+      await eventually(() => expect(boxes.map(box => box.rect !== null)).toEqual([true, true]));
+      desk.keys.escape = true;
+      await eventually(() => expect(boxes[1]!.rect).toBeNull());
+      await Bun.sleep(FOLLOW_MS * 5);
+      desk.keys.escape = false;
+      expect(boxes[0]!.rect).not.toBeNull();
+
+      // A box hidden with its minimized window is not one the person can mean: the key ends nothing.
+      desk.frames.get('101')!.minimized = true;
+      await eventually(() => expect(boxes[0]!.rect).toBeNull());
+      desk.keys.escape = true;
+      await Bun.sleep(FOLLOW_MS * 5);
+      desk.keys.escape = false;
+      desk.frames.get('101')!.minimized = false;
+      await eventually(() => expect(boxes[0]!.rect).not.toBeNull());
+      expect(await agent.call('windows.unpoint', { threadId })).toEqual({ cleared: true });
+    } finally {
+      other.close();
+    }
+  });
+
   test('a box with until window ends when the app opens a window or dialog, with its id, title and where to read it', async () => {
     const told = () => harness.core.journal.listMessages(threadId).filter(message => message.role === 'user').flatMap(message => message.parts)
       .flatMap(part => part.type === 'text' && part.text.startsWith('Boite: ') ? [part.text] : []);
@@ -773,3 +835,40 @@ describe('window guide', () => {
     expect((await run('unpoint')).out).toBe('no box was shown\n');
   });
 });
+
+test('a core started after one killed with a box showing folds its card as stopped', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'boite-guide-'));
+  try {
+    const first = await startTestCore({ dataDir });
+    const owner = await first.connect();
+    const { threadId } = await echoThread(first, owner);
+    useDesk(first, fakeDesktop());
+    const app = await connect(first.url, first.token, { client: { name: 'shell', version: 'test' } });
+    const agent = await connect(first.url, first.core.agents.tokenFor(threadId), { client: { name: 'boite-cli', version: 'test' } });
+    await owner.call('threads.subscribe', { threadId });
+    const finished = owner.next('turn.finished', turn => turn.threadId === threadId, 10_000);
+    await owner.call('turns.start', { threadId, prompt: 'hello' });
+    await finished;
+    const posted = owner.next('message.started', message => message.parts[0]?.type === 'window_guide', 5000);
+    await agent.call('windows.point', { threadId, target: { id: '101' }, at: { x: 0, y: 0, width: 10, height: 10, unit: 'px' } });
+    const card = await posted;
+    // Killed: its window service never stops, so the card stays open in the journal.
+    const windows = first.core.windows;
+    const stop = windows.stop.bind(windows);
+    windows.stop = () => {};
+    agent.close();
+    app.close();
+    await first.stop();
+    stop();
+
+    const second = await startTestCore({ dataDir });
+    try {
+      expect(second.core.journal.messagePart(card.id, 0)?.part).toMatchObject({ type: 'window_guide', end: 'stopped' });
+      expect(second.core.journal.db.query('SELECT COUNT(*) AS n FROM window_guide_cards').get()).toEqual({ n: 0 });
+    } finally {
+      await second.stop();
+    }
+  } finally {
+    await removeDir(dataDir);
+  }
+}, 20_000);

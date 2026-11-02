@@ -256,7 +256,8 @@ export type MessagePart =
    * A box `boite window point` shows on the screen of the core's machine.
    * While `end` is null and `expiresAt` lies ahead, every client of the owner
    * offers Done and I cannot find it (`windows.dismiss` with `boxId`); the
-   * core sets `end` once the box goes, or when it stops. `label` is what the
+   * core sets `end` once the box goes, or when it stops, and a core started
+   * after one that was killed sets `stopped` on each card left open. `label` is what the
    * box says, `control` the control it shows, as the agent's `WindowPointer`.
    */
   | { type: 'window_guide'; boxId: string; process: string; label: string; control?: { type: string; name: string }; step?: WindowPointerStep; expiresAt: Timestamp; end: WindowGuideEnd | null }

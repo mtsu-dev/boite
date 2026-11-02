@@ -475,6 +475,7 @@ export class Core {
     this.threads.autoContinue.start(interrupted);
     this.threads.cards.restoreAsyncQuestions();
     this.secrets.start();
+    try { this.windows.recover(); } catch (error) { this.log('warn', `window guide recovery failed: ${String(error)}`); }
     phase('startup.recovered', `Previous run recovered, ${recovered} unfinished turns`, { stuckTurns: recovered });
     queueMicrotask(() => {
       void this.drafts.recover().catch(error => this.log('warn', `draft recovery failed: ${String(error)}`));

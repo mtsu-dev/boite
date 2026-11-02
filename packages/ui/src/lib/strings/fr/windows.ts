@@ -38,6 +38,7 @@ export const fr: Translation = {
       ends: {
         clicked: 'Cliqué dans {app}', changed: 'Modifié dans {app}', opened: "Fenêtre ouverte par {app}",
         timeout: 'Le cadre dans {app} a expiré', cleared: "L'agent a retiré le cadre dans {app}", gone: "La fenêtre de {app} s'est fermée",
+        stopped: "Boite s'est arrêté et a retiré le cadre dans {app}",
         dismissed: 'Vous avez retiré le cadre dans {app}', missing: "Vous n'avez pas trouvé le cadre dans {app}"
       }
     },

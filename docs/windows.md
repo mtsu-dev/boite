@@ -362,7 +362,11 @@ boite window unpoint
     `TogglePattern.ToggleState` and `SelectionItemPattern.IsSelected`. A check
     state or a selection ends the box at once; a value ends it once it stayed
     put for 1.5 s, so a name typed a key at a time is heard once the user
-    paused, and a value typed then erased is no change. The agent learns
+    paused, and a value typed then erased is no change. A box on an item of
+    a dropdown or menu takes one last look at the item when its popup
+    closes, since the click that picks it closes the popup within the same
+    200 ms: a change seen then, a value included, ends the box as a change,
+    and only a popup closed with none ends it as gone. The agent learns
     which of the three changed (`changed: 'value' | 'toggle' |
     'selection'`), never what the control holds: the OS half turns the value
     into a hash before the core sees it, and nothing of it reaches a message,
@@ -385,7 +389,10 @@ boite window unpoint
   a `window_guide` card in the conversation, on every client of the owner,
   desktop and phone: it names the app and the label (or the control) and
   offers Done, which takes the box away, and I can't find it. Escape pressed
-  on the machine while a box shows is Done too. Either ends the box as
+  on the machine while a box shows is Done too, for one box: the one drawn
+  last among those on the screen, so two conversations' boxes do not both end
+  on one key, and a box hidden (its window minimized, its control out of view
+  or settling) is never ended by it. Either ends the box as
   `unpoint` does; `wait` returns `reason: 'dismissed'` or `'missing'`, and
   with no wait the agent hears it as a `Boite:` message even from a box drawn
   without `notify`: the user dismissed the box (they may have done it another
@@ -396,7 +403,10 @@ boite window unpoint
   any reason, the core folds the card into one quiet row saying how: clicked,
   changed, a window opened, timed out, taken away by the agent, its window
   closed, dismissed or not found. A card whose time passed while the core was
-  down shows as timed out.
+  down shows as timed out. The core keeps the ids of the cards it has not
+  folded in a small table of the journal, so a core started after one that was
+  killed with a box showing folds each such card as stopped, and no client
+  offers Done on a box that is gone.
 - The Start menu, search and the other system flyouts lie in a layer of the
   system above every app's window, the box included. `point` still answers,
   with `behind: true` and a line telling the agent to say where to click;
@@ -510,9 +520,9 @@ the desktop app draws the box.
   for each call.
 - `wait-click` reads the primary button with `GetAsyncKeyState` and the cursor
   every 25 ms while a wait lasts; no hook is installed.
-- Escape is read the same way, `GetAsyncKeyState(VK_ESCAPE)` at each step a
-  box follows its window (every 33 ms) while a box shows. A key held when the
-  box appears counts only once released and pressed again. It is a poll, not
+- Escape is read the same way, `GetAsyncKeyState(VK_ESCAPE)` once every
+  33 ms for all conversations while a box shows. A key held when the
+  first box appears counts only once released and pressed again. It is a poll, not
   a hook: the key still reaches the window in front (it closes an open menu
   there too), and no other key is read.
 - `GetWindowBand`, which user32 exports without documenting it, tells a system

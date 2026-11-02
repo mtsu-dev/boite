@@ -306,8 +306,12 @@ export type WindowWaitEnd = 'timeout' | 'cleared' | 'gone' | WindowGuideAnswer;
 export type WindowGuideAnswer = 'dismissed' | 'missing';
 export const WINDOW_GUIDE_ANSWERS: readonly WindowGuideAnswer[] = ['dismissed', 'missing'];
 
-/** How a box ended, as its `window_guide` card says: what it waited for happened, or a `WindowWaitEnd`. */
-export type WindowGuideEnd = 'clicked' | 'changed' | 'opened' | WindowWaitEnd;
+/**
+ * How a box ended, as its `window_guide` card says: what it waited for
+ * happened, a `WindowWaitEnd`, or `stopped`, which the next core writes on a
+ * card a core killed with its box showing left open.
+ */
+export type WindowGuideEnd = 'clicked' | 'changed' | 'opened' | 'stopped' | WindowWaitEnd;
 
 /** How long a capture waits for the owner's answer on a consent card. */
 export const WINDOW_CONSENT_TIMEOUT_MS = 10 * 60_000;

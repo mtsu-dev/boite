@@ -299,6 +299,11 @@ export class DesktopWindows {
     return this.#guide.dismiss(params, connection);
   }
 
+  /** At startup: folds the box cards a killed core left open. */
+  recover(): void {
+    this.#guide.recover();
+  }
+
   /** What an archived or deleted conversation leaves: its panel, its box and the captures it waits on. */
   release(threadId: string): void {
     this.#guide.release(threadId);

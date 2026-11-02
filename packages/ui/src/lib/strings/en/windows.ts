@@ -41,6 +41,7 @@ export const strings = {
       ends: {
         clicked: 'Clicked in {app}', changed: 'Changed in {app}', opened: 'Opened a window of {app}',
         timeout: 'The box in {app} timed out', cleared: 'The agent took the box in {app} away', gone: 'The window of {app} closed',
+        stopped: 'Boite stopped and took the box in {app} away',
         dismissed: 'You took the box in {app} away', missing: 'You could not find the box in {app}'
       }
     },
