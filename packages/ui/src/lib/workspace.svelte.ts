@@ -1,6 +1,7 @@
 import { Store, store } from './store.svelte';
 import type { AgentPane } from './store/layout.svelte';
 import { INITIAL_PAGE_BYTES, RpcErrorCode, threadActive, withoutTrailingSlashes, type AgentAddress, type GroupCore } from '@boite/contracts';
+import { WsClient } from './client';
 import {
   forgetGroupOf,
   removeBrought,
@@ -593,6 +594,14 @@ export class Workspace {
   }
 
   /** `dropped`: the group dropped this machine, as opposed to it having moved or the owner taking it off the list. */
+  /** The network changed: every machine not connected tries now rather than at the end of its wait. */
+  resumeMachines(): void {
+    for (const machine of this.machines) {
+      const client = machine.store.client;
+      if (client instanceof WsClient && client.state !== 'ready') void client.resume().catch(() => undefined);
+    }
+  }
+
   async remove(id: string, dropped = false): Promise<void> {
     const machine = this.machines.find((m) => m.id === id);
     if (!machine || machine.store === store) return;

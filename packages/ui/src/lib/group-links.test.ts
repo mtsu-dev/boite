@@ -111,7 +111,7 @@ describe('group links', () => {
     expect(links.states).toEqual({});
   });
 
-  it('asks for no ticket when no address answers, and waits a minute before trying again', async () => {
+  it('asks for no ticket when no address answers, and tries again 30 seconds later', async () => {
     const a = machine('http://10.0.0.1:1', { group: group('a', members) });
     const { workspace: ws, added } = workspace([a]);
     let now = 1_000_000;
@@ -126,18 +126,24 @@ describe('group links', () => {
     await links.reconcile();
     await settle();
     expect(reach).toHaveBeenCalledTimes(2);
-    now += 60_000;
+    now += 29_999;
+    await links.reconcile();
+    await settle();
+    expect(reach).toHaveBeenCalledTimes(2);
+    now += 1;
     await links.reconcile();
     await settle();
     expect(reach).toHaveBeenCalledTimes(4);
     expect(added).toEqual([]);
   });
 
-  it('waits longer after each attempt that reached nothing, up to 15 minutes, and a minute again once the member moves', async () => {
+  it('waits longer after each attempt that reached the member and failed, up to 15 minutes, and a minute again once the member moves', async () => {
     const a = machine('http://10.0.0.1:1', { group: group('a', members) });
+    // The member answers, and the machine that vouches for it refuses each ticket: something was spent every time.
+    storeOf(a).client!.call = vi.fn(async () => { throw new Error('refused'); });
     const { workspace: ws } = workspace([a]);
     let now = 1_000_000;
-    const reach = vi.fn(async () => null);
+    const reach = vi.fn(async (addresses: string[]) => addresses[0] ?? null);
     const links = new GroupLinks(ws, { reach, secure: () => false, now: () => now });
     const tried: number[] = [];
     const pass = async (minute: number) => {
@@ -154,7 +160,7 @@ describe('group links', () => {
     storeOf(a).group = group('a', [members[0]!, core('b', ['http://100.64.0.9:1'])]);
     await pass(46);
     expect(tried.at(-1)).toBe(46);
-    expect(reach).toHaveBeenLastCalledWith(['http://10.0.0.1:1/group/relay/b']);
+    expect(reach).toHaveBeenLastCalledWith(['http://100.64.0.9:1']);
   });
 
   it('sleeps while the page is hidden, and tries again at once when it is shown or the network comes back', async () => {
@@ -187,6 +193,37 @@ describe('group links', () => {
       document.dispatchEvent(new Event('visibilitychange'));
       await vi.advanceTimersByTimeAsync(0);
       expect(attempts()).toBe(4);
+    } finally {
+      stop();
+      vi.useRealTimers();
+      hidden.mockRestore();
+    }
+  });
+
+  it('tries a member that answered nothing again within 30 seconds, with no online or visibility event, and connects it once it answers', async () => {
+    vi.useFakeTimers();
+    const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(false);
+    const a = machine('http://10.0.0.1:1', { group: group('a', members) });
+    const { workspace: ws, added } = workspace([a]);
+    // Tailscale is off for the first five attempts: none of the member's addresses answers. Then one does.
+    let up = false;
+    const reach = vi.fn(async (addresses: string[]): Promise<string | null> => (up ? addresses[0] ?? null : null));
+    const links = new GroupLinks(ws, { reach, secure: () => false, now: () => Date.now() });
+    const attempts = () => reach.mock.calls.filter(([addresses]) => addresses[0] === 'http://100.64.0.2:1').length;
+    const stop = links.start();
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      expect(attempts()).toBe(1);
+      for (let attempt = 2; attempt <= 5; attempt++) {
+        await vi.advanceTimersByTimeAsync(30_000);
+        expect(attempts()).toBe(attempt);
+      }
+      expect(links.states).toEqual({ b: 'unreachable' });
+      expect(storeOf(a).client!.call).not.toHaveBeenCalled();
+      up = true;
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(added.map((entry) => entry.endpoint.url)).toEqual(['http://100.64.0.2:1']);
+      expect(links.states).toEqual({});
     } finally {
       stop();
       vi.useRealTimers();

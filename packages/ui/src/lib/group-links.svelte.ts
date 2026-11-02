@@ -5,11 +5,19 @@ import { browserSocket } from './ws-client-utils';
 import { deviceKey } from './device-key';
 import { DROPPED_STORAGE_KEY, isDropped, isMemberDropped, keepDropped, readEnvironments, rememberGroupAddresses, removeBrought, signsFor, type Endpoint, type StoredEnvironment } from './endpoint';
 import { usableAddresses } from './group-addresses';
+import { onNetworkChange } from './network-change';
 import type { Machine, Workspace } from './workspace.svelte';
 
-/** A machine that did not answer is asked again no sooner than this; each failure in a row doubles it, up to `RETRY_MAX_MS`. */
+/** A machine that answered and then failed is asked again no sooner than this; each failure in a row doubles it, up to `RETRY_MAX_MS`. */
 const RETRY_MS = 60_000;
 const RETRY_MAX_MS = 15 * 60_000;
+/**
+ * A machine none of whose routes answered, Tailscale off or another Wi-Fi, is probed again this soon, every time:
+ * the probe spends no ticket and opens one socket per address, and the machine is back the moment the network is.
+ */
+const UNREACHED_MS = 30_000;
+/** Network signals come in bursts (every core, the browser): one retry at once, at most one more when the burst ends. */
+const NETWORK_SETTLE_MS = 1000;
 const PROBE_MS = 4000;
 /** At start, how long a machine paired by hand is given to open a socket before a held key is used as it was left. */
 const VOUCH_WAIT_MS = 3000;
@@ -154,8 +162,13 @@ export class GroupLinks {
   /** Per core id, for the machines of the group this client is not connected to. */
   states = $state<Record<string, GroupLinkState>>({});
   #attempts = new Map<string, number>();
-  /** Per core id, attempts in a row that reached nothing: they space the next one out (`#due`). */
+  /** Per core id, attempts in a row that reached the member and then failed: they space the next one out (`#due`). */
   #failures = new Map<string, number>();
+  /** Cores whose last attempt found none of their routes answering: tried again `UNREACHED_MS` after it. */
+  #unreached = new Set<string>();
+  /** Per core id, the pass that tries an unreached member again, while `start` runs. */
+  #wakes = new Map<string, ReturnType<typeof setTimeout>>();
+  #started = 0;
   /** Per core id, the routes the last pass saw it at: a change brings the wait back to a minute. */
   #routes = new Map<string, string>();
   #movedAt = new Map<string, number>();
@@ -208,25 +221,50 @@ export class GroupLinks {
   }
 
   /**
+   * Out of reach until now, every member is tried at once: the page came back, the network did, or a
+   * machine of this window reconnected by itself. An attempt under way tries again as soon as it ends.
+   */
+  retry(): void {
+    this.#failures.clear();
+    this.#unreached.clear();
+    this.#attempts.clear();
+    for (const coreId of this.#running) this.#again.add(coreId);
+    void this.reconcile();
+  }
+
+  /**
    * Runs for the whole window: every roster change and every reconnect is looked at again. The minute's
-   * pass sleeps while the page is hidden; showing it again, or the network coming back, retries at once.
+   * pass sleeps while the page is hidden; showing it again, or the network changing, retries at once.
    */
   start(): () => void {
+    this.#started++;
     const timer = setInterval(() => { if (!document.hidden) void this.reconcile(); }, RETRY_MS);
     const shown = (): void => {
-      if (document.hidden) return;
-      this.#failures.clear();
-      this.#attempts.clear();
-      for (const coreId of this.#running) this.#again.add(coreId);
-      void this.reconcile();
+      if (!document.hidden) this.retry();
     };
-    // Back on a network: whatever was out of reach is tried now, without the minute's wait.
-    const online = (): void => {
-      this.#failures.clear();
-      this.#attempts.clear();
-      for (const coreId of this.#running) this.#again.add(coreId);
-      void this.reconcile();
+    // The network changed: whatever was out of reach is tried now, without the wait. `resume`: every
+    // machine of this window not connected tries again too. The browser's own 'online' already does
+    // that in App.svelte, so that one only retries the group.
+    let settling: ReturnType<typeof setTimeout> | null = null;
+    let queued: boolean | null = null;
+    const changed = (resume: boolean): void => {
+      if (settling !== null) {
+        queued = (queued ?? false) || resume;
+        return;
+      }
+      if (resume) this.workspace.resumeMachines();
+      this.retry();
+      settling = setTimeout(() => {
+        settling = null;
+        const again = queued;
+        queued = null;
+        if (again !== null) changed(again);
+      }, NETWORK_SETTLE_MS);
     };
+    const online = (): void => changed(false);
+    const moved = (): void => changed(true);
+    const connection = (navigator as Navigator & { connection?: EventTarget }).connection;
+    const stopNetwork = onNetworkChange(moved);
     const stop = $effect.root(() => {
       $effect(() => {
         // Read so the effect follows them: the list, each connection, each roster, a machine's word that it has none.
@@ -250,13 +288,21 @@ export class GroupLinks {
     keepDropped();
     window.addEventListener('storage', heard);
     window.addEventListener('online', online);
+    connection?.addEventListener('change', moved);
     document.addEventListener('visibilitychange', shown);
     return () => {
       clearInterval(timer);
+      if (settling !== null) clearTimeout(settling);
       window.removeEventListener('storage', heard);
       window.removeEventListener('online', online);
+      connection?.removeEventListener('change', moved);
       document.removeEventListener('visibilitychange', shown);
+      stopNetwork();
       stop();
+      if (--this.#started === 0) {
+        for (const wake of this.#wakes.values()) clearTimeout(wake);
+        this.#wakes.clear();
+      }
     };
   }
 
@@ -359,10 +405,14 @@ export class GroupLinks {
     for (const want of starting) void this.#connect(want);
   }
 
-  /** Whether a member may be tried now: a minute after its last attempt, doubled by each failure in a row, 15 minutes at most. */
+  /**
+   * Whether a member may be tried now: `UNREACHED_MS` after an attempt that reached nothing; else a minute
+   * after its last attempt, doubled by each failure in a row, 15 minutes at most.
+   */
   #due(coreId: string): boolean {
     const at = this.#attempts.get(coreId);
     if (at === undefined) return true;
+    if (this.#unreached.has(coreId)) return this.#now() - at >= UNREACHED_MS;
     const failures = this.#failures.get(coreId) ?? 0;
     return this.#now() - at >= Math.min(RETRY_MS * 2 ** Math.max(0, failures - 1), RETRY_MAX_MS);
   }
@@ -473,12 +523,25 @@ export class GroupLinks {
     return this.#agreed(coreId, groupId, anchors);
   }
 
+  /** The pass that tries an unreached member again `UNREACHED_MS` after its attempt began, without waiting for the minute's. */
+  #wake(coreId: string): void {
+    if (this.#started === 0) return;
+    clearTimeout(this.#wakes.get(coreId));
+    const at = this.#attempts.get(coreId) ?? this.#now();
+    this.#wakes.set(coreId, setTimeout(() => {
+      this.#wakes.delete(coreId);
+      if (!document.hidden) void this.reconcile();
+    }, Math.max(0, at + UNREACHED_MS - this.#now())));
+  }
+
   async #connect({ core, via: anchor, addresses, relays, upgrade }: Wanted & { upgrade?: Machine }): Promise<void> {
     const coreId = core.coreId;
     this.#running.add(coreId);
     this.#attempts.set(coreId, this.#now());
     let state: GroupLinkState | null = upgrade === undefined ? 'unreachable' : null;
     let moved = false;
+    // No route answered: nothing was spent, and the member is probed again soon rather than after a longer wait each time.
+    let unreached = false;
     // Whether the member is now reached, or is another machine's to reach: the next attempt then waits only the minute.
     let settled = false;
     try {
@@ -487,7 +550,9 @@ export class GroupLinks {
       const relay = direct !== null || relays.length === 0 ? null : await this.#reach(relays);
       const url = direct ?? relay;
       if (url === null) {
-        if (addresses.length === 0 && relays.length === 0 && upgrade === undefined) state = 'insecure';
+        if (addresses.length === 0 && relays.length === 0) {
+          if (upgrade === undefined) state = 'insecure';
+        } else unreached = true;
         return;
       }
       // The ticket comes from the member that carries the client, which is one of the anchors.
@@ -542,8 +607,11 @@ export class GroupLinks {
       // The machine that vouches went away, or the member refused: the next pass asks again.
     } finally {
       this.#running.delete(coreId);
+      if (unreached) this.#unreached.add(coreId);
+      else this.#unreached.delete(coreId);
       if (settled) this.#failures.delete(coreId);
-      else if (!moved) this.#failures.set(coreId, Math.min((this.#failures.get(coreId) ?? 0) + 1, 16));
+      else if (!moved && !unreached) this.#failures.set(coreId, Math.min((this.#failures.get(coreId) ?? 0) + 1, 16));
+      if (unreached) this.#wake(coreId);
       const states = { ...this.states };
       if (state === null) delete states[coreId];
       else states[coreId] = state;

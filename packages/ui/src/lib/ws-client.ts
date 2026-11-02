@@ -54,6 +54,7 @@ export class WsClient implements ObservableClient {
   #clockHandlers = new Set<(offset: number) => void>();
   #subscribed = new Set<ThreadId>();
   #attempt = 0;
+  #recovered = false;
   #retryTimer: ReturnType<typeof setTimeout> | null = null;
   #manuallyClosed = false;
   #opening: Promise<CoreInfo> | null = null;
@@ -102,6 +103,11 @@ export class WsClient implements ObservableClient {
 
   get state(): ClientState {
     return this.#state;
+  }
+
+  /** Whether the last hello that succeeded came after failed attempts of this client's own backoff. */
+  get recovered(): boolean {
+    return this.#recovered;
   }
 
   get principal(): Principal | null {
@@ -390,6 +396,8 @@ export class WsClient implements ObservableClient {
               }
             }
             this.#principal = result.principal;
+            // A `resume()` starts from 0: the retry it made does not count as coming back alone.
+            this.#recovered = this.#attempt > 0;
             this.#attempt = 0;
             this.#core = result.core;
             this.#lastFrameAt = Date.now();
