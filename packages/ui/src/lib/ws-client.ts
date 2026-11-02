@@ -183,6 +183,24 @@ export class WsClient implements ObservableClient {
   }
 
   /**
+   * The network changed: a client waiting out its backoff, or held back while
+   * the browser was offline, tries now from the first deadline. One already
+   * opening is left to finish on its socket, and a wake during it joins that
+   * attempt, so signals in a row never restart a slow handshake.
+   */
+  async wake(): Promise<void> {
+    if (this.#manuallyClosed || this.#state === 'idle' || this.#state === 'ready') return;
+    if (this.#opening !== null) {
+      await this.#opening.then(() => undefined, () => undefined);
+      return;
+    }
+    if (this.#retryTimer !== null) clearTimeout(this.#retryTimer);
+    this.#retryTimer = null;
+    this.#attempt = 0;
+    await this.#startOpen();
+  }
+
+  /**
    * The browser lost its network. A remote socket seldom closes by itself then,
    * so it is asked at once and dropped when it stays silent: the header stops
    * saying connected, and the 'online' event reconnects through `resume()`.
