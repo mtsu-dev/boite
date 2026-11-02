@@ -121,7 +121,7 @@
   {#if renaming}
     <div class="row">
       {#snippet field()}
-        <input class="rename" data-testid="agent-rename" aria-label={strings.common.rename} maxlength="100" value={title} use:focusOnMount
+        <input class="rename" data-testid="agent-rename" aria-label={strings.common.rename} maxlength="200" value={title} use:focusOnMount
           onblur={event => finish(event.currentTarget, true)}
           onkeydown={event => {
             // Without its keypress: the Enter would reach the row once it holds the focus again, and open the bot.

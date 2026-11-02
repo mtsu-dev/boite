@@ -62,7 +62,7 @@ export function pickAgentAction(owner: AgentsView, agent: AgentProfile, action: 
     case 'resume': void saveAgent(owner, agent.id, { status: 'active' }, view.report); return;
     case 'archive': void confirmArchive(agent.name).then(sure => sure && saveAgent(owner, agent.id, { status: 'archived' }, view.report)); return;
     case 'reset': void resetBuiltin(owner, agent); return;
-    case 'move': contextMenu.follow(moveItems(owner.store, agent.id), id => void moveBot(owner.store, agent, id)); return;
+    case 'move': contextMenu.follow(moveItems(owner.store, agent.id), id => void moveBot(owner.store, agent, id, view.report)); return;
     case 'copy': void copyBrainPath(owner, agent.id, view.report); return;
   }
 }

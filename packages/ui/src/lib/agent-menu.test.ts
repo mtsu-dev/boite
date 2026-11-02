@@ -1,11 +1,12 @@
 import { afterEach, expect, test, vi } from 'vitest';
-import type { AgentProfile } from '@boite/contracts';
+import { RpcErrorCode, type AgentProfile } from '@boite/contracts';
 import { agentMenuItems, pickAgentAction } from './agent-menu';
 import { AgentsView } from './agents.svelte';
 import { confirm } from './confirm.svelte';
 import { contextMenu } from './context-menu.svelte';
 import { setExperiment } from './experiments';
 import { FakeClient } from './fake-client';
+import { RpcFailure } from './rpc-error';
 import { Store, store as primary } from './store.svelte';
 import { fill, strings } from './strings';
 import { threadMenuItems } from './thread-menu';
@@ -158,7 +159,8 @@ test('Move to a machine opens the group\'s machines where the menu stood, the of
   const view = AgentsView.of(first.store);
   await view.refresh();
   contextMenu.open(new MouseEvent('contextmenu', { clientX: 40, clientY: 50 }), items, () => {});
-  pickAgentAction(view, bot, 'move', { open: vi.fn(), edit: vi.fn(), rename: vi.fn(), report: first.store });
+  // The page on screen is Second's, its rail listing First's bot.
+  pickAgentAction(view, bot, 'move', { open: vi.fn(), edit: vi.fn(), rename: vi.fn(), report: second.store });
   const picker = contextMenu.current!;
   expect([picker.x, picker.y]).toEqual([40, 50]);
   expect(picker.items.map(item => [item.id, !!item.active, !!item.disabled, item.hint ?? null])).toEqual([
@@ -167,6 +169,15 @@ test('Move to a machine opens the group\'s machines where the menu stood, the of
     ['third', false, true, strings.connection[away.connection]]
   ]);
   // A pick leads to the same dialog as the Machine row of its settings.
+  const real = first.client.call.bind(first.client);
+  vi.spyOn(first.client, 'call').mockImplementation(async (method, params) => {
+    if (method === 'agents.move') throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'agents.move: Operator has a turn running or queued', data: { field: 'agentId', reason: 'turn-in-flight' } });
+    return real(method, params);
+  });
   picker.onpick('second');
   await vi.waitFor(() => expect(confirm.current?.title).toBe(fill(strings.agents.move.title, { name: 'Operator', machine: 'Second' })));
+  // A refusal is told on the page on screen, not on the bot's machine.
+  confirm.answer(true);
+  await vi.waitFor(() => expect(second.store.error).toBe(fill(strings.agents.move.turnInFlight, { name: 'Operator' })));
+  expect(first.store.error).toBeNull();
 });

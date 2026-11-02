@@ -69,9 +69,10 @@ export function moveItems(store: Store, agentId: string): MenuItem[] {
 /**
  * Moves the bot to the picked machine once the owner confirmed it. True once
  * it lives there and the Bots page shows it there; false when cancelled,
- * refused (the toast of `store` says why) or the machine cannot take it.
+ * refused (the toast of `report`, the page on screen, says why) or the
+ * machine cannot take it. `store` is the bot's machine.
  */
-export async function moveBot(store: Store, agent: Pick<AgentProfile, 'id' | 'name'>, machineId: string): Promise<boolean> {
+export async function moveBot(store: Store, agent: Pick<AgentProfile, 'id' | 'name'>, machineId: string, report: Store = store): Promise<boolean> {
   const { here, others } = moveMachines(store);
   const target = others.find(machine => machine.id === machineId);
   if (!target || shut(target) || botMoving(store, agent.id)) return false;
@@ -85,7 +86,7 @@ export async function moveBot(store: Store, agent: Pick<AgentProfile, 'id' | 'na
   });
   if (!ok) return false;
   const client = store.client;
-  if (!client) { store.error = strings.connection.unavailable; return false; }
+  if (!client) { report.error = strings.connection.unavailable; return false; }
   const key = keyOf(store, agent.id);
   if (moving.has(key)) return false;
   moving.add(key);
@@ -95,7 +96,7 @@ export async function moveBot(store: Store, agent: Pick<AgentProfile, 'id' | 'na
   } catch (error) {
     if (moveRefusedForGood(error)) moveEnded(source, agent.id, coreId);
     const busy = error instanceof RpcFailure && (error.data as { reason?: unknown } | undefined)?.reason === 'turn-in-flight';
-    store.error = busy ? fill(strings.agents.move.turnInFlight, { name: agent.name }) : errorText(error);
+    report.error = busy ? fill(strings.agents.move.turnInFlight, { name: agent.name }) : errorText(error);
     return false;
   } finally { moving.delete(key); }
   moveEnded(source, agent.id, coreId);
