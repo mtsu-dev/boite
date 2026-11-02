@@ -219,6 +219,9 @@ async function lanCore(options: { policy?: object; firewall?: FirewallReading } 
       commands: { query: () => { reads += 1; return [process.execPath, FAKE, state, 'query']; }, allow: () => [process.execPath, FAKE, state, 'allow'] },
     });
     core.group.lan = new LanGate(access, core.group.lan.changed);
+  } else {
+    // A machine with no firewall to ask, even when the suite runs on Windows.
+    core.group.lan = new LanGate(new FirewallAccess(core, { commands: null }), core.group.lan.changed);
   }
   let interfaces: NodeJS.Dict<NetworkInterfaceInfo[]> = options.firewall ? WINDOWS : LINUX;
   core.group.lan.interfaces = () => interfaces;
