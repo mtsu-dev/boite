@@ -1,4 +1,5 @@
 import { Store, store } from './store.svelte';
+import type { AgentPane } from './store/layout.svelte';
 import { INITIAL_PAGE_BYTES, RpcErrorCode, threadActive, withoutTrailingSlashes, type AgentAddress, type GroupCore } from '@boite/contracts';
 import {
   forgetGroupOf,
@@ -541,6 +542,18 @@ export class Workspace {
     this.active = target;
     const saved = readEnvironments().find(e => e.url === target.endpointUrl);
     if (saved) storeEndpoint(saved);
+  }
+
+  /**
+   * The window moves to `target`'s Agents page, `agentId` opening there. Not
+   * through `select`: its chat opens the machine's last thread first, and the
+   * conversations stay on screen until that page comes, seconds on a busy core.
+   */
+  showAgents(target: Store, agentId: string | null = null, pane?: AgentPane): void {
+    ++this.#generation;
+    this.#moveTo(target);
+    target.visible = true;
+    target.showAgents(agentId, pane);
   }
 
   /** A named draft, a project's fresh draft, or the machine's last visit when no destination is given. */

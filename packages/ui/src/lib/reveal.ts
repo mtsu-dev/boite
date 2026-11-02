@@ -13,10 +13,11 @@ import { experimentOn } from './experiments.svelte';
 import type { Store } from './store.svelte';
 import { fill, strings } from './strings';
 
-/** What the reveal needs of the workspace: picking a machine, and maybe a thread on it. */
+/** What the reveal needs of the workspace: picking a machine, and maybe a thread or an agent's page on it. */
 export interface RevealWorkspace {
   readonly active: Store;
   select(target: Store, threadId?: string): Promise<void>;
+  showAgents(target: Store, agentId: string): void;
   /** The machine of this window whose core has this id, null when it has none. */
   machineOf(coreId: string): { store: Store; label: string } | null;
 }
@@ -36,11 +37,6 @@ export function revealRequested(from: Store, target: UiRevealTarget): void {
   void revealer(from, target).catch((error: unknown) => { console.warn('ui.reveal failed', error); });
 }
 
-/** An agent's page, where its conversation, memory, model and look are; the Agents page shows with its experiment on. */
-export function showAgentPage(store: { showAgents(agentId: string): void }, agentId: string): void {
-  if (!experimentOn('resident-agents')) setExperiment('resident-agents', true);
-  store.showAgents(agentId);
-}
 
 /**
  * The window comes back as the tray's Show brings it (unminimized, shown,
@@ -63,8 +59,9 @@ export async function reveal(workspace: RevealWorkspace, from: Store, target: Ui
     await workspace.select(on, target.threadId);
     return;
   }
-  await workspace.select(on);
-  if (workspace.active === on) showAgentPage(on, target.agentId);
+  // An agent's page, where its conversation, memory, model and look are; the Agents page shows with its experiment on.
+  if (!experimentOn('resident-agents')) setExperiment('resident-agents', true);
+  workspace.showAgents(on, target.agentId);
 }
 
 /** The Store a named machine's target opens on, or null after telling the user why there is none. */

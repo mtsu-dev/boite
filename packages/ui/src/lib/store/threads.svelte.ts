@@ -144,7 +144,8 @@ export class Threads {
 
   rememberReadingThread(): void {
     const thread = this.openThread;
-    if (!thread || (this.loadingThreadId === thread.id && thread.messages.length === 0)) return;
+    // A copy without a message is a bare row whose page never came (navigation clears `loadingThreadId` before this runs): reopened, it loads.
+    if (!thread || thread.messages.length === 0) return;
     // Keep more small visits within the same 16 MiB budget. An expanded tool
     // gives its full output back to the core before it enters this cache.
     const messages = forTransport(thread.messages, lightPage(this.ctx));
@@ -352,6 +353,8 @@ export class Threads {
     };
     const previousThread = this.openThread;
     let held = this.openThread?.id === threadId ? this.openThread : this.readingThreads.get(threadId);
+    // The bare row of an open still on its way holds nothing to paint: clicked again, the thread shows loading, not an empty history.
+    if (held && held.messages.length === 0) held = undefined;
     // A press on this thread already asked for its page (`thread-preload.ts`): the open takes it over.
     const preloaded = this.preloads.claim(threadId, client, held);
     const deselect = this.openThread?.id !== threadId && s.delegationSelectedAgentId && s.delegationSelectedAgentId !== threadId;

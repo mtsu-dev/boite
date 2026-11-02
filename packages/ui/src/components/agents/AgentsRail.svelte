@@ -101,7 +101,7 @@
   function narrow(id: string | null) {
     agentsFilter.machine = id;
     const target = id ? workspace.machines.find(m => m.id === id) : undefined;
-    if (target && target.store !== view.store) void workspace.select(target.store).then(() => target.store.showAgents());
+    if (target && target.store !== view.store) workspace.showAgents(target.store);
   }
   let searchToggle = $state<HTMLButtonElement>();
   /** The field unmounts under the focus: it goes back to the button that opened it. */

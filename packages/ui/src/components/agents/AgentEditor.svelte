@@ -124,8 +124,7 @@
       return;
     }
     // Showing the other machine replaces this page, form and all: nothing here is touched after it.
-    await workspace.select(target);
-    target.showAgents();
+    workspace.showAgents(target);
     await openAgent(target, created.id);
   }
 

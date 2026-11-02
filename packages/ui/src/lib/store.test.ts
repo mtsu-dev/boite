@@ -1788,6 +1788,36 @@ describe('Store', () => {
     expect(asked).toBe(1);
   });
 
+  test('a thread clicked again, or left and reopened, before its first page arrived still shows it loading', async ({ createStore }) => {
+    const { client, store } = createStore({ delayMs: 0, long: true });
+    store.attach(client);
+    await store.connect();
+    const call = client.call.bind(client);
+    let release!: () => void;
+    const gate = new Promise<void>(done => { release = done; });
+    client.call = (async (method, params, options) => {
+      if (method === 'threads.get' && (params as { threadId?: string }).threadId === 't-long') await gate;
+      return call(method, params, options);
+    }) as typeof client.call;
+    const other = store.threads.find(row => row.id !== 't-long' && !row.parentThreadId)!.id;
+
+    const first = store.open('t-long');
+    expect(store.loadingThreadId).toBe('t-long');
+    // A second click on the same row: the bare row on screen holds no message, so it is still loading, not an empty history.
+    const second = store.open('t-long');
+    expect(store.openThread?.messages).toEqual([]);
+    expect(store.loadingThreadId).toBe('t-long');
+    // Left for another thread before the page came: the bare row is no visit to paint again.
+    await store.open(other);
+    const third = store.open('t-long');
+    expect(store.openThread?.messages).toEqual([]);
+    expect(store.loadingThreadId).toBe('t-long');
+    release();
+    await Promise.all([first, second, third]);
+    expect(store.loadingThreadId).toBeNull();
+    expect(store.openThread?.messages.length).toBeGreaterThan(0);
+  });
+
   test('a prompt that lands under a window cut above the end brings the last page, the prompt with it', async ({ createStore }) => {
     const { client, store } = createStore({ delayMs: 0, long: true });
     store.attach(client);
