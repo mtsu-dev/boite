@@ -35,7 +35,11 @@ export const WINDOW_HELP = `boite window <command> [args] [--json]
                                  each: #id, type, "name", x,y wxh in window pixels.
                                  Up to ${WINDOW_READ_LIMIT.default} by default, ${WINDOW_READ_LIMIT.max} at most.
                                  --any adds the named containers (Group, Pane, List,
-                                 Image, Text, Document...): a whole area, as a div
+                                 Image, Text, Document...): a whole area, as a div.
+                                 A menu or popup the app has open over the window
+                                 (the list under File) comes first, its lines ending
+                                 in (in popup <id>): it closes on a click elsewhere,
+                                 and so does a box on it
   point <id> [--label <text>] [--seconds <s>] [--round] [--pad <px>]
   point <target> --name <name> [--any] [same options]
   point <target> --at x,y,w,h [same options]
@@ -56,7 +60,8 @@ export const WINDOW_HELP = `boite window <command> [args] [--json]
 matches are refused with the candidates: pick one by --id. The taskbar is the
 explorer.exe window with no title.
 To teach the user an app, guide instead of acting: read, point, keep working or
-end the turn, and read again for the next step once the click arrives. An app with no accessibility tree (a game, a Unity
+end the turn, and read again for the next step once the click arrives: after a click
+on File, that read lists the open menu's items first. An app with no accessibility tree (a game, a Unity
 scene view) lists few controls: take a small screenshot and point --at it.
 An app the project has not allowed waits up to 10 minutes for the owner's answer
 on a consent card. Password managers and the sign-in screen are never captured;
@@ -108,13 +113,15 @@ function done(rest: string[]): void {
 }
 
 function controlLine(control: WindowControl): string {
-  return `#${control.id} ${control.type} "${control.name}" ${control.x},${control.y} ${control.width}x${control.height}`;
+  const line = `#${control.id} ${control.type} "${control.name}" ${control.x},${control.y} ${control.width}x${control.height}`;
+  return control.popup ? `${line} (in popup ${control.popup})` : line;
 }
 
 function pointerLine(pointer: WindowPointer): string {
   const what = pointer.control ? `${pointer.control.type} "${pointer.control.name}"` : `${pointer.x},${pointer.y} ${pointer.width}x${pointer.height}`;
   const label = pointer.label ? ` with "${pointer.label}"` : '';
-  const line = `pointing at ${what} of window ${pointer.windowId} (${pointer.process})${label} for ${Math.round((pointer.expiresAt - Date.now()) / 1000)} s`;
+  const popup = pointer.popup ? ` in its popup ${pointer.popup}` : '';
+  const line = `pointing at ${what} of window ${pointer.windowId} (${pointer.process})${popup}${label} for ${Math.round((pointer.expiresAt - Date.now()) / 1000)} s`;
   const told = pointer.notify ? `${line}
 keep working: the click, or the box timing out, arrives as a message` : line;
   // The Start menu and the system's other flyouts lie above every app's window, the box included.

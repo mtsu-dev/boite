@@ -41,6 +41,13 @@ function fakeDesktop() {
   ];
   // Read only with `any`: a card that holds the controls, as a div does.
   const containers: NativeControl[] = [{ type: 'Group', name: 'Card', automationId: '', rect: { left: 1100, top: 600, width: 120, height: 60 } }];
+  /** The File menu, window 303 of Unity's, read with 101 while its frame is there; it reaches past 101's left edge. */
+  const menu: NativeControl[] = [
+    { ...control('MenuItem', 'Build Settings', 990, 530), popup: '303' },
+    // Past the menu's bottom edge: out of view in the menu, though inside the window.
+    { ...control('MenuItem', 'Below the menu', 990, 700), popup: '303' },
+  ];
+  const menuFrame = { rect: { left: 980, top: 524, width: 160, height: 60 }, minimized: false, above: false };
   const mouse = { pressed: false, x: 0, y: 0 };
   /**
    * The control a box follows, as its app answers: a rectangle, out of view,
@@ -59,7 +66,8 @@ function fakeDesktop() {
   const guide: WindowGuide = {
     controls: async (id, limit, any) => {
       if (!frames.has(id)) throw new Error('the window closed during the read');
-      const all = id !== '101' ? [] : any ? [...controls, ...containers] : controls;
+      const own = id !== '101' ? [] : any ? [...controls, ...containers] : controls;
+      const all = id === '101' && frames.has('303') ? [...menu, ...own] : own;
       return { controls: all.slice(0, limit), total: all.length };
     },
     frame: id => {
@@ -80,7 +88,7 @@ function fakeDesktop() {
       };
     },
   };
-  return { windows, frames, mouse, capture, guide, live, drop, front };
+  return { windows, frames, mouse, capture, guide, live, drop, front, menuFrame };
 }
 
 /** Retries an assertion until it holds: the box events reach the desktop app's socket, not the caller's. */
@@ -385,6 +393,32 @@ describe('window guide', () => {
     expect(told()).toHaveLength(2);
   }, 15_000);
 
+  test('an open menu is read with its window, and a box on one of its items ends with a message when it closes', async () => {
+    const told = () => harness.core.journal.listMessages(threadId).filter(message => message.role === 'user').flatMap(message => message.parts)
+      .flatMap(part => part.type === 'text' && part.text.startsWith('Boite: ') ? [part.text] : []);
+    desk.frames.set('303', desk.menuFrame);
+    const answered = answer('always');
+    const read = await agent.call('windows.read', { threadId, target: { id: '101' }, filter: 'build' });
+    await answered;
+    // In the window's pixels, left of its edge; the item below the menu's edge is out of view.
+    expect(read.controls).toEqual([{ id: 1, type: 'MenuItem', name: 'Build Settings', popup: '303', x: -10, y: 30, width: 40, height: 20 }]);
+    expect((await agent.call('windows.read', { threadId, target: { id: '101' } })).controls.map(one => one.name)).toEqual(['Build Settings', 'File', 'Edit', 'Play', 'Play Mode Options']);
+
+    desk.live.rect = { left: 990, top: 530, width: 40, height: 20 };
+    const { pointer } = await agent.call('windows.point', { threadId, control: 1, notify: true });
+    expect(pointer).toMatchObject({ windowId: '101', popup: '303', x: -10, y: 30, control: { name: 'Build Settings' } });
+    expect(desk.live.asked.at(-1)).toMatchObject({ name: 'Build Settings', popup: '303' });
+    // Inside the menu, though left of the window: shown.
+    await eventually(() => expect(boxes[0]!.rect).toEqual({ left: 990, top: 530, width: 40, height: 20 }));
+
+    // A click elsewhere closes the menu: the box goes and the agent hears why.
+    desk.frames.delete('303');
+    await eventually(() => expect(boxes[0]!.rect).toBeNull());
+    await eventually(() => expect(told()).toEqual(['Boite: the menu or popup under the box on MenuItem "Build Settings" in window 101 (Unity.exe) closed before a click.']), 5000);
+    expect(desk.live.held).toBe(0);
+    expect(await thrown(agent.call('windows.point', { threadId, control: 1 }))).toThrow('the menu or popup #1 lay in has closed');
+  });
+
   test('an archived conversation takes its box away', async () => {
     await agent.call('windows.point', { threadId, target: { id: '101' }, at: { x: 0, y: 0, width: 10, height: 10, unit: 'px' } });
     await owner.call('threads.archive', { threadId });
@@ -422,6 +456,12 @@ describe('window guide', () => {
     await answered;
     expect(read.out).toBe('window: 101 (Unity.exe)\n#1 MenuItem "File" 4,4 40x20\n#2 MenuItem "Edit" 48,4 40x20\n2 more: narrow with --filter or raise --limit\n');
     expect((await run('read', '--id', '101', '--any', '--filter', 'card')).out).toBe('window: 101 (Unity.exe)\n#5 Group "Card" 100,100 120x60\n');
+    desk.frames.set('303', desk.menuFrame);
+    expect((await run('read', '--id', '101', '--filter', 'build')).out).toBe('window: 101 (Unity.exe)\n#1 MenuItem "Build Settings" -10,30 40x20 (in popup 303)\n');
+    desk.live.rect = { left: 990, top: 530, width: 40, height: 20 };
+    expect((await run('point', '1')).out).toMatch(/^pointing at MenuItem "Build Settings" of window 101 \(Unity.exe\) in its popup 303 with "Build Settings" for 120 s\n/);
+    desk.frames.delete('303');
+    await run('read', '--id', '101');
     expect((await run('point', '2', '--label', 'Open Edit')).out).toMatch(/^pointing at MenuItem "Edit" of window 101 \(Unity.exe\) with "Open Edit" for 120 s\nkeep working: the click, or the box timing out, arrives as a message\n$/);
     expect((await run('point', '--id', '101', '--at', '0,0,0.5,0.5', '--seconds', '30')).out).toMatch(/^pointing at 0,0 200x150 of window 101 \(Unity.exe\) for 30 s\n/);
     expect((await run('point', '--id', '101')).error).toContain('needs an id from window read (3 for #3), or a target with exactly one of --name or --at');

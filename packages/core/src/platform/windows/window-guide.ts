@@ -12,7 +12,7 @@
  * control at 100 % and 150 % scaling and on every monitor.
  */
 import { dlopen, FFIType, ptr } from 'bun:ffi';
-import type { ScreenRect, WindowGuide } from '../types.ts';
+import type { NativeControl, ScreenRect, WindowGuide } from '../types.ts';
 import { frameBounds, physicalPixels, windowOf } from './window-capture.ts';
 import { readControls, trackControl } from './window-controls.ts';
 
@@ -38,6 +38,18 @@ function loadUser32() {
     IsHungAppWindow: { args: [U64], returns: I32 },
     GetForegroundWindow: { args: [], returns: U64 },
     GetAncestor: { args: [U64, FFIType.u32], returns: U64 },
+    IsWindowVisible: { args: [U64], returns: I32 },
+    FindWindowExW: { args: [U64, U64, PTR, PTR], returns: U64 },
+    GetWindow: { args: [U64, FFIType.u32], returns: U64 },
+    GetWindowThreadProcessId: { args: [U64, PTR], returns: FFIType.u32 },
+    GetWindowLongPtrW: { args: [U64, I32], returns: FFIType.i64 },
+    GetClassNameW: { args: [U64, PTR, I32], returns: I32 },
+  }).symbols;
+}
+
+function loadDwm() {
+  return dlopen('dwmapi.dll', {
+    DwmGetWindowAttribute: { args: [U64, FFIType.u32, PTR, FFIType.u32], returns: I32 },
   }).symbols;
 }
 
@@ -50,7 +62,9 @@ function loadKernel32() {
 
 let user32Symbols: ReturnType<typeof loadUser32> | null = null;
 let kernel32Symbols: ReturnType<typeof loadKernel32> | null = null;
+let dwmSymbols: ReturnType<typeof loadDwm> | null = null;
 const user32 = () => (user32Symbols ??= loadUser32());
+const dwm = () => (dwmSymbols ??= loadDwm());
 const kernel32 = () => (kernel32Symbols ??= loadKernel32());
 
 const VK_LBUTTON = 0x01;
@@ -90,6 +104,8 @@ function windowBand(): BandReader | null {
 function frameOf(id: string): { rect: ScreenRect; minimized: boolean; above: boolean } | null {
   try {
     const hwnd = windowOf(id);
+    // A WinForms dropdown is hidden when it closes, not destroyed: its box goes as if it were.
+    if (user32().IsWindowVisible(hwnd) === 0) return null;
     const bounds = physicalPixels(() => frameBounds(hwnd));
     if (bounds === null) return null;
     const band = new Uint32Array(1);
@@ -101,6 +117,81 @@ function frameOf(id: string): { rect: ScreenRect; minimized: boolean; above: boo
 }
 
 const GA_ROOTOWNER = 3;
+const GW_OWNER = 4;
+const GWL_EXSTYLE = -20;
+const WS_EX_TOOLWINDOW = 0x80n;
+const WS_EX_APPWINDOW = 0x40000n;
+const DWMWA_CLOAKED = 14;
+/** Popups that hold no control: a menu's drop shadow, a tooltip, the input method's windows. */
+const NOT_POPUPS = new Set(['SysShadow', 'tooltips_class32', 'IME', 'MSCTFIME UI']);
+
+/**
+ * The menus and popups the process of `hwnd` shows over it, topmost first:
+ * its visible top-level windows above it in the Z order that `boite window
+ * list` leaves out, a tool window or one `hwnd` owns. A Win32 menu (the list
+ * under File, a context menu) is its own top-level `#32768` window with no
+ * owner, and a WinForms dropdown one the form owns; UI Automation finds
+ * neither among the form's descendants, nor most apps' (measured on a
+ * WinForms form on 2026-11-02: both showed within 12 ms of being opened, the
+ * menu was destroyed on closing, the dropdown hidden). Another process's
+ * window is never one of them: the consent to read covers one app.
+ */
+function popupsOf(hwnd: bigint): bigint[] {
+  const api = user32();
+  const pid = new Uint32Array(1);
+  api.GetWindowThreadProcessId(hwnd, ptr(pid));
+  const owner = pid[0]!;
+  const popups: bigint[] = [];
+  const text = new Uint16Array(64);
+  const cloaked = new Uint32Array(1);
+  for (let other = api.FindWindowExW(0n, 0n, null, null); other !== 0n && other !== hwnd; other = api.FindWindowExW(0n, other, null, null)) {
+    pid[0] = 0;
+    api.GetWindowThreadProcessId(other, ptr(pid));
+    if (pid[0] !== owner || api.IsWindowVisible(other) === 0 || api.IsIconic(other) !== 0) continue;
+    cloaked[0] = 0;
+    if (dwm().DwmGetWindowAttribute(other, DWMWA_CLOAKED, ptr(cloaked), 4) === 0 && cloaked[0] !== 0) continue;
+    if (NOT_POPUPS.has(new TextDecoder('utf-16le').decode(text.subarray(0, Math.max(0, api.GetClassNameW(other, ptr(text), text.length)))))) continue;
+    const owned = api.GetWindow(other, GW_OWNER) !== 0n;
+    if (owned) {
+      // A dialog of another window of the same app is that window's.
+      if (api.GetAncestor(other, GA_ROOTOWNER) !== hwnd) continue;
+    } else {
+      const exStyle = BigInt(api.GetWindowLongPtrW(other, GWL_EXSTYLE));
+      // An app's other main window is listed on its own.
+      if ((exStyle & WS_EX_TOOLWINDOW) === 0n || (exStyle & WS_EX_APPWINDOW) !== 0n) continue;
+    }
+    popups.push(other);
+  }
+  return popups;
+}
+
+const sameControl = (a: NativeControl, b: NativeControl) => a.type === b.type && a.name === b.name && a.automationId === b.automationId
+  && a.rect.left === b.rect.left && a.rect.top === b.rect.top && a.rect.width === b.rect.width && a.rect.height === b.rect.height;
+
+/**
+ * The controls of the window's popups, then its own. WinForms also lists a
+ * dropdown's items among the form's descendants (2026-11-02): each is kept
+ * once, as the popup's, so its box goes when the dropdown closes.
+ */
+function readWithPopups(hwnd: bigint, limit: number, any: boolean): { controls: NativeControl[]; total: number } {
+  const controls: NativeControl[] = [];
+  let total = 0;
+  for (const popup of popupsOf(hwnd)) {
+    let read: ReturnType<typeof readControls>;
+    // A popup that closed during the read holds nothing.
+    try { read = readControls(popup, limit, any); } catch { continue; }
+    total += read.total;
+    for (const control of read.controls) controls.push({ ...control, popup: popup.toString() });
+  }
+  const fromPopups = controls.length;
+  const own = readControls(hwnd, limit, any);
+  total += own.total;
+  for (const control of own.controls) {
+    if (fromPopups > 0 && controls.slice(0, fromPopups).some(other => sameControl(other, control))) { total -= 1; continue; }
+    controls.push(control);
+  }
+  return { controls: controls.slice(0, limit), total };
+}
 
 /** The window in front is `id`, or a window it owns, such as one of its dialogs. */
 function foreground(id: string): boolean {
@@ -135,17 +226,22 @@ export async function loadWindowGuide(): Promise<WindowGuide | { unavailable: st
     controls: async (id, limit, any = false) => {
       const hwnd = windowOf(id);
       if (user32().IsHungAppWindow(hwnd) !== 0) throw new Error('the window is not responding');
-      let read = physicalPixels(() => readControls(hwnd, limit, any));
+      let read = physicalPixels(() => readWithPopups(hwnd, limit, any));
       for (let attempt = 0; attempt < EMPTY_RETRIES && read.total === 0; attempt++) {
         await Bun.sleep(EMPTY_WAIT_MS);
-        read = physicalPixels(() => readControls(hwnd, limit, any));
+        read = physicalPixels(() => readWithPopups(hwnd, limit, any));
       }
       return read;
     },
     track: async (id, control) => {
       const hwnd = windowOf(id);
       if (user32().IsHungAppWindow(hwnd) !== 0) throw new Error('the window is not responding');
-      const live = physicalPixels(() => trackControl(hwnd, control));
+      let within = hwnd;
+      if (control.popup !== undefined) {
+        within = windowOf(control.popup);
+        if (!popupsOf(hwnd).includes(within)) return null;
+      }
+      const live = physicalPixels(() => trackControl(within, control));
       if (live === null) return null;
       return {
         // A hung app is not asked: the call would hold the core's thread until the transaction timeout.

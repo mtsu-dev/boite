@@ -4,14 +4,21 @@ import type { NativeWindow, WindowCapture, WindowGuide } from '../src/platform/t
 
 /**
  * A WinForms form this file owns, in its own powershell.exe, that never takes
- * the focus: two enabled buttons, a disabled one and a text field.
+ * the focus: two enabled buttons, a disabled one and a text field. Posted
+ * messages open a Win32 menu (WM_APP + 1), a WinForms dropdown (WM_APP + 2)
+ * and close both (WM_APP + 3), as a click on File would.
  */
 const FORM = `
 using System;
 using System.Drawing;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 public class BoiteGuideWindow : Form {
+  [DllImport("user32.dll")] static extern bool EndMenu();
+  ContextMenu menu = new ContextMenu(new MenuItem[] { new MenuItem("Player Settings"), new MenuItem("Quit Editor") });
+  ContextMenuStrip dropdown = new ContextMenuStrip();
   public BoiteGuideWindow(string title) {
+    dropdown.Items.Add("Dropdown Item");
     Text = title;
     StartPosition = FormStartPosition.Manual;
     // Away from the windows window-capture-windows.test.ts opens at the same time near the top-left corner.
@@ -26,6 +33,13 @@ public class BoiteGuideWindow : Form {
     Controls.Add(new GroupBox { Text = "Options", Location = new Point(240, 120), Size = new Size(140, 70), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right });
   }
   protected override bool ShowWithoutActivation { get { return true; } }
+  protected override void WndProc(ref Message message) {
+    // The Win32 menu runs its own loop until it closes: started after this message returns.
+    if (message.Msg == 0x8001) { BeginInvoke((Action)(() => menu.Show(this, new Point(40, 40)))); return; }
+    if (message.Msg == 0x8002) { dropdown.Show(this, new Point(60, 60)); return; }
+    if (message.Msg == 0x8003) { EndMenu(); dropdown.Close(); return; }
+    base.WndProc(ref message);
+  }
   protected override CreateParams CreateParams {
     get { CreateParams parameters = base.CreateParams; parameters.ExStyle |= 0x08000000; return parameters; }
   }
@@ -145,6 +159,57 @@ describe.skipIf(process.platform !== 'win32')('window guide on Windows', () => {
       user32.symbols.SetWindowPos(BigInt(form.id), 0n, 0, 0, frame.width, frame.height, 0x2 | 0x4 | 0x10);
       user32.close();
       tracked.release();
+    }
+  });
+
+  test('an open menu or dropdown of the app is read first, once, marked with its window, and has no frame once closed', async () => {
+    const { dlopen, FFIType } = await import('bun:ffi');
+    const user32 = dlopen('user32.dll', { PostMessageW: { args: [FFIType.u64, FFIType.u32, FFIType.u64, FFIType.u64], returns: FFIType.i32 } });
+    const post = (message: number) => expect(user32.symbols.PostMessageW(BigInt(form.id), message, 0n, 0n)).not.toBe(0);
+    const until = async <T>(check: () => Promise<T | undefined> | T | undefined): Promise<T> => {
+      for (let attempt = 0; attempt < 100; attempt++) { const found = await check(); if (found !== undefined) return found; await Bun.sleep(20); }
+      throw new Error('never happened');
+    };
+    try {
+      expect((await guide.controls(form.id, 50)).controls.filter(control => control.popup !== undefined)).toEqual([]);
+      // A Win32 menu: a top-level #32768 window of its own, not under the form in UI Automation.
+      post(0x8001);
+      const read = await until(async () => { const found = await guide.controls(form.id, 50); return found.controls.some(control => control.name === 'Player Settings') ? found : undefined; });
+      const item = read.controls.find(control => control.name === 'Player Settings')!;
+      expect(item.type).toBe('MenuItem');
+      expect(item.popup).toMatch(/^\d+$/);
+      expect(item.popup).not.toBe(form.id);
+      expect(read.controls[0]!.popup).toBe(item.popup);
+      const menu = guide.frame(item.popup!)!.rect;
+      expect(item.rect.left).toBeGreaterThanOrEqual(menu.left);
+      expect(item.rect.top + item.rect.height).toBeLessThanOrEqual(menu.top + menu.height);
+      const tracked = (await guide.track(form.id, item))!;
+      expect(tracked.rect()).toEqual(item.rect);
+      tracked.release();
+      // The form itself is not one of its popups.
+      expect(await guide.track(form.id, { ...item, popup: form.id })).toBeNull();
+      post(0x8003);
+      await until(() => guide.frame(item.popup!) === null ? true : undefined);
+      expect((await guide.controls(form.id, 50)).controls.some(control => control.name === 'Player Settings')).toBe(false);
+
+      // A WinForms dropdown: owned by the form, which also lists its items; hidden, not destroyed, on closing.
+      post(0x8002);
+      const items = await until(async () => {
+        const found = (await guide.controls(form.id, 50)).controls.filter(control => control.name === 'Dropdown Item');
+        // WinForms lists the items under the form a moment before their window shows.
+        return found.some(control => control.popup !== undefined) ? found : undefined;
+      });
+      expect(items).toHaveLength(1);
+      expect(items[0]!.popup).toMatch(/^\d+$/);
+      const followed = (await guide.track(form.id, items[0]!))!;
+      expect(followed.rect()).toEqual(items[0]!.rect);
+      followed.release();
+      post(0x8003);
+      await until(() => guide.frame(items[0]!.popup!) === null ? true : undefined);
+      expect((await guide.controls(form.id, 50)).controls.some(control => control.name === 'Dropdown Item')).toBe(false);
+    } finally {
+      post(0x8003);
+      user32.close();
     }
   });
 

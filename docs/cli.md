@@ -245,7 +245,10 @@ On Windows, the same command guides the user instead of acting for them.
 click-through box with that label above every window; `point <target> --name
 <name>` finds the control itself, `--any` on either adds the containers (groups,
 panes, lists, images: a whole area, which the box follows as it resizes), and `point <target> --at x,y,w,h` takes a
-rectangle for an app with no accessibility tree. `--round` draws a pill or a
+rectangle for an app with no accessibility tree. A menu or popup the app has
+open over the window, such as the list under File, is read first, its lines
+ending in `(in popup <id>)`; a box on one of its items goes when it closes.
+`--round` draws a pill or a
 circle and `--pad <px>` sets the gap around the control. `point` returns at once:
 the click, or the box timing out, arrives later as a message, so the agent keeps
 working. `wait-click` blocks until the click instead, and `unpoint` takes the box away. See

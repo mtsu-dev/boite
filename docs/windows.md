@@ -176,6 +176,22 @@ boite window unpoint
     contain the text, without case. About 10 tokens a line, against
     1,000 to 3,000 for a screenshot.
   - The ids stay valid until the conversation's next read.
+  - Menus and popups come first. A menu the user opened, such as the list
+    under File in Unity, is a top-level window of its own, which UI
+    Automation does not find under the window it belongs to. A read takes in
+    the visible windows of the same process above the target in the Z order
+    that `boite window list` leaves out: a tool window, such as a Win32 menu
+    (class `#32768`, with no owner), or a window the target owns, such as a
+    WinForms dropdown. A dialog of the app's other main window, another
+    process's window, a drop shadow, a tooltip and the input method's windows
+    are not. Their lines end in `(in popup <id>)`, the popup's window id,
+    with coordinates still in the target window's pixels, which can lie past
+    its edge. They are read under the same consent: it is the same app.
+    Measured on a WinForms form on 2026-11-02: the Win32 menu and the
+    dropdown both showed within 12 ms of being opened; the menu window was
+    destroyed on closing, the dropdown only hidden; WinForms also lists the
+    dropdown's items under the form, from a moment before its window shows,
+    so an item seen in both is kept once, as the popup's.
 - `point` draws one box with a label (80 characters at most) and replaces the
   conversation's previous one. It takes exactly one of:
   - `<id>`: a control of the last read, `3` for `#3` (a shell reads `#` as
@@ -231,7 +247,13 @@ boite window unpoint
   the next step of a lesson keeps it.
 - Every box follows its window when the window moves, hides while it is
   minimized, and goes away with it, after `--seconds` (120 by default, 600 at
-  most), on `unpoint`, or when the conversation is archived.
+  most), on `unpoint`, or when the conversation is archived. A box on an item
+  of a menu or popup follows that item, hides only once it lies past the
+  popup's edge, and goes when the popup closes or hides, as with a closed
+  window: with `notify`, the agent hears "the menu or popup under the box ...
+  closed before a click", and `wait-click` ends with `gone`. `point <id>` on
+  an item of a popup that closed since the read is refused: the user opens it
+  again and the agent reads again.
 - `boite window point` returns at once and the agent keeps working, or ends
   its turn. The click inside the box, or the box timing out or losing its
   window first, reaches the conversation later as a message starting with

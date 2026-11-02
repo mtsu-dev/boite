@@ -13,6 +13,11 @@
  * are refused as `DesktopWindows` refuses them. The box never focuses the
  * window and sends it nothing: the person clicks the control under it. Control
  * names never go to the log. See docs/windows.md.
+ *
+ * A menu the person opened is a window of its own (the list under File in
+ * Unity), so a read takes in the menus and popups the same app has open over
+ * the window, under the same consent: it is the same app. A box on one of
+ * their controls goes when the popup closes, as with a closed window.
  */
 import {
   WINDOW_POINT_LABEL_MAX,
@@ -108,6 +113,8 @@ interface Shown {
   tracked: TrackedControl | null;
   /** The control the box shows, when it was named by id or by name. */
   control: WindowControl | null;
+  /** The menu or popup window that control lies in: the box goes when it closes. */
+  popup: string | null;
   /** Where the followed control last was in its window, and since when: the box shows once it stays put. */
   seen?: { rect: ScreenRect | null; since: number };
   /** Set once the app dropped the control: the box hides until it is found again. */
@@ -138,7 +145,10 @@ const centerInside = (rect: ScreenRect, frame: ScreenRect) => {
   const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
   return x >= frame.left && x < frame.left + frame.width && y >= frame.top && y < frame.top + frame.height;
 };
-const controlLine = (control: WindowControl) => `  #${control.id} ${control.type} "${control.name}"`;
+/** What the OS half looks for to follow `control`, near `rect` on the screen. */
+const nativeOf = (control: WindowControl, rect: ScreenRect) =>
+  ({ type: control.type, name: control.name, automationId: control.automationId ?? '', rect, ...(control.popup ? { popup: control.popup } : {}) });
+const controlLine = (control: WindowControl) => `  #${control.id} ${control.type} "${control.name}"${control.popup ? ` (in popup ${control.popup})` : ''}`;
 
 export class WindowGuides {
   readonly #core: Core;
@@ -218,7 +228,11 @@ export class WindowGuides {
         throw refused(`window ${snapshot.window.id} of ${snapshot.window.process} is gone: read again`, { windowId: snapshot.window.id, code: 'gone' });
       }
       box = control;
-      await this.#front(thread.id, await this.#load(), window);
+      const guide = await this.#load();
+      if (control.popup !== undefined && guide.frame(control.popup) === null) {
+        throw refused(`the menu or popup #${id} lay in has closed: have the user open it again, then read again`, { windowId: control.popup, code: 'gone' });
+      }
+      await this.#front(thread.id, guide, window);
     } else if (name !== undefined) {
       if (target === undefined) throw invalidParams('point by name needs the window\'s target', { field: 'target' });
       if (typeof name !== 'string' || name.trim() === '' || name.length > 260 || /\p{Cc}/u.test(name)) {
@@ -254,16 +268,17 @@ export class WindowGuides {
       windowId: window.id, process: window.process, label: shownLabel,
       x: box.x, y: box.y, width: box.width, height: box.height, expiresAt: Date.now() + seconds * 1000, look,
       ...(control ? { control: { type: control.type, name: control.name } } : {}),
+      ...(control?.popup ? { popup: control.popup } : {}),
       ...(frame.above ? { behind: true as const } : {}),
       ...(notify ? { notify: true as const } : {}),
     };
     let tracked: TrackedControl | null = null;
     if (control) {
-      try { tracked = await guide.track(window.id, { type: control.type, name: control.name, automationId: control.automationId ?? '', rect: screen }); }
+      try { tracked = await guide.track(window.id, nativeOf(control, screen)); }
       catch { /* not followed: the box keeps its place in the window */ }
     }
     const shown: Shown = {
-      pointer, window, boxId, screen: frame.minimized ? null : screen, waiters: new Set(), tracked, control: control ?? null, notify, clicks: null,
+      pointer, window, boxId, screen: frame.minimized ? null : screen, waiters: new Set(), tracked, control: control ?? null, popup: control?.popup ?? null, notify, clicks: null,
       // Settled already where it was read: the box shows at once.
       ...(tracked && !frame.minimized ? { seen: { rect: { left: box.x, top: box.y, width: box.width, height: box.height }, since: 0 } } : {}),
       follow: setInterval(() => this.#follow(thread.id, shown, guide), this.#followMs),
@@ -332,6 +347,7 @@ export class WindowGuides {
     const where = `${what} in window ${pointer.windowId} (${pointer.process})`;
     const text = why === 'clicked' ? `Boite: the user clicked the box on ${where}; the box is gone.`
       : why === 'timeout' ? `Boite: the box on ${where} timed out without a click.`
+      : pointer.popup ? `Boite: the menu or popup under the box on ${where} closed before a click.`
       : `Boite: the window under the box on ${where} closed before a click.`;
     try { this.#core.threads.deferred.deliverAnswer(threadId, text); }
     catch (error) { this.#core.logs.warn(`The end of a box could not reach its conversation: ${messageOf(error)}`, { source: 'windows', event: 'window.notify', threadId }); }
@@ -372,21 +388,31 @@ export class WindowGuides {
     } catch (error) {
       throw refused(`reading the controls of ${window.process} failed: ${messageOf(error)}`, { windowId: window.id });
     }
-    const { left, top, width, height } = frame.rect;
+    const { left, top } = frame.rect;
+    // A popup's controls lie in the popup, which can reach past the window's edge.
+    const popups = new Map<string, ScreenRect | null>();
+    const boundsOf = (popup: string | undefined) => {
+      if (popup === undefined) return frame.rect;
+      if (!popups.has(popup)) popups.set(popup, guide.frame(popup)?.rect ?? null);
+      return popups.get(popup)!;
+    };
     const controls: WindowControl[] = [];
     for (const control of found.controls) {
+      const bounds = boundsOf(control.popup);
+      if (bounds === null) continue;
       // A control scrolled out of the window can still say it is on screen.
-      const x = control.rect.left - left, y = control.rect.top - top;
-      if (x + control.rect.width <= 0 || y + control.rect.height <= 0 || x >= width || y >= height) continue;
+      const { left: x0, top: y0, width: w, height: h } = control.rect;
+      if (x0 + w <= bounds.left || y0 + h <= bounds.top || x0 >= bounds.left + bounds.width || y0 >= bounds.top + bounds.height) continue;
       controls.push({
         id: controls.length + 1, type: control.type, name: control.name,
         ...(control.automationId ? { automationId: control.automationId } : {}),
-        x, y, width: control.rect.width, height: control.rect.height,
+        ...(control.popup ? { popup: control.popup } : {}),
+        x: x0 - left, y: y0 - top, width: w, height: h,
       });
     }
     const snapshot = { window, controls };
     this.#snapshots.set(thread.id, snapshot);
-    this.#core.logs.info(`Read ${controls.length} controls of window ${window.id} of ${window.process}`, { source: 'windows', event: 'window.read', threadId: thread.id, data: { windowId: window.id, process: window.process, controls: controls.length } });
+    this.#core.logs.info(`Read ${controls.length} controls of window ${window.id} of ${window.process}`, { source: 'windows', event: 'window.read', threadId: thread.id, data: { windowId: window.id, process: window.process, controls: controls.length, popups: popups.size } });
     return snapshot;
   }
 
@@ -427,6 +453,16 @@ export class WindowGuides {
       this.#remove(threadId, 'gone', shown);
       return;
     }
+    // A box in a menu goes when the menu closes; its controls are out of view only past the menu's edge.
+    let bounds = frame.rect;
+    if (shown.popup !== null) {
+      const popup = guide.frame(shown.popup);
+      if (popup === null) {
+        this.#remove(threadId, 'gone', shown);
+        return;
+      }
+      bounds = popup.rect;
+    }
     let screen: ScreenRect | null;
     if (frame.minimized) {
       screen = null;
@@ -440,7 +476,7 @@ export class WindowGuides {
         screen = null;
       } else {
         // In the window's pixels, so dragging the window moves the box at once and only a scroll waits.
-        const inWindow = live === 'hidden' || !centerInside(live, frame.rect) ? null
+        const inWindow = live === 'hidden' || !centerInside(live, bounds) ? null
           : { left: live.left - frame.rect.left, top: live.top - frame.rect.top, width: live.width, height: live.height };
         const now = Date.now();
         if (shown.seen === undefined || !sameRect(inWindow, shown.seen.rect)) shown.seen = { rect: inWindow, since: now };
@@ -472,7 +508,7 @@ export class WindowGuides {
     // Near where it was last seen: a list holds rows of the same name.
     const { pointer } = shown;
     const near = { left: frame.left + pointer.x, top: frame.top + pointer.y, width: pointer.width, height: pointer.height };
-    void guide.track(shown.window.id, { type: control.type, name: control.name, automationId: control.automationId ?? '', rect: near })
+    void guide.track(shown.window.id, nativeOf(control, near))
       .catch(() => null)
       .then(found => {
         lost.looking = false;

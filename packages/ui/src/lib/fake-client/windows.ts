@@ -56,6 +56,11 @@ interface Consent {
   settle: (answer: WindowConsentAnswer | 'expired') => void;
 }
 
+/** Unity's File menu, its own window over the editor's: a read lists it once a box on File was clicked. */
+const FILE_MENU = { window: '132460', of: '132456', after: 'File' };
+const FILE_MENU_ITEMS: Omit<WindowControl, 'id'>[] = ['New Scene', 'Open Scene', 'Save', 'Build Settings...', 'Build And Run']
+  .map((name, index) => ({ type: 'MenuItem', name, popup: FILE_MENU.window, x: 8, y: 54 + index * 26, width: 240, height: 24 }));
+
 const demos = new WeakMap<FakeContext, () => void>();
 
 /** Seeds `?fake=1&windows=1`: captures, consent cards in each state and a watched Unity window on the trace thread. */
@@ -93,9 +98,19 @@ export function windowsMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
   /** Each conversation's last read and its box: a fake person clicks the box a second after a wait starts. */
   const reads = new Map<string, { window: FakeWindow; controls: WindowControl[] }>();
   const pointers = new Map<string, { pointer: WindowPointer; timer: ReturnType<typeof setTimeout>; end: Set<(reason: 'clicked' | 'timeout' | 'cleared') => void> }>();
+  /** The conversations whose person opened Unity's File menu by clicking a box on File. */
+  const menus = new Set<string>();
+  /** What a read of `window` finds: the open menu's items first, as the core lists a popup's. */
+  const controlsOf = (threadId: string, window: FakeWindow): WindowControl[] =>
+    [...(window.id === FILE_MENU.of && menus.has(threadId) ? FILE_MENU_ITEMS : []), ...(CONTROLS[window.id] ?? [])].map((control, index) => ({ id: index + 1, ...control }));
   const unpoint = (threadId: string, reason: 'clicked' | 'timeout' | 'cleared') => {
     const shown = pointers.get(threadId);
     if (!shown) return false;
+    // Clicking File opens its menu; any other click, the menu's own included, closes it.
+    if (reason === 'clicked') {
+      if (shown.pointer.windowId === FILE_MENU.of && !shown.pointer.popup && shown.pointer.control?.name === FILE_MENU.after) menus.add(threadId);
+      else menus.delete(threadId);
+    }
     pointers.delete(threadId);
     clearTimeout(shown.timer);
     for (const end of [...shown.end]) end(reason);
@@ -109,6 +124,7 @@ export function windowsMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
     for (const consent of consents.values()) if (consent.threadId === threadId) consent.settle('expired');
     streamed.delete(threadId);
     unpoint(threadId, 'cleared');
+    menus.delete(threadId);
     reads.delete(threadId);
     if (watches.delete(threadId)) changed(threadId);
   };
@@ -326,7 +342,7 @@ export function windowsMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
       const window = resolve(thread, target);
       if (window.minimized) throw refusal('window minimized: restore it first', { windowId: window.id });
       await consent(thread, window, 'read');
-      const controls = (CONTROLS[window.id] ?? []).map((control, index) => ({ id: index + 1, ...control }));
+      const controls = controlsOf(threadId, window);
       reads.set(threadId, { window, controls });
       const wanted = filter?.trim().toLowerCase();
       const matching = wanted ? controls.filter(control => control.name.toLowerCase().includes(wanted)) : controls;
@@ -349,13 +365,14 @@ export function windowsMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
         if (!read) throw refusal('nothing was read in this conversation yet: run `boite window read` first', { field: 'control' });
         control = read.controls.find(candidate => candidate.id === id);
         if (!control) throw refusal(`#${id} is not among the ${read.controls.length} controls of the last read: read the window again`, { field: 'control' });
+        if (control.popup && !menus.has(threadId)) throw refusal(`the menu or popup #${id} lay in has closed: have the user open it again, then read again`, { windowId: control.popup, code: 'gone' });
         window = read.window;
         box = control;
       } else if (name !== undefined) {
         if (!target) throw refusal('point by name needs the window\'s target', { field: 'target' });
         window = resolve(thread, target);
         await consent(thread, window, 'read');
-        const controls = (CONTROLS[window.id] ?? []).map((one, index) => ({ id: index + 1, ...one }));
+        const controls = controlsOf(threadId, window);
         reads.set(threadId, { window, controls });
         const exact = controls.filter(one => one.name.toLowerCase() === name.trim().toLowerCase());
         const found = exact.length > 0 ? exact : controls.filter(one => one.name.toLowerCase().includes(name.trim().toLowerCase()));
@@ -376,6 +393,7 @@ export function windowsMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
         windowId: window.id, process: window.process, label: label === '' && control ? control.name : label,
         x: box.x, y: box.y, width: box.width, height: box.height, expiresAt: Date.now() + seconds * 1000, look: { shape, pad },
         ...(control ? { control: { type: control.type, name: control.name } } : {}),
+        ...(control?.popup ? { popup: control.popup } : {}),
         ...(notify ? { notify: true as const } : {})
       };
       pointers.set(threadId, { pointer, timer: setTimeout(() => unpoint(threadId, 'timeout'), seconds * 1000), end: new Set() });

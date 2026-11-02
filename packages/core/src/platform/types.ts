@@ -144,6 +144,8 @@ export interface NativeControl {
   /** The app's own identifier for the control, '' when it gives none. */
   automationId: string;
   rect: ScreenRect;
+  /** The id of the menu or popup window over the read window that holds it; absent for the window's own controls. */
+  popup?: string;
 }
 
 /**
@@ -164,12 +166,22 @@ export interface TrackedControl {
 }
 
 export interface WindowGuide {
-  /** At most `limit` enabled controls on screen, in the tree's order, and how many there were; `any` adds the containers. */
+  /**
+   * At most `limit` enabled controls on screen, in the tree's order, and how
+   * many there were; `any` adds the containers. The menus and popups the
+   * window's own process has open over it come first, marked with `popup`.
+   */
   controls(id: string, limit: number, any?: boolean): Promise<{ controls: NativeControl[]; total: number }>;
-  /** The control of window `id` that matches `control` (type, name, automation id, nearest to its rectangle), held live; null when none matches. */
+  /**
+   * The control of window `id` that matches `control` (type, name, automation
+   * id, nearest to its rectangle), held live; null when none matches. With
+   * `control.popup`, it is looked for in that popup while it is still one of
+   * the window's.
+   */
   track(id: string, control: NativeControl): Promise<TrackedControl | null>;
   /**
-   * Where the window lies, or null once it is gone. Throws nothing. `above`:
+   * Where the window lies, or null once it is gone or hidden, as a closed menu
+   * is. Throws nothing. `above`:
    * the system keeps the window in a layer over every app's window, as it does
    * the Start menu, so a box drawn on it stays behind it.
    */

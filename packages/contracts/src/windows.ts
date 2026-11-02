@@ -124,6 +124,13 @@ export interface WindowControl {
   name: string;
   /** The app's own identifier for the control, when it gives one. */
   automationId?: string;
+  /**
+   * Set on a control of a menu or popup the app opened over the window, such
+   * as the list under File: that popup's window id. The control closes with
+   * it, and lies in the window's pixels like the others, possibly outside the
+   * window's own rectangle.
+   */
+  popup?: string;
   /** Where it lies in the window, in the window's physical pixels: the coordinates of a full-size screenshot. */
   x: number;
   y: number;
@@ -163,6 +170,8 @@ export interface WindowPointer {
   look: WindowPointerLook;
   /** The control it shows, when it was named by id or by name. */
   control?: { type: string; name: string };
+  /** The menu or popup window the control lies in: the box goes when it closes, as with its window. */
+  popup?: string;
   /**
    * The system draws this window above every app's window, as it does the
    * Start menu: the box stays behind it, so the agent says where to click.
@@ -256,7 +265,9 @@ export interface WindowsRpcMethods {
   /**
    * The enabled controls on screen of the window, from its accessibility tree,
    * numbered for `windows.point`. `filter` keeps the names that contain it,
-   * without case. Needs the same consent as a capture, asked as `read`.
+   * without case. Needs the same consent as a capture, asked as `read`. The
+   * menus and popups the same app has open over the window come first, each
+   * of their controls marked with its `popup`.
    */
   /** `any` adds the containers (groups, panes, lists, images, text, documents) to the controls a person acts on. */
   'windows.read': { params: { threadId: string; target: WindowTarget; filter?: string; limit?: number; any?: boolean }; result: WindowControls };
