@@ -233,6 +233,8 @@
         </p>
       {:else if part.type === 'window_capture'}
         <WindowCard {part} />
+      {:else if part.type === 'window_guide'}
+        <WindowCard {store} threadId={message.threadId} {part} />
       {:else if part.type === 'window_consent'}
         <WindowCard {store} threadId={message.threadId} agent={agentName ?? (execution ? providerName(store, execution.providerId) : strings.windows.consent.anAgent)} {part} />
       {:else if part.type === 'error'}

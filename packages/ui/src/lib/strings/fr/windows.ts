@@ -27,6 +27,18 @@ export const fr: Translation = {
       allowedOnce: 'Autorisé une fois : {process}', allowedAlways: 'Toujours autorisé dans ce projet : {process}',
       refused: 'Refusé : {process}', expired: 'Délai de réponse dépassé : {process}'
     },
+    guide: {
+      boxIn: 'Un cadre dans {app}',
+      hint: 'Il montre où cliquer dans {app}. Échap sur cet ordinateur le retire aussi.',
+      done: 'Terminé', doneTitle: 'Retirer le cadre',
+      missing: 'Je ne le trouve pas', missingTitle: "Retirer le cadre et dire à l'agent que vous ne l'avez pas trouvé",
+      ended: '{verdict} : {what}',
+      ends: {
+        clicked: 'Cliqué dans {app}', changed: 'Modifié dans {app}', opened: "Fenêtre ouverte par {app}",
+        timeout: 'Le cadre dans {app} a expiré', cleared: "L'agent a retiré le cadre dans {app}", gone: "La fenêtre de {app} s'est fermée",
+        dismissed: 'Vous avez retiré le cadre dans {app}', missing: "Vous n'avez pas trouvé le cadre dans {app}"
+      }
+    },
     settings: {
       allowedHeading: 'Fenêtres autorisées', allowedIntro: "Les agents d'un projet peuvent capturer les fenêtres de ces applications sans demander votre accord. Une application est ajoutée quand vous choisissez Toujours pour ce projet dans une demande de capture.",
       allowedEmpty: "Aucune application n'est encore autorisée. Les applications sont ajoutées depuis une demande de capture dans la conversation.",

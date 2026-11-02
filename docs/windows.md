@@ -121,6 +121,7 @@ diagnostic exports.
 | `windows.consent` | yes | yes | no |
 | `windows.allowlist`, `windows.revoke` | yes | no | no |
 | `windows.read`, `windows.point`, `windows.waitClick`, `windows.unpoint` | yes | no | its own conversation |
+| `windows.dismiss` | yes | yes, the subscribed conversation | no |
 
 The reason for each entry sits beside it in `AGENT_METHODS`
 (`packages/core/src/access.ts`) and `DEVICE_METHODS`
@@ -306,6 +307,22 @@ boite window unpoint
     click closes the menu and keeps waiting up to 5 s for the window it
     opens. The log keeps the new window's id, never its title.
 
+- The box is click-through, so the user answers it elsewhere. Each box posts
+  a `window_guide` card in the conversation, on every client of the owner,
+  desktop and phone: it names the app and the label (or the control) and
+  offers Done, which takes the box away, and I can't find it. Escape pressed
+  on the machine while a box shows is Done too. Either ends the box as
+  `unpoint` does; `wait` returns `reason: 'dismissed'` or `'missing'`, and
+  with no wait the agent hears it as a `Boite:` message even from a box drawn
+  without `notify`: the user dismissed the box (they may have done it another
+  way, or want to stop), or cannot find it (it may be off screen, behind a
+  window or on a closed menu, so the agent checks with a screenshot). The card
+  calls `windows.dismiss` with the box's id, so a card left from an earlier
+  box ends nothing and says the box is no longer shown. Once the box ends for
+  any reason, the core folds the card into one quiet row saying how: clicked,
+  changed, a window opened, timed out, taken away by the agent, its window
+  closed, dismissed or not found. A card whose time passed while the core was
+  down shows as timed out.
 - The Start menu, search and the other system flyouts lie in a layer of the
   system above every app's window, the box included. `point` still answers,
   with `behind: true` and a line telling the agent to say where to click;
@@ -419,6 +436,11 @@ the desktop app draws the box.
   for each call.
 - `wait-click` reads the primary button with `GetAsyncKeyState` and the cursor
   every 25 ms while a wait lasts; no hook is installed.
+- Escape is read the same way, `GetAsyncKeyState(VK_ESCAPE)` at each step a
+  box follows its window (every 33 ms) while a box shows. A key held when the
+  box appears counts only once released and pressed again. It is a poll, not
+  a hook: the key still reaches the window in front (it closes an open menu
+  there too), and no other key is read.
 - `GetWindowBand`, which user32 exports without documenting it, tells a system
   flyout's layer from an app's. Where it is missing, every window reads as an
   app's.

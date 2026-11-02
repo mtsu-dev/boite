@@ -228,8 +228,23 @@ export interface WindowPointerBox {
   frame?: { app: string; windowId: string };
 }
 
-/** Why `windows.waitClick` ended without what its box waited for. */
-export type WindowWaitEnd = 'timeout' | 'cleared' | 'gone';
+/**
+ * Why `windows.waitClick` ended without what its box waited for: its time ran
+ * out, the agent took it away or replaced it, its window or popup went, or the
+ * person ended it (`WindowGuideAnswer`).
+ */
+export type WindowWaitEnd = 'timeout' | 'cleared' | 'gone' | WindowGuideAnswer;
+
+/**
+ * How the person ends a box that is click-through, so cannot be answered on
+ * the screen: `dismissed` with Done on its card or Escape on the machine,
+ * `missing` with I cannot find it on its card.
+ */
+export type WindowGuideAnswer = 'dismissed' | 'missing';
+export const WINDOW_GUIDE_ANSWERS: readonly WindowGuideAnswer[] = ['dismissed', 'missing'];
+
+/** How a box ended, as its `window_guide` card says: what it waited for happened, or a `WindowWaitEnd`. */
+export type WindowGuideEnd = 'clicked' | 'changed' | 'opened' | WindowWaitEnd;
 
 /** How long a capture waits for the owner's answer on a consent card. */
 export const WINDOW_CONSENT_TIMEOUT_MS = 10 * 60_000;
@@ -330,6 +345,12 @@ export interface WindowsRpcMethods {
   };
   /** Takes the conversation's box off the screen. */
   'windows.unpoint': { params: { threadId: string }; result: { cleared: boolean } };
+  /**
+   * The person's answer on a box's `window_guide` card: it takes box `boxId`
+   * away as unpoint does, and the agent hears `answer` from its wait, or as a
+   * message when none waits. Refused once that box is gone.
+   */
+  'windows.dismiss': { params: { threadId: string; boxId: string; answer: WindowGuideAnswer }; result: { ok: true } };
 }
 
 export interface WindowsRpcEvents {

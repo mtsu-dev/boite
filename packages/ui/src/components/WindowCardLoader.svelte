@@ -3,14 +3,16 @@
   import { strings } from '../lib/strings';
   import type WindowCaptureCard from './WindowCaptureCard.svelte';
   import type WindowConsentCard from './WindowConsentCard.svelte';
+  import type WindowGuideCard from './WindowGuideCard.svelte';
 
   /**
-   * Window captures are rare: each card loads with the first of its parts,
+   * Window captures and guides are rare: each card loads with the first of its parts,
    * outside the entry chunk. Until it does, the app's process stands in; a
    * chunk that fails to load (an update, a phone offline) offers another try.
    */
-  let props: ComponentProps<typeof WindowCaptureCard> | ComponentProps<typeof WindowConsentCard> = $props();
-  const load = () => props.part.type === 'window_capture' ? import('./WindowCaptureCard.svelte') : import('./WindowConsentCard.svelte');
+  let props: ComponentProps<typeof WindowCaptureCard> | ComponentProps<typeof WindowConsentCard> | ComponentProps<typeof WindowGuideCard> = $props();
+  const load = () => props.part.type === 'window_capture' ? import('./WindowCaptureCard.svelte')
+    : props.part.type === 'window_guide' ? import('./WindowGuideCard.svelte') : import('./WindowConsentCard.svelte');
   let loading = $state.raw(load());
 </script>
 

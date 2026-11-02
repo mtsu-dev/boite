@@ -50,6 +50,8 @@ function fakeDesktop() {
   ];
   const menuFrame = { rect: { left: 980, top: 524, width: 160, height: 60 }, minimized: false, above: false };
   const mouse = { pressed: false, x: 0, y: 0 };
+  /** Whether Escape is down on the machine. */
+  const keys = { escape: false };
   /**
    * The control a box follows, as its app answers: a rectangle, out of view,
    * or null once the app dropped it. Dropping it ends every element held so
@@ -78,6 +80,7 @@ function fakeDesktop() {
       return frame ? { rect: { ...frame.rect }, minimized: frame.minimized, above: frame.above } : null;
     },
     mouse: () => ({ ...mouse }),
+    escape: () => keys.escape,
     foreground: id => front.id === id,
     appWindows: pid => pid === 101 ? apps.map(app => ({ ...app })) : [],
     track: async (_id, wanted) => {
@@ -93,7 +96,7 @@ function fakeDesktop() {
       };
     },
   };
-  return { windows, frames, mouse, capture, guide, live, drop, front, menuFrame, apps };
+  return { windows, frames, mouse, keys, capture, guide, live, drop, front, menuFrame, apps };
 }
 
 /** Retries an assertion until it holds: the box events reach the desktop app's socket, not the caller's. */
@@ -515,6 +518,56 @@ describe('window guide', () => {
     await eventually(() => expect(told()[1]).toBe('Boite: the window under the box on the 40x20 rectangle at 0,0 in window 101 (Unity.exe) closed before a new window.'), 5000);
   }, 15_000);
 
+  test('the person ends a box from its card or with Escape, and the agent hears which, from its wait or as a message', async () => {
+    const told = () => harness.core.journal.listMessages(threadId).filter(message => message.role === 'user').flatMap(message => message.parts)
+      .flatMap(part => part.type === 'text' && part.text.startsWith('Boite: ') ? [part.text] : []);
+    const ends = () => harness.core.journal.listMessages(threadId).flatMap(message => message.parts)
+      .flatMap(part => part.type === 'window_guide' ? [part.end] : []);
+    const at = { x: 100, y: 100, width: 50, height: 50, unit: 'px' as const };
+
+    // Every client of the owner sees the box's card, naming the app and the label.
+    const posted = owner.next('message.started', message => message.parts[0]?.type === 'window_guide', 5000);
+    await agent.call('windows.point', { threadId, target: { id: '101' }, at, label: 'Scene view' });
+    const card = (await posted).parts[0] as Extract<MessagePart, { type: 'window_guide' }>;
+    expect(card).toMatchObject({ type: 'window_guide', process: 'Unity.exe', label: 'Scene view', end: null });
+    // The answer is the person's: the agent ends its own box with unpoint.
+    expect(await thrown(agent.call('windows.dismiss', { threadId, boxId: card.boxId, answer: 'dismissed' }))).toThrow('windows.dismiss is not one of the agent\'s methods');
+    expect(await thrown(owner.call('windows.dismiss', { threadId, boxId: card.boxId, answer: 'later' as 'dismissed' }))).toThrow('answer must be one of dismissed, missing');
+
+    // I cannot find it ends a wait with that answer, folds the card on every client and sends no message besides.
+    const waiting = agent.call('windows.waitClick', { threadId, timeoutSeconds: 5 });
+    await Bun.sleep(20);
+    const folded = owner.next('message.part', event => event.part.type === 'window_guide' && event.part.end !== null, 5000);
+    expect(await owner.call('windows.dismiss', { threadId, boxId: card.boxId, answer: 'missing' })).toEqual({ ok: true });
+    expect(await waiting).toEqual({ clicked: false, reason: 'missing' });
+    expect((await folded).part).toMatchObject({ boxId: card.boxId, end: 'missing' });
+    await eventually(() => expect(boxes[0]!.rect).toBeNull());
+    expect(await thrown(owner.call('windows.dismiss', { threadId, boxId: card.boxId, answer: 'dismissed' }))).toThrow('this box is no longer shown');
+
+    // Escape held since before the box is not a press; pressed while it shows, it ends it, and the agent hears it
+    // as a message though the box was drawn without notify and nothing waits.
+    desk.keys.escape = true;
+    await agent.call('windows.point', { threadId, target: { id: '101' }, at });
+    await Bun.sleep(FOLLOW_MS * 5);
+    expect(boxes[1]!.rect).not.toBeNull();
+    desk.keys.escape = false;
+    await Bun.sleep(FOLLOW_MS * 3);
+    desk.keys.escape = true;
+    await eventually(() => expect(boxes[1]!.rect).toBeNull());
+    await eventually(() => expect(told()).toEqual(['Boite: the user dismissed the box on the 50x50 rectangle at 100,100 in window 101 (Unity.exe) before a click, with Done or Escape; the box is gone. They may have done it another way, or want to stop: ask before pointing again.']), 5000);
+    desk.keys.escape = false;
+
+    // Without a wait, I cannot find it reaches the agent as a message; a replaced box's card says the agent took it away.
+    await agent.call('windows.point', { threadId, target: { id: '101' }, at, label: 'Old' });
+    const next = owner.next('message.started', message => message.parts[0]?.type === 'window_guide', 5000);
+    await agent.call('windows.point', { threadId, target: { id: '101' }, at, label: 'Hierarchy' });
+    const last = (await next).parts[0] as Extract<MessagePart, { type: 'window_guide' }>;
+    await owner.call('windows.dismiss', { threadId, boxId: last.boxId, answer: 'missing' });
+    await eventually(() => expect(told()).toHaveLength(2), 5000);
+    expect(told()[1]).toBe('Boite: the user cannot find the box on the 50x50 rectangle at 100,100 in window 101 (Unity.exe); the box is gone. It may be off screen, behind another window or on a closed menu: check with boite window screenshot, then point again or say where to look.');
+    expect(ends()).toEqual(['missing', 'dismissed', 'cleared', 'missing']);
+  }, 15_000);
+
   test('an archived conversation takes its box away', async () => {
     await agent.call('windows.point', { threadId, target: { id: '101' }, at: { x: 0, y: 0, width: 10, height: 10, unit: 'px' } });
     await owner.call('threads.archive', { threadId });
@@ -568,6 +621,10 @@ describe('window guide', () => {
     setTimeout(() => desk.apps.push({ id: '404', title: 'Build Settings', owner: '101' }), 50);
     expect((await run('wait', '--timeout', '5')).out).toBe('opened: window 404 "Build Settings"; the box is gone. Read it with boite window read --id 101: its controls come first (in popup 404)\n');
     expect((await run('point', '2', '--until', 'hover')).error).toContain('window point --until takes click, change, window');
+    await run('point', '--id', '101', '--at', '0,0,10,10');
+    setTimeout(() => { desk.keys.escape = true; }, 50);
+    expect((await run('wait', '--timeout', '5')).out).toBe('dismissed: the user ended the box with Done or Escape before it was seen; it is gone. Ask before pointing again\n');
+    desk.keys.escape = false;
     expect((await run('unpoint')).out).toBe('no box was shown\n');
   });
 });

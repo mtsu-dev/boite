@@ -27,6 +27,19 @@ export const strings = {
       allowedOnce: 'Allowed once: {process}', allowedAlways: 'Always allowed in this project: {process}',
       refused: 'Refused: {process}', expired: 'Not answered in time: {process}'
     },
+    /** The card of a box an agent shows on the screen with `boite window point`: the box is click-through, so it is ended here. */
+    guide: {
+      boxIn: 'A box in {app}',
+      hint: 'It shows where to click in {app}. Esc on that computer also takes it away.',
+      done: 'Done', doneTitle: 'Take the box away',
+      missing: "I can't find it", missingTitle: 'Take the box away and tell the agent you could not find it',
+      ended: '{verdict}: {what}',
+      ends: {
+        clicked: 'Clicked in {app}', changed: 'Changed in {app}', opened: 'Opened a window of {app}',
+        timeout: 'The box in {app} timed out', cleared: 'The agent took the box in {app} away', gone: 'The window of {app} closed',
+        dismissed: 'You took the box in {app} away', missing: 'You could not find the box in {app}'
+      }
+    },
     settings: {
       allowedHeading: 'Allowed windows', allowedIntro: 'Apps whose windows agents of a project may capture without asking. A project adds one when you answer Always for this project on a capture request.',
       allowedEmpty: 'No app is allowed yet. Apps get added from a capture request in the conversation.',

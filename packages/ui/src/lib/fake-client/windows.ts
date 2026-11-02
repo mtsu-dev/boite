@@ -1,6 +1,6 @@
 import {
   RpcErrorCode, WINDOW_CAPTURE_EXCLUDED, WINDOW_CLIP_LIMITS, WINDOW_CONSENT_ANSWERS, WINDOW_CONSENT_TIMEOUT_MS, WINDOW_POINT_LABEL_MAX, WINDOW_POINT_PAD, WINDOW_POINT_SECONDS,
-  WINDOW_POINTER_UNTIL, WINDOW_READ_LIMIT, WINDOW_SHOT_MAX, WINDOW_THUMBNAIL_MAX,
+  WINDOW_GUIDE_ANSWERS, WINDOW_POINTER_UNTIL, WINDOW_READ_LIMIT, WINDOW_SHOT_MAX, WINDOW_THUMBNAIL_MAX,
   windowCropError, windowIdError, windowTargetError,
   type AllowedWindowApp, type DesktopWindow, type Message, type MessagePart, type Thread, type WindowConsentAnswer, type WindowConsentKind,
   type WindowControl, type WindowOpened, type WindowPointer, type WindowTarget, type WindowWatch
@@ -11,7 +11,7 @@ import { DATA_DIR, refusal } from './shared';
 import type { FakeContext, FakeMethods } from './context';
 
 type Methods = 'windows.list' | 'windows.screenshot' | 'windows.clip' | 'windows.watch' | 'windows.frame' | 'windows.close' | 'windows.consent' | 'windows.allowlist' | 'windows.revoke'
-  | 'windows.read' | 'windows.point' | 'windows.waitClick' | 'windows.unpoint';
+  | 'windows.read' | 'windows.point' | 'windows.waitClick' | 'windows.unpoint' | 'windows.dismiss';
 
 /** A fake desktop window and what only the core knows about it: its executable's path and the hue its picture draws. */
 interface FakeWindow {
@@ -61,7 +61,7 @@ const FILE_MENU = { window: '132460', of: '132456', after: 'File' };
 /** The dialog a box with `until: 'window'` hears Unity open: owned by the editor, so read with it. */
 const OPENED: WindowOpened = { windowId: '132470', title: 'Build Profiles', readWindowId: '132456' };
 
-type BoxEnd = 'clicked' | 'changed' | 'opened' | 'timeout' | 'cleared';
+type BoxEnd = 'clicked' | 'changed' | 'opened' | 'timeout' | 'cleared' | 'dismissed' | 'missing';
 const FILE_MENU_ITEMS: Omit<WindowControl, 'id'>[] = ['New Scene', 'Open Scene', 'Save', 'Build Settings...', 'Build And Run']
   .map((name, index) => ({ type: 'MenuItem', name, popup: FILE_MENU.window, x: 8, y: 54 + index * 26, width: 240, height: 24 }));
 
@@ -101,7 +101,11 @@ export function windowsMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
   const watches = new Map<string, WindowWatch>();
   /** Each conversation's last read and its box: a fake person clicks the box a second after a wait starts. */
   const reads = new Map<string, { window: FakeWindow; controls: WindowControl[] }>();
-  const pointers = new Map<string, { pointer: WindowPointer; timer: ReturnType<typeof setTimeout>; end: Set<(reason: BoxEnd) => void> }>();
+  const pointers = new Map<string, {
+    pointer: WindowPointer; boxId: string; timer: ReturnType<typeof setTimeout>; end: Set<(reason: BoxEnd) => void>;
+    /** Its `window_guide` card, folded with how the box ended. */
+    card: { message: Message; partIndex: number } | null;
+  }>();
   /** The conversations whose person opened Unity's File menu by clicking a box on File. */
   const menus = new Set<string>();
   /** What a read of `window` finds: the open menu's items first, as the core lists a popup's. */
@@ -117,6 +121,11 @@ export function windowsMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
     }
     pointers.delete(threadId);
     clearTimeout(shown.timer);
+    if (shown.card) {
+      const part = shown.card.message.parts[shown.card.partIndex];
+      if (part?.type === 'window_guide') part.end = reason;
+      repost(threadId, shown.card.message, shown.card.partIndex);
+    }
     for (const end of [...shown.end]) end(reason);
     return true;
   };
@@ -195,6 +204,16 @@ export function windowsMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
     if (!list.some(app => sameText(app.path, window.path))) allowed.set(projectId, [...list, { path: window.path, process: window.process, addedAt: Date.now() }]);
   };
 
+  /** Draws `pointer` as the conversation's box, with the card that lets the person end it. */
+  const show = (thread: Thread, pointer: WindowPointer) => {
+    const boxId = `box_${++ctx.seq}`;
+    const card = post(thread, {
+      type: 'window_guide', boxId, process: pointer.process, label: pointer.label,
+      ...(pointer.control ? { control: { ...pointer.control } } : {}), expiresAt: pointer.expiresAt, end: null
+    });
+    pointers.set(thread.id, { pointer, boxId, card, timer: setTimeout(() => unpoint(thread.id, 'timeout'), pointer.expiresAt - Date.now()), end: new Set() });
+  };
+
   /** Posts a consent card and waits for its answer; `wait` false leaves it open, for the demo. */
   const ask = (thread: Thread, window: FakeWindow, kind: WindowConsentKind, timeoutMs = WINDOW_CONSENT_TIMEOUT_MS): Promise<WindowConsentAnswer | 'expired'> => {
     const requestId = `wcr-${++ctx.seq}`;
@@ -245,6 +264,13 @@ export function windowsMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
     post(thread, { type: 'window_consent', requestId: `wcr-${++ctx.seq}`, kind: 'screenshot', process: notepad.process, path: notepad.path, expiresAt: Date.now() - 60_000, answer: 'expired' });
     post(thread, { type: 'window_consent', requestId: `wcr-${++ctx.seq}`, kind: 'clip', process: unity.process, path: unity.path, expiresAt: Date.now() + 300_000, answer: 'always' });
     void ask(thread, blender, 'screenshot').catch(() => undefined);
+    // A guide the person already followed, and the box shown now, which its card can end.
+    const play = { type: 'Button', name: 'Play' };
+    post(thread, { type: 'window_guide', boxId: `box_${++ctx.seq}`, process: unity.process, label: 'File', control: { type: 'MenuItem', name: 'File' }, expiresAt: Date.now() - 60_000, end: 'clicked' });
+    show(thread, {
+      windowId: unity.id, process: unity.process, label: 'Press Play to test the scene', x: 912, y: 58, width: 32, height: 24,
+      expiresAt: Date.now() + WINDOW_POINT_SECONDS.max * 1000, look: { shape: 'box', pad: WINDOW_POINT_PAD.default }, control: play, notify: true
+    });
     // The agent opens the watch once someone looks at the conversation, so the Window tab comes forward as it would.
     const opening = setInterval(() => {
       if (!ctx.bus.subscribed.has(thread.id)) return;
@@ -405,7 +431,7 @@ export function windowsMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
         ...(notify ? { notify: true as const } : {}),
         ...(until !== 'click' ? { until } : {})
       };
-      pointers.set(threadId, { pointer, timer: setTimeout(() => unpoint(threadId, 'timeout'), seconds * 1000), end: new Set() });
+      show(thread, pointer);
       return { pointer: structuredClone(pointer) };
     },
     'windows.waitClick': async ({ threadId, timeoutSeconds = WINDOW_POINT_SECONDS.default }) => {
@@ -427,6 +453,14 @@ export function windowsMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
     'windows.unpoint': async ({ threadId }) => {
       active(threadId);
       return { cleared: unpoint(threadId, 'cleared') };
+    },
+    'windows.dismiss': async ({ threadId, boxId, answer }) => {
+      active(threadId);
+      if (!WINDOW_GUIDE_ANSWERS.includes(answer)) throw invalid(`answer must be one of ${WINDOW_GUIDE_ANSWERS.join(', ')}`, 'answer');
+      if (typeof boxId !== 'string' || boxId.length === 0 || boxId.length > 100) throw invalid('boxId must be the id of a window_guide card', 'boxId');
+      if (pointers.get(threadId)?.boxId !== boxId) throw refusal('this box is no longer shown: the agent took it away, or it ended', { boxId });
+      unpoint(threadId, answer);
+      return { ok: true };
     },
     'windows.allowlist': async ({ projectId }) => {
       if (!ctx.projects.some(project => project.id === projectId)) throw ctx.notFound('project', projectId);

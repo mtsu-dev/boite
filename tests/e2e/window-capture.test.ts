@@ -61,6 +61,17 @@ for (const [label, viewport] of [['desktop', DESKTOP], ['phone', PHONE]] as cons
     await reveal('[data-testid="window-capture"][data-kind="clip"]');
     await page.waitFor(visible('[data-testid="window-capture"][data-kind="clip"]'));
     await capture(`capture-card-${label}.png`);
+
+    // The box the demo's agent shows in Unity: its card ends it, and turns into a quiet row.
+    const shown = '[data-testid="window-guide"][data-state="shown"]';
+    await reveal(shown);
+    await page.waitFor(visible(shown));
+    await capture(`guide-shown-${label}.png`);
+    await page.click(`${shown} [data-testid="window-guide-done"]`);
+    await page.waitFor(`!document.querySelector('${shown}')`);
+    expect(await page.evaluate(`[...document.querySelectorAll('[data-testid="window-guide-verdict"]')].map(node => node.textContent)`))
+      .toEqual(['Clicked in Unity: File', 'You took the box in Unity away: Press Play to test the scene']);
+    await capture(`guide-ended-${label}.png`);
   }, 90_000);
 
   test(`Settings lists the allowed windows, confirms a removal and edits the exclusions (${label})`, async () => {

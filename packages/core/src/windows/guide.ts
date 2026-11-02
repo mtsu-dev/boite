@@ -24,20 +24,31 @@
  * your name here"), or the app opening a window ("open Build Settings"). The
  * agent learns which of the three changed, never what the control holds: the
  * OS half hands the guide a hash of the value, not its text.
+ *
+ * The box is click-through, so the person answers it elsewhere: its card in
+ * the conversation (a `window_guide` part, on every client of the owner)
+ * offers Done and I cannot find it, and Escape pressed anywhere on the machine
+ * is Done. Either ends the box as unpoint does, and the agent hears which from
+ * its wait, or as a message, whether or not the box was drawn with `notify`.
  */
 import {
   WINDOW_POINT_LABEL_MAX,
   WINDOW_POINT_PAD,
   WINDOW_POINT_SECONDS,
+  WINDOW_GUIDE_ANSWERS,
   WINDOW_POINTER_UNTIL,
   WINDOW_READ_LIMIT,
   windowCropError,
+  type Message,
+  type MessagePart,
   type RpcParams,
   type RpcResult,
   type ThreadSummary,
   type WindowControl,
   type WindowChange,
   type WindowCrop,
+  type WindowGuideAnswer,
+  type WindowGuideEnd,
   type WindowOpened,
   type WindowPointer,
   type WindowPointerUntil,
@@ -170,10 +181,18 @@ interface Shown {
   known?: Set<string>;
   /** For `window` on a menu item: when the menu closed, the window it opens still to come. */
   menuClosedAt?: number;
+  /** Escape was down at the last look: a press counts once it starts, not while a key held before the box is still down. */
+  escapeHeld: boolean;
+  /** The box's card in the conversation, null when it had no turn to show in. */
+  card: { messageId: string; part: GuidePart } | null;
 }
 
+type GuidePart = Extract<MessagePart, { type: 'window_guide' }>;
+
 type BoxEnd = WindowWaitEnd | 'clicked' | { changed: WindowChange } | { opened: WindowOpened };
-const endName = (end: BoxEnd) => typeof end === 'string' ? end : 'changed' in end ? 'changed' : 'opened';
+const endName = (end: BoxEnd): WindowGuideEnd => typeof end === 'string' ? end : 'changed' in end ? 'changed' : 'opened';
+/** The person ended the box: the agent hears it even from a box drawn without `notify`. */
+const answered = (end: BoxEnd): end is WindowGuideAnswer => end === 'dismissed' || end === 'missing';
 
 /** The frame around a Chromium window a conversation guides in. */
 interface Frame {
@@ -350,9 +369,11 @@ export class WindowGuides {
       ...(notify ? { notify: true as const } : {}),
       ...(until !== 'click' ? { until } : {}),
     };
+    let escapeHeld = true;
+    try { escapeHeld = guide.escape(); } catch { /* read again at the next look */ }
     const shown: Shown = {
       pointer, window, boxId, screen: frame.minimized ? null : screen, waiters: new Set(), tracked, control: control ?? null, popup: control?.popup ?? null, notify, clicks: null,
-      until, watch: null, ...(until === 'change' ? { baseline } : {}), ...(known ? { known } : {}),
+      until, watch: null, escapeHeld, card: null, ...(until === 'change' ? { baseline } : {}), ...(known ? { known } : {}),
       // Settled already where it was read: the box shows at once.
       ...(tracked && !frame.minimized ? { seen: { rect: { left: box.x, top: box.y, width: box.width, height: box.height }, since: 0 } } : {}),
       follow: setInterval(() => this.#follow(thread.id, shown, guide), this.#followMs),
@@ -361,6 +382,7 @@ export class WindowGuides {
     shown.follow.unref?.();
     shown.expiry.unref?.();
     this.#shown.set(thread.id, shown);
+    shown.card = this.#card(thread.id, shown);
     if (until !== 'click') {
       shown.watch = setInterval(() => this.#watchState(thread.id, shown, guide), this.#watchMs);
       shown.watch.unref?.();
@@ -386,6 +408,8 @@ export class WindowGuides {
       shown.pointer.expiresAt = until;
       shown.expiry = setTimeout(() => this.#remove(thread.id, 'timeout', shown), until - Date.now());
       shown.expiry.unref?.();
+      // The card offers its answers for as long as the box now stays.
+      if (shown.card) this.#foldCard(thread.id, shown.card, { expiresAt: until });
     }
     const end = await new Promise<BoxEnd>(resolve => {
       const timer = setTimeout(() => finish('timeout'), seconds * 1000);
@@ -480,6 +504,10 @@ export class WindowGuides {
           : `boite window read --id ${opened.readWindowId}, which lists its controls first (in popup ${opened.windowId})`;
         text = `Boite: ${pointer.process} opened window ${opened.windowId} "${opened.title}" after the box on ${where}; the box is gone. Read it with ${read}.`;
       }
+    } else if (why === 'dismissed') {
+      text = `Boite: the user dismissed the box on ${where} before ${awaited}, with Done or Escape; the box is gone. They may have done it another way, or want to stop: ask before pointing again.`;
+    } else if (why === 'missing') {
+      text = `Boite: the user cannot find the box on ${where}; the box is gone. It may be off screen, behind another window or on a closed menu: check with boite window screenshot, then point again or say where to look.`;
     } else {
       text = why === 'clicked' ? `Boite: the user clicked the box on ${where}; the box is gone.`
         : why === 'timeout' ? `Boite: the box on ${where} timed out without ${awaited}.`
@@ -493,6 +521,18 @@ export class WindowGuides {
   unpoint({ threadId }: RpcParams<'windows.unpoint'>, connection?: Connection): RpcResult<'windows.unpoint'> {
     this.#host.activeThread(threadId, connection);
     return { cleared: this.#remove(threadId, 'cleared') };
+  }
+
+  /** The person's answer on the box's card: only that box, so a card left from an earlier one ends nothing. */
+  dismiss({ threadId, boxId, answer }: RpcParams<'windows.dismiss'>, connection?: Connection): RpcResult<'windows.dismiss'> {
+    this.#host.activeThread(threadId, connection);
+    if (!WINDOW_GUIDE_ANSWERS.includes(answer)) throw invalidParams(`answer must be one of ${WINDOW_GUIDE_ANSWERS.join(', ')}`, { field: 'answer' });
+    if (typeof boxId !== 'string' || boxId.length === 0 || boxId.length > 100) throw invalidParams('boxId must be the id of a window_guide card', { field: 'boxId' });
+    const shown = this.#shown.get(threadId);
+    if (!shown || shown.boxId !== boxId) throw refused('this box is no longer shown: the agent took it away, or it ended', { boxId });
+    this.#core.logs.info(`The person ended the box over window ${shown.window.id} of ${shown.window.process} from its card: ${answer}`, { source: 'windows', event: 'window.dismiss', threadId, data: { windowId: shown.window.id, process: shown.window.process, answer } });
+    this.#remove(threadId, answer, shown);
+    return { ok: true };
   }
 
   /** An archived or deleted conversation's box and last read. */
@@ -585,6 +625,11 @@ export class WindowGuides {
    */
   #follow(threadId: string, shown: Shown, guide: WindowGuide): void {
     if (this.#shown.get(threadId) !== shown) return;
+    if (this.#escaped(shown, guide)) {
+      this.#core.logs.info(`The person pressed Escape on the box over window ${shown.window.id} of ${shown.window.process}`, { source: 'windows', event: 'window.escape', threadId, data: { windowId: shown.window.id, process: shown.window.process } });
+      this.#remove(threadId, 'dismissed', shown);
+      return;
+    }
     const frame = guide.frame(shown.window.id);
     if (frame === null) {
       // The window that opened may be the one that replaced it.
@@ -644,6 +689,47 @@ export class WindowGuides {
     if (sameRect(screen, shown.screen)) return;
     shown.screen = screen;
     this.#core.subscribers.pointer({ id: shown.boxId, rect: screen, label: shown.pointer.label, look: shown.pointer.look });
+  }
+
+  /** Whether Escape went down since the last look; a read that fails counts as no press. */
+  #escaped(shown: Shown, guide: WindowGuide): boolean {
+    let down: boolean;
+    try { down = guide.escape(); } catch { return false; }
+    const pressed = down && !shown.escapeHeld;
+    shown.escapeHeld = down;
+    return pressed;
+  }
+
+  /** Posts the box's card, which offers the person Done and I cannot find it; null with no turn to show it in. */
+  #card(threadId: string, shown: Shown): Shown['card'] {
+    const journal = this.#core.journal;
+    if (journal.isClosed()) return null;
+    const turn = journal.runningTurn(threadId) ?? journal.lastTurn(threadId);
+    if (turn === null) return null;
+    const { pointer } = shown;
+    const part: GuidePart = {
+      type: 'window_guide', boxId: shown.boxId, process: pointer.process, label: pointer.label,
+      ...(pointer.control ? { control: { ...pointer.control } } : {}), expiresAt: pointer.expiresAt, end: null,
+    };
+    const message: Message = { id: newId('msg_'), threadId, turnId: turn.id, role: 'assistant', parts: [part], state: 'complete', createdAt: Date.now() };
+    journal.append({ type: 'message.started', threadId, version: 1, payload: message }, () => journal.putMessage(message));
+    this.#core.bus.emit('message.started', message);
+    this.#core.bus.emit('message.completed', { threadId, messageId: message.id, state: 'complete' });
+    return { messageId: message.id, part };
+  }
+
+  /** Rewrites the box's card on every client, as a consent card is folded once answered. */
+  #foldCard(threadId: string, card: NonNullable<Shown['card']>, change: Partial<Pick<GuidePart, 'expiresAt' | 'end'>>): void {
+    const journal = this.#core.journal;
+    card.part = { ...card.part, ...change };
+    // A deleted conversation has no card left to fold.
+    if (journal.isClosed() || journal.getThread(threadId) === null) return;
+    const part = card.part;
+    journal.append(
+      { type: 'message.part', threadId, version: 1, payload: { messageId: card.messageId, partIndex: 0, part } },
+      () => journal.setMessagePart(card.messageId, 0, part),
+    );
+    this.#core.bus.emit('message.part', { threadId, messageId: card.messageId, partIndex: 0, part });
   }
 
   /** Looks again, at most once a second, for the control the app dropped: a list that re-renders its rows, or one scrolled far enough to recycle them. */
@@ -741,7 +827,8 @@ export class WindowGuides {
     clearTimeout(shown.expiry);
     if (shown.clicks) clearInterval(shown.clicks);
     if (shown.watch) clearInterval(shown.watch);
-    if (shown.notify && shown.waiters.size === 0 && why !== 'cleared') this.#tell(threadId, shown, why);
+    if ((shown.notify || answered(why)) && shown.waiters.size === 0 && why !== 'cleared') this.#tell(threadId, shown, why);
+    if (shown.card) this.#foldCard(threadId, shown.card, { end: endName(why) });
     shown.tracked?.release();
     shown.tracked = null;
     this.#frameLater(threadId);

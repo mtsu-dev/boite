@@ -11,7 +11,7 @@ import type { ActivityTurn } from './threads';
 import type { TeamAsk, TeamPostRef } from './teams';
 import type { Turn } from './turns';
 import type { InlineView, ViewCheckCapture } from './view.ts';
-import type { WindowCaptureKind, WindowConsentAnswer, WindowConsentKind } from './windows';
+import type { WindowCaptureKind, WindowConsentAnswer, WindowConsentKind, WindowGuideEnd } from './windows';
 
 export type MessageRole = 'user' | 'assistant' | 'system';
 
@@ -252,6 +252,14 @@ export type MessagePart =
    * restarted. The window's title is left out: the agent can read its thread.
    */
   | { type: 'window_consent'; requestId: string; kind: WindowConsentKind; process: string; path: string; expiresAt: Timestamp; answer: WindowConsentAnswer | 'expired' | null }
+  /**
+   * A box `boite window point` shows on the screen of the core's machine.
+   * While `end` is null and `expiresAt` lies ahead, every client of the owner
+   * offers Done and I cannot find it (`windows.dismiss` with `boxId`); the
+   * core sets `end` once the box goes, or when it stops. `label` is what the
+   * box says, `control` the control it shows, as the agent's `WindowPointer`.
+   */
+  | { type: 'window_guide'; boxId: string; process: string; label: string; control?: { type: string; name: string }; expiresAt: Timestamp; end: WindowGuideEnd | null }
   | { type: 'error'; message: string };
 
 export interface Message {

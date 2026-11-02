@@ -1,7 +1,7 @@
 /**
  * `boite window read`, `point` and `wait-click` on Windows, through `bun:ffi`:
  * the controls of a window (`window-controls.ts`), where a window lies, the
- * mouse's state and the windows an app has open. `platform/windows/index.ts` loads it on first use, never
+ * mouse's and Escape's state and the windows an app has open. `platform/windows/index.ts` loads it on first use, never
  * at startup.
  *
  * The box itself is drawn by the desktop app (`pointer_window.rs` in the
@@ -70,6 +70,7 @@ const kernel32 = () => (kernel32Symbols ??= loadKernel32());
 
 const VK_LBUTTON = 0x01;
 const VK_RBUTTON = 0x02;
+const VK_ESCAPE = 0x1b;
 const SM_SWAPBUTTON = 23;
 const ZBID_DESKTOP = 1;
 
@@ -262,6 +263,15 @@ function mouse(): { pressed: boolean; x: number; y: number } {
   return { pressed, x: point[0]!, y: point[1]! };
 }
 
+/**
+ * Escape's state, read as `mouse` reads the buttons: a poll of the key, not a
+ * keyboard hook, so the key still reaches the window in front (it closes a
+ * menu there too) and nothing else typed is seen.
+ */
+function escape(): boolean {
+  return (user32().GetAsyncKeyState(VK_ESCAPE) & 0x8000) !== 0;
+}
+
 export async function loadWindowGuide(): Promise<WindowGuide | { unavailable: string }> {
   if (process.platform !== 'win32') return { unavailable: 'the on-screen guide needs Windows' };
   try {
@@ -300,6 +310,7 @@ export async function loadWindowGuide(): Promise<WindowGuide | { unavailable: st
     },
     frame: frameOf,
     mouse,
+    escape,
     foreground,
     appWindows,
   };

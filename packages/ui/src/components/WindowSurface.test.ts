@@ -9,6 +9,7 @@ import { liveViews } from '../lib/live-view.svelte';
 import { confirm } from '../lib/confirm.svelte';
 import WindowSurface from './WindowSurface.svelte';
 import WindowConsentCard from './WindowConsentCard.svelte';
+import WindowGuideCard from './WindowGuideCard.svelte';
 import WindowAllowlistCard from './WindowAllowlistCard.svelte';
 
 let apps: ReturnType<typeof mount>[] = [], client: FakeClient, store: Store;
@@ -138,6 +139,47 @@ test('the consent card answers the waiting capture, shows a refusal and turns ov
 
   apps.push(mount(WindowConsentCard, { target: document.body, props: { store, threadId: thread, agent: 'Claude', part: { ...posted!, expiresAt: Date.now() - 1 } } })); await settle();
   expect($('window-consent-verdict')!.textContent).toBe('Not answered in time: blender.exe');
+});
+
+test("the guide card ends the box it names, answers a wait with the person's choice and turns over once the box ended", async () => {
+  type GuidePart = Extract<MessagePart, { type: 'window_guide' }>;
+  const parts: GuidePart[] = [];
+  const off = client.on('message.part', ({ part }) => { if (part?.type === 'window_guide') parts.push(part); });
+  await client.call('windows.read', { threadId: thread, target: { process: 'Unity.exe' } });
+  const { pointer } = await client.call('windows.point', { threadId: thread, name: 'Play', target: { process: 'Unity.exe' }, label: 'Press Play' });
+  await settle();
+  const posted = parts.at(-1)!;
+  expect(posted).toMatchObject({ process: 'Unity.exe', label: 'Press Play', control: { type: 'Button', name: 'Play' }, end: null, expiresAt: pointer.expiresAt });
+  const calls = vi.spyOn(client, 'call');
+  apps.push(mount(WindowGuideCard, { target: document.body, props: { store, threadId: thread, part: posted } })); await settle();
+  expect($('window-guide')!.dataset.state).toBe('shown');
+  expect($('window-guide-what')!.textContent).toBe('Press Play');
+  expect($('window-guide')!.textContent).toContain('It shows where to click in Unity. Esc on that computer also takes it away.');
+
+  // The agent waits on the box: I can't find it ends the wait with that answer, and the card on every client folds.
+  const waiting = client.call('windows.waitClick', { threadId: thread, timeoutSeconds: 5 });
+  $<HTMLButtonElement>('window-guide-missing')!.click(); await settle();
+  expect(calls).toHaveBeenCalledWith('windows.dismiss', { threadId: thread, boxId: posted.boxId, answer: 'missing' });
+  expect(await waiting).toEqual({ clicked: false, reason: 'missing' });
+  off();
+  expect(parts.at(-1)).toMatchObject({ boxId: posted.boxId, end: 'missing' });
+  await unmount(apps.pop()!);
+
+  // A card left from that box: Done no longer finds it, and says so.
+  apps.push(mount(WindowGuideCard, { target: document.body, props: { store, threadId: thread, part: posted } })); await settle();
+  $<HTMLButtonElement>('window-guide-done')!.click(); await settle();
+  expect($('window-guide-error')!.textContent).toContain('no longer shown');
+  expect($<HTMLButtonElement>('window-guide-done')!.disabled).toBe(false);
+  await unmount(apps.pop()!);
+
+  apps.push(mount(WindowGuideCard, { target: document.body, props: { store, threadId: thread, part: parts.at(-1)! } })); await settle();
+  expect($('window-guide')!.dataset.state).toBe('ended');
+  expect($('window-guide-verdict')!.textContent).toBe('You could not find the box in Unity: Press Play');
+  expect($('window-guide-done')).toBeNull();
+  await unmount(apps.pop()!);
+
+  apps.push(mount(WindowGuideCard, { target: document.body, props: { store, threadId: thread, part: { ...posted, label: '', control: undefined, expiresAt: Date.now() - 1 } } })); await settle();
+  expect($('window-guide-verdict')!.textContent).toBe('The box in Unity timed out');
 });
 
 test('the allowed apps list removes an app only after the confirmation', async () => {

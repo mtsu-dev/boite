@@ -52,7 +52,10 @@ export const WINDOW_HELP = `boite window <command> [args] [--json]
                                  --round draws a pill, a circle around an icon;
                                  --pad sets the gap around the control (${WINDOW_POINT_PAD.default} px, ${WINDOW_POINT_PAD.max} at most).
                                  point returns at once: the click, or the box timing
-                                 out, arrives later as a message.
+                                 out, arrives later as a message. The user can end
+                                 the box from its card in the conversation (Done, or
+                                 I cannot find it) or with Escape: you hear which,
+                                 as a message or from wait.
                                  --until sets what ends the box instead of a click:
                                  change: the control's value, check state or selection
                                  changes (a typed value once the user pauses); you
@@ -153,6 +156,8 @@ function waitLine(result: RpcResult<'windows.waitClick'>): string {
   }
   return result.reason === 'timeout' ? 'not in time: the box is still shown, wait again or point elsewhere'
     : result.reason === 'gone' ? 'the window closed: the box is gone'
+    : result.reason === 'dismissed' ? 'dismissed: the user ended the box with Done or Escape before it was seen; it is gone. Ask before pointing again'
+    : result.reason === 'missing' ? 'not found: the user cannot find the box; it is gone. Check with a screenshot, then point again or say where to look'
     : 'the box was taken away first';
 }
 

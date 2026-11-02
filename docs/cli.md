@@ -255,7 +255,9 @@ working. `--until change` ends the box when the control's value, check state or
 selection changes instead (the agent learns which, never the value), and
 `--until window` when the app opens a window or dialog, with its id and title to
 read next. `wait` (or `wait-click`) blocks until that happens instead, and
-`unpoint` takes the box away. See
+`unpoint` takes the box away. The user can end the box too, with Done or I
+can't find it on its card in the conversation, or Escape on the machine: the
+agent hears which from `wait`, or as a message. See
 [guiding the user](windows.md#guiding-the-user).
 
 ## Virtual desktop

@@ -295,6 +295,10 @@ export class DesktopWindows {
     return this.#guide.unpoint(params, connection);
   }
 
+  dismiss(params: RpcParams<'windows.dismiss'>, connection?: Connection): RpcResult<'windows.dismiss'> {
+    return this.#guide.dismiss(params, connection);
+  }
+
   /** What an archived or deleted conversation leaves: its panel, its box and the captures it waits on. */
   release(threadId: string): void {
     this.#guide.release(threadId);

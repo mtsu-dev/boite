@@ -112,6 +112,9 @@ export const DEVICE_METHODS: ReadonlySet<RpcMethodName> = new Set<RpcMethodName>
   // Show, the windows the agent could list, emptying the panel, and the owner's answer to a capture consent card,
   // which the phone shows like a question. No capture to a file, no input, and the allowed apps stay with the owner.
   'windows.list', 'windows.frame', 'windows.close', 'windows.consent',
+  // The person's answer on a box's card in the subscribed conversation: Done or I cannot find it takes the box off
+  // this machine's screen, as the agent's unpoint would, and tells the agent which. It reads and sends no window anything.
+  'windows.dismiss',
   'threads.create',
   // Composing a phone draft uses the same creation authority, with no prompt or arbitrary executable.
   'drafts.prepare', 'drafts.release',
@@ -391,6 +394,7 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
   ['desktop.tool', 'the path of the pinned agent-desktop Boite installs for its desktop commands, which it could download itself'],
   // windows.frame stays with the owner and paired devices: the stream is for the person watching, a screenshot gives
   // the agent the window. windows.consent, windows.allowlist and windows.revoke are the owner's: the agent asks, never answers.
+  // windows.dismiss is the person's answer to a box: the agent ends its own box with windows.unpoint.
   // devices.stream and devices.clipboard stay with the owner and paired devices: the video is for the person
   // watching, a screenshot already gives the agent the screen, and the device's clipboard can hold what that person copied.
   ['questions.ask','a question card on its own thread that it does not wait on; the answer comes back as a message'],
