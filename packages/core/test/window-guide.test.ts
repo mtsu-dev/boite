@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { AGENT_ENV, type MessagePart, type WindowPointerLook } from '@boite/contracts';
 import { runCli } from '../src/cli.ts';
 import { connect, type CoreClient } from '../src/client.ts';
-import type { NativeControl, NativeWindow, ScreenRect, WindowCapture, WindowGuide } from '../src/platform/types.ts';
+import type { AppWindow, ControlState, NativeControl, NativeWindow, ScreenRect, WindowCapture, WindowGuide } from '../src/platform/types.ts';
 import { goneError } from '../src/platform/window-pixels.ts';
 import { DesktopWindows } from '../src/windows/service.ts';
 import { echoThread, startTestCore, type TestCore } from './harness.ts';
@@ -12,6 +12,7 @@ import { thrown } from './settle.ts';
 const UNITY = 'C:\\Program Files\\Unity\\Hub\\Editor\\6000.0\\Editor\\Unity.exe';
 const FOLLOW_MS = 10;
 const SETTLE_MS = 120;
+const VALUE_SETTLE_MS = 150;
 
 function win(id: string, overrides: Partial<NativeWindow> = {}): NativeWindow {
   return { id, pid: Number(id), path: UNITY, process: 'Unity.exe', title: `Scene ${id}`, className: 'UnityContainerWndClass', width: 400, height: 300, minimized: false, ...overrides };
@@ -54,7 +55,9 @@ function fakeDesktop() {
    * or null once the app dropped it. Dropping it ends every element held so
    * far, as a re-rendered row does; it is found again once it has a rectangle.
    */
-  const live = { rect: null as ScreenRect | 'hidden' | null, generation: 0, held: 0, asked: [] as NativeControl[] };
+  const live = { rect: null as ScreenRect | 'hidden' | null, generation: 0, held: 0, asked: [] as NativeControl[], state: {} as ControlState };
+  /** Unity's windows with a title bar, its dialogs included: what a box with `until: 'window'` watches. */
+  const apps: AppWindow[] = [{ id: '101', title: 'Scene 101' }];
   const drop = () => { live.rect = null; live.generation += 1; };
   /** The window in front; the desktop app's frame brings one there. */
   const front = { id: '' };
@@ -76,6 +79,7 @@ function fakeDesktop() {
     },
     mouse: () => ({ ...mouse }),
     foreground: id => front.id === id,
+    appWindows: pid => pid === 101 ? apps.map(app => ({ ...app })) : [],
     track: async (_id, wanted) => {
       live.asked.push(wanted);
       if (live.rect === null) return null;
@@ -84,11 +88,12 @@ function fakeDesktop() {
       live.held += 1;
       return {
         rect: () => !held || generation !== live.generation || live.rect === null ? 'gone' : typeof live.rect === 'string' ? live.rect : { ...live.rect },
+        state: () => !held || generation !== live.generation ? 'gone' : { ...live.state },
         release: () => { if (held) live.held -= 1; held = false; },
       };
     },
   };
-  return { windows, frames, mouse, capture, guide, live, drop, front, menuFrame };
+  return { windows, frames, mouse, capture, guide, live, drop, front, menuFrame, apps };
 }
 
 /** Retries an assertion until it holds: the box events reach the desktop app's socket, not the caller's. */
@@ -122,7 +127,7 @@ describe('window guide', () => {
     core.windows.stop();
     core.windows = new DesktopWindows(harness.core, {
       backend: async () => desk.capture, guide: async () => desk.guide, consentTimeoutMs: 60_000,
-      tempRoot: join(harness.dataDir, 'window-temp'), guideTiming: { followMs: FOLLOW_MS, mouseMs: 5, settleMs: SETTLE_MS, frameIdleMs: 150 },
+      tempRoot: join(harness.dataDir, 'window-temp'), guideTiming: { followMs: FOLLOW_MS, mouseMs: 5, settleMs: SETTLE_MS, frameIdleMs: 150, watchMs: 10, valueSettleMs: VALUE_SETTLE_MS },
     });
     await owner.call('threads.subscribe', { threadId });
     const finished = owner.next('turn.finished', turn => turn.threadId === threadId, 10_000);
@@ -419,6 +424,97 @@ describe('window guide', () => {
     expect(await thrown(agent.call('windows.point', { threadId, control: 1 }))).toThrow('the menu or popup #1 lay in has closed');
   });
 
+  test('a box with until change ends once a typed value settles, or at once on a toggle, and never says what the control holds', async () => {
+    const told = () => harness.core.journal.listMessages(threadId).filter(message => message.role === 'user').flatMap(message => message.parts)
+      .flatMap(part => part.type === 'text' && part.text.startsWith('Boite: ') ? [part.text] : []);
+    expect(await thrown(agent.call('windows.point', { threadId, target: { id: '101' }, at: { x: 0, y: 0, width: 10, height: 10, unit: 'px' }, until: 'change' }))).toThrow('until change watches a control');
+    expect(await thrown(agent.call('windows.point', { threadId, control: 1, until: 'hover' as 'click' }))).toThrow('until must be one of click, change, window');
+    const answered = answer('always');
+    await agent.call('windows.read', { threadId, target: { id: '101' } });
+    await answered;
+    desk.live.rect = { left: 1200, top: 530, width: 40, height: 20 };
+    // A button holds nothing to change: refused, and the element is let go.
+    expect(await thrown(agent.call('windows.point', { threadId, control: 3, until: 'change' }))).toThrow('Button "Play" has no value, check state or selection to watch');
+    expect(desk.live.held).toBe(0);
+
+    // The OS half hands over a hash of the value, never its text.
+    desk.live.state = { value: 'hash-empty' };
+    const { pointer } = await agent.call('windows.point', { threadId, control: 3, until: 'change', notify: true, label: 'Type your name' });
+    expect(pointer.until).toBe('change');
+    // A click on the field is not the change: the box stays.
+    Object.assign(desk.mouse, { pressed: true, x: 1210, y: 535 });
+    await Bun.sleep(60);
+    Object.assign(desk.mouse, { pressed: false });
+    // Each key changes the value: the box waits until it stays put.
+    for (const typed of ['hash-T', 'hash-Ti', 'hash-Tim']) {
+      desk.live.state = { value: typed };
+      await Bun.sleep(VALUE_SETTLE_MS / 3);
+      expect(boxes[0]!.rect).not.toBeNull();
+    }
+    await eventually(() => expect(boxes[0]!.rect).toBeNull());
+    await eventually(() => expect(told()).toEqual(['Boite: the user changed the value of Button "Play" in window 101 (Unity.exe); the box is gone. What it holds now is not reported: ask the user if it matters.']), 5000);
+    expect(desk.live.held).toBe(0);
+
+    // Typed, then erased: no change. A toggle ends a blocking wait at once.
+    desk.live.state = { value: 'hash-empty', toggle: 0 };
+    await agent.call('windows.point', { threadId, control: 3, until: 'change' });
+    const waiting = agent.call('windows.waitClick', { threadId, timeoutSeconds: 5 });
+    desk.live.state = { value: 'hash-x', toggle: 0 };
+    await Bun.sleep(VALUE_SETTLE_MS / 3);
+    desk.live.state = { value: 'hash-empty', toggle: 0 };
+    await Bun.sleep(VALUE_SETTLE_MS * 2);
+    expect(boxes.at(-1)!.rect).not.toBeNull();
+    desk.live.state = { value: 'hash-empty', toggle: 1 };
+    expect(await waiting).toMatchObject({ clicked: false, changed: 'toggle', pointer: { until: 'change', control: { name: 'Play' } } });
+
+    // Timed out: said once, as a change not seen.
+    desk.live.state = { selected: false };
+    await agent.call('windows.point', { threadId, control: 3, until: 'change', notify: true, seconds: 1 });
+    await eventually(() => expect(told()).toHaveLength(2), 5000);
+    expect(told()[1]).toBe('Boite: the box on Button "Play" in window 101 (Unity.exe) timed out without a change.');
+  }, 15_000);
+
+  test('a box with until window ends when the app opens a window or dialog, with its id, title and where to read it', async () => {
+    const told = () => harness.core.journal.listMessages(threadId).filter(message => message.role === 'user').flatMap(message => message.parts)
+      .flatMap(part => part.type === 'text' && part.text.startsWith('Boite: ') ? [part.text] : []);
+    // A rectangle reads nothing, but the titles of the app's windows are read: the consent of a read.
+    const answered = answer('always');
+    await agent.call('windows.point', { threadId, target: { id: '101' }, at: { x: 0, y: 0, width: 40, height: 20, unit: 'px' }, until: 'window' });
+    await answered;
+    const waiting = agent.call('windows.waitClick', { threadId, timeoutSeconds: 5 });
+    // A click on the box is not the window.
+    Object.assign(desk.mouse, { pressed: true, x: 1010, y: 510 });
+    await Bun.sleep(60);
+    Object.assign(desk.mouse, { pressed: false });
+    expect(boxes[0]!.rect).not.toBeNull();
+    desk.apps.push({ id: '404', title: 'Build\nSettings', owner: '101' });
+    expect(await waiting).toMatchObject({ clicked: false, opened: { windowId: '404', title: 'Build Settings', readWindowId: '101' }, pointer: { until: 'window' } });
+    await eventually(() => expect(boxes[0]!.rect).toBeNull());
+
+    // On a menu item: the click closes the menu first; the box hides and still hears the window open.
+    desk.frames.set('303', desk.menuFrame);
+    await agent.call('windows.read', { threadId, target: { id: '101' } });
+    desk.live.rect = { left: 990, top: 530, width: 40, height: 20 };
+    await agent.call('windows.point', { threadId, control: 1, until: 'window', notify: true });
+    await eventually(() => expect(boxes.at(-1)!.rect).not.toBeNull());
+    desk.frames.delete('303');
+    await eventually(() => expect(boxes.at(-1)!.rect).toBeNull());
+    await Bun.sleep(50);
+    expect(told()).toEqual([]);
+    desk.apps.push({ id: '505', title: 'Project Settings' });
+    await eventually(() => expect(told()).toEqual(['Boite: Unity.exe opened window 505 "Project Settings" after the box on MenuItem "Build Settings" in window 101 (Unity.exe); the box is gone. Read it with boite window read --id 505.']), 5000);
+
+    // Taken away by the agent: a window opening later says nothing. Its window closing: said.
+    await agent.call('windows.point', { threadId, target: { id: '101' }, at: { x: 0, y: 0, width: 40, height: 20, unit: 'px' }, until: 'window', notify: true });
+    await agent.call('windows.unpoint', { threadId });
+    desk.apps.push({ id: '606', title: 'Later' });
+    await Bun.sleep(80);
+    expect(told()).toHaveLength(1);
+    await agent.call('windows.point', { threadId, target: { id: '101' }, at: { x: 0, y: 0, width: 40, height: 20, unit: 'px' }, until: 'window', notify: true });
+    desk.frames.delete('101');
+    await eventually(() => expect(told()[1]).toBe('Boite: the window under the box on the 40x20 rectangle at 0,0 in window 101 (Unity.exe) closed before a new window.'), 5000);
+  }, 15_000);
+
   test('an archived conversation takes its box away', async () => {
     await agent.call('windows.point', { threadId, target: { id: '101' }, at: { x: 0, y: 0, width: 10, height: 10, unit: 'px' } });
     await owner.call('threads.archive', { threadId });
@@ -468,6 +564,10 @@ describe('window guide', () => {
     Object.assign(desk.mouse, { pressed: false });
     setTimeout(() => Object.assign(desk.mouse, { pressed: true, x: 1010, y: 510 }), 50);
     expect((await run('wait-click', '--timeout', '5')).out).toBe('clicked: the user pressed inside the box, which is gone now\n');
+    expect((await run('point', '--id', '101', '--at', '0,0,10,10', '--until', 'window')).out).toMatch(/^pointing at 0,0 10x10 of window 101 \(Unity.exe\) for 120 s\nkeep working: the new window, or the box timing out, arrives as a message\n$/);
+    setTimeout(() => desk.apps.push({ id: '404', title: 'Build Settings', owner: '101' }), 50);
+    expect((await run('wait', '--timeout', '5')).out).toBe('opened: window 404 "Build Settings"; the box is gone. Read it with boite window read --id 101: its controls come first (in popup 404)\n');
+    expect((await run('point', '2', '--until', 'hover')).error).toContain('window point --until takes click, change, window');
     expect((await run('unpoint')).out).toBe('no box was shown\n');
   });
 });

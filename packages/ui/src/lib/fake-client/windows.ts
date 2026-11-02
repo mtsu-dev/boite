@@ -1,9 +1,9 @@
 import {
   RpcErrorCode, WINDOW_CAPTURE_EXCLUDED, WINDOW_CLIP_LIMITS, WINDOW_CONSENT_ANSWERS, WINDOW_CONSENT_TIMEOUT_MS, WINDOW_POINT_LABEL_MAX, WINDOW_POINT_PAD, WINDOW_POINT_SECONDS,
-  WINDOW_READ_LIMIT, WINDOW_SHOT_MAX, WINDOW_THUMBNAIL_MAX,
+  WINDOW_POINTER_UNTIL, WINDOW_READ_LIMIT, WINDOW_SHOT_MAX, WINDOW_THUMBNAIL_MAX,
   windowCropError, windowIdError, windowTargetError,
   type AllowedWindowApp, type DesktopWindow, type Message, type MessagePart, type Thread, type WindowConsentAnswer, type WindowConsentKind,
-  type WindowControl, type WindowPointer, type WindowTarget, type WindowWatch
+  type WindowControl, type WindowOpened, type WindowPointer, type WindowTarget, type WindowWatch
 } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import { fakeWindowPicture } from './window-screen';
@@ -58,6 +58,10 @@ interface Consent {
 
 /** Unity's File menu, its own window over the editor's: a read lists it once a box on File was clicked. */
 const FILE_MENU = { window: '132460', of: '132456', after: 'File' };
+/** The dialog a box with `until: 'window'` hears Unity open: owned by the editor, so read with it. */
+const OPENED: WindowOpened = { windowId: '132470', title: 'Build Profiles', readWindowId: '132456' };
+
+type BoxEnd = 'clicked' | 'changed' | 'opened' | 'timeout' | 'cleared';
 const FILE_MENU_ITEMS: Omit<WindowControl, 'id'>[] = ['New Scene', 'Open Scene', 'Save', 'Build Settings...', 'Build And Run']
   .map((name, index) => ({ type: 'MenuItem', name, popup: FILE_MENU.window, x: 8, y: 54 + index * 26, width: 240, height: 24 }));
 
@@ -97,13 +101,13 @@ export function windowsMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
   const watches = new Map<string, WindowWatch>();
   /** Each conversation's last read and its box: a fake person clicks the box a second after a wait starts. */
   const reads = new Map<string, { window: FakeWindow; controls: WindowControl[] }>();
-  const pointers = new Map<string, { pointer: WindowPointer; timer: ReturnType<typeof setTimeout>; end: Set<(reason: 'clicked' | 'timeout' | 'cleared') => void> }>();
+  const pointers = new Map<string, { pointer: WindowPointer; timer: ReturnType<typeof setTimeout>; end: Set<(reason: BoxEnd) => void> }>();
   /** The conversations whose person opened Unity's File menu by clicking a box on File. */
   const menus = new Set<string>();
   /** What a read of `window` finds: the open menu's items first, as the core lists a popup's. */
   const controlsOf = (threadId: string, window: FakeWindow): WindowControl[] =>
     [...(window.id === FILE_MENU.of && menus.has(threadId) ? FILE_MENU_ITEMS : []), ...(CONTROLS[window.id] ?? [])].map((control, index) => ({ id: index + 1, ...control }));
-  const unpoint = (threadId: string, reason: 'clicked' | 'timeout' | 'cleared') => {
+  const unpoint = (threadId: string, reason: BoxEnd) => {
     const shown = pointers.get(threadId);
     if (!shown) return false;
     // Clicking File opens its menu; any other click, the menu's own included, closes it.
@@ -348,7 +352,7 @@ export function windowsMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
       const matching = wanted ? controls.filter(control => control.name.toLowerCase().includes(wanted)) : controls;
       return { windowId: window.id, process: window.process, controls: structuredClone(matching.slice(0, max)), total: matching.length };
     },
-    'windows.point': async ({ threadId, control: id, target, name, at, label = '', seconds = WINDOW_POINT_SECONDS.default, shape = 'box', pad = WINDOW_POINT_PAD.default, notify = false, any }) => {
+    'windows.point': async ({ threadId, control: id, target, name, at, label = '', seconds = WINDOW_POINT_SECONDS.default, shape = 'box', pad = WINDOW_POINT_PAD.default, notify = false, any, until = 'click' }) => {
       const thread = active(threadId);
       if ([id, name, at].filter(value => value !== undefined).length !== 1) throw invalid('point needs exactly one of control, name or at', 'control');
       if (label.length > WINDOW_POINT_LABEL_MAX) throw invalid(`label must be at most ${WINDOW_POINT_LABEL_MAX} characters with no control characters`, 'label');
@@ -357,6 +361,8 @@ export function windowsMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
       if (!Number.isInteger(pad) || pad < 0 || pad > WINDOW_POINT_PAD.max) throw invalid(`pad must be a whole number of pixels from 0 to ${WINDOW_POINT_PAD.max}`, 'pad');
       if (typeof notify !== 'boolean') throw invalid('notify must be true or false', 'notify');
       if (any !== undefined && typeof any !== 'boolean') throw invalid('any must be true or false', 'any');
+      if (!WINDOW_POINTER_UNTIL.includes(until)) throw invalid(`until must be one of ${WINDOW_POINTER_UNTIL.join(', ')}`, 'until');
+      if (until === 'change' && at !== undefined) throw invalid('until change watches a control: point at one by id or by name, not at a rectangle', 'until');
       let window: FakeWindow;
       let box: { x: number; y: number; width: number; height: number };
       let control: WindowControl | undefined;
@@ -384,6 +390,8 @@ export function windowsMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
         const problem = windowCropError(at);
         if (problem) throw refusal(problem, { field: 'at' });
         window = resolve(thread, target);
+        // Waiting for a window reads the app's window titles: the consent of a read.
+        if (until === 'window') await consent(thread, window, 'read');
         const scale = at!.unit === 'fraction' ? { x: window.width, y: window.height } : { x: 1, y: 1 };
         box = { x: Math.round(at!.x * scale.x), y: Math.round(at!.y * scale.y), width: Math.round(at!.width * scale.x), height: Math.round(at!.height * scale.y) };
       }
@@ -394,7 +402,8 @@ export function windowsMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
         x: box.x, y: box.y, width: box.width, height: box.height, expiresAt: Date.now() + seconds * 1000, look: { shape, pad },
         ...(control ? { control: { type: control.type, name: control.name } } : {}),
         ...(control?.popup ? { popup: control.popup } : {}),
-        ...(notify ? { notify: true as const } : {})
+        ...(notify ? { notify: true as const } : {}),
+        ...(until !== 'click' ? { until } : {})
       };
       pointers.set(threadId, { pointer, timer: setTimeout(() => unpoint(threadId, 'timeout'), seconds * 1000), end: new Set() });
       return { pointer: structuredClone(pointer) };
@@ -404,11 +413,16 @@ export function windowsMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
       const shown = pointers.get(threadId);
       if (!shown) throw refusal('nothing is pointed at in this conversation: run `boite window point` first', { threadId });
       const pointer = structuredClone(shown.pointer);
-      const reason = await new Promise<'clicked' | 'timeout' | 'cleared'>(done => {
-        const click = setTimeout(() => unpoint(threadId, 'clicked'), Math.min(1000, timeoutSeconds * 1000));
-        shown.end.add(reason => { clearTimeout(click); done(reason); });
+      // The fake person does what the box waits for: clicks it, types into its field or opens the dialog.
+      const happens: BoxEnd = pointer.until === 'change' ? 'changed' : pointer.until === 'window' ? 'opened' : 'clicked';
+      const reason = await new Promise<BoxEnd>(done => {
+        const act = setTimeout(() => unpoint(threadId, happens), Math.min(1000, timeoutSeconds * 1000));
+        shown.end.add(reason => { clearTimeout(act); done(reason); });
       });
-      return reason === 'clicked' ? { clicked: true, pointer } : { clicked: false, reason };
+      if (reason === 'clicked') return { clicked: true, pointer };
+      if (reason === 'changed') return { clicked: false, changed: 'value', pointer };
+      if (reason === 'opened') return { clicked: false, opened: { ...OPENED }, pointer };
+      return { clicked: false, reason };
     },
     'windows.unpoint': async ({ threadId }) => {
       active(threadId);

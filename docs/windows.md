@@ -148,14 +148,17 @@ the [Device panel](devices.md):
 
 On Windows, an agent can teach the user an app instead of acting for them: it
 reads a window's controls as text, draws a box over the one to press, and
-hears of the user's click there. Nothing is ever clicked, typed or focused
-for the user.
+hears of the user's click there, of the control changing, or of the app
+opening a window. Nothing is ever clicked, typed or focused for the user.
 
 ```sh
 boite window read --process Unity --filter play
 boite window point 3 --label "Press Play"
 boite window point --process Unity --name Window
 boite window point --process Unity --at 0.4,0.3,0.2,0.2 --label "The Scene view"
+boite window point 5 --label "Type your name" --until change
+boite window point 2 --label "Open Build Settings" --until window
+boite window wait --timeout 60
 boite window unpoint
 ```
 
@@ -182,7 +185,10 @@ boite window unpoint
     the visible windows of the same process above the target in the Z order
     that `boite window list` leaves out: a tool window, such as a Win32 menu
     (class `#32768`, with no owner), or a window the target owns, such as a
-    WinForms dropdown. A dialog of the app's other main window, another
+    WinForms dropdown or dialog. The owner is found by walking `GW_OWNER`:
+    `GetAncestor(GA_ROOTOWNER)` follows `GetParent`, which names the owner of
+    a `WS_POPUP` window only, and answered an overlapped WinForms dialog
+    itself (2026-11-02). A dialog of the app's other main window, another
     process's window, a drop shadow, a tooltip and the input method's windows
     are not. Their lines end in `(in popup <id>)`, the popup's window id,
     with coordinates still in the target window's pixels, which can lie past
@@ -259,13 +265,47 @@ boite window unpoint
   window first, reaches the conversation later as a message starting with
   `Boite:`, as an answer to `boite ask` does: steered into the running turn,
   or a turn of its own. A box the agent replaced or took away tells it
-  nothing. The RPC asks for this with `notify: true`.
-- `wait-click` blocks instead: it returns once the user presses the primary
-  mouse button inside the box, then takes the box away, and that click sends
-  no message. A button already held when the wait starts does not count. Without a click within `--timeout` (120 s by default, 600 at
-  most), the box stays for another try: a wait keeps it up until at least
-  30 s after the wait ends. The agent learns only that the click
-  happened.
+  nothing. The RPC asks for this with `notify: true`. With `--until`, the
+  message says which part of the control changed, or which window opened and
+  the `boite window read` that lists its controls.
+- `wait` (also spelled `wait-click`) blocks instead: it returns once what
+  the box waits for happens, then takes the box away, and that end sends no
+  message. For a click, the user presses the primary mouse button inside the
+  box; a button already held when the wait starts does not count. Without it
+  within `--timeout` (120 s by default, 600 at most), the box stays for
+  another try: a wait keeps it up until at least 30 s after the wait ends.
+  The agent learns only that the click happened.
+- `--until` waits for what a click alone cannot show; a click inside the box
+  then ends nothing. Both work with the message and with `wait`, time out the
+  same way and stop on `unpoint`, a new box, archiving and the window closing.
+  - `--until change` (`until: 'change'`) ends the box once the control's
+    value, check state or selection changes: the agent teaches "type your
+    name here" or "tick Remember me". It needs a control, by id or by name;
+    a rectangle is refused, and so is a control with none of the three, such
+    as a button. Every 200 ms the core asks the followed element for
+    `ValuePattern.Value` (or `RangeValuePattern.Value`),
+    `TogglePattern.ToggleState` and `SelectionItemPattern.IsSelected`. A check
+    state or a selection ends the box at once; a value ends it once it stayed
+    put for 1.5 s, so a name typed a key at a time is heard once the user
+    paused, and a value typed then erased is no change. The agent learns
+    which of the three changed (`changed: 'value' | 'toggle' |
+    'selection'`), never what the control holds: the OS half turns the value
+    into a hash before the core sees it, and nothing of it reaches a message,
+    the log or the result. The
+    agent asks the user, or reads the window, when what was typed matters.
+  - `--until window` (`until: 'window'`) ends the box once the app shows a
+    window with a title bar it did not have when the box was drawn: a main
+    window or a dialog, not a menu, a dropdown or a tooltip, which have none.
+    The agent teaches "open Build Settings". It learns the window's id and
+    title and which window to read for its controls (`opened: { windowId,
+    title, readWindowId }`): a dialog is read with the window that owns it,
+    whose read lists the dialog's controls first, `(in popup <id>)`; a window
+    nothing owns is read by its own id. Reading the titles is reading the
+    app, so `--at` with `--until window` asks the same consent as a read; by
+    id or by name the read already did. A box on a menu item hides when the
+    click closes the menu and keeps waiting up to 5 s for the window it
+    opens. The log keeps the new window's id, never its title.
+
 - The Start menu, search and the other system flyouts lie in a layer of the
   system above every app's window, the box included. `point` still answers,
   with `behind: true` and a line telling the agent to say where to click;
@@ -280,8 +320,10 @@ Privacy follows the captures': `read` and `point --name` show a consent card
 asking to read the app (`read`), refuse excluded and minimized windows and a
 turn a contact wrote into, and an allowed app reads at once. `point --at`
 reads nothing of the window, so it draws without a card, but excluded apps and
-a contact's turn are still refused. The log keeps the window id, the process,
-the control type and counts, never a control's name. `boite window read` and
+a contact's turn are still refused, and `point --at --until window` asks to
+read the app since it reads its window titles. The log keeps the window id,
+the process, the control type and counts, never a control's name, value or a
+window's title. `boite window read` and
 `point` are refused on Linux and macOS, which still have screenshots.
 
 ## Backends
@@ -340,6 +382,14 @@ the desktop app draws the box.
   refused before the call; UI Automation's connection and transaction timeouts
   (2 s and 5 s) bound a slow one. `AutoSetFocus` is off and no pattern is
   asked for, so nothing in the window changes.
+- A box with `--until change` reads three properties of its element with
+  `GetCurrentPropertyValueEx` and `ignoreDefaultValue`: plain
+  `GetCurrentPropertyValue` answered a text field's toggle state as 2 and
+  its selection as false, the properties' defaults (2026-11-02). The value's
+  text is hashed with `Bun.hash` where it is read and freed at once.
+- A box with `--until window` walks the top-level windows of the app's
+  process every 200 ms, keeping the visible, uncloaked ones with a title bar
+  (`WS_CAPTION`).
 - `point` on a control finds it once more with live elements
   (`AutomationElementMode_Full`) and keeps only the match nearest to where it
   was read. Each tick then asks that element for its current bounding
@@ -391,7 +441,10 @@ taskbar; asking where it is now took 0.3 ms (median of 20) in both.
 
 `packages/core/test/window-guide-windows.test.ts` opens a WinForms window that
 never takes the focus and reads its two buttons and its field but not its
-disabled button, then follows a button while the window moves. `PointerApp.test.ts` checks the ring and the label, and
+disabled button, then follows a button while the window moves. It types into
+the field and ticks a check box through posted messages and sees each state
+change, the typed name absent from it, and opens a dialog the form owns, found
+among the app's windows with its title and owner and read with the form. `PointerApp.test.ts` checks the ring and the label, and
 `pointer_window.rs`'s tests the window's place at 100 % and 150 %, on a
 monitor's edge and on a monitor left of the primary.
 

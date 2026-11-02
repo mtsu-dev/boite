@@ -162,7 +162,25 @@ export interface NativeControl {
  */
 export interface TrackedControl {
   rect(): ScreenRect | 'hidden' | 'gone' | 'busy';
+  /**
+   * What the control holds now, to tell that it changed: `value`, a hash of
+   * its text or number, never the text itself; `toggle`, its check state;
+   * `selected`, whether it is selected. Absent when the control has none.
+   */
+  state(): ControlState | 'gone' | 'busy';
   release(): void;
+}
+export interface ControlState {
+  value?: string;
+  toggle?: number;
+  selected?: boolean;
+}
+/** A window of an app with a title bar: a main window or a dialog. */
+export interface AppWindow {
+  id: string;
+  title: string;
+  /** The window that owns it, at the top of the chain, for a dialog; absent for a window nothing owns. */
+  owner?: string;
 }
 
 export interface WindowGuide {
@@ -190,6 +208,11 @@ export interface WindowGuide {
   mouse(): { pressed: boolean; x: number; y: number };
   /** Whether window `id` is the one in front, the one the keyboard goes to. */
   foreground(id: string): boolean;
+  /**
+   * The visible windows with a title bar of process `pid`, dialogs included;
+   * menus, dropdowns and tooltips are not among them. Throws nothing.
+   */
+  appWindows(pid: number): AppWindow[];
 }
 
 /** Delete-only access to vaults used by older Boite releases. Never read or store a value. */

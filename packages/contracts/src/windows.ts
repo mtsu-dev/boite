@@ -179,6 +179,33 @@ export interface WindowPointer {
   behind?: true;
   /** The agent hears of the click, or of the box ending without one, as a message instead of waiting. */
   notify?: true;
+  /** What ends the box besides `seconds`, when it is not a click inside it: see `WindowPointerUntil`. */
+  until?: Exclude<WindowPointerUntil, 'click'>;
+}
+
+/**
+ * What a box waits for. `click`: a press inside it. `change`: the control's
+ * value, check state or selection changes, so the agent can teach "type your
+ * name here"; it learns which of the three changed, never what the control
+ * holds. `window`: the app opens a new window or dialog, so the agent can teach
+ * "open this dialog"; it learns the window's id and title, to read it next.
+ */
+export type WindowPointerUntil = 'click' | 'change' | 'window';
+export const WINDOW_POINTER_UNTIL: readonly WindowPointerUntil[] = ['click', 'change', 'window'];
+
+/** What changed in a control a box with `until: 'change'` watched: its text or number, its check state, or whether it is selected. */
+export type WindowChange = 'value' | 'toggle' | 'selection';
+
+/** The window or dialog the app opened while a box with `until: 'window'` waited. */
+export interface WindowOpened {
+  windowId: string;
+  title: string;
+  /**
+   * The window to `windows.read` for its controls: the window itself, or for
+   * a dialog the window that owns it, which lists the dialog's controls first,
+   * marked with its `popup`.
+   */
+  readWindowId: string;
 }
 
 /**
@@ -201,7 +228,7 @@ export interface WindowPointerBox {
   frame?: { app: string; windowId: string };
 }
 
-/** Why `windows.waitClick` ended without a click. */
+/** Why `windows.waitClick` ended without what its box waited for. */
 export type WindowWaitEnd = 'timeout' | 'cleared' | 'gone';
 
 /** How long a capture waits for the owner's answer on a consent card. */
@@ -281,15 +308,25 @@ export interface WindowsRpcMethods {
    * conversation's previous box. With `notify`, the agent keeps working: the
    * click, or the box timing out or losing its window first, reaches its
    * conversation as a message, unless a `windows.waitClick` took the click.
+   * `until` sets what ends the box instead of a click (`WindowPointerUntil`):
+   * `change` needs a control, by id or by name; `until` other than `click`
+   * reads the app, so a rectangle with it asks the same consent as a read.
    */
   'windows.point': {
-    params: { threadId: string; control?: number; target?: WindowTarget; name?: string; at?: WindowCrop; label?: string; seconds?: number; shape?: WindowPointerShape; pad?: number; notify?: boolean; any?: boolean };
+    params: { threadId: string; control?: number; target?: WindowTarget; name?: string; at?: WindowCrop; label?: string; seconds?: number; shape?: WindowPointerShape; pad?: number; notify?: boolean; any?: boolean; until?: WindowPointerUntil };
     result: { pointer: WindowPointer };
   };
-  /** Waits until the person presses the primary button inside the conversation's box, then takes the box away. */
+  /**
+   * Waits for what the conversation's box waits for, then takes the box away:
+   * the person pressing the primary button inside it, or with `until`, the
+   * control changing or the app opening a window.
+   */
   'windows.waitClick': {
     params: { threadId: string; timeoutSeconds?: number };
-    result: { clicked: true; pointer: WindowPointer } | { clicked: false; reason: WindowWaitEnd };
+    result: { clicked: true; pointer: WindowPointer }
+      | { clicked: false; changed: WindowChange; pointer: WindowPointer }
+      | { clicked: false; opened: WindowOpened; pointer: WindowPointer }
+      | { clicked: false; reason: WindowWaitEnd };
   };
   /** Takes the conversation's box off the screen. */
   'windows.unpoint': { params: { threadId: string }; result: { cleared: boolean } };

@@ -14,13 +14,15 @@
  * is not responding is refused before any call, and the connection and
  * transaction timeouts bound how long a slow provider can hold the thread.
  * Nothing here focuses, invokes or changes a control: `AutoSetFocus` is off
- * and no pattern is ever asked for.
+ * and no pattern is ever asked for. A box that waits for its control to
+ * change reads three of its properties (value, toggle state, selected), and
+ * keeps a hash of the value, never its text.
  *
  * Every call goes through the interface's vtable, as in `audio-sessions.ts`.
  */
 import { CFunction, dlopen, FFIType, ptr, read, toArrayBuffer } from 'bun:ffi';
 import type { Pointer } from 'bun:ffi';
-import type { NativeControl } from '../types.ts';
+import type { ControlState, NativeControl } from '../types.ts';
 
 const PTR = FFIType.ptr;
 const U64 = FFIType.u64;
@@ -39,6 +41,7 @@ function loadOleaut32() {
   return dlopen('oleaut32.dll', {
     SysStringLen: { args: [U64], returns: U32 },
     SysFreeString: { args: [U64], returns: FFIType.void },
+    VariantClear: { args: [PTR], returns: HR },
   }).symbols;
 }
 
@@ -65,6 +68,7 @@ const SIG_PROPERTY_CONDITION: Signature = { args: [PTR, I32, PTR, PTR], returns:
 const SIG_NATIVE_ARRAY: Signature = { args: [PTR, PTR, I32, PTR], returns: HR };
 const SIG_FIND_ALL_BUILD_CACHE: Signature = { args: [PTR, I32, PTR, PTR, PTR], returns: HR };
 const SIG_INDEX_OUT: Signature = { args: [PTR, I32, PTR], returns: HR };
+const SIG_PROPERTY_EX: Signature = { args: [PTR, I32, I32, PTR], returns: HR };
 
 /** One `CFunction` per vtable slot and signature, kept for the life of the process. */
 const slotCache = new Map<Signature, Map<number, ComCall>>();
@@ -152,6 +156,8 @@ const ADD_PROPERTY = 3;
 const PUT_AUTOMATION_ELEMENT_MODE = 11;
 // IUIAutomationElement.
 const FIND_ALL_BUILD_CACHE = 8;
+/** `GetCurrentPropertyValueEx`: with `ignoreDefaultValue`, an unsupported property answers `ReservedNotSupportedValue`, not its default. */
+const GET_CURRENT_PROPERTY_VALUE_EX = 11;
 const CURRENT_IS_OFFSCREEN = 38;
 const CURRENT_BOUNDING_RECTANGLE = 43;
 const CACHED_CONTROL_TYPE = 53;
@@ -168,6 +174,12 @@ const TREE_SCOPE_DESCENDANTS = 4;
 const AUTOMATION_ELEMENT_MODE_NONE = 0;
 const AUTOMATION_ELEMENT_MODE_FULL = 1;
 const VT_I4 = 3;
+const VT_R8 = 5;
+const VT_BSTR = 8;
+const VT_BOOL = 11;
+
+/** What a box that waits for a change reads of its control: `ValuePattern.Value`, `RangeValuePattern.Value`, `TogglePattern.ToggleState`, `SelectionItemPattern.IsSelected`. */
+const STATE_PROPERTY = { value: 30045, rangeValue: 30047, toggle: 30086, selected: 30079 } as const;
 
 const PROPERTY = {
   boundingRectangle: 30001,
@@ -381,6 +393,35 @@ export function readControls(hwnd: bigint, limit: number, any = false): { contro
   return { controls, total };
 }
 
+/**
+ * One property of a live element, as a VARIANT: a string, a number or a
+ * boolean, null when the control does not support it (UI Automation answers
+ * `ReservedNotSupportedValue`, an IUnknown), or the HRESULT of a failed call.
+ * The VARIANT is cleared, its BSTR freed, before this returns.
+ */
+function currentProperty(item: Pointer, property: number): string | number | boolean | null | { failed: number } {
+  const variant = new DataView(new ArrayBuffer(24));
+  // Without ignoring defaults, a text field answered a toggle state of 2 and `selected: false` (2026-11-02).
+  const hr = slot(item, GET_CURRENT_PROPERTY_VALUE_EX, 'IUIAutomationElement::GetCurrentPropertyValueEx', SIG_PROPERTY_EX)(item, property, 1, ptr(variant));
+  if (hr < 0) return { failed: hr };
+  try {
+    switch (variant.getUint16(0, true)) {
+      case VT_BSTR: {
+        const text = variant.getBigUint64(8, true);
+        if (text === 0n) return '';
+        const length = oleaut32().SysStringLen(text);
+        return length === 0 ? '' : new TextDecoder('utf-16le').decode(new Uint8Array(toArrayBuffer(Number(text) as unknown as Pointer, 0, length * 2)));
+      }
+      case VT_I4: return variant.getInt32(8, true);
+      case VT_R8: return variant.getFloat64(8, true);
+      case VT_BOOL: return variant.getInt16(8, true) !== 0;
+      default: return null;
+    }
+  } finally {
+    oleaut32().VariantClear(ptr(variant));
+  }
+}
+
 const center = (rect: NativeControl['rect']) => ({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
 
 /**
@@ -388,7 +429,7 @@ const center = (rect: NativeControl['rect']) => ({ x: rect.left + rect.width / 2
  * to `wanted.rect`, held live: `rect()` asks the app where it is now, so a box
  * follows it while the window scrolls. Null when none matches.
  */
-export function trackControl(hwnd: bigint, wanted: NativeControl): { rect(): NativeControl['rect'] | 'hidden' | 'gone' | 'busy'; release(): void } | null {
+export function trackControl(hwnd: bigint, wanted: NativeControl): { rect(): NativeControl['rect'] | 'hidden' | 'gone' | 'busy'; state(): ControlState | 'gone' | 'busy'; release(): void } | null {
   automation ??= createAutomation();
   const aim = center(wanted.rect);
   let best: { item: Pointer; distance: number } | null = null;
@@ -418,6 +459,30 @@ export function trackControl(hwnd: bigint, wanted: NativeControl): { rect(): Nat
       const height = rect[3]! - rect[1]!;
       if (number[0] !== 0 || width <= 0 || height <= 0) return 'hidden';
       return { left: rect[0]!, top: rect[1]!, width, height };
+    },
+    state() {
+      if (item === null) return 'gone';
+      const state: ControlState = {};
+      // A property the provider refuses to give (a password's value) is left out; a closed control or a slow app is not.
+      let end: 'busy' | 'gone' | null = null;
+      const read = (property: number) => {
+        if (end !== null) return null;
+        const value = currentProperty(item!, property);
+        if (typeof value !== 'object' || value === null) return value;
+        const code = value.failed >>> 0;
+        if (code === UIA_E_TIMEOUT) end = 'busy';
+        else if (code === UIA_E_ELEMENTNOTAVAILABLE) end = 'gone';
+        return null;
+      };
+      const value = read(STATE_PROPERTY.value) ?? read(STATE_PROPERTY.rangeValue);
+      // The text a person typed stays in this function: only its hash leaves it.
+      if (typeof value === 'string' || typeof value === 'number') state.value = Bun.hash(`${typeof value}:${value}`).toString(36);
+      const toggle = read(STATE_PROPERTY.toggle);
+      if (typeof toggle === 'number') state.toggle = toggle;
+      const selected = read(STATE_PROPERTY.selected);
+      if (typeof selected === 'boolean') state.selected = selected;
+      if (end !== null) return end;
+      return state;
     },
     release() {
       release(item);

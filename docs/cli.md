@@ -251,7 +251,11 @@ ending in `(in popup <id>)`; a box on one of its items goes when it closes.
 `--round` draws a pill or a
 circle and `--pad <px>` sets the gap around the control. `point` returns at once:
 the click, or the box timing out, arrives later as a message, so the agent keeps
-working. `wait-click` blocks until the click instead, and `unpoint` takes the box away. See
+working. `--until change` ends the box when the control's value, check state or
+selection changes instead (the agent learns which, never the value), and
+`--until window` when the app opens a window or dialog, with its id and title to
+read next. `wait` (or `wait-click`) blocks until that happens instead, and
+`unpoint` takes the box away. See
 [guiding the user](windows.md#guiding-the-user).
 
 ## Virtual desktop

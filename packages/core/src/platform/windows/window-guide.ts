@@ -1,7 +1,7 @@
 /**
  * `boite window read`, `point` and `wait-click` on Windows, through `bun:ffi`:
- * the controls of a window (`window-controls.ts`), where a window lies, and
- * the mouse's state. `platform/windows/index.ts` loads it on first use, never
+ * the controls of a window (`window-controls.ts`), where a window lies, the
+ * mouse's state and the windows an app has open. `platform/windows/index.ts` loads it on first use, never
  * at startup.
  *
  * The box itself is drawn by the desktop app (`pointer_window.rs` in the
@@ -12,7 +12,7 @@
  * control at 100 % and 150 % scaling and on every monitor.
  */
 import { dlopen, FFIType, ptr } from 'bun:ffi';
-import type { NativeControl, ScreenRect, WindowGuide } from '../types.ts';
+import type { AppWindow, NativeControl, ScreenRect, WindowGuide } from '../types.ts';
 import { frameBounds, physicalPixels, windowOf } from './window-capture.ts';
 import { readControls, trackControl } from './window-controls.ts';
 
@@ -44,6 +44,7 @@ function loadUser32() {
     GetWindowThreadProcessId: { args: [U64, PTR], returns: FFIType.u32 },
     GetWindowLongPtrW: { args: [U64, I32], returns: FFIType.i64 },
     GetClassNameW: { args: [U64, PTR, I32], returns: I32 },
+    InternalGetWindowText: { args: [U64, PTR, I32], returns: I32 },
   }).symbols;
 }
 
@@ -118,7 +119,27 @@ function frameOf(id: string): { rect: ScreenRect; minimized: boolean; above: boo
 
 const GA_ROOTOWNER = 3;
 const GW_OWNER = 4;
+
+/**
+ * The window at the top of `hwnd`'s chain of owners, `hwnd` itself when
+ * nothing owns it. `GetAncestor(GA_ROOTOWNER)` walks `GetParent`, which names
+ * the owner of a `WS_POPUP` window only: a WinForms dialog is overlapped, and
+ * it answered the dialog itself (measured on 2026-11-02).
+ */
+function rootOwner(hwnd: bigint): bigint {
+  let top = hwnd;
+  // An owner chain is short; the bound guards against a cycle.
+  for (let depth = 0; depth < 32; depth++) {
+    const owner = user32().GetWindow(top, GW_OWNER);
+    if (owner === 0n) break;
+    top = owner;
+  }
+  return top;
+}
 const GWL_EXSTYLE = -20;
+const GWL_STYLE = -16;
+/** A title bar: a main window and a dialog have one; a menu, a dropdown and a tooltip do not. */
+const WS_CAPTION = 0x00C00000n;
 const WS_EX_TOOLWINDOW = 0x80n;
 const WS_EX_APPWINDOW = 0x40000n;
 const DWMWA_CLOAKED = 14;
@@ -154,7 +175,7 @@ function popupsOf(hwnd: bigint): bigint[] {
     const owned = api.GetWindow(other, GW_OWNER) !== 0n;
     if (owned) {
       // A dialog of another window of the same app is that window's.
-      if (api.GetAncestor(other, GA_ROOTOWNER) !== hwnd) continue;
+      if (rootOwner(other) !== hwnd) continue;
     } else {
       const exStyle = BigInt(api.GetWindowLongPtrW(other, GWL_EXSTYLE));
       // An app's other main window is listed on its own.
@@ -193,12 +214,39 @@ function readWithPopups(hwnd: bigint, limit: number, any: boolean): { controls: 
   return { controls: controls.slice(0, limit), total };
 }
 
+/**
+ * The visible windows of process `pid` with a title bar, in the Z order: what
+ * a box with `until: 'window'` watches for a new one. A dialog is owned by the
+ * window it opened from, and `readWithPopups` reads it with that window.
+ */
+function appWindows(pid: number): AppWindow[] {
+  const api = user32();
+  const windows: AppWindow[] = [];
+  const of = new Uint32Array(1);
+  const text = new Uint16Array(256);
+  const cloaked = new Uint32Array(1);
+  try {
+    for (let hwnd = api.FindWindowExW(0n, 0n, null, null); hwnd !== 0n; hwnd = api.FindWindowExW(0n, hwnd, null, null)) {
+      of[0] = 0;
+      api.GetWindowThreadProcessId(hwnd, ptr(of));
+      if (of[0] !== pid || api.IsWindowVisible(hwnd) === 0) continue;
+      if ((BigInt(api.GetWindowLongPtrW(hwnd, GWL_STYLE)) & WS_CAPTION) !== WS_CAPTION) continue;
+      cloaked[0] = 0;
+      if (dwm().DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, ptr(cloaked), 4) === 0 && cloaked[0] !== 0) continue;
+      const title = new TextDecoder('utf-16le').decode(text.subarray(0, Math.max(0, api.InternalGetWindowText(hwnd, ptr(text), text.length))));
+      const owned = api.GetWindow(hwnd, GW_OWNER) !== 0n;
+      windows.push({ id: hwnd.toString(), title, ...(owned ? { owner: rootOwner(hwnd).toString() } : {}) });
+    }
+  } catch { /* a window that closed during the walk ends it */ }
+  return windows;
+}
+
 /** The window in front is `id`, or a window it owns, such as one of its dialogs. */
 function foreground(id: string): boolean {
   try {
     const hwnd = windowOf(id);
     const front = user32().GetForegroundWindow();
-    return front === hwnd || (front !== 0n && user32().GetAncestor(front, GA_ROOTOWNER) === hwnd);
+    return front === hwnd || (front !== 0n && (user32().GetAncestor(front, GA_ROOTOWNER) === hwnd || rootOwner(front) === hwnd));
   } catch {
     return false;
   }
@@ -246,11 +294,13 @@ export async function loadWindowGuide(): Promise<WindowGuide | { unavailable: st
       return {
         // A hung app is not asked: the call would hold the core's thread until the transaction timeout.
         rect: () => user32().IsHungAppWindow(hwnd) !== 0 ? 'busy' : physicalPixels(() => live.rect()),
+        state: () => user32().IsHungAppWindow(hwnd) !== 0 ? 'busy' : live.state(),
         release: () => live.release(),
       };
     },
     frame: frameOf,
     mouse,
     foreground,
+    appWindows,
   };
 }

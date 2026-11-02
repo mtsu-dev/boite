@@ -7,8 +7,8 @@
  */
 import { resolve } from 'node:path';
 import {
-  parseWindowCrop, WINDOW_CLIP_LIMITS, WINDOW_POINT_LABEL_MAX, WINDOW_POINT_PAD, WINDOW_POINT_SECONDS, WINDOW_READ_LIMIT, WINDOW_SHOT_MAX,
-  type DesktopWindow, type RpcParams, type WindowControl, type WindowPointer, type WindowShot, type WindowTarget,
+  parseWindowCrop, WINDOW_CLIP_LIMITS, WINDOW_POINT_LABEL_MAX, WINDOW_POINT_PAD, WINDOW_POINT_SECONDS, WINDOW_POINTER_UNTIL, WINDOW_READ_LIMIT, WINDOW_SHOT_MAX,
+  type DesktopWindow, type RpcParams, type RpcResult, type WindowControl, type WindowPointer, type WindowPointerUntil, type WindowShot, type WindowTarget,
 } from '@boite/contracts';
 import type { CoreClient } from './client.ts';
 import type { CliIo } from './cli.ts';
@@ -40,7 +40,7 @@ export const WINDOW_HELP = `boite window <command> [args] [--json]
                                  (the list under File) comes first, its lines ending
                                  in (in popup <id>): it closes on a click elsewhere,
                                  and so does a box on it
-  point <id> [--label <text>] [--seconds <s>] [--round] [--pad <px>]
+  point <id> [--label <text>] [--seconds <s>] [--round] [--pad <px>] [--until <what>]
   point <target> --name <name> [--any] [same options]
   point <target> --at x,y,w,h [same options]
                                  draw a box with a label (${WINDOW_POINT_LABEL_MAX} characters at most) above
@@ -52,16 +52,25 @@ export const WINDOW_HELP = `boite window <command> [args] [--json]
                                  --round draws a pill, a circle around an icon;
                                  --pad sets the gap around the control (${WINDOW_POINT_PAD.default} px, ${WINDOW_POINT_PAD.max} at most).
                                  point returns at once: the click, or the box timing
-                                 out, arrives later as a message
-  wait-click [--timeout <s>]     wait until the user clicks inside the box, then take
-                                 it away, with no message; ${WINDOW_POINT_SECONDS.default} s by default
+                                 out, arrives later as a message.
+                                 --until sets what ends the box instead of a click:
+                                 change: the control's value, check state or selection
+                                 changes (a typed value once the user pauses); you
+                                 learn that it changed, never what it holds now.
+                                 window: the app opens a window or dialog; you learn
+                                 its id and title, to read it next. A rectangle
+                                 with --until window asks the consent of a read
+  wait [--timeout <s>]           wait for what the box waits for (a click, a change or
+                                 a window), then take it away, with no message; ${WINDOW_POINT_SECONDS.default} s
+                                 by default. wait-click is the same command
   unpoint                        take the box away
 <target> is --id <id>, --process <name> or --title <part of the title>. Several
 matches are refused with the candidates: pick one by --id. The taskbar is the
 explorer.exe window with no title.
 To teach the user an app, guide instead of acting: read, point, keep working or
 end the turn, and read again for the next step once the click arrives: after a click
-on File, that read lists the open menu's items first. An app with no accessibility tree (a game, a Unity
+on File, that read lists the open menu's items first. To teach typing or a dialog,
+point --until change at the field, or --until window at what opens the dialog. An app with no accessibility tree (a game, a Unity
 scene view) lists few controls: take a small screenshot and point --at it.
 An app the project has not allowed waits up to 10 minutes for the owner's answer
 on a consent card. Password managers and the sign-in screen are never captured;
@@ -122,11 +131,29 @@ function pointerLine(pointer: WindowPointer): string {
   const label = pointer.label ? ` with "${pointer.label}"` : '';
   const popup = pointer.popup ? ` in its popup ${pointer.popup}` : '';
   const line = `pointing at ${what} of window ${pointer.windowId} (${pointer.process})${popup}${label} for ${Math.round((pointer.expiresAt - Date.now()) / 1000)} s`;
+  const awaited = pointer.until === 'change' ? 'the change' : pointer.until === 'window' ? 'the new window' : 'the click';
   const told = pointer.notify ? `${line}
-keep working: the click, or the box timing out, arrives as a message` : line;
+keep working: ${awaited}, or the box timing out, arrives as a message` : line;
   // The Start menu and the system's other flyouts lie above every app's window, the box included.
   return pointer.behind ? `${told}
 the system draws this window above the box, so the user cannot see it: say where to click; the click still counts` : told;
+}
+
+function waitLine(result: RpcResult<'windows.waitClick'>): string {
+  if (result.clicked) return 'clicked: the user pressed inside the box, which is gone now';
+  if ('changed' in result) {
+    const part = result.changed === 'value' ? 'value' : result.changed === 'toggle' ? 'check state' : 'selection';
+    return `changed: the user changed the control's ${part}; the box is gone. What it holds now is not reported`;
+  }
+  if ('opened' in result) {
+    const { opened } = result;
+    const read = opened.readWindowId === opened.windowId ? `boite window read --id ${opened.windowId}`
+      : `boite window read --id ${opened.readWindowId}: its controls come first (in popup ${opened.windowId})`;
+    return `opened: window ${opened.windowId} "${opened.title}"; the box is gone. Read it with ${read}`;
+  }
+  return result.reason === 'timeout' ? 'not in time: the box is still shown, wait again or point elsewhere'
+    : result.reason === 'gone' ? 'the window closed: the box is gone'
+    : 'the box was taken away first';
 }
 
 function windowLine(window: DesktopWindow): string {
@@ -218,6 +245,8 @@ export async function windowCommand(args: string[], io: CliIo, client: CoreClien
       const seconds = number(rest, '--seconds', false);
       const pad = number(rest, '--pad', true);
       const round = toggle(rest, '--round');
+      const until = flag(rest, '--until');
+      if (until !== undefined && !WINDOW_POINTER_UNTIL.includes(until as WindowPointerUntil)) throw new Usage(`window point --until takes ${WINDOW_POINTER_UNTIL.join(', ')}`);
       const any = toggle(rest, '--any');
       const name = flag(rest, '--name');
       const atText = flag(rest, '--at');
@@ -225,7 +254,8 @@ export async function windowCommand(args: string[], io: CliIo, client: CoreClien
       if (at === null) throw new Usage('window point --at takes x,y,w,h in pixels, or in fractions from 0 to 1');
       // The agent keeps working: the click arrives later as a message.
       const common = { threadId, notify: true, ...(label === undefined ? {} : { label }), ...(seconds === undefined ? {} : { seconds }),
-        ...(round ? { shape: 'round' as const } : {}), ...(pad === undefined ? {} : { pad }), ...(any ? { any } : {}) };
+        ...(round ? { shape: 'round' as const } : {}), ...(pad === undefined ? {} : { pad }), ...(any ? { any } : {}),
+        ...(until === undefined ? {} : { until: until as WindowPointerUntil }) };
       const id = /^#?\d+$/.test(rest[0] ?? '') ? Number(rest.shift()!.replace('#', '')) : undefined;
       let params: RpcParams<'windows.point'>;
       if (id !== undefined) {
@@ -239,15 +269,12 @@ export async function windowCommand(args: string[], io: CliIo, client: CoreClien
       const { pointer } = await client.call('windows.point', params);
       return { lines: [pointerLine(pointer)], value: { pointer } };
     }
+    case 'wait':
     case 'wait-click': {
       const timeoutSeconds = number(rest, '--timeout', false);
       done(rest);
       const result = await client.call('windows.waitClick', { threadId, ...(timeoutSeconds === undefined ? {} : { timeoutSeconds }) });
-      const line = result.clicked ? 'clicked: the user pressed inside the box, which is gone now'
-        : result.reason === 'timeout' ? 'not clicked in time: the box is still shown'
-        : result.reason === 'gone' ? 'the window closed: the box is gone'
-        : 'the box was taken away before a click';
-      return { lines: [line], value: result };
+      return { lines: [waitLine(result)], value: result };
     }
     case 'unpoint': {
       done(rest);

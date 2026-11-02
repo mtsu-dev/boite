@@ -18,26 +18,36 @@
  * Unity), so a read takes in the menus and popups the same app has open over
  * the window, under the same consent: it is the same app. A box on one of
  * their controls goes when the popup closes, as with a closed window.
+ *
+ * A box waits for a click inside it, or with `until`, for what a click alone
+ * cannot show: the control's value, check state or selection changing ("type
+ * your name here"), or the app opening a window ("open Build Settings"). The
+ * agent learns which of the three changed, never what the control holds: the
+ * OS half hands the guide a hash of the value, not its text.
  */
 import {
   WINDOW_POINT_LABEL_MAX,
   WINDOW_POINT_PAD,
   WINDOW_POINT_SECONDS,
+  WINDOW_POINTER_UNTIL,
   WINDOW_READ_LIMIT,
   windowCropError,
   type RpcParams,
   type RpcResult,
   type ThreadSummary,
   type WindowControl,
+  type WindowChange,
   type WindowCrop,
+  type WindowOpened,
   type WindowPointer,
+  type WindowPointerUntil,
   type WindowTarget,
   type WindowWaitEnd,
 } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { invalidParams, messageOf, refused } from '../errors.ts';
 import { newId } from '../ids.ts';
-import type { NativeWindow, ScreenRect, TrackedControl, WindowGuide } from '../platform/types.ts';
+import type { ControlState, NativeWindow, ScreenRect, TrackedControl, WindowGuide } from '../platform/types.ts';
 import type { Connection } from '../router.ts';
 import { cropRect } from './image.ts';
 
@@ -72,6 +82,26 @@ const FRAME_IDLE_MS = 15_000;
 const FRAME_FOLLOW_MS = 100;
 /** How often a box whose control the app dropped looks for it again, in milliseconds. */
 const RETRACK_MS = 1_000;
+/**
+ * How often a box with `until` looks at its control or at the app's windows:
+ * up to four cross-process property reads, or one walk of the top-level
+ * windows. A person reads a change a few tenths of a second after making it.
+ */
+const WATCH_MS = 200;
+/**
+ * How long a changed value must stay put before the box ends: a person types
+ * a name a key at a time, and the agent should hear once they paused, not
+ * after the first letter. A check box or a selection changes in one step and
+ * ends the box at the next look.
+ */
+const VALUE_SETTLE_MS = 1_500;
+/**
+ * How long a box with `until: 'window'` on a menu item waits for the window
+ * once the menu closed: the click that opens a dialog closes the menu first,
+ * and a slow app shows the dialog after.
+ */
+const OPEN_GRACE_MS = 5_000;
+const TITLE_MAX = 200;
 
 export interface WindowGuidesOptions {
   /** How often a box follows its window and its control. */
@@ -82,6 +112,10 @@ export interface WindowGuidesOptions {
   settleMs?: number;
   /** How long the frame around a Chromium window stays once no box shows in it. */
   frameIdleMs?: number;
+  /** How often a box with `until` looks for a change or a new window. */
+  watchMs?: number;
+  /** How long a changed value must stay put before the box ends. */
+  valueSettleMs?: number;
 }
 
 /** What `DesktopWindows` lends the guide: its conversation and window checks. */
@@ -124,9 +158,22 @@ interface Shown {
   notify: boolean;
   /** Reads the mouse while a wait or `notify` needs the click. */
   clicks: ReturnType<typeof setInterval> | null;
+  /** What ends the box besides its time: a click, a change of its control, or a new window of its app. */
+  until: WindowPointerUntil;
+  /** Looks for the change or the window, for a box with `until` other than a click. */
+  watch: ReturnType<typeof setInterval> | null;
+  /** For `change`: what the control held when the box was drawn; null until the app first answered. */
+  baseline?: ControlState | null;
+  /** A changed value and since when it stayed put: it ends the box once settled. */
+  typing?: { value: string; since: number };
+  /** For `window`: the app's windows when the box was drawn. */
+  known?: Set<string>;
+  /** For `window` on a menu item: when the menu closed, the window it opens still to come. */
+  menuClosedAt?: number;
 }
 
-type BoxEnd = WindowWaitEnd | 'clicked';
+type BoxEnd = WindowWaitEnd | 'clicked' | { changed: WindowChange } | { opened: WindowOpened };
+const endName = (end: BoxEnd) => typeof end === 'string' ? end : 'changed' in end ? 'changed' : 'opened';
 
 /** The frame around a Chromium window a conversation guides in. */
 interface Frame {
@@ -158,6 +205,8 @@ export class WindowGuides {
   readonly #mouseMs: number;
   readonly #settleMs: number;
   readonly #frameIdleMs: number;
+  readonly #watchMs: number;
+  readonly #valueSettleMs: number;
   #backend?: Promise<WindowGuide | { unavailable: string }>;
   readonly #snapshots = new Map<string, Snapshot>();
   readonly #shown = new Map<string, Shown>();
@@ -171,6 +220,8 @@ export class WindowGuides {
     this.#mouseMs = options.mouseMs ?? 25;
     this.#settleMs = options.settleMs ?? SETTLE_MS;
     this.#frameIdleMs = options.frameIdleMs ?? FRAME_IDLE_MS;
+    this.#watchMs = options.watchMs ?? WATCH_MS;
+    this.#valueSettleMs = options.valueSettleMs ?? VALUE_SETTLE_MS;
   }
 
   async read({ threadId, target, filter, limit, any }: RpcParams<'windows.read'>, connection?: Connection): Promise<RpcResult<'windows.read'>> {
@@ -211,6 +262,9 @@ export class WindowGuides {
     const notify = params.notify ?? false;
     if (typeof notify !== 'boolean') throw invalidParams('notify must be true or false', { field: 'notify' });
     if (params.any !== undefined && typeof params.any !== 'boolean') throw invalidParams('any must be true or false', { field: 'any' });
+    const until = params.until ?? 'click';
+    if (!WINDOW_POINTER_UNTIL.includes(until)) throw invalidParams(`until must be one of ${WINDOW_POINTER_UNTIL.join(', ')}`, { field: 'until' });
+    if (until === 'change' && at !== undefined) throw invalidParams('until change watches a control: point at one by id or by name, not at a rectangle', { field: 'until' });
 
     // Every check that needs no OS comes first: a machine without the guide refuses the same bad call the same way.
     let window: NativeWindow;
@@ -248,7 +302,8 @@ export class WindowGuides {
       if (target === undefined) throw invalidParams('point at a rectangle needs the window\'s target', { field: 'target' });
       const problem = windowCropError(at);
       if (problem) throw invalidParams(problem.replace(/^crop/, 'at').replace(/a crop/, 'a rectangle'), { field: 'at' });
-      window = await this.#host.grantedWindow(thread, target, null, connection);
+      // Waiting for a window reads the app's window titles: the consent of a read.
+      window = await this.#host.grantedWindow(thread, target, until === 'window' ? 'read' : null, connection);
       box = this.#rectangle(window, at!);
     }
 
@@ -258,10 +313,32 @@ export class WindowGuides {
     const screen = { left: frame.rect.left + box.x, top: frame.rect.top + box.y, width: box.width, height: box.height };
     // Without a label, a control's box says its name.
     const shownLabel = label === '' && control ? control.name.slice(0, WINDOW_POINT_LABEL_MAX) : label;
+    let tracked: TrackedControl | null = null;
+    if (control) {
+      try { tracked = await guide.track(window.id, nativeOf(control, screen)); }
+      catch { /* not followed: the box keeps its place in the window */ }
+    }
+    let baseline: ControlState | null = null;
+    if (until === 'change') {
+      const state = tracked?.state() ?? 'gone';
+      if (state === 'gone') {
+        tracked?.release();
+        throw refused(`${window.process} does not let ${control!.type} "${control!.name}" be followed, so its change cannot be seen: wait for a click on it instead`, { field: 'until' });
+      }
+      if (state !== 'busy') {
+        if (state.value === undefined && state.toggle === undefined && state.selected === undefined) {
+          tracked!.release();
+          throw refused(`${control!.type} "${control!.name}" has no value, check state or selection to watch: wait for a click or a window instead`, { field: 'until' });
+        }
+        baseline = state;
+      }
+    }
+    const known = until === 'window' ? new Set(guide.appWindows(window.pid).map(other => other.id)) : undefined;
     // The previous box goes first, so the desktop app hands its window to the new one.
     this.#remove(thread.id, 'cleared');
     const boxId = newId('box_');
     if (this.#core.subscribers.pointer({ id: boxId, rect: frame.minimized ? null : screen, label: shownLabel, look }) === 0) {
+      tracked?.release();
       throw refused('the box is drawn by the Boite desktop app of this computer, and none is open: ask the user to open Boite', { code: 'no-app' });
     }
     const pointer: WindowPointer = {
@@ -271,14 +348,11 @@ export class WindowGuides {
       ...(control?.popup ? { popup: control.popup } : {}),
       ...(frame.above ? { behind: true as const } : {}),
       ...(notify ? { notify: true as const } : {}),
+      ...(until !== 'click' ? { until } : {}),
     };
-    let tracked: TrackedControl | null = null;
-    if (control) {
-      try { tracked = await guide.track(window.id, nativeOf(control, screen)); }
-      catch { /* not followed: the box keeps its place in the window */ }
-    }
     const shown: Shown = {
       pointer, window, boxId, screen: frame.minimized ? null : screen, waiters: new Set(), tracked, control: control ?? null, popup: control?.popup ?? null, notify, clicks: null,
+      until, watch: null, ...(until === 'change' ? { baseline } : {}), ...(known ? { known } : {}),
       // Settled already where it was read: the box shows at once.
       ...(tracked && !frame.minimized ? { seen: { rect: { left: box.x, top: box.y, width: box.width, height: box.height }, since: 0 } } : {}),
       follow: setInterval(() => this.#follow(thread.id, shown, guide), this.#followMs),
@@ -287,10 +361,15 @@ export class WindowGuides {
     shown.follow.unref?.();
     shown.expiry.unref?.();
     this.#shown.set(thread.id, shown);
-    if (notify) this.#watchClicks(thread.id, shown, guide);
+    if (until !== 'click') {
+      shown.watch = setInterval(() => this.#watchState(thread.id, shown, guide), this.#watchMs);
+      shown.watch.unref?.();
+    } else if (notify) {
+      this.#watchClicks(thread.id, shown, guide);
+    }
     const framed = this.#frames.get(thread.id);
     if (framed?.idle) { clearTimeout(framed.idle); framed.idle = null; }
-    this.#core.logs.info(`Pointed at a ${control?.type ?? 'rectangle'} of window ${window.id} of ${window.process}`, { source: 'windows', event: 'window.point', threadId: thread.id, data: { windowId: window.id, process: window.process, width: box.width, height: box.height } });
+    this.#core.logs.info(`Pointed at a ${control?.type ?? 'rectangle'} of window ${window.id} of ${window.process} until ${until}`, { source: 'windows', event: 'window.point', threadId: thread.id, data: { windowId: window.id, process: window.process, width: box.width, height: box.height, until } });
     return { pointer: { ...pointer } };
   }
 
@@ -317,9 +396,53 @@ export class WindowGuides {
         resolve(reason);
       };
       shown.waiters.add(finish);
-      this.#watchClicks(thread.id, shown, guide);
+      if (shown.until === 'click') this.#watchClicks(thread.id, shown, guide);
     });
-    return end === 'clicked' ? { clicked: true, pointer: { ...shown.pointer } } : { clicked: false, reason: end };
+    const pointer = { ...shown.pointer };
+    if (end === 'clicked') return { clicked: true, pointer };
+    if (typeof end === 'object') return 'changed' in end ? { clicked: false, changed: end.changed, pointer } : { clicked: false, opened: end.opened, pointer };
+    return { clicked: false, reason: end };
+  }
+
+  /**
+   * For a box with `until`: ends it once its control changed, a value having
+   * stayed put for `VALUE_SETTLE_MS`, or once its app shows a window it did
+   * not have when the box was drawn.
+   */
+  #watchState(threadId: string, shown: Shown, guide: WindowGuide): void {
+    if (this.#shown.get(threadId) !== shown) return;
+    if (shown.until === 'window') {
+      const opened = this.#opened(shown, guide);
+      if (opened) this.#remove(threadId, { opened }, shown);
+      return;
+    }
+    const state = shown.tracked?.state();
+    // A dropped control is looked for again by `#follow`; a busy app is asked at the next look.
+    if (state === undefined || state === 'busy' || state === 'gone') return;
+    const was = shown.baseline;
+    if (!was) { shown.baseline = state; return; }
+    const differs = <T>(now: T | undefined, before: T | undefined) => now !== undefined && before !== undefined && now !== before;
+    if (differs(state.toggle, was.toggle)) { this.#changed(threadId, shown, 'toggle'); return; }
+    if (differs(state.selected, was.selected)) { this.#changed(threadId, shown, 'selection'); return; }
+    if (!differs(state.value, was.value)) { delete shown.typing; return; }
+    const now = Date.now();
+    const typing = shown.typing;
+    if (typing === undefined || typing.value !== state.value) shown.typing = { value: state.value!, since: now };
+    else if (now - typing.since >= this.#valueSettleMs) this.#changed(threadId, shown, 'value');
+  }
+
+  #changed(threadId: string, shown: Shown, what: WindowChange): void {
+    this.#core.logs.info(`The person changed the ${what} of the control under the box over window ${shown.window.id} of ${shown.window.process}`, { source: 'windows', event: 'window.change', threadId, data: { windowId: shown.window.id, process: shown.window.process, change: what } });
+    this.#remove(threadId, { changed: what }, shown);
+  }
+
+  /** The first window of the box's app that was not there when the box was drawn. */
+  #opened(shown: Shown, guide: WindowGuide): WindowOpened | null {
+    const fresh = guide.appWindows(shown.window.pid).find(other => other.id !== shown.window.id && !shown.known!.has(other.id));
+    if (!fresh) return null;
+    // The title is the app's text: no line break or control character reaches the agent's message.
+    const title = fresh.title.replace(/\p{Cc}+/gu, ' ').trim().slice(0, TITLE_MAX);
+    return { windowId: fresh.id, title, readWindowId: fresh.owner ?? fresh.id };
   }
 
   /** Reads the mouse until a press inside the box ends it; a button already held when it starts is not that click. */
@@ -345,10 +468,24 @@ export class WindowGuides {
     const { pointer } = shown;
     const what = pointer.control ? `${pointer.control.type} "${pointer.control.name}"` : `the ${pointer.width}x${pointer.height} rectangle at ${pointer.x},${pointer.y}`;
     const where = `${what} in window ${pointer.windowId} (${pointer.process})`;
-    const text = why === 'clicked' ? `Boite: the user clicked the box on ${where}; the box is gone.`
-      : why === 'timeout' ? `Boite: the box on ${where} timed out without a click.`
-      : pointer.popup ? `Boite: the menu or popup under the box on ${where} closed before a click.`
-      : `Boite: the window under the box on ${where} closed before a click.`;
+    const awaited = shown.until === 'change' ? 'a change' : shown.until === 'window' ? 'a new window' : 'a click';
+    let text: string;
+    if (typeof why === 'object') {
+      if ('changed' in why) {
+        const part = why.changed === 'value' ? 'value' : why.changed === 'toggle' ? 'check state' : 'selection';
+        text = `Boite: the user changed the ${part} of ${where}; the box is gone. What it holds now is not reported: ask the user if it matters.`;
+      } else {
+        const { opened } = why;
+        const read = opened.readWindowId === opened.windowId ? `boite window read --id ${opened.windowId}`
+          : `boite window read --id ${opened.readWindowId}, which lists its controls first (in popup ${opened.windowId})`;
+        text = `Boite: ${pointer.process} opened window ${opened.windowId} "${opened.title}" after the box on ${where}; the box is gone. Read it with ${read}.`;
+      }
+    } else {
+      text = why === 'clicked' ? `Boite: the user clicked the box on ${where}; the box is gone.`
+        : why === 'timeout' ? `Boite: the box on ${where} timed out without ${awaited}.`
+        : pointer.popup ? `Boite: the menu or popup under the box on ${where} closed before ${awaited}.`
+        : `Boite: the window under the box on ${where} closed before ${awaited}.`;
+    }
     try { this.#core.threads.deferred.deliverAnswer(threadId, text); }
     catch (error) { this.#core.logs.warn(`The end of a box could not reach its conversation: ${messageOf(error)}`, { source: 'windows', event: 'window.notify', threadId }); }
   }
@@ -450,7 +587,9 @@ export class WindowGuides {
     if (this.#shown.get(threadId) !== shown) return;
     const frame = guide.frame(shown.window.id);
     if (frame === null) {
-      this.#remove(threadId, 'gone', shown);
+      // The window that opened may be the one that replaced it.
+      const opened = shown.until === 'window' ? this.#opened(shown, guide) : null;
+      this.#remove(threadId, opened ? { opened } : 'gone', shown);
       return;
     }
     // A box in a menu goes when the menu closes; its controls are out of view only past the menu's edge.
@@ -458,6 +597,14 @@ export class WindowGuides {
     if (shown.popup !== null) {
       const popup = guide.frame(shown.popup);
       if (popup === null) {
+        // Clicking the item closed the menu: the box hides and waits a little for the window it opens.
+        if (shown.until === 'window' && Date.now() - (shown.menuClosedAt ??= Date.now()) < OPEN_GRACE_MS) {
+          if (shown.screen !== null) {
+            shown.screen = null;
+            this.#core.subscribers.pointer({ id: shown.boxId, rect: null, label: shown.pointer.label, look: shown.pointer.look });
+          }
+          return;
+        }
         this.#remove(threadId, 'gone', shown);
         return;
       }
@@ -593,13 +740,16 @@ export class WindowGuides {
     clearInterval(shown.follow);
     clearTimeout(shown.expiry);
     if (shown.clicks) clearInterval(shown.clicks);
+    if (shown.watch) clearInterval(shown.watch);
     if (shown.notify && shown.waiters.size === 0 && why !== 'cleared') this.#tell(threadId, shown, why);
     shown.tracked?.release();
     shown.tracked = null;
     this.#frameLater(threadId);
     this.#core.subscribers.pointer({ id: shown.boxId, rect: null, label: shown.pointer.label, look: shown.pointer.look });
     for (const finish of [...shown.waiters]) finish(why);
-    this.#core.logs.info(`Box over window ${shown.window.id} of ${shown.window.process} taken away: ${why}`, { source: 'windows', event: 'window.unpoint', threadId, data: { windowId: shown.window.id, process: shown.window.process, why } });
+    // The opened window's id, never its title: a title can name a document or an account.
+    const opened: Record<string, string> = typeof why === 'object' && 'opened' in why ? { opened: why.opened.windowId } : {};
+    this.#core.logs.info(`Box over window ${shown.window.id} of ${shown.window.process} taken away: ${endName(why)}`, { source: 'windows', event: 'window.unpoint', threadId, data: { windowId: shown.window.id, process: shown.window.process, why: endName(why), ...opened } });
     return true;
   }
 }

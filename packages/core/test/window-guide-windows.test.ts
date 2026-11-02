@@ -4,19 +4,28 @@ import type { NativeWindow, WindowCapture, WindowGuide } from '../src/platform/t
 
 /**
  * A WinForms form this file owns, in its own powershell.exe, that never takes
- * the focus: two enabled buttons, a disabled one and a text field. Posted
- * messages open a Win32 menu (WM_APP + 1), a WinForms dropdown (WM_APP + 2)
- * and close both (WM_APP + 3), as a click on File would.
+ * the focus: two enabled buttons, a disabled one, a text field and a check
+ * box. Posted messages open a Win32 menu (WM_APP + 1), a WinForms dropdown
+ * (WM_APP + 2) and close both (WM_APP + 3), as a click on File would; type a
+ * name into the field (WM_APP + 4), tick the box (WM_APP + 5), and open and
+ * close a dialog the form owns (WM_APP + 6 and 7), as a person would.
  */
 const FORM = `
 using System;
 using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
+public class BoiteGuideDialog : Form {
+  public BoiteGuideDialog() { Controls.Add(new Button { Text = "Dialog OK", Location = new Point(20, 20), Size = new Size(100, 30) }); }
+  protected override bool ShowWithoutActivation { get { return true; } }
+}
 public class BoiteGuideWindow : Form {
   [DllImport("user32.dll")] static extern bool EndMenu();
   ContextMenu menu = new ContextMenu(new MenuItem[] { new MenuItem("Player Settings"), new MenuItem("Quit Editor") });
   ContextMenuStrip dropdown = new ContextMenuStrip();
+  TextBox search = new TextBox { Name = "search", Location = new Point(20, 140), Size = new Size(200, 24) };
+  CheckBox remember = new CheckBox { Text = "Remember me", Location = new Point(20, 176), Size = new Size(150, 24) };
+  BoiteGuideDialog dialog;
   public BoiteGuideWindow(string title) {
     dropdown.Items.Add("Dropdown Item");
     Text = title;
@@ -28,7 +37,8 @@ public class BoiteGuideWindow : Form {
     Controls.Add(new Button { Text = "Open project", Name = "openProject", Location = new Point(20, 20), Size = new Size(140, 40) });
     Controls.Add(new Button { Text = "Build  Settings", Location = new Point(180, 20), Size = new Size(140, 40) });
     Controls.Add(new Button { Text = "Disabled", Location = new Point(20, 80), Size = new Size(100, 40), Enabled = false });
-    Controls.Add(new TextBox { Name = "search", Location = new Point(20, 140), Size = new Size(200, 24) });
+    Controls.Add(search);
+    Controls.Add(remember);
     // A container that grows with the window, as a div with its page.
     Controls.Add(new GroupBox { Text = "Options", Location = new Point(240, 120), Size = new Size(140, 70), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right });
   }
@@ -38,6 +48,14 @@ public class BoiteGuideWindow : Form {
     if (message.Msg == 0x8001) { BeginInvoke((Action)(() => menu.Show(this, new Point(40, 40)))); return; }
     if (message.Msg == 0x8002) { dropdown.Show(this, new Point(60, 60)); return; }
     if (message.Msg == 0x8003) { EndMenu(); dropdown.Close(); return; }
+    if (message.Msg == 0x8004) { search.Text = "Timothe"; return; }
+    if (message.Msg == 0x8005) { remember.Checked = !remember.Checked; return; }
+    if (message.Msg == 0x8006) {
+      dialog = new BoiteGuideDialog { Text = "Boite Guide Dialog", Owner = this, ShowInTaskbar = false, StartPosition = FormStartPosition.Manual, Location = new Point(800, 460), Size = new Size(240, 140), TopMost = true };
+      dialog.Show();
+      return;
+    }
+    if (message.Msg == 0x8007) { if (dialog != null) dialog.Close(); return; }
     base.WndProc(ref message);
   }
   protected override CreateParams CreateParams {
@@ -208,6 +226,68 @@ describe.skipIf(process.platform !== 'win32')('window guide on Windows', () => {
       await until(() => guide.frame(items[0]!.popup!) === null ? true : undefined);
       expect((await guide.controls(form.id, 50)).controls.some(control => control.name === 'Dropdown Item')).toBe(false);
     } finally {
+      post(0x8003);
+      user32.close();
+    }
+  });
+
+  test('a tracked control tells its value and check state changed, keeping only a hash of the text', async () => {
+    const { dlopen, FFIType } = await import('bun:ffi');
+    const user32 = dlopen('user32.dll', { PostMessageW: { args: [FFIType.u64, FFIType.u32, FFIType.u64, FFIType.u64], returns: FFIType.i32 } });
+    const post = (message: number) => expect(user32.symbols.PostMessageW(BigInt(form.id), message, 0n, 0n)).not.toBe(0);
+    const { controls } = await guide.controls(form.id, 50);
+    const field = (await guide.track(form.id, controls.find(control => control.type === 'Edit')!))!;
+    const box = (await guide.track(form.id, controls.find(control => control.name === 'Remember me')!))!;
+    const button = (await guide.track(form.id, controls.find(control => control.name === 'Open project')!))!;
+    try {
+      const empty = field.state();
+      expect(empty).toEqual({ value: expect.any(String) });
+      const unticked = box.state();
+      expect(unticked).toMatchObject({ toggle: 0 });
+      // A button holds nothing a box could wait on.
+      expect(button.state()).toEqual({});
+      post(0x8004);
+      let typed = field.state();
+      for (let attempt = 0; attempt < 50 && JSON.stringify(typed) === JSON.stringify(empty); attempt++) { await Bun.sleep(20); typed = field.state(); }
+      expect(typed).not.toEqual(empty);
+      expect(JSON.stringify(typed)).not.toContain('Timothe');
+      post(0x8005);
+      let ticked = box.state();
+      for (let attempt = 0; attempt < 50 && JSON.stringify(ticked) === JSON.stringify(unticked); attempt++) { await Bun.sleep(20); ticked = box.state(); }
+      expect(ticked).toMatchObject({ toggle: 1 });
+    } finally {
+      post(0x8005);
+      field.release();
+      box.release();
+      button.release();
+      user32.close();
+    }
+    expect(field.state()).toBe('gone');
+  });
+
+  test('the app\'s windows with a title bar include a dialog it opens, owned by the form, and no menu', async () => {
+    const { dlopen, FFIType } = await import('bun:ffi');
+    const user32 = dlopen('user32.dll', { PostMessageW: { args: [FFIType.u64, FFIType.u32, FFIType.u64, FFIType.u64], returns: FFIType.i32 } });
+    const post = (message: number) => expect(user32.symbols.PostMessageW(BigInt(form.id), message, 0n, 0n)).not.toBe(0);
+    try {
+      expect(guide.appWindows(form.pid)).toEqual([{ id: form.id, title: tag }]);
+      // A menu has no title bar: not a window a box waits for.
+      post(0x8001);
+      for (let attempt = 0; attempt < 50 && !(await guide.controls(form.id, 50)).controls.some(control => control.popup !== undefined); attempt++) await Bun.sleep(20);
+      expect(guide.appWindows(form.pid)).toEqual([{ id: form.id, title: tag }]);
+      post(0x8003);
+      post(0x8006);
+      let windows = guide.appWindows(form.pid);
+      for (let attempt = 0; attempt < 100 && windows.length < 2; attempt++) { await Bun.sleep(20); windows = guide.appWindows(form.pid); }
+      const dialog = windows.find(window => window.id !== form.id)!;
+      expect(dialog).toMatchObject({ title: 'Boite Guide Dialog', owner: form.id });
+      expect(dialog.id).toMatch(/^\d+$/);
+      // Read with the form that owns it, as the box's message tells the agent.
+      const read = await guide.controls(form.id, 50);
+      expect(read.controls.find(control => control.name === 'Dialog OK')).toMatchObject({ type: 'Button', popup: dialog.id });
+      expect(guide.appWindows(1)).toEqual([]);
+    } finally {
+      post(0x8007);
       post(0x8003);
       user32.close();
     }
