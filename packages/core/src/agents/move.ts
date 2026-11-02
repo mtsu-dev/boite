@@ -105,6 +105,8 @@ export interface BotMovePayload {
     builtin?: AgentBuiltin; projectIds: string[]; selection: Omit<AgentSelection, 'accountId'>;
     /** The imported picture its avatar names, as a `data:` URL: the bytes stay on the machine that stored them otherwise. */
     picture?: string;
+    /** Kept at the top of the bots list; a target that predates it reads the bot unpinned. */
+    pinned?: true;
   };
   settings: MovedSettings | null;
   brain: Partial<Record<(typeof MOVED_BRAIN_FILES)[number], string>>;
@@ -264,7 +266,7 @@ export class BotMoves {
       v: 1, requestId, from: { coreId: self, name },
       profile: {
         id: agent.id, name: agent.name, domain: agent.domain, instructions: agent.instructions, avatar: agent.avatar, status: agent.status === 'paused' ? 'paused' : 'active',
-        ...(agent.builtin === undefined ? {} : { builtin: agent.builtin }), projectIds,
+        ...(agent.builtin === undefined ? {} : { builtin: agent.builtin }), ...(agent.pinned === true ? { pinned: true as const } : {}), projectIds,
         selection: { providerId: agent.selection.providerId, model: agent.selection.model, effort: agent.selection.effort, permissionMode: agent.selection.permissionMode },
         ...(this.#store.pictures.has(agent.avatar) ? { picture: this.#store.pictures.get(agent.avatar).dataUrl } : {}),
       },
@@ -417,7 +419,10 @@ export class BotMoves {
         catch (error) { this.#core.log('warn', `agent ${before.id}: keeps its route here after a move update: ${error instanceof Error ? error.message : String(error)}`); }
       }
       const placed = applied.profile !== profilePrint ? this.#place(peer, payload.profile) : null;
-      const { id: _id, revision: _revision, createdAt: _created, updatedAt: _updated, ...current } = before;
+      const { id: _id, revision: _revision, createdAt: _created, updatedAt: _updated, ...kept } = before;
+      // The source's profile replaces the pin with the rest: unpinned there while it moved, it is unpinned here.
+      const { pinned: _pinned, ...unpinned } = kept;
+      const current = placed === null ? kept : unpinned;
       const after = this.#store.records.update('profile', before.id, before.revision, { ...current, ...(placed?.value ?? {}), selection });
       this.#store.group.profileChanged(before, after);
       if (placed !== null) {
@@ -470,7 +475,7 @@ export class BotMoves {
     return {
       value: {
         name: moved.name, domain: shipped?.domain ?? moved.domain, instructions: shipped?.instructions ?? moved.instructions, avatar: this.#picture(moved),
-        status: moved.status, projectIds, ...(moved.builtin === undefined ? {} : { builtin: moved.builtin }),
+        status: moved.status, projectIds, ...(moved.builtin === undefined ? {} : { builtin: moved.builtin }), ...(moved.pinned === true ? { pinned: true } : {}),
       },
       projectIds, groupProjects,
     };
@@ -622,6 +627,7 @@ function readPayload(raw: unknown): BotMovePayload {
     instructions: text(p.instructions, 'bot.move.profile.instructions', 32000, true), avatar: text(p.avatar, 'bot.move.profile.avatar', 40, true),
     status: oneOf(p.status, 'bot.move.profile.status', ['active', 'paused']),
     ...(p.builtin === undefined ? {} : { builtin: oneOf(p.builtin, 'bot.move.profile.builtin', AGENT_BUILTINS) }),
+    ...(p.pinned === undefined || !boolean(p.pinned, 'bot.move.profile.pinned') ? {} : { pinned: true as const }),
     projectIds: ids(p.projectIds, 'bot.move.profile.projectIds', 50),
     ...(p.picture === undefined ? {} : { picture: text(p.picture, 'bot.move.profile.picture', PICTURE_URL_MAX) }),
     selection: {

@@ -279,11 +279,14 @@ export class AgentStore {
       if (project.kind === 'drafts') throw refused('projectIds: drafts are the user\'s scratch space and cannot be entrusted to a bot');
     }
     // Profiles saved by older cores also carry `tools`: an edit drops it.
+    // A save that omits the pin keeps it: a client that predates it never unpins a bot. Only a pinned bot carries the field.
+    const pinned = v.pinned === undefined ? previous?.pinned === true : boolean(v.pinned, 'pinned');
     const value = {
       name: text(v.name, 'name', 100), domain: text(v.domain, 'domain', 500, true), instructions: text(v.instructions, 'instructions', 32000, true),
       avatar: text(v.avatar, 'avatar', 40, true), status: oneOf(v.status, 'status', ['active', 'paused', 'archived']), projectIds,
       selection: { providerId: provider.id, accountId: account.id, model, effort, permissionMode: oneOf(v.selection.permissionMode, 'permissionMode', ['default', 'acceptEdits', 'plan', 'bypassPermissions', 'yolo', 'dontAsk']) },
       ...(kind === undefined ? {} : { builtin: kind }),
+      ...(pinned ? { pinned: true } : {}),
     };
     // A built-in bot's text is Boite's (builtin.ts) and it is never put away: only reset.
     if (previous?.builtin !== undefined) {

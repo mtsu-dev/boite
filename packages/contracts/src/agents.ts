@@ -120,6 +120,13 @@ export interface AgentProfile extends AgentRecord {
    * only reset (`agents.builtin.reset`). Missing on an owner's bot.
    */
   builtin?: AgentBuiltin;
+  /**
+   * Kept at the top of the bots list, on every client, and through a move to
+   * another machine. A save that omits it keeps the bot's previous choice, so
+   * a client that predates it never unpins one; `false` unpins. Missing on a
+   * bot never pinned.
+   */
+  pinned?: boolean;
 }
 export interface AgentMoveParams { agentId: string; machine: string; requestId?: string }
 export interface AgentMoveResult {

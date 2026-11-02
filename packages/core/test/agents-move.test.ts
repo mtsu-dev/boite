@@ -57,7 +57,7 @@ const lastText = (h: TestCore, threadId: string) => h.core.journal.listMessages(
 test('a move carries the bot, its memory, routines, projects and the end of its conversation; the next prompt there says so once', async () => {
   const { desk, pc, owner, pcOwner, deskId, pcId, pcPeer, deskProject, pcProject } = await group();
   const { agent: made, threadId } = await makeAgent(desk, owner, {
-    name: 'Ada', domain: 'Gardens', instructions: 'Water the plants.', avatar: 'bot:c.1.2.3.4.1.1.0', projectIds: [deskProject.id, `${pcId}/${pcProject.id}`],
+    name: 'Ada', domain: 'Gardens', instructions: 'Water the plants.', avatar: 'bot:c.1.2.3.4.1.1.0', projectIds: [deskProject.id, `${pcId}/${pcProject.id}`], pinned: true,
   });
   // A turn the user and the bot had: its end goes with the bot.
   await owner.call('turns.start', { threadId, prompt: 'The door is blue.' });
@@ -77,7 +77,7 @@ test('a move carries the bot, its memory, routines, projects and the end of its 
   // There: the same bot, on that machine's echo account.
   const there = pc.core.workforce.records.get('profile', agent.id);
   const pcEcho = pc.core.accounts.list().find(a => a.providerId === 'echo')!.id;
-  expect(there).toMatchObject({ name: 'Ada', domain: 'Gardens', instructions: 'Water the plants.', avatar: 'bot:c.1.2.3.4.1.1.0', status: 'active', projectIds: moved.projectIds });
+  expect(there).toMatchObject({ name: 'Ada', domain: 'Gardens', instructions: 'Water the plants.', avatar: 'bot:c.1.2.3.4.1.1.0', status: 'active', projectIds: moved.projectIds, pinned: true });
   expect(there.selection).toEqual({ ...agent.selection, accountId: pcEcho });
   expect(pc.core.workforce.sessionOf(agent.id)?.threadId).toBe(moved.threadId);
   const theirs = pc.core.workforce.brainOf({ agentId: agent.id });
@@ -346,7 +346,7 @@ test('facts filed while the bot travels go after it, nothing wakes it here meanw
 
 test('a rename, a memory and a routine the owner saves while the bot travels go after it; more facts than a move carries refuse it', async () => {
   const { desk, pc, owner, pcId } = await group();
-  const { agent } = await makeAgent(desk, owner);
+  const { agent } = await makeAgent(desk, owner, { pinned: true });
   const request = desk.core.coordination.request.bind(desk.core.coordination);
   let legs = 0;
   desk.core.coordination.request = async (peer: CoordinationPeer, operation, payload) => {
@@ -356,7 +356,7 @@ test('a rename, a memory and a routine the owner saves while the bot travels go 
     if (legs === 1) {
       const current = desk.core.workforce.records.get('profile', agent.id);
       const { id: _id, revision: _revision, createdAt: _createdAt, updatedAt: _updatedAt, ...value } = current;
-      await owner.call('agents.profile.save', { id: agent.id, expectedRevision: current.revision, value: { ...value, name: 'Renamed on the way' } });
+      await owner.call('agents.profile.save', { id: agent.id, expectedRevision: current.revision, value: { ...value, name: 'Renamed on the way', pinned: false } });
       const brain = await owner.call('agents.brain.get', { agentId: agent.id });
       await owner.call('agents.brain.save', { agentId: agent.id, expectedRevision: brain.revision, instructions: brain.instructions, memory: 'Saved on the way.\n' });
       await owner.call('agents.routine.save', { value: { agentId: agent.id, name: 'Late', prompt: 'Saved on the way.', schedule: { kind: 'interval', everyMinutes: 60 }, enabled: true, nextAt: null, lastTurnId: null, lastScheduledAt: null } });
@@ -365,7 +365,9 @@ test('a rename, a memory and a routine the owner saves while the bot travels go 
   };
   await owner.call('agents.move', { agentId: agent.id, machine: pcId, requestId: 'edits' });
   expect(legs).toBe(2);
-  expect(pc.core.workforce.records.get('profile', agent.id).name).toBe('Renamed on the way');
+  // Unpinned on the way: the second leg's profile replaces the pin the first one brought.
+  expect(pc.core.workforce.records.get('profile', agent.id)).toMatchObject({ name: 'Renamed on the way' });
+  expect(pc.core.workforce.records.get('profile', agent.id)).not.toHaveProperty('pinned');
   expect((await (await pc.connect()).call('agents.brain.get', { agentId: agent.id })).memory).toContain('Saved on the way.');
   expect(pc.core.workforce.records.list('routine').filter(r => r.agentId === agent.id).map(r => r.name)).toEqual(['Late']);
   desk.core.coordination.request = request;

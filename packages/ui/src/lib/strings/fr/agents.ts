@@ -15,6 +15,7 @@ export const fr: Translation = {
     },
     move: {
       label: 'Machine',
+      menu: 'Déplacer vers une machine',
       hint: 'Là où il vit. Choisissez une autre machine du groupe pour l\'y déplacer.',
       older: 'Mettez à jour Boite sur {machine} pour y déplacer un bot.',
       olderShort: 'Mise à jour requise',

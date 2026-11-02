@@ -63,6 +63,29 @@ thing it said, bold while unread. A driver that reports only the running
 tool's name ("Bash") reads as the call's title from the snapshot, else as
 the tool's family in words (`liveActivity`, `lib/agents.svelte.ts`).
 
+A right click on a row, or a long press on a phone, opens the row's menu
+(`agentMenuItems` and `pickAgentAction`, `lib/agent-menu.ts`). It is cut
+from the thread menu: the same groups in the same order, with the same words
+and glyphs where a thread has the action. A desktop lists Open | Pin | Pause or
+Resume, Archive | Rename, Edit, Move to a machine | Copy path. A phone lists
+Pin, Rename, Edit | Pause or Resume, Archive. A built-in bot shows Reset in
+Archive's place. Saving a profile is the owner's: a paired desktop keeps Open
+and Copy path, and a paired phone has no menu. Each action goes through the
+machine that holds the bot:
+- Pin keeps the bot at the top of the list with the thread list's pin before
+  its time. It is stored in the profile (`AgentProfile.pinned`), so every
+  device sees it and it travels with a move.
+- Rename turns the name into a field in the row. Enter or leaving the field
+  saves; Escape keeps the old name. Both give the keyboard back to the row.
+- Edit opens the bot's settings.
+- Archive asks for the bot's exact name, as in its header menu.
+- Copy path copies its brain folder (`agents.brain.get`).
+- Move to a machine appears once the bot's group has another member. It opens
+  the same machine picker as the Machine row below, where the menu stood.
+Pin, Pause, Resume and a rename save only their field, on the revision the
+machine holds when the save runs. Settings left open follow such a change
+unless their own field was being edited.
+
 The ring around the robot, in the list, the header and the desk, says how the
 bot stands (`AgentMood`): an accent arc turning while it works, a dashed
 accent ring while queued, the waiting colour pulsing while it needs the user,
@@ -116,7 +139,9 @@ bots made before stay where they are. Creating it opens its thread, where its
 introduction runs live.
 
 A bot's settings carry a **Machine** row: where it lives, and a menu of the
-other connected machines of its group (`AgentMachine.svelte`). A member whose
+other machines of its group (`AgentMachine.svelte`). The row's Move to a
+machine opens the same menu (`lib/agent-move-flow.ts`). A member that is not
+connected is shut and shows its connection state; a member whose
 Boite lacks `features.botMove` is shut in the menu with "Update needed" and
 says why on hover. Picking one asks in the app's dialog what moves (memory,
 notes, routines, the end of the conversation), that the old conversation

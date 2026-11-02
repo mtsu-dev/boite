@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import type { AgentProfile } from '@boite/contracts';
+import { saveAgent } from '../../lib/agent-menu';
 import { AgentsView } from '../../lib/agents.svelte';
 import { confirm } from '../../lib/confirm.svelte';
 import { FakeClient } from '../../lib/fake-client';
@@ -152,13 +153,24 @@ test('an agent\'s identity and model, edited side by side in its Settings tab, b
   expect([profile().name, profile().domain, profile().selection.model]).toEqual(['Ada Lovelace', 'Review', 'claude-sonnet-5-5']);
   expect(document.querySelector<HTMLElement>('[data-testid=agent-editor] [data-testid=save-status]')?.dataset.state).toBe('saved');
 
+  // The list's menu renames and pauses it meanwhile: the form follows both, and its next edit saves on top rather than being refused as stale.
+  expect(await saveAgent(view, profile().id, { name: 'Ada L.', status: 'paused' }, store)).toBe(true);
+  await idle();
+  expect(name.value).toBe('Ada L.');
+  domain.value = 'Reviews';
+  domain.dispatchEvent(new Event('input', { bubbles: true }));
+  domain.dispatchEvent(new Event('change', { bubbles: true }));
+  await idle();
+  expect([profile().name, profile().domain, profile().status]).toEqual(['Ada L.', 'Reviews', 'paused']);
+  expect(document.querySelector<HTMLElement>('[data-testid=agent-editor] [data-testid=save-status]')?.dataset.state).toBe('saved');
+
   // A name cleared while typing is never sent.
   name.value = '  ';
   name.dispatchEvent(new Event('input', { bubbles: true }));
   name.dispatchEvent(new Event('change', { bubbles: true }));
   await idle();
   expect(document.querySelector<HTMLElement>('[data-testid=agent-editor] [data-testid=save-status]')?.dataset.state).toBe('invalid');
-  expect(profile().name).toBe('Ada Lovelace');
+  expect(profile().name).toBe('Ada L.');
 });
 
 test('a new bot is free to act: it is created with full access unless the owner picks another mode', async () => {
