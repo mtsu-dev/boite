@@ -152,7 +152,8 @@ internet, and a bridge of guests leads to them rather than to the owner's
 phone. On Linux, sysfs decides: an adapter with a `device`, or a bridge with
 such a port (`br0` or Proxmox's `vmbr0` carrying the NIC, which is the LAN
 itself). A machine with no physical adapter, a container whose `eth0` is
-virtual yet is its LAN, falls back to the names that Windows and macOS use. The
+virtual yet is its LAN, falls back to the names that Windows and macOS use,
+and sysfs still rules out its bridges and tunnels whatever their names. The
 listeners follow the set of addresses: a network change opens and closes them
 (`ExtraListeners`, `packages/core/src/server/extra-listeners.ts`), an address
 that refuses the bind is logged once and skipped, and all of them close when
@@ -176,7 +177,9 @@ reading after it, and after a reading that failed, the LAN stays closed: an
 older rule that allowed every profile would otherwise keep the core open on a
 network that just turned public. The card reads the firewall again when its
 window comes back to the front, so a network the owner just marked private in
-Windows settings opens without waiting. The rule Boite adds covers the Private
+Windows settings opens without waiting. A core that leaves its group forgets
+what Windows said: grouped again, perhaps on another network, it reads the
+firewall before any listener opens. The rule Boite adds covers the Private
 profile only ([phone](phone.md#windows-defender-firewall)).
 
 The group card says, under this machine's row, how the LAN reaches it: at

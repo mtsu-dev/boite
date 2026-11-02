@@ -92,10 +92,15 @@ export class LanGate {
     this.#due = true;
   }
 
-  /** The core left its group or stops: no timer stays behind. */
+  /**
+   * The core left its group or stops: no timer stays behind, and what Windows
+   * said is forgotten, since the network may change before the next group. A
+   * reading still running is ignored, and the next opening reads again first.
+   */
   stop(): void {
     for (const stop of this.#stops.splice(0)) stop();
     this.#seen = null;
+    this.stale();
   }
 
   #watch(): void {
@@ -123,8 +128,8 @@ export class LanGate {
       if (this.#adapters instanceof Set) { this.#adapters = undefined; this.changed(); }
     }).finally(() => {
       this.#reading = null;
-      // A change came during the reading: what it said may be the old network.
-      if (this.#due) this.#read();
+      // A change came during the reading: what it said may be the old network. Out of a group, the next opening reads.
+      if (this.#due && this.watching) this.#read();
     });
   }
 }

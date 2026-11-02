@@ -61,12 +61,13 @@ test('a grouped machine listens on its private LAN addresses only, never a virtu
   expect(privateLanAddresses({}, null, null)).toEqual([]);
 });
 
-/** A Linux `/sys/class/net`: each adapter with its physical `device`, or a bridge and its ports. */
-function sysfs(adapters: Record<string, { device?: true; ports?: string[] }>): SysNet {
+/** A Linux `/sys/class/net`: each adapter with its physical `device`, a bridge and its ports, or a tunnel. */
+function sysfs(adapters: Record<string, { device?: true; ports?: string[]; tun?: true }>): SysNet {
   const paths = new Set<string>();
   for (const [name, adapter] of Object.entries(adapters)) {
     if (adapter.device) paths.add(`/sys/class/net/${name}/device`);
     if (adapter.ports) paths.add(`/sys/class/net/${name}/bridge`);
+    if (adapter.tun) paths.add(`/sys/class/net/${name}/tun_flags`);
   }
   return {
     has: (path) => paths.has(path),
@@ -86,6 +87,10 @@ test('on Linux sysfs decides: a physical adapter, or a bridge with a physical po
   expect(privateLanAddresses({ br0: [v4('172.16.0.1')] }, null, sysfs({ br0: { ports: [] }, eth1: { device: true } }))).toEqual([]);
   // A container: no physical adapter at all, its virtual eth0 is its LAN, and the names decide.
   expect(privateLanAddresses(LINUX, null, sysfs({ lo: {}, eth0: {}, tailscale0: {} }))).toEqual(['192.168.1.42']);
+  // There sysfs still rules out a bridge of guests and a tunnel, whatever their names; the virtual eth0 stays in.
+  const guests = { ...LINUX, br0: [v4('172.16.0.1')], lan1: [v4('10.8.0.2')], lxcbr0: [v4('10.0.3.1')] };
+  const container = sysfs({ lo: {}, eth0: {}, br0: { ports: ['veth1'] }, veth1: {}, lan1: { tun: true }, lxcbr0: { ports: [] } });
+  expect(privateLanAddresses(guests, null, container)).toEqual(['192.168.1.42']);
   // sysfs unreadable: the names decide too.
   expect(privateLanAddresses(LINUX, null, { has: () => false, list: () => null })).toEqual(['192.168.1.42']);
 });
@@ -304,6 +309,23 @@ test('grouped on Windows, the core sees on its own a network turned public with 
   // Leaving the group stops both timers.
   await core.group.leave();
   expect(timers.armed()).toBe(0);
+});
+
+test('a core that leaves its group forgets the firewall: grouped again on a public network, it reads Windows before any listener', async () => {
+  const { core, listening, state, reads, setInterfaces } = await lanCore({ firewall: PRIVATE_ALLOWED });
+  await core.group.create('Home');
+  await waitFor(() => listening.has('192.168.1.20'));
+  await core.group.leave();
+  expect([...listening]).toEqual([]);
+  // Out of the group, the laptop moves to a public Wi-Fi on the same adapter, where an older every-profile rule lets the core through.
+  writeFileSync(state, JSON.stringify(ANY_RULE_ON_PUBLIC));
+  setInterfaces({ ...WINDOWS, 'Wi-Fi': [v4('10.0.0.9')] });
+  const before = reads();
+  await core.group.create('Cafe');
+  expect([...listening]).toEqual([]);
+  await waitFor(() => reads() === before + 1);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  expect([...listening]).toEqual([]);
 });
 
 test('a network change closes the LAN at once, and a reading that fails keeps it closed until one answers', async () => {

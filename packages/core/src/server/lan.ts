@@ -61,15 +61,17 @@ const NET = '/sys/class/net';
  * `vmbr0` with the NIC enslaved to it, which is the LAN itself). A bridge
  * with no physical port (docker0, virbr0, a `br0` of guests only) and every
  * other virtual interface are out. A machine with no physical adapter at all
- * is a container or a VM whose `eth0` is virtual yet is its LAN: there, and
- * when sysfs cannot be read, the names decide. Null means sysfs said nothing.
+ * is a container or a VM whose `eth0` is virtual yet is its LAN: there the
+ * names decide, and sysfs still rules out every bridge (none has a physical
+ * port) and every tunnel (`tun_flags`). Null means sysfs cannot be read.
  */
 export function sysfsAdapters(sys: SysNet): ((name: string) => boolean) | null {
   const names = sys.list(NET);
   if (names === null) return null;
   const physical = (name: string) => sys.has(`${NET}/${name}/device`);
-  if (!names.some(physical)) return null;
-  return (name) => physical(name) || (sys.has(`${NET}/${name}/bridge`) && (sys.list(`${NET}/${name}/brif`) ?? []).some(physical));
+  const bridge = (name: string) => sys.has(`${NET}/${name}/bridge`);
+  if (names.some(physical)) return (name) => physical(name) || (bridge(name) && (sys.list(`${NET}/${name}/brif`) ?? []).some(physical));
+  return (name) => !VIRTUAL.test(name) && !bridge(name) && !sys.has(`${NET}/${name}/tun_flags`);
 }
 
 /**
