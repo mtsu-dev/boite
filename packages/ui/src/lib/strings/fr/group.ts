@@ -34,7 +34,7 @@ export const fr: Translation = {
     leaveBody: "Cette machine oublie le groupe. Les téléphones ajoutés sur cette machine quittent le groupe avec elle.",
     lanHint: 'Un téléphone atteint ce lien une fois le réseau local activé et Boite redémarré.',
     tailscale: {
-      hint: "L'appli Boite d'un téléphone n'ouvre que des liens HTTPS. Tailscale peut servir cette machine à {url}.",
+      hint: "Avec le HTTPS de Tailscale, le lien nomme cette machine : {url}. L'appli Boite d'un téléphone l'ouvre.",
       enable: 'HTTPS via Tailscale',
       enabling: 'Activation du HTTPS'
     },

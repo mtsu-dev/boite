@@ -20,8 +20,8 @@ export interface FakeRoster {
   invites: Map<string, number>;
 }
 
-/** The fake core's MagicDNS name, the one its Tailscale switch serves (`fake-client/pairing.ts`). */
-const FAKE_MAGIC_DNS = 'boite-pc.tail0d6070.ts.net';
+/** The fake core's tailnet address, the one `fake-client/contacts.ts` names. */
+const FAKE_TAILNET = '100.101.102.103';
 
 const refuse = (message: string, field?: string) =>
   new RpcFailure({ code: RpcErrorCode.Refused, message, ...(field === undefined ? {} : { data: { field } }) });
@@ -192,12 +192,12 @@ export function groupMethods(ctx: FakeContext) {
       const expiresAt = ctx.now() + GRANT_TTL_MS;
       roster.invites.set(grant, expiresAt);
       const invite = GROUP_INVITE_PREFIX + btoa(JSON.stringify({ v: 1, g: roster.id, n: roster.name, c: ctx.identity.coreId, a: [ctx.identity.url], t: grant }));
-      // The real core's link (`ownAddress`): its public address, else its MagicDNS name, as on a tailnet. `?lan=off` is a
+      // The real core's link (`ownAddress`): its public address, else its tailnet address written as numbers. `?lan=off` is a
       // fresh install that listens on itself and has no tailnet, `?tailnet=off` a machine on a LAN alone.
       const query = new URLSearchParams(typeof location === 'undefined' ? '' : location.search);
       const lanOff = query.get('lan') === 'off' && !ctx.settings.listenOnLan;
       const origin = ctx.settings.publicUrl
-        ?? (lanOff ? 'http://127.0.0.1:8777' : query.get('tailnet') === 'off' ? 'http://192.168.1.20:8777' : `http://${FAKE_MAGIC_DNS}:8777`);
+        ?? (lanOff ? 'http://127.0.0.1:8777' : query.get('tailnet') === 'off' ? 'http://192.168.1.20:8777' : `http://${FAKE_TAILNET}:8777`);
       return {
         url: `${origin}/?grant=fake-grant-${ctx.seq}#${DEVICE_LINK_JOIN}=${encodeURIComponent(invite)}`,
         expiresAt
