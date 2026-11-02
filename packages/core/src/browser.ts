@@ -398,7 +398,7 @@ export class AgentBrowser {
     // While the page is still there: what it signed in to is on disk before anything can end the browser.
     await this.#engines.saveCookies(tab.engine);
     // A frozen page runs nothing, its unload handlers included.
-    await this.#sleep.wake(tab).catch(() => {});
+    if (!tab.sleep.crashed) await this.#sleep.wake(tab).catch(() => {});
     await tab.engine.cdp.send('Target.closeTarget', { targetId: tab.targetId }).catch(() => {});
     this.#drop(tab.id);
   }
@@ -584,7 +584,7 @@ export class AgentBrowser {
           this.#changed(tab.threadId);
         }
       }
-    });
+    }, action.kind === 'close');
   }
 
   #profileName(id: string): string {

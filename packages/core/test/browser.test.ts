@@ -146,6 +146,11 @@ real('a tab whose renderer was killed loads its page again for the next viewer o
   // Killed while awake, the agent's next command finds the page loaded again.
   await browser.crashRenderer(tabId!);
   expect(await evaluate('document.title')).toBe('Fixture');
+  // Closed while dead, the page goes without loading again: its server hears nothing.
+  await browser.crashRenderer(tabId!);
+  browserFixture.agents.delete('/');
+  await agent.call('browser.command', { threadId, tabId, action: { kind: 'close' } });
+  expect(browserFixture.agents.has('/')).toBe(false);
 }, 150_000);
 
 real('boite browse opens its page as a new tab of the conversation browser, not in a panel of its own', async () => {

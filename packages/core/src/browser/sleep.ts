@@ -82,11 +82,14 @@ export class TabSleep<T extends Sleeper> {
    */
   constructor(private held: (tab: T) => boolean, private turning: (tab: T) => boolean = () => false, public afterMs = SLEEP_AFTER_MS, public turnMs = TURN_HOLD_MS) {}
 
-  /** Runs `run` on an awake page, and starts the wait for sleep again once it ends. */
-  async use<R>(tab: T, run: () => Promise<R>): Promise<R> {
+  /**
+   * Runs `run` on an awake page, and starts the wait for sleep again once it
+   * ends. Closing a page whose renderer died does not load it again first.
+   */
+  async use<R>(tab: T, run: () => Promise<R>, closing = false): Promise<R> {
     tab.sleep.uses++;
     try {
-      await this.wake(tab);
+      if (!(closing && tab.sleep.crashed)) await this.wake(tab);
       return await run();
     } finally {
       tab.sleep.uses--;
@@ -105,13 +108,13 @@ export class TabSleep<T extends Sleeper> {
   wake(tab: T): Promise<void> {
     return this.#queue(tab, async () => {
       if (!tab.sleep.asleep && !tab.sleep.crashed) return;
-      if (tab.sleep.crashed) {
-        await this.#step(tab, 'Page.reload', {});
-        tab.sleep.crashed = false;
-      } else await this.#step(tab, 'Page.setWebLifecycleState', { state: 'active' });
+      // Cleared once the whole wake passed: a step that fails after the reload leaves the next use to try again.
+      if (tab.sleep.crashed) await this.#step(tab, 'Page.reload', {});
+      else await this.#step(tab, 'Page.setWebLifecycleState', { state: 'active' });
       await this.#step(tab, 'Emulation.setFocusEmulationEnabled', { enabled: true });
       if (tab.sleep.front) await this.#step(tab, 'Page.bringToFront', {});
       tab.sleep.asleep = false;
+      tab.sleep.crashed = false;
     });
   }
 
