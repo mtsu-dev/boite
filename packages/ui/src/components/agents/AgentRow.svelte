@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick, type Component, type Snippet } from 'svelte';
-  import { Clock3, Pin } from '@lucide/svelte';
+  import { ArrowRightLeft, Clock3, Pin } from '@lucide/svelte';
   import { focusOnMount } from '../../lib/actions';
   import { longPress } from '../../lib/long-press';
   import { fill, strings } from '../../lib/strings';
@@ -19,8 +19,9 @@
    * has worked, the missed answers or the time of the last one, and the next
    * wake as a small clock while it rests. A row with a menu opens it on a
    * right click or a long press, and renames in place like a thread's row.
+   * A move waiting for the turn's end adds a line, as on a thread's row.
    */
-  let { title, builtin = false, open = false, unread = 0, marked = false, away = false, at, now, detail = '', tone = 'idle', icon, since = null, wake = null, machine, testid, onclick, picture, aside, pinned = false, onmenu, renaming = false, onrename }: {
+  let { title, builtin = false, open = false, unread = 0, marked = false, away = false, at, now, detail = '', tone = 'idle', icon, since = null, wake = null, machine, testid, onclick, picture, aside, pinned = false, onmenu, renaming = false, onrename, pending = null }: {
     title: string;
     /** A bot Boite ships: a small badge after its name. */
     builtin?: boolean;
@@ -57,6 +58,8 @@
     renaming?: boolean;
     /** The typed name, or null when the rename was abandoned. */
     onrename?: (name: string | null) => void;
+    /** Where it moves once its turn ends, while it waits to. */
+    pending?: string | null;
   } = $props();
 
   const missed = $derived(fill(unread === 1 ? strings.agents.missedOne : strings.agents.missedMany, { count: String(unread) }));
@@ -114,6 +117,7 @@
         {#if wake}<span class="wake" title={fill(strings.agents.nextWake, { name: wake.label, when: exactTime(wake.at) })} data-testid="agent-row-wake"><Clock3 size={11} strokeWidth={2} />{wakeText}</span>{/if}
       </span>
     {/if}
+    {#if pending}<span class="pending" data-testid="agent-row-pending" title={pending}><ArrowRightLeft size={12} /><span class="ui-label">{pending}</span></span>{/if}
   </span>
 {/snippet}
 
@@ -179,6 +183,10 @@
   [data-tone='asleep'] .title { color: var(--color-muted-foreground); }
   .wake { flex: none; display: inline-flex; align-items: center; gap: 3px; color: var(--color-subtle); font-variant-numeric: tabular-nums; }
   .pin { display: inline-flex; align-items: center; flex: none; color: var(--color-muted-foreground); }
+  /* A move waiting for the turn's end: the accent, like a thread's. */
+  .pending { display: flex; align-items: center; gap: 4px; min-width: 0; font-size: var(--text-xs); color: var(--color-accent); }
+  .pending span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pending :global(svg) { flex: none; }
   /* The name becomes its field where it stood: the row keeps its height and its picture. */
   .rename { flex: 1; min-width: 0; height: 22px; padding: 0 6px; }
   /* A long press opens the menu, not the system's link and text callout. */

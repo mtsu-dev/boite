@@ -82,6 +82,8 @@ machine that holds the bot:
 - Copy path copies its brain folder (`agents.brain.get`).
 - Move to a machine appears once the bot's group has another member. It opens
   the same machine picker as the Machine row below, where the menu stood.
+  While the bot waits to leave after its turn, Cancel move takes its place and
+  the row says where it goes.
 Pin, Pause, Resume and a rename save only their field, on the revision the
 machine holds when the save runs. Settings left open follow such a change
 unless their own field was being edited.
@@ -146,10 +148,27 @@ Boite lacks `features.botMove` is shut in the menu with "Update needed" and
 says why on hover. Picking one asks in the app's dialog what moves (memory,
 notes, routines, the end of the conversation), that the old conversation
 stays archived on this machine, and that the bot reads a note about the move
-with its next message. Confirmed, the client calls `agents.move` on the
-store of the machine that holds the bot and, once it answers, opens the bot
-on its new machine. A refusal shows its message in the toast; a turn in
-flight reads as one short line asking to move it once the turn is done
+with its next message. The dialog also lists the bot's projects that do not
+become the target's own: one of this machine the target lists under no such
+name or path, one the target also lists (the bot keeps this machine's copy,
+project ids being each machine's, and can add the target's after the move),
+whether it reaches them from the target through the group or not until this
+machine turns on "Bots from the other machines" in Machines and updates, and
+one it had from the target that the target no longer lists. Confirmed, the
+client calls `agents.move` on the store of the machine that holds the bot and,
+once it answers, opens the bot on its new machine. A refusal shows its message
+in the toast of the page on screen.
+
+A bot at work (its thread working, queued or waiting on its owner) on a
+machine with `features.botMoveQueue` gets a dialog that opens with "it moves
+to <machine> once this turn and the threads it started are done" and a
+**Move after this turn** button, which calls `agents.move.queue`; a turn that
+starts while the dialog is open turns a refused `agents.move` into the same
+queued move. Until it leaves, its row on the Bots page and its Machine row say
+"Moves to <machine> after this turn" in the accent color, the picker is shut,
+and the desktop row menu and the Machine row offer **Cancel move**
+(`agents.move.cancel`). An older machine refuses the move until the turn is
+done, in one short line
 ([moving a bot](#moving-a-bot-to-another-machine)).
 
 ### Robots
@@ -904,6 +923,27 @@ window's storage (`boite.agentMoves`, `lib/agent-move.ts`) until the move
 succeeds or a refusal that read the request ends it; after a lost answer, a
 silent target (`reason: 'unreachable'`), a busy bot or a dropped connection,
 the next try, even after a reload, sends the same id.
+
+### After the bot's turn
+
+`agents.move.queue` (same params, owner only, `features.botMoveQueue`) runs the
+checks of a move now (member, archived, team) and keeps the move in
+`AgentStatus.leaving` (`{agentId, machine, requestId, at}`), persisted as
+`agents:move-queued:<agentId>` so a restart keeps it. From then on the bot's
+routines, events and waking facts are held as during a move; the owner's
+messages and the letters its sub-threads send still run, and the move waits
+for them too. Each scheduler pass (`BotMoves.sweep`) starts it once the bot's
+thread and every thread below it are idle, at once for an idle bot, with the
+kept `requestId`. A turn that starts on the way only delays it. A target that
+did not answer may hold the bot already: the thread gets one line ("Not moved
+yet: … The move tries again every 30 seconds until it is cancelled") and the
+same request goes again every 30 seconds. A refusal the target read drops it
+with the line "Did not move once its turn ended: <reason>", and the bot stays.
+Asking again replaces the waiting move. `agents.move.cancel` drops it and
+answers `{cancelled: false}` when none waits or once it started. A cancelled
+move may have reached the target: the window keeps its `requestId` for the
+next move to that machine by hand (`moveResumable`), which finishes it rather
+than making a second bot.
 
 ## Built-in bots
 
