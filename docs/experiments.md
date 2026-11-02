@@ -79,12 +79,14 @@ of a client's experiments.
 
 ## Teams
 
-Teams of bots ([teams](teams.md)). The switch gates every `teams.*` method
-and `boite team` command on the core, which reads the desktop app's
-experiments, and the team lines of the bots' guide. Letters already in a
-bot's inbox still go out once it is off. In the app it shows the Teams section
-of the sidebar and of the phone's thread list, and the team chats
-([teams](teams.md#in-the-app)); a phone follows the desktop's switch.
+Teams of bots ([teams](teams.md)). Teams needs Bots: its switch stays greyed
+while Bots is off, and turning Bots off turns Teams off too. The switch gates
+every `teams.*` method and `boite team` command on the core, which reads the
+desktop app's experiments, and the team lines of the bots' guide. Letters
+already in a bot's inbox still go out once it is off. In the app it shows the
+Teams section above the bots on the Bots page, on the desktop and on the
+phone, and the team chats there ([teams](teams.md#in-the-app)); a phone
+follows the desktop's switch.
 
 ## Contacts
 

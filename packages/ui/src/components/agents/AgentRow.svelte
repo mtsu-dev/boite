@@ -8,6 +8,7 @@
   import { secondClock } from '../../lib/clock.svelte';
   import type { Machine } from '../../lib/workspace.svelte';
   import MachineIcon from '../MachineIcon.svelte';
+  import StatusMark from '../StatusMark.svelte';
   import BuiltinBadge from './BuiltinBadge.svelte';
 
   /**
@@ -19,12 +20,14 @@
    * wake as a small clock while it rests. A row with a menu opens it on a
    * right click or a long press, and renames in place like a thread's row.
    */
-  let { title, builtin = false, open = false, unread = 0, away = false, at, now, detail = '', tone = 'idle', icon, since = null, wake = null, machine, testid, onclick, picture, aside, pinned = false, onmenu, renaming = false, onrename }: {
+  let { title, builtin = false, open = false, unread = 0, marked = false, away = false, at, now, detail = '', tone = 'idle', icon, since = null, wake = null, machine, testid, onclick, picture, aside, pinned = false, onmenu, renaming = false, onrename }: {
     title: string;
     /** A bot Boite ships: a small badge after its name. */
     builtin?: boolean;
     open?: boolean;
     unread?: number;
+    /** Something unread with no count to give, a team's chat: a dot after the time. */
+    marked?: boolean;
     /** Its machine is not connected: the machine icon shows its connection state. */
     away?: boolean;
     /** The row's last activity, shown when nothing is missed. */
@@ -101,6 +104,7 @@
         {#if spent !== null}<span class="spent" data-testid="agent-row-spent">{spent}</span>
         {:else if unread > 0}<span class="unread-count" role="img" title={missed} aria-label={missed} data-testid="agent-unread-count">{unread}</span>
         {:else if at > 0}<time class="when" datetime={new Date(at).toISOString()} title={exactTime(at)}>{ago(at, now)}</time>{/if}
+        {#if marked}<StatusMark tone="unread" label={strings.sidebar.unread} />{/if}
       {/if}
     </span>
     {#if detail || wake}
@@ -113,7 +117,7 @@
   </span>
 {/snippet}
 
-<div class="agent-row" class:open class:unread={unread > 0} class:on-machine={!!machine} data-machine-id={machine?.id} data-tone={tone}>
+<div class="agent-row" class:open class:unread={unread > 0 || marked} class:on-machine={!!machine} data-machine-id={machine?.id} data-tone={tone}>
   {#if renaming}
     <div class="row">
       {#snippet field()}
@@ -128,7 +132,7 @@
       {@render body(field)}
     </div>
   {:else}
-    <button type="button" class="ghost row" bind:this={row} aria-current={open ? 'page' : undefined} title={title} {onclick} oncontextmenu={onmenu} use:press={!!onmenu} data-testid={testid}>
+    <button type="button" class="ghost row" bind:this={row} aria-current={open ? 'page' : undefined} title={title} {onclick} oncontextmenu={onmenu} use:press={!!onmenu} data-testid={testid} data-unread={marked ? 'true' : undefined}>
       {#snippet name()}
         {#if builtin}<span class="name"><span class="title">{title}</span><BuiltinBadge /></span>{:else}<span class="title">{title}</span>{/if}
       {/snippet}

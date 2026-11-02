@@ -555,11 +555,11 @@ export class Workspace {
     this.#moveTo(target);
     target.visible = true;
     target.showAgents(agentId, pane);
-    // The bot left open there let its thread go when the window moved away: it
-    // stays on screen, so it reads what it missed and listens again. Opening
-    // another bot instead supersedes this open.
+    // The bot or team chat left open there let its thread go when the window
+    // moved away: it stays on screen, so it reads what it missed and listens
+    // again. Opening another bot instead supersedes this open.
     const open = target.openThread;
-    if (away && open?.agentSessionId) void target.open(open.id);
+    if (away && (open?.agentSessionId || open?.teamId)) void target.open(open.id);
   }
 
   /** A named draft, a project's fresh draft, or the machine's last visit when no destination is given. */

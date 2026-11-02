@@ -25,7 +25,7 @@ import { RpcErrorCode, threadActive } from '@boite/contracts';
 import { RpcFailure, wasDropped } from '../client';
 import { wasClosed } from '../rpc-error';
 import { strings } from '../strings';
-import { experimentOn } from '../experiments.svelte';
+import { onBotsPage } from '../experiments.svelte';
 import { archiveWhile, keepArchived, pinWhile } from './optimistic';
 
 /** What a rewind hands back to the composer: the removed message's content, and how the agent forgets it. */
@@ -126,11 +126,12 @@ export class Threads {
   lastChatThreadId: ThreadId | null = null;
 
   /**
-   * Where a thread opens: a persistent agent's own thread on the Agents page,
-   * beside the agents list, every other one in the chat.
+   * Where a thread opens: a persistent agent's own thread and a team's chat on
+   * the Bots page, beside the bots and the teams they list, every other one in
+   * the chat. A team's chat needs the Teams experiment for it.
    */
-  pageOf(thread: Pick<ThreadSummary, 'agentSessionId'>): 'chat' | 'agents' {
-    return thread.agentSessionId && experimentOn('resident-agents') ? 'agents' : 'chat';
+  pageOf(thread: Pick<ThreadSummary, 'agentSessionId' | 'teamId'>): 'chat' | 'agents' {
+    return onBotsPage(thread) ? 'agents' : 'chat';
   }
 
   invalidateNavigation(navigate = true): number {

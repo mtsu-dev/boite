@@ -114,15 +114,15 @@ export class Layout {
   }
 
   /**
-   * The thread list and its chat. Coming from an agent's thread, the chat goes
-   * back to the ordinary thread it showed last, else where the user left off:
-   * an agent's conversation belongs beside the agents list.
+   * The thread list and its chat. Coming from an agent's thread or a team's
+   * chat, the chat goes back to the ordinary thread it showed last, else where
+   * the user left off: those belong beside the bots list.
    */
   showChat(): void {
     this.ctx.threads.invalidateNavigation();
     this.page = 'chat';
     const open = this.ctx.threads.openThread;
-    if (!open?.agentSessionId) return;
+    if (!open?.agentSessionId && !open?.teamId) return;
     const back = this.ctx.threads.lastChatThreadId;
     const row = back ? this.ctx.threads.threads.find(t => t.id === back && !t.archived) : undefined;
     if (row) void this.ctx.store.open(row.id);

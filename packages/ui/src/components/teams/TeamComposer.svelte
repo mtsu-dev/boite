@@ -204,6 +204,8 @@
   /* The thread composer's look (Composer.svelte): `composer-wrap` and `composer` also take the app's focus ring. */
   .composer-wrap { padding: 8px 20px 16px; }
   .composer {
+    /* The focus ring (`.composer::before`, app.css) is laid on this box, not on the card around the chat. */
+    position: relative;
     max-width: var(--content);
     margin: 0 auto;
     background: var(--composer-glaze) var(--color-composer-surface);
