@@ -529,7 +529,7 @@ export class AgentStore {
     return {
       agentId: agent.id, threadId, state, activity: thread && state !== 'archived' ? this.#activity(thread) : null, problem,
       nextWake: next ? { at: next.nextAt!, routineId: next.id, label: next.name } : null, unread, last, today,
-      memory: this.memory.lastPass(agent.id),
+      memory: this.memory.lastPass(agent.id), leaving: this.moves.leaving(agent.id),
     };
   }
 
@@ -609,6 +609,8 @@ export function registerPersistentAgents(core: Core): void {
   core.router.register('agents.builtin.ensure', p => store.builtins.ensure(p));
   core.router.register('agents.builtin.reset', p => store.builtins.reset(p));
   core.router.register('agents.move', p => store.moves.move(p));
+  core.router.register('agents.move.queue', p => store.moves.queue(p));
+  core.router.register('agents.move.cancel', p => store.moves.cancel(p));
   core.router.register('agents.open', p => store.open(p.agentId));
   core.router.register('agents.runtime.get', p => store.resident.config(p.agentId));
   core.router.register('agents.runtime.configure', p => store.resident.configure(p));

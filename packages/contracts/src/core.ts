@@ -58,6 +58,8 @@ export interface CoreInfo {
     botsHome?: boolean;
     /** `agents.move` and the `bot.move` group operation: this machine takes a bot another member of its group moves to it. */
     botMove?: boolean;
+    /** `agents.move.queue|cancel` and `AgentStatus.leaving`: a move asked while the bot works waits for its turn to end. */
+    botMoveQueue?: boolean;
     /** `threads.listChanges`: a reconnect reads only the threads that changed while it was away. */
     listChanges?: boolean;
   };

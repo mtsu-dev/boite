@@ -1,7 +1,7 @@
 import { nextAgentOccurrence, RpcErrorCode, AGENT_MEMORY_MAX, AGENT_PICTURE_CODE, AGENT_PICTURE_MAX_BYTES, AGENT_PICTURE_TYPES, isAgentPicture, AGENT_ROUTINE_NAME_MAX, AGENT_ROUTINE_PROMPT_MAX, AGENT_ROUTINES_MAX } from '@boite/contracts';
 import { BUILTIN_BOTS, BUILTIN_LOCKED, BUILTIN_NEVER_ARCHIVED } from './fake-client/builtin-bots';
 import type {
-  AgentAccountGrant, AgentBuiltin, AgentBrain, AgentBrainRoot, AgentEntrustment, AgentProfile, AgentRecord, AgentRoutine, AgentRuntimeConfig, AgentSchedule,
+  AgentAccountGrant, AgentBuiltin, AgentBrain, AgentBrainRoot, AgentEntrustment, AgentProfile, AgentQueuedMove, AgentRecord, AgentRoutine, AgentRuntimeConfig, AgentSchedule,
   AgentSelection, AgentSession, AgentStatus, AgentWatch, AgentsRpcMethods, AgentsSnapshot, RpcParams, RpcResult, Thread, Turn
 } from '@boite/contracts';
 import { RpcFailure } from './client';
@@ -82,6 +82,8 @@ export class FakeAgents {
   /** Moves this core finished, by `requestId`, and the ones it took in, by source and `requestId`: the same id answers the same move. */
   private movedOut = new Map<string, RpcResult<'agents.move'>>();
   private movedIn = new Map<string, string>();
+  /** Moves waiting for their bot's turn to end, by bot, as the core's `agents.move.queue` keeps them. */
+  private queued = new Map<string, AgentQueuedMove>();
   private sessions = new Map<string, AgentSession>();
   private routines = new Map<string, AgentRoutine>();
   private watches: AgentWatch[] = [];
@@ -187,7 +189,24 @@ export class FakeAgents {
       routine.lastOutcome = quiet ? 'quiet' : turn.status === 'error' ? 'error' : turn.status === 'stopped' ? 'stopped' : 'done';
       routine.revision++;
     }
+    this.leaveIfIdle(agentId);
     this.bump();
+  }
+  /** The waiting move of a bot whose threads are all idle, as the core's scheduler pass starts it; a failure drops it. */
+  private leaveIfIdle(agentId: string): void {
+    const queued = this.queued.get(agentId);
+    if (!queued || this.busyThread(agentId)) return;
+    this.queued.delete(agentId);
+    try { this.move({ agentId, machine: queued.machine, requestId: queued.requestId }); } catch { /* The bot stays: the core says why in its thread. */ }
+  }
+  /** One of the bot's threads with a turn running or queued, as a move waits for. */
+  private busyThread(agentId: string): Thread | undefined {
+    for (const session of this.sessions.values()) {
+      if (session.agentId !== agentId) continue;
+      const thread = this.runner?.thread?.(session.threadId);
+      if (thread?.status === 'running' || thread?.status === 'queued') return thread;
+    }
+    return undefined;
   }
   /** A turn whose answer folds because it had nothing for the user. */
   isQuiet(turnId: string): boolean { return this.quiet.has(turnId); }
@@ -274,6 +293,7 @@ export class FakeAgents {
       last: lastMessage ? { text: lastText.slice(0, 200), at: lastMessage.createdAt } : null,
       today: { turns: today.length, wakes: wakes.length, quiet: wakes.filter(t => this.quiet.has(t.id)).length, costUsd: this.spend.get(agent.id) ?? 0 },
       memory: this.passes.get(agent.id) ?? null,
+      leaving: this.queued.has(agent.id) ? { ...this.queued.get(agent.id)! } : null,
     };
   }
   private watchOf(watch: AgentWatch): AgentWatch {
@@ -341,7 +361,27 @@ export class FakeAgents {
     'agents.limits.set': p => { this.limits = { paused: p.paused === true }; this.bump(); return { ...this.limits }; },
     'agents.entrust': p => this.entrust(p),
     'agents.move': p => this.move(p),
+    'agents.move.queue': p => this.queueMove(p),
+    'agents.move.cancel': p => {
+      const cancelled = this.queued.delete(String(p.agentId));
+      if (cancelled) this.bump();
+      return { cancelled };
+    },
   };
+
+  /** The core's `agents.move.queue`: the same checks now, the move once the bot's threads are all idle, at once for an idle one. */
+  private queueMove(p: RpcParams<'agents.move.queue'>): RpcResult<'agents.move.queue'> {
+    const agent = this.profile(p.agentId);
+    const found = this.runner?.member?.(typeof p.machine === 'string' ? p.machine : '');
+    if (!found) this.refuse('agents.move.machine: this machine is in no group; --machine names another machine of its group');
+    if ('refused' in found) this.refuse(found.refused);
+    if (agent.status === 'archived') this.refuse(`agents.move: ${agent.name} is archived; restore it before moving it`);
+    const queued: AgentQueuedMove = { agentId: agent.id, machine: found.coreId, requestId: typeof p.requestId === 'string' ? p.requestId : this.nextId('mov'), at: Date.now() };
+    this.queued.set(agent.id, queued);
+    this.leaveIfIdle(agent.id);
+    this.bump();
+    return { ...queued };
+  }
 
   /**
    * The core's move between two members of the group: the target makes the bot
@@ -359,12 +399,9 @@ export class FakeAgents {
     if (agent.status === 'archived') this.refuse(`agents.move: ${agent.name} is archived; restore it before moving it`);
     if (!found.botMove || !found.agents) this.refuse(`agents.move: update Boite on ${found.name}; it cannot take a bot from another machine yet`);
     // Every thread the move archives must be idle, not only the first.
-    for (const session of this.sessions.values()) {
-      if (session.agentId !== agent.id) continue;
-      const thread = this.runner?.thread?.(session.threadId);
-      if (thread?.status === 'running' || thread?.status === 'queued') {
-        throw new RpcFailure({ code: RpcErrorCode.Refused, message: `agents.move: ${agent.name} has a turn running or queued; stop it or let it end before moving the bot`, data: { field: 'agentId', reason: 'turn-in-flight', status: thread.status } });
-      }
+    const busy = this.busyThread(agent.id);
+    if (busy) {
+      throw new RpcFailure({ code: RpcErrorCode.Refused, message: `agents.move: ${agent.name} has a turn running or queued; stop it or let it end before moving the bot`, data: { field: 'agentId', reason: 'turn-in-flight', status: busy.status } });
     }
     const parcel: BotParcel = {
       profile: structuredClone(agent),
@@ -385,7 +422,7 @@ export class FakeAgents {
     // As the core: nothing of the bot stays on the machine it left, its desk included.
     this.watches = this.watches.filter(watch => watch.agentId !== agent.id);
     this.entrusted = this.entrusted.filter(entry => entry.agentId !== agent.id);
-    for (const map of [this.profiles, this.brains, this.configs, this.problems, this.unread, this.spend, this.passes, this.placed]) map.delete(agent.id);
+    for (const map of [this.profiles, this.brains, this.configs, this.problems, this.unread, this.spend, this.passes, this.placed, this.queued]) map.delete(agent.id);
     this.bump();
     const result = { agentId: agent.id, machine: found.coreId, threadId: landed, projectIds: [], groupProjects: [] };
     this.movedOut.set(requestId, structuredClone(result));
