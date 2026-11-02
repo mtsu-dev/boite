@@ -156,9 +156,10 @@ link is not cut off every time. While the browser reports itself offline, a
 remote host is not retried at all: the `online` event starts the next attempt.
 A loopback core is retried regardless, since it is on the same machine.
 
-A change of network retries every machine that is not connected at once,
-without waiting for the end of its backoff, and the group's members too
-(`GroupLinks.retry`). Four signals count as one: the `network.changed` event of
+A change of network retries every machine that is waiting out its backoff at
+once, and the group's members too (`GroupLinks.retry`). A machine whose
+handshake is under way keeps that socket (`WsClient.wake`): signals every few
+seconds would otherwise restart a slow handshake before it could finish. Four signals count as one: the `network.changed` event of
 any connected core, the browser's `online` event, a `change` of
 `navigator.connection`, and a machine of the window reconnecting by itself
 after failed attempts. Signals that arrive together give one retry at once and

@@ -594,11 +594,11 @@ export class Workspace {
   }
 
   /** `dropped`: the group dropped this machine, as opposed to it having moved or the owner taking it off the list. */
-  /** The network changed: every machine not connected tries now rather than at the end of its wait. */
+  /** The network changed: every machine waiting to retry tries now; one whose handshake is under way keeps it (`WsClient.wake`). */
   resumeMachines(): void {
     for (const machine of this.machines) {
       const client = machine.store.client;
-      if (client instanceof WsClient && client.state !== 'ready') void client.resume().catch(() => undefined);
+      if (client instanceof WsClient) void client.wake().catch(() => undefined);
     }
   }
 
