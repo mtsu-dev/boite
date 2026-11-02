@@ -175,8 +175,10 @@ export class AgentBrowser {
   set sleepAfterMs(ms: number) { this.#sleep.afterMs = ms; }
   /** Whether the tab's page is frozen now; a test waits on it rather than on a guess of the time. */
   asleep(tabId: string): boolean { return this.#tabs.get(tabId)?.sleep.asleep ?? false; }
-  /** Ends the tab's renderer as a kill from outside does (the memory guard, the kernel), which never answers; tests crash a page with it. */
-  crashRenderer(tabId: string): Promise<unknown> { return this.#tabs.get(tabId)?.page.send('Page.crash', {}, 1000).catch(() => {}) ?? Promise.resolve(); }
+  /** The renderer processes of the tab's browser, which a test kills as the memory guard does. */
+  async rendererPids(tabId: string): Promise<number[]> {
+    return ((await this.#tabs.get(tabId)?.engine.cdp.send<{ processInfo: Array<{ type: string; id: number }> }>('SystemInfo.getProcessInfo'))?.processInfo ?? []).filter(process => process.type === 'renderer').map(process => process.id);
+  }
 
   /** What keeps a tab awake with no command running: a viewer, a recording. Its conversation's running turn does too, for a while (`sleep.ts`). */
   #held(tab: Tab): boolean {
@@ -362,9 +364,7 @@ export class AgentBrowser {
 
   /** A tab whose renderer died stays open and loads again at its next use (`sleep.ts`); a viewer gets a new screencast. */
   #crashed(tab: Tab | undefined, status: string): void {
-    if (!tab) return;
-    this.#sleep.crashed(tab); this.#remote.restart(tab);
-    this.#core.logs.record('warn', `A browser tab's renderer ended (${status}): its page loads again when it is next watched or driven`, { source: 'browser', event: 'browser.tab-crashed', threadId: tab.threadId, data: { status } });
+    if (tab) { this.#sleep.crashed(tab); this.#remote.restart(tab); this.#core.logs.record('warn', `A browser tab's renderer ended (${status}): its page loads again when it is next watched or driven`, { source: 'browser', event: 'browser.tab-crashed', threadId: tab.threadId, data: { status } }); }
   }
 
   #gone(engine: Engine, targetId: string): void {

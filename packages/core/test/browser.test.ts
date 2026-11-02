@@ -134,22 +134,21 @@ real('a tab whose renderer was killed loads its page again for the next viewer o
   harness.core.browser.sleepAfterMs = 300;
   const browser = harness.core.browser;
   const { tabId } = await agent.call('browser.command', { threadId, action: { kind: 'open', url: url() } });
-  // Chromium reports the crash once its crash handler is done, later than 1 s on a loaded runner: each step starts after the core heard it.
+  // Each step starts once the core heard of the crash.
   let crashes = 0;
   const record = harness.core.logs.record.bind(harness.core.logs);
   harness.core.logs.record = (level, message, context = {}, at) => { if (context.event === 'browser.tab-crashed') crashes++; record(level, message, context, at); };
   const crash = async () => {
     const before = crashes;
-    await browser.crashRenderer(tabId!);
+    // Every renderer of this test's own browser: the tab's is among them, and the others are spares.
+    for (const pid of await browser.rendererPids(tabId!)) { try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ } }
     for (const end = Date.now() + 15_000; crashes === before && Date.now() < end;) await Bun.sleep(50);
     expect(crashes).toBe(before + 1);
   };
-  // The memory guard killed a Gmail tab nobody watched, and the viewer that came later got no frame. `Page.crash`
-  // needs the renderer's cooperation, which a frozen page on CI's Chrome gave only once woken: the page is crashed
-  // awake, and left past the wait for sleep, which a dead page must not try.
+  // Killed asleep, as the memory guard stopped a Gmail tab nobody watched: the viewer that came later got no frame.
+  for (const end = Date.now() + 30_000; !browser.asleep(tabId!) && Date.now() < end;) await Bun.sleep(50);
+  expect(browser.asleep(tabId!)).toBe(true);
   await crash();
-  await Bun.sleep(1500);
-  expect(browser.asleep(tabId!)).toBe(false);
   await owner.call('threads.subscribe', { threadId });
   const started = performance.now();
   const frame = await picture(owner.call('browser.remoteFrame', { threadId, tabId, maxWidth: 300, quality: 40 }));
