@@ -11,7 +11,7 @@ import type { ActivityTurn } from './threads';
 import type { TeamAsk, TeamPostRef } from './teams';
 import type { Turn } from './turns';
 import type { InlineView, ViewCheckCapture } from './view.ts';
-import type { WindowCaptureKind, WindowConsentAnswer, WindowConsentKind, WindowGuideEnd } from './windows';
+import type { WindowCaptureKind, WindowConsentAnswer, WindowConsentKind, WindowGuideEnd, WindowPointerStep } from './windows';
 
 export type MessageRole = 'user' | 'assistant' | 'system';
 
@@ -259,7 +259,7 @@ export type MessagePart =
    * core sets `end` once the box goes, or when it stops. `label` is what the
    * box says, `control` the control it shows, as the agent's `WindowPointer`.
    */
-  | { type: 'window_guide'; boxId: string; process: string; label: string; control?: { type: string; name: string }; expiresAt: Timestamp; end: WindowGuideEnd | null }
+  | { type: 'window_guide'; boxId: string; process: string; label: string; control?: { type: string; name: string }; step?: WindowPointerStep; expiresAt: Timestamp; end: WindowGuideEnd | null }
   | { type: 'error'; message: string };
 
 export interface Message {

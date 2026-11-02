@@ -14,7 +14,9 @@ export const strings = {
     pointer: {
       frame: '{app} stays in front: Boite follows its buttons only while you can see it',
       /** Under the label of an arrow on a window's edge, toward a control scrolled out of view. */
-      scroll: { above: 'Scroll up', below: 'Scroll down', left: 'Scroll left', right: 'Scroll right' }
+      scroll: { above: 'Scroll up', below: 'Scroll down', left: 'Scroll left', right: 'Scroll right' },
+      /** A box's place in a tour of several (`point --step`), on its label and on its card, and its spoken form. */
+      step: '{index} / {total}', stepLabel: 'Step {index} of {total}'
     },
     capture: {
       screenshot: 'Screenshot', clip: 'Clip of {count} frames', stream: 'Live view',

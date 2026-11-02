@@ -7,7 +7,7 @@
  */
 import { resolve } from 'node:path';
 import {
-  parseWindowCrop, WINDOW_CLIP_LIMITS, WINDOW_POINT_LABEL_MAX, WINDOW_POINT_PAD, WINDOW_POINT_SECONDS, WINDOW_POINTER_UNTIL, WINDOW_READ_LIMIT, WINDOW_SHOT_MAX,
+  parseWindowCrop, parseWindowStep, WINDOW_CLIP_LIMITS, WINDOW_POINT_LABEL_MAX, WINDOW_POINT_PAD, WINDOW_POINT_SECONDS, WINDOW_POINT_STEPS_MAX, WINDOW_POINTER_UNTIL, WINDOW_READ_LIMIT, WINDOW_SHOT_MAX,
   type DesktopWindow, type RpcParams, type RpcResult, type WindowControl, type WindowEdge, type WindowPointer, type WindowPointerUntil, type WindowShot, type WindowTarget,
 } from '@boite/contracts';
 import type { CoreClient } from './client.ts';
@@ -46,7 +46,7 @@ export const WINDOW_HELP = `boite window <command> [args] [--json]
                                  alone when the app does not say where. A box on one
                                  shows as an arrow on the window's edge until the
                                  user scrolls it into view, then rings it
-  point <id> [--label <text>] [--seconds <s>] [--round] [--pad <px>] [--until <what>]
+  point <id> [--label <text>] [--seconds <s>] [--round] [--pad <px>] [--until <what>] [--step N/M]
   point <target> --name <name> [--any] [same options]
   point <target> --at x,y,w,h [same options]
                                  draw a box with a label (${WINDOW_POINT_LABEL_MAX} characters at most) above
@@ -68,7 +68,10 @@ export const WINDOW_HELP = `boite window <command> [args] [--json]
                                  learn that it changed, never what it holds now.
                                  window: the app opens a window or dialog; you learn
                                  its id and title, to read it next. A rectangle
-                                 with --until window asks the consent of a read
+                                 with --until window asks the consent of a read.
+                                 --step N/M marks the box as step N of a tour of M
+                                 (1 <= N <= M <= ${WINDOW_POINT_STEPS_MAX}): the box and its card show
+                                 N / M. Say it on each point of the tour
   wait [--timeout <s>]           wait for what the box waits for (a click, a change or
                                  a window), then take it away, with no message; ${WINDOW_POINT_SECONDS.default} s
                                  by default. wait-click is the same command
@@ -78,7 +81,8 @@ matches are refused with the candidates: pick one by --id. The taskbar is the
 explorer.exe window with no title.
 To teach the user an app, guide instead of acting: read, point, keep working or
 end the turn, and read again for the next step once the click arrives: after a click
-on File, that read lists the open menu's items first. To teach typing or a dialog,
+on File, that read lists the open menu's items first. For a tour of several steps,
+give each point its --step so the user sees how far along they are. To teach typing or a dialog,
 point --until change at the field, or --until window at what opens the dialog. An app with no accessibility tree (a game, a Unity
 scene view) lists few controls: take a small screenshot and point --at it.
 An app the project has not allowed waits up to 10 minutes for the owner's answer
@@ -143,7 +147,8 @@ function pointerLine(pointer: WindowPointer): string {
   const what = pointer.control ? `${pointer.control.type} "${pointer.control.name}"` : `${pointer.x},${pointer.y} ${pointer.width}x${pointer.height}`;
   const label = pointer.label ? ` with "${pointer.label}"` : '';
   const popup = pointer.popup ? ` in its popup ${pointer.popup}` : '';
-  const line = `pointing at ${what} of window ${pointer.windowId} (${pointer.process})${popup}${label} for ${Math.round((pointer.expiresAt - Date.now()) / 1000)} s`;
+  const step = pointer.step ? ` as step ${pointer.step.index} of ${pointer.step.total}` : '';
+  const line = `pointing at ${what} of window ${pointer.windowId} (${pointer.process})${popup}${label}${step} for ${Math.round((pointer.expiresAt - Date.now()) / 1000)} s`;
   const awaited = pointer.until === 'change' ? 'the change' : pointer.until === 'window' ? 'the new window' : 'the click';
   const scrolled = pointer.offscreen ? `${line}
 it is out of view ${pointer.offscreen}: an arrow on that edge of the window points to it until the user scrolls it into view; tell them to scroll ${SCROLL[pointer.offscreen]}` : line;
@@ -265,6 +270,9 @@ export async function windowCommand(args: string[], io: CliIo, client: CoreClien
       const round = toggle(rest, '--round');
       const until = flag(rest, '--until');
       if (until !== undefined && !WINDOW_POINTER_UNTIL.includes(until as WindowPointerUntil)) throw new Usage(`window point --until takes ${WINDOW_POINTER_UNTIL.join(', ')}`);
+      const stepText = flag(rest, '--step');
+      const step = stepText === undefined ? undefined : parseWindowStep(stepText);
+      if (step === null) throw new Usage(`window point --step takes N/M, whole numbers with 1 <= N <= M <= ${WINDOW_POINT_STEPS_MAX}, such as 2/5`);
       const any = toggle(rest, '--any');
       const name = flag(rest, '--name');
       const atText = flag(rest, '--at');
@@ -273,7 +281,7 @@ export async function windowCommand(args: string[], io: CliIo, client: CoreClien
       // The agent keeps working: the click arrives later as a message.
       const common = { threadId, notify: true, ...(label === undefined ? {} : { label }), ...(seconds === undefined ? {} : { seconds }),
         ...(round ? { shape: 'round' as const } : {}), ...(pad === undefined ? {} : { pad }), ...(any ? { any } : {}),
-        ...(until === undefined ? {} : { until: until as WindowPointerUntil }) };
+        ...(until === undefined ? {} : { until: until as WindowPointerUntil }), ...(step === undefined ? {} : { step }) };
       const id = /^#?\d+$/.test(rest[0] ?? '') ? Number(rest.shift()!.replace('#', '')) : undefined;
       let params: RpcParams<'windows.point'>;
       if (id !== undefined) {

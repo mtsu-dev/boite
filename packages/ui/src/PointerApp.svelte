@@ -18,6 +18,9 @@
    * of the accent just inside the window's edge it lies past, pointing out of
    * it, that nudges that way, with the label and which way to scroll. The
    * core turns it back into the ring once the control is in view.
+   *
+   * A box that is one step of a tour leads its label with a small badge,
+   * `2 / 5`, in the accent, so the person knows how far along they are.
    */
   let layout = $state<PointerLayout | null>(null);
   /** Counts each box, so a new one plays the entrance and a move does not. */
@@ -76,10 +79,10 @@
           <svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true"><path d="M8 3v9.5M3.5 8.5 8 13l4.5-4.5" /></svg>
         </div>
       {/if}
-      {#if (layout.label || layout.edge) && tag}
+      {#if (layout.label || layout.edge || layout.step) && tag}
         <div class="tag" data-testid="pointer-label" data-side={tag.side} style:left={tag.side === 'left' ? `${tag.edge}px` : 'auto'}
           style:right={tag.side === 'right' ? `${tag.edge}px` : 'auto'} style:top={tag.top === null ? 'auto' : `${tag.top}px`}
-          style:bottom={tag.bottom === null ? 'auto' : `${tag.bottom}px`} style:max-width="{tag.maxWidth}px" style:--tail="{tag.tail}px"><span class="mark"><BoiteMark size={14} /></span><span class="text">{#if layout.label}<span>{layout.label}</span>{/if}{#if layout.edge}<span class="hint" data-testid="pointer-scroll">{strings.windows.pointer.scroll[layout.edge]}</span>{/if}</span></div>
+          style:bottom={tag.bottom === null ? 'auto' : `${tag.bottom}px`} style:max-width="{tag.maxWidth}px" style:--tail="{tag.tail}px"><span class="mark"><BoiteMark size={14} /></span>{#if layout.step}<span class="step" data-testid="pointer-step" title={fill(strings.windows.pointer.stepLabel, { index: String(layout.step.index), total: String(layout.step.total) })}>{fill(strings.windows.pointer.step, { index: String(layout.step.index), total: String(layout.step.total) })}</span>{/if}<span class="text">{#if layout.label}<span>{layout.label}</span>{/if}{#if layout.edge}<span class="hint" data-testid="pointer-scroll">{strings.windows.pointer.scroll[layout.edge]}</span>{/if}</span></div>
       {/if}
     </div>
   {/key}
@@ -190,6 +193,21 @@
     display: flex;
     flex: none;
     color: var(--color-accent);
+  }
+
+  /* A tour's step: a small pill of the accent's soft tint before the label,
+     its figures fixed in width so 9 / 12 and 10 / 12 line up. */
+  .step {
+    flex: none;
+    padding: 1px 7px;
+    font-size: var(--text-xs);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.4;
+    white-space: nowrap;
+    color: var(--color-accent);
+    background: var(--color-accent-soft);
+    border-radius: var(--radius-full);
   }
 
   .text {

@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
-import { AGENT_ENV, type MessagePart, type WindowEdge, type WindowPointerLook } from '@boite/contracts';
+import { AGENT_ENV, type MessagePart, type WindowEdge, type WindowPointerLook, type WindowPointerStep } from '@boite/contracts';
 import { runCli } from '../src/cli.ts';
 import { connect, type CoreClient } from '../src/client.ts';
 import type { AppWindow, ControlState, NativeControl, NativeWindow, ScreenRect, WindowCapture, WindowGuide } from '../src/platform/types.ts';
 import { goneError } from '../src/platform/window-pixels.ts';
 import { DesktopWindows } from '../src/windows/service.ts';
 import { echoThread, startTestCore, type TestCore } from './harness.ts';
-import { thrown } from './settle.ts';
+import { rejection, thrown } from './settle.ts';
 
 const UNITY = 'C:\\Program Files\\Unity\\Hub\\Editor\\6000.0\\Editor\\Unity.exe';
 const FOLLOW_MS = 10;
@@ -122,7 +122,7 @@ async function eventually(check: () => void, timeoutMs = 2000): Promise<void> {
 describe('window guide', () => {
   let harness: TestCore, owner: CoreClient, agent: CoreClient, app: CoreClient, threadId: string, desk: ReturnType<typeof fakeDesktop>;
   /** Each box the desktop app was told about, in order: where it is now, null once hidden or taken away. */
-  let boxes: { id: string; rect: ScreenRect | null; label: string; look: WindowPointerLook; frame?: { app: string; windowId: string }; edge?: WindowEdge }[];
+  let boxes: { id: string; rect: ScreenRect | null; label: string; look: WindowPointerLook; frame?: { app: string; windowId: string }; edge?: WindowEdge; step?: WindowPointerStep }[];
 
   beforeEach(async () => {
     harness = await startTestCore();
@@ -638,6 +638,35 @@ describe('window guide', () => {
     expect(ends()).toEqual(['missing', 'dismissed', 'cleared', 'missing']);
   }, 15_000);
 
+  test('a box that is one step of a tour shows N / M on the screen and on its card, and the agent hears which step ended', async () => {
+    const at = { x: 100, y: 100, width: 50, height: 50, unit: 'px' as const };
+    // Refused before anything is drawn, naming the field and what it takes.
+    for (const step of [{ index: 0, total: 3 }, { index: 4, total: 3 }, { index: 1, total: 21 }, { index: 1.5, total: 3 }, null]) {
+      const { reason } = await rejection(agent.call('windows.point', { threadId, target: { id: '101' }, at, step: step as WindowPointerStep }));
+      expect((reason as Error).message).toContain('step must be N/M, whole numbers with 1 <= N <= M <= 20');
+      expect((reason as { rpc: { data: Record<string, unknown> } }).rpc.data).toMatchObject({ field: 'step' });
+    }
+    expect(await thrown(agent.call('windows.point', { threadId, target: { id: '101' }, at, step: { index: 4, total: 3 } }))).toThrow('not 4/3');
+    expect(boxes).toEqual([]);
+
+    const posted = owner.next('message.started', message => message.parts[0]?.type === 'window_guide', 5000);
+    const { pointer } = await agent.call('windows.point', { threadId, target: { id: '101' }, at, label: 'Scene view', step: { index: 20, total: 20 } });
+    expect(pointer.step).toEqual({ index: 20, total: 20 });
+    const card = (await posted).parts[0] as Extract<MessagePart, { type: 'window_guide' }>;
+    expect(card).toMatchObject({ type: 'window_guide', label: 'Scene view', step: { index: 20, total: 20 }, end: null });
+    await eventually(() => expect(boxes).toMatchObject([{ label: 'Scene view', step: { index: 20, total: 20 } }]));
+    // The box keeps its step as it follows its window.
+    desk.frames.get('101')!.rect = { left: 1030, top: 500, width: 400, height: 300 };
+    await eventually(() => expect(boxes[0]).toMatchObject({ rect: { left: 1130 }, step: { index: 20, total: 20 } }));
+
+    // The agent hears which step the person ended.
+    await owner.call('windows.dismiss', { threadId, boxId: card.boxId, answer: 'missing' });
+    await eventually(() => expect(harness.core.journal.listMessages(threadId).filter(message => message.role === 'user').flatMap(message => message.parts)
+      .flatMap(part => part.type === 'text' && part.text.startsWith('Boite: ') ? [part.text] : [])).toEqual([
+      'Boite: the user cannot find the box on the 50x50 rectangle at 100,100 in window 101 (Unity.exe), step 20 of 20; the box is gone. It may be off screen, behind another window or on a closed menu: check with boite window screenshot, then point again or say where to look.',
+    ]), 5000);
+  });
+
   test('an archived conversation takes its box away', async () => {
     await agent.call('windows.point', { threadId, target: { id: '101' }, at: { x: 0, y: 0, width: 10, height: 10, unit: 'px' } });
     await owner.call('threads.archive', { threadId });
@@ -694,6 +723,9 @@ describe('window guide', () => {
     setTimeout(() => desk.apps.push({ id: '404', title: 'Build Settings', owner: '101' }), 50);
     expect((await run('wait', '--timeout', '5')).out).toBe('opened: window 404 "Build Settings"; the box is gone. Read it with boite window read --id 101: its controls come first (in popup 404)\n');
     expect((await run('point', '2', '--until', 'hover')).error).toContain('window point --until takes click, change, window');
+    expect((await run('point', '--id', '101', '--at', '0,0,10,10', '--step', '2/5')).out).toMatch(/^pointing at 0,0 10x10 of window 101 \(Unity.exe\) as step 2 of 5 for 120 s\n/);
+    expect((await run('point', '2', '--step', '2-5')).error).toContain('window point --step takes N/M, whole numbers with 1 <= N <= M <= 20, such as 2/5');
+    expect((await run('point', '--id', '101', '--at', '0,0,10,10', '--step', '6/5')).error).toContain('step must be N/M, whole numbers with 1 <= N <= M <= 20, not 6/5');
     await run('point', '--id', '101', '--at', '0,0,10,10');
     setTimeout(() => { desk.keys.escape = true; }, 50);
     expect((await run('wait', '--timeout', '5')).out).toBe('dismissed: the user ended the box with Done or Escape before it was seen; it is gone. Ask before pointing again\n');

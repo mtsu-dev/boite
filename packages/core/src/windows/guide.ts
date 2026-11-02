@@ -30,6 +30,10 @@
  * offers Done and I cannot find it, and Escape pressed anywhere on the machine
  * is Done. Either ends the box as unpoint does, and the agent hears which from
  * its wait, or as a message, whether or not the box was drawn with `notify`.
+ *
+ * A tour of several boxes is the agent's to run, one `point` after another:
+ * each may say its `step`, which the box and its card show as `2 / 5` so the
+ * person knows where they are. The core checks the numbers and keeps no tour.
  */
 import {
   WINDOW_POINT_LABEL_MAX,
@@ -39,6 +43,7 @@ import {
   WINDOW_POINTER_UNTIL,
   WINDOW_READ_LIMIT,
   windowCropError,
+  windowStepError,
   type Message,
   type MessagePart,
   type RpcParams,
@@ -282,6 +287,9 @@ export class WindowGuides {
     const until = params.until ?? 'click';
     if (!WINDOW_POINTER_UNTIL.includes(until)) throw invalidParams(`until must be one of ${WINDOW_POINTER_UNTIL.join(', ')}`, { field: 'until' });
     if (until === 'change' && at !== undefined) throw invalidParams('until change watches a control: point at one by id or by name, not at a rectangle', { field: 'until' });
+    const stepProblem = params.step === undefined ? null : windowStepError(params.step);
+    if (stepProblem) throw invalidParams(stepProblem, { field: 'step' });
+    const step = params.step === undefined ? undefined : { index: params.step.index, total: params.step.total };
 
     // Every check that needs no OS comes first: a machine without the guide refuses the same bad call the same way.
     let window: NativeWindow;
@@ -361,7 +369,7 @@ export class WindowGuides {
     // The previous box goes first, so the desktop app hands its window to the new one.
     this.#remove(thread.id, 'cleared');
     const boxId = newId('box_');
-    if (this.#core.subscribers.pointer({ id: boxId, rect: frame.minimized ? null : drawn, label: shownLabel, look, ...(edge ? { edge } : {}) }) === 0) {
+    if (this.#core.subscribers.pointer({ id: boxId, rect: frame.minimized ? null : drawn, label: shownLabel, look, ...(edge ? { edge } : {}), ...(step ? { step } : {}) }) === 0) {
       tracked?.release();
       throw refused('the box is drawn by the Boite desktop app of this computer, and none is open: ask the user to open Boite', { code: 'no-app' });
     }
@@ -374,6 +382,7 @@ export class WindowGuides {
       ...(notify ? { notify: true as const } : {}),
       ...(until !== 'click' ? { until } : {}),
       ...(edge ? { offscreen: edge } : {}),
+      ...(step ? { step } : {}),
     };
     let escapeHeld = true;
     try { escapeHeld = guide.escape(); } catch { /* read again at the next look */ }
@@ -397,8 +406,8 @@ export class WindowGuides {
     }
     const framed = this.#frames.get(thread.id);
     if (framed?.idle) { clearTimeout(framed.idle); framed.idle = null; }
-    this.#core.logs.info(`Pointed at a ${control?.type ?? 'rectangle'} of window ${window.id} of ${window.process} until ${until}${edge ? `, out of view ${edge}` : ''}`, { source: 'windows', event: 'window.point', threadId: thread.id, data: { windowId: window.id, process: window.process, width: box.width, height: box.height, until, ...(edge ? { offscreen: edge } : {}) } });
-    return { pointer: { ...pointer } };
+    this.#core.logs.info(`Pointed at a ${control?.type ?? 'rectangle'} of window ${window.id} of ${window.process} until ${until}${edge ? `, out of view ${edge}` : ''}`, { source: 'windows', event: 'window.point', threadId: thread.id, data: { windowId: window.id, process: window.process, width: box.width, height: box.height, until, ...(edge ? { offscreen: edge } : {}), ...(step ? { step: `${step.index}/${step.total}` } : {}) } });
+    return { pointer: { ...pointer, ...(step ? { step: { ...step } } : {}) } };
   }
 
   async waitClick({ threadId, timeoutSeconds }: RpcParams<'windows.waitClick'>, connection?: Connection): Promise<RpcResult<'windows.waitClick'>> {
@@ -498,7 +507,7 @@ export class WindowGuides {
   #tell(threadId: string, shown: Shown, why: BoxEnd): void {
     const { pointer } = shown;
     const what = pointer.control ? `${pointer.control.type} "${pointer.control.name}"` : `the ${pointer.width}x${pointer.height} rectangle at ${pointer.x},${pointer.y}`;
-    const where = `${what} in window ${pointer.windowId} (${pointer.process})`;
+    const where = `${what} in window ${pointer.windowId} (${pointer.process})${pointer.step ? `, step ${pointer.step.index} of ${pointer.step.total}` : ''}`;
     const awaited = shown.until === 'change' ? 'a change' : shown.until === 'window' ? 'a new window' : 'a click';
     let text: string;
     if (typeof why === 'object') {
@@ -719,7 +728,7 @@ export class WindowGuides {
     shown.screen = screen;
     if (edge === undefined) delete shown.edge;
     else shown.edge = edge;
-    this.#core.subscribers.pointer({ id: shown.boxId, rect: screen, label: shown.pointer.label, look: shown.pointer.look, ...(edge ? { edge } : {}) });
+    this.#core.subscribers.pointer({ id: shown.boxId, rect: screen, label: shown.pointer.label, look: shown.pointer.look, ...(edge ? { edge } : {}), ...(shown.pointer.step ? { step: shown.pointer.step } : {}) });
   }
 
   /** Whether Escape went down since the last look; a read that fails counts as no press. */
@@ -740,7 +749,8 @@ export class WindowGuides {
     const { pointer } = shown;
     const part: GuidePart = {
       type: 'window_guide', boxId: shown.boxId, process: pointer.process, label: pointer.label,
-      ...(pointer.control ? { control: { ...pointer.control } } : {}), expiresAt: pointer.expiresAt, end: null,
+      ...(pointer.control ? { control: { ...pointer.control } } : {}), ...(pointer.step ? { step: { ...pointer.step } } : {}),
+      expiresAt: pointer.expiresAt, end: null,
     };
     const message: Message = { id: newId('msg_'), threadId, turnId: turn.id, role: 'assistant', parts: [part], state: 'complete', createdAt: Date.now() };
     journal.append({ type: 'message.started', threadId, version: 1, payload: message }, () => journal.putMessage(message));

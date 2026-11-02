@@ -146,14 +146,17 @@ test("the guide card ends the box it names, answers a wait with the person's cho
   const parts: GuidePart[] = [];
   const off = client.on('message.part', ({ part }) => { if (part?.type === 'window_guide') parts.push(part); });
   await client.call('windows.read', { threadId: thread, target: { process: 'Unity.exe' } });
-  const { pointer } = await client.call('windows.point', { threadId: thread, name: 'Play', target: { process: 'Unity.exe' }, label: 'Press Play' });
+  const { pointer } = await client.call('windows.point', { threadId: thread, name: 'Play', target: { process: 'Unity.exe' }, label: 'Press Play', step: { index: 2, total: 3 } });
   await settle();
   const posted = parts.at(-1)!;
-  expect(posted).toMatchObject({ process: 'Unity.exe', label: 'Press Play', control: { type: 'Button', name: 'Play' }, end: null, expiresAt: pointer.expiresAt });
+  expect(posted).toMatchObject({ process: 'Unity.exe', label: 'Press Play', control: { type: 'Button', name: 'Play' }, step: { index: 2, total: 3 }, end: null, expiresAt: pointer.expiresAt });
+  expect(pointer.step).toEqual({ index: 2, total: 3 });
   const calls = vi.spyOn(client, 'call');
   apps.push(mount(WindowGuideCard, { target: document.body, props: { store, threadId: thread, part: posted } })); await settle();
   expect($('window-guide')!.dataset.state).toBe('shown');
   expect($('window-guide-what')!.textContent).toBe('Press Play');
+  // The tour's step, as on the box itself.
+  expect([$('window-guide-step')!.textContent, $('window-guide-step')!.title]).toEqual(['2 / 3', 'Step 2 of 3']);
   expect($('window-guide')!.textContent).toContain('It shows where to click in Unity. Esc on that computer also takes it away.');
 
   // The agent waits on the box: I can't find it ends the wait with that answer, and the card on every client folds.
@@ -175,11 +178,13 @@ test("the guide card ends the box it names, answers a wait with the person's cho
   apps.push(mount(WindowGuideCard, { target: document.body, props: { store, threadId: thread, part: parts.at(-1)! } })); await settle();
   expect($('window-guide')!.dataset.state).toBe('ended');
   expect($('window-guide-verdict')!.textContent).toBe('You could not find the box in Unity: Press Play');
+  expect($('window-guide-step')!.textContent).toBe('2 / 3');
   expect($('window-guide-done')).toBeNull();
   await unmount(apps.pop()!);
 
-  apps.push(mount(WindowGuideCard, { target: document.body, props: { store, threadId: thread, part: { ...posted, label: '', control: undefined, expiresAt: Date.now() - 1 } } })); await settle();
+  apps.push(mount(WindowGuideCard, { target: document.body, props: { store, threadId: thread, part: { ...posted, label: '', control: undefined, step: undefined, expiresAt: Date.now() - 1 } } })); await settle();
   expect($('window-guide-verdict')!.textContent).toBe('The box in Unity timed out');
+  expect($('window-guide-step')).toBeNull();
 });
 
 test('the allowed apps list removes an app only after the confirmation', async () => {

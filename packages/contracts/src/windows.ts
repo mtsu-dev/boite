@@ -203,6 +203,18 @@ export interface WindowPointer {
    * person scrolls it into view. Absent while it is in view.
    */
   offscreen?: WindowEdge;
+  /** Where this box stands in a guided tour of several: the box and its card show `index / total`. */
+  step?: WindowPointerStep;
+}
+
+/**
+ * A box's place in a tour the agent guides the person through, one box at a
+ * time: step `index` of `total`, `1 <= index <= total <= WINDOW_POINT_STEPS_MAX`.
+ * The core keeps no tour: each `windows.point` says its own step.
+ */
+export interface WindowPointerStep {
+  index: number;
+  total: number;
 }
 
 /**
@@ -254,6 +266,8 @@ export interface WindowPointerBox {
    * click on the marker is not a click on the control.
    */
   edge?: WindowEdge;
+  /** The box's step in a tour, drawn as a small `index / total` badge on its label. */
+  step?: WindowPointerStep;
 }
 
 /**
@@ -284,6 +298,8 @@ export const WINDOW_READ_LIMIT = { default: 60, max: 400 } as const;
 /** How long a box stays drawn, and how long `windows.waitClick` waits, in seconds. */
 export const WINDOW_POINT_SECONDS = { default: 120, max: 600 } as const;
 export const WINDOW_POINT_LABEL_MAX = 80;
+/** The longest tour a box's `step` counts in. */
+export const WINDOW_POINT_STEPS_MAX = 20;
 /** How far outside the control the ring runs, in CSS pixels. */
 export const WINDOW_POINT_PAD = { default: 5, max: 24 } as const;
 /** The longest side of a capture card's thumbnail. */
@@ -363,7 +379,7 @@ export interface WindowsRpcMethods {
    * `unknown` is refused.
    */
   'windows.point': {
-    params: { threadId: string; control?: number; target?: WindowTarget; name?: string; at?: WindowCrop; label?: string; seconds?: number; shape?: WindowPointerShape; pad?: number; notify?: boolean; any?: boolean; until?: WindowPointerUntil };
+    params: { threadId: string; control?: number; target?: WindowTarget; name?: string; at?: WindowCrop; label?: string; seconds?: number; shape?: WindowPointerShape; pad?: number; notify?: boolean; any?: boolean; until?: WindowPointerUntil; step?: WindowPointerStep };
     result: { pointer: WindowPointer };
   };
   /**
@@ -426,6 +442,21 @@ export function windowCropError(crop: unknown): string | null {
       ? null : 'a crop in fractions needs values from 0 to 1, a width and height above 0, and x + width and y + height at most 1';
   }
   return 'crop unit must be px or fraction';
+}
+
+/** The one problem with a box's tour step, or null: whole numbers with `1 <= index <= total <= WINDOW_POINT_STEPS_MAX`. */
+export function windowStepError(step: unknown): string | null {
+  const expected = `step must be N/M, whole numbers with 1 <= N <= M <= ${WINDOW_POINT_STEPS_MAX}`;
+  if (!step || typeof step !== 'object') return expected;
+  const { index, total } = step as WindowPointerStep;
+  if (!Number.isInteger(index) || !Number.isInteger(total)) return expected;
+  return index >= 1 && index <= total && total <= WINDOW_POINT_STEPS_MAX ? null : `${expected}, not ${index}/${total}`;
+}
+
+/** `N/M` as the CLI takes it, such as `2/5`; null when it is not two whole numbers around a slash. */
+export function parseWindowStep(text: string): WindowPointerStep | null {
+  const match = /^\s*(\d{1,3})\s*\/\s*(\d{1,3})\s*$/.exec(text);
+  return match ? { index: Number(match[1]), total: Number(match[2]) } : null;
 }
 
 /** `x,y,w,h` as the CLI takes it: pixels, or fractions when every value is at most 1 and one has a decimal point. */

@@ -113,6 +113,35 @@ test('a control out of view gets an arrow pointing out of its window\'s edge, wi
   expect(box('[data-testid="pointer-label"]')!.textContent).toBe('Main Camera');
 });
 
+test('a box that is one step of a tour leads its label with an N / M badge, even with no label of its own', async () => {
+  invoke.mockResolvedValue(null);
+  apps.push(mount(PointerApp, { target: document.body }));
+  await settle();
+  const layout: PointerLayout = { x: 28, y: 68, width: 100, height: 30, label: 'Open the File menu', below: false, look: { shape: 'box', pad: 5 }, step: { index: 2, total: 5 } };
+  handlers.get('pointer://layout')!({ payload: layout });
+  flushSync();
+  const badge = box('[data-testid="pointer-step"]')!;
+  expect([badge.textContent, badge.title]).toEqual(['2 / 5', 'Step 2 of 5']);
+  // The badge sits in the bubble, before the label, so the label alone ellipsizes.
+  expect(box('[data-testid="pointer-label"]')!.textContent).toBe('2 / 5Open the File menu');
+  expect(badge.nextElementSibling!.classList.contains('text')).toBe(true);
+
+  // No label: the bubble still shows where the person is in the tour.
+  handlers.get('pointer://layout')!({ payload: { ...layout, label: '', step: { index: 5, total: 5 } } });
+  flushSync();
+  expect(box('[data-testid="pointer-label"]')!.textContent).toBe('5 / 5');
+
+  // On an arrow toward a control out of view, beside the way to scroll.
+  handlers.get('pointer://layout')!({ payload: { ...layout, edge: 'below' } });
+  flushSync();
+  expect(box('[data-testid="pointer-label"]')!.textContent).toBe('2 / 5Open the File menuScroll down');
+
+  // A box with no step has no badge.
+  handlers.get('pointer://layout')!({ payload: { ...layout, step: undefined } });
+  flushSync();
+  expect(box('[data-testid="pointer-step"]')).toBeNull();
+});
+
 test('a frame around a whole app says why the app was brought to the front, inside its top edge', async () => {
   invoke.mockResolvedValue(null);
   apps.push(mount(PointerApp, { target: document.body }));
@@ -138,10 +167,12 @@ test('only the desktop app of the core\'s own machine hands a box to the shell',
   await pointerRequested({ localCore: true }, { ...shown, rect: null }, relay);
   await pointerRequested({ localCore: true }, { ...shown, id: 'frame_1', frame: { app: 'Discord', windowId: '42' } }, relay);
   await pointerRequested({ localCore: true }, { ...shown, edge: 'right' }, relay);
+  await pointerRequested({ localCore: true }, { ...shown, step: { index: 3, total: 4 } }, relay);
   expect(relay.mock.calls).toEqual([
     ['pointer_show', { id: 'box_1', rect: shown.rect, label: 'Play', look: shown.look }],
     ['pointer_hide', { id: 'box_1' }],
     ['pointer_show', { id: 'frame_1', rect: shown.rect, label: 'Play', look: shown.look, frame: { app: 'Discord', windowId: '42' } }],
-    ['pointer_show', { id: 'box_1', rect: shown.rect, label: 'Play', look: shown.look, edge: 'right' }]
+    ['pointer_show', { id: 'box_1', rect: shown.rect, label: 'Play', look: shown.look, edge: 'right' }],
+    ['pointer_show', { id: 'box_1', rect: shown.rect, label: 'Play', look: shown.look, step: { index: 3, total: 4 } }]
   ]);
 });

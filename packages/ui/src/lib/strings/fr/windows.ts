@@ -13,7 +13,8 @@ export const fr: Translation = {
     },
     pointer: {
       frame: '{app} reste au premier plan : Boite ne suit ses boutons que tant que vous le voyez',
-      scroll: { above: 'Faites défiler vers le haut', below: 'Faites défiler vers le bas', left: 'Faites défiler vers la gauche', right: 'Faites défiler vers la droite' }
+      scroll: { above: 'Faites défiler vers le haut', below: 'Faites défiler vers le bas', left: 'Faites défiler vers la gauche', right: 'Faites défiler vers la droite' },
+      step: '{index} / {total}', stepLabel: 'Étape {index} sur {total}'
     },
     capture: {
       screenshot: "Capture d'écran", clip: 'Séquence de {count} images', stream: 'Vue en direct',

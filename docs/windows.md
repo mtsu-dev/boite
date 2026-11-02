@@ -160,6 +160,7 @@ boite window point --process Unity --name Window
 boite window point --process Unity --at 0.4,0.3,0.2,0.2 --label "The Scene view"
 boite window point 5 --label "Type your name" --until change
 boite window point 2 --label "Open Build Settings" --until window
+boite window point 4 --label "Choose Android" --step 2/5
 boite window wait --timeout 60
 boite window unpoint
 ```
@@ -238,6 +239,15 @@ boite window unpoint
   an app icon or a server in a chat app's sidebar. `--pad <px>` sets how far
   outside the control the ring runs, 5 CSS pixels by default and 24 at most;
   the shell widens the window to keep the glow and the echo whole.
+- `--step N/M` (`step: { index, total }`) marks the box as step N of a tour
+  of M, so a user following several boxes knows how far along they are: a
+  small `2 / 5` pill in the accent's soft tint leads the label on the screen
+  (it shows even with no label, and on an arrow), and the same pill leads the
+  box's card in the conversation, which keeps it once folded. The core keeps
+  no tour: the agent gives each `point` its step, and the core checks only
+  that both are whole numbers with `1 <= N <= M <= 20`, refusing anything
+  else with `field: 'step'` before drawing; the shell checks again. The
+  message telling the agent how a box ended names its step (`step 2 of 5`).
 - A box on a control (by id or by name) follows the control itself: the core
   holds its UI Automation element and asks the app where it is every 33 ms,
   and the box moves to each answer, through a scroll too (measured in the

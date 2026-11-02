@@ -65,6 +65,17 @@ pub enum Edge {
     Right,
 }
 
+/// A box's place in a guided tour: step `index` of `total`, drawn as a badge
+/// on its label.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct Step {
+    pub index: u32,
+    pub total: u32,
+}
+
+/// The longest tour, as the contract's `WINDOW_POINT_STEPS_MAX`.
+const STEPS_MAX: u32 = 20;
+
 /// The largest `pad`, as the contract's `WINDOW_POINT_PAD.max`.
 const PAD_MAX: f64 = 24.0;
 /// The `pad` the window's `MARGIN` was sized for.
@@ -92,6 +103,9 @@ pub struct Layout {
     /// For an arrow toward a control out of view: the edge it points out of.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub edge: Option<Edge>,
+    /// For a box that is one step of a tour: the badge on its label.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub step: Option<Step>,
 }
 
 /// The frame around a whole Chromium or Electron window, as the core asks for
@@ -121,6 +135,7 @@ pub fn place_frame(rect: ScreenRect, app: &str, scale: f64, monitor: (i32, i32, 
         look: Look { shape: Shape::Box, pad: 0.0 },
         frame: Some(app.to_owned()),
         edge: None,
+        step: None,
     };
     ((left, top, (right - left) as u32, (bottom - top) as u32), layout)
 }
@@ -151,6 +166,7 @@ pub fn place(rect: ScreenRect, label: &str, look: Look, scale: f64, monitor: (i3
         look,
         frame: None,
         edge: None,
+        step: None,
     };
     ((left, top, width.max(1) as u32, height.max(1) as u32), layout)
 }
@@ -211,7 +227,7 @@ fn monitor_of<R: Runtime>(app: &AppHandle<R>, rect: ScreenRect) -> (f64, (i32, i
 /// command runs on the event loop, and building a window there deadlocks on
 /// Windows, since WebView2 needs that same loop to come up.
 #[tauri::command]
-pub async fn pointer_show(app: AppHandle, webview: Webview, id: String, rect: ScreenRect, label: String, look: Option<Look>, frame: Option<FrameArg>, edge: Option<Edge>) -> Result<(), String> {
+pub async fn pointer_show(app: AppHandle, webview: Webview, id: String, rect: ScreenRect, label: String, look: Option<Look>, frame: Option<FrameArg>, edge: Option<Edge>, step: Option<Step>) -> Result<(), String> {
     only_main(&webview)?;
     let framed = match &frame {
         None => None,
@@ -223,6 +239,9 @@ pub async fn pointer_show(app: AppHandle, webview: Webview, id: String, rect: Sc
     };
     let look = look.unwrap_or_default();
     if !look.pad.is_finite() || !(0.0..=PAD_MAX).contains(&look.pad) { return Err(format!("pointer pad must be from 0 to {PAD_MAX}, not {}", look.pad)); }
+    if let Some(Step { index, total }) = step {
+        if index < 1 || index > total || total > STEPS_MAX { return Err(format!("pointer step must be N/M with 1 <= N <= M <= {STEPS_MAX}, not {index}/{total}")); }
+    }
     if id.is_empty() || id.len() > 64 { return Err("pointer id must be 1 to 64 characters".into()); }
     if rect.width <= 0 || rect.height <= 0 || rect.width > 32768 || rect.height > 32768 {
         return Err(format!("pointer rect must have a width and height from 1 to 32768, not {}x{}", rect.width, rect.height));
@@ -250,7 +269,7 @@ pub async fn pointer_show(app: AppHandle, webview: Webview, id: String, rect: Sc
         Some((name, _)) => place_frame(rect, name, scale, monitor),
         None => place(rect, &label, look, scale, monitor),
     };
-    if framed.is_none() { layout.edge = edge; }
+    if framed.is_none() { layout.edge = edge; layout.step = step; }
     window.set_position(PhysicalPosition::new(x, y)).map_err(|error| error.to_string())?;
     window.set_size(PhysicalSize::new(width, height)).map_err(|error| error.to_string())?;
     if let Ok(mut windows) = state.inner.lock() { windows.layouts.insert(window_label.clone(), layout.clone()); }
@@ -361,7 +380,7 @@ mod tests {
     fn the_label_goes_above_the_box_where_there_is_room() {
         let ((x, y, width, height), layout) = place(ScreenRect { left: 400, top: 300, width: 100, height: 30 }, "Click Build", Look::default(), 1.0, FULL_HD);
         assert_eq!((x, y, width, height), (372, 232, 420, 126));
-        assert_eq!(layout, Layout { x: 28.0, y: 68.0, width: 100.0, height: 30.0, label: "Click Build".into(), below: false, look: Look::default(), frame: None, edge: None });
+        assert_eq!(layout, Layout { x: 28.0, y: 68.0, width: 100.0, height: 30.0, label: "Click Build".into(), below: false, look: Look::default(), frame: None, edge: None, step: None });
     }
 
     #[test]

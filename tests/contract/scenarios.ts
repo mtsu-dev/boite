@@ -375,6 +375,10 @@ export const SCENARIOS: Record<string, Scenario> = {
     await refusedWith(env.call('windows.point', { threadId, control: 1, notify: 'yes' as unknown as boolean }), RpcErrorCode.InvalidParams, ['field']);
     await refusedWith(env.call('windows.point', { threadId, control: 1, any: 'yes' as unknown as boolean }), RpcErrorCode.InvalidParams, ['field']);
     await refusedWith(env.call('windows.point', { threadId, control: 1, until: 'hover' as 'click' }), RpcErrorCode.InvalidParams, ['field']);
+    // A tour's step: 1 <= index <= total <= 20, whole numbers, refused before any read.
+    for (const step of [{ index: 0, total: 3 }, { index: 4, total: 3 }, { index: 1, total: 21 }, { index: 1.5, total: 3 }]) {
+      await refusedWith(env.call('windows.point', { threadId, control: 1, step }), RpcErrorCode.InvalidParams, ['field']);
+    }
     // A change is watched on a control: a rectangle has none.
     await refusedWith(env.call('windows.point', { threadId, target: { id: '1' }, at: { x: 0, y: 0, width: 10, height: 10, unit: 'px' }, until: 'change' }), RpcErrorCode.InvalidParams, ['field']);
     await refusedWith(env.call('windows.read', { threadId, target: { id: '1' }, limit: 0 }), RpcErrorCode.InvalidParams, ['field']);

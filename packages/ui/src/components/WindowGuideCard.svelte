@@ -11,7 +11,9 @@
    * (docs/windows.md). The box is click-through, so the person answers it
    * here, from any of the owner's devices: Done takes it away, I can't find it
    * takes it away and tells the agent so. Once the box ends, or its time
-   * passed, the card shrinks to one quiet row saying how it ended.
+   * passed, the card shrinks to one quiet row saying how it ended. A box
+   * that is one step of a tour carries its `2 / 5` badge in both, as the box
+   * on the screen does.
    */
   let { store, threadId, part }: {
     store: Store;
@@ -24,6 +26,7 @@
   const outcome = $derived(part.end ?? (now >= part.expiresAt ? 'timeout' : null));
   const app = $derived(part.process.replace(/\.exe$/i, ''));
   const what = $derived(part.label || part.control?.name || '');
+  const step = $derived(part.step ? { index: String(part.step.index), total: String(part.step.total) } : null);
 
   // The card turns itself over when the box's time ends, without waiting for the core's word.
   $effect(() => {
@@ -47,13 +50,17 @@
   {@const verdict = fill(s.ends[outcome], { app })}
   <div class="guide resolved" data-testid="window-guide" data-state="ended" data-end={outcome}>
     <span class="glyph"><SquareDashedMousePointer size={15} strokeWidth={1.75} /></span>
+    {#if step}<span class="step" data-testid="window-guide-step" title={fill(strings.windows.pointer.stepLabel, step)}>{fill(strings.windows.pointer.step, step)}</span>{/if}
     <span class="verdict ui-label" data-testid="window-guide-verdict">{what ? fill(s.ended, { verdict, what }) : verdict}</span>
   </div>
 {:else}
   <div class="guide" data-testid="window-guide" data-state="shown" role="group" aria-label={what || fill(s.boxIn, { app })}>
     <span class="glyph live"><SquareDashedMousePointer size={15} strokeWidth={1.75} /></span>
     <div class="body">
-      <span class="what" data-testid="window-guide-what">{what || fill(s.boxIn, { app })}</span>
+      <span class="title">
+        {#if step}<span class="step" data-testid="window-guide-step" title={fill(strings.windows.pointer.stepLabel, step)}>{fill(strings.windows.pointer.step, step)}</span>{/if}
+        <span class="what" data-testid="window-guide-what">{what || fill(s.boxIn, { app })}</span>
+      </span>
       <span class="hint">{fill(s.hint, { app })}</span>
       {#if error}<span class="error" role="status" data-testid="window-guide-error">{error}</span>{/if}
     </div>
@@ -80,7 +87,21 @@
   }
   .glyph { display: inline-flex; flex: none; color: var(--color-accent); }
   .body { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
-  .what { font-weight: 500; overflow-wrap: anywhere; }
+  .title { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+  .what { min-width: 0; font-weight: 500; overflow-wrap: anywhere; }
+  /* The tour's step, as on the box's label: a small pill of the accent's soft tint. */
+  .step {
+    flex: none;
+    padding: 1px 7px;
+    border-radius: var(--radius-full);
+    background: var(--color-accent-soft);
+    color: var(--color-accent);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .resolved .step { background: var(--color-surface-2); color: var(--color-muted-foreground); font-weight: 500; }
   .hint { font-size: var(--text-sm); color: var(--color-muted-foreground); }
   .error { font-size: var(--text-sm); color: var(--color-danger); overflow-wrap: anywhere; }
   .actions { display: flex; flex: none; gap: 6px; }

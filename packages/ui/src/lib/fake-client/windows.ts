@@ -1,7 +1,7 @@
 import {
   RpcErrorCode, WINDOW_CAPTURE_EXCLUDED, WINDOW_CLIP_LIMITS, WINDOW_CONSENT_ANSWERS, WINDOW_CONSENT_TIMEOUT_MS, WINDOW_POINT_LABEL_MAX, WINDOW_POINT_PAD, WINDOW_POINT_SECONDS,
   WINDOW_GUIDE_ANSWERS, WINDOW_POINTER_UNTIL, WINDOW_READ_LIMIT, WINDOW_SHOT_MAX, WINDOW_THUMBNAIL_MAX,
-  windowCropError, windowIdError, windowTargetError,
+  windowCropError, windowIdError, windowStepError, windowTargetError,
   type AllowedWindowApp, type DesktopWindow, type Message, type MessagePart, type Thread, type WindowConsentAnswer, type WindowConsentKind,
   type WindowControl, type WindowOpened, type WindowPointer, type WindowTarget, type WindowWatch
 } from '@boite/contracts';
@@ -213,7 +213,7 @@ export function windowsMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
     const boxId = `box_${++ctx.seq}`;
     const card = post(thread, {
       type: 'window_guide', boxId, process: pointer.process, label: pointer.label,
-      ...(pointer.control ? { control: { ...pointer.control } } : {}), expiresAt: pointer.expiresAt, end: null
+      ...(pointer.control ? { control: { ...pointer.control } } : {}), ...(pointer.step ? { step: { ...pointer.step } } : {}), expiresAt: pointer.expiresAt, end: null
     });
     pointers.set(thread.id, { pointer, boxId, card, timer: setTimeout(() => unpoint(thread.id, 'timeout'), pointer.expiresAt - Date.now()), end: new Set() });
   };
@@ -268,12 +268,13 @@ export function windowsMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
     post(thread, { type: 'window_consent', requestId: `wcr-${++ctx.seq}`, kind: 'screenshot', process: notepad.process, path: notepad.path, expiresAt: Date.now() - 60_000, answer: 'expired' });
     post(thread, { type: 'window_consent', requestId: `wcr-${++ctx.seq}`, kind: 'clip', process: unity.process, path: unity.path, expiresAt: Date.now() + 300_000, answer: 'always' });
     void ask(thread, blender, 'screenshot').catch(() => undefined);
-    // A guide the person already followed, and the box shown now, which its card can end.
+    // Two steps of a tour: one the person already followed, and the box shown now, which its card can end.
     const play = { type: 'Button', name: 'Play' };
-    post(thread, { type: 'window_guide', boxId: `box_${++ctx.seq}`, process: unity.process, label: 'File', control: { type: 'MenuItem', name: 'File' }, expiresAt: Date.now() - 60_000, end: 'clicked' });
+    post(thread, { type: 'window_guide', boxId: `box_${++ctx.seq}`, process: unity.process, label: 'File', control: { type: 'MenuItem', name: 'File' }, step: { index: 1, total: 3 }, expiresAt: Date.now() - 60_000, end: 'clicked' });
     show(thread, {
       windowId: unity.id, process: unity.process, label: 'Press Play to test the scene', x: 912, y: 58, width: 32, height: 24,
-      expiresAt: Date.now() + WINDOW_POINT_SECONDS.max * 1000, look: { shape: 'box', pad: WINDOW_POINT_PAD.default }, control: play, notify: true
+      expiresAt: Date.now() + WINDOW_POINT_SECONDS.max * 1000, look: { shape: 'box', pad: WINDOW_POINT_PAD.default }, control: play, notify: true,
+      step: { index: 2, total: 3 }
     });
     // The agent opens the watch once someone looks at the conversation, so the Window tab comes forward as it would.
     const opening = setInterval(() => {
@@ -383,7 +384,7 @@ export function windowsMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
       const matching = wanted ? controls.filter(control => control.name.toLowerCase().includes(wanted)) : controls;
       return { windowId: window.id, process: window.process, controls: structuredClone(matching.slice(0, max)), total: matching.length };
     },
-    'windows.point': async ({ threadId, control: id, target, name, at, label = '', seconds = WINDOW_POINT_SECONDS.default, shape = 'box', pad = WINDOW_POINT_PAD.default, notify = false, any, until = 'click' }) => {
+    'windows.point': async ({ threadId, control: id, target, name, at, label = '', seconds = WINDOW_POINT_SECONDS.default, shape = 'box', pad = WINDOW_POINT_PAD.default, notify = false, any, until = 'click', step }) => {
       const thread = active(threadId);
       if ([id, name, at].filter(value => value !== undefined).length !== 1) throw invalid('point needs exactly one of control, name or at', 'control');
       if (label.length > WINDOW_POINT_LABEL_MAX) throw invalid(`label must be at most ${WINDOW_POINT_LABEL_MAX} characters with no control characters`, 'label');
@@ -394,6 +395,8 @@ export function windowsMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
       if (any !== undefined && typeof any !== 'boolean') throw invalid('any must be true or false', 'any');
       if (!WINDOW_POINTER_UNTIL.includes(until)) throw invalid(`until must be one of ${WINDOW_POINTER_UNTIL.join(', ')}`, 'until');
       if (until === 'change' && at !== undefined) throw invalid('until change watches a control: point at one by id or by name, not at a rectangle', 'until');
+      const stepProblem = step === undefined ? null : windowStepError(step);
+      if (stepProblem) throw invalid(stepProblem, 'step');
       let window: FakeWindow;
       let box: { x: number; y: number; width: number; height: number };
       let control: WindowControl | undefined;
@@ -436,7 +439,8 @@ export function windowsMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
         ...(control?.popup ? { popup: control.popup } : {}),
         ...(notify ? { notify: true as const } : {}),
         ...(until !== 'click' ? { until } : {}),
-        ...(control?.offscreen && control.offscreen !== 'unknown' ? { offscreen: control.offscreen } : {})
+        ...(control?.offscreen && control.offscreen !== 'unknown' ? { offscreen: control.offscreen } : {}),
+        ...(step ? { step: { index: step.index, total: step.total } } : {})
       };
       show(thread, pointer);
       return { pointer: structuredClone(pointer) };

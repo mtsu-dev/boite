@@ -253,7 +253,9 @@ ending in `(in popup <id>)`; a box on one of its items goes when it closes.
 not say where; a box on one shows as an arrow on that edge of the window until
 the user scrolls it into view, then rings it.
 `--round` draws a pill or a
-circle and `--pad <px>` sets the gap around the control. `point` returns at once:
+circle and `--pad <px>` sets the gap around the control. `--step N/M` marks the
+box as step N of a tour of M (`1 <= N <= M <= 20`): the box and its card show
+`N / M`. `point` returns at once:
 the click, or the box timing out, arrives later as a message, so the agent keeps
 working. `--until change` ends the box when the control's value, check state or
 selection changes instead (the agent learns which, never the value), and

@@ -4,7 +4,7 @@
  * the shell, which owns the transparent window the box is drawn in
  * (`pointer_window.rs`). That window's page is `PointerApp.svelte`.
  */
-import type { WindowEdge, WindowPointerBox, WindowPointerLook } from '@boite/contracts';
+import type { WindowEdge, WindowPointerBox, WindowPointerLook, WindowPointerStep } from '@boite/contracts';
 
 /** What the shell tells a pointer page, in that page's CSS pixels: the control, and whether the label goes under it. */
 export interface PointerLayout {
@@ -19,6 +19,8 @@ export interface PointerLayout {
   frame?: string;
   /** The control lies past this edge of its window: the page draws an arrow there pointing toward it, not a ring. */
   edge?: WindowEdge;
+  /** The box's place in a tour of several: a small `index / total` badge leads its label. */
+  step?: WindowPointerStep;
 }
 
 /** The arrow's disc, in CSS pixels, whatever the size of the place the core gave it. */
@@ -90,7 +92,7 @@ export function pointerRequested(from: { localCore: boolean }, box: WindowPointe
   const rect = box.rect;
   queue = queue.then(() => rect === null
     ? invoke('pointer_hide', { id: box.id })
-    : invoke('pointer_show', { id: box.id, rect, label: box.label, look: box.look, ...(box.frame ? { frame: box.frame } : {}), ...(box.edge ? { edge: box.edge } : {}) }))
+    : invoke('pointer_show', { id: box.id, rect, label: box.label, look: box.look, ...(box.frame ? { frame: box.frame } : {}), ...(box.edge ? { edge: box.edge } : {}), ...(box.step ? { step: box.step } : {}) }))
     .then(() => undefined, (error: unknown) => { console.warn('windows.pointer failed', error); });
   return queue;
 }
