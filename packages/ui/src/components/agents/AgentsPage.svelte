@@ -2,16 +2,21 @@
   import { onMount, untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import { ArrowLeft, Bot } from '@lucide/svelte';
+  import type { AgentProfile, Team } from '@boite/contracts';
   import { AgentsView, agentOfThread, agentRows, agentsFilter, firstDeskVisit, lastOpenedAgent, openAgent, rememberAgent, statusOf, type AgentFocus } from '../../lib/agents.svelte';
   import { agentDirectory } from '../../lib/agent-directory.svelte';
+  import { experimentOn } from '../../lib/experiments.svelte';
+  import { count } from '../../lib/format';
   import { mobileOverlay } from '../../lib/mobile-history';
   import { mobileChrome } from '../../lib/mobile-chrome.svelte';
   import type { AgentPane } from '../../lib/store/layout.svelte';
   import type { Store } from '../../lib/store.svelte';
   import { fill, strings } from '../../lib/strings';
+  import { teamsOf } from '../../lib/teams.svelte';
   import { workspace, type Machine } from '../../lib/workspace.svelte';
   import ChatView from '../ChatView.svelte';
   import AgentsRail from './AgentsRail.svelte';
+  import AgentAvatar from './AgentAvatar.svelte';
   import AgentHeader from './AgentHeader.svelte';
   import AgentSheet from './AgentSheet.svelte';
   import AgentEditor from './AgentEditor.svelte';
@@ -57,15 +62,21 @@
 
   /** The agent thread on screen: an ordinary thread left open from the chat is not drawn here. */
   const thread = $derived(store.openThread?.agentSessionId ? store.openThread : null);
+  /** A team's chat on screen, while Teams is on (`docs/teams.md`): the rail lists the teams above the bots. */
+  const teamThread = $derived(!thread && store.openThread?.teamId && experimentOn('teams') ? store.openThread : null);
+  const team = $derived(teamThread ? teamsOf(store).ofThread(teamThread.id) : null);
+  /** The team's members as pictures: the bot's own once this machine's agents are read, else the robot its id picks. */
+  const teamPictures = $derived((team?.members ?? []).map((member): Pick<AgentProfile, 'id' | 'name' | 'avatar'> =>
+    view.snapshot?.profiles.find(profile => profile.id === member.botId) ?? { id: member.botId, name: member.name, avatar: '' }));
   const directory = $derived(agentDirectory(store));
-  const threadId = $derived(thread?.id ?? null);
+  const threadId = $derived(thread?.id ?? teamThread?.id ?? null);
   const agent = $derived(thread ? agentOfThread(snapshot, thread.id) ?? directory.ownerOf(thread) : null);
   /** The open agent's id: every snapshot brings a new profile object, the id moves only when another agent opens. */
   const agentId = $derived(agent?.id ?? null);
   const status = $derived(agent ? statusOf(snapshot, agent.id) : null);
   /** The conversation of an archived agent reads, and takes nothing more. */
   const locked = $derived(agent?.status === 'archived' ? labels.archivedNotice : null);
-  const detail = $derived(!!focus || (!!thread && !listShown));
+  const detail = $derived(!!focus || (!!(thread || teamThread) && !listShown));
 
   onMount(() => { view.start(); return () => view.pause(); });
   // The other machines' snapshots load while their rows are listed.
@@ -128,7 +139,7 @@
    * agent that cannot be opened leaves the card alone.
    */
   $effect(() => {
-    if (narrow.current || focus || thread || !snapshot || !rows.length || store.agentsTarget || tried) return;
+    if (narrow.current || focus || thread || teamThread || !snapshot || !rows.length || store.agentsTarget || tried) return;
     tried = true;
     untrack(openDefault);
   });
@@ -160,6 +171,13 @@
     if (agentId === agent?.id && thread) return;
     void openAgent(store, agentId);
   }
+  /** A team's row: its chat, on the machine that holds it. The desktop's default agent gives way to it. */
+  function openTeam(machine: Machine, chosen: Team) {
+    tried = true;
+    focus = null; pane = null; listShown = false;
+    if (machine.store === store && teamThread?.id === chosen.threadId) return;
+    void workspace.select(machine.store, chosen.threadId);
+  }
   /** One step out: a form, then the conversation, then the list. */
   function back() {
     if (focus) focus = null;
@@ -167,11 +185,11 @@
   }
 </script>
 
-<AgentsRail {view} {lists} {filter} active={focus ? null : agent?.id ?? null} engine={focus?.kind === 'engine'}
-  onopen={open} oncreate={() => { focus = { kind: 'new' }; }} onengine={() => { focus = focus?.kind === 'engine' ? null : { kind: 'engine' }; }} />
+<AgentsRail {view} {lists} {filter} active={focus ? null : agent?.id ?? null} activeTeam={focus ? null : teamThread?.id ?? null} engine={focus?.kind === 'engine'}
+  onopen={open} onteam={openTeam} oncreate={() => { focus = { kind: 'new' }; }} onengine={() => { focus = focus?.kind === 'engine' ? null : { kind: 'engine' }; }} />
 
 <main class="agents-main" class:open={detail} data-testid="agents-page">
-  <div class="agents-card framed" class:chat={!focus && !!thread}>
+  <div class="agents-card framed" class:chat={!focus && !!(thread || teamThread)}>
     {#if view.error || view.loadError}
       <div class="agent-error" role="alert">{view.error || view.loadError}<button type="button" class="ghost small" onclick={() => { view.error = ''; void view.refresh(); }}>{labels.retry}</button></div>
     {/if}
@@ -197,6 +215,19 @@
       <AgentSheet {view} {agent} {pane} onclose={() => { pane = null; }} />
     {:else if thread}
       <!-- A thread the snapshot does not name yet, a moment after the agent was created. -->
+      <div class="agents-chat"><ChatView {store} /></div>
+    {:else if teamThread}
+      {@const members = team?.members.length ?? 0}
+      <header class="agent-head" data-testid="team-header">
+        {#if narrow.current}<button type="button" class="ghost icon agent-mobile-back" aria-label={labels.list} title={labels.list} onclick={back} data-testid="agent-back"><ArrowLeft size={18} strokeWidth={1.75} /></button>{/if}
+        <span class="team-head-identity">
+          <span class="agent-head-robot"><AgentAvatar kind="team" id={team?.id ?? teamThread.id} name={team?.name ?? teamThread.title} members={teamPictures} size={36} /></span>
+          <span class="agent-head-text">
+            <strong data-testid="team-title">{team?.name ?? teamThread.title}</strong>
+            <span class="agent-live"><span class="agent-live-text" data-testid="team-room">{members === 0 ? strings.teamChat.room : fill(members === 1 ? strings.teamChat.roomOne : strings.teamChat.roomMany, { count: count(members) })}</span></span>
+          </span>
+        </span>
+      </header>
       <div class="agents-chat"><ChatView {store} /></div>
     {:else if !snapshot}
       <p class="agent-empty">{view.loadError ? labels.offline : strings.app.loading}</p>

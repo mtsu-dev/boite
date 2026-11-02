@@ -20,7 +20,7 @@ const posts = `[...document.querySelectorAll('[data-testid=team-post]')].map(pos
   post.querySelector('[data-testid=team-post-author]')?.textContent ?? null, post.dataset.audience,
   post.querySelector('[data-testid=team-post-private]')?.textContent ?? null, post.querySelector('[data-testid=team-post-woke]')?.textContent ?? null])`;
 
-test('the owner finds a team in the sidebar and on the phone, reads its posts in French and posts to it with a mention and in private', async () => {
+test('the owner finds a team on the Bots page on a desktop and a phone, reads its posts in French and posts to it with a mention and in private', async () => {
   ensureProductionUi();
   const restore = setDriver('echo', { protocol: 'echo', startTurn(ctx) {
     const id = ctx.emit.startMessage('assistant');
@@ -62,22 +62,27 @@ test('the owner finds a team in the sidebar and on the phone, reads its posts in
     const told = await boiteAs(harness, jeuxThread, ['team', 'dm', 'Skollheim', 'owner', 'Entre nous : le budget est serré.']);
     expect([said.code, said.err, told.code, told.err]).toEqual([0, '', 0, '']);
 
-    // Desktop: the Teams section of the sidebar, the chat unread.
-    const row = `[data-testid=sidebar-team][data-team-id="${team.id}"]`;
+    // Desktop: the Bots page lists the team above the bots, its chat unread.
+    await page.waitFor(`document.querySelector('[data-testid="view-agents"]')`);
+    await page.click('[data-testid="view-agents"]');
+    const row = `[data-testid="agent-team-${team.id}"]`;
     await page.waitFor(`document.querySelector('${row}')?.dataset.unread === 'true'`);
-    expect(await page.text('[data-testid=sidebar-teams] .title')).toBe('Équipes');
+    await page.waitFor(`document.querySelectorAll('.agents-rail .section-label').length === 2`);
+    expect(await page.evaluate(`[...document.querySelectorAll('.agents-rail .section-label')].map(heading => heading.textContent)`)).toEqual(['Équipes', 'Bots']);
     expect(await page.text(row)).toContain('Skollheim');
+    expect(await page.text(row)).toContain('Huginn (Réseaux) et Jeux (Producteur)');
     await page.settleAnimations();
-    await page.screenshot(join(import.meta.dir, '.artifacts', 'team-chat-sidebar-desktop.png'));
+    await page.screenshot(join(import.meta.dir, '.artifacts', 'team-chat-bots-desktop.png'));
     await page.click(row);
     await page.waitFor(`document.querySelectorAll('[data-testid=team-post]').length === 2`);
     expect(await page.evaluate(posts)).toEqual([
       ['Huginn (Réseaux)', 'team', null, 'A réveillé toute l\'équipe'],
       ['Jeux (Producteur)', 'private', 'Privé pour vous', null],
     ]);
-    expect(await page.text('[data-testid=thread-title]')).toBe('Skollheim');
-    // Opened, the chat reads as read.
+    expect([await page.text('[data-testid=team-title]'), await page.text('[data-testid=team-room]')]).toEqual(['Skollheim', 'Salon d\'équipe · 2 bots et vous']);
+    // Opened, the chat reads as read, and its row is the open one.
     await page.waitFor(`document.querySelector('${row}') && !document.querySelector('${row}').dataset.unread`);
+    expect(await page.evaluate(`document.querySelector('${row}').getAttribute('aria-current')`)).toBe('page');
 
     await page.type('[data-testid=team-composer-input]', '@Jeux (Producteur) tu valides le budget ?');
     await page.waitFor(`document.querySelector('[data-testid=team-wakes]')?.textContent === 'Réveille Jeux (Producteur)'`);
@@ -89,16 +94,18 @@ test('the owner finds a team in the sidebar and on the phone, reads its posts in
     await page.settleAnimations();
     await page.screenshot(join(import.meta.dir, '.artifacts', 'team-chat-desktop.png'));
 
-    // Phone: back to the list, the Teams section above the threads, then the chat again.
+    // Phone: the chat full screen, back to the Bots list with the team above the bots, then the chat again.
     await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-    await page.click('[data-testid=mobile-back]');
-    await page.waitFor(`!!document.querySelector('.mobile-list ${row}')`);
-    // The chat is no thread row of the list: its composer is this one.
-    expect(await page.evaluate(`!!document.querySelector('.mobile-list [data-thread-id="${team.threadId}"]')`)).toBe(false);
+    const shown = (selector: string) => `(() => { const node = document.querySelector('${selector}'); return !!node && node.getBoundingClientRect().width > 0; })()`;
+    await page.waitFor(shown('[data-testid=agent-back]'));
+    expect(await page.evaluate(shown(row))).toBe(false);
+    await page.click('[data-testid=agent-back]');
+    await page.waitFor(shown(row));
+    expect(await page.evaluate(shown('[data-testid=team-chat]'))).toBe(false);
     await page.settleAnimations();
     await page.screenshot(join(import.meta.dir, '.artifacts', 'team-chat-list-phone.png'));
-    await page.click(`.mobile-list ${row}`);
-    await page.waitFor(`!document.querySelector('.mobile-list') && document.querySelectorAll('[data-testid=team-post]').length === 3`);
+    await page.click(row);
+    await page.waitFor(`${shown('[data-testid=team-chat]')} && !${shown(row)} && document.querySelectorAll('[data-testid=team-post]').length === 3`);
     await page.click('[data-testid=team-audience]');
     await page.click(`[data-testid=team-audience-menu] [data-value="${keyOf(huginn.id)}"]`);
     await page.waitFor(`!document.querySelector('[data-testid=team-mention]')`);
@@ -114,10 +121,6 @@ test('the owner finds a team in the sidebar and on the phone, reads its posts in
     expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
     await page.settleAnimations();
     await page.screenshot(join(import.meta.dir, '.artifacts', 'team-chat-phone.png'));
-    // A team's chat has no title menu: the phone's header keeps the panel's own button.
-    expect(await page.evaluate(`(() => { const box = document.querySelector('[data-testid=panel-toggle]').getBoundingClientRect(); return box.width > 0 && box.right <= innerWidth; })()`)).toBe(true);
-    await page.click('[data-testid=panel-toggle]');
-    await page.waitFor(`document.querySelector('[data-testid=panel-toggle]')?.getAttribute('aria-pressed') === 'true'`);
     expect(page.errors()).toEqual([]);
   } finally { await page?.close(); await harness.stop(); restore(); }
 }, 90_000);

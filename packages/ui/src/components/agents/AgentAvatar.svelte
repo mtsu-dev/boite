@@ -13,7 +13,8 @@
   /**
    * An agent's picture: its robot, the image the owner imported, or the emoji
    * or letters it chose instead, on a disc. A group stacks two of its members,
-   * a mission shows a target. An imported image leaves the disc empty while it
+   * a team of three or more shows four in a 2×2 grid, a mission shows a
+   * target. An imported image leaves the disc empty while it
    * loads, and draws the robot its id picks when no machine holds it.
    *
    * `ring` draws a ring around the disc that says the agent's `mood`: an arc
@@ -38,12 +39,15 @@
   } = $props();
 
   const grouped = $derived(kind === 'group' || kind === 'team');
+  /** The members drawn: a group stacks two, a team of three or more sits in a 2×2 grid. */
+  const shown = $derived(kind === 'team' && members.length > 2 ? members.slice(0, 4) : members.slice(0, 2));
+  const tiled = $derived(shown.length > 2);
   /** The imported image, once loaded: null for a robot or text avatar. */
   const image = $derived(kind === 'profile' && isAgentPicture(avatar) ? agentPictures.url(avatar) : null);
   const robot = $derived(kind === 'profile' ? portraitRobot(id, avatar) : null);
   $effect(() => {
     if (kind === 'profile') void agentPictures.load(avatar);
-    else for (const member of members.slice(0, 2)) void agentPictures.load(member.avatar);
+    else for (const member of shown) void agentPictures.load(member.avatar);
   });
   /** The robot to draw: none for an imported image, unless no machine holds it. */
   function portraitRobot(seed: string, own: string) {
@@ -72,8 +76,8 @@
     </svg>
   {/if}
   {#if grouped && members.length >= 2}
-    {#each members.slice(0, 2) as member, slot (member.id)}
-      <span class="agent-avatar-stack" class:robot={!!portraitRobot(member.id, member.avatar) || !!agentPictures.url(member.avatar)} data-slot={slot} style:--tint={tintOf(member.id)}>{@render picture(member, 'still')}</span>
+    {#each shown as member, slot (member.id)}
+      <span class="agent-avatar-stack" class:tile={tiled} class:robot={!!portraitRobot(member.id, member.avatar) || !!agentPictures.url(member.avatar)} data-slot={slot} data-of={shown.length} style:--tint={tintOf(member.id)}>{@render picture(member, 'still')}</span>
     {/each}
   {:else if grouped}
     <Users size={Math.round(size * 0.45)} strokeWidth={1.75} />
@@ -104,6 +108,12 @@
   .agent-avatar-stack.robot { background: none; }
   .agent-avatar-stack[data-slot='0'] { top: 0; left: 0; }
   .agent-avatar-stack[data-slot='1'] { right: 0; bottom: 0; }
+  /* A team of three or four: one quarter each, the third centred under the first two when it is the last. */
+  .agent-avatar-stack.tile { width: 48%; height: 48%; font-size: calc(var(--size) * 0.2); box-shadow: none; }
+  .agent-avatar-stack.tile[data-slot='1'] { top: 0; right: 0; bottom: auto; }
+  .agent-avatar-stack.tile[data-slot='2'] { bottom: 0; left: 0; }
+  .agent-avatar-stack.tile[data-slot='2'][data-of='3'] { left: 26%; }
+  .agent-avatar-stack.tile[data-slot='3'] { right: 0; bottom: 0; }
   /* The status mark only while it works or waits, at most a third of a small picture. */
   .agent-avatar { --mark-size: clamp(6px, calc(var(--size) * 0.24), 9px); }
 

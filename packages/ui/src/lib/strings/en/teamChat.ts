@@ -1,9 +1,11 @@
 export const strings = {
-  /** The Teams section of the lists and a team's chat, where the owner talks with its bots (`docs/teams.md`). */
+  /** The Teams section of the Bots page and a team's chat, where the owner talks with its bots (`docs/teams.md`). */
   teamChat: {
     heading: 'Teams',
-    /** Folded, the section's title says how many chats wait unread. */
-    unread: '{count} unread',
+    /** Under the team's name over its chat: what the place is and who talks there. */
+    room: 'Team chat',
+    roomOne: 'Team chat · one bot and you',
+    roomMany: 'Team chat · {count} bots and you',
     /** The team's members, in the band over its chat and in a row of the list. */
     members: 'Members',
     /** The owner, as the author of a post. */

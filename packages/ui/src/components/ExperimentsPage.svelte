@@ -25,9 +25,9 @@
   let following = $state(untrack(() => followsDesktop()));
   let heard = $state(untrack(() => desktopExperiments() !== null));
 
-  /** Contacts needs Bots: its switch waits, greyed, until Bots is on. */
+  /** Contacts and Teams need Bots: their switches wait, greyed, until Bots is on. */
   function locked(id: ExperimentId): boolean {
-    return id === 'contacts' && !enabled.includes('resident-agents');
+    return (id === 'contacts' || id === 'teams') && !enabled.includes('resident-agents');
   }
 
   function toggle(id: ExperimentId, on: boolean) {
@@ -68,7 +68,7 @@
     {#each EXPERIMENT_IDS as id (id)}
       <label for="{uid}-{id}" class="switch-row" class:locked={locked(id)} id="settings-{id}">
         <span class="text">
-          <span class="ui-label-box"><span class="ui-label" id="{uid}-{id}-name">{copy[id].title}</span><InfoTip topic={copy[id].title} text={locked(id) ? strings.experiments.contacts.needsBots : copy[id].hint} /></span>
+          <span class="ui-label-box"><span class="ui-label" id="{uid}-{id}-name">{copy[id].title}</span><InfoTip topic={copy[id].title} text={locked(id) ? strings.experiments[id === 'teams' ? 'teams' : 'contacts'].needsBots : copy[id].hint} /></span>
         </span>
         <input id="{uid}-{id}" aria-labelledby="{uid}-{id}-name"
           type="checkbox"
