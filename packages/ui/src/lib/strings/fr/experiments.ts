@@ -41,7 +41,8 @@ export const fr: Translation = {
     },
     teams: {
       title: 'Équipes',
-      hint: "Des bots qui travaillent ensemble dans une conversation commune : un message réveille les bots qu'il nomme, et chacun répond au groupe ou en privé. Vos bots y écrivent avec boite team. Pas encore prêt pour un usage quotidien"
+      hint: "Des bots qui travaillent ensemble dans une conversation commune, affichée au-dessus d'eux sur la page Bots : un message réveille les bots qu'il nomme, et chacun répond au groupe ou en privé. Vos bots y écrivent avec boite team. Pas encore prêt pour un usage quotidien",
+      needsBots: "Nécessite les Bots : le salon d'une équipe est affiché avec ses bots. Activez d'abord les Bots"
     }
   }
 };

@@ -6,6 +6,7 @@
   import { secondClock } from '../../lib/clock.svelte';
   import type { Machine } from '../../lib/workspace.svelte';
   import MachineIcon from '../MachineIcon.svelte';
+  import StatusMark from '../StatusMark.svelte';
   import BuiltinBadge from './BuiltinBadge.svelte';
 
   /**
@@ -16,12 +17,14 @@
    * has worked, the missed answers or the time of the last one, and the next
    * wake as a small clock while it rests.
    */
-  let { title, builtin = false, open = false, unread = 0, away = false, at, now, detail = '', tone = 'idle', icon, since = null, wake = null, machine, testid, onclick, picture, aside }: {
+  let { title, builtin = false, open = false, unread = 0, marked = false, away = false, at, now, detail = '', tone = 'idle', icon, since = null, wake = null, machine, testid, onclick, picture, aside }: {
     title: string;
     /** A bot Boite ships: a small badge after its name. */
     builtin?: boolean;
     open?: boolean;
     unread?: number;
+    /** Something unread with no count to give, a team's chat: a dot after the time. */
+    marked?: boolean;
     /** Its machine is not connected: the machine icon shows its connection state. */
     away?: boolean;
     /** The row's last activity, shown when nothing is missed. */
@@ -52,8 +55,8 @@
   const spent = $derived(tone === 'working' && since !== null ? elapsed(Math.max(secondClock.now, now) - since) : null);
 </script>
 
-<div class="agent-row" class:open class:unread={unread > 0} class:on-machine={!!machine} data-machine-id={machine?.id} data-tone={tone}>
-  <button type="button" class="ghost row" aria-current={open ? 'page' : undefined} title={title} {onclick} data-testid={testid}>
+<div class="agent-row" class:open class:unread={unread > 0 || marked} class:on-machine={!!machine} data-machine-id={machine?.id} data-tone={tone}>
+  <button type="button" class="ghost row" aria-current={open ? 'page' : undefined} title={title} {onclick} data-testid={testid} data-unread={marked ? 'true' : undefined}>
     {#if machine}
       <span class="machine" class:offline={away} title={`${machine.label} · ${strings.connection[machine.store.connection]}`} aria-label={machine.label}><MachineIcon icon={machine.icon} os={machine.store.core?.os} /></span>
     {/if}
@@ -65,6 +68,7 @@
         {:else if spent !== null}<span class="spent" data-testid="agent-row-spent">{spent}</span>
         {:else if unread > 0}<span class="unread-count" role="img" title={missed} aria-label={missed} data-testid="agent-unread-count">{unread}</span>
         {:else if at > 0}<time class="when" datetime={new Date(at).toISOString()} title={exactTime(at)}>{ago(at, now)}</time>{/if}
+        {#if marked && !aside}<StatusMark tone="unread" label={strings.sidebar.unread} />{/if}
       </span>
       {#if detail || wake}
         <span class="detail-line">
