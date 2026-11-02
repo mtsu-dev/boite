@@ -121,7 +121,7 @@
     border: 2px solid var(--color-accent);
     border-radius: var(--radius-sm);
     opacity: 0;
-    animation: echo var(--dur-flash) var(--ease-out-quint) var(--dur-3) infinite;
+    animation: echo var(--dur-flash) var(--ease-out-quint) var(--dur-3) infinite var(--loops);
   }
 
   [data-shape='round'] .ring, [data-shape='round'] .echo {
@@ -150,7 +150,7 @@
     stroke-width: 2.2;
     stroke-linecap: round;
     stroke-linejoin: round;
-    animation: nudge var(--dur-flash) var(--ease-out-quint) var(--dur-3) infinite;
+    animation: nudge var(--dur-flash) var(--ease-out-quint) var(--dur-3) infinite var(--loops);
   }
 
   .marker[data-edge='above'] { rotate: 180deg; }
