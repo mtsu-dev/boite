@@ -64,8 +64,7 @@
     }
     moveEnded(source, agent.id, coreId);
     // The bot now lives there: the Bots page follows it, and this sheet goes with the page it was on.
-    await workspace.select(target.store);
-    target.store.showAgents();
+    workspace.showAgents(target.store);
     await openAgent(target.store, agent.id);
   }
 </script>

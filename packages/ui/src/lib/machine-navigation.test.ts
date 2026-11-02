@@ -11,6 +11,8 @@ import { setExperiment } from './experiments';
 import { RpcFailure } from './client';
 import { RpcErrorCode } from '@boite/contracts';
 import { strings } from './strings';
+import { openResident } from './resident';
+import { AgentsView, agentRows, openAgent } from './agents.svelte';
 
 let running: ReturnType<typeof mount> | undefined;
 afterEach(async () => {
@@ -376,4 +378,51 @@ test('a local palette target exits settings without reloading the previous chat'
   const gets = source.mock.calls.filter(([method]) => method === 'threads.get');
   expect(gets).toHaveLength(1);
   expect(gets[0]![1]).toMatchObject({ threadId: 't-descriptors' });
+});
+
+test('a bot on another machine opens straight on its Agents page, never through that machine\'s chat', async () => {
+  setExperiment('resident-agents', true);
+  const { a, b, cb } = await setup();
+  await b.open('t-trace');
+  const call = cb.call.bind(cb);
+  const asked: string[] = [];
+  vi.spyOn(cb, 'call').mockImplementation(async (method, params, options) => {
+    asked.push(method);
+    // The machine's last thread is slow to come: a page shown on the way stays on screen that long.
+    if (method === 'threads.get') await new Promise(() => undefined);
+    return call(method, params, options);
+  });
+  const toChat = vi.spyOn(b, 'showChat');
+  expect(a.page).toBe('chat');
+  openResident(b, 'agent-7');
+  expect(b.page).toBe('agents');
+  await vi.waitFor(() => expect(workspace.active).toBe(b));
+  expect(b.agentsTarget?.agentId).toBe('agent-7');
+  expect(toChat).not.toHaveBeenCalled();
+  expect(asked).not.toContain('threads.get');
+});
+
+test('back on a machine whose bot was open, its conversation listens again', async () => {
+  setExperiment('resident-agents', true);
+  const { a, b } = await setup();
+  const cb = new FakeClient({ delayMs: 0, coreId: 'c'.repeat(64), agentsDemo: true });
+  b.attach(cb);
+  await b.connect();
+  const view = AgentsView.of(b);
+  await view.refresh();
+  const agentId = agentRows(view.snapshot)[0]!.profile.id;
+  workspace.showAgents(b, agentId);
+  const threadId = await openAgent(b, agentId);
+  expect(threadId).not.toBeNull();
+  const call = vi.spyOn(cb, 'call');
+  const asked = (methods: string[]) => call.mock.calls.some(([method, params]) => methods.includes(method) && (params as { threadId?: string }).threadId === threadId);
+  // Away on the other machine, this one lets its thread go.
+  await workspace.select(a);
+  await vi.waitFor(() => expect(asked(['threads.unsubscribe'])).toBe(true));
+  call.mockClear();
+  workspace.showAgents(b, agentId);
+  expect(b.page).toBe('agents');
+  await vi.waitFor(() => expect(asked(['threads.get', 'threads.subscribe'])).toBe(true));
+  expect(b.page).toBe('agents');
+  expect(b.openThread?.id).toBe(threadId);
 });

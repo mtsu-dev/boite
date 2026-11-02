@@ -155,7 +155,7 @@
   function open(machine: Machine, agentId: string) {
     // Read now: the page, and the row's values with it, is drawn again for the other machine.
     const target = machine.store;
-    if (target !== store) { void workspace.select(target).then(() => target.showAgents(agentId)); return; }
+    if (target !== store) { workspace.showAgents(target, agentId); return; }
     focus = null; pane = null; listShown = false;
     if (agentId === agent?.id && thread) return;
     void openAgent(store, agentId);

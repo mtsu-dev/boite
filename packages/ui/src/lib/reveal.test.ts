@@ -37,38 +37,33 @@ test('only the desktop shell answers, and only for the core it started', () => {
 test('the window comes forward, then the thread opens on the machine that asked', async () => {
   const from = fakeStore(true);
   const order: string[] = [];
-  const workspace: RevealWorkspace = { ...alone, active: from, select: vi.fn(async (_target, threadId) => { order.push(`select:${threadId ?? ''}`); }) };
+  const workspace: RevealWorkspace = { ...alone, active: from, select: vi.fn(async (_target, threadId) => { order.push(`select:${threadId ?? ''}`); }), showAgents: vi.fn() };
   await reveal(workspace, from, thread, async () => { order.push('show'); });
   expect(order).toEqual(['show', 'select:thr_1']);
   expect(workspace.select).toHaveBeenCalledWith(from, 'thr_1');
-  expect(from.showAgents).not.toHaveBeenCalled();
+  expect(workspace.showAgents).not.toHaveBeenCalled();
 });
 
-test('an agent opens on the Agents page, switching its experiment on', async () => {
+test('an agent opens on the Agents page, switching its experiment on, without the chat on the way', async () => {
   const from = fakeStore(true);
-  const workspace: RevealWorkspace = { ...alone, active: from, select: vi.fn(async () => undefined) };
+  const workspace: RevealWorkspace = { ...alone, active: from, select: vi.fn(async () => undefined), showAgents: vi.fn() };
   expect(experimentOn('resident-agents')).toBe(false);
   await reveal(workspace, from, { kind: 'agent', agentId: 'agent-7' }, async () => undefined);
-  expect(workspace.select).toHaveBeenCalledWith(from);
   expect(experimentOn('resident-agents')).toBe(true);
-  expect(from.showAgents).toHaveBeenCalledWith('agent-7');
-
-  // A machine the owner switched away from meanwhile keeps its page.
-  const other = fakeStore(true);
-  await reveal({ ...alone, active: from, select: async () => undefined }, other, { kind: 'agent', agentId: 'agent-8' }, async () => undefined);
-  expect(other.showAgents).not.toHaveBeenCalled();
+  expect(workspace.showAgents).toHaveBeenCalledWith(from, 'agent-7');
+  expect(workspace.select).not.toHaveBeenCalled();
 });
 
 test('the app updates open in Settings, on the machine that asked', async () => {
   const from = fakeStore(true);
-  const workspace: RevealWorkspace = { ...alone, active: from, select: vi.fn(async () => undefined) };
+  const workspace: RevealWorkspace = { ...alone, active: from, select: vi.fn(async () => undefined), showAgents: vi.fn() };
   await reveal(workspace, from, { kind: 'update' }, async () => undefined);
   expect(workspace.select).toHaveBeenCalledWith(from);
   expect(from.showSettings).toHaveBeenCalledWith('machines', 'machines');
-  expect(from.showAgents).not.toHaveBeenCalled();
+  expect(workspace.showAgents).not.toHaveBeenCalled();
 
   const other = fakeStore(true);
-  await reveal({ ...alone, active: from, select: async () => undefined }, other, { kind: 'update' }, async () => undefined);
+  await reveal({ ...alone, active: from, select: async () => undefined, showAgents: vi.fn() }, other, { kind: 'update' }, async () => undefined);
   expect(other.showSettings).not.toHaveBeenCalled();
 });
 
@@ -77,15 +72,15 @@ test('a target naming another machine opens on that machine\'s Store, and its ow
   const laptop = fakeStore(false, 'core-laptop');
   const machineOf = vi.fn((coreId: string) => (coreId === 'core-laptop' ? { store: laptop, label: 'Laptop' } : null));
   const select = vi.fn(async (_target: Store, _threadId?: string) => undefined);
-  const workspace = { active: from, select, machineOf } as RevealWorkspace & { active: Store };
+  const showAgents = vi.fn((_target: Store, _agentId: string) => undefined);
+  const workspace = { active: from, select, showAgents, machineOf } as RevealWorkspace & { active: Store };
   select.mockImplementation(async (target) => { workspace.active = target; });
 
   await reveal(workspace, from, { kind: 'thread', threadId: 'thr_1' as never, coreId: 'core-laptop' }, async () => undefined);
   expect(select).toHaveBeenLastCalledWith(laptop, 'thr_1');
   await reveal(workspace, from, { kind: 'agent', agentId: 'agent-7', coreId: 'core-laptop' }, async () => undefined);
-  expect(select).toHaveBeenLastCalledWith(laptop);
-  expect(laptop.showAgents).toHaveBeenCalledWith('agent-7');
-  expect(from.showAgents).not.toHaveBeenCalled();
+  expect(showAgents).toHaveBeenCalledWith(laptop, 'agent-7');
+  expect(showAgents).toHaveBeenCalledTimes(1);
 
   // The core that asked, named by its own id: no lookup, the thread opens here.
   machineOf.mockClear();
@@ -100,6 +95,7 @@ test('a machine the window lacks or has offline says so on the page shown, and n
   const workspace: RevealWorkspace = {
     active: from,
     select: vi.fn(async () => undefined),
+    showAgents: vi.fn(),
     machineOf: (coreId) => (coreId === 'core-asleep' ? { store: asleep, label: 'Build server' } : null)
   };
   await reveal(workspace, from, { kind: 'thread', threadId: 'thr_1' as never, coreId: 'core-unknown' }, async () => undefined);
@@ -107,5 +103,5 @@ test('a machine the window lacks or has offline says so on the page shown, and n
   await reveal(workspace, from, { kind: 'agent', agentId: 'agent-7', coreId: 'core-asleep' }, async () => undefined);
   expect(from.error).toBe(fill(strings.plugins.revealMachineOffline, { machine: 'Build server' }));
   expect(workspace.select).not.toHaveBeenCalled();
-  expect(asleep.showAgents).not.toHaveBeenCalled();
+  expect(workspace.showAgents).not.toHaveBeenCalled();
 });

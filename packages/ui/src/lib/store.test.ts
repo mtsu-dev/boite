@@ -1788,6 +1788,56 @@ describe('Store', () => {
     expect(asked).toBe(1);
   });
 
+  test('a thread clicked again, or left and reopened, before its first page arrived still shows it loading', async ({ createStore }) => {
+    const { client, store } = createStore({ delayMs: 0, long: true });
+    store.attach(client);
+    await store.connect();
+    const call = client.call.bind(client);
+    let release!: () => void;
+    const gate = new Promise<void>(done => { release = done; });
+    client.call = (async (method, params, options) => {
+      if (method === 'threads.get' && (params as { threadId?: string }).threadId === 't-long') await gate;
+      return call(method, params, options);
+    }) as typeof client.call;
+    const other = store.threads.find(row => row.id !== 't-long' && !row.parentThreadId)!.id;
+
+    const first = store.open('t-long');
+    expect(store.loadingThreadId).toBe('t-long');
+    // A second click on the same row: the bare row on screen holds no message, so it is still loading, not an empty history.
+    const second = store.open('t-long');
+    expect(store.openThread?.messages).toEqual([]);
+    expect(store.loadingThreadId).toBe('t-long');
+    // Left for another thread before the page came: the bare row is no visit to paint again.
+    await store.open(other);
+    const third = store.open('t-long');
+    expect(store.openThread?.messages).toEqual([]);
+    expect(store.loadingThreadId).toBe('t-long');
+    release();
+    await Promise.all([first, second, third]);
+    expect(store.loadingThreadId).toBeNull();
+    expect(store.openThread?.messages.length).toBeGreaterThan(0);
+  });
+
+  test('a thread whose page came back empty reopens empty, not loading', async ({ createStore }) => {
+    const { client, store } = createStore({ delayMs: 0 });
+    store.attach(client);
+    await store.connect();
+    const empty = await client.call('threads.create', { projectId: 'p-boite', providerId: 'echo', accountId: 'a-echo', title: 'Nothing yet' });
+    await vi.waitFor(() => expect(store.threads.some(row => row.id === empty.id)).toBe(true));
+    const other = store.threads.find(row => row.id !== empty.id && !row.parentThreadId)!.id;
+    await store.open(empty.id);
+    expect(store.openThread?.messages).toEqual([]);
+
+    const again = store.open(empty.id);
+    expect(store.loadingThreadId).toBeNull();
+    await again;
+    await store.open(other);
+    const back = store.open(empty.id);
+    expect(store.openThread?.id).toBe(empty.id);
+    expect(store.loadingThreadId).toBeNull();
+    await back;
+  });
+
   test('a prompt that lands under a window cut above the end brings the last page, the prompt with it', async ({ createStore }) => {
     const { client, store } = createStore({ delayMs: 0, long: true });
     store.attach(client);
