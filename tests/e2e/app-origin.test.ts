@@ -17,7 +17,8 @@ import { connect, type CoreClient } from '../../packages/core/src/client.ts';
  * core knows the published one. Nothing else is set on any core. The app opens
  * on its way in alone, scans the code a machine of a group draws, and reaches
  * both machines of that group. A second phone pastes the link another machine
- * drew.
+ * drew. A third pastes the link of a machine with no HTTPS address, and pairs
+ * on that machine's own page over plain HTTP.
  *
  * The first phone sees the page as Chrome does in the field: the app's address
  * public, every machine's private, so its sockets need "Local network" allowed
@@ -47,7 +48,7 @@ async function phone(video?: string, machines: RunningCore[] = []): Promise<Brow
   const page = await BrowserPage.launch({
     url: 'about:blank',
     windowSize: { width: 390, height: 844 },
-    args: ['--ignore-certificate-errors', '--host-resolver-rules=MAP app.test 127.0.0.1', ...spaces,
+    args: ['--ignore-certificate-errors', '--host-resolver-rules=MAP app.test 127.0.0.1, MAP machine.test 127.0.0.1', ...spaces,
       ...(video === undefined ? [] : ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', `--use-file-for-fake-video-capture=${video}`])],
   });
   pages.push(page);
@@ -174,14 +175,28 @@ test('the app on an address no machine serves scans one machine\'s code and reac
   await paster.waitFor(`document.querySelector('${id('machine-paste-open')}')`, 30_000);
   await paster.click(id('machine-paste-open'));
   await paster.waitFor(`document.querySelector('${id('machine-link')}')`);
-  // Plain http on another host is mixed content on this HTTPS page: turned down before any socket, not failed as one.
-  await paster.type(id('machine-link'), 'http://192.168.1.20:3773/?grant=plain-http-test-grant');
-  await paster.click(id('machine-add'));
-  await paster.waitFor(`document.querySelector('${id('machine-paste-form')} [role="alert"]')?.textContent.includes('HTTPS address')`);
-  expect((await a.call('group.get', {}))?.devices).toHaveLength(1);
   await paster.type(id('machine-link'), fromFirst.url);
   await capture(paster, 'app-link-entry.png');
   await paster.click(id('machine-add'));
   await paster.waitFor(`globalThis.__boiteTest.workspace.machines.length === 2 && globalThis.__boiteTest.workspace.machines.every(machine => machine.store.connection === 'ready')`, 45_000);
   expect((await a.call('group.get', {}))?.devices).toHaveLength(2);
+
+  // A machine with no HTTPS address, named the way a tailnet names it: a socket to it from this HTTPS page is mixed
+  // content, so the app opens the machine's own page at the link, and the page takes the grant from its address.
+  const plainOrigin = `http://machine.test:${new URL(first.url).port}`;
+  await a.call('settings.set', { browserOrigins: [plainOrigin] });
+  const plain = (await a.call('group.addDevice', {})).url.replace(new URL(first.url).origin, plainOrigin);
+  expect(plain).toContain('#join=');
+  const leaver = await phone();
+  await leaver.waitFor(`document.querySelector('${id('machine-paste-open')}')`, 30_000);
+  await leaver.click(id('machine-paste-open'));
+  await leaver.waitFor(`document.querySelector('${id('machine-link')}')`);
+  await leaver.type(id('machine-link'), plain);
+  await leaver.click(id('machine-add'));
+  // The machine's page is the core's build, without the test hooks: the page and the core tell the outcome.
+  await leaver.waitFor(`location.origin === ${JSON.stringify(plainOrigin)} && location.search === '' && document.querySelector('${id('nav-settings')}') !== null`, 45_000);
+  for (const until = Date.now() + 15_000; (await a.call('group.get', {}))?.devices.length !== 3 && Date.now() < until;) await Bun.sleep(200);
+  // The invitation a computer joins with never reached the phone's address bar.
+  expect(await leaver.evaluate<string>('location.search + location.hash')).toBe('');
+  expect((await a.call('group.get', {}))?.devices).toHaveLength(3);
 }, 180_000);

@@ -191,6 +191,16 @@ used twice, or after its time, is refused by name; the same device asking again
 after a lost answer gets the same answer. The core token itself stays in
 `<dataDir>/core.json`, where the shell reads it, and travels nowhere.
 
+On a machine with no HTTPS address, the link names its MagicDNS name,
+`http://<machine>.<tailnet>.ts.net:<port>/?grant=`, when it is on a tailnet
+([groups](groups.md#the-network)). When its Tailscale is ready to serve it
+(`tailscale.status` answers `off`), the card also offers **HTTPS via
+Tailscale**, for the owner only and unless an admin policy locks
+`network.tailscaleServe`: one click runs `tailscale.enable`, as the switch of
+[Through Tailscale](#through-tailscale) does, and draws a new link through
+`https://<machine>.<tailnet>.ts.net`. Tailscale in any other state shows nothing
+more there; that switch explains it.
+
 Close hides the QR code; the link stays valid until it is used or expires. The
 devices of the group are listed in the same card as its machines, each with the
 machine it was added on; **Remove from the group** takes one out on every
@@ -206,9 +216,16 @@ that serves its own names it in `BOITE_APP_ORIGIN` on its cores, an `https`
 origin or the core does not start, and in `VITE_BOITE_APP_ORIGIN` when it builds
 its UI, which otherwise takes its own page for a machine's. There the app opens on its way
 in alone. A scanned or pasted link names the machine that drew it. The page is
-HTTPS, so the machine's address has to be too: a browser blocks a plain `http://`
-socket from it, the device's own loopback excepted, and the app turns such a
-link down with a message instead of failing on the socket. The first machine
+HTTPS, and a browser blocks a plain `http://` socket from it, the device's own
+loopback excepted. A link to a machine with no HTTPS address therefore says so
+in one line and opens that machine's own page at the link, a top-level
+navigation, which a browser allows from HTTPS (`openOnMachine` in
+`lib/app-origin.ts`). The page the machine serves takes the grant from its
+address and pairs there over plain HTTP: its device key needs no WebCrypto
+([groups](groups.md#devices)). The `#join=` part of the link, the invitation a
+computer pastes under **Join**, is left out of that navigation, so it never sits
+in the phone's address bar or history. The phone then uses Boite on that page;
+for the app itself, give the machine an HTTPS address. The first machine
 added becomes the one the app shows and opens on next time; the group brings the
 others.
 
@@ -507,7 +524,9 @@ names another) and says which of these it found, with the way out of each:
 
 Enabling runs `tailscale serve --bg --https=443 http://127.0.0.1:<port>`, sets
 the public URL to `https://<machine>.<tailnet>.ts.net` (the origin gate already
-admits it) and mints a phone link through it. A tailnet that never allowed Serve
+admits it) and mints a phone link through it. The **Add a device** card offers
+the same action, **HTTPS via Tailscale**, when it shows a plain HTTP link and
+the state is `off`. A tailnet that never allowed Serve
 answers with a consent page, offered as **Allow Serve**. Disabling runs
 `tailscale serve --https=443 off` and clears the public URL if it is still the
 tailnet one. Another target already on 443 is never replaced without the

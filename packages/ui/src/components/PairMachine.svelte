@@ -4,7 +4,8 @@
   import { parsePairingLink } from '../lib/endpoint';
   import { fill, strings } from '../lib/strings';
   import InfoTip from './InfoTip.svelte';
-  import { appPage, reachableFromApp } from '../lib/app-origin';
+  import { PAIR_QUERY_PARAM, withoutTrailingSlashes } from '@boite/contracts';
+  import { appPage, openOnMachine, reachableFromApp } from '../lib/app-origin';
   let { mobile = false, onpaired }: { mobile?: boolean; onpaired?: () => void } = $props();
   let link = $state(''),
     url = $state(''),
@@ -31,8 +32,10 @@
     await add();
   }
 
-  // The phone app's page is no machine's: a link naming plain http is turned down before its socket fails.
+  // The phone app's page is no machine's: a link naming plain http opens that machine's own page instead of a socket that would fail.
   const app = appPage();
+  /** The sentence shown while the page leaves for a machine with no HTTPS address. */
+  let leaving = $state<string | null>(null);
   /**
    * A phone whose camera cannot read the code pastes the link instead, sent
    * from the machine that drew it. The link names that machine, so it works
@@ -41,6 +44,7 @@
   let pasting = $state(false);
   function togglePaste() {
     workspace.error = null;
+    leaving = null;
     pasting = !pasting;
     if (pasting) requestAnimationFrame(() => linkInput?.focus());
   }
@@ -55,6 +59,7 @@
   }
   function stopAdding() {
     workspace.error = null;
+    leaving = null;
     adding = false;
     pasting = false;
     link = '';
@@ -63,12 +68,18 @@
   }
   async function add(manual = false) {
     if (busy) return;
-    // The app's page is HTTPS: a scanned code naming a plain http machine would only fail as a socket error.
+    // The app's page is HTTPS, where a socket to plain http is blocked; a top-level navigation is not.
+    // The machine's own page takes the grant, or the token, from its address and pairs there.
     const target = manual ? url.trim() : parsePairingLink(link)?.url;
     if (app && target !== undefined && !reachableFromApp(target)) {
-      workspace.error = strings.machines.linkInsecure;
+      let host = target;
+      try { host = new URL(target).host; } catch { /* the sentence names the text as typed */ }
+      workspace.error = null;
+      leaving = fill(strings.machines.linkPlainHttp, { host });
+      openOnMachine(manual ? `${withoutTrailingSlashes(target)}/?${PAIR_QUERY_PARAM}=${encodeURIComponent(token)}` : link.trim());
       return;
     }
+    leaving = null;
     busy = true;
     try {
       const ok = manual
@@ -91,6 +102,7 @@
         {#if !open && !mobile}<button class="primary add-open" data-testid="machine-add-open" onclick={startAdding}><Plus size={15} /><span class="ui-label">{strings.machines.add}</span></button>{/if}
       </div>
     {/if}
+  {#if mobile && !pasting && leaving}<p class="leaving" role="status" data-testid="machine-leaving">{leaving}</p>{/if}
   {#if mobile && !pasting && workspace.error}<p class="error" role="alert">{workspace.error}</p>{/if}
   {#if mobile && pasting}
     <form class="card paste-form" data-testid="machine-paste-form" onsubmit={(e) => { e.preventDefault(); void add(); }}>
@@ -98,7 +110,7 @@
       <label>{strings.machines.link}<input
           bind:this={linkInput}
           bind:value={link}
-          oninput={() => { workspace.error = null; }}
+          oninput={() => { workspace.error = null; leaving = null; }}
           data-testid="machine-link"
           type="password"
           autocomplete="off"
@@ -111,6 +123,7 @@
       {/if}
       <p class="paste-hint">{strings.machines.addHint}</p>
       <button type="submit" class="primary" data-testid="machine-add" disabled={busy || !link.trim()}>{busy ? strings.machines.adding : strings.machines.connect}</button>
+      {#if leaving}<p class="leaving" role="status" data-testid="machine-leaving">{leaving}</p>{/if}
       {#if workspace.error}<p class="error" role="alert">{workspace.error}</p>{/if}
     </form>
   {/if}
@@ -163,6 +176,7 @@
             >
           </form>
         </details>
+        {#if leaving}<p class="leaving" role="status" data-testid="machine-leaving">{leaving}</p>{/if}
         {#if workspace.error}<p class="error" role="alert">{workspace.error}</p>{/if}
       </section>
     </div>
@@ -186,8 +200,9 @@
   input { width: 100%; min-width: 0; }
   details { margin-top: 8px; color: var(--color-muted-foreground); font-size: var(--text-sm); }
   summary { cursor: pointer; }
-  .link-target, .error { font-size: var(--text-sm); overflow-wrap: anywhere; margin: 0; }
+  .link-target, .error, .leaving { font-size: var(--text-sm); overflow-wrap: anywhere; margin: 0; }
   .link-target { color: var(--color-muted-foreground); }
+  .leaving { color: var(--color-foreground); }
   .error { color: var(--color-danger); }
   .mobile .head-actions { flex-direction: column; }
   .mobile .add-open { width: 100%; min-height: var(--touch-target); }

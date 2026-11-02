@@ -8,7 +8,7 @@ export const fr: Translation = {
     label: 'Nom de la machine', icon: 'Icône de la machine', icons: { desktop: 'Ordinateur fixe', laptop: 'Portable', phone: 'Téléphone', tablet: 'Tablette', apple: 'Mac', server: 'Serveur', rack: 'Baie', nas: 'NAS', database: 'Base de données', cloud: 'Cloud', cpu: 'Processeur', router: 'Routeur', terminal: 'Terminal', bot: 'Bot', gamepad: 'Console', tv: 'Télé', house: 'Maison' }, link: "Lien d'une autre machine", add: 'Ajouter une machine', adding: 'Connexion', connect: 'Connecter',
     addHint: "Sur une machine de votre groupe, ouvrez Réglages, Machines, Ajouter un appareil, copiez le lien et collez-le ici.",
     scan: 'Scanner le code', pasteLink: 'Coller le lien', scanTitle: 'Scannez le code',
-    linkInsecure: "Ce lien mène à une adresse HTTP simple, que l'appli ne peut pas ouvrir. Ajoutez l'appareil depuis une machine qui a une adresse HTTPS.",
+    linkPlainHttp: "{host} n'a pas d'adresse HTTPS : sa propre page s'ouvre pour finir d'ajouter cet appareil.",
     scanHint: "Sur l'une de vos machines, ouvrez Réglages, Machines, Ajouter un appareil et visez son QR code avec la caméra.",
     scanStarting: 'Démarrage de la caméra', scanClose: 'Fermer la caméra',
     scanErrors: {
