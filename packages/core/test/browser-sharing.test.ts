@@ -195,14 +195,23 @@ real('a viewer on another device watches and drives the tab, and hears it come a
     expect(await evaluate('JSON.stringify(ups)')).toBe('[220]');
     // A press on selected text would start a native drag, which swallows the release.
     await evaluate('getSelection().removeAllRanges()');
-    const tablet = await connect(harness.url, '', { grant: (await owner.call('pairing.grant', {})).grant, client: { name: 'pwa', version: 'test' } });
-    await tablet.call('threads.subscribe', { threadId });
-    await Bun.sleep(150);
-    const held = await picture(tablet.call('browser.remoteFrame', { threadId, tabId }));
-    await tablet.call('browser.remoteInput', { threadId, frameId: held.id, input: { kind: 'pointer', action: 'down', x: 100 / held.width, y: 369 / held.height, width: held.width, height: held.height } });
-    tablet.close();
-    for (let i = 0; i < 50 && Number(await evaluate('ups.length')) < 2; i++) await Bun.sleep(100);
-    expect(await evaluate('JSON.stringify(ups)')).toBe('[220,100]');
+    // A viewer that leaves holding the button, or while its press is still on the way, lets go of the page.
+    const leave = async (x: number, pressing: boolean) => {
+      const tablet = await connect(harness.url, '', { grant: (await owner.call('pairing.grant', {})).grant, client: { name: 'pwa', version: 'test' } });
+      await tablet.call('threads.subscribe', { threadId });
+      await Bun.sleep(150);
+      const held = await picture(tablet.call('browser.remoteFrame', { threadId, tabId }));
+      const count = Number(await evaluate('ups.length'));
+      // A busy page holds the press's read of it while the viewer goes.
+      if (pressing) await evaluate('setTimeout(() => { const t = Date.now(); while (Date.now() - t < 600); })');
+      const press = tablet.call('browser.remoteInput', { threadId, frameId: held.id, input: { kind: 'pointer', action: 'down', x: x / held.width, y: 369 / held.height, width: held.width, height: held.height } });
+      if (pressing) { void press.catch(() => {}); await Bun.sleep(100); } else await press;
+      tablet.close();
+      for (let i = 0; i < 50 && Number(await evaluate('ups.length')) <= count; i++) await Bun.sleep(100);
+    };
+    await leave(100, false);
+    await leave(120, true);
+    expect(await evaluate('JSON.stringify(ups)')).toBe('[220,100,120]');
     await evaluate('document.querySelector("#name").type = "password"');
     await act({ kind: 'tap', ...at(150, 230) });
     await act({ kind: 'select-all' });

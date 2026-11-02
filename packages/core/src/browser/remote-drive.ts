@@ -49,6 +49,8 @@ export class RemoteDrive {
   #shown = new Map<string, { tabId: string; at: number }>();
   /** Per client and conversation, the left button its viewer holds down on a tab, and where it last was. */
   #held = new Map<string, { threadId: ThreadId; tabId: string; point: { x: number; y: number } }>();
+  /** Per client and conversation, a press still on its way, and whether its viewer left meanwhile. */
+  #pressing = new Map<string, { left: boolean }>();
   #context: RemoteDriveContext;
 
   constructor(context: RemoteDriveContext) {
@@ -224,10 +226,16 @@ export class RemoteDrive {
       throw refused('refresh the live browser before interacting');
     }
     const tab = this.#context.tabOf(threadId, saved.frame.tabId);
-    const result = await this.#context.use(tab, () => this.#input(tab, saved, input));
+    const pressing = input.kind === 'pointer' && input.action === 'down' ? { left: false } : null;
+    if (pressing) this.#pressing.set(key, pressing);
+    let result: Awaited<ReturnType<RemoteDrive['remoteInput']>>;
+    try { result = await this.#context.use(tab, () => this.#input(tab, saved, input)); }
+    finally { if (pressing && this.#pressing.get(key) === pressing) this.#pressing.delete(key); }
     if (input.kind === 'pointer') {
       const point = { x: Math.min(saved.page.width - 1, input.x * saved.page.width), y: Math.min(saved.page.height - 1, input.y * saved.page.height) };
-      if (input.action === 'up') this.#held.delete(key);
+      // The viewer left before its press landed: nobody will let go of it.
+      if (pressing?.left) await this.#release({ threadId, tabId: tab.id, point });
+      else if (input.action === 'up') this.#held.delete(key);
       else if (input.action === 'down' || (input.buttons && held?.tabId === tab.id)) this.#held.set(key, { threadId, tabId: tab.id, point });
     }
     return result;
@@ -360,6 +368,7 @@ export class RemoteDrive {
     for (const id of this.#viewers.keys()) if (id.startsWith(`${connectionId}:`)) this.#viewers.delete(id);
     // A viewer gone mid-drag lets go of the page.
     for (const [id, held] of this.#held) if (id.startsWith(`${connectionId}:`)) { this.#held.delete(id); void this.#release(held).catch(() => {}); }
+    for (const [id, pressing] of this.#pressing) if (id.startsWith(`${connectionId}:`)) pressing.left = true;
     // A screencast nobody else watches stops now, not at its idle timer.
     for (const [key, entry] of this.#streams) if (!entry.asking && !this.#watched(key)) this.#stopStream(key);
   }
