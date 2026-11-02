@@ -12,6 +12,7 @@ import { RpcFailure } from './client';
 import { RpcErrorCode } from '@boite/contracts';
 import { strings } from './strings';
 import { openResident } from './resident';
+import { AgentsView, agentRows, openAgent } from './agents.svelte';
 
 let running: ReturnType<typeof mount> | undefined;
 afterEach(async () => {
@@ -399,4 +400,29 @@ test('a bot on another machine opens straight on its Agents page, never through 
   expect(b.agentsTarget?.agentId).toBe('agent-7');
   expect(toChat).not.toHaveBeenCalled();
   expect(asked).not.toContain('threads.get');
+});
+
+test('back on a machine whose bot was open, its conversation listens again', async () => {
+  setExperiment('resident-agents', true);
+  const { a, b } = await setup();
+  const cb = new FakeClient({ delayMs: 0, coreId: 'c'.repeat(64), agentsDemo: true });
+  b.attach(cb);
+  await b.connect();
+  const view = AgentsView.of(b);
+  await view.refresh();
+  const agentId = agentRows(view.snapshot)[0]!.profile.id;
+  workspace.showAgents(b, agentId);
+  const threadId = await openAgent(b, agentId);
+  expect(threadId).not.toBeNull();
+  const call = vi.spyOn(cb, 'call');
+  const asked = (methods: string[]) => call.mock.calls.some(([method, params]) => methods.includes(method) && (params as { threadId?: string }).threadId === threadId);
+  // Away on the other machine, this one lets its thread go.
+  await workspace.select(a);
+  await vi.waitFor(() => expect(asked(['threads.unsubscribe'])).toBe(true));
+  call.mockClear();
+  workspace.showAgents(b, agentId);
+  expect(b.page).toBe('agents');
+  await vi.waitFor(() => expect(asked(['threads.get', 'threads.subscribe'])).toBe(true));
+  expect(b.page).toBe('agents');
+  expect(b.openThread?.id).toBe(threadId);
 });

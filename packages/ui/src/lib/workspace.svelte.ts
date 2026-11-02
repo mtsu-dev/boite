@@ -551,9 +551,15 @@ export class Workspace {
    */
   showAgents(target: Store, agentId: string | null = null, pane?: AgentPane): void {
     ++this.#generation;
+    const away = this.active !== target;
     this.#moveTo(target);
     target.visible = true;
     target.showAgents(agentId, pane);
+    // The bot left open there let its thread go when the window moved away: it
+    // stays on screen, so it reads what it missed and listens again. Opening
+    // another bot instead supersedes this open.
+    const open = target.openThread;
+    if (away && open?.agentSessionId) void target.open(open.id);
   }
 
   /** A named draft, a project's fresh draft, or the machine's last visit when no destination is given. */
