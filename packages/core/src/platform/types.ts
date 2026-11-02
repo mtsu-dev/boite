@@ -146,6 +146,12 @@ export interface NativeControl {
   rect: ScreenRect;
   /** The id of the menu or popup window over the read window that holds it; absent for the window's own controls. */
   popup?: string;
+  /**
+   * Its app says it is out of view (UI Automation's `IsOffscreen`): only a
+   * read with `offscreen` keeps such a control. Its `rect` is where the app
+   * places it, all zeros when the app gives none.
+   */
+  offscreen?: true;
 }
 
 /**
@@ -161,7 +167,11 @@ export interface NativeControl {
  * app does not answer.
  */
 export interface TrackedControl {
-  rect(): ScreenRect | 'hidden' | 'gone' | 'busy';
+  /**
+   * Where the control is now, marked `offscreen` when its app says it is out
+   * of view, so a box can point toward it; `hidden` when it has no place.
+   */
+  rect(): (ScreenRect & { offscreen?: true }) | 'hidden' | 'gone' | 'busy';
   /**
    * What the control holds now, to tell that it changed: `value`, a hash of
    * its text or number, never the text itself; `toggle`, its check state;
@@ -188,8 +198,10 @@ export interface WindowGuide {
    * At most `limit` enabled controls on screen, in the tree's order, and how
    * many there were; `any` adds the containers. The menus and popups the
    * window's own process has open over it come first, marked with `popup`.
+   * `offscreen` keeps the controls their app says are out of view too,
+   * marked `offscreen`.
    */
-  controls(id: string, limit: number, any?: boolean): Promise<{ controls: NativeControl[]; total: number }>;
+  controls(id: string, limit: number, any?: boolean, offscreen?: boolean): Promise<{ controls: NativeControl[]; total: number }>;
   /**
    * The control of window `id` that matches `control` (type, name, automation
    * id, nearest to its rectangle), held live; null when none matches. With

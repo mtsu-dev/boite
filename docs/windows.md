@@ -154,6 +154,7 @@ opening a window. Nothing is ever clicked, typed or focused for the user.
 
 ```sh
 boite window read --process Unity --filter play
+boite window read --process Unity --offscreen --filter camera
 boite window point 3 --label "Press Play"
 boite window point --process Unity --name Window
 boite window point --process Unity --at 0.4,0.3,0.2,0.2 --label "The Scene view"
@@ -180,6 +181,22 @@ boite window unpoint
     contain the text, without case. About 10 tokens a line, against
     1,000 to 3,000 for a screenshot.
   - The ids stay valid until the conversation's next read.
+  - `--offscreen` (`offscreen: true`) adds the controls scrolled out of
+    view, so the agent can say "scroll down, it is below". Without it, the
+    output is unchanged. Each such line ends in `(out of view: below)`,
+    `above`, `left` or `right` (`WindowControl.offscreen`), the edge of the
+    window, or of its popup, that the control's center lies past, the
+    farthest one, a vertical one on a tie. A control is out of view when
+    UI Automation says so (`IsOffscreen`, which a plain read leaves out) or
+    when it lies wholly outside the window, which is what a WinForms button
+    scrolled out of its panel says: it reported itself on screen at its real
+    place under the form (2026-11-02), as a Chromium list item can. A control
+    out of view whose app places it inside the window (a tab not shown) or
+    nowhere, such as a scroll bar's page button, ends in `(out of view)`
+    alone (`unknown`, coordinates `0,0 0x0` when it has no place): `point`
+    refuses it, and the user brings it into view first. The lines cost the
+    same few tokens; a long list scrolled away can add many, so narrow with
+    `--filter`.
   - Menus and popups come first. A menu the user opened, such as the list
     under File in Unity, is a top-level window of its own, which UI
     Automation does not find under the window it belongs to. A read takes in
@@ -226,15 +243,24 @@ boite window unpoint
   and the box moves to each answer, through a scroll too (measured in the
   Microsoft Store on 2026-11-01: its tile answered a new place every 6 to
   20 ms while it scrolled and was never dropped, and the box made 134 moves
-  in a 90 s session without hiding). It stays hidden
-  while the control is out of view, by the app's word or under the window's
-  edge. Chromium and Electron apps (window class `Chrome_WidgetWin_*`) report
+  in a 90 s session without hiding). While the control lies past an edge
+  of the window (or of its popup), the box becomes an arrow there: a disc of
+  the accent 10 px inside that edge, level with the control along it and kept
+  off the corners, pointing out of the window and nudging that way, with the
+  label and "Scroll down" (up, left, right) on its card. It turns back into
+  the ring once the control is in view. `point` on a control a read with
+  `--offscreen` found out of view starts as that arrow, and its result says
+  so (`pointer.offscreen`, the edge), and so does the CLI's line. A click on
+  the arrow lands on the app, not on the control, so it ends no wait. The
+  box stays hidden while the control has no place, or is out of view by its
+  app's word with its center inside the window. A control out of view that
+  cannot be followed keeps its arrow where it was. Chromium and Electron apps (window class `Chrome_WidgetWin_*`) report
   positions in bursts while they scroll (measured in Discord on 2026-11-01:
   4 positions for 12 wheel notches in 0.9 s, up to 356 ms apart, the last
   about 200 ms after the scroll, the first within 20 ms), so a box moved on
   each answer would trail the control: in their windows, the box hides on
   the first move inside the window and shows again where the control
-  settled, after 450 ms without a move. Dragging the window moves the box at
+  settled, after 450 ms without a move, as the ring or as the arrow. Dragging the window moves the box at
   once in every app. An app that drops the element, as a list re-rendering its
   rows does, gets the box hidden until a control of the same type, name and
   automation id is found again, looked for once a second near where it was
@@ -415,8 +441,8 @@ the desktop app draws the box.
   box. Nothing is injected into the app: UI Automation is the app's own
   answer, so the box follows the control without code in the app's process.
 - The core sends `windows.pointer` (an id, the control's rectangle in
-  physical screen pixels and the label, or no rectangle to take the box away)
-  to owner connections named `shell` on the loopback only: a phone, a browser
+  physical screen pixels and the label, or no rectangle to take the box away;
+  for a control out of view, `edge` and the arrow's place instead) to owner connections named `shell` on the loopback only: a phone, a browser
   tab or a desktop app following this core from another computer has no screen
   of this one's. The main UI hands each event to the shell's `pointer_show` and
   `pointer_hide` (`lib/pointer-layout.ts`), and only for its own machine's

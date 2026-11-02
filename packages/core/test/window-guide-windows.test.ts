@@ -8,7 +8,8 @@ import type { NativeWindow, WindowCapture, WindowGuide } from '../src/platform/t
  * box. Posted messages open a Win32 menu (WM_APP + 1), a WinForms dropdown
  * (WM_APP + 2) and close both (WM_APP + 3), as a click on File would; type a
  * name into the field (WM_APP + 4), tick the box (WM_APP + 5), and open and
- * close a dialog the form owns (WM_APP + 6 and 7), as a person would.
+ * close a dialog the form owns (WM_APP + 6 and 7), as a person would. A
+ * scrolling panel holds a button below its visible part, out of view.
  */
 const FORM = `
 using System;
@@ -41,6 +42,10 @@ public class BoiteGuideWindow : Form {
     Controls.Add(remember);
     // A container that grows with the window, as a div with its page.
     Controls.Add(new GroupBox { Text = "Options", Location = new Point(240, 120), Size = new Size(140, 70), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right });
+    // A list scrolled to its top: its last button lies below the panel and below the form.
+    Panel scroller = new Panel { Location = new Point(200, 194), Size = new Size(180, 26), AutoScroll = true };
+    scroller.Controls.Add(new Button { Text = "Far below", Location = new Point(4, 300), Size = new Size(100, 30) });
+    Controls.Add(scroller);
   }
   protected override bool ShowWithoutActivation { get { return true; } }
   protected override void WndProc(ref Message message) {
@@ -291,6 +296,29 @@ describe.skipIf(process.platform !== 'win32')('window guide on Windows', () => {
       post(0x8003);
       user32.close();
     }
+  });
+
+  test('a button scrolled out of a panel is placed past the form; offscreen adds what its app calls out of view', async () => {
+    // WinForms says a child window scrolled out of its panel is on screen, at its real place under the form
+    // (2026-11-02): the core finds it out of view from the window's edge, as it does a Chromium list item.
+    const plain = await guide.controls(form.id, 50);
+    expect(plain.controls.every(control => control.offscreen === undefined)).toBe(true);
+    const far = plain.controls.find(control => control.name === 'Far below')!;
+    const frame = guide.frame(form.id)!.rect;
+    expect(far.rect.width).toBeGreaterThan(0);
+    expect(far.rect.top).toBeGreaterThanOrEqual(frame.top + frame.height);
+    const tracked = (await guide.track(form.id, far))!;
+    try {
+      expect(tracked.rect()).toEqual(far.rect);
+    } finally {
+      tracked.release();
+    }
+    // The panel's scroll bar has a page button its app calls out of view, with no place: listed only with offscreen, without one.
+    const all = await guide.controls(form.id, 50, false, true);
+    const out = all.controls.filter(control => control.offscreen);
+    expect(out.length).toBeGreaterThan(0);
+    expect(all.total).toBe(plain.total + out.length);
+    expect(out.some(control => control.rect.width === 0 && control.rect.height === 0)).toBe(true);
   });
 
   test('a window that is gone has no frame and no controls', async () => {

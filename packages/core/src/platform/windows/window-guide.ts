@@ -195,18 +195,18 @@ const sameControl = (a: NativeControl, b: NativeControl) => a.type === b.type &&
  * dropdown's items among the form's descendants (2026-11-02): each is kept
  * once, as the popup's, so its box goes when the dropdown closes.
  */
-function readWithPopups(hwnd: bigint, limit: number, any: boolean): { controls: NativeControl[]; total: number } {
+function readWithPopups(hwnd: bigint, limit: number, any: boolean, offscreen: boolean): { controls: NativeControl[]; total: number } {
   const controls: NativeControl[] = [];
   let total = 0;
   for (const popup of popupsOf(hwnd)) {
     let read: ReturnType<typeof readControls>;
     // A popup that closed during the read holds nothing.
-    try { read = readControls(popup, limit, any); } catch { continue; }
+    try { read = readControls(popup, limit, any, offscreen); } catch { continue; }
     total += read.total;
     for (const control of read.controls) controls.push({ ...control, popup: popup.toString() });
   }
   const fromPopups = controls.length;
-  const own = readControls(hwnd, limit, any);
+  const own = readControls(hwnd, limit, any, offscreen);
   total += own.total;
   for (const control of own.controls) {
     if (fromPopups > 0 && controls.slice(0, fromPopups).some(other => sameControl(other, control))) { total -= 1; continue; }
@@ -281,13 +281,13 @@ export async function loadWindowGuide(): Promise<WindowGuide | { unavailable: st
     return { unavailable: `user32 cannot be loaded: ${error instanceof Error ? error.message : String(error)}` };
   }
   return {
-    controls: async (id, limit, any = false) => {
+    controls: async (id, limit, any = false, offscreen = false) => {
       const hwnd = windowOf(id);
       if (user32().IsHungAppWindow(hwnd) !== 0) throw new Error('the window is not responding');
-      let read = physicalPixels(() => readWithPopups(hwnd, limit, any));
+      let read = physicalPixels(() => readWithPopups(hwnd, limit, any, offscreen));
       for (let attempt = 0; attempt < EMPTY_RETRIES && read.total === 0; attempt++) {
         await Bun.sleep(EMPTY_WAIT_MS);
-        read = physicalPixels(() => readWithPopups(hwnd, limit, any));
+        read = physicalPixels(() => readWithPopups(hwnd, limit, any, offscreen));
       }
       return read;
     },

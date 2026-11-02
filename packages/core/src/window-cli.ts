@@ -8,7 +8,7 @@
 import { resolve } from 'node:path';
 import {
   parseWindowCrop, WINDOW_CLIP_LIMITS, WINDOW_POINT_LABEL_MAX, WINDOW_POINT_PAD, WINDOW_POINT_SECONDS, WINDOW_POINTER_UNTIL, WINDOW_READ_LIMIT, WINDOW_SHOT_MAX,
-  type DesktopWindow, type RpcParams, type RpcResult, type WindowControl, type WindowPointer, type WindowPointerUntil, type WindowShot, type WindowTarget,
+  type DesktopWindow, type RpcParams, type RpcResult, type WindowControl, type WindowEdge, type WindowPointer, type WindowPointerUntil, type WindowShot, type WindowTarget,
 } from '@boite/contracts';
 import type { CoreClient } from './client.ts';
 import type { CliIo } from './cli.ts';
@@ -30,7 +30,7 @@ export const WINDOW_HELP = `boite window <command> [args] [--json]
                                  (2 by default), as one PNG
   watch <target>                 show the window live in the user's Window panel
   close                          empty the Window panel
-  read <target> [--filter <text>] [--limit <n>] [--any]
+  read <target> [--filter <text>] [--limit <n>] [--any] [--offscreen]
                                  the window's enabled controls on screen, one line
                                  each: #id, type, "name", x,y wxh in window pixels.
                                  Up to ${WINDOW_READ_LIMIT.default} by default, ${WINDOW_READ_LIMIT.max} at most.
@@ -39,7 +39,13 @@ export const WINDOW_HELP = `boite window <command> [args] [--json]
                                  A menu or popup the app has open over the window
                                  (the list under File) comes first, its lines ending
                                  in (in popup <id>): it closes on a click elsewhere,
-                                 and so does a box on it
+                                 and so does a box on it.
+                                 --offscreen adds the controls scrolled out of view,
+                                 their lines ending in (out of view: below), above,
+                                 left or right, the way to scroll; (out of view)
+                                 alone when the app does not say where. A box on one
+                                 shows as an arrow on the window's edge until the
+                                 user scrolls it into view, then rings it
   point <id> [--label <text>] [--seconds <s>] [--round] [--pad <px>] [--until <what>]
   point <target> --name <name> [--any] [same options]
   point <target> --at x,y,w,h [same options]
@@ -125,9 +131,13 @@ function done(rest: string[]): void {
 }
 
 function controlLine(control: WindowControl): string {
-  const line = `#${control.id} ${control.type} "${control.name}" ${control.x},${control.y} ${control.width}x${control.height}`;
-  return control.popup ? `${line} (in popup ${control.popup})` : line;
+  let line = `#${control.id} ${control.type} "${control.name}" ${control.x},${control.y} ${control.width}x${control.height}`;
+  if (control.popup) line += ` (in popup ${control.popup})`;
+  if (control.offscreen) line += control.offscreen === 'unknown' ? ' (out of view)' : ` (out of view: ${control.offscreen})`;
+  return line;
 }
+
+const SCROLL: Record<WindowEdge, string> = { above: 'up', below: 'down', left: 'left', right: 'right' };
 
 function pointerLine(pointer: WindowPointer): string {
   const what = pointer.control ? `${pointer.control.type} "${pointer.control.name}"` : `${pointer.x},${pointer.y} ${pointer.width}x${pointer.height}`;
@@ -135,8 +145,10 @@ function pointerLine(pointer: WindowPointer): string {
   const popup = pointer.popup ? ` in its popup ${pointer.popup}` : '';
   const line = `pointing at ${what} of window ${pointer.windowId} (${pointer.process})${popup}${label} for ${Math.round((pointer.expiresAt - Date.now()) / 1000)} s`;
   const awaited = pointer.until === 'change' ? 'the change' : pointer.until === 'window' ? 'the new window' : 'the click';
-  const told = pointer.notify ? `${line}
-keep working: ${awaited}, or the box timing out, arrives as a message` : line;
+  const scrolled = pointer.offscreen ? `${line}
+it is out of view ${pointer.offscreen}: an arrow on that edge of the window points to it until the user scrolls it into view; tell them to scroll ${SCROLL[pointer.offscreen]}` : line;
+  const told = pointer.notify ? `${scrolled}
+keep working: ${awaited}, or the box timing out, arrives as a message` : scrolled;
   // The Start menu and the system's other flyouts lie above every app's window, the box included.
   return pointer.behind ? `${told}
 the system draws this window above the box, so the user cannot see it: say where to click; the click still counts` : told;
@@ -237,9 +249,10 @@ export async function windowCommand(args: string[], io: CliIo, client: CoreClien
       const filter = flag(rest, '--filter');
       const limit = number(rest, '--limit', true);
       const any = toggle(rest, '--any');
+      const offscreen = toggle(rest, '--offscreen');
       const named = target(rest);
       done(rest);
-      const read = await client.call('windows.read', { threadId, target: named, ...(filter === undefined ? {} : { filter }), ...(limit === undefined ? {} : { limit }), ...(any ? { any } : {}) });
+      const read = await client.call('windows.read', { threadId, target: named, ...(filter === undefined ? {} : { filter }), ...(limit === undefined ? {} : { limit }), ...(any ? { any } : {}), ...(offscreen ? { offscreen } : {}) });
       const lines = [`window: ${read.windowId} (${read.process})`, ...read.controls.map(controlLine)];
       if (read.total === 0) lines.push('controls: none on screen; for an app with no accessibility tree, take a screenshot and point --at');
       else if (read.total > read.controls.length) lines.push(`${read.total - read.controls.length} more: narrow with --filter or raise --limit`);

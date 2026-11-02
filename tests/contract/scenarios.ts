@@ -378,6 +378,7 @@ export const SCENARIOS: Record<string, Scenario> = {
     // A change is watched on a control: a rectangle has none.
     await refusedWith(env.call('windows.point', { threadId, target: { id: '1' }, at: { x: 0, y: 0, width: 10, height: 10, unit: 'px' }, until: 'change' }), RpcErrorCode.InvalidParams, ['field']);
     await refusedWith(env.call('windows.read', { threadId, target: { id: '1' }, limit: 0 }), RpcErrorCode.InvalidParams, ['field']);
+    await refusedWith(env.call('windows.read', { threadId, target: { id: '1' }, offscreen: 'yes' as unknown as boolean }), RpcErrorCode.InvalidParams, ['field']);
     await refusedWith(env.call('windows.read', { threadId, target: { id: '1' }, any: 'yes' as unknown as boolean }), RpcErrorCode.InvalidParams, ['field']);
     // The person's answer on a box's card ends only that box, while it shows.
     await refusedWith(env.call('windows.dismiss', { threadId, boxId: 'box_none', answer: 'dismissed' }), RpcErrorCode.Refused, ['boxId']);

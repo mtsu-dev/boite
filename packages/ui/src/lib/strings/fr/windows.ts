@@ -12,7 +12,8 @@ export const fr: Translation = {
       picture: 'Vue en direct de {process}'
     },
     pointer: {
-      frame: '{app} reste au premier plan : Boite ne suit ses boutons que tant que vous le voyez'
+      frame: '{app} reste au premier plan : Boite ne suit ses boutons que tant que vous le voyez',
+      scroll: { above: 'Faites défiler vers le haut', below: 'Faites défiler vers le bas', left: 'Faites défiler vers la gauche', right: 'Faites défiler vers la droite' }
     },
     capture: {
       screenshot: "Capture d'écran", clip: 'Séquence de {count} images', stream: 'Vue en direct',

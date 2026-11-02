@@ -80,6 +80,39 @@ test('a control at the screen edge keeps its whole ring inside the window, and a
   expect(box('[data-testid="pointer-label"]')).toBeNull();
 });
 
+test('a control out of view gets an arrow pointing out of its window\'s edge, with its label and the way to scroll, until it is the ring again', async () => {
+  invoke.mockResolvedValue(null);
+  apps.push(mount(PointerApp, { target: document.body }));
+  await settle();
+  // The core keeps a 32 px place just inside the window's bottom edge, level with the control.
+  const layout: PointerLayout = { x: 28, y: 68, width: 32, height: 32, label: 'Main Camera', below: false, look: { shape: 'box', pad: 5 }, edge: 'below' };
+  handlers.get('pointer://layout')!({ payload: layout });
+  flushSync();
+  expect(box('.ring')).toBeNull();
+  const marker = box('[data-testid="pointer-marker"]')!;
+  expect(marker.dataset.edge).toBe('below');
+  // A disc of its own size, centered on that place.
+  expect([marker.style.left, marker.style.top, marker.style.width, marker.style.height]).toEqual(['27px', '67px', '34px', '34px']);
+  const tag = box('[data-testid="pointer-label"]')!;
+  expect(tag.textContent).toBe('Main CameraScroll down');
+  expect(box('[data-testid="pointer-scroll"]')!.textContent).toBe('Scroll down');
+  // The bubble's tail points at the disc.
+  expect(tag.style.bottom).toBe(`${window.innerHeight - 67 + 10}px`);
+
+  // No label: the bubble still says which way to scroll.
+  handlers.get('pointer://layout')!({ payload: { ...layout, label: '', edge: 'above' } });
+  flushSync();
+  expect(box('[data-testid="pointer-marker"]')!.dataset.edge).toBe('above');
+  expect(box('[data-testid="pointer-label"]')!.textContent).toBe('Scroll up');
+
+  // Scrolled into view: the ring around the control, no arrow and no hint.
+  handlers.get('pointer://layout')!({ payload: { ...layout, width: 100, height: 30, edge: undefined } });
+  flushSync();
+  expect(box('[data-testid="pointer-marker"]')).toBeNull();
+  expect(box('.ring')!.style.width).toBe('110px');
+  expect(box('[data-testid="pointer-label"]')!.textContent).toBe('Main Camera');
+});
+
 test('a frame around a whole app says why the app was brought to the front, inside its top edge', async () => {
   invoke.mockResolvedValue(null);
   apps.push(mount(PointerApp, { target: document.body }));
@@ -104,9 +137,11 @@ test('only the desktop app of the core\'s own machine hands a box to the shell',
   await pointerRequested({ localCore: true }, shown, relay);
   await pointerRequested({ localCore: true }, { ...shown, rect: null }, relay);
   await pointerRequested({ localCore: true }, { ...shown, id: 'frame_1', frame: { app: 'Discord', windowId: '42' } }, relay);
+  await pointerRequested({ localCore: true }, { ...shown, edge: 'right' }, relay);
   expect(relay.mock.calls).toEqual([
     ['pointer_show', { id: 'box_1', rect: shown.rect, label: 'Play', look: shown.look }],
     ['pointer_hide', { id: 'box_1' }],
-    ['pointer_show', { id: 'frame_1', rect: shown.rect, label: 'Play', look: shown.look, frame: { app: 'Discord', windowId: '42' } }]
+    ['pointer_show', { id: 'frame_1', rect: shown.rect, label: 'Play', look: shown.look, frame: { app: 'Discord', windowId: '42' } }],
+    ['pointer_show', { id: 'box_1', rect: shown.rect, label: 'Play', look: shown.look, edge: 'right' }]
   ]);
 });

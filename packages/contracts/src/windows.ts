@@ -131,12 +131,28 @@ export interface WindowControl {
    * window's own rectangle.
    */
   popup?: string;
+  /**
+   * Set only by a read with `offscreen`, on a control scrolled out of view:
+   * where it lies from the visible area of its window, or of its popup.
+   */
+  offscreen?: WindowOffscreen;
   /** Where it lies in the window, in the window's physical pixels: the coordinates of a full-size screenshot. */
   x: number;
   y: number;
   width: number;
   height: number;
 }
+
+/**
+ * Where a control out of view lies from the visible area of its window: the
+ * way the person scrolls to bring it in. `unknown` when its app says it is
+ * out of view without a place outside the window, as for a control on a tab
+ * not shown, or gives no place at all.
+ */
+export type WindowOffscreen = WindowEdge | 'unknown';
+/** A side of a window, toward which a box points at a control past it. */
+export type WindowEdge = 'above' | 'below' | 'left' | 'right';
+export const WINDOW_EDGES: readonly WindowEdge[] = ['above', 'below', 'left', 'right'];
 
 /** What `windows.read` found. `total` counts every control that matched before `limit`. */
 export interface WindowControls {
@@ -181,6 +197,12 @@ export interface WindowPointer {
   notify?: true;
   /** What ends the box besides `seconds`, when it is not a click inside it: see `WindowPointerUntil`. */
   until?: Exclude<WindowPointerUntil, 'click'>;
+  /**
+   * The control lies out of view that way: the box shows as a marker on that
+   * edge of the window, pointing toward it, and becomes the ring once the
+   * person scrolls it into view. Absent while it is in view.
+   */
+  offscreen?: WindowEdge;
 }
 
 /**
@@ -226,6 +248,12 @@ export interface WindowPointerBox {
    * window to the front once, and the page says why, naming the app.
    */
   frame?: { app: string; windowId: string };
+  /**
+   * The control lies past this edge of its window: the page draws a marker at
+   * `rect`, just inside that edge, pointing out of it, instead of a ring. A
+   * click on the marker is not a click on the control.
+   */
+  edge?: WindowEdge;
 }
 
 /**
@@ -311,8 +339,12 @@ export interface WindowsRpcMethods {
    * menus and popups the same app has open over the window come first, each
    * of their controls marked with its `popup`.
    */
-  /** `any` adds the containers (groups, panes, lists, images, text, documents) to the controls a person acts on. */
-  'windows.read': { params: { threadId: string; target: WindowTarget; filter?: string; limit?: number; any?: boolean }; result: WindowControls };
+  /**
+   * `any` adds the containers (groups, panes, lists, images, text, documents)
+   * to the controls a person acts on. `offscreen` adds the controls scrolled
+   * out of view, each marked with where it lies (`WindowControl.offscreen`).
+   */
+  'windows.read': { params: { threadId: string; target: WindowTarget; filter?: string; limit?: number; any?: boolean; offscreen?: boolean }; result: WindowControls };
   /**
    * Draws a box with a label above every window, click-through, until a click
    * inside it ends a `windows.waitClick`, `windows.unpoint` or `seconds`.
@@ -326,6 +358,9 @@ export interface WindowsRpcMethods {
    * `until` sets what ends the box instead of a click (`WindowPointerUntil`):
    * `change` needs a control, by id or by name; `until` other than `click`
    * reads the app, so a rectangle with it asks the same consent as a read.
+   * A control out of view (`WindowControl.offscreen`) gets a marker on the
+   * window's edge pointing toward it until it scrolls in; one whose place is
+   * `unknown` is refused.
    */
   'windows.point': {
     params: { threadId: string; control?: number; target?: WindowTarget; name?: string; at?: WindowCrop; label?: string; seconds?: number; shape?: WindowPointerShape; pad?: number; notify?: boolean; any?: boolean; until?: WindowPointerUntil };

@@ -46,6 +46,7 @@ import {
   type ThreadSummary,
   type WindowControl,
   type WindowChange,
+  type WindowEdge,
   type WindowCrop,
   type WindowGuideAnswer,
   type WindowGuideEnd,
@@ -60,6 +61,7 @@ import { invalidParams, messageOf, refused } from '../errors.ts';
 import { newId } from '../ids.ts';
 import type { ControlState, NativeWindow, ScreenRect, TrackedControl, WindowGuide } from '../platform/types.ts';
 import type { Connection } from '../router.ts';
+import { centerInside, edgeOf, markerRect, sameRect } from './guide-geometry.ts';
 import { cropRect } from './image.ts';
 
 /** How many controls a read asks the OS for before `filter` and `limit` keep some. */
@@ -160,6 +162,8 @@ interface Shown {
   control: WindowControl | null;
   /** The menu or popup window that control lies in: the box goes when it closes. */
   popup: string | null;
+  /** The control lies past this edge of the window or popup: the box is a marker there, pointing toward it. */
+  edge?: WindowEdge;
   /** Where the followed control last was in its window, and since when: the box shows once it stays put. */
   seen?: { rect: ScreenRect | null; since: number };
   /** Set once the app dropped the control: the box hides until it is found again. */
@@ -204,17 +208,10 @@ interface Frame {
   idle: ReturnType<typeof setTimeout> | null;
 }
 
-const sameRect = (a: ScreenRect | null, b: ScreenRect | null) =>
-  a === b || (a !== null && b !== null && a.left === b.left && a.top === b.top && a.width === b.width && a.height === b.height);
-/** A control scrolled under the window's edge is out of view, whatever its app says. */
-const centerInside = (rect: ScreenRect, frame: ScreenRect) => {
-  const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
-  return x >= frame.left && x < frame.left + frame.width && y >= frame.top && y < frame.top + frame.height;
-};
 /** What the OS half looks for to follow `control`, near `rect` on the screen. */
 const nativeOf = (control: WindowControl, rect: ScreenRect) =>
   ({ type: control.type, name: control.name, automationId: control.automationId ?? '', rect, ...(control.popup ? { popup: control.popup } : {}) });
-const controlLine = (control: WindowControl) => `  #${control.id} ${control.type} "${control.name}"${control.popup ? ` (in popup ${control.popup})` : ''}`;
+const controlLine = (control: WindowControl) => `  #${control.id} ${control.type} "${control.name}"${control.popup ? ` (in popup ${control.popup})` : ''}${control.offscreen ? ` (out of view${control.offscreen === 'unknown' ? '' : `: ${control.offscreen}`})` : ''}`;
 
 export class WindowGuides {
   readonly #core: Core;
@@ -243,9 +240,10 @@ export class WindowGuides {
     this.#valueSettleMs = options.valueSettleMs ?? VALUE_SETTLE_MS;
   }
 
-  async read({ threadId, target, filter, limit, any }: RpcParams<'windows.read'>, connection?: Connection): Promise<RpcResult<'windows.read'>> {
+  async read({ threadId, target, filter, limit, any, offscreen }: RpcParams<'windows.read'>, connection?: Connection): Promise<RpcResult<'windows.read'>> {
     const thread = this.#host.activeThread(threadId, connection);
     if (any !== undefined && typeof any !== 'boolean') throw invalidParams('any must be true or false', { field: 'any' });
+    if (offscreen !== undefined && typeof offscreen !== 'boolean') throw invalidParams('offscreen must be true or false', { field: 'offscreen' });
     if (filter !== undefined && (typeof filter !== 'string' || filter.trim() === '' || filter.length > FILTER_MAX || /\p{Cc}/u.test(filter))) {
       throw invalidParams(`filter must be 1 to ${FILTER_MAX} characters with no control characters`, { field: 'filter' });
     }
@@ -254,7 +252,7 @@ export class WindowGuides {
     const guide = await this.#load();
     const window = await this.#host.grantedWindow(thread, target, 'read', connection);
     await this.#front(thread.id, guide, window);
-    const snapshot = await this.#read(thread, guide, window, any === true);
+    const snapshot = await this.#read(thread, guide, window, any === true, offscreen === true);
     if (!this.#shown.has(thread.id)) this.#frameLater(thread.id);
     const wanted = filter?.trim().toLowerCase();
     const matching = wanted === undefined ? snapshot.controls : snapshot.controls.filter(control => control.name.toLowerCase().includes(wanted));
@@ -300,6 +298,9 @@ export class WindowGuides {
       if (window.pid !== snapshot.window.pid || window.path !== snapshot.window.path) {
         throw refused(`window ${snapshot.window.id} of ${snapshot.window.process} is gone: read again`, { windowId: snapshot.window.id, code: 'gone' });
       }
+      if (control.offscreen === 'unknown') {
+        throw refused(`#${id} is out of view and ${snapshot.window.process} does not say where: have the user bring it into view (another tab, a section to expand), then read again`, { field: 'control' });
+      }
       box = control;
       const guide = await this.#load();
       if (control.popup !== undefined && guide.frame(control.popup) === null) {
@@ -314,7 +315,7 @@ export class WindowGuides {
       const guide = await this.#load();
       window = await this.#host.grantedWindow(thread, target, 'read', connection);
       await this.#front(thread.id, guide, window);
-      const snapshot = await this.#read(thread, guide, window, params.any === true);
+      const snapshot = await this.#read(thread, guide, window, params.any === true, false);
       control = this.#named(snapshot, name.trim());
       box = control;
     } else {
@@ -330,6 +331,10 @@ export class WindowGuides {
     const frame = guide.frame(window.id);
     if (frame === null) throw refused(`window ${window.id} of ${window.process} is gone`, { windowId: window.id, code: 'gone' });
     const screen = { left: frame.rect.left + box.x, top: frame.rect.top + box.y, width: box.width, height: box.height };
+    // A control out of view gets a marker on the edge it lies past, in its popup when it has one.
+    const bounds = control?.popup !== undefined ? guide.frame(control.popup)?.rect ?? frame.rect : frame.rect;
+    const edge = control?.offscreen !== undefined && control.offscreen !== 'unknown' ? control.offscreen : undefined;
+    const drawn = edge === undefined ? screen : markerRect(edge, screen, bounds);
     // Without a label, a control's box says its name.
     const shownLabel = label === '' && control ? control.name.slice(0, WINDOW_POINT_LABEL_MAX) : label;
     let tracked: TrackedControl | null = null;
@@ -356,7 +361,7 @@ export class WindowGuides {
     // The previous box goes first, so the desktop app hands its window to the new one.
     this.#remove(thread.id, 'cleared');
     const boxId = newId('box_');
-    if (this.#core.subscribers.pointer({ id: boxId, rect: frame.minimized ? null : screen, label: shownLabel, look }) === 0) {
+    if (this.#core.subscribers.pointer({ id: boxId, rect: frame.minimized ? null : drawn, label: shownLabel, look, ...(edge ? { edge } : {}) }) === 0) {
       tracked?.release();
       throw refused('the box is drawn by the Boite desktop app of this computer, and none is open: ask the user to open Boite', { code: 'no-app' });
     }
@@ -368,11 +373,12 @@ export class WindowGuides {
       ...(frame.above ? { behind: true as const } : {}),
       ...(notify ? { notify: true as const } : {}),
       ...(until !== 'click' ? { until } : {}),
+      ...(edge ? { offscreen: edge } : {}),
     };
     let escapeHeld = true;
     try { escapeHeld = guide.escape(); } catch { /* read again at the next look */ }
     const shown: Shown = {
-      pointer, window, boxId, screen: frame.minimized ? null : screen, waiters: new Set(), tracked, control: control ?? null, popup: control?.popup ?? null, notify, clicks: null,
+      pointer, window, boxId, screen: frame.minimized ? null : drawn, ...(edge && !frame.minimized ? { edge } : {}), waiters: new Set(), tracked, control: control ?? null, popup: control?.popup ?? null, notify, clicks: null,
       until, watch: null, escapeHeld, card: null, ...(until === 'change' ? { baseline } : {}), ...(known ? { known } : {}),
       // Settled already where it was read: the box shows at once.
       ...(tracked && !frame.minimized ? { seen: { rect: { left: box.x, top: box.y, width: box.width, height: box.height }, since: 0 } } : {}),
@@ -391,7 +397,7 @@ export class WindowGuides {
     }
     const framed = this.#frames.get(thread.id);
     if (framed?.idle) { clearTimeout(framed.idle); framed.idle = null; }
-    this.#core.logs.info(`Pointed at a ${control?.type ?? 'rectangle'} of window ${window.id} of ${window.process} until ${until}`, { source: 'windows', event: 'window.point', threadId: thread.id, data: { windowId: window.id, process: window.process, width: box.width, height: box.height, until } });
+    this.#core.logs.info(`Pointed at a ${control?.type ?? 'rectangle'} of window ${window.id} of ${window.process} until ${until}${edge ? `, out of view ${edge}` : ''}`, { source: 'windows', event: 'window.point', threadId: thread.id, data: { windowId: window.id, process: window.process, width: box.width, height: box.height, until, ...(edge ? { offscreen: edge } : {}) } });
     return { pointer: { ...pointer } };
   }
 
@@ -476,7 +482,8 @@ export class WindowGuides {
     shown.clicks = setInterval(() => {
       let mouse: { pressed: boolean; x: number; y: number };
       try { mouse = guide.mouse(); } catch { return; }
-      const at = shown.screen;
+      // A marker on the window's edge lies over the app, not over the control.
+      const at = shown.edge === undefined ? shown.screen : null;
       if (mouse.pressed && !held && at !== null && mouse.x >= at.left && mouse.x < at.left + at.width && mouse.y >= at.top && mouse.y < at.top + at.height) {
         this.#core.logs.info(`The person clicked the box over window ${shown.window.id} of ${shown.window.process}`, { source: 'windows', event: 'window.click', threadId, data: { windowId: shown.window.id, process: shown.window.process } });
         this.#remove(threadId, 'clicked', shown);
@@ -555,13 +562,17 @@ export class WindowGuides {
     return backend;
   }
 
-  /** Reads the window's controls in its own pixels and keeps them as the conversation's last read. */
-  async #read(thread: ThreadSummary, guide: WindowGuide, window: NativeWindow, any: boolean): Promise<Snapshot> {
+  /**
+   * Reads the window's controls in its own pixels and keeps them as the
+   * conversation's last read; with `offscreen`, those out of view too, each
+   * with the edge it lies past.
+   */
+  async #read(thread: ThreadSummary, guide: WindowGuide, window: NativeWindow, any: boolean, offscreen: boolean): Promise<Snapshot> {
     const frame = guide.frame(window.id);
     if (frame === null) throw refused(`window ${window.id} of ${window.process} is gone`, { windowId: window.id, code: 'gone' });
     let found: Awaited<ReturnType<WindowGuide['controls']>>;
     try {
-      found = await guide.controls(window.id, READ_SCAN, any);
+      found = await guide.controls(window.id, READ_SCAN, any, offscreen);
     } catch (error) {
       throw refused(`reading the controls of ${window.process} failed: ${messageOf(error)}`, { windowId: window.id });
     }
@@ -574,22 +585,30 @@ export class WindowGuides {
       return popups.get(popup)!;
     };
     const controls: WindowControl[] = [];
+    let outOfView = 0;
     for (const control of found.controls) {
       const bounds = boundsOf(control.popup);
       if (bounds === null) continue;
       // A control scrolled out of the window can still say it is on screen.
       const { left: x0, top: y0, width: w, height: h } = control.rect;
-      if (x0 + w <= bounds.left || y0 + h <= bounds.top || x0 >= bounds.left + bounds.width || y0 >= bounds.top + bounds.height) continue;
+      const outside = x0 + w <= bounds.left || y0 + h <= bounds.top || x0 >= bounds.left + bounds.width || y0 >= bounds.top + bounds.height;
+      let side: WindowControl['offscreen'];
+      if (outside || control.offscreen) {
+        if (!offscreen) continue;
+        side = w > 0 && h > 0 ? edgeOf(control.rect, bounds) ?? 'unknown' : 'unknown';
+        outOfView += 1;
+      }
       controls.push({
         id: controls.length + 1, type: control.type, name: control.name,
         ...(control.automationId ? { automationId: control.automationId } : {}),
         ...(control.popup ? { popup: control.popup } : {}),
+        ...(side ? { offscreen: side } : {}),
         x: x0 - left, y: y0 - top, width: w, height: h,
       });
     }
     const snapshot = { window, controls };
     this.#snapshots.set(thread.id, snapshot);
-    this.#core.logs.info(`Read ${controls.length} controls of window ${window.id} of ${window.process}`, { source: 'windows', event: 'window.read', threadId: thread.id, data: { windowId: window.id, process: window.process, controls: controls.length, popups: popups.size } });
+    this.#core.logs.info(`Read ${controls.length} controls of window ${window.id} of ${window.process}`, { source: 'windows', event: 'window.read', threadId: thread.id, data: { windowId: window.id, process: window.process, controls: controls.length, popups: popups.size, ...(offscreen ? { offscreen: outOfView } : {}) } });
     return snapshot;
   }
 
@@ -656,6 +675,7 @@ export class WindowGuides {
       bounds = popup.rect;
     }
     let screen: ScreenRect | null;
+    let edge: WindowEdge | undefined;
     if (frame.minimized) {
       screen = null;
     } else if (shown.tracked) {
@@ -667,17 +687,23 @@ export class WindowGuides {
         shown.lost = { nextAt: 0, looking: false };
         screen = null;
       } else {
+        const rect = live === 'hidden' ? null : { left: live.left, top: live.top, width: live.width, height: live.height };
         // In the window's pixels, so dragging the window moves the box at once and only a scroll waits.
-        const inWindow = live === 'hidden' || !centerInside(live, bounds) ? null
-          : { left: live.left - frame.rect.left, top: live.top - frame.rect.top, width: live.width, height: live.height };
+        const inWindow = rect === null ? null : { left: rect.left - frame.rect.left, top: rect.top - frame.rect.top, width: rect.width, height: rect.height };
         const now = Date.now();
         if (shown.seen === undefined || !sameRect(inWindow, shown.seen.rect)) shown.seen = { rect: inWindow, since: now };
         const settle = CHROMIUM_CLASS.test(shown.window.className) ? this.#settleMs : 0;
-        if (inWindow === null || now - shown.seen.since < settle) {
+        if (rect === null || inWindow === null || now - shown.seen.since < settle) {
           screen = null;
-        } else {
-          screen = live as ScreenRect;
+        } else if (live !== 'hidden' && !live.offscreen && centerInside(rect, bounds)) {
+          screen = rect;
           Object.assign(shown.pointer, { x: inWindow.left, y: inWindow.top, width: inWindow.width, height: inWindow.height });
+          delete shown.pointer.offscreen;
+        } else {
+          // Out of view past an edge: a marker there points toward it. Out of view inside the window (another tab): hidden.
+          edge = edgeOf(rect, bounds) ?? undefined;
+          screen = edge === undefined ? null : markerRect(edge, rect, bounds);
+          if (edge !== undefined) Object.assign(shown.pointer, { x: inWindow.left, y: inWindow.top, width: inWindow.width, height: inWindow.height, offscreen: edge });
         }
       }
     } else if (shown.lost && shown.control) {
@@ -685,10 +711,15 @@ export class WindowGuides {
       this.#retrack(threadId, shown, guide, frame.rect);
     } else {
       screen = { left: frame.rect.left + shown.pointer.x, top: frame.rect.top + shown.pointer.y, width: shown.pointer.width, height: shown.pointer.height };
+      // A control out of view the app does not let be followed: its marker stays on the edge.
+      edge = shown.pointer.offscreen;
+      if (edge !== undefined) screen = markerRect(edge, screen, bounds);
     }
-    if (sameRect(screen, shown.screen)) return;
+    if (sameRect(screen, shown.screen) && edge === shown.edge) return;
     shown.screen = screen;
-    this.#core.subscribers.pointer({ id: shown.boxId, rect: screen, label: shown.pointer.label, look: shown.pointer.look });
+    if (edge === undefined) delete shown.edge;
+    else shown.edge = edge;
+    this.#core.subscribers.pointer({ id: shown.boxId, rect: screen, label: shown.pointer.label, look: shown.pointer.look, ...(edge ? { edge } : {}) });
   }
 
   /** Whether Escape went down since the last look; a read that fails counts as no press. */

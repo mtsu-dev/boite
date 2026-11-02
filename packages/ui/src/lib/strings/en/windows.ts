@@ -12,7 +12,9 @@ export const strings = {
     },
     /** The frame drawn around an app Boite brought to the front to follow its buttons. */
     pointer: {
-      frame: '{app} stays in front: Boite follows its buttons only while you can see it'
+      frame: '{app} stays in front: Boite follows its buttons only while you can see it',
+      /** Under the label of an arrow on a window's edge, toward a control scrolled out of view. */
+      scroll: { above: 'Scroll up', below: 'Scroll down', left: 'Scroll left', right: 'Scroll right' }
     },
     capture: {
       screenshot: 'Screenshot', clip: 'Clip of {count} frames', stream: 'Live view',

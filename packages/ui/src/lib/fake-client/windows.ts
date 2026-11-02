@@ -40,7 +40,10 @@ const CONTROLS: Record<string, Omit<WindowControl, 'id'>[]> = {
     { type: 'Button', name: 'Play', automationId: 'PlayButton', x: 912, y: 58, width: 32, height: 24 },
     { type: 'Button', name: 'Pause', automationId: 'PauseButton', x: 946, y: 58, width: 32, height: 24 },
     { type: 'TabItem', name: 'Scene', x: 4, y: 92, width: 70, height: 22 },
-    { type: 'TabItem', name: 'Game', x: 76, y: 92, width: 70, height: 22 }
+    { type: 'TabItem', name: 'Game', x: 76, y: 92, width: 70, height: 22 },
+    // Scrolled out of view: listed only by a read with `offscreen`.
+    { type: 'TreeItem', name: 'Main Camera', x: 12, y: 1130, width: 180, height: 20, offscreen: 'below' },
+    { type: 'TabItem', name: 'Animator', x: 0, y: 0, width: 0, height: 0, offscreen: 'unknown' }
   ],
   '198722': [
     ...['File', 'Edit', 'Render', 'Window', 'Help'].map((name, index) => ({ type: 'MenuItem', name, x: 40 + index * 60, y: 2, width: 56, height: 22 })),
@@ -109,8 +112,9 @@ export function windowsMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
   /** The conversations whose person opened Unity's File menu by clicking a box on File. */
   const menus = new Set<string>();
   /** What a read of `window` finds: the open menu's items first, as the core lists a popup's. */
-  const controlsOf = (threadId: string, window: FakeWindow): WindowControl[] =>
-    [...(window.id === FILE_MENU.of && menus.has(threadId) ? FILE_MENU_ITEMS : []), ...(CONTROLS[window.id] ?? [])].map((control, index) => ({ id: index + 1, ...control }));
+  const controlsOf = (threadId: string, window: FakeWindow, offscreen = false): WindowControl[] =>
+    [...(window.id === FILE_MENU.of && menus.has(threadId) ? FILE_MENU_ITEMS : []), ...(CONTROLS[window.id] ?? [])]
+      .filter(control => offscreen || control.offscreen === undefined).map((control, index) => ({ id: index + 1, ...control }));
   const unpoint = (threadId: string, reason: BoxEnd) => {
     const shown = pointers.get(threadId);
     if (!shown) return false;
@@ -364,15 +368,16 @@ export function windowsMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
       pending.settle(answer);
       return { ok: true };
     },
-    'windows.read': async ({ threadId, target, filter, limit, any }) => {
+    'windows.read': async ({ threadId, target, filter, limit, any, offscreen }) => {
       const thread = active(threadId);
       if (any !== undefined && typeof any !== 'boolean') throw invalid('any must be true or false', 'any');
+      if (offscreen !== undefined && typeof offscreen !== 'boolean') throw invalid('offscreen must be true or false', 'offscreen');
       const max = limit ?? WINDOW_READ_LIMIT.default;
       if (!(Number.isInteger(max) && max >= 1 && max <= WINDOW_READ_LIMIT.max)) throw invalid(`limit must be a whole number from 1 to ${WINDOW_READ_LIMIT.max}`, 'limit');
       const window = resolve(thread, target);
       if (window.minimized) throw refusal('window minimized: restore it first', { windowId: window.id });
       await consent(thread, window, 'read');
-      const controls = controlsOf(threadId, window);
+      const controls = controlsOf(threadId, window, offscreen === true);
       reads.set(threadId, { window, controls });
       const wanted = filter?.trim().toLowerCase();
       const matching = wanted ? controls.filter(control => control.name.toLowerCase().includes(wanted)) : controls;
@@ -397,6 +402,7 @@ export function windowsMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
         if (!read) throw refusal('nothing was read in this conversation yet: run `boite window read` first', { field: 'control' });
         control = read.controls.find(candidate => candidate.id === id);
         if (!control) throw refusal(`#${id} is not among the ${read.controls.length} controls of the last read: read the window again`, { field: 'control' });
+        if (control.offscreen === 'unknown') throw refusal(`#${id} is out of view and ${read.window.process} does not say where: have the user bring it into view (another tab, a section to expand), then read again`, { field: 'control' });
         if (control.popup && !menus.has(threadId)) throw refusal(`the menu or popup #${id} lay in has closed: have the user open it again, then read again`, { windowId: control.popup, code: 'gone' });
         window = read.window;
         box = control;
@@ -429,7 +435,8 @@ export function windowsMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
         ...(control ? { control: { type: control.type, name: control.name } } : {}),
         ...(control?.popup ? { popup: control.popup } : {}),
         ...(notify ? { notify: true as const } : {}),
-        ...(until !== 'click' ? { until } : {})
+        ...(until !== 'click' ? { until } : {}),
+        ...(control?.offscreen && control.offscreen !== 'unknown' ? { offscreen: control.offscreen } : {})
       };
       show(thread, pointer);
       return { pointer: structuredClone(pointer) };

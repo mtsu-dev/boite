@@ -3,7 +3,7 @@
   import BoiteMark from './components/BoiteMark.svelte';
   import { startTheme } from './lib/theme';
   import { fill, strings } from './lib/strings';
-  import { pointerRing, pointerTag, type PointerLayout } from './lib/pointer-layout';
+  import { pointerMarker, pointerRing, pointerTag, type PointerLayout } from './lib/pointer-layout';
 
   /**
    * The box `boite window point` shows the user, in a transparent,
@@ -13,12 +13,17 @@
    * the app's own surface, signed with the Boite mark, whose tail points at
    * the ring. One entrance, then one echo that keeps widening and fading: the
    * only motion, and none with reduced motion. Nothing here is clickable.
+   *
+   * A control scrolled out of view gets an arrow instead of the ring: a disc
+   * of the accent just inside the window's edge it lies past, pointing out of
+   * it, that nudges that way, with the label and which way to scroll. The
+   * core turns it back into the ring once the control is in view.
    */
   let layout = $state<PointerLayout | null>(null);
   /** Counts each box, so a new one plays the entrance and a move does not. */
   let shown = $state(0);
   let size = $state({ width: window.innerWidth, height: window.innerHeight });
-  const ring = $derived(layout ? pointerRing(layout, size) : null);
+  const ring = $derived(layout ? (layout.edge ? pointerMarker(layout, size) : pointerRing(layout, size)) : null);
   const tag = $derived(layout && ring ? pointerTag(ring, size, layout.below) : null);
 
   function place(next: PointerLayout): void {
@@ -61,13 +66,20 @@
 {:else if layout && ring}
   {#key shown}
     <div class="pointer" data-testid="pointer" data-below={layout.below} data-shape={layout.look.shape}>
-      <div class="ring" style:left="{ring.left}px" style:top="{ring.top}px" style:width="{ring.width}px" style:height="{ring.height}px">
-        <span class="echo"></span>
-      </div>
-      {#if layout.label && tag}
+      {#if !layout.edge}
+        <div class="ring" style:left="{ring.left}px" style:top="{ring.top}px" style:width="{ring.width}px" style:height="{ring.height}px">
+          <span class="echo"></span>
+        </div>
+      {:else}
+        <!-- The arrow points out of the window, toward the control. -->
+        <div class="marker" data-testid="pointer-marker" data-edge={layout.edge} style:left="{ring.left}px" style:top="{ring.top}px" style:width="{ring.width}px" style:height="{ring.height}px">
+          <svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true"><path d="M8 3v9.5M3.5 8.5 8 13l4.5-4.5" /></svg>
+        </div>
+      {/if}
+      {#if (layout.label || layout.edge) && tag}
         <div class="tag" data-testid="pointer-label" data-side={tag.side} style:left={tag.side === 'left' ? `${tag.edge}px` : 'auto'}
           style:right={tag.side === 'right' ? `${tag.edge}px` : 'auto'} style:top={tag.top === null ? 'auto' : `${tag.top}px`}
-          style:bottom={tag.bottom === null ? 'auto' : `${tag.bottom}px`} style:max-width="{tag.maxWidth}px" style:--tail="{tag.tail}px"><span class="mark"><BoiteMark size={14} /></span><span class="text">{layout.label}</span></div>
+          style:bottom={tag.bottom === null ? 'auto' : `${tag.bottom}px`} style:max-width="{tag.maxWidth}px" style:--tail="{tag.tail}px"><span class="mark"><BoiteMark size={14} /></span><span class="text">{#if layout.label}<span>{layout.label}</span>{/if}{#if layout.edge}<span class="hint" data-testid="pointer-scroll">{strings.windows.pointer.scroll[layout.edge]}</span>{/if}</span></div>
       {/if}
     </div>
   {/key}
@@ -111,6 +123,44 @@
 
   [data-shape='round'] .ring, [data-shape='round'] .echo {
     border-radius: var(--radius-full);
+  }
+
+  /* The arrow toward a control out of view: a disc of the accent with the
+     ring's halo and glow, its arrow in the accent's ink, nudging out of the
+     window the way the person scrolls. */
+  .marker {
+    position: absolute;
+    box-sizing: border-box;
+    display: grid;
+    place-items: center;
+    color: var(--color-accent-ink);
+    background: var(--color-accent);
+    border-radius: var(--radius-full);
+    box-shadow: 0 0 0 1px var(--pointer-halo), 0 0 22px 4px var(--color-accent-soft);
+    transition: left var(--dur-2) var(--ease-out-quint), top var(--dur-2) var(--ease-out-quint);
+    animation: settle var(--dur-3) var(--ease-out-quint) both;
+  }
+
+  .marker svg {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    animation: nudge var(--dur-flash) var(--ease-out-quint) var(--dur-3) infinite;
+  }
+
+  .marker[data-edge='above'] { rotate: 180deg; }
+  .marker[data-edge='left'] { rotate: 90deg; }
+  .marker[data-edge='right'] { rotate: -90deg; }
+
+  .hint {
+    font-weight: 400;
+    color: var(--color-muted-foreground);
+  }
+
+  .hint:not(:first-child) {
+    margin-left: 8px;
   }
 
   /* The label: a card of the app's surface with the Boite mark in the accent,
@@ -236,16 +286,22 @@
     70%, 100% { opacity: 0; transform: scale(1.18); }
   }
 
+  @keyframes nudge {
+    0%, 60%, 100% { transform: none; }
+    30% { transform: translateY(3px); }
+  }
+
   @keyframes pop {
     from { opacity: 0; transform: scale(0.9); }
     to { opacity: 1; transform: none; }
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .ring, .tag, .frame { animation: none; transition: none; }
+    .ring, .tag, .frame, .marker, .marker svg { animation: none; transition: none; }
     .echo { display: none; }
   }
 
-  :global(html[data-motion='reduced']) .ring, :global(html[data-motion='reduced']) .tag { animation: none; transition: none; }
+  :global(html[data-motion='reduced']) .ring, :global(html[data-motion='reduced']) .tag,
+  :global(html[data-motion='reduced']) .marker, :global(html[data-motion='reduced']) .marker svg { animation: none; transition: none; }
   :global(html[data-motion='reduced']) .echo { display: none; }
 </style>

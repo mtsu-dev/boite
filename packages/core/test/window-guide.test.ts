@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
-import { AGENT_ENV, type MessagePart, type WindowPointerLook } from '@boite/contracts';
+import { AGENT_ENV, type MessagePart, type WindowEdge, type WindowPointerLook } from '@boite/contracts';
 import { runCli } from '../src/cli.ts';
 import { connect, type CoreClient } from '../src/client.ts';
 import type { AppWindow, ControlState, NativeControl, NativeWindow, ScreenRect, WindowCapture, WindowGuide } from '../src/platform/types.ts';
@@ -40,6 +40,17 @@ function fakeDesktop() {
     // Scrolled out of the window, though its provider says it is on screen.
     control('ListItem', 'Hidden asset', 1000, 900),
   ];
+  /**
+   * Read only with `offscreen`: their app says they are out of view. Main
+   * Camera is scrolled above the window; Animator lies on a tab not shown,
+   * inside the window, so the app gives no way to scroll to it.
+   */
+  const outOfView: NativeControl[] = [
+    { ...control('TreeItem', 'Main Camera', 1100, 300), offscreen: true },
+    { ...control('TabItem', 'Animator', 1100, 600), offscreen: true },
+  ];
+  /** Scrolled past the window's right edge, though its provider says it is on screen. */
+  const right = control('Button', 'Inspector', 1500, 600);
   // Read only with `any`: a card that holds the controls, as a div does.
   const containers: NativeControl[] = [{ type: 'Group', name: 'Card', automationId: '', rect: { left: 1100, top: 600, width: 120, height: 60 } }];
   /** The File menu, window 303 of Unity's, read with 101 while its frame is there; it reaches past 101's left edge. */
@@ -57,7 +68,7 @@ function fakeDesktop() {
    * or null once the app dropped it. Dropping it ends every element held so
    * far, as a re-rendered row does; it is found again once it has a rectangle.
    */
-  const live = { rect: null as ScreenRect | 'hidden' | null, generation: 0, held: 0, asked: [] as NativeControl[], state: {} as ControlState };
+  const live = { rect: null as (ScreenRect & { offscreen?: true }) | 'hidden' | null, generation: 0, held: 0, asked: [] as NativeControl[], state: {} as ControlState };
   /** Unity's windows with a title bar, its dialogs included: what a box with `until: 'window'` watches. */
   const apps: AppWindow[] = [{ id: '101', title: 'Scene 101' }];
   const drop = () => { live.rect = null; live.generation += 1; };
@@ -69,9 +80,9 @@ function fakeDesktop() {
     frames: id => ({ next: async () => { throw goneError(id); }, close: () => {} }),
   };
   const guide: WindowGuide = {
-    controls: async (id, limit, any) => {
+    controls: async (id, limit, any, offscreen) => {
       if (!frames.has(id)) throw new Error('the window closed during the read');
-      const own = id !== '101' ? [] : any ? [...controls, ...containers] : controls;
+      const own = id !== '101' ? [] : [...controls, ...(any ? containers : []), ...(offscreen ? [...outOfView, right] : [])];
       const all = id === '101' && frames.has('303') ? [...menu, ...own] : own;
       return { controls: all.slice(0, limit), total: all.length };
     },
@@ -111,7 +122,7 @@ async function eventually(check: () => void, timeoutMs = 2000): Promise<void> {
 describe('window guide', () => {
   let harness: TestCore, owner: CoreClient, agent: CoreClient, app: CoreClient, threadId: string, desk: ReturnType<typeof fakeDesktop>;
   /** Each box the desktop app was told about, in order: where it is now, null once hidden or taken away. */
-  let boxes: { id: string; rect: ScreenRect | null; label: string; look: WindowPointerLook; frame?: { app: string; windowId: string } }[];
+  let boxes: { id: string; rect: ScreenRect | null; label: string; look: WindowPointerLook; frame?: { app: string; windowId: string }; edge?: WindowEdge }[];
 
   beforeEach(async () => {
     harness = await startTestCore();
@@ -124,7 +135,8 @@ describe('window guide', () => {
     boxes = [];
     app.on('windows.pointer', box => {
       const known = boxes.find(entry => entry.id === box.id);
-      if (known) Object.assign(known, box); else boxes.push({ ...box });
+      // An arrow turned back into the ring loses its edge.
+      if (known) { delete known.edge; Object.assign(known, box); } else boxes.push({ ...box });
     });
     const core = harness.core as { windows: DesktopWindows };
     core.windows.stop();
@@ -249,14 +261,14 @@ describe('window guide', () => {
     desk.frames.get('101')!.rect.left -= 10;
     desk.live.rect = { left: 1200, top: 600, width: 40, height: 20 };
     await eventually(() => expect(boxes[0]!.rect).toEqual({ left: 1200, top: 600, width: 40, height: 20 }));
-    // Out of view, by the app's word or under the window's edge (it ends at 800): hidden, still shown.
+    // With no place at all: hidden, still shown. Under the window's edge (it ends at 800): an arrow just inside it, level with the control.
     desk.live.rect = 'hidden';
     await eventually(() => expect(boxes[0]!.rect).toBeNull());
     desk.live.rect = { left: 1200, top: 805, width: 40, height: 20 };
-    await Bun.sleep(FOLLOW_MS * 5);
-    expect(boxes[0]!.rect).toBeNull();
+    await eventually(() => expect(boxes[0]).toMatchObject({ rect: { left: 1204, top: 758, width: 32, height: 32 }, edge: 'below' }));
     desk.live.rect = { left: 1200, top: 700, width: 40, height: 20 };
     await eventually(() => expect(boxes[0]!.rect).toEqual({ left: 1200, top: 700, width: 40, height: 20 }));
+    expect(boxes[0]!.edge).toBeUndefined();
 
     // The app drops the element: hidden, then found again near where it was last seen.
     desk.drop();
@@ -318,6 +330,12 @@ describe('window guide', () => {
     await Bun.sleep(SETTLE_MS * 0.75);
     expect(box().rect).toBeNull();
     await eventually(() => expect(box().rect).toEqual({ left: 1200, top: 640, width: 40, height: 20 }));
+    // Scrolled under the window's edge: hidden while it moves, then an arrow on that edge once it settled.
+    desk.live.rect = { left: 1200, top: 820, width: 40, height: 20 };
+    await eventually(() => expect(box().rect).toBeNull());
+    await Bun.sleep(SETTLE_MS / 2);
+    expect(box().rect).toBeNull();
+    await eventually(() => expect(box()).toMatchObject({ rect: { left: 1204, top: 758, width: 32, height: 32 }, edge: 'below' }));
 
     // A box in the window keeps the frame; the frame follows the window.
     desk.frames.get('101')!.rect.top += 20;
@@ -337,6 +355,58 @@ describe('window guide', () => {
     await agent.call('windows.read', { threadId, target: { id: '101' } });
     await Bun.sleep(50);
     expect(boxes.filter(box => box.frame)).toHaveLength(2);
+  });
+
+  test('read with offscreen lists the controls out of view with the way to scroll, and a box on one is an arrow on the window\'s edge until it scrolls in', async () => {
+    const answered = answer('always');
+    expect(await thrown(agent.call('windows.read', { threadId, target: { id: '101' }, offscreen: 'yes' as unknown as boolean }))).toThrow('offscreen must be true or false');
+    const read = await agent.call('windows.read', { threadId, target: { id: '101' }, offscreen: true });
+    await answered;
+    // The controls in view come as without it, unmarked; the others say where they lie, in the window's pixels.
+    expect(read.total).toBe(8);
+    expect(read.controls.slice(0, 4).every(one => one.offscreen === undefined)).toBe(true);
+    expect(read.controls.slice(4)).toEqual([
+      { id: 5, type: 'ListItem', name: 'Hidden asset', offscreen: 'below', x: 0, y: 400, width: 40, height: 20 },
+      { id: 6, type: 'TreeItem', name: 'Main Camera', offscreen: 'above', x: 100, y: -200, width: 40, height: 20 },
+      { id: 7, type: 'TabItem', name: 'Animator', offscreen: 'unknown', x: 100, y: 100, width: 40, height: 20 },
+      { id: 8, type: 'Button', name: 'Inspector', offscreen: 'right', x: 500, y: 100, width: 40, height: 20 },
+    ]);
+    expect(await thrown(agent.call('windows.point', { threadId, control: 7 }))).toThrow('#7 is out of view and Unity.exe does not say where');
+
+    desk.live.rect = { left: 1000, top: 900, width: 40, height: 20 };
+    const { pointer } = await agent.call('windows.point', { threadId, control: 5, label: 'Open the asset' });
+    expect(pointer).toMatchObject({ offscreen: 'below', label: 'Open the asset', control: { name: 'Hidden asset' } });
+    // An arrow inside the bottom edge, kept off the window's corner.
+    await eventually(() => expect(boxes[0]).toMatchObject({ rect: { left: 1010, top: 758, width: 32, height: 32 }, label: 'Open the asset', edge: 'below' }));
+    const waiting = agent.call('windows.waitClick', { threadId, timeoutSeconds: 5 });
+    // A click on the arrow lands on the app, not on the control: it ends nothing.
+    Object.assign(desk.mouse, { pressed: true, x: 1020, y: 770 });
+    await Bun.sleep(60);
+    Object.assign(desk.mouse, { pressed: false });
+    expect(boxes[0]!.rect).not.toBeNull();
+    // Scrolled past the right edge, the arrow moves there, level with it; on a tab not shown, by its app's word, it hides.
+    desk.live.rect = { left: 1500, top: 600, width: 40, height: 20 };
+    await eventually(() => expect(boxes[0]).toMatchObject({ rect: { left: 1358, top: 594, width: 32, height: 32 }, edge: 'right' }));
+    desk.live.rect = { left: 1100, top: 600, width: 40, height: 20, offscreen: true };
+    await eventually(() => expect(boxes[0]!.rect).toBeNull());
+    // Scrolled into view: the ring, and a click on it is the click.
+    desk.live.rect = { left: 1000, top: 700, width: 40, height: 20 };
+    await eventually(() => expect(boxes[0]!.rect).toEqual({ left: 1000, top: 700, width: 40, height: 20 }));
+    expect(boxes[0]!.edge).toBeUndefined();
+    Object.assign(desk.mouse, { pressed: true, x: 1010, y: 705 });
+    const clicked = await waiting;
+    expect(clicked).toMatchObject({ clicked: true, pointer: { x: 0, y: 200 } });
+    expect((clicked as { pointer: { offscreen?: string } }).pointer.offscreen).toBeUndefined();
+
+    // A control the app does not let be followed keeps its arrow, through a minimize too.
+    desk.live.rect = null;
+    Object.assign(desk.mouse, { pressed: false });
+    await agent.call('windows.point', { threadId, control: 6 });
+    await eventually(() => expect(boxes.at(-1)).toMatchObject({ rect: { left: 1104, top: 510, width: 32, height: 32 }, edge: 'above' }));
+    desk.frames.get('101')!.minimized = true;
+    await eventually(() => expect(boxes.at(-1)!.rect).toBeNull());
+    desk.frames.get('101')!.minimized = false;
+    await eventually(() => expect(boxes.at(-1)).toMatchObject({ rect: { left: 1104, top: 510, width: 32, height: 32 }, edge: 'above' }));
   });
 
   test('wait-click ends on a press inside the box, not on one outside or a button already held', async () => {
@@ -605,6 +675,9 @@ describe('window guide', () => {
     await answered;
     expect(read.out).toBe('window: 101 (Unity.exe)\n#1 MenuItem "File" 4,4 40x20\n#2 MenuItem "Edit" 48,4 40x20\n2 more: narrow with --filter or raise --limit\n');
     expect((await run('read', '--id', '101', '--any', '--filter', 'card')).out).toBe('window: 101 (Unity.exe)\n#5 Group "Card" 100,100 120x60\n');
+    expect((await run('read', '--id', '101', '--offscreen', '--filter', 'a')).out).toBe('window: 101 (Unity.exe)\n#3 Button "Play" 200,30 40x20\n#4 Button "Play Mode Options" 244,30 40x20\n'
+      + '#5 ListItem "Hidden asset" 0,400 40x20 (out of view: below)\n#6 TreeItem "Main Camera" 100,-200 40x20 (out of view: above)\n#7 TabItem "Animator" 100,100 40x20 (out of view)\n');
+    expect((await run('point', '6')).out).toMatch(/^pointing at TreeItem "Main Camera" of window 101 \(Unity.exe\) with "Main Camera" for 120 s\nit is out of view above: an arrow on that edge of the window points to it until the user scrolls it into view; tell them to scroll up\nkeep working/);
     desk.frames.set('303', desk.menuFrame);
     expect((await run('read', '--id', '101', '--filter', 'build')).out).toBe('window: 101 (Unity.exe)\n#1 MenuItem "Build Settings" -10,30 40x20 (in popup 303)\n');
     desk.live.rect = { left: 990, top: 530, width: 40, height: 20 };

@@ -4,7 +4,7 @@
  * the shell, which owns the transparent window the box is drawn in
  * (`pointer_window.rs`). That window's page is `PointerApp.svelte`.
  */
-import type { WindowPointerBox, WindowPointerLook } from '@boite/contracts';
+import type { WindowEdge, WindowPointerBox, WindowPointerLook } from '@boite/contracts';
 
 /** What the shell tells a pointer page, in that page's CSS pixels: the control, and whether the label goes under it. */
 export interface PointerLayout {
@@ -17,6 +17,22 @@ export interface PointerLayout {
   look: WindowPointerLook;
   /** For the frame around a whole window that Boite brought to the front: the app's name. */
   frame?: string;
+  /** The control lies past this edge of its window: the page draws an arrow there pointing toward it, not a ring. */
+  edge?: WindowEdge;
+}
+
+/** The arrow's disc, in CSS pixels, whatever the size of the place the core gave it. */
+export const MARKER_SIZE = 34;
+
+/** The arrow's disc, centered on the place the core keeps just inside the window's edge, and inside the page. */
+export function pointerMarker(layout: PointerLayout, size: { width: number; height: number }): { left: number; top: number; width: number; height: number } {
+  const clamp = (value: number, room: number) => Math.min(Math.max(0, value), Math.max(0, room - MARKER_SIZE));
+  return {
+    left: clamp(layout.x + layout.width / 2 - MARKER_SIZE / 2, size.width),
+    top: clamp(layout.y + layout.height / 2 - MARKER_SIZE / 2, size.height),
+    width: MARKER_SIZE,
+    height: MARKER_SIZE
+  };
 }
 
 /** The ring around the control, `look.pad` outside it, kept inside the window so a control at a screen edge keeps all four sides. */
@@ -74,7 +90,7 @@ export function pointerRequested(from: { localCore: boolean }, box: WindowPointe
   const rect = box.rect;
   queue = queue.then(() => rect === null
     ? invoke('pointer_hide', { id: box.id })
-    : invoke('pointer_show', { id: box.id, rect, label: box.label, look: box.look, ...(box.frame ? { frame: box.frame } : {}) }))
+    : invoke('pointer_show', { id: box.id, rect, label: box.label, look: box.look, ...(box.frame ? { frame: box.frame } : {}), ...(box.edge ? { edge: box.edge } : {}) }))
     .then(() => undefined, (error: unknown) => { console.warn('windows.pointer failed', error); });
   return queue;
 }

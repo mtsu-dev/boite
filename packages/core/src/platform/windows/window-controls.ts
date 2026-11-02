@@ -327,10 +327,12 @@ function cachedInt(self: Pointer, index: number, name: string, out: Int32Array):
 /**
  * Each enabled, on-screen control of the interactive types (and the containers with `any`) inside the window
  * `hwnd`, in the tree's order, with its bounds in physical screen pixels: the
- * calling thread must be per-monitor aware. `visit` returns true to keep the
- * element, which the caller then releases.
+ * calling thread must be per-monitor aware. With `offscreen`, the controls
+ * the app says are out of view come too, marked so, with an all-zero rect
+ * when it places them nowhere. `visit` returns true to keep the element,
+ * which the caller then releases.
  */
-function eachControl(hwnd: bigint, cache: Pointer, any: boolean, visit: (control: NativeControl, item: Pointer) => boolean): void {
+function eachControl(hwnd: bigint, cache: Pointer, any: boolean, offscreen: boolean, visit: (control: NativeControl, item: Pointer) => boolean): void {
   automation ??= createAutomation();
   const { automation: self } = automation;
   const condition = any ? automation.anyCondition : automation.condition;
@@ -355,18 +357,26 @@ function eachControl(hwnd: bigint, cache: Pointer, any: boolean, visit: (control
       let keep = false;
       try {
         if (cachedInt(item, CACHED_IS_ENABLED, 'get_CachedIsEnabled', number) === 0) continue;
-        if (cachedInt(item, CACHED_IS_OFFSCREEN, 'get_CachedIsOffscreen', number) !== 0) continue;
-        if (slot(item, CACHED_BOUNDING_RECTANGLE, 'get_CachedBoundingRectangle', SIG_OUT)(item, ptr(rect)) < 0) continue;
-        const width = rect[2]! - rect[0]!;
-        const height = rect[3]! - rect[1]!;
-        if (width <= 0 || height <= 0) continue;
+        const hidden = cachedInt(item, CACHED_IS_OFFSCREEN, 'get_CachedIsOffscreen', number) !== 0;
+        if (hidden && !offscreen) continue;
+        rect.fill(0);
+        const placed = slot(item, CACHED_BOUNDING_RECTANGLE, 'get_CachedBoundingRectangle', SIG_OUT)(item, ptr(rect)) >= 0;
+        let width = rect[2]! - rect[0]!;
+        let height = rect[3]! - rect[1]!;
+        if (!placed || width <= 0 || height <= 0) {
+          // Out of view, a control can have no place at all: it is listed without one.
+          if (!hidden) continue;
+          rect.fill(0);
+          width = 0;
+          height = 0;
+        }
         const type = types[cachedInt(item, CACHED_CONTROL_TYPE, 'get_CachedControlType', number) ?? 0];
         if (type === undefined) continue;
         const name = cachedText(item, CACHED_NAME, 'get_CachedName', out).replace(/\s+/g, ' ').trim();
         const automationId = cachedText(item, CACHED_AUTOMATION_ID, 'get_CachedAutomationId', out);
         // A control with neither is nothing an agent can name to a person.
         if (name === '' && automationId === '') continue;
-        keep = visit({ type, name, automationId, rect: { left: rect[0]!, top: rect[1]!, width, height } }, item);
+        keep = visit({ type, name, automationId, rect: { left: rect[0]!, top: rect[1]!, width, height }, ...(hidden ? { offscreen: true as const } : {}) }, item);
       } finally {
         if (!keep) release(item);
       }
@@ -379,13 +389,14 @@ function eachControl(hwnd: bigint, cache: Pointer, any: boolean, visit: (control
 
 /**
  * The enabled, on-screen controls of the interactive types (and the containers with `any`) inside the window
- * `hwnd`. At most `limit` come back; `total` counts every one that qualified.
+ * `hwnd`, and with `offscreen` those out of view. At most `limit` come back;
+ * `total` counts every one that qualified.
  */
-export function readControls(hwnd: bigint, limit: number, any = false): { controls: NativeControl[]; total: number } {
+export function readControls(hwnd: bigint, limit: number, any = false, offscreen = false): { controls: NativeControl[]; total: number } {
   automation ??= createAutomation();
   const controls: NativeControl[] = [];
   let total = 0;
-  eachControl(hwnd, automation.cache, any, control => {
+  eachControl(hwnd, automation.cache, any, offscreen, control => {
     total += 1;
     if (controls.length < limit) controls.push(control);
     return false;
@@ -427,14 +438,16 @@ const center = (rect: NativeControl['rect']) => ({ x: rect.left + rect.width / 2
 /**
  * The control of `hwnd` with `wanted`'s type, name and automation id nearest
  * to `wanted.rect`, held live: `rect()` asks the app where it is now, so a box
- * follows it while the window scrolls. Null when none matches.
+ * follows it while the window scrolls, and points toward it while it is out
+ * of view. Looked for among the controls out of view too: one a box points
+ * toward, or one the app dropped as it scrolled away. Null when none matches.
  */
-export function trackControl(hwnd: bigint, wanted: NativeControl): { rect(): NativeControl['rect'] | 'hidden' | 'gone' | 'busy'; state(): ControlState | 'gone' | 'busy'; release(): void } | null {
+export function trackControl(hwnd: bigint, wanted: NativeControl): { rect(): (NativeControl['rect'] & { offscreen?: true }) | 'hidden' | 'gone' | 'busy'; state(): ControlState | 'gone' | 'busy'; release(): void } | null {
   automation ??= createAutomation();
   const aim = center(wanted.rect);
   let best: { item: Pointer; distance: number } | null = null;
   // A container is found among the containers too, where a read with `any` saw it.
-  eachControl(hwnd, automation.liveCache, CONTAINER_NAMES.has(wanted.type), (control, item) => {
+  eachControl(hwnd, automation.liveCache, CONTAINER_NAMES.has(wanted.type), true, (control, item) => {
     if (control.type !== wanted.type || control.name !== wanted.name || control.automationId !== wanted.automationId) return false;
     const at = center(control.rect);
     const distance = Math.hypot(at.x - aim.x, at.y - aim.y);
@@ -457,8 +470,8 @@ export function trackControl(hwnd: bigint, wanted: NativeControl): { rect(): Nat
       if (hr < 0) return failed(hr);
       const width = rect[2]! - rect[0]!;
       const height = rect[3]! - rect[1]!;
-      if (number[0] !== 0 || width <= 0 || height <= 0) return 'hidden';
-      return { left: rect[0]!, top: rect[1]!, width, height };
+      if (width <= 0 || height <= 0) return 'hidden';
+      return { left: rect[0]!, top: rect[1]!, width, height, ...(number[0] !== 0 ? { offscreen: true as const } : {}) };
     },
     state() {
       if (item === null) return 'gone';

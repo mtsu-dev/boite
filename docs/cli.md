@@ -248,6 +248,10 @@ panes, lists, images: a whole area, which the box follows as it resizes), and `p
 rectangle for an app with no accessibility tree. A menu or popup the app has
 open over the window, such as the list under File, is read first, its lines
 ending in `(in popup <id>)`; a box on one of its items goes when it closes.
+`read --offscreen` adds the controls scrolled out of view, their lines ending in
+`(out of view: below)` (above, left, right) or `(out of view)` when the app does
+not say where; a box on one shows as an arrow on that edge of the window until
+the user scrolls it into view, then rings it.
 `--round` draws a pill or a
 circle and `--pad <px>` sets the gap around the control. `point` returns at once:
 the click, or the box timing out, arrives later as a message, so the agent keeps
