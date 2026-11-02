@@ -46,10 +46,13 @@
   const locked = $derived(lockedBy(store.policy, 'network.lan', 'network.groups') !== null);
   const loopback = $derived(self !== undefined && self.addresses.length > 0 && self.addresses.every((address) => LOOPBACK.test(address)));
 
+  /** One reading at a time: each runs PowerShell on the machine. */
+  let reading = false;
   async function read(): Promise<void> {
     const client = store.client;
-    if (!client) return;
-    try { status = await client.call('firewall.status', {}); } catch { status = null; }
+    if (!client || reading) return;
+    reading = true;
+    try { status = await client.call('firewall.status', {}); } catch { status = null; } finally { reading = false; }
   }
 
   /** The existing `firewall.allow`: one administrator prompt for the private rule, then the core opens its listener. */
@@ -72,6 +75,15 @@
     status?.state === 'unset' || status?.state === 'blocked' ? 'closed' :
     loopback ? 'loopback' : null
   );
+  // Back from Windows settings, where the owner marked the network private or allowed Boite: Windows is read again,
+  // and the core, which hears that reading, opens its listener.
+  $effect(() => {
+    if (reach !== 'closed' && reach !== 'public' && reach !== 'domain') return;
+    const again = () => { if (document.visibilityState === 'visible' && !busy) void read(); };
+    window.addEventListener('focus', again);
+    document.addEventListener('visibilitychange', again);
+    return () => { window.removeEventListener('focus', again); document.removeEventListener('visibilitychange', again); };
+  });
   const outcome = $derived(!status?.detail ? '' : status.detail === 'cancelled' ? strings.group.firewall.cancelled : strings.group.firewall.failed);
 </script>
 

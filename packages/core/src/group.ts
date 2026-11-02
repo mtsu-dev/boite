@@ -113,7 +113,8 @@ export class GroupStore {
 
   constructor(readonly core: Core) {
     this.clients = new GroupClients(this);
-    this.lan = new LanGate(new FirewallAccess(core), () => { if (this.#live) this.#background(this.#refresh()); });
+    // A change of the LAN closes or opens its listeners now; the published entry follows at the refresh.
+    this.lan = new LanGate(new FirewallAccess(core), () => { if (this.#live) { this.#listen(this.roster !== null); this.#background(this.#refresh()); } });
     const stored = core.journal.getSetting(SETTING);
     if (stored !== undefined && stored !== null) {
       try {
@@ -302,12 +303,12 @@ export class GroupStore {
   /** A member answers on its tailnet address and its private LAN ones; a core a contact dials, on its tailnet address; any other core opens nothing. */
   #listen(member: boolean): void {
     const wanted = member || this.core.contacts?.wantsTailnet() === true;
-    const lan = member && this.core.network.lanAllowed() ? this.lan.addresses() : [];
+    const lan = this.lan.addresses(member && this.core.network.lanAllowed());
     ({ tailnet: this.#onTailnet, lan: this.#onLan } = this.core.network.also({ tailnet: wanted && this.tailnet !== null ? this.tailnet.ip : null, lan }));
   }
 
   /** Contacts changed: the tailnet listener follows. The network changed (`probe`): the addresses, the firewall and the published entry too, now rather than at the next tick. */
-  relisten(probe = false): void { if (this.#closed || !this.#live) return; if (probe) { this.lan.stale(); this.#background(this.#refresh().then(() => this.syncPending())); } else this.#listen(this.roster !== null); }
+  relisten(probe = false): void { if (this.#closed || !this.#live) return; if (probe) { this.lan.stale(); this.#listen(this.roster !== null); this.#background(this.#refresh().then(() => this.syncPending())); } else this.#listen(this.roster !== null); }
 
   #card(): CoreCard {
     const { coreId, publicKey } = this.core.coordination.card();
@@ -889,8 +890,7 @@ export class GroupStore {
   }
 
   beginClose(): void {
-    this.#closed = true;
-    this.#disarm();
+    this.#closed = true; this.#disarm(); this.lan.stop();
   }
 
   async close(): Promise<void> {

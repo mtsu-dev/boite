@@ -2,6 +2,7 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import { confirm } from '../lib/confirm.svelte';
 import { FakeClient } from '../lib/fake-client';
+import { fakeCore } from '../lib/fake-client/coordination';
 import { fakePolicy } from '../lib/fake-client/policy';
 import { Store, store as primary } from '../lib/store.svelte';
 import { fill, strings } from '../lib/strings';
@@ -352,4 +353,16 @@ test('a policy that keeps the machine off the local network says so, locked, ins
   expect(reach()!.textContent).toContain(strings.group.lan.policy);
   expect(reach()!.querySelector('[data-testid="policy-lock"]')).not.toBeNull();
   expect(one('own-reach-allow')).toBeNull();
+});
+
+test('back from Windows settings, a network now marked private is read again and the line names the address', async () => {
+  const first = await onLan({ firewall: 'public' });
+  expect(reach()!.dataset.state).toBe('public');
+  const call = vi.spyOn(first.client!, 'call');
+  // The owner marks the Wi-Fi private in Windows settings, whose rule Boite already has, and comes back to the window.
+  fakeCore('core-first')!.firewall = { state: 'ready', networks: ['private'], allowed: ['private'], blocked: [] };
+  window.dispatchEvent(new Event('focus'));
+  await vi.waitFor(() => { flushSync(); expect(reach()!.dataset.state).toBe('ready'); });
+  expect(call).toHaveBeenCalledWith('firewall.status', {});
+  expect(reach()!.textContent).toContain('192.168.1.20:8777');
 });

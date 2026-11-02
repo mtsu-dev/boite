@@ -5,10 +5,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { FirewallAccess, judge, lanAdapters, type FirewallReading } from '../src/firewall.ts';
 import { advertisedAddresses, ticketAddresses } from '../src/group/addresses.ts';
-import { LanGate } from '../src/group/lan.ts';
+import { FIREWALL_RECHECK_MS, LanGate, type Every } from '../src/group/lan.ts';
+import { NETWORK_WATCH_MS } from '../src/network-watch.ts';
 import { firewallAllow } from '../src/platform/windows/firewall.ts';
 import { extraNetwork, ExtraListeners } from '../src/server/extra-listeners.ts';
-import { privateLanAddresses } from '../src/server/lan.ts';
+import { privateLanAddresses, type SysNet } from '../src/server/lan.ts';
 import { removeDir, startTestCore, waitFor, type TestCore } from './harness.ts';
 
 const v4 = (address: string, internal = false) => ({ address, family: 'IPv4', internal, netmask: '255.255.255.0', mac: '00:00:00:00:00:00', cidr: null }) as NetworkInterfaceInfo;
@@ -50,14 +51,43 @@ const LINUX = {
 };
 
 test('a grouped machine listens on its private LAN addresses only, never a virtual adapter, the tailnet or a public address', () => {
-  expect(privateLanAddresses(WINDOWS)).toEqual(['192.168.1.20']);
+  expect(privateLanAddresses(WINDOWS, null, null)).toEqual(['192.168.1.20']);
   // macOS: `bridge100` is Internet Sharing's or a virtual machine's bridge; en0 (Wi-Fi) and en5 (a USB Ethernet adapter) are real.
-  expect(privateLanAddresses(MACOS)).toEqual(['10.0.0.42', '172.16.4.9']);
-  expect(privateLanAddresses(LINUX)).toEqual(['192.168.1.42']);
+  expect(privateLanAddresses(MACOS, null, null)).toEqual(['10.0.0.42', '172.16.4.9']);
+  expect(privateLanAddresses(LINUX, null, null)).toEqual(['192.168.1.42']);
   // On Windows the firewall names the adapters on a private network it lets the core through on.
-  expect(privateLanAddresses(WINDOWS, new Set(['Ethernet']))).toEqual([]);
-  expect(privateLanAddresses(WINDOWS, new Set(['Wi-Fi']))).toEqual(['192.168.1.20']);
-  expect(privateLanAddresses({})).toEqual([]);
+  expect(privateLanAddresses(WINDOWS, new Set(['Ethernet']), null)).toEqual([]);
+  expect(privateLanAddresses(WINDOWS, new Set(['Wi-Fi']), null)).toEqual(['192.168.1.20']);
+  expect(privateLanAddresses({}, null, null)).toEqual([]);
+});
+
+/** A Linux `/sys/class/net`: each adapter with its physical `device`, or a bridge and its ports. */
+function sysfs(adapters: Record<string, { device?: true; ports?: string[] }>): SysNet {
+  const paths = new Set<string>();
+  for (const [name, adapter] of Object.entries(adapters)) {
+    if (adapter.device) paths.add(`/sys/class/net/${name}/device`);
+    if (adapter.ports) paths.add(`/sys/class/net/${name}/bridge`);
+  }
+  return {
+    has: (path) => paths.has(path),
+    list: (path) => {
+      if (path === '/sys/class/net') return Object.keys(adapters);
+      const bridge = /^\/sys\/class\/net\/([^/]+)\/brif$/.exec(path)?.[1];
+      return bridge === undefined ? null : adapters[bridge]?.ports ?? null;
+    },
+  };
+}
+
+test('on Linux sysfs decides: a physical adapter, or a bridge with a physical port, never a bridge of guests alone', () => {
+  const host = { lo: [v4('127.0.0.1', true)], enp3s0: [], vmbr0: [v4('192.168.1.10')], br0: [v4('172.16.0.1')], docker0: [v4('172.17.0.1')], wlp2s0: [v4('10.0.0.7')] };
+  const sys = sysfs({ lo: {}, enp3s0: { device: true }, wlp2s0: { device: true }, vmbr0: { ports: ['enp3s0', 'tap100i0'] }, br0: { ports: ['veth1'] }, docker0: { ports: ['veth2'] }, veth1: {}, veth2: {}, tap100i0: {} });
+  // Proxmox's vmbr0 carries the NIC, so it is the LAN; a br0 of guests only is not, whatever its name.
+  expect(privateLanAddresses(host, null, sys)).toEqual(['192.168.1.10', '10.0.0.7']);
+  expect(privateLanAddresses({ br0: [v4('172.16.0.1')] }, null, sysfs({ br0: { ports: [] }, eth1: { device: true } }))).toEqual([]);
+  // A container: no physical adapter at all, its virtual eth0 is its LAN, and the names decide.
+  expect(privateLanAddresses(LINUX, null, sysfs({ lo: {}, eth0: {}, tailscale0: {} }))).toEqual(['192.168.1.42']);
+  // sysfs unreadable: the names decide too.
+  expect(privateLanAddresses(LINUX, null, { has: () => false, list: () => null })).toEqual(['192.168.1.42']);
 });
 
 test('extra listeners follow the wanted set: one per address, a refused bind said once and skipped, the others kept', () => {
@@ -149,6 +179,17 @@ afterEach(async () => {
 
 const FAKE = join(import.meta.dir, 'fixtures', 'fake-firewall.ts');
 
+/** Timers the test fires by hand: `fire(ms)` runs every tick armed at that period. */
+function clock() {
+  const armed = new Set<{ tick: () => void; ms: number }>();
+  const every: Every = (tick, ms) => {
+    const entry = { tick, ms };
+    armed.add(entry);
+    return () => { armed.delete(entry); };
+  };
+  return { every, armed: () => armed.size, fire: (ms: number) => { for (const entry of [...armed]) if (entry.ms === ms) entry.tick(); } };
+}
+
 /** A test core whose network sink opens pretend listeners, on a machine with `interfaces`. */
 async function lanCore(options: { policy?: object; firewall?: FirewallReading } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'boite-lan-'));
@@ -174,9 +215,14 @@ async function lanCore(options: { policy?: object; firewall?: FirewallReading } 
     });
     core.group.lan = new LanGate(access, core.group.lan.changed);
   }
-  core.group.lan.interfaces = () => (options.firewall ? WINDOWS : LINUX);
+  let interfaces: NodeJS.Dict<NetworkInterfaceInfo[]> = options.firewall ? WINDOWS : LINUX;
+  core.group.lan.interfaces = () => interfaces;
+  core.group.lan.sys = null;
+  const timers = clock();
+  core.group.lan.every = timers.every;
   const own = () => core.group.roster?.cores.find((entry) => entry.coreId === core.group.selfId())?.addresses ?? [];
-  return { harness, core, listening, own, state, reads: () => reads, port: harness.server.port };
+  const setInterfaces = (next: NodeJS.Dict<NetworkInterfaceInfo[]>) => { interfaces = next; };
+  return { harness, core, listening, own, state, reads: () => reads, port: harness.server.port, timers, setInterfaces };
 }
 
 test('a grouped core listens on its LAN address and publishes it, and closes it when it leaves the group', async () => {
@@ -226,4 +272,58 @@ test('on Windows the LAN listener waits for the firewall to allow the private ne
   await waitFor(() => listening.size === 0);
   await waitFor(() => !own().includes(`http://192.168.1.20:${port}`));
   expect(reads()).toBe(after + 1);
+});
+
+const PRIVATE_ALLOWED: FirewallReading = { rules: [{ action: 1, profiles: 2 }], networks: [ethernet('Private')], off: 0 };
+const ANY_RULE_ON_PUBLIC: FirewallReading = { rules: [{ action: 1, profiles: 7 }], networks: [ethernet('Public')], off: 0 };
+
+test('grouped on Windows, the core sees on its own a network turned public with the same address, with no window open', async () => {
+  const { core, listening, state, reads, timers } = await lanCore({ firewall: PRIVATE_ALLOWED });
+  await core.group.create('Home');
+  await waitFor(() => listening.has('192.168.1.20'));
+  expect(timers.armed()).toBe(2);
+  // Windows turns the Wi-Fi public: same adapter, same address, and an older rule for every profile still allows the core.
+  writeFileSync(state, JSON.stringify(ANY_RULE_ON_PUBLIC));
+  const before = reads();
+  timers.fire(NETWORK_WATCH_MS);
+  timers.fire(NETWORK_WATCH_MS);
+  expect(reads()).toBe(before);
+  // The slow recheck reads Windows again, once even if it fires twice, and the listener closes.
+  timers.fire(FIREWALL_RECHECK_MS);
+  timers.fire(FIREWALL_RECHECK_MS);
+  await waitFor(() => listening.size === 0);
+  expect(reads()).toBe(before + 1);
+  // An address that changes closes the LAN and reads Windows again at once.
+  writeFileSync(state, JSON.stringify(PRIVATE_ALLOWED));
+  timers.fire(FIREWALL_RECHECK_MS);
+  await waitFor(() => listening.has('192.168.1.20'));
+  core.group.lan.interfaces = () => ({ ...WINDOWS, 'Wi-Fi': [v4('192.168.1.21')] });
+  writeFileSync(state, 'not a reading');
+  timers.fire(NETWORK_WATCH_MS);
+  expect(listening.has('192.168.1.20')).toBe(false);
+  // Leaving the group stops both timers.
+  await core.group.leave();
+  expect(timers.armed()).toBe(0);
+});
+
+test('a network change closes the LAN at once, and a reading that fails keeps it closed until one answers', async () => {
+  const { core, listening, state, reads, timers } = await lanCore({ firewall: PRIVATE_ALLOWED });
+  await core.group.create('Home');
+  await waitFor(() => listening.has('192.168.1.20'));
+  // Now on a public network, the old every-profile rule still there, and Windows does not answer.
+  writeFileSync(state, 'not a reading');
+  const before = reads();
+  core.group.relisten(true);
+  expect([...listening]).toEqual([]);
+  await waitFor(() => reads() === before + 1);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  expect([...listening]).toEqual([]);
+  // The recheck that fails keeps it closed too; one that answers private and allowed opens it again.
+  timers.fire(FIREWALL_RECHECK_MS);
+  await waitFor(() => reads() === before + 2);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  expect([...listening]).toEqual([]);
+  writeFileSync(state, JSON.stringify(PRIVATE_ALLOWED));
+  timers.fire(FIREWALL_RECHECK_MS);
+  await waitFor(() => listening.has('192.168.1.20'));
 });

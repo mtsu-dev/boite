@@ -148,7 +148,11 @@ Tailscale. A private address is RFC 1918 (10/8, 172.16/12, 192.168/16) on a
 physical adapter: never loopback, link-local, a public address, the tailnet's
 100.64/10, or a container, VM or VPN adapter (`privateLanAddresses`,
 `packages/core/src/server/lan.ts`). A public address would put the core on the
-internet, and a bridge leads to a guest rather than to the owner's phone. The
+internet, and a bridge of guests leads to them rather than to the owner's
+phone. On Linux, sysfs decides: an adapter with a `device`, or a bridge with
+such a port (`br0` or Proxmox's `vmbr0` carrying the NIC, which is the LAN
+itself). A machine with no physical adapter, a container whose `eth0` is
+virtual yet is its LAN, falls back to the names that Windows and macOS use. The
 listeners follow the set of addresses: a network change opens and closes them
 (`ExtraListeners`, `packages/core/src/server/extra-listeners.ts`), an address
 that refuses the bind is logged once and skipped, and all of them close when
@@ -161,11 +165,19 @@ that network talks to the core over plain `ws://`, readable by the LAN.
 On Windows the core opens a LAN address only once the firewall lets it through
 on a private network, and only on the adapters on such a network
 (`LanGate`, `packages/core/src/group/lan.ts`): a listener anywhere else would
-raise Windows' own prompt, and a public or work network stays closed. The core
-reads the firewall when the group starts, after `firewall.allow`, whenever the
-owner reads its status, and on a network change; never at every tick, since
-each reading runs PowerShell. The rule Boite adds covers the Private profile
-only ([phone](phone.md#windows-defender-firewall)).
+raise Windows' own prompt, and a public or work network stays closed. While
+grouped, the core watches for itself, with or without a window open: its
+interfaces every 2.5 seconds, and the firewall every two minutes, since Windows
+turns a network public or private without changing its address. It reads the
+firewall too when the group starts, after `firewall.allow`, whenever the owner
+reads its status, and when an address changes; one reading at a time, never at
+every tick, since each runs PowerShell. From an address change until the
+reading after it, and after a reading that failed, the LAN stays closed: an
+older rule that allowed every profile would otherwise keep the core open on a
+network that just turned public. The card reads the firewall again when its
+window comes back to the front, so a network the owner just marked private in
+Windows settings opens without waiting. The rule Boite adds covers the Private
+profile only ([phone](phone.md#windows-defender-firewall)).
 
 The group card says, under this machine's row, how the LAN reaches it: at
 which address, that Windows still keeps it closed (with Allow on private

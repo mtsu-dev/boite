@@ -47,7 +47,11 @@ export function pairingMethods(ctx: FakeContext) {
       }
       return { ...tailscale, publicUrlMatches: false };
     },
-    'firewall.status': async () => structuredClone(ctx.firewall),
+    'firewall.status': async () => {
+      // The real core hears every reading: a network marked private in Windows settings opens its LAN listener.
+      refreshOwnCard(ctx);
+      return structuredClone(ctx.firewall);
+    },
     'firewall.allow': async () => {
       if (ctx.firewallRefuses) return { ...structuredClone(ctx.firewall), detail: 'cancelled' as const };
       if (ctx.firewall.state === 'blocked' || ctx.firewall.state === 'unset') {

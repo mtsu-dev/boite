@@ -103,7 +103,7 @@ export interface FirewallOptions {
 }
 
 export class FirewallAccess {
-  readonly #watchers: ((adapters: string[]) => void)[] = [];
+  readonly #watchers: ((adapters: string[] | null) => void)[] = [];
 
   constructor(private readonly core: Core, private readonly options: FirewallOptions = {}) {}
 
@@ -112,8 +112,8 @@ export class FirewallAccess {
     return this.commands() !== null;
   }
 
-  /** `watch` hears the private adapters the core may listen on after each reading Windows answered. */
-  watch(watch: (adapters: string[]) => void): void {
+  /** `watch` hears the private adapters the core may listen on after each reading, null when Windows could not be read. */
+  watch(watch: (adapters: string[] | null) => void): void {
     this.#watchers.push(watch);
   }
 
@@ -129,11 +129,11 @@ export class FirewallAccess {
     const commands = this.commands();
     if (commands === null) return UNSUPPORTED;
     const run = await this.run(commands.query(this.program()), QUERY_TIMEOUT_MS);
+    const reading = !run.timedOut && run.code === 0 ? parseReading(run.stdout) : null;
+    // An unreadable answer closes the LAN listeners until one is read: the network may have turned public.
+    for (const watch of this.#watchers) watch(reading === null ? null : lanAdapters(reading));
     if (run.timedOut) return { ...UNSUPPORTED, state: 'error', detail: 'timeout' };
-    const reading = run.code === 0 ? parseReading(run.stdout) : null;
     if (reading === null) return { ...UNSUPPORTED, state: 'error', detail: 'unknown' };
-    // An unreadable answer leaves the listeners as the last one said.
-    for (const watch of this.#watchers) watch(lanAdapters(reading));
     return judge(reading);
   }
 

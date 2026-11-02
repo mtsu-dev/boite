@@ -32,12 +32,13 @@ function card(ctx: FakeContext): GroupCore {
   return { coreId: ctx.identity.coreId, name: ctx.identity.name, os: ctx.core.os, addresses: ownAddresses(ctx), epoch: 1 };
 }
 
-/** This core's entry follows where it listens now, and every member hears it. */
+/** This core's entry follows where it listens now, and every member hears a change. */
 export function refreshOwnCard(ctx: FakeContext): void {
   const roster = ctx.roster;
   const own = roster?.cores.find(core => core.coreId === ctx.identity.coreId);
-  if (roster === null || own === undefined) return;
-  own.addresses = ownAddresses(ctx);
+  const addresses = ownAddresses(ctx);
+  if (roster === null || own === undefined || addresses.join(' ') === own.addresses.join(' ')) return;
+  own.addresses = addresses;
   own.epoch++;
   announce(roster, [ctx]);
 }
