@@ -10,7 +10,9 @@
    * the prompt Windows raises names the core's runtime, "Bun" by "Oven", and
    * dismissing it, or a network changing from public to private, leaves a
    * phone at a page that never loads. The button asks Windows once, as an
-   * administrator, for a rule that covers every network.
+   * administrator, for a rule that covers private networks. A public or work
+   * network stays closed: the notice says how to mark it private, and offers
+   * no button.
    */
   let { store }: { store: Store } = $props();
   const text = strings.group.firewall;
@@ -65,6 +67,7 @@
     !status ? '' :
     status.state === 'blocked' ? fill(text.blocked, { networks: names(status.blocked) }) :
     status.state === 'unset' ? fill(text.unset, { networks: names(status.networks.filter((name) => !status!.allowed.includes(name))) }) :
+    status.state === 'public' ? (status.networks.includes('public') ? strings.group.lan.public : strings.group.lan.domain) :
     status.state === 'error' ? text.unreadable : ''
   );
   // An unreadable firewall is said by `unreadable`; no change was tried, so none was refused.
@@ -76,7 +79,7 @@
     <div class="firewall" data-testid="firewall-notice" data-state={status?.state}>
       <p class="hint warn">{problem}</p>
       {#if outcome}<p class="hint" data-testid="firewall-outcome">{outcome}</p>{/if}
-      {#if status?.state !== 'error'}
+      {#if status?.state !== 'error' && status?.state !== 'public'}
         <div class="actions">
           <button type="button" class="primary" data-testid="firewall-allow" disabled={busy || store.connection !== 'ready'} onclick={() => void allow()}>
             <span class="ui-label">{busy ? text.allowing : text.allow}</span>

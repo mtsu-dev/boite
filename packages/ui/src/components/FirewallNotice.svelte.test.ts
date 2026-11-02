@@ -2,6 +2,7 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import type { FirewallStatus } from '@boite/contracts';
 import type { Store } from '../lib/store.svelte';
+import { strings } from '../lib/strings';
 import PhoneSettings from './PhoneSettings.svelte';
 
 let mounted: ReturnType<typeof mount> | undefined;
@@ -12,8 +13,8 @@ afterEach(async () => {
 });
 
 const settle = async () => { for (let i = 0; i < 20; i++) { await Promise.resolve(); flushSync(); } };
-const blocked: FirewallStatus = { state: 'blocked', networks: ['public'], allowed: [], blocked: ['public'] };
-const ready: FirewallStatus = { state: 'ready', networks: ['public'], allowed: ['public'], blocked: [] };
+const blocked: FirewallStatus = { state: 'blocked', networks: ['private'], allowed: [], blocked: ['private'] };
+const ready: FirewallStatus = { state: 'ready', networks: ['private'], allowed: ['private'], blocked: [] };
 const tailscaleOff = { state: 'off', dnsName: null, url: null, servedTarget: null, target: 'http://127.0.0.1:7337', publicUrlMatches: false };
 
 /** The Phone card, where the local network switch lives, on an owner's core whose firewall blocks phones. */
@@ -55,7 +56,7 @@ test('a refused administrator prompt leaves the block named, with the button to 
   await settle();
   const notice = document.querySelector<HTMLElement>('[data-testid=firewall-notice]')!;
   expect(notice.dataset.state).toBe('blocked');
-  expect(notice.textContent).toContain('public');
+  expect(notice.textContent).toContain('private');
   expect(document.querySelector('[data-testid=firewall-outcome]')).not.toBeNull();
   document.querySelector<HTMLButtonElement>('[data-testid=firewall-allow]')!.click();
   await settle();
@@ -75,5 +76,21 @@ test('an unreadable firewall says so, and claims no refused change nor offers th
   const notice = document.querySelector<HTMLElement>('[data-testid=firewall-notice]')!;
   expect(notice.dataset.state).toBe('error');
   expect(document.querySelector('[data-testid=firewall-outcome]')).toBeNull();
+  expect(document.querySelector('[data-testid=firewall-allow]')).toBeNull();
+});
+
+test('a public network says how to mark it private, and offers no rule Windows would not apply there', async () => {
+  const onPublic: FirewallStatus = { state: 'public', networks: ['public'], allowed: [], blocked: [] };
+  const call = vi.fn(async (method: string) => (method === 'tailscale.status' ? tailscaleOff : onPublic));
+  const store = $state({
+    owner: true, principal: 'owner', connection: 'ready', endpointUrl: null, deviceInvite: null, sessions: [],
+    settings: { listenOnLan: true, publicUrl: null }, client: { call },
+    addDevice: vi.fn(async () => {}), saveSettings: vi.fn(async () => true),
+  });
+  mounted = mount(PhoneSettings, { target: document.body, props: { store: store as unknown as Store } });
+  await settle();
+  const notice = document.querySelector<HTMLElement>('[data-testid=firewall-notice]')!;
+  expect(notice.dataset.state).toBe('public');
+  expect(notice.textContent).toContain(strings.group.lan.public);
   expect(document.querySelector('[data-testid=firewall-allow]')).toBeNull();
 });

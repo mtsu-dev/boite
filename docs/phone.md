@@ -137,14 +137,24 @@ dismissed. An answer covers only the category of the network the machine was on,
 public or private, so the same network classified the other way later blocks the
 core again. In every case a phone gets a page that never loads.
 
+Boite opens the core on private networks only. A public network (a café, a
+hotel) is one Windows means to keep closed, so the core stays closed there too:
+the owner marks the network private in Windows settings to reach the machine
+from it.
+
 `firewall.status` reads the enabled inbound rules naming the core's executable
 and the category of each connected network, Tailscale's adapter aside since
-Tailscale opens it itself. A block wins over an allow, and a profile with the
-firewall off counts as allowed. `firewall.allow` runs one script as administrator
+Tailscale opens it itself, and judges the private networks alone. A block wins
+over an allow, and a profile with the firewall off counts as allowed. A machine
+on public or work networks only reads `public`, with no button: no rule of
+Boite's applies there. `firewall.allow` runs one script as administrator
 through Windows' own prompt: it deletes every inbound rule naming the executable,
-then adds one named Boite that allows its TCP connections on every profile. A
-refused prompt answers `detail: 'cancelled'` and changes nothing. Both methods
-are owner only; elsewhere than Windows the status is `unsupported`.
+then adds one named Boite that allows its TCP connections on the Private
+profile. A rule from an older Boite that allowed every profile stays as it is
+while the private network reads allowed: `firewall.allow` changes nothing then,
+and only deletes it when it asks for a new rule. A refused prompt answers
+`detail: 'cancelled'` and changes nothing. Both methods are owner only;
+elsewhere than Windows the status is `unsupported`.
 
 Turning on Reachable on the local network calls `firewall.allow` at once, while
 the owner is at the switch, so once the rule is in place Windows' own prompt
@@ -152,9 +162,9 @@ never comes up; a refused or failed allow leaves it to come up at the next
 start. While the core
 listens on the network and Windows does not let it through, the Phone app card
 and the Add a device panel say so, with Allow in Windows Firewall.
-`?fake=1&firewall=blocked` and `?fake=1&firewall=unset` show those states;
-`?fake=1&firewall=refused` shows `blocked` with an administrator prompt nobody
-accepts.
+`?fake=1&firewall=blocked`, `?fake=1&firewall=unset` and
+`?fake=1&firewall=public` show those states; `?fake=1&firewall=refused` shows
+`blocked` with an administrator prompt nobody accepts.
 
 Two things guard the socket whatever it is bound to. The `Origin` header must be
 absent, one of the shell origins, the core's own origin, or an origin a machine

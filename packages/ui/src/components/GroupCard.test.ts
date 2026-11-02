@@ -2,6 +2,7 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import { confirm } from '../lib/confirm.svelte';
 import { FakeClient } from '../lib/fake-client';
+import { fakePolicy } from '../lib/fake-client/policy';
 import { Store, store as primary } from '../lib/store.svelte';
 import { fill, strings } from '../lib/strings';
 import { workspace } from '../lib/workspace.svelte';
@@ -299,4 +300,56 @@ test('a paired device sees nothing without a group, and only the members in one'
   for (const control of ['group-add-device', 'add-device', 'group-member-remove', 'group-device', 'group-device-remove', 'group-leave', 'group-sync', 'group-join-input', 'group-rename-start']) {
     expect(one(control), control).toBeNull();
   }
+});
+
+/** An owner grouped alone on a machine with no public address, its own line drawn under its row. */
+async function onLan(options: ConstructorParameters<typeof FakeClient>[0]): Promise<Store> {
+  const target = new Store();
+  target.machineId = 'first';
+  target.attach(new FakeClient({ delayMs: 0, principal: 'owner', coreId: 'core-first', coreName: 'First', lan: true, ...options }));
+  await target.connect();
+  opened.push(target);
+  expect(await target.createGroup('Home')).toBe(true);
+  draw(target);
+  await settle();
+  return target;
+}
+
+const reach = () => one('own-reach');
+
+test('a grouped machine names the address it listens on in this network, and no longer says it listens only on itself', async () => {
+  await onLan({ firewall: 'unsupported' });
+  expect(reach()!.dataset.state).toBe('ready');
+  expect(reach()!.textContent).toContain(fill(strings.group.lan.ready, { address: '192.168.1.20:8777' }));
+  expect(document.body.textContent).not.toContain(strings.group.loopback);
+});
+
+test('Windows still closed: the owner allows Boite on private networks, then the line names the address', async () => {
+  const first = await onLan({ firewall: 'unset' });
+  expect(reach()!.dataset.state).toBe('closed');
+  expect(reach()!.textContent).toContain(strings.group.lan.closed);
+  const call = vi.spyOn(first.client!, 'call');
+  const allow = one<HTMLButtonElement>('own-reach-allow')!;
+  expect(allow.disabled).toBe(false);
+  expect(allow.textContent).toBe(strings.group.lan.allow);
+  allow.click();
+  await vi.waitFor(() => { flushSync(); expect(reach()!.dataset.state).toBe('ready'); });
+  expect(call).toHaveBeenCalledWith('firewall.allow', {});
+  expect(reach()!.textContent).toContain('192.168.1.20:8777');
+});
+
+test('a public network says Windows keeps Boite closed there and how to change it, with nothing to press', async () => {
+  await onLan({ firewall: 'public' });
+  expect(reach()!.dataset.state).toBe('public');
+  expect(reach()!.textContent).toContain(strings.group.lan.public);
+  expect(one('own-reach-allow')).toBeNull();
+});
+
+test('a policy that keeps the machine off the local network says so, locked, instead of offering the firewall', async () => {
+  // `network.lan: false` locks the key; groups stay allowed, so the machine is still grouped.
+  await onLan({ firewall: 'unset', policy: fakePolicy({ network: { lan: false } }) });
+  expect(reach()!.dataset.state).toBe('policy');
+  expect(reach()!.textContent).toContain(strings.group.lan.policy);
+  expect(reach()!.querySelector('[data-testid="policy-lock"]')).not.toBeNull();
+  expect(one('own-reach-allow')).toBeNull();
 });
