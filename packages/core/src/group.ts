@@ -301,8 +301,8 @@ export class GroupStore {
     this.#onTailnet = this.core.network.also(wanted && this.tailnet !== null ? this.tailnet.ip : null);
   }
 
-  /** Contacts changed: the tailnet listener follows. */
-  relisten(): void { if (!this.#closed && this.#live) this.#listen(this.roster !== null); }
+  /** Contacts changed: the tailnet listener follows. The network changed (`probe`): the tailnet address and the published entry too, now rather than at the next tick. */
+  relisten(probe = false): void { if (this.#closed || !this.#live) return; if (probe) this.#background(this.#refresh().then(() => this.syncPending())); else this.#listen(this.roster !== null); }
 
   #card(): CoreCard {
     const { coreId, publicKey } = this.core.coordination.card();

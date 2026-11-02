@@ -3,6 +3,7 @@ import { machineHealth, PRIMARY_PATIENCE_MS, Workspace } from './workspace.svelt
 import { reveal } from './reveal';
 import { Store, store as primary } from './store.svelte';
 import { FakeClient } from './fake-client';
+import { WsClient, type SocketLike } from './client';
 import { upsertEnvironment } from './endpoint';
 import * as endpoints from './endpoint';
 import * as appOrigin from './app-origin';
@@ -956,4 +957,37 @@ test('a tapped limit alert opens Limits on the machine it names, unless the user
   remote.coreId = pc;
   await stale;
   expect([w.active === a, a.page]).toEqual([true, 'chat']);
+});
+
+test('a network change one machine reports tries every machine that is not connected at once, and the group too', async () => {
+  const { w, a, ca } = await setup();
+  // A machine out of reach: each socket fails, and the client would wait a minute before the next.
+  const opened: string[] = [];
+  const failing = (url: string): SocketLike => {
+    opened.push(url);
+    const socket: SocketLike = { onopen: null, onmessage: null, onclose: null, onerror: null, send: () => undefined, close: () => socket.onclose?.({ code: 1006 }) };
+    setTimeout(() => { socket.onerror?.(); socket.onclose?.({ code: 1006 }); }, 0);
+    return socket;
+  };
+  const far = new Store();
+  far.attach(new WsClient({ url: 'http://100.64.0.9:1', token: 'key', socketFactory: failing, backoff: () => 60_000 }));
+  await far.connect();
+  w.machines = [...w.machines, { id: 'http://100.64.0.9:1', label: 'Far', store: far }];
+  expect(opened).toHaveLength(1);
+  expect(far.connection).toBe('connecting');
+  const reconcile = vi.spyOn(w.groups, 'reconcile');
+  const stop = w.groups.start();
+  try {
+    await waitFor(() => reconcile.mock.calls.length > 0);
+    reconcile.mockClear();
+    // Tailscale came up on the machine that answers: its core says so.
+    ca.changeNetwork(['100.64.0.15', '192.168.1.20']);
+    await waitFor(() => opened.length === 2);
+    expect(reconcile).toHaveBeenCalled();
+    expect(a.connection).toBe('ready');
+  } finally {
+    stop();
+    far.client?.close();
+    far.detach();
+  }
 });

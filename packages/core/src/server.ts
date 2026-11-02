@@ -24,6 +24,7 @@ import { clientField, logConnectionClosed } from './server/connection-log.ts';
 import { handleFrame, refuseFrame } from './server/frame.ts';
 import { authenticateToken } from './server/hello.ts';
 import { FrameQueue } from './server/frame-queue.ts';
+import { NetworkWatch, ownerPresent } from './network-watch.ts';
 import { Refusals } from './server/refusals.ts';
 import { ticketedFile, viewPage } from './server/tickets.ts';
 export { ServerConnection } from './server/connection.ts';
@@ -435,6 +436,8 @@ export function startServer(options: ServerOptions): RunningServer {
   const app = appOrigin();
   const connections = new Set<ServerConnection>();
   const helloTimers = new Map<ServerConnection, ReturnType<typeof setTimeout>>();
+  // Owner windows hear when this machine's addresses change, and the group's own addresses and tailnet listener follow at once.
+  const network = new NetworkWatch({ live: () => connections.size > 0, wanted: () => ownerPresent(connections), changed: (addresses) => { core.bus.emit('network.changed', { addresses }); core.group.relisten(true); } });
   /** The counted peer of each open socket from another machine, until it closes. */
   const peers = new Map<ServerConnection, string>();
   function* waitingPeers(): Generator<string> {
@@ -632,6 +635,7 @@ export function startServer(options: ServerOptions): RunningServer {
         const connection = socket.data.connection;
         connection.attach(socket as ServerWebSocket<SocketData>);
         connections.add(connection);
+        network.wake();
         if (socket.data.peer !== null) peers.set(connection, socket.data.peer);
         helloTimers.set(connection, setTimeout(() => {
           helloTimers.delete(connection);
@@ -873,6 +877,7 @@ export function startServer(options: ServerOptions): RunningServer {
       stopping = true;
       incoming.close();
       off();
+      network.sleep();
       if (schedulerTimer !== null) clearTimeout(schedulerTimer);
       schedulerTimer = null;
       pendingScheduler = null;
