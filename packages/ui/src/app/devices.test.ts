@@ -26,7 +26,7 @@ test('Add a device draws one QR code of the phone part, with no code to type', a
   await waitFor(() => document.querySelector('[data-testid=add-device-qr] svg') !== null);
   expect(document.querySelector('[data-testid=add-device-code]')).toBeNull();
   // The phone's link and the invitation a computer joins with: one link, copied whole.
-  expect(store.deviceInvite!.url).toMatch(/^http:\/\/192\.168\.1\.20:8777\/\?grant=[^#]+#join=/);
+  expect(store.deviceInvite!.url).toMatch(/^http:\/\/100\.101\.102\.103:8777\/\?grant=[^#]+#join=/);
   // A machine in no group starts one of its own for the device.
   await waitFor(() => store.group !== null);
   expect(store.group!.cores.map(core => core.coreId)).toEqual([store.group!.self]);

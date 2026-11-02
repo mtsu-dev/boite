@@ -201,15 +201,16 @@ used twice, or after its time, is refused by name; the same device asking again
 after a lost answer gets the same answer. The core token itself stays in
 `<dataDir>/core.json`, where the shell reads it, and travels nowhere.
 
-On a machine with no HTTPS address, the link names its MagicDNS name,
-`http://<machine>.<tailnet>.ts.net:<port>/?grant=`, when it is on a tailnet
+On a machine with no HTTPS address, the link names an address written as
+numbers, its tailnet one when it has one (`http://100.x.y.z:<port>/?grant=`):
+a name over plain HTTP could be answered by the LAN's resolver
 ([groups](groups.md#the-network)). When its Tailscale is ready to serve it
 (`tailscale.status` answers `off`), the card also offers **HTTPS via
 Tailscale**, for the owner only and unless an admin policy locks
 `network.tailscaleServe`: one click runs `tailscale.enable`, as the switch of
 [Through Tailscale](#through-tailscale) does, and draws a new link through
-`https://<machine>.<tailnet>.ts.net`. Tailscale in any other state shows nothing
-more there; that switch explains it.
+`https://<machine>.<tailnet>.ts.net`, which names the machine. Tailscale in
+any other state shows nothing more there; that switch explains it.
 
 Close hides the QR code; the link stays valid until it is used or expires. The
 devices of the group are listed in the same card as its machines, each with the
@@ -228,13 +229,17 @@ its UI, which otherwise takes its own page for a machine's. There the app opens 
 in alone. A scanned or pasted link names the machine that drew it. The page is
 HTTPS, and a browser blocks a plain `http://` socket from it, the device's own
 loopback excepted. A link to a machine with no HTTPS address therefore says so
-in one line and opens that machine's own page at the link, a top-level
-navigation, which a browser allows from HTTPS (`openOnMachine` in
-`lib/app-origin.ts`). The page the machine serves takes the grant from its
-address and pairs there over plain HTTP: its device key needs no WebCrypto
+in one line and opens that machine's own page, a top-level navigation, which a
+browser allows from HTTPS (`machinePage` and `openOnMachine` in
+`lib/app-origin.ts`). The page is built from the machine's address the link
+names, its `core` parameter when a UI served it, plus the grant: only an
+absolute `http:` address with no credentials, query or fragment, so a host typed
+without a scheme or another scheme is refused as an invalid address and nothing
+opens. The page the machine serves takes the grant from its address and pairs
+there over plain HTTP: its device key needs no WebCrypto
 ([groups](groups.md#devices)). The `#join=` part of the link, the invitation a
-computer pastes under **Join**, is left out of that navigation, so it never sits
-in the phone's address bar or history. The phone then uses Boite on that page;
+computer pastes under **Join**, is not carried, so it never sits in the phone's
+address bar or history. The phone then uses Boite on that page;
 for the app itself, give the machine an HTTPS address. The first machine
 added becomes the one the app shows and opens on next time; the group brings the
 others.

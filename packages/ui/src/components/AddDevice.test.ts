@@ -17,7 +17,7 @@ afterEach(async () => {
 
 const one = <T extends HTMLElement>(testid: string) => document.querySelector<T>(`[data-testid="${testid}"]`);
 
-/** A machine with no HTTPS address, on a tailnet: its link names its MagicDNS name over plain HTTP. */
+/** A machine with no HTTPS address, on a tailnet: its link names its tailnet address, written as numbers. */
 async function drawn(): Promise<Store> {
   const store = new Store();
   store.attach(new FakeClient({ delayMs: 0, principal: 'owner' }));
@@ -29,9 +29,9 @@ async function drawn(): Promise<Store> {
   return store;
 }
 
-test('a machine with no HTTPS address names its MagicDNS name, and turns on HTTPS through a ready Tailscale in one click', async () => {
+test('a machine with no HTTPS address shows its tailnet number, and turns on HTTPS through a ready Tailscale in one click', async () => {
   const store = await drawn();
-  expect(one<HTMLInputElement>('add-device-link')!.value).toMatch(/^http:\/\/boite-pc\.tail0d6070\.ts\.net:8777\/\?grant=/);
+  expect(one<HTMLInputElement>('add-device-link')!.value).toMatch(/^http:\/\/100\.101\.102\.103:8777\/\?grant=/);
   await vi.waitFor(() => { flushSync(); expect(one('add-device-tailscale-enable')).not.toBeNull(); });
   expect(one('add-device-tailscale')!.textContent).toContain(fill(strings.group.tailscale.hint, { url: 'https://boite-pc.tail0d6070.ts.net' }));
   const call = vi.spyOn(store.client!, 'call');
@@ -65,7 +65,7 @@ test('a link that is already HTTPS asks Tailscale nothing, and only the owner is
   await device.connect();
   opened.push(device);
   const asked = vi.spyOn(device.client!, 'call');
-  device.deviceInvite = { url: 'http://boite-pc.tail0d6070.ts.net:8777/?grant=device-test-grant', expiresAt: Date.now() + 60_000 };
+  device.deviceInvite = { url: 'http://100.101.102.103:8777/?grant=device-test-grant', expiresAt: Date.now() + 60_000 };
   component = mount(AddDevice, { target: document.body, props: { store: device } });
   flushSync();
   await Promise.resolve();

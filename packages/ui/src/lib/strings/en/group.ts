@@ -32,7 +32,7 @@ export const strings = {
     leaveBody: 'This machine forgets the group. Phones added on this machine leave the group with it.',
     lanHint: 'A phone reaches this link once the local network is on and Boite has restarted.',
     tailscale: {
-      hint: 'The Boite app on a phone opens HTTPS links only. Tailscale can serve this machine at {url}.',
+      hint: 'With HTTPS through Tailscale, the link names this machine: {url}. The Boite app on a phone opens it.',
       enable: 'HTTPS via Tailscale',
       enabling: 'Turning on HTTPS'
     },
