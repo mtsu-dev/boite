@@ -118,24 +118,17 @@ owner's app is connected to both machines, the app relays the sealed request,
 as it does for two machines linked by hand ([coordination](coordination.md)).
 
 A client is sent to fewer of them, because its link is not sealed: to the
-HTTPS address alone when the machine has one, and otherwise to its MagicDNS
-name first, then to an address written as numbers. Any other name over plain
-HTTP is whatever the client's resolver says it is, so a client never sends a
-ticket or a key to one. A MagicDNS name, `<machine>.<tailnet>.ts.net`, is no
-weaker than the number it stands for: Tailscale owns the `ts.net` zone,
-MagicDNS answers it on the tailnet from the daemon on the device itself, and
-public DNS holds no record for a tailnet machine. A device off the tailnet
-resolves nothing there, while the literal 100.x address it would dial instead
-goes to its default gateway, as open to a hostile LAN as a spoofed name. The
-name is the one a person can read, so it comes first. A device sends no
+HTTPS address alone when the machine has one, and otherwise only to an address
+written as numbers. A name over plain HTTP is whatever the client's resolver
+says it is, so a client never sends a ticket or a key to one. A MagicDNS name
+is no exception: on a device that does not accept Tailscale's DNS
+(`--accept-dns=false`, common on Linux servers), the LAN's resolver answers
+`*.ts.net` and can point it anywhere, while a 100.x address is routed through
+Tailscale whatever the LAN says. A name is reached over HTTPS instead
+([Through Tailscale](phone.md#through-tailscale)). A device sends no
 secret at all, only a signature made for the machine it means, but what follows
 its hello is not sealed either, so it keeps to the same addresses. A link that
-adds a device follows the same rule: a machine with no HTTPS address shows
-`http://<machine>.<tailnet>.ts.net:<port>/?grant=` on a tailnet, its LAN
-address otherwise. The core (`ticketAddresses` and `GroupStore.ownAddress`,
-`packages/core/src/group/addresses.ts` and `group.ts`) and the UI
-(`usableAddresses`, `lib/group-addresses.ts`, which the in-memory core uses
-too) hold the same rule.
+adds a device follows the same rule.
 
 The core reads its tailnet address off Tailscale's own network interface
 (`tailscale0`, `Tailscale`, or a `utun` on macOS or `tun` on Android that also
@@ -277,10 +270,9 @@ the ticket becomes is the client's for that member, and lives as any key the
 group issued.
 
 The hop between the two members carries client traffic, so it follows the
-client's rule: the member's HTTPS address when it has one, otherwise its
-MagicDNS name or one written as numbers. A member that gives none of them, a
-name outside `ts.net` alone, is carried by nobody and shown as giving no usable
-address. A direct ticket goes
+client's rule: the member's HTTPS address when it has one, otherwise one
+written as numbers. A member that gives neither, a MagicDNS name alone, is
+carried by nobody and shown as giving no usable address. A direct ticket goes
 to an address every machine the client was paired with by hand allows, so a
 common one is enough. A carrier dials whichever of its own addresses for the
 member answers, which the client does not choose: nobody carries the client
@@ -673,8 +665,7 @@ per finding of the security review: an invitation reused after a removal, a
 ticket replayed after a restart, keys left by a crash, an answer landing after
 its sender was removed, a rewritten status line, a join recorded and sent
 again, requests held open from one address, the owner's app relaying between
-two members that cannot reach each other. `packages/ui/src/lib/group-links.test.ts`,
-`group-addresses.test.ts` (a MagicDNS name before the number, no other name)
+two members that cannot reach each other. `packages/ui/src/lib/group-links.test.ts`
 and `workspace.test.ts` hold the client rules: which addresses get a key, who
 says who is in a group, and what is asked before a held key is sent, and when
 a member is carried by another and moved back to its own address.

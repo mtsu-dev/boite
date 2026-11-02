@@ -214,15 +214,16 @@ export class GroupStore {
 
   /**
    * The address a pairing link names for a machine of a group, or null. A phone
-   * opens that link and sends its grant there, so it follows the client's rule
-   * (`ticketAddresses`): the HTTPS address, else the MagicDNS name, else a
-   * literal address. Never another name over plain HTTP, which is whatever the
-   * phone's resolver says it is.
+   * opens that link and sends its grant there, so it is an address whose
+   * transport says who answers: the HTTPS one, else a literal address. Never a
+   * name over plain HTTP, which is whatever the phone's resolver says it is.
    */
   ownAddress(): string | null {
     const mine = this.roster?.cores.find((core) => core.coreId === this.selfId());
     const dialable = mine?.addresses.filter((address) => !/^https?:\/\/(127\.0\.0\.1|\[::1\]|localhost)(:|$)/.test(address)) ?? [];
-    return ticketAddresses(dialable)[0] ?? null;
+    return dialable.find((address) => address.startsWith('https://'))
+      ?? dialable.find((address) => /^http:\/\/(\d{1,3}(\.\d{1,3}){3}|\[[0-9a-f:]+\])(:\d+)?$/i.test(address))
+      ?? null;
   }
 
   /** A page served by one member opens its socket on another: the origin is a member's address. */
@@ -330,8 +331,7 @@ export class GroupStore {
     // Until the server is bound there is nothing to read: what was last published stands.
     if (!this.#live) return ticketAddresses([...(this.roster?.cores.find((core) => core.coreId === this.selfId())?.addresses ?? []), ...served]);
     const ip = tailnetAddress();
-    // The name last read for that address: a ticket or a key made for it stays good while the address does.
-    const tailnet = ip === null ? null : { ip, name: this.tailnet?.ip === ip ? this.tailnet.name : null };
+    const tailnet = ip === null ? null : { ip, name: null };
     const listening = { ...this.core.boundEndpoint(), tailnet: this.#onTailnet && ip === this.tailnet?.ip, publicUrl: this.core.settings.get().publicUrl };
     return ticketAddresses([...advertisedAddresses(listening, tailnet), ...served]);
   }

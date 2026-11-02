@@ -13,9 +13,10 @@
  *
  * The name is for other cores, whose requests are sealed to this machine's
  * key: a name that resolved elsewhere would reach a machine that reads
- * nothing. Clients, whose link is not sealed, are given a name over plain
- * HTTP only when it is a MagicDNS name (`ticketAddresses`, `ownAddress`,
- * `usableAddresses` in the UI).
+ * nothing. Clients are not given a name over plain HTTP (`ownAddress`,
+ * `usableAddresses` in the UI), a MagicDNS one included: on a machine that
+ * does not accept Tailscale's DNS, the LAN's resolver answers `*.ts.net`,
+ * while a 100.x address is routed through Tailscale whatever the LAN says.
  */
 
 import { networkInterfaces, type NetworkInterfaceInfo } from 'node:os';
@@ -131,34 +132,16 @@ export function advertisedAddresses(
   return [...new Set(addresses)].slice(0, ADDRESSES_MAX);
 }
 
-/** `http://` and an address written as numbers, IPv4 or bracketed IPv6: nothing a resolver gets a say in. */
-const LITERAL_HTTP = /^http:\/\/(\d{1,3}(\.\d{1,3}){3}|\[[0-9a-f:]+\])(:\d+)?$/i;
-
-/** One DNS label: letters, digits and inner hyphens, 63 characters at most. */
-const LABEL = '[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?';
-
-/** `http://` and a MagicDNS name, `<machine>.<tailnet>.ts.net`, as an origin: no user, path or query. */
-const MAGIC_DNS_HTTP = new RegExp(`^http://${LABEL}(?:\\.${LABEL})+\\.ts\\.net(?::\\d+)?$`, 'i');
-
 /**
  * The addresses of a machine a client may send a ticket or a key to: the HTTPS
- * ones when it has any, else its MagicDNS names, then the ones written as
- * numbers. It is the client's own rule (`usableAddresses` in the UI), held by
- * the core too: a ticket is made for one of them, and a key lives while the
- * machine still gives the one it was issued for.
- *
- * Over plain HTTP a name is whatever the resolver says, so names are refused,
- * except under `ts.net`. Tailscale owns that zone; MagicDNS answers it on the
- * tailnet, from the daemon on the device itself; public DNS holds no record for
- * a tailnet machine. A device off the tailnet resolves nothing there, and sends
- * its literal 100.x address to its default gateway instead, so a hostile LAN can
- * answer the number as easily as it could answer a spoofed name. The name is no
- * weaker than the number, and it is the one a person can read, so it goes first.
+ * ones when it has any, else the ones written as numbers. It is the client's
+ * own rule (`usableAddresses` in the UI), held by the core too: a ticket is
+ * made for one of them, and a key lives while the machine still gives the one
+ * it was issued for.
  */
 export function ticketAddresses(addresses: readonly string[]): string[] {
   const https = addresses.filter((address) => address.startsWith('https://'));
-  if (https.length > 0) return https;
-  return [...addresses.filter((address) => MAGIC_DNS_HTTP.test(address)), ...addresses.filter((address) => LITERAL_HTTP.test(address))];
+  return https.length > 0 ? https : addresses.filter((address) => /^http:\/\/(\d{1,3}(\.\d{1,3}){3}|\[[0-9a-f:]+\])(:\d+)?$/i.test(address));
 }
 
 /**

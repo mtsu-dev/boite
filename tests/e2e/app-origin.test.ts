@@ -181,7 +181,7 @@ test('the app on an address no machine serves scans one machine\'s code and reac
   await paster.waitFor(`globalThis.__boiteTest.workspace.machines.length === 2 && globalThis.__boiteTest.workspace.machines.every(machine => machine.store.connection === 'ready')`, 45_000);
   expect((await a.call('group.get', {}))?.devices).toHaveLength(2);
 
-  // A machine with no HTTPS address, named the way a tailnet names it: a socket to it from this HTTPS page is mixed
+  // A machine with no HTTPS address, on another host than this device: a socket to it from this HTTPS page is mixed
   // content, so the app opens the machine's own page at the link, and the page takes the grant from its address.
   const plainOrigin = `http://machine.test:${new URL(first.url).port}`;
   await a.call('settings.set', { browserOrigins: [plainOrigin] });

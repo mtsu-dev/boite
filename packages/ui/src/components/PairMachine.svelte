@@ -4,8 +4,8 @@
   import { parsePairingLink } from '../lib/endpoint';
   import { fill, strings } from '../lib/strings';
   import InfoTip from './InfoTip.svelte';
-  import { PAIR_QUERY_PARAM, withoutTrailingSlashes } from '@boite/contracts';
-  import { appPage, openOnMachine, reachableFromApp } from '../lib/app-origin';
+  import { GRANT_QUERY_PARAM, PAIR_QUERY_PARAM } from '@boite/contracts';
+  import { appPage, machinePage, openOnMachine, reachableFromApp } from '../lib/app-origin';
   let { mobile = false, onpaired }: { mobile?: boolean; onpaired?: () => void } = $props();
   let link = $state(''),
     url = $state(''),
@@ -70,13 +70,15 @@
     if (busy) return;
     // The app's page is HTTPS, where a socket to plain http is blocked; a top-level navigation is not.
     // The machine's own page takes the grant, or the token, from its address and pairs there.
-    const target = manual ? url.trim() : parsePairingLink(link)?.url;
+    const parsed = manual ? null : parsePairingLink(link);
+    const target = manual ? url.trim() : parsed?.url;
     if (app && target !== undefined && !reachableFromApp(target)) {
-      let host = target;
-      try { host = new URL(target).host; } catch { /* the sentence names the text as typed */ }
+      // Built from what was parsed, so a link naming another core opens that core's page, never the app's again.
+      const page = manual ? machinePage(target, PAIR_QUERY_PARAM, token) : machinePage(target, GRANT_QUERY_PARAM, parsed!.grant);
+      if (page === null) { leaving = null; workspace.error = strings.machines.invalidUrl; return; }
       workspace.error = null;
-      leaving = fill(strings.machines.linkPlainHttp, { host });
-      openOnMachine(manual ? `${withoutTrailingSlashes(target)}/?${PAIR_QUERY_PARAM}=${encodeURIComponent(token)}` : link.trim());
+      leaving = fill(strings.machines.linkPlainHttp, { host: new URL(page).host });
+      openOnMachine(page);
       return;
     }
     leaving = null;
