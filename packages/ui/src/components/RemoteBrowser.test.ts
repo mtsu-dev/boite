@@ -272,6 +272,42 @@ test('a mouse reaches the page as it moves: hover, a press past the click thresh
   expect(inputs.map(({ frameId: _, ...input }) => input)).toEqual([{ kind: 'tap', ...at(196, 151) }]);
 });
 
+test('a held mouse is let go on the page when the view fails mid-drag, and when the view closes', async () => {
+  client = new FakeClient({ delayMs: 0, principal: 'session' }); store = new Store(); store.attach(client); await store.connect();
+  const original = client.call.bind(client), inputs: any[] = [];
+  let n = 0, failing = false;
+  vi.spyOn(client, 'call').mockImplementation(((method: string, params: any) => {
+    if (method === 'browser.remoteFrame') return failing ? Promise.reject(new Error('Page.captureScreenshot timed out')) : Promise.resolve(frameAt(`f${++n}`));
+    if (method === 'browser.remoteInput') { inputs.push({ ...params.input, frameId: params.frameId }); return Promise.resolve({ ok: true }); }
+    return original(method as never, params as never);
+  }) as typeof client.call);
+  Object.defineProperty(Element.prototype, 'setPointerCapture', { configurable: true, value: () => {} });
+  vi.spyOn(HTMLImageElement.prototype, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 390, height: 300, right: 390, bottom: 300, x: 0, y: 0, toJSON() {} } as DOMRect);
+  vi.useFakeTimers();
+  app = mount(RemoteBrowser, { target: document.body, props: { store, threadId: 't-trace' } }); await settle();
+  await vi.advanceTimersByTimeAsync(1); await settle();
+  const screen = () => document.querySelector<HTMLButtonElement>('.screen')!;
+  const mouse = (type: string, x: number, y: number) => { const event = new MouseEvent(type, { clientX: x, clientY: y, button: 0, bubbles: true }); Object.defineProperty(event, 'pointerType', { value: 'mouse' }); screen().dispatchEvent(event); };
+  const at = (x: number, y: number) => ({ x: x / 390, y: y / 300, width: 780, height: 600 });
+  const sent = () => inputs.map(({ frameId: _, ...input }) => input);
+  mouse('pointerdown', 100, 150); mouse('pointermove', 140, 150); await settle();
+  failing = true;
+  await vi.advanceTimersByTimeAsync(2000); await settle();
+  expect(screen().disabled).toBe(true);
+  mouse('pointerup', 160, 150); await settle();
+  expect(sent()).toEqual([
+    { kind: 'pointer', action: 'down', ...at(100, 150) },
+    { kind: 'pointer', action: 'move', ...at(140, 150), buttons: 1 },
+    { kind: 'pointer', action: 'up', ...at(160, 150) },
+  ]);
+  failing = false; inputs.length = 0;
+  await vi.advanceTimersByTimeAsync(2000); await settle();
+  expect(screen().disabled).toBe(false);
+  mouse('pointerdown', 100, 150); mouse('pointermove', 140, 150); await settle();
+  unmount(app); app = undefined; await settle();
+  expect(sent().at(-1)).toEqual({ kind: 'pointer', action: 'up', ...at(140, 150) });
+});
+
 test('a tap on a <select> draws its list here, since Chrome draws its own on the agent’s machine, and a pick goes back as choose', async () => {
   client = new FakeClient({ delayMs: 0, principal: 'session' }); store = new Store(); store.attach(client); await store.connect();
   const original = client.call.bind(client), inputs: any[] = [];

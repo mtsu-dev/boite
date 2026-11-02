@@ -609,7 +609,11 @@ sent as one at the latest point. A selection, a slider or a captcha's puzzle
 piece follows the hand and sees its path and timing. Before 2026-11-02 a
 mouse drag left only at the release, replayed in four instant steps, which a
 captcha rejects, and a hold longer than the five seconds a frame takes input
-was refused with "refresh the live browser". The
+was refused with "refresh the live browser". A held button is always let go:
+the viewer sends the release to the machine of the press even after an error,
+a pause or a closed panel, the core accepts a release from a viewer holding the
+button once its frames expired, and lets go for a viewer that disconnects
+mid-drag. The
 older `drag` input stays for clients from before. A click without movement
 stays a tap: a second click selects the word, a third the paragraph, and Shift
 with a click extends the selection. Control or Command

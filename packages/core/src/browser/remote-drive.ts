@@ -47,6 +47,8 @@ export class RemoteDrive {
   #streams = new Map<string, StreamEntry>();
   /** Per client and conversation, the tab whose own page it shows and when it last said so (`browser.remoteWatch`). */
   #shown = new Map<string, { tabId: string; at: number }>();
+  /** Per client and conversation, the left button its viewer holds down on a tab, and where it last was. */
+  #held = new Map<string, { threadId: ThreadId; tabId: string; point: { x: number; y: number } }>();
   #context: RemoteDriveContext;
 
   constructor(context: RemoteDriveContext) {
@@ -57,6 +59,7 @@ export class RemoteDrive {
     for (const viewer of this.#viewers.values()) viewer.frames = viewer.frames.filter(saved => saved.frame.tabId !== id);
     for (const [key, entry] of this.#streams) if (entry.tabId === id) this.#stopStream(key);
     for (const [key, shown] of this.#shown) if (shown.tabId === id) this.#shown.delete(key);
+    for (const [key, held] of this.#held) if (held.tabId === id) this.#held.delete(key);
   }
 
   /** The tab moved to another document, size or color scheme: no viewer is shown what it was before. */
@@ -212,10 +215,30 @@ export class RemoteDrive {
     this.#viewer(threadId, connection);
     const problem = remoteBrowserInputError(input);
     if (problem) throw refused(problem);
-    const saved = this.#viewers.get(`${connection.id}:${threadId}`)?.frames.find(entry => entry.frame.id === frameId && Date.now() - entry.frame.at < FRAME_LIFE_MS);
-    if (!saved) throw refused('refresh the live browser before interacting');
+    const key = `${connection.id}:${threadId}`, held = this.#held.get(key);
+    const saved = this.#viewers.get(key)?.frames.find(entry => entry.frame.id === frameId && Date.now() - entry.frame.at < FRAME_LIFE_MS);
+    if (!saved) {
+      // A release ends only this viewer's own drag: it still goes out once the frames the viewer
+      // could aim at expired, so a link that stalled mid-drag never leaves the page's button down.
+      if (input.kind === 'pointer' && input.action === 'up' && held) { this.#held.delete(key); await this.#release(held); return { ok: true }; }
+      throw refused('refresh the live browser before interacting');
+    }
     const tab = this.#context.tabOf(threadId, saved.frame.tabId);
-    return this.#context.use(tab, () => this.#input(tab, saved, input));
+    const result = await this.#context.use(tab, () => this.#input(tab, saved, input));
+    if (input.kind === 'pointer') {
+      const point = { x: Math.min(saved.page.width - 1, input.x * saved.page.width), y: Math.min(saved.page.height - 1, input.y * saved.page.height) };
+      if (input.action === 'up') this.#held.delete(key);
+      else if (input.action === 'down' || (input.buttons && held?.tabId === tab.id)) this.#held.set(key, { threadId, tabId: tab.id, point });
+    }
+    return result;
+  }
+
+  /** Lets go of a button a viewer left held, where it was last seen. A tab already gone has nothing to let go. */
+  async #release(held: { threadId: ThreadId; tabId: string; point: { x: number; y: number } }): Promise<void> {
+    let tab: Tab;
+    try { tab = this.#context.tabOf(held.threadId, held.tabId); } catch { return; }
+    await this.#context.use(tab, () => this.#pointer(tab, 'up', held.point, 0));
+    tab.frame = null;
   }
 
   async #input(tab: Tab, saved: Saved, input: RpcParams<'browser.remoteInput'>['input']): Promise<{ ok: true; picker?: RemoteBrowserPicker }> {
@@ -335,6 +358,8 @@ export class RemoteDrive {
 
   disconnect(connectionId: string): void {
     for (const id of this.#viewers.keys()) if (id.startsWith(`${connectionId}:`)) this.#viewers.delete(id);
+    // A viewer gone mid-drag lets go of the page.
+    for (const [id, held] of this.#held) if (id.startsWith(`${connectionId}:`)) { this.#held.delete(id); void this.#release(held).catch(() => {}); }
     // A screencast nobody else watches stops now, not at its idle timer.
     for (const [key, entry] of this.#streams) if (!entry.asking && !this.#watched(key)) this.#stopStream(key);
   }

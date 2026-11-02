@@ -184,6 +184,25 @@ real('a viewer on another device watches and drives the tab, and hears it come a
     expect((await selection()).text).toBe('Select these words');
     expect(await evaluate('JSON.stringify(trail)')).toBe(JSON.stringify([[0, 60], [0, 100], [1, 170], [1, 260], [1, 390]]));
     expect(await thrown(act({ kind: 'pointer', action: 'move', ...at(10, 10), buttons: 2 as 1 }))).toThrow('buttons');
+    // A held button is let go even after the viewer's frames expired, and when the viewer leaves mid-drag;
+    // a release with nothing held still needs a live frame.
+    await evaluate('getSelection().removeAllRanges(); window.ups = []; addEventListener("mouseup", e => ups.push(Math.round(e.clientX)))');
+    const release = (frameId: string) => phone.call('browser.remoteInput', { threadId, frameId, input: { kind: 'pointer', action: 'up', ...at(10, 10) } });
+    expect(await thrown(release('expired'))).toThrow('refresh');
+    await act({ kind: 'pointer', action: 'down', ...at(100, 369) });
+    await act({ kind: 'pointer', action: 'move', ...at(220, 369), buttons: 1 });
+    await release('expired');
+    expect(await evaluate('JSON.stringify(ups)')).toBe('[220]');
+    // A press on selected text would start a native drag, which swallows the release.
+    await evaluate('getSelection().removeAllRanges()');
+    const tablet = await connect(harness.url, '', { grant: (await owner.call('pairing.grant', {})).grant, client: { name: 'pwa', version: 'test' } });
+    await tablet.call('threads.subscribe', { threadId });
+    await Bun.sleep(150);
+    const held = await picture(tablet.call('browser.remoteFrame', { threadId, tabId }));
+    await tablet.call('browser.remoteInput', { threadId, frameId: held.id, input: { kind: 'pointer', action: 'down', x: 100 / held.width, y: 369 / held.height, width: held.width, height: held.height } });
+    tablet.close();
+    for (let i = 0; i < 50 && Number(await evaluate('ups.length')) < 2; i++) await Bun.sleep(100);
+    expect(await evaluate('JSON.stringify(ups)')).toBe('[220,100]');
     await evaluate('document.querySelector("#name").type = "password"');
     await act({ kind: 'tap', ...at(150, 230) });
     await act({ kind: 'select-all' });
