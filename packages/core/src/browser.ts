@@ -175,6 +175,8 @@ export class AgentBrowser {
   set sleepAfterMs(ms: number) { this.#sleep.afterMs = ms; }
   /** Whether the tab's page is frozen now; a test waits on it rather than on a guess of the time. */
   asleep(tabId: string): boolean { return this.#tabs.get(tabId)?.sleep.asleep ?? false; }
+  /** Ends the tab's renderer as a kill from outside does (the memory guard, the kernel), which never answers; tests crash a page with it. */
+  crashRenderer(tabId: string): Promise<unknown> { return this.#tabs.get(tabId)?.page.send('Page.crash', {}, 1000).catch(() => {}) ?? Promise.resolve(); }
 
   /** What keeps a tab awake with no command running: a viewer, a recording. Its conversation's running turn does too, for a while (`sleep.ts`). */
   #held(tab: Tab): boolean {
@@ -262,6 +264,7 @@ export class AgentBrowser {
     engine.cdp.on('Target.targetCreated', params => void this.#adopt(engine, params.targetInfo as { targetId: string; type: string; openerId?: string; url: string }));
     engine.cdp.on('Target.targetDestroyed', params => this.#gone(engine, String(params.targetId)));
     engine.cdp.on('Target.targetInfoChanged', params => this.#info(engine, params.targetInfo as { targetId: string; url: string; title: string }));
+    engine.cdp.on('Target.targetCrashed', params => this.#crashed(this.#tabAt(engine, String(params.targetId)), String(params.status ?? 'unknown').slice(0, 40)));
     // A desktop app's webview keeps its own download handling.
     if (!engine.hosted) this.#downloads.watch(engine, frameId => [...engine.tabs].map(id => this.#tabs.get(id)).find(tab => tab && (tab.targetId === frameId || tab.frames.has(frameId))) ?? null);
   }
@@ -351,16 +354,25 @@ export class AgentBrowser {
   }
 
   #info(engine: Engine, info: { targetId: string; url: string; title: string }): void {
-    const tab = [...engine.tabs].map(id => this.#tabs.get(id)).find(candidate => candidate?.targetId === info.targetId);
+    const tab = this.#tabAt(engine, info.targetId);
     if (!tab || (tab.url === info.url && tab.title === info.title)) return;
     tab.url = info.url; tab.title = info.title.slice(0, 200);
     this.#changed(tab.threadId);
   }
 
+  /** A tab whose renderer died stays open and loads again at its next use (`sleep.ts`); a viewer gets a new screencast. */
+  #crashed(tab: Tab | undefined, status: string): void {
+    if (!tab) return;
+    this.#sleep.crashed(tab); this.#remote.restart(tab);
+    this.#core.logs.record('warn', `A browser tab's renderer ended (${status}): its page loads again when it is next watched or driven`, { source: 'browser', event: 'browser.tab-crashed', threadId: tab.threadId, data: { status } });
+  }
+
   #gone(engine: Engine, targetId: string): void {
-    const tab = [...engine.tabs].map(id => this.#tabs.get(id)).find(candidate => candidate?.targetId === targetId);
+    const tab = this.#tabAt(engine, targetId);
     if (tab) this.#drop(tab.id);
   }
+
+  #tabAt(engine: Engine, targetId: string): Tab | undefined { return [...engine.tabs].map(id => this.#tabs.get(id)).find(tab => tab?.targetId === targetId); }
 
   /** Forgets a tab whose page is closed or lost. */
   #drop(id: string): void {

@@ -256,6 +256,14 @@ answered (`Target.getTargetInfo` for the tab, within 1 second), and a
 `browser.sleep-late` warning says when the page answered, or that it never did
 within 30 seconds.
 
+A tab whose renderer dies stays open. The memory guard stops the heaviest
+process of the browser when the machine runs short, and that can be a tab's
+renderer, asleep or not. Chromium reports it (`Target.targetCrashed`) and a
+`browser.tab-crashed` warning names its status. Nothing answers for that page
+until it loads again: it is neither frozen nor woken, its screencast stops, and
+its next use, a command or a viewer's frame, reloads it in a new renderer, as
+Chrome reloads a discarded tab once it is shown.
+
 A tab the desktop app hosts gets the same calls through the relay: `Page` and
 `Emulation` are among the domains an agent webview takes. The desktop's own
 pages, the ones the user browses, are suspended once hidden

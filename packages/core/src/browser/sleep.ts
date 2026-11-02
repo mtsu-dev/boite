@@ -43,10 +43,16 @@ export interface SleepState {
   /** Freezing and waking take turns, so a wake asked during a freeze lands after it. */
   turn: Promise<void>;
   dropped: boolean;
+  /**
+   * Its renderer died (killed for memory, or crashed): nothing answers until
+   * the page loads again, which the next use does, as Chrome reloads a
+   * discarded tab when it is shown.
+   */
+  crashed: boolean;
 }
 
 export function sleepState(front = false): SleepState {
-  return { asleep: false, uses: 0, usedAt: Date.now(), heldAt: 0, front, turn: Promise.resolve(), dropped: false };
+  return { asleep: false, uses: 0, usedAt: Date.now(), heldAt: 0, front, turn: Promise.resolve(), dropped: false, crashed: false };
 }
 
 const STEP_MS = 5000;
@@ -94,11 +100,15 @@ export class TabSleep<T extends Sleeper> {
    * focus emulation shows it again, so it goes back on after the page is active;
    * a page that must be raised to draw again is raised last (`front`).
    * A wake that fails leaves the tab asleep, so the next use tries it again.
+   * A page whose renderer died loads again in a new one, which is not frozen.
    */
   wake(tab: T): Promise<void> {
     return this.#queue(tab, async () => {
-      if (!tab.sleep.asleep) return;
-      await this.#step(tab, 'Page.setWebLifecycleState', { state: 'active' });
+      if (!tab.sleep.asleep && !tab.sleep.crashed) return;
+      if (tab.sleep.crashed) {
+        await this.#step(tab, 'Page.reload', {});
+        tab.sleep.crashed = false;
+      } else await this.#step(tab, 'Page.setWebLifecycleState', { state: 'active' });
       await this.#step(tab, 'Emulation.setFocusEmulationEnabled', { enabled: true });
       if (tab.sleep.front) await this.#step(tab, 'Page.bringToFront', {});
       tab.sleep.asleep = false;
@@ -109,7 +119,7 @@ export class TabSleep<T extends Sleeper> {
   schedule(tab: T): void {
     const state = tab.sleep;
     clearTimeout(state.timer);
-    if (state.dropped || state.asleep) return;
+    if (state.dropped || state.asleep || state.crashed) return;
     // setTimeout fires at once past 2^31 - 1 ms.
     const left = Math.min(2 ** 31 - 1, Math.max(0, Math.max(state.usedAt, state.heldAt) + this.afterMs - Date.now()));
     state.timer = setTimeout(() => {
@@ -120,6 +130,13 @@ export class TabSleep<T extends Sleeper> {
       void this.#sleep(tab);
     }, left);
     (state.timer as { unref?: () => void }).unref?.();
+  }
+
+  /** The page's renderer died: it sleeps as it is, at no cost, until its next use loads it again. */
+  crashed(tab: T): void {
+    tab.sleep.crashed = true;
+    tab.sleep.asleep = false;
+    clearTimeout(tab.sleep.timer);
   }
 
   drop(tab: T): void {
@@ -144,7 +161,7 @@ export class TabSleep<T extends Sleeper> {
    */
   #sleep(tab: T): Promise<void> {
     return this.#queue(tab, async () => {
-      if (tab.sleep.asleep || tab.sleep.dropped || tab.sleep.uses > 0 || this.#held(tab) || this.#turnHolds(tab)) return;
+      if (tab.sleep.asleep || tab.sleep.dropped || tab.sleep.crashed || tab.sleep.uses > 0 || this.#held(tab) || this.#turnHolds(tab)) return;
       try {
         await this.#step(tab, 'Emulation.setFocusEmulationEnabled', { enabled: false });
         await this.#step(tab, 'Page.setWebLifecycleState', { state: 'frozen' });

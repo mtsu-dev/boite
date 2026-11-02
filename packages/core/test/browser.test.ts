@@ -3,7 +3,7 @@ import type { BrowserAction } from '@boite/contracts';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { echoThread, startTestCore } from './harness.ts';
-import { createBrowserFixture } from './browser/fixture.ts';
+import { createBrowserFixture, picture } from './browser/fixture.ts';
 import { traceBrowserCommands } from './browser/dialog-trace.ts';
 import { thrown } from './settle.ts';
 
@@ -127,6 +127,25 @@ real('a background tab woken from sleep draws again: its screenshot answers', as
   const shot = await agent.call('browser.command', { threadId, tabId: first, action: { kind: 'screenshot' } });
   expect(Buffer.from(shot.screenshot!.base64, 'base64').subarray(1, 4).toString()).toBe('PNG');
   expect(performance.now() - started).toBeLessThan(10_000);
+}, 150_000);
+
+real('a tab whose renderer was killed loads its page again for the next viewer or command', async () => {
+  const { harness, owner, agent, threadId } = browserFixture;
+  harness.core.browser.sleepAfterMs = 300;
+  const browser = harness.core.browser;
+  const { tabId } = await agent.call('browser.command', { threadId, action: { kind: 'open', url: url() } });
+  // Killed asleep, as the memory guard stopped a Gmail tab nobody watched: the viewer that came later got no frame.
+  for (const end = Date.now() + 30_000; !browser.asleep(tabId!) && Date.now() < end;) await Bun.sleep(50);
+  expect(browser.asleep(tabId!)).toBe(true);
+  await browser.crashRenderer(tabId!);
+  await owner.call('threads.subscribe', { threadId });
+  const started = performance.now();
+  const frame = await picture(owner.call('browser.remoteFrame', { threadId, tabId, maxWidth: 300, quality: 40 }));
+  expect(frame.title).toBe('Fixture');
+  expect(performance.now() - started).toBeLessThan(10_000);
+  // Killed while awake, the agent's next command finds the page loaded again.
+  await browser.crashRenderer(tabId!);
+  expect(await evaluate('document.title')).toBe('Fixture');
 }, 150_000);
 
 real('boite browse opens its page as a new tab of the conversation browser, not in a panel of its own', async () => {
