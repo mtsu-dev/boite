@@ -144,10 +144,12 @@ real('a tab whose renderer was killed loads its page again for the next viewer o
     for (const end = Date.now() + 15_000; crashes === before && Date.now() < end;) await Bun.sleep(50);
     expect(crashes).toBe(before + 1);
   };
-  // Killed asleep, as the memory guard stopped a Gmail tab nobody watched: the viewer that came later got no frame.
-  for (const end = Date.now() + 30_000; !browser.asleep(tabId!) && Date.now() < end;) await Bun.sleep(50);
-  expect(browser.asleep(tabId!)).toBe(true);
+  // The memory guard killed a Gmail tab nobody watched, and the viewer that came later got no frame. `Page.crash`
+  // needs the renderer's cooperation, which a frozen page on CI's Chrome gave only once woken: the page is crashed
+  // awake, and left past the wait for sleep, which a dead page must not try.
   await crash();
+  await Bun.sleep(1500);
+  expect(browser.asleep(tabId!)).toBe(false);
   await owner.call('threads.subscribe', { threadId });
   const started = performance.now();
   const frame = await picture(owner.call('browser.remoteFrame', { threadId, tabId, maxWidth: 300, quality: 40 }));
