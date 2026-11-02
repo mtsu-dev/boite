@@ -6,7 +6,7 @@ import { firstAnswer, settle } from '../src/coordination-wire.ts';
 import { GroupStore } from '../src/group.ts';
 import { group as groupCommand } from '../src/main.ts';
 import { Refusals, REFUSALS_PER_MINUTE, senderOf } from '../src/server/refusals.ts';
-import { advertisedAddresses, isTailnetAddress, tailnetAddress } from '../src/group/addresses.ts';
+import { advertisedAddresses, isTailnetAddress, tailnetAddress, ticketAddresses } from '../src/group/addresses.ts';
 import { checkRoster, digestOf, fingerprint, liveCores, liveDevices, mergeRosters, type CoreEntry, type Roster } from '../src/group/roster.ts';
 import { boxPublic, newBoxKey, open, openResponse, pack, seal, SEALED, sealResponse, unpack } from '../src/group/seal.ts';
 import { parseInvite, parseTicket } from '../src/group/ticket.ts';
@@ -297,6 +297,20 @@ test('the tailnet address and name come first, then the LAN, and loopback only w
   expect(advertisedAddresses({ host: '0.0.0.0', port: 7000, tailnet: false }, null, '192.168.1.20')).toEqual(['http://192.168.1.20:7000']);
   // Listening on itself with a tailnet it does not answer on: only loopback is true.
   expect(advertisedAddresses({ host: '127.0.0.1', port: 7000, tailnet: false }, tailnet, '192.168.1.20')).toEqual(['http://127.0.0.1:7000']);
+});
+
+test('a client is given a MagicDNS name under ts.net before the tailnet address, and no other name over plain HTTP', () => {
+  const tailnet = { ip: '100.101.102.103', name: 'desk.tail0d6070.ts.net' };
+  const given = advertisedAddresses({ host: '0.0.0.0', port: 7000, tailnet: false }, tailnet, '192.168.1.20');
+  expect(given).toEqual(['http://desk.tail0d6070.ts.net:7000', 'http://100.101.102.103:7000', 'http://192.168.1.20:7000']);
+  expect(ticketAddresses(given)).toEqual(given);
+  // Ranked first even when a list holds it after the address written as numbers.
+  expect(ticketAddresses(['http://100.101.102.103:7000', 'http://desk.tail0d6070.ts.net:7000'])).toEqual(['http://desk.tail0d6070.ts.net:7000', 'http://100.101.102.103:7000']);
+  // HTTPS still stands alone.
+  expect(ticketAddresses(['https://desk.tail0d6070.ts.net', ...given])).toEqual(['https://desk.tail0d6070.ts.net']);
+  // Any other zone is whatever a resolver says, and a tailnet name is two labels under ts.net at least.
+  expect(ticketAddresses(['http://desk.tail.example:7000', 'http://ts.net:7000', 'http://tail0d6070.ts.net:7000', 'http://desk.tail0d6070.ts.net.evil.example:7000',
+    'http://user@desk.tail0d6070.ts.net:7000', 'http://desk.tail0d6070.ts.net:7000/path', 'http://-desk.tail0d6070.ts.net:7000'])).toEqual([]);
 });
 
 test('an invitation makes two machines members of one group, and a third joins through either', async () => {
@@ -1090,7 +1104,7 @@ test('"you were removed" counts only signed inside a sealed answer, never from a
   expect(() => settle('http://b', key, nonce, 200, ok, sign(ok), { responseKey: sealed.responseKey, context })).toThrow('in the clear');
 });
 
-test('only a holder of the invitation spends the join allowance, and a pairing link never names a machine by a plain-HTTP name', async () => {
+test('only a holder of the invitation spends the join allowance, and a pairing link names a machine by no plain-HTTP name but its MagicDNS one', async () => {
   const a = await machine();
   const b = await machine();
   await a.core.group.create('Home');
@@ -1153,6 +1167,10 @@ test('only a holder of the invitation spends the join allowance, and a pairing l
   expect(a.core.group.ownAddress()).toBe('https://desk.tail.example');
   withAddresses(['http://desk.tail.example:7000']);
   expect(a.core.group.ownAddress()).toBeNull();
+  // A MagicDNS name is Tailscale's to answer: a person reads it where the tailnet address means nothing.
+  withAddresses(['http://100.101.102.103:7000', 'http://desk.tail0d6070.ts.net:7000', 'http://192.168.1.20:7000']);
+  expect(a.core.group.ownAddress()).toBe('http://desk.tail0d6070.ts.net:7000');
+  expect(a.core.reachableUrl()).toBe('http://desk.tail0d6070.ts.net:7000');
   withAddresses([a.url]);
   expect(a.core.group.ownAddress()).toBeNull();
 });
