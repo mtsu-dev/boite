@@ -98,12 +98,14 @@ import { strings as shared } from './strings/en/shared';
 import { strings as windows } from './strings/en/windows';
 import { strings as policy } from './strings/en/policy';
 import { strings as teamRequest } from './strings/en/teamRequest';
+import { strings as teamChat } from './strings/en/teamChat';
 
 export const strings = {
   ...subscriptionProxy,
   ...settingRequest,
   ...agentSettingRequest,
   ...teamRequest,
+  ...teamChat,
   ...remoteBrowser,
   ...agentBrowser,
   ...devicePanel,

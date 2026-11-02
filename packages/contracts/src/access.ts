@@ -167,6 +167,11 @@ export const DEVICE_METHODS: ReadonlySet<RpcMethodName> = new Set<RpcMethodName>
   'turns.start',
   // Paired phones can send the same user follow-ups as the owner's composer.
   'turns.steer',
+  // The owner's team chats on a phone (docs/teams.md). The list names the teams and their members,
+  // whose chats the device already reads as threads; a post is the owner's, as `turns.start` is,
+  // and wakes only the bots the core's routing picks. Creating, pausing, archiving and membership stay the owner's.
+  'teams.list',
+  'teams.post',
   'turns.stop',
   // A paired phone can resume or discard the same retained prompt as the owner.
   'turns.recover',
@@ -252,6 +257,7 @@ export const DEVICE_EVENTS: ReadonlySet<RpcEventName> = new Set<RpcEventName>([
   // Experiment ids of the desktop app, as client.preferences already answers the device.
   'client.desktopExperiments',
   'group.updated', // Invalidation only; group.get applies the device read policy.
+  'teams.changed', // A team's id and version only; the device reads it again with teams.list.
   'providers.updated', 'providers.installProgress', 'providers.probed',
 ]);
 

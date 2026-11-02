@@ -102,12 +102,14 @@ import { fr as shared } from './strings/fr/shared';
 import { fr as windows } from './strings/fr/windows';
 import { fr as policy } from './strings/fr/policy';
 import { fr as teamRequest } from './strings/fr/teamRequest';
+import { fr as teamChat } from './strings/fr/teamChat';
 
 export const fr: Translation = {
   ...subscriptionProxy,
   ...settingRequest,
   ...agentSettingRequest,
   ...teamRequest,
+  ...teamChat,
   ...remoteBrowser,
   ...agentBrowser,
   ...devicePanel,
