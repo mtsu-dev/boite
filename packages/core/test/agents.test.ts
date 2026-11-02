@@ -34,6 +34,20 @@ test('creating an agent creates its thread and starts its introduction there', a
   expect(snapshot.watches).toEqual([]);
 });
 
+test('a pinned bot stays pinned through a save that predates the field, until it is unpinned', async () => {
+  const value = agentValue(echoAccount(h));
+  const agent = await client.call('agents.profile.save', { value });
+  expect(agent.pinned).toBeUndefined();
+  const pinned = await client.call('agents.profile.save', { id: agent.id, expectedRevision: agent.revision, value: { ...value, pinned: true } });
+  expect(pinned.pinned).toBe(true);
+  // A client that predates the pin saves without it: the bot stays pinned.
+  const edited = await client.call('agents.profile.save', { id: agent.id, expectedRevision: pinned.revision, value: { ...value, domain: 'Design' } });
+  expect(edited.pinned).toBe(true);
+  expect(await thrown(client.call('agents.profile.save', { id: agent.id, expectedRevision: edited.revision, value: { ...value, pinned: 'yes' as never } }))).toThrow('pinned: expected a boolean');
+  await client.call('agents.profile.save', { id: agent.id, expectedRevision: edited.revision, value: { ...value, pinned: false } });
+  expect((await client.call('agents.snapshot', {})).profiles.find(p => p.id === agent.id)).not.toHaveProperty('pinned');
+});
+
 test('an agent created while wakes are paused introduces itself once they resume', async () => {
   await client.call('agents.limits.set', { paused: true });
   const agent = await client.call('agents.profile.save', { value: agentValue(echoAccount(h)) });

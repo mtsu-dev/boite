@@ -14,9 +14,11 @@ export const strings = {
       /** The group's Bots machine holds the built-in bot and this window does not reach it. */
       away: '{name} is on {machine}, offline for now: none is made elsewhere meanwhile.'
     },
-    /** Moving a bot to another machine of the group, from its settings. */
+    /** Moving a bot to another machine of the group, from its settings or its row's menu. */
     move: {
       label: 'Machine',
+      /** The row menu's entry, which opens the machine picker. */
+      menu: 'Move to a machine',
       hint: 'Where it lives. Pick another machine of the group to move it there.',
       older: 'Update Boite on {machine} to move a bot there.',
       olderShort: 'Update needed',

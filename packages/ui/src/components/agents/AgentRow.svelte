@@ -1,6 +1,8 @@
 <script lang="ts">
-  import type { Component, Snippet } from 'svelte';
-  import { Clock3 } from '@lucide/svelte';
+  import { tick, type Component, type Snippet } from 'svelte';
+  import { Clock3, Pin } from '@lucide/svelte';
+  import { focusOnMount } from '../../lib/actions';
+  import { longPress } from '../../lib/long-press';
   import { fill, strings } from '../../lib/strings';
   import { ago, clockTime, elapsed, exactTime } from '../../lib/format';
   import { secondClock } from '../../lib/clock.svelte';
@@ -14,9 +16,10 @@
    * works, what it waits on, else the last thing it said. The picture spans
    * both lines, so the row holds no gap under it. On the right the time it
    * has worked, the missed answers or the time of the last one, and the next
-   * wake as a small clock while it rests.
+   * wake as a small clock while it rests. A row with a menu opens it on a
+   * right click or a long press, and renames in place like a thread's row.
    */
-  let { title, builtin = false, open = false, unread = 0, away = false, at, now, detail = '', tone = 'idle', icon, since = null, wake = null, machine, testid, onclick, picture, aside }: {
+  let { title, builtin = false, open = false, unread = 0, away = false, at, now, detail = '', tone = 'idle', icon, since = null, wake = null, machine, testid, onclick, picture, aside, pinned = false, onmenu, renaming = false, onrename }: {
     title: string;
     /** A bot Boite ships: a small badge after its name. */
     builtin?: boolean;
@@ -43,6 +46,14 @@
     picture: Snippet;
     /** Replaces the state on the right, for a row that is not an agent's. */
     aside?: Snippet;
+    /** Kept at the top of the list: the thread list's pin before the time. */
+    pinned?: boolean;
+    /** The row's context menu, on a right click or a long press. */
+    onmenu?: (event: MouseEvent) => void;
+    /** The name is a field: Enter or leaving it saves, Escape keeps the old name. */
+    renaming?: boolean;
+    /** The typed name, or null when the rename was abandoned. */
+    onrename?: (name: string | null) => void;
   } = $props();
 
   const missed = $derived(fill(unread === 1 ? strings.agents.missedOne : strings.agents.missedMany, { count: String(unread) }));
@@ -50,31 +61,80 @@
   const wakeText = $derived(wake ? clockTime(wake.at, now) : '');
   /** Counting time reads the second clock, only while it works: the list's clock ticks far slower. */
   const spent = $derived(tone === 'working' && since !== null ? elapsed(Math.max(secondClock.now, now) - since) : null);
+
+  let row = $state<HTMLButtonElement>();
+  /** A row without a menu keeps its plain tap: a long press there would swallow the click and open nothing. */
+  function press(node: HTMLElement, on: boolean) {
+    let held = on ? longPress(node) : null;
+    return {
+      update(next: boolean) { if (next && !held) held = longPress(node); else if (!next && held) { held.destroy(); held = null; } },
+      destroy() { held?.destroy(); }
+    };
+  }
+  /** One answer per rename: the field leaves after Enter, and its blur must not answer again. */
+  let answered = false;
+  $effect(() => { if (renaming) answered = false; });
+  function finish(field: HTMLInputElement, commit: boolean) {
+    if (answered) return;
+    answered = true;
+    onrename?.(commit ? field.value : null);
+  }
+  /** Enter and Escape hand the keyboard back to the row, never to the page. */
+  async function leave(field: HTMLInputElement, commit: boolean) {
+    finish(field, commit);
+    await tick();
+    row?.focus({ preventScroll: true });
+  }
 </script>
 
-<div class="agent-row" class:open class:unread={unread > 0} class:on-machine={!!machine} data-machine-id={machine?.id} data-tone={tone}>
-  <button type="button" class="ghost row" aria-current={open ? 'page' : undefined} title={title} {onclick} data-testid={testid}>
-    {#if machine}
-      <span class="machine" class:offline={away} title={`${machine.label} · ${strings.connection[machine.store.connection]}`} aria-label={machine.label}><MachineIcon icon={machine.icon} os={machine.store.core?.os} /></span>
-    {/if}
-    <span class="picture">{@render picture()}</span>
-    <span class="text">
-      <span class="headline">
-        {#if builtin}<span class="name"><span class="title">{title}</span><BuiltinBadge /></span>{:else}<span class="title">{title}</span>{/if}
-        {#if aside}{@render aside()}
-        {:else if spent !== null}<span class="spent" data-testid="agent-row-spent">{spent}</span>
+{#snippet body(name: Snippet)}
+  {#if machine}
+    <span class="machine" class:offline={away} title={`${machine.label} · ${strings.connection[machine.store.connection]}`} aria-label={machine.label}><MachineIcon icon={machine.icon} os={machine.store.core?.os} /></span>
+  {/if}
+  <span class="picture">{@render picture()}</span>
+  <span class="text">
+    <span class="headline">
+      {@render name()}
+      {#if aside}{@render aside()}
+      {:else}
+        {#if pinned}<span class="pin" data-testid="agent-pinned"><Pin size={12} /></span>{/if}
+        {#if spent !== null}<span class="spent" data-testid="agent-row-spent">{spent}</span>
         {:else if unread > 0}<span class="unread-count" role="img" title={missed} aria-label={missed} data-testid="agent-unread-count">{unread}</span>
         {:else if at > 0}<time class="when" datetime={new Date(at).toISOString()} title={exactTime(at)}>{ago(at, now)}</time>{/if}
-      </span>
-      {#if detail || wake}
-        <span class="detail-line">
-          {#if icon}{@const Glyph = icon}<span class="glyph" data-testid="agent-row-glyph"><Glyph size={13} strokeWidth={2} /></span>{/if}
-          <span class="detail" data-testid="agent-row-detail">{detail}</span>
-          {#if wake}<span class="wake" title={fill(strings.agents.nextWake, { name: wake.label, when: exactTime(wake.at) })} data-testid="agent-row-wake"><Clock3 size={11} strokeWidth={2} />{wakeText}</span>{/if}
-        </span>
       {/if}
     </span>
-  </button>
+    {#if detail || wake}
+      <span class="detail-line">
+        {#if icon}{@const Glyph = icon}<span class="glyph" data-testid="agent-row-glyph"><Glyph size={13} strokeWidth={2} /></span>{/if}
+        <span class="detail" data-testid="agent-row-detail">{detail}</span>
+        {#if wake}<span class="wake" title={fill(strings.agents.nextWake, { name: wake.label, when: exactTime(wake.at) })} data-testid="agent-row-wake"><Clock3 size={11} strokeWidth={2} />{wakeText}</span>{/if}
+      </span>
+    {/if}
+  </span>
+{/snippet}
+
+<div class="agent-row" class:open class:unread={unread > 0} class:on-machine={!!machine} data-machine-id={machine?.id} data-tone={tone}>
+  {#if renaming}
+    <div class="row">
+      {#snippet field()}
+        <input class="rename" data-testid="agent-rename" aria-label={strings.common.rename} maxlength="100" value={title} use:focusOnMount
+          onblur={event => finish(event.currentTarget, true)}
+          onkeydown={event => {
+            // Without its keypress: the Enter would reach the row once it holds the focus again, and open the bot.
+            if (event.key === 'Enter') { event.preventDefault(); void leave(event.currentTarget, true); }
+            if (event.key === 'Escape') { event.stopPropagation(); void leave(event.currentTarget, false); }
+          }} />
+      {/snippet}
+      {@render body(field)}
+    </div>
+  {:else}
+    <button type="button" class="ghost row" bind:this={row} aria-current={open ? 'page' : undefined} title={title} {onclick} oncontextmenu={onmenu} use:press={!!onmenu} data-testid={testid}>
+      {#snippet name()}
+        {#if builtin}<span class="name"><span class="title">{title}</span><BuiltinBadge /></span>{:else}<span class="title">{title}</span>{/if}
+      {/snippet}
+      {@render body(name)}
+    </button>
+  {/if}
 </div>
 
 <style>
@@ -114,6 +174,11 @@
   [data-tone='asleep'] .detail-line { color: var(--color-subtle); }
   [data-tone='asleep'] .title { color: var(--color-muted-foreground); }
   .wake { flex: none; display: inline-flex; align-items: center; gap: 3px; color: var(--color-subtle); font-variant-numeric: tabular-nums; }
+  .pin { display: inline-flex; align-items: center; flex: none; color: var(--color-muted-foreground); }
+  /* The name becomes its field where it stood: the row keeps its height and its picture. */
+  .rename { flex: 1; min-width: 0; height: 22px; padding: 0 6px; }
+  /* A long press opens the menu, not the system's link and text callout. */
+  .row { -webkit-touch-callout: none; }
   @media (prefers-reduced-motion: reduce) { [data-tone='working'] .glyph { animation: none; } }
   :global(html[data-motion='reduced']) [data-tone='working'] .glyph { animation: none; }
 </style>

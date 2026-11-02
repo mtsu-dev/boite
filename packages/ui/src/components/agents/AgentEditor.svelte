@@ -7,7 +7,7 @@
   import { agentPictures, pictureDataUrl } from '../../lib/agent-pictures.svelte';
   import { Autosave, TYPING_MS } from '../../lib/autosave.svelte';
   import { fill, strings } from '../../lib/strings';
-  import { confirm } from '../../lib/confirm.svelte';
+  import { confirmArchive } from '../../lib/agent-menu';
   import { openAgent, resetBuiltin, type AgentsView } from '../../lib/agents.svelte';
   import type { Store } from '../../lib/store.svelte';
   import type { MenuItem } from '../../lib/menu';
@@ -77,6 +77,9 @@
   const projectKey = (ids: readonly string[] | undefined) => JSON.stringify([...(ids ?? [])].sort());
   /** The agent's projects this form last read: what tells an edit here from a change made elsewhere. */
   let projectsRead = projectKey(profile?.projectIds);
+  /** The name and status this form last read, followed the same way: the list's menu renames, pauses and archives too. */
+  let nameRead = profile?.name ?? '';
+  let statusRead = profile?.status ?? 'active';
   let revisionRead = profile?.revision ?? 0;
 
   const labels = $derived(strings.agents);
@@ -130,8 +133,9 @@
 
   /**
    * An agent's projects change outside this form too: a card in a thread
-   * applied, or the snapshot this page drew first was older. The form follows
-   * while its own projects are untouched, and keeps an edit in progress.
+   * applied, or the snapshot this page drew first was older. So do its name
+   * and status, from the list's menu or the header's. The form follows each
+   * while its own field is untouched, and keeps an edit in progress.
    */
   $effect(() => {
     const latest = stored();
@@ -140,6 +144,8 @@
     untrack(() => {
       if (latest.revision <= revisionRead) return;
       revisionRead = latest.revision;
+      if (latest.name !== nameRead) { if (name === nameRead) name = latest.name; nameRead = latest.name; }
+      if (latest.status !== statusRead) { if (status === statusRead) status = latest.status; statusRead = latest.status; }
       if (next === projectsRead) return;
       if (projectKey(projectIds) === projectsRead) projectIds = [...(latest.projectIds ?? [])];
       projectsRead = next;
@@ -172,15 +178,8 @@
   /** Archiving stops the agent: it still asks, and only a confirmed archive is saved. */
   async function pickStatus(next: AgentProfile['status']) {
     const existing = stored();
-    if (existing && next === 'archived' && status !== 'archived' && !await confirm.ask({
-      title: fill(labels.archiveTitle, { name: existing.name }),
-      body: labels.archiveBody,
-      confirmLabel: labels.archive,
-      cancelLabel: strings.common.cancel,
-      danger: true,
-      requiredText: existing.name,
-      inputLabel: labels.archiveName,
-    })) return;
+    if (existing && next === 'archived' && status !== 'archived' && !await confirmArchive(existing.name)) return;
+
     status = next;
     edited();
   }
@@ -201,9 +200,10 @@
     const fields = (r: AgentProfile) => JSON.stringify([r.name, r.domain, r.instructions, r.avatar, r.status]);
     return send(() => {
       const latest = stored();
-      // Projects this form followed from elsewhere count as read, not as a stale copy.
+      // Projects, a name and a status this form followed from elsewhere count as read, not as a stale copy.
       const projects = (r: AgentProfile) => projectKey(r.projectIds) === projectsRead || projectKey(r.projectIds) === projectKey(base?.projectIds);
-      const rebase = !!latest && !!base && fields(latest) === fields(base) && projects(latest);
+      const unchanged = (r: AgentProfile, now: AgentProfile) => fields(now) === fields(r) || now.revision > r.revision && fields(now) === fields({ ...r, name: nameRead, status: statusRead });
+      const rebase = !!latest && !!base && unchanged(base, latest) && projects(latest);
       const version = base ? { id: base.id, expectedRevision: (rebase ? latest! : base).revision } : {};
       return { ...version, value: { name, domain, instructions, avatar: avatar(), selection: creating || !rebase ? selection : latest!.selection, status, projectIds } };
     });
@@ -226,6 +226,7 @@
     if (!result) return;
     base = result;
     revisionRead = result.revision;
+    nameRead = result.name; statusRead = result.status;
     ({ name, domain, instructions, status } = result);
     robot = robotOf(result.id, result.avatar) ?? seededRobot(result.id);
     robotTouched = false;
@@ -260,7 +261,10 @@
   }
   async function write() {
     const result = await save(params => view.save('agents.profile.save', params));
-    if (result) base = result;
+    if (!result) return;
+    base = result;
+    // What its own save wrote is what the form last read.
+    nameRead = result.name; statusRead = result.status;
   }
 </script>
 

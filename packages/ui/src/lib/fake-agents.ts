@@ -459,7 +459,10 @@ export class FakeAgents {
     if (typeof p.value.avatar === 'string' && isAgentPicture(p.value.avatar) && p.value.avatar !== previous?.avatar && !this.pictures.has(p.value.avatar.trim())) {
       this.refuse(`avatar: ${p.value.avatar} is no picture this machine holds; import it with agents.picture.put first`);
     }
-    const { id: _id, revision: _revision, createdAt: _created, updatedAt: _updated, builtin: _builtin, ...value } = p.value as AgentProfile;
+    const { id: _id, revision: _revision, createdAt: _created, updatedAt: _updated, builtin: _builtin, pinned: sentPin, ...rest } = p.value as AgentProfile;
+    if (sentPin !== undefined && typeof sentPin !== 'boolean') this.refuse('pinned: expected a boolean');
+    // As the core: a save that omits the pin keeps it; only a pinned bot carries the field.
+    const value = (sentPin ?? previous?.pinned) === true ? { ...rest, pinned: true } : rest;
     // A save never makes or unmakes a built-in bot, and a built-in keeps Boite's domain and instructions.
     if (previous?.builtin) {
       if (value.domain !== previous.domain) this.refuse(BUILTIN_LOCKED('domain'));

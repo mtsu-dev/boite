@@ -152,12 +152,15 @@
     return () => { mobileChrome.detail = false; };
   });
 
-  function open(machine: Machine, agentId: string) {
+  /** Opens an agent from the list, with one of its panes when named (its row's Edit opens its settings). */
+  function open(machine: Machine, agentId: string, next?: AgentPane) {
     // Read now: the page, and the row's values with it, is drawn again for the other machine.
     const target = machine.store;
-    if (target !== store) { workspace.showAgents(target, agentId); return; }
-    focus = null; pane = null; listShown = false;
-    if (agentId === agent?.id && thread) return;
+    if (target !== store) { workspace.showAgents(target, agentId, next); return; }
+    focus = null; listShown = false;
+    if (agentId === agent?.id && thread) { pane = next ?? null; return; }
+    pane = null;
+    wanted = next ? { agentId, pane: next } : null;
     void openAgent(store, agentId);
   }
   /** One step out: a form, then the conversation, then the list. */

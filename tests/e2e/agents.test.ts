@@ -284,3 +284,165 @@ real('three agents in the list; a phone shows the list, then the conversation fu
   await owner.call('turns.stop', { threadId: nova.threadId });
   expect(page.errors()).toEqual([]);
 }, 120_000);
+
+test('a bot\'s row has the thread menu on a right click and a long press: pin, rename in place, pause, edit, archive, copy', async () => {
+  // Lyra speaks first, so it sits under the two others: the row pinned and long-pressed below is never one they archive or pause.
+  await agentOf('Lyra', 'Keeps the calendar');
+  const orion = (await agentOf('Orion', 'Watches the builds')).agent;
+  const vega = (await agentOf('Vega', 'Reads the papers')).agent;
+  const rows = '.agents-rail [data-testid^="agent-entry-"]';
+  const order = `[...document.querySelectorAll('${rows}')].map(row => row.dataset.testid.slice('agent-entry-'.length))`;
+  const menu = id('context-menu');
+  const items = `[...document.querySelectorAll('${menu} [data-value]')].map(item => item.dataset.value)`;
+  const profile = async (agentId: string) => (await snapshot()).profiles.find(p => p.id === agentId)!;
+  /** The core's copy of a bot, read until it says what the menu asked. */
+  const saved = async (agentId: string, check: (agent: AgentProfile) => boolean) => {
+    for (const end = Date.now() + 5_000; !check(await profile(agentId));) {
+      if (Date.now() > end) throw new Error(`bot ${agentId} never matched: ${JSON.stringify(await profile(agentId))}`);
+      await Bun.sleep(50);
+    }
+  };
+  const center = (agentId: string) => page.evaluate<{ x: number; y: number }>(`(() => { const r = document.querySelector('${id(`agent-entry-${agentId}`)}').getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`);
+  const key = async (name: 'Enter' | 'Escape') => {
+    const code = { Enter: 13, Escape: 27 }[name];
+    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: name, code: name, windowsVirtualKeyCode: code, ...(name === 'Enter' ? { text: '\r' } : {}) });
+    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: name, code: name, windowsVirtualKeyCode: code });
+  };
+  /** A real right click on the row, as the mouse sends it. */
+  const rightClick = async (agentId: string) => {
+    await page.waitFor(`document.querySelector('${id(`agent-entry-${agentId}`)}')?.getBoundingClientRect().width > 0`);
+    const at = await center(agentId);
+    await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...at });
+    await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...at, button: 'right', buttons: 2, clickCount: 1 });
+    await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...at, button: 'right', buttons: 0, clickCount: 1 });
+    await page.waitFor(`document.querySelector('${menu} [data-value]')`);
+  };
+  const pick = async (action: string) => {
+    await page.click(`${menu} [data-value="${action}"]`);
+    await page.waitFor(`!document.querySelector('${menu}')`);
+  };
+  await page.evaluate(`document.querySelector('.agents-rail') || document.querySelector('${id('view-agents')}')?.click()`);
+  await page.evaluate(`document.querySelector('${id('right-panel')} ${id('panel-close')}')?.click()`);
+  await page.waitFor(`document.querySelectorAll('${rows}').length >= 3 && document.querySelector('${id(`agent-entry-${orion.id}`)}') && document.querySelector('${id(`agent-entry-${vega.id}`)}')`);
+
+  // The thread menu's groups, cut to what a bot has; alone in no group, it has nowhere to move.
+  const last = (await page.evaluate<string[]>(order)).filter(agentId => agentId !== orion.id && agentId !== vega.id).at(-1)!;
+  await rightClick(last);
+  expect(await page.evaluate(items)).toEqual(['open', 'pin', 'pause', 'archive', 'rename', 'edit', 'copy']);
+  await capture('menu-desktop.png');
+  // Pinned, the bot at the bottom climbs to the top with the pin before its time, and its machine keeps the choice.
+  await pick('pin');
+  await page.waitFor(`${order}[0] === '${last}' && document.querySelector('${id(`agent-entry-${last}`)} ${id('agent-pinned')}')`);
+  expect((await profile(last)).pinned).toBe(true);
+  await rightClick(last);
+  expect(await page.text(`${menu} [data-value="pin"]`)).toContain('Unpin');
+  await key('Escape');
+  await page.waitFor(`!document.querySelector('${menu}')`);
+
+  // Rename in place: the name becomes a field in the row, Escape keeps the old name, Enter saves.
+  await rightClick(orion.id);
+  await pick('rename');
+  await page.waitFor(`document.activeElement?.matches('${id('agent-rename')}')`);
+  await page.type(id('agent-rename'), 'Not kept');
+  await key('Escape');
+  await page.waitFor(`!document.querySelector('${id('agent-rename')}')`);
+  expect((await profile(orion.id)).name).toBe('Orion');
+  await rightClick(orion.id);
+  await pick('rename');
+  await page.type(id('agent-rename'), 'Orion Builds');
+  await capture('rename-desktop.png');
+  await key('Enter');
+  await page.waitFor(`document.querySelector('${id(`agent-entry-${orion.id}`)} .title')?.textContent === 'Orion Builds'`);
+  expect((await profile(orion.id)).name).toBe('Orion Builds');
+  // The keyboard goes back to the row, not to the page.
+  expect(await page.evaluate(`document.activeElement?.dataset.testid`)).toBe(`agent-entry-${orion.id}`);
+
+  // Pause and resume.
+  await rightClick(vega.id);
+  await pick('pause');
+  await saved(vega.id, agent => agent.status === 'paused');
+  await rightClick(vega.id);
+  expect(await page.evaluate(items)).toContain('resume');
+  await pick('resume');
+  await saved(vega.id, agent => agent.status === 'active');
+
+  // Edit opens its settings; a rename and a pause from the menu while they are open are followed, and the next edit there still saves.
+  await rightClick(vega.id);
+  await pick('edit');
+  await page.waitFor(`document.querySelector('${id('agent-header')}')?.textContent.includes('Vega') && document.querySelector('${id('agent-editor')} ${id('agent-name')}')?.value === 'Vega'`);
+  await rightClick(vega.id);
+  expect(await page.evaluate(`document.querySelector('${menu} [data-value="open"]').disabled`)).toBe(true);
+  await pick('rename');
+  await page.type(id('agent-rename'), 'Vega Reads');
+  await key('Enter');
+  await page.waitFor(`document.querySelector('${id('agent-editor')} ${id('agent-name')}')?.value === 'Vega Reads'`);
+  await rightClick(vega.id);
+  await pick('pause');
+  await saved(vega.id, agent => agent.status === 'paused');
+  await page.type(id('agent-instructions'), 'Read the papers and keep the best three.');
+  await page.evaluate(`document.querySelector('${id('agent-instructions')}').dispatchEvent(new Event('change', { bubbles: true }))`);
+  await saved(vega.id, agent => agent.instructions === 'Read the papers and keep the best three.');
+  expect(await profile(vega.id)).toMatchObject({ name: 'Vega Reads', status: 'paused' });
+  expect(await page.evaluate(`!!document.querySelector('${id('error-toast')}')`)).toBe(false);
+  await capture('menu-settings-desktop.png');
+  await key('Escape');
+  await page.waitFor(`!document.querySelector('.agent-sheet')`);
+
+  // Copy the path: the bot's brain folder on its machine.
+  await page.evaluate(`Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.__copied = text; } } })`);
+  await rightClick(vega.id);
+  await pick('copy');
+  await page.waitFor('window.__copied');
+  expect(await page.evaluate(`window.__copied`)).toBe((await owner.call('agents.brain.get', { agentId: vega.id })).path);
+
+  // Archive still asks for the exact name.
+  await rightClick(orion.id);
+  await pick('archive');
+  await page.waitFor(`document.activeElement?.matches('${id('confirm-name')}')`);
+  expect(await page.evaluate(`document.querySelector('${id('confirm-ok')}').disabled`)).toBe(true);
+  await page.type(id('confirm-name'), 'Orion Builds');
+  await page.click(id('confirm-ok'));
+  await saved(orion.id, agent => agent.status === 'archived');
+  await page.waitFor(`!document.querySelector('${id(`agent-entry-${orion.id}`)}')`);
+
+  // A phone: a long press opens the short menu at the finger, and the press does not open the bot.
+  await page.send('Emulation.setDeviceMetricsOverride', PHONE);
+  await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+  const hold = async (agentId: string) => {
+    const at = await center(agentId);
+    await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...at, id: 1 }] });
+    await page.waitFor(`document.querySelector('${menu} [data-value]')`);
+    await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  };
+  try {
+    // The desk Vega's settings opened beside it on the wide window would cover the phone's list.
+    await page.evaluate(`document.querySelector('${id('right-panel')} ${id('panel-close')}')?.click()`);
+    await page.waitFor(`!(document.querySelector('${id('right-panel')}')?.getBoundingClientRect().width > 0)`);
+    await page.waitFor(`document.querySelector('${id('agent-back')}')?.getBoundingClientRect().width > 0`);
+    await page.click(id('agent-back'));
+    await page.waitFor(`document.querySelector('.agents-rail')?.getBoundingClientRect().width === ${PHONE.width} && document.querySelector('${id(`agent-entry-${last}`)}')?.getBoundingClientRect().width > 0`);
+    await hold(last);
+    expect(await page.evaluate(items)).toEqual(['pin', 'rename', 'edit', 'pause', 'archive']);
+    expect(await page.evaluate(`document.querySelector('.agents-main')?.getBoundingClientRect().width > 0`)).toBe(false);
+    expect(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`)).toBe(true);
+    await capture('menu-phone.png');
+    await pick('rename');
+    await page.waitFor(`document.activeElement?.matches('${id('agent-rename')}')`);
+    await capture('rename-phone.png');
+    await key('Escape');
+    await page.waitFor(`!document.querySelector('${id('agent-rename')}')`);
+    await hold(last);
+    await pick('pin');
+    await page.waitFor(`!document.querySelector('${id(`agent-entry-${last}`)} ${id('agent-pinned')}')`);
+    expect((await profile(last)).pinned).toBeUndefined();
+    // A short tap still opens the bot, wherever the unpinned row went.
+    const at = await center(last);
+    await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...at, id: 1 }] });
+    await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.waitFor(`document.querySelector('.agents-main')?.getBoundingClientRect().width === ${PHONE.width}`);
+  } finally {
+    await page.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+    await page.send('Emulation.setDeviceMetricsOverride', DESKTOP);
+  }
+  expect(page.errors()).toEqual([]);
+}, 120_000);

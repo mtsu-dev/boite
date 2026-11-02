@@ -1,8 +1,12 @@
 <script lang="ts">
   import type { Component } from 'svelte';
+  import { MediaQuery } from 'svelte/reactivity';
   import { Bot, Brain, FilePen, FileText, Globe, Hourglass, Layers, MessageCircleQuestionMark, Moon, PenLine, Play, Plus, RotateCw, Search, Settings2, SquareTerminal, TriangleAlert, Wrench, X } from '@lucide/svelte';
   import type { AgentStatus, ThreadSummary } from '@boite/contracts';
+  import { agentMenuItems, pickAgentAction, saveAgent } from '../../lib/agent-menu';
   import { agentRows, agentsFilter, liveActivity, previewOf, waitingOn, type ActivityKind, type AgentMood, type AgentRowData, type AgentsView } from '../../lib/agents.svelte';
+  import { contextMenu } from '../../lib/context-menu.svelte';
+  import type { AgentPane } from '../../lib/store/layout.svelte';
   import { strings } from '../../lib/strings';
   import { workspace, type Machine } from '../../lib/workspace.svelte';
   import RailFrame from '../RailFrame.svelte';
@@ -17,9 +21,11 @@
    * list's own frame and head (`RailFrame`, `RailHead`): one card of rows,
    * each with its robot by state, its name, what it does this second or the
    * last thing it said, the missed answers or the time, and its next wake.
-   * Like the thread list, it holds every connected machine's agents, newest
-   * first, each row with its machine's icon once there are two; the foot's
-   * machine button narrows it to one.
+   * Like the thread list, it holds every connected machine's agents, pinned
+   * ones first then newest first, each row with its machine's icon once there
+   * are two; the foot's machine button narrows it to one. A row has the thread
+   * rows' menu, cut to what a bot has (`agentMenuItems`), on a right click or
+   * a long press.
    */
   type MachineAgents = { machine: Machine; view: AgentsView };
   let { view, lists, filter, active, onopen, oncreate, onengine, engine = false }: {
@@ -31,7 +37,8 @@
     filter: string | null;
     /** The agent whose thread is open, on the page's machine. */
     active: string | null;
-    onopen: (machine: Machine, agentId: string) => void;
+    /** Opens the agent, with one of its panes when named. */
+    onopen: (machine: Machine, agentId: string, pane?: AgentPane) => void;
     oncreate: () => void;
     onengine: () => void;
     /** The engine settings are what the card shows. */
@@ -47,7 +54,7 @@
   const needle = $derived(query.trim().toLowerCase());
   const rows = $derived(lists
     .flatMap(list => agentRows(list.view.snapshot).filter(row => !needle || row.profile.name.toLowerCase().includes(needle)).map(row => ({ ...list, row })))
-    .sort((a, b) => b.row.at - a.row.at || a.row.profile.name.localeCompare(b.row.profile.name)));
+    .sort((a, b) => Number(b.row.profile.pinned === true) - Number(a.row.profile.pinned === true) || b.row.at - a.row.at || a.row.profile.name.localeCompare(b.row.profile.name)));
   /** A search also reaches what the list leaves out: archived agents. */
   const found = $derived(needle ? lists.flatMap(({ machine, view: owner }) =>
     (owner.snapshot?.profiles ?? []).filter(a => a.status === 'archived' && a.name.toLowerCase().includes(needle)).map(profile => ({ machine, profile }))) : []);
@@ -103,6 +110,28 @@
     const target = id ? workspace.machines.find(m => m.id === id) : undefined;
     if (target && target.store !== view.store) workspace.showAgents(target.store);
   }
+  const phone = new MediaQuery('(max-width: 720px)');
+  /** The row whose name is a field, `[machine, agent]`: ids can collide between machines. */
+  let renaming = $state<string | null>(null);
+  const rowKey = (machine: Machine, id: string) => JSON.stringify([machine.id, id]);
+  /** The row's menu, answered through the bot's own machine; the toast it may raise is the page's. */
+  function menu(event: MouseEvent, machine: Machine, owner: AgentsView, id: string) {
+    const agent = owner.snapshot?.profiles.find(p => p.id === id);
+    const items = agent ? agentMenuItems(owner.store, agent, { open: owner === view && active === id, phone: phone.current }) : [];
+    if (!agent || !items.length) return;
+    contextMenu.open(event, items, action => pickAgentAction(owner, agent, action, {
+      open: () => onopen(machine, id),
+      edit: () => onopen(machine, id, 'settings'),
+      rename: () => { renaming = rowKey(machine, id); },
+      report: view.store
+    }));
+  }
+  function rename(owner: AgentsView, id: string, name: string | null) {
+    renaming = null;
+    const next = name?.trim() ?? '';
+    const agent = owner.snapshot?.profiles.find(p => p.id === id);
+    if (next && agent && next !== agent.name) void saveAgent(owner, id, { name: next }, view.store);
+  }
   let searchToggle = $state<HTMLButtonElement>();
   /** The field unmounts under the focus: it goes back to the button that opened it. */
   function closeSearch() { searching = false; query = ''; searchToggle?.focus(); }
@@ -141,7 +170,9 @@
           at={row.status?.last?.at ?? 0} {now} tone={tone === 'queued' ? 'idle' : tone} detail={line.text} icon={line.icon}
           since={tone === 'working' ? earliest(thread?.requestSince, thread?.runningSince) : null}
           wake={tone === 'idle' && row.profile.status === 'active' && row.status?.nextWake ? row.status.nextWake : null}
-          machine={multi ? machine : undefined} testid="agent-entry-{row.profile.id}" onclick={() => onopen(machine, row.profile.id)}>
+          machine={multi ? machine : undefined} testid="agent-entry-{row.profile.id}" onclick={() => onopen(machine, row.profile.id)}
+          pinned={row.profile.pinned === true} onmenu={event => menu(event, machine, owner, row.profile.id)}
+          renaming={renaming === rowKey(machine, row.profile.id)} onrename={name => rename(owner, row.profile.id, name)}>
           {#snippet picture()}<AgentAvatar kind="profile" id={row.profile.id} name={row.profile.name} avatar={row.profile.avatar} mood={moodOf(tone, unread)} size={34} ring />{/snippet}
         </AgentRow>
       {/each}
