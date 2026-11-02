@@ -2,9 +2,11 @@
  * Windows Defender Firewall, read and fixed for this core.
  *
  * A phone on the same network reaches the core only when the firewall lets
- * the core's executable accept connections on that network's profile. The
- * platform gives the two commands (`platform/windows/firewall.ts`); this
- * module runs them, turns what Windows answered into a `FirewallStatus`, and
+ * the core's executable accept connections on that network's profile. Boite
+ * asks for private networks only: a public one (a café, a station) stays
+ * closed. The platform gives the two commands (`platform/windows/firewall.ts`);
+ * this module runs them, turns what Windows answered into a `FirewallStatus`,
+ * tells the group which adapters it may listen on (`group/lan.ts`), and
  * registers the owner's two methods. Elsewhere the status is `unsupported`.
  */
 
@@ -38,19 +40,33 @@ function category(name: string): NetworkCategory | null {
   return null;
 }
 
+const isTailscale = (adapter: string) => /^tailscale/i.test(adapter);
+
+/** Whether the private profile lets the core in: firewall off there, or an allow and no block. A block wins, as it does in Windows. */
+function privateOpen(reading: FirewallReading): 'open' | 'blocked' | 'unset' {
+  const covers = (action: number) => reading.rules.some((rule) => rule.action === action && (rule.profiles & BITS.private) !== 0);
+  if ((reading.off & BITS.private) !== 0) return 'open';
+  return covers(0) ? 'blocked' : covers(1) ? 'open' : 'unset';
+}
+
 /**
- * The status a reading means. A block wins over an allow on the same profile,
- * as it does in Windows. Tailscale's adapter is left out: Tailscale allows
- * inbound connections on it with a rule of its own.
+ * The status a reading means. Only private networks count: Boite never asks
+ * for a public one or a work domain, so a machine on those alone is `public`,
+ * nothing a prompt would fix. Tailscale's adapter is left out: Tailscale
+ * allows inbound connections on it with a rule of its own.
  */
 export function judge(reading: FirewallReading): FirewallStatus {
-  const networks = ORDER.filter((name) => reading.networks.some((network) => !/^tailscale/i.test(network.adapter) && category(network.category) === name));
-  const covers = (action: number, name: NetworkCategory) => reading.rules.some((rule) => rule.action === action && (rule.profiles & BITS[name]) !== 0);
-  const off = (name: NetworkCategory) => (reading.off & BITS[name]) !== 0;
-  const blocked = networks.filter((name) => !off(name) && covers(0, name));
-  const allowed = networks.filter((name) => off(name) || (!blocked.includes(name) && covers(1, name)));
-  const state = blocked.length > 0 ? 'blocked' : allowed.length < networks.length ? 'unset' : 'ready';
-  return { state, networks, allowed, blocked };
+  const networks = ORDER.filter((name) => reading.networks.some((network) => !isTailscale(network.adapter) && category(network.category) === name));
+  if (!networks.includes('private')) return { state: networks.length > 0 ? 'public' : 'ready', networks, allowed: [], blocked: [] };
+  const open = privateOpen(reading);
+  const state = open === 'open' ? 'ready' : open;
+  return { state, networks, allowed: open === 'open' ? ['private'] : [], blocked: open === 'blocked' ? ['private'] : [] };
+}
+
+/** The adapters on a private network the core may listen on without Windows raising its prompt. */
+export function lanAdapters(reading: FirewallReading): string[] {
+  if (privateOpen(reading) !== 'open') return [];
+  return reading.networks.filter((network) => !isTailscale(network.adapter) && category(network.category) === 'private').map((network) => network.adapter);
 }
 
 /** A reading from the query command's output, or null when it is not one. */
@@ -87,7 +103,19 @@ export interface FirewallOptions {
 }
 
 export class FirewallAccess {
+  readonly #watchers: ((adapters: string[]) => void)[] = [];
+
   constructor(private readonly core: Core, private readonly options: FirewallOptions = {}) {}
+
+  /** False where there is no firewall to ask: every status is `unsupported`. */
+  supported(): boolean {
+    return this.commands() !== null;
+  }
+
+  /** `watch` hears the private adapters the core may listen on after each reading Windows answered. */
+  watch(watch: (adapters: string[]) => void): void {
+    this.#watchers.push(watch);
+  }
 
   private commands() {
     return this.options.commands === undefined ? processPlatform.firewall ?? null : this.options.commands;
@@ -103,22 +131,26 @@ export class FirewallAccess {
     const run = await this.run(commands.query(this.program()), QUERY_TIMEOUT_MS);
     if (run.timedOut) return { ...UNSUPPORTED, state: 'error', detail: 'timeout' };
     const reading = run.code === 0 ? parseReading(run.stdout) : null;
-    return reading === null ? { ...UNSUPPORTED, state: 'error', detail: 'unknown' } : judge(reading);
+    if (reading === null) return { ...UNSUPPORTED, state: 'error', detail: 'unknown' };
+    // An unreadable answer leaves the listeners as the last one said.
+    for (const watch of this.#watchers) watch(lanAdapters(reading));
+    return judge(reading);
   }
 
   /**
-   * Allow the core on every profile, unless it already is; Windows asks an
+   * Allow the core on private networks, unless it already is; Windows asks an
    * administrator first. A state that could not be read asks nothing: the
    * prompt would be for a need nobody knows, on a result nobody could check.
+   * A public network is not asked for either.
    */
   async allow(): Promise<FirewallStatus> {
     const before = await this.status();
-    if (before.state === 'unsupported' || before.state === 'ready' || before.state === 'error') return before;
+    if (before.state !== 'unset' && before.state !== 'blocked') return before;
     const commands = this.commands()!;
     const run = await this.run(commands.allow(this.program()), ALLOW_TIMEOUT_MS);
     const after = await this.status();
     if (after.state === 'ready') {
-      this.core.log('info', 'Windows Defender Firewall now allows Boite on every network');
+      this.core.log('info', 'Windows Defender Firewall now allows Boite on private networks');
       return after;
     }
     // The rule may be in place; what failed is reading it back, and that reason is the one to show.
@@ -137,9 +169,12 @@ export class FirewallAccess {
 
 /**
  * Owner only: absent from `DEVICE_METHODS`, so a paired phone is refused them.
- * Allowing changes what the machine accepts from its networks.
+ * Allowing changes what the machine accepts from its networks. Both read
+ * through the group's own access, so what they learn opens or closes its LAN
+ * listeners at once.
  */
-export function registerFirewallMethods(core: Core, access = new FirewallAccess(core)): void {
-  core.router.register('firewall.status', () => access.status());
-  core.router.register('firewall.allow', () => access.allow());
+export function registerFirewallMethods(core: Core, access?: FirewallAccess): void {
+  const current = () => access ?? core.group.lan.firewall;
+  core.router.register('firewall.status', () => current().status());
+  core.router.register('firewall.allow', () => current().allow());
 }

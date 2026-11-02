@@ -1,5 +1,5 @@
 // Stands in for the Windows firewall commands: `query` prints the reading kept
-// in <state>, `allow` replaces it with an allow-everywhere rule, or exits as a
+// in <state>, `allow` replaces it with the rule Boite adds, private networks only, or exits as a
 // refused administrator prompt when <state>.refuse exists.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { FIREWALL_PROMPT_REFUSED } from '../../src/platform/types.ts';
@@ -10,5 +10,5 @@ if (action === 'query') {
 } else {
   if (existsSync(`${state}.refuse`)) process.exit(FIREWALL_PROMPT_REFUSED);
   const reading = JSON.parse(readFileSync(state, 'utf8'));
-  writeFileSync(state, JSON.stringify({ ...reading, rules: [{ action: 1, profiles: 0x7fffffff }] }));
+  writeFileSync(state, JSON.stringify({ ...reading, rules: [{ action: 1, profiles: 2 }] }));
 }

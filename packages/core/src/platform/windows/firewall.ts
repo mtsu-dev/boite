@@ -11,13 +11,17 @@
  * Reading needs no rights. Fixing does: one administrator prompt runs a
  * script that deletes every inbound rule naming this executable, the prompt's
  * block rules included, since a block wins over an allow, and adds one rule
- * named Boite that allows its TCP connections on every profile. Both scripts
- * are passed encoded, so a path holding a quote cannot break out of them.
+ * named Boite that allows its TCP connections on the Private profile only: a
+ * public network (a café, a station) stays closed. Both scripts are passed
+ * encoded, so a path holding a quote cannot break out of them.
  */
 
 import { FIREWALL_PROMPT_REFUSED } from '../types.ts';
 
 const POWERSHELL = `${process.env['SystemRoot'] ?? 'C:\\Windows'}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`;
+
+/** The only profile the rule Boite adds covers. */
+export const ALLOW_PROFILE = 'Private';
 
 /** ERROR_CANCELLED, the Win32 error Start-Process -Verb RunAs fails with when the prompt is refused. */
 const ELEVATION_CANCELLED = 1223;
@@ -62,7 +66,7 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $program = ${quote(program)}
 Get-NetFirewallApplicationFilter | Where-Object { $_.Program -and [Environment]::ExpandEnvironmentVariables($_.Program) -ieq $program } | Get-NetFirewallRule | Where-Object { $_.Direction -eq 'Inbound' } | Remove-NetFirewallRule
-New-NetFirewallRule -DisplayName 'Boite' -Description 'Lets a phone or another computer reach Boite.' -Direction Inbound -Action Allow -Program $program -Protocol TCP -Profile Any | Out-Null
+New-NetFirewallRule -DisplayName 'Boite' -Description 'Lets a phone or another computer on a private network reach Boite.' -Direction Inbound -Action Allow -Program $program -Protocol TCP -Profile ${ALLOW_PROFILE} | Out-Null
 `).slice(1);
   return encoded(`
 try {
