@@ -172,6 +172,18 @@ real('a viewer on another device watches and drives the tab, and hears it come a
     // A drag selects page text; a password field's selection is never read.
     await act({ kind: 'drag', from: { x: 100 / live.width, y: 369 / live.height }, to: { x: 480 / live.width, y: 369 / live.height }, width: live.width, height: live.height });
     expect((await selection()).text).toBe('Select these words');
+    // The viewer's own mouse, sent as it moves: the page sees each point of the path, hovering then held,
+    // and a release on a frame newer than the press, as a captcha's puzzle piece needs.
+    await evaluate('getSelection().removeAllRanges(); window.trail = []; addEventListener("mousemove", e => trail.push([e.buttons, Math.round(e.clientX)]))');
+    await act({ kind: 'pointer', action: 'move', ...at(60, 369), buttons: 0 });
+    await act({ kind: 'pointer', action: 'down', ...at(100, 369) });
+    for (const x of [170, 260, 390]) await act({ kind: 'pointer', action: 'move', ...at(x, 369), buttons: 1 });
+    await Bun.sleep(150);
+    live = await picture(phone.call('browser.remoteFrame', { threadId, tabId }));
+    await act({ kind: 'pointer', action: 'up', ...at(480, 369) });
+    expect((await selection()).text).toBe('Select these words');
+    expect(await evaluate('JSON.stringify(trail)')).toBe(JSON.stringify([[0, 60], [0, 100], [1, 170], [1, 260], [1, 390]]));
+    expect(await thrown(act({ kind: 'pointer', action: 'move', ...at(10, 10), buttons: 2 as 1 }))).toThrow('buttons');
     await evaluate('document.querySelector("#name").type = "password"');
     await act({ kind: 'tap', ...at(150, 230) });
     await act({ kind: 'select-all' });

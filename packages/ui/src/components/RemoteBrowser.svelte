@@ -25,7 +25,7 @@
   let pending = false, requestedAt = 0;
   // What the next request asks for and when: see remote-browser-view.ts.
   let roundTrip = 0, unchanged = 0, failures = 0;
-  let pointer: { x: number; y: number; lastX: number; lastY: number; moved: boolean; mouse: boolean; shift: boolean; from: { x: number; y: number } | null; frame: RemoteBrowserFrame; client: Store['client'] } | undefined;
+  let pointer: { x: number; y: number; lastX: number; lastY: number; moved: boolean; mouse: boolean; shift: boolean; from: { x: number; y: number } | null; frame: RemoteBrowserFrame; client: Store['client']; pressed?: { x: number; y: number } | null } | undefined;
   // A computer drives the page itself: keys, wheel, mouse selection and the clipboard, with no keys or text field below.
   const desk = hasKeyboard();
   let area = $state<HTMLElement>(), screen = $state<HTMLButtonElement>(), note = $state(''), noteTimer: ReturnType<typeof setTimeout> | undefined;
@@ -39,7 +39,7 @@
   let active = $state(-1), viewer = $state<HTMLElement>(), pickerList = $state<HTMLElement>();
   let lastTap = { at: 0, x: 0, y: 0, count: 0 };
   // Mouse and keyboard input, sent one at a time in the order it was made, without freezing the view between two.
-  type Direct = Extract<RemoteBrowserInput, { kind: 'tap' | 'drag' | 'press' | 'text' | 'select-all' }>;
+  type Direct = Extract<RemoteBrowserInput, { kind: 'tap' | 'pointer' | 'press' | 'text' | 'select-all' }>;
   let queue: { value: Direct; target?: RemoteBrowserFrame }[] = [], draining: Promise<void> | null = null;
   // Pixels dragged but not yet sent, and where the finger started on the page.
   let scrollX = 0, scrollY = 0, scrolling = false, scrollAt: { x: number; y: number } | null = null;
@@ -159,6 +159,8 @@
   function direct(value: Direct, target?: RemoteBrowserFrame) {
     const last = queue.at(-1)?.value;
     if (value.kind === 'press' && last?.kind === 'press' && last.keys.length + value.keys.length <= REMOTE_PRESS_MAX) last.keys.push(...value.keys);
+    // A mouse that moved again before the last move left goes straight to where it is now.
+    else if (value.kind === 'pointer' && value.action === 'move' && last?.kind === 'pointer' && last.action === 'move' && last.buttons === value.buttons) queue[queue.length - 1] = { value, ...(target ? { target } : {}) };
     else queue.push({ value: value.kind === 'press' ? { kind: 'press', keys: [...value.keys] } : value, ...(target ? { target } : {}) });
     draining ??= drain().finally(() => { draining = null; });
   }
@@ -317,12 +319,35 @@
       .catch(() => {})
       .finally(() => { scrolling = false; kick(); flushScroll(); });
   }
+  /**
+   * The mouse goes to the page as it moves, hovering or held: a slider, a
+   * puzzle piece or a selection follows it, and the page sees a person's path.
+   * A press waits for the first move past the click threshold, so a click stays
+   * a tap with its double click and its `<select>` list.
+   */
+  function mouse(action: 'move' | 'down' | 'up', at: { x: number; y: number } | null, buttons: 0 | 1 = 0) {
+    const current = frame;
+    if (!at || !current || !usable || zoom || choice) return;
+    direct({ kind: 'pointer', action, ...at, width: current.width, height: current.height, ...(action === 'move' ? { buttons } : {}) }, current);
+  }
+  /** The press goes where the button went down, on the page that frame showed. */
+  function press(start: NonNullable<typeof pointer>) {
+    if (start.pressed !== undefined) return;
+    start.pressed = frame && start.from && frame.width === start.frame.width && frame.height === start.frame.height ? start.from : null;
+    if (start.pressed) mouse('down', start.pressed);
+  }
   function move(event: PointerEvent) {
     const start = pointer;
-    if (!start || zoom) return;
+    if (!start) { if (event.pointerType === 'mouse' && frame) mouse('move', point(event, frame)); return; }
+    if (zoom) return;
     if (!start.moved && Math.hypot(event.clientX - start.x, event.clientY - start.y) <= 8) return;
     start.moved = true;
-    if (start.mouse) return; // A mouse drag selects on release; its wheel scrolls.
+    if (start.mouse) {
+      // The press goes where the button went down, then the path from there.
+      press(start);
+      if (start.pressed && frame) { start.pressed = edgePoint(event, frame) ?? start.pressed; mouse('move', start.pressed, 1); }
+      return;
+    }
     scrollX += event.clientX - start.lastX; scrollY += event.clientY - start.lastY;
     start.lastX = event.clientX; start.lastY = event.clientY;
     flushScroll();
@@ -332,8 +357,8 @@
     if (!start || start.client !== store.client) return;
     const size = { width: start.frame.width, height: start.frame.height };
     if (start.mouse && (start.moved || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8)) {
-      const to = edgePoint(event, start.frame);
-      if (start.from && to) direct({ kind: 'drag', from: start.from, to, ...size }, start.frame);
+      press(start);
+      if (start.pressed && frame) mouse('up', edgePoint(event, frame) ?? start.pressed);
       return;
     }
     if (start.moved || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8) {
@@ -350,6 +375,11 @@
       const tap = { kind: 'tap' as const, ...p, ...size, ...(count > 1 ? { count } : {}), ...(start.shift ? { shift: true } : {}) };
       if (start.mouse) direct(tap, start.frame); else void input(tap, start.frame);
     }
+  }
+  /** A held mouse the system took away lets go of the page where it was last seen. */
+  function cancel() {
+    const start = pointer; pointer = undefined;
+    if (start?.pressed) mouse('up', start.pressed);
   }
   function go(event: SubmitEvent) {
     event.preventDefault();
@@ -414,7 +444,7 @@
   {/if}
   <div class="screen-area" class:zoomed={zoom > 0} title={desk && frame ? strings.remoteBrowser.deskHint : undefined} bind:this={area} bind:clientWidth={areaWidth} bind:clientHeight={areaHeight}>
     {#if frame}
-      <button bind:this={screen} type="button" class="screen" style:width={`${frame.width * previewScale}px`} style:height={`${frame.height * previewScale}px`} class:stale={paused || error} class:desk aria-label={desk ? strings.remoteBrowser.interactDesk : strings.remoteBrowser.interact} aria-describedby={desk ? hintId : undefined} disabled={!usable} onpointerdown={down} onpointermove={move} onpointerup={up} onpointercancel={() => { pointer = undefined; }} oncontextmenu={e => e.preventDefault()}>
+      <button bind:this={screen} type="button" class="screen" style:width={`${frame.width * previewScale}px`} style:height={`${frame.height * previewScale}px`} class:stale={paused || error} class:desk aria-label={desk ? strings.remoteBrowser.interactDesk : strings.remoteBrowser.interact} aria-describedby={desk ? hintId : undefined} disabled={!usable} onpointerdown={down} onpointermove={move} onpointerup={up} onpointercancel={cancel} oncontextmenu={e => e.preventDefault()}>
         <img bind:this={picture} src={`data:image/jpeg;base64,${frame.base64}`} alt={strings.remoteBrowser.image} draggable="false" data-testid="remote-browser-frame" />
       </button>
     {:else}<p class="empty">{strings.remoteBrowser.waiting}</p>{/if}

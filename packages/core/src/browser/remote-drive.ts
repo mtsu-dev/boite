@@ -238,7 +238,14 @@ export class RemoteDrive {
       default: break;
     }
     // The size the viewer aimed at is known without the page: a tap on another one is refused before a read of it.
-    if ((input.kind === 'tap' || input.kind === 'drag' || input.kind === 'choose') && (input.width !== saved.frame.width || input.height !== saved.frame.height)) throw refused('the browser viewport changed; refresh before tapping');
+    if ((input.kind === 'tap' || input.kind === 'drag' || input.kind === 'choose' || input.kind === 'pointer') && (input.width !== saved.frame.width || input.height !== saved.frame.height)) throw refused('the browser viewport changed; refresh before tapping');
+    // A mouse moving or let go goes out at once, on the page of the frame it was aimed at:
+    // a read of the page before each would space the path and leave the button held between two.
+    if (input.kind === 'pointer' && input.action !== 'down') {
+      await this.#pointer(tab, input.action, { x: Math.min(saved.page.width - 1, input.x * saved.page.width), y: Math.min(saved.page.height - 1, input.y * saved.page.height) }, input.buttons ?? 0);
+      tab.frame = null;
+      return { ok: true };
+    }
     // Read in turn with captures: a scaled one in flight resizes the page for its shot.
     const page = await this.#context.screen(tab, () => this.#context.evaluate(tab, PAGE_INFO_SCRIPT, 5000), true) as PageInfo;
     const same = page.width === saved.page.width && page.height === saved.page.height && page.href === saved.page.href && page.origin === saved.page.origin;
@@ -258,6 +265,7 @@ export class RemoteDrive {
         break;
       }
       case 'drag': await this.#drag(tab, at(input.from.x, input.from.y), at(input.to.x, input.to.y)); break;
+      case 'pointer': await this.#pointer(tab, input.action, at(input.x, input.y), 1); break;
       case 'press': for (const key of input.keys) await press(tab.page, key); break;
       case 'select-all':
         // The editing command is named: headless, no browser menu turns Control+A into it.
@@ -311,6 +319,18 @@ export class RemoteDrive {
       await this.#context.send(tab, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x: from.x + (to.x - from.x) * step / 4, y: from.y + (to.y - from.y) * step / 4, button: 'left', buttons: 1 });
     }
     await this.#context.send(tab, 'Input.dispatchMouseEvent', { type: 'mouseReleased', ...to, button: 'left', clickCount: 1 });
+  }
+
+  /** The viewer's own mouse, one event as it happened: `buttons` 1 while the left button is held. */
+  async #pointer(tab: Tab, action: 'move' | 'down' | 'up', point: { x: number; y: number }, buttons: 0 | 1): Promise<void> {
+    if (action === 'move') {
+      await this.#context.send(tab, 'Input.dispatchMouseEvent', { type: 'mouseMoved', ...point, button: buttons ? 'left' : 'none', buttons });
+      return;
+    }
+    if (action === 'down') await this.#context.send(tab, 'Input.dispatchMouseEvent', { type: 'mouseMoved', ...point, button: 'none', buttons: 0 });
+    await this.#context.send(tab, 'Input.dispatchMouseEvent', {
+      type: action === 'down' ? 'mousePressed' : 'mouseReleased', ...point, button: 'left', buttons: action === 'down' ? 1 : 0, clickCount: 1,
+    });
   }
 
   disconnect(connectionId: string): void {

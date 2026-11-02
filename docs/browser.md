@@ -601,9 +601,18 @@ says how, and a copy shows a short note over the page. A click on the page gives
 elsewhere: characters, Enter, Tab, Escape, the arrows, Home, End, Page Up and
 Down, Delete and Backspace leave as native key events (`press`), and the keys
 typed while a request is in flight leave together in the next one, in order.
-The wheel scrolls under the pointer. A drag with the mouse is a drag in the
-page, so it selects text; a second click selects the word, a third the
-paragraph, and Shift with a click extends the selection. Control or Command
+The wheel scrolls under the pointer. The mouse reaches the page as it moves
+(`pointer`): hovering, then a press once it has moved past the click
+threshold, each move while the button is held and the release, every one on
+the frame shown at that moment, with moves made during a request in flight
+sent as one at the latest point. A selection, a slider or a captcha's puzzle
+piece follows the hand and sees its path and timing. Before 2026-11-02 a
+mouse drag left only at the release, replayed in four instant steps, which a
+captcha rejects, and a hold longer than the five seconds a frame takes input
+was refused with "refresh the live browser". The
+older `drag` input stays for clients from before. A click without movement
+stays a tap: a second click selects the word, a third the paragraph, and Shift
+with a click extends the selection. Control or Command
 with A selects all, with Z or Y undoes and redoes.
 
 A `<select>` opens here, not on the agent's machine. Chrome draws a select's

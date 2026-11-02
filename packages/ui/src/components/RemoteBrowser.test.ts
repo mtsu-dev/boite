@@ -225,6 +225,53 @@ test('a drag scrolls continuously from where the finger started; a short touch t
   expect(inputs).toEqual([{ kind: 'tap', x: 197 / 390, y: 151 / 300, width: 780, height: 600 }]);
 });
 
+test('a mouse reaches the page as it moves: hover, a press past the click threshold, the held path and the release, each on the frame shown then', async () => {
+  client = new FakeClient({ delayMs: 0, principal: 'session' }); store = new Store(); store.attach(client); await store.connect();
+  const original = client.call.bind(client), inputs: any[] = [];
+  let n = 0, release: (() => void) | undefined;
+  vi.spyOn(client, 'call').mockImplementation(((method: string, params: any) => {
+    if (method === 'browser.remoteFrame') return Promise.resolve(frameAt(`f${++n}`));
+    if (method === 'browser.remoteInput') {
+      inputs.push({ ...params.input, frameId: params.frameId });
+      // The press stays in flight while the mouse keeps moving.
+      return params.input.action === 'down' ? new Promise<unknown>(resolve => { release = () => resolve({ ok: true }); }) : Promise.resolve({ ok: true });
+    }
+    return original(method as never, params as never);
+  }) as typeof client.call);
+  Object.defineProperty(Element.prototype, 'setPointerCapture', { configurable: true, value: () => {} });
+  vi.spyOn(HTMLImageElement.prototype, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 390, height: 300, right: 390, bottom: 300, x: 0, y: 0, toJSON() {} } as DOMRect);
+  vi.useFakeTimers();
+  app = mount(RemoteBrowser, { target: document.body, props: { store, threadId: 't-trace' } }); await settle();
+  await vi.advanceTimersByTimeAsync(1); await settle();
+  const screen = document.querySelector<HTMLButtonElement>('.screen')!;
+  const mouse = (type: string, x: number, y: number) => { const event = new MouseEvent(type, { clientX: x, clientY: y, button: 0, bubbles: true }); Object.defineProperty(event, 'pointerType', { value: 'mouse' }); screen.dispatchEvent(event); };
+  const at = (x: number, y: number) => ({ x: x / 390, y: y / 300, width: 780, height: 600 });
+  mouse('pointermove', 39, 30); await settle();
+  expect(inputs).toEqual([{ kind: 'pointer', action: 'move', ...at(39, 30), buttons: 0, frameId: 'f1' }]);
+  inputs.length = 0;
+  mouse('pointerdown', 100, 150); await settle();
+  mouse('pointermove', 104, 150); await settle();
+  expect(inputs).toHaveLength(0);
+  mouse('pointermove', 120, 150); await settle();
+  // Moves made while the press is in flight leave as one, at the latest point.
+  mouse('pointermove', 150, 152); mouse('pointermove', 200, 155); await settle();
+  // A newer frame came in during the hold: the rest is aimed at it, not at the frame of the press.
+  await vi.advanceTimersByTimeAsync(400); await settle();
+  release!(); await settle();
+  mouse('pointerup', 260, 160); await settle();
+  expect(inputs.map(({ frameId: _, ...input }) => input)).toEqual([
+    { kind: 'pointer', action: 'down', ...at(100, 150) },
+    { kind: 'pointer', action: 'move', ...at(200, 155), buttons: 1 },
+    { kind: 'pointer', action: 'up', ...at(260, 160) },
+  ]);
+  expect(inputs[0].frameId).toBe('f1');
+  expect(inputs.at(-1).frameId).not.toBe('f1');
+  // A plain click is still a tap, with its double click and its lists.
+  inputs.length = 0;
+  mouse('pointerdown', 195, 150); mouse('pointerup', 196, 151); await settle();
+  expect(inputs.map(({ frameId: _, ...input }) => input)).toEqual([{ kind: 'tap', ...at(196, 151) }]);
+});
+
 test('a tap on a <select> draws its list here, since Chrome draws its own on the agent’s machine, and a pick goes back as choose', async () => {
   client = new FakeClient({ delayMs: 0, principal: 'session' }); store = new Store(); store.attach(client); await store.connect();
   const original = client.call.bind(client), inputs: any[] = [];
