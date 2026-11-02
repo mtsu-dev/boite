@@ -67,6 +67,7 @@ import { newId } from '../ids.ts';
 import type { ControlState, NativeWindow, ScreenRect, TrackedControl, WindowGuide } from '../platform/types.ts';
 import type { Connection } from '../router.ts';
 import { centerInside, edgeOf, markerRect, sameRect } from './guide-geometry.ts';
+import { GuideReads, type Snapshot } from './guide-reads.ts';
 import { cropRect } from './image.ts';
 
 /** How many controls a read asks the OS for before `filter` and `limit` keep some. */
@@ -140,12 +141,6 @@ export interface WindowGuidesOptions {
 export interface WindowGuideHost {
   activeThread(threadId: string, connection?: Connection): ThreadSummary;
   grantedWindow(thread: ThreadSummary, target: WindowTarget, kind: 'read' | null, connection?: Connection): Promise<NativeWindow>;
-}
-
-/** The controls a conversation last read, numbered from 1, with the window they belong to. */
-interface Snapshot {
-  window: NativeWindow;
-  controls: WindowControl[];
 }
 
 /** The box a conversation shows: where it is in its window, and who waits for a click in it. */
@@ -229,7 +224,7 @@ export class WindowGuides {
   readonly #watchMs: number;
   readonly #valueSettleMs: number;
   #backend?: Promise<WindowGuide | { unavailable: string }>;
-  readonly #snapshots = new Map<string, Snapshot>();
+  readonly #reads = new GuideReads();
   readonly #shown = new Map<string, Shown>();
   readonly #frames = new Map<string, Frame>();
 
@@ -245,10 +240,11 @@ export class WindowGuides {
     this.#valueSettleMs = options.valueSettleMs ?? VALUE_SETTLE_MS;
   }
 
-  async read({ threadId, target, filter, limit, any, offscreen }: RpcParams<'windows.read'>, connection?: Connection): Promise<RpcResult<'windows.read'>> {
+  async read({ threadId, target, filter, limit, any, offscreen, changes }: RpcParams<'windows.read'>, connection?: Connection): Promise<RpcResult<'windows.read'>> {
     const thread = this.#host.activeThread(threadId, connection);
     if (any !== undefined && typeof any !== 'boolean') throw invalidParams('any must be true or false', { field: 'any' });
     if (offscreen !== undefined && typeof offscreen !== 'boolean') throw invalidParams('offscreen must be true or false', { field: 'offscreen' });
+    if (changes !== undefined && typeof changes !== 'boolean') throw invalidParams('changes must be true or false', { field: 'changes' });
     if (filter !== undefined && (typeof filter !== 'string' || filter.trim() === '' || filter.length > FILTER_MAX || /\p{Cc}/u.test(filter))) {
       throw invalidParams(`filter must be 1 to ${FILTER_MAX} characters with no control characters`, { field: 'filter' });
     }
@@ -257,11 +253,13 @@ export class WindowGuides {
     const guide = await this.#load();
     const window = await this.#host.grantedWindow(thread, target, 'read', connection);
     await this.#front(thread.id, guide, window);
-    const snapshot = await this.#read(thread, guide, window, any === true, offscreen === true);
+    const read = await this.#read(thread, guide, window, any === true, offscreen === true, changes === true);
+    this.#reads.keep(thread.id, read.snapshot);
     if (!this.#shown.has(thread.id)) this.#frameLater(thread.id);
     const wanted = filter?.trim().toLowerCase();
-    const matching = wanted === undefined ? snapshot.controls : snapshot.controls.filter(control => control.name.toLowerCase().includes(wanted));
-    return { windowId: window.id, process: window.process, controls: matching.slice(0, max), total: matching.length };
+    const listed = read.appeared ?? read.snapshot.controls;
+    const matching = wanted === undefined ? listed : listed.filter(control => control.name.toLowerCase().includes(wanted));
+    return { windowId: window.id, process: window.process, controls: matching.slice(0, max), total: matching.length, ...(read.changes ? { changes: read.changes } : {}) };
   }
 
   async point(params: RpcParams<'windows.point'>, connection?: Connection): Promise<RpcResult<'windows.point'>> {
@@ -298,7 +296,7 @@ export class WindowGuides {
     if (id !== undefined) {
       if (target !== undefined) throw invalidParams('a control id already names its window: drop the target', { field: 'target' });
       if (!Number.isInteger(id) || id < 1) throw invalidParams('control must be an id such as 3 from `boite window read`', { field: 'control' });
-      const snapshot = this.#snapshots.get(thread.id);
+      const snapshot = this.#reads.numbered(thread.id);
       if (!snapshot) throw refused('nothing was read in this conversation yet: run `boite window read` first', { field: 'control' });
       control = snapshot.controls.find(candidate => candidate.id === id);
       if (!control) throw refused(`#${id} is not among the ${snapshot.controls.length} controls of the last read: read the window again`, { field: 'control' });
@@ -323,7 +321,8 @@ export class WindowGuides {
       const guide = await this.#load();
       window = await this.#host.grantedWindow(thread, target, 'read', connection);
       await this.#front(thread.id, guide, window);
-      const snapshot = await this.#read(thread, guide, window, params.any === true, false);
+      // The numbered read stays: the ids the agent saw keep naming the controls they named.
+      const { snapshot } = await this.#read(thread, guide, window, params.any === true, false, false);
       control = this.#named(snapshot, name.trim());
       box = control;
     } else {
@@ -555,13 +554,13 @@ export class WindowGuides {
   release(threadId: string): void {
     this.#remove(threadId, 'cleared');
     this.#hideFrame(threadId);
-    this.#snapshots.delete(threadId);
+    this.#reads.delete(threadId);
   }
 
   stop(): void {
     for (const threadId of [...this.#shown.keys()]) this.#remove(threadId, 'cleared');
     for (const threadId of [...this.#frames.keys()]) this.#hideFrame(threadId);
-    this.#snapshots.clear();
+    this.#reads.clear();
   }
 
   async #load(): Promise<WindowGuide> {
@@ -572,11 +571,12 @@ export class WindowGuides {
   }
 
   /**
-   * Reads the window's controls in its own pixels and keeps them as the
-   * conversation's last read; with `offscreen`, those out of view too, each
-   * with the edge it lies past.
+   * Reads the window's controls in its own pixels; with `offscreen`, those
+   * out of view too, each with the edge it lies past, numbered as
+   * `GuideReads.number` does. The caller keeps the snapshot.
    */
-  async #read(thread: ThreadSummary, guide: WindowGuide, window: NativeWindow, any: boolean, offscreen: boolean): Promise<Snapshot> {
+  async #read(thread: ThreadSummary, guide: WindowGuide, window: NativeWindow, any: boolean, offscreen: boolean, changes: boolean)
+    : Promise<ReturnType<GuideReads['number']>> {
     const frame = guide.frame(window.id);
     if (frame === null) throw refused(`window ${window.id} of ${window.process} is gone`, { windowId: window.id, code: 'gone' });
     let found: Awaited<ReturnType<WindowGuide['controls']>>;
@@ -593,7 +593,7 @@ export class WindowGuides {
       if (!popups.has(popup)) popups.set(popup, guide.frame(popup)?.rect ?? null);
       return popups.get(popup)!;
     };
-    const controls: WindowControl[] = [];
+    const placed: Omit<WindowControl, 'id'>[] = [];
     let outOfView = 0;
     for (const control of found.controls) {
       const bounds = boundsOf(control.popup);
@@ -607,18 +607,21 @@ export class WindowGuides {
         side = w > 0 && h > 0 ? edgeOf(control.rect, bounds) ?? 'unknown' : 'unknown';
         outOfView += 1;
       }
-      controls.push({
-        id: controls.length + 1, type: control.type, name: control.name,
+      placed.push({
+        type: control.type, name: control.name,
         ...(control.automationId ? { automationId: control.automationId } : {}),
         ...(control.popup ? { popup: control.popup } : {}),
         ...(side ? { offscreen: side } : {}),
         x: x0 - left, y: y0 - top, width: w, height: h,
       });
     }
-    const snapshot = { window, controls };
-    this.#snapshots.set(thread.id, snapshot);
-    this.#core.logs.info(`Read ${controls.length} controls of window ${window.id} of ${window.process}`, { source: 'windows', event: 'window.read', threadId: thread.id, data: { windowId: window.id, process: window.process, controls: controls.length, popups: popups.size, ...(offscreen ? { offscreen: outOfView } : {}) } });
-    return snapshot;
+    const read = this.#reads.number(thread.id, window, placed, { any, offscreen, changes });
+    const { appeared, changes: summary } = read;
+    // Counts only: the names of what appeared or vanished never reach the log.
+    const counts: Record<string, number> = appeared && summary ? { appeared: appeared.length, vanished: summary.vanished.length, unchanged: summary.unchanged } : {};
+    const since = appeared && summary ? `, ${appeared.length} new and ${summary.vanished.length} gone since the last read` : '';
+    this.#core.logs.info(`Read ${placed.length} controls of window ${window.id} of ${window.process}${since}`, { source: 'windows', event: 'window.read', threadId: thread.id, data: { windowId: window.id, process: window.process, controls: placed.length, popups: popups.size, ...(offscreen ? { offscreen: outOfView } : {}), ...counts } });
+    return read;
   }
 
   /** The one control named `name`: an exact match without case first, then the names that contain it. */

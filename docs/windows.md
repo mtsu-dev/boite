@@ -155,6 +155,7 @@ opening a window. Nothing is ever clicked, typed or focused for the user.
 ```sh
 boite window read --process Unity --filter play
 boite window read --process Unity --offscreen --filter camera
+boite window read --process Unity --changes
 boite window point 3 --label "Press Play"
 boite window point --process Unity --name Window
 boite window point --process Unity --at 0.4,0.3,0.2,0.2 --label "The Scene view"
@@ -181,7 +182,43 @@ boite window unpoint
   - 60 lines by default, `--limit` up to 400; `--filter` keeps names that
     contain the text, without case. About 10 tokens a line, against
     1,000 to 3,000 for a screenshot.
-  - The ids stay valid until the conversation's next read.
+  - The ids stay valid until the conversation's next read, which renumbers
+    from 1; a read with `--changes` keeps them.
+  - `--changes` (`changes: true`) prints only what changed since the
+    conversation's previous read of the same window: after a click, the next
+    step's read costs the new lines, not the whole window again. It lists the
+    controls that appeared, under new ids after the previous read's highest,
+    then `vanished: #3 #7-#9`, the ids of the controls gone, then
+    `unchanged: 14, under the ids they had`. The read still becomes the one
+    `point <id>` takes, in full: a control that stayed keeps its id, so
+    `point` takes the ids of either read. `--filter` and `--limit` apply to
+    the controls that appeared.
+    - A control is the same as one before when its type, automation id,
+      name and whether it lies in a menu or popup are the same. Where several
+      share all four (a Delete button on each row), each pairs with the
+      nearest one before, centre to centre. Its place is not part of it, so a
+      control that moved, as the taskbar's buttons do when one is added,
+      stays unchanged under its id. A renamed control, such as Play becoming
+      Stop, is one that vanished and one that appeared. UI Automation's
+      runtime ids are not used: a read does not take them, and an app that
+      rebuilds its tree (Chromium, a list recycling its rows) gives the same
+      control a new one. The rule is `windowControlChanges` in
+      `packages/contracts/src/windows.ts`.
+    - The previous read must have been taken with the same `--any` and
+      `--offscreen`; the conversation keeps the last read of each of its 8
+      most recently read windows. Without one, the read is a full read
+      numbered from 1 and says so on its first line
+      (`changes.compared: false`). Pointing by `--name` reads the window
+      without replacing the numbered read.
+    - Measured on 2026-11-02 with the Windows backend
+      (`readControls`, lines as the CLI writes them, tokens as characters /
+      4): the taskbar (17 controls) before and after a window opened, adding
+      one button and moving others, printed 5 lines and 150 characters (about
+      38 tokens) against 19 lines and 1,224 characters (about 306 tokens) for
+      the full read, which kept all 17 under their ids; read again with
+      nothing changed, 4 lines and 78 characters against 18 and 1,147. The
+      WinForms test form with its dropdown opened: 5 lines and 134
+      characters against 12 and 434.
   - `--offscreen` (`offscreen: true`) adds the controls scrolled out of
     view, so the agent can say "scroll down, it is below". Without it, the
     output is unchanged. Each such line ends in `(out of view: below)`,
@@ -224,7 +261,8 @@ boite window unpoint
     control's name.
   - `<target> --name <name>`: reads the window and takes the control with that
     name, an exact match without case first, then the names that contain it.
-    Several matches are refused with their ids.
+    Several matches are refused with their ids. The conversation's numbered
+    read stays as it was.
   - `<target> --at x,y,w,h`: a rectangle of the window in pixels, or fractions
     from 0 to 1, as `--crop` takes it. For an app with no accessibility tree,
     such as a game or a Unity scene view: the agent finds the place in a small

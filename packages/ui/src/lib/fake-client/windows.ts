@@ -1,7 +1,7 @@
 import {
   RpcErrorCode, WINDOW_CAPTURE_EXCLUDED, WINDOW_CLIP_LIMITS, WINDOW_CONSENT_ANSWERS, WINDOW_CONSENT_TIMEOUT_MS, WINDOW_POINT_LABEL_MAX, WINDOW_POINT_PAD, WINDOW_POINT_SECONDS,
   WINDOW_GUIDE_ANSWERS, WINDOW_POINTER_UNTIL, WINDOW_READ_LIMIT, WINDOW_SHOT_MAX, WINDOW_THUMBNAIL_MAX,
-  windowCropError, windowIdError, windowStepError, windowTargetError,
+  windowControlChanges, windowCropError, windowIdError, windowStepError, windowTargetError,
   type AllowedWindowApp, type DesktopWindow, type Message, type MessagePart, type Thread, type WindowConsentAnswer, type WindowConsentKind,
   type WindowControl, type WindowOpened, type WindowPointer, type WindowTarget, type WindowWatch
 } from '@boite/contracts';
@@ -104,6 +104,8 @@ export function windowsMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
   const watches = new Map<string, WindowWatch>();
   /** Each conversation's last read and its box: a fake person clicks the box a second after a wait starts. */
   const reads = new Map<string, { window: FakeWindow; controls: WindowControl[] }>();
+  /** Each conversation's last read of each window and its options, for a read with `changes`. */
+  const history = new Map<string, Map<string, { controls: WindowControl[]; any: boolean; offscreen: boolean }>>();
   const pointers = new Map<string, {
     pointer: WindowPointer; boxId: string; timer: ReturnType<typeof setTimeout>; end: Set<(reason: BoxEnd) => void>;
     /** Its `window_guide` card, folded with how the box ended. */
@@ -143,6 +145,7 @@ export function windowsMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
     unpoint(threadId, 'cleared');
     menus.delete(threadId);
     reads.delete(threadId);
+    history.delete(threadId);
     if (watches.delete(threadId)) changed(threadId);
   };
   ctx.bus.observe('thread.updated', thread => { if (thread.archived) release(thread.id); });
@@ -369,20 +372,32 @@ export function windowsMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
       pending.settle(answer);
       return { ok: true };
     },
-    'windows.read': async ({ threadId, target, filter, limit, any, offscreen }) => {
+    'windows.read': async ({ threadId, target, filter, limit, any, offscreen, changes }) => {
       const thread = active(threadId);
       if (any !== undefined && typeof any !== 'boolean') throw invalid('any must be true or false', 'any');
       if (offscreen !== undefined && typeof offscreen !== 'boolean') throw invalid('offscreen must be true or false', 'offscreen');
+      if (changes !== undefined && typeof changes !== 'boolean') throw invalid('changes must be true or false', 'changes');
       const max = limit ?? WINDOW_READ_LIMIT.default;
       if (!(Number.isInteger(max) && max >= 1 && max <= WINDOW_READ_LIMIT.max)) throw invalid(`limit must be a whole number from 1 to ${WINDOW_READ_LIMIT.max}`, 'limit');
       const window = resolve(thread, target);
       if (window.minimized) throw refusal('window minimized: restore it first', { windowId: window.id });
       await consent(thread, window, 'read');
-      const controls = controlsOf(threadId, window, offscreen === true);
+      const read = controlsOf(threadId, window, offscreen === true);
+      // The fake reads no containers: `any` only tells reads apart, as the core's options do.
+      const options = { any: any === true, offscreen: offscreen === true };
+      const windows = history.get(threadId) ?? new Map<string, { controls: WindowControl[]; any: boolean; offscreen: boolean }>();
+      const previous = windows.get(window.id);
+      const diff = changes && previous && previous.any === options.any && previous.offscreen === options.offscreen
+        ? windowControlChanges(previous.controls, read.map(({ id: _, ...control }) => control)) : null;
+      const controls = diff?.controls ?? read;
       reads.set(threadId, { window, controls });
+      windows.set(window.id, { controls, ...options });
+      history.set(threadId, windows);
       const wanted = filter?.trim().toLowerCase();
-      const matching = wanted ? controls.filter(control => control.name.toLowerCase().includes(wanted)) : controls;
-      return { windowId: window.id, process: window.process, controls: structuredClone(matching.slice(0, max)), total: matching.length };
+      const listed = diff?.appeared ?? controls;
+      const matching = wanted ? listed.filter(control => control.name.toLowerCase().includes(wanted)) : listed;
+      const summary = diff ? { compared: true, vanished: diff.vanished, unchanged: diff.unchanged } : changes ? { compared: false, vanished: [], unchanged: 0 } : null;
+      return { windowId: window.id, process: window.process, controls: structuredClone(matching.slice(0, max)), total: matching.length, ...(summary ? { changes: summary } : {}) };
     },
     'windows.point': async ({ threadId, control: id, target, name, at, label = '', seconds = WINDOW_POINT_SECONDS.default, shape = 'box', pad = WINDOW_POINT_PAD.default, notify = false, any, until = 'click', step }) => {
       const thread = active(threadId);
@@ -413,8 +428,8 @@ export function windowsMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
         if (!target) throw refusal('point by name needs the window\'s target', { field: 'target' });
         window = resolve(thread, target);
         await consent(thread, window, 'read');
+        // The numbered read stays, as in the core: the ids the agent saw keep naming their controls.
         const controls = controlsOf(threadId, window);
-        reads.set(threadId, { window, controls });
         const exact = controls.filter(one => one.name.toLowerCase() === name.trim().toLowerCase());
         const found = exact.length > 0 ? exact : controls.filter(one => one.name.toLowerCase().includes(name.trim().toLowerCase()));
         if (found.length !== 1) throw refusal(found.length === 0 ? `no control of ${window.process} is named "${name}"` : `${found.length} controls of ${window.process} match "${name}"; point at one by id`, { field: 'name' });

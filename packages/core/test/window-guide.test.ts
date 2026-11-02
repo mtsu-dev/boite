@@ -107,7 +107,7 @@ function fakeDesktop() {
       };
     },
   };
-  return { windows, frames, mouse, keys, capture, guide, live, drop, front, menuFrame, apps };
+  return { windows, frames, controls, mouse, keys, capture, guide, live, drop, front, menuFrame, apps };
 }
 
 /** Retries an assertion until it holds: the box events reach the desktop app's socket, not the caller's. */
@@ -182,6 +182,41 @@ describe('window guide', () => {
       .toMatchObject({ total: 2, controls: [{ id: 3, name: 'Play' }] });
     expect(await thrown(agent.call('windows.read', { threadId, target: { id: '101' }, limit: 0 }))).toThrow('limit must be a whole number from 1 to 400');
     expect(await thrown(agent.call('windows.read', { threadId, target: { id: '202' } }))).toThrow('KeePass.exe is never captured');
+  });
+
+  test('read with changes answers what appeared under new ids and what vanished, and point takes the ids of either read', async () => {
+    const answered = answer('always');
+    // No earlier read of the window: a full read, numbered from 1, that says so.
+    const first = await agent.call('windows.read', { threadId, target: { id: '101' }, changes: true });
+    await answered;
+    expect(first.changes).toEqual({ compared: false, vanished: [], unchanged: 0 });
+    expect(first.controls.map(one => `${one.id} ${one.name}`)).toEqual(['1 File', '2 Edit', '3 Play', '4 Play Mode Options']);
+
+    // The person opened the File menu; Edit went away and Play moved.
+    desk.frames.set('303', desk.menuFrame);
+    desk.controls.splice(1, 1);
+    desk.controls[1]!.rect = { left: 1210, top: 540, width: 40, height: 20 };
+    const next = await agent.call('windows.read', { threadId, target: { id: '101' }, changes: true });
+    expect(next).toEqual({
+      windowId: '101', process: 'Unity.exe', total: 1,
+      controls: [{ id: 5, type: 'MenuItem', name: 'Build Settings', popup: '303', x: -10, y: 30, width: 40, height: 20 }],
+      changes: { compared: true, vanished: [2], unchanged: 3 },
+    });
+    const { pointer } = await agent.call('windows.point', { threadId, control: 3 });
+    expect(pointer).toMatchObject({ x: 210, y: 40, control: { name: 'Play' } });
+    expect((await agent.call('windows.point', { threadId, control: 5 })).pointer).toMatchObject({ popup: '303', control: { name: 'Build Settings' } });
+    expect(await thrown(agent.call('windows.point', { threadId, control: 2 }))).toThrow('#2 is not among the 4 controls of the last read');
+
+    // Pointing by name reads the window but leaves the numbered read alone.
+    await agent.call('windows.point', { threadId, target: { id: '101' }, name: 'Play Mode Options' });
+    expect((await agent.call('windows.point', { threadId, control: 5 })).pointer).toMatchObject({ control: { name: 'Build Settings' } });
+
+    // Nothing changed: no line but the counts.
+    expect(await agent.call('windows.read', { threadId, target: { id: '101' }, changes: true }))
+      .toMatchObject({ controls: [], total: 0, changes: { compared: true, vanished: [], unchanged: 4 } });
+    // Other options read other controls: a full read again.
+    expect((await agent.call('windows.read', { threadId, target: { id: '101' }, changes: true, offscreen: true })).changes).toMatchObject({ compared: false });
+    expect(await thrown(agent.call('windows.read', { threadId, target: { id: '101' }, changes: 'yes' as unknown as boolean }))).toThrow('changes must be true or false');
   });
 
   test('point draws over a control of the last read, by id or by name, and replaces the previous box', async () => {
@@ -730,6 +765,11 @@ describe('window guide', () => {
     setTimeout(() => { desk.keys.escape = true; }, 50);
     expect((await run('wait', '--timeout', '5')).out).toBe('dismissed: the user ended the box with Done or Escape before it was seen; it is gone. Ask before pointing again\n');
     desk.keys.escape = false;
+    expect((await run('read', '--id', '101', '--changes')).out).toBe('window: 101 (Unity.exe)\nappeared: none\nvanished: none\nunchanged: 4, under the ids they had\n');
+    desk.frames.set('303', desk.menuFrame);
+    desk.controls.splice(0, 2);
+    expect((await run('read', '--id', '101', '--changes')).out).toBe('window: 101 (Unity.exe)\nappeared:\n#5 MenuItem "Build Settings" -10,30 40x20 (in popup 303)\nvanished: #1-#2\nunchanged: 2, under the ids they had\n');
+    expect((await run('read', '--id', '101', '--changes', '--any', '--filter', 'card')).out).toBe('window: 101 (Unity.exe)\nno earlier read of this window with these options in this conversation: a full read\n#4 Group "Card" 100,100 120x60\n');
     expect((await run('unpoint')).out).toBe('no box was shown\n');
   });
 });

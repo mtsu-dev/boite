@@ -252,6 +252,13 @@ ending in `(in popup <id>)`; a box on one of its items goes when it closes.
 `(out of view: below)` (above, left, right) or `(out of view)` when the app does
 not say where; a box on one shows as an arrow on that edge of the window until
 the user scrolls it into view, then rings it.
+`read --changes` prints only what changed since the conversation's previous
+read of that window with the same `--any` and `--offscreen`: the controls that
+appeared, under new ids, then `vanished:` with the ids gone and `unchanged:`
+with how many stayed, which keep their ids for `point`. With no such read it is
+a full read that says so. A control is matched by type, automation id, name
+and whether it lies in a popup, not by place
+([windows.md](windows.md#guiding-the-user)).
 `--round` draws a pill or a
 circle and `--pad <px>` sets the gap around the control. `--step N/M` marks the
 box as step N of a tour of M (`1 <= N <= M <= 20`): the box and its card show

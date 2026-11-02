@@ -117,7 +117,7 @@ export type WindowConsentKind = WindowCaptureKind | 'read';
  * it from the system's accessibility tree: a button, a menu item, a field.
  */
 export interface WindowControl {
-  /** `#3` in the CLI: names the control to `windows.point` until the conversation's next `windows.read`. */
+  /** `#3` in the CLI: names the control to `windows.point` until the conversation's next `windows.read`, which keeps it with `changes`. */
   id: number;
   /** UI Automation's control type in English: `Button`, `MenuItem`, `Edit`. */
   type: string;
@@ -154,12 +154,33 @@ export type WindowOffscreen = WindowEdge | 'unknown';
 export type WindowEdge = 'above' | 'below' | 'left' | 'right';
 export const WINDOW_EDGES: readonly WindowEdge[] = ['above', 'below', 'left', 'right'];
 
-/** What `windows.read` found. `total` counts every control that matched before `limit`. */
+/**
+ * What `windows.read` found. `total` counts every control that matched before
+ * `limit`. With `changes`, `controls` and `total` hold only the controls that
+ * appeared since the previous read, unless `changes.compared` is false.
+ */
 export interface WindowControls {
   windowId: string;
   process: string;
   controls: WindowControl[];
   total: number;
+  changes?: WindowReadChanges;
+}
+
+/**
+ * How a read with `changes` compares with the conversation's previous read of
+ * the same window, taken with the same `any` and `offscreen`. A control still
+ * there keeps the id it had; one that appeared takes the next id after the
+ * previous read's highest. See `windowControlChanges` for what counts as the
+ * same control.
+ */
+export interface WindowReadChanges {
+  /** False when there was no such previous read: `controls` is then a full read, numbered from 1. */
+  compared: boolean;
+  /** The ids of the previous read whose controls are gone, ascending. */
+  vanished: number[];
+  /** How many controls of the previous read are still there, under the ids they had. */
+  unchanged: number;
 }
 
 /** The ring's corners: `box` follows the control's own, `round` makes a pill, or a circle around a square control such as an app icon. */
@@ -359,8 +380,11 @@ export interface WindowsRpcMethods {
    * `any` adds the containers (groups, panes, lists, images, text, documents)
    * to the controls a person acts on. `offscreen` adds the controls scrolled
    * out of view, each marked with where it lies (`WindowControl.offscreen`).
+   * `changes` answers only what changed since the conversation's previous
+   * read of the window (`WindowReadChanges`); the read still becomes the one
+   * `windows.point` takes ids from, in full.
    */
-  'windows.read': { params: { threadId: string; target: WindowTarget; filter?: string; limit?: number; any?: boolean; offscreen?: boolean }; result: WindowControls };
+  'windows.read': { params: { threadId: string; target: WindowTarget; filter?: string; limit?: number; any?: boolean; offscreen?: boolean; changes?: boolean }; result: WindowControls };
   /**
    * Draws a box with a label above every window, click-through, until a click
    * inside it ends a `windows.waitClick`, `windows.unpoint` or `seconds`.
@@ -442,6 +466,67 @@ export function windowCropError(crop: unknown): string | null {
       ? null : 'a crop in fractions needs values from 0 to 1, a width and height above 0, and x + width and y + height at most 1';
   }
   return 'crop unit must be px or fraction';
+}
+
+/**
+ * Numbers `next`, a read of a window in tree order, against `previous`, the
+ * conversation's last read of it. A control is the same as one before when
+ * its type, automation id, name and whether it lies in a menu or popup are
+ * the same. UI Automation's runtime ids are not used: the reads do not take
+ * them, and an app that rebuilds its tree (Chromium, a recycled list row)
+ * gives the same control a new one. Where several controls share that identity
+ * (a Delete button on each row), each pairs with the nearest one before,
+ * centre to centre. A pair keeps its previous id, wherever it moved; the
+ * others take ids after the previous read's highest, in tree order.
+ */
+export function windowControlChanges(previous: readonly WindowControl[], next: readonly Omit<WindowControl, 'id'>[]): { controls: WindowControl[]; appeared: WindowControl[]; vanished: number[]; unchanged: number } {
+  const identity = (control: Omit<WindowControl, 'id'>) => JSON.stringify([control.type, control.automationId ?? '', control.name, control.popup !== undefined]);
+  const before = new Map<string, WindowControl[]>();
+  for (const control of previous) {
+    const key = identity(control);
+    const group = before.get(key);
+    if (group) group.push(control); else before.set(key, [control]);
+  }
+  const after = new Map<string, number[]>();
+  next.forEach((control, index) => {
+    const key = identity(control);
+    const group = after.get(key);
+    if (group) group.push(index); else after.set(key, [index]);
+  });
+  const ids: (number | undefined)[] = new Array(next.length);
+  const centre = (control: Omit<WindowControl, 'id'>) => [control.x + control.width / 2, control.y + control.height / 2] as const;
+  for (const [key, indexes] of after) {
+    const candidates = before.get(key);
+    if (!candidates) continue;
+    if (candidates.length === 1 && indexes.length === 1) { ids[indexes[0]!] = candidates[0]!.id; continue; }
+    const pairs: { index: number; id: number; distance: number }[] = [];
+    for (const index of indexes) {
+      const [x, y] = centre(next[index]!);
+      for (const candidate of candidates) {
+        const [cx, cy] = centre(candidate);
+        pairs.push({ index, id: candidate.id, distance: Math.hypot(x - cx, y - cy) });
+      }
+    }
+    pairs.sort((a, b) => a.distance - b.distance || a.id - b.id);
+    const taken = new Set<number>();
+    for (const pair of pairs) {
+      if (ids[pair.index] !== undefined || taken.has(pair.id)) continue;
+      ids[pair.index] = pair.id;
+      taken.add(pair.id);
+    }
+  }
+  let nextId = previous.reduce((highest, control) => Math.max(highest, control.id), 0);
+  const kept = new Set<number>();
+  const appeared: WindowControl[] = [];
+  const controls = next.map((control, index) => {
+    const id = ids[index];
+    if (id !== undefined) { kept.add(id); return { id, ...control }; }
+    const fresh = { id: ++nextId, ...control };
+    appeared.push(fresh);
+    return fresh;
+  });
+  const vanished = previous.map(control => control.id).filter(id => !kept.has(id)).sort((a, b) => a - b);
+  return { controls, appeared, vanished, unchanged: kept.size };
 }
 
 /** The one problem with a box's tour step, or null: whole numbers with `1 <= index <= total <= WINDOW_POINT_STEPS_MAX`. */

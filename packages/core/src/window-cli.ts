@@ -30,7 +30,7 @@ export const WINDOW_HELP = `boite window <command> [args] [--json]
                                  (2 by default), as one PNG
   watch <target>                 show the window live in the user's Window panel
   close                          empty the Window panel
-  read <target> [--filter <text>] [--limit <n>] [--any] [--offscreen]
+  read <target> [--filter <text>] [--limit <n>] [--any] [--offscreen] [--changes]
                                  the window's enabled controls on screen, one line
                                  each: #id, type, "name", x,y wxh in window pixels.
                                  Up to ${WINDOW_READ_LIMIT.default} by default, ${WINDOW_READ_LIMIT.max} at most.
@@ -45,7 +45,14 @@ export const WINDOW_HELP = `boite window <command> [args] [--json]
                                  left or right, the way to scroll; (out of view)
                                  alone when the app does not say where. A box on one
                                  shows as an arrow on the window's edge until the
-                                 user scrolls it into view, then rings it
+                                 user scrolls it into view, then rings it.
+                                 --changes lists only what changed since your last
+                                 read of this window with the same --any and
+                                 --offscreen: the controls that appeared, with new
+                                 ids, the ids that vanished and how many stayed.
+                                 Those keep their ids, so point takes any id of
+                                 either read. Read the next step this way after a
+                                 click; with no earlier read it is a full read
   point <id> [--label <text>] [--seconds <s>] [--round] [--pad <px>] [--until <what>] [--step N/M]
   point <target> --name <name> [--any] [same options]
   point <target> --at x,y,w,h [same options]
@@ -80,8 +87,8 @@ export const WINDOW_HELP = `boite window <command> [args] [--json]
 matches are refused with the candidates: pick one by --id. The taskbar is the
 explorer.exe window with no title.
 To teach the user an app, guide instead of acting: read, point, keep working or
-end the turn, and read again for the next step once the click arrives: after a click
-on File, that read lists the open menu's items first. For a tour of several steps,
+end the turn, and read again with --changes for the next step once the click
+arrives: after a click on File, that read lists the open menu's items. For a tour of several steps,
 give each point its --step so the user sees how far along they are. To teach typing or a dialog,
 point --until change at the field, or --until window at what opens the dialog. An app with no accessibility tree (a game, a Unity
 scene view) lists few controls: take a small screenshot and point --at it.
@@ -132,6 +139,18 @@ function toggle(rest: string[], name: string): boolean {
 
 function done(rest: string[]): void {
   if (rest.length > 0) throw new Usage(`window does not take ${rest[0]}\n${WINDOW_HELP}`);
+}
+
+/** Ids as `#3 #5-#7`: a closed menu takes a run of them. */
+function idRuns(ids: number[]): string {
+  const runs: string[] = [];
+  for (let at = 0; at < ids.length;) {
+    let end = at;
+    while (end + 1 < ids.length && ids[end + 1] === ids[end]! + 1) end += 1;
+    runs.push(end === at ? `#${ids[at]}` : `#${ids[at]}-#${ids[end]}`);
+    at = end + 1;
+  }
+  return runs.join(' ');
 }
 
 function controlLine(control: WindowControl): string {
@@ -255,12 +274,21 @@ export async function windowCommand(args: string[], io: CliIo, client: CoreClien
       const limit = number(rest, '--limit', true);
       const any = toggle(rest, '--any');
       const offscreen = toggle(rest, '--offscreen');
+      const changes = toggle(rest, '--changes');
       const named = target(rest);
       done(rest);
-      const read = await client.call('windows.read', { threadId, target: named, ...(filter === undefined ? {} : { filter }), ...(limit === undefined ? {} : { limit }), ...(any ? { any } : {}), ...(offscreen ? { offscreen } : {}) });
-      const lines = [`window: ${read.windowId} (${read.process})`, ...read.controls.map(controlLine)];
-      if (read.total === 0) lines.push('controls: none on screen; for an app with no accessibility tree, take a screenshot and point --at');
-      else if (read.total > read.controls.length) lines.push(`${read.total - read.controls.length} more: narrow with --filter or raise --limit`);
+      const read = await client.call('windows.read', { threadId, target: named, ...(filter === undefined ? {} : { filter }), ...(limit === undefined ? {} : { limit }), ...(any ? { any } : {}), ...(offscreen ? { offscreen } : {}), ...(changes ? { changes } : {}) });
+      const compared = read.changes?.compared === true;
+      const lines = [`window: ${read.windowId} (${read.process})`];
+      if (read.changes && !compared) lines.push('no earlier read of this window with these options in this conversation: a full read');
+      if (compared) lines.push(read.total === 0 ? 'appeared: none' : 'appeared:');
+      lines.push(...read.controls.map(controlLine));
+      if (read.total === 0 && !compared) lines.push('controls: none on screen; for an app with no accessibility tree, take a screenshot and point --at');
+      else if (read.total > read.controls.length) lines.push(`${read.total - read.controls.length} more${compared ? ' appeared' : ''}: narrow with --filter or raise --limit`);
+      if (compared) {
+        const { vanished, unchanged } = read.changes!;
+        lines.push(`vanished: ${vanished.length === 0 ? 'none' : idRuns(vanished)}`, `unchanged: ${unchanged}, under the ids they had`);
+      }
       return { lines, value: read };
     }
     case 'point': {
