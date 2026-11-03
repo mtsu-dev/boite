@@ -101,6 +101,34 @@ with the real browser's client hints. Replacing the value does not impersonate
 another engine or OS in client hints. If the native identity cannot be read,
 a customized profile refuses to start rather than omit its program marker.
 
+A page can also see DevTools read it. With the runtime domain on, Chromium
+describes every console argument for the client, and an error the page logs
+formats its stack through the page's own `Error.prepareStackTrace`; a bot test
+read that as automation on 2026-11-03, and the same browser without the
+runtime passed. `browser/page-runtime.ts` keeps the runtime on only while the
+top document comes from this machine or a private network (`localhost`,
+loopback, private and Tailscale addresses, `.local`, `.internal`, a `file:`
+page), the agent's own work. It runs on a second DevTools session of the tab,
+never on the tab's own. `Fetch` holds every document request of the top
+frame; the request of a public document waits until the core has left that
+second session, then goes on, so the runtime is off before the page's scripts
+run. Leaving also ends a `Runtime.enable` still waiting, as when a page of
+this machine moves on to a public one at once. Leaving a session is answered by the browser alone,
+while `Runtime.disable` or `Runtime.enable` got no answer as long as a
+document request was held, and sent without a hold they came too late: a page
+served from the cache commits about 2 ms after its request. The back-forward cache is off for the same reason
+(`--disable-features=BackForwardCache` in `browser/chromium.ts`): a page it
+restores makes no request to hold, so a back button now reloads the page,
+from the HTTP cache when it can. The runtime turns on once a private document
+committed, so a private link that turns into a download leaves a public page
+as it was; it then reports what the page logged before. On public pages
+`browser diagnostics` keeps network errors but no console message or
+exception. A frame of another origin on the same site, which needs an
+execution context, is reached through the isolated world `boite-kit`
+(`Page.createIsolatedWorld`), the same one each time and invisible to the
+page. A tab of the desktop app's webviews keeps the runtime on its own
+session, since the shell reads its console.
+
 This brings it level with the same Chrome running with a window on the same
 network, not past it. Etsy, SeLoger and Reddit still asked for a captcha on
 2026-10-09, and so did Chrome with a window under Xvfb on that address. The
