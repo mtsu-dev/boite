@@ -43,6 +43,10 @@ export const fr: Translation = {
       title: 'Équipes',
       hint: "Des bots qui travaillent ensemble dans une conversation commune, affichée au-dessus d'eux sur la page Bots : un message réveille les bots qu'il nomme, et chacun répond au groupe ou en privé. Vos bots y écrivent avec boite team. Pas encore prêt pour un usage quotidien",
       needsBots: "Nécessite les Bots : le salon d'une équipe est affiché avec ses bots. Activez d'abord les Bots"
+    },
+    debates: {
+      title: 'Débats entre IA',
+      hint: 'Vos agents peuvent demander à plusieurs IA de débattre d’une question en plusieurs tours avec boite delegate debate. Vous les suivez dans un salon et pouvez y écrire. Une IA qui n’a pas participé au débat renvoie le résumé dans le fil. Pas encore prêt pour un usage quotidien'
     }
   }
 };

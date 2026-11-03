@@ -31,6 +31,7 @@ export interface ThreadRow {
   project_id: string | null;
   agent_session_id?: string | null;
   team_id?: string | null;
+  debate_id?: string | null;
   title: string;
   title_source: string;
   title_state?: string | null;
@@ -131,6 +132,7 @@ export function toThread(row: ThreadRow): ThreadSummary {
     projectId: row.project_id,
     ...(row.agent_session_id ? { agentSessionId: row.agent_session_id } : {}),
     ...(row.team_id ? { teamId: row.team_id } : {}),
+    ...(row.debate_id ? { debateId: row.debate_id } : {}),
     ...(row.incognito ? { incognito: true as const } : {}),
     title: row.title,
     titleSource: row.title_source as ThreadSummary['titleSource'],

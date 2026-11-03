@@ -17,6 +17,7 @@ export function experimentCopy(): Record<ExperimentId, { title: string; hint: st
     whip: strings.experiments.whip,
     contacts: strings.experiments.contacts,
     'auto-goal': strings.experiments.autoGoal,
-    teams: strings.experiments.teams
+    teams: strings.experiments.teams,
+    debates: strings.experiments.debates
   };
 }
