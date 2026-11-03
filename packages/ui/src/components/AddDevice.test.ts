@@ -42,6 +42,21 @@ test('a machine with no HTTPS address shows its tailnet number, and turns on HTT
   expect(one('add-device-tailscale')).toBeNull();
 });
 
+test('a failed one-click HTTPS leaves no error under a later HTTPS link', async () => {
+  const store = await drawn();
+  await vi.waitFor(() => { flushSync(); expect(one('add-device-tailscale-enable')).not.toBeNull(); });
+  const client = store.client!;
+  const call = client.call.bind(client);
+  vi.spyOn(client, 'call').mockImplementation(((method: string, params: unknown) => method === 'tailscale.enable' ? Promise.reject(new Error('serve refused')) : call(method as never, params as never)) as typeof client.call);
+  one<HTMLButtonElement>('add-device-tailscale-enable')!.click();
+  await vi.waitFor(() => { flushSync(); expect(one('add-device-tailscale')!.querySelector('[role="alert"]')).not.toBeNull(); });
+  // HTTPS turned on another way (Settings), then a fresh link: the old failure is gone with the action.
+  expect(await store.saveSettings({ publicUrl: 'https://boite.example.com' })).toBe(true);
+  await store.addDevice();
+  await vi.waitFor(() => { flushSync(); expect(one<HTMLInputElement>('add-device-link')!.value).toMatch(/^https:\/\/boite\.example\.com\/\?grant=/); });
+  expect(one('add-device-tailscale')).toBeNull();
+});
+
 test('a link that is already HTTPS asks Tailscale nothing, and only the owner is offered the switch', async () => {
   const store = new Store();
   store.attach(new FakeClient({ delayMs: 0, principal: 'owner' }));
