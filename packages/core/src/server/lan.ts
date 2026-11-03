@@ -32,13 +32,14 @@ export function isPrivateV4(address: string): boolean {
  * Adapters that are not a network a phone is on, by name: container and VM
  * bridges (docker0, br-1a2b, veth, virbr, lxcbr, lxdbr, incusbr, cni, podman,
  * Hyper-V's and WSL's vEthernet, VirtualBox and VMware host-only adapters,
- * macOS's `bridge100` and up for Internet Sharing and virtual machines), and
+ * macOS's numbered `bridge` adapters: Thunderbolt Bridge, Internet Sharing
+ * and virtual machines), and
  * tunnels (Tailscale, which has its own listener, macOS `utun`, ZeroTier,
  * WireGuard, OpenVPN's tun and tap). Their 10.x or 172.x address leads to a
  * guest or a VPN, never to the Wi-Fi the owner's phone is on. The rule on
  * Windows and macOS, and on Linux when sysfs says nothing.
  */
-const VIRTUAL = /^(bridge1\d\d|docker|br-|veth|virbr|lxcbr|lxdbr|incusbr|cni|podman|flannel|vethernet|vboxnet|virtualbox|vmnet|vmware|tailscale|utun|zt|zerotier|wg|tun|tap)/i;
+const VIRTUAL = /^(bridge\d|docker|br-|veth|virbr|lxcbr|lxdbr|incusbr|cni|podman|flannel|vethernet|vboxnet|virtualbox|vmnet|vmware|tailscale|utun|zt|zerotier|wg|tun|tap)/i;
 
 /** What Linux's `/sys/class/net` says, read through two calls so tests give their own. */
 export interface SysNet {

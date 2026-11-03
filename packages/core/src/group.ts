@@ -114,7 +114,7 @@ export class GroupStore {
   constructor(readonly core: Core) {
     this.clients = new GroupClients(this);
     // A change of the LAN closes or opens its listeners now; the published entry follows at the refresh.
-    this.lan = new LanGate(new FirewallAccess(core), () => { if (this.#live) { this.#listen(this.roster !== null); this.#background(this.#refresh()); } });
+    this.lan = new LanGate(new FirewallAccess(core), () => { if (this.#live && !this.#closed) { this.#listen(this.roster !== null); this.#background(this.#refresh()); } });
     const stored = core.journal.getSetting(SETTING);
     if (stored !== undefined && stored !== null) {
       try {

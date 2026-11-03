@@ -337,6 +337,8 @@ test('Windows still closed: the owner allows Boite on private networks, then the
   await vi.waitFor(() => { flushSync(); expect(reach()!.dataset.state).toBe('ready'); });
   expect(call).toHaveBeenCalledWith('firewall.allow', {});
   expect(reach()!.textContent).toContain('192.168.1.20:8777');
+  // A new address is no new admission: members that let it read threads still do.
+  expect(fakeCore('core-first')!.roster!.cores.find((core) => core.coreId === 'core-first')!.epoch).toBe(1);
 });
 
 test('a public network says Windows keeps Boite closed there and how to change it, with nothing to press', async () => {

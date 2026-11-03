@@ -31,6 +31,8 @@ const MACOS = {
   en0: [v6('fe80::18a4:2bff:fe3c:1'), v4('10.0.0.42')],
   en5: [v4('172.16.4.9')],
   bridge100: [v4('192.168.64.1')],
+  bridge200: [v4('192.168.65.1')],
+  bridge0: [v4('169.254.10.2'), v4('192.168.2.1')],
   utun3: [v4('100.101.102.103'), v6('fd7a:115c:a1e0::1')],
   utun4: [v4('10.8.0.2')],
   vmnet1: [v4('172.16.150.1')],
@@ -311,6 +313,17 @@ test('grouped on Windows, the core sees on its own a network turned public with 
   expect(listening.has('192.168.1.20')).toBe(false);
   // Leaving the group stops both timers.
   await core.group.leave();
+  expect(timers.armed()).toBe(0);
+});
+
+test('a firewall reading that lands after the core began to close opens nothing and arms no timer', async () => {
+  const { core, listening, timers } = await lanCore({ firewall: PRIVATE_ALLOWED });
+  await core.group.create('Home');
+  await waitFor(() => listening.has('192.168.1.20'));
+  core.group.beginClose();
+  expect(timers.armed()).toBe(0);
+  // What a reading still under way when the core stops reports.
+  core.group.lan.changed();
   expect(timers.armed()).toBe(0);
 });
 

@@ -38,8 +38,8 @@ export function refreshOwnCard(ctx: FakeContext): void {
   const own = roster?.cores.find(core => core.coreId === ctx.identity.coreId);
   const addresses = ownAddresses(ctx);
   if (roster === null || own === undefined || addresses.join(' ') === own.addresses.join(' ')) return;
+  // The admission stays: `epoch` counts admissions only, as on the real core.
   own.addresses = addresses;
-  own.epoch++;
   announce(roster, [ctx]);
 }
 
