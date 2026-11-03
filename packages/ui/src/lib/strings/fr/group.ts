@@ -33,6 +33,11 @@ export const fr: Translation = {
     leave: 'Quitter le groupe', leaveTitle: 'Quitter {group} ?',
     leaveBody: "Cette machine oublie le groupe. Les téléphones ajoutés sur cette machine quittent le groupe avec elle.",
     lanHint: 'Un téléphone atteint ce lien une fois le réseau local activé et Boite redémarré.',
+    tailscale: {
+      hint: "Avec le HTTPS de Tailscale, le lien nomme cette machine : {url}. L'appli Boite d'un téléphone l'ouvre.",
+      enable: 'HTTPS via Tailscale',
+      enabling: 'Activation du HTTPS'
+    },
     reach: {
       loopback: "Ce lien ne fonctionne que sur cet ordinateur : Boite n'écoute pas encore le réseau local.",
       button: 'Rendre accessible sur le réseau local',

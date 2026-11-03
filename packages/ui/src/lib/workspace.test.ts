@@ -3,11 +3,12 @@ import { machineHealth, PRIMARY_PATIENCE_MS, Workspace } from './workspace.svelt
 import { reveal } from './reveal';
 import { Store, store as primary } from './store.svelte';
 import { FakeClient } from './fake-client';
+import { WsClient, type SocketLike } from './client';
 import { upsertEnvironment } from './endpoint';
 import * as endpoints from './endpoint';
 import * as appOrigin from './app-origin';
 import * as draftJournal from './draft-journal';
-import { RpcErrorCode, type RpcMethodName } from '@boite/contracts';
+import { PROTOCOL_VERSION, RpcErrorCode, type RpcMethodName } from '@boite/contracts';
 
 let workspace: Workspace | undefined;
 afterEach(() => {
@@ -956,4 +957,76 @@ test('a tapped limit alert opens Limits on the machine it names, unless the user
   remote.coreId = pc;
   await stale;
   expect([w.active === a, a.page]).toEqual([true, 'chat']);
+});
+
+test('a network change one machine reports tries every machine that is not connected at once, and the group too', async () => {
+  const { w, a, ca } = await setup();
+  // A machine out of reach: each socket fails, and the client would wait a minute before the next.
+  const opened: string[] = [];
+  const failing = (url: string): SocketLike => {
+    opened.push(url);
+    const socket: SocketLike = { onopen: null, onmessage: null, onclose: null, onerror: null, send: () => undefined, close: () => socket.onclose?.({ code: 1006 }) };
+    setTimeout(() => { socket.onerror?.(); socket.onclose?.({ code: 1006 }); }, 0);
+    return socket;
+  };
+  const far = new Store();
+  far.attach(new WsClient({ url: 'http://100.64.0.9:1', token: 'key', socketFactory: failing, backoff: () => 60_000 }));
+  await far.connect();
+  w.machines = [...w.machines, { id: 'http://100.64.0.9:1', label: 'Far', store: far }];
+  expect(opened).toHaveLength(1);
+  expect(far.connection).toBe('connecting');
+  const reconcile = vi.spyOn(w.groups, 'reconcile');
+  const stop = w.groups.start();
+  try {
+    await waitFor(() => reconcile.mock.calls.length > 0);
+    reconcile.mockClear();
+    // Tailscale came up on the machine that answers: its core says so.
+    ca.changeNetwork(['100.64.0.15', '192.168.1.20']);
+    await waitFor(() => opened.length === 2);
+    expect(reconcile).toHaveBeenCalled();
+    expect(a.connection).toBe('ready');
+  } finally {
+    stop();
+    far.client?.close();
+    far.detach();
+  }
+});
+
+test('network signals every 2.5 seconds leave a handshake that takes 3 seconds to finish, on its one socket', async () => {
+  vi.useFakeTimers();
+  const w = new Workspace();
+  const sockets: SocketLike[] = [];
+  // Its socket opens at once and its hello is answered three seconds later, as on a slow link.
+  const slow = (): SocketLike => {
+    const socket: SocketLike = {
+      onopen: null, onmessage: null, onclose: null, onerror: null,
+      send: (raw) => {
+        const frame = JSON.parse(raw) as { id: number; method: string };
+        const body = frame.method === 'hello'
+          ? { result: { core: { protocolVersion: PROTOCOL_VERSION }, principal: 'owner' } }
+          : { error: { code: RpcErrorCode.NotFound, message: `${frame.method} is not in this fixture` } };
+        setTimeout(() => socket.onmessage?.({ data: JSON.stringify({ jsonrpc: '2.0', id: frame.id, ...body }) }), frame.method === 'hello' ? 3000 : 10_000);
+      },
+      close: () => socket.onclose?.({ code: 1000 })
+    };
+    sockets.push(socket);
+    setTimeout(() => socket.onopen?.(), 10);
+    return socket;
+  };
+  const client = new WsClient({ url: 'http://100.64.0.9:1', token: 'key', socketFactory: slow });
+  try {
+    w.machines = [{ id: 'http://100.64.0.9:1', label: 'Far', store: { client } as unknown as Store }];
+    const connecting = client.connect().catch(() => undefined);
+    // Another core's interfaces keep changing: each change reaches this window as a network signal.
+    for (let signal = 0; signal < 4; signal++) {
+      w.resumeMachines();
+      await vi.advanceTimersByTimeAsync(2500);
+    }
+    await connecting;
+    expect(sockets).toHaveLength(1);
+    expect(client.state).toBe('ready');
+  } finally {
+    client.close();
+    vi.useRealTimers();
+  }
 });

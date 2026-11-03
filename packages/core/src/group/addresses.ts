@@ -14,7 +14,9 @@
  * The name is for other cores, whose requests are sealed to this machine's
  * key: a name that resolved elsewhere would reach a machine that reads
  * nothing. Clients are not given a name over plain HTTP (`ownAddress`,
- * `usableAddresses` in the UI).
+ * `usableAddresses` in the UI), a MagicDNS one included: on a machine that
+ * does not accept Tailscale's DNS, the LAN's resolver answers `*.ts.net`,
+ * while a 100.x address is routed through Tailscale whatever the LAN says.
  */
 
 import { networkInterfaces, type NetworkInterfaceInfo } from 'node:os';

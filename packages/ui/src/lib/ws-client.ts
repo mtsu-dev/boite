@@ -54,6 +54,7 @@ export class WsClient implements ObservableClient {
   #clockHandlers = new Set<(offset: number) => void>();
   #subscribed = new Set<ThreadId>();
   #attempt = 0;
+  #recovered = false;
   #retryTimer: ReturnType<typeof setTimeout> | null = null;
   #manuallyClosed = false;
   #opening: Promise<CoreInfo> | null = null;
@@ -102,6 +103,11 @@ export class WsClient implements ObservableClient {
 
   get state(): ClientState {
     return this.#state;
+  }
+
+  /** Whether the last hello that succeeded came after failed attempts of this client's own backoff. */
+  get recovered(): boolean {
+    return this.#recovered;
   }
 
   get principal(): Principal | null {
@@ -172,6 +178,24 @@ export class WsClient implements ObservableClient {
     this.#teardown('connection resumed; check the conversation before resending', true);
     // The failures before the page went away say nothing of the network it came back to:
     // the new socket gets the first deadline and backoff, not the 30 s and 10 s they climbed to.
+    this.#attempt = 0;
+    await this.#startOpen();
+  }
+
+  /**
+   * The network changed: a client waiting out its backoff, or held back while
+   * the browser was offline, tries now from the first deadline. One already
+   * opening is left to finish on its socket, and a wake during it joins that
+   * attempt, so signals in a row never restart a slow handshake.
+   */
+  async wake(): Promise<void> {
+    if (this.#manuallyClosed || this.#state === 'idle' || this.#state === 'ready') return;
+    if (this.#opening !== null) {
+      await this.#opening.then(() => undefined, () => undefined);
+      return;
+    }
+    if (this.#retryTimer !== null) clearTimeout(this.#retryTimer);
+    this.#retryTimer = null;
     this.#attempt = 0;
     await this.#startOpen();
   }
@@ -390,6 +414,8 @@ export class WsClient implements ObservableClient {
               }
             }
             this.#principal = result.principal;
+            // A `resume()` starts from 0: the retry it made does not count as coming back alone.
+            this.#recovered = this.#attempt > 0;
             this.#attempt = 0;
             this.#core = result.core;
             this.#lastFrameAt = Date.now();

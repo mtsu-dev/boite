@@ -87,9 +87,12 @@ of spinning and counting time, a folded project drops its summary mark, its
 working counter loses its colour, and the Threads count leaves the machine out.
 Other hosts remain usable. WebSocket reconnection
 reloads the host's project and thread summaries. An initial connection whose
-handshake does not finish within twelve seconds can be retried from Machines.
-Once the machine has said hello, loading its lists is waited for however long
-it takes on a slow link; the connection is never dropped for it.
+handshake does not finish within twelve seconds shows "did not answer", and
+adding the machine or starting the window stops waiting for it, but the
+connection is not closed: the client keeps retrying on its own and its first
+hello clears the message. Once the machine has said hello, loading its lists is
+waited for however long it takes on a slow link; the connection is never
+dropped for it.
 
 Each machine keeps its own clock. The hello's answer carries the core's
 (`CoreInfo.now`), and the client takes the difference from the middle of the
@@ -152,6 +155,21 @@ so the clients of a restarted core do not all return at once. An attempt gets
 link is not cut off every time. While the browser reports itself offline, a
 remote host is not retried at all: the `online` event starts the next attempt.
 A loopback core is retried regardless, since it is on the same machine.
+
+A change of network retries every machine that is waiting out its backoff at
+once, and the group's members too (`GroupLinks.retry`). A machine whose
+handshake is under way keeps that socket (`WsClient.wake`): signals every few
+seconds would otherwise restart a slow handshake before it could finish. Four signals count as one: the `network.changed` event of
+any connected core, the browser's `online` event, a `change` of
+`navigator.connection`, and a machine of the window reconnecting by itself
+after failed attempts. Signals that arrive together give one retry at once and
+at most one more a second later. A core sends `network.changed` to its owner
+connections when the set of its non-internal interface addresses changes, so
+Tailscale coming up or the computer joining another Wi-Fi is seen within about
+2.5 seconds. It reads its interfaces every 2.5 seconds only while an owner
+window is connected, and at the same moment probes its own tailnet address and
+republishes its group entry instead of waiting for the next 15 second pass
+(`packages/core/src/network-watch.ts`).
 
 A remote machine that cannot be reached is not a fault in itself: a laptop
 switched off between uses shows a grey "Offline" dot in the footer's machine

@@ -20,6 +20,7 @@ import { lightPage } from './reading-pages.svelte';
 import type { StoreContext } from './context';
 import { probeKey } from './models.svelte';
 import { sameProcess } from './workbench.svelte';
+import { networkChanged } from '../network-change';
 
 /**
  * Every event the core pushes, applied to the Store that owns `client`. The
@@ -71,6 +72,8 @@ export function listen(ctx: StoreContext, client: Client): void {
           ctx.shared.reconnected();
           ctx.terminals.reconnected(client);
           if (!s.owner) layout.checkPushKinds(client);
+          // Back by itself after failing: the network likely came back, so what else was out of reach is tried now too.
+          if (client.recovered === true) networkChanged();
         }
       })
     );
@@ -81,6 +84,7 @@ export function listen(ctx: StoreContext, client: Client): void {
   if (observable(client)) ctx.off.push(reportPreferences(client, current, experiments => heardDesktop(s, experiments, s.core?.coreId ?? null)));
   on('client.desktopExperiments', ({ experiments }) => heardDesktop(s, experiments, s.core?.coreId ?? null));
 
+  on('network.changed', () => networkChanged());
   on('core.updateChanged', snapshot => ctx.serverUpdater.apply(snapshot));
   on('composer.updated', record => ctx.sync.receive(record));
   on('core.desktopUpdateChanged', ({ status }) => { if (!s.localCore) ctx.serverUpdater.applyDesktop(status); });

@@ -31,6 +31,11 @@ export const strings = {
     leave: 'Leave the group', leaveTitle: 'Leave {group}?',
     leaveBody: 'This machine forgets the group. Phones added on this machine leave the group with it.',
     lanHint: 'A phone reaches this link once the local network is on and Boite has restarted.',
+    tailscale: {
+      hint: 'With HTTPS through Tailscale, the link names this machine: {url}. The Boite app on a phone opens it.',
+      enable: 'HTTPS via Tailscale',
+      enabling: 'Turning on HTTPS'
+    },
     reach: {
       loopback: 'This link only works on this computer: Boite does not listen on the local network yet.',
       button: 'Make it reachable on the local network',

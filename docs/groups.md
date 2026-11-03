@@ -120,7 +120,12 @@ as it does for two machines linked by hand ([coordination](coordination.md)).
 A client is sent to fewer of them, because its link is not sealed: to the
 HTTPS address alone when the machine has one, and otherwise only to an address
 written as numbers. A name over plain HTTP is whatever the client's resolver
-says it is, so a client never sends a ticket or a key to one. A device sends no
+says it is, so a client never sends a ticket or a key to one. A MagicDNS name
+is no exception: on a device that does not accept Tailscale's DNS
+(`--accept-dns=false`, common on Linux servers), the LAN's resolver answers
+`*.ts.net` and can point it anywhere, while a 100.x address is routed through
+Tailscale whatever the LAN says. A name is reached over HTTPS instead
+([Through Tailscale](phone.md#through-tailscale)). A device sends no
 secret at all, only a signature made for the machine it means, but what follows
 its hello is not sealed either, so it keeps to the same addresses. A link that
 adds a device follows the same rule.
@@ -292,7 +297,7 @@ came in with closes it, and its sockets to a machine that leaves the group are
 closed within fifteen seconds.
 
 While a member is reached through another, the client tries its own addresses
-a minute after the last try, longer after each that fails, and moves to the first that answers, so a phone back on the
+every 30 seconds while none answers, and moves to the first that answers, so a phone back on the
 tailnet, or a desktop given an HTTPS address, stops depending on the relaying
 machine. Settings, Machines names the machine a member is reached through.
 
@@ -480,12 +485,14 @@ listed in the roster as a device.
 
 The UI does the client's part by itself (`lib/group-links.svelte.ts`). Each
 connected machine says which group it is in; for every member this client
-holds no key for, it finds an address that answers and connects. A member that
-does not answer is tried again a minute later, then after 2, 4, 8 and at most
-15 minutes. The wait goes back to a minute when the roster gives the member
-other addresses, and the next try comes at once when the network comes back or
-the hidden page is shown; nothing is tried by the clock while the page is
-hidden. A device signs
+holds no key for, it finds an address that answers and connects. A member
+none of whose addresses or relays answers is probed again every 30 seconds:
+that probe spends no ticket, and the member comes back as soon as the network
+lets it through. An attempt that reached the member and then failed is tried
+again a minute later, then after 2, 4, 8 and at most 15 minutes. That wait goes
+back to a minute when the roster gives the member other addresses, and the
+next try comes at once when the network changes or the hidden page is shown;
+nothing is tried by the clock while the page is hidden. A device signs
 its own way in there and is done: what a member lists is all it needs, and a
 machine its key opens that another one of the group no longer lists leaves its
 list. A machine out of every group says so, to `group.get` or on the hello it

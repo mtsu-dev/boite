@@ -6,7 +6,7 @@ import { firstAnswer, settle } from '../src/coordination-wire.ts';
 import { GroupStore } from '../src/group.ts';
 import { group as groupCommand } from '../src/main.ts';
 import { Refusals, REFUSALS_PER_MINUTE, senderOf } from '../src/server/refusals.ts';
-import { advertisedAddresses, isTailnetAddress, tailnetAddress } from '../src/group/addresses.ts';
+import { advertisedAddresses, isTailnetAddress, tailnetAddress, ticketAddresses } from '../src/group/addresses.ts';
 import { checkRoster, digestOf, fingerprint, liveCores, liveDevices, mergeRosters, type CoreEntry, type Roster } from '../src/group/roster.ts';
 import { boxPublic, newBoxKey, open, openResponse, pack, seal, SEALED, sealResponse, unpack } from '../src/group/seal.ts';
 import { parseInvite, parseTicket } from '../src/group/ticket.ts';
@@ -1153,6 +1153,10 @@ test('only a holder of the invitation spends the join allowance, and a pairing l
   expect(a.core.group.ownAddress()).toBe('https://desk.tail.example');
   withAddresses(['http://desk.tail.example:7000']);
   expect(a.core.group.ownAddress()).toBeNull();
+  // A tailnet name too: with Tailscale's DNS not accepted, the LAN's resolver answers it, while 100.x rides WireGuard.
+  withAddresses(['http://desk.tail0d6070.ts.net:7000', 'http://100.101.102.103:7000']);
+  expect(a.core.group.ownAddress()).toBe('http://100.101.102.103:7000');
+  expect(ticketAddresses(['http://desk.tail0d6070.ts.net:7000', 'http://100.101.102.103:7000'])).toEqual(['http://100.101.102.103:7000']);
   withAddresses([a.url]);
   expect(a.core.group.ownAddress()).toBeNull();
 });
