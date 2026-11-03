@@ -1,13 +1,14 @@
 import { afterEach, expect, test } from 'bun:test';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { AGENT_ENV, DEFAULT_DELEGATION_CONFIG, type Debate, type DebatePost, type ModelInfo } from '@boite/contracts';
+import { AGENT_ENV, DEFAULT_DELEGATION_CONFIG, debateMention, type Debate, type DebatePost, type ModelInfo } from '@boite/contracts';
 import type { CoreClient } from '../src/client.ts';
 import { runCli } from '../src/cli.ts';
 import { Core } from '../src/core.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import type { TurnResult } from '../src/drivers/types.ts';
 import { subagentGuide } from '../src/delegation/guide.ts';
+import { votedProposal } from '../src/debates/prompt.ts';
 import { echoThread, startTestCore, waitFor, type TestCore } from './harness.ts';
 
 const cores: TestCore[] = [];
@@ -269,18 +270,37 @@ test('the user closes a round, concludes, and the parent\'s agent stops the deba
   expect(d.runs.filter(run => run.threadId === threadId)).toEqual([]);
 }, 20_000);
 
-test('archiving the thread that started a debate stops it, its debaters\' turns and the summary', async () => {
+test('stopping the subagents of a thread whose only work is a debate stops it, and so does archiving that thread', async () => {
   const d = driver();
   const { h, owner, threadId, start, read } = await setup();
-  const { id } = await start({ rounds: 2 });
+  // The owner's Stop on a thread with no delegated child still reaches its debate.
+  const first = await start({ rounds: 2 });
   await waitFor(() => d.round(1, 2).length === 3);
+  expect(await owner.call('delegation.stop', { threadId })).toEqual({ stopped: 1 });
+  let { debate } = await read(first.id);
+  expect([debate.status, debate.note]).toEqual(['stopped', 'Stopped with the subagents of the thread that started it.']);
+  await waitFor(() => d.round(1, 2).every(run => run.status === 'stopped'));
+
+  const second = await start({ rounds: 2 });
+  await waitFor(() => d.round(1, 2).length === 6);
   await owner.call('threads.archive', { threadId });
-  await waitFor(() => h.core.debates.get({ debateId: id }).debate.status === 'stopped');
-  const { debate } = await read(id);
+  await waitFor(() => h.core.debates.get({ debateId: second.id }).debate.status === 'stopped');
+  ({ debate } = await read(second.id));
   expect(debate.note).toBe('The thread that started it was archived.');
   await waitFor(() => d.round(1, 2).every(run => run.status === 'stopped'));
   await waitFor(() => threadsOf(debate).every(thread => h.core.threads.require(thread).archived));
   expect(d.summaries()).toEqual([]);
+});
+
+test('a vote by letter keeps its reason, and a mention of a dotted name is not found inside a longer one', () => {
+  const positions = new Map([['A', 'ship the SQLite cache'], ['B', 'keep Postgres']]);
+  expect(['B - because it is proven', 'Option B: it is proven', 'B) proven', 'Avis B, proven'].map(vote => votedProposal(vote, positions))).toEqual(Array(4).fill('keep Postgres'));
+  // A word that starts with the letter is a proposal of its own.
+  expect(['A plan to cache reads', 'C-based storage'].map(vote => votedProposal(vote, positions))).toEqual(['A plan to cache reads', 'C-based storage']);
+  const participants = [{ id: 'p1', handle: 'GPT-5.5', name: 'GPT-5.5' }, { id: 'p2', handle: 'GPT-5.5.1', name: 'GPT-5.5.1' }];
+  expect(debateMention('@GPT-5.5.1 what do you think?', participants)).toBe('p2');
+  expect(debateMention('What about you, @GPT-5.5.', participants)).toBe('p1');
+  expect(debateMention('@GPT-5.5x', participants)).toBeNull();
 });
 
 test('a core that did not hand over stops its running debates on the next start', async () => {

@@ -30,7 +30,7 @@ export interface DelegateOptions {
   context?: Record<string, unknown>;
 }
 
-export const DELEGATE_ACTIONS = 'models, spawn, list, send, stop, resume, wait, result or profiles';
+export const DELEGATE_ACTIONS = 'models, spawn, debate, list, send, stop, resume, wait, result or profiles';
 const PROFILE_ID = /^[a-zA-Z0-9_-]{1,64}$/;
 
 /** `42s`, `3m05s`, `1h02m`. */

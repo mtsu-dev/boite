@@ -104,10 +104,13 @@ class DebateReader<T> {
       this.missing = false;
     } catch (failure) {
       if (read !== this.#reading || client !== this.store.client) return;
+      // Only an answer about debates themselves changes what the reader knows: a timeout or a dropped socket keeps it.
       const code = failure instanceof RpcFailure ? failure.code : null;
-      this.refused = code === RpcErrorCode.Refused || code === RpcErrorCode.MethodNotFound;
-      this.missing = code === RpcErrorCode.NotFound;
-      if (this.refused || this.missing) this.value = null;
+      if (code === RpcErrorCode.Refused || code === RpcErrorCode.MethodNotFound || code === RpcErrorCode.NotFound) {
+        this.refused = code !== RpcErrorCode.NotFound;
+        this.missing = code === RpcErrorCode.NotFound;
+        this.value = null;
+      }
     }
     this.loaded = true;
   }
@@ -151,6 +154,15 @@ export function debateRoom(store: Store, debateId: string): DebateRoom {
 /** The letter on a debater's face: the first letter or digit of its model's name. */
 export function faceOf(name: string): string {
   return (/[\p{L}\p{N}]/u.exec(name)?.[0] ?? '?').toUpperCase();
+}
+
+/**
+ * The summarizer's face: its role's letter, as the salon's chip names it
+ * (S for Summary, R for Résumé), not its model's, which a debater may share.
+ * The placeholder is left out, wherever a language puts it.
+ */
+export function summarizerFace(): string {
+  return faceOf(strings.debates.summarizer.replace(/\{\w+\}/g, ''));
 }
 
 /**

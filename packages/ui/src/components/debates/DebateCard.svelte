@@ -1,7 +1,7 @@
 <script lang="ts">
   import { MessagesSquare } from '@lucide/svelte';
   import type { MessagePart, ThreadId } from '@boite/contracts';
-  import { debateStatus, debatesOf, faceOf, followDebates, summaryLines } from '../../lib/debates.svelte';
+  import { debateStatus, debatesOf, faceOf, followDebates, summarizerFace, summaryLines } from '../../lib/debates.svelte';
   import { fill, strings } from '../../lib/strings';
   import type { Store } from '../../lib/store.svelte';
   import DebateAvatar from './DebateAvatar.svelte';
@@ -32,7 +32,7 @@
     return {
       shown,
       tail: rest > 0 ? { kind: 'more' as const, label: `+${rest}` } : { kind: 'me' as const, label: faceOf(labels.you) },
-      summarizer: debaters.length === 2 ? faceOf(debate!.summarizer.name) : null,
+      summarizer: debaters.length === 2 ? summarizerFace() : null,
     };
   });
 </script>

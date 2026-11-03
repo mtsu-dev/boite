@@ -170,12 +170,18 @@ export function debateHandles(names: string[]): string[] {
 
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+/**
+ * What may not follow a mention: more of a word, or a dot that goes on with
+ * one, so `@GPT-5.5` is not found in `@GPT-5.5.1`. A sentence's full stop may.
+ */
+export const DEBATE_MENTION_END = '(?![\\p{L}\\p{N}_-]|\\.[\\p{L}\\p{N}_-])';
+
 /** The participant a text names first with `@handle` or `@name`, case-insensitive. */
 export function debateMention(text: string, participants: readonly Pick<DebateParticipant, 'id' | 'handle' | 'name'>[]): string | null {
   let first: { id: string; at: number } | null = null;
   for (const participant of participants) {
     for (const word of [participant.name, participant.handle]) {
-      const match = new RegExp(`(^|[^\\p{L}\\p{N}_])@${escape(word.trim())}(?![\\p{L}\\p{N}_-])`, 'iu').exec(text);
+      const match = new RegExp(`(^|[^\\p{L}\\p{N}_])@${escape(word.trim())}${DEBATE_MENTION_END}`, 'iu').exec(text);
       if (match && word.trim() !== '' && (first === null || match.index < first.at)) first = { id: participant.id, at: match.index };
     }
   }

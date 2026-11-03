@@ -62,7 +62,9 @@ final answer as a post of the salon.
 - **Answers** are at most 300 words, in the question's language, and start
   with `Position: <proposal in 12 words>`.
 - **The last round votes.** Each debater ends with `Vote: <proposal>`, any
-  opinion's, by its words or its letter. A one-round debate has no vote.
+  opinion's, by its words or its letter. A letter counts with a reason after
+  it (`B - proven`, `Option B: proven`); a proposal that merely starts with
+  one (`A plan to…`) counts as words. A one-round debate has no vote.
 - **Consensus.** When every debater backs the same position in round 1, the
   debate goes straight to the summary.
 - **Quorum.** A round closes once every debater answered or the timeout

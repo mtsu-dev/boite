@@ -45,12 +45,16 @@ export function consensus(positions: (string | null)[]): boolean {
 }
 
 /**
- * The proposal a vote backs: an opinion's letter (`B`, `Opinion B`, `Avis B`)
- * stands for that opinion's last position, anything else for itself.
+ * The proposal a vote backs: an opinion's letter (`B`, `Opinion B`, `Avis B`,
+ * `B - keep Postgres`) stands for that opinion's last position, anything else
+ * for itself. A letter starts a word of its own only before a spaced dash or a
+ * stop, so `A plan …` and `C-based …` stay proposals.
  */
 export function votedProposal(vote: string, positions: Map<string, string>): string {
-  const letter = /^(?:(?:opinion|avis|option)\s+)?([A-F])[\s.)]*$/i.exec(vote.trim())?.[1]
-    ?? /^(?:opinion|avis)\s+([A-F])\b/i.exec(vote.trim())?.[1];
+  const text = vote.trim();
+  const letter = /^(?:(?:opinion|avis|option)\s+)?([A-F])[\s.)]*$/i.exec(text)?.[1]
+    ?? /^(?:opinion|avis|option)\s+([A-F])\b/i.exec(text)?.[1]
+    ?? /^([A-F])(?:\s+[-–—]\s+|\s*[:,.)]\s+)\S/.exec(text)?.[1];
   return (letter && positions.get(letter.toUpperCase())) || vote;
 }
 

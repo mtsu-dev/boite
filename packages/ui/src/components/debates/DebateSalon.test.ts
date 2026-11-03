@@ -130,6 +130,18 @@ test('the app with the experiment on, before the core has it, still draws no sal
   client.reportDesktopExperiments([]);
   salon(store, 'dbt_demo_live');
   await vi.waitFor(() => expect(document.querySelector('[data-testid=debate-unavailable]')).not.toBeNull());
+  // A read that times out says nothing about debates: the salon keeps what it said.
+  const call = client.call.bind(client);
+  let timedOut = false;
+  vi.spyOn(client, 'call').mockImplementation(((method: string, params: unknown) => {
+    if (method !== 'debates.get' || timedOut) return call(method as never, params as never);
+    timedOut = true;
+    return Promise.reject(new Error('Request timed out'));
+  }) as typeof client.call);
+  client.reportDesktopExperiments(['debates']);
+  await vi.waitFor(() => expect(timedOut).toBe(true));
+  await settle();
+  expect(document.querySelector('[data-testid=debate-unavailable]')).not.toBeNull();
   // Turned on afterwards, the salon reads the debate without being reopened.
   client.reportDesktopExperiments(['debates']);
   await vi.waitFor(() => expect(all('[data-testid=debate-member]')).toHaveLength(3));

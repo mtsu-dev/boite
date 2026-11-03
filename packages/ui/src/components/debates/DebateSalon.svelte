@@ -1,7 +1,7 @@
 <script lang="ts">
   import { AtSign, LoaderCircle, Square } from '@lucide/svelte';
-  import { DEBATE_LIMITS, DEBATE_OWNER, DEBATE_SUMMARY, DEBATE_SYSTEM, debateMention, debateOver, type DebatePost, type ThreadId } from '@boite/contracts';
-  import { debateRoom, faceOf, followDebates } from '../../lib/debates.svelte';
+  import { DEBATE_LIMITS, DEBATE_MENTION_END, DEBATE_OWNER, DEBATE_SUMMARY, DEBATE_SYSTEM, debateMention, debateOver, type DebatePost, type ThreadId } from '@boite/contracts';
+  import { debateRoom, faceOf, followDebates, summarizerFace } from '../../lib/debates.svelte';
   import { errorText } from '../../lib/errors';
   import { experimentOn } from '../../lib/experiments.svelte';
   import { count, dayClock, fullTime } from '../../lib/format';
@@ -72,7 +72,7 @@
     const words = (debate?.participants ?? []).flatMap(participant => [participant.name.trim(), participant.handle]).filter(Boolean)
       .sort((a, b) => b.length - a.length).map(word => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
     if (words.length === 0) return [{ text, mention: false }];
-    const pattern = new RegExp(`(^|[^\\p{L}\\p{N}_])(@(?:${words.join('|')}))(?![\\p{L}\\p{N}_-])`, 'giu');
+    const pattern = new RegExp(`(^|[^\\p{L}\\p{N}_])(@(?:${words.join('|')}))${DEBATE_MENTION_END}`, 'giu');
     const out: { text: string; mention: boolean }[] = [];
     let at = 0;
     for (const match of text.matchAll(pattern)) {
@@ -262,7 +262,7 @@
             </span>
           </li>
         {/each}
-        <li class="member" data-testid="debate-summarizer"><DebateAvatar kind="mod" label={faceOf(labels.summarizer)} size={18} /><span class="member-name">{fill(labels.summarizer, { name: debate.summarizer.name })}</span></li>
+        <li class="member" data-testid="debate-summarizer"><DebateAvatar kind="mod" label={summarizerFace()} size={18} /><span class="member-name">{fill(labels.summarizer, { name: debate.summarizer.name })}</span></li>
         <li class="member" data-testid="debate-you"><DebateAvatar kind="me" label={faceOf(labels.you)} size={18} /><span class="member-name">{labels.you}</span></li>
       </ul>
       <div class="rounds" role="img" aria-label={fill(labels.roundsPlayed, { round: String(debate.status === 'done' ? debate.rounds : debate.round), rounds: String(debate.rounds) })} data-testid="debate-rounds">
@@ -304,7 +304,7 @@
       {/each}
       {#if summary}
         <section class="verdict fade" data-testid="debate-verdict">
-          <div class="verdict-head"><DebateAvatar kind="mod" label={faceOf(labels.summarizer)} size={20} /><b>{fill(labels.verdict, { name: debate.summarizer.name })}</b></div>
+          <div class="verdict-head"><DebateAvatar kind="mod" label={summarizerFace()} size={20} /><b>{fill(labels.verdict, { name: debate.summarizer.name })}</b></div>
           {#if debate.tally.length > 0}
             <table class="votes">
               <thead><tr><th scope="col">{labels.proposal}</th><th scope="col" class="count">{labels.votes}</th></tr></thead>
