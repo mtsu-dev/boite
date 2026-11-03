@@ -4,6 +4,7 @@
   import { Bot, Brain, FilePen, FileText, Globe, Hourglass, Layers, MessageCircleQuestionMark, Moon, PenLine, Play, Plus, RotateCw, Search, Settings2, SquareTerminal, TriangleAlert, Wrench, X } from '@lucide/svelte';
   import type { AgentProfile, AgentStatus, Team, ThreadSummary } from '@boite/contracts';
   import { agentMenuItems, pickAgentAction, saveAgent } from '../../lib/agent-menu';
+  import { botLeaving, leavingLine } from '../../lib/agent-move-flow';
   import { agentRows, agentsFilter, liveActivity, previewOf, waitingOn, type ActivityKind, type AgentMood, type AgentRowData, type AgentsView } from '../../lib/agents.svelte';
   import { contextMenu } from '../../lib/context-menu.svelte';
   import { experimentOn } from '../../lib/experiments.svelte';
@@ -27,7 +28,7 @@
    * ones first then newest first, each row with its machine's icon once there
    * are two; the foot's machine button narrows it to one. A row has the thread
    * rows' menu, cut to what a bot has (`agentMenuItems`), on a right click or
-   * a long press.
+   * a long press. A bot waiting to move once its turn ends says where it goes.
    *
    * With the Teams experiment on, the owner's teams come first, in their own
    * card under their own heading (`docs/teams.md`): one row per team, its
@@ -143,7 +144,7 @@
   /** The row's menu, answered through the bot's own machine; the toast it may raise is the page's. */
   function menu(event: MouseEvent, machine: Machine, owner: AgentsView, id: string) {
     const agent = owner.snapshot?.profiles.find(p => p.id === id);
-    const items = agent ? agentMenuItems(owner.store, agent, { open: owner === view && active === id, phone: phone.current }) : [];
+    const items = agent ? agentMenuItems(owner.store, agent, { open: owner === view && active === id, phone: phone.current, leaving: botLeaving(owner, id) !== null }) : [];
     if (!agent || !items.length) return;
     contextMenu.open(event, items, action => pickAgentAction(owner, agent, action, {
       open: () => onopen(machine, id),
@@ -211,7 +212,7 @@
           since={tone === 'working' ? earliest(thread?.requestSince, thread?.runningSince) : null}
           wake={tone === 'idle' && row.profile.status === 'active' && row.status?.nextWake ? row.status.nextWake : null}
           machine={multi ? machine : undefined} testid="agent-entry-{row.profile.id}" onclick={() => onopen(machine, row.profile.id)}
-          pinned={row.profile.pinned === true} onmenu={event => menu(event, machine, owner, row.profile.id)}
+          pending={leavingLine(owner, row.profile.id)} pinned={row.profile.pinned === true} onmenu={event => menu(event, machine, owner, row.profile.id)}
           renaming={renaming === rowKey(machine, row.profile.id)} onrename={name => rename(owner, row.profile.id, name)}>
           {#snippet picture()}<AgentAvatar kind="profile" id={row.profile.id} name={row.profile.name} avatar={row.profile.avatar} mood={moodOf(tone, unread)} size={34} ring />{/snippet}
         </AgentRow>

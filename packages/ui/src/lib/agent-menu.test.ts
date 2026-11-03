@@ -144,6 +144,8 @@ test('Move to a machine opens the group\'s machines where the menu stood, the of
   // Alone in its group, the bot has nowhere to go: no move item.
   workspace.machines = [{ id: 'first', label: 'First', store: first.store }];
   const bot = await first.client.call('agents.builtin.ensure', { kind: 'contacts', name: 'Operator' });
+  // Its first turn, the introduction, ends before it may move.
+  await first.client.settled();
   expect(agentMenuItems(first.store, bot, { open: false }).some(item => item.id === 'move')).toBe(false);
   // A third member this window lists while it is not connected.
   const away = new Store();
@@ -155,6 +157,9 @@ test('Move to a machine opens the group\'s machines where the menu stood, the of
   const items = agentMenuItems(first.store, bot, { open: false });
   expect(items.find(item => item.id === 'move')).toMatchObject({ label: strings.agents.move.menu });
   expect(items.map(item => item.id).slice(items.findIndex(item => item.id === 'sep-organize'))).toEqual(['sep-organize', 'rename', 'edit', 'move', 'sep-tools', 'copy']);
+  // While it waits to leave at the end of its turn, the menu cancels that move instead, as a thread's does.
+  const waiting = agentMenuItems(first.store, bot, { open: false, leaving: true }).filter(item => item.id.startsWith('move'));
+  expect(waiting.map(item => [item.id, item.label])).toEqual([['move-cancel', strings.threadMove.cancelMove]]);
 
   const view = AgentsView.of(first.store);
   await view.refresh();
@@ -171,13 +176,26 @@ test('Move to a machine opens the group\'s machines where the menu stood, the of
   // A pick leads to the same dialog as the Machine row of its settings.
   const real = first.client.call.bind(first.client);
   vi.spyOn(first.client, 'call').mockImplementation(async (method, params) => {
-    if (method === 'agents.move') throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'agents.move: Operator has a turn running or queued', data: { field: 'agentId', reason: 'turn-in-flight' } });
+    if (method === 'agents.move') throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'agents.move: Operator belongs to the team "Ops"; remove it from it first, a team holds bots of one machine', data: { field: 'agentId', reason: 'team' } });
     return real(method, params);
   });
   picker.onpick('second');
   await vi.waitFor(() => expect(confirm.current?.title).toBe(fill(strings.agents.move.title, { name: 'Operator', machine: 'Second' })));
   // A refusal is told on the page on screen, not on the bot's machine.
   confirm.answer(true);
-  await vi.waitFor(() => expect(second.store.error).toBe(fill(strings.agents.move.turnInFlight, { name: 'Operator' })));
+  await vi.waitFor(() => expect(second.store.error).toContain('belongs to the team'));
   expect(first.store.error).toBeNull();
+});
+
+
+test('Cancel move drops the move the bot waits to make, and says so when it is already on its way', async () => {
+  const profile = agent();
+  const { view, call, actions } = machine(profile);
+  const page = actions.report as Store;
+  (view.snapshot as { status: unknown[] }).status = [{ agentId: 'mira', state: 'working', leaving: { agentId: 'mira', machine: 'core-pc', requestId: 'r1', at: 1 } }];
+  call.mockResolvedValueOnce({ cancelled: false } as never);
+  pickAgentAction(view, profile, 'move-cancel', actions);
+  await flush();
+  expect(call).toHaveBeenCalledWith('agents.move.cancel', { agentId: 'mira' });
+  expect(page.error).toBe(fill(strings.agents.move.cancelLate, { name: 'Mira' }));
 });

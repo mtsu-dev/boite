@@ -524,7 +524,7 @@ export class FakeContext {
       version: '2.0.0-beta.1',
       coreId,
       protocolVersion: PROTOCOL_VERSION,
-      features: { draftPreparation: true, attachmentUploads: true, threadSnapshots: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, projectBoard: true, settingsHome: true, botsHome: true, botMove: true, sharedProjects: 1, listChanges: true },
+      features: { draftPreparation: true, attachmentUploads: true, threadSnapshots: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, projectBoard: true, settingsHome: true, botsHome: true, botMove: true, botMoveQueue: true, sharedProjects: 1, listChanges: true },
       os: 'windows',
       channel: 'stable',
       pid: 4242,

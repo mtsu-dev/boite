@@ -32,7 +32,7 @@ import { existsSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   AGENT_BUILTINS, AGENT_DAILY_BUDGET, AGENT_PICTURE_MAX_BYTES, isAgentPicture, AGENT_ROUTINE_NAME_MAX, AGENT_ROUTINE_PROMPT_MAX, AGENT_ROUTINES_MAX,
-  type AgentBuiltin, type AgentMoveResult, type AgentProfile, type AgentRoutine, type AgentRuntimeConfig, type AgentSchedule, type AgentSelection, type AgentSession,
+  type AgentBuiltin, type AgentMoveResult, type AgentProfile, type AgentQueuedMove, type AgentRoutine, type AgentRuntimeConfig, type AgentSchedule, type AgentSelection, type AgentSession,
   type CoordinationPeer, type Message, type MoveNotice, type RpcParams, type ThreadSummary, type Turn,
 } from '@boite/contracts';
 import type { Core } from '../core.ts';
@@ -78,6 +78,10 @@ const MOVED_IN = 'agents:moved-in:';
 const MOVED_IN_PARTS = 'agents:moved-in-parts:';
 /** A request this machine sent and has not finished: `{ agentId, machine }`. */
 const MOVING_OUT = 'agents:moving-out:';
+/** A move waiting for its bot's turn to end, by bot: an `AgentQueuedMove`. Its `:<agentId>` end goes with the bot's other settings. */
+const QUEUED = 'agents:move-queued:';
+/** The failures of a waiting move after which the target may hold the bot already: only the same requestId finishes it, so it tries again. */
+const UNFINISHED = new Set(['unreachable', 'unread-answer', 'facts-arriving']);
 const PERMISSION_MODES = ['default', 'acceptEdits', 'plan', 'bypassPermissions', 'yolo', 'dontAsk'] as const;
 
 /** What `AgentStore` lends this file: making a thread and forgetting one stay its own. */
@@ -123,14 +127,31 @@ export class BotMoves {
   readonly #hooks: MoveHooks;
   /** Bots this machine is sending now: a second move of the same bot waits for none and is refused, and their wakes are held. */
   readonly #moving = new Set<string>();
+  /** Moves waiting for their bot's turn to end, by bot (`agents:move-queued:`), read back after a restart. */
+  readonly #queued = new Map<string, AgentQueuedMove>();
+  /** When a waiting move that did not finish tries again, by bot. */
+  readonly #retryAt = new Map<string, number>();
+  /** How long a waiting move that did not finish waits before it tries again; a test shortens it. */
+  retryMs = 30_000;
   constructor(core: Core, store: AgentStore, hooks: MoveHooks) {
     this.#core = core;
     this.#store = store;
     this.#hooks = hooks;
+    for (const row of core.journal.db.query(`SELECT key, value FROM settings WHERE key LIKE '${QUEUED}%'`).all() as { key: string; value: string }[]) {
+      try { this.#queued.set(row.key.slice(QUEUED.length), JSON.parse(row.value) as AgentQueuedMove); }
+      catch (error) { core.log('warn', `agent move waiting ${row.key}: ${error instanceof Error ? error.message : String(error)}`); }
+    }
   }
 
-  /** Whether this bot is on its way to another machine: its wakes wait (`AgentRuntime.attempt`). */
-  moving(agentId: string): boolean { return this.#moving.has(agentId); }
+  /** Whether this bot is on its way to another machine, or waits to leave: its routines, events and facts wait (`AgentRuntime.attempt`). */
+  moving(agentId: string): boolean { return this.#moving.has(agentId) || this.#queued.has(agentId); }
+
+  /**
+   * Whether this bot is being sent now: no letter starts a turn on its thread
+   * (`AgentRuntime.admit`). A move that waits lets them in, so the bot reads
+   * what its sub-threads answer before it leaves.
+   */
+  travelling(agentId: string): boolean { return this.#moving.has(agentId); }
 
   /** Whether this request was sent and not finished: the target may hold the bot, and only the same request finishes it here. */
   unfinished(requestId: string): boolean { return this.#core.journal.getSetting(`${MOVING_OUT}${requestId}`) !== undefined; }
@@ -145,11 +166,7 @@ export class BotMoves {
     if (done !== undefined) return done;
     const agent = this.#store.records.get('profile', text(params.agentId, 'agentId', 160));
     const peer = memberNamed(this.#core, text(params.machine, 'machine', 200), 'agents.move');
-    if (agent.status === 'archived') throw refused(`agents.move: ${agent.name} is archived; restore it before moving it`, { field: 'agentId', expected: 'an active or paused bot' });
-    if (this.#moving.has(agent.id)) throw refused(`agents.move: ${agent.name} is already moving to another machine`, { field: 'agentId', reason: 'moving' });
-    // A team holds members of one machine (docs/teams.md): moving one would leave its posts with nobody to read them.
-    const teams = this.#core.teams.namesOf(agent.id);
-    if (teams.length > 0) throw refused(`agents.move: ${agent.name} belongs to the team${teams.length > 1 ? 's' : ''} ${teams.map(name => JSON.stringify(name)).join(', ')}; remove it from ${teams.length > 1 ? 'them' : 'it'} first, a team holds bots of one machine`, { field: 'agentId', reason: 'team', teams });
+    this.#movable(agent);
     const session = this.#store.sessionOf(agent.id);
     const thread = session === null ? null : this.#core.journal.getThread(session.threadId);
     if (thread !== null) this.#idle(agent, thread);
@@ -168,6 +185,91 @@ export class BotMoves {
       this.#core.journal.deleteSetting(`${MOVING_OUT}${requestId}`);
       return result;
     } finally { this.#moving.delete(agent.id); }
+  }
+
+  /** What refuses a move before anything is read or sent, now or once the bot's turn ends. */
+  #movable(agent: AgentProfile): void {
+    if (agent.status === 'archived') throw refused(`agents.move: ${agent.name} is archived; restore it before moving it`, { field: 'agentId', expected: 'an active or paused bot' });
+    if (this.#moving.has(agent.id)) throw refused(`agents.move: ${agent.name} is already moving to another machine`, { field: 'agentId', reason: 'moving' });
+    // A team holds members of one machine (docs/teams.md): moving one would leave its posts with nobody to read them.
+    const teams = this.#core.teams.namesOf(agent.id);
+    if (teams.length > 0) throw refused(`agents.move: ${agent.name} belongs to the team${teams.length > 1 ? 's' : ''} ${teams.map(name => JSON.stringify(name)).join(', ')}; remove it from ${teams.length > 1 ? 'them' : 'it'} first, a team holds bots of one machine`, { field: 'agentId', reason: 'team', teams });
+  }
+
+  // -- a move that waits for the bot's turn to end ------------------------------
+
+  /** `agents.move.queue`: the checks of a move now, the move itself once the bot is idle (`sweep`). */
+  queue(params: RpcParams<'agents.move.queue'>): AgentQueuedMove {
+    object(params, 'params');
+    const requestId = params.requestId === undefined ? newId('mov_') : text(params.requestId, 'requestId', 160);
+    const agent = this.#store.records.get('profile', text(params.agentId, 'agentId', 160));
+    const peer = memberNamed(this.#core, text(params.machine, 'machine', 200), 'agents.move');
+    this.#movable(agent);
+    const queued: AgentQueuedMove = { agentId: agent.id, machine: peer.coreId, requestId, at: Date.now() };
+    this.#core.journal.setSetting(`${QUEUED}${agent.id}`, queued);
+    this.#queued.set(agent.id, queued);
+    this.#retryAt.delete(agent.id);
+    this.#store.changed();
+    return { ...queued };
+  }
+
+  /** `agents.move.cancel`: the waiting move is dropped, unless it already started. */
+  cancel(params: RpcParams<'agents.move.cancel'>): { cancelled: boolean } {
+    object(params, 'params');
+    const agentId = text(params.agentId, 'agentId', 160);
+    if (!this.#queued.has(agentId) || this.#moving.has(agentId)) return { cancelled: false };
+    this.#unqueue(agentId);
+    this.#store.changed();
+    return { cancelled: true };
+  }
+
+  /** The move waiting for this bot's turn to end, for its status. */
+  leaving(agentId: string): AgentQueuedMove | null {
+    const queued = this.#queued.get(agentId);
+    return queued === undefined ? null : { ...queued };
+  }
+
+  /** Every scheduler pass: each waiting move whose bot's threads are all idle starts. */
+  sweep(): void {
+    const now = Date.now();
+    for (const queued of [...this.#queued.values()]) {
+      if (this.#moving.has(queued.agentId) || (this.#retryAt.get(queued.agentId) ?? 0) > now) continue;
+      const agent = this.#store.records.find('profile', queued.agentId);
+      // Archived, removed, or gone by a move asked meanwhile: nothing is left to send.
+      if (!agent || agent.status === 'archived') { this.#unqueue(queued.agentId); this.#store.changed(); continue; }
+      const session = this.#store.sessionOf(agent.id);
+      const thread = session === null ? null : this.#core.journal.getThread(session.threadId);
+      if (thread !== null && this.#busy(thread) !== undefined) continue;
+      void this.#leaveNow(agent, queued);
+    }
+  }
+
+  /** The waiting move, now: `move` marks the bot moving before its first await, so the next pass leaves it alone. */
+  async #leaveNow(agent: AgentProfile, queued: AgentQueuedMove): Promise<void> {
+    try {
+      await this.move({ agentId: agent.id, machine: queued.machine, requestId: queued.requestId });
+    } catch (error) {
+      const reason = error instanceof RpcFailure ? (error.data as { reason?: unknown } | undefined)?.reason : undefined;
+      // A turn the owner started on the way: the move waits for that one too, with the same request.
+      if (reason === 'turn-in-flight') return;
+      const message = error instanceof Error ? error.message : String(error);
+      if (typeof reason === 'string' && UNFINISHED.has(reason) && this.#queued.get(agent.id)?.requestId === queued.requestId) {
+        if (!this.#retryAt.has(agent.id)) this.#core.agentRuntime.line(agent.id, `Not moved yet: ${message}. The move tries again every ${Math.round(this.retryMs / 1000)} seconds until it is cancelled.`);
+        this.#retryAt.set(agent.id, Date.now() + this.retryMs);
+        return;
+      }
+      this.#unqueue(agent.id);
+      if (this.#store.records.find('profile', agent.id) !== null) {
+        this.#core.agentRuntime.line(agent.id, `Did not move once its turn ended: ${message}`);
+      }
+      this.#store.changed();
+    }
+  }
+
+  #unqueue(agentId: string): void {
+    this.#queued.delete(agentId);
+    this.#retryAt.delete(agentId);
+    if (this.#core.journal.getSetting(`${QUEUED}${agentId}`) !== undefined) this.#core.journal.deleteSetting(`${QUEUED}${agentId}`);
   }
 
   /**
@@ -213,15 +315,20 @@ export class BotMoves {
     return facts.map(fact => ({ key: fact.key, text: fact.text, written: fact.written ?? fact.at }));
   }
 
-  /** A move waits for the bot's thread and every thread below it to be idle, as `threads.move` does. */
+  /** The bot's thread, or a thread below it, with a turn running or queued; undefined when all are idle. */
+  #busy(thread: ThreadSummary): ThreadSummary | undefined {
+    const children = this.#core.journal.listChildThreads().filter(child => rootThread(this.#core, child.id) === thread.id);
+    return [thread, ...children].find(one => this.#core.threads.isBusy(one.id));
+  }
+
   /**
-   * Refuses while the bot or one of its sub-threads has a turn. `sent`: the
+   * A move waits for the bot's thread and every thread below it to be idle, as
+   * `threads.move` does: refuses while one has a turn. `sent`: the
    * target already holds the bot under that requestId, so the refusal names
    * it, and only that id finishes the move without a second bot there.
    */
   #idle(agent: AgentProfile, thread: ThreadSummary, sent?: string): void {
-    const children = this.#core.journal.listChildThreads().filter(child => rootThread(this.#core, child.id) === thread.id);
-    const busy = [thread, ...children].find(one => this.#core.threads.isBusy(one.id));
+    const busy = this.#busy(thread);
     if (busy === undefined) return;
     const message = busy.id === thread.id
       ? `agents.move: ${agent.name} has a turn running or queued; stop it or let it end before moving the bot`
@@ -331,6 +438,7 @@ export class BotMoves {
       this.#store.records.remove('profile', agent.id);
     });
     this.#core.agentRuntime.forget(agent.id);
+    this.#unqueue(agent.id);
     // Its settings: every key that ends with the bot's or its thread's id.
     const ends = [`:${agent.id}`, ...(thread === null ? [] : [`:${thread.id}`])];
     const keys = this.#core.journal.db.query("SELECT key FROM settings WHERE key LIKE 'agents:%' OR key LIKE 'group-bots:%' OR key LIKE 'resident-follow:%'").all() as { key: string }[];

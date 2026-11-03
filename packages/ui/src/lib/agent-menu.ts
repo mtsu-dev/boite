@@ -1,6 +1,6 @@
-import { Archive, ArrowRightLeft, Copy, MessageSquare, Pause, PencilLine, Pin, PinOff, Play, RotateCcw, Settings2 } from '@lucide/svelte';
+import { Archive, ArrowRightLeft, Copy, MessageSquare, Pause, PencilLine, Pin, PinOff, Play, RotateCcw, Settings2, X } from '@lucide/svelte';
 import type { AgentProfile } from '@boite/contracts';
-import { moveBot, moveItems, moveMachines } from './agent-move-flow';
+import { cancelMove, moveBot, moveItems, moveMachines } from './agent-move-flow';
 import { resetBuiltin, type AgentsView } from './agents.svelte';
 import { confirm } from './confirm.svelte';
 import { contextMenu } from './context-menu.svelte';
@@ -13,6 +13,8 @@ interface AgentMenuOptions {
   open: boolean;
   /** A phone's menu: pin, rename, edit, then pause and archive, as a thread's phone menu. */
   phone?: boolean;
+  /** It waits to move to another machine once its turn ends: the move can be cancelled. */
+  leaving?: boolean;
 }
 
 /**
@@ -32,8 +34,9 @@ export function agentMenuItems(store: Store, agent: AgentProfile, options: Agent
   const rename: MenuItem = { id: 'rename', label: strings.common.rename, glyph: PencilLine };
   const edit: MenuItem = { id: 'edit', label: labels.edit, glyph: Settings2 };
   if (options.phone) return owner ? [pin, rename, edit, separator('sep-archive'), status, archive] : [];
-  // Like "Move to project": a picker opens where the menu stood.
-  const move: MenuItem[] = moveMachines(store).others.length > 0 ? [{ id: 'move', label: labels.move.menu, glyph: ArrowRightLeft }] : [];
+  // Like "Move to project": a picker opens where the menu stood. A move that waits for the turn's end is cancelled instead.
+  const move: MenuItem[] = options.leaving ? [{ id: 'move-cancel', label: strings.threadMove.cancelMove, glyph: X }]
+    : moveMachines(store).others.length > 0 ? [{ id: 'move', label: labels.move.menu, glyph: ArrowRightLeft }] : [];
   return [
     { id: 'open', label: strings.common.open, glyph: MessageSquare, disabled: options.open },
     ...(owner ? [pin, separator('sep-archive'), status, archive, separator('sep-organize'), rename, edit, ...move] : []),
@@ -62,7 +65,8 @@ export function pickAgentAction(owner: AgentsView, agent: AgentProfile, action: 
     case 'resume': void saveAgent(owner, agent.id, { status: 'active' }, view.report); return;
     case 'archive': void confirmArchive(agent.name).then(sure => sure && saveAgent(owner, agent.id, { status: 'archived' }, view.report)); return;
     case 'reset': void resetBuiltin(owner, agent); return;
-    case 'move': contextMenu.follow(moveItems(owner.store, agent.id), id => void moveBot(owner.store, agent, id, view.report)); return;
+    case 'move': contextMenu.follow(moveItems(owner.store, agent.id), id => void moveBot(owner, agent, id, view.report)); return;
+    case 'move-cancel': void cancelMove(owner, agent, view.report); return;
     case 'copy': void copyBrainPath(owner, agent.id, view.report); return;
   }
 }
