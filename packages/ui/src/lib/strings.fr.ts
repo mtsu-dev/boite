@@ -103,6 +103,7 @@ import { fr as windows } from './strings/fr/windows';
 import { fr as policy } from './strings/fr/policy';
 import { fr as teamRequest } from './strings/fr/teamRequest';
 import { fr as teamChat } from './strings/fr/teamChat';
+import { fr as debates } from './strings/fr/debates';
 
 export const fr: Translation = {
   ...subscriptionProxy,
@@ -110,6 +111,7 @@ export const fr: Translation = {
   ...agentSettingRequest,
   ...teamRequest,
   ...teamChat,
+  ...debates,
   ...remoteBrowser,
   ...agentBrowser,
   ...devicePanel,

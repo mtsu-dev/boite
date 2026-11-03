@@ -208,11 +208,18 @@ ${CONTROL_HELP}
                                  --project <p> places a bot's child in an entrusted project
                                  --machine <name> runs it on another machine of the
                                  group, in its project named like yours or --project
-  delegate list                  every subagent and workflow: state, model, time
+  delegate list                  every subagent, workflow and debate: state, model, time
+  delegate debate <question>     with the AI debates experiment: several models argue
+                                 in rounds, read-only, the user follows in a salon and
+                                 a model that did not debate sums up; the summary comes
+                                 back as a message (--models <a>,<b>[,...] from
+                                 delegate models, --rounds 1-5 (3), --angles "x,y",
+                                 --summary <provider/model>, --effort <level>,
+                                 --timeout <minutes per round> (10))
   delegate send <thread-id> <text>
                                  steer or reuse a subagent, or ask the parent;
                                  to a subagent that asks something, the answer
-  delegate stop [thread-id]      stop one subagent, or all of them
+  delegate stop [thread-id]      stop one subagent or debate (dbt_...), or all of them
   delegate resume [thread-id]    continue stopped subagents, or one, and the
                                  workflows a pause or a restart held
   delegate wait [thread-id]      block until children finish or one asks something

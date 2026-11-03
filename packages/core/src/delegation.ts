@@ -388,11 +388,11 @@ export class Delegation {
   }
   /**
    * A child the core runs for a plan rather than for the agent: a workflow
-   * step, a `/goal2` reviewer or checklist tracker, or an agent's memory pass. It needs no enabled team, only an unpaused
+   * step, a `/goal2` reviewer or checklist tracker, an agent's memory pass or a debater. It needs no enabled team, only an unpaused
    * one, and its answer never comes back as mail.
    */
   #stepOwned(threadId: string): boolean {
-    return !!this.#core.sharedCompute?.journal.worker(threadId) || this.#core.workflows.owns(threadId) || this.#core.activity.ownsReviewer(threadId) || this.#core.activity.ownsTracker(threadId) || this.#core.workforce.memory.owns(threadId);
+    return !!this.#core.sharedCompute?.journal.worker(threadId) || this.#core.workflows.owns(threadId) || this.#core.activity.ownsReviewer(threadId) || this.#core.activity.ownsTracker(threadId) || this.#core.workforce.memory.owns(threadId) || !!this.#core.debates?.owns(threadId);
   }
   /**
    * Whether a child's team lets its turn start. The scheduler passes the parent it
@@ -733,6 +733,8 @@ export class Delegation {
     const workflow = this.#core.workflows.active(root.id);
     this.#core.logs.info(`Stopping ${ids.length > 0 ? `${ids.length} subagents` : 'the workflows'} of ${root.id}${pausing ? `; the team is paused (${this.config(root.id).pausedBy})` : ''}`, { source: 'delegation', event: 'delegation.stopped', threadId: root.id, data: { agents: ids.length, workflow, paused: pausing, by: agentId ? 'agent' : thread.parentThreadId ? 'self' : 'parent', pausedBy: pausing ? by : null } });
     let stopped = 0;
+    // Its debates end first, so no round asks a debater this stop just halted.
+    if (!thread.parentThreadId && !agentId) stopped += this.#core.debates.stopParent(root.id, 'Stopped with the subagents of the thread that started it.');
     for (const id of ids) if (this.#halt(id)) stopped++;
     if (!thread.parentThreadId && !agentId) {
       stopped += this.remote.stopAll(root.id);

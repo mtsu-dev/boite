@@ -491,10 +491,11 @@ boite team list|say|dm|read|propose|invite|leave
 boite delegate models [--machine <name>]
 boite delegate profiles|list
 boite delegate spawn <brief> [--model <provider/model>] [--effort <level>] [--speed <tier>] [--profile <id>] [--title <t>] [--worktree] [--machine <name> [--project <name>]] [context flags]
+boite delegate debate <question> --models <a>,<b>[,...] [--rounds <n>] [--angles <a,b,...>] [--summary <provider/model>] [--effort <level>] [--timeout <minutes>]
 boite delegate send <thread-id> <text>
 boite delegate wait [thread-id] [--timeout <s>]
 boite delegate result <thread-id> <turn-id> [offset]
-boite delegate stop [thread-id]
+boite delegate stop [thread-id|debate-id]
 boite delegate resume [thread-id]
 boite workflow help|check|run|list|show|extend|pause|resume|stop|retry
 boite workflow output|templates|save|start
@@ -526,6 +527,14 @@ parent's checkout ([delegation](delegation.md#children-in-their-own-worktree)).
 `delegate send` to a child that waits on a question answers that question, and
 `delegate wait` returns `needs_input` as soon as a child asks something
 ([delegation](delegation.md#questions-from-a-child)).
+
+`delegate debate`, behind the AI debates experiment, has 2 to 6 models argue
+one question in 1 to 5 rounds (3 by default), read-only, while the user
+follows in the salon; `--summary` names the model that writes the summary
+without debating, `claude/claude-opus-5-5` by default, and `--timeout` the
+minutes a round may last, 10 by default. It returns the debate id at once; the
+summary arrives as a message, `delegate list` shows the debate and
+`delegate stop <debate-id>` stops it ([debates](debates.md)).
 
 Coordination commands are documented in [coordination](coordination.md#agent-commands),
 child controls in [delegation](delegation.md#agent-commands), and plan/output

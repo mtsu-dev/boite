@@ -43,17 +43,19 @@ function state(ctx: FakeContext): TeamState {
 
 type TeamMethods = Pick<FakeMethods, `teams.${string}` & keyof FakeMethods>;
 
-/** What would reach a provider on a thread: a team chat runs no agent, so each refuses there, as `requireAgent` (`packages/core/src/threads/agentless.ts`) does. */
+/** What would reach a provider on a thread: a team chat and a debate's salon run no agent, so each refuses there, as `requireAgent` (`packages/core/src/threads/agentless.ts`) does. */
 const AGENT_METHODS = ['turns.start', 'turns.steer', 'turns.recover', 'threads.retitle', 'threads.compact', 'threads.rewind', 'threads.fork', 'threads.move',
   'threads.btw', 'threads.btw.fork', 'threads.update', 'threads.goal.track', 'threads.activity.set'] as const;
 
-/** `methods` with each of `AGENT_METHODS` refusing a team chat first. */
+/** `methods` with each of `AGENT_METHODS` refusing a team chat and a debate's salon first. */
 export function refuseTeamChats(ctx: FakeContext, methods: FakeMethods): FakeMethods {
   for (const name of AGENT_METHODS) {
     const answer = methods[name] as (params: { threadId: string }, ...rest: unknown[]) => Promise<unknown>;
     // Not async: an extra tick before the method would let a running fake turn end first.
     (methods as Record<string, unknown>)[name] = (params: { threadId: string }, ...rest: unknown[]) => {
-      if (ctx.threads.get(params.threadId)?.teamId) return Promise.reject(refused('a team chat runs no agent; post to it through teams.post', { threadId: params.threadId }));
+      const thread = ctx.threads.get(params.threadId);
+      if (thread?.teamId) return Promise.reject(refused('a team chat runs no agent; post to it through teams.post', { threadId: params.threadId }));
+      if (thread?.debateId) return Promise.reject(refused('a debate\'s salon runs no agent; post to it through debates.post', { threadId: params.threadId }));
       return answer(params, ...rest);
     };
   }
