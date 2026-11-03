@@ -127,8 +127,8 @@ export function writeExperiments(enabled: ExperimentId[]): void {
  */
 export function setExperiment(id: ExperimentId, on: boolean): void {
   const enabled = new Set<ExperimentId>(readExperiments());
-  // Contacts runs through the Operator, a bot: it goes when Bots goes. The page greys its switch while Bots is off.
-  if (id === 'resident-agents' && !on) enabled.delete('contacts');
+  // Contacts runs through the Operator, a bot, and a team's chat lives on the Bots page: both go when Bots goes. The page greys their switches while Bots is off.
+  if (id === 'resident-agents' && !on) { enabled.delete('contacts'); enabled.delete('teams'); }
   if (on) enabled.add(id);
   else enabled.delete(id);
   if (followsDesktop()) store(FOLLOW_STORAGE_KEY, 'off');

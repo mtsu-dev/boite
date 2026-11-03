@@ -86,7 +86,8 @@ test('the Machine row moves a bot after the app asks, a refusal is told, and the
   await settle();
   expect(call.mock.calls.some(([method]) => method === 'agents.move')).toBe(false);
 
-  // A turn in flight: the core refuses, the toast says it in one clear line, the bot stays.
+  // A turn in flight on a machine that cannot hold a move for its end: the core refuses, the toast says it in one clear line, the bot stays.
+  first.store.core = { ...first.store.core!, features: { ...first.store.core!.features, botMoveQueue: false } };
   call.mockImplementation(async (method, params) => {
     if (method === 'agents.move') throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'agents.move: Operator has a turn running or queued; stop it or let it end before moving the bot', data: { field: 'agentId', reason: 'turn-in-flight' } });
     return real(method, params);
@@ -96,6 +97,23 @@ test('the Machine row moves a bot after the app asks, a refusal is told, and the
   confirm.answer(true);
   await vi.waitFor(() => expect(first.store.error).toBe(fill(strings.agents.move.turnInFlight, { name: 'Operator' })));
   expect(workspace.active).toBe(first.store);
+  expect(call.mock.calls.some(([method]) => method === 'agents.move.queue')).toBe(false);
+
+  // Where its machine can hold the move, a turn that started since the dialog opened makes it wait for the turn's end.
+  first.store.error = null;
+  first.store.core = { ...first.store.core!, features: { ...first.store.core!.features, botMoveQueue: true } };
+  call.mockImplementation(async (method, params) => {
+    if (method === 'agents.move') throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'agents.move: Operator has a turn running or queued', data: { field: 'agentId', reason: 'turn-in-flight' } });
+    if (method === 'agents.move.queue') return { ...(params as { agentId: string; machine: string; requestId: string }), at: 1 } as never;
+    return real(method, params);
+  });
+  pick('second');
+  await vi.waitFor(() => expect(confirm.current).not.toBeNull());
+  expect(confirm.current!.confirmLabel).toBe(strings.agents.move.confirm);
+  confirm.answer(true);
+  await vi.waitFor(() => expect(call).toHaveBeenCalledWith('agents.move.queue', { agentId: bot.id, machine: 'core-second', requestId: expect.any(String) }));
+  await settle();
+  expect(first.store.error).toBeNull();
   call.mockImplementation(real);
 
   // Confirmed: `agents.move` on the bot's machine with the picked one, then the page opens it there.
@@ -165,4 +183,60 @@ test('a move that did not finish keeps its requestId through a reload, and a new
   await vi.waitFor(() => expect(workspace.active).toBe(second.store));
   // It moved: nothing is kept for it any more.
   expect(localStorage.getItem('boite.agentMoves')).toBeNull();
+});
+
+test('a bot at work moves once its turn ends: the dialog names the projects the target lacks, the row says where it goes, and a cancelled move keeps its id', async () => {
+  const { first, second, bot, view } = await setup();
+  await unmount(component!);
+  // A project Second also lists under its name, one only First has, and one it had from Second that Second no longer has.
+  const twin = first.store.projects.find(project => project.kind !== 'drafts')!;
+  expect(second.store.projects.some(project => project.name === twin.name)).toBe(true);
+  const only = await first.client.call('projects.add', { path: '/home/owner/site', name: 'site' });
+  await vi.waitFor(() => expect(first.store.projects.some(project => project.id === only.id)).toBe(true));
+  const agent = { ...bot, projectIds: [twin.id, only.id, 'core-second/p-gone'] };
+  component = mount(AgentMachine, { target: document.body, props: { view, agent } });
+  const threadId = (await first.client.call('agents.snapshot', {})).status.find(status => status.agentId === bot.id)!.threadId!;
+  first.client.holdAfterRestart(threadId, 'Still at it');
+  await view.refresh();
+  await settle();
+
+  const call = vi.spyOn(first.client, 'call');
+  pick('second');
+  await vi.waitFor(() => expect(confirm.current).not.toBeNull());
+  const labels = strings.agents.move;
+  const names = { name: 'Operator', machine: 'Second', source: 'First' };
+  expect(confirm.current!.confirmLabel).toBe(labels.confirmLater);
+  expect(confirm.current!.body).toBe([
+    fill(labels.later, names),
+    fill(labels.body, names),
+    fill(labels.projectsAbsent, { ...names, projects: 'site' }),
+    fill(labels.projectsTwin, { ...names, projects: twin.name }),
+    fill(labels.projectsReachOff, { ...names, setting: strings.machines.groupBots, page: strings.settings.tabs.machines }),
+    fill(labels.projectsLost, { ...names, projects: 'p-gone' }),
+  ].join('\n\n'));
+  confirm.answer(true);
+  // Its machine holds the move: the row says where the bot goes, and the picker waits.
+  await vi.waitFor(() => expect(one('agent-move-leaving')?.textContent).toBe(fill(labels.leaving, { machine: 'Second' })));
+  expect(call.mock.calls.filter(([method]) => method === 'agents.move')).toEqual([]);
+  const queued = call.mock.calls.find(([method]) => method === 'agents.move.queue')![1] as { requestId: string };
+  expect(queued).toEqual({ agentId: bot.id, machine: 'core-second', requestId: expect.any(String) });
+  expect(one<HTMLButtonElement>('agent-move-pick')!.disabled).toBe(true);
+  // The machine owns the id from here on: none stays in this window.
+  expect(localStorage.getItem('boite.agentMoves')).toBeNull();
+
+  // Cancelled: the bot stays, and a move there by hand goes with that id, in case it was sent already.
+  one<HTMLButtonElement>('agent-move-cancel')!.click();
+  await vi.waitFor(() => expect(one('agent-move-leaving')).toBeNull());
+  expect(call).toHaveBeenCalledWith('agents.move.cancel', { agentId: bot.id });
+  expect(Object.values(JSON.parse(localStorage.getItem('boite.agentMoves')!))).toEqual([queued.requestId]);
+
+  // Asked again, it leaves as soon as the turn ends, and the page follows it.
+  pick('second');
+  await vi.waitFor(() => expect(confirm.current).not.toBeNull());
+  confirm.answer(true);
+  await vi.waitFor(() => expect(one('agent-move-leaving')).not.toBeNull());
+  expect((call.mock.calls.filter(([method]) => method === 'agents.move.queue').at(-1)![1] as { requestId: string }).requestId).toBe(queued.requestId);
+  await first.client.call('turns.stop', { threadId });
+  await vi.waitFor(async () => expect((await second.client.call('agents.snapshot', {})).profiles.map(profile => profile.id)).toEqual([bot.id]));
+  expect(first.store.error).toBeNull();
 });

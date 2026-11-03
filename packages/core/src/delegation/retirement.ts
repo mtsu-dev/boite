@@ -11,7 +11,8 @@ const KEPT = 'delegation-kept:';
  * A subagent is put away as done once it is over, so a conversation does not
  * keep every agent it ever started open:
  * - a delegated agent whose last turn ended done, once that result reached its parent;
- * - a workflow step's conversation, once its run is done.
+ * - a workflow step's conversation, once its run is done;
+ * - a debater or a debate's summarizer, once its debate is over.
  * A persistent agent's next episode also archives the subagents of the last one.
  * One still watching its pull request is kept, with a marker when an episode
  * asked, and retires once the watch and its turn are over and its last result
@@ -60,6 +61,11 @@ export class Retirements {
       // A failed or stopped run may retry the step in its own conversation.
       const run = this.#core.journal.db.query('SELECT r.status FROM workflow_steps s JOIN workflow_runs r ON r.id = s.run_id WHERE s.thread_id = ?').get(threadId) as { status: string } | null;
       if (run?.status === 'done') this.#retire(thread);
+      return;
+    }
+    // A debater or a debate's summarizer goes once its debate is over, whatever its last turn did.
+    if (this.#core.debates?.owns(threadId)) {
+      if (this.#core.debates.overFor(threadId)) this.#retire(thread);
       return;
     }
     if (!marked && !this.#finished(thread, turn)) return;

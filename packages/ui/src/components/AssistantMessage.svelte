@@ -27,6 +27,7 @@
   import WindowCard from './WindowCardLoader.svelte';
   import { keepaliveRun } from '../lib/message-order';
   import { AgentsView, agentOfThread } from '../lib/agents.svelte';
+  import { experimentOn } from '../lib/experiments.svelte';
 
   /**
    * An assistant or system message in the timeline: the model that wrote it,
@@ -139,7 +140,7 @@
     {@const part = message.parts[run.index]!}
     {@const shownText = part.type === 'text' ? shownTextOf(message, part) : ''}
     {@const narrated = part.type === 'text' && message.role === 'assistant' && narrates(index, shownText.trim())}
-    {#if part.type !== 'text' || shownText.trim().length > 0}
+    {#if (part.type !== 'text' || shownText.trim().length > 0) && (part.type !== 'debate' || experimentOn('debates'))}
     <!-- Narration is a class, not another branch: the paragraphs already drawn stay the same nodes when a step arrives after them. -->
     <div class="part" class:narration={narrated} data-kind={part.type} data-testid={narrated ? 'narration' : undefined}>
       {#if part.type === 'text'}
@@ -221,6 +222,9 @@
         />{/snippet}</Deferred>
       {:else if part.type === 'secret_request'}
         <Deferred part={parts.SecretCard}>{#snippet children(SecretCard)}<SecretCard {store} threadId={message.threadId} {part} />{/snippet}</Deferred>
+      {:else if part.type === 'debate'}
+        <!-- Drawn only with the AI debates experiment on: off, the debate's card leaves no trace in the thread. -->
+        <Deferred part={parts.DebateCard}>{#snippet children(DebateCard)}<DebateCard {store} threadId={message.threadId} {part} />{/snippet}</Deferred>
       {:else if part.type === 'compaction'}
         {@render compaction(part)}
       {:else if part.type === 'hook'}

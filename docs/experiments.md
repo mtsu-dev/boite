@@ -79,10 +79,24 @@ of a client's experiments.
 
 ## Teams
 
-Teams of bots ([teams](teams.md)). The switch gates every `teams.*` method
-and `boite team` command on the core, which reads the desktop app's
-experiments, and the team lines of the bots' guide. Letters already in a
-bot's inbox still go out once it is off. The app draws no team page yet.
+Teams of bots ([teams](teams.md)). Teams needs Bots: its switch stays greyed
+while Bots is off, and turning Bots off turns Teams off too. The switch gates
+every `teams.*` method and `boite team` command on the core, which reads the
+desktop app's experiments, and the team lines of the bots' guide. Letters
+already in a bot's inbox still go out once it is off. In the app it shows the
+Teams section above the bots on the Bots page, on the desktop and on the
+phone, and the team chats there ([teams](teams.md#in-the-app)); a phone
+follows the desktop's switch.
+
+## AI debates
+
+Debates between AIs ([debates](debates.md)). The switch gates every
+`debates.*` method and `boite delegate debate` on the core, which reads the
+desktop app's experiments and refuses them with `experiment-off`, and the
+debate line of the subagent guide. In the app it draws the debate card in the
+thread that started one and the salon, in the right panel on a desktop and
+full screen on a phone; a phone follows the desktop's switch. Turning it off
+does not stop a debate under way: its summary still comes back.
 
 ## Contacts
 

@@ -261,6 +261,12 @@ export type MessagePart =
    * box says, `control` the control it shows, as the agent's `WindowPointer`.
    */
   | { type: 'window_guide'; boxId: string; process: string; label: string; control?: { type: string; name: string }; step?: WindowPointerStep; expiresAt: Timestamp; end: WindowGuideEnd | null }
+  /**
+   * A debate the turn started (`boite delegate debate`): a client draws its
+   * card from the thread's `debates.list`, with the rounds, the status and the salon to open.
+   * One without the debates experiment draws nothing.
+   */
+  | { type: 'debate'; debateId: string; topic: string }
   | { type: 'error'; message: string };
 
 export interface Message {

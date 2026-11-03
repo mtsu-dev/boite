@@ -28,6 +28,5 @@ export function residentOfThread(store: Store, thread: Pick<ThreadSummary, 'id' 
 
 /** Opens an agent's conversation on the Agents page of its machine. */
 export function openResident(store: Store, agentId: string): void {
-  if (workspace.active === store) store.showAgents(agentId);
-  else void workspace.select(store).then(() => store.showAgents(agentId));
+  workspace.showAgents(store, agentId);
 }

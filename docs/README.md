@@ -18,6 +18,7 @@
 - [Context](context.md): usage, compaction, queued prompts, goals, loops and side questions.
 - [Subagents](delegation.md): delegate to child conversations, steer them and follow their results.
 - [Workflows](workflows.md): plans of delegated steps, conditions, templates and the graph.
+- [Debates between AIs](debates.md): experimental rounds between several models, the salon and a summary by a model that did not debate.
 - [The right panel](panel.md): browser, changes, files, tasks and trace beside the chat.
 - [The agent's browser](browser.md): headless browser commands and watching a page from any device.
 - [Devices](devices.md): simulators, emulators and connected Android devices; live video is experimental.

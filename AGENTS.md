@@ -133,6 +133,8 @@ and assertions when making the suite faster.
 - [Restart handoff](docs/restart-handoff.md): the 30 second wait before an update
   stops a turn, and how the next core resumes it.
 - [Workflows](docs/workflows.md): JSON plans of delegated steps and their graph.
+- [Debates](docs/debates.md): several models argue one question in rounds
+  behind an experiment, the salon the owner follows and the fresh summarizer.
 - [Bots](docs/bots.md): Boite's persistent agents, each a thread with a name,
   memory, routines and a desk, their `boite bot` commands and their guide.
 - [Teams](docs/teams.md): bots and the owner in one group, routing, delivery

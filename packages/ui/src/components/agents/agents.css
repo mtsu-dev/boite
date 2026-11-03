@@ -12,6 +12,8 @@
 .agents-search input:focus { outline: none; }
 .agents-rail .agents-search { margin: 8px 10px 0; }
 .agents-rail .agents-card { margin-bottom: 10px; padding: 4px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--color-surface-2) 55%, transparent); }
+/* With teams listed, each card stands under its heading: Teams, then Bots. */
+.agents-rail .agents-section { margin: 4px 10px 6px; }
 
 /* The card beside it, where the chat card stands on the thread page. */
 .agents-main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
@@ -27,6 +29,8 @@
 .agent-head-identity { flex: 1; min-width: 0; height: auto; justify-content: flex-start; gap: 12px; padding: 4px 10px 4px 7px; margin-left: -4px; border-radius: var(--radius-lg); text-align: left; color: var(--color-foreground); }
 .agent-head-identity:hover:not(:disabled) { background: var(--color-hover); }
 .agent-head-robot { display: inline-flex; flex: none; }
+/* A team's chat: its members' pictures, its name, who talks there. Nothing to open: the band under it names the members. */
+.team-head-identity { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 4px 10px 4px 7px; }
 .agent-head-text { display: grid; gap: 2px; min-width: 0; }
 .agent-head-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .agent-head-text strong { font-size: var(--text-md); font-weight: 600; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

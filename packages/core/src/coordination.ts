@@ -265,8 +265,8 @@ export class Coordination {
   #contact(threadId: string, resident = false): AgentContact {
     const thread = this.#core.threads.require(threadId);
     const config = this.config(threadId);
-    // A team chat is no contact: its posts reach only its members, through the team.
-    if (thread.archived || thread.teamId || (config.mode === 'off' && !resident)) throw refused('recipient is unavailable or coordination is disabled');
+    // A team chat or a debate's salon is no contact: its posts reach only its members, through the team or the debate.
+    if (thread.archived || thread.teamId || thread.debateId || (config.mode === 'off' && !resident)) throw refused('recipient is unavailable or coordination is disabled');
     const project = thread.projectId === null ? null : this.#core.journal.getProject(thread.projectId);
     return {
       ...this.#self(threadId), title: thread.title.slice(0, 200), machine: this.#core.info().hostname ?? 'Boite', resources: config.resources, status: thread.status, mode: config.mode,
@@ -294,7 +294,7 @@ export class Coordination {
   /** Reachable threads, the most recently active first: an old thread never hides a live one. */
   private localDirectory(projectId?: string): AgentContact[] {
     return this.#core.journal.listThreads(projectId)
-      .filter(t => !t.archived && !t.teamId && this.config(t.id).mode !== 'off' && (projectId !== undefined || this.config(t.id).remote))
+      .filter(t => !t.archived && !t.teamId && !t.debateId && this.config(t.id).mode !== 'off' && (projectId !== undefined || this.config(t.id).remote))
       .sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 100).map(t => this.#contact(t.id));
   }
   /** What this thread may reach on its own core: its project, and every remote-enabled thread when it is one too. */

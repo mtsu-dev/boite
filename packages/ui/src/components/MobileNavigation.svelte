@@ -99,7 +99,8 @@
   let draftOwner = $derived(listScreen === 'threads' && workspace.view === 'recent' && selected ? selected.machine.store : store);
   let entries = $derived(machines.flatMap(machine => {
     const byId = new Map(machine.store.projects.map(p => [p.id, p]));
-    return machine.store.threads.filter(t => !t.archived && !t.incognito).map(thread => ({ machine, thread, project: thread.projectId === null ? undefined : byId.get(thread.projectId) }));
+    // A team's chat is listed with the bots (`agents/AgentsRail.svelte`), not among the threads.
+    return machine.store.threads.filter(t => !t.archived && !t.incognito && !t.teamId && !t.debateId).map(thread => ({ machine, thread, project: thread.projectId === null ? undefined : byId.get(thread.projectId) }));
   }));
   let waiting = $derived(entries.filter(e => needsUser(e.thread)));
   /** What waits on the user besides the conversation on screen: Back carries its mark. */

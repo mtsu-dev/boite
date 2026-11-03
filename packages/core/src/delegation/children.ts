@@ -47,7 +47,8 @@ export interface ChildRequest {
   record: (id: string) => void;
   context?: unknown;
   worktree: boolean;
-  fixed?: { contextMode: ThreadContextMode; permissionMode: PermissionMode };
+  /** Null keeps the provider's default context: a debater reads the checkout with its usual tools, in a read-only permission mode. */
+  fixed?: { contextMode: ThreadContextMode | null; permissionMode: PermissionMode };
   project?: string;
 }
 
@@ -69,7 +70,7 @@ export function createChild(core: Core, worktrees: ChildWorktrees, { parent, pro
   if (asked != null && route.model === null) throw invalidParams(SPEED_NEEDS_MODEL);
   const provider = core.providers.require(route.providerId);
   const speed = checkSpeed(provider, route.accountId, route.model, asked ?? null);
-  const contextMode = fixed ? { ...fixed.contextMode, tools: fixed.contextMode.tools === null ? null : [...fixed.contextMode.tools] } : checkContext(provider, context);
+  const contextMode = fixed ? fixed.contextMode && { ...fixed.contextMode, tools: fixed.contextMode.tools === null ? null : [...fixed.contextMode.tools] } : checkContext(provider, context);
   // Fixed memory passes keep the bot's personal workspace, even with one entrusted project.
   const workspace = fixed ? parent : childProject(core, parent, project);
   const planned = worktree ? worktrees.plan(workspace, id) : null;

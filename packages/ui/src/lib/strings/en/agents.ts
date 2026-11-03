@@ -14,9 +14,11 @@ export const strings = {
       /** The group's Bots machine holds the built-in bot and this window does not reach it. */
       away: '{name} is on {machine}, offline for now: none is made elsewhere meanwhile.'
     },
-    /** Moving a bot to another machine of the group, from its settings. */
+    /** Moving a bot to another machine of the group, from its settings or its row's menu. */
     move: {
       label: 'Machine',
+      /** The row menu's entry, which opens the machine picker. */
+      menu: 'Move to a machine',
       hint: 'Where it lives. Pick another machine of the group to move it there.',
       older: 'Update Boite on {machine} to move a bot there.',
       olderShort: 'Update needed',
@@ -24,7 +26,23 @@ export const strings = {
       body: 'Its memory, notes, routines and the end of its conversation go to {machine}. The old conversation stays archived on {source}. With its next message, {name} reads a note about the move.',
       confirm: 'Move',
       moving: 'Moving',
-      turnInFlight: '{name} is in the middle of a turn. Move it once it is done.'
+      turnInFlight: '{name} is in the middle of a turn. Move it once it is done.',
+      /** The dialog's first paragraph for a bot at work: it leaves once that work ends. */
+      later: '{name} is working: it moves to {machine} once this turn and the threads it started are done. Until then its routines and events wait.',
+      confirmLater: 'Move after this turn',
+      /** Under the bot's name and on its Machine row while it waits to leave. */
+      leaving: 'Moves to {machine} after this turn',
+      /** Its projects of the machine it leaves, of which the target lists none of the same name. */
+      projectsAbsent: 'Not on {machine}: {projects}. These stay on {source}.',
+      /** Its projects of the machine it leaves, which the target also lists under the same name: the bot keeps the one it had. */
+      projectsTwin: 'Also on {machine}: {projects}. {name} keeps the copy on {source}; to work in the one on {machine}, add it to its projects after the move.',
+      /** Whether it reaches the projects it keeps on the machine it leaves. */
+      projectsReach: 'From {machine}, {name} reaches the projects of {source} through the group.',
+      /** The same, while the machine it leaves keeps the other machines' bots out (`setting` on the page `page`). */
+      projectsReachOff: 'From {machine}, {name} cannot reach the projects of {source} until {source} turns on "{setting}" in {page}.',
+      /** Projects it had on the target, which the target no longer has. */
+      projectsLost: 'No longer on {machine}: {projects}. {name} leaves them.',
+      cancelLate: '{name} is already on its way: the move can no longer be cancelled.'
     },
     brain: "Brain",
     defaultModel: "Default model",

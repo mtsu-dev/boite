@@ -170,6 +170,19 @@ export const DEVICE_METHODS: ReadonlySet<RpcMethodName> = new Set<RpcMethodName>
   'turns.start',
   // Paired phones can send the same user follow-ups as the owner's composer.
   'turns.steer',
+  // The owner's team chats on a phone (docs/teams.md). The list names the teams and their members,
+  // whose chats the device already reads as threads; a post is the owner's, as `turns.start` is,
+  // and wakes only the bots the core's routing picks. Creating, pausing, archiving and membership stay the owner's.
+  'teams.list',
+  'teams.post',
+  // The owner's debates on a phone (docs/debates.md): the salon is a thread the device already reads; a post, Next round,
+  // Conclude and Stop act as the owner's salon buttons do. Starting a debate stays the owner's or an agent's.
+  'debates.list',
+  'debates.get',
+  'debates.post',
+  'debates.next',
+  'debates.conclude',
+  'debates.stop',
   'turns.stop',
   // A paired phone can resume or discard the same retained prompt as the owner.
   'turns.recover',
@@ -255,6 +268,8 @@ export const DEVICE_EVENTS: ReadonlySet<RpcEventName> = new Set<RpcEventName>([
   // Experiment ids of the desktop app, as client.preferences already answers the device.
   'client.desktopExperiments',
   'group.updated', // Invalidation only; group.get applies the device read policy.
+  'teams.changed', // A team's id and version only; the device reads it again with teams.list.
+  'debates.changed', // A debate's ids and version only; the device reads it again with debates.get.
   'providers.updated', 'providers.installProgress', 'providers.probed',
 ]);
 
@@ -299,6 +314,10 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
   ['delegation.stop', 'stop its own children or itself, never unrelated work'],
   ['delegation.resume', "continue its own stopped children and lift its team's pause when it set it or a restart did, or after a Stop once the owner wrote again; never the owner's Settings pause"],
   ['workflows.list', 'the runs of its own thread, or of its parent for a step'],
+  // Debates (docs/debates.md): debaters are delegated children on the routes delegation.spawn already allows.
+  ['debates.start', 'a debate between delegated children on routes delegation.spawn allows it; read-only debaters, the summary comes back to its own thread'],
+  ['debates.list', 'the debates its own thread started'],
+  ['debates.stop', 'stop a debate its own thread started, never another'],
   // Teams (docs/teams.md): a bot reaches the teams it is a member of, filtered to the posts it may see.
   ['teams.list', 'the teams its own bot is a member of, with their members'],
   ['teams.read', 'the posts of a team of its own bot that it may see: group posts and its own private ones'],

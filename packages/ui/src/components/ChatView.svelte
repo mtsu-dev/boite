@@ -77,9 +77,23 @@
   // The timeline still needs agent messages after reload, even with settings hidden.
   let threadId = $derived(thread?.id);
   let agentSession = $derived(!!thread?.agentSessionId);
+  /** A team's chat runs no agent: no coordination letters, and its own composer (`teams/TeamChat.svelte`). A debate's salon neither (`debates/DebateSalon.svelte`). */
+  let teamChat = $derived(!!thread?.teamId || !!thread?.debateId);
   $effect(() => {
     const id = threadId;
-    if (id && !agentSession) untrack(() => void store.loadCoordination(id, false));
+    if (id && !agentSession && !teamChat) untrack(() => void store.loadCoordination(id, false));
+  });
+  // The team chat loads with the first one opened, out of the app's first chunk; a failed load tries again with the next team opened.
+  let TeamChat = $state.raw<typeof import('./teams/TeamChat.svelte').default>();
+  let loadingTeamChat: Promise<void> | undefined;
+  $effect(() => {
+    if (thread?.teamId && !TeamChat) loadingTeamChat ??= import('./teams/TeamChat.svelte').then(module => { TeamChat = module.default; }).catch(() => { loadingTeamChat = undefined; });
+  });
+  // A salon opened as a thread (a link, the palette) draws as it does in the panel, loaded the same way.
+  let DebateSalon = $state.raw<typeof import('./debates/DebateSalon.svelte').default>();
+  let loadingSalon: Promise<void> | undefined;
+  $effect(() => {
+    if (thread?.debateId && !DebateSalon) loadingSalon ??= import('./debates/DebateSalon.svelte').then(module => { DebateSalon = module.default; }).catch(() => { loadingSalon = undefined; });
   });
   let project = $derived(store.openProject);
   let draftChoice = $derived(store.defaultChoice());
@@ -114,6 +128,10 @@
     <h1>{strings.thread.none}</h1>
     <p class="muted">{strings.thread.noneBody}</p>
   </div>
+{:else if thread?.teamId}
+  {#if TeamChat}{#key thread.id}<TeamChat {store} {thread} />{/key}{/if}
+{:else if thread?.debateId}
+  {#if DebateSalon}{#key thread.id}<div class="salon-page"><DebateSalon {store} debateId={thread.debateId} threadId={thread.id} /></div>{/key}{/if}
 {:else}
   <!-- The draft's roomier composer belongs to the middle of the column: once
      the prompt is on its way the composer is at the bottom, at its thread size,
@@ -216,6 +234,7 @@
 {/if}
 
 <style>
+  .salon-page { display: flex; flex-direction: column; width: 100%; max-width: var(--content); height: 100%; min-height: 0; margin: 0 auto; }
   .project-choice { display: inline-flex; max-width: 100%; border: 1px dashed var(--color-muted-foreground); border-radius: var(--radius-md); }
   .project-choice:hover, .project-choice:focus-within { border-color: var(--color-accent); }
   .project-choice :global(.choice) { min-width: 0; max-width: 100%; }

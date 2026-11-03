@@ -159,10 +159,53 @@ the dock above the bot's composer, with the core's only option, Refuse, and
 an Apply button: Create the team, Add to the team or Remove from the team.
 Apply calls the matching method with the card, so the members are the bot ids
 the card stored. The settled card stays in the conversation as one row: team
-created, member added, member removed or refused. These methods are the
-owner's: a paired phone shows the card and Refuse, and says that only the
-computer running Boite changes teams. A card left unanswered survives a
-restart of the core and an update of the app.
+created, member added, member removed or refused. Creating a team and changing
+its members stay on the computer running Boite: a paired phone shows the card
+and Refuse, and says so. A card left unanswered survives a restart of the core
+and an update of the app.
+
+### In the app
+
+Teams needs Bots: its switch stays greyed while Bots is off, and turning Bots
+off turns Teams off too. With the experiment on, a Teams section heads the
+Bots page's list, above the bots, on the desktop and on the phone
+(`components/agents/AgentsRail.svelte`). Each team that is not archived is a
+row in the style of a bot's: its members' pictures, its name, who is in it,
+the time of its last post and the unread mark of its chat, the team with the
+latest post first. The page's search filters the teams by name, as it filters
+the bots. A row opens the team chat in the page's main pane
+(`components/agents/AgentsPage.svelte`); on a phone the chat takes the screen
+and its back arrow returns to the list. The chat is no thread row of the
+Conversations lists, because the core refuses an agent's composer there, and
+a thread with `teamId` opens on the Bots page.
+
+The team chat (`components/teams/TeamChat.svelte`) replaces the conversation
+view of a thread with `teamId`. The header shows the team's pictures, its name
+and "Team chat · N bots and you", without rename, menu, terminal or panel.
+Over the posts, the members; a member opens its bot's page. The posts are the
+thread's messages, oldest first, paged like a thread's, so they arrive live and
+opening the chat marks it read. Each post shows:
+
+- its author: the bot's name, or You for the owner;
+- its time; posts of one author a few minutes apart read as one;
+- "Private to …" and the recipient, on a private post;
+- the post it answers, which scrolls to that post;
+- whom it woke. An owner post that named nobody says how to name a bot,
+  in the app's language rather than the core's English notice.
+
+The composer (`components/teams/TeamComposer.svelte`) posts with `teams.post`
+and says, before the post goes, whom it wakes, from the same rule the core
+applies (`routeTeamPost`): `@name`, which the mention menu writes at the caret,
+`@tous` or `@everyone`, or a reply's author. The audience menu makes the post
+private to one member, which wakes that member only. Reply on a post answers
+it. A post keeps its id until it lands, so a retry after a lost answer returns
+the same post. A paused team still takes posts and says they wait; an archived
+team keeps its chat readable and takes none. With the experiment off, or a
+core that does not answer for the team, a note stands in the composer's place.
+
+A paired phone lists the teams and posts as the owner (`teams.list`,
+`teams.post` and the `teams.changed` event in `DEVICE_METHODS` and
+`DEVICE_EVENTS`); the core still gates both on the desktop's experiment.
 
 ## Commands
 
@@ -210,5 +253,6 @@ invite or leave.
   recipient's own conversation (`collaboration.read`), which shows what that
   bot received, like a message the owner sends it directly. The team chat
   itself stays out of coordination.
-- The app draws no team chat or team settings yet, only the bots' team cards;
-  the contracts and the in-memory client carry the methods for the rest.
+- The app has no team settings yet (name, brief, members, pause, archive) and
+  does not show where each post stands per recipient (`deliveries` of
+  `teams.read`); the contracts and the in-memory client carry the methods.

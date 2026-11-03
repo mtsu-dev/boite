@@ -58,6 +58,15 @@ export function moveEnded(machine: string, agentId: string, target: string): voi
 }
 
 /**
+ * A move that waited for the bot's turn was cancelled: its machine may have
+ * sent it already, unanswered. The next move there by hand goes with its id,
+ * which finishes that one rather than being refused.
+ */
+export function moveResumable(machine: string, agentId: string, target: string, requestId: string): void {
+  write({ ...read(), [keyOf(machine, agentId, target)]: requestId });
+}
+
+/**
  * Whether a failed move is over: a refusal that read the request and said no.
  * A lost connection, a silent target or a busy bot is not: the same id goes
  * again with the next try.

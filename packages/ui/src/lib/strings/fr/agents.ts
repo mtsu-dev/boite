@@ -15,6 +15,7 @@ export const fr: Translation = {
     },
     move: {
       label: 'Machine',
+      menu: 'Déplacer vers une machine',
       hint: 'Là où il vit. Choisissez une autre machine du groupe pour l\'y déplacer.',
       older: 'Mettez à jour Boite sur {machine} pour y déplacer un bot.',
       olderShort: 'Mise à jour requise',
@@ -22,7 +23,16 @@ export const fr: Translation = {
       body: 'Sa mémoire, ses notes, ses routines et la fin de sa conversation partent sur {machine}. L\'ancienne conversation reste archivée sur {source}. À son prochain message, {name} lit une note sur le déplacement.',
       confirm: 'Déplacer',
       moving: 'Déplacement',
-      turnInFlight: '{name} est en plein tour. Déplacez-le une fois qu\'il a fini.'
+      turnInFlight: '{name} est en plein tour. Déplacez-le une fois qu\'il a fini.',
+      later: '{name} travaille : il part sur {machine} une fois ce tour et les fils qu\'il a lancés terminés. D\'ici là, ses routines et ses événements attendent.',
+      confirmLater: 'Déplacer après ce tour',
+      leaving: 'Part sur {machine} après ce tour',
+      projectsAbsent: 'Absents de {machine} : {projects}. Ces projets restent sur {source}.',
+      projectsTwin: 'Également présents sur {machine} : {projects}. {name} garde la copie sur {source}. Pour qu\'il travaille sur celle de {machine}, ajoutez-la à ses projets après le déplacement.',
+      projectsReach: 'Depuis {machine}, {name} accède aux projets de {source} via le groupe.',
+      projectsReachOff: 'Depuis {machine}, {name} ne peut pas accéder aux projets de {source} tant que {source} n\'active pas « {setting} » dans {page}.',
+      projectsLost: 'Ces projets ne sont plus sur {machine} : {projects}. {name} les quitte.',
+      cancelLate: '{name} est déjà en route : le déplacement ne peut plus être annulé.'
     },
     brain: "Cerveau",
     defaultModel: "Modèle par défaut",

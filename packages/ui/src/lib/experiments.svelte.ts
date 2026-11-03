@@ -18,3 +18,11 @@ subscribeExperiments((enabled) => {
 export function experimentOn(id: ExperimentId): boolean {
   return mirror.enabled.includes(id);
 }
+
+/**
+ * Whether a thread opens on the Bots page: a bot's own thread, and a team's
+ * chat while Teams is on. With Bots off, every thread opens in the chat.
+ */
+export function onBotsPage(thread: { agentSessionId?: string; teamId?: string } | null | undefined): boolean {
+  return !!thread && experimentOn('resident-agents') && (!!thread.agentSessionId || (!!thread.teamId && experimentOn('teams')));
+}

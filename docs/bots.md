@@ -63,6 +63,31 @@ thing it said, bold while unread. A driver that reports only the running
 tool's name ("Bash") reads as the call's title from the snapshot, else as
 the tool's family in words (`liveActivity`, `lib/agents.svelte.ts`).
 
+A right click on a row, or a long press on a phone, opens the row's menu
+(`agentMenuItems` and `pickAgentAction`, `lib/agent-menu.ts`). It is cut
+from the thread menu: the same groups in the same order, with the same words
+and glyphs where a thread has the action. A desktop lists Open | Pin | Pause or
+Resume, Archive | Rename, Edit, Move to a machine | Copy path. A phone lists
+Pin, Rename, Edit | Pause or Resume, Archive. A built-in bot shows Reset in
+Archive's place. Saving a profile is the owner's: a paired desktop keeps Open
+and Copy path, and a paired phone has no menu. Each action goes through the
+machine that holds the bot:
+- Pin keeps the bot at the top of the list with the thread list's pin before
+  its time. It is stored in the profile (`AgentProfile.pinned`), so every
+  device sees it and it travels with a move.
+- Rename turns the name into a field in the row. Enter or leaving the field
+  saves; Escape keeps the old name. Both give the keyboard back to the row.
+- Edit opens the bot's settings.
+- Archive asks for the bot's exact name, as in its header menu.
+- Copy path copies its brain folder (`agents.brain.get`).
+- Move to a machine appears once the bot's group has another member. It opens
+  the same machine picker as the Machine row below, where the menu stood.
+  While the bot waits to leave after its turn, Cancel move takes its place and
+  the row says where it goes.
+Pin, Pause, Resume and a rename save only their field, on the revision the
+machine holds when the save runs. Settings left open follow such a change
+unless their own field was being edited.
+
 The ring around the robot, in the list, the header and the desk, says how the
 bot stands (`AgentMood`): an accent arc turning while it works, a dashed
 accent ring while queued, the waiting colour pulsing while it needs the user,
@@ -116,15 +141,34 @@ bots made before stay where they are. Creating it opens its thread, where its
 introduction runs live.
 
 A bot's settings carry a **Machine** row: where it lives, and a menu of the
-other connected machines of its group (`AgentMachine.svelte`). A member whose
+other machines of its group (`AgentMachine.svelte`). The row's Move to a
+machine opens the same menu (`lib/agent-move-flow.ts`). A member that is not
+connected is shut and shows its connection state; a member whose
 Boite lacks `features.botMove` is shut in the menu with "Update needed" and
 says why on hover. Picking one asks in the app's dialog what moves (memory,
 notes, routines, the end of the conversation), that the old conversation
 stays archived on this machine, and that the bot reads a note about the move
-with its next message. Confirmed, the client calls `agents.move` on the
-store of the machine that holds the bot and, once it answers, opens the bot
-on its new machine. A refusal shows its message in the toast; a turn in
-flight reads as one short line asking to move it once the turn is done
+with its next message. The dialog also lists the bot's projects that do not
+become the target's own: one of this machine the target lists under no such
+name or path, one the target also lists (the bot keeps this machine's copy,
+project ids being each machine's, and can add the target's after the move),
+whether it reaches them from the target through the group or not until this
+machine turns on "Bots from the other machines" in Machines and updates, and
+one it had from the target that the target no longer lists. Confirmed, the
+client calls `agents.move` on the store of the machine that holds the bot and,
+once it answers, opens the bot on its new machine. A refusal shows its message
+in the toast of the page on screen.
+
+A bot at work (its thread working, queued or waiting on its owner) on a
+machine with `features.botMoveQueue` gets a dialog that opens with "it moves
+to <machine> once this turn and the threads it started are done" and a
+**Move after this turn** button, which calls `agents.move.queue`; a turn that
+starts while the dialog is open turns a refused `agents.move` into the same
+queued move. Until it leaves, its row on the Bots page and its Machine row say
+"Moves to <machine> after this turn" in the accent color, the picker is shut,
+and the desktop row menu and the Machine row offer **Cancel move**
+(`agents.move.cancel`). An older machine refuses the move until the turn is
+done, in one short line
 ([moving a bot](#moving-a-bot-to-another-machine)).
 
 ### Robots
@@ -879,6 +923,27 @@ window's storage (`boite.agentMoves`, `lib/agent-move.ts`) until the move
 succeeds or a refusal that read the request ends it; after a lost answer, a
 silent target (`reason: 'unreachable'`), a busy bot or a dropped connection,
 the next try, even after a reload, sends the same id.
+
+### After the bot's turn
+
+`agents.move.queue` (same params, owner only, `features.botMoveQueue`) runs the
+checks of a move now (member, archived, team) and keeps the move in
+`AgentStatus.leaving` (`{agentId, machine, requestId, at}`), persisted as
+`agents:move-queued:<agentId>` so a restart keeps it. From then on the bot's
+routines, events and waking facts are held as during a move; the owner's
+messages and the letters its sub-threads send still run, and the move waits
+for them too. Each scheduler pass (`BotMoves.sweep`) starts it once the bot's
+thread and every thread below it are idle, at once for an idle bot, with the
+kept `requestId`. A turn that starts on the way only delays it. A target that
+did not answer may hold the bot already: the thread gets one line ("Not moved
+yet: … The move tries again every 30 seconds until it is cancelled") and the
+same request goes again every 30 seconds. A refusal the target read drops it
+with the line "Did not move once its turn ended: <reason>", and the bot stays.
+Asking again replaces the waiting move. `agents.move.cancel` drops it and
+answers `{cancelled: false}` when none waits or once it started. A cancelled
+move may have reached the target: the window keeps its `requestId` for the
+next move to that machine by hand (`moveResumable`), which finishes it rather
+than making a second bot.
 
 ## Built-in bots
 

@@ -60,6 +60,7 @@ import { Telemetry } from './telemetry.ts';
 import { HarnessUpdates } from './providers/updates.ts';
 import { Coordination } from './coordination.ts';
 import { TeamStore } from './teams/store.ts';
+import { Debates } from './debates/store.ts';
 import { GroupStore, type NetworkSink } from './group.ts';
 import { ContactStore } from './contacts/store.ts';
 import { SharedProjects } from './contacts/projects.ts';
@@ -208,6 +209,8 @@ export class Core {
   readonly coordination: Coordination;
   /** Teams of bots (`docs/teams.md`). */
   readonly teams: TeamStore;
+  /** Debates between AIs (`docs/debates.md`). */
+  readonly debates: Debates;
   /** The machines this core trusts as one owner's, and what it hands their clients. */
   readonly group: GroupStore;
   /** Other owners' Boites linked for agent work on the projects each side opens. */
@@ -440,6 +443,7 @@ export class Core {
 
     this.workforce = new AgentStore(this);
     this.teams = new TeamStore(this);
+    this.debates = new Debates(this);
     this.pullRequests = new PullRequests(this);
     this.linkedPullRequests = new LinkedPullRequests(this, (threadId, url, refresh) => this.pullRequests.detail(threadId, url, refresh));
     this.pullRequestWatches = new PullRequestWatches(this, (threadId, args) => this.pullRequests.gh(threadId, args), options.pullRequestWatches);
@@ -535,7 +539,7 @@ export class Core {
       version: this.version,
       ...(this.bundleHash ? { bundleHash: this.bundleHash } : {}),
       protocolVersion: PROTOCOL_VERSION,
-      features: { threadSnapshots: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, draftPreparation: true, attachmentUploads: true, composerPersistence: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, projectBoard: true, settingsHome: true, botsHome: true, botMove: true, listChanges: true },
+      features: { threadSnapshots: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, draftPreparation: true, attachmentUploads: true, composerPersistence: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, projectBoard: true, settingsHome: true, botsHome: true, botMove: true, botMoveQueue: true, listChanges: true },
       coreId: this.coordination.card().coreId,
       hostname: machineName(),
       os: currentOs(),
@@ -566,6 +570,7 @@ export class Core {
     this.#stopping = true;
     this.delegation.beginClose();
     this.workflows.beginClose();
+    this.debates.beginClose();
     this.coordination.beginClose();
     this.teams.close();
     void this.mergedPrArchive.close();
@@ -634,6 +639,7 @@ export class Core {
     await this.drain();
     await this.delegation.close();
     await this.workflows.close();
+    this.debates.close();
     await this.coordination.close();
     await this.group.close();
     await this.contacts.close();
