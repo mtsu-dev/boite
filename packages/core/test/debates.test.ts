@@ -269,6 +269,20 @@ test('the user closes a round, concludes, and the parent\'s agent stops the deba
   expect(d.runs.filter(run => run.threadId === threadId)).toEqual([]);
 }, 20_000);
 
+test('archiving the thread that started a debate stops it, its debaters\' turns and the summary', async () => {
+  const d = driver();
+  const { h, owner, threadId, start, read } = await setup();
+  const { id } = await start({ rounds: 2 });
+  await waitFor(() => d.round(1, 2).length === 3);
+  await owner.call('threads.archive', { threadId });
+  await waitFor(() => h.core.debates.get({ debateId: id }).debate.status === 'stopped');
+  const { debate } = await read(id);
+  expect(debate.note).toBe('The thread that started it was archived.');
+  await waitFor(() => d.round(1, 2).every(run => run.status === 'stopped'));
+  await waitFor(() => threadsOf(debate).every(thread => h.core.threads.require(thread).archived));
+  expect(d.summaries()).toEqual([]);
+});
+
 test('a core that did not hand over stops its running debates on the next start', async () => {
   driver();
   const { h, start } = await setup();
