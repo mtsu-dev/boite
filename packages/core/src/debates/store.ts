@@ -63,6 +63,8 @@ export class Debates {
   #closed = false;
   /** What one minute of `timeoutMinutes` lasts; a test shortens it. */
   minuteMs = 60_000;
+  /** Closing, or the journal already shut: a crashed core closes it while timers and the startup tick may still fire. */
+  get #gone(): boolean { return this.#closed || this.#core.journal.isClosed(); }
 
   constructor(core: Core) {
     this.#core = core;
@@ -72,7 +74,7 @@ export class Debates {
     if (!core.threads.handoff.handedOver) for (const debate of this.#where("status IN ('running', 'summarizing')")) this.#end(debate.id, 'stopped', 'Boite restarted during the debate, so it stopped.', false);
     for (const debate of this.#where("status IN ('done', 'stopped', 'failed') AND json_extract(data, '$.delivered') = 0")) this.#undelivered.add(debate.parentThreadId);
     this.#off = core.bus.onCommitted((name, payload) => {
-      if (this.#closed) return;
+      if (this.#gone) return;
       try {
         if (name === 'turn.finished') this.#turnFinished(payload as Turn);
         else if (name === 'thread.updated') {
@@ -231,13 +233,19 @@ export class Debates {
     const letters = drawDebateLetters(routes.length);
     const now = Date.now();
     const id = newId('dbt_');
+    // Debaters and the summarizer alike; a model in both roles is named once.
+    const readOnlyWarned = (name: string, providerId: string): DebateReadOnly => {
+      const readOnly = readOnlyOf(this.#core, providerId);
+      const warning = readOnly === 'approvals' ? `${name} has no read-only mode: Boite refuses every permission it asks.`
+        : readOnly === 'none' ? `${name} has no read-only mode and asks no permission: it could change files.` : null;
+      if (warning && !warnings.includes(warning)) warnings.push(warning);
+      return readOnly;
+    };
     const participants: DebateParticipant[] = routes.map((r, index) => {
-      const readOnly = readOnlyOf(this.#core, r.providerId);
-      if (readOnly === 'approvals') warnings.push(`${r.name} has no read-only mode: Boite refuses every permission it asks.`);
-      if (readOnly === 'none') warnings.push(`${r.name} has no read-only mode and asks no permission: it could change files.`);
+      const readOnly = readOnlyWarned(r.name, r.providerId);
       return { id: `p${index + 1}`, letter: letters[index]!, name: r.name, handle: handleOf[index]!, providerId: r.providerId, model: r.model ?? '', effort: r.effort ?? null, angle: angles?.[index] ?? null, threadId: null, readOnly, absent: [], pending: false };
     });
-    const summaryReadOnly = readOnlyOf(this.#core, summaryRoute.providerId);
+    const summaryReadOnly = readOnlyWarned(summaryRoute.name, summaryRoute.providerId);
     const salon: ThreadSummary = {
       id: newId('thr_'), projectId: null, debateId: id, title: `Debate · ${topic.replace(/\s+/g, ' ').slice(0, 100)}`, titleSource: 'user',
       providerId: parent.providerId, accountId: parent.accountId, model: parent.model, effort: parent.effort, speed: null, cwd: parent.cwd, branch: null, permissionMode: 'plan',
@@ -288,14 +296,16 @@ export class Debates {
     this.gate();
     const debate = this.#require(params?.debateId);
     const body = text(params.text, 'text', DEBATE_LIMITS.postChars);
-    if (params.id !== undefined) {
-      const known = this.#posts(debate.id, 'AND id = ?', text(params.id, 'id', 100))[0];
+    // One trimmed id for the lookup, the other debates' check and the insert, so a retry finds what it stored.
+    const postId = params.id === undefined ? undefined : text(params.id, 'id', 100);
+    if (postId !== undefined) {
+      const known = this.#posts(debate.id, 'AND id = ?', postId)[0];
       if (known) return known;
-      if (this.#core.journal.db.query('SELECT 1 FROM debate_posts WHERE id = ?').get(params.id)) throw refused('id: already used in another debate', { field: 'id' });
+      if (this.#core.journal.db.query('SELECT 1 FROM debate_posts WHERE id = ?').get(postId)) throw refused('id: already used in another debate', { field: 'id' });
     }
     if (debate.status !== 'running') throw refused(debate.status === 'summarizing' ? 'the debate is being summarized; the salon is closed to new messages' : 'the debate is over', { debateId: debate.id, status: debate.status });
     const to = debateMention(body, debate.participants);
-    return this.#post(debate.id, { ...(params.id === undefined ? {} : { id: params.id }), round: debate.round + 1, author: DEBATE_OWNER, text: body, to, inReplyTo: null, vote: null });
+    return this.#post(debate.id, { ...(postId === undefined ? {} : { id: postId }), round: debate.round + 1, author: DEBATE_OWNER, text: body, to, inReplyTo: null, vote: null });
   }
 
   /** Closes the round now: whoever has not answered is absent from it. */
@@ -423,7 +433,7 @@ export class Debates {
 
   #arm(debate: Debate): void {
     this.#disarm(debate.id);
-    if (debate.roundDeadline === null || this.#closed) return;
+    if (debate.roundDeadline === null || this.#gone) return;
     const timer = setTimeout(() => {
       this.#timers.delete(debate.id);
       try { this.#deadline(debate.id); } catch (error) { this.#core.log('warn', `debate ${debate.id} deadline: ${messageOf(error)}`); }
@@ -438,8 +448,9 @@ export class Debates {
   }
 
   #deadline(id: string): void {
+    if (this.#gone) return;
     const debate = this.#load(id);
-    if (!debate || this.#closed) return;
+    if (!debate) return;
     if (debate.status === 'running') {
       this.#absentPending(id, `no answer within ${minutes(debate.timeoutMinutes)}`);
       this.#closeRound(id);
@@ -452,7 +463,7 @@ export class Debates {
   /** Looks again once the current call is over: a turn may end inside the start that asked it. */
   #settleSoon(id: string): void {
     setTimeout(() => {
-      if (this.#closed) return;
+      if (this.#gone) return;
       try { this.#closeRound(id, true); } catch (error) { this.#core.log('warn', `debate ${id}: ${messageOf(error)}`); }
     }, 0).unref?.();
   }
@@ -519,11 +530,11 @@ export class Debates {
     const entry = this.#children.get(turn.threadId);
     if (!entry) {
       // The parent finished a turn of its own: a held summary may go now.
-      if (this.#undelivered.has(turn.threadId)) setTimeout(() => { if (!this.#closed) this.#deliverAll(turn.threadId); }, 0).unref?.();
+      if (this.#undelivered.has(turn.threadId)) setTimeout(() => { if (!this.#gone) this.#deliverAll(turn.threadId); }, 0).unref?.();
       return;
     }
     if (childEnd(this.#core, turn).kind === 'maintenance') return;
-    if (this.#waiting.has(turn.threadId)) setTimeout(() => { if (!this.#closed) this.#wake(turn.threadId); }, 0).unref?.();
+    if (this.#waiting.has(turn.threadId)) setTimeout(() => { if (!this.#gone) this.#wake(turn.threadId); }, 0).unref?.();
     const debate = this.#load(entry.debateId);
     if (!debate) return;
     // A restart handoff stopped it on purpose: the next core asks again (`resumeAfterRestart`).
@@ -594,7 +605,7 @@ export class Debates {
       try { this.#core.delegation.retirements.check(threadId); } catch (error) { this.#core.log('warn', `debate ${id}: retiring ${threadId}: ${messageOf(error)}`); }
     }
     this.#core.logs.info(`Debate ${id} ${status}${note ? `: ${note}` : ''}`, { source: 'debates', event: `debates.${status}`, threadId: debate.parentThreadId, data: { debateId: id, rounds: debate.round } });
-    if (deliver && !this.#closed) setTimeout(() => { if (!this.#closed) this.#deliver(id); }, 0).unref?.();
+    if (deliver && !this.#gone) setTimeout(() => { if (!this.#gone) this.#deliver(id); }, 0).unref?.();
   }
 
   #stopChild(threadId: string): void {
@@ -609,6 +620,7 @@ export class Debates {
 
   /** The summary, or why there is none, as one turn of the parent once it is idle; its next finished turn retries. */
   #deliver(id: string): void {
+    if (this.#gone) return;
     const debate = this.#load(id);
     if (!debate || debate.delivered || !debateOver(debate)) return;
     const parent = this.#core.journal.getThread(debate.parentThreadId);
@@ -664,7 +676,7 @@ export class Debates {
    * parent go once it is idle.
    */
   resumeAfterRestart(): void {
-    if (this.#closed) return;
+    if (this.#gone) return;
     for (const parentId of [...this.#undelivered]) this.#deliverAll(parentId);
     for (const debate of this.#where("status IN ('running', 'summarizing')")) {
       this.#arm(debate);

@@ -114,7 +114,8 @@ test('a debate runs blind, anonymous rounds, takes the user\'s messages, counts 
   expect(cli.err).toBe('');
   expect(cli.code).toBe(0);
   expect(cli.out).toContain('summary: Judge, who does not debate');
-  expect(cli.out).toContain('has no read-only mode: Boite refuses every permission it asks.');
+  // Each debater and the summarizer: every one runs on a provider with approvals only.
+  for (const name of ['Alpha', 'Beta', 'Gamma', 'Judge']) expect(cli.out).toContain(`${name} has no read-only mode: Boite refuses every permission it asks.`);
   const debateId = /debate: (dbt_\S+)/.exec(cli.out)![1]!;
   let { debate } = await read(debateId);
   expect(debate.participants.map(p => p.letter).sort()).toEqual(['A', 'B', 'C']);
@@ -138,7 +139,10 @@ test('a debate runs blind, anonymous rounds, takes the user\'s messages, counts 
   expect(d.summaries()).toEqual([]);
 
   // The user writes while round 1 runs: to everyone, then to Beta only.
-  const everyone = await owner.call('debates.post', { debateId, text: 'Think about phones too.' });
+  const everyone = await owner.call('debates.post', { debateId, text: 'Think about phones too.', id: ' phones ' });
+  // A retry with the same id, spaces and all, returns that post rather than a second one.
+  expect(await owner.call('debates.post', { debateId, text: 'Think about phones too.', id: ' phones ' })).toEqual(everyone);
+  expect(everyone.id).toBe('phones');
   const toBeta = await owner.call('debates.post', { debateId, text: '@Beta why not SQLite?' });
   expect([everyone.to, everyone.round, toBeta.to, toBeta.round]).toEqual([null, 2, by(debate, 'beta').id, 2]);
 
@@ -160,7 +164,8 @@ test('a debate runs blind, anonymous rounds, takes the user\'s messages, counts 
     expect(prompt).toContain('end with one line `Vote:');
     expect(prompt).toContain('Think about phones too.');
     expect(prompt.includes('@Beta why not SQLite?')).toBe(run.model === 'beta');
-    expect(prompt).not.toMatch(/Alpha|Gamma|Judge|alpha|beta|gamma/);
+    // Beta alone reads the user's message that names it, and no name otherwise.
+    expect(prompt.replace('@Beta why not SQLite?', '')).not.toMatch(/Alpha|Beta|Gamma|Judge|alpha|beta|gamma/);
   }
   // The summarizer did not debate, starts after the last answer and reads the count.
   const summary = d.summaries()[0]!;
@@ -294,7 +299,7 @@ test('stopping the subagents of a thread whose only work is a debate stops it, a
 
 test('a vote by letter keeps its reason, and a mention of a dotted name is not found inside a longer one', () => {
   const positions = new Map([['A', 'ship the SQLite cache'], ['B', 'keep Postgres']]);
-  expect(['B - because it is proven', 'Option B: it is proven', 'B) proven', 'Avis B, proven'].map(vote => votedProposal(vote, positions))).toEqual(Array(4).fill('keep Postgres'));
+  expect(['B - because it is proven', 'b - proven', 'Option B: it is proven', 'B) proven', 'Avis B, proven'].map(vote => votedProposal(vote, positions))).toEqual(Array(5).fill('keep Postgres'));
   // A word that starts with the letter is a proposal of its own.
   expect(['A plan to cache reads', 'C-based storage'].map(vote => votedProposal(vote, positions))).toEqual(['A plan to cache reads', 'C-based storage']);
   const participants = [{ id: 'p1', handle: 'GPT-5.5', name: 'GPT-5.5' }, { id: 'p2', handle: 'GPT-5.5.1', name: 'GPT-5.5.1' }];

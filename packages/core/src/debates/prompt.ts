@@ -54,7 +54,7 @@ export function votedProposal(vote: string, positions: Map<string, string>): str
   const text = vote.trim();
   const letter = /^(?:(?:opinion|avis|option)\s+)?([A-F])[\s.)]*$/i.exec(text)?.[1]
     ?? /^(?:opinion|avis|option)\s+([A-F])\b/i.exec(text)?.[1]
-    ?? /^([A-F])(?:\s+[-–—]\s+|\s*[:,.)]\s+)\S/.exec(text)?.[1];
+    ?? /^([A-F])(?:\s+[-–—]\s+|\s*[:,.)]\s+)\S/i.exec(text)?.[1];
   return (letter && positions.get(letter.toUpperCase())) || vote;
 }
 
