@@ -2,12 +2,14 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { builtinSettingRefusal, isAgentPicture } from '@boite/contracts';
 import type {
-  AgentBrain, AgentBuiltin, AgentProfile, AgentRoutine, AgentSave, AgentSession, AgentStatus, AgentWatch, AgentsSnapshot, RpcParams, ThreadSummary, Turn,
+  AccountId, AgentBrain, AgentBuiltin, AgentProfile, AgentRoutine, AgentSave, AgentSession, AgentStatus, AgentWatch, AgentsSnapshot, ModelInfo, RpcParams, ThreadSummary, Turn,
 } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { invalidParams, messageOf, refused } from '../errors.ts';
 import type { Connection } from '../router.ts';
-import { checkModel, checkEffort, agentProvider, modelsFor } from '../threads/selection.ts';
+import { checkModel, checkEffort, agentProvider, modelsFor, PROBED_PROTOCOLS } from '../threads/selection.ts';
+import { probedModelsOf } from '../drivers/index.ts';
+import { readSavedCatalog } from '../providers/saved-catalogs.ts';
 import { withLoad } from '../threads/records.ts';
 import { AgentsRepository } from './repository.ts';
 import { AgentEntrustments } from './entrust.ts';
@@ -465,10 +467,23 @@ export class AgentStore {
     try { provider = agentProvider(this.core, agent); } catch (error) { return messageOf(error); }
     const account = this.core.journal.getAccount(agent.selection.accountId);
     if (account === null || account.providerId !== provider.id) return `Its account is gone; choose another one for ${agent.name} in its settings.`;
-    if (agent.selection.model !== null && !modelsFor(provider, account.id).some(m => m.id === agent.selection.model) && provider.models.length > 0) {
+    const listed = agent.selection.model === null || provider.models.length === 0 ? null : this.#listedModels(provider, account.id);
+    if (listed !== null && !listed.some(m => m.id === agent.selection.model)) {
       return `${provider.name} no longer lists ${agent.selection.model}; choose another model for ${agent.name} in its settings.`;
     }
     return null;
+  }
+
+  /**
+   * The models an account is known to list. An agent that owns its list has
+   * none read after a restart until something probes it: the list saved by the
+   * last read stands for it, as in the picker, and with no saved list nothing
+   * is known, so no model counts as gone.
+   */
+  #listedModels(provider: ReturnType<typeof agentProvider>, accountId: AccountId): ModelInfo[] | null {
+    if (!PROBED_PROTOCOLS.includes(provider.protocol) || probedModelsOf(provider.protocol, provider.id, accountId) !== null) return modelsFor(provider, accountId);
+    const saved = readSavedCatalog(this.core, provider.id, accountId);
+    return saved === null ? null : [...saved.models, ...provider.models];
   }
 
   /**
