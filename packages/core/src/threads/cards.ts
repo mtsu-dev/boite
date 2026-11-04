@@ -422,9 +422,9 @@ export class ThreadCards {
       this.#core.logs.info(`Permission for ${toolName} denied: this conversation runs no tool`, { source: 'permissions', event: 'permission.denied', threadId: thread.id, turnId: turn.id, data: { tool: toolName } });
       return Object.assign(Promise.resolve('deny' as const), { requestId: newId('req_'), withdraw: () => undefined });
     }
-    // A debater reads and argues; whatever its driver asks to run or change is refused (docs/debates.md, read-only).
-    if (this.#core.debates?.owns(thread.id)) {
-      this.#core.logs.info(`Permission for ${toolName} denied: debaters are read-only`, { source: 'permissions', event: 'permission.denied', threadId: thread.id, turnId: turn.id, data: { tool: toolName, debate: true } });
+    // A council member only reads; whatever its driver asks to run or change is refused (docs/council.md, read-only).
+    if (this.#core.council?.owns(thread.id)) {
+      this.#core.logs.info(`Permission for ${toolName} denied: council members are read-only`, { source: 'permissions', event: 'permission.denied', threadId: thread.id, turnId: turn.id, data: { tool: toolName, council: true } });
       return Object.assign(Promise.resolve('deny' as const), { requestId: newId('req_'), withdraw: () => undefined });
     }
     const request: PermissionRequest = {

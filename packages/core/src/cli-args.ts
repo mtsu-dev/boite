@@ -86,8 +86,8 @@ const OWNED: { owns: (positional: string[]) => boolean; help: boolean; text?: (p
   { owns: ([command, action]) => (command === 'threads' || command === 'agents') && action === 'ask', help: true, terminator: true },
   // team-cli.ts: --before, --reply, --name, --members and --brief are its own.
   { owns: ([command, action]) => command === 'team' && action !== undefined, help: true },
-  // debates/cli.ts: --models, --rounds, --angles, --summary, --effort, --timeout (minutes) and --request-id are its own.
-  { owns: ([command, action]) => command === 'delegate' && action === 'debate', help: true },
+  // council/cli.ts: --models, --effort, --timeout (minutes) and --request-id are its own. `debate` only answers that it was replaced.
+  { owns: ([command, action]) => command === 'delegate' && (action === 'council' || action === 'debate'), help: true },
   // secret-cli.ts; after `--` every word is the child command's.
   { owns: ([command]) => command === 'secret', help: false, text: positional => positional.includes('--'), terminator: true },
   // `plugin dev --remove <id>`: its flags are its own.

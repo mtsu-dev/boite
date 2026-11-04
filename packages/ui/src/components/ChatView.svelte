@@ -77,8 +77,8 @@
   // The timeline still needs agent messages after reload, even with settings hidden.
   let threadId = $derived(thread?.id);
   let agentSession = $derived(!!thread?.agentSessionId);
-  /** A team's chat runs no agent: no coordination letters, and its own composer (`teams/TeamChat.svelte`). A debate's salon neither (`debates/DebateSalon.svelte`). */
-  let teamChat = $derived(!!thread?.teamId || !!thread?.debateId);
+  /** A team's chat runs no agent: no coordination letters, and its own composer (`teams/TeamChat.svelte`). A council's salon neither (`council/CouncilSalon.svelte`). */
+  let teamChat = $derived(!!thread?.teamId || !!thread?.councilId);
   $effect(() => {
     const id = threadId;
     if (id && !agentSession && !teamChat) untrack(() => void store.loadCoordination(id, false));
@@ -90,10 +90,10 @@
     if (thread?.teamId && !TeamChat) loadingTeamChat ??= import('./teams/TeamChat.svelte').then(module => { TeamChat = module.default; }).catch(() => { loadingTeamChat = undefined; });
   });
   // A salon opened as a thread (a link, the palette) draws as it does in the panel, loaded the same way.
-  let DebateSalon = $state.raw<typeof import('./debates/DebateSalon.svelte').default>();
+  let CouncilSalon = $state.raw<typeof import('./council/CouncilSalon.svelte').default>();
   let loadingSalon: Promise<void> | undefined;
   $effect(() => {
-    if (thread?.debateId && !DebateSalon) loadingSalon ??= import('./debates/DebateSalon.svelte').then(module => { DebateSalon = module.default; }).catch(() => { loadingSalon = undefined; });
+    if (thread?.councilId && !CouncilSalon) loadingSalon ??= import('./council/CouncilSalon.svelte').then(module => { CouncilSalon = module.default; }).catch(() => { loadingSalon = undefined; });
   });
   let project = $derived(store.openProject);
   let draftChoice = $derived(store.defaultChoice());
@@ -130,8 +130,8 @@
   </div>
 {:else if thread?.teamId}
   {#if TeamChat}{#key thread.id}<TeamChat {store} {thread} />{/key}{/if}
-{:else if thread?.debateId}
-  {#if DebateSalon}{#key thread.id}<div class="salon-page"><DebateSalon {store} debateId={thread.debateId} threadId={thread.id} /></div>{/key}{/if}
+{:else if thread?.councilId}
+  {#if CouncilSalon}{#key thread.id}<div class="salon-page"><CouncilSalon {store} councilId={thread.councilId} threadId={thread.id} /></div>{/key}{/if}
 {:else}
   <!-- The draft's roomier composer belongs to the middle of the column: once
      the prompt is on its way the composer is at the bottom, at its thread size,

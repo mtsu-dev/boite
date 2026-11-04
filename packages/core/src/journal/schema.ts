@@ -12,7 +12,7 @@ import { createSharedCompute } from '../contacts/compute-journal.ts';
 import { createSharedAccess } from '../contacts/access-journal.ts';
 import { createSharedReview } from '../contacts/review-journal.ts';
 import { createTeams } from '../teams/journal.ts';
-import { createDebates } from '../debates/journal.ts';
+import { createCouncil } from '../council/journal.ts';
 
 export const SCHEMA_VERSION = 47;
 
@@ -482,10 +482,10 @@ export function migrate(db: Database, file: string): { from: number; to: number 
     createTeams(db);
     version = 46;
   }
-  // Debates between AIs (`docs/debates.md`): the debates, their posts and the children each one runs.
+  // Debates between AIs, today the council (`docs/council.md`): the rows, their posts and the children each one runs.
   if (version < 47) {
     if (!hasColumn('threads', 'debate_id')) db.exec('ALTER TABLE threads ADD COLUMN debate_id TEXT');
-    createDebates(db);
+    createCouncil(db);
     version = 47;
   }
   createSharedProjects(db);

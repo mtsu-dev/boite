@@ -60,7 +60,7 @@ import { Telemetry } from './telemetry.ts';
 import { HarnessUpdates } from './providers/updates.ts';
 import { Coordination } from './coordination.ts';
 import { TeamStore } from './teams/store.ts';
-import { Debates } from './debates/store.ts';
+import { CouncilStore } from './council/store.ts';
 import { GroupStore, type NetworkSink } from './group.ts';
 import { ContactStore } from './contacts/store.ts';
 import { SharedProjects } from './contacts/projects.ts';
@@ -209,8 +209,8 @@ export class Core {
   readonly coordination: Coordination;
   /** Teams of bots (`docs/teams.md`). */
   readonly teams: TeamStore;
-  /** Debates between AIs (`docs/debates.md`). */
-  readonly debates: Debates;
+  /** Models of several providers review one request alone (`docs/council.md`). */
+  readonly council: CouncilStore;
   /** The machines this core trusts as one owner's, and what it hands their clients. */
   readonly group: GroupStore;
   /** Other owners' Boites linked for agent work on the projects each side opens. */
@@ -443,7 +443,7 @@ export class Core {
 
     this.workforce = new AgentStore(this);
     this.teams = new TeamStore(this);
-    this.debates = new Debates(this);
+    this.council = new CouncilStore(this);
     this.pullRequests = new PullRequests(this);
     this.linkedPullRequests = new LinkedPullRequests(this, (threadId, url, refresh) => this.pullRequests.detail(threadId, url, refresh));
     this.pullRequestWatches = new PullRequestWatches(this, (threadId, args) => this.pullRequests.gh(threadId, args), options.pullRequestWatches);
@@ -569,7 +569,7 @@ export class Core {
     this.#stopping = true;
     this.delegation.beginClose();
     this.workflows.beginClose();
-    this.debates.beginClose();
+    this.council.beginClose();
     this.coordination.beginClose();
     this.teams.close();
     void this.mergedPrArchive.close();
@@ -638,7 +638,7 @@ export class Core {
     await this.drain();
     await this.delegation.close();
     await this.workflows.close();
-    this.debates.close();
+    this.council.close();
     await this.coordination.close();
     await this.group.close();
     await this.contacts.close();

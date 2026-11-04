@@ -79,6 +79,6 @@ export function writeThread(db: Database, thread: ThreadSummary): void {
     thread.incognito ? 1 : 0,
     thread.archived ? (thread.archivedAt ?? null) : null, thread.contextMode ? JSON.stringify(thread.contextMode) : null,
     thread.teamId ?? null,
-    thread.debateId ?? null,
+    thread.councilId ?? null,
   );
 }

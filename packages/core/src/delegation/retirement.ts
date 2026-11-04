@@ -14,7 +14,7 @@ const KEPT = 'delegation-kept:';
  * - a delegated agent whose last turn ended done, once that result reached its parent;
  * - a workflow step's conversation, once its run is done, unless its parent
  *   sent it back to work: it then goes as a delegated agent does;
- * - a debater or a debate's summarizer, once its debate is over.
+ * - a council member, once its council is over.
  * A persistent agent's next episode also archives the subagents of the last one.
  * One still watching its pull request is kept, with a marker when an episode
  * asked, and retires once the watch and its turn are over and its last result
@@ -66,9 +66,9 @@ export class Retirements {
       if (run?.status === 'done') this.#retire(thread);
       return;
     }
-    // A debater or a debate's summarizer goes once its debate is over, whatever its last turn did.
-    if (this.#core.debates?.owns(threadId)) {
-      if (this.#core.debates.overFor(threadId)) this.#retire(thread);
+    // A council member goes once its council is over, whatever its last turn did; between rounds it stays for the next.
+    if (this.#core.council?.owns(threadId)) {
+      if (this.#core.council.overFor(threadId)) this.#retire(thread);
       return;
     }
     if (!marked && !this.#finished(thread, turn, sent)) return;

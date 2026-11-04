@@ -12,7 +12,7 @@ import { CONTACT_MAIL_SCENARIOS } from './contact-mail.ts';
 import { CONTACTS_BOT_SCENARIOS } from './contacts-bot.ts';
 import { SHARED_SCENARIOS } from './shared-projects.ts';
 import { TEAM_SCENARIOS } from './teams.ts';
-import { DEBATE_SCENARIOS } from './debates.ts';
+import { COUNCIL_SCENARIOS } from './council.ts';
 import {
   GROUP_INVITE_PREFIX,
   PROJECT_NAME_MAX,
@@ -164,7 +164,7 @@ export const SCENARIOS: Record<string, Scenario> = {
   ...CONTACT_MAIL_SCENARIOS,
   ...CONTACTS_BOT_SCENARIOS,
   ...TEAM_SCENARIOS,
-  ...DEBATE_SCENARIOS,
+  ...COUNCIL_SCENARIOS,
   'artifacts.viewBlock reuses HTML and refuses empty or oversized UTF-8 input': async (env) => {
     const html = '<p>Shared view</p>';
     const { url } = await env.call('artifacts.viewBlock', { html });

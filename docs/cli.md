@@ -491,11 +491,13 @@ boite team list|say|dm|read|propose|invite|leave
 boite delegate models [--machine <name>]
 boite delegate profiles|list
 boite delegate spawn <brief> [--model <provider/model>] [--effort <level>] [--speed <tier>] [--profile <id>] [--title <t>] [--worktree] [--machine <name> [--project <name>]] [context flags]
-boite delegate debate <question> --models <a>,<b>[,...] [--rounds <n>] [--angles <a,b,...>] [--summary <provider/model>] [--effort <level>] [--timeout <minutes>]
+boite delegate council <request> [--models <a>,<b>[,...]] [--effort <level>] [--timeout <minutes>]
+boite delegate council again <council-id> <what-changed>
+boite delegate council table <council-id>
 boite delegate send <thread-id> <text>
 boite delegate wait [thread-id] [--timeout <s>]
 boite delegate result <thread-id> <turn-id> [offset]
-boite delegate stop [thread-id|debate-id]
+boite delegate stop [thread-id|council-id]
 boite delegate resume [thread-id]
 boite workflow help|check|run|list|show|extend|pause|resume|stop|retry
 boite workflow output|templates|save|start
@@ -528,13 +530,14 @@ parent's checkout ([delegation](delegation.md#children-in-their-own-worktree)).
 `delegate wait` returns `needs_input` as soon as a child asks something
 ([delegation](delegation.md#questions-from-a-child)).
 
-`delegate debate`, behind the AI debates experiment, has 2 to 6 models argue
-one question in 1 to 5 rounds (3 by default), read-only, while the user
-follows in the salon; `--summary` names the model that writes the summary
-without debating, `claude/claude-opus-5-5` by default, and `--timeout` the
-minutes a round may last, 10 by default. It returns the debate id at once; the
-summary arrives as a message, `delegate list` shows the debate and
-`delegate stop <debate-id>` stops it ([debates](debates.md)).
+`delegate council`, behind the Council experiment, has 2 to 6 models (three
+providers by default) review one request alone and read-only, each with a score
+out of 10, while the user can follow in the salon; `--timeout` sets the minutes
+a round may last, 30 by default. It returns the council id at once; the answers
+and the table arrive as one message, `council again` asks for a fresh round,
+`council table` prints the scores, `delegate list` shows the council and
+`delegate stop <council-id>` stops it. It needs no git and no pull request
+([council](council.md)). `delegate debate` starts nothing and points here.
 
 Coordination commands are documented in [coordination](coordination.md#agent-commands),
 child controls in [delegation](delegation.md#agent-commands), and plan/output
