@@ -3,7 +3,7 @@
  * then one session that lists the account's models.
  */
 import { Readable, Writable } from 'node:stream';
-import type { ClientConnection } from '@agentclientprotocol/sdk';
+import type { ClientConnection } from '@agentclientprotocol/sdk/unstable';
 import type { ProviderDescriptor } from '@boite/contracts';
 import { messageOf } from '../../errors.ts';
 import type { SpawnedChild, SpawnOptions } from '../../procs.ts';
@@ -158,7 +158,7 @@ export function runAcpLogin(input: AcpLoginInput): AcpLoginRun {
   let catalog: AcpLoginCatalog = { created: null, error: null };
   let sessionMeta: { _meta?: Record<string, unknown> } = {};
   const done = (async (): Promise<void> => {
-    const sdk = await import('@agentclientprotocol/sdk');
+    const sdk = await import('@agentclientprotocol/sdk/unstable');
     const expired = new Promise<never>((_resolve, reject) => {
       timer = setTimeout(() => {
         reject(new Error(`the sign-in was not finished within ${LOGIN_TIMEOUT_MS / MINUTE_MS} minutes`));

@@ -8,7 +8,7 @@ import { connect } from '../src/client.ts';
 import { getDriver } from '../src/drivers/index.ts';
 import { parsePluginPool, verifyPluginDownload } from '../src/plugins.ts';
 import { ACTIVATION_FILE } from '../src/plugins/activation.ts';
-import { fetchManifest } from '../src/plugins/source.ts';
+import { fetchManifest, refOfPath } from '../src/plugins/source.ts';
 import type { SpawnedProcess } from '../src/procs.ts';
 import { parseManifest, platformKey } from '../src/plugins/manifest.ts';
 import { startTestCore, waitFor, type TestCore } from './harness.ts';
@@ -376,6 +376,16 @@ describe('a plugin download on a slow link', () => {
   });
 });
 
+test('a page path ends its ref where a listed branch or tag does, a commit hash alone', () => {
+  const listed = ['a\trefs/heads/main', 'b\trefs/heads/feature/x', 'c\trefs/tags/v1.2.0', ''].join('\n');
+  expect(refOfPath('main/README.md', listed)).toBe('main');
+  expect(refOfPath('feature/x/docs/a.md', listed)).toBe('feature/x');
+  expect(refOfPath('feature/x', listed)).toBe('feature/x');
+  expect(refOfPath('v1.2.0/boite-plugin.json', listed)).toBe('v1.2.0');
+  expect(refOfPath('0a1b2c3d/src/main.ts', listed)).toBe('0a1b2c3d');
+  expect(refOfPath('gone/README.md', listed)).toBeNull();
+});
+
 describe('plugins from a git URL', () => {
   // Every inspection runs five gits through the registry. On Windows runners the id test
   // takes 2.0 to 2.3 s, but one inspection took 19.2 s and two tests passed 30 s while
@@ -413,6 +423,14 @@ describe('plugins from a git URL', () => {
 
     // A preview is used once.
     expect(await thrown(client.call('plugins.add', { previewId: preview.previewId! }))).toThrow('unknown or expired');
+
+    // A file or folder page's `<ref>/<path>`: the repository's branches decide where the ref ends.
+    git(repo.path, 'branch', 'feature/pools');
+    for (const [given, ref] of [['v1.4.0/README.md', 'v1.4.0'], ['feature/pools/docs/setup.md', 'feature/pools']] as const) {
+      expect(await fetchManifest(harness.core, repo.path, given, { allowLocal: true, pagePath: true })).toMatchObject({ ref, commit: repo.commit });
+    }
+    // A ref named apart is fetched exactly: a missing one is refused, never cut back to a branch that exists.
+    expect(await thrown(client.call('plugins.inspect', { url: repo.path, ref: 'feature/pools/missing' }))).toThrow('could not fetch feature/pools/missing');
 
     // The same URL again is an update, and the preview says what it replaces.
     const bytes2 = new Uint8Array([8, 8]);
@@ -530,7 +548,7 @@ describe('plugins from a git URL', () => {
     }));
     const listed = (await client.call('plugins.list', {})).find((plugin) => plugin.id === 'pool-legacy');
     expect(listed?.status).toBe('rejected');
-    expect(listed?.rejected).toMatchObject({ field: 'manifest.schema', expected: '1' });
+    expect(listed?.rejected).toMatchObject({ field: 'manifest.schema', expected: '1 or 2' });
     expect(listed?.rejected?.file).toEndWith('installed.json');
     expect(await thrown(client.call('plugins.accounts', { id: 'pool-legacy' }))).toThrow('pool-legacy was refused');
     expect(await thrown(client.call('plugins.install', { id: 'pool-legacy' }))).toThrow('Remove it, then add it again');

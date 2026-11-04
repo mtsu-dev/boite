@@ -77,6 +77,7 @@ const RULES: Partial<Record<RpcMethodName, Rule>> = {
   'plugins.install': pluginsOff,
   'plugins.add': pluginsOff,
   'plugins.inspect': pluginsOff,
+  'plugins.dev': pluginsOff,
 
   'diagnostics.issue': when('issueReports', core => core.policy.issueReportsOff()),
 

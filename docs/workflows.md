@@ -225,6 +225,11 @@ feeds the steps after it as if it had never stopped. A paused run takes such a
 turn too, since the turn runs either way; the pause still holds the steps after
 it until the run resumes.
 
+A step that finished, or one of a run that is over, keeps its result when its
+parent sends it more work with `boite delegate send`: that turn answers the
+parent as a subagent's does, a result letter that wakes it. A restart handoff
+that cuts such a turn continues it on the next core like a subagent's.
+
 A pause records who set it (`pausedBy`), and that decides who lifts it:
 
 | Paused by | The agent that started the run resumes or retries it |

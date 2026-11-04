@@ -1,6 +1,6 @@
 /** The probe: the models the agent itself lists, read by one short-lived process. */
 import { Readable, Writable } from 'node:stream';
-import type { ClientConnection, SessionConfigOption } from '@agentclientprotocol/sdk';
+import type { ClientConnection, SessionConfigOption } from '@agentclientprotocol/sdk/unstable';
 import type { AccountId, ModelInfo, ProviderId } from '@boite/contracts';
 import { messageOf, unavailable } from '../../errors.ts';
 import { agentEnv, profileFor, resolveLaunch } from '../../providers/resolve.ts';

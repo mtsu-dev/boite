@@ -8,7 +8,7 @@ import type {
   SessionConfigOptionCategory,
   SessionMode,
   SessionModeState,
-} from '@agentclientprotocol/sdk';
+} from '@agentclientprotocol/sdk/unstable';
 import type { ModelInfo, PermissionMode } from '@boite/contracts';
 import { messageOf } from '../../errors.ts';
 import { PROXY_PREFIX_ENV } from '../../subscription-proxy.ts';

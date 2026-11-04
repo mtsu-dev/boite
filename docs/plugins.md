@@ -1,12 +1,19 @@
 # Plugins
 
-A plugin is one native executable. Boite downloads it over https, checks it
-against the SHA-256 its manifest publishes, and runs it for the features the
-manifest names. There are three features today: account pools, which save and
-switch the default login of an agent CLI, desktop apps, which Boite starts
-beside itself with the owner's access ([Desktop apps](#desktop-apps)), and
+A plugin adds to Boite without a change to the core. It can give agents
+`boite <name>` commands, skills and lines in their Boite guide, give the
+composer slash commands, run a background service that talks to the core, and
+the three features older plugins have: account pools, which save and switch
+the default login of an agent CLI ([Account pools](#account-pools)), desktop
+apps, which Boite starts beside itself ([Desktop apps](#desktop-apps)), and
 gateways, which Boite runs in the background for the subscription proxy
 ([Gateways](#gateways)).
+
+A plugin is a git repository with a `boite-plugin.json` at its root and,
+unless it only adds text, one executable that Boite downloads over https and
+checks against the SHA-256 the manifest publishes. Schema 2 is the format to
+write today ([Schema 2](#schema-2)); schema 1 manifests keep loading as they
+always did ([Schema 1 manifest](#schema-1-manifest)).
 
 Settings > Plugins has three sections. Installed and Recommended are drawn
 only when they hold a plugin:
@@ -26,15 +33,376 @@ kebacc-switcher before 2026-10-16, stays under Installed with its pools until
 the owner uninstalls it; it no longer receives updates.
 
 Plugins are administration of the machine that hosts the core, so every
-`plugins.*` method is owner only and the phone settings leave the page to the
-desktop app ([phone](phone.md)).
+`plugins.*` method is owner only, except `plugins.command`, which an agent
+calls to run a plugin's command ([Agent commands](#agent-commands)). The phone
+settings leave the page to the desktop app ([phone](phone.md)).
 
 Each core has its own plugins. The page opens on this PC when the window has
 one, since a desktop app shows its window there, whichever machine the open
 conversation runs on. With several machines connected, a menu beside the
 heading names the machine shown and switches to another one this window owns.
 
-## The manifest
+## Write a plugin in 5 minutes
+
+The example in [`examples/plugins/hello`](../examples/plugins/hello) is a
+complete plugin on the `bun` runtime. It gives agents `boite hello-threads`,
+which prints the five conversations that changed last, a skill, a guide line
+and the slash command `/recap`. Start from a copy of it.
+
+1. The manifest, `boite-plugin.json`:
+
+   ```json
+   {
+     "schema": 2,
+     "id": "hello",
+     "name": "Hello",
+     "version": "0.1.0",
+     "description": "An example plugin: lists the conversations that changed last.",
+     "homepage": "https://github.com/mtsu-dev/boite/tree/main/examples/plugins/hello",
+     "runtime": "bun",
+     "executable": "hello",
+     "artifacts": {
+       "any": { "url": "https://example.com/boite-plugins/hello/0.1.0/hello.js", "sha256": "<written by pack>" }
+     },
+     "permissions": ["threads.read"],
+     "provides": {
+       "commands": [{ "name": "hello-threads", "description": "Prints the titles and ids of the five conversations that changed last.", "usage": "[--json]" }],
+       "skills": [{ "name": "hello-threads", "description": "Find the conversations the user worked on last.", "body": "<copied from skills/hello-threads.md by pack>" }],
+       "prompt": "Run `boite hello-threads` to see which conversations the user worked on last.",
+       "slashCommands": [{ "name": "recap", "description": "Recap the conversations that changed last.", "hint": "<topic>", "prompt": "Run `boite hello-threads`, then recap in a few lines what each of those conversations is about. Focus on:" }]
+     }
+   }
+   ```
+
+2. The command, `src/main.ts`, with the SDK (`@boite/plugin-sdk`,
+   [`packages/plugin-sdk`](../packages/plugin-sdk)):
+
+   ```ts
+   import { runCommands } from '@boite/plugin-sdk';
+
+   await runCommands({
+     'hello-threads': async (args, ctx) => {
+       const client = await ctx.connect();
+       const threads = await client.call('threads.list', {});
+       for (const thread of threads.toSorted((a, b) => b.updatedAt - a.updatedAt).slice(0, 5)) {
+         console.log(thread.title);
+       }
+     },
+   });
+   ```
+
+3. In the plugin's folder, in a terminal of your own:
+
+   ```sh
+   bun install
+   bun run pack
+   boite plugin dev .
+   ```
+
+   `pack` bundles `src/main.ts` into `hello.js`, the file the manifest's
+   `executable` names, and writes its SHA-256 into `artifacts.any`.
+   `boite plugin dev .` runs the plugin from the folder
+   ([Dev mode](#dev-mode)). An agent in a new conversation now lists
+   `boite hello-threads` in its guide and can run it.
+
+4. To publish, upload `hello.js` at the URL `artifacts.any` names, for example
+   as a release asset, and push the folder to a public git repository with the
+   manifest at its root. To share it, send its link or `owner/repo`: the
+   other owner pastes it in Settings > Plugins, or asks an agent to add it,
+   and installs after reading the preview ([Install and run](#install-and-run)).
+
+## Schema 2
+
+```json
+{
+  "schema": 2,
+  "id": "standup",
+  "name": "Standup",
+  "version": "1.0.0",
+  "description": "Writes the morning summary of every project.",
+  "homepage": "https://github.com/example/standup",
+  "runtime": "bun",
+  "executable": "standup",
+  "artifacts": { "any": { "url": "https://github.com/example/standup/releases/download/v1.0.0/standup.js", "sha256": "<64 hex characters>" } },
+  "permissions": ["threads.read", "todos"],
+  "provides": {
+    "service": {},
+    "commands": [{ "name": "standup", "description": "Prints this morning's summary.", "usage": "[--project <name>]" }]
+  }
+}
+```
+
+| Field | What Boite accepts |
+| --- | --- |
+| `schema` | `2`. |
+| `id`, `name`, `version`, `description`, `homepage` | As in [schema 1](#schema-1-manifest). |
+| `runtime` | `"native"` or `"bun"` ([Runtime](#runtime)). Absent means `"native"`. |
+| `executable` | As in schema 1. Absent exactly when the plugin provides only `skills`, `prompt` and `slashCommands`: a plugin of text that downloads nothing. |
+| `artifacts` | `native`: keyed by platform as in schema 1. `bun`: exactly one key, `any`, `{ "url", "sha256" }`. Absent exactly when `executable` is. |
+| `permissions` | A list of distinct names among `threads.read`, `threads.write`, `todos` and `ui.reveal` ([Permissions](#permissions)). Absent means none. |
+| `provides` | At least one of `accountPools`, `desktopApp`, `gateway` (as in schema 1), `service`, `commands`, `skills`, `prompt` and `slashCommands`. |
+
+Unknown fields at any depth are refused, as in schema 1, and the manifest file
+may be 256 KB. Every limit is under [Limits](#limits).
+
+### Runtime
+
+- `native`: a program built for each platform, one artifact per platform key,
+  saved as `<executable>` (`<executable>.exe` on Windows), as in schema 1.
+- `bun`: one JavaScript file for every machine. Boite saves it as
+  `<executable>.js` and runs it with the core's own Bun, so
+  `process.argv.slice(2)` are the arguments, as under `bun <file>.js <args>`.
+  The file must be self-contained: bundle its dependencies into it (the SDK's
+  `pack` does). Node's built-in modules and Bun's APIs are there, and
+  `import.meta.main` is true. Bun reads no `.env` and no `bunfig.toml` from
+  the directory the plugin runs in. In the compiled core the core's own
+  executable runs the file with `BUN_BE_BUN=1`, removed from `process.env`
+  before the file loads; `Bun.spawn` without an `env` still passes it on, so a
+  plugin that starts a compiled Bun program that way passes
+  `env: process.env`.
+
+### Permissions
+
+A schema 2 plugin's processes do not get the owner token. The core mints a
+token for the plugin that reaches only what its `permissions` declare; its
+connections speak as the principal `plugin`. The install preview lists the
+permissions before anything is downloaded. The token lasts while the plugin
+declares the same permissions: an uninstall, or an install or a dev reload
+that changes them, revokes it and closes every socket it opened, and the
+plugin's processes restart with a new one.
+
+| Permission | Methods | Events | What it means |
+| --- | --- | --- | --- |
+| `threads.read` | `threads.list`, `threads.get`, `projects.list` | `thread.created`, `thread.updated`, `thread.removed`, `turn.started`, `turn.finished` | Every conversation of every project, read only: rows, transcripts, the project list. |
+| `threads.write` | `threads.create`, `turns.start`, `turns.stop` | none | Starts conversations and turns, and stops them: it spends the owner's agent quota. |
+| `todos` | `todos.list`, `todos.add`, `todos.update` | `todos.updated` | The project boards: read, add and update cards. |
+| `ui.reveal` | `ui.reveal` | none | Brings a conversation, a bot or the app updates to the front of the owner's desktop window ([Showing Boite](#showing-boite)). |
+
+A method or an event in none of these rows is refused to every plugin,
+whatever it declares. A refused call answers with the method, the permission
+it needs and what the plugin declared:
+
+```
+turns.start needs the plugin permission threads.write; the plugin declared threads.read
+```
+
+The table is `PLUGIN_PERMISSIONS` in `packages/contracts/src/plugins.ts`.
+
+### Environment
+
+Every process Boite starts for a schema 2 plugin gets the core's environment
+minus every variable it gives an agent (`BOITE_AGENT_TOKEN`, `BOITE_THREAD_ID`
+and any other `BOITE_AGENT_*`), plus:
+
+| Variable | Value |
+| --- | --- |
+| `BOITE_CORE_URL` | The core's base URL, `http://<host>:<port>`. |
+| `BOITE_TOKEN` | The plugin's own token ([Permissions](#permissions)). |
+| `BOITE_PLUGIN_ID` | The plugin's id. |
+| `BOITE_PLUGIN_DATA` | A folder of the plugin's own. It survives updates and uninstalls: keep settings and caches there. |
+| `BOITE_CALLER_THREAD_ID` | An agent command only: the thread whose agent ran it. |
+
+A [gateway](#gateways) is the exception: it gets neither `BOITE_CORE_URL` nor
+`BOITE_TOKEN`, whatever its schema, since a gateway never talks to the core.
+
+The core speaks JSON-RPC 2.0 over a WebSocket at `<BOITE_CORE_URL>/rpc`. The
+first message is the `hello`:
+
+```json
+{ "jsonrpc": "2.0", "id": 1, "method": "hello",
+  "params": { "token": "<BOITE_TOKEN>", "protocolVersion": 2, "client": { "name": "plugin", "version": "1.0.0" } } }
+```
+
+Its answer carries `core` (with `protocolVersion`) and `principal`. After it,
+each request is `{ "jsonrpc": "2.0", "id", "method", "params" }`, and each
+event the plugin may hear arrives as `{ "jsonrpc": "2.0", "method": "<event>",
+"params": <payload> }`. Methods, events and their types are in
+`packages/contracts/src/`. The SDK's `connect` does all of this
+([SDK](#sdk)); a native plugin in another language does the same.
+
+### Agent commands
+
+`provides.commands` lists `boite <name>` commands for agents:
+
+```json
+"commands": [{ "name": "standup", "description": "Prints this morning's summary.", "usage": "[--project <name>]" }]
+```
+
+- `name`: lowercase words joined by hyphens. The name of a built-in `boite`
+  command is refused, since the built-in would win, and so is a name another
+  installed plugin already gives a command; the same holds for slash commands.
+- `description`: the one line agents read in their guide.
+- `usage`: optional, the arguments as `boite help` words them.
+
+An agent runs `boite standup --project web`. The CLI has no built-in of that
+name, so it calls `plugins.command`, and the core:
+
+- runs the executable with the arguments `standup --project web`, the
+  command's name first, in the agent's current directory;
+- adds `BOITE_CALLER_THREAD_ID` to the [environment](#environment) and gives
+  it an empty stdin;
+- waits up to 10 minutes, and keeps at most 1 MB of stdout and 1 MB of
+  stderr; past that the output is cut and marked `truncated`.
+
+The CLI prints the command's stdout and stderr and exits with its exit code.
+A name no plugin provides exits 2, like any unknown command, with the list of
+the plugin commands there are.
+Write for an agent: plain text, one fact per line, a `--json` form when the
+output is data, and an error that says what to run instead.
+
+Every agent's guide lists every installed command with its usage and
+description.
+
+### Skills
+
+`provides.skills` ships skills to every agent:
+
+```json
+"skills": [{ "name": "standup", "description": "When and how to write the morning summary.", "body": "# Standup\n\nRun `boite standup` when the user asks what happened overnight." }]
+```
+
+`body` is the text of a SKILL.md, in Markdown. The guide lists each skill's
+name, description and the path of its SKILL.md, which the core writes to
+`<dataDir>/plugins/<id>/skills/<name>/SKILL.md`;
+the agent reads the file when the skill fits its task. With the SDK, write
+the body in `skills/<name>.md` and `pack` copies it into the manifest.
+
+### Prompt
+
+`provides.prompt` is a few lines added to every agent's Boite guide. Keep it to what an agent must know without asking: when to
+reach for the plugin's commands.
+
+### Slash commands
+
+`provides.slashCommands` adds entries to the composer's `/` menu:
+
+```json
+"slashCommands": [{ "name": "recap", "description": "Recap the conversations that changed last.", "hint": "<topic>", "prompt": "Run `boite hello-threads`, then recap them. Focus on:" }]
+```
+
+Sending `/recap the release` sends the `prompt` followed by a space and
+`the release`. `hint` is shown after the name in the menu. A slash command is
+text only: it runs nothing until the agent acts on the prompt.
+
+### Service
+
+`provides.service` is `{}`, an object with no field. Boite runs the
+executable in the background with no argument and no window, on any machine,
+a headless server included. It is started, stopped, kept running and
+relaunched after a crash exactly like a [desktop app](#desktop-apps): the same
+Start, Stop and Restart and Start with Boite switch on its row
+(`plugins.app`), the same 2, 10 and 30 second retries and the same `crashed`
+state after a fourth exit within five minutes. Its state is
+`PluginState.app` with `kind: "service"`.
+
+A service is how a plugin watches the core: it connects with its token, listens
+to the events its permissions grant and acts on them. With the SDK, pass
+`service` to `runCommands`, which runs it when the arguments are empty.
+
+### Dev mode
+
+`boite plugin dev <folder>` runs a plugin from a folder on the core's machine,
+without publishing anything. The folder holds `boite-plugin.json` and the
+executable file: `<executable>.js` for `bun`, `<executable>` or
+`<executable>.exe` for `native`. `artifacts` and digests are not needed; when
+present they are ignored.
+
+- Commands, skills, the prompt and slash commands are read from the folder on
+  each use, so an edit applies at once.
+- The schema, the permissions and what Boite starts for it (a desktop app, a
+  service, a gateway, account pools) stay those of the last
+  `boite plugin dev`. An edit that changes one turns the row to an error
+  and closes the plugin's token, its sockets with it, until you run
+  `boite plugin dev <folder>` again: anything that can write the folder, an
+  agent working in it say, cannot give the plugin more than you loaded.
+- Run `boite plugin dev <folder>` again to read the manifest again and restart
+  the plugin's service or desktop app.
+- `boite plugin dev --remove <id>` removes it.
+- The row in Settings > Plugins shows its origin as `dev` and its folder.
+
+It is the owner's (`plugins.dev`): run it from your own terminal. The core
+refuses it to an agent or a paired device.
+
+### Limits
+
+The core refuses a schema 2 manifest past any of these:
+
+| What | Limit |
+| --- | --- |
+| The manifest file | 256 KB (64 KB for schema 1) |
+| A command, skill or slash command name | 40 characters, lowercase words joined by hyphens |
+| A command, skill or slash command description | 200 characters |
+| A command's `usage` | 200 characters |
+| A skill's `body` | 32 KB |
+| `prompt` | 1,000 characters |
+| A slash command's `prompt` | 8 KB |
+| Entries | 20 commands, 20 skills, 20 slash commands |
+
+### Schema 1 desktop apps
+
+A schema 1 manifest loads unchanged. Its desktop app keeps the owner token in
+`BOITE_TOKEN` and reaches everything the owner can ([Desktop apps](#desktop-apps),
+[Security model](#security-model)); it gets neither `BOITE_PLUGIN_DATA` nor a
+permission check. A desktop app moved to schema 2 gets the plugin's token
+instead, held to the permissions its manifest declares.
+
+## SDK
+
+`@boite/plugin-sdk` lives in [`packages/plugin-sdk`](../packages/plugin-sdk),
+a workspace package of this repository; it is not on npm yet. A plugin inside
+the repository depends on it with `"@boite/plugin-sdk": "workspace:*"`, as the
+example does. Its code is a few hundred lines with no runtime dependency, and
+`pack` bundles what a plugin uses into its one file.
+
+```ts
+import { connect, definePlugin, runCommands, RpcError } from '@boite/plugin-sdk';
+```
+
+- `runCommands(handlers, options?)`: the entry point of the executable. It
+  runs the handler `process.argv[2]` names with the remaining arguments and
+  exits with the code the handler returns (0 when it returns nothing, 1 with
+  its message on stderr when it throws). An unknown name prints the usage on
+  stderr and exits 2. `options.service` runs instead when there is no
+  argument ([Service](#service)). `dispatch` does the same without exiting,
+  for tests.
+- Each handler gets `(args, ctx)`. `ctx` holds `name`, `cwd`, `callerThreadId`
+  (null when the owner ran the command), `pluginId`, `dataDir` and
+  `connect()`, which opens the core's socket on first use and is closed when
+  the handler ends.
+- `connect(options?)`: opens the socket with `BOITE_CORE_URL` and
+  `BOITE_TOKEN` (or `options.url` and `options.token`) and says hello as
+  `plugin`. It returns `{ core, principal, call(method, params), on(event,
+  handler), closed, close() }`, typed from `@boite/contracts`: `call` answers
+  the method's result, `on` returns the function that stops listening. A call
+  the core refuses rejects with an `RpcError` carrying the core's `message`,
+  `code` and `data`.
+- `definePlugin(manifest)`: returns its argument, typed as `PluginManifest`,
+  to write a manifest in TypeScript with the editor's checks.
+
+The SDK reads frames itself over `node:net` rather than through the runtime's
+`WebSocket`, whose Bun client has closed long-lived sockets to the core with a
+protocol error.
+
+### Pack
+
+```sh
+bun packages/plugin-sdk/bin/pack.ts --entry src/main.ts [--dir <folder>] [--url <https URL>]
+```
+
+A package that depends on the SDK also has it as `boite-plugin-pack`. It:
+
+1. reads `<folder>/boite-plugin.json` (the current folder by default), which
+   must be schema 2 with `runtime: "bun"` and an `executable`;
+2. copies each `skills/<name>.md` into the body of the skill of that name;
+3. bundles `--entry` with `bun build --target=bun` into `<executable>.js`;
+4. writes `artifacts.any`: `--url`, or the URL already there, with the file's
+   SHA-256;
+5. checks the [limits](#limits) and writes the manifest back.
+
+Publish the packed file at that URL unchanged: one changed byte and the
+install refuses it.
+
+## Schema 1 manifest
 
 Put `boite-plugin.json` at the root of the repository:
 
@@ -164,7 +532,7 @@ running; the app then talks to the core like any client.
   "homepage": "https://github.com/Skollheim/bots",
   "executable": "bots",
   "artifacts": {
-    "win32-x64": { "url": "https://github.com/Skollheim/bots/releases/download/v0.1.0/bots.exe", "sha256": "…" }
+    "win32-x64": { "url": "https://github.com/Skollheim/bots/releases/download/v0.1.0/bots.exe", "sha256": "<64 hex characters>" }
   },
   "provides": { "desktopApp": {} }
 }
@@ -242,8 +610,8 @@ no switch.
 ### Showing Boite
 
 An app that wants the owner to look at something calls
-`ui.reveal {target}`, where `target` is `{ "kind": "thread", "threadId": "…" }`,
-`{ "kind": "agent", "agentId": "…" }` or `{ "kind": "update" }`, the app updates
+`ui.reveal {target}`, where `target` is `{ "kind": "thread", "threadId": "<thread id>" }`,
+`{ "kind": "agent", "agentId": "<agent id>" }` or `{ "kind": "update" }`, the app updates
 a newer Boite is installed from. A thread must exist on the core; an
 agent id is 1 to 200 characters. The core sends the `ui.reveal` event to every
 owner connection except desktop-app plugins, the caller included, and answers
@@ -271,8 +639,9 @@ machine, or has it but not connected, it says so on the page it shows and opens
 nothing. Browser tabs, paired devices and windows following another machine do
 nothing.
 
-`ui.reveal` is owner-only, as is the event: a paired device or an agent that
-calls it is refused, and neither receives it.
+The owner and a plugin granted the `ui.reveal` permission may call `ui.reveal`;
+the event stays owner-only. A paired device or an agent that calls it is
+refused, and neither receives it.
 
 ## Gateways
 
@@ -362,11 +731,23 @@ tests' fake Douane starts.
 A recommended plugin installs from its row. A plugin from a URL takes two
 steps:
 
-1. The owner pastes the repository URL and, optionally, a branch, tag or commit
-   (the default branch otherwise), then clicks Preview. The core fetches
+1. The owner pastes the repository and, optionally, a branch, tag or commit
+   (the default branch otherwise), then clicks Preview. The repository is
+   read the way people share it: its https URL, any page of it (a release,
+   tag, commit, branch, folder or file page names that ref; for a folder or
+   file, the core asks the repository for its branches and tags,
+   `git ls-remote`, to tell where the ref ends and the path begins),
+   `owner/repo` for GitHub, or the `git@host:path` clone URL, which names the
+   same repository over https. A ref typed apart wins over the page's and,
+   like a release, tag or commit page's, is fetched exactly: a missing one
+   is refused, never cut back to a branch that exists. Or
+   the owner tells an agent "add this plugin: <link>": the agent runs
+   `boite plugin add <link> --why <reason>`, and the card it puts in the
+   conversation opens this preview ([CLI](cli.md#commands)). The core fetches
    that one commit and reads the manifest (`plugins.inspect`). The page shows
    the name, version, source commit, download URL, SHA-256, the command lines
-   and the pools. Nothing is downloaded or run yet.
+   and the pools, and for schema 2 the permissions and the commands, skills
+   and slash commands it adds. Nothing is downloaded or run yet.
 2. Install (`plugins.add`) installs exactly the manifest the preview showed, at
    the commit it showed. A push to the repository in between changes nothing.
    A preview is valid for ten minutes and is used once.
@@ -504,8 +885,13 @@ a paired device receives `plugins.list is for the owner only`.
 
 Reading the repository:
 
-- The URL must be https, with a host, no user or password, no query and no
-  fragment.
+- The URL must be https, with a host and no user or password. A query and a
+  fragment are dropped before git runs, so a token pasted there never reaches
+  the install record. Other transports are refused, never rewritten, except
+  `git@host:path`, read as `https://host/path`.
+- An install from `<url>.git` and an update read from `<url>` are the same
+  repository: the host is compared in any case, `.git` and a trailing slash
+  ignored.
 - git runs through the core's process launcher, traced as `plugin:fetch:<n>`.
   It runs with `protocol.allow=never` and https as the one allowed transport,
   so `ext::`, `file://`, ssh and plain http are refused by git itself.
@@ -522,7 +908,8 @@ Reading the repository:
 
 Refused before anything installs:
 
-- a missing `boite-plugin.json`, one over 64 KB, or one that is not valid JSON;
+- a missing `boite-plugin.json`, one over 64 KB (256 KB for schema 2), or one
+  that is not valid JSON;
 - any field outside the table above, or a value that breaks its rule;
 - an http URL, or one carrying credentials, anywhere in the manifest;
 - no artifact for the core's platform;
@@ -533,11 +920,23 @@ Refused before anything installs:
   its SHA-256;
 - a plugin directory that is a symbolic link.
 
-At run time Boite passes only the arguments above, checks the email is an
-address, parses stdout only for `list`, and never shows a client the program's
-output.
+For account pools, Boite passes only the arguments above, checks the email is
+an address, parses stdout only for `list`, and never shows a client the
+program's output. An agent command's output goes to the agent that ran it,
+and to nobody else.
 
-A desktop app holds the owner token. With it the app can do anything the owner
+A schema 2 plugin's processes hold the plugin's own token, which reaches only
+the methods and events of the permissions its manifest declares
+([Permissions](#permissions)); the owner reads that list before installing.
+The token limits what the plugin does through the core, not what its
+executable does on the machine: it still runs as the core's user, like any
+program you install, and can read that user's files, Boite's data directory
+and the owner token in its `core.json` included. Permissions keep a plugin
+that follows its manifest within it; they do not contain a program written to
+get out, and the preview says so beside the list. A plugin with no executable runs nothing; its skills,
+prompt and slash commands are text agents read.
+
+A schema 1 desktop app holds the owner token. With it the app can do anything the owner
 can: read every thread, start turns, change settings, install other plugins.
 That is the price of a companion app that follows and drives your agents, and
 why the preview says so before installation. It never receives an agent's
@@ -551,9 +950,9 @@ the SHA-256 then only proves the download is the one the manifest names. They
 cannot:
 
 - offer anything until the owner clicks Update;
-- change the id, name, homepage, executable or features: a plugin that wants
-  the owner token or an account pool it did not have needs a Boite pull
-  request;
+- change the id, name, homepage, executable, features, schema, permissions or
+  service: a plugin that wants the owner token, a permission or an account
+  pool it did not have needs a Boite pull request;
 - send an older version, an http download or a download without a digest;
 - point Boite at another repository, since the source sits in Boite's list.
 
@@ -561,6 +960,10 @@ A recommended entry should name a source only when its publisher guards that
 ref like a release.
 
 ## Test a plugin locally
+
+For a schema 2 plugin, [dev mode](#dev-mode) is the short path:
+`boite plugin dev <folder>` runs it from the folder, no publishing needed. The
+steps below test the whole install, from a git URL with real downloads.
 
 1. Build the release binaries and take their digests:
    `sha256sum seat-pool-linux-x64`, or in PowerShell

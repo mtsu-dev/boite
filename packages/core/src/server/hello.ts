@@ -163,7 +163,7 @@ async function greet(core: Core, connection: ServerConnection, id: number | stri
  * separator characters go: the name lands inside a line of the agent's prompt.
  */
 export function sentFromOf(identity: Identity, name: string, device: unknown, remote: boolean): SentFrom | null {
-  if (identity.principal === 'agent' || (name !== 'shell' && name !== 'pwa')) return null;
+  if (identity.principal === 'agent' || identity.principal === 'plugin' || (name !== 'shell' && name !== 'pwa')) return null;
   const said = typeof device === 'string' ? device.replace(/[\p{C}\p{Zl}\p{Zp}]/gu, '').trim() : '';
   const named = said.length > 0 && said.length <= CLIENT_DEVICE_MAX ? said : null;
   return { client: name, device: named ?? (name === 'shell' && !remote ? machineName() : null) };
@@ -183,5 +183,7 @@ export function authenticateToken(core: Core, token: string): Identity | null {
   // A key the group issued opens nothing once the address it was issued for is given up, whoever presents it.
   if (session !== null) return core.group.honours(session.id) ? { principal: principalOf(session.role), sessionId: session.id, threadId: null } : null;
   const threadId = core.agents.authenticate(token);
-  return threadId === null ? null : { principal: 'agent', sessionId: null, threadId };
+  if (threadId !== null) return { principal: 'agent', sessionId: null, threadId };
+  const grant = core.plugins.tokens.authenticate(token);
+  return grant === null ? null : { principal: 'plugin', sessionId: null, threadId: null, pluginId: grant.pluginId, permissions: grant.permissions };
 }

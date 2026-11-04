@@ -120,7 +120,9 @@ export function chromiumArgs(profileDir: string, platform = process.platform, us
     '--disable-component-update',
     `--disk-cache-size=${DISK_CACHE_BYTES}`,
     '--disable-sync',
-    '--disable-features=Translate,MediaRouter,OptimizationHints',
+    // No back-forward cache: a page that history brings back loads again, so the DevTools runtime
+    // is off before its scripts run when it is public (`page-runtime.ts`), instead of resuming under it.
+    '--disable-features=Translate,MediaRouter,OptimizationHints,BackForwardCache',
     '--password-store=basic',
     '--use-mock-keychain',
     '--disable-blink-features=AutomationControlled',

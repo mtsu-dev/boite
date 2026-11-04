@@ -91,9 +91,17 @@ export function fakePlugins(): PluginState[] {
       commands: poolCommands('grok-seats'), pools: ['grok']
     },
     {
+      ...base, id: 'standup', name: 'Standup', origin: 'dev',
+      description: 'Writes a standup from the threads you worked in today.',
+      homepage: null, version: '0.1.0', availableVersion: '0.1.0', status: 'installed', source: null, artifact: null,
+      commands: ['bun standup.js standup [--since <time>] (an agent\'s boite standup, in its directory)', 'environment: BOITE_CORE_URL=<this core> BOITE_TOKEN=<standup\'s token: threads.read, todos> BOITE_PLUGIN_ID=standup BOITE_PLUGIN_DATA=<its data directory>'], pools: [],
+      devPath: 'C:\\Users\\you\\plugins\\standup', permissions: ['threads.read', 'todos'],
+      adds: { commands: ['standup'], skills: ['standup-notes'], slashCommands: ['standup'], prompt: true },
+    },
+    {
       ...base, id: 'pool-legacy', name: 'pool-legacy', origin: 'url', description: '', homepage: null,
       version: null, availableVersion: null, status: 'rejected', source: null, artifact: null, commands: [], pools: [],
-      rejected: { file: legacy, field: 'manifest.schema', expected: '1', message: `${legacy}: manifest.schema must be 1, found number 0` }
+      rejected: { file: legacy, field: 'manifest.schema', expected: '1 or 2', message: `${legacy}: manifest.schema must be 1 or 2, found number 0` }
     }
   ];
 }

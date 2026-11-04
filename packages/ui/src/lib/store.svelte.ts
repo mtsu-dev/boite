@@ -311,6 +311,9 @@ export class Store {
   set settingsTab(value) { this.#ctx.layout.settingsTab = value; }
   get settingsSection() { return this.#ctx.layout.settingsSection; }
   set settingsSection(value) { this.#ctx.layout.settingsSection = value; }
+  get pluginSource() { return this.#ctx.layout.pluginSource; }
+  set pluginSource(value) { this.#ctx.layout.pluginSource = value; }
+  showPluginPreview(...args: Parameters<Layout['showPluginPreview']>) { return this.#ctx.layout.showPluginPreview(...args); }
   get agentsTarget() { return this.#ctx.layout.agentsTarget; }
   set agentsTarget(value) { this.#ctx.layout.agentsTarget = value; }
   get contact() { return this.#ctx.layout.contact; }

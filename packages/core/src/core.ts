@@ -91,6 +91,8 @@ export interface SubscriptionSink {
   closeSession(sessionId: string): void;
   /** Every socket an agent of this thread holds goes: the thread was archived or removed under it. */
   closeAgents(threadId: ThreadId): void;
+  /** Every socket a plugin's revoked token opened goes: it was uninstalled or its permissions changed. */
+  closePlugin(pluginId: string): void;
   /** Sends `ui.reveal` to every owner connection; returns how many it reached. */
   reveal(target: UiRevealTarget): number;
 }
@@ -245,6 +247,7 @@ export class Core {
     hasSubscribers: () => false,
     closeSession: () => undefined,
     closeAgents: () => undefined,
+    closePlugin: () => undefined,
     reveal: () => 0,
   };
 
@@ -648,7 +651,8 @@ export class Core {
     await this.push.close();
     await this.plugins.close();
     this.providers.installs.stop();
-    if (!this.journal.isClosed()) {
+    // A restart handoff leaves the work running: the next core marks it cut by the restart and resumes the threads waiting on it.
+    if (!this.journal.isClosed() && !this.threads.handoff.active) {
       for (const threadId of this.threads.agentState.background.keys()) this.threads.agentState.cancelBackground(threadId);
     }
     shutdownDrivers();

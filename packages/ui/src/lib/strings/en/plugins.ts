@@ -34,7 +34,7 @@ export const strings = {
     forgetBody: 'Removes this login from the plugin\'s pool.',
     cliScope: 'CLI logins, separate from the Boite accounts connected in Providers.',
     addHeading: 'Add from a git URL',
-    addHint: 'The https URL of a git repository with a boite-plugin.json at its root. Boite shows what it would download before installing anything.',
+    addHint: 'A git repository with a boite-plugin.json at its root: its https URL, any page of it, or owner/repo for GitHub. A page of a tag or branch picks that ref. Boite shows what it would download before installing anything.',
     urlLabel: 'Repository URL',
     urlPlaceholder: 'https://github.com/owner/repo',
     refLabel: 'Branch, tag or commit',
@@ -50,6 +50,27 @@ export const strings = {
     previewApp: 'Desktop app',
     previewAppBody: 'Opens a window of its own and gets full access to Boite through the owner token: it can read and drive every thread, like this app.',
     app: 'Desktop app',
+    /** A schema 2 plugin's desktop app: it reaches Boite through its own token, never the owner's. */
+    previewAppScoped: 'Opens a window of its own. It reaches Boite only through what the plugin may reach, listed here.',
+    /** A plugin that runs in the background with no window. */
+    service: 'Service',
+    /** A plugin run from a folder with `boite plugin dev`. */
+    dev: 'Dev',
+    devHint: 'Runs from this folder, read again on every use: an edit applies on the next run. Remove it with boite plugin dev --remove {id}.',
+    /** What a plugin adds to agents and to the composer. */
+    adds: 'Adds',
+    addsHint: 'Agent commands run in the agent\'s folder, skills and guide lines reach every new agent session, slash commands appear in the / menu.',
+    addsPrompt: 'Guide lines',
+    /** What the plugin's own token reaches in Boite. */
+    reaches: 'Reaches',
+    reachesNothing: 'Nothing in Boite',
+    reachesHint: 'What the plugin\'s own token can call in Boite. Boite never hands it the owner token, but its program runs as you and can read your files.',
+    permission: {
+      'threads.read': 'Reads threads',
+      'threads.write': 'Starts and stops turns',
+      todos: 'Project boards',
+      'ui.reveal': 'Shows a thread',
+    },
     appRunning: 'Running',
     appStarting: 'Starting again',
     appStopped: 'Stopped',
@@ -71,7 +92,9 @@ export const strings = {
     removeGatewayBody: 'Deletes the program in Boite\'s data directory. Its sign-ins, settings and database stay in {dir}, ready for the next install.',
     previewGateway: 'Gateway',
     previewGatewayBody: 'Runs in the background on this machine, on a loopback port, with no access to Boite. The subscription proxy can point at it.',
-    trust: 'This program runs with your permissions on the machine hosting your core. Install it only if you trust whoever publishes it.',
+    trust: 'This program runs as you on the machine hosting your core. Its permissions limit what it asks Boite, not what it reads or runs there, Boite\'s own files included. Install it only if you trust whoever publishes it.',
+    /** A schema 2 plugin with no executable: skills, a prompt and slash commands only. */
+    trustText: 'This plugin runs no program. Its skills, guide lines and slash commands are text your agents read: install it only if you agree with what it tells them.',
     confirmAdd: 'Install {name}',
     refusedTitle: 'Boite refused this plugin',
     refusedFile: 'File',

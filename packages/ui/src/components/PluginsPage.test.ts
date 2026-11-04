@@ -58,6 +58,17 @@ test('an update that lands while the list is out is not undone by the older list
   expect(row('bots')!.textContent).toContain('99.0.0');
 });
 
+test('a plugin run from a folder shows the folder, what it adds and what its token reaches', async () => {
+  await open();
+  const dev = row('standup')!;
+  expect(dev.querySelector('[data-testid="plugin-dev"]')?.textContent).toBe('Dev');
+  expect(dev.querySelector('[data-testid="plugin-dev-path"]')?.textContent).toContain('C:\\Users\\you\\plugins\\standup');
+  expect([...dev.querySelectorAll('[data-testid="plugin-adds-item"]')].map((el) => el.textContent)).toEqual(['boite standup', '/standup', 'standup-notes', 'Guide lines']);
+  expect([...dev.querySelectorAll('[data-testid="plugin-permission"]')].map((el) => el.getAttribute('title'))).toEqual(['threads.read', 'todos']);
+  // A plugin that declares nothing of the kind draws no such list.
+  expect(row('seat-pool')?.querySelector('[data-testid="plugin-extras"]')).toBeNull();
+});
+
 function type(selector: string, value: string): void {
   const input = q(selector) as HTMLInputElement;
   input.value = value;
@@ -68,7 +79,7 @@ function type(selector: string, value: string): void {
 test('each section holds its plugins, every state drawn with what the owner can do next', async () => {
   await open();
   const installed = q('[data-testid="plugins-installed"]')!;
-  expect([...installed.querySelectorAll('[data-testid="plugin-row"]')].map((el) => el.getAttribute('data-plugin'))).toEqual(['bots', 'douane', 'grok-seats', 'pool-legacy', 'seat-pool']);
+  expect([...installed.querySelectorAll('[data-testid="plugin-row"]')].map((el) => el.getAttribute('data-plugin'))).toEqual(['bots', 'douane', 'grok-seats', 'pool-legacy', 'seat-pool', 'standup']);
   // Every recommended plugin is installed: the section has nothing to say and is not drawn.
   expect(q('[data-testid="plugins-recommended"]')).toBeNull();
   // A recommended plugin links its source from its name; a URL one shows the repository and commit instead.
@@ -158,6 +169,26 @@ test('a crashed desktop app shows its exit code and why, and one with no desktop
   expect(appButton('headless', 'start')?.disabled).toBe(true);
 });
 
+test('a plugin card\'s Preview reads its repository once, and a pasted owner/repo reads as GitHub', async () => {
+  client = new FakeClient({ delayMs: 0 });
+  await client.connect();
+  const store = { client, providers: [], connection: 'ready', pluginSource: { url: 'https://github.com/example/scoped-standup', ref: 'v1.2.0', request: 1 } } as unknown as Store;
+  mounted = mount(PluginsPage, { target: document.body, props: { store } });
+  await vi.waitFor(() => expect(q('[data-testid="plugin-preview"]')).not.toBeNull());
+  expect(q('[data-testid="plugin-preview"]')!.textContent).toContain('github.com/example/scoped-standup');
+  expect(q('[data-testid="plugin-preview"]')!.textContent).toContain('v1.2.0');
+  expect(store.pluginSource).toBeNull();
+  // Installing stays the owner's click.
+  expect(q('[data-testid="plugin-add"]')).not.toBeNull();
+  expect(row('scoped-standup')).toBeNull();
+
+  q('[data-testid="plugin-dismiss"]')!.click();
+  flushSync();
+  type('[data-testid="plugin-url"]', 'example/desktop-pets');
+  q('[data-testid="plugin-inspect"]')!.click();
+  await vi.waitFor(() => expect(q('[data-testid="plugin-preview"]')?.textContent).toContain('github.com/example/desktop-pets'));
+});
+
 test('a desktop app\'s preview says it opens its own window and holds the owner token', async () => {
   await open();
   type('[data-testid="plugin-url"]', 'https://github.com/example/desktop-pets');
@@ -170,6 +201,34 @@ test('a desktop app\'s preview says it opens its own window and holds the owner 
 
   q('[data-testid="plugin-add"]')!.click();
   await vi.waitFor(() => expect(app('desktop-pets')?.getAttribute('data-app-status')).toBe('running'), { timeout: 3000 });
+});
+
+test('a schema 2 preview shows what the plugin adds and what its own token reaches, not the owner token', async () => {
+  await open();
+  type('[data-testid="plugin-url"]', 'https://github.com/example/scoped-desktop-waiting');
+  q('[data-testid="plugin-inspect"]')!.click();
+  await vi.waitFor(() => expect(q('[data-testid="plugin-preview"]')).not.toBeNull());
+  const preview = q('[data-testid="plugin-preview"]')!;
+  expect(q('[data-testid="plugin-preview-app"]')?.textContent).toContain('It reaches Boite only through what the plugin may reach');
+  expect([...preview.querySelectorAll('[data-testid="plugin-adds-item"]')].map((el) => el.textContent)).toEqual(['/waiting']);
+  expect([...preview.querySelectorAll('[data-testid="plugin-permission"]')].map((el) => el.getAttribute('title'))).toEqual(['threads.read', 'ui.reveal']);
+  // The list bounds its token, not its program: the preview says so beside it.
+  expect(q('[data-testid="plugin-trust"]')?.textContent).toContain('Its permissions limit what it asks Boite, not what it reads or runs there');
+
+  // Installed, its row keeps what the preview showed.
+  q('[data-testid="plugin-add"]')!.click();
+  await vi.waitFor(() => expect(row('scoped-desktop-waiting')?.getAttribute('data-status')).toBe('installed'), { timeout: 3000 });
+  const installed = row('scoped-desktop-waiting')!;
+  expect([...installed.querySelectorAll('[data-testid="plugin-adds-item"]')].map((el) => el.textContent)).toEqual(['/waiting']);
+  expect([...installed.querySelectorAll('[data-testid="plugin-permission"]')].map((el) => el.getAttribute('title'))).toEqual(['threads.read', 'ui.reveal']);
+});
+
+test('a text-only preview says it runs no program and asks about the text instead', async () => {
+  await open();
+  type('[data-testid="plugin-url"]', 'example/text-only-review');
+  q('[data-testid="plugin-inspect"]')!.click();
+  await vi.waitFor(() => expect(q('[data-testid="plugin-preview"]')).not.toBeNull());
+  expect(q('[data-testid="plugin-trust"]')?.textContent).toContain('This plugin runs no program');
 });
 
 test('a URL is read first, shown with what it downloads and runs, and installs only on confirm', async () => {

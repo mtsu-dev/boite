@@ -153,6 +153,39 @@ test('a subagent on another machine runs on the parent\'s model there, or on the
   expect(childrenOnPc()).toHaveLength(1);
 });
 
+test('a machine whose model list outgrows a request body still lists it to the rest of its group', async () => {
+  answering();
+  const { pc, owner, pcOwner, threadId, machine, cli } = await setup();
+  // Douane's routes put about 1 200 models on one machine (boite-m3, 2026-11-04): an answer past 256 KiB once sealed.
+  const many: ModelInfo[] = Array.from({ length: 1400 }, (_, index) => ({ id: `route-${index}/model-with-a-long-name-${index}`, name: `Routed model number ${index}`, effort: TWIN_MODELS[0]!.effort }));
+  const shipped = JSON.parse(readFileSync(join(import.meta.dir, '../src/providers/shipped/echo.json'), 'utf8')) as Record<string, unknown>;
+  mkdirSync(join(pc.dataDir, 'providers'), { recursive: true });
+  writeFileSync(join(pc.dataDir, 'providers', 'twin.json'), JSON.stringify({ ...shipped, id: 'twin', name: 'Twin', shortName: 'Twin', models: many }));
+  expect((await pcOwner.call('providers.reload', {})).rejected).toEqual([]);
+  pc.core.accounts.ensureDefaults();
+
+  const listed = await owner.call('delegation.models', { threadId, machine });
+  expect(listed.choices.filter(choice => choice.providerId === 'twin')).toHaveLength(1400);
+  const printed = await cli(['delegate', 'models', '--machine', machine]);
+  expect(printed.err).toBe('');
+  expect(printed.out).toContain('twin/route-1399/model-with-a-long-name-1399');
+  expect(Buffer.byteLength(JSON.stringify(listed))).toBeGreaterThan(262_144);
+});
+
+test('when no address answers and the owner app relays a readable refusal, the error names the relay, its status and the addresses\' failure', async () => {
+  answering();
+  const { desk, machine, cli } = await setup();
+  const group = desk.core.group as unknown as { routes(coreId: string): string[] | null };
+  const routes = group.routes.bind(group);
+  group.routes = coreId => routes(coreId) === null ? null : ['http://127.0.0.1:9'];
+  const bridge = desk.core.coordination.bridge;
+  bridge.available = () => true;
+  bridge.request = async () => ({ status: 503, body: 'message body exceeds 262144 bytes', signature: '' });
+  const failed = await cli(['delegate', 'models', '--machine', machine]);
+  expect(failed.err).not.toContain('in the clear');
+  expect(failed.err).toContain('through the owner app: the owner app relay answered HTTP 503: message body exceeds 262144 bytes');
+});
+
 test('a machine whose owner did not let the group start work there refuses, with the setting to propose', async () => {
   answering();
   const { desk, pc, owner, threadId, machine, cli, childrenOnPc } = await setup(false);

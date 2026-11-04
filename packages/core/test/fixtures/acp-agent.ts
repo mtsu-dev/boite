@@ -58,7 +58,7 @@
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { instructionsOf } from './history.ts';
 import { Readable, Writable } from 'node:stream';
-import { agent, ndJsonStream, PROTOCOL_VERSION, RequestError } from '@agentclientprotocol/sdk';
+import { agent, ndJsonStream, PROTOCOL_VERSION, RequestError } from '@agentclientprotocol/sdk/unstable';
 import type {
   AvailableCommand,
   ContentBlock,
@@ -67,7 +67,7 @@ import type {
   SessionModeState,
   SessionUpdate,
   Usage,
-} from '@agentclientprotocol/sdk';
+} from '@agentclientprotocol/sdk/unstable';
 
 const DIRECTIVE = /\[(agents|tool|documents|big-image|huge-tool|permission|question|thought|usage|slow|deaf|refuse|internal|crash|noise|big-glog)\]/g;
 /** `[mode-switch <id>]`: the agent changes mode on its own before it answers. */

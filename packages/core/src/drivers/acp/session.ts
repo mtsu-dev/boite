@@ -8,7 +8,7 @@ import type {
   PromptResponse,
   SessionConfigOption,
   SessionNotification,
-} from '@agentclientprotocol/sdk';
+} from '@agentclientprotocol/sdk/unstable';
 import type { OsProfile, PermissionMode, ProviderDescriptor, ProviderId, ModelInfo } from '@boite/contracts';
 import { messageOf, unavailable } from '../../errors.ts';
 import type { SpawnedChild } from '../../procs.ts';

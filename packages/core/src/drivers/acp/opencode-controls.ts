@@ -1,5 +1,5 @@
 /** OpenCode 2's native controls, expressed as the ACP options the session owns. */
-import type { SessionConfigOption } from '@agentclientprotocol/sdk';
+import type { SessionConfigOption } from '@agentclientprotocol/sdk/unstable';
 import { plainObject } from './models.ts';
 
 export type NativeCall = (path: string, method?: string, body?: unknown) => Promise<unknown>;

@@ -6,22 +6,48 @@
  * what was expected, never skipped. docs/plugins.md is the authoring guide.
  */
 
-import { PLUGIN_MANIFEST_SCHEMA, PLUGIN_PLATFORMS } from '@boite/contracts';
-import type { PluginArtifact, PluginManifest, PluginPlatform, PluginRejected, ProviderId } from '@boite/contracts';
+import { PLUGIN_ANY_PLATFORM, PLUGIN_EXECUTABLE_PATTERN, PLUGIN_MANIFEST_SCHEMAS, PLUGIN_NAME_PATTERN, PLUGIN_PERMISSION_NAMES, PLUGIN_PLATFORMS } from '@boite/contracts';
+import type {
+  PluginAdds, PluginArtifact, PluginCommand, PluginManifest, PluginPermission, PluginPlatform, PluginRejected, PluginSkill, PluginSlashCommand, ProviderId,
+} from '@boite/contracts';
+import { BUILTIN_COMMANDS } from '../cli-commands.ts';
 import { RETIRED_PROVIDERS } from '../providers/retired.ts';
 
 /** The shipped providers an account pool may name. `echo` is the tests' fake agent. */
 export const POOL_PROVIDERS: readonly ProviderId[] = ['antigravity', 'claude', 'codex', 'grok', 'hermes', 'muse', 'opencode', 'opencode-v2', 'pi'];
-/** A manifest is a few hundred bytes; anything past this is not one. */
-export const MANIFEST_MAX_BYTES = 64 * 1024;
+/** A schema 2 manifest carries its skills and prompts inline; anything past this is not one. */
+export const MANIFEST_MAX_BYTES = 256 * 1024;
+/** Schema 1 keeps the cap it had before skills and prompts could take room. */
+export const MANIFEST_V1_MAX_BYTES = 64 * 1024;
 
-const FIELDS = ['schema', 'id', 'name', 'version', 'description', 'homepage', 'executable', 'artifacts', 'provides'] as const;
-const FEATURES = ['accountPools', 'desktopApp', 'gateway'] as const;
+const FIELDS_V1 = ['schema', 'id', 'name', 'version', 'description', 'homepage', 'executable', 'artifacts', 'provides'] as const;
+const FIELDS_V2 = [...FIELDS_V1, 'runtime', 'permissions'] as const;
+const FEATURES_V1 = ['accountPools', 'desktopApp', 'gateway'] as const;
+const FEATURES_V2 = [...FEATURES_V1, 'service', 'commands', 'skills', 'prompt', 'slashCommands'] as const;
+/** The features that run the executable; a plugin providing none of them has no executable to ship. */
+const RUNNING_FEATURES = ['accountPools', 'desktopApp', 'gateway', 'service', 'commands'] as const;
+
+/** What a schema 2 plugin may add to agents and to the composer, so its share of every guide stays small. */
+export const PLUGIN_LIMITS = {
+  name: 40,
+  description: 200,
+  usage: 200,
+  /** Characters of `provides.prompt`. */
+  prompt: 1000,
+  /** UTF-8 bytes of one skill's body. */
+  skillBody: 32 * 1024,
+  /** UTF-8 bytes of one slash command's prompt. */
+  slashPrompt: 8 * 1024,
+  commands: 20,
+  skills: 20,
+  slashCommands: 20,
+} as const;
 const ID_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
 const VERSION_PATTERN = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
-const EXECUTABLE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const CONTROL = /[\u0000-\u001f\u007f]/;
+/** Control characters other than tab, line feed and carriage return: what a Markdown body may not hold. */
+const BODY_CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
 
 /** A refusal the RPC layer and the list both carry as is. */
 export class ManifestRefused extends Error {
@@ -102,6 +128,14 @@ class Reader {
     return value;
   }
 
+  /** Markdown or prompt text: lines allowed, other control characters not, bounded in UTF-8 bytes. */
+  body(value: unknown, field: string, maxBytes: number): string {
+    if (typeof value !== 'string' || value.trim().length === 0 || Buffer.byteLength(value, 'utf8') > maxBytes || BODY_CONTROL.test(value)) {
+      this.refuse(field, `text of 1 to ${maxBytes} bytes, no control characters but tabs and line breaks`, value);
+    }
+    return value;
+  }
+
   matching(value: unknown, field: string, pattern: RegExp, expected: string): string {
     if (typeof value !== 'string' || !pattern.test(value)) this.refuse(field, expected, value);
     return value;
@@ -123,7 +157,13 @@ class Reader {
     };
   }
 
-  artifacts(value: unknown): Partial<Record<PluginPlatform, PluginArtifact>> {
+  artifacts(value: unknown, runtime: 'native' | 'bun'): NonNullable<PluginManifest['artifacts']> {
+    if (runtime === 'bun') {
+      if (!isRecord(value) || Object.keys(value).length !== 1 || value[PLUGIN_ANY_PLATFORM] === undefined) {
+        this.refuse('artifacts', `an object with the one key ${PLUGIN_ANY_PLATFORM}: a bun plugin ships one file for every machine`, value);
+      }
+      return { [PLUGIN_ANY_PLATFORM]: this.artifact(value[PLUGIN_ANY_PLATFORM], `artifacts.${PLUGIN_ANY_PLATFORM}`) };
+    }
     if (!isRecord(value) || Object.keys(value).length === 0) {
       this.refuse('artifacts', `an object keyed by at least one of ${PLUGIN_PLATFORMS.join(', ')}`, value);
     }
@@ -135,15 +175,86 @@ class Reader {
     return out;
   }
 
-  provides(value: unknown): PluginManifest['provides'] {
+  permissions(value: unknown): PluginPermission[] {
+    const expected = `an array of distinct permissions among ${PLUGIN_PERMISSION_NAMES.join(', ')}`;
+    if (!Array.isArray(value)) this.refuse('permissions', expected, value);
+    value.forEach((permission: unknown, index) => {
+      if (typeof permission !== 'string' || !(PLUGIN_PERMISSION_NAMES as readonly string[]).includes(permission) || value.indexOf(permission) !== index) {
+        this.refuse(`permissions[${index}]`, expected, permission);
+      }
+    });
+    return [...value] as PluginPermission[];
+  }
+
+  /** A list of named entries: an array of 1 to `max` objects with distinct names. */
+  named<T>(value: unknown, field: string, max: number, keys: readonly string[], read: (entry: Record<string, unknown>, at: string) => T & { name: string }): T[] {
+    if (!Array.isArray(value) || value.length === 0 || value.length > max) this.refuse(field, `an array of 1 to ${max} objects`, value);
+    const seen = new Set<string>();
+    return value.map((entry: unknown, index) => {
+      const at = `${field}[${index}]`;
+      if (!isRecord(entry)) this.refuse(at, `an object with ${keys.join(', ')}`, entry);
+      this.keys(entry, `${at}.`, keys);
+      const out = read(entry, at);
+      if (seen.has(out.name)) this.refuse(`${at}.name`, `a name no other entry of ${field} takes`, out.name);
+      seen.add(out.name);
+      return out;
+    });
+  }
+
+  name(value: unknown, field: string): string {
+    const name = this.matching(value, field, PLUGIN_NAME_PATTERN, `lowercase words of letters and digits joined by hyphens, starting with a letter, 1 to ${PLUGIN_LIMITS.name} characters`);
+    if (name.length > PLUGIN_LIMITS.name) this.refuse(field, `at most ${PLUGIN_LIMITS.name} characters`, name);
+    return name;
+  }
+
+  commands(value: unknown): PluginCommand[] {
+    return this.named(value, 'provides.commands', PLUGIN_LIMITS.commands, ['name', 'description', 'usage'], (entry, at) => {
+      const name = this.name(entry['name'], `${at}.name`);
+      if (BUILTIN_COMMANDS.has(name)) this.refuse(`${at}.name`, 'a name no built-in boite command takes', name);
+      const command: PluginCommand = { name, description: this.text(entry['description'], `${at}.description`, PLUGIN_LIMITS.description) };
+      if (entry['usage'] !== undefined) command.usage = this.text(entry['usage'], `${at}.usage`, PLUGIN_LIMITS.usage);
+      return command;
+    });
+  }
+
+  skills(value: unknown): PluginSkill[] {
+    return this.named(value, 'provides.skills', PLUGIN_LIMITS.skills, ['name', 'description', 'body'], (entry, at) => ({
+      name: this.name(entry['name'], `${at}.name`),
+      description: this.text(entry['description'], `${at}.description`, PLUGIN_LIMITS.description),
+      body: this.body(entry['body'], `${at}.body`, PLUGIN_LIMITS.skillBody),
+    }));
+  }
+
+  slashCommands(value: unknown): PluginSlashCommand[] {
+    return this.named(value, 'provides.slashCommands', PLUGIN_LIMITS.slashCommands, ['name', 'description', 'hint', 'prompt'], (entry, at) => {
+      const command: PluginSlashCommand = {
+        name: this.name(entry['name'], `${at}.name`),
+        description: this.text(entry['description'], `${at}.description`, PLUGIN_LIMITS.description),
+        prompt: this.body(entry['prompt'], `${at}.prompt`, PLUGIN_LIMITS.slashPrompt),
+      };
+      if (entry['hint'] !== undefined) command.hint = this.text(entry['hint'], `${at}.hint`, 60);
+      return command;
+    });
+  }
+
+  provides(value: unknown, schema: 1 | 2): PluginManifest['provides'] {
+    const features = schema === 1 ? FEATURES_V1 : FEATURES_V2;
     if (!isRecord(value) || Object.keys(value).length === 0) {
-      this.refuse('provides', `an object naming at least one of ${FEATURES.join(', ')}`, value);
+      this.refuse('provides', `an object naming at least one of ${features.join(', ')}`, value);
     }
-    this.keys(value, 'provides.', FEATURES);
+    this.keys(value, 'provides.', features);
     const provides: PluginManifest['provides'] = {};
     if (value['accountPools'] !== undefined) provides.accountPools = this.pools(value['accountPools']);
-    // No fields today for either: a key there is a feature this core does not know.
-    for (const feature of ['desktopApp', 'gateway'] as const) {
+    if (value['commands'] !== undefined) provides.commands = this.commands(value['commands']);
+    if (value['skills'] !== undefined) provides.skills = this.skills(value['skills']);
+    if (value['slashCommands'] !== undefined) provides.slashCommands = this.slashCommands(value['slashCommands']);
+    if (value['prompt'] !== undefined) {
+      const prompt = this.body(value['prompt'], 'provides.prompt', PLUGIN_LIMITS.prompt * 4);
+      if (prompt.length > PLUGIN_LIMITS.prompt) this.refuse('provides.prompt', `at most ${PLUGIN_LIMITS.prompt} characters`, prompt);
+      provides.prompt = prompt;
+    }
+    // No fields today for these: a key there is a feature this core does not know.
+    for (const feature of ['desktopApp', 'gateway', 'service'] as const) {
       const block = value[feature];
       if (block === undefined) continue;
       if (!isRecord(block)) this.refuse(`provides.${feature}`, 'an empty object', block);
@@ -176,42 +287,117 @@ class Reader {
  * repository, or the recommended list's entry. `prefix` places the fields when
  * the manifest sits inside another file, `manifest.` in `installed.json`.
  */
-export function parseManifest(raw: unknown, file: string, prefix = ''): PluginManifest {
+/** `dev`: a folder `boite plugin dev` runs in place, whose manifest needs no artifacts; any it has are read, then ignored. */
+export function parseManifest(raw: unknown, file: string, prefix = '', dev = false): PluginManifest {
   const read: Reader = new Reader(file, prefix);
   if (!isRecord(raw)) throw new ManifestRefused(file, prefix === '' ? '(root)' : prefix.replace(/\.$/, ''), 'a JSON object', describe(raw));
-  read.keys(raw, '', FIELDS);
-  if (raw['schema'] !== PLUGIN_MANIFEST_SCHEMA) read.refuse('schema', String(PLUGIN_MANIFEST_SCHEMA), raw['schema']);
-  return {
-    schema: PLUGIN_MANIFEST_SCHEMA,
+  const schema = raw['schema'];
+  if (schema !== 1 && schema !== 2) read.refuse('schema', PLUGIN_MANIFEST_SCHEMAS.join(' or '), schema);
+  read.keys(raw, '', schema === 1 ? FIELDS_V1 : FIELDS_V2);
+  const head = {
     id: read.matching(raw['id'], 'id', ID_PATTERN, 'lowercase letters, digits and inner hyphens, 1 to 64 characters'),
     name: read.text(raw['name'], 'name', 60),
     version: read.matching(raw['version'], 'version', VERSION_PATTERN, 'a version such as 1.2.0 or 1.2.0-beta.1'),
     description: read.text(raw['description'], 'description', 300),
     homepage: read.https(raw['homepage'], 'homepage'),
-    executable: read.matching(
-      raw['executable'],
-      'executable',
-      EXECUTABLE_PATTERN,
-      'a file name of letters, digits, _ and -, no extension (Boite adds .exe on Windows)',
-    ),
-    artifacts: read.artifacts(raw['artifacts']),
-    provides: read.provides(raw['provides']),
   };
+  const executable = (expected: string): string => read.matching(raw['executable'], 'executable', PLUGIN_EXECUTABLE_PATTERN, expected);
+  const native = 'a file name of letters, digits, _ and -, no extension (Boite adds .exe on Windows)';
+  if (schema === 1) {
+    return { schema: 1, ...head, executable: executable(native), ...(dev && raw['artifacts'] === undefined ? {} : { artifacts: read.artifacts(raw['artifacts'], 'native') }), provides: read.provides(raw['provides'], 1) };
+  }
+  const runtime = raw['runtime'] === undefined ? 'native' : raw['runtime'];
+  if (runtime !== 'native' && runtime !== 'bun') read.refuse('runtime', 'native or bun', raw['runtime']);
+  const provides = read.provides(raw['provides'], 2);
+  const manifest: PluginManifest = { schema: 2, ...head, provides };
+  if (raw['runtime'] !== undefined) manifest.runtime = runtime;
+  if (raw['permissions'] !== undefined) manifest.permissions = read.permissions(raw['permissions']);
+  if (RUNNING_FEATURES.some((feature) => provides[feature] !== undefined)) {
+    manifest.executable = executable(runtime === 'bun' ? 'a file name of letters, digits, _ and -, no extension (Boite adds .js)' : native);
+    if (!dev || raw['artifacts'] !== undefined) manifest.artifacts = read.artifacts(raw['artifacts'], runtime);
+  } else {
+    // Skills, a prompt and slash commands are text: nothing to download, nothing to run.
+    for (const field of ['executable', 'artifacts', 'runtime'] as const) {
+      if (raw[field] !== undefined) read.refuse(field, `absent: a plugin that provides only skills, a prompt or slash commands runs nothing (one of ${RUNNING_FEATURES.join(', ')} needs ${field})`, raw[field]);
+    }
+  }
+  return manifest;
 }
 
 /** The manifest from its JSON text, the parse failure refused like any field. */
-export function parseManifestText(text: string, file: string): PluginManifest {
+export function parseManifestText(text: string, file: string, dev = false): PluginManifest {
+  // The fetch path checks the blob's size before reading it; a dev folder's file is held to the same cap here.
+  const bytes = Buffer.byteLength(text, 'utf8');
+  if (bytes > MANIFEST_MAX_BYTES) throw new ManifestRefused(file, '(file)', `at most ${MANIFEST_MAX_BYTES} bytes`, `${bytes} bytes`);
   let raw: unknown;
   try {
     raw = JSON.parse(text);
   } catch (error) {
     throw new ManifestRefused(file, '(file)', 'valid JSON', error instanceof Error ? error.message : 'unreadable text');
   }
-  return parseManifest(raw, file);
+  const manifest = parseManifest(raw, file, '', dev);
+  if (manifest.schema === 1 && bytes > MANIFEST_V1_MAX_BYTES) throw new ManifestRefused(file, '(file)', `at most ${MANIFEST_V1_MAX_BYTES} bytes for schema 1`, `${bytes} bytes`);
+  return manifest;
 }
 
+/** What an install downloads here: the platform's file, the one `bun` file, or null for a text-only plugin or a missing platform. */
 export function artifactFor(manifest: PluginManifest, platform = platformKey()): PluginArtifact | null {
+  if (manifest.artifacts === undefined) return null;
+  if (manifest.runtime === 'bun') return manifest.artifacts[PLUGIN_ANY_PLATFORM] ?? null;
   return manifest.artifacts[platform as PluginPlatform] ?? null;
+}
+
+/** Whether the plugin ships an executable: false for one that provides only text. */
+export function runsExecutable(manifest: PluginManifest): boolean {
+  return manifest.executable !== undefined;
+}
+
+/** The file name the executable is saved under: `.js` for `bun`, `.exe` added on Windows for a native one. */
+export function executableFile(manifest: PluginManifest, platform: NodeJS.Platform = process.platform): string | null {
+  if (manifest.executable === undefined) return null;
+  if (manifest.runtime === 'bun') return `${manifest.executable}.js`;
+  return platform === 'win32' ? `${manifest.executable}.exe` : manifest.executable;
+}
+
+export function permissionsOf(manifest: PluginManifest): PluginPermission[] {
+  return manifest.permissions ?? [];
+}
+
+export function providesService(manifest: PluginManifest): boolean {
+  return manifest.provides.service !== undefined;
+}
+
+/**
+ * What `found` changes in the access the owner approved with `approved`: the
+ * schema (schema 1 holds the owner token), the permissions, or what Boite
+ * starts on its own (a desktop app, a service, a gateway, account pools),
+ * each of which runs with that token. Null when it keeps them. A dev folder
+ * reread and a recommended update both stop there until the owner loads it
+ * again.
+ */
+export function authorityChange(approved: PluginManifest, found: PluginManifest): string | null {
+  if (found.schema !== approved.schema) return `its schema from ${approved.schema} to ${found.schema}`;
+  const before = [...permissionsOf(approved)].sort().join(', ');
+  const after = [...permissionsOf(found)].sort().join(', ');
+  if (before !== after) return `its permissions from [${before}] to [${after}]`;
+  const started = (manifest: PluginManifest): string => [
+    ...(providesApp(manifest) ? ['desktop app'] : []),
+    ...(providesService(manifest) ? ['service'] : []),
+    ...(providesGateway(manifest) ? ['gateway'] : []),
+    ...[...poolsOf(manifest)].sort().map((provider) => `${provider} pool`),
+  ].join(', ');
+  if (started(found) !== started(approved)) return `what Boite starts for it from [${started(approved)}] to [${started(found)}]`;
+  return null;
+}
+
+/** What the plugin adds to agents and to the composer, by name. */
+export function addsOf(manifest: PluginManifest): PluginAdds {
+  return {
+    commands: (manifest.provides.commands ?? []).map((command) => command.name),
+    skills: (manifest.provides.skills ?? []).map((skill) => skill.name),
+    slashCommands: (manifest.provides.slashCommands ?? []).map((command) => command.name),
+    prompt: manifest.provides.prompt !== undefined,
+  };
 }
 
 export function poolsOf(manifest: PluginManifest): ProviderId[] {
@@ -238,12 +424,23 @@ export const POOL_COMMANDS = {
   remove: (provider: string, email: string) => ['remove', `-${provider}`, '-Email', email, '-Yes'],
 } as const;
 
-/** What the owner is shown before an install: every command line Boite may run, and what a desktop app is handed. */
+/**
+ * What the owner is shown before an install: every command line Boite may
+ * run, and what a desktop app or a service is handed. A schema 1 desktop app
+ * gets the owner token; every schema 2 process gets the plugin's own.
+ */
 export function commandsOf(manifest: PluginManifest): string[] {
-  const run = (args: readonly string[]) => [manifest.executable, ...args].join(' ');
+  const file = executableFile(manifest);
+  if (file === null) return [];
+  const program = manifest.runtime === 'bun' ? `bun ${file}` : manifest.executable!;
+  const run = (args: readonly string[]) => [program, ...args].join(' ');
+  const token = manifest.schema === 1 ? '<the owner token>' : `<${manifest.id}'s token: ${permissionsOf(manifest).join(', ') || 'no permission'}>`;
+  const env = `environment: BOITE_CORE_URL=<this core> BOITE_TOKEN=${token} BOITE_PLUGIN_ID=${manifest.id}${manifest.schema === 1 ? '' : ' BOITE_PLUGIN_DATA=<its data directory>'}`;
   const app = [
-    ...(providesApp(manifest) ? [manifest.executable, `environment: BOITE_CORE_URL=<this core> BOITE_TOKEN=<the owner token> BOITE_PLUGIN_ID=${manifest.id}`] : []),
-    ...(providesGateway(manifest) ? [`${manifest.executable} --config <its data directory>/${manifest.executable}.toml`] : []),
+    ...(providesApp(manifest) || providesService(manifest) ? [program, env] : []),
+    ...(providesGateway(manifest) ? [`${program} --config <its data directory>/${manifest.executable}.toml`] : []),
+    ...(manifest.provides.commands ?? []).map((command) => `${run([command.name])} ${command.usage ?? '<arguments>'} (an agent's boite ${command.name}, in its directory)`),
+    ...(!providesApp(manifest) && !providesService(manifest) && manifest.provides.commands !== undefined ? [env] : []),
   ];
   if (poolsOf(manifest).length === 0) return app;
   return [

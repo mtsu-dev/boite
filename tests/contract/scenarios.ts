@@ -672,6 +672,25 @@ export const SCENARIOS: Record<string, Scenario> = {
   'accounts.add refuses an unknown provider': async (env) => {
     await refusedWith(env.call('accounts.add', { providerId: 'no-such-provider', label: 'x' }), RpcErrorCode.NotFound);
   },
+  'plugins.dev and plugins.command refuse a folder or a command no plugin has, by field': async (env) => {
+    const dev = await refusedWith(env.call('plugins.dev', { path: env.missingFolder() }), RpcErrorCode.InvalidParams, ['field', 'expected']);
+    same(dev.field, 'path', 'the refused dev field');
+    const command = await refusedWith(env.call('plugins.command', { name: 'no-such-command', args: [], cwd: await env.newFolder() }), RpcErrorCode.InvalidParams, ['field', 'expected']);
+    same(command.field, 'name', 'the refused command field');
+  },
+  'a plugin card reads a shared repository page as the Plugins page does, once per thread': async (env) => {
+    const setup = await echo(env);
+    const { id: threadId } = await thread(env, setup);
+    await finishedTurn(env, threadId);
+    const asked = await env.call('settings.request', { threadId, reason: 'Adds the standup command', page: 'plugins', plugin: { url: 'github.com/example/standup/releases/tag/v1.2.0?x=1' } });
+    same(asked.setting, { kind: 'open', page: 'plugins', section: 'plugins-add', plugin: { url: 'https://github.com/example/standup', ref: 'v1.2.0' } }, 'the plugin card');
+    const again = await refusedWith(env.call('settings.request', { threadId, reason: 'Again', page: 'plugins', plugin: { url: 'https://github.com/example/standup.git' } }), RpcErrorCode.Refused, ['field']);
+    same(again.field, 'plugin.url', 'the repeated card field');
+    const plain = await refusedWith(env.call('settings.request', { threadId, reason: 'Plain http', page: 'plugins', plugin: { url: 'http://example.com/standup' } }), RpcErrorCode.Refused, ['field', 'expected']);
+    same(plain.field, 'plugin.url', 'the http card field');
+    const elsewhere = await refusedWith(env.call('settings.request', { threadId, reason: 'Wrong page', page: 'general', plugin: { url: 'example/standup' } }), RpcErrorCode.Refused, ['field']);
+    same(elsewhere.field, 'page', 'the wrong page field');
+  },
   'threads.listChanges resumes changed rows, removals and full lists with validated cursors': async (env) => {
     const setup = await echo(env);
     const pinned = await thread(env, setup, 'pinned');
@@ -702,7 +721,8 @@ export const SCENARIOS: Record<string, Scenario> = {
     check(quiet.kind === 'changes', 'the current cursor did not return changes');
     same(own(quiet.threads), [], 'no project row changed again');
     same(quiet.removed, [], 'no row was removed again');
-    for (const since of [{ run: 'another-run', seq: 0 }, { ...quiet.cursor, seq: quiet.cursor.seq + 1 }]) {
+    // Far ahead: a late commit from another scenario's thread would make seq + 1 a real cursor.
+    for (const since of [{ run: 'another-run', seq: 0 }, { ...quiet.cursor, seq: quiet.cursor.seq + 1_000_000 }]) {
       const full = await env.call('threads.listChanges', { since });
       same(full.kind, 'full', 'an unknown cursor falls back to a full list');
       same(ids(own(full.threads)), [pinned.id, unchanged.id, created.id].sort(), 'the fallback project rows');

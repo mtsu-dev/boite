@@ -2,8 +2,8 @@ import { randomUUID } from 'node:crypto';
 import type { CoordinationBridgeResponse, RpcEvents } from '@boite/contracts';
 import type { Connection } from './router.ts';
 import { invalidParams, refused, unavailable } from './errors.ts';
+import { MAX_ANSWER } from './coordination-wire.ts';
 
-const MAX_BODY = 262_144;
 /**
  * Where a relayed request goes: an owner app's connection, or a contact's
  * link socket, which carries this core's requests to a contact it cannot dial.
@@ -61,9 +61,9 @@ export class CoordinationBridge {
     const request = this.pending.get(requestId);
     if (!request || request.connectionId !== connection.id) throw refused('requestId: expected a request sent to this owner connection');
     if (!response || !Number.isInteger(response.status) || response.status < 100 || response.status > 599
-      || typeof response.body !== 'string' || Buffer.byteLength(response.body) > MAX_BODY
+      || typeof response.body !== 'string' || Buffer.byteLength(response.body) > MAX_ANSWER
       || typeof response.signature !== 'string' || response.signature.length > 1000) {
-      throw invalidParams('response: expected HTTP status, body up to 262144 bytes and signature up to 1000 characters');
+      throw invalidParams(`response: expected HTTP status, body up to ${MAX_ANSWER} bytes and signature up to 1000 characters`);
     }
     request.finish(response);
     return { ok: true };

@@ -4,7 +4,7 @@
  * with delivery=steer while the original execution keeps running.
  */
 import { createInterface } from 'node:readline';
-import type { ClientContext, ContentBlock, PromptResponse, SessionNotification } from '@agentclientprotocol/sdk';
+import type { ClientContext, ContentBlock, PromptResponse, SessionNotification } from '@agentclientprotocol/sdk/unstable';
 import type { SpawnedChild } from '../../procs.ts';
 import type { AcpTurn } from './turn.ts';
 import { object, text, OpenCodeControls } from './opencode-controls.ts';

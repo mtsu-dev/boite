@@ -67,12 +67,17 @@ export class BackgroundHistory {
       DO UPDATE SET payload = excluded.payload`).run(observation.threadId, observation.providerId, observation.sessionGeneration, observation.parentTurnId ?? '', observation.id, JSON.stringify(observation));
   }
 
-  observe(threadId: ThreadId, tasks: BackgroundTask[], owner: BackgroundOwner, at = Date.now()): boolean {
+  /**
+   * `endMissing: false` records what the agent added without ending what it
+   * left out: a core handing over to the next one ends its agent processes,
+   * and their work stays running for that core to mark `core-restarted`.
+   */
+  observe(threadId: ThreadId, tasks: BackgroundTask[], owner: BackgroundOwner, at = Date.now(), endMissing = true): boolean {
     if (!this.owns(threadId, owner)) return false;
     this.journal.append({ type: 'thread.background.observed', threadId, version: 1, payload: { owner, tasks }, ts: at }, () => {
       const current = this.running(threadId, owner);
       for (const previous of current) {
-        if (previous.state === 'running' && previous.observedAt <= at && !tasks.some(task => task.id === previous.id)) {
+        if (endMissing && previous.state === 'running' && previous.observedAt <= at && !tasks.some(task => task.id === previous.id)) {
           this.put({ ...previous, state: 'ended', reason: 'no-longer-reported', observedAt: at, finishedAt: at });
         }
       }
@@ -124,6 +129,11 @@ export class BackgroundHistory {
         for (const task of live) this.put({ ...task, state: 'cancelled', reason: 'core-restarted', observedAt: at, finishedAt: at });
       });
     }
+    this.#interrupted = [...byThread.keys()];
     return [...byThread.keys()];
   }
+
+  /** What `interruptLive` marked, once: delegation tells the parents of those children after the server listens. */
+  takeInterrupted(): ThreadId[] { return this.#interrupted.splice(0); }
+  #interrupted: ThreadId[] = [];
 }

@@ -20,7 +20,7 @@
  * the server's own Python finds none.
  */
 import { isAbsolute } from 'node:path';
-import type { RequestPermissionRequest } from '@agentclientprotocol/sdk';
+import type { RequestPermissionRequest } from '@agentclientprotocol/sdk/unstable';
 import type { NativeAgentUpdate, ProviderDescriptor, ToolStatus } from '@boite/contracts';
 import { compareVersions } from '../providers/install-latest.ts';
 

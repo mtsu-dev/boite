@@ -1,0 +1,24 @@
+{
+  "name": "@boite/plugin-sdk",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bin": {
+    "boite-plugin-pack": "./bin/pack.ts"
+  },
+  "scripts": {
+    "check": "tsc -p tsconfig.json",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@boite/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.3",
+    "typescript": "^7.0.2"
+  }
+}

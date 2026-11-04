@@ -52,7 +52,7 @@ test('Boite Server builds its APK for the app and the bundle checks for its Term
 });
 
 test('ordinary benches and architecture scripts keep the cheap type-check route', () => {
-  for (const file of ['bench/retitle.ts', 'scripts/architecture/check.ts']) {
+  for (const file of ['bench/retitle.ts', 'scripts/architecture/check.ts', 'packages/plugin-sdk/src/connect.ts', 'examples/plugins/hello/src/main.ts']) {
     expect(affectedChecks([file])).toEqual({ ...none, web: true });
   }
   expect(affectedChecks(['bench/retitle.ts', 'packages/core/src/main.ts'])).toEqual({ ...allChecks, shellRust: false, android: false, androidServer: false });
