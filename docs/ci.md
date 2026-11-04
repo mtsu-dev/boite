@@ -64,7 +64,7 @@ dependency is required too.
 | `apps/android-server/termux/` | Core tests, type checks and UI tests, desktop/E2E: the release bundle carries it |
 | `telemetry/` | Full type checks and UI tests plus the existing relay behavior suite |
 | `tests/stress/`, `bench/agent-stress.ts`, `bench/lib/` | Full type checks, UI tests and stress |
-| Other `bench/` files, `scripts/architecture/` | Full type checks and UI tests |
+| Other `bench/` files, `scripts/architecture/`, `packages/plugin-sdk/`, `examples/plugins/` | Full type checks and UI tests; the changes job runs the SDK's tests |
 | `packages/core/` | All checks except the shell's Rust tests and the APKs |
 | `packages/contracts/` | All checks except the shell's Rust tests and the Boite Server APK |
 | Dependencies, shared builds, other workflows and unknown paths | All checks |

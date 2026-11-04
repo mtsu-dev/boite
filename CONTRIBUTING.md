@@ -7,6 +7,27 @@ Use the Bun version in `package.json` and install with
 `bun install --frozen-lockfile`. Windows desktop builds also need Rust and the
 [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
 
+## Features belong in plugins
+
+A new feature that does not need a change to the core is built as a plugin:
+agent commands, skills, guide lines, slash commands and background services
+are all a plugin can add, with the permissions it declares
+([plugins](docs/plugins.md)). Publish it from your own repository; anyone can
+install it from its git URL.
+
+Pull requests are for:
+
+- bug fixes;
+- performance;
+- documentation;
+- new extension points that plugins need. Describe the plugin that needs it
+  and what it cannot do today.
+
+A pull request that adds a feature a plugin could provide is closed with a
+pointer to the [plugin docs](docs/plugins.md).
+
+## Pull requests
+
 Keep a change focused on one problem. Explain what happens before and after it,
 and include the commands you ran. UI changes need desktop and phone captures.
 Do not include credentials, pairing links, personal paths or provider transcripts
