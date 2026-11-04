@@ -240,6 +240,7 @@ export class ContactHostAsks {
       const admission = request.holderAdmission;
       if (!admission || stamp !== admission.member) { this.#rehome(id, `Not delivered: ${holder.name} joined the group again since this ask; ask again`); return; }
       let answer: unknown;
+      let refusal: PeerRefusal | null = null;
       try {
         answer = await within(this.#core.coordination.request(holder, 'contact.route', {
           action: 'held-ask', id, from: request.from, coreId: request.coreId, admission: admission.contact, text: request.text, want: request.want,
@@ -247,9 +248,13 @@ export class ContactHostAsks {
         }), OFFER_MS);
       } catch (error) {
         // The holder's signed refusal is final for it; silence is retried.
-        if (error instanceof PeerRefusal) this.#rehome(id, error.message);
-        return;
+        if (!(error instanceof PeerRefusal)) answer = null; else refusal = error;
       }
+      // The contact moved here while the holder was asked, and the retry its move queued found this one busy: whatever the
+      // holder said, its copy may have stayed behind, so the ask goes from here (a contact that heard it already ignores the repeat).
+      const now = this.#find(id);
+      if (now?.status === 'pending' && now.holder !== undefined && this.#store.has(now.coreId)) { this.#rehome(id, ''); return; }
+      if (refusal) { this.#rehome(id, refusal.message); return; }
       if ((answer as { id?: unknown } | null)?.id !== id) return;
       this.#settle(id, current => { delete current.pendingHolder; });
     } finally { this.#busy.delete(id); }

@@ -203,3 +203,26 @@ test('an ask the holder never took is sent from the Bots host once the contact m
   expect(requestOn(x, asked.id)).toMatchObject({ status: 'pending' });
   expect(requestOn(x, asked.id)!.holder).toBeUndefined();
 }, 60000);
+
+test('an ask on its way to the holder when the contact moves to the Bots host is sent from there, even when the holder took it', async () => {
+  let sweep!: (force?: boolean) => void;
+  const { a, x, cId, ask, incoming } = await heldSetup(({ a }) => {
+    const link = a.core.contacts.groupLink;
+    sweep = link.sweep.bind(link);
+    link.sweep = () => {};
+  });
+  // The holder's answer to the held-ask comes back only after the move: it took the ask, then handed the contact without it.
+  const request = x.core.coordination.request.bind(x.core.coordination);
+  x.core.coordination.request = (async (peer: Parameters<typeof request>[0], method: Parameters<typeof request>[1], params: Parameters<typeof request>[2]) => {
+    if (method !== 'contact.route' || (params as { action?: unknown } | undefined)?.action !== 'held-ask') return request(peer, method, params);
+    await waitFor(() => x.core.contacts.has(cId), 20000);
+    return { id: (params as { id: string }).id };
+  }) as typeof request;
+  const asked = await ask('Taken on the way');
+  a.core.contacts.groupLink.sweep = sweep;
+  sweep(true);
+  await waitFor(() => x.core.contacts.has(cId) && !a.core.contacts.has(cId), 20000);
+  // Within the contacts' 30 s retry.
+  await waitFor(() => incoming('Taken on the way') !== undefined, 10000);
+  expect(requestOn(x, asked.id)!.holder).toBeUndefined();
+}, 60000);
