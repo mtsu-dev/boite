@@ -122,10 +122,10 @@ export interface WorkflowInstance {
    * `threadId`; `turnId` is its last turn already judged, so a report of it again settles nothing.
    * `correction`: an output correction decided and not yet taken there, sent again with the same request id
    * until it is, a core restart included. `accepted`: a turn that ended on live background work with the step's
-   * result in its answer; that work was stopped there, and the step settles on that turn once its worktree there
-   * is kept or removed.
+   * result in its answer, and that result as it was read then; that work was stopped there, and the step ends on
+   * that result once its worktree there is kept or removed, with no second read.
    */
-  machine?: { name: string; coreId: string | null; requestId: string; childId: string | null; turnId: string | null; corrections: number; correction?: { requestId: string; text: string }; accepted?: string };
+  machine?: { name: string; coreId: string | null; requestId: string; childId: string | null; turnId: string | null; corrections: number; correction?: { requestId: string; text: string }; accepted?: { turnId: string; result: string | null; output: unknown } };
 }
 
 export interface WorkflowNode {

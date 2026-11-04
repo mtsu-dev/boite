@@ -487,3 +487,35 @@ test('a turn begun there while a checkpoint result is read is not stopped for th
   expect(step().output).toEqual({ branch: 'feat/new' });
   await waitFor(() => run(started.id).status === 'done');
 }, 20_000);
+
+test('a result taken from a remote checkpoint is kept as read, so a later failed read cannot lose its JSON', async () => {
+  const { runs, prompts } = heldBus();
+  const { desk, pc, owner, threadId, machine, onPc, run } = await setup();
+  const remote = desk.core.delegation.remote, read = remote.read.bind(remote);
+  let reads = 0;
+  // The first read of the whole answer goes through; the network is down for any read after it.
+  const spy = spyOn(remote, 'read').mockImplementation(async params => {
+    if (++reads > 1) throw new Error('the other machine is unreachable');
+    return read(params);
+  });
+  restores.push(() => spy.mockRestore());
+  const started = await owner.call('workflows.start', { threadId, requestId: 'remote-kept-result', plan: { name: 'Remote bus', steps: [
+    { id: 'bus', machine, project: 'notes', task: 'Build the bus.', output: { branch: 'string' } },
+    { id: 'shots', after: ['bus'], task: 'Shoot {{bus.branch}}' },
+  ] } });
+  await waitFor(() => onPc().some(child => runs.has(child.id)));
+  const childId = onPc()[0]!.id, first = runs.get(childId)!;
+  const step = () => run(started.id).nodes[0]!.instances[0]!;
+  first.ctx.background!([{ ...WATCHER, startedAt: Date.now() }]);
+  // The JSON block comes after the part of the answer the report carries.
+  first.finish(`${'Build log line.\n'.repeat(400)}${JSON_BLOCK({ branch: 'feat/bus' })}`);
+  await waitFor(() => remote.record(threadId, step().machine!.requestId)?.state?.lastTurn?.id === first.ctx.turn.id && reads > 0, 3000);
+  expect(remote.record(threadId, step().machine!.requestId)!.state!.result).not.toContain('feat/bus');
+  await waitFor(() => step().status !== 'running', 5000);
+  // Before, the second read failed, the bounded report had no JSON, and a correction went there instead.
+  expect(step()).toMatchObject({ status: 'done', output: { branch: 'feat/bus' } });
+  expect(step().machine).not.toHaveProperty('accepted');
+  await waitFor(() => prompts.some(prompt => prompt.includes('Shoot feat/bus')), 3000);
+  expect(pc.core.journal.listTurns(childId)).toHaveLength(1);
+  await waitFor(() => run(started.id).status === 'done');
+}, 20_000);
