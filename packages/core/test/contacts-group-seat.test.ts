@@ -119,15 +119,7 @@ async function restartBeforeCommit(away: number): Promise<void> {
   // Away longer than a handed contact waits (1 h): only the hand's time ages, as if X had been off that long.
   const incoming = x.core.journal.getSetting('contacts:incoming') as { at: number }[];
   x.core.journal.setSetting('contacts:incoming', incoming.map(entry => ({ ...entry, at: entry.at - away })));
-  const saved = mkdtempSync(join(tmpdir(), 'boite-seat-restart-'));
-  scratch.push(saved);
-  const dataDir = join(saved, 'data');
-  cpSync(x.dataDir, dataDir, { recursive: true });
-  const port = Number(new URL(x.url).port);
-  await x.stop();
-  const back = await startTestCore({ dataDir, port });
-  cores.push(back);
-  unreachable(back);
+  const back = await restarted(x);
   // Back on its data, X dials C at the seat it was handed: nothing waits for A.
   await waitFor(() => back.core.contacts.has(cId) && back.core.contacts.linked(cId), 20000);
   expect(back.core.contacts.find(cId)).toMatchObject({ role: 'guest', url: c.url });
@@ -141,6 +133,98 @@ test('a Bots host that stopped after the contact took its hello, before keeping 
 test('a Bots host back two hours after the contact took its hello still dials it again', async () => {
   await restartBeforeCommit(2 * 3_600_000);
 }, 90000);
+
+/** X marks C's seat dialed, then its hello never leaves: C never followed X, which resumes the dial on its sweeps. */
+async function strandedBeforeHello(): Promise<{ sides: Awaited<ReturnType<typeof setup>>; restore: () => void }> {
+  const sides = await setup(cores, true);
+  const { a, x, aClient, xId, cId } = sides;
+  unreachable(x);
+  const hello = x.core.contacts.helloHeaders.bind(x.core.contacts);
+  x.core.contacts.helloHeaders = () => { throw new Error('outbound outage'); };
+  await botsHome(a, aClient, x, xId);
+  await waitFor(() => a.core.contacts.groupLink.stuck(cId) !== undefined && x.core.contacts.groupLink.resuming(), 10000);
+  return { sides, restore: () => { x.core.contacts.helloHeaders = hello; } };
+}
+
+/** Restarts `x` on a copy of its data, at the same address: what it kept only in memory is gone. */
+async function restarted(x: TestCore): Promise<TestCore> {
+  const saved = mkdtempSync(join(tmpdir(), 'boite-seat-restart-'));
+  scratch.push(saved);
+  const dataDir = join(saved, 'data');
+  cpSync(x.dataDir, dataDir, { recursive: true });
+  const port = Number(new URL(x.url).port);
+  await x.stop();
+  const back = await startTestCore({ dataDir, port });
+  cores.push(back);
+  unreachable(back);
+  return back;
+}
+
+test('removing a contact on the member cancels the seat the Bots host still dials', async () => {
+  const { sides: { x, c, aClient, xClient, aId, xId, cId }, restore } = await strandedBeforeHello();
+  const xray = await project(x, xClient, 'xray');
+  await aClient.call('contacts.grant', { coreId: cId, projectId: xray.id, machine: xId });
+  await aClient.call('contacts.remove', { coreId: cId });
+  await waitFor(() => !x.core.contacts.groupLink.resuming(), 10000);
+  restore();
+  x.core.contacts.groupLink.sweep();
+  // The cancel took the entry: A's late dial of that seat finds nothing to take.
+  expect(await thrown(x.core.contacts.groupLink.handed(x.core.group.peers().find(peer => peer.coreId === aId)!, { action: 'dial', contact: cId }))).toThrow('handed no guest seat');
+  expect(x.core.contacts.has(cId)).toBe(false);
+  expect(c.core.contacts.has(xId)).toBe(false);
+}, 60000);
+
+test('a Bots host that missed the cancel asks the member before it dials the seat again', async () => {
+  const { sides: { a, c, x, aClient, xId, cId } } = await strandedBeforeHello();
+  const request = a.core.coordination.request.bind(a.core.coordination);
+  a.core.coordination.request = (peer, op, payload) => (payload as { action?: unknown } | null)?.action === 'cancel' ? Promise.reject(new Error('lost on the way')) : request(peer, op, payload);
+  await aClient.call('contacts.remove', { coreId: cId });
+  // Back with a fresh hello and no wait in memory, X still holds C's seat entry, which C still honours.
+  const back = await restarted(x);
+  await waitFor(() => !back.core.contacts.groupLink.resuming(), 10000);
+  expect(back.core.contacts.has(cId)).toBe(false);
+  expect(c.core.contacts.has(xId)).toBe(false);
+}, 60000);
+
+test('a bare 403 from the contact keeps the Bots host dialing its seat until the contact takes the hello', async () => {
+  const { a, x, c, aClient, xId, cId } = await setup(cores, true);
+  unreachable(x);
+  x.core.contacts.groupLink.commit = () => { throw new Error('stopped before commit'); };
+  await botsHome(a, aClient, x, xId);
+  await waitFor(() => c.core.contacts.has(xId) && !x.core.contacts.has(cId), 20000);
+  const incoming = x.core.journal.getSetting('contacts:incoming') as { at: number }[];
+  x.core.journal.setSetting('contacts:incoming', incoming.map(entry => ({ ...entry, at: entry.at - 8 * 24 * 3_600_000 })));
+  // What C answers with contacts off by policy, or what a proxy in front of it answers: nothing signed by C.
+  const hello = c.core.contacts.hello.bind(c.core.contacts);
+  let refusals = 0;
+  c.core.contacts.hello = () => { refusals += 1; return new Response('forbidden', { status: 403 }); };
+  const back = await restarted(x);
+  await waitFor(() => refusals > 0, 10000);
+  await Bun.sleep(200);
+  expect(back.core.contacts.groupLink.resuming()).toBe(true);
+  c.core.contacts.hello = hello;
+  const clock = Date.now;
+  // Past the 10 minute wait after a failed dial.
+  Date.now = () => clock() + 11 * 60_000;
+  try {
+    back.core.contacts.groupLink.sweep();
+    await waitFor(() => back.core.contacts.has(cId) && back.core.contacts.linked(cId), 20000);
+  } finally { Date.now = clock; }
+}, 90000);
+
+test('a contact that signs its refusal of the Bots host\'s hello ends the resume of a seat it never took', async () => {
+  const { sides: { x, c, cClient, aId, xId, cId }, restore } = await strandedBeforeHello();
+  await cClient.call('contacts.remove', { coreId: aId });
+  restore();
+  const clock = Date.now;
+  Date.now = () => clock() + 11 * 60_000;
+  try {
+    x.core.contacts.groupLink.sweep();
+    await waitFor(() => !x.core.contacts.groupLink.resuming(), 10000);
+  } finally { Date.now = clock; }
+  expect(x.core.contacts.has(cId)).toBe(false);
+  expect(c.core.contacts.has(xId)).toBe(false);
+}, 60000);
 
 test('a server that takes the upgrade without the Bots host\'s key does not win the move over the Bots host', async () => {
   const { a, x, c, aClient, xId, cId } = await setup(cores);

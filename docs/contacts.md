@@ -340,9 +340,25 @@ sequenceDiagram
      it past the hour a hand waits, and across a new hand of that contact: if
      it stops after the contact switched but before it stored the contact, it
      dials that address again on each sweep after its restart, however long
-     it was off, since the contact now refuses the member's next move. A
-     failed dial waits 10 minutes, then twice as long up to 6 hours; a week
-     after the hand, a contact that still refuses the hello ends it. A contact
+     it was off, since the contact now refuses the member's next move. Before
+     each such dial it asks the member that handed it
+     (`contact.hand { action: 'pending' }`) whether it still holds the
+     contact at the admission it handed (`addedAt`): a member that answers
+     no ends the entry, and one that does not answer, or left the group, only
+     makes it wait. A failed ask or dial waits 10 minutes, then twice as long
+     up to 6 hours. Only the contact's own key ends a resume from the
+     contact's side: a probe from a core it neither knows nor gave a seat gets
+     a 403 with `x-boite-refusal`, its signature over
+     `boite-contact-refusal\n` followed by that probe's hello, and the Bots host
+     then treats the entry as an ordinary hand again, which expires. A bare
+     403 (contacts off there by policy, a proxy) proves nothing and only
+     waits. Removing the contact on the member (`contacts.remove`) sends every
+     other machine of the group `contact.hand { action: 'cancel' }` for that
+     admission, which drops the hand still waiting there, and a dial already
+     out keeps nothing (`commit` checks the hand it dialed for is still
+     there). A Bots host that misses the cancel learns it from the ask above.
+     A contact that already followed the Bots host before the removal stays
+     there, and its owner removes it there. A contact
      whose name does not resolve from the group (Funnel on another tailnet,
      the group on Headscale) moves this way, since only the Bots host has to
      reach it. An older Bots host that does not answer `seat` gets the move
@@ -642,7 +658,10 @@ origin, then stops the old member and runs an ask, its answer and letters both
 ways; it also checks the reason an older contact gives, that a seat dies
 with the admission that gave it, that a Bots host restarted between the
 contact's switch and its own record dials the contact again, at once or two
-hours later, and that a server that takes the upgrade without the Bots host's
+hours later, that removing the contact on the member cancels a seat the Bots
+host still dials, or one it learns about from the member after a restart,
+that a bare 403 only delays the resume, that a refusal under the contact's
+key ends it, and that a server that takes the upgrade without the Bots host's
 key loses the move to the Bots host. `contacts-funnel.test.ts` drives the Funnel mounts through
 the fake CLI (`test/fixtures/fake-tailscale.ts`) and checks their reachability
 through stubbed DNS and requests, never the internet. `magic-dns.test.ts` covers

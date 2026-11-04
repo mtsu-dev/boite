@@ -529,6 +529,7 @@ export class ContactStore implements LinkedContacts {
     const contact = this.find(coreId);
     if (!contact) throw invalidParams('coreId: expected the core id of one of this core\'s contacts', { field: 'coreId' });
     const holders = this.members.holdersOf(coreId);
+    this.groupLink.removed(contact);
     this.unlink(coreId);
     this.#save(this.list().filter(entry => entry.coreId !== coreId));
     this.requests.save(this.requests.list().filter(request => request.coreId !== coreId));

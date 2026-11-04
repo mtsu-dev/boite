@@ -41,7 +41,7 @@ import { tellBot } from './bot.ts';
 import { ContactBotHome } from './bot-home.ts';
 import { contactFace } from './face.ts';
 import { checkCard, checkSigningKey, contactUrl } from './invite.ts';
-import { dialContact, dialProven } from './link-hello.ts';
+import { ContactRefused, dialContact, dialProven } from './link-hello.ts';
 import { memberThreadId } from './member-address.ts';
 import { MAX_RELATIONS } from './relations.ts';
 import type { StoredRequest } from './requests.ts';
@@ -69,8 +69,6 @@ const UNREACHABLE_MAX_MS = 6 * 3_600_000;
 const PROBE_MS = 3500;
 /** How long a contact waits for the Bots host to take a guest seat it was moved to. */
 const SEAT_MS = 10 * 60_000;
-/** How long a guest seat this host dialed keeps being dialed while the contact refuses this host. */
-const RESUME_MS = 7 * 24 * 3_600_000;
 /** The contact's answer to the move leaves on the old link before it closes. */
 const RELEASE_MS = 2000;
 const ALIASED = /~[0-9a-f]{16}$/;
@@ -120,6 +118,8 @@ export class ContactGroupLink {
   readonly #dialing = new Map<string, Promise<void>>();
   /** Guest seats a resume could not reach yet: how many tries, and when to dial again. */
   readonly #resumes = new Map<string, { tries: number; until: number }>();
+  /** Guest seats a resume is asking their member about, or dialing. */
+  readonly #resuming = new Set<string>();
   /** The Contacts bot goes to the Bots host before the links do (`bot-home.ts`). */
   readonly #bot: ContactBotHome;
   #closed = false;
@@ -255,6 +255,21 @@ export class ContactGroupLink {
     this.#store.relisten();
   }
 
+  /**
+   * The owner removed a contact here: a machine of the group that this member
+   * handed it to drops the hand it still waits on (`cancel`). One that misses
+   * it asks this member before it dials the contact again (`#resume`).
+   */
+  removed(contact: StoredContact): void {
+    this.#next.delete(contact.coreId);
+    this.#stuck.delete(contact.coreId);
+    if (contact.capabilities?.groupLink !== 1) return;
+    for (const peer of this.#core.group.peers()) {
+      void this.#core.coordination.request(peer, 'contact.hand', { action: 'cancel', contact: contact.coreId, admission: contact.addedAt })
+        .catch(error => { if (!this.#closed) this.#core.log('info', `contacts: ${peer.name} did not hear that ${contact.name} was removed (${messageOf(error)})`, { source: 'contacts' }); });
+    }
+  }
+
   /** The Bots host forwards the answer to a request a thread of this member had sent before its contact moved. */
   answerHere(payload: unknown): { ok: true } {
     const raw = payload as { request?: ContactRequest; name?: unknown; threads?: unknown } | null;
@@ -283,7 +298,13 @@ export class ContactGroupLink {
     if (action === 'answer') return this.#store.hostAsks.heldAnswer(peer, payload) ?? this.answerHere(payload);
     if (action === 'bot') return this.#bot.coming(peer);
     if (action === 'dial') return this.#take(peer, payload);
-    if (action !== 'hand') throw invalidParams('hand.action: expected hand, answer, bot or dial');
+    if (action === 'cancel') return this.#cancelled(peer, payload);
+    // A Bots host asks before it dials a seat again: this member still holds the contact at the admission it handed.
+    if (action === 'pending') {
+      const raw = payload as { contact?: unknown; admission?: unknown };
+      return { handing: this.#store.find(text(raw.contact, 'hand.contact', 100))?.addedAt === raw.admission };
+    }
+    if (action !== 'hand') throw invalidParams('hand.action: expected hand, answer, bot, dial, cancel or pending');
     const self = this.#self();
     if (this.#core.group.roleOf('botsHome') !== self) throw refused('contact.hand: this machine is not the group\'s Bots host');
     const raw = payload as { contact?: Partial<StoredContact>; requests?: unknown; relations?: unknown; seat?: { url?: unknown } | null };
@@ -336,16 +357,37 @@ export class ContactGroupLink {
     return { ok: true };
   }
 
-  /** One hello to a guest seat at a time. A hello that lands after the caller's wait still moved the contact: this host keeps it then. */
+  /** `contact.hand { action: 'cancel' }`: the member's owner removed that contact, and the hand it still waits on here goes. */
+  #cancelled(peer: CoordinationPeer, payload: unknown): { ok: true } {
+    const raw = payload as { contact?: unknown; admission?: unknown } | null;
+    const coreId = text(raw?.contact, 'hand.contact', 100);
+    if (!Number.isSafeInteger(raw?.admission)) throw invalidParams('hand.admission: expected the addedAt of the removed contact');
+    this.#drop(peer.coreId, coreId, raw!.admission as number);
+    return { ok: true };
+  }
+
+  /** The hand of `coreId` that `from` gave at `admission` is off: neither a dial nor a hello commits it any more. */
+  #drop(from: string, coreId: string, admission: number): void {
+    const incoming = this.#incoming();
+    const kept = incoming.filter(item => !(item.contact.coreId === coreId && item.from === from && item.contact.addedAt === admission));
+    if (kept.length === incoming.length) return;
+    this.#core.journal.setSetting(INCOMING, kept);
+    this.#resumes.delete(coreId);
+    this.#store.relisten();
+  }
+
+  /** One hello to a guest seat at a time. A hello that lands after the caller's wait still moved the contact: this host keeps it then, unless that hand was cancelled meanwhile. */
   #seatDial(coreId: string, url: string): Promise<void> {
     const running = this.#dialing.get(coreId);
     if (running) return running;
     const entry = this.#incoming().find(item => item.contact.coreId === coreId && item.url === url);
     if (!entry) return Promise.reject(new Error('no guest seat for that contact'));
+    let headers: Record<string, string>;
+    try { headers = this.#store.helloHeaders(coreId); } catch (error) { return Promise.reject(error); }
     // The contact signs this hello back: an origin that only takes the upgrade does not make this host keep it.
-    const opened = dialProven(this.#core, url, this.#store.helloHeaders(coreId), entry.contact.publicKey, PROBE_MS).then(socket => {
+    const opened = dialProven(this.#core, url, headers, entry.contact.publicKey, PROBE_MS).then(socket => {
       socket.close(1000, 'moved');
-      if (!this.#closed) this.commit(coreId);
+      if (!this.#closed) this.commit(coreId, entry);
     }).finally(() => this.#dialing.delete(coreId));
     this.#dialing.set(coreId, opened);
     return opened;
@@ -356,23 +398,38 @@ export class ContactGroupLink {
    * again on each sweep, however long this host was away: if it stopped
    * after the contact followed it but before it kept the contact, the
    * contact now only waits for this host, and the member's next move would
-   * be refused there. A failed dial waits 10 minutes, then twice as long up
-   * to 6 hours. The entry goes once this host keeps the contact, or once the
-   * contact still refuses this host's hello a week after the hand.
+   * be refused there. The member that handed it is asked first: a contact
+   * its owner removed there is not taken here. A failed ask or dial waits
+   * 10 minutes, then twice as long up to 6 hours. The entry goes once this
+   * host keeps the contact, once the member no longer holds it, or once the
+   * contact refuses this host's hello under its own key (`ContactRefused`);
+   * a bare 403 (contacts off there, a proxy) only waits.
    */
   #resume(): void {
     if (this.#closed) return;
     const now = Date.now();
     for (const entry of this.#incoming()) {
       const coreId = entry.contact.coreId, url = entry.url;
-      if (url === undefined || !entry.dialed || this.#store.has(coreId) || this.#dialing.has(coreId) || (this.#resumes.get(coreId)?.until ?? 0) > now) continue;
-      this.#seatDial(coreId, url).then(() => this.#resumes.delete(coreId), error => {
-        // A contact that still refuses this host after a week never followed it: the entry is an ordinary hand again, which expires.
-        if (/\b403\b/.test(messageOf(error)) && Date.now() - entry.at > RESUME_MS) { this.#resumes.delete(coreId); this.#forget(coreId, url); return; }
+      if (url === undefined || !entry.dialed || this.#store.has(coreId) || this.#dialing.has(coreId) || this.#resuming.has(coreId) || (this.#resumes.get(coreId)?.until ?? 0) > now) continue;
+      this.#resuming.add(coreId);
+      void this.#handing(entry).then(handing => {
+        if (!handing) { this.#drop(entry.from, coreId, entry.contact.addedAt); return; }
+        return this.#seatDial(coreId, url).then(() => { this.#resumes.delete(coreId); });
+      }).catch(error => {
+        if (this.#closed) return;
+        if (error instanceof ContactRefused) { this.#resumes.delete(coreId); this.#forget(coreId, url); return; }
         const tries = (this.#resumes.get(coreId)?.tries ?? 0) + 1;
         this.#resumes.set(coreId, { tries, until: Date.now() + Math.min(UNREACHABLE_RETRY_MS * 2 ** (tries - 1), UNREACHABLE_MAX_MS) });
-      });
+      }).finally(() => this.#resuming.delete(coreId));
     }
+  }
+
+  /** The member that handed this seat still holds the contact at the same admission; a member that left the group, or does not answer, cannot say. */
+  async #handing(entry: Incoming): Promise<boolean> {
+    const member = this.#core.group.peers().find(peer => peer.coreId === entry.from);
+    if (!member) throw new Error(`${entry.from} is not a machine of this group`);
+    const answer = await this.#core.coordination.request(member, 'contact.hand', { action: 'pending', contact: entry.contact.coreId, admission: entry.contact.addedAt }) as { handing?: unknown } | null;
+    return answer?.handing === true;
   }
 
   /** Guest seats still to dial keep the store's timer, which sweeps them again. */
@@ -405,9 +462,13 @@ export class ContactGroupLink {
     return { ...rest, ...(url === undefined ? { role: 'host' as const } : { role: 'guest' as const, url }), fingerprint: fingerprintWords(self.publicKey, contact.publicKey), syncPending: 1 };
   }
 
-  /** The contact's first hello reached this host, or this host's reached the contact: the handed contact becomes its own. */
-  commit(coreId: string): void {
-    const entry = this.#incoming().find(item => item.contact.coreId === coreId);
+  /**
+   * The contact's first hello reached this host, or this host's reached the
+   * contact: the handed contact becomes its own. A dial names the hand it
+   * went out for (`dialed`), which must still be here: a cancel meanwhile wins.
+   */
+  commit(coreId: string, dialed?: Pick<Incoming, 'from' | 'contact'>): void {
+    const entry = this.#incoming().find(item => item.contact.coreId === coreId && (dialed === undefined || (item.from === dialed.from && item.contact.addedAt === dialed.contact.addedAt)));
     if (!entry || this.#store.has(coreId)) return;
     this.#core.journal.setSetting(INCOMING, this.#incoming().filter(item => item !== entry && item.contact.coreId !== coreId));
     const record = this.#record(entry.contact, entry.url);
