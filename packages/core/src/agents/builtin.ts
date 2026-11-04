@@ -88,7 +88,7 @@ export class BuiltinBots {
    * none) reads them, so the save finds the account's default model.
    */
   async #readModels(selection: AgentSelection): Promise<void> {
-    if (selection.model !== null || this.#probe === null) return;
+    if (selection.model != null || this.#probe === null) return;
     const provider = this.#core.providers.get(selection.providerId);
     if (provider === undefined || !PROBED_PROTOCOLS.includes(provider.protocol) || botDefaultModel(provider, selection.accountId) !== null) return;
     await this.#probe({ providerId: provider.id, accountId: selection.accountId });
@@ -124,14 +124,17 @@ export class BuiltinBots {
   async ensure(params: RpcParams<'agents.builtin.ensure'>): Promise<AgentProfile> {
     object(params, 'params');
     const kind = oneOf(params.kind, 'kind', AGENT_BUILTINS);
+    const name = params.name === undefined ? undefined : text(params.name, 'name', 100);
     if (params.selection !== undefined) object(params.selection, 'selection');
-    // Only a new bot takes this route; one made before keeps its own.
-    if (!this.#store.records.list('profile').some(agent => agent.builtin === kind)) await this.#readModels(params.selection ?? this.#defaultSelection(kind));
-    return this.#ensure(params, kind);
+    // Only a new bot takes this route, chosen once so the save runs on the account the read listed; one made before keeps its own.
+    if (this.#store.records.list('profile').some(agent => agent.builtin === kind)) return this.#ensure(kind, name, null);
+    const selection = params.selection ?? this.#defaultSelection(kind);
+    await this.#readModels(selection);
+    return this.#ensure(kind, name, selection);
   }
 
-  #ensure(params: RpcParams<'agents.builtin.ensure'>, kind: AgentBuiltin): AgentProfile {
-    const name = params.name === undefined ? undefined : text(params.name, 'name', 100);
+  /** `selection` is the new bot's route, null when one existed before the wait for its models. */
+  #ensure(kind: AgentBuiltin, name: string | undefined, selection: AgentSelection | null): AgentProfile {
     const existing = this.#store.records.list('profile').find(agent => agent.builtin === kind);
     if (existing !== undefined) {
       if (existing.status !== 'archived') {
@@ -143,7 +146,7 @@ export class BuiltinBots {
     }
     const shipped = BUILTIN_TEXT[kind];
     return this.#store.saveProfile({
-      value: { name: name ?? shipped.name, domain: shipped.domain, instructions: shipped.instructions, avatar: shipped.avatar, status: 'active', projectIds: [], selection: params.selection ?? this.#defaultSelection(kind) },
+      value: { name: name ?? shipped.name, domain: shipped.domain, instructions: shipped.instructions, avatar: shipped.avatar, status: 'active', projectIds: [], selection: selection ?? this.#defaultSelection(kind) },
     }, kind);
   }
 
@@ -158,9 +161,11 @@ export class BuiltinBots {
   async reset(params: RpcParams<'agents.builtin.reset'>): Promise<AgentProfile> {
     object(params, 'params');
     const { builtin } = this.#builtin(params.agentId);
+    const name = params.name === undefined ? undefined : text(params.name, 'name', 100);
     if (params.selection !== undefined) object(params.selection, 'selection');
-    await this.#readModels(params.selection ?? this.#defaultSelection(builtin, 'reset'));
-    return this.#reset(params);
+    const selection = params.selection ?? this.#defaultSelection(builtin, 'reset');
+    await this.#readModels(selection);
+    return this.#reset(params.agentId, name, selection);
   }
 
   /** The built-in bot `agentId` names, read again after the wait for its models. */
@@ -170,11 +175,10 @@ export class BuiltinBots {
     return agent as AgentProfile & { builtin: AgentBuiltin };
   }
 
-  #reset(params: RpcParams<'agents.builtin.reset'>): AgentProfile {
-    const agent = this.#builtin(params.agentId);
+  #reset(agentId: string, named: string | undefined, selection: AgentSelection): AgentProfile {
+    const agent = this.#builtin(agentId);
     const shipped = BUILTIN_TEXT[agent.builtin];
-    const name = params.name === undefined ? shipped.name : text(params.name, 'name', 100);
-    const selection = params.selection ?? this.#defaultSelection(agent.builtin, 'reset');
+    const name = named ?? shipped.name;
     const { id, revision, createdAt: _createdAt, updatedAt: _updatedAt, ...value } = agent;
     // Boite's text first, through the records: the save below refuses any other domain or instructions.
     const current = agent.domain === shipped.domain && agent.instructions === shipped.instructions
