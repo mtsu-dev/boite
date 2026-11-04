@@ -18,7 +18,7 @@ import type { ContactStore } from './store.ts';
 import { contactFace } from './face.ts';
 import { memberThreadId } from './member-address.ts';
 import { contactAnswer } from './answers.ts';
-import type { Reachable } from './held.ts';
+import { throughHolder, type Reachable } from './held.ts';
 
 const REQUESTS = 'contacts:requests';
 /** Requests waiting at once, per contact and direction. */
@@ -36,10 +36,13 @@ export const NO_BOT = 'turn on Contacts in Settings > Experiments: it creates th
  * `pendingMember`: on the Bots host, the answer to a member thread's ask that member has not heard yet;
  * on a member, the answer to an ask the Bots host sent through it (`askedBy`) the host has not heard yet.
  * `holder`: on the Bots host, the member that holds the contact and sends the ask for it (`held.ts`);
- * `pendingHolder` while it has not taken it yet.
+ * `pendingHolder` while it has not taken it yet, and `holderAdmission`: the member's admission and the contact's on it when the ask was
+ * made; either changed, the ask is refused rather than sent on another link.
  * `askedBy`: on that member, the Bots host whose bot forwarded the ask; it hears the answer.
  */
-export type StoredRequest = ContactRequest & { pendingSend?: true; remoteId?: string; pendingHost?: HostAsk; pendingMember?: true; holder?: string; pendingHolder?: true; askedBy?: string };
+export type StoredRequest = ContactRequest & { pendingSend?: true; remoteId?: string; pendingHost?: HostAsk; pendingMember?: true; holder?: string; pendingHolder?: true; holderAdmission?: HolderAdmission; askedBy?: string };
+/** The member's group admission (`memberAdmission`) and the contact's `addedAt` on that member. */
+export interface HolderAdmission { member: string; contact: number }
 /** What a member's ask names, as its thread wrote it, for the Bots host to resolve. */
 export interface HostAsk { contact?: string; target?: string }
 
@@ -73,7 +76,7 @@ export class ContactRequests {
   }
 
   view(request: StoredRequest): ContactRequest {
-    const { pendingSend: _send, remoteId: _remote, pendingHost: _host, pendingMember: _member, holder: _holder, pendingHolder: _held, askedBy: _by, ...shown } = request;
+    const { pendingSend: _send, remoteId: _remote, pendingHost: _host, pendingMember: _member, holder: _holder, pendingHolder: _held, holderAdmission: _admission, askedBy: _by, ...shown } = request;
     return shown;
   }
 
@@ -146,7 +149,7 @@ export class ContactRequests {
       throw refused(contact ? `at most ${MAX_PENDING} requests may wait at ${contact.name}; wait for an answer` : `at most ${MAX_PENDING} requests may wait for the Contacts bot; wait for an answer`);
     }
     // The bot's own ask for a contact another member holds goes through that member (`host-asks.ts`).
-    const sending = !byBot ? { stage: 'bot' as const } : contact!.holder ? { holder: contact!.holder.coreId, pendingHolder: true as const } : { pendingSend: true as const };
+    const sending = !byBot ? { stage: 'bot' as const } : throughHolder(contact!) ?? { pendingSend: true as const };
     const request: StoredRequest = {
       id: id ?? newId('creq_'), direction: 'out', coreId, contact: contact?.name ?? '', want: given(ask.want) ? want(ask.want, 'want') : target ? 'talk' : 'thread',
       ...(target ? { target: { threadId: target.threadId } } : {}), ...sending,
@@ -196,11 +199,11 @@ export class ContactRequests {
     if (given(params.target) && (typeof params.target !== 'string' || !THREAD_ID.test(params.target))) throw invalidParams('target: expected a thread id of the contact', { field: 'target' });
     const target = given(params.target) ? { threadId: params.target as string } : request.coreId === contact.coreId ? request.target : undefined;
     Object.assign(request, {
-      coreId: contact.coreId, contact: contact.name, ...(contact.holder ? { holder: contact.holder.coreId, pendingHolder: true } : { pendingSend: true }),
+      coreId: contact.coreId, contact: contact.name, ...(throughHolder(contact) ?? { pendingSend: true }),
       ...(given(params.text) ? { text: text(params.text, 'text', 4000) } : {}), ...(given(params.want) ? { want: want(params.want, 'want') } : {}),
     });
     if (target) request.target = target; else delete request.target;
-    if (!contact.holder) { delete request.holder; delete request.pendingHolder; }
+    if (!contact.holder) { delete request.holder; delete request.pendingHolder; delete request.holderAdmission; }
     delete request.stage;
     this.save(requests);
     this.#store.changed();

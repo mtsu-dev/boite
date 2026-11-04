@@ -310,7 +310,8 @@ sequenceDiagram
    minutes later, then twice as long each time up to 6 hours, until the Bots
    host changes or the member restarts. A roster change does not cut that
    wait. The reason rides the member's held list (below), so the Bots host's
-   Contacts page and `boite contacts view` show why the link stayed.
+   Contacts bot and `boite contacts view` show why the link stayed; the
+   Contacts page shows only the member (`heldBy`).
 5. When it can, the contact re-keys everything to the Bots host: the record
    (trust, notes, grants and capabilities kept), requests, relations (the
    member's threads read `<thread>~<member prefix>` at the Bots host, and the
@@ -330,9 +331,9 @@ A contact that cannot reach the Bots host, or never announces `groupLink`,
 stays linked to the member it joined. It still belongs to the whole group
 (`contacts/held.ts`). Each member tells every other member, with its copy of
 the contacts (`relay.mirror { contacts, held }`), the list of contacts it
-holds: up to 32 entries of name, core id, link state, trust, whether the
-contact has a bot, the names of the projects it opened and why its link did
-not move. No key, address, grant or relation leaves the member. The list is
+holds: up to 32 entries of name, core id, when the member linked it
+(`addedAt`), link state, trust, whether the contact has a bot, the names of
+the projects it opened and why its link did not move. No key, address, grant or relation leaves the member. The list is
 pushed again whenever it or the roster changes, and an entry only counts while
 its member is in the group with the same admission. A member on an older Boite
 sends no list: its contacts stay out of every other machine's asks.
@@ -342,16 +343,23 @@ the name among this core's own contacts first, then the held lists. The Bots
 host's Contacts bot lists a held contact with `heldBy` (the member's name) and
 `heldReason`, and its tell names the member. When the bot forwards an ask for
 it, the Bots host sends `contact.route { action: 'held-ask' }`, sealed between
-members, to the holder. The holder checks that the sender is the current Bots
-host, that the contact is its own and has a bot, and that the asking thread is
+members, to the holder. The ask keeps the holder's group admission and the
+contact's `addedAt` from when it was made. The holder checks that the sender
+is the current Bots host, that the contact is its own and has a bot, that
+`addedAt` still matches (a contact removed and linked again never reads an
+older link's ask), and that the asking thread is
 its own pending ask or a group member's thread (with that member's model
 tier). It then sends the ask as a request of its own, under the same id, as
 any request to a direct contact. The contact reads a member's thread as
 `<thread>~<member prefix>` and the holder's own threads at their plain id.
 The decision comes back to the Bots host (`contact.hand { action: 'answer' }`),
-which passes it on to the asking member. A holder that left, or that no
-longer holds the contact, makes the Bots host look for the contact again: its
-own now, held by another member, or refused. An ask whose holder stays
+which passes it on to the asking member, a refusal the contact's core made
+itself (a model tier, a full queue) included. When the holder refuses, left,
+or joined the group again, an ask for a contact that moved to the Bots host
+since is sent from there; otherwise it is refused with the reason. A contact
+that moves to the Bots host while the holder still had to send an ask brings
+the holder's copy of it: the host's record takes what the copy knows, still
+to send or the contact's answer. An ask whose holder stays
 unreachable is refused after 7 days with "Not delivered: <member> stayed
 unreachable for 7 days".
 

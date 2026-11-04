@@ -17,6 +17,7 @@ import { text } from '../coordination-letter.ts';
 import type { Core } from '../core.ts';
 import { invalidParams } from '../errors.ts';
 import { memberAdmission } from './admission.ts';
+import type { HolderAdmission } from './requests.ts';
 import type { ContactStore } from './store.ts';
 
 const HELD = 'contacts:held';
@@ -35,12 +36,19 @@ export interface HeldContact {
   /** The contact has its own Contacts bot. */
   bot: boolean;
   capabilities: ContactCapabilities;
+  /** When the member linked it (`addedAt`): an ask names it, so a contact removed and linked again never gets an older link's ask. */
+  addedAt: number;
   /** Why the link has not moved to the Bots host, when the member tried. */
   reason?: string;
 }
 interface StoredHeld extends HeldContact { via: string; admission: string }
-/** A contact a thread here may ask for: this core's own, or one a member holds (`holder`), which sends the ask. */
-export interface Reachable { coreId: string; name: string; capabilities?: ContactCapabilities; holder?: CoordinationPeer }
+/** A contact a thread here may ask for: this core's own, or one a member holds (`holder`, at `admission`), which sends the ask. */
+export interface Reachable { coreId: string; name: string; capabilities?: ContactCapabilities; holder?: CoordinationPeer; admission?: HolderAdmission }
+
+/** The fields of a request sent through the member that holds its contact, or none for this core's own. */
+export function throughHolder(found: Reachable): { holder: string; pendingHolder: true; holderAdmission: HolderAdmission } | null {
+  return found.holder && found.admission ? { holder: found.holder.coreId, pendingHolder: true, holderAdmission: found.admission } : null;
+}
 
 const dashed = (name: string): string => name.replace(/\s+/g, '-').toLowerCase();
 
@@ -69,7 +77,7 @@ export class ContactHeld {
       return {
         coreId: contact.coreId, name: contact.name, link: this.#store.linkOf(contact.coreId), trusted: contact.trusted,
         offers: contact.offers.slice(0, 256).map(offer => offer.name.slice(0, 200)), bot: contact.bot !== undefined,
-        capabilities: contact.capabilities ?? {}, ...(reason ? { reason } : {}),
+        capabilities: contact.capabilities ?? {}, addedAt: contact.addedAt, ...(reason ? { reason } : {}),
       };
     });
   }
@@ -106,6 +114,7 @@ export class ContactHeld {
     if (!raw || typeof raw !== 'object') throw invalidParams(`${field}: expected a contact`);
     if (!['connected', 'connecting', 'offline'].includes(raw.link as string)) throw invalidParams(`${field}.link: expected connected, connecting or offline`);
     if (!Array.isArray(raw.offers) || raw.offers.length > 256) throw invalidParams(`${field}.offers: expected up to 256 names`);
+    if (!Number.isSafeInteger(raw.addedAt)) throw invalidParams(`${field}.addedAt: expected when the member linked the contact`);
     const flags = raw.capabilities ?? {};
     return {
       coreId: text(raw.coreId, `${field}.coreId`, 100), name: text(raw.name, `${field}.name`, 100), link: raw.link!, trusted: raw.trusted === true,
@@ -114,6 +123,7 @@ export class ContactHeld {
         ...(flags.sharedProjects === 1 ? { sharedProjects: 1 } : {}), ...(flags.humanLetters === 1 ? { humanLetters: 1 } : {}),
         ...(flags.contactsBot === 1 ? { contactsBot: 1 } : {}), ...(flags.groupLink === 1 ? { groupLink: 1 } : {}),
       },
+      addedAt: raw.addedAt!,
       ...(raw.reason === undefined ? {} : { reason: text(raw.reason, `${field}.reason`, 300) }),
     };
   }
@@ -123,7 +133,7 @@ export class ContactHeld {
    * member that left, an admission that changed, a contact this core holds
    * itself, or a machine of the group are left out.
    */
-  list(): (HeldContact & { member: CoordinationPeer })[] {
+  list(): (HeldContact & { member: CoordinationPeer; stamp: string })[] {
     const peers = this.#core.group.peers();
     const self = this.#core.coordination.card().coreId;
     const seen = new Set<string>();
@@ -133,8 +143,8 @@ export class ContactHeld {
       try { current = member !== undefined && entry.admission === memberAdmission(this.#core, entry.via); } catch { /* No group now. */ }
       if (!current || seen.has(entry.coreId) || entry.coreId === self || peers.some(peer => peer.coreId === entry.coreId) || this.#store.has(entry.coreId)) return [];
       seen.add(entry.coreId);
-      const { via: _via, admission: _admission, ...held } = entry;
-      return [{ ...held, member: member! }];
+      const { via: _via, admission, ...held } = entry;
+      return [{ ...held, member: member!, stamp: admission }];
     });
   }
 
@@ -147,7 +157,7 @@ export class ContactHeld {
     const wanted = value.trim().toLowerCase();
     const matches = (entry: { coreId: string; name: string }): boolean => entry.coreId === wanted || entry.name.toLowerCase() === wanted || dashed(entry.name) === wanted;
     const held = this.list().find(matches);
-    return held ? { coreId: held.coreId, name: held.name, capabilities: held.capabilities, holder: held.member } : undefined;
+    return held ? { coreId: held.coreId, name: held.name, capabilities: held.capabilities, holder: held.member, admission: { contact: held.addedAt, member: held.stamp } } : undefined;
   }
 
   /** `find`, or the refusal `boite threads ask` reads. */

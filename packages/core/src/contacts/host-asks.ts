@@ -29,6 +29,7 @@ import { GROUP_LETTER_TTL_MS } from './group-link.ts';
 import { given, MAX_PENDING, NO_BOT, THREAD_ID, want, type HostAsk, type StoredRequest } from './requests.ts';
 import type { ContactStore } from './store.ts';
 import { contactNotice } from './answers.ts';
+import { memberAdmission } from './admission.ts';
 import { contactFace } from './face.ts';
 
 /** The member's first offer must come back before the caller's own request times out. */
@@ -231,10 +232,15 @@ export class ContactHostAsks {
       const holder = this.#core.group.peers().find(peer => peer.coreId === request.holder);
       if (Date.now() - request.createdAt > GROUP_LETTER_TTL_MS) { this.#refuse(id, `Not delivered: ${holder?.name ?? 'the machine that holds the contact'} stayed unreachable for 7 days`); return; }
       if (!holder) { this.#rehome(id, `Not delivered: the machine that held ${request.contact} left the group`); return; }
+      // A member that left and joined again holds its contacts under a new admission: the ask is not carried over.
+      let stamp: string | undefined;
+      try { stamp = memberAdmission(this.#core, holder.coreId); } catch { /* No group now. */ }
+      const admission = request.holderAdmission;
+      if (!admission || stamp !== admission.member) { this.#rehome(id, `Not delivered: ${holder.name} joined the group again since this ask; ask again`); return; }
       let answer: unknown;
       try {
         answer = await within(this.#core.coordination.request(holder, 'contact.route', {
-          action: 'held-ask', id, from: request.from, coreId: request.coreId, text: request.text, want: request.want,
+          action: 'held-ask', id, from: request.from, coreId: request.coreId, admission: admission.contact, text: request.text, want: request.want,
           ...(request.target ? { target: request.target } : {}), ...(request.gitRemote ? { gitRemote: request.gitRemote } : {}),
         }), OFFER_MS);
       } catch (error) {
@@ -247,17 +253,17 @@ export class ContactHostAsks {
     } finally { this.#busy.delete(id); }
   }
 
-  /** The holder refused or left: the contact may be this core's own now, or another member's; otherwise the ask ends with the reason. */
+  /**
+   * The holder refused or left: a contact that moved to this core since is
+   * sent from here, on the same link. Another member's link to it is another
+   * admission, so the ask ends there with the reason.
+   */
   #rehome(id: string, reason: string): void {
     const request = this.#find(id);
     if (!request) return;
-    const found = this.#store.held.find(request.coreId);
-    if (found && found.holder?.coreId !== request.holder) {
-      this.#settle(id, current => {
-        if (found.holder) current.holder = found.holder.coreId;
-        else { delete current.holder; delete current.pendingHolder; current.pendingSend = true; }
-      });
-      if (!found.holder) this.#store.flush(request.coreId);
+    if (this.#store.has(request.coreId)) {
+      this.#settle(id, current => { delete current.holder; delete current.pendingHolder; delete current.holderAdmission; current.pendingSend = true; });
+      this.#store.flush(request.coreId);
       return;
     }
     this.#refuse(id, reason);
@@ -278,9 +284,11 @@ export class ContactHostAsks {
     if (current.status !== 'pending') return { ok: true };
     if (answer!.coreId !== current.coreId) throw invalidParams('hand.request.coreId: expected the contact the ask went to');
     if (answer!.status !== 'accepted' && answer!.status !== 'refused') throw invalidParams('hand.request.status: expected accepted or refused');
-    if (!['owner', 'bot', 'match', 'concierge'].includes(answer!.decidedBy as string)) throw invalidParams('hand.request.decidedBy: expected owner, bot, match or concierge');
+    // A refusal the cores made themselves (the contact's tier or queue, an expiry) names no decider.
+    const decided = answer!.decidedBy !== undefined || answer!.status !== 'refused';
+    if (decided && !['owner', 'bot', 'match', 'concierge'].includes(answer!.decidedBy as string)) throw invalidParams('hand.request.decidedBy: expected owner, bot, match or concierge');
     const name = text(raw!.name, 'hand.name', 100);
-    Object.assign(current, { status: answer!.status, decidedBy: answer!.decidedBy, decidedAt: Number.isSafeInteger(answer!.decidedAt) ? answer!.decidedAt : Date.now() });
+    Object.assign(current, { status: answer!.status, ...(decided ? { decidedBy: answer!.decidedBy } : {}), decidedAt: Number.isSafeInteger(answer!.decidedAt) ? answer!.decidedAt : Date.now() });
     if (answer!.status === 'refused') current.reason = text(answer!.reason, 'hand.request.reason', 500);
     if (answer!.project !== undefined) current.project = { id: text(answer!.project?.id, 'hand.request.project.id', 128), name: text(answer!.project?.name, 'hand.request.project.name', 200) };
     if (answer!.relation !== undefined) current.relation = this.#relation(answer!.relation, current, name);
@@ -311,7 +319,7 @@ export class ContactHostAsks {
    * core asked through the host under the same id: its own request goes.
    */
   sendFor(peer: CoordinationPeer, payload: unknown): ContactRequest {
-    const p = payload as { id?: unknown; from?: unknown; coreId?: unknown; text?: unknown; want?: unknown; target?: { threadId?: unknown } | null; gitRemote?: unknown } | null;
+    const p = payload as { id?: unknown; from?: unknown; coreId?: unknown; admission?: unknown; text?: unknown; want?: unknown; target?: { threadId?: unknown } | null; gitRemote?: unknown } | null;
     const id = text(p?.id, 'route.held.id', 100);
     if (!ID.test(id)) throw invalidParams('route.held.id: expected 1 to 100 letters, digits, - or _');
     if (this.#core.group.roleOf('botsHome') !== peer.coreId) throw refused('route.held: only the group\'s Bots host sends an ask through this machine');
@@ -320,6 +328,8 @@ export class ContactHostAsks {
     if (known?.askedBy === peer.coreId) return this.#store.requests.view(known);
     const contact = this.#store.find(text(p?.coreId, 'route.held.coreId', 100));
     if (!contact) throw refused(`route.held.coreId: ${contactFace(this.#core)} no longer holds that contact`);
+    // The contact was removed and linked again since the ask: the new link never reads an older one's words.
+    if (p?.admission !== contact.addedAt) throw refused(`route.held.admission: ${contact.name} was linked again since this ask; ask again`, { field: 'contact' });
     if (contact.capabilities?.contactsBot !== 1) throw refused(`contact: ${contact.name} runs an older Boite; ask its owner to update`, { field: 'contact' });
     const from = this.#heldFrom(p?.from, peer, known);
     if (requests.filter(entry => entry.coreId === contact.coreId && entry.direction === 'out' && entry.status === 'pending' && entry !== known).length >= MAX_PENDING) {
