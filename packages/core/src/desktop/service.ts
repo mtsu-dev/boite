@@ -1,9 +1,12 @@
 /*
- * `boite desktop`'s core half: one private virtual desktop per conversation on
- * a Linux machine. Xvfb draws in memory, openbox manages the windows (without
- * a window manager agent-desktop proves no window), a D-Bus session of its own
- * carries the accessibility bus, and the apps an agent starts there outlive
- * its turn. The user's screen, session bus and sound are never reached.
+ * `boite desktop`'s core half: one desktop per conversation, where the apps an
+ * agent starts outlive its turn. On Linux it is private: Xvfb draws in memory,
+ * openbox manages the windows (without a window manager agent-desktop proves
+ * no window), a D-Bus session of its own carries the accessibility bus, and
+ * the user's screen, session bus and sound are never reached. On Windows it is
+ * a hidden desktop of the user's session (platform/windows/hidden-desktop.ts)
+ * that no screen shows; on macOS the apps run in the background of the user's
+ * session, and the CLI keeps agent-desktop on them (scope.ts).
  * agent-desktop itself runs from the agent's shell with the environment this
  * returns (desktop-cli.ts), from the pinned build Boite installs
  * (agent-desktop.ts). See docs/desktop.md.
@@ -17,6 +20,7 @@ import {
   type RpcResult,
   type ThreadSummary,
   type VirtualDesktopApp,
+  type VirtualDesktopKind,
   type VirtualDesktopSession,
   type VirtualDesktopSupport,
 } from '@boite/contracts';
@@ -24,13 +28,16 @@ import { randomBytes } from 'node:crypto';
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { isAbsolute, join } from 'node:path';
+import { basename, isAbsolute, join } from 'node:path';
 import type { Core } from '../core.ts';
 import { invalidParams, messageOf, refused, unavailable } from '../errors.ts';
 import type { SpawnedProcess } from '../process-spawn-types.ts';
 import type { Connection } from '../router.ts';
+import { processPlatform } from '../platform/index.ts';
+import type { HiddenDesktop, HiddenDesktops } from '../platform/types.ts';
 import { AgentDesktopTool } from './agent-desktop.ts';
-import { DESKTOP_MARK, DESKTOP_XDG_DIRS, desktopEnv, withDesktopEnv } from './env.ts';
+import { DESKTOP_MARK, DESKTOP_XDG_DIRS, desktopEnv, sharedDesktopEnv, withDesktopEnv } from './env.ts';
+import { desktopExecCommand } from './launcher.ts';
 import { runCommand } from '../run-command.ts';
 
 const SCOPE = 'system:desktop';
@@ -50,11 +57,9 @@ export interface DesktopTools {
   dbusSend: string | null;
 }
 
-/** The programs a desktop needs, or what is missing, by package name. */
+/** The programs a Linux desktop needs, or what is missing, by package name. */
 export function findDesktopTools(platform = process.platform, which: (name: string) => string | null = name => Bun.which(name), exists: (path: string) => boolean = existsSync): DesktopTools | VirtualDesktopSupport {
-  if (platform !== 'linux') {
-    return { available: false, reason: 'a virtual desktop needs Linux (Xvfb); on Windows and macOS agent-desktop would act on the user\'s own session, which Boite does not offer' };
-  }
+  if (platform !== 'linux') return { available: false, reason: 'Xvfb and openbox are Linux programs' };
   const xvfb = which('Xvfb'), dbus = which('dbus-daemon'), openbox = which('openbox');
   const atspi = ATSPI_LAUNCHERS.find(exists) ?? null;
   const missing = [xvfb ? null : 'xvfb', dbus ? null : 'dbus-daemon', atspi ? null : 'at-spi2-core', openbox ? null : 'openbox'].filter((name): name is string => name !== null);
@@ -63,6 +68,34 @@ export function findDesktopTools(platform = process.platform, which: (name: stri
 }
 
 const isTools = (value: DesktopTools | VirtualDesktopSupport): value is DesktopTools => 'xvfb' in value;
+
+/** How this machine makes a desktop. */
+type Backend = { kind: 'x11'; tools: DesktopTools } | { kind: 'windows'; desktops: HiddenDesktops } | { kind: 'macos' };
+const isBackend = (value: Backend | VirtualDesktopSupport): value is Backend => 'kind' in value;
+
+/** Where macOS keeps an app a bare name may mean. */
+const MACOS_APP_FOLDERS = ['/Applications', '/System/Applications', '/System/Applications/Utilities', '/Applications/Utilities'];
+
+/**
+ * macOS: the executable inside an app bundle, which the core starts as its own
+ * child so the app stops with the desktop. A bare name that is no program on
+ * PATH names an app in the usual folders: `TextEdit`. Anything else as given.
+ */
+export function macosProgram(program: string, which: (name: string) => string | null = name => Bun.which(name), exists: (path: string) => boolean = existsSync, read: (path: string) => string = path => readFileSync(path, 'utf8')): string {
+  let bundle: string | null = null;
+  if (/\.app\/?$/.test(program)) bundle = program.replace(/\/$/, '');
+  else if (!program.includes('/') && !which(program)) bundle = MACOS_APP_FOLDERS.map(folder => `${folder}/${program}.app`).find(exists) ?? null;
+  if (!bundle) return program;
+  let name = basename(bundle, '.app');
+  try {
+    // An XML plist; a binary one keeps the bundle's name, which most apps give their executable.
+    const found = /<key>CFBundleExecutable<\/key>\s*<string>([^<]+)<\/string>/.exec(read(`${bundle}/Contents/Info.plist`));
+    if (found) name = found[1]!;
+  } catch {
+    // No Info.plist: the bundle's name.
+  }
+  return `${bundle}/Contents/MacOS/${name}`;
+}
 
 /**
  * An Xauthority file holding one MIT-MAGIC-COOKIE-1 for any address and
@@ -177,14 +210,17 @@ interface Running {
 
 interface Session {
   id: string;
+  kind: VirtualDesktopKind;
   dir: string;
   display: string;
   width: number;
   height: number;
   startedAt: number;
   env: Record<string, string>;
-  /** The stack in start order: Xvfb, D-Bus, the accessibility bus, openbox. */
+  /** Linux: the stack in start order, Xvfb, D-Bus, the accessibility bus, openbox. */
   stack: SpawnedProcess[];
+  /** Windows: the hidden desktop, its handle held until the stop. */
+  hidden?: HiddenDesktop;
   apps: Running[];
   stopping: boolean;
   /** The one teardown every stop of this desktop waits for. */
@@ -202,14 +238,20 @@ interface Starting {
 const CANCELLED = 'its conversation was archived or Boite is stopping';
 
 export interface VirtualDesktopsOptions {
+  /** Linux tools; given, the desktop is an X11 one whatever the platform (tests). */
   tools?: () => DesktopTools | VirtualDesktopSupport;
   tempRoot?: string;
   agentDesktop?: AgentDesktopTool;
+  platform?: NodeJS.Platform;
+  hiddenDesktops?: () => Promise<HiddenDesktops>;
 }
 
 export class VirtualDesktops {
   readonly #core: Core;
   readonly #tools: () => DesktopTools | VirtualDesktopSupport;
+  readonly #toolsGiven: boolean;
+  readonly #platform: NodeJS.Platform;
+  readonly #hiddenDesktops: (() => Promise<HiddenDesktops>) | undefined;
   readonly #tempRoot: string;
   #agentDesktopTool: AgentDesktopTool | undefined;
   readonly #sessions = new Map<string, Session>();
@@ -222,6 +264,9 @@ export class VirtualDesktops {
   constructor(core: Core, options: VirtualDesktopsOptions = {}) {
     this.#core = core;
     this.#tools = options.tools ?? (() => findDesktopTools());
+    this.#toolsGiven = options.tools !== undefined;
+    this.#platform = options.platform ?? process.platform;
+    this.#hiddenDesktops = options.hiddenDesktops ?? (processPlatform.hiddenDesktops ? () => processPlatform.hiddenDesktops!() : undefined);
     this.#tempRoot = options.tempRoot ?? tmpdir();
     this.#agentDesktopTool = options.agentDesktop;
   }
@@ -231,16 +276,17 @@ export class VirtualDesktops {
     return this.#agentDesktopTool ??= new AgentDesktopTool(join(this.#core.dataDir, 'tools'), this.#core.procs);
   }
 
-  status({ threadId }: RpcParams<'desktop.status'>, connection?: Connection): RpcResult<'desktop.status'> {
+  async status({ threadId }: RpcParams<'desktop.status'>, connection?: Connection): Promise<RpcResult<'desktop.status'>> {
     this.#thread(threadId, connection, true);
+    const support = await this.#support();
     const session = this.#sessions.get(threadId);
-    return { support: this.#support(), session: session ? this.#describe(session) : null };
+    return { support, session: session ? this.#describe(session) : null };
   }
 
   /** The agent-desktop to run, installed on the first call that needs it. */
   async tool({ threadId }: RpcParams<'desktop.tool'>, connection?: Connection): Promise<RpcResult<'desktop.tool'>> {
     this.#thread(threadId, connection);
-    const support = this.#support();
+    const support = await this.#support();
     if (!support.available) throw refused(`no virtual desktop on this machine: ${support.reason}`, { threadId });
     try {
       return { path: await this.#agentDesktop.path(), version: this.#agentDesktop.version };
@@ -250,16 +296,40 @@ export class VirtualDesktops {
     }
   }
 
-  #support(): VirtualDesktopSupport {
+  async #support(): Promise<VirtualDesktopSupport> {
     if (this.#core.policy.agentDesktopOff()) return { available: false, reason: 'the machine policy turns it off (key agentDesktop)' };
-    const tools = this.#tools();
-    return isTools(tools) ? { available: true } : tools;
+    const backend = await this.#backend();
+    return isBackend(backend) ? { available: true } : backend;
+  }
+
+  async #backend(): Promise<Backend | VirtualDesktopSupport> {
+    if (this.#toolsGiven || this.#platform === 'linux') {
+      const tools = this.#tools();
+      return isTools(tools) ? { kind: 'x11', tools } : tools;
+    }
+    if (this.#platform === 'win32') {
+      let desktops: HiddenDesktops | undefined;
+      try {
+        desktops = await this.#hiddenDesktops?.();
+      } catch (error) {
+        return { available: false, reason: `hidden desktops did not load: ${messageOf(error)}` };
+      }
+      if (!desktops) return { available: false, reason: 'this build has no hidden desktops' };
+      const problem = desktops.unsupported();
+      return problem ? { available: false, reason: problem } : { kind: 'windows', desktops };
+    }
+    if (this.#platform === 'darwin') return { kind: 'macos' };
+    return { available: false, reason: `Boite has no desktop for ${this.#platform}` };
   }
 
   async start({ threadId, width, height }: RpcParams<'desktop.start'>, connection?: Connection): Promise<RpcResult<'desktop.start'>> {
     const problem = virtualDesktopSizeError(width, height);
     if (problem) throw invalidParams(problem, { width, height });
-    const session = await this.#session(this.#thread(threadId, connection), width, height);
+    const thread = this.#thread(threadId, connection);
+    if ((width !== undefined || height !== undefined) && !this.#toolsGiven && this.#platform !== 'linux') {
+      throw invalidParams('a size is for a Linux desktop; this one has the size of the screen', { width, height });
+    }
+    const session = await this.#session(thread, width, height);
     return { session: this.#describe(session) };
   }
 
@@ -276,7 +346,8 @@ export class VirtualDesktops {
     writeFileSync(log, '', { mode: 0o600 });
     let spawned: SpawnedProcess;
     try {
-      spawned = this.#core.procs.spawn(SCOPE, program!, args, { agentRoot: false, cwd, env: withDesktopEnv(process.env, session.env) });
+      const [command, ...words] = this.#command(session, program!, args);
+      spawned = this.#core.procs.spawn(SCOPE, command!, words, { agentRoot: false, cwd, env: withDesktopEnv(process.env, session.env) });
     } catch (error) {
       throw refused(`${program} did not start: ${messageOf(error)}`, { threadId });
     }
@@ -299,6 +370,13 @@ export class VirtualDesktops {
     if (!session) return { stopped: false };
     await this.#teardown(threadId, session, 'asked');
     return { stopped: true };
+  }
+
+  /** The process the core starts for `program`: on Windows its launcher onto the hidden desktop, on macOS an app's own executable. */
+  #command(session: Session, program: string, args: string[]): string[] {
+    if (session.kind === 'windows') return desktopExecCommand(session.hidden!.path, [program, ...args]);
+    if (session.kind === 'macos') return [macosProgram(program), ...args];
+    return [program, ...args];
   }
 
   /** An archived or removed conversation: its desktop goes, and one still starting never opens, without waiting. */
@@ -341,6 +419,7 @@ export class VirtualDesktops {
 
   #describe(session: Session): VirtualDesktopSession {
     return {
+      kind: session.kind,
       display: session.display,
       width: session.width,
       height: session.height,
@@ -367,12 +446,15 @@ export class VirtualDesktops {
     if (this.#closed) throw refused('Boite is stopping', { threadId: thread.id });
     const pending = this.#starting.get(thread.id);
     if (pending) return pending.promise;
-    const tools = this.#tools();
-    if (!isTools(tools)) throw refused(`no virtual desktop on this machine: ${tools.reason}`, { threadId: thread.id, missing: tools.missing });
-    // Fetched while the desktop starts, so the first snapshot does not wait for it.
-    void this.#agentDesktop.path().catch(() => {});
     const starting = { cancelled: false, stack: [] } as unknown as Starting;
-    starting.promise = this.#launch(thread.id, tools, width ?? VIRTUAL_DESKTOP_SIZE.defaultWidth, height ?? VIRTUAL_DESKTOP_SIZE.defaultHeight, starting)
+    starting.promise = (async () => {
+      const backend = await this.#backend();
+      if (!isBackend(backend)) throw refused(`no virtual desktop on this machine: ${backend.reason}`, { threadId: thread.id, missing: backend.missing });
+      // Fetched while the desktop starts, so the first snapshot does not wait for it.
+      void this.#agentDesktop.path().catch(() => {});
+      if (backend.kind === 'x11') return this.#launch(thread.id, backend.tools, width ?? VIRTUAL_DESKTOP_SIZE.defaultWidth, height ?? VIRTUAL_DESKTOP_SIZE.defaultHeight, starting);
+      return this.#open(thread.id, backend, starting);
+    })()
       .finally(() => { if (this.#starting.get(thread.id) === starting) this.#starting.delete(thread.id); });
     this.#starting.set(thread.id, starting);
     return starting.promise;
@@ -420,7 +502,7 @@ export class VirtualDesktops {
 
       // Archived, removed or the core stopping while it started: it is not published, and the catch below stops it.
       if (starting.cancelled || this.#closed || this.#core.threads.require(threadId).archived) throw new Error(CANCELLED);
-      const session: Session = { id, dir, display, width, height, startedAt: Date.now(), env, stack, apps: [], stopping: false };
+      const session: Session = { id, kind: 'x11', dir, display, width, height, startedAt: Date.now(), env, stack, apps: [], stopping: false };
       this.#sessions.set(threadId, session);
       // The display, the bus or the window manager gone takes the desktop with it.
       for (const part of stack) void part.exited.then(() => { if (this.#sessions.get(threadId) === session && !session.stopping) this.#track(this.#teardown(threadId, session, 'a part of it exited')); });
@@ -430,6 +512,35 @@ export class VirtualDesktops {
       await this.#kill(stack, [], id, dir);
       // A cancel shows up as a part that exited before it was ready: say why it really stopped.
       throw refused(`the virtual desktop did not start: ${starting.cancelled || this.#closed ? CANCELLED : messageOf(error)}`, { threadId });
+    }
+  }
+
+  /**
+   * A Windows or macOS desktop: nothing runs until an app does. Windows makes
+   * the hidden desktop the apps start on; macOS has the user's session.
+   */
+  async #open(threadId: string, backend: Exclude<Backend, { kind: 'x11' }>, starting: Starting): Promise<Session> {
+    const dir = await mkdtemp(join(this.#tempRoot, 'boite-desktop-'));
+    const id = randomBytes(12).toString('hex');
+    let hidden: HiddenDesktop | undefined;
+    try {
+      // Before its folders, so they inherit it.
+      if (backend.kind === 'windows') backend.desktops.privateFolder(dir);
+      for (const sub of ['agent-desktop', 'logs']) mkdirSync(join(dir, sub), { mode: 0o700 });
+      hidden = backend.kind === 'windows' ? backend.desktops.create(`boite-${id.slice(0, 16)}`) : undefined;
+      if (starting.cancelled || this.#closed || this.#core.threads.require(threadId).archived) throw new Error(CANCELLED);
+      const display = hidden?.name ?? 'background';
+      const session: Session = {
+        id, kind: backend.kind, dir, display, width: hidden?.width ?? 0, height: hidden?.height ?? 0, startedAt: Date.now(),
+        env: sharedDesktopEnv(dir, id), stack: [], ...(hidden ? { hidden } : {}), apps: [], stopping: false,
+      };
+      this.#sessions.set(threadId, session);
+      this.#core.logs.info(backend.kind === 'windows' ? `Started hidden desktop ${display}` : 'Started a background desktop', { source: 'desktop', event: 'desktop.start', threadId, data: { display, kind: backend.kind } });
+      return session;
+    } catch (error) {
+      hidden?.close();
+      await rm(dir, { recursive: true, force: true }).catch(() => {});
+      throw refused(`the desktop did not start: ${starting.cancelled || this.#closed ? CANCELLED : messageOf(error)}`, { threadId });
     }
   }
 
@@ -451,22 +562,26 @@ export class VirtualDesktops {
   #teardown(threadId: string, session: Session, why: string): Promise<void> {
     session.stopping = true;
     session.stopped ??= (async () => {
-      await this.#kill(session.stack, session.apps.map(({ spawned }) => spawned), session.id, session.dir);
+      await this.#kill(session.stack, session.apps.map(({ spawned }) => spawned), session.id, session.dir, session.hidden);
       if (this.#sessions.get(threadId) === session) this.#sessions.delete(threadId);
       this.#core.logs.info(`Stopped virtual desktop ${session.display}: ${why}`, { source: 'desktop', event: 'desktop.stop', threadId, data: { display: session.display } });
     })();
     return session.stopped;
   }
 
-  /** Apps first, then the stack from the top, then whatever carries the mark, then the folder. */
-  async #kill(stack: SpawnedProcess[], apps: SpawnedProcess[], id: string, dir: string): Promise<void> {
+  /**
+   * Apps first, then the stack from the top, then what left their trees: on
+   * Linux whatever carries the mark, on Windows whatever still owns a window
+   * on the hidden desktop, which then goes. Then the folder.
+   */
+  async #kill(stack: SpawnedProcess[], apps: SpawnedProcess[], id: string, dir: string, hidden?: HiddenDesktop): Promise<void> {
     await Promise.allSettled(apps.map(app => app.stop()));
     for (const part of [...stack].reverse()) await part.stop().catch(() => {});
-    if (process.platform === 'linux') {
-      for (const pid of markedProcesses(id)) {
-        try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ }
-      }
+    const strays = process.platform === 'linux' ? markedProcesses(id) : hidden?.windowPids().filter(pid => pid !== process.pid) ?? [];
+    for (const pid of strays) {
+      try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ }
     }
+    hidden?.close();
     await rm(dir, { recursive: true, force: true }).catch(() => {});
   }
 }

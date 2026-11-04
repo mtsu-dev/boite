@@ -56,7 +56,7 @@ the OpenCode server, protected bridges, health checks).
 | 42 | Tailscale Serve | Tailscale HTTPS on 443 and its certificate | Tailscale switch, `boite-core tailscale on` | Runs `tailscale serve` | No | Switch off | `network.tailscaleServe: false` |
 | 43 | Agent sign-in | The agent vendor's login, run by the CLI | Connect click on Providers | The vendor's OAuth, handled by the CLI | No | Do not click | `providers.allow` / `providers.deny` for a blocked provider; user-initiated for an allowed one |
 | 44 | External links | Docs, Tailscale admin, release notes, runtime downloads, in the system browser | A click | A normal browser request | No | Do not click | None: opened by the user in the system browser, outside Boite |
-| 45 | agent-desktop download | `registry.npmjs.org`, the pinned `agent-desktop` release | A conversation's first virtual desktop or `boite desktop` command on a Linux core without it | GET, IP | On, Linux with the desktop tools | None | `agentDesktop: false` |
+| 45 | agent-desktop download | `registry.npmjs.org`, the pinned `agent-desktop` release | A conversation's first virtual desktop or `boite desktop` command on a core without it | GET, IP | On; on Linux, with the desktop tools | None | `agentDesktop: false` |
 
 ## Flows with no user switch
 
