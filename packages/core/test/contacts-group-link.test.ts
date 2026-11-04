@@ -264,6 +264,12 @@ test('a member without a Contacts bot asks through the Bots host: queued while t
   const incoming = () => c.core.contacts.requests.list().find(request => request.direction === 'in' && request.text === 'Who runs the build farm?');
   await waitFor(() => incoming() !== undefined, 10000);
   expect(incoming()!.from).toMatchObject({ coreId: xId, threadId: memberThreadId(aId, aThread) });
+  // Before any answer, the member's thread reads it sent to that contact, as X named it.
+  const onMember = () => a.core.coordination.get(aThread).requests!.find(request => request.id === queued.id)!;
+  await waitFor(() => onMember().stage === undefined, 10000);
+  expect(onMember()).toMatchObject({ status: 'pending', contact: x.core.contacts.find(cId)!.name });
+  // X's bot forwarded it, not a bot here: A's copy carries no forward time of its own.
+  expect(onMember().forwardedAt).toBeUndefined();
   await cClient.call('contacts.decide', { id: incoming()!.id, accept: false, reason: 'No contact knows' });
   await waitFor(() => requestOn(a, queued.id)?.status === 'refused', 10000);
   expect(requestOn(a, queued.id)!.reason).toBe('No contact knows');

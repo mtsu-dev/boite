@@ -80,6 +80,12 @@ test('an ask wakes the bot, which forwards it; an untrusted contact waits for th
   expect(guest.core.coordination.get(guestThread).requests![0]).toMatchObject({ id: asked.id, coreId: hostId, contact: hostName });
   expect(guest.core.coordination.get(guestThread).requests![0]!.stage).toBeUndefined();
   expect(changes).toEqual(expect.arrayContaining([guestThread, guestBot.threadId]));
+  // The owner renames the contact while the request waits: the thread reads the name its address now takes.
+  changes.length = 0;
+  const renamed = 'Docs desk';
+  await guestClient.call('contacts.update', { coreId: hostId, name: renamed });
+  expect(guest.core.coordination.get(guestThread).requests![0]).toMatchObject({ id: asked.id, contact: renamed });
+  expect(changes).toContain(guestThread);
   await waitFor(() => incomingOf(host, asked.id) !== undefined, 10000);
   const incoming = incomingOf(host, asked.id)!;
   expect(incoming).toMatchObject({ stage: 'bot', approved: false, want: 'talk', target: { threadId: hostThread }, from: { coreId: guestId, threadId: guestThread } });
@@ -98,7 +104,7 @@ test('an ask wakes the bot, which forwards it; an untrusted contact waits for th
   // The host's bot thread shows what it settled; the asking thread's request turns answered, with the thread to write to.
   expect(host.core.coordination.get(hostBot.threadId).requests).toEqual([expect.objectContaining({ id: incoming.id, direction: 'in', status: 'accepted' })]);
   await waitFor(() => guest.core.coordination.get(guestThread).requests![0]!.status === 'accepted', 10000);
-  expect(guest.core.coordination.get(guestThread).requests![0]!.relation).toMatchObject({ remote: { threadId: hostThread } });
+  expect(guest.core.coordination.get(guestThread).requests![0]).toMatchObject({ contact: renamed, relation: { contact: renamed, remote: { threadId: hostThread } } });
   off();
   const relation = host.core.contacts.relations.list()[0]!;
   expect(relation).toMatchObject({ coreId: guestId, local: { threadId: hostThread }, remote: { threadId: guestThread } });
@@ -109,9 +115,9 @@ test('an ask wakes the bot, which forwards it; an untrusted contact waits for th
   await waitFor(() => lettersOf(guest, guestThread).some(letter => letter.origin === 'contact'), 10000);
   const answer = lettersOf(guest, guestThread).find(letter => letter.origin === 'contact')!;
   expect(answer.text).toContain('put you in touch with');
-  expect(answer.text).toContain(`${hostName.replace(/\s+/g, '-')}/${hostThread}`);
-  // The address the answer gives resolves in the asking thread's directory.
-  expect((await guest.core.coordination.directory(guestThread)).agents.some(agent => agent.coreId === hostId && agent.threadId === hostThread && agent.machine === hostName.replace(/\s+/g, '-'))).toBe(true);
+  expect(answer.text).toContain(`${renamed.replace(/\s+/g, '-')}/${hostThread}`);
+  // The address the answer and the request give resolves in the asking thread's directory.
+  expect((await guest.core.coordination.directory(guestThread)).agents.some(agent => agent.coreId === hostId && agent.threadId === hostThread && agent.machine === renamed.replace(/\s+/g, '-'))).toBe(true);
 
   // No project is open either way, and the two threads still write to each other.
   expect(host.core.contacts.find(guestId)?.grants).toEqual([]);

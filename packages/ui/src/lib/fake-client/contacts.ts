@@ -486,7 +486,11 @@ export function contactMethods(ctx: FakeContext) {
       const contact = contactOf(state, params?.coreId);
       if (name !== undefined) {
         contact.name = name;
-        for (const request of state.requests) if (request.coreId === contact.coreId) request.contact = name;
+        for (const request of state.requests) {
+          if (request.coreId !== contact.coreId) continue;
+          request.contact = name;
+          if (request.relation) request.relation = { ...request.relation, contact: name };
+        }
         for (const relation of state.relations ?? []) if (relation.coreId === contact.coreId) relation.contact = name;
         for (const flag of state.flags ?? []) if (flag.coreId === contact.coreId) flag.contact = name;
       }

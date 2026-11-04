@@ -117,7 +117,32 @@ export class ContactRequests {
     if (!request) return undefined;
     request.forwardedAt = Date.now();
     this.save(requests);
+    if (request.from.coreId !== this.#core.coordination.card().coreId) void this.#tellForward(request);
     return this.view(request);
+  }
+
+  /**
+   * A member's thread asked through this Bots host: it hears the forward, so
+   * its row reads sent to that contact. Best effort, the answer follows anyway
+   * (`tellMember`).
+   */
+  async #tellForward(request: ContactRequest): Promise<void> {
+    const member = this.#core.group.peers().find(peer => peer.coreId === request.from.coreId);
+    if (!member) return;
+    try { await this.#core.coordination.request(member, 'contact.hand', { action: 'forwarded', id: request.id, contact: request.contact }); }
+    catch (error) { this.#core.log('warn', `contacts: ${member.name} did not hear that ${request.id} went to ${request.contact} (${messageOf(error)})`, { source: 'contacts' }); }
+  }
+
+  /** The owner renamed a contact: its requests, and the relation an answer gave, take the name its address now has. */
+  renamed(coreId: string, name: string): void {
+    const requests = this.list();
+    let moved = false;
+    for (const request of requests) {
+      if (request.coreId !== coreId) continue;
+      if (request.contact !== name) { request.contact = name; moved = true; }
+      if (request.relation && request.relation.contact !== name) { request.relation = { ...request.relation, contact: name }; moved = true; }
+    }
+    if (moved) this.save(requests);
   }
 
   view(request: StoredRequest): ContactRequest {

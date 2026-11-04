@@ -140,4 +140,9 @@ test('a request that names no contact waits for the bot, which picks the contact
   expect(asked).toMatchObject([{ id: waiting.id, coreId: 'core-guest', status: 'pending' }]);
   expect(asked[0]!.stage).toBeUndefined();
   expect((await host.call('collaboration.get', { threadId: bot })).requests).toMatchObject([{ id: waiting.id, forwardedAt: forwarded.forwardedAt }]);
+  // Renamed while it waits: the thread reads the name its answer's address will take, as the core's `requests.renamed`.
+  changed.length = 0;
+  await host.call('contacts.update', { coreId: 'core-guest', name: 'Guest desk' });
+  expect((await host.call('collaboration.get', { threadId: 't-trace' })).requests).toMatchObject([{ id: waiting.id, contact: 'Guest desk' }]);
+  await vi.waitFor(() => expect(changed).toContain('t-trace'));
 });
