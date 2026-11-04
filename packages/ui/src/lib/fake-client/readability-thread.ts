@@ -9,7 +9,6 @@ import type { Message, MessagePart, Thread, Turn } from '@boite/contracts';
  * user's own threads showed on 2026-10-31 ([development](../../../../../docs/development.md)).
  */
 const MINUTE = 60_000;
-const DAY = 86_400_000;
 
 type Step = { tool: string; input: Record<string, unknown>; output: string } | { text: string } | { compaction: [number, number] };
 
@@ -18,10 +17,14 @@ export function readabilityThread(now = Date.now()): Thread {
   const turns: Turn[] = [];
   const messages: Message[] = [];
   let seq = 0;
-  /** Two days ago at 15:00, local time. */
-  const start = new Date(now - 2 * DAY);
-  start.setHours(15, 0, 0, 0);
-  const base = start.getTime();
+  /** A local time some calendar days ago: counting days, not 24 hours, keeps a clock change from moving one to another day. */
+  const at = (daysAgo: number, hours: number, minutes = 0): number => {
+    const day = new Date(now);
+    day.setDate(day.getDate() - daysAgo);
+    day.setHours(hours, minutes, 0, 0);
+    return day.getTime();
+  };
+  const base = at(2, 15);
 
   function turn(at: number, minutes: number, prompt: { text: string; display?: string; role?: 'user' | 'system' }, steps: Step[], operation?: NonNullable<Turn['execution']>['operation'], automatic = false): void {
     const turnId = `turn-readable-${++seq}`;
@@ -55,27 +58,29 @@ export function readabilityThread(now = Date.now()): Thread {
     { text: 'Fixed. The badge reads the branch\'s own repository now, and a merged pull request turns purple within a minute. 82 tests pass; pull request #904 is open.' },
   ]);
   turn(base + 40 * MINUTE, 1, { text: '/compact', display: 'Automatic compaction', role: 'system' }, [{ compaction: [76_000, 9_700] }], 'compact', true);
-  turn(base + DAY - 6 * 60 * MINUTE, 6, { text: 'Boite is watching this pull request for you and it changed.', display: 'Pull request update, #904: new comments', role: 'system' }, [
+  turn(at(1, 9), 6, { text: 'Boite is watching this pull request for you and it changed.', display: 'Pull request update, #904: new comments', role: 'system' }, [
     bash('gh pr view 904 --comments'), edit('packages/core/src/pull-requests.ts'), bash('bun test packages/core/test/pull-requests.test.ts', '83 pass'), bash('git push'),
     { text: 'Fixed the point mtsu-patrol raised in `c320811` and pushed it. CI and the new review are running.' },
   ], 'pull-request');
-  turn(base + DAY - 5 * 60 * MINUTE, 1, { text: 'Boite is watching this pull request for you and it changed.', display: 'Pull request update, #904: checks passed', role: 'system' }, [
+  turn(at(1, 10), 1, { text: 'Boite is watching this pull request for you and it changed.', display: 'Pull request update, #904: checks passed', role: 'system' }, [
     bash('gh pr checks 904'),
     { text: 'CI passed on `c320811`; the review is still running. I end the turn, the watch wakes me.' },
   ], 'pull-request');
-  turn(base + DAY - 4 * 60 * MINUTE, 9, { text: 'Boite delegation messages.', display: 'Agent delegation', role: 'system' }, [
+  turn(at(1, 11), 9, { text: 'Boite delegation messages.', display: 'Agent delegation', role: 'system' }, [
     bash('boite delegate list'),
     { text: 'Sol found a race between the event and the reply in flight. I fix it with a regression test.' },
     edit('packages/core/src/pull-requests.ts'), bash('bun test packages/core/test/pull-requests.test.ts', '84 pass'), bash('git push'),
     { text: 'The race is fixed with a test that fails before the change. PR #904 is green and waits for your merge.' },
   ], 'delegation');
-  const today = new Date(now);
-  today.setHours(10, 30, 0, 0);
-  turn(Math.min(today.getTime(), now - 10 * MINUTE), 1, { text: 'alors ?' }, [
+  // Today at 10:30, or ten minutes ago before 10:40, never before midnight.
+  turn(Math.max(at(0, 0), Math.min(at(0, 10, 30), now - 10 * MINUTE)), 1, { text: 'alors ?' }, [
     { text: 'PR #904 is green: the badge follows the branch\'s repository, merged turns purple within a minute, and the race Sol found has its test. It waits for your merge.' },
   ]);
+  // At midnight exactly the answer a second after the question would be in the future.
+  const answer = messages.at(-1)!;
+  answer.createdAt = Math.min(answer.createdAt, now);
 
-  const last = messages.at(-1)!.createdAt;
+  const last = answer.createdAt;
   return {
     id, projectId: 'p-boite', providerId: 'echo', accountId: 'a-echo', model: 'echo-1', effort: null, permissionMode: 'default',
     archived: false, pinned: false, title: 'Fix the pull request badge', titleSource: 'prompt', cwd: 'C:\\src\\boite', branch: 'boite/pr-badge',
