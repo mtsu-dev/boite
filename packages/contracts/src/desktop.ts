@@ -1,9 +1,17 @@
 /**
- * A conversation's private virtual desktop on a Linux machine: an X server in
- * memory with a window manager and the accessibility bus, where an agent runs
- * GUI apps and drives them through agent-desktop without touching the user's
- * screen (docs/desktop.md).
+ * A conversation's desktop, where an agent runs GUI apps and drives them
+ * through agent-desktop (docs/desktop.md). On Linux it is an X server in memory
+ * with a window manager and the accessibility bus; on Windows a hidden desktop
+ * of the user's session that no screen shows; on macOS the apps run in the
+ * background of the user's session and the agent reaches only those.
  */
+
+/**
+ * `x11`: a private display; nothing reaches the user's screen.
+ * `windows`: a hidden desktop; no window, keyboard or mouse of the user's.
+ * `macos`: the user's session, background apps only, no focus, keys or cursor.
+ */
+export type VirtualDesktopKind = 'x11' | 'windows' | 'macos';
 
 /** Whether this machine can start one, and why not, phrased for the person who would install the tools. */
 export interface VirtualDesktopSupport {
@@ -26,16 +34,18 @@ export interface VirtualDesktopApp {
 }
 
 export interface VirtualDesktopSession {
-  /** The X display, `:3`. */
+  kind: VirtualDesktopKind;
+  /** The X display (`:3`), the hidden Windows desktop (`boite-<id>`), or `background` on macOS. */
   display: string;
   width: number;
   height: number;
   startedAt: number;
   /**
-   * What a program needs to reach the desktop: DISPLAY, XAUTHORITY, the D-Bus
-   * session, the accessibility switches, agent-desktop's state folder, a private
-   * HOME with XDG folders and silenced sound. Keys whose value is empty are to
-   * be removed from the environment.
+   * What a program needs to reach the desktop. On Linux: DISPLAY, XAUTHORITY,
+   * the D-Bus session, the accessibility switches, a private HOME with XDG
+   * folders and silenced sound. Everywhere: agent-desktop's state folder and
+   * the desktop's mark. Keys whose value is empty are to be removed from the
+   * environment.
    */
   env: Record<string, string>;
   apps: VirtualDesktopApp[];

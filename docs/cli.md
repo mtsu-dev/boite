@@ -241,8 +241,9 @@ and limits are in [windows.md](windows.md).
 
 ## Virtual desktop
 
-`boite desktop help` lists the commands. On a Linux machine with Xvfb, the
-conversation gets a private desktop in memory: `run <program>` starts a GUI app
+`boite desktop help` lists the commands. The conversation gets a desktop of its
+own: in memory on Linux, hidden on Windows, in the background on macOS. On
+Windows and macOS input is semantic only. `run <program>` starts a GUI app
 there that outlives the turn, and every other word runs agent-desktop on it
 (`snapshot -i`, `click @ref`, `type`, `press`, `screenshot`) to read the app's
 accessibility tree and act on it. Boite installs a pinned agent-desktop the
