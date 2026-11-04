@@ -81,7 +81,9 @@ export function contactHello(core: Core, store: ContactStore, request: Request):
     const guest = request.headers.get('x-boite-peer') ?? '';
     // A contact another machine of the group handed to this one is checked against the handed record, then kept, and a
     // Bots host a move gave this core's guest seat against the key that signed the move (`group-link.ts`).
-    const contact = store.find(guest) ?? store.groupLink.incoming(guest) ?? store.groupLink.seat(guest);
+    // A Bots host's resume (`x-boite-resume`) only finds a contact this core follows already, never a seat it still holds.
+    const resume = request.headers.get('x-boite-resume') === '1';
+    const contact = store.find(guest) ?? (resume ? undefined : store.groupLink.incoming(guest) ?? store.groupLink.seat(guest));
     if (!contact || contact.role !== 'host') return unknown(core, request, guest, contact === undefined);
     try {
       const hello = Buffer.from(request.headers.get('x-boite-hello') ?? '', 'base64url').toString('utf8');

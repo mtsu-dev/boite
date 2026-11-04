@@ -179,6 +179,8 @@ test('a Bots host that missed the cancel asks the member before it dials the sea
   const request = a.core.coordination.request.bind(a.core.coordination);
   a.core.coordination.request = (peer, op, payload) => (payload as { action?: unknown } | null)?.action === 'cancel' ? Promise.reject(new Error('lost on the way')) : request(peer, op, payload);
   await aClient.call('contacts.remove', { coreId: cId });
+  // An ask that names no admission is rejected, never read as "not handing".
+  expect(await thrown(a.core.contacts.groupLink.handed(a.core.group.peers().find(peer => peer.coreId === xId)!, { action: 'pending', contact: cId }))).toThrow('hand.admission');
   // Back with a fresh hello and no wait in memory, X still holds C's seat entry, which C still honours.
   const back = await restarted(x);
   await waitFor(() => !back.core.contacts.groupLink.resuming(), 10000);
@@ -224,6 +226,85 @@ test('a contact that signs its refusal of the Bots host\'s hello ends the resume
   } finally { Date.now = clock; }
   expect(x.core.contacts.has(cId)).toBe(false);
   expect(c.core.contacts.has(xId)).toBe(false);
+}, 60000);
+
+/** Holds `core`'s `contact.hand` requests with `action` until `release`: before they leave, or once answered (`after`). Counts the ones delivered. */
+function holdRequests(core: TestCore, action: string, after: boolean): { held: () => boolean; release: () => void; delivered: () => number } {
+  let release: (() => void) | undefined;
+  let delivered = 0;
+  const request = core.core.coordination.request.bind(core.core.coordination);
+  core.core.coordination.request = async (peer, op, payload) => {
+    if (op !== 'contact.hand' || (payload as { action?: unknown } | null)?.action !== action) return request(peer, op, payload);
+    const wait = () => new Promise<void>(resolve => { release = resolve; });
+    if (!after) await wait();
+    const answer = await request(peer, op, payload);
+    if (after) await wait();
+    delivered += 1;
+    return answer;
+  };
+  return { held: () => release !== undefined, release: () => { const go = release; release = undefined; go?.(); }, delivered: () => delivered };
+}
+
+/**
+ * X asks A about C's seat and A says it still hands C; the answer is slow, and
+ * meanwhile A's owner removes C, whose cancel is slower still. `followed`: C
+ * already took X's hello before X stopped short of keeping it.
+ */
+async function lateCancel(followed: boolean): Promise<void> {
+  const sides = await setup(cores, true);
+  const { a, x, c, aClient, xClient, xId, cId } = sides;
+  const xray = await project(x, xClient, 'xray');
+  await aClient.call('contacts.grant', { coreId: cId, projectId: xray.id, machine: xId });
+  unreachable(x);
+  const hello = x.core.contacts.helloHeaders.bind(x.core.contacts);
+  if (followed) x.core.contacts.groupLink.commit = () => { throw new Error('stopped before commit'); };
+  else x.core.contacts.helloHeaders = () => { throw new Error('outbound outage'); };
+  await botsHome(a, aClient, x, xId);
+  await waitFor(() => a.core.contacts.groupLink.stuck(cId) !== undefined && x.core.contacts.groupLink.resuming(), 20000);
+  expect(c.core.contacts.has(xId)).toBe(followed);
+  Reflect.deleteProperty(x.core.contacts.groupLink, 'commit');
+  x.core.contacts.helloHeaders = hello;
+  // The answer is slow to come back; the cancel is slow to leave.
+  const pending = holdRequests(x, 'pending', true);
+  const cancel = holdRequests(a, 'cancel', false);
+  try {
+    x.core.contacts.groupLink.sweep();
+    await waitFor(pending.held, 10000);
+    await aClient.call('contacts.remove', { coreId: cId });
+    await waitFor(() => cancel.held() && x.core.contacts.members.relayedOf(cId).length === 0, 10000);
+    pending.release();
+    // C that followed X is taken back on the stale answer; C that only held a seat refuses the resume.
+    await waitFor(() => followed ? x.core.contacts.has(cId) : !x.core.contacts.groupLink.resuming(), 10000);
+    expect(c.core.contacts.has(xId)).toBe(followed);
+    cancel.release();
+    await waitFor(() => cancel.delivered() > 0, 10000);
+    expect(x.core.contacts.has(cId)).toBe(false);
+    expect(x.core.contacts.groupLink.resuming()).toBe(false);
+  } finally { pending.release(); cancel.release(); }
+}
+
+test('a cancel slower than the member\'s answer still removes the contact the Bots host took back on it', async () => {
+  await lateCancel(true);
+}, 60000);
+
+test('a resume the member allowed before its owner removed the contact never takes a seat the contact still holds', async () => {
+  await lateCancel(false);
+}, 60000);
+
+test('a contact that followed the Bots host is recovered after the member that handed it left the group', async () => {
+  const { a, x, c, aClient, aId, xId, cId } = await setup(cores, true);
+  unreachable(x);
+  x.core.contacts.groupLink.commit = () => { throw new Error('stopped before commit'); };
+  await botsHome(a, aClient, x, xId);
+  await waitFor(() => c.core.contacts.has(xId) && !x.core.contacts.has(cId), 20000);
+  await waitFor(() => a.core.contacts.groupLink.stuck(cId) !== undefined, 10000);
+  x.core.group.remove(aId);
+  await a.stop();
+  // A can neither answer nor cancel any more: C, which only knows X now, decides.
+  const back = await restarted(x);
+  await waitFor(() => back.core.contacts.has(cId) && back.core.contacts.linked(cId), 20000);
+  expect(back.core.contacts.groupLink.resuming()).toBe(false);
+  expect(back.core.journal.getSetting('contacts:incoming')).toEqual([]);
 }, 60000);
 
 test('a server that takes the upgrade without the Bots host\'s key does not win the move over the Bots host', async () => {

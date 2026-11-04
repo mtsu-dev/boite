@@ -54,6 +54,12 @@ export const GROUP_LETTER_TTL_MS = 7 * 24 * 3_600_000;
 const MOVE_INPUT = 'boite-contact-move\n';
 /** Contacts handed to this Bots host whose first hello has not come yet. */
 const INCOMING = 'contacts:incoming';
+/** As the Bots host: which member handed each contact it took, at which admission, so a late cancel still finds it. */
+const HANDED = 'contacts:handed';
+/** As a member: the cancels of removed contacts each other machine has not acknowledged yet. */
+const CANCELS = 'contacts:hand-cancels';
+/** How long a removed contact's cancel is offered again to a machine that does not answer. */
+const CANCEL_MS = 7 * 24 * 3_600_000;
 const INCOMING_MS = 3_600_000;
 /** A member asks again this long after a hand or a move failed. */
 const RETRY_MS = 30_000;
@@ -88,6 +94,9 @@ interface Owned { member: string; threadId: string }
 /** `url`: the member was the contact's guest, and this Bots host dials it there (a guest seat). */
 interface Incoming { from: string; at: number; contact: StoredContact; requests: StoredRequest[]; relations?: HandedRelation[]; url?: string; dialed?: true }
 
+interface Handed { coreId: string; from: string; admission: number }
+interface Cancel { coreId: string; admission: number; name: string; at: number; to: string[] }
+
 /** A hand still waiting for its contact, or a guest seat this host already dialed, which waits until it is resolved (`#resume`). */
 const live = (entry: Incoming): boolean => entry.dialed === true || Date.now() - entry.at < INCOMING_MS;
 
@@ -120,6 +129,8 @@ export class ContactGroupLink {
   readonly #resumes = new Map<string, { tries: number; until: number }>();
   /** Guest seats a resume is asking their member about, or dialing. */
   readonly #resuming = new Set<string>();
+  /** Cancels in flight, by contact and machine. */
+  readonly #cancelling = new Set<string>();
   /** The Contacts bot goes to the Bots host before the links do (`bot-home.ts`). */
   readonly #bot: ContactBotHome;
   #closed = false;
@@ -139,6 +150,7 @@ export class ContactGroupLink {
     if (this.#closed) return;
     // A contact that followed this core stays its own, whichever machine is the Bots host now.
     this.#resume();
+    this.#sendCancels();
     const home = this.#core.group.roleOf('botsHome');
     if (home === null) return;
     if (home === this.#self()) { this.#bot.hosting(); return; }
@@ -264,10 +276,52 @@ export class ContactGroupLink {
     this.#next.delete(contact.coreId);
     this.#stuck.delete(contact.coreId);
     if (contact.capabilities?.groupLink !== 1) return;
-    for (const peer of this.#core.group.peers()) {
-      void this.#core.coordination.request(peer, 'contact.hand', { action: 'cancel', contact: contact.coreId, admission: contact.addedAt })
-        .catch(error => { if (!this.#closed) this.#core.log('info', `contacts: ${peer.name} did not hear that ${contact.name} was removed (${messageOf(error)})`, { source: 'contacts' }); });
+    const to = this.#core.group.peers().map(peer => peer.coreId);
+    if (to.length === 0) return;
+    const cancel: Cancel = { coreId: contact.coreId, admission: contact.addedAt, name: contact.name.slice(0, 100), at: Date.now(), to };
+    this.#core.journal.setSetting(CANCELS, [...this.#cancels().filter(entry => entry.coreId !== contact.coreId), cancel].slice(-256));
+    this.#sendCancels();
+  }
+
+  #cancels(): Cancel[] { return (this.#core.journal.getSetting(CANCELS) as Cancel[] | undefined) ?? []; }
+
+  /**
+   * Each machine that has not acknowledged a removed contact's cancel gets it
+   * again on each sweep, for a week: one that took the contact meanwhile
+   * removes it then. A machine that left the group, or that answered, even
+   * with a refusal, is done.
+   */
+  #sendCancels(): void {
+    if (this.#closed) return;
+    const members = new Map(this.#core.group.peers().map(peer => [peer.coreId, peer]));
+    const now = Date.now();
+    const kept = this.#cancels().map(cancel => ({ ...cancel, to: cancel.to.filter(id => members.has(id)) })).filter(cancel => cancel.to.length > 0 && now - cancel.at < CANCEL_MS);
+    if (JSON.stringify(kept) !== JSON.stringify(this.#cancels())) this.#core.journal.setSetting(CANCELS, kept);
+    for (const cancel of kept) {
+      for (const id of cancel.to) {
+        const key = `${cancel.coreId} ${id}`;
+        if (this.#cancelling.has(key)) continue;
+        this.#cancelling.add(key);
+        const peer = members.get(id)!;
+        void this.#core.coordination.request(peer, 'contact.hand', { action: 'cancel', contact: cancel.coreId, admission: cancel.admission }).then(
+          () => this.#cancelled(cancel, id),
+          error => {
+            if (error instanceof PeerRefusal && !error.message.startsWith('unreachable')) { this.#cancelled(cancel, id); return; }
+            if (!this.#closed) this.#core.log('info', `contacts: ${peer.name} has not heard yet that ${cancel.name} was removed (${messageOf(error)})`, { source: 'contacts' });
+          },
+        ).finally(() => this.#cancelling.delete(key));
+      }
     }
+  }
+
+  /** `id` acknowledged the cancel. */
+  #cancelled(cancel: Cancel, id: string): void {
+    if (this.#closed) return;
+    this.#core.journal.setSetting(CANCELS, this.#cancels().flatMap(entry => {
+      if (entry.coreId !== cancel.coreId || entry.admission !== cancel.admission) return [entry];
+      const to = entry.to.filter(other => other !== id);
+      return to.length > 0 ? [{ ...entry, to }] : [];
+    }));
   }
 
   /** The Bots host forwards the answer to a request a thread of this member had sent before its contact moved. */
@@ -298,11 +352,13 @@ export class ContactGroupLink {
     if (action === 'answer') return this.#store.hostAsks.heldAnswer(peer, payload) ?? this.answerHere(payload);
     if (action === 'bot') return this.#bot.coming(peer);
     if (action === 'dial') return this.#take(peer, payload);
-    if (action === 'cancel') return this.#cancelled(peer, payload);
+    if (action === 'cancel') return this.#cancel(peer, payload);
     // A Bots host asks before it dials a seat again: this member still holds the contact at the admission it handed.
     if (action === 'pending') {
       const raw = payload as { contact?: unknown; admission?: unknown };
-      return { handing: this.#store.find(text(raw.contact, 'hand.contact', 100))?.addedAt === raw.admission };
+      const coreId = text(raw.contact, 'hand.contact', 100);
+      if (!Number.isSafeInteger(raw.admission)) throw invalidParams('hand.admission: expected the addedAt of the handed contact');
+      return { handing: this.#store.find(coreId)?.addedAt === raw.admission };
     }
     if (action !== 'hand') throw invalidParams('hand.action: expected hand, answer, bot, dial, cancel or pending');
     const self = this.#self();
@@ -357,14 +413,30 @@ export class ContactGroupLink {
     return { ok: true };
   }
 
-  /** `contact.hand { action: 'cancel' }`: the member's owner removed that contact, and the hand it still waits on here goes. */
-  #cancelled(peer: CoordinationPeer, payload: unknown): { ok: true } {
+  /**
+   * `contact.hand { action: 'cancel' }`: the member's owner removed that
+   * contact. The hand it still waits on here goes; a contact this host already
+   * took from that hand is removed here too, however late the cancel comes.
+   */
+  #cancel(peer: CoordinationPeer, payload: unknown): { ok: true } {
     const raw = payload as { contact?: unknown; admission?: unknown } | null;
     const coreId = text(raw?.contact, 'hand.contact', 100);
     if (!Number.isSafeInteger(raw?.admission)) throw invalidParams('hand.admission: expected the addedAt of the removed contact');
-    this.#drop(peer.coreId, coreId, raw!.admission as number);
+    const admission = raw!.admission as number;
+    this.#drop(peer.coreId, coreId, admission);
+    const handed = this.#handed();
+    const taken = handed.find(entry => entry.coreId === coreId && entry.from === peer.coreId && entry.admission === admission);
+    if (taken) {
+      this.#core.journal.setSetting(HANDED, handed.filter(entry => entry !== taken));
+      if (this.#store.find(coreId)?.addedAt === admission) {
+        this.#core.log('info', `contacts: ${peer.name}'s owner removed ${this.#store.find(coreId)!.name}, which this Bots host took from it: removed here too`, { source: 'contacts' });
+        this.#store.remove(coreId);
+      }
+    }
     return { ok: true };
   }
+
+  #handed(): Handed[] { return (this.#core.journal.getSetting(HANDED) as Handed[] | undefined) ?? []; }
 
   /** The hand of `coreId` that `from` gave at `admission` is off: neither a dial nor a hello commits it any more. */
   #drop(from: string, coreId: string, admission: number): void {
@@ -377,13 +449,14 @@ export class ContactGroupLink {
   }
 
   /** One hello to a guest seat at a time. A hello that lands after the caller's wait still moved the contact: this host keeps it then, unless that hand was cancelled meanwhile. */
-  #seatDial(coreId: string, url: string): Promise<void> {
+  #seatDial(coreId: string, url: string, resume = false): Promise<void> {
     const running = this.#dialing.get(coreId);
     if (running) return running;
     const entry = this.#incoming().find(item => item.contact.coreId === coreId && item.url === url);
     if (!entry) return Promise.reject(new Error('no guest seat for that contact'));
     let headers: Record<string, string>;
-    try { headers = this.#store.helloHeaders(coreId); } catch (error) { return Promise.reject(error); }
+    // A resume only finds a contact that already follows this host (`x-boite-resume`): it never takes a seat the contact still holds.
+    try { headers = { ...this.#store.helloHeaders(coreId), ...(resume ? { 'x-boite-resume': '1' } : {}) }; } catch (error) { return Promise.reject(error); }
     // The contact signs this hello back: an origin that only takes the upgrade does not make this host keep it.
     const opened = dialProven(this.#core, url, headers, entry.contact.publicKey, PROBE_MS).then(socket => {
       socket.close(1000, 'moved');
@@ -398,9 +471,14 @@ export class ContactGroupLink {
    * again on each sweep, however long this host was away: if it stopped
    * after the contact followed it but before it kept the contact, the
    * contact now only waits for this host, and the member's next move would
-   * be refused there. The member that handed it is asked first: a contact
-   * its owner removed there is not taken here. A failed ask or dial waits
-   * 10 minutes, then twice as long up to 6 hours. The entry goes once this
+   * be refused there. Such a dial only recovers a contact that already
+   * follows this host: the contact does not give it a seat it still holds
+   * (`x-boite-resume`). The member that handed it is asked first, while it
+   * is a machine of the group: a contact its owner removed there is not
+   * taken here, and a cancel that comes after the dial removes it again
+   * (`#cancel`). A member that left the group can no longer cancel or
+   * answer: the contact alone decides then. A failed ask or dial waits 10
+   * minutes, then twice as long up to 6 hours. The entry goes once this
    * host keeps the contact, once the member no longer holds it, or once the
    * contact refuses this host's hello under its own key (`ContactRefused`);
    * a bare 403 (contacts off there, a proxy) only waits.
@@ -414,7 +492,7 @@ export class ContactGroupLink {
       this.#resuming.add(coreId);
       void this.#handing(entry).then(handing => {
         if (!handing) { this.#drop(entry.from, coreId, entry.contact.addedAt); return; }
-        return this.#seatDial(coreId, url).then(() => { this.#resumes.delete(coreId); });
+        return this.#seatDial(coreId, url, true).then(() => { this.#resumes.delete(coreId); });
       }).catch(error => {
         if (this.#closed) return;
         if (error instanceof ContactRefused) { this.#resumes.delete(coreId); this.#forget(coreId, url); return; }
@@ -424,16 +502,16 @@ export class ContactGroupLink {
     }
   }
 
-  /** The member that handed this seat still holds the contact at the same admission; a member that left the group, or does not answer, cannot say. */
+  /** The member that handed this seat still holds the contact at the same admission; one that left the group cannot say, and the contact decides. */
   async #handing(entry: Incoming): Promise<boolean> {
     const member = this.#core.group.peers().find(peer => peer.coreId === entry.from);
-    if (!member) throw new Error(`${entry.from} is not a machine of this group`);
+    if (!member) return true;
     const answer = await this.#core.coordination.request(member, 'contact.hand', { action: 'pending', contact: entry.contact.coreId, admission: entry.contact.addedAt }) as { handing?: unknown } | null;
     return answer?.handing === true;
   }
 
-  /** Guest seats still to dial keep the store's timer, which sweeps them again. */
-  resuming(): boolean { return this.#incoming().some(entry => entry.url !== undefined && entry.dialed === true && !this.#store.has(entry.contact.coreId)); }
+  /** Guest seats still to dial, and cancels still to deliver, keep the store's timer, which sweeps them again. */
+  resuming(): boolean { return this.#cancels().length > 0 || this.#incoming().some(entry => entry.url !== undefined && entry.dialed === true && !this.#store.has(entry.contact.coreId)); }
 
   /** The contact at `url` never took this host: its seat entry is an ordinary hand again, which expires. */
   #forget(coreId: string, url: string): void {
@@ -471,6 +549,7 @@ export class ContactGroupLink {
     const entry = this.#incoming().find(item => item.contact.coreId === coreId && (dialed === undefined || (item.from === dialed.from && item.contact.addedAt === dialed.contact.addedAt)));
     if (!entry || this.#store.has(coreId)) return;
     this.#core.journal.setSetting(INCOMING, this.#incoming().filter(item => item !== entry && item.contact.coreId !== coreId));
+    this.#core.journal.setSetting(HANDED, [...this.#handed().filter(item => item.coreId !== coreId), { coreId, from: entry.from, admission: entry.contact.addedAt }].slice(-256));
     const record = this.#record(entry.contact, entry.url);
     this.#store.put(record);
     this.#adoptRequests(record, entry.requests);
