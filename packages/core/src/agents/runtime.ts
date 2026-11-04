@@ -241,7 +241,8 @@ export class AgentRuntime {
     if (thread.parentThreadId) return;
     const agent = this.#store.agentOfThread(thread.id);
     if (!agent) return;
-    if (this.#store.moves.moving(agent.id)) {
+    // A move that only waits for the bot's turn lets letters in: it leaves once they are read.
+    if (this.#store.moves.travelling(agent.id)) {
       throw refused(`Held ${SOURCE_TEXT[source]}: ${agent.name} is moving to another machine.`, { reason: AGENT_HELD, threadId: thread.id, source, held: 'busy' });
     }
     const held = this.#refusal(agent);
@@ -457,6 +458,7 @@ export class AgentRuntime {
     this.#store.routines.tick();
     this.#store.memory.tick();
     this.#store.projects.tick();
+    this.#store.moves.sweep();
     if (this.#waiting.size) this.#retryHeld();
     if (this.pending.size === 0 || this.#store.limits().paused) return;
     const now = Date.now();

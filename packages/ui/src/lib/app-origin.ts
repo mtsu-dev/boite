@@ -44,3 +44,28 @@ export function reachableFromApp(address: string): boolean {
     return false;
   }
 }
+
+/**
+ * The page a machine with no HTTPS address serves, holding what pairs there
+ * (`?grant=` or `?token=`), or null for an address that is not one: an
+ * absolute plain `http:` URL with no credentials, query or fragment, so a
+ * typed host alone or another scheme never becomes a navigation that carries
+ * the secret elsewhere. The page takes it from its address (`resolveEndpoint`).
+ */
+export function machinePage(address: string, param: string, value: string): string | null {
+  let url: URL;
+  try { url = new URL(address); } catch { return null; }
+  if (url.protocol !== 'http:' || url.username || url.password || url.search || url.hash) return null;
+  return `${withoutTrailingSlashes(`${url.origin}${url.pathname}`)}/?${param}=${encodeURIComponent(value)}`;
+}
+
+/**
+ * Leaves the app for a machine's own page (`machinePage`), the way a tapped
+ * link would. An HTTPS page may not open a socket to plain http, but it may
+ * navigate there, and the page pairs over HTTP, its device key made without
+ * WebCrypto. A link's `#join=` invitation, for a computer's Join field, is not
+ * carried, so it stays out of the phone's address bar and history.
+ */
+export function openOnMachine(page: string): void {
+  window.location.assign(page);
+}

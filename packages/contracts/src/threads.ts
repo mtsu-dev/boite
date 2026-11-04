@@ -191,6 +191,8 @@ export interface ThreadSummary {
   agentSessionId?: string;
   /** A team's chat (`docs/teams.md`): it runs no agent, a turn there is one post, and no agent reaches it as a coordination contact. */
   teamId?: string;
+  /** A debate's salon (`docs/debates.md`): it runs no agent and holds no message; the posts are read with debates.get. */
+  debateId?: string;
   /**
    * An incognito conversation of the drafts. It works in a folder of the
    * core's data directory rather than the drafts folder, lists stay quiet

@@ -2,12 +2,14 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { builtinSettingRefusal, isAgentPicture } from '@boite/contracts';
 import type {
-  AgentBrain, AgentBuiltin, AgentProfile, AgentRoutine, AgentSave, AgentSession, AgentStatus, AgentWatch, AgentsSnapshot, RpcParams, ThreadSummary, Turn,
+  AccountId, AgentBrain, AgentBuiltin, AgentProfile, AgentRoutine, AgentSave, AgentSession, AgentStatus, AgentWatch, AgentsSnapshot, ModelInfo, RpcParams, ThreadSummary, Turn,
 } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { invalidParams, messageOf, refused } from '../errors.ts';
 import type { Connection } from '../router.ts';
-import { checkModel, checkEffort, agentProvider, modelsFor } from '../threads/selection.ts';
+import { checkModel, checkEffort, agentProvider, modelsFor, PROBED_PROTOCOLS } from '../threads/selection.ts';
+import { probedModelsOf } from '../drivers/index.ts';
+import { readSavedCatalog } from '../providers/saved-catalogs.ts';
 import { withLoad } from '../threads/records.ts';
 import { AgentsRepository } from './repository.ts';
 import { AgentEntrustments } from './entrust.ts';
@@ -279,11 +281,14 @@ export class AgentStore {
       if (project.kind === 'drafts') throw refused('projectIds: drafts are the user\'s scratch space and cannot be entrusted to a bot');
     }
     // Profiles saved by older cores also carry `tools`: an edit drops it.
+    // A save that omits the pin keeps it: a client that predates it never unpins a bot. Only a pinned bot carries the field.
+    const pinned = v.pinned === undefined ? previous?.pinned === true : boolean(v.pinned, 'pinned');
     const value = {
       name: text(v.name, 'name', 100), domain: text(v.domain, 'domain', 500, true), instructions: text(v.instructions, 'instructions', 32000, true),
       avatar: text(v.avatar, 'avatar', 40, true), status: oneOf(v.status, 'status', ['active', 'paused', 'archived']), projectIds,
       selection: { providerId: provider.id, accountId: account.id, model, effort, permissionMode: oneOf(v.selection.permissionMode, 'permissionMode', ['default', 'acceptEdits', 'plan', 'bypassPermissions', 'yolo', 'dontAsk']) },
       ...(kind === undefined ? {} : { builtin: kind }),
+      ...(pinned ? { pinned: true } : {}),
     };
     // A built-in bot's text is Boite's (builtin.ts) and it is never put away: only reset.
     if (previous?.builtin !== undefined) {
@@ -462,10 +467,23 @@ export class AgentStore {
     try { provider = agentProvider(this.core, agent); } catch (error) { return messageOf(error); }
     const account = this.core.journal.getAccount(agent.selection.accountId);
     if (account === null || account.providerId !== provider.id) return `Its account is gone; choose another one for ${agent.name} in its settings.`;
-    if (agent.selection.model !== null && !modelsFor(provider, account.id).some(m => m.id === agent.selection.model) && provider.models.length > 0) {
+    const listed = agent.selection.model === null || provider.models.length === 0 ? null : this.#listedModels(provider, account.id);
+    if (listed !== null && !listed.some(m => m.id === agent.selection.model)) {
       return `${provider.name} no longer lists ${agent.selection.model}; choose another model for ${agent.name} in its settings.`;
     }
     return null;
+  }
+
+  /**
+   * The models an account is known to list. An agent that owns its list has
+   * none read after a restart until something probes it: the list saved by the
+   * last read stands for it, as in the picker, and with no saved list nothing
+   * is known, so no model counts as gone.
+   */
+  #listedModels(provider: ReturnType<typeof agentProvider>, accountId: AccountId): ModelInfo[] | null {
+    if (!PROBED_PROTOCOLS.includes(provider.protocol) || probedModelsOf(provider.protocol, provider.id, accountId) !== null) return modelsFor(provider, accountId);
+    const saved = readSavedCatalog(this.core, provider.id, accountId);
+    return saved === null ? null : [...saved.models, ...provider.models];
   }
 
   /**
@@ -526,7 +544,7 @@ export class AgentStore {
     return {
       agentId: agent.id, threadId, state, activity: thread && state !== 'archived' ? this.#activity(thread) : null, problem,
       nextWake: next ? { at: next.nextAt!, routineId: next.id, label: next.name } : null, unread, last, today,
-      memory: this.memory.lastPass(agent.id),
+      memory: this.memory.lastPass(agent.id), leaving: this.moves.leaving(agent.id),
     };
   }
 
@@ -606,6 +624,8 @@ export function registerPersistentAgents(core: Core): void {
   core.router.register('agents.builtin.ensure', p => store.builtins.ensure(p));
   core.router.register('agents.builtin.reset', p => store.builtins.reset(p));
   core.router.register('agents.move', p => store.moves.move(p));
+  core.router.register('agents.move.queue', p => store.moves.queue(p));
+  core.router.register('agents.move.cancel', p => store.moves.cancel(p));
   core.router.register('agents.open', p => store.open(p.agentId));
   core.router.register('agents.runtime.get', p => store.resident.config(p.agentId));
   core.router.register('agents.runtime.configure', p => store.resident.configure(p));

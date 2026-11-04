@@ -132,21 +132,24 @@ export class Connection {
     s.closeDeviceInvite();
     this.attachEndpoint(endpoint, rememberActive);
     const client = this.ctx.client;
-    let timedOut = false;
-    // Only a handshake that never finished is given up on. Once the machine
-    // said hello, a slow link still loading the lists is waited for: closing
-    // it there dropped a working machine for good.
-    const timeout = setTimeout(() => {
-      if (client === null || client.state === 'ready') return;
-      timedOut = true;
-      client.close();
-    }, 12_000);
+    const generation = this.ctx.clientGeneration;
+    // Only a handshake that never finished stops holding the caller. Once the
+    // machine said hello, a slow link still loading the lists is waited for.
+    // The client is never closed here: it keeps trying, and its first ready clears the message.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<'late'>((resolve) => {
+      timer = setTimeout(() => { if (client !== null && client.state !== 'ready') resolve('late'); }, 12_000);
+    });
+    const connecting = s.connect();
     try {
-      await s.connect();
+      if (await Promise.race([connecting, late]) !== 'late') return;
+      s.error = strings.machines.timeout;
+      // A handshake that fails after the wait says why in its own words; the screen keeps saying it did not answer.
+      void connecting.then(() => {
+        if (client !== null && this.ctx.currentClient(client, generation) && client.state !== 'ready' && s.error !== null) s.error = strings.machines.timeout;
+      }, () => undefined);
     } finally {
-      clearTimeout(timeout);
-      // Set last: the calls the close dropped report "client closed" first.
-      if (timedOut) s.error = strings.machines.timeout;
+      clearTimeout(timer);
       this.booted = true;
     }
   }
@@ -192,6 +195,7 @@ export class Connection {
             boardDemo: params.get('board') === '1',
             watchDemo: params.get('watch') === '1',
             windowsDemo: params.get('windows') === '1',
+            debatesDemo: params.get('debates') === '1',
             uninstalled: params.get('uninstalled') === '1',
             ...(params.get('principal') === 'session' ? { principal: 'session' as const } : {}),
             ...(params.get('missing') ? { missing: params.get('missing')!.split(',') } : {})

@@ -2,7 +2,7 @@
   import { ArrowLeft, Brain, Ellipsis, Archive, Pause, Play, LampDesk, RotateCcw, Settings2, TriangleAlert } from '@lucide/svelte';
   import type { AgentProfile, AgentStatus, ThreadSummary } from '@boite/contracts';
   import { moodOf, liveState, liveStep, resetBuiltin, waitingOn, type AgentsView } from '../../lib/agents.svelte';
-  import { confirm } from '../../lib/confirm.svelte';
+  import { confirmArchive } from '../../lib/agent-menu';
   import { dateTime } from '../../lib/schedule';
   import type { AgentPane } from '../../lib/store/layout.svelte';
   import type { Store } from '../../lib/store.svelte';
@@ -63,15 +63,7 @@
     else if (id === 'pause') await setStatus('paused');
     else if (id === 'resume') await setStatus('active');
     else if (id === 'reset') await resetBuiltin(view, agent);
-    else if (id === 'archive' && await confirm.ask({
-      title: fill(labels.archiveTitle, { name: agent.name }),
-      body: labels.archiveBody,
-      confirmLabel: labels.archive,
-      cancelLabel: strings.common.cancel,
-      danger: true,
-      requiredText: agent.name,
-      inputLabel: labels.archiveName,
-    })) await setStatus('archived');
+    else if (id === 'archive' && await confirmArchive(agent.name)) await setStatus('archived');
   }
 </script>
 

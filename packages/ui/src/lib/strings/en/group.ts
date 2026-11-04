@@ -31,6 +31,19 @@ export const strings = {
     leave: 'Leave the group', leaveTitle: 'Leave {group}?',
     leaveBody: 'This machine forgets the group. Phones added on this machine leave the group with it.',
     lanHint: 'A phone reaches this link once the local network is on and Boite has restarted.',
+    tailscale: {
+      hint: 'With HTTPS through Tailscale, the link names this machine: {url}. The Boite app on a phone opens it.',
+      enable: 'HTTPS via Tailscale',
+      enabling: 'Turning on HTTPS'
+    },
+    lan: {
+      ready: 'Reachable on this network at {address}.',
+      closed: 'Windows Firewall keeps Boite closed on this private network, so a phone on it cannot reach this machine.',
+      allow: 'Allow on private networks',
+      public: 'This network is public: Windows keeps Boite closed on it. Mark it private in Windows settings to reach this machine from it.',
+      domain: 'This is a work network: Windows keeps Boite closed on it. Its administrator decides what gets through.',
+      policy: "Your organization's policy keeps this machine off the local network."
+    },
     reach: {
       loopback: 'This link only works on this computer: Boite does not listen on the local network yet.',
       button: 'Make it reachable on the local network',
@@ -42,7 +55,7 @@ export const strings = {
       unset: 'Windows Firewall has not allowed Boite on this {networks} network yet, so a phone cannot reach this computer.',
       allow: 'Allow in Windows Firewall',
       allowing: 'Waiting for Windows',
-      allowed: 'Windows Firewall now lets phones reach Boite on every network.',
+      allowed: 'Windows Firewall now lets phones reach Boite on private networks.',
       cancelled: 'Nothing changed: Windows needs an administrator to accept its prompt.',
       failed: 'Windows refused the change. Allow boite-core.exe in Windows Firewall settings.',
       unreadable: 'Windows Firewall could not be read. If a phone cannot connect, allow boite-core.exe there.',

@@ -120,6 +120,13 @@ export interface AgentProfile extends AgentRecord {
    * only reset (`agents.builtin.reset`). Missing on an owner's bot.
    */
   builtin?: AgentBuiltin;
+  /**
+   * Kept at the top of the bots list, on every client, and through a move to
+   * another machine. A save that omits it keeps the bot's previous choice, so
+   * a client that predates it never unpins one; `false` unpins. Missing on a
+   * bot never pinned.
+   */
+  pinned?: boolean;
 }
 export interface AgentMoveParams { agentId: string; machine: string; requestId?: string }
 export interface AgentMoveResult {
@@ -132,6 +139,20 @@ export interface AgentMoveResult {
   projectIds: string[];
   /** Those of the machine it left: they work while that machine keeps `groupBots` on. */
   groupProjects: string[];
+}
+/**
+ * A move the owner asked while the bot worked (`agents.move.queue`): it runs
+ * once the bot's thread and every thread below it are idle, and the bot's
+ * routines, events and facts wait until then.
+ */
+export interface AgentQueuedMove {
+  agentId: string;
+  /** The target's core id. */
+  machine: string;
+  /** The `requestId` the move runs with: a retry by hand with it finishes that move rather than making a second bot. */
+  requestId: string;
+  /** When it was asked. */
+  at: number;
 }
 /** The bots Boite ships. One of each per core at most. */
 export const AGENT_BUILTINS = ['contacts'] as const;
@@ -220,6 +241,8 @@ export interface AgentStatus {
    * the first pass.
    */
   memory?: { threadId: string; status: 'running' | 'done' | 'unchanged' | 'error'; summary: string | null; at: number } | null;
+  /** The move waiting for its turn to end (`agents.move.queue`); null or missing when none waits. */
+  leaving?: AgentQueuedMove | null;
 }
 export interface AgentsSnapshot {
   revision: number;
@@ -310,6 +333,27 @@ export interface AgentsRpcMethods {
    * target without a signed-in account. Owner only.
    */
   'agents.move': { params: AgentMoveParams; result: AgentMoveResult };
+  /**
+   * `agents.move` once the bot is idle, for a bot at work (`features.botMoveQueue`).
+   *
+   * - **Now:** the same checks as `agents.move` (member, archived, team); then
+   *   the move waits in `AgentStatus.leaving`.
+   * - **While it waits:** the bot's routines, events and facts are held. The
+   *   owner's messages and the letters it receives (its sub-threads' answers)
+   *   still run, and the move waits for them too.
+   * - **Start:** at the first scheduler pass that finds its thread and every
+   *   thread below it idle, at once for an idle bot.
+   * - **Failure:** a refusal leaves a line in the bot's thread, and the bot
+   *   stays. A target that did not answer may hold the bot already: a line
+   *   says so, and the move tries again with the same `requestId` until it
+   *   ends or the owner cancels it.
+   * - **One per bot:** asking again replaces it.
+   *
+   * Owner only.
+   */
+  'agents.move.queue': { params: AgentMoveParams; result: AgentQueuedMove };
+  /** Drops the move `agents.move.queue` keeps for this bot: false when none waits, or once it started. Owner only. */
+  'agents.move.cancel': { params: { agentId: string }; result: { cancelled: boolean } };
   /** The agent's thread, created again if it was lost. */
   'agents.open': { params: { agentId: string }; result: { threadId: string } };
   'agents.runtime.get': { params: { agentId: string }; result: AgentRuntimeConfig };

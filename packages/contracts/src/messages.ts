@@ -252,6 +252,12 @@ export type MessagePart =
    * restarted. The window's title is left out: the agent can read its thread.
    */
   | { type: 'window_consent'; requestId: string; kind: WindowCaptureKind; process: string; path: string; expiresAt: Timestamp; answer: WindowConsentAnswer | 'expired' | null }
+  /**
+   * A debate the turn started (`boite delegate debate`): a client draws its
+   * card from the thread's `debates.list`, with the rounds, the status and the salon to open.
+   * One without the debates experiment draws nothing.
+   */
+  | { type: 'debate'; debateId: string; topic: string }
   | { type: 'error'; message: string };
 
 export interface Message {

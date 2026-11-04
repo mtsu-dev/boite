@@ -70,6 +70,12 @@ export class RemoteDrive {
     for (const entry of this.#streams.values()) if (entry.tabId === tab.id) entry.stream.forget();
   }
 
+  /** The tab's renderer died with its screencasts: the next frame starts a new one on the page loaded again. */
+  restart(tab: Tab): void {
+    tab.frame = null;
+    for (const [key, entry] of this.#streams) if (entry.tabId === tab.id) this.#stopStream(key);
+  }
+
   #stopStream(key: string): void {
     const entry = this.#streams.get(key);
     if (!entry) return;

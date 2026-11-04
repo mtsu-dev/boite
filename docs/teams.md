@@ -166,19 +166,25 @@ and an update of the app.
 
 ### In the app
 
-With the experiment on, a Teams section heads the desktop sidebar and the
-phone's thread list (`components/teams/SidebarTeams.svelte`). Each team that
-is not archived is a row: its members' pictures, its name, who is in it and
-the unread mark of its chat. Folded, the section's head counts the unread
-chats; the phone's search filters it by team, member or machine name. A row
-opens the team chat. The chat is no thread row of the lists, because the core
-refuses an agent's composer there.
+Teams needs Bots: its switch stays greyed while Bots is off, and turning Bots
+off turns Teams off too. With the experiment on, a Teams section heads the
+Bots page's list, above the bots, on the desktop and on the phone
+(`components/agents/AgentsRail.svelte`). Each team that is not archived is a
+row in the style of a bot's: its members' pictures, its name, who is in it,
+the time of its last post and the unread mark of its chat, the team with the
+latest post first. The page's search filters the teams by name, as it filters
+the bots. A row opens the team chat in the page's main pane
+(`components/agents/AgentsPage.svelte`); on a phone the chat takes the screen
+and its back arrow returns to the list. The chat is no thread row of the
+Conversations lists, because the core refuses an agent's composer there, and
+a thread with `teamId` opens on the Bots page.
 
 The team chat (`components/teams/TeamChat.svelte`) replaces the conversation
-view of a thread with `teamId`. The header shows the team's name, without
-rename, menu or terminal. Over the posts, the members; a member opens its bot's
-page. The posts are the thread's messages, oldest first, paged like a thread's,
-so they arrive live and opening the chat marks it read. Each post shows:
+view of a thread with `teamId`. The header shows the team's pictures, its name
+and "Team chat · N bots and you", without rename, menu, terminal or panel.
+Over the posts, the members; a member opens its bot's page. The posts are the
+thread's messages, oldest first, paged like a thread's, so they arrive live and
+opening the chat marks it read. Each post shows:
 
 - its author: the bot's name, or You for the owner;
 - its time; posts of one author a few minutes apart read as one;

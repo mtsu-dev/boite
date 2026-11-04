@@ -33,6 +33,19 @@ export const fr: Translation = {
     leave: 'Quitter le groupe', leaveTitle: 'Quitter {group} ?',
     leaveBody: "Cette machine oublie le groupe. Les téléphones ajoutés sur cette machine quittent le groupe avec elle.",
     lanHint: 'Un téléphone atteint ce lien une fois le réseau local activé et Boite redémarré.',
+    tailscale: {
+      hint: "Avec le HTTPS de Tailscale, le lien nomme cette machine : {url}. L'appli Boite d'un téléphone l'ouvre.",
+      enable: 'HTTPS via Tailscale',
+      enabling: 'Activation du HTTPS'
+    },
+    lan: {
+      ready: 'Joignable sur ce réseau à {address}.',
+      closed: 'Le pare-feu Windows garde Boite fermé sur ce réseau privé : un téléphone dessus ne peut pas joindre cette machine.',
+      allow: 'Autoriser sur les réseaux privés',
+      public: 'Ce réseau est public : Windows y garde Boite fermé. Marquez-le comme privé dans les paramètres de Windows pour joindre cette machine depuis ce réseau.',
+      domain: "C'est un réseau d'entreprise : Windows y garde Boite fermé. Son administrateur décide de ce qui passe.",
+      policy: "La politique de votre organisation tient cette machine hors du réseau local."
+    },
     reach: {
       loopback: "Ce lien ne fonctionne que sur cet ordinateur : Boite n'écoute pas encore le réseau local.",
       button: 'Rendre accessible sur le réseau local',
@@ -44,7 +57,7 @@ export const fr: Translation = {
       unset: "Le pare-feu Windows n'a pas encore autorisé Boite sur ce réseau {networks} : un téléphone ne peut pas joindre cet ordinateur.",
       allow: 'Autoriser dans le pare-feu Windows',
       allowing: 'En attente de Windows',
-      allowed: 'Le pare-feu Windows laisse désormais les téléphones joindre Boite sur tous les réseaux.',
+      allowed: 'Le pare-feu Windows laisse désormais les téléphones joindre Boite sur les réseaux privés.',
       cancelled: "Rien n'a changé : Windows a besoin qu'un administrateur accepte sa demande.",
       failed: 'Windows a refusé la modification. Autorisez boite-core.exe dans les paramètres du pare-feu Windows.',
       unreadable: "Le pare-feu Windows n'a pas pu être lu. Si un téléphone ne se connecte pas, autorisez-y boite-core.exe.",

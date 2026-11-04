@@ -14,6 +14,7 @@
   import InfoTip from './InfoTip.svelte';
   import PolicyLock from './PolicyLock.svelte';
   import MachineIcon from './MachineIcon.svelte';
+  import OwnReach from './OwnReach.svelte';
 
   /**
    * The group of the machine this page shows: its machines and its devices in
@@ -23,8 +24,6 @@
   let { store, mobile = false, children, migration }: { store: Store; mobile?: boolean; children?: Snippet; migration?: ConnectionGroup } = $props();
   const uid = $props.id();
   const sync = workspace.settingsSync;
-  /** An address only the machine itself can dial. */
-  const LOOPBACK = /^http:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?\/?$/;
 
   let name = $state('');
   let invitation = $state('');
@@ -69,10 +68,6 @@
     if (state === 'unreachable' || state === 'insecure') return { label: null, hint: strings.group[state], ready: false };
     return { label: strings.group.connecting, hint: null, ready: false };
   }
-  let loopback = $derived.by(() => {
-    const self = members[0];
-    return self !== undefined && self.addresses.length > 0 && self.addresses.every((address) => LOOPBACK.test(address));
-  });
 
   /**
    * The group's two roles, each chosen once for the group so every member and
@@ -196,7 +191,7 @@
       {#if owner}{@render addButton()}{/if}
     </header>
     {@render children?.()}
-    {#if children && loopback}<p class="hint">{strings.group.loopback}</p>{/if}
+    {#if children}<OwnReach {store} self={members[0]} {mobile} />{/if}
     {@render progress()}
     {#if members.some(core => !children || !workspace.machines.some(machine => GroupLinks.coreOf(machine) === core.coreId))}
     <ul class="members" aria-label={strings.group.members}>
@@ -215,7 +210,7 @@
             {/if}
           </div>
           {#if state.hint}<p class="hint">{state.hint}</p>{/if}
-          {#if core.coreId === group.self && loopback}<p class="hint">{strings.group.loopback}</p>{/if}
+          {#if core.coreId === group.self}<OwnReach {store} self={core} row {mobile} />{/if}
         </li>
       {/each}
     </ul>

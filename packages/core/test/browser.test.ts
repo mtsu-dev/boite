@@ -3,7 +3,7 @@ import type { BrowserAction } from '@boite/contracts';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { echoThread, startTestCore } from './harness.ts';
-import { createBrowserFixture } from './browser/fixture.ts';
+import { createBrowserFixture, picture } from './browser/fixture.ts';
 import { traceBrowserCommands } from './browser/dialog-trace.ts';
 import { thrown } from './settle.ts';
 
@@ -127,6 +127,41 @@ real('a background tab woken from sleep draws again: its screenshot answers', as
   const shot = await agent.call('browser.command', { threadId, tabId: first, action: { kind: 'screenshot' } });
   expect(Buffer.from(shot.screenshot!.base64, 'base64').subarray(1, 4).toString()).toBe('PNG');
   expect(performance.now() - started).toBeLessThan(10_000);
+}, 150_000);
+
+real('a tab whose renderer was killed loads its page again for the next viewer or command', async () => {
+  const { harness, owner, agent, threadId } = browserFixture;
+  harness.core.browser.sleepAfterMs = 300;
+  const browser = harness.core.browser;
+  const { tabId } = await agent.call('browser.command', { threadId, action: { kind: 'open', url: url() } });
+  // Each step starts once the core heard of the crash.
+  let crashes = 0;
+  const record = harness.core.logs.record.bind(harness.core.logs);
+  harness.core.logs.record = (level, message, context = {}, at) => { if (context.event === 'browser.tab-crashed') crashes++; record(level, message, context, at); };
+  const crash = async () => {
+    const before = crashes;
+    // Every renderer of this test's own browser: the tab's is among them, and the others are spares.
+    for (const pid of await browser.rendererPids(tabId!)) { try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ } }
+    for (const end = Date.now() + 15_000; crashes === before && Date.now() < end;) await Bun.sleep(50);
+    expect(crashes).toBe(before + 1);
+  };
+  // Killed asleep, as the memory guard stopped a Gmail tab nobody watched: the viewer that came later got no frame.
+  for (const end = Date.now() + 30_000; !browser.asleep(tabId!) && Date.now() < end;) await Bun.sleep(50);
+  expect(browser.asleep(tabId!)).toBe(true);
+  await crash();
+  await owner.call('threads.subscribe', { threadId });
+  const started = performance.now();
+  const frame = await picture(owner.call('browser.remoteFrame', { threadId, tabId, maxWidth: 300, quality: 40 }));
+  expect(frame.title).toBe('Fixture');
+  expect(performance.now() - started).toBeLessThan(10_000);
+  // Killed while awake, the agent's next command finds the page loaded again.
+  await crash();
+  expect(await evaluate('document.title')).toBe('Fixture');
+  // Closed while dead, the page goes without loading again: its server hears nothing.
+  await crash();
+  browserFixture.agents.delete('/');
+  await agent.call('browser.command', { threadId, tabId, action: { kind: 'close' } });
+  expect(browserFixture.agents.has('/')).toBe(false);
 }, 150_000);
 
 real('boite browse opens its page as a new tab of the conversation browser, not in a panel of its own', async () => {

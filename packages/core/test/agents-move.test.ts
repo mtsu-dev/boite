@@ -1,27 +1,30 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AgentProfile, CoordinationPeer } from '@boite/contracts';
 import type { CoreClient } from '../src/client.ts';
 import { MEMORY_ARCHIVE } from '../src/agents/context.ts';
 import { makeAgent, scripted, settled, turnsOf } from './agent-fixture.ts';
-import { quietAgent, startTestCore, waitFor, type TestCore } from './harness.ts';
+import { quietAgent, removeDir, startTestCore, waitFor, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
 
 /* A bot moves from one machine of a group to another: `agents.move` on the one it leaves, `bot.move` on the one it reaches. */
 
 const cores: TestCore[] = [];
+const dirs: string[] = [];
 let driver: ReturnType<typeof scripted> | null = null;
 beforeEach(() => { driver = scripted(() => ({ text: 'Noted.' })); });
 afterEach(async () => {
   driver?.release();
   for (const h of cores.splice(0)) await h.stop();
+  for (const dir of dirs.splice(0)) await removeDir(dir);
   driver?.restore(); driver = null;
 });
 
-/** Two machines of one group: `desk`, where the bot lives, and `pc`, where it goes, each with a project. */
-async function group() {
-  const desk = await startTestCore();
+/** Two machines of one group: `desk`, where the bot lives, and `pc`, where it goes, each with a project. `deskDir`: desk's data directory, kept for a restart. */
+async function group(deskDir?: string) {
+  const desk = await startTestCore(deskDir === undefined ? {} : { dataDir: deskDir });
   const pc = await startTestCore();
   cores.push(desk, pc);
   const owner = await desk.connect();
@@ -57,7 +60,7 @@ const lastText = (h: TestCore, threadId: string) => h.core.journal.listMessages(
 test('a move carries the bot, its memory, routines, projects and the end of its conversation; the next prompt there says so once', async () => {
   const { desk, pc, owner, pcOwner, deskId, pcId, pcPeer, deskProject, pcProject } = await group();
   const { agent: made, threadId } = await makeAgent(desk, owner, {
-    name: 'Ada', domain: 'Gardens', instructions: 'Water the plants.', avatar: 'bot:c.1.2.3.4.1.1.0', projectIds: [deskProject.id, `${pcId}/${pcProject.id}`],
+    name: 'Ada', domain: 'Gardens', instructions: 'Water the plants.', avatar: 'bot:c.1.2.3.4.1.1.0', projectIds: [deskProject.id, `${pcId}/${pcProject.id}`], pinned: true,
   });
   // A turn the user and the bot had: its end goes with the bot.
   await owner.call('turns.start', { threadId, prompt: 'The door is blue.' });
@@ -77,7 +80,7 @@ test('a move carries the bot, its memory, routines, projects and the end of its 
   // There: the same bot, on that machine's echo account.
   const there = pc.core.workforce.records.get('profile', agent.id);
   const pcEcho = pc.core.accounts.list().find(a => a.providerId === 'echo')!.id;
-  expect(there).toMatchObject({ name: 'Ada', domain: 'Gardens', instructions: 'Water the plants.', avatar: 'bot:c.1.2.3.4.1.1.0', status: 'active', projectIds: moved.projectIds });
+  expect(there).toMatchObject({ name: 'Ada', domain: 'Gardens', instructions: 'Water the plants.', avatar: 'bot:c.1.2.3.4.1.1.0', status: 'active', projectIds: moved.projectIds, pinned: true });
   expect(there.selection).toEqual({ ...agent.selection, accountId: pcEcho });
   expect(pc.core.workforce.sessionOf(agent.id)?.threadId).toBe(moved.threadId);
   const theirs = pc.core.workforce.brainOf({ agentId: agent.id });
@@ -346,7 +349,7 @@ test('facts filed while the bot travels go after it, nothing wakes it here meanw
 
 test('a rename, a memory and a routine the owner saves while the bot travels go after it; more facts than a move carries refuse it', async () => {
   const { desk, pc, owner, pcId } = await group();
-  const { agent } = await makeAgent(desk, owner);
+  const { agent } = await makeAgent(desk, owner, { pinned: true });
   const request = desk.core.coordination.request.bind(desk.core.coordination);
   let legs = 0;
   desk.core.coordination.request = async (peer: CoordinationPeer, operation, payload) => {
@@ -356,7 +359,7 @@ test('a rename, a memory and a routine the owner saves while the bot travels go 
     if (legs === 1) {
       const current = desk.core.workforce.records.get('profile', agent.id);
       const { id: _id, revision: _revision, createdAt: _createdAt, updatedAt: _updatedAt, ...value } = current;
-      await owner.call('agents.profile.save', { id: agent.id, expectedRevision: current.revision, value: { ...value, name: 'Renamed on the way' } });
+      await owner.call('agents.profile.save', { id: agent.id, expectedRevision: current.revision, value: { ...value, name: 'Renamed on the way', pinned: false } });
       const brain = await owner.call('agents.brain.get', { agentId: agent.id });
       await owner.call('agents.brain.save', { agentId: agent.id, expectedRevision: brain.revision, instructions: brain.instructions, memory: 'Saved on the way.\n' });
       await owner.call('agents.routine.save', { value: { agentId: agent.id, name: 'Late', prompt: 'Saved on the way.', schedule: { kind: 'interval', everyMinutes: 60 }, enabled: true, nextAt: null, lastTurnId: null, lastScheduledAt: null } });
@@ -365,7 +368,9 @@ test('a rename, a memory and a routine the owner saves while the bot travels go 
   };
   await owner.call('agents.move', { agentId: agent.id, machine: pcId, requestId: 'edits' });
   expect(legs).toBe(2);
-  expect(pc.core.workforce.records.get('profile', agent.id).name).toBe('Renamed on the way');
+  // Unpinned on the way: the second leg's profile replaces the pin the first one brought.
+  expect(pc.core.workforce.records.get('profile', agent.id)).toMatchObject({ name: 'Renamed on the way' });
+  expect(pc.core.workforce.records.get('profile', agent.id)).not.toHaveProperty('pinned');
   expect((await (await pc.connect()).call('agents.brain.get', { agentId: agent.id })).memory).toContain('Saved on the way.');
   expect(pc.core.workforce.records.list('routine').filter(r => r.agentId === agent.id).map(r => r.name)).toEqual(['Late']);
   desk.core.coordination.request = request;
@@ -403,6 +408,128 @@ test('a turn the owner starts while the bot travels keeps it here; the refusal n
   await owner.call('agents.move', { agentId: agent.id, machine: pcId, requestId });
   expect(pc.core.workforce.records.list('profile').filter(p => p.id === agent.id)).toHaveLength(1);
   expect(desk.core.workforce.records.find('profile', agent.id)).toBeNull();
+}, 60_000);
+
+/** One scheduler pass, as the runtime's timer runs it every half second. */
+const pass = (h: TestCore) => (h.core.agentRuntime as unknown as { tick(): void }).tick();
+const leavingOf = async (client: CoreClient, agentId: string) => (await client.call('agents.snapshot', {})).status.find(s => s.agentId === agentId)?.leaving ?? null;
+
+/** The bot's thread with a turn the test holds, until `driver.release()`. */
+async function working(h: TestCore, client: CoreClient, threadId: string) {
+  driver!.restore();
+  driver = scripted(() => ({ text: 'Working.', hold: true }));
+  await client.call('turns.start', { threadId, prompt: 'Keep going.' });
+  await waitFor(() => h.core.threads.isBusy(threadId));
+  return driver;
+}
+
+test('a move asked while the bot works leaves once its turn ends; a fact filed meanwhile goes with it rather than waking it here', async () => {
+  const { desk, pc, owner, deskId, pcId, deskProject } = await group();
+  const { agent, threadId } = await makeAgent(desk, owner, { projectIds: [deskProject.id] });
+  // There the bot sleeps, so the fact stays one the test reads.
+  pc.core.workforce.setLimits({ paused: true });
+  const turn = await working(desk, owner, threadId);
+
+  expect(await owner.call('agents.move.queue', { agentId: agent.id, machine: pcId, requestId: 'later-1' })).toMatchObject({ agentId: agent.id, machine: pcId, requestId: 'later-1' });
+  expect(await leavingOf(owner, agent.id)).toMatchObject({ agentId: agent.id, machine: pcId, requestId: 'later-1' });
+  desk.core.workforce.fact(agent.id, { key: 'letter', text: 'A letter came.', urgent: true });
+  pass(desk); pass(desk);
+  expect(desk.core.workforce.records.find('profile', agent.id)).not.toBeNull();
+  expect(pc.core.workforce.records.find('profile', agent.id)).toBeNull();
+
+  turn.release();
+  await waitFor(() => desk.core.workforce.records.find('profile', agent.id) === null, 10_000);
+  // The urgent fact woke nothing here between the turn's end and the move.
+  expect(turn.prompts.get(threadId)).toHaveLength(1);
+  expect(pc.core.workforce.records.get('profile', agent.id).projectIds).toEqual([`${deskId}/${deskProject.id}`]);
+  expect(pc.core.agentRuntime.facts(agent.id).map(f => f.text)).toEqual(['A letter came.']);
+  expect(desk.core.journal.getSetting(`agents:move-queued:${agent.id}`)).toBeUndefined();
+  // It ran with its requestId: a retry by hand answers that move again.
+  expect(await owner.call('agents.move', { agentId: agent.id, machine: pcId, requestId: 'later-1' })).toMatchObject({ agentId: agent.id, machine: pcId });
+}, 60_000);
+
+test('a waiting move is cancelled while the bot works, and one asked of an idle bot leaves at the next pass', async () => {
+  const { desk, pc, owner, pcId } = await group();
+  const { agent, threadId } = await makeAgent(desk, owner);
+  const turn = await working(desk, owner, threadId);
+  await owner.call('agents.move.queue', { agentId: agent.id, machine: pcId });
+  expect(await owner.call('agents.move.cancel', { agentId: agent.id })).toEqual({ cancelled: true });
+  expect(await leavingOf(owner, agent.id)).toBeNull();
+  expect(await owner.call('agents.move.cancel', { agentId: agent.id })).toEqual({ cancelled: false });
+  turn.release();
+  await waitFor(() => settled(desk, threadId), 10_000);
+  pass(desk);
+  expect(desk.core.workforce.records.find('profile', agent.id)).not.toBeNull();
+  expect(pc.core.workforce.records.find('profile', agent.id)).toBeNull();
+
+  const queued = await owner.call('agents.move.queue', { agentId: agent.id, machine: pcId });
+  expect(queued.requestId).toStartWith('mov_');
+  await waitFor(() => pc.core.workforce.records.find('profile', agent.id) !== null && desk.core.workforce.records.find('profile', agent.id) === null, 10_000);
+}, 60_000);
+
+test('a waiting move the target refuses once the turn ends leaves a line in the bot\'s thread, and the bot stays here', async () => {
+  const { desk, pc, owner, pcId } = await group();
+  const { agent, threadId } = await makeAgent(desk, owner);
+  const turn = await working(desk, owner, threadId);
+  await owner.call('agents.move.queue', { agentId: agent.id, machine: pcId });
+  for (const account of pc.core.accounts.list()) pc.core.journal.putAccount({ ...account, status: 'unauthenticated' });
+  turn.release();
+  const said = () => String((lastText(desk, threadId) as { text?: string } | undefined)?.text ?? '');
+  await waitFor(() => said().startsWith('Did not move once its turn ended'), 10_000);
+  expect(said()).toContain(`has no signed-in account to run ${agent.name}`);
+  expect(await leavingOf(owner, agent.id)).toBeNull();
+  expect(desk.core.workforce.records.find('profile', agent.id)).not.toBeNull();
+  expect(pc.core.workforce.records.find('profile', agent.id)).toBeNull();
+}, 60_000);
+
+test('work a bot waiting to move asked for runs before it leaves', async () => {
+  const { desk, pc, owner, pcId } = await group();
+  const { agent, threadId } = await makeAgent(desk, owner);
+  // In one tick: no scheduler pass sends the bot between the two.
+  desk.core.workforce.moves.queue({ agentId: agent.id, machine: pcId });
+  desk.core.threads.deferred.wake(threadId, 'A background shell completed.');
+  await waitFor(() => pc.core.workforce.records.find('profile', agent.id) !== null && desk.core.workforce.records.find('profile', agent.id) === null, 10_000);
+  expect(turnsOf(desk, threadId).map(turn => turn.status)).toEqual(['done', 'done']);
+}, 60_000);
+
+test('a waiting move whose answer is lost stays waiting, says so once, and finishes with the same requestId', async () => {
+  const { desk, pc, owner, pcId } = await group();
+  const { agent, threadId } = await makeAgent(desk, owner);
+  const turn = await working(desk, owner, threadId);
+  desk.core.workforce.moves.retryMs = 300;
+  await owner.call('agents.move.queue', { agentId: agent.id, machine: pcId, requestId: 'lost-1' });
+  const request = desk.core.coordination.request.bind(desk.core.coordination);
+  let sent = 0;
+  desk.core.coordination.request = async (peer: CoordinationPeer, operation, payload) => {
+    const answer = await request(peer, operation, payload);
+    // The target made the bot; its first answer is lost on the way back.
+    if (operation === 'bot.move' && sent++ === 0) throw new Error('connection reset');
+    return answer;
+  };
+  turn.release();
+  await waitFor(() => desk.core.workforce.records.find('profile', agent.id) === null, 10_000);
+  desk.core.coordination.request = request;
+  expect(sent).toBeGreaterThanOrEqual(2);
+  const lines = desk.core.journal.listMessages(threadId).map(m => String((m.parts[0] as { text?: string }).text ?? ''));
+  expect(lines.filter(line => line.startsWith('Not moved yet:'))).toHaveLength(1);
+  expect(pc.core.workforce.records.list('profile').filter(p => p.id === agent.id)).toHaveLength(1);
+}, 60_000);
+
+test('a waiting move outlives a restart of the machine the bot leaves', async () => {
+  const deskDir = mkdtempSync(join(tmpdir(), 'boite-core-'));
+  dirs.push(deskDir);
+  const { desk, pc, owner, pcId } = await group(deskDir);
+  const { agent, threadId } = await makeAgent(desk, owner);
+  await working(desk, owner, threadId);
+  await owner.call('agents.move.queue', { agentId: agent.id, machine: pcId, requestId: 'after-restart' });
+  // The turn stops with the machine; the next one ends at once.
+  await desk.stop();
+  driver!.restore();
+  driver = scripted(() => ({ text: 'Noted.' }));
+  const again = await startTestCore({ dataDir: deskDir });
+  cores.push(again);
+  await waitFor(() => pc.core.workforce.records.find('profile', agent.id) !== null && again.core.workforce.records.find('profile', agent.id) === null, 20_000);
+  expect(again.core.journal.getSetting(`agents:move-queued:${agent.id}`)).toBeUndefined();
 }, 60_000);
 
 test('a fact set to another text and back while the bot travels ends there with its latest text', async () => {

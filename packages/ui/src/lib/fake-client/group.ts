@@ -5,6 +5,7 @@ import { usableAddresses } from '../group-addresses';
 import { secureId } from '../secure-id';
 import { fakeCore, migratePeer } from './coordination';
 import type { FakeContext, FakeMethods } from './context';
+import { ownAddresses } from './lan';
 
 /** What the members of one fake group share. Each context points at the roster of the group it is in. */
 export interface FakeRoster {
@@ -20,12 +21,26 @@ export interface FakeRoster {
   invites: Map<string, number>;
 }
 
+/** The fake core's tailnet address, the one `fake-client/contacts.ts` names. */
+const FAKE_TAILNET = '100.101.102.103';
+
 const refuse = (message: string, field?: string) =>
   new RpcFailure({ code: RpcErrorCode.Refused, message, ...(field === undefined ? {} : { data: { field } }) });
 const invalid = (message: string, field: string) => new RpcFailure({ code: RpcErrorCode.InvalidParams, message, data: { field } });
 
 function card(ctx: FakeContext): GroupCore {
-  return { coreId: ctx.identity.coreId, name: ctx.identity.name, os: ctx.core.os, addresses: [ctx.identity.url], epoch: 1 };
+  return { coreId: ctx.identity.coreId, name: ctx.identity.name, os: ctx.core.os, addresses: ownAddresses(ctx), epoch: 1 };
+}
+
+/** This core's entry follows where it listens now, and every member hears a change. */
+export function refreshOwnCard(ctx: FakeContext): void {
+  const roster = ctx.roster;
+  const own = roster?.cores.find(core => core.coreId === ctx.identity.coreId);
+  const addresses = ownAddresses(ctx);
+  if (roster === null || own === undefined || addresses.join(' ') === own.addresses.join(' ')) return;
+  // The admission stays: `epoch` counts admissions only, as on the real core.
+  own.addresses = addresses;
+  announce(roster, [ctx]);
 }
 
 function view(ctx: FakeContext): Group | null {
@@ -189,9 +204,12 @@ export function groupMethods(ctx: FakeContext) {
       const expiresAt = ctx.now() + GRANT_TTL_MS;
       roster.invites.set(grant, expiresAt);
       const invite = GROUP_INVITE_PREFIX + btoa(JSON.stringify({ v: 1, g: roster.id, n: roster.name, c: ctx.identity.coreId, a: [ctx.identity.url], t: grant }));
-      // The real core's link: its public address, else where it listens. `?lan=off` is a fresh install that listens on itself.
-      const lanOff = typeof location !== 'undefined' && new URLSearchParams(location.search).get('lan') === 'off' && !ctx.settings.listenOnLan;
-      const origin = ctx.settings.publicUrl ?? (lanOff ? 'http://127.0.0.1:8777' : 'http://192.168.1.20:8777');
+      // The real core's link (`ownAddress`): its public address, else its tailnet address written as numbers. `?lan=off` is a
+      // fresh install that listens on itself and has no tailnet, `?tailnet=off` a machine on a LAN alone.
+      const query = new URLSearchParams(typeof location === 'undefined' ? '' : location.search);
+      const lanOff = query.get('lan') === 'off' && !ctx.settings.listenOnLan;
+      const origin = ctx.settings.publicUrl
+        ?? (lanOff ? 'http://127.0.0.1:8777' : query.get('tailnet') === 'off' ? 'http://192.168.1.20:8777' : `http://${FAKE_TAILNET}:8777`);
       return {
         url: `${origin}/?grant=fake-grant-${ctx.seq}#${DEVICE_LINK_JOIN}=${encodeURIComponent(invite)}`,
         expiresAt

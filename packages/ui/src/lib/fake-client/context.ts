@@ -62,12 +62,14 @@ import {
   type ThreadId,
   type ThreadSummary,
   type Todo,
+  type FirewallStatus,
   type Turn,
   type Usage,
 } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import { FakeAgents } from '../fake-agents';
 import { checkEffort, checkModel, defaultModel } from './checks';
+import { fakeFirewall, fakeFirewallKind, fakeLan, type FakeFirewall } from './lan';
 import { modelsOf } from './provider-catalog';
 import { settleAgentSettings } from './agent-settings';
 import type { FakeFinishedTurn } from '../fake-usage';
@@ -145,6 +147,8 @@ export interface FakeClientOptions {
   watchDemo?: boolean;
   /** Window captures, consent cards in each state and a watched Unity window on the trace thread, on `?fake=1&windows=1`. */
   windowsDemo?: boolean;
+  /** A thread that started a finished debate and one under way, with their salons, on `?fake=1&debates=1`. */
+  debatesDemo?: boolean;
   /** Who this client is. `'session'` makes it a paired phone, refused like one. */
   principal?: Principal;
   /** The thread an agent's token names; with none, every agent call fails closed, as on the core. */
@@ -168,6 +172,10 @@ export interface FakeClientOptions {
   policy?: PolicyState;
   coreName?: string;
   publicUrl?: string;
+  /** Windows Defender Firewall in front of this core; `?firewall=` picks it (`lan.ts`). */
+  firewall?: FakeFirewall;
+  /** A machine of a group listens on its LAN address beside loopback; `?lan=on` sets it (`lan.ts`). */
+  lan?: boolean;
   /**
    * A desktop app's core: its server updates by hand and its window reports
    * the app's updater, offered at `?desktopUpdate=<phase>`. The second fake
@@ -261,6 +269,12 @@ export class FakeContext {
   /** The group this fake core is in, shared by reference with the other fake cores of it. */
   roster: FakeRoster | null = null;
   readonly identity: CoordinationPeer;
+  /** What `firewall.status` answers; `firewall.allow` changes it (`pairing.ts`). */
+  firewall: FirewallStatus;
+  /** An administrator prompt nobody accepts: `firewall.allow` comes back cancelled. */
+  readonly firewallRefuses: boolean;
+  /** Whether a grouped machine listens on its LAN address once nothing stops it (`lan.ts`). */
+  readonly lanListening: boolean;
   readonly activityTimers = new Map<string, ReturnType<typeof setTimeout>>();
   readonly activityTurns = new Map<string, { kind: 'goal' | 'loop'; generation: number }>();
   readonly activityGenerations = new Map<string, number>();
@@ -522,7 +536,7 @@ export class FakeContext {
       version: '2.0.0-beta.1',
       coreId,
       protocolVersion: PROTOCOL_VERSION,
-      features: { draftPreparation: true, attachmentUploads: true, threadSnapshots: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, projectBoard: true, settingsHome: true, botsHome: true, botMove: true, sharedProjects: 1, listChanges: true },
+      features: { draftPreparation: true, attachmentUploads: true, threadSnapshots: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, projectBoard: true, settingsHome: true, botsHome: true, botMove: true, botMoveQueue: true, sharedProjects: 1, listChanges: true },
       os: 'windows',
       channel: 'stable',
       pid: 4242,
@@ -539,6 +553,10 @@ export class FakeContext {
       running: [],
       queued: []
     };
+    const firewall = fakeFirewallKind(options.firewall);
+    this.firewall = fakeFirewall(firewall);
+    this.firewallRefuses = firewall === 'refused';
+    this.lanListening = fakeLan(options.lan);
     this.policy = options.policy ?? policyFixture(typeof location === 'undefined' ? null : new URLSearchParams(location.search).get('policy'));
     applyPolicy(this);
   }

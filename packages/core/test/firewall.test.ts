@@ -12,8 +12,8 @@ const tailnet = { adapter: 'Tailscale', category: 'Private' };
 
 describe('judge', () => {
   test('a dismissed prompt leaves block rules on the network it was raised on', () => {
-    const reading: FirewallReading = { rules: [{ action: 0, profiles: 4 }, { action: 0, profiles: 4 }], networks: [ethernet('Public')], off: 0 };
-    expect(judge(reading)).toEqual({ state: 'blocked', networks: ['public'], allowed: [], blocked: ['public'] });
+    const reading: FirewallReading = { rules: [{ action: 0, profiles: 2 }, { action: 0, profiles: 2 }], networks: [ethernet('Private')], off: 0 };
+    expect(judge(reading)).toEqual({ state: 'blocked', networks: ['private'], allowed: [], blocked: ['private'] });
   });
 
   test('a prompt allowed on a public network does not cover the same network once it is private', () => {
@@ -26,9 +26,9 @@ describe('judge', () => {
     expect(judge({ rules: [{ action: 0, profiles: 2 }], networks: [ethernet('Private')], off: 2 }).state).toBe('ready');
   });
 
-  test('the rule Boite adds covers every network, and Tailscale alone needs none', () => {
-    expect(judge({ rules: [{ action: 1, profiles: 0x7fffffff }], networks: [ethernet('Public'), { adapter: 'Wi-Fi', category: 'DomainAuthenticated' }], off: 0 }))
-      .toEqual({ state: 'ready', networks: ['public', 'domain'], allowed: ['public', 'domain'], blocked: [] });
+  test('the rule Boite adds covers private networks, and Tailscale alone needs none', () => {
+    expect(judge({ rules: [{ action: 1, profiles: 2 }], networks: [ethernet('Private'), { adapter: 'Wi-Fi', category: 'DomainAuthenticated' }], off: 0 }))
+      .toEqual({ state: 'ready', networks: ['private', 'domain'], allowed: ['private'], blocked: [] });
     expect(judge({ rules: [], networks: [tailnet], off: 0 }).state).toBe('ready');
   });
 });
@@ -67,9 +67,9 @@ describe('the firewall methods', () => {
   });
 
   test('allow turns a blocked network ready, and says when the administrator prompt was refused', async () => {
-    writeFileSync(state, JSON.stringify({ rules: [{ action: 0, profiles: 4 }], networks: [ethernet('Public')], off: 0 }));
+    writeFileSync(state, JSON.stringify({ rules: [{ action: 0, profiles: 2 }], networks: [ethernet('Private')], off: 0 }));
     writeFileSync(`${state}.refuse`, '');
-    expect(await access().allow()).toEqual({ state: 'blocked', networks: ['public'], allowed: [], blocked: ['public'], detail: 'cancelled' });
+    expect(await access().allow()).toEqual({ state: 'blocked', networks: ['private'], allowed: [], blocked: ['private'], detail: 'cancelled' });
     removeDir(`${state}.refuse`);
     expect((await access().allow()).state).toBe('ready');
     expect((await access().status()).state).toBe('ready');

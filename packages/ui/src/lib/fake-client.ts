@@ -59,6 +59,7 @@ import { RELEASES } from './fake-client/providers';
 import { clearRequestsOf, requestMethods } from './fake-client/requests';
 import { closeSecrets, secretMethods } from './fake-client/secrets';
 import { refuseTeamChats, teamMethods } from './fake-client/teams';
+import { debateMethods, seedDebatesDemo } from './fake-client/debates';
 import { resourceMethods } from './fake-client/resources';
 import { seed } from './fake-client/seed';
 import { settingsMethods } from './fake-client/settings';
@@ -143,6 +144,7 @@ export class FakeClient implements ObservableClient {
       ];
     }
     if (options.windowsDemo) seedWindowsDemo(ctx);
+    if (options.debatesDemo) seedDebatesDemo(ctx);
     if (options.uninstalled) {
       ctx.providers = ctx.providers.filter(provider => provider.id !== 'echo').map(provider => ({
         ...provider, available: false, executable: null,
@@ -427,6 +429,11 @@ export class FakeClient implements ObservableClient {
     this.#ctx.emit('client.desktopExperiments', { experiments: [...experiments] });
   }
 
+  /** The fake machine's addresses changing, as the core's network watch announces it to owner windows. */
+  changeNetwork(addresses: string[]): void {
+    this.#ctx.emit('network.changed', { addresses: [...addresses] });
+  }
+
   /** The policy file edited on the fake machine, as the core's watcher rereads it and announces the change. */
   changePolicy(policy: PolicyState): void {
     this.#ctx.policy = structuredClone(policy);
@@ -560,6 +567,7 @@ export class FakeClient implements ObservableClient {
       ...requestMethods(ctx),
       ...secretMethods(ctx),
       ...teamMethods(ctx),
+      ...debateMethods(ctx),
       ...providerCatalogMethods(ctx),
       ...providerInstallMethods(ctx),
       ...accountMethods(ctx),

@@ -5,6 +5,14 @@ export const DROPPED_STORAGE_KEY = 'boite.group.dropped';
 const DROPPED_MAX = 256;
 /** Machines remembered as dropped. A removal is never forgotten to make room: past this, nothing a group brings is reached by itself. */
 const DROPPED_MEMBERS_MAX = 2048;
+/**
+ * How long a mark stands against every machine speaking for the group still listing that machine. A roster
+ * lagging behind a removal catches up within minutes. Past this, the roster is the word on who is in the group:
+ * a mark no admission outranks (an entry saved without one is dropped at the highest there is) would otherwise
+ * hide a machine that came back for as long as this device lives. The machine itself still has the last word on
+ * what it lets in.
+ */
+export const DROPPED_HOLD_MS = 10 * 60_000;
 
 interface Dropped { at: number; epoch: number }
 
@@ -44,15 +52,17 @@ function writeDropped(marks: Record<string, Dropped>): void {
  * the other recorded. A window that hears the record change puts back what it
  * knew. A lower admission is raised again. A machine's mark that went is
  * restored: when a later admission cleared it, that admission is past the mark
- * anyway. An address that went stays gone, since a pairing made by hand clears
- * it and putting it back would hide that machine.
+ * anyway. One past `DROPPED_HOLD_MS` is not: the group links ended it, and
+ * putting it back would have two windows rewrite it without end. An address
+ * that went stays gone, since a pairing made by hand clears it and putting it
+ * back would hide that machine.
  */
 export function keepDropped(): void {
   const now = droppedAddresses();
   const back: Record<string, Dropped> = {};
   for (const [key, was] of known) {
     const mark = now[key];
-    if (mark === undefined && !key.startsWith('member ')) known.delete(key);
+    if (mark === undefined && (!key.startsWith('member ') || Date.now() - was.at >= DROPPED_HOLD_MS)) known.delete(key);
     else if (mark === undefined || mark.epoch < was.epoch) back[key] = { at: Math.max(was.at, mark?.at ?? 0), epoch: was.epoch };
   }
   for (const [key, mark] of Object.entries({ ...now, ...back })) known.set(key, mark);
@@ -65,7 +75,8 @@ export function keepDropped(): void {
  * wherever it sits, and no ticket is asked for it on the word of a member that
  * still lists the admission that was dropped. It ends when a new key is
  * issued for that address: by a pairing made by hand, or by the group having
- * admitted the machine again.
+ * admitted the machine again. The group links also end one past `DROPPED_HOLD_MS`
+ * once every machine speaking for the group lists that machine.
  */
 export function setDropped(url: string, epoch: number | null): void {
   setMark(withoutTrailingSlashes(url), epoch);
@@ -122,4 +133,18 @@ export function isMemberDropped(groupId: string | undefined, coreId: string | un
   // No room left to remember a removal: one that could not be written must not look like none.
   if (mark === undefined) return Object.keys(marks).filter((key) => key.startsWith('member ')).length >= DROPPED_MEMBERS_MAX;
   return epoch === undefined || epoch <= mark.epoch;
+}
+
+/** When the group dropped the machine at this address, undefined for no mark. */
+export function droppedAt(url: string): number | undefined {
+  return droppedAddresses()[withoutTrailingSlashes(url)]?.at;
+}
+
+/** When the group dropped this machine, undefined for no mark of its own: a full record has none to age. */
+export function memberDroppedAt(groupId: string, coreId: string): number | undefined {
+  return droppedAddresses()[memberKey(groupId, coreId)]?.at;
+}
+
+export function clearMemberDropped(groupId: string, coreId: string): void {
+  setMark(memberKey(groupId, coreId), null);
 }

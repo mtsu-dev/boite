@@ -58,6 +58,8 @@ export interface CoreInfo {
     botsHome?: boolean;
     /** `agents.move` and the `bot.move` group operation: this machine takes a bot another member of its group moves to it. */
     botMove?: boolean;
+    /** `agents.move.queue|cancel` and `AgentStatus.leaving`: a move asked while the bot works waits for its turn to end. */
+    botMoveQueue?: boolean;
     /** `threads.listChanges`: a reconnect reads only the threads that changed while it was away. */
     listChanges?: boolean;
   };
@@ -163,4 +165,11 @@ export interface CoreRpcEvents {
   'core.updateChanged': ServerUpdateStatus;
   /** Owner connections only: this machine's desktop updater as its window reported it, null once that window left. */
   'core.desktopUpdateChanged': { status: DesktopUpdateStatus | null };
+  /**
+   * Owner connections only: this machine's network addresses changed (Tailscale
+   * came up or went down, another Wi-Fi). `addresses` is the new set of its
+   * non-internal interface addresses, sorted. A client retries at once every
+   * machine it could not reach.
+   */
+  'network.changed': { addresses: string[] };
 }
