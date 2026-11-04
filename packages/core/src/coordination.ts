@@ -544,7 +544,9 @@ export class Coordination {
     const config = this.config(threadId);
     if (config.mode === 'off') return '';
     const bot = contactsBot(this.#core);
-    return coordinationGuide(config.paused, config.remote && (this.#core.contacts.list().length > 0 || this.#core.contacts.members.relayed().length > 0 || this.#core.group.peers().length > 0), bot === null ? 'none' : bot.threadId === threadId ? 'self' : 'other');
+    // A member whose bot lives on the group's Bots host asks through it, like the host's own threads.
+    const role = bot !== null ? (bot.threadId === threadId ? 'self' : 'other') : this.#core.contacts.hostAsks.relays() ? 'other' : 'none';
+    return coordinationGuide(config.paused, config.remote && (this.#core.contacts.list().length > 0 || this.#core.contacts.members.relayed().length > 0 || this.#core.group.peers().length > 0), role);
   }
 
   /** Hook delivery: one batch at a provider's next safe tool boundary. */
