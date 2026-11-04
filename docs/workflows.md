@@ -145,7 +145,11 @@ background work running (a watcher, a build): dependents start at once, and the
 core ends that agent and its process tree so the leftover work never wakes the
 finished step (`workflows/step-result.ts`). A step on another machine does the
 same from that machine's report: a checkpoint whose answer holds a valid `json`
-block settles the step, and the stop goes to that machine. Without a valid
+block is taken as the step's result (`machine.accepted`), and the stop goes to
+that machine, which settles the subagent's worktree once that work is stopped;
+the step ends when its worktree there is kept or removed. The answer is read
+over the network, so a turn that began there meanwhile is not stopped for it:
+that turn's own answer settles the step. Without a valid
 result, a turn that ends on background work is a checkpoint: the step waits for
 that work, and its worktree stays in use.
 
