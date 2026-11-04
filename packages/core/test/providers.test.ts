@@ -506,7 +506,8 @@ describe('providers', () => {
     expect(env['ANTIGRAVITY_HARNESS_PATH']).toContain('localharness_external');
     expect(env['ANTIGRAVITY_HARNESS_PATH']).not.toContain('{agentsDir}');
     expect(env['BROWSER']).not.toContain('{browserNoop}');
-    expect(env['BROWSER']).toContain('browser-noop');
+    // Windows names cmd.exe itself: a `.cmd` file split the sign-in link at its `&`.
+    expect(env['BROWSER']).toContain(process.platform === 'win32' ? "\\System32\\cmd.exe' /d /c exit 0" : 'browser-noop.sh');
     // A variable the user set for their own Gemini or Cloud login cannot redirect this agent.
     expect(profile?.unsetEnv).toContain('GEMINI_API_KEY');
     expect(profile?.unsetEnv).toContain('GOOGLE_APPLICATION_CREDENTIALS');

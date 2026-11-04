@@ -706,9 +706,14 @@ descriptor uses additional fields available to other providers:
 
 - `env`, on an OS profile, is environment every process of the provider gets,
   whatever its account, unlike `isolation`. Antigravity uses it for the harness
-  path and for a `BROWSER` pointed at `{browserNoop}`, a launcher that exits 0
-  which the core writes once under the data directory, so the agent never opens a
-  window on its own.
+  path and for a `BROWSER` pointed at `{browserNoop}`, so the agent never opens a
+  window on its own. Off Windows that is a script exiting 0 that the core writes
+  under the data directory. On Windows it is the command line
+  `'C:\Windows\System32\cmd.exe' /d /c exit 0 '"%s"'`: Python starts a `.cmd`
+  file through `cmd.exe`, which split the sign-in link at its `&`, failed, and
+  left Python to open the default browser. The `%s` makes Python split the value
+  like a POSIX shell, so the path keeps its backslashes (`cmd` reads `C:/Windows`
+  as switches) and the link reaches `cmd` quoted.
 - `unsetEnv`, on an OS profile, names variables taken out of the inherited
   environment before the spawn, so a key the user set for their own tools cannot
   redirect the agent Boite runs.

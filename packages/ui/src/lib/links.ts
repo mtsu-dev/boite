@@ -46,8 +46,9 @@ export async function openOwnFile(path: string): Promise<void> {
 }
 
 /**
- * One bubbling listener on the app root for every `http(s)` link the UI
- * shows, the markdown answers and the account login link included. A modified
+ * One bubbling listener on the document body for every `http(s)` link the UI
+ * shows, the markdown answers and the account login links included, those of
+ * the overlays rendered beside the app root as well. A modified
  * click (ctrl, shift, meta or the middle button) is left to the browser, and so
  * is a link that points back at this same origin.
  */

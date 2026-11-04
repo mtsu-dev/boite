@@ -93,19 +93,38 @@ export function agentsDirPath(dataDir: string, providerId: string): string {
 }
 
 /**
- * What `{browserNoop}` becomes in a descriptor: a launcher that takes a URL and
- * exits without opening anything. An agent that would otherwise pop the user's
- * browser mid-turn is pointed at it through `BROWSER`, and the link it printed
- * reaches the user through Boite instead. Written by `AccountStore` before the
- * first spawn, never by the loader.
+ * What `{browserNoop}` becomes in a descriptor: a `BROWSER` value that takes a
+ * URL and exits 0 without opening anything. An agent that would otherwise pop
+ * the user's browser mid-turn is pointed at it, and the link it printed reaches
+ * the user through Boite instead.
+ *
+ * Off Windows it is the script at `browserNoopPath`, written by `AccountStore`
+ * before the first spawn. On Windows it is a Python `webbrowser` command line,
+ * since a `.cmd` file cannot take a sign-in link: Python starts it through
+ * `cmd.exe`, which splits the URL at every `&`, fails, and lets Python fall back
+ * to the default browser. The `%s` makes Python split the value like a POSIX
+ * shell (single quotes keep the backslashes), the URL arrives quoted so `cmd`
+ * reads no `&` in it, and `exit 0` ends before anything else runs. The path
+ * needs backslashes: `cmd` reads `C:/Windows` as switches.
  */
-export function browserNoopPath(dataDir: string): string {
-  return join(dataDir, currentOs() === 'windows' ? 'browser-noop.cmd' : 'browser-noop.sh');
+export function browserNoopCommand(
+  dataDir: string,
+  os: Os = currentOs(),
+  env: Record<string, string | undefined> = process.env,
+): string {
+  if (os !== 'windows') return browserNoopPath(dataDir);
+  const root = [env.SystemRoot, env.SYSTEMROOT, env.windir].find((value) => value !== undefined && /^[a-z]:\\[^'%"]*$/i.test(value)) ?? 'C:\\Windows';
+  return `'${root.replace(/\\+$/, '')}\\System32\\cmd.exe' /d /c exit 0 '"%s"'`;
 }
 
-/** What that launcher holds: a script that ignores its argument and succeeds. */
+/** Where the script `{browserNoop}` names off Windows lives. */
+export function browserNoopPath(dataDir: string): string {
+  return join(dataDir, 'browser-noop.sh');
+}
+
+/** What that script holds: it ignores its argument and succeeds. */
 export function browserNoopScript(): string {
-  return currentOs() === 'windows' ? '@echo off\r\nexit /b 0\r\n' : '#!/bin/sh\nexit 0\n';
+  return '#!/bin/sh\nexit 0\n';
 }
 
 /**

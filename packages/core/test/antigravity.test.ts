@@ -164,9 +164,9 @@ describe('antigravity', () => {
     expect(readFileSync(seed, 'utf8')).toBe(SEED_BODY);
 
     // The launcher `BROWSER` points at, so the agent opens no window here.
+    // Windows needs no file: its `BROWSER` is a cmd.exe command line.
     const dataDir = harness?.dataDir ?? '';
-    const noop = join(dataDir, process.platform === 'win32' ? 'browser-noop.cmd' : 'browser-noop.sh');
-    expect(existsSync(noop)).toBe(true);
+    expect(existsSync(join(dataDir, 'browser-noop.sh'))).toBe(process.platform !== 'win32');
 
     // No token yet: this is the account the Accounts page offers a login on.
     const accounts = await client.call('accounts.list', {});
@@ -205,7 +205,7 @@ describe('antigravity', () => {
     expect(loggedEnv('GEMINI_HOME')).toBe(account.isolationDir);
     expect(loggedEnv('AGY_ACP_FORCE_FILE_STORAGE')).toBe('1');
     expect(loggedEnv('ANTIGRAVITY_HARNESS_PATH')).toContain('localharness_external');
-    expect(loggedEnv('BROWSER')).toContain('browser-noop');
+    expect(loggedEnv('BROWSER')).toContain(process.platform === 'win32' ? 'cmd.exe' : 'browser-noop.sh');
     expect(loggedEnv('GEMINI_API_KEY')).toBe('');
 
     // A pasted code is what a CLI login takes; this one takes the redirect URL.
