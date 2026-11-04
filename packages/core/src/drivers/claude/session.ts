@@ -580,7 +580,8 @@ export class ClaudeSession {
     if (message.type === 'system') this.#noteTasks(message);
     if (this.#loopLifecycle(message)) return;
     if (this.#native === 'drop') {
-      if (message.type !== 'result') { this.#dropped.push(message); return; }
+      // Deltas only stream what the run's assistant messages hold: a folded replay needs none of them.
+      if (message.type !== 'result') { if (message.type !== 'stream_event' && this.#dropped.length < ORPHANS_MAX) this.#dropped.push(message); return; }
       const run = this.#dropped.splice(0);
       this.#native = null;
       const head = this.#head();
@@ -783,8 +784,8 @@ export class ClaudeSession {
     if (frame.state !== 'started' || frame.wakeup_source !== 'loop_wakeup' || this.#closing || this.#ended) return true;
     const head = this.#head();
     const wanted = (head?.ctx ?? this.#ctx).loopWake?.(typeof frame.scheduled_for === 'number' ? frame.scheduled_for : null) ?? true;
+    // The task-answer linger stays: the CLI still owes that answer after this run.
     this.#clearIdle();
-    this.#clearLinger();
     if (head === null && wanted) {
       if (!this.#woken) { this.#woken = true; this.#ctx.wake?.(LOOP_WAKE_TEXT, LOOP_WAKE_TEXT); }
       return true;

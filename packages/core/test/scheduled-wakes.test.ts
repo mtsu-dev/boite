@@ -246,6 +246,42 @@ describe('ScheduleWakeup in a Boite thread', () => {
     expect(harness.core.journal.listTurns(threadId)).toHaveLength(2);
   });
 
+  test('a native fire beside a turn whose task ended keeps the CLI for its task answer', async () => {
+    harness.core.settings.set({ warmProcessMinutes: 0 });
+    const client = await harness.connect();
+    const threadId = await claudeThread(client);
+    const sessionId = 'sess-wake-task';
+    scripted((fake) => {
+      fake.emit(init(sessionId));
+      fake.emit(assistant(sessionId, [{ type: 'tool_use', id: 'toolu_wait', name: 'Bash', input: { command: 'sleep 20', run_in_background: true } }]));
+      fake.emit(sdk({ type: 'system', subtype: 'task_started', session_id: sessionId, task_id: 'bash-w', tool_use_id: 'toolu_wait', description: 'sleep 20', task_type: 'local_bash', is_backgrounded: true }));
+      fake.emit(sdk({ type: 'system', subtype: 'background_tasks_changed', session_id: sessionId, tasks: [{ task_id: 'bash-w', task_type: 'local_bash', description: 'sleep 20' }] }));
+      fake.emit(toolResult(sessionId, 'toolu_wait', 'Command running in background with ID: bash-w'));
+      // The task ends under the turn, so the CLI is owed its moment to answer it after the result.
+      fake.emit(sdk({ type: 'system', subtype: 'background_tasks_changed', session_id: sessionId, tasks: [] }));
+      fake.emit(sdk({ type: 'system', subtype: 'task_notification', session_id: sessionId, task_id: 'bash-w', tool_use_id: 'toolu_wait', status: 'completed', output_file: '', summary: 'sleep 20 finished' }));
+      // A stale ScheduleWakeup of an earlier CLI fires beside the turn: dropped, and it owes nothing.
+      fake.emit(sdk({ type: 'command_lifecycle', state: 'started', wakeup_source: 'loop_wakeup', scheduled_for: Date.now(), session_id: sessionId }));
+      fake.emit(assistant(sessionId, [{ type: 'text', text: 'STALE WAKE' }]));
+      fake.emit(success(sessionId));
+      fake.emit(sdk({ type: 'command_lifecycle', state: 'completed', session_id: sessionId }));
+      fake.emit(assistant(sessionId, [{ type: 'text', text: 'waiting on the job' }]));
+      fake.emit(success(sessionId));
+    });
+    expect(await runTurn(client, threadId, 'wait for the job')).toBe('done');
+    await Bun.sleep(300);
+    expect(queries[0]!.closes).toBe(0);
+    const woke = client.next('turn.finished', (turn) => turn.threadId === threadId, 10_000);
+    queries[0]!.emit(init(sessionId));
+    queries[0]!.emit(assistant(sessionId, [{ type: 'text', text: 'JOB DONE' }]));
+    queries[0]!.emit(success(sessionId));
+    const turn = await woke;
+    expect(turn.execution?.operation).toBe('background');
+    expect(texts(threadId, turn.id).at(-1)).toBe('JOB DONE');
+    expect(texts(threadId)).not.toContain('STALE WAKE');
+    expect(calls).toHaveLength(1);
+  });
+
   test('a warm CLI firing its wake opens the turn at once, so its idle window cannot end it before the first output', async () => {
     WAKE_TIMING.graceMs = 60_000;
     harness.core.settings.set({ warmProcessMinutes: 0.01 });

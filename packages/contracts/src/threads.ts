@@ -325,18 +325,6 @@ export interface ThreadSummary {
 }
 
 /**
- * An automatic retry the core planned after a provider refused a turn for
- * availability rather than for a fault of the request (docs/usage.md).
- * `capacity`: the model was at capacity; the same turn tries again at `at`,
- * the `attempt`th of `attempts` tries, and the thread stays running meanwhile.
- * `usage-limit`: the subscription window was spent and `autoResumeLimitedThreads`
- * is on; a new turn resumes the thread at `at`, shortly after `resetsAt`, and
- * the plan survives a core restart. `auto-continue`: a turn stopped before its
- * answer (an error, a crash, a compaction, interrupted background work); a
- * new turn resumes the thread at `at`, the `attempt`th of `attempts` resumes
- * in a row (`docs/restart-handoff.md`). `turns.cancelRetry` or Stop cancels any.
- */
-/**
  * A wake the agent scheduled for itself (Claude's ScheduleWakeup). The core
  * opens a turn with `prompt` once `at` passed and the thread is free; a newer
  * call replaces it, `stop: true`, Stop, a pause or an archive cancels it.
@@ -352,6 +340,18 @@ export interface ThreadWake {
   turnId: TurnId;
 }
 
+/**
+ * An automatic retry the core planned after a provider refused a turn for
+ * availability rather than for a fault of the request (docs/usage.md).
+ * `capacity`: the model was at capacity; the same turn tries again at `at`,
+ * the `attempt`th of `attempts` tries, and the thread stays running meanwhile.
+ * `usage-limit`: the subscription window was spent and `autoResumeLimitedThreads`
+ * is on; a new turn resumes the thread at `at`, shortly after `resetsAt`, and
+ * the plan survives a core restart. `auto-continue`: a turn stopped before its
+ * answer (an error, a crash, a compaction, interrupted background work); a
+ * new turn resumes the thread at `at`, the `attempt`th of `attempts` resumes
+ * in a row (`docs/restart-handoff.md`). `turns.cancelRetry` or Stop cancels any.
+ */
 export interface ThreadRetry {
   kind: 'capacity' | 'usage-limit' | 'auto-continue';
   /** The turn the provider refused, or the one that stopped before its answer. */
