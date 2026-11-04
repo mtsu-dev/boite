@@ -283,8 +283,8 @@ async function shaped(worktree = false) {
   restores.push(() => { release.mockRestore(); kill.mockRestore(); });
   /** The step is done on its result: its dependent starts and the leftover watcher is gone, never waking it. */
   const settled = async (branch: string, last = first) => {
-    // Long before any watcher ends: the step settles on the result, not on that work.
-    await waitFor(() => step().status === 'done', 2000);
+    // Long before any watcher ends: the step settles on the result, not on that work; a worktree settles first, slow on Windows git.
+    await waitFor(() => step().status === 'done', worktree ? SLOW_GIT_MS : 2000);
     expect(step().output).toEqual({ branch });
     await waitFor(() => !!shots()?.threadId && runs.has(shots()!.threadId!), SLOW_GIT_MS);
     expect(base.prompts.find(entry => entry.threadId === shots()!.threadId)!.prompt).toContain(`Shoot ${branch}`);
@@ -308,6 +308,8 @@ test('a shaped step whose answer carries its result is done at once, though its 
   first.finish('Checkpoint: the build is still running.');
   await waitFor(() => h.core.threads.require(childId).status === 'idle');
   await new Promise(resolve => setTimeout(resolve, 300));
+  // No correction turn started: the turn woken below is the next one.
+  expect(runs.get(childId)).toBe(first);
   expect(step()).toMatchObject({ status: 'running', output: null });
   expect(shots()?.threadId ?? null).toBeNull();
   expect(release).not.toHaveBeenCalledWith(childId);
