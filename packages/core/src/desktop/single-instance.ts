@@ -9,10 +9,10 @@
 import { join } from 'node:path';
 import { descendants, type ProcessEntry } from './scope.ts';
 
-/** Chromium browsers and Electron editors: `--user-data-dir` makes a copy of their own. */
+/** Chromium browsers and Electron apps: `--user-data-dir` makes a copy of their own. */
 const USER_DATA_DIR = new Set([
   'chrome', 'google chrome', 'chromium', 'chromium-browser', 'msedge', 'microsoft edge', 'brave', 'brave browser',
-  'vivaldi', 'opera', 'thorium', 'code', 'code - insiders', 'cursor', 'windsurf',
+  'vivaldi', 'opera', 'thorium', 'electron', 'code', 'code - insiders', 'visual studio code', 'visual studio code - insiders', 'cursor', 'windsurf',
 ]);
 
 /** Firefox and its forks: `-no-remote -profile <folder>`. */
@@ -26,7 +26,16 @@ const SINGLE = new Set([
 
 /** The executable's own name, lowercased, without folder or `.exe`: `C:\...\chrome.exe` and `.../MacOS/Google Chrome` give `chrome` and `google chrome`. */
 export function imageName(path: string): string {
-  return (path.split(/[\\/]/).pop() ?? path).toLowerCase().replace(/\.exe$/, '');
+  return (path.split(/[\\/]/).pop() ?? path).toLowerCase().replace(/\.(exe|cmd|bat)$/, '');
+}
+
+/**
+ * The names `path` goes by: its executable's, and on macOS its bundle's,
+ * since an Electron app's executable is `Electron` whatever the app.
+ */
+function names(path: string): string[] {
+  const bundle = /([^/]+)\.app\/Contents\/MacOS\/[^/]+$/.exec(path)?.[1];
+  return [...(bundle ? [bundle.toLowerCase()] : []), imageName(path)];
 }
 
 const hasFlag = (args: string[], names: string[]) => args.some(arg => names.some(name => arg === name || arg.startsWith(`${name}=`)));
@@ -44,7 +53,8 @@ export interface Launch {
  * `roots` the pids of the conversation's running apps.
  */
 export function singleInstanceLaunch(program: string, args: string[], dir: string, processes: ProcessEntry[], roots: number[]): Launch | { refused: string } {
-  const name = imageName(program);
+  const known = names(program);
+  const name = known.find(found => USER_DATA_DIR.has(found) || FIREFOX.has(found) || SINGLE.has(found)) ?? known[0]!;
   if (name === 'explorer') return { refused: 'explorer opens its windows in the user\'s own Explorer; run the program a folder or file opens instead' };
   if (USER_DATA_DIR.has(name)) {
     if (hasFlag(args, ['--user-data-dir'])) return { args, profile: null };
@@ -58,7 +68,7 @@ export function singleInstanceLaunch(program: string, args: string[], dir: strin
   }
   if (SINGLE.has(name)) {
     const owned = descendants(roots, processes);
-    if (processes.some(entry => imageName(entry.name) === name && !owned.has(entry.pid))) {
+    if (processes.some(entry => names(entry.name).includes(name) && !owned.has(entry.pid))) {
       return { refused: `${name} already runs on the user's desktop and would open its window there; close it first or use another app` };
     }
   }

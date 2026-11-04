@@ -68,6 +68,10 @@ test('on macOS a command reaches only the apps the conversation started', () => 
   expect(macosTargetProblem(['screenshot', '@s8f3k2p9:e1'], windows, owned)).toContain('needs --app or --window-id');
   expect(macosTargetProblem(['click', '--timeout-ms', '1', '@s8f3k2p9:e1'], windows, owned)).toContain('takes its ref right after it');
   expect(macosTargetProblem(['wait', '--element', '@s8f3k2p9:e1'], windows, owned)).toBeNull();
+  expect(macosTargetProblem(['wait', '--element', '@s8f3k2p9:e1', '--predicate', 'actionable', '--wait-timeout', '5000'], windows, owned)).toBeNull();
+  expect(macosTargetProblem(['wait', '--element', '@s8f3k2p9:e1', '--text', 'Saved'], windows, owned)).toContain('needs --app or --window-id');
+  expect(macosTargetProblem(['snapshot', '--root', '@s8f3k2p9:e1', '-i', '--compact'], windows, owned)).toBeNull();
+  expect(macosTargetProblem(['snapshot', '--root', 'e1', '-i'], windows, owned)).toContain('needs --app or --window-id');
   expect(macosTargetProblem(['wait', '--element', '@s8f3k2p9:e1', '--app', 'Safari'], windows, owned)).toContain('start it with boite desktop run');
   // close-app names its app as its first word.
   expect(macosTargetProblem(['close-app', 'Preview'], windows, owned)).toBeNull();
@@ -93,9 +97,10 @@ test('a macOS app name finds its bundle, which LaunchServices opens in the backg
   expect(macosProgram('open', () => '/usr/bin/open', () => true, plist('x'))).toBe('open');
   expect(macosProgram('Nothing', () => null, () => false, plist('x'))).toBe('Nothing');
   // macOS kills an Apple app started by another parent than launchd; -g keeps the user's front app, -W keeps open the core's child.
-  expect(macosLaunch('/System/Applications/TextEdit.app/Contents/MacOS/TextEdit', [])).toEqual(['/usr/bin/open', '-n', '-g', '-W', '-a', '/System/Applications/TextEdit.app']);
-  expect(macosLaunch('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', ['--user-data-dir=/t/p', 'https://x'])).toEqual(['/usr/bin/open', '-n', '-g', '-W', '-a', '/Applications/Google Chrome.app', '--args', '--user-data-dir=/t/p', 'https://x']);
-  expect(macosLaunch('/usr/local/bin/tool', ['a'])).toEqual(['/usr/local/bin/tool', 'a']);
+  // --env marks the copy, so the core tells its pid from a copy the user opens at the same time.
+  expect(macosLaunch('/System/Applications/TextEdit.app/Contents/MacOS/TextEdit', [], 'M=1')).toEqual(['/usr/bin/open', '-n', '-g', '-W', '--env', 'M=1', '-a', '/System/Applications/TextEdit.app']);
+  expect(macosLaunch('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', ['--user-data-dir=/t/p', 'https://x'], 'M=1')).toEqual(['/usr/bin/open', '-n', '-g', '-W', '--env', 'M=1', '-a', '/Applications/Google Chrome.app', '--args', '--user-data-dir=/t/p', 'https://x']);
+  expect(macosLaunch('/usr/local/bin/tool', ['a'], 'M=1')).toEqual(['/usr/local/bin/tool', 'a']);
 });
 
 test('a Windows command line reads back as the words it was made of', () => {
@@ -132,6 +137,10 @@ test('an app that keeps one copy per user gets a profile of its own, or is refus
   expect(singleInstanceLaunch('notepad', [], dir, user, [])).toMatchObject({ refused: expect.stringContaining('notepad already runs on the user\'s desktop') });
   expect(singleInstanceLaunch('notepad', [], dir, user.filter(entry => entry.pid !== 60), [9])).toEqual({ args: [], profile: null });
   expect(singleInstanceLaunch('charmap', ['x'], dir, user, [])).toEqual({ args: ['x'], profile: null });
+  // An Electron app's executable is Electron on macOS, and VS Code starts from code.cmd on Windows.
+  expect(singleInstanceLaunch('/Applications/Visual Studio Code.app/Contents/MacOS/Electron', [], dir, [], [])).toMatchObject({ profile: join(dir, 'profiles', 'visual studio code') });
+  expect(singleInstanceLaunch('C:\\Users\\u\\AppData\\Local\\Programs\\Microsoft VS Code\\bin\\code.cmd', ['.'], dir, [], [])).toMatchObject({ args: [`--user-data-dir=${join(dir, 'profiles', 'code')}`, '.'] });
+  expect(singleInstanceLaunch('/Applications/Spotify.app/Contents/MacOS/Spotify', [], dir, [{ pid: 80, ppid: 1, name: '/Applications/Spotify.app/Contents/MacOS/Spotify' }], [])).toMatchObject({ refused: expect.stringContaining('spotify already runs') });
 });
 
 test('the launcher onto a hidden desktop is the core itself, from its bundle or its sources', () => {
@@ -162,13 +171,13 @@ describe('boite desktop on a shared session', () => {
   };
 
   /** Hidden desktops that only record what the service asks of them. */
-  const fakeDesktops = (unsupported: string | null = null) => {
+  const fakeDesktops = (unsupported: string | null = null, listing: () => void = () => {}) => {
     const made: { name: string; closed: boolean }[] = [];
     const folders: string[] = [];
     const desktops: HiddenDesktops = {
       unsupported: () => unsupported,
       privateFolder: path => { folders.push(path); },
-      processes: () => [{ pid: 4242, ppid: 1, name: 'notepad.exe' }],
+      processes: () => { listing(); return [{ pid: 4242, ppid: 1, name: 'notepad.exe' }]; },
       run: () => { throw new Error('fake desktops run nothing'); },
       create: (name: string): HiddenDesktop => {
         const record = { name, closed: false };
@@ -214,6 +223,17 @@ describe('boite desktop on a shared session', () => {
     expect((await cli('stop')).out).toContain('desktop stopped');
     expect(made).toEqual([{ name: session.display, closed: true }]);
     expect(existsSync(dirname(home))).toBe(false);
+  });
+
+  test('Windows: a stop that comes while run checks the processes starts nothing', async () => {
+    const { made, desktops } = fakeDesktops(null, () => harness.core.desktops.release(threadId));
+    useDesktops({ platform: 'win32', hiddenDesktops: async () => desktops });
+    const run = await cli('run', 'charmap');
+    expect(run.error).toContain('the desktop is stopping');
+    // The stop under way is the one this waits for.
+    await harness.core.desktops.stop({ threadId });
+    expect(made[0]!.closed).toBe(true);
+    expect((await harness.core.desktops.status({ threadId })).session).toBeNull();
   });
 
   test('Windows: a session that cannot hold a hidden desktop says why and starts nothing', async () => {

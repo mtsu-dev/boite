@@ -209,10 +209,13 @@ user's session, behind the user's windows. `run TextEdit`, or the path of a
   starts, so the bundle goes through LaunchServices.
 - `-n` makes a new copy beside any the user runs, `-g` leaves the user's front
   app in front, and `-W` keeps `open` the core's child until the app quits.
-- The core finds the new copy's pid, the process that runs the bundle's
-  executable (`Contents/MacOS/<its CFBundleExecutable>`) and was not there
-  before, and records it as the app's pid. A stop sends it `SIGTERM`, then
-  `SIGKILL` after 3 s.
+- `--env BOITE_DESKTOP_LAUNCH=<random>` marks the copy. The core finds its
+  pid among the new processes running the bundle's executable
+  (`Contents/MacOS/<its CFBundleExecutable>`) by that mark, which `ps -E`
+  shows, so a copy the user opens at the same moment is never taken for it.
+- A stop sends `SIGTERM`, then `SIGKILL` after 3 s, to each such app that
+  still runs: its `open -W` has not returned and the pid still runs the same
+  executable.
 - The app gets the user's environment from LaunchServices, not the core's.
 
 A program that is no bundle runs as the core's child.
@@ -224,7 +227,8 @@ running apps and the processes under them:
 - `--app` must name one of their apps. When the user runs the same app too,
   the command is refused and names the conversation's window to use with
   `--window-id`.
-- A ref from a snapshot is accepted: snapshots only reach those apps.
+- A ref from a snapshot is accepted right after the command, as
+  `snapshot --root` and as `wait --element`: snapshots only reach those apps.
 - A command with no target, which would read the user's front app, is
   refused.
 - `list-apps` and `list-windows` show only those apps.

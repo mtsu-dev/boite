@@ -47,6 +47,8 @@ const START_TIMEOUT_MS = 15_000;
 /** How long `desktop.run` waits to report a program that exits at once. */
 const EARLY_EXIT_MS = 1_000;
 const APP_LOG_BYTES = 1024 * 1024;
+/** macOS: the variable `open --env` gives each app it opens, which tells the core's copy from the user's. */
+export const LAUNCH_MARK = 'BOITE_DESKTOP_LAUNCH';
 const READY = 'boite-desktop-ready';
 /** Where distributions put the accessibility bus launcher, which is not on PATH. */
 const ATSPI_LAUNCHERS = ['/usr/libexec/at-spi-bus-launcher', '/usr/lib/at-spi2-core/at-spi-bus-launcher', '/usr/lib/at-spi-bus-launcher', '/usr/lib64/at-spi-bus-launcher'];
@@ -110,12 +112,13 @@ export function macosBundle(executable: string): string | null {
  * executable started by any parent but launchd (its launch constraints), so a
  * bundle goes through LaunchServices: `open -n` makes a new copy beside any the
  * user runs, `-g` leaves the user's front app in front, and `-W` keeps `open`
- * the core's child until the app quits. Another program runs as given.
+ * the core's child until the app quits; `--env` marks the copy so the core finds
+its pid. Another program runs as given.
  */
-export function macosLaunch(executable: string, args: string[]): string[] {
+export function macosLaunch(executable: string, args: string[], mark: string): string[] {
   const bundle = macosBundle(executable);
   if (!bundle) return [executable, ...args];
-  return ['/usr/bin/open', '-n', '-g', '-W', '-a', bundle, ...(args.length > 0 ? ['--args', ...args] : [])];
+  return ['/usr/bin/open', '-n', '-g', '-W', '--env', mark, '-a', bundle, ...(args.length > 0 ? ['--args', ...args] : [])];
 }
 
 /**
@@ -227,8 +230,8 @@ export function markedProcesses(mark: string, proc = '/proc'): number[] {
 interface Running {
   app: VirtualDesktopApp;
   spawned: SpawnedProcess;
-  /** macOS: the pid of the app `open` asked LaunchServices for, outside the core's tree. */
-  opened?: number;
+  /** macOS: the app `open` asked LaunchServices for, outside the core's tree, and the executable it runs. */
+  opened?: { pid: number; executable: string };
 }
 
 interface Session {
@@ -372,10 +375,13 @@ export class VirtualDesktops {
     writeFileSync(log, '', { mode: 0o600 });
     const bundled = session.kind === 'macos' && macosBundle(executable) !== null;
     const before = bundled ? await this.#running(session, executable) : [];
+    // A stop may have come during the waits above: nothing starts on a desktop that is going.
+    if (session.stopping) throw refused('the desktop is stopping', { threadId });
+    const mark = `${LAUNCH_MARK}=${randomBytes(8).toString('hex')}`;
     let spawned: SpawnedProcess;
     try {
       const [command, ...words] = session.kind === 'windows' ? desktopExecCommand(session.hidden!.path, [executable, ...args])
-        : session.kind === 'macos' ? macosLaunch(executable, args) : [executable, ...args];
+        : session.kind === 'macos' ? macosLaunch(executable, args, mark) : [executable, ...args];
       spawned = this.#core.procs.spawn(SCOPE, command!, words, { agentRoot: false, cwd, env: withDesktopEnv(process.env, session.env) });
     } catch (error) {
       throw refused(`${program} did not start: ${messageOf(error)}`, { threadId });
@@ -383,12 +389,21 @@ export class VirtualDesktops {
     const budget = { left: APP_LOG_BYTES };
     drainTo(spawned.proc.stdout, log, budget);
     drainTo(spawned.proc.stderr, log, budget);
-    // An app LaunchServices opened is launchd's child, not `open`'s: the scope and the stop go by its own pid.
-    const opened = bundled ? await this.#launched(session, executable, before, spawned.exited) : null;
-    const app: VirtualDesktopApp = { pid: opened ?? spawned.record.pid, command: command.join(' ').slice(0, 200), startedAt: Date.now(), exitCode: null, log };
-    session.apps.push({ app, spawned, ...(opened !== null ? { opened } : {}) });
+    const app: VirtualDesktopApp = { pid: spawned.record.pid, command: command.join(' ').slice(0, 200), startedAt: Date.now(), exitCode: null, log };
+    // Tracked before any wait, so a stop meanwhile ends it.
+    const running: Running = { app, spawned };
+    session.apps.push(running);
     void spawned.exited.then(code => { app.exitCode = code; });
     this.#forgetOldApps(session);
+    if (bundled) {
+      // An app LaunchServices opened is launchd's child, not `open`'s: the scope and the stop go by its own pid.
+      const opened = await this.#launched(session, executable, before, mark, spawned.exited);
+      if (opened !== null) {
+        running.opened = { pid: opened, executable };
+        app.pid = opened;
+        if (session.stopping) await this.#stopOpened(session, [running]);
+      }
+    }
     this.#core.logs.info(`Started a program on virtual desktop ${session.display}`, { source: 'desktop', event: 'desktop.run', threadId, data: { display: session.display, pid: app.pid } });
     await Promise.race([spawned.exited, Bun.sleep(EARLY_EXIT_MS)]);
     return { app: { ...app }, session: this.#describe(session) };
@@ -412,6 +427,7 @@ export class VirtualDesktops {
     const roots = session.apps.filter(({ app }) => app.exitCode === null).map(({ app }) => app.pid);
     const launch = singleInstanceLaunch(executable, args, session.dir, await this.#processes(session), roots);
     if ('refused' in launch) throw refused(launch.refused, { threadId });
+    if (session.stopping) throw refused('the desktop is stopping', { threadId });
     if (launch.profile) mkdirSync(launch.profile, { recursive: true, mode: 0o700 });
     return launch.args;
   }
@@ -430,14 +446,40 @@ export class VirtualDesktops {
   }
 
   /** macOS: the pid of the copy `open` just started, or null when none shows within 5 s or `open` ends first. */
-  async #launched(session: Session, executable: string, before: number[], exited: Promise<number>): Promise<number | null> {
+  async #launched(session: Session, executable: string, before: number[], mark: string, exited: Promise<number>): Promise<number | null> {
     let done = false;
     void exited.then(() => { done = true; });
     for (const deadline = Date.now() + 5_000; Date.now() < deadline && !done; await Bun.sleep(100)) {
       const fresh = (await this.#running(session, executable).catch(() => [])).filter(pid => !before.includes(pid));
-      if (fresh.length > 0) return Math.max(...fresh);
+      // The mark `open --env` gave it tells the copy from one the user or another conversation opened at the same time.
+      for (const pid of fresh) if ((await this.#environment(pid)).includes(` ${mark}`)) return pid;
     }
     return null;
+  }
+
+  /** macOS: a process's command line and environment, as `ps -E` shows them to its own account, or ''. */
+  async #environment(pid: number): Promise<string> {
+    const run = await runCommand(this.#core.procs, SCOPE, 'ps', ['-E', '-ww', '-o', 'command=', '-p', String(pid)], 5_000).catch(() => null);
+    return run?.code === 0 ? new TextDecoder().decode(run.stdout).trim() : '';
+  }
+
+  /**
+   * macOS: SIGTERM, then SIGKILL after 3 s, to each app LaunchServices opened
+   * that still runs: `open -W` has not returned and the pid still runs the
+   * same executable, so a pid reused by another process is never signalled.
+   */
+  async #stopOpened(session: Session, apps: Running[]): Promise<void> {
+    const opened = apps.filter(({ app, opened }) => opened && app.exitCode === null).map(({ opened }) => opened!);
+    if (opened.length === 0) return;
+    const alive = async () => {
+      const now = await this.#processes(session).catch(() => []);
+      return opened.filter(({ pid, executable }) => now.some(entry => entry.pid === pid && entry.name === executable)).map(({ pid }) => pid);
+    };
+    const signal = (pids: number[], name: NodeJS.Signals) => { for (const pid of pids) { try { process.kill(pid, name); } catch { /* gone */ } } };
+    signal(await alive(), 'SIGTERM');
+    let left = await alive();
+    for (const deadline = Date.now() + 3_000; left.length > 0 && Date.now() < deadline; left = await alive()) await Bun.sleep(100);
+    signal(left, 'SIGKILL');
   }
 
   /** An archived or removed conversation: its desktop goes, and one still starting never opens, without waiting. */
@@ -623,7 +665,8 @@ export class VirtualDesktops {
   #teardown(threadId: string, session: Session, why: string): Promise<void> {
     session.stopping = true;
     session.stopped ??= (async () => {
-      await this.#kill(session.stack, session.apps.map(({ spawned }) => spawned), session.id, session.dir, session.hidden, session.apps.flatMap(({ opened }) => opened ?? []));
+      await this.#stopOpened(session, session.apps);
+      await this.#kill(session.stack, session.apps.map(({ spawned }) => spawned), session.id, session.dir, session.hidden);
       if (this.#sessions.get(threadId) === session) this.#sessions.delete(threadId);
       this.#core.logs.info(`Stopped virtual desktop ${session.display}: ${why}`, { source: 'desktop', event: 'desktop.stop', threadId, data: { display: session.display } });
     })();
@@ -633,14 +676,9 @@ export class VirtualDesktops {
   /**
    * Apps first, then the stack from the top, then what left their trees: on
    * Linux whatever carries the mark, on Windows whatever still owns a window
-   * on the hidden desktop, which then goes. Then the folder. The apps macOS
-   * opened get SIGTERM, then SIGKILL after 3 s, and their `open` then exits.
+   * on the hidden desktop, which then goes. Then the folder.
    */
-  async #kill(stack: SpawnedProcess[], apps: SpawnedProcess[], id: string, dir: string, hidden?: HiddenDesktop, opened: number[] = []): Promise<void> {
-    const signal = (pids: number[], name: NodeJS.Signals | 0) => pids.filter(pid => { try { process.kill(pid, name); return true; } catch { return false; } });
-    let left = signal(opened, 'SIGTERM');
-    for (const deadline = Date.now() + 3_000; left.length > 0 && Date.now() < deadline; await Bun.sleep(100)) left = signal(left, 0);
-    signal(left, 'SIGKILL');
+  async #kill(stack: SpawnedProcess[], apps: SpawnedProcess[], id: string, dir: string, hidden?: HiddenDesktop): Promise<void> {
     await Promise.allSettled(apps.map(app => app.stop()));
     for (const part of [...stack].reverse()) await part.stop().catch(() => {});
     const strays = process.platform === 'linux' ? markedProcesses(id) : hidden?.windowPids().filter(pid => pid !== process.pid) ?? [];

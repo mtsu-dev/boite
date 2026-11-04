@@ -50,6 +50,9 @@ const UNTARGETED = new Set(['status', 'permissions', 'version', 'skills', 'sessi
 /** Commands whose word right after the command is a ref from a snapshot. */
 const REF_COMMANDS = new Set(['click', 'right-click', 'set-value', 'clear', 'select', 'toggle', 'check', 'uncheck', 'expand', 'collapse', 'scroll', 'scroll-to', 'get', 'is']);
 
+/** `wait` flags that read the front app or the session's windows, whatever --element says. */
+const WAIT_ON_APP = ['--window', '--text', '--menu', '--menu-closed'];
+
 /** A ref from a snapshot, `@s8f3k2p9:e1`: snapshots only reach the conversation's apps, so their refs do too. */
 const REF = /^@[A-Za-z0-9]+:e\d+$/;
 
@@ -124,9 +127,10 @@ export function macosTargetProblem(args: string[], windows: ListedWindow[], owne
   if (windowId !== null) return null;
   // A ref right after the command comes from a snapshot, which only reached the conversation's apps.
   if (REF_COMMANDS.has(command) && REF.test(words[0] ?? '')) return null;
+  // A snapshot under a ref, or a wait on one, reads only that ref's app.
+  if (command === 'snapshot' && REF.test(flagValue(args, '--root') ?? '')) return null;
   if (command === 'wait') {
-    const element = flagValue(args, '--element');
-    if (element !== null && REF.test(element) && words.length === 2) return null;
+    if (REF.test(flagValue(args, '--element') ?? '') && !WAIT_ON_APP.some(flag => hasFlag(words, flag))) return null;
     if (words.length === 1 && /^\d+$/.test(words[0]!)) return null;
   }
   if (REF_COMMANDS.has(command)) return `${command} takes its ref right after it here: boite desktop ${command} @ref ...`;
