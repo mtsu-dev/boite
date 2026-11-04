@@ -208,7 +208,7 @@ export function browserMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
       const frame = browser?.frames.find(one => one.id === frameId && Date.now() - one.taken < 5000);
       const tab = frame && browser?.tabs.find(one => one.tabId === frame.tabId);
       if (!browser || !frame || !tab) throw refusal('the page changed; refresh the live browser before interacting');
-      if ((input.kind === 'tap' || input.kind === 'drag' || input.kind === 'choose') && (input.width !== frame.width || input.height !== frame.height)) throw refusal('the browser viewport changed; refresh before tapping');
+      if ((input.kind === 'tap' || input.kind === 'drag' || input.kind === 'choose' || input.kind === 'pointer') && (input.width !== frame.width || input.height !== frame.height)) throw refusal('the browser viewport changed; refresh before tapping');
       // As the core: a plain tap on the page's list answers its options instead of clicking.
       const onSelect = (x: number, y: number) => {
         const px = x * tab.width, py = y * tab.height + tab.scrollY;
@@ -228,6 +228,8 @@ export function browserMethods(ctx: FakeContext): Pick<FakeMethods, Methods> {
       switch (input.kind) {
         case 'tap': tab.taps++; tab.selected = (input.count ?? 1) > 1 || input.shift === true; break;
         case 'drag': tab.selected = true; break;
+        // A mouse held across the page selects what it went over, as in a browser.
+        case 'pointer': if (input.action === 'up') tab.selected = true; break;
         case 'select-all': tab.selected = true; break;
         case 'text': type(input.text); break;
         case 'press':

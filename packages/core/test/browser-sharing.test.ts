@@ -172,6 +172,56 @@ real('a viewer on another device watches and drives the tab, and hears it come a
     // A drag selects page text; a password field's selection is never read.
     await act({ kind: 'drag', from: { x: 100 / live.width, y: 369 / live.height }, to: { x: 480 / live.width, y: 369 / live.height }, width: live.width, height: live.height });
     expect((await selection()).text).toBe('Select these words');
+    // The viewer's own mouse, sent as it moves: the page sees each point of the path, hovering then held,
+    // and a release on a frame newer than the press, as a captcha's puzzle piece needs.
+    await evaluate('getSelection().removeAllRanges(); window.trail = []; addEventListener("mousemove", e => trail.push([e.buttons, Math.round(e.clientX)]))');
+    await act({ kind: 'pointer', action: 'move', ...at(60, 369), buttons: 0 });
+    await act({ kind: 'pointer', action: 'down', ...at(100, 369) });
+    for (const x of [170, 260, 390]) await act({ kind: 'pointer', action: 'move', ...at(x, 369), buttons: 1 });
+    await Bun.sleep(150);
+    live = await picture(phone.call('browser.remoteFrame', { threadId, tabId }));
+    await act({ kind: 'pointer', action: 'up', ...at(480, 369) });
+    expect((await selection()).text).toBe('Select these words');
+    expect(await evaluate('JSON.stringify(trail)')).toBe(JSON.stringify([[0, 60], [0, 100], [1, 170], [1, 260], [1, 390]]));
+    expect(await thrown(act({ kind: 'pointer', action: 'move', ...at(10, 10), buttons: 2 as 1 }))).toThrow('buttons');
+    // A held button is let go even after the viewer's frames expired, and when the viewer leaves mid-drag;
+    // a release with nothing held still needs a live frame.
+    await evaluate('getSelection().removeAllRanges(); window.ups = []; addEventListener("mouseup", e => ups.push(Math.round(e.clientX)))');
+    const release = (frameId: string) => phone.call('browser.remoteInput', { threadId, frameId, input: { kind: 'pointer', action: 'up', ...at(10, 10) } });
+    expect(await thrown(release('expired'))).toThrow('refresh');
+    await act({ kind: 'pointer', action: 'down', ...at(100, 369) });
+    await act({ kind: 'pointer', action: 'move', ...at(220, 369), buttons: 1 });
+    await release('expired');
+    expect(await evaluate('JSON.stringify(ups)')).toBe('[220]');
+    // A press on selected text would start a native drag, which swallows the release.
+    await evaluate('getSelection().removeAllRanges()');
+    // A viewer that leaves holding the button, or while its press is still on the way, lets go of the page.
+    const leave = async (x: number, pressing: boolean) => {
+      const tablet = await connect(harness.url, '', { grant: (await owner.call('pairing.grant', {})).grant, client: { name: 'pwa', version: 'test' } });
+      await tablet.call('threads.subscribe', { threadId });
+      await Bun.sleep(150);
+      const held = await picture(tablet.call('browser.remoteFrame', { threadId, tabId }));
+      const count = Number(await evaluate('ups.length'));
+      // A busy page holds the press's read of it while the viewer goes.
+      if (pressing) await evaluate('setTimeout(() => { const t = Date.now(); while (Date.now() - t < 600); })');
+      const press = tablet.call('browser.remoteInput', { threadId, frameId: held.id, input: { kind: 'pointer', action: 'down', x: x / held.width, y: 369 / held.height, width: held.width, height: held.height } });
+      if (pressing) { void press.catch(() => {}); await Bun.sleep(100); } else await press;
+      tablet.close();
+      for (let i = 0; i < 50 && Number(await evaluate('ups.length')) <= count; i++) await Bun.sleep(100);
+    };
+    await leave(100, false);
+    await leave(120, true);
+    expect(await evaluate('JSON.stringify(ups)')).toBe('[220,100,120]');
+    // A viewer that switches tabs mid-drag lets go on the tab it pressed, not on the one it shows now.
+    await act({ kind: 'pointer', action: 'down', ...at(140, 369) });
+    const other = (await agent.call('browser.command', { threadId, action: { kind: 'open', url: url() } })).tabId;
+    await evaluate('window.ups = []; addEventListener("mouseup", e => ups.push(Math.round(e.clientX)))', other);
+    await Bun.sleep(150);
+    const onOther = await picture(phone.call('browser.remoteFrame', { threadId, tabId: other }));
+    await phone.call('browser.remoteInput', { threadId, frameId: onOther.id, input: { kind: 'pointer', action: 'up', x: 300 / onOther.width, y: 369 / onOther.height, width: onOther.width, height: onOther.height } });
+    expect(await evaluate('JSON.stringify(ups)', other)).toBe('[]');
+    await agent.call('browser.command', { threadId, tabId: other, action: { kind: 'close' } });
+    expect(await evaluate('JSON.stringify(ups)', tabId)).toBe('[220,100,120,140]');
     await evaluate('document.querySelector("#name").type = "password"');
     await act({ kind: 'tap', ...at(150, 230) });
     await act({ kind: 'select-all' });

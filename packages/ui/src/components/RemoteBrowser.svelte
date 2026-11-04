@@ -25,7 +25,7 @@
   let pending = false, requestedAt = 0;
   // What the next request asks for and when: see remote-browser-view.ts.
   let roundTrip = 0, unchanged = 0, failures = 0;
-  let pointer: { x: number; y: number; lastX: number; lastY: number; moved: boolean; mouse: boolean; shift: boolean; from: { x: number; y: number } | null; frame: RemoteBrowserFrame; client: Store['client'] } | undefined;
+  let pointer: { x: number; y: number; lastX: number; lastY: number; moved: boolean; mouse: boolean; shift: boolean; from: { x: number; y: number } | null; frame: RemoteBrowserFrame; client: Store['client']; pressed?: { x: number; y: number } | null } | undefined;
   // A computer drives the page itself: keys, wheel, mouse selection and the clipboard, with no keys or text field below.
   const desk = hasKeyboard();
   let area = $state<HTMLElement>(), screen = $state<HTMLButtonElement>(), note = $state(''), noteTimer: ReturnType<typeof setTimeout> | undefined;
@@ -39,8 +39,9 @@
   let active = $state(-1), viewer = $state<HTMLElement>(), pickerList = $state<HTMLElement>();
   let lastTap = { at: 0, x: 0, y: 0, count: 0 };
   // Mouse and keyboard input, sent one at a time in the order it was made, without freezing the view between two.
-  type Direct = Extract<RemoteBrowserInput, { kind: 'tap' | 'drag' | 'press' | 'text' | 'select-all' }>;
-  let queue: { value: Direct; target?: RemoteBrowserFrame }[] = [], draining: Promise<void> | null = null;
+  type Direct = Extract<RemoteBrowserInput, { kind: 'tap' | 'pointer' | 'press' | 'text' | 'select-all' }>;
+  // `client`: a release, which goes to the machine of its press whatever became of the view.
+  let queue: { value: Direct; target?: RemoteBrowserFrame; client?: Store['client'] }[] = [], draining: Promise<void> | null = null;
   // Pixels dragged but not yet sent, and where the finger started on the page.
   let scrollX = 0, scrollY = 0, scrolling = false, scrollAt: { x: number; y: number } | null = null;
   let frameClient = $state.raw<Store['client']>(null);
@@ -123,7 +124,9 @@
     document.addEventListener('visibilitychange', visibility);
     for (const name of ['pageshow', 'online', 'focus'] as const) window.addEventListener(name, back);
     return () => {
-      alive = false; stop(); document.removeEventListener('visibilitychange', visibility);
+      // A view closed mid-drag lets go of the page.
+      if (pointer) release(pointer);
+      pointer = undefined; alive = false; stop(); document.removeEventListener('visibilitychange', visibility);
       for (const name of ['pageshow', 'online', 'focus'] as const) window.removeEventListener(name, back);
     };
   });
@@ -136,7 +139,7 @@
     if (!client || frameClient !== client || !target || !usable || performance.now() - (receivedAt.get(target) ?? -Infinity) > 5000) return false;
     const resizing = value.kind === 'viewport' || value.kind === 'reset-viewport';
     const moving = resizing || value.kind === 'navigate' || value.kind === 'history' || value.kind === 'reload';
-    if (resizing) { stop(); displaySettings = false; pointer = undefined; }
+    if (resizing) { stop(); displaySettings = false; if (pointer) release(pointer); pointer = undefined; }
     const run = generation;
     busy = true;
     try {
@@ -159,19 +162,23 @@
   function direct(value: Direct, target?: RemoteBrowserFrame) {
     const last = queue.at(-1)?.value;
     if (value.kind === 'press' && last?.kind === 'press' && last.keys.length + value.keys.length <= REMOTE_PRESS_MAX) last.keys.push(...value.keys);
+    // A mouse that moved again before the last move left goes straight to where it is now.
+    else if (value.kind === 'pointer' && value.action === 'move' && last?.kind === 'pointer' && last.action === 'move' && last.buttons === value.buttons) queue[queue.length - 1] = { value, ...(target ? { target } : {}) };
     else queue.push({ value: value.kind === 'press' ? { kind: 'press', keys: [...value.keys] } : value, ...(target ? { target } : {}) });
     draining ??= drain().finally(() => { draining = null; });
   }
   async function drain(): Promise<void> {
+    // What cannot land on the page the user saw is dropped, never replayed on another; a release still goes.
+    const drop = () => { queue = queue.filter(entry => entry.client); };
     while (queue.length) {
-      const { value, target = frame } = queue.shift()!, client = store.client;
-      // What cannot land on the page the user saw is dropped, never replayed on another.
-      if (!alive || !client || frameClient !== client || !target || paused || store.connection !== 'ready' || old(target)) { queue = []; return; }
+      const { value, target = frame, client: owner } = queue.shift()!, client = owner ?? store.client;
+      if (!owner && (!alive || !client || frameClient !== client || !target || paused || store.connection !== 'ready' || old(target))) { drop(); continue; }
+      if (!client || !target) continue;
       try {
         const reply = await client.call('browser.remoteInput', { threadId, frameId: target.id, input: value });
         if (alive && client === store.client && value.kind === 'tap' && reply?.picker) open(reply.picker, value);
       }
-      catch (cause) { queue = []; if (alive && client === store.client) error = errorText(cause); return; }
+      catch (cause) { drop(); if (!owner && alive && client === store.client) error = errorText(cause); }
       finally { if (alive) kick(); }
     }
   }
@@ -317,25 +324,64 @@
       .catch(() => {})
       .finally(() => { scrolling = false; kick(); flushScroll(); });
   }
+  /**
+   * The mouse goes to the page as it moves, hovering or held: a slider, a
+   * puzzle piece or a selection follows it, and the page sees a person's path.
+   * A press waits for the first move past the click threshold, so a click stays
+   * a tap with its double click and its `<select>` list.
+   */
+  function mouse(action: 'move' | 'down', at: { x: number; y: number } | null, buttons: 0 | 1 = 0): boolean {
+    const current = frame;
+    if (!at || !current || !usable || zoom || choice) return false;
+    direct({ kind: 'pointer', action, ...at, width: current.width, height: current.height, ...(action === 'move' ? { buttons } : {}) }, current);
+    return true;
+  }
+  /** The press goes where the button went down, on the page that frame showed. */
+  function press(start: NonNullable<typeof pointer>) {
+    if (start.pressed !== undefined) return;
+    const at = frame && start.from && frame.width === start.frame.width && frame.height === start.frame.height ? start.from : null;
+    start.pressed = at && mouse('down', at) ? at : null;
+  }
+  /**
+   * Lets go of a pressed button whatever became of the view since (an error,
+   * a pause, a lost link, a closed panel): on the machine of the press, after
+   * the moves before it. A page left with its button down drags everything.
+   */
+  function release(start: NonNullable<typeof pointer>, event?: MouseEvent) {
+    const client = start.client;
+    if (!start.pressed || !client) return;
+    const target = frame && frameClient === client ? frame : start.frame;
+    const at = (event && edgePoint(event, target)) ?? start.pressed;
+    start.pressed = null;
+    queue.push({ value: { kind: 'pointer', action: 'up', ...at, width: target.width, height: target.height }, target, client });
+    draining ??= drain().finally(() => { draining = null; });
+  }
   function move(event: PointerEvent) {
     const start = pointer;
-    if (!start || zoom) return;
+    if (!start) { if (event.pointerType === 'mouse' && frame) mouse('move', point(event, frame)); return; }
+    if (zoom) return;
     if (!start.moved && Math.hypot(event.clientX - start.x, event.clientY - start.y) <= 8) return;
     start.moved = true;
-    if (start.mouse) return; // A mouse drag selects on release; its wheel scrolls.
+    if (start.mouse) {
+      // The press goes where the button went down, then the path from there.
+      press(start);
+      if (start.pressed && frame) { start.pressed = edgePoint(event, frame) ?? start.pressed; mouse('move', start.pressed, 1); }
+      return;
+    }
     scrollX += event.clientX - start.lastX; scrollY += event.clientY - start.lastY;
     start.lastX = event.clientX; start.lastY = event.clientY;
     flushScroll();
   }
   function up(event: PointerEvent) {
     const start = pointer; pointer = undefined;
-    if (!start || start.client !== store.client) return;
-    const size = { width: start.frame.width, height: start.frame.height };
+    if (!start) return;
     if (start.mouse && (start.moved || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8)) {
-      const to = edgePoint(event, start.frame);
-      if (start.from && to) direct({ kind: 'drag', from: start.from, to, ...size }, start.frame);
+      if (start.client === store.client) press(start);
+      release(start, event);
       return;
     }
+    if (start.client !== store.client) return;
+    const size = { width: start.frame.width, height: start.frame.height };
     if (start.moved || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8) {
       if (zoom) return; // Enlarged previews pan locally; arrow buttons scroll the shared page.
       scrollX += event.clientX - start.lastX; scrollY += event.clientY - start.lastY;
@@ -350,6 +396,14 @@
       const tap = { kind: 'tap' as const, ...p, ...size, ...(count > 1 ? { count } : {}), ...(start.shift ? { shift: true } : {}) };
       if (start.mouse) direct(tap, start.frame); else void input(tap, start.frame);
     }
+  }
+  /** A browser sends no pointer event to a disabled button: a drag held while the view failed ends here. */
+  function windowUp(event: PointerEvent) { if (pointer) up(event); }
+  function windowCancel() { if (pointer) cancel(); }
+  /** A held mouse the system took away lets go of the page where it was last seen. */
+  function cancel() {
+    const start = pointer; pointer = undefined;
+    if (start) release(start);
   }
   function go(event: SubmitEvent) {
     event.preventDefault();
@@ -371,6 +425,8 @@
     else if (event.key === 'Backspace' && text === '') { event.preventDefault(); void input({ kind: 'key', key: 'Backspace' }); }
   }
 </script>
+
+<svelte:window onpointerup={windowUp} onpointercancel={windowCancel} />
 
 <section class="remote" data-testid="remote-browser" aria-label={strings.remoteBrowser.title}>
   <BrowserNav {addressId} {secure} loading={!!frame && !fresh && !paused} spinning={!!frame && !fresh} disabled={!usable} onsubmit={go}
@@ -414,7 +470,7 @@
   {/if}
   <div class="screen-area" class:zoomed={zoom > 0} title={desk && frame ? strings.remoteBrowser.deskHint : undefined} bind:this={area} bind:clientWidth={areaWidth} bind:clientHeight={areaHeight}>
     {#if frame}
-      <button bind:this={screen} type="button" class="screen" style:width={`${frame.width * previewScale}px`} style:height={`${frame.height * previewScale}px`} class:stale={paused || error} class:desk aria-label={desk ? strings.remoteBrowser.interactDesk : strings.remoteBrowser.interact} aria-describedby={desk ? hintId : undefined} disabled={!usable} onpointerdown={down} onpointermove={move} onpointerup={up} onpointercancel={() => { pointer = undefined; }} oncontextmenu={e => e.preventDefault()}>
+      <button bind:this={screen} type="button" class="screen" style:width={`${frame.width * previewScale}px`} style:height={`${frame.height * previewScale}px`} class:stale={paused || error} class:desk aria-label={desk ? strings.remoteBrowser.interactDesk : strings.remoteBrowser.interact} aria-describedby={desk ? hintId : undefined} disabled={!usable} onpointerdown={down} onpointermove={move} onpointerup={up} onpointercancel={cancel} oncontextmenu={e => e.preventDefault()}>
         <img bind:this={picture} src={`data:image/jpeg;base64,${frame.base64}`} alt={strings.remoteBrowser.image} draggable="false" data-testid="remote-browser-frame" />
       </button>
     {:else}<p class="empty">{strings.remoteBrowser.waiting}</p>{/if}
