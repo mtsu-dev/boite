@@ -258,6 +258,7 @@ export class Coordination {
       sent: this.#count(threadId, 'out'), sendLimit: null,
       wakes: (this.#core.journal.db.query('SELECT count(*) AS n FROM coordination_wakes WHERE thread_id = ? AND at > ?').get(threadId, Date.now() - HOUR) as { n: number }).n,
       wakeLimit: null,
+      requests: this.#core.contacts.requests.ofThread(threadId),
     };
   }
   #count(threadId: string, direction: string): number {
