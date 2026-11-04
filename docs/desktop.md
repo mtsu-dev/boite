@@ -209,13 +209,16 @@ user's session, behind the user's windows. `run TextEdit`, or the path of a
   starts, so the bundle goes through LaunchServices.
 - `-n` makes a new copy beside any the user runs, `-g` leaves the user's front
   app in front, and `-W` keeps `open` the core's child until the app quits.
-- `--env BOITE_DESKTOP_LAUNCH=<random>` marks the copy. The core finds its
-  pid among the new processes running the bundle's executable
-  (`Contents/MacOS/<its CFBundleExecutable>`) by that mark, which `ps -E`
-  shows, so a copy the user opens at the same moment is never taken for it.
-- A stop sends `SIGTERM`, then `SIGKILL` after 3 s, to each such app whose
-  pid still carries its mark, so a reused pid is never signalled. An app
-  found after a stop began is stopped as soon as it is found.
+- The core finds the copy's pid among the new processes running the bundle's
+  executable (`Contents/MacOS/<its CFBundleExecutable>`), so a copy the user
+  opens at the same moment is never taken for it. A third-party app carries
+  the mark `--env BOITE_DESKTOP_LAUNCH=<random>` gave it, which `ps -E`
+  shows. SIP hides an Apple app's environment even from its own account, so
+  for it the core reads `lsappinfo info -only LSParentASN <pid>`, where
+  LaunchServices names the pid of the `open` that asked for the app.
+- A stop sends `SIGTERM`, then `SIGKILL` after 3 s, to each such app that
+  still passes that check, so a reused pid is never signalled. An app found
+  after a stop began is stopped as soon as it is found.
 - The app gets the user's environment from LaunchServices, not the core's.
 
 A program that is no bundle runs as the core's child.

@@ -230,9 +230,11 @@ export function markedProcesses(mark: string, proc = '/proc'): number[] {
 interface Running {
   app: VirtualDesktopApp;
   spawned: SpawnedProcess;
-  /** macOS: the app `open` asked LaunchServices for, outside the core's tree, and the executable it runs. */
-  opened?: { pid: number; executable: string; mark: string };
+  /** macOS: the app `open` asked LaunchServices for, outside the core's tree, the executable it runs, its launch mark and the pid of that `open`. */
+  opened?: Opened;
 }
+
+interface Opened { pid: number; executable: string; mark: string; opener: number }
 
 interface Session {
   id: string;
@@ -249,6 +251,8 @@ interface Session {
   hidden?: HiddenDesktop;
   desktops?: HiddenDesktops;
   apps: Running[];
+  /** macOS: the searches for the pid of an app just opened, which a stop waits for. */
+  launches: Set<Promise<void>>;
   stopping: boolean;
   /** The one teardown every stop of this desktop waits for. */
   stopped?: Promise<void>;
@@ -397,13 +401,17 @@ export class VirtualDesktops {
     this.#forgetOldApps(session);
     if (bundled) {
       // An app LaunchServices opened is launchd's child, not `open`'s: the scope and the stop go by its own pid.
-      const opened = await this.#launched(session, executable, before, mark, spawned.exited);
-      if (opened !== null) {
-        running.opened = { pid: opened, executable, mark };
+      const found = (async () => {
+        const opener = spawned.record.pid;
+        const opened = await this.#launched(session, executable, before, mark, opener, spawned.exited);
+        if (opened === null) return;
+        running.opened = { pid: opened, executable, mark, opener };
         app.pid = opened;
         // A stop that came meanwhile could not see this pid yet.
         if (session.stopping) await this.#stopOpened(session, [running]);
-      }
+      })();
+      session.launches.add(found);
+      try { await found; } finally { session.launches.delete(found); }
     }
     this.#core.logs.info(`Started a program on virtual desktop ${session.display}`, { source: 'desktop', event: 'desktop.run', threadId, data: { display: session.display, pid: app.pid } });
     await Promise.race([spawned.exited, Bun.sleep(EARLY_EXIT_MS)]);
@@ -447,15 +455,29 @@ export class VirtualDesktops {
   }
 
   /** macOS: the pid of the copy `open` just started, or null when none shows within 5 s or `open` ends first. */
-  async #launched(session: Session, executable: string, before: number[], mark: string, exited: Promise<number>): Promise<number | null> {
+  async #launched(session: Session, executable: string, before: number[], mark: string, opener: number, exited: Promise<number>): Promise<number | null> {
     let done = false;
     void exited.then(() => { done = true; });
-    for (const deadline = Date.now() + 5_000; Date.now() < deadline && !done; await Bun.sleep(100)) {
+    // `open` ending on its own means the app is gone; a stop ends it too, while LaunchServices may still be starting the app.
+    for (const deadline = Date.now() + 5_000; Date.now() < deadline && !(done && !session.stopping); await Bun.sleep(100)) {
       const fresh = (await this.#running(session, executable).catch(() => [])).filter(pid => !before.includes(pid));
-      // The mark `open --env` gave it tells the copy from one the user or another conversation opened at the same time.
-      for (const pid of fresh) if ((await this.#environment(pid)).includes(` ${mark}`)) return pid;
+      for (const pid of fresh) if (await this.#ours({ pid, executable, mark, opener })) return pid;
     }
     return null;
+  }
+
+  /**
+   * macOS: whether `app.pid` is the copy this `open` started, not one the user
+   * or another conversation opened at the same time: a third-party app shows
+   * the mark `open --env` gave it, and for an Apple app, whose environment SIP
+   * hides even from its own account, LaunchServices names the `open` that
+   * asked for it.
+   */
+  async #ours(app: Opened): Promise<boolean> {
+    if ((await this.#environment(app.pid)).includes(` ${app.mark}`)) return true;
+    const run = await runCommand(this.#core.procs, SCOPE, 'lsappinfo', ['info', '-only', 'LSParentASN', String(app.pid)], 5_000).catch(() => null);
+    // `"LSParentASN"=ASN:0x1-0xd1e:` names the launcher by its pid in hex.
+    return run?.code === 0 && new TextDecoder().decode(run.stdout).trim().endsWith(`-0x${app.opener.toString(16)}:`);
   }
 
   /** macOS: a process's command line and environment, as `ps -E` shows them to its own account, or ''. */
@@ -466,12 +488,12 @@ export class VirtualDesktops {
 
   /**
    * macOS: SIGTERM, then SIGKILL after 3 s, to each app LaunchServices opened
-   * that still carries its launch mark, whatever its `open` did since: a pid
-   * reused by another process is never signalled.
+   * that is still the copy its `open` started (#ours), whatever that `open` did
+   * since: a pid reused by another process is never signalled.
    */
   async #stopOpened(session: Session, apps: Running[]): Promise<void> {
-    const opened: { pid: number; executable: string }[] = [];
-    for (const { opened: app } of apps) if (app && (await this.#environment(app.pid)).includes(` ${app.mark}`)) opened.push(app);
+    const opened: Opened[] = [];
+    for (const { opened: app } of apps) if (app && await this.#ours(app)) opened.push(app);
     if (opened.length === 0) return;
     const alive = async () => {
       const now = await this.#processes(session).catch(() => []);
@@ -607,7 +629,7 @@ export class VirtualDesktops {
 
       // Archived, removed or the core stopping while it started: it is not published, and the catch below stops it.
       if (starting.cancelled || this.#closed || this.#core.threads.require(threadId).archived) throw new Error(CANCELLED);
-      const session: Session = { id, kind: 'x11', dir, display, width, height, startedAt: Date.now(), env, stack, apps: [], stopping: false };
+      const session: Session = { id, kind: 'x11', dir, display, width, height, startedAt: Date.now(), env, stack, apps: [], launches: new Set(), stopping: false };
       this.#sessions.set(threadId, session);
       // The display, the bus or the window manager gone takes the desktop with it.
       for (const part of stack) void part.exited.then(() => { if (this.#sessions.get(threadId) === session && !session.stopping) this.#track(this.#teardown(threadId, session, 'a part of it exited')); });
@@ -637,7 +659,7 @@ export class VirtualDesktops {
       const display = hidden?.name ?? 'background';
       const session: Session = {
         id, kind: backend.kind, dir, display, width: hidden?.width ?? 0, height: hidden?.height ?? 0, startedAt: Date.now(),
-        env: sharedDesktopEnv(dir, id), stack: [], ...(hidden ? { hidden } : {}), ...(backend.kind === 'windows' ? { desktops: backend.desktops } : {}), apps: [], stopping: false,
+        env: sharedDesktopEnv(dir, id), stack: [], ...(hidden ? { hidden } : {}), ...(backend.kind === 'windows' ? { desktops: backend.desktops } : {}), apps: [], launches: new Set(), stopping: false,
       };
       this.#sessions.set(threadId, session);
       this.#core.logs.info(backend.kind === 'windows' ? `Started hidden desktop ${display}` : 'Started a background desktop', { source: 'desktop', event: 'desktop.start', threadId, data: { display, kind: backend.kind } });
@@ -667,6 +689,7 @@ export class VirtualDesktops {
   #teardown(threadId: string, session: Session, why: string): Promise<void> {
     session.stopping = true;
     session.stopped ??= (async () => {
+      await Promise.allSettled([...session.launches]);
       await this.#stopOpened(session, session.apps);
       await this.#kill(session.stack, session.apps.map(({ spawned }) => spawned), session.id, session.dir, session.hidden);
       if (this.#sessions.get(threadId) === session) this.#sessions.delete(threadId);
