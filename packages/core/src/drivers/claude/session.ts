@@ -76,10 +76,13 @@ export class ClaudeSession {
   #orphans: SDKMessage[] = [];
   /** The core was asked for a turn for the orphans and has not attached one yet. */
   #woken = false;
-  /** The CLI fired a ScheduleWakeup timer the core still wanted: the turn it asks for says so. */
-  #loopWoken = false;
-  /** The CLI fired a ScheduleWakeup the core cancelled or replaced: its run is interrupted and dropped. */
-  #dropping = false;
+  /**
+   * A run the CLI's own ScheduleWakeup timer started that belongs to no turn,
+   * up to its result: `drop`, a wake the core no longer wants, writes nothing;
+   * `beside`, one that fired while another turn was attached, shows in that
+   * turn without ending it.
+   */
+  #native: 'drop' | 'beside' | null = null;
   /**
    * Results still owed to a run the CLI started by itself, which a user's turn
    * took over before that run finished: they close that run, not the turn.
@@ -195,7 +198,6 @@ export class ClaudeSession {
     this.#ctx = turn.ctx;
     this.#clearIdle();
     this.#clearLinger();
-    this.#dropping = false;
     this.#waiting.push(turn);
     if (this.#woken) {
       // The turn opened for what the CLI writes on its own takes that output
@@ -575,6 +577,13 @@ export class ClaudeSession {
     if (typeof sessionId === 'string' && sessionId.length > 0) this.#sessionId = sessionId;
     if (message.type === 'system') this.#noteTasks(message);
     if (this.#loopLifecycle(message)) return;
+    if (this.#native === 'drop') {
+      if (message.type !== 'result') return;
+      this.#native = null;
+      this.#totals.counted(message);
+      if (this.#head() === null) this.#afterTurns();
+      return;
+    }
     // A stop makes the CLI write an error result for the interrupt: that is the stop, not a failure.
     if (!replayed && !(message.type === 'result' && (this.#closing || this.#head()?.isStopped === true))) noteClaudeMessage(this.#head()?.ctx ?? this.#ctx, message, this.#spawnedAt);
     if (message.type === 'system' && message.subtype === 'init') { this.#spawnedAt = null; this.#totals.started(message.claude_code_version); }
@@ -587,16 +596,16 @@ export class ClaudeSession {
     // to the turn that opens for it later.
     if (message.type === 'system' && message.subtype === 'hook_response') (this.#head()?.ctx ?? this.#ctx).hook?.(hookReport(message));
     const turn = this.#head();
-    if (turn === null && this.#dropping) {
-      // The run of a wake the core no longer wants: nothing of it opens a turn.
-      if (message.type === 'result') { this.#dropping = false; this.#afterTurns(); }
-      return;
-    }
     if (turn === null) {
       this.#adopt(message);
       return;
     }
     if (this.#sessionId !== null) turn.noteSession(this.#sessionId);
+    if (message.type === 'result' && this.#native === 'beside') {
+      this.#native = null;
+      // A prompt folded into the wake's run is answered by its result, as below.
+      if (!this.#answers(turn, message)) { this.#totals.counted(message); return; }
+    }
     if (message.type === 'result' && this.#foreignResults > 0) {
       // A prompt that reaches the CLI while its own run is still between tool
       // rounds is folded into that run (CLI 2.1.300): one result answers both,
@@ -741,37 +750,34 @@ export class ClaudeSession {
     this.#clearLinger();
     if (this.#woken) return;
     this.#woken = true;
-    const loop = this.#loopWoken;
-    this.#loopWoken = false;
-    if (loop) this.#ctx.wake?.(LOOP_WAKE_TEXT, LOOP_WAKE_TEXT);
-    else this.#ctx.wake?.(WAKE_TEXT);
+    this.#ctx.wake?.(WAKE_TEXT);
   }
 
   /**
    * `command_lifecycle` frames (not in the SDK's types, CLI 2.1.318): a warm
    * CLI fires the ScheduleWakeup timer it armed by itself, with `started` and
-   * `wakeup_source: loop_wakeup`, then runs the wake's prompt as its own run.
-   * The core keeps that wake too (`threads/scheduled-wakes.ts`): the CLI's fire
-   * consumes it, or, when the wake was cancelled or replaced since, the run is
-   * interrupted and dropped. True for a lifecycle frame, which carries no output.
+   * `wakeup_source: loop_wakeup`, then runs the wake's prompt as its own run up
+   * to its result. The core keeps that wake too (`threads/scheduled-wakes.ts`):
+   * the CLI's fire consumes it and the turn opens at once, before the first API
+   * request, so no idle window ends the CLI in between. A wake cancelled,
+   * replaced or paused since is interrupted and dropped. True for a lifecycle
+   * frame, which carries no output.
    */
   #loopLifecycle(message: SDKMessage): boolean {
     const frame = message as { type: string; state?: unknown; wakeup_source?: unknown; scheduled_for?: unknown };
     if (frame.type !== 'command_lifecycle') return false;
-    if (frame.state !== 'started') {
-      this.#loopWoken = false;
-      return true;
-    }
-    if (frame.wakeup_source !== 'loop_wakeup' || this.#closing || this.#ended) return true;
+    if (frame.state !== 'started' || frame.wakeup_source !== 'loop_wakeup' || this.#closing || this.#ended) return true;
     const head = this.#head();
     const wanted = (head?.ctx ?? this.#ctx).loopWake?.(typeof frame.scheduled_for === 'number' ? frame.scheduled_for : null) ?? true;
-    if (head !== null) return true;
-    if (wanted) {
-      this.#loopWoken = true;
-    } else {
-      this.#dropping = true;
-      void this.#query?.interrupt().catch(() => undefined);
+    this.#clearIdle();
+    this.#clearLinger();
+    if (head === null && wanted) {
+      if (!this.#woken) { this.#woken = true; this.#ctx.wake?.(LOOP_WAKE_TEXT, LOOP_WAKE_TEXT); }
+      return true;
     }
+    this.#native = wanted ? 'beside' : 'drop';
+    // An interrupt beside another turn could take that turn's prompt with it.
+    if (head === null) void this.#query?.interrupt().catch(() => undefined);
     return true;
   }
 
@@ -796,8 +802,7 @@ export class ClaudeSession {
     this.#clearLinger();
     this.#orphans = [];
     this.#woken = false;
-    this.#loopWoken = false;
-    this.#dropping = false;
+    this.#native = null;
     this.#foreignResults = 0;
     this.#replayResult = false;
     this.#backgroundFinishers.clear();

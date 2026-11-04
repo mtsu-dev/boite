@@ -59,6 +59,8 @@ export class ScheduledWakes {
       if (name === 'message.part') this.#part(payload as RpcEvents['message.part']);
       else if (name === 'turn.finished') this.#turnFinished(payload as Turn);
       else if (name === 'thread.updated' && (payload as ThreadSummary).archived) this.cancel((payload as ThreadSummary).id, 'the thread was archived');
+      // A handoff's stops pause nothing that belongs to the next core.
+      else if (name === 'collaboration.changed' && !core.stopping) this.#paused((payload as { threadId: ThreadId }).threadId);
     });
   }
 
@@ -114,6 +116,11 @@ export class ScheduledWakes {
     const record = this.#load();
     const entry = record[threadId];
     const wake = entry?.wake;
+    // A paused thread opens no wake, the CLI's own included.
+    if (wake && this.#core.coordination.heldByUser(threadId)) {
+      this.cancel(threadId, 'the thread is paused');
+      return false;
+    }
     if (!wake || (scheduledFor !== null && Math.abs(wake.at - scheduledFor) > SAME_WAKE_MS)) {
       this.#log('info', threadId, 'The agent fired a wake that was cancelled or replaced; its run is dropped', 'dropped', wake ?? null);
       return false;
@@ -153,6 +160,11 @@ export class ScheduledWakes {
     this.#announce(threadId);
   }
 
+  /** Stop or the owner paused the thread: its wake goes, and an unpause does not bring it back. */
+  #paused(threadId: ThreadId): void {
+    if (this.#load()[threadId]?.wake && this.#core.coordination.heldByUser(threadId)) this.cancel(threadId, 'the thread was paused');
+  }
+
   /** The thread is free again: a wake that came due meanwhile goes once the CLI had its moment. */
   #turnFinished(turn: Turn): void {
     const wake = this.#load()[turn.threadId]?.wake;
@@ -190,26 +202,31 @@ export class ScheduledWakes {
     // `turn.finished` arms it again once the thread is free.
     if (this.threads.isBusy(threadId)) return;
     // Stop pauses the thread's coordination until the user writes; the owner's pause stays.
-    if (this.#core.coordination.config(threadId).paused) { this.cancel(threadId, 'the thread is paused'); return; }
-    // Taken off the record first: a core that dies under the start does not send it twice.
-    record[threadId] = { toolId: entry.toolId };
-    this.#save(record);
+    if (this.#core.coordination.heldByUser(threadId)) { this.cancel(threadId, 'the thread is paused'); return; }
     try {
+      // Taken off the record in the commit that queues its turn: a core that dies under the start neither loses it nor sends it twice.
       const turn = this.threads.startTurn(threadId, { prompt: SENTINEL_TEXT[wake.prompt] ?? wake.prompt, display: WAKE_LABEL },
-        { kind: 'resume', reason: 'wake', requestId: `wake_${entry.toolId}` });
+        { kind: 'resume', reason: 'wake', requestId: `wake_${entry.toolId}` }, { persistAdmission: () => this.#consume(threadId, entry.toolId) });
       this.#log('info', threadId, `Turn ${turn.id} opens the wake turn ${wake.turnId} scheduled`, 'started', wake);
     } catch (error) {
       if (isAgentHeld(error)) {
         // Nothing was queued: the wake stays and goes once the agent is admitted again.
-        const back = this.#load();
-        if (back[threadId]?.toolId === entry.toolId && !back[threadId]?.wake) { back[threadId] = entry; this.#save(back); }
         this.#core.agentRuntime.whenAdmitted(threadId, 'scheduled-wake', () => this.#fire(threadId));
         this.#log('info', threadId, `The scheduled wake of turn ${wake.turnId} waits for its agent to be admitted`, 'held', wake);
       } else {
+        // Nothing was queued either: the wake stays for the thread's next turn end or the next core.
         this.#log('warn', threadId, `The scheduled wake of turn ${wake.turnId} could not start: ${messageOf(error)}`, 'failed', wake);
       }
     }
     this.#announce(threadId);
+  }
+
+  /** Inside the commit that accepts the wake's turn: the record loses the wake; the cache follows once it landed. */
+  #consume(threadId: ThreadId, toolId: string): () => void {
+    const record = this.#load();
+    record[threadId] = { toolId };
+    this.#core.journal.setSetting(KEY, record);
+    return () => { this.#cached = record; };
   }
 
   #log(level: 'info' | 'warn', threadId: ThreadId, message: string, event: string, wake: ThreadWake | null): void {

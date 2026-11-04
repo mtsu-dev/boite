@@ -13,7 +13,7 @@ const timing = { ...WAKE_TIMING };
 afterEach(() => { Object.assign(WAKE_TIMING, timing); });
 
 /** A turn whose agent calls ScheduleWakeup, answered as CLI 2.1.318 answers it, then a CLI that answers every later prompt. */
-function schedules(sessionId: string, inSeconds: number): void {
+function schedules(sessionId: string, inSeconds: number, answers = true): void {
   scripted((fake) => {
     // Only the first CLI armed the wake; any later one answers the prompts it gets.
     if (queries.length > 1) return;
@@ -22,7 +22,7 @@ function schedules(sessionId: string, inSeconds: number): void {
     fake.emit(toolResult(sessionId, 'toolu_wake', `Next wakeup scheduled for 13:55:00 (in ${inSeconds}s). If you owe the user a status update this tick, give it now.`));
     fake.emit(assistant(sessionId, [{ type: 'text', text: 'armed' }]));
     fake.emit(success(sessionId));
-  }, (fake, prompt, index) => { if (fake !== queries[0] || index > 0) answerEach(sessionId)(fake, prompt, index); });
+  }, (fake, prompt, index) => { if (answers && (fake !== queries[0] || index > 0)) answerEach(sessionId)(fake, prompt, index); });
 }
 
 async function row(threadId: string): Promise<ThreadSummary> {
@@ -31,6 +31,26 @@ async function row(threadId: string): Promise<ThreadSummary> {
   client.close();
   if (!found) throw new Error(`no thread ${threadId}`);
   return found;
+}
+
+/** What a warm CLI writes when its own ScheduleWakeup timer fires (CLI 2.1.318), with the run's words. */
+function nativeWake(sessionId: string, at: number, text: string): void {
+  const fake = queries[0]!;
+  fake.emit(sdk({ type: 'command_lifecycle', state: 'started', wakeup_source: 'loop_wakeup', scheduled_for: at, session_id: sessionId }));
+  fake.emit(init(sessionId));
+  fake.emit(assistant(sessionId, [{ type: 'text', text }]));
+  fake.emit(success(sessionId));
+  fake.emit(sdk({ type: 'command_lifecycle', state: 'completed', session_id: sessionId }));
+}
+
+/** The words of the thread's messages, of one turn when given. */
+function texts(threadId: string, turnId?: string): string[] {
+  return harness.core.journal.listMessages(threadId).filter(m => turnId === undefined || m.turnId === turnId)
+    .flatMap(m => m.parts).flatMap(part => part.type === 'text' && part.text ? [part.text] : []);
+}
+
+function pause(threadId: string, paused: boolean): void {
+  harness.core.coordination.configure(threadId, { ...harness.core.coordination.config(threadId), paused });
 }
 
 describe('ScheduleWakeup in a Boite thread', () => {
@@ -114,4 +134,135 @@ describe('ScheduleWakeup in a Boite thread', () => {
     await Bun.sleep(1_500);
     expect(harness.core.journal.listTurns(threadId)).toHaveLength(1);
   });
+
+  test('a pause cancels the pending wake, and a warm CLI firing it after the unpause opens no turn', async () => {
+    WAKE_TIMING.graceMs = 300;
+    harness.core.settings.set({ warmProcessMinutes: 5 });
+    const client = await harness.connect();
+    const threadId = await claudeThread(client);
+    schedules('sess-wake-pause', 1);
+    expect(await runTurn(client, threadId, 'pace yourself on the CI')).toBe('done');
+    const at = (await row(threadId)).wake!.at;
+    pause(threadId, true);
+    expect((await row(threadId)).wake).toBeNull();
+    // Unpaused before the time: the wake stays cancelled.
+    pause(threadId, false);
+    nativeWake('sess-wake-pause', at, 'PAUSED WAKE');
+    await Bun.sleep(1_500);
+    expect(harness.core.journal.listTurns(threadId)).toHaveLength(1);
+    expect(texts(threadId)).not.toContain('PAUSED WAKE');
+    expect(queries[0]!.interrupts).toBe(1);
+  });
+
+  test('a warm CLI firing a wake its paused thread planned opens no turn', async () => {
+    WAKE_TIMING.graceMs = 60_000;
+    harness.core.settings.set({ warmProcessMinutes: 5 });
+    const client = await harness.connect();
+    const threadId = await claudeThread(client);
+    pause(threadId, true);
+    schedules('sess-wake-paused', 1);
+    expect(await runTurn(client, threadId, 'pace yourself on the CI')).toBe('done');
+    nativeWake('sess-wake-paused', Date.now() + 1_000, 'PAUSED WAKE');
+    await Bun.sleep(500);
+    expect(harness.core.journal.listTurns(threadId)).toHaveLength(1);
+    expect(texts(threadId)).not.toContain('PAUSED WAKE');
+    expect((await row(threadId)).wake).toBeNull();
+  });
+
+  test('a native fire of a wake the core already opened is dropped and does not end that turn', async () => {
+    WAKE_TIMING.graceMs = 100;
+    harness.core.settings.set({ warmProcessMinutes: 5 });
+    const client = await harness.connect();
+    const threadId = await claudeThread(client);
+    const sessionId = 'sess-wake-race';
+    schedules(sessionId, 1, false);
+    expect(await runTurn(client, threadId, 'pace yourself on the CI')).toBe('done');
+    const at = (await row(threadId)).wake!.at;
+    // The core's timer went first: its resume turn is on the warm CLI.
+    await waitFor(() => calls[0]!.prompts.length === 2, 5_000);
+    const resumed = client.next('turn.finished', (turn) => turn.threadId === threadId, 10_000);
+    nativeWake(sessionId, at, 'STALE WAKE');
+    await Bun.sleep(100);
+    queries[0]!.emit(init(sessionId));
+    queries[0]!.emit(assistant(sessionId, [{ type: 'text', text: 'RESUMED' }]));
+    queries[0]!.emit(success(sessionId));
+    const turn = await resumed;
+    expect(turn.execution?.operation).toBe('resume');
+    expect(texts(threadId, turn.id).at(-1)).toBe('RESUMED');
+    expect(texts(threadId)).not.toContain('STALE WAKE');
+    expect(harness.core.journal.listTurns(threadId)).toHaveLength(2);
+  });
+
+  test('a native fire beside a user turn shows in it and does not end it', async () => {
+    WAKE_TIMING.graceMs = 60_000;
+    harness.core.settings.set({ warmProcessMinutes: 5 });
+    const client = await harness.connect();
+    const threadId = await claudeThread(client);
+    const sessionId = 'sess-wake-user';
+    schedules(sessionId, 1, false);
+    expect(await runTurn(client, threadId, 'pace yourself on the CI')).toBe('done');
+    const at = (await row(threadId)).wake!.at;
+    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 10_000);
+    await client.call('turns.start', { threadId, prompt: 'how is it going' });
+    await waitFor(() => calls[0]!.prompts.length === 2, 5_000);
+    nativeWake(sessionId, at, 'WAKE WORK');
+    await Bun.sleep(100);
+    queries[0]!.emit(init(sessionId));
+    queries[0]!.emit(assistant(sessionId, [{ type: 'text', text: 'USER ANSWER' }]));
+    queries[0]!.emit(success(sessionId));
+    const turn = await finished;
+    expect(turn.status).toBe('done');
+    // One assistant message holds both runs' words, the wake's first.
+    expect(texts(threadId, turn.id).join(' | ')).toBe('how is it going | WAKE WORKUSER ANSWER');
+    expect((await row(threadId)).wake).toBeNull();
+    await Bun.sleep(200);
+    expect(harness.core.journal.listTurns(threadId)).toHaveLength(2);
+  });
+
+  test('a warm CLI firing its wake opens the turn at once, so its idle window cannot end it before the first output', async () => {
+    WAKE_TIMING.graceMs = 60_000;
+    harness.core.settings.set({ warmProcessMinutes: 0.01 });
+    const client = await harness.connect();
+    const threadId = await claudeThread(client);
+    const sessionId = 'sess-wake-slow';
+    schedules(sessionId, 1);
+    expect(await runTurn(client, threadId, 'pace yourself on the CI')).toBe('done');
+    const at = (await row(threadId)).wake!.at;
+    const woke = client.next('turn.finished', (turn) => turn.threadId === threadId, 10_000);
+    queries[0]!.emit(sdk({ type: 'command_lifecycle', state: 'started', wakeup_source: 'loop_wakeup', scheduled_for: at, session_id: sessionId }));
+    // The first API request takes longer than the 600 ms idle window.
+    await Bun.sleep(1_200);
+    expect(queries[0]!.closes).toBe(0);
+    queries[0]!.emit(init(sessionId));
+    queries[0]!.emit(assistant(sessionId, [{ type: 'text', text: 'WOKE LATE' }]));
+    queries[0]!.emit(success(sessionId));
+    const turn = await woke;
+    expect(turn.execution?.operation).toBe('background');
+    expect(texts(threadId, turn.id).at(-1)).toBe('WOKE LATE');
+  });
+
+  test('a core that dies while it opens the wake leaves it for the next core', async () => {
+    WAKE_TIMING.graceMs = 200;
+    WAKE_TIMING.startDelayMs = 50;
+    const client = await harness.connect();
+    const threadId = await claudeThread(client);
+    schedules('sess-wake-crash', 1);
+    expect(await runTurn(client, threadId, 'pace yourself on the CI')).toBe('done');
+    // The commit that would queue the wake turn never lands.
+    const journal = harness.core.journal;
+    const putTurn = journal.putTurn.bind(journal);
+    let died = false;
+    journal.putTurn = (turn) => { if (!died) { died = true; throw new Error('the core died'); } putTurn(turn); };
+    await waitFor(() => died, 10_000);
+    await Bun.sleep(50);
+    expect(journal.getSetting('scheduled-wakes')).toMatchObject({ [threadId]: { wake: { prompt: 'check the CI again' } } });
+    harness.core.wakes.close();
+    journal.putTurn = putTurn;
+    const restarted = new Core({ dataDir: harness.dataDir, token: harness.token });
+    scriptedClaude({ core: restarted } as TestCore);
+    try {
+      await waitFor(() => restarted.journal.listTurns(threadId).some(turn => turn.execution?.operation === 'resume' && turn.status === 'done'), 10_000);
+      expect(restarted.wakes.of(threadId)).toBeNull();
+    } finally { await restarted.close(); }
+  }, 20_000);
 });
