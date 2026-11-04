@@ -6,8 +6,9 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { AGENT_ENV } from '@boite/contracts';
+import { AGENT_ENV, type VirtualDesktopSession } from '@boite/contracts';
 import { runCli } from '../src/cli.ts';
+import { withKind } from '../src/desktop-cli.ts';
 import { AgentDesktopTool } from '../src/desktop/agent-desktop.ts';
 import { DESKTOP_EXEC, desktopExecCommand } from '../src/desktop/launcher.ts';
 import { descendants, macosTargetProblem, ownedListing, parsePs, sharedSessionRefusal, type ListedWindow } from '../src/desktop/scope.ts';
@@ -42,6 +43,18 @@ test('where the session is shared, only semantic input reaches the apps', () => 
   expect(sharedSessionRefusal('windows', ['close-app', 'charmap'])).toContain('close-app is refused');
   expect(sharedSessionRefusal('macos', ['close-app', '--force', 'Calculator'])).toContain('close-app --force is refused');
   expect(sharedSessionRefusal('macos', ['close-app', 'Calculator'])).toBeNull();
+  // Only one value of a scope flag is checked, so a second one is refused.
+  expect(sharedSessionRefusal('macos', ['snapshot', '--window-id', 'w-1', '--window-id=w-2'])).toContain('--window-id is given more than once');
+  expect(sharedSessionRefusal('windows', ['snapshot', '--app', 'charmap', '--app', 'explorer'])).toContain('--app is given more than once');
+  expect(sharedSessionRefusal('macos', ['type', '@s1:e1', '--', '--app', '--app'])).toContain('type is refused');
+  expect(sharedSessionRefusal('macos', ['set-value', '@s1:e1', '--', '--app', '--app'])).toBeNull();
+});
+
+test('a session from a core older than Windows and macOS support is a Linux one', () => {
+  const session = { display: ':3', width: 1280, height: 800, env: {}, apps: [] } as unknown as VirtualDesktopSession;
+  expect(withKind(session)?.kind).toBe('x11');
+  expect(withKind({ ...session, kind: 'macos' })?.kind).toBe('macos');
+  expect(withKind(null)).toBeNull();
 });
 
 test('on macOS a command reaches only the apps the conversation started', () => {
@@ -131,7 +144,11 @@ test('an app that keeps one copy per user gets a profile of its own, or is refus
   expect(singleInstanceLaunch('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', [], dir, [], [])).toMatchObject({ profile: join(dir, 'profiles', 'google chrome') });
   expect(singleInstanceLaunch('msedge.exe', ['--user-data-dir=X:\\p'], dir, user, [])).toEqual({ args: ['--user-data-dir=X:\\p'], profile: null });
   expect(singleInstanceLaunch('firefox', ['about:blank'], dir, user, [])).toEqual({ args: ['-no-remote', '-profile', join(dir, 'profiles', 'firefox'), 'about:blank'], profile: join(dir, 'profiles', 'firefox') });
-  expect(singleInstanceLaunch('firefox', ['-P', 'dev'], dir, user, [])).toEqual({ args: ['-P', 'dev'], profile: null });
+  // A profile the command names still keeps Firefox from joining the user's running copy.
+  expect(singleInstanceLaunch('firefox', ['-P', 'dev'], dir, user, [])).toEqual({ args: ['-no-remote', '-P', 'dev'], profile: null });
+  expect(singleInstanceLaunch('firefox', ['-no-remote', '-profile', 'X:\p'], dir, user, [])).toEqual({ args: ['-no-remote', '-profile', 'X:\p'], profile: null });
+  // open would start an app Boite never tracks, in front of the user's windows.
+  expect(singleInstanceLaunch('/usr/bin/open', ['-a', 'Safari'], dir, [], [])).toMatchObject({ refused: expect.stringContaining('open starts apps Boite does not track') });
   expect(singleInstanceLaunch('C:\\Windows\\explorer.exe', [], dir, user, [])).toMatchObject({ refused: expect.stringContaining('the user\'s own Explorer') });
   // The user's Notepad would take the launch; the conversation's own copy would not.
   expect(singleInstanceLaunch('notepad', [], dir, user, [])).toMatchObject({ refused: expect.stringContaining('notepad already runs on the user\'s desktop') });

@@ -162,8 +162,9 @@ accessibility action does on the conversation's own apps:
   browsers (Chrome, Edge, Brave, Vivaldi, Opera) and the Electron editors (VS
   Code, Cursor, Windsurf) get `--user-data-dir=<folder>/profiles/<app>`,
   Firefox `-no-remote -profile <folder>/profiles/firefox`, unless the command
-  gives a profile. They start with a fresh profile; copy in what one needs.
-  Explorer is refused, and so are Notepad, Calculator, Paint, Office, Teams,
+  gives a profile; Firefox keeps `-no-remote` even then. They start with a
+  fresh profile; copy in what one needs. macOS `open` is refused: the app it
+  starts is one Boite does not track. Explorer is refused, and so are Notepad, Calculator, Paint, Office, Teams,
   Discord, Slack, Spotify, Steam, Obsidian and Windows Terminal while the user
   runs them.
 

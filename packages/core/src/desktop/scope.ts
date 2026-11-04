@@ -77,6 +77,9 @@ function hasFlag(words: string[], name: string): boolean {
   return words.some(word => word === name || word.startsWith(`${name}=`));
 }
 
+/** The flags that name what a command reaches, checked against the conversation's apps. */
+const SCOPE_FLAGS = ['--window-id', '--app', '--surface', '--root', '--element'];
+
 /** Why `args` may not run on a desktop of kind `kind`, or null. Linux takes everything. */
 export function sharedSessionRefusal(kind: VirtualDesktopKind, args: string[]): string | null {
   if (kind === 'x11') return null;
@@ -97,6 +100,9 @@ export function sharedSessionRefusal(kind: VirtualDesktopKind, args: string[]): 
   if (command === 'permissions' && (hasFlag(words, '--request') || hasFlag(words, '--guide'))) {
     return 'permissions only reads here: --request and --guide open prompts and settings in the user\'s session, which are the user\'s to answer';
   }
+  // Only the first value of a flag is checked, so a second one could carry another target.
+  const repeated = SCOPE_FLAGS.find(flag => words.filter(word => word === flag || word.startsWith(`${flag}=`)).length > 1);
+  if (repeated) return `${repeated} is given more than once; give it once`;
   const surface = flagValue(args, '--surface');
   if (surface !== null && !APP_SURFACES.has(surface)) return `--surface ${surface} is the user's, not an app's; use one of ${[...APP_SURFACES].join(', ')}`;
   return null;

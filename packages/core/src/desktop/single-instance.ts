@@ -56,13 +56,15 @@ export function singleInstanceLaunch(program: string, args: string[], dir: strin
   const known = names(program);
   const name = known.find(found => USER_DATA_DIR.has(found) || FIREFOX.has(found) || SINGLE.has(found)) ?? known[0]!;
   if (name === 'explorer') return { refused: 'explorer opens its windows in the user\'s own Explorer; run the program a folder or file opens instead' };
+  if (name === 'open') return { refused: 'open starts apps Boite does not track, in front of the user\'s windows; run the app itself, such as boite desktop run Safari' };
   if (USER_DATA_DIR.has(name)) {
     if (hasFlag(args, ['--user-data-dir'])) return { args, profile: null };
     const profile = join(dir, 'profiles', name);
     return { args: [`--user-data-dir=${profile}`, ...args], profile };
   }
   if (FIREFOX.has(name)) {
-    if (hasFlag(args, ['-profile', '--profile', '-P'])) return { args, profile: null };
+    // -no-remote keeps it from joining the user's running copy, whichever profile it opens.
+    if (hasFlag(args, ['-profile', '--profile', '-P'])) return { args: hasFlag(args, ['-no-remote']) ? args : ['-no-remote', ...args], profile: null };
     const profile = join(dir, 'profiles', name);
     return { args: ['-no-remote', '-profile', profile, ...args], profile };
   }

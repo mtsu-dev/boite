@@ -61,6 +61,11 @@ function appLine(app: VirtualDesktopApp): string {
   return `  pid ${app.pid}  ${app.exitCode === null ? 'running' : `exited ${app.exitCode}`}  ${app.command}\n    log: ${app.log}`;
 }
 
+/** A core from before Windows and macOS sends no kind: every desktop it runs is a Linux one. */
+export function withKind<T extends VirtualDesktopSession | null>(session: T): T {
+  return session && !session.kind ? { ...session, kind: 'x11' } : session;
+}
+
 function desktopLine(session: VirtualDesktopSession): string {
   if (session.kind === 'macos') return 'desktop: background of the user\'s session (macOS)';
   return `desktop: ${session.kind === 'windows' ? `hidden ${session.display}` : session.display} ${session.width}x${session.height}`;
@@ -168,25 +173,27 @@ export async function desktopCommand(args: string[], io: CliIo, client: CoreClie
     case 'help': return { lines: [DESKTOP_HELP], value: { help: DESKTOP_HELP } };
     case 'status': {
       done(rest);
-      const status = await client.call('desktop.status', { threadId });
+      const read = await client.call('desktop.status', { threadId });
+      const status = { ...read, session: withKind(read.session) };
       return { lines: [...supportLines(status.support), ...(status.session ? sessionLines(status.session) : ['desktop: not started'])], value: status };
     }
     case 'start': {
       const wanted = size(rest);
       done(rest);
-      const { session } = await client.call('desktop.start', { threadId, ...wanted });
+      const session = withKind((await client.call('desktop.start', { threadId, ...wanted })).session);
       return { lines: sessionLines(session), value: { session } };
     }
     case 'run': {
       const words = rest[0] === '--' ? rest.slice(1) : rest;
       if (words.length === 0) throw new Usage('desktop run needs a program, such as: boite desktop run gnome-calculator');
-      const { app, session } = await client.call('desktop.run', { threadId, command: words, cwd: io.cwd });
+      const { app, session: sent } = await client.call('desktop.run', { threadId, command: words, cwd: io.cwd });
+      const session = withKind(sent);
       const state = app.exitCode === null ? `running as pid ${app.pid} on ${session.display}` : `exited at once with code ${app.exitCode}; its output is in ${app.log}`;
       return { lines: [`${app.command}: ${state}`, ...(app.exitCode === null ? [`log: ${app.log}`] : [])], value: { app, session } };
     }
     case 'env': {
       done(rest);
-      const { session } = await client.call('desktop.status', { threadId });
+      const session = withKind((await client.call('desktop.status', { threadId })).session);
       if (!session) throw new Error('no desktop yet: boite desktop start');
       if (session.kind !== 'x11') throw new Error('env is for a Linux desktop: an environment puts no window on this one; start the program with boite desktop run');
       // Without the mark: a shell that exports it would have its own commands, `boite desktop stop` included, killed by the stop.
@@ -203,7 +210,8 @@ export async function desktopCommand(args: string[], io: CliIo, client: CoreClie
       // Words after `--` are text (`type @ref -- --help`), never a request for help.
       const flags = rest.includes('--') ? rest.slice(0, rest.indexOf('--')) : rest;
       if (OFFLINE.has(command) || flags.includes('--help') || flags.includes('-h')) return agentDesktop(await agentDesktopBinary(io, client, threadId), args, io, null);
-      const { session, support } = await client.call('desktop.status', { threadId });
+      const { session: sent, support } = await client.call('desktop.status', { threadId });
+      const session = withKind(sent);
       // The policy can turn the desktop off while one runs: nothing more acts on it, only stop.
       if (!support.available) throw new Error(supportLines(support)[0]!);
       if (!session) throw new Error('no desktop yet: boite desktop run <app> starts one with the app');
