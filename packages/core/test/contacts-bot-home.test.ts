@@ -24,7 +24,10 @@ test('the answer of the Contacts bot move is lost: the handoff waits, the next s
   // The first answer of the move never comes back: X made the bot, A did not hear it.
   const request = a.core.coordination.request.bind(a.core.coordination);
   const moves: string[] = [];
+  // The bot A holds as each move leaves: a forced sweep (each `group.updated` sends one) can retry at any time, so this is read there, not after a pause.
+  const held: (string | undefined)[] = [];
   a.core.coordination.request = async (peer: CoordinationPeer, operation, payload) => {
+    if (operation === 'bot.move') held.push(contactsBot(a.core)?.agentId);
     const answer = await request(peer, operation, payload);
     if (operation !== 'bot.move') return answer;
     moves.push((payload as { requestId: string }).requestId);
@@ -36,11 +39,10 @@ test('the answer of the Contacts bot move is lost: the handoff waits, the next s
   await waitFor(() => a.core.group.roleOf('botsHome') === xId && x.core.group.roleOf('botsHome') === xId, 10000);
   a.core.contacts.groupLink.sweep(true);
   await waitFor(() => moves.length >= 1 && contactsBot(x.core) !== null, 10000);
-  await Bun.sleep(500);
-  // Both hold it for now: A has not finished its half, so it must try again.
-  expect(contactsBot(a.core)?.agentId).toBe(agentId);
   // The next sweep sends the same move: X answers with the bot it made and A lets its copy go.
   await waitFor(() => sweep() && contactsBot(a.core) === null, 20000);
+  // Both held it until then: A had not finished its half after the lost answer, so it sent the move again with its bot.
+  expect(held.slice(0, 2)).toEqual([agentId, agentId]);
   expect(new Set(moves)).toEqual(new Set([botMoveId(a.core.group.roster!.botsHomeRev!, xId)]));
   expect(contactsBot(x.core)?.agentId).toBe(agentId);
   expect(x.core.workforce.records.list('profile').filter(profile => profile.builtin === 'contacts' && profile.status !== 'archived')).toHaveLength(1);
