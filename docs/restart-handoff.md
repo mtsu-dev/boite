@@ -121,6 +121,24 @@ the row: the third stop stays on the thread and notifies like any failure. The
 user's next message, or a turn of another kind that answers, starts a new row;
 a resume that answers but leaves background work that dies again does not.
 
+## Scheduled wakes
+
+An agent that paces itself with Claude Code's `ScheduleWakeup` tool arms a
+timer inside its CLI, which dies when the core closes that CLI.
+`packages/core/src/threads/scheduled-wakes.ts` keeps the call's wake
+(`prompt`, `reason`, and when it is due from the tool's `(in Ns)` answer) in
+the journal setting `scheduled-wakes`, one per thread: a newer call replaces
+it, and `stop: true`, Stop, a pause or an archive cancels it. The row shows it
+as `wake`, and `boite thread show` prints `wake: due <time> (<reason>)`.
+
+A CLI still alive fires its own timer (`command_lifecycle` `started` with
+`wakeup_source: loop_wakeup`, CLI 2.1.318): that consumes the wake, and its run
+opens a `background` turn labelled Scheduled wake. A run for a wake cancelled
+or replaced since is interrupted and dropped. Otherwise, 30 s past its time
+with the thread free, the core opens a `resume` turn with the wake's prompt; a
+busy thread gets it 30 s after its turn ends, and a restart arms it again, 3 s
+after the start at the earliest.
+
 ## What starts it
 
 | Caller | Trigger |

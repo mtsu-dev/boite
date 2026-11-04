@@ -1,25 +1,23 @@
-import type { Options, Query, SDKMessage, SpawnOptions as SdkSpawnOptions } from '@anthropic-ai/claude-agent-sdk';
+import type { Query, SDKMessage, SpawnOptions as SdkSpawnOptions } from '@anthropic-ai/claude-agent-sdk';
 import type { BackgroundTask, PermissionMode } from '@boite/contracts';
-import { messageOf, unavailable } from '../../errors.ts';
+import { messageOf } from '../../errors.ts';
 import type { SpawnedChild } from '../../procs.ts';
-import { profileFor, resolveExecutable } from '../../providers/resolve.ts';
 import type { LiveTurnSettings, SessionContext, TurnContext } from '../types.ts';
 import { hookReport } from './hooks.ts';
 import { authenticationFailureOf, authenticationSuspectOf, backgroundKind, commandsOf, isApiRetry, isAuthenticationFailure, subagentOf } from './mapping.ts';
 import { RunningTotals } from './totals.ts';
 import { toolGate } from './permissions.ts';
-import { cliEnv, liveSetup, PROMPT_EFFORT, PromptQueue, STDERR_MAX, THINKING_DISPLAY_FLAG } from './query.ts';
+import { cliEnv, liveSetup, PROMPT_EFFORT, PromptQueue, STDERR_MAX } from './query.ts';
 import type { ClaudeDeps, LiveSetup } from './query.ts';
 import type { ClaudeTurn } from './turn.ts';
 import { SessionRetention } from '../session-retention.ts';
 import { noteClaudeMessage } from './diagnostics.ts';
-import { userStdioServers, type LazyServerEntry } from '../../mcp/lazy.ts';
+import { userStdioServers } from '../../mcp/lazy.ts';
 import {protectedClaudeOptions} from './protected.ts';
-import { compactFocus, openWithCompaction } from './compaction.ts';
+import { openWithCompaction } from './compaction.ts';
+import { cliOptions, type OptionsHost } from './options.ts';
 
 /** How long `stop()` lets the CLI end its turn before the abort signal takes it. */
-/** Claude Code's own subagent and workflow tools; `Task` is the older name of `Agent`. */
-export const NATIVE_SUBAGENT_TOOLS = ['Agent', 'Task', 'Workflow'] as const;
 const STOP_GRACE_MS = 3_000;
 /** How long the CLI has to exit on its own once the prompt stream is over. */
 const FINISH_GRACE_MS = 5_000;
@@ -36,6 +34,8 @@ const LINGER_MS = 15_000;
 const ORPHANS_MAX = 5_000;
 /** The system message a turn the agent opened on its own starts with. */
 const WAKE_TEXT = 'Background work finished';
+/** The system message of a turn the agent's own ScheduleWakeup timer opened. */
+const LOOP_WAKE_TEXT = 'Scheduled wake';
 
 type Timer = ReturnType<typeof setTimeout>;
 
@@ -76,6 +76,10 @@ export class ClaudeSession {
   #orphans: SDKMessage[] = [];
   /** The core was asked for a turn for the orphans and has not attached one yet. */
   #woken = false;
+  /** The CLI fired a ScheduleWakeup timer the core still wanted: the turn it asks for says so. */
+  #loopWoken = false;
+  /** The CLI fired a ScheduleWakeup the core cancelled or replaced: its run is interrupted and dropped. */
+  #dropping = false;
   /**
    * Results still owed to a run the CLI started by itself, which a user's turn
    * took over before that run finished: they close that run, not the turn.
@@ -119,6 +123,10 @@ export class ClaudeSession {
   #markReady: () => void = () => undefined;
   /** The permission callback and the tool hooks, reading the turn the CLI is on. */
   readonly #gate = toolGate({ head: () => this.#head(), ctx: () => this.#ctx });
+  readonly #optionsHost: OptionsHost = {
+    abortController: this.#abortController, gate: this.#gate,
+    compactionSummary: () => this.#ctx.compactionSummary?.() ?? null, spawn: options => this.#spawnCli(options),
+  };
 
   #warmMs: number;
   readonly #deps: ClaudeDeps;
@@ -185,6 +193,7 @@ export class ClaudeSession {
     this.#ctx = turn.ctx;
     this.#clearIdle();
     this.#clearLinger();
+    this.#dropping = false;
     this.#waiting.push(turn);
     if (this.#woken) {
       // The turn opened for what the CLI writes on its own takes that output
@@ -492,7 +501,7 @@ export class ClaudeSession {
   async #run(first?: ClaudeTurn): Promise<void> {
     const lazy = this.#lazyServers(this.#ctx);
     try {
-      const options = this.#options(this.#ctx, lazy?.entries ?? null);
+      const options = cliOptions(this.#ctx, this.#optionsHost, lazy?.entries ?? null);
       if (this.#ctx.protectedExecution) {
         this.#ctx.protectedExecution.check();
         const protectedOptions = await protectedClaudeOptions(() => this.#head(), this.#ctx.protectedExecution.toolsAllowed !== false);
@@ -563,6 +572,7 @@ export class ClaudeSession {
     const sessionId = (message as { session_id?: string }).session_id;
     if (typeof sessionId === 'string' && sessionId.length > 0) this.#sessionId = sessionId;
     if (message.type === 'system') this.#noteTasks(message);
+    if (this.#loopLifecycle(message)) return;
     // A stop makes the CLI write an error result for the interrupt: that is the stop, not a failure.
     if (!replayed && !(message.type === 'result' && (this.#closing || this.#head()?.isStopped === true))) noteClaudeMessage(this.#head()?.ctx ?? this.#ctx, message, this.#spawnedAt);
     if (message.type === 'system' && message.subtype === 'init') { this.#spawnedAt = null; this.#totals.started(message.claude_code_version); }
@@ -575,6 +585,11 @@ export class ClaudeSession {
     // to the turn that opens for it later.
     if (message.type === 'system' && message.subtype === 'hook_response') (this.#head()?.ctx ?? this.#ctx).hook?.(hookReport(message));
     const turn = this.#head();
+    if (turn === null && this.#dropping) {
+      // The run of a wake the core no longer wants: nothing of it opens a turn.
+      if (message.type === 'result') { this.#dropping = false; this.#afterTurns(); }
+      return;
+    }
     if (turn === null) {
       this.#adopt(message);
       return;
@@ -718,7 +733,38 @@ export class ClaudeSession {
     this.#clearLinger();
     if (this.#woken) return;
     this.#woken = true;
-    this.#ctx.wake?.(WAKE_TEXT);
+    const loop = this.#loopWoken;
+    this.#loopWoken = false;
+    if (loop) this.#ctx.wake?.(LOOP_WAKE_TEXT, LOOP_WAKE_TEXT);
+    else this.#ctx.wake?.(WAKE_TEXT);
+  }
+
+  /**
+   * `command_lifecycle` frames (not in the SDK's types, CLI 2.1.318): a warm
+   * CLI fires the ScheduleWakeup timer it armed by itself, with `started` and
+   * `wakeup_source: loop_wakeup`, then runs the wake's prompt as its own run.
+   * The core keeps that wake too (`threads/scheduled-wakes.ts`): the CLI's fire
+   * consumes it, or, when the wake was cancelled or replaced since, the run is
+   * interrupted and dropped. True for a lifecycle frame, which carries no output.
+   */
+  #loopLifecycle(message: SDKMessage): boolean {
+    const frame = message as { type: string; state?: unknown; wakeup_source?: unknown; scheduled_for?: unknown };
+    if (frame.type !== 'command_lifecycle') return false;
+    if (frame.state !== 'started') {
+      this.#loopWoken = false;
+      return true;
+    }
+    if (frame.wakeup_source !== 'loop_wakeup' || this.#closing || this.#ended) return true;
+    const head = this.#head();
+    const wanted = (head?.ctx ?? this.#ctx).loopWake?.(typeof frame.scheduled_for === 'number' ? frame.scheduled_for : null) ?? true;
+    if (head !== null) return true;
+    if (wanted) {
+      this.#loopWoken = true;
+    } else {
+      this.#dropping = true;
+      void this.#query?.interrupt().catch(() => undefined);
+    }
+    return true;
   }
 
   #clearLinger(): void {
@@ -741,6 +787,8 @@ export class ClaudeSession {
     this.#clearLinger();
     this.#orphans = [];
     this.#woken = false;
+    this.#loopWoken = false;
+    this.#dropping = false;
     this.#foreignResults = 0;
     this.#replayResult = false;
     this.#backgroundFinishers.clear();
@@ -798,77 +846,6 @@ export class ClaudeSession {
     }, ms);
     timer.unref?.();
     this.#timers.add(timer);
-  }
-
-  #options(ctx: SessionContext, lazyMcp: Record<string, LazyServerEntry> | null = null): Options {
-    const profile = profileFor(ctx.provider);
-    const executable = profile === undefined ? null : resolveExecutable(profile);
-    if (executable === null) {
-      throw unavailable(`no ${ctx.provider.id} executable on this machine`, { providerId: ctx.provider.id });
-    }
-    // The same values the setters carry later, so what the query opens on
-    // and what the session records as applied can never say different things.
-    const setup = liveSetup(ctx.thread, !!ctx.protectedExecution);
-    const mode = ctx.thread.contextMode ?? null;
-    return {
-      resume: ctx.sessionId ?? undefined,
-      // A rewind or a fork: the transcript up to that entry, under a new
-      // session id, so the original session is never cut.
-      ...(ctx.sessionId !== null && ctx.resumeAt ? { resumeSessionAt: ctx.resumeAt, forkSession: true } : {}),
-      cwd: ctx.thread.cwd,
-      model: setup.model ?? undefined,
-      // A level the CLI knows goes in the options; `ultrathink` goes in the prompt.
-      ...(setup.effortLevel === null ? {} : { effort: setup.effortLevel }),
-      permissionMode: setup.permissionMode,
-      // This enables the live setter; permissionMode still controls the actual approvals.
-      allowDangerouslySkipPermissions: true,
-      pathToClaudeCodeExecutable: executable,
-      // Claude Code's own prompt, tuned per model by Anthropic, with Boite's guide
-      // appended. Without a preset the SDK sends an empty one and the model gets a
-      // single identity line. Working directory and memory path go to the first
-      // message, so every thread and worktree shares one cached system prompt.
-      // The CLI records the prompt on a session's first request and reuses it
-      // until compaction, so a resumed session keeps the one it started with.
-      systemPrompt: {
-        type: 'preset',
-        preset: 'claude_code',
-        excludeDynamicSections: true,
-        ...(ctx.systemGuide ? { append: ctx.systemGuide } : {}),
-      },
-      settingSources: ['user', 'project', 'local'],
-      // Subagents in Boite are Boite conversations (`boite delegate spawn`), so the user
-      // can follow, steer and stop them; the CLI's own subagent tools never reach the model.
-      disallowedTools: [...NATIVE_SUBAGENT_TOOLS],
-      // A context mode: what the conversation starts without (docs/context-modes.md).
-      ...(mode?.tools ? { tools: [...mode.tools] } : {}),
-      ...(mode && !mode.mcp ? { strictMcpConfig: true, mcpServers: {} } : {}),
-      // A server given here replaces the user's own of the same name, which then never starts.
-      ...(lazyMcp !== null ? { mcpServers: lazyMcp } : {}),
-      settings: {
-        fastMode: setup.fastMode,
-        // Memory belongs to the user's brain and Boite's own notes, not to a
-        // per-folder store the preset would otherwise tell the agent to write.
-        autoMemoryEnabled: false,
-        ...(setup.disableHooks ? { disableAllHooks: true } : {}),
-      },
-      includePartialMessages: true,
-      // Every run of the user's own hooks, for the ledger Settings shows.
-      includeHookEvents: true,
-      // A CLI driven through the SDK asks the API to leave its reasoning out
-      // ("omitted"): the thinking blocks arrive empty. A summary of it costs the
-      // same thinking tokens. Only the display moves: whether and how much the
-      // model thinks stays the CLI's call (effort, `alwaysThinkingEnabled`).
-      extraArgs: { [THINKING_DISPLAY_FLAG]: 'summarized' },
-      abortController: this.#abortController,
-      env: cliEnv(ctx),
-      canUseTool: this.#gate.canUseTool,
-      hooks: {
-        PreToolUse: [{ hooks: [this.#gate.preToolUse] }],
-        PostToolUse: [{ hooks: [this.#gate.postToolUse] }],
-        PreCompact: [{ hooks: [compactFocus(() => this.#ctx.compactionSummary?.() ?? null)] }],
-      },
-      spawnClaudeCodeProcess: (options: SdkSpawnOptions): SpawnedChild => this.#spawnCli(options),
-    };
   }
 
   #spawnCli(options: SdkSpawnOptions): SpawnedChild {

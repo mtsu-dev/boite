@@ -15,7 +15,7 @@
  * A bot also names a thread of a project another machine of the group
  * entrusted to it as `<machine>/<thread-id>`; that machine checks it again.
  */
-import type { AgentSpawn, AgentWatch, PermissionRequest, Project, ProjectThreadDetail, ProjectThreadRow, QuestionRequest, RpcParams, ThreadSummary } from '@boite/contracts';
+import type { AgentSpawn, AgentWatch, PermissionRequest, Project, ProjectThreadDetail, ProjectThreadRow, QuestionRequest, RpcParams, ThreadSummary, ThreadWake } from '@boite/contracts';
 import type { CoreClient } from './client.ts';
 import { contactLine, NO_CONTACT } from './agents-cli.ts';
 import { requiredText, Usage, type Parsed } from './cli-args.ts';
@@ -142,6 +142,11 @@ function questionLines(question: QuestionRequest): string[] {
   const options = question.options.map(option => `  option ${option.id}: ${option.label}`);
   const kind = question.options.length === 0 ? 'free text' : question.multiple ? 'several options' : 'one option';
   return [`question ${question.id} (${question.threadId}, ${kind}${question.allowText && question.options.length ? ', or text' : ''}): ${question.text}`, ...options];
+}
+
+/** The turn the agent scheduled for itself with ScheduleWakeup, when one is pending. */
+function wakeLines(wake: ThreadWake | null | undefined): string[] {
+  return wake ? [`wake: due ${new Date(wake.at).toISOString()}${wake.reason ? ` (${wake.reason})` : ''}`] : [];
 }
 
 function permissionLine(request: PermissionRequest): string {
@@ -350,13 +355,13 @@ export async function controlCommand(client: CoreClient, caller: Caller, threadI
           ]);
           const last = page.messages.findLast(message => message.role === 'assistant');
           const answer = last?.parts.flatMap(part => part.type === 'text' ? [part.text] : []).join('\n').trim() || null;
-          const detail = { thread: ownerRow(thread, projects, questions, permissions), questions, permissions, lastAnswer: answer && answer.length > 4000 ? `${answer.slice(0, 3900)}\n[Truncated.]` : answer };
-          print([threadLine(detail.thread), `cwd: ${thread.cwd}`, ...questions.flatMap(questionLines), ...permissions.map(permissionLine), `last answer: ${detail.lastAnswer ?? '(none)'}`], detail);
+          const detail = { thread: ownerRow(thread, projects, questions, permissions), questions, permissions, lastAnswer: answer && answer.length > 4000 ? `${answer.slice(0, 3900)}\n[Truncated.]` : answer, wake: thread.wake ?? null };
+          print([threadLine(detail.thread), `cwd: ${thread.cwd}`, ...wakeLines(detail.wake), ...questions.flatMap(questionLines), ...permissions.map(permissionLine), `last answer: ${detail.lastAnswer ?? '(none)'}`], detail);
         } else {
           const found = await client.call('resident.thread', { threadId, target, ...remote });
           // The JSON carries the same `<machine>/<thread-id>` the text prints, so `boite answer` takes either.
           const detail = { ...found, questions: named(machine, found.questions), permissions: named(machine, found.permissions) };
-          print([threadLine(detail.thread), ...detail.questions.flatMap(questionLines), ...detail.permissions.map(permissionLine), `last answer: ${detail.lastAnswer ?? '(none)'}`], detail);
+          print([threadLine(detail.thread), ...wakeLines(detail.wake), ...detail.questions.flatMap(questionLines), ...detail.permissions.map(permissionLine), `last answer: ${detail.lastAnswer ?? '(none)'}`], detail);
         }
         return;
       }

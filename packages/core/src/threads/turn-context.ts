@@ -125,6 +125,7 @@ export class TurnContexts {
       hook: report => this.#core.hooks.record({ providerId: provider.id, accountId: account.id, threadId }, report),
       background: list => this.#threads.agentState.noteBackground(threadId, list, backgroundOwner),
       backgroundFinished: (id, state) => this.#threads.agentState.finishBackground(threadId, id, backgroundOwner, state),
+      loopWake: scheduledFor => this.#core.wakes.cliFired(threadId, scheduledFor),
       spawnChild: this.leasedSpawnChild(threadId, provider, { resume: thread.sessionId !== null }),
       finishStartup: () => this.#core.procs.finishStartup(this.#core.procs.protection.controlScope(threadId) ?? threadId),
       lazyMcp: this.#lazyMcpFor(thread),
@@ -451,7 +452,8 @@ export class TurnContexts {
       },
       background: list => this.#threads.agentState.noteBackground(threadId, list, backgroundOwner),
       backgroundFinished: (id, state) => this.#threads.agentState.finishBackground(threadId, id, backgroundOwner, state),
-      wake: (text) => this.#threads.deferred.wake(threadId, text),
+      wake: (text, display) => this.#threads.deferred.wake(threadId, text, display),
+      loopWake: scheduledFor => this.#core.wakes.cliFired(threadId, scheduledFor),
       requestPermission: (toolName: string, input: unknown, description: string | null): PermissionTicket => {
         // Shared contexts hide native tools. Approval of the attested protected
         // facade still follows the host's original context and permission mode.
