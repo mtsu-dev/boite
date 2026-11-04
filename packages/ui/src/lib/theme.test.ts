@@ -9,7 +9,7 @@ beforeEach(() => {
   delete document.documentElement.dataset.theme;
   meta = document.createElement('meta');
   meta.name = 'theme-color';
-  meta.content = '#101013';
+  meta.content = '#0e0e12';
   document.head.append(meta);
 });
 
@@ -43,7 +43,7 @@ test('an id this build does not offer is the system theme, which here is dark', 
 
   // jsdom answers false to the light query, so system is dark and stamps nothing.
   expect(document.documentElement.dataset.theme).toBeUndefined();
-  expect(color()).toBe('#101013');
+  expect(color()).toBe('#0e0e12');
 });
 
 test('turning the experiment off puts a stored grain back on system, without a reload', () => {
@@ -56,7 +56,7 @@ test('turning the experiment off puts a stored grain back on system, without a r
 
   expect(readTheme()).toBe('system');
   expect(document.documentElement.dataset.theme).toBeUndefined();
-  expect(color()).toBe('#101013');
+  expect(color()).toBe('#0e0e12');
   // The choice itself is kept, so switching the experiment back on returns it.
   expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe('grain');
   expect(window.localStorage.getItem(EXPERIMENTS_STORAGE_KEY)).toBe('[]');

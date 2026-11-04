@@ -23,8 +23,8 @@ const THEMES: Theme[] = ['system', 'dark', 'light', 'grain'];
 
 /** What `<meta name="theme-color">` reads once the theme resolves: `--color-background`, or grain's mid tone. */
 const THEME_COLOR: Record<ResolvedTheme, string> = {
-  dark: '#101013',
-  light: '#f3f3f6',
+  dark: '#0e0e12',
+  light: '#fdfdfe',
   grain: '#1a1a1e'
 };
 

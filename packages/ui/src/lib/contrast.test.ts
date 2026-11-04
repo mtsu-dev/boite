@@ -48,6 +48,11 @@ describe.each([
     for (const ground of GROUNDS) expect(ratio(token(scope, tier), token(scope, ground)), `${tier} on ${ground}`).toBeGreaterThanOrEqual(4.5);
   });
 
+  /* Amber is the user's turn, red a failure, green done: each is read as text on the card and the raised surfaces. */
+  test.each(['--color-live', '--color-success', '--color-danger'])('%s reads as text on the card', (status) => {
+    for (const ground of ['--color-background', '--color-surface-2']) expect(ratio(token(scope, status), token(scope, ground)), `${status} on ${ground}`).toBeGreaterThanOrEqual(4.5);
+  });
+
   test('muted stays a visible step above subtle', () => {
     expect(ratio(token(scope, '--color-muted-foreground'), token(scope, '--color-subtle'))).toBeGreaterThanOrEqual(1.25);
   });

@@ -162,14 +162,15 @@
   --ansi-bright-magenta: #d670d6;
   --ansi-bright-cyan: #29b8db;
   --ansi-bright-white: #ffffff;
-  --color-background: #101013;
-  /* The window's frame: title bar and rails on one grey, the work
-     inset in cards of the page colour with an edge that reads. */
-  --color-frame: #1a1a1d;
-  --color-frame-edge: rgba(255, 255, 255, 0.11);
-  --color-surface: #151518;
-  --color-surface-2: #1b1b1f;
-  --color-surface-3: #232327;
+  --color-background: #0e0e12;
+  /* The window's frame: title bar and rails on one violet-breathed grey, the
+     work inset in cards of the page colour, one clear step darker, with an
+     edge that reads. Card and frame sit about 7 OKLCH points apart. */
+  --color-frame: #1b1a21;
+  --color-frame-edge: rgba(255, 255, 255, 0.10);
+  --color-surface: #141319;
+  --color-surface-2: #1a1920;
+  --color-surface-3: #24232b;
   --color-border: rgba(255, 255, 255, 0.07);
   --color-edge: rgba(255, 255, 255, 0.14);
   /* The lift a hovered or selected row takes: light over the ground, never a new grey. */
@@ -180,10 +181,11 @@
   --color-muted-foreground: #a2a2ad;
   --color-subtle: #8c8c96;
   --color-selection: rgba(228, 228, 231, 0.18);
-  --accent-hue: 260;
+  /* Light violet by default; the user's hue replaces it (lib/accent.ts). */
+  --accent-hue: 290;
   --color-accent: oklch(68% 0.19 var(--accent-hue));
   --color-accent-soft: color-mix(in oklch, var(--color-accent) 18%, transparent);
-  --color-accent-ink: #101013;
+  --color-accent-ink: #0e0e12;
   --color-reasoning: var(--color-accent);
   /* What the agent looking after a project sends: the accent turned away round the wheel, so its letters never read as the user's own. */
   --color-resident: oklch(66% 0.15 calc(var(--accent-hue) + 150));
@@ -193,16 +195,20 @@
   --picker-black: #000000;
   --picker-hues: linear-gradient(to right, hsl(0 100% 50%), hsl(60 100% 50%), hsl(120 100% 50%), hsl(180 100% 50%), hsl(240 100% 50%), hsl(300 100% 50%), hsl(360 100% 50%));
   --color-reasoning-on: #ffffff;
+  /* Amber means one thing: the user's turn. Text wears --color-live; the
+     rings and dots that mark it may wear the brighter --color-live-fill. */
   --color-live: #eab308;
+  --color-live-fill: var(--color-live);
   --color-success: #4ade80;
   --color-danger: #f0716f;
   --color-danger-hover: #d36060;
   --color-on-danger: #ffffff;
+  --color-switch-knob: #ffffff;
   /* The Windows 11 caption close, the same red in both themes: the danger
      salmon under a white cross read at 2.9:1, this one at 5.7:1. */
   --color-caption-close: #c42b1c;
   --color-scrim: rgba(6, 6, 8, 0.55);
-  --color-on-foreground: #101013;
+  --color-on-foreground: #0e0e12;
 
   /*
    * Chart series, one hue per provider in a fixed order: Claude, Codex,
@@ -388,12 +394,12 @@
  * Sources and redistribution notices: public/theme-licenses.txt.
  */
 :root {
-  --palette-dark-default-background: #101013;
-  --palette-dark-default-frame: #1a1a1d;
-  --palette-dark-default-surface: #1b1b1f;
+  --palette-dark-default-background: #0e0e12;
+  --palette-dark-default-frame: #1b1a21;
+  --palette-dark-default-surface: #1a1920;
   --palette-dark-default-foreground: #ececf1;
-  --palette-light-default-background: #f3f3f6;
-  --palette-light-default-frame: #e7e7ec;
+  --palette-light-default-background: #fdfdfe;
+  --palette-light-default-frame: #e9e7ef;
   --palette-light-default-surface: #ffffff;
   --palette-light-default-foreground: #1c1c21;
   --palette-grain-theme-color: #1a1a1e;
@@ -723,12 +729,12 @@ html[data-chat-width='full'] {
 
 /* Light, stamped by `lib/theme.ts` and by the boot script of `index.html`; dark stamps nothing. */
 [data-theme='light'] {
-  --color-background: #f3f3f6;
-  --color-frame: #e7e7ec;
-  --color-frame-edge: rgba(0, 0, 0, 0.12);
-  --color-surface: #fafafb;
+  --color-background: #fdfdfe;
+  --color-frame: #e9e7ef;
+  --color-frame-edge: rgba(20, 16, 40, 0.13);
+  --color-surface: #f6f5f9;
   --color-surface-2: #ffffff;
-  --color-surface-3: #ebebef;
+  --color-surface-3: #ecebf1;
   --color-border: rgba(0, 0, 0, 0.08);
   --color-edge: rgba(0, 0, 0, 0.16);
   --color-hover: rgba(0, 0, 0, 0.045);
@@ -754,10 +760,16 @@ html[data-chat-width='full'] {
   --ansi-bright-magenta: #bc05bc;
   --ansi-bright-cyan: #0598bc;
   --ansi-bright-white: #a5a5a5;
-  --color-live: #ca8a04;
-  --color-success: #16a34a;
-  --color-danger: #dc2626;
-  --color-danger-hover: #bb2020;
+  /* On white the bright amber read at 2.7:1: text takes a deep amber, the marks keep the bright one. */
+  --color-live: #8a5a00;
+  --color-live-fill: #d18f05;
+  --color-success: #15803d;
+  --color-danger: #b91c1c;
+  --color-danger-hover: #991b1b;
+  /* A light page's accent is a step darker, so a white label reads on it and the accent reads as text. */
+  --color-accent: oklch(54% 0.2 var(--accent-hue));
+  --color-accent-ink: #ffffff;
+  --color-reasoning-on: #ffffff;
   --color-on-danger: #ffffff;
   --color-scrim: rgba(20, 20, 24, 0.35);
   --color-on-foreground: #fafafb;
@@ -2137,8 +2149,8 @@ html[data-glass] #app {
 input[type=checkbox][role=switch], .switch { appearance: none; position: relative; flex: 0 0 var(--switch-width, 40px); width: var(--switch-width, 40px); height: var(--switch-height, 24px); min-height: var(--switch-height, 24px); padding: 0; margin: 0; border: 1px solid var(--color-edge); border-radius: 999px; background: var(--color-surface-3); transition: background var(--dur-2), border-color var(--dur-2); }
 input[type=checkbox][role=switch] { cursor: pointer; }
 input[type=checkbox][role=switch]::after, .switch::after { content: ''; position: absolute; width: calc(var(--switch-height, 24px) - 8px); height: calc(var(--switch-height, 24px) - 8px); top: 3px; left: 3px; border-radius: 50%; background: var(--color-muted-foreground); transition: transform var(--dur-2) var(--ease-out-quint); }
-input[type=checkbox][role=switch]:checked, .switch.on { background: var(--color-foreground); border-color: var(--color-foreground); }
-input[type=checkbox][role=switch]:checked::after, .switch.on::after { transform: translateX(calc(var(--switch-width, 40px) - var(--switch-height, 24px))); background: var(--color-background); }
+input[type=checkbox][role=switch]:checked, .switch.on { background: var(--color-accent); border-color: var(--color-accent); }
+input[type=checkbox][role=switch]:checked::after, .switch.on::after { transform: translateX(calc(var(--switch-width, 40px) - var(--switch-height, 24px))); background: var(--color-switch-knob); box-shadow: 0 1px 2px rgb(0 0 0 / 0.25); }
 input[type=checkbox][role=switch]:focus-visible { outline: 2px solid var(--color-foreground); outline-offset: 4px; }
 input[type=checkbox][role=switch]:disabled { opacity: .45; cursor: not-allowed; }
 /* Under a finger the outline rail is a touch target wide (MessageOutline.svelte): the text starts past it. */
