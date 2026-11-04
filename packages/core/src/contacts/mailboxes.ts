@@ -194,7 +194,17 @@ export class ContactMailboxes {
    * (`host-asks.ts`); a core with neither refuses.
    */
   async ask(params: RpcParams<'collaboration.ask'>): Promise<ContactRequest> {
-    return this.#core.contacts.hostAsks.relays() ? this.#core.contacts.hostAsks.ask(params) : this.#core.contacts.ask(params);
+    if (this.#core.contacts.hostAsks.relays()) return this.#core.contacts.hostAsks.ask(params);
+    try { return this.#core.contacts.ask(params); }
+    catch (error) {
+      // `boite threads contacts` lists what the members offer: a contact named there is never called unknown here.
+      const named = typeof params.contact === 'string' ? params.contact.trim().toLowerCase() : '';
+      if (!named || !(error instanceof RpcFailure) || (error.data as { field?: unknown } | undefined)?.field !== 'contact' || this.#core.contacts.held.find(named)) throw error;
+      const offered = (await this.#discover(params.threadId).catch(() => null))?.contacts.find(entry => entry.coreId === named || entry.name.toLowerCase() === named || entry.name.replace(/\s+/g, '-').toLowerCase() === named);
+      const via = offered && this.#core.group.peers().find(peer => peer.coreId === this.route(params.threadId, offered.coreId)?.via);
+      if (via) throw refused(`contact: ${offered!.name} is linked to ${via.name}, which has not told this machine about it yet; update Boite on ${via.name}, or retry in a minute`, { field: 'contact' });
+      throw error;
+    }
   }
 
   /** Only a sealed request from a current group member reaches this handler. */
@@ -214,6 +224,8 @@ export class ContactMailboxes {
       this.#save({ ...stored, route });
       return this.#core.coordination.receiveRouted(letter, route.name);
     }
+    // The Bots host sends an ask through the member that holds the contact: the asking thread may be any machine's (`host-asks.ts`).
+    if (p?.action === 'held-ask') return this.#core.contacts.hostAsks.sendFor(peer, payload);
     const from = checkRemoteContact(p?.from as AgentContact, peer);
     // A member's thread asks this Bots host's Contacts bot: the member's own request, under its id.
     if (p.action === 'host-ask') return this.#core.contacts.hostAsks.filed(peer, from, payload);
@@ -247,7 +259,7 @@ export class ContactMailboxes {
       this.#core.journal.setSetting('contacts:mailbox-asks', { ...asks, [key]: request });
       return request;
     }
-    if (p.action !== 'deliver') throw refused('route.action: expected contacts, lookup, ask, host-ask, deliver or return');
+    if (p.action !== 'deliver') throw refused('route.action: expected contacts, lookup, ask, host-ask, held-ask, deliver or return');
     const canonical = p.letter!;
     if (!same(address(canonical.from, 'letter.from'), from)) throw refused('letter.from: expected the authenticated initiating conversation');
     this.#core.contacts.checkAttestedTier(from.agent);

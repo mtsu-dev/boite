@@ -64,7 +64,7 @@ export function viewLines(view: ContactsBotView): string[] {
     `relations (${view.relations.length}):`, ...(view.relations.length ? view.relations.map(relationLine) : ['  none']),
     `open flags (${flags.length}):`, ...(flags.length ? flags.map(flagLine) : ['  none']),
     `contacts (${view.contacts.length}):`,
-    ...(view.contacts.length ? view.contacts.map(contact => `  ${contact.name} (${contact.link}${contact.trusted ? ', trusted' : ''}${contact.bot ? ', has a Contacts bot' : ''}) opened to us: ${contact.offers.join(', ') || 'nothing'}; we opened: ${contact.granted.join(', ') || 'nothing'}`) : ['  none']),
+    ...(view.contacts.length ? view.contacts.map(contact => `  ${contact.name} (${contact.link}${contact.trusted ? ', trusted' : ''}${contact.bot ? ', has a Contacts bot' : ''}${contact.heldBy ? `, linked through ${contact.heldBy}${contact.heldReason ? `: ${contact.heldReason}` : ''}` : ''}) opened to us: ${contact.offers.join(', ') || 'nothing'}; we opened: ${contact.granted.join(', ') || 'nothing'}`) : ['  none']),
     `projects here (${view.projects.length}):`,
     ...view.projects.map(project => `  ${project.name} (${project.id})${project.gitRemote ? ` ${project.gitRemote}` : ''}`),
   ];

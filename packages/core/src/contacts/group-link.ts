@@ -47,9 +47,16 @@ const MOVE_INPUT = 'boite-contact-move\n';
 /** Contacts handed to this Bots host whose first hello has not come yet. */
 const INCOMING = 'contacts:incoming';
 const INCOMING_MS = 3_600_000;
-/** A member asks again this long after a hand or a move failed, and this long after the contact could not reach the host. */
+/** A member asks again this long after a hand or a move failed. */
 const RETRY_MS = 30_000;
+/**
+ * A contact that could not reach the host is asked again after 10 minutes,
+ * then twice as long each time up to 6 hours, until the Bots host changes or
+ * this core restarts: a contact on another network may never reach it, and
+ * stays as usable from the whole group through this member (`held.ts`).
+ */
 const UNREACHABLE_RETRY_MS = 10 * 60_000;
+const UNREACHABLE_MAX_MS = 6 * 3_600_000;
 /** The contact's dial to the Bots host must open before the member's request to it times out (5 s). */
 const PROBE_MS = 3500;
 /** The contact's answer to the move leaves on the old link before it closes. */
@@ -80,6 +87,8 @@ export class ContactGroupLink {
   /** Contacts with a handoff in flight, and when each may be tried again. */
   readonly #busy = new Set<string>();
   readonly #next = new Map<string, number>();
+  /** Contacts that could not reach the Bots host: which host, how many tries, the last reason, and when to try again. */
+  readonly #stuck = new Map<string, { host: string; tries: number; reason: string; until: number }>();
   readonly #pending = new Set<Promise<unknown>>();
   /** The Contacts bot goes to the Bots host before the links do (`bot-home.ts`). */
   readonly #bot: ContactBotHome;
@@ -107,6 +116,9 @@ export class ContactGroupLink {
     const now = Date.now();
     for (const contact of this.#store.list()) {
       if (contact.capabilities?.groupLink !== 1 || this.#busy.has(contact.coreId) || (!force && (this.#next.get(contact.coreId) ?? 0) > now)) continue;
+      // A forced sweep (a roster change) does not cut a contact's wait for the same host it could not reach.
+      const stuck = this.#stuck.get(contact.coreId);
+      if (stuck?.host === host.coreId && stuck.until > now) continue;
       this.#busy.add(contact.coreId);
       const job = this.#hand(host, contact).finally(() => this.#busy.delete(contact.coreId));
       this.#pending.add(job);
@@ -143,10 +155,27 @@ export class ContactGroupLink {
     try { await this.#core.coordination.request(peer, 'contact.move', { card, signature }); }
     catch (error) {
       if (!(error instanceof PeerRefusal)) throw error;
-      if (error.message.startsWith('unreachable')) this.#next.set(contact.coreId, Date.now() + UNREACHABLE_RETRY_MS);
+      if (error.message.startsWith('unreachable')) this.#unreachable(contact.coreId, host.coreId, error.message);
       throw error;
     }
     this.release(contact.coreId, host.coreId);
+  }
+
+  #unreachable(coreId: string, host: string, reason: string): void {
+    const before = this.#stuck.get(coreId);
+    const tries = before?.host === host ? before.tries + 1 : 1;
+    const wait = Math.min(UNREACHABLE_RETRY_MS * 2 ** (tries - 1), UNREACHABLE_MAX_MS);
+    this.#stuck.set(coreId, { host, tries, reason: reason.slice(0, 300), until: Date.now() + wait });
+    this.#next.set(coreId, Date.now() + wait);
+    // The other members read why (`held.ts`).
+    if (before?.reason !== reason.slice(0, 300)) this.#store.changed();
+  }
+
+  /** Why this contact's link did not move to the Bots host, while it waits to try again. */
+  stuck(coreId: string): string | undefined {
+    const home = this.#core.group.roleOf('botsHome');
+    const stuck = this.#stuck.get(coreId);
+    return stuck && stuck.host === home ? stuck.reason : undefined;
   }
 
   /** The machine and its own id behind a thread here: this core's, or a member's kept at its address here. */
@@ -170,6 +199,7 @@ export class ContactGroupLink {
     this.#store.relations.handOver(coreId);
     this.#store.members.mark([...holders, host]);
     this.#next.delete(coreId);
+    this.#stuck.delete(coreId);
     this.#store.relisten();
   }
 
@@ -197,7 +227,8 @@ export class ContactGroupLink {
   async handed(peer: CoordinationPeer, payload: unknown): Promise<unknown> {
     if (!this.#core.group.peers().some(entry => entry.coreId === peer.coreId)) throw refused('contact.hand: only a machine of this group hands a contact');
     const action = (payload as { action?: unknown } | null)?.action;
-    if (action === 'answer') return this.answerHere(payload);
+    // The answer to an ask this Bots host sent through the member, or to one of the member's own threads.
+    if (action === 'answer') return this.#store.hostAsks.heldAnswer(peer, payload) ?? this.answerHere(payload);
     if (action === 'bot') return this.#bot.coming(peer);
     if (action !== 'hand') throw invalidParams('hand.action: expected hand, answer or bot');
     const self = this.#self();
