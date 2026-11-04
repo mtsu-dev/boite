@@ -334,6 +334,8 @@ export interface ContactRequest {
   /** `bot`: the Contacts bot. `match` and `concierge` come from older cores. */
   decidedBy?: 'owner' | 'bot' | 'match' | 'concierge';
   decidedAt?: Timestamp;
+  /** When this core's Contacts bot sent an outgoing request on to its contact: where the bot's thread shows that forward. Absent from older cores. */
+  forwardedAt?: Timestamp;
 }
 export const CONTACT_REQUEST_WANTS = ['talk', 'thread', 'share'] as const;
 export type ContactRequestWant = typeof CONTACT_REQUEST_WANTS[number];
@@ -481,6 +483,13 @@ export interface CoordinationView {
   wakes: number;
   /** Null: no limit. Older cores send a number. */
   wakeLimit: number | null;
+  /**
+   * The contact requests this thread made (`collaboration.ask`), where they
+   * stand now; on the Contacts bot's thread also the ones it forwarded and the
+   * contacts' requests it settled. Oldest first, at most 50. Its timeline
+   * shows each one where it happened. Absent from older cores.
+   */
+  requests?: ContactRequest[];
 }
 
 export interface CoordinationRpcMethods {

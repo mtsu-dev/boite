@@ -61,10 +61,63 @@ export class ContactRequests {
 
   /** Every pending request and what is still to send, then the last decided ones. */
   save(requests: StoredRequest[]): void {
+    const before = this.list();
     const kept = requests.filter(request => request.status === 'pending' || request.pendingSend || request.pendingMember);
     const decided = requests.filter(request => request.status !== 'pending' && !request.pendingSend && !request.pendingMember)
       .sort((a, b) => (b.decidedAt ?? b.createdAt) - (a.decidedAt ?? a.createdAt)).slice(0, DECIDED_KEPT);
-    this.#core.journal.setSetting(REQUESTS, [...kept, ...decided]);
+    const after = [...kept, ...decided];
+    this.#core.journal.setSetting(REQUESTS, after);
+    this.#touched(before, after);
+  }
+
+  /**
+   * The threads whose timeline shows a request that changed hear it
+   * (`collaboration.changed`): the one that asked, and the bot's.
+   */
+  #touched(before: StoredRequest[], after: StoredRequest[]): void {
+    const key = (request: StoredRequest) => `${request.direction}:${request.coreId}:${request.id}`;
+    const was = new Map(before.map(request => [key(request), JSON.stringify(request)]));
+    const changed = after.filter(request => was.get(key(request)) !== JSON.stringify(request));
+    const kept = new Set(after.map(key));
+    changed.push(...before.filter(request => !kept.has(key(request))));
+    if (changed.length === 0) return;
+    const self = this.#core.coordination.card().coreId;
+    const bot = contactsBot(this.#core)?.threadId;
+    const threads = new Set<string>();
+    for (const request of changed) {
+      if (request.direction === 'out' && request.from.coreId === self) threads.add(request.from.threadId);
+      if (bot && this.#botShows(request, bot, self)) threads.add(bot);
+    }
+    for (const threadId of threads) this.#core.bus.emit('collaboration.changed', { threadId });
+  }
+
+  /** What the bot's thread shows: the requests it forwarded and those of contacts it settled. */
+  #botShows(request: ContactRequest, bot: string, self: string): boolean {
+    return request.direction === 'out' ? request.forwardedAt !== undefined && !(request.from.coreId === self && request.from.threadId === bot) : request.decidedBy === 'bot';
+  }
+
+  /**
+   * One thread's requests (`CoordinationView.requests`): those it asked, and on
+   * the bot's thread those it forwarded or settled, oldest first.
+   */
+  ofThread(threadId: string): ContactRequest[] {
+    const self = this.#core.coordination.card().coreId;
+    const bot = contactsBot(this.#core)?.threadId;
+    const at = (request: ContactRequest) => request.from.coreId === self && request.from.threadId === threadId ? request.createdAt
+      : request.direction === 'out' ? request.forwardedAt ?? request.createdAt : request.decidedAt ?? request.createdAt;
+    return this.list()
+      .filter(request => (request.direction === 'out' && request.from.coreId === self && request.from.threadId === threadId) || (threadId === bot && this.#botShows(request, bot, self)))
+      .map(request => this.view(request)).sort((a, b) => at(a) - at(b)).slice(-DECIDED_KEPT);
+  }
+
+  /** The bot sent `id` on to its contact now (`contacts.bot.forward`): its thread shows the forward at this time. */
+  forwarded(id: string): ContactRequest | undefined {
+    const requests = this.list();
+    const request = requests.find(entry => entry.id === id && entry.direction === 'out');
+    if (!request) return undefined;
+    request.forwardedAt = Date.now();
+    this.save(requests);
+    return this.view(request);
   }
 
   view(request: StoredRequest): ContactRequest {
