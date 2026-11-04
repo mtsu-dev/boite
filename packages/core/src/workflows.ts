@@ -25,6 +25,7 @@ import { workflowUsage } from './workflows/usage.ts';
 import { SharedWorkflowCompute } from './workflows/shared-compute.ts';
 import { MachineWorkflowSteps } from './workflows/machine-steps.ts';
 import { stepPrompt } from './workflows/prompt.ts';
+import { sentBack } from './workflows/follow-up.ts';
 import { delivered, endLeftovers, shapedOutput, stepAnswer } from './workflows/step-result.ts';
 export { registerWorkflowMethods } from './workflows/register.ts';
 
@@ -505,6 +506,7 @@ export class Workflows {
       if (pending.length) setTimeout(() => { for (const run of pending) run.status === 'running' ? this.#noticeFailures(run.id) : this.#deliver(run.id); }, 0).unref?.();
       return;
     }
+    if (sentBack(this.#core, turn.threadId, turn)) return this.#core.delegation.followUpFinished(turn);
     const end = childEnd(this.#core, turn);
     if (end.kind === 'maintenance') return;
     let correction = false, cut = false, leftovers = false, checkpoint = false;

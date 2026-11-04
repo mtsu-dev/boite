@@ -6,6 +6,14 @@ export type RemoteBrowserInput =
   | { kind: 'tap'; x: number; y: number; width: number; height: number; count?: 1 | 2 | 3; shift?: boolean }
   /** A mouse drag from one point of the frame to another: it selects text, moves a slider. */
   | { kind: 'drag'; from: { x: number; y: number }; to: { x: number; y: number }; width: number; height: number }
+  /**
+   * The viewer's mouse as it moves, sent while it happens: `move` with
+   * `buttons` 0 hovers and 1 drags, `down` and `up` press and release the left
+   * button. The page sees the path and its timing a person gave it, which a
+   * drag replayed in a few jumps is not: a captcha's slider or puzzle piece
+   * follows it and accepts it.
+   */
+  | { kind: 'pointer'; action: 'move' | 'down' | 'up'; x: number; y: number; width: number; height: number; buttons?: 0 | 1 }
   /** Typed or pasted text, inserted in the focused field. */
   | { kind: 'text'; text: string }
   /** A hardware keyboard: each entry is a key or a combination as `boite browser press` names them, sent in order as native key events. */
@@ -108,6 +116,10 @@ export function remoteBrowserInputError(input: RemoteBrowserInput): string | nul
       if (input.shift !== undefined && typeof input.shift !== 'boolean') return 'tap shift must be a boolean';
       return [input.x, input.y].every(normalized) && viewport(input) ? null : 'tap needs normalized coordinates and a viewport';
     case 'drag': return point(input.from) && point(input.to) && viewport(input) ? null : 'drag needs normalized from and to points and a viewport';
+    case 'pointer':
+      if (!['move', 'down', 'up'].includes(input.action)) return 'pointer action must be move, down or up';
+      if (input.buttons !== undefined && input.buttons !== 0 && input.buttons !== 1) return 'pointer buttons must be 0 or 1';
+      return [input.x, input.y].every(normalized) && viewport(input) ? null : 'pointer needs normalized coordinates and a viewport';
     case 'choose':
       if (!(Number.isInteger(input.index) && input.index >= 0 && input.index < REMOTE_PICKER_MAX)) return `choose index must be an integer from 0 to ${REMOTE_PICKER_MAX - 1}`;
       if (!(typeof input.label === 'string' && input.label.length <= REMOTE_PICKER_LABEL_MAX)) return `choose label must be the option's label from the picker, at most ${REMOTE_PICKER_LABEL_MAX} characters`;

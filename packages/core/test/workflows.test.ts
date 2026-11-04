@@ -497,6 +497,95 @@ test('a step sent back to work in its own conversation counts for its run, which
   await waitFor(() => h.core.workflows.get(threadId, run.id).delivered);
 });
 
+test('a step the parent sends more work after its run finished answers the parent, across a restart handoff too', async () => {
+  const resumed = (prompt: string) => prompt.includes('Boite restarted');
+  const { held, prompts } = scripted(ctx => !ctx.thread.parentThreadId ? 'noted'
+    : ctx.prompt.includes('props6') && !resumed(ctx.prompt) ? { hold: true } : ctx.prompt.includes('Now do props') || resumed(ctx.prompt) ? 'Props batch done.' : 'Step done.');
+  let stops = 0;
+  const h = await startTestCore({ onShutdown: () => { stops += 1; } }); cores.push(h);
+  const owner = await h.connect();
+  const { threadId } = await echoThread(h, owner, 'Parent');
+  const agent = await connect(h.url, h.core.agents.tokenFor(threadId));
+  const results = (core: Core) => core.delegation.get(threadId).messages.filter(letter => letter.origin === 'result');
+  let step = '';
+  try {
+    const run = await agent.call('workflows.start', { threadId, plan: { name: 'Props', steps: [{ id: 'a', task: 'Model the props' }] }, requestId: 'props' });
+    expect((await settled(h, threadId, run.id)).status).toBe('done');
+    await waitFor(() => h.core.workflows.get(threadId, run.id).delivered);
+    step = run.nodes[0]!.instances[0]!.threadId!;
+    // Before, the answer stayed in the step's conversation and the parent waited for it forever.
+    await agent.call('delegation.send', { threadId, toThreadId: step, text: 'Now do props5', requestId: 'props5' });
+    await waitFor(() => results(h.core).length === 1);
+    expect(results(h.core)[0]!.text).toContain('Props batch done.');
+    expect(h.core.workflows.get(threadId, run.id).nodes[0]!.instances[0]).toMatchObject({ status: 'done', result: 'Step done.' });
+    await agent.call('delegation.send', { threadId, toThreadId: step, text: 'Now do props6', requestId: 'props6' });
+    await waitFor(() => held.has(step));
+  } finally { agent.close(); }
+  const response = await fetch(`${h.url}/shutdown-for-update?pid=${process.pid}`, { method: 'POST', headers: { authorization: `Bearer ${h.token}` } });
+  expect(response.status).toBe(202);
+  await waitFor(() => stops === 1);
+  expect(results(h.core)).toHaveLength(1);
+  owner.close();
+  await h.core.drain();
+  await h.server.stop();
+  await h.core.close();
+  const next = new Core({ dataDir: h.dataDir, token: h.token });
+  const server = startServer({ core: next, host: '127.0.0.1', port: 0 });
+  try {
+    await waitFor(() => results(next).length === 2, 5000);
+    expect(next.journal.listTurns(step).at(-1)!.execution?.operation).toBe('resume');
+    expect(prompts.filter(p => p.threadId === step).at(-1)!.prompt).toContain('Boite restarted');
+    expect(results(next)[1]!.text).toContain('Props batch done.');
+  } finally {
+    await server.stop();
+    await next.close();
+  }
+});
+
+test('a step sent back to work whose background work a restart cut tells its parent, not its finished run', async () => {
+  const task = { id: 'bg-props', kind: 'shell' as const, description: 'props7 export', toolId: null, startedAt: Date.now() };
+  scripted(ctx => {
+    if (!ctx.thread.parentThreadId) return 'noted';
+    if (!ctx.prompt.includes('Now do props7')) return 'Step done.';
+    ctx.background?.([{ ...task, startedAt: Date.now() }]);
+    return 'The export runs in the background; I report when it ends.';
+  });
+  let stops = 0;
+  const h = await startTestCore({ onShutdown: () => { stops += 1; } }); cores.push(h);
+  const owner = await h.connect();
+  const { threadId } = await echoThread(h, owner, 'Parent');
+  const agent = await connect(h.url, h.core.agents.tokenFor(threadId));
+  const results = (core: Core) => core.delegation.get(threadId).messages.filter(letter => letter.origin === 'result');
+  let step = '';
+  try {
+    const run = await agent.call('workflows.start', { threadId, plan: { name: 'Props', steps: [{ id: 'a', task: 'Model the props' }] }, requestId: 'props' });
+    expect((await settled(h, threadId, run.id)).status).toBe('done');
+    await waitFor(() => h.core.workflows.get(threadId, run.id).delivered);
+    step = run.nodes[0]!.instances[0]!.threadId!;
+    await agent.call('delegation.send', { threadId, toThreadId: step, text: 'Now do props7', requestId: 'props7' });
+    await waitFor(() => results(h.core).length === 1);
+    expect(results(h.core)[0]).toMatchObject({ checkpoint: true });
+  } finally { agent.close(); }
+  const response = await fetch(`${h.url}/shutdown-for-update?pid=${process.pid}`, { method: 'POST', headers: { authorization: `Bearer ${h.token}` } });
+  expect(response.status).toBe(202);
+  await waitFor(() => stops === 1);
+  owner.close();
+  await h.core.drain();
+  await h.server.stop();
+  await h.core.close();
+  const next = new Core({ dataDir: h.dataDir, token: h.token });
+  const server = startServer({ core: next, host: '127.0.0.1', port: 0 });
+  try {
+    // Before, the cut went to the finished run, which ignored it, and the parent waited for good.
+    await waitFor(() => results(next).length === 2, 3000);
+    expect(results(next)[1]!.text).toContain('props7 export');
+    expect(results(next)[1]!.text).toContain('Boite or the PC restarted');
+  } finally {
+    await server.stop();
+    await next.close();
+  }
+});
+
 /** A run's step and a subagent at work when an update's handoff stops the core; the core is closed after. */
 async function cutByHandoff() {
   const resumed = (prompt: string) => prompt.includes('Boite restarted') || prompt.includes('Try this workflow step again') || prompt.includes('Continue your task');

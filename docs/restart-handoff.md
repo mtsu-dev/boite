@@ -100,6 +100,10 @@ Nothing resumes for a turn that answered, a turn the user stopped, a refusal
 at capacity or at a usage limit, which retries on its own
 ([usage](usage.md#when-a-provider-refuses-a-turn)), a compaction or coordination turn, a
 sub-thread, or background work a Stop or an archive ended.
+A handoff ends the agent processes without ending their background work in the
+journal: it stays running until the next core marks it cut by a restart
+(`core-restarted`), so a thread at rest that waited on it resumes. A core
+stopped on purpose records it ended with its session instead.
 After a crash, nothing resumes when the previous core wrote its last thread
 event over an hour ago, or when it was stopped on purpose without a handoff
 (`core.shutdown`, `SIGINT`, `POST /shutdown`), which leaves the journal setting

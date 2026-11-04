@@ -20,8 +20,8 @@
  */
 import { appendFileSync } from 'node:fs';
 import { Readable, Writable } from 'node:stream';
-import { agent, ndJsonStream, PROTOCOL_VERSION } from '@agentclientprotocol/sdk';
-import type { ContentBlock, SessionUpdate } from '@agentclientprotocol/sdk';
+import { agent, ndJsonStream, PROTOCOL_VERSION } from '@agentclientprotocol/sdk/unstable';
+import type { ContentBlock, SessionUpdate } from '@agentclientprotocol/sdk/unstable';
 
 /** The variables a test asserts on: the isolation and the two the profile fixes. */
 const WATCHED = ['GROK_HOME', 'NO_COLOR', 'GROK_FEEDBACK_ENABLED', 'XAI_API_KEY'];

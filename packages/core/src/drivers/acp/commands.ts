@@ -6,7 +6,7 @@
  * work, so Stop on the idle thread closes the process and the command with it,
  * and the session keeps its process for as long as one runs.
  */
-import type { SessionNotification } from '@agentclientprotocol/sdk';
+import type { SessionNotification } from '@agentclientprotocol/sdk/unstable';
 import type { BackgroundTask } from '@boite/contracts';
 import { normalizeAntigravityTool } from '../antigravity.ts';
 import type { SessionContext } from '../types.ts';

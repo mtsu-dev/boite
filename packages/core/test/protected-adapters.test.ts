@@ -86,7 +86,7 @@ describe.skipIf(!native)('native protected extensions', () => {
       },
       killTree: () => {core.procs.killTree(control); core.procs.killTree(thread.id);},
     };
-    driver = protocol === 'pi' ? createPiDriver() : createAcpDriver({loadSdk: () => import('@agentclientprotocol/sdk')});
+    driver = protocol === 'pi' ? createPiDriver() : createAcpDriver({loadSdk: () => import('@agentclientprotocol/sdk/unstable')});
     const handle = driver.startTurn(ctx);
     expect(handle.setPermissionMode).toBeUndefined();
     const result = await handle.done;
@@ -119,7 +119,7 @@ describe.skipIf(!native)('native protected extensions', () => {
     // The shared-turn context disables native tools even when protected tools
     // are allowed. A host's actual tool-free choice must still disable both.
     driver.shutdown?.();
-    driver = protocol === 'pi' ? createPiDriver() : createAcpDriver({loadSdk: () => import('@agentclientprotocol/sdk')});
+    driver = protocol === 'pi' ? createPiDriver() : createAcpDriver({loadSdk: () => import('@agentclientprotocol/sdk/unstable')});
     writeFileSync(join(root, 'answer.js'), 'export function answer() { return 41; }\n');
     api.enqueue({name: protocol === 'pi' ? 'boite_exec' : 'boite_protected_boite_exec', input: {command: process.execPath, args: ['-e', "require('fs').writeFileSync('answer.js', 'escaped host tool-free context')"]}});
     const disabled = protectedTools(core.procs, thread.id, () => {}, () => {}, undefined, false);

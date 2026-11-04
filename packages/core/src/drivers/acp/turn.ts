@@ -9,7 +9,7 @@ import type {
   ToolCallContent,
   ToolCallStatus,
   Usage as AcpUsage,
-} from '@agentclientprotocol/sdk';
+} from '@agentclientprotocol/sdk/unstable';
 import type {
   AgentCommand,
   ImageAttachment,

@@ -22,6 +22,7 @@ import { pauseHold, pauseOver } from './delegation/pauses.ts';
 import { dropRestartCuts, endRestart, recordRestartCut, resumeRestartCuts } from './delegation/restart.ts';
 import { delegationPrompt, teamInstructions } from './delegation/guide.ts';
 import { RemoteDelegation, type ChildState } from './delegation/remote.ts';
+import { sentBack } from './workflows/follow-up.ts';
 import type { Connection } from './router.ts';
 
 interface AgentRow { thread_id: string; root_id: string; request_id: string; fingerprint: string; profile_id: string; task: string }
@@ -562,9 +563,9 @@ export class Delegation {
   /**
    * A child ended a turn: its parent gets its result as mail. A child here
    * whose parent is on another machine sends it with its reports; the branch
-   * of its worktree stays on this machine.
+   * of its worktree stays on this machine, and a `followUp` of a workflow step (`workflows/follow-up.ts`) too.
    */
-  #finished(turn: Turn): void {
+  #finished(turn: Turn, followUp = false): void {
     const end = childEnd(this.#core, turn);
     if (end.kind === 'maintenance') return;
     const thread = this.#core.journal.getThread(turn.threadId);
@@ -576,7 +577,7 @@ export class Delegation {
     if (!thread.parentThreadId && !link) return;
     // A restart handoff stopped it on purpose: the next core continues it, so this is no result,
     // and its worktree is still in use. A child the user or its parent stopped is in `stopped` first.
-    if (turn.status === 'stopped' && this.#core.threads.handoff.active && !this.#stopped.has(thread.id) && (link || this.delegated(thread.id))) {
+    if (turn.status === 'stopped' && this.#core.threads.handoff.active && !this.#stopped.has(thread.id) && (link || followUp || this.delegated(thread.id))) {
       // The handoff resumes a remote child's own turns, not those its parent's letters opened.
       if (!this.#core.threads.handoff.carries(turn.id)) recordRestartCut(this.#core, turn);
       if (link) this.remote.state(thread.id);
@@ -585,7 +586,7 @@ export class Delegation {
     const live = end.kind === 'checkpoint' ? end.live : [];
     const settling = live.length > 0 ? null : this.worktrees.settle(thread.id);
     // A workflow step's answer goes to its run, and a goal reviewer's to its goal, never to the parent as mail.
-    if (this.#stepOwned(thread.id)) return;
+    if (!followUp && this.#stepOwned(thread.id)) return;
     const root = link ? undefined : this.#core.journal.getThread(thread.parentThreadId!);
     if (!link && !root) return;
     const parentId = root?.id ?? link!.parentId;
@@ -622,6 +623,8 @@ export class Delegation {
     if (settling) this.#track(settling.then(() => { if (!this.#closed) deliver(); }));
     else deliver();
   }
+  /** A workflow step's conversation ended a turn its parent sent after the step ended: the parent gets the answer. */
+  followUpFinished(turn: Turn): void { this.#finished(turn, true); }
   /** Is this thread a delegated agent the parent spawned, rather than a workflow step or a reviewer? */
   delegated(threadId: string): boolean { return this.#core.journal.db.query('SELECT 1 FROM delegated_agents WHERE thread_id = ?').get(threadId) !== null; }
   /** Every child updates its sidebar alert; an ordinary delegate also tells its parent by mail. */
@@ -681,7 +684,8 @@ export class Delegation {
     const wait = withLoad(this.#core, thread).backgroundWait ?? null;
     if (wait?.state === 'waiting' && wait.until !== null) this.#wakeDeadlines.set(thread.id, wait.until);
     else this.#wakeDeadlines.delete(thread.id);
-    const step = this.#core.workflows.owns(thread.id);
+    // A step its parent sent back to work waits for that parent, as a subagent does, not for its run.
+    const step = this.#core.workflows.owns(thread.id) && !sentBack(this.#core, thread.id);
     // Its work completed with no turn after it: the checkpoint is still all it said, so it is asked for its result.
     const quiet = wait === null && !this.#stopped.has(thread.id) ? unwoken(this.#core, thread.id) : null;
     if (quiet !== null && step) this.#core.workflows.unwoken(thread.id, quiet);
@@ -819,6 +823,8 @@ export class Delegation {
   resumeAfterRestart(): number {
     if (this.#closed || this.#core.journal.isClosed()) return 0;
     const resumed = resumeRestartCuts(this.#core);
+    // Children whose background work the restart cut: their parents or runs hear of it, as when it ends without waking them.
+    for (const threadId of this.#core.threads.agentState.backgroundHistory.takeInterrupted()) this.#backgroundChanged(threadId);
     // A child for a parent elsewhere whose cut did not go on: that stop is final now.
     this.remote.restate();
     return resumed;
