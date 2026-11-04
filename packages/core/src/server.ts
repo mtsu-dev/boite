@@ -326,8 +326,8 @@ export function staticResponse(file: string, pathname: string, acceptEncoding: s
  */
 function mayReadTodos(core: Core, connection: Connection, projectId: string): boolean {
   const identity = connection.identity;
-  // A paired device is the user's, reading every project's threads and board as the owner does.
-  if (identity.principal === 'owner' || identity.principal === 'session') return true;
+  // A paired device reads every board as the owner does; a plugin hears todos.updated only with its `todos` permission.
+  if (identity.principal === 'owner' || identity.principal === 'session' || identity.principal === 'plugin') return true;
   if (identity.principal !== 'agent' || identity.threadId === null) return false;
   try {
     return core.threads.require(identity.threadId).projectId === projectId;
@@ -459,7 +459,7 @@ export function startServer(options: ServerOptions): RunningServer {
       try { return { sessionId: core.group.clients.authenticateDevice(credential, { name: 'pwa', version: '' }).sessionId }; } catch { return null; }
     }
     const identity = authenticateToken(core, credential);
-    return identity === null || identity.principal === 'agent' ? null : { sessionId: identity.sessionId };
+    return identity === null || identity.principal === 'agent' || identity.principal === 'plugin' ? null : { sessionId: identity.sessionId };
   }, { helloTimeoutMs, helloMaxBytes: PREAUTH_FRAME_MAX_BYTES });
   core.relays = relays;
   let stopping = false;
@@ -759,7 +759,7 @@ export function startServer(options: ServerOptions): RunningServer {
       for (const connection of connections) {
         // Only a window counts: an agent or a desktop-app plugin following the
         // thread (B.O.T.S streams every thread at work) shows it to nobody.
-        if (!connection.authenticated || connection.identity.principal === 'agent' || connection.clientName === 'plugin') continue;
+        if (!connection.authenticated || connection.identity.principal === 'agent' || connection.identity.principal === 'plugin' || connection.clientName === 'plugin') continue;
         if (connection.subscriptions.has(threadId)) return true;
       }
       return false;
@@ -778,6 +778,7 @@ export function startServer(options: ServerOptions): RunningServer {
         }
       }
     },
+    closePlugin(pluginId: string): void { for (const c of connections) if (c.identity.principal === 'plugin' && c.identity.pluginId === pluginId) c.close(RpcCloseCode.Unauthorized, 'plugin token revoked'); },
     reveal(target): number {
       // Owner windows only: a paired phone or an agent has no window of the owner's
       // to raise, and a desktop-app plugin, often the caller itself, draws none of Boite's.

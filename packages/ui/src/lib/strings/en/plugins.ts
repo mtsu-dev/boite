@@ -50,6 +50,27 @@ export const strings = {
     previewApp: 'Desktop app',
     previewAppBody: 'Opens a window of its own and gets full access to Boite through the owner token: it can read and drive every thread, like this app.',
     app: 'Desktop app',
+    /** A schema 2 plugin's desktop app: it reaches Boite through its own token, never the owner's. */
+    previewAppScoped: 'Opens a window of its own. It reaches Boite only through what the plugin may reach, listed here.',
+    /** A plugin that runs in the background with no window. */
+    service: 'Service',
+    /** A plugin run from a folder with `boite plugin dev`. */
+    dev: 'Dev',
+    devHint: 'Runs from this folder, read again on every use: an edit applies on the next run. Remove it with boite plugin dev --remove {id}.',
+    /** What a plugin adds to agents and to the composer. */
+    adds: 'Adds',
+    addsHint: 'Agent commands run in the agent\'s folder, skills and guide lines reach every new agent session, slash commands appear in the / menu.',
+    addsPrompt: 'Guide lines',
+    /** What the plugin's own token reaches in Boite. */
+    reaches: 'Reaches',
+    reachesNothing: 'Nothing in Boite',
+    reachesHint: 'What the plugin\'s own token can call in Boite. It never gets the owner token.',
+    permission: {
+      'threads.read': 'Reads threads',
+      'threads.write': 'Starts and stops turns',
+      todos: 'Project boards',
+      'ui.reveal': 'Shows a thread',
+    },
     appRunning: 'Running',
     appStarting: 'Starting again',
     appStopped: 'Stopped',

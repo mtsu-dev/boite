@@ -35,7 +35,7 @@ export class FakePlugins {
   /** Whether that gateway answers now. */
   gatewayRunning(id: string): boolean { return this.#plugins.find((entry) => entry.id === id)?.gateway?.status === 'running'; }
   private readonly handlers: Handlers = {
-    'plugins.list': (params) => { return structuredClone(this.#plugins).sort((a, b) => a.origin === b.origin ? (a.origin === 'url' ? a.id.localeCompare(b.id) : 0) : a.origin === 'recommended' ? -1 : 1); },
+    'plugins.list': (params) => { return structuredClone(this.#plugins).sort((a, b) => (Number(b.origin === 'recommended') - Number(a.origin === 'recommended')) || (a.origin === 'recommended' ? 0 : a.id.localeCompare(b.id))); },
     'plugins.inspect': (params) => { return this.#inspectPlugin(params); },
     'plugins.add': (params) => { return this.#addPlugin(params.previewId); },
     'plugins.install': (params) => {
@@ -119,6 +119,19 @@ export class FakePlugins {
       return structuredClone(plugin);
     },
     'plugins.checkUpdates': (params) => { return this.#checkUpdates(params?.id); },
+    'plugins.command': (params) => {
+      const known = this.#plugins.flatMap((plugin) => plugin.status === 'installed' ? plugin.adds?.commands ?? [] : []);
+      if (!known.includes(params.name)) {
+        throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `boite ${params.name} is no boite command and no installed plugin provides it; plugin commands: ${known.join(', ') || 'none'}`, data: { field: 'name' } });
+      }
+      return { exitCode: 0, stdout: `${params.name}: nothing to report in the in-memory client.\n`, stderr: '', truncated: false };
+    },
+    'plugins.dev': (params) => {
+      const plugin = this.#plugins.find((entry) => entry.origin === 'dev' && entry.devPath === params.path);
+      if (!plugin) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `plugin dev path must be an absolute path to a folder holding boite-plugin.json, got ${JSON.stringify(params.path)}`, data: { field: 'path' } });
+      this.host.emit('plugins.updated', structuredClone(plugin));
+      return structuredClone(plugin);
+    },
   };
 
   /**
@@ -233,7 +246,19 @@ export class FakePlugins {
       artifacts: { 'win32-x64': { url: `${source.url}/releases/download/v1.5.0/${slug}-win32-x64.exe`, sha256: '5a7c9e1b3d5f7a9c2e4b6d8f0a1c3e5b7d9f2a4c6e8b0d1f3a5c7e9b2d4f6a8c' } },
       provides: desktop ? { desktopApp: {} } : { accountPools: { providers: ['pi'] } }
     };
-    const read: PluginPreview = { ...base, manifest, artifact: manifest.artifacts['win32-x64'] ?? null, commands: desktop ? appCommands(manifest.executable, manifest.id) : poolCommands(slug) };
+    if (text.includes('scoped')) {
+      // A schema 2 desktop app run by the core's Bun: its own token, scoped to what it declares.
+      Object.assign(manifest, {
+        schema: 2, runtime: 'bun', description: 'Shows the threads that wait for you in a window of its own.', permissions: ['threads.read', 'ui.reveal'],
+        artifacts: { any: { url: `${source.url}/releases/download/v1.5.0/${slug}.js`, sha256: '5a7c9e1b3d5f7a9c2e4b6d8f0a1c3e5b7d9f2a4c6e8b0d1f3a5c7e9b2d4f6a8c' } },
+        provides: { desktopApp: {}, slashCommands: [{ name: 'waiting', description: 'Lists the threads that wait for you.', prompt: 'List the threads that wait for me.' }] },
+      });
+    }
+    const artifact = manifest.artifacts?.['win32-x64'] ?? manifest.artifacts?.any ?? null;
+    const commands = manifest.schema === 2
+      ? [`bun ${slug}.js`, `environment: BOITE_CORE_URL=<this core> BOITE_TOKEN=<${slug}'s token: ${(manifest.permissions ?? []).join(', ')}> BOITE_PLUGIN_ID=${slug} BOITE_PLUGIN_DATA=<its data directory>`]
+      : desktop ? appCommands(slug, manifest.id) : poolCommands(slug);
+    const read: PluginPreview = { ...base, manifest, artifact, commands };
     const existing = this.#plugins.find((entry) => entry.id === slug);
     if (existing?.origin === 'recommended') {
       const expected = `an id no recommended plugin uses (${this.#plugins.filter((entry) => entry.origin === 'recommended').map((entry) => entry.id).join(', ')})`;

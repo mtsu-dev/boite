@@ -39,6 +39,7 @@ import { registerWorkflowMethods } from './workflows.ts';
 import { registerWorktreeMethods } from './worktree-sweep.ts';
 import { reveal } from './reveal.ts';
 import { updateEverything } from './update-everything.ts';
+import { mergeCommands, pluginSlashCommands } from './plugins/extensions.ts';
 
 /** Adding a module is one file plus one line here. `hello` is the server's own. */
 export function registerModules(core: Core): void {
@@ -64,7 +65,8 @@ export function registerModules(core: Core): void {
   core.router.register('core.desktopUpdateStatus', () => core.desktopUpdates.snapshot());
   registerPersistentAgents(core);
   core.router.register('brain.status', () => core.brain.status());
-  core.router.register('brain.commands', () => core.brain.commands());
+  // A plugin's slash commands join the brain's manual skills; the brain keeps a name both use.
+  core.router.register('brain.commands', () => mergeCommands(core.brain.commands(), pluginSlashCommands(core.plugins.installedPlugins())));
   core.router.register('brain.configure', params => core.brain.configure(params));
   core.router.register('brain.sync', () => core.brain.sync());
   registerHookMethods(core);
@@ -98,6 +100,8 @@ export function registerModules(core: Core): void {
   core.router.register('plugins.app', (params) => core.plugins.app(params));
   core.router.register('plugins.autostart', (params) => core.plugins.autostart(params));
   core.router.register('plugins.gateway', (params) => core.plugins.gateway(params));
+  core.router.register('plugins.command', (params, ctx) => core.plugins.command(params, ctx.connection.identity));
+  core.router.register('plugins.dev', (params) => core.plugins.dev(params));
   core.router.register('plugins.checkUpdates', (params) => core.plugins.checkUpdates(params));
   core.router.register('ui.reveal', (params) => reveal(core, params));
   registerProjectMethods(core);

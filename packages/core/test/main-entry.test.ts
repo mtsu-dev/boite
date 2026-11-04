@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startCore } from '../../../tests/e2e/lib/core.ts';
 import { removeDir } from '../src/fs-retry.ts';
+import { pluginLaunch } from '../src/plugins/launch.ts';
 
 const entry = join(import.meta.dir, '../src/main.ts');
 let dir: string;
@@ -109,6 +110,17 @@ test('the bytecode compiled launcher runs commands and starts a core that shuts 
     expect(run.stdout.toString()).toBe('');
     expect(run.stderr.toString()).toStartWith(message);
   }
+  // A bun plugin runs on this executable as its own entry point, reads no
+  // .env from its directory, and a program it starts is the core again.
+  const plugin = join(dir, 'plugin.js');
+  writeFileSync(plugin, `import { spawnSync } from 'node:child_process';
+const child = spawnSync(process.execPath, ['cli', '--help'], { encoding: 'utf8' });
+console.log(JSON.stringify({ main: import.meta.main, args: process.argv.slice(2), beBun: process.env.BUN_BE_BUN ?? null, dotEnv: process.env.FROM_DOT_ENV ?? null, child: child.stderr.slice(0, 12) }));`);
+  writeFileSync(join(dir, '.env'), 'FROM_DOT_ENV=1\n');
+  const launch = pluginLaunch(plugin, ['hello-threads', '--json'], {}, join(dir, 'plugin-data'), true);
+  const ran = Bun.spawnSync([binary, ...launch.args], { cwd: dir, env: { ...process.env, ...launch.env }, stdout: 'pipe', stderr: 'pipe', windowsHide: true });
+  expect({ out: ran.stdout.toString(), err: ran.stderr.toString() }).toMatchObject({ err: '' });
+  expect(JSON.parse(ran.stdout.toString())).toEqual({ main: true, args: ['hello-threads', '--json'], beBun: null, dotEnv: null, child: 'usage: boite' });
   for (const mode of process.platform === 'win32' ? ['http'] : ['signal', 'http']) {
     const shutdownDataDir = join(dir, mode);
     const core = await startCore({ command: [binary], dataDir: shutdownDataDir });

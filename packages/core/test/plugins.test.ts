@@ -530,7 +530,7 @@ describe('plugins from a git URL', () => {
     }));
     const listed = (await client.call('plugins.list', {})).find((plugin) => plugin.id === 'pool-legacy');
     expect(listed?.status).toBe('rejected');
-    expect(listed?.rejected).toMatchObject({ field: 'manifest.schema', expected: '1' });
+    expect(listed?.rejected).toMatchObject({ field: 'manifest.schema', expected: '1 or 2' });
     expect(listed?.rejected?.file).toEndWith('installed.json');
     expect(await thrown(client.call('plugins.accounts', { id: 'pool-legacy' }))).toThrow('pool-legacy was refused');
     expect(await thrown(client.call('plugins.install', { id: 'pool-legacy' }))).toThrow('Remove it, then add it again');

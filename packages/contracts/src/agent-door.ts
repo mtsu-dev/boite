@@ -13,7 +13,12 @@ import type { ThreadSummary } from './threads';
  * held to `AGENT_METHODS` on that one thread. Minting grants and revoking
  * sessions are the owner's alone.
  */
-export type Principal = 'owner' | 'session' | 'agent';
+/**
+ * Who a connection speaks as. `plugin`: a schema 2 plugin's process, holding
+ * the token the core minted for that plugin, which reaches only the
+ * permissions its manifest declares (`PLUGIN_PERMISSIONS`).
+ */
+export type Principal = 'owner' | 'session' | 'agent' | 'plugin';
 
 // ---------------------------------------------------------------------------
 // The agent's door. Every process a thread launches carries these variables

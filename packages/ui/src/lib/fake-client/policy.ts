@@ -209,6 +209,7 @@ const RULES: Partial<Record<RpcMethodName, Rule>> = {
   'quotas.reset': when('quotaReads', values => values.quotaReads === false),
   'plugins.install': plugins,
   'plugins.add': plugins,
+  'plugins.dev': plugins,
   'plugins.inspect': plugins,
   'diagnostics.issue': when('issueReports', values => values.issueReports === false),
   'speech.install': dictationOff,

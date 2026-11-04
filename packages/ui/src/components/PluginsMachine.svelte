@@ -4,7 +4,7 @@
   import InfoTip from './InfoTip.svelte';
   import PolicyLock from './PolicyLock.svelte';
   import { Download, ExternalLink, Play, Puzzle, RefreshCw, RotateCw, ShieldAlert, Square, TriangleAlert } from '@lucide/svelte';
-  import type { PluginAppState, PluginGatewayState, PluginPool, PluginPreview, PluginRejected, PluginState, PluginUpdates, RpcParams } from '@boite/contracts';
+  import type { PluginAdds, PluginAppState, PluginGatewayState, PluginManifest, PluginPermission, PluginPool, PluginPreview, PluginRejected, PluginState, PluginUpdates, RpcParams } from '@boite/contracts';
   import { gatewayDashboardReachable } from '@boite/contracts';
   import { besideCore } from '../lib/gateway-dashboard';
   import { openExternal } from '../lib/links';
@@ -50,10 +50,11 @@
   const bare = (address: string) => address.replace(/^https:\/\//, '');
   const providerName = (id: string) => store.providers.find((provider) => provider.id === id)?.name ?? id;
 
-  /** The core's order: recommended plugins as shipped, then URL ones by id. */
+  /** The core's order: recommended plugins as shipped, then the others, from a URL or a folder, by id. */
   function order(a: PluginState, b: PluginState): number {
-    if (a.origin !== b.origin) return a.origin === 'recommended' ? -1 : 1;
-    return a.origin === 'url' ? a.id.localeCompare(b.id) : 0;
+    const recommended = Number(b.origin === 'recommended') - Number(a.origin === 'recommended');
+    if (recommended !== 0) return recommended;
+    return a.origin === 'recommended' ? 0 : a.id.localeCompare(b.id);
   }
 
   /**
@@ -215,6 +216,27 @@
     return gateway.status === 'running' && gatewayDashboardReachable(url, besideCore(store)) ? url : null;
   }
 
+  /** What a plugin adds, one chip each: `boite <command>`, `/slash`, a skill's name, its guide lines. */
+  function addsItems(adds: PluginAdds | null | undefined): string[] {
+    if (!adds) return [];
+    return [
+      ...adds.commands.map((name) => `boite ${name}`),
+      ...adds.slashCommands.map((name) => `/${name}`),
+      ...adds.skills,
+      ...(adds.prompt ? [t.addsPrompt] : []),
+    ];
+  }
+
+  /** The same, read from a manifest a preview shows. */
+  function manifestAdds(manifest: PluginManifest): PluginAdds {
+    return {
+      commands: (manifest.provides.commands ?? []).map((command) => command.name),
+      skills: (manifest.provides.skills ?? []).map((skill) => skill.name),
+      slashCommands: (manifest.provides.slashCommands ?? []).map((command) => command.name),
+      prompt: manifest.provides.prompt !== undefined,
+    };
+  }
+
   function appLine(app: PluginAppState): string {
     switch (app.status) {
       case 'running': return t.appRunning;
@@ -315,6 +337,23 @@
   {/if}
 {/snippet}
 
+<!-- The rows of a facts list: what a plugin adds, and what its own token reaches when it runs something. -->
+{#snippet extras(adds: PluginAdds | null | undefined, permissions: readonly PluginPermission[], scoped: boolean)}
+  {@const items = addsItems(adds)}
+  {#if items.length > 0}
+    <dt class="with-tip"><span class="ui-label">{t.adds}</span><InfoTip topic={t.adds} text={t.addsHint} /></dt>
+    <dd><ul class="chips">{#each items as item (item)}<li class="chip" class:mono={item !== t.addsPrompt} data-testid="plugin-adds-item">{item}</li>{/each}</ul></dd>
+  {/if}
+  {#if permissions.length > 0 || scoped}
+    <dt class="with-tip"><span class="ui-label">{t.reaches}</span><InfoTip topic={t.reaches} text={t.reachesHint} /></dt>
+    <dd>
+      {#if permissions.length > 0}
+        <ul class="chips">{#each permissions as permission (permission)}<li class="chip" title={permission} data-testid="plugin-permission">{t.permission[permission]}</li>{/each}</ul>
+      {:else}<span class="subtle">{t.reachesNothing}</span>{/if}
+    </dd>
+  {/if}
+{/snippet}
+
 {#snippet row(plugin: PluginState)}
   {@const working = busy[plugin.id] === true}
   {@const state = stateLine(plugin)}
@@ -325,6 +364,7 @@
         <h3>
           <span class="name">{plugin.name}</span>
           {#if plugin.version ?? plugin.availableVersion}<span class="version">v{plugin.version ?? plugin.availableVersion}</span>{/if}
+          {#if plugin.origin === 'dev'}<span class="dev-tag" data-testid="plugin-dev">{t.dev}</span>{/if}
           {#if plugin.homepage && !plugin.source}
             <a class="home" href={plugin.homepage} target="_blank" rel="noreferrer" title={t.source} aria-label={t.source} data-testid="plugin-home"><ExternalLink size={13} /></a>
           {/if}
@@ -371,6 +411,12 @@
         <span class="mono">{fill(t.atCommit, { ref: plugin.source.ref, commit: short(plugin.source.commit) })}</span>
       </p>
     {/if}
+    {#if plugin.origin === 'dev' && plugin.devPath}
+      <p class="meta" data-testid="plugin-dev-path"><span class="mono">{plugin.devPath}</span><InfoTip topic={t.dev} text={fill(t.devHint, { id: plugin.id })} /></p>
+    {/if}
+    {#if plugin.status === 'installed' && (addsItems(plugin.adds).length > 0 || (plugin.permissions?.length ?? 0) > 0)}
+      <dl class="facts extras" data-testid="plugin-extras">{@render extras(plugin.adds, plugin.permissions ?? [], false)}</dl>
+    {/if}
     {#if plugin.updates}
       {@const line = updatesLine(plugin.updates)}
       {#if line}
@@ -387,7 +433,7 @@
         <div class="app-head">
           <p class="state" data-testid="plugin-app-state">
             <span class="dot" class:ok={app.status === 'running'} class:live={app.status === 'starting'}
-              class:bad={app.status === 'crashed' || app.status === 'unavailable'}></span><span class="ui-label app-name">{t.app}</span><span aria-hidden="true">·</span><span class="ui-label">{appLine(app)}</span>
+              class:bad={app.status === 'crashed' || app.status === 'unavailable'}></span><span class="ui-label app-name">{app.kind === 'service' ? t.service : t.app}</span><span aria-hidden="true">·</span><span class="ui-label">{appLine(app)}</span>
           </p>
           <div class="act">
             {#if live}
@@ -535,12 +581,15 @@
               {/if}
               {#if preview.manifest?.provides.desktopApp}
                 <dt>{t.previewApp}</dt>
-                <dd data-testid="plugin-preview-app">{t.previewAppBody}</dd>
+                <dd data-testid="plugin-preview-app">{preview.manifest.schema === 2 ? t.previewAppScoped : t.previewAppBody}</dd>
               {/if}
               {#if preview.manifest?.provides.gateway}
                 <dt>{t.previewGateway}</dt>
                 <dd data-testid="plugin-preview-gateway">{t.previewGatewayBody}</dd>
               {/if}
+            {/if}
+            {#if preview.rejected === null && preview.manifest?.schema === 2}
+              {@render extras(manifestAdds(preview.manifest), preview.manifest.permissions ?? [], preview.manifest.executable !== undefined)}
             {/if}
           </dl>
           {#if preview.rejected === null}
@@ -632,6 +681,11 @@
   .saved-account { display: grid; gap: 10px; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-2); }
   .account-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .account-head strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); font-weight: 600; }
+  .dev-tag { flex: none; padding: 1px 6px; border-radius: var(--radius-sm); background: var(--color-accent-soft); color: var(--color-accent); font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 500; }
+  .extras { align-items: baseline; }
+  .with-tip { display: inline-flex; align-items: center; gap: 4px; }
+  .chips { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 4px; }
+  .chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 1px 6px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); font-size: var(--text-xs); color: var(--color-foreground); }
   .tag { flex: none; padding: 1px 6px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--color-success) 16%, transparent); color: var(--color-success); font-size: var(--text-xs); font-weight: 500; }
   .account-actions { display: flex; margin-left: auto; gap: 4px; flex: none; }
 
