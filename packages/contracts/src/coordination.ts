@@ -336,6 +336,8 @@ export interface ContactRequest {
   /** `bot`: the Contacts bot. `match` and `concierge` come from older cores. */
   decidedBy?: 'owner' | 'bot' | 'match' | 'concierge';
   decidedAt?: Timestamp;
+  /** When this core's Contacts bot sent an outgoing request on to its contact: where the bot's thread shows that forward. Absent from older cores. */
+  forwardedAt?: Timestamp;
 }
 export const CONTACT_REQUEST_WANTS = ['talk', 'thread', 'share'] as const;
 export type ContactRequestWant = typeof CONTACT_REQUEST_WANTS[number];
@@ -450,7 +452,13 @@ export interface ContactsBotView {
   requests: ContactRequest[];
   relations: ContactRelation[];
   flags: ContactFlag[];
-  contacts: { name: string; coreId: string; trusted: boolean; link: Contact['link']; offers: string[]; granted: string[]; bot: boolean }[];
+  /**
+   * `heldBy`: the machine of this owner's group that keeps the contact's link,
+   * for a contact linked to another member; the bot forwards to it all the
+   * same, through that member. `heldReason`: why the link has not moved to
+   * this Bots host, when the member tried. Both absent from older cores.
+   */
+  contacts: { name: string; coreId: string; trusted: boolean; link: Contact['link']; offers: string[]; granted: string[]; bot: boolean; heldBy?: string; heldReason?: string }[];
   /** This core's projects the bot may start a thread on or propose to open, with their git remote. */
   projects: { id: ProjectId; name: string; gitRemote?: string }[];
 }
@@ -483,6 +491,13 @@ export interface CoordinationView {
   wakes: number;
   /** Null: no limit. Older cores send a number. */
   wakeLimit: number | null;
+  /**
+   * The contact requests this thread made (`collaboration.ask`), where they
+   * stand now; on the Contacts bot's thread also the ones it forwarded and the
+   * contacts' requests it settled. Oldest first, at most 50. Its timeline
+   * shows each one where it happened. Absent from older cores.
+   */
+  requests?: ContactRequest[];
 }
 
 export interface CoordinationRpcMethods {

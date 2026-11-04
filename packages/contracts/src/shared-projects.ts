@@ -18,6 +18,13 @@ export interface ContactCapabilities {
    * and reads `group` on the sync as this owner's name.
    */
   groupLink?: 1;
+  /**
+   * The peer hands its guest seat over: when the machine of this owner's
+   * group that dials it moves the link to the group's Bots host, it waits for
+   * the Bots host to dial it (`contact.move` with `seat: 'guest'`) instead of
+   * dialing the Bots host itself.
+   */
+  guestSeat?: 1;
 }
 
 /**
