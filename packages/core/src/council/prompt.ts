@@ -13,8 +13,10 @@ export function clip(text: string, limit: number): string {
 
 const SCORE_LINE = /^[\s>*_#`-]*score[\s*_`]*[:：]\s*(.+)$/gim;
 
-/** The text closes a review: it has a `Score:` line, `none` included. */
-export const hasScoreLine = (text: string): boolean => [...text.matchAll(SCORE_LINE)].length > 0;
+const lastScoreLine = (text: string): string | null => [...text.matchAll(SCORE_LINE)].at(-1)?.[1]?.replace(/[*_`]+/g, '').trim() ?? null;
+
+/** The text closes a review: its last `Score:` line is a score or `none`, not a `Score: pending` on the way there. */
+export const hasScoreLine = (text: string): boolean => scoreOf(text) !== null || /^none\b/i.test(lastScoreLine(text) ?? '');
 
 /**
  * The score of the answer's last `Score: n/10` line, in any case, with Markdown
@@ -22,8 +24,8 @@ export const hasScoreLine = (text: string): boolean => [...text.matchAll(SCORE_L
  * the core never makes one up.
  */
 export function scoreOf(text: string): number | null {
-  const last = [...text.matchAll(SCORE_LINE)].at(-1)?.[1];
-  const found = last ? /^(\d+(?:[.,]\d+)?)\s*\/\s*10\b/.exec(last.replace(/[*_`]+/g, '').trim()) : null;
+  const last = lastScoreLine(text);
+  const found = last ? /^(\d+(?:[.,]\d+)?)\s*\/\s*10\b/.exec(last) : null;
   if (!found) return null;
   const score = Number(found[1]!.replace(',', '.'));
   return score >= 0 && score <= 10 ? score : null;
@@ -50,17 +52,17 @@ export function roundPrompt(council: Council, round: number, changes: string | n
 }
 
 /** A member's answer in the message to the parent, under its model's name. */
-export interface RoundAnswer { member: CouncilMember; text: string | null; turnId: string | null }
+export interface RoundAnswer { member: CouncilMember; text: string | null; turnIds: string[] }
 
 /** One round's answers and the table, as one message to the parent; it is the parent that summarizes. */
 export function roundMessage(council: Council, answers: RoundAnswer[], notes: string[]): string {
   const share = Math.floor(COUNCIL_LIMITS.deliveredChars / Math.max(1, answers.length));
   const round = council.roundsDone;
-  const sections = answers.map(({ member, text, turnId }) => {
+  const sections = answers.map(({ member, text, turnIds }) => {
     const head = `### ${member.name} · ${councilScore(member.scores[round - 1])}`;
     if (text === null) return `${head}\n\nNo answer this round.`;
     if (text.length <= share) return `${head}\n\n${text}`;
-    return `${head}\n\n${clip(text, share)}${member.threadId && turnId ? `\nWhole answer: boite delegate result ${member.threadId} ${turnId}` : ''}`;
+    return `${head}\n\n${clip(text, share)}${turnIds.map((turnId, index) => `\n${index === 0 ? 'Whole answer' : 'Then'}: boite delegate result ${member.threadId} ${turnId}`).join('')}`;
   });
   const next = council.status === 'waiting'
     ? `Summarize the useful findings, the disagreements and the next steps. Fix what you accept, keep the scope limited, then ask a fresh review: boite delegate council again ${council.id} "<what changed>". Once every member is satisfied, or if you are done: boite delegate stop ${council.id}. The boite-council skill holds the rules.`

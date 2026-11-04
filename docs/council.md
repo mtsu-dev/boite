@@ -61,18 +61,21 @@ the member shows `no score`; a score is never made up.
 A round ends when every member has answered, when its time is up or when the
 owner closes it. A member past the time is absent from that round, without a
 score, and is asked again in the next one. A turn that ends on the member's own
-background work answers only with a `Score:` line, and that work then stops;
-otherwise the turn that work wakes does, within the same time, and the answer is
-all the member wrote over the round. If nothing wakes it, what it wrote so far is
-its answer, without a score. Ending a round or a council stops any member's
-background work. A round nobody answers still goes back to the parent. A closed
-round leaves the council in `waiting`.
+background work answers only with a closing `Score:` line (`n/10` or `none`), and
+that work then stops; otherwise the turn that work wakes does, within the same
+time, and the answer is all the member wrote over the round. An agent that does not
+wake on its work, as with an ACP command, is asked for its answer 30 seconds after
+the work completes. If that work fails, that request cannot start, a later turn
+fails or the round ends first, what the member wrote so far is its answer, and a
+note says why. A member through with its round, and a council that ends, leave no
+background work or scheduled wake behind. A round nobody answers still goes back
+to the parent. A closed round leaves the council in `waiting`.
 
 ## Answers and the table
 
 The parent gets one message per round: each answer under `### name · score`,
 then the table. The answers share 24,000 characters, and a cut answer names the
-`boite delegate result` command that reads the rest.
+`boite delegate result` command for each turn it came from.
 
 ```md
 ## Council review
@@ -169,8 +172,10 @@ is migrated. `boite delegate debate` starts nothing and points to
   `Boite restarted during the round, so it stopped.` A council in `waiting` stays.
 - A [restart handoff](restart-handoff.md) lets a round go on: the next core asks
   again any member the restart cut, even one whose turn did not stop in time.
-- A debate still running at this update stops and tells the parent:
-  `Debates were replaced by the council at this update, so this one stopped. boite delegate council starts a review.`
+- A debate still running at this update stops and tells the parent. After a
+  restart handoff it says `Debates were replaced by the council at this update, so
+  this one stopped. boite delegate council starts a review.`; after a crash it says
+  the line above.
 
 ## RPC and events
 

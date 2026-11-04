@@ -6,7 +6,7 @@ import { invalidParams, messageOf, notFound, refused } from '../errors.ts';
 import { newId } from '../ids.ts';
 import { isAgentHeld } from '../agents/runtime.ts';
 import { assertDriverRunnable } from '../drivers/index.ts';
-import { childEnd } from '../delegation/completion.ts';
+import { askFinal, childEnd, taskTurn, unwoken } from '../delegation/completion.ts';
 import { catalog, providersNamed, type ChildRoute } from '../delegation/routes.ts';
 import { withLoad } from '../threads/records.ts';
 import { modelsFor } from '../threads/selection.ts';
@@ -94,6 +94,8 @@ export class CouncilStore {
   readonly #undelivered = new Set<string>();
   /** Members asked while their previous turn was still stopping. */
   readonly #waiting = new Set<string>();
+  /** Members whose background work ended: when a wake that has not come stops being expected. */
+  readonly #graces = new Map<string, ReturnType<typeof setTimeout>>();
   readonly #off: () => void;
   #closed = false;
   /** What one minute of `timeoutMinutes` lasts; a test shortens it. */
@@ -117,6 +119,7 @@ export class CouncilStore {
         else if (name === 'thread.updated') {
           const thread = payload as ThreadSummary;
           if (this.#waiting.has(thread.id)) this.#wake(thread.id);
+          else if (this.#children.has(thread.id)) this.#watchBackground(thread);
           else if (thread.archived && !thread.parentThreadId && !thread.councilId) this.stopParent(thread.id, 'The thread that started it was archived.');
         } else if (name === 'thread.removed' && !(payload as { undoable?: boolean }).undoable) {
           const threadId = (payload as { threadId: string }).threadId;
@@ -528,9 +531,7 @@ export class CouncilStore {
     const council = this.#load(id);
     if (!council || council.status !== 'running') return;
     for (const member of council.members.filter(m => m.pending)) {
-      const said = member.threadId ? this.#said(council, member.threadId) : null;
-      if (said?.text) this.#record(council, member, said);
-      else this.#absent(id, member.id, council.round, why);
+      this.#settle(council, member, why);
       if (member.threadId) this.#stopChild(member.threadId);
     }
   }
@@ -613,17 +614,56 @@ export class CouncilStore {
     const said = this.#said(council, turn.threadId);
     // It ended to wait on its own background work: unless a score closes what it wrote, the turn that work wakes answers, and the round's time still runs.
     if (end.kind === 'checkpoint' && !hasScoreLine(said.text)) { this.#mutate(council.id, current => { current.internal.turns[member.id] = STARTING; }); return; }
-    if (!said.text) return this.#absent(council.id, member.id, council.round, turn.status === 'done' ? 'its answer was empty' : turn.status === 'stopped' ? 'its turn was stopped' : `its turn failed${turn.error ? ` (${turn.error.slice(0, 200)})` : ''}`);
-    this.#record(council, member, said);
-    // It has answered, and nobody reads what that work would wake.
-    if (end.kind === 'checkpoint') setTimeout(() => { if (!this.#gone) this.#stopChild(turn.threadId); }, 0).unref?.();
+    if (turn.status === 'done' && said.text) this.#record(council, member, said);
+    else this.#settle(council, member, turn.status === 'done' ? 'its answer was empty' : turn.status === 'stopped' ? 'its turn was stopped' : `its turn failed${turn.error ? ` (${turn.error.slice(0, 200)})` : ''}`);
+    // It is through with the round, and nobody reads what its background work or a wake it set would start.
+    if (this.#lingers(turn.threadId)) setTimeout(() => { if (!this.#gone) this.#stopChild(turn.threadId); }, 0).unref?.();
   }
 
-  #record(council: Stored, member: CouncilMember, said: { text: string; turnId: string | null }): void {
+  /**
+   * A member at rest on background work that ended. A wake may follow; past its
+   * grace none will (an ACP command's end wakes nothing), so it is asked for its
+   * answer, as a subagent is. Work that failed, or a request that cannot start,
+   * leaves what it wrote.
+   */
+  #watchBackground(thread: ThreadSummary): void {
+    if (threadActive(thread.status) || thread.archived) return;
+    const wait = withLoad(this.#core, thread).backgroundWait ?? null;
+    const quiet = wait === null ? unwoken(this.#core, thread.id) : null;
+    if (wait === null && quiet === null) return;
+    const council = this.#load(this.#children.get(thread.id)!);
+    const member = council?.members.find(m => m.threadId === thread.id);
+    const last = taskTurn(this.#core, thread.id);
+    if (!council || council.status !== 'running' || !member?.pending || council.internal.turns[member.id] !== STARTING || !last || last.queuedAt < council.internal.roundStartedAt) return;
+    if (wait?.state === 'waiting') { if (wait.until !== null) this.#graceEnds(thread.id, wait.until); return; }
+    const lost = wait?.state === 'interrupted' ? 'its background work ended without waking it' : askFinal(this.#core, thread.id, quiet!);
+    if (lost !== null) this.#settle(council, member, lost);
+  }
+
+  #graceEnds(threadId: string, until: number): void {
+    clearTimeout(this.#graces.get(threadId));
+    const timer = setTimeout(() => {
+      this.#graces.delete(threadId);
+      const thread = this.#gone ? null : this.#core.journal.getThread(threadId);
+      try { if (thread) this.#watchBackground(thread); } catch (error) { this.#core.log('warn', `council member ${threadId}: ${messageOf(error)}`); }
+    }, Math.max(0, until - Date.now()));
+    timer.unref?.();
+    this.#graces.set(threadId, timer);
+  }
+
+  /** A member that will not finish: what it wrote so far is its answer, with why it stopped there; without any, it is absent. */
+  #settle(council: Stored, member: CouncilMember, why: string): void {
+    const said = member.threadId ? this.#said(council, member.threadId) : null;
+    if (!said?.text) return this.#absent(council.id, member.id, council.round, why);
+    this.#record(council, member, said);
+    this.#system(council.id, council.round, `${member.name} did not finish round ${council.round}: ${why}. Its answer is what it wrote before.`);
+  }
+
+  #record(council: Stored, member: CouncilMember, said: { text: string; turnIds: string[] }): void {
     const round = council.round;
     const replied = this.#posts(council.id, 'AND round = ? AND author = ? AND to_id = ?', round, COUNCIL_OWNER, member.id).at(-1)?.id ?? null;
     this.#core.journal.db.transaction(() => {
-      this.#post(council.id, { round, author: member.id, text: clip(said.text, COUNCIL_LIMITS.answerChars), to: null, inReplyTo: replied, turnId: said.turnId });
+      this.#post(council.id, { round, author: member.id, text: clip(said.text, COUNCIL_LIMITS.answerChars), to: null, inReplyTo: replied, turnId: said.turnIds.at(-1) ?? null });
       this.#mutate(council.id, current => {
         const now = current.members.find(m => m.id === member.id)!;
         now.pending = false;
@@ -634,10 +674,13 @@ export class CouncilStore {
     this.#settleSoon(council.id);
   }
 
-  /** All a member wrote over the round: a turn ended on its background work, then the one that work woke. */
-  #said(council: Stored, threadId: string): { text: string; turnId: string | null } {
-    const turns = this.#core.journal.listTurns(threadId).filter(turn => turn.status === 'done' && turn.queuedAt >= council.internal.roundStartedAt && childEnd(this.#core, turn).kind !== 'maintenance');
-    return { text: turns.map(turn => this.#answer(turn)).filter(Boolean).join('\n\n'), turnId: turns.at(-1)?.id ?? null };
+  /** All a member wrote over the round: one turn ended on its background work, then the one that work woke. */
+  #said(council: Stored, threadId: string): { text: string; turnIds: string[] } {
+    const written = this.#core.journal.listTurns(threadId)
+      .filter(turn => turn.status === 'done' && turn.queuedAt >= council.internal.roundStartedAt && childEnd(this.#core, turn).kind !== 'maintenance')
+      .map(turn => ({ id: turn.id, text: this.#answer(turn) }))
+      .filter(turn => turn.text);
+    return { text: written.map(turn => turn.text).join('\n\n'), turnIds: written.map(turn => turn.id) };
   }
 
   /** The whole text of a turn's last answer. */
@@ -670,7 +713,8 @@ export class CouncilStore {
     if (!council) return;
     if (note) this.#system(id, council.round, note);
     const children = (this.#core.journal.db.query('SELECT thread_id FROM debate_children WHERE debate_id = ?').all(id) as { thread_id: string }[]).map(row => row.thread_id);
-    if (stopTurns) for (const threadId of children) this.#stopChild(threadId);
+    // Closed between rounds, nothing should still run: only what a member left behind stops, not a turn the owner started in its thread.
+    for (const threadId of children) if (stopTurns || (status === 'done' && this.#lingers(threadId))) this.#stopChild(threadId);
     for (const threadId of children) {
       try { this.#core.delegation.retirements.check(threadId); } catch (error) { this.#core.log('warn', `council ${id}: retiring ${threadId}: ${messageOf(error)}`); }
     }
@@ -678,10 +722,14 @@ export class CouncilStore {
     if (deliver) this.#deliverSoon(id);
   }
 
+  /** At rest on its own background work, or on a wake it set, a member is still at work. */
+  #lingers(threadId: string): boolean {
+    return (this.#core.threads.agentState.background.get(threadId)?.length ?? 0) > 0 || this.#core.wakes.of(threadId) !== null;
+  }
+
   #stopChild(threadId: string): void {
     const thread = this.#core.journal.getThread(threadId);
-    // At rest on its own background work is at work too: Stop ends that work.
-    if (!thread || (!threadActive(thread.status) && (this.#core.threads.agentState.background.get(threadId)?.length ?? 0) === 0)) return;
+    if (!thread || (!threadActive(thread.status) && !this.#lingers(threadId))) return;
     try { this.#core.threads.stopTurn(threadId); } catch (error) { this.#core.log('warn', `council member ${threadId} not stopped: ${messageOf(error)}`); }
   }
 
@@ -705,7 +753,9 @@ export class CouncilStore {
     const posts = this.#rows(council.id, 'AND round = ?', round);
     const answers = council.members.map(member => {
       const post = posts.find(row => row.author === member.id);
-      return { member, text: post?.text ?? null, turnId: post?.turn_id ?? null };
+      // Up to the turn it was recorded from: a turn the owner started afterwards is not its answer.
+      const turnIds = post?.turn_id && member.threadId ? this.#said(council, member.threadId).turnIds : [];
+      return { member, text: post?.text ?? null, turnIds: turnIds.slice(0, turnIds.indexOf(post?.turn_id ?? '') + 1) };
     });
     const notes = posts.filter(row => row.author === COUNCIL_SYSTEM).map(row => row.text);
     return { prompt: roundMessage(council, answers, notes), display: `Council round ${round}: ${topic}` };
@@ -785,6 +835,8 @@ export class CouncilStore {
   beginClose(): void {
     this.#closed = true;
     for (const id of [...this.#timers.keys()]) this.#disarm(id);
+    for (const timer of this.#graces.values()) clearTimeout(timer);
+    this.#graces.clear();
   }
   close(): void {
     this.beginClose();

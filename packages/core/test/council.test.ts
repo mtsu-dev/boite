@@ -1,11 +1,11 @@
-import { afterEach, expect, spyOn, test } from 'bun:test';
+import { afterEach, expect, setSystemTime, spyOn, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { AGENT_ENV, DEFAULT_DELEGATION_CONFIG, councilMention, councilTable, type Council, type ModelInfo, type ThreadSummary } from '@boite/contracts';
+import { AGENT_ENV, BACKGROUND_WAKE_GRACE_MS, DEFAULT_DELEGATION_CONFIG, councilMention, councilTable, type Council, type ModelInfo, type ThreadSummary } from '@boite/contracts';
 import type { CoreClient } from '../src/client.ts';
 import { runCli } from '../src/cli.ts';
 import { Core } from '../src/core.ts';
-import { scoreOf } from '../src/council/prompt.ts';
+import { hasScoreLine, scoreOf } from '../src/council/prompt.ts';
 import { prepareMembers } from '../src/council/rpc.ts';
 import { readOnlyWarning } from '../src/council/store.ts';
 import { setDriver } from '../src/drivers/index.ts';
@@ -15,7 +15,7 @@ import { echoThread, startTestCore, waitFor, type TestCore } from './harness.ts'
 
 const cores: TestCore[] = [];
 const restores: (() => void)[] = [];
-afterEach(async () => { for (const h of cores.splice(0)) await h.stop(); for (const restore of restores.splice(0).reverse()) restore(); });
+afterEach(async () => { setSystemTime(); for (const h of cores.splice(0)) await h.stop(); for (const restore of restores.splice(0).reverse()) restore(); });
 
 interface Run { ctx: TurnContext; threadId: string; model: string | null; prompt: string; finish: (text?: string, status?: TurnResult['status']) => void; status: TurnResult['status'] | null }
 /** What a run answers: text at once, `null` to hold it until the test finishes it. */
@@ -312,6 +312,8 @@ test('a read that hangs does not hold the start, and a council refused or retrie
   const owed = await prepareMembers(h.core, () => { reads += 1; return new Promise(() => {}); }, threadId, ['twin/alpha', 'slow/one'], 20);
   expect(reads).toBe(1);
   expect([...owed]).toEqual(['slow/one']);
+  // A read that failed is not one still owed: the refusal is left to give its own reason.
+  expect([...await prepareMembers(h.core, () => Promise.reject(new Error('expired')), threadId, ['twin/alpha', 'slow/one'], 20)]).toEqual([]);
   // A list that holds a default model does not hide it: the refusal says what is owed, not that the model is missing.
   Object.assign(h.core.providers.require('slow'), { models: [{ id: 'default', name: 'Default' }] });
   const params = { threadId, request: REQUEST, models: ['twin/alpha', 'slow/one'] };
@@ -364,6 +366,71 @@ test('a member that ends its turn on background work: a score answers, else the 
   const text = (model: string) => posts.find(post => post.author === by(state(), model).id)?.text;
   expect(text('alpha')).toBe('Started on the logs.\n\nThe logs are clean.\n\nScore: 9/10');
   expect(text('gamma')).toBe('Looks thin so far.');
+});
+
+test('a member nothing wakes is asked once its work completes; work or a turn that failed keeps what it wrote and says why; an answer over several turns names each', async () => {
+  const d = driver();
+  const { h, threadId, start } = await setup();
+  const council = await start();
+  const state = () => h.core.council.get({ councilId: council.id }).council;
+  await waitFor(() => d.round(1).length === 3);
+  const member = (model: string) => d.round(1).find(run => run.model === model)!;
+  const [quiet, lost, failed] = [member('alpha'), member('beta'), member('gamma')];
+  // The grace for a wake runs out on a clock moved on: the store's timer fires soon, with no wake.
+  const ended = async (run: Run, id: string, end: 'completed' | 'error', done: () => boolean) => {
+    run.ctx.backgroundFinished!(id, end);
+    setSystemTime(new Date(Date.now() + BACKGROUND_WAKE_GRACE_MS - 20));
+    h.core.bus.emit('thread.updated', h.core.journal.getThread(run.threadId)!);
+    setSystemTime(new Date(Date.now() + 40));
+    await waitFor(done);
+    setSystemTime();
+  };
+  for (const [run, text] of [[quiet, `${'A long finding. '.repeat(900)}The end of it.`], [lost, 'Half done.'], [failed, 'Started.']] as const) {
+    run.ctx.background!([{ id: `bg-${run.model}`, kind: 'shell', description: 'read the logs', toolId: null, startedAt: Date.now() }]);
+    run.finish(text);
+  }
+  await waitFor(() => [quiet, lost, failed].every(run => h.core.journal.listTurns(run.threadId).at(-1)?.status === 'done'));
+  await ended(lost, 'bg-beta', 'error', () => !by(state(), 'beta').pending);
+  expect(by(state(), 'beta').absent).toEqual([]);
+  failed.ctx.backgroundFinished!('bg-gamma', 'completed');
+  let before = d.runs.length;
+  failed.ctx.wake!('The logs are read.');
+  await waitFor(() => d.runs.length > before);
+  d.runs.at(-1)!.finish('', 'error');
+  await waitFor(() => !by(state(), 'gamma').pending);
+  before = d.runs.length;
+  await ended(quiet, 'bg-alpha', 'completed', () => d.runs.length > before);
+  expect(d.runs.at(-1)!.prompt).toContain('no turn of yours followed it');
+  d.runs.at(-1)!.finish('Clean.\n\nScore: 9/10');
+  await waitFor(() => state().status === 'waiting');
+  expect(by(state(), 'alpha').scores).toEqual([9]);
+  await waitFor(() => d.delivered().length === 1);
+  const message = d.delivered()[0]!.prompt;
+  expect(message).toContain(`${by(state(), 'beta').name} did not finish round 1: its background work ended without waking it.`);
+  expect(message).toContain(`${by(state(), 'gamma').name} did not finish round 1: its turn failed`);
+  const named = [...message.matchAll(/(?:Whole answer|Then): boite delegate result (\S+) (\S+)/g)];
+  expect(named.length).toBe(2);
+  expect((await boite(h, threadId, ['delegate', 'result', named[0]![1]!, named[0]![2]!])).out).toContain('The end of it.');
+  expect((await boite(h, threadId, ['delegate', 'result', named[1]![1]!, named[1]![2]!])).out).toContain('Clean.');
+});
+
+test('a member through with its round leaves no wake, and a council closed between rounds leaves no background work', async () => {
+  const d = driver();
+  const { h, start } = await setup();
+  const council = await start();
+  await waitFor(() => d.round(1).length === 3);
+  const [first, second, third] = d.round(1) as [Run, Run, Run];
+  const wake = spyOn(h.core.wakes, 'of').mockImplementation(id => (id === first.threadId ? { at: Date.now() + 60_000 } as never : null));
+  const stopped = spyOn(h.core.threads, 'stopTurn');
+  first.finish('Fine.\nScore: 8/10');
+  await waitFor(() => stopped.mock.calls.some(([id]) => id === first.threadId));
+  wake.mockRestore();
+  second.finish('Fine.\nScore: 8/10');
+  third.finish('Fine.\nScore: 8/10');
+  await waitFor(() => h.core.council.get({ councilId: council.id }).council.status === 'waiting');
+  second.ctx.background!([{ id: 'late', kind: 'shell', description: 'late', toolId: null, startedAt: Date.now() }]);
+  h.core.council.stop({ councilId: council.id }, 'owner');
+  await waitFor(() => (h.core.threads.agentState.background.get(second.threadId)?.length ?? 0) === 0);
 });
 
 test('members stay read-only: the plan mode where there is one, every permission refused elsewhere, a warning for neither', async () => {
@@ -551,6 +618,8 @@ test('stopping the thread\'s subagents or archiving it stops a round; a council 
 }, 20_000);
 
 test('the score line is read as written and never made up', () => {
+  // Only a score or `none` closes a review: anything else would stop a member's work unread.
+  expect(['Score: pending', 'Score: none', '**Score:** 8/10', 'No line.'].map(hasScoreLine)).toEqual([false, true, true, false]);
   const cases: [string, number | null][] = [
     ['Good.\n\nScore: 8/10', 8],
     ['**Score: 8/10**', 8],

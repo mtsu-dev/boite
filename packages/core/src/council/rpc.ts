@@ -20,7 +20,7 @@ export async function prepareMembers(core: Core, probe: ProviderProbe, threadId:
   await core.delegation.prepareRoutes(threadId, probe, models);
   const parent = core.threads.require(threadId);
   const unread = new Set<string>();
-  const read = async (model: string, request: Parameters<ProviderProbe>[0]) => { unread.add(model); await probe(request); unread.delete(model); };
+  const read = async (model: string, request: Parameters<ProviderProbe>[0]) => { unread.add(model); try { await probe(request); } finally { unread.delete(model); } };
   const reads = Promise.allSettled(models.map(async model => {
     const providerId = providersNamed(core, model)?.[0];
     const account = providerId === undefined ? undefined : accountFor(core, parent, providerId);
