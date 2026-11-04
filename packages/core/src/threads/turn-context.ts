@@ -125,6 +125,7 @@ export class TurnContexts {
       hook: report => this.#core.hooks.record({ providerId: provider.id, accountId: account.id, threadId }, report),
       background: list => this.#threads.agentState.noteBackground(threadId, list, backgroundOwner),
       backgroundFinished: (id, state) => this.#threads.agentState.finishBackground(threadId, id, backgroundOwner, state),
+      wake: (text, display) => this.#threads.deferred.wake(threadId, text, display),
       loopWake: scheduledFor => this.#core.wakes.cliFired(threadId, scheduledFor),
       spawnChild: this.leasedSpawnChild(threadId, provider, { resume: thread.sessionId !== null }),
       finishStartup: () => this.#core.procs.finishStartup(this.#core.procs.protection.controlScope(threadId) ?? threadId),

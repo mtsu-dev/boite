@@ -97,6 +97,8 @@ export class ClaudeSession {
    */
   #replayResult = false;
   #linger: Timer | null = null;
+  /** The background work ended while a turn was still open: the linger starts once that turn is over. */
+  #lingerOwed = false;
 
   #query: Query | null = null;
   #ctx: SessionContext;
@@ -653,6 +655,7 @@ export class ClaudeSession {
   #afterTurns(): void {
     if (this.#closing || this.#ended || this.#waiting.length > 0) return;
     if (this.#background.length > 0 || this.#woken) return;
+    if (this.#lingerOwed) { this.#startLinger(); return; }
     if (this.#retention.viewed) return;
     if (this.#retention.idleMs(this.#warmMs) > 0) this.#armIdle();
     else this.close(null);
@@ -698,9 +701,14 @@ export class ClaudeSession {
     this.#background = next;
     for (const id of [...this.#launched.keys()]) if (!next.some(task => task.id === id)) this.#launched.delete(id);
     this.#ctx.background?.(next);
-    if (!ended || this.#waiting.length > 0 || this.#closing) return;
-    // The CLI usually answers the task's notification by itself within a
-    // second; the linger gives it that moment before the warm rule applies.
+    if (!ended || this.#closing) return;
+    // Ended in the same second as the turn: the CLI answers the notification once the turn's result is out.
+    if (this.#waiting.length > 0) this.#lingerOwed = true;
+    else this.#startLinger();
+  }
+
+  /** The CLI usually answers a task's notification by itself within a second; the linger gives it that moment before the warm rule applies. */
+  #startLinger(): void {
     this.#clearLinger();
     this.#linger = setTimeout(() => {
       this.#linger = null;
@@ -768,6 +776,7 @@ export class ClaudeSession {
   }
 
   #clearLinger(): void {
+    this.#lingerOwed = false;
     if (this.#linger === null) return;
     clearTimeout(this.#linger);
     this.#linger = null;

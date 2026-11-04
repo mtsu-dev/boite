@@ -371,4 +371,41 @@ describe('claude driver: questions and background work', () => {
     expect((await ended).backgroundWork).toBeNull();
     await client.call('turns.stop', { threadId }).catch(() => undefined);
   });
+
+  test('a CLI that answers a task notification it got at the end of the turn keeps running and gets its wake turn', async () => {
+    const client = await harness.connect();
+    const threadId = await claudeThread(client);
+    const sessionId = 'sess-bg-late';
+    scripted((fake) => {
+      fake.emit(init(sessionId));
+      fake.emit(assistant(sessionId, [{ type: 'tool_use', id: 'toolu_wait', name: 'Bash', input: { command: 'sleep 20', run_in_background: true } }]));
+      fake.emit(sdk({ type: 'system', subtype: 'task_started', session_id: sessionId, task_id: 'bash-w', tool_use_id: 'toolu_wait', description: 'sleep 20', task_type: 'local_bash', is_backgrounded: true }));
+      fake.emit(sdk({ type: 'system', subtype: 'background_tasks_changed', session_id: sessionId, tasks: [{ task_id: 'bash-w', task_type: 'local_bash', description: 'sleep 20' }] }));
+      fake.emit(toolResult(sessionId, 'toolu_wait', 'Command running in background with ID: bash-w'));
+      fake.emit(assistant(sessionId, [{ type: 'text', text: 'waiting on the job' }]));
+      // The task ends in the same second as the turn: the CLI says so before the turn's result.
+      fake.emit(sdk({ type: 'system', subtype: 'background_tasks_changed', session_id: sessionId, tasks: [] }));
+      fake.emit(sdk({ type: 'system', subtype: 'task_notification', session_id: sessionId, task_id: 'bash-w', tool_use_id: 'toolu_wait', status: 'completed', output_file: '', summary: 'sleep 20 finished' }));
+      fake.emit(success(sessionId));
+    });
+    expect(await runTurn(client, threadId, 'wait for the job')).toBe('done');
+    // warmProcessMinutes is 0, yet the CLI gets its moment to answer the notification.
+    await Bun.sleep(300);
+    expect(queries[0]!.closes).toBe(0);
+    expect((queries[0] as unknown as { ended: boolean }).ended).toBe(false);
+    const woke = client.next('turn.finished', (turn) => turn.threadId === threadId, 10000);
+    const fake = queries[0]!;
+    fake.emit(init(sessionId));
+    fake.emit(assistant(sessionId, [{ type: 'tool_use', id: 'toolu_tail', name: 'Bash', input: { command: 'tail job.log' } }]));
+    fake.emit(toolResult(sessionId, 'toolu_tail', 'job ok'));
+    fake.emit(assistant(sessionId, [{ type: 'text', text: 'JOB DONE' }]));
+    fake.emit(success(sessionId));
+    const turn = await woke;
+    expect(turn.status).toBe('done');
+    expect(turn.execution?.operation).toBe('background');
+    const messages = harness.core.journal.listMessages(threadId).filter((m) => m.turnId === turn.id);
+    expect(messages.at(-1)?.parts.at(-1)).toEqual({ type: 'text', text: 'JOB DONE' });
+    expect(calls).toHaveLength(1);
+    await waitFor(() => (queries[0] as unknown as { ended: boolean }).ended);
+  });
 });
