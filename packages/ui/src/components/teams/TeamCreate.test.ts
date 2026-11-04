@@ -1,0 +1,227 @@
+import { afterEach, expect, test, vi } from 'vitest';
+import { flushSync, mount, tick, unmount } from 'svelte';
+import { setExperiment } from '../../lib/experiments';
+import { FakeClient } from '../../lib/fake-client';
+import { Store } from '../../lib/store.svelte';
+import { workspace } from '../../lib/workspace.svelte';
+import AgentsPage from '../agents/AgentsPage.svelte';
+import ConfirmDialog from '../ConfirmDialog.svelte';
+
+const mounted: ReturnType<typeof mount>[] = [];
+const closers: (() => void)[] = [];
+const previousActive = workspace.active;
+
+afterEach(async () => {
+  for (const component of mounted.splice(0)) await unmount(component);
+  for (const close of closers.splice(0)) close();
+  workspace.machines = []; workspace.active = previousActive;
+  setExperiment('teams', false);
+  setExperiment('resident-agents', false);
+  vi.restoreAllMocks(); document.body.innerHTML = ''; localStorage.clear();
+  document.documentElement.classList.remove('agents-detail-open');
+});
+
+async function settle(): Promise<void> {
+  for (let i = 0; i < 12; i++) { await tick(); await Promise.resolve(); }
+  flushSync();
+}
+function query<T extends Element>(selector: string): T {
+  const node = document.querySelector<T>(selector);
+  if (!node) throw new Error(`no ${selector}`);
+  return node;
+}
+const all = (selector: string) => [...document.querySelectorAll<HTMLElement>(selector)];
+const text = (selector: string) => document.querySelector(selector)?.textContent?.trim() ?? null;
+
+async function machine(names: string[]) {
+  const client = new FakeClient({ delayMs: 0 });
+  const store = new Store();
+  store.attach(client);
+  closers.push(() => { store.detach(); client.close(); });
+  await store.connect();
+  client.reportDesktopExperiments(['teams']);
+  const bots = [];
+  for (const name of names) bots.push(await client.call('agents.profile.save', { value: { name, domain: '', instructions: '', avatar: '', status: 'active', projectIds: [],
+    selection: { providerId: 'echo', accountId: 'a-echo', model: 'echo-1', effort: null, permissionMode: 'default' } } }));
+  return { client, store, bots };
+}
+
+/** This computer with three bots and no team yet, the Teams experiment on in the app and on the core. */
+async function computer() {
+  setExperiment('teams', true);
+  setExperiment('resident-agents', true);
+  const local = await machine(['Huginn', 'Jeux', 'Muninn']);
+  workspace.machines = [{ id: 'local', label: 'Local', store: local.store }]; workspace.active = local.store;
+  return local;
+}
+
+function phone() {
+  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
+    media, matches: media.includes('max-width'), onchange: null, addListener() {}, removeListener() {}
+  }));
+}
+function page(store: Store) {
+  store.showAgents();
+  mounted.push(mount(AgentsPage, { target: document.body, props: { store } }));
+  mounted.push(mount(ConfirmDialog, { target: document.body }));
+  flushSync();
+}
+function type(selector: string, value: string) {
+  const field = query<HTMLInputElement | HTMLTextAreaElement>(selector);
+  field.value = value;
+  field.dispatchEvent(new Event('input', { bubbles: true }));
+  flushSync();
+}
+const member = (botId: string) => query<HTMLButtonElement>(`[data-testid=team-dialog-member][data-bot-id="${botId}"]`);
+async function openDialog() {
+  query<HTMLButtonElement>('[data-testid=agents-new-team]').click();
+  await settle();
+  return query('[data-testid=team-dialog]');
+}
+
+test.each([false, true])('with no team yet the Bots page shows the Teams heading with New team and one line (phone: %s)', async narrow => {
+  const { store, bots } = await computer();
+  if (narrow) phone();
+  page(store);
+  await vi.waitFor(() => query(`[data-testid="agent-entry-${bots[0]!.id}"]`));
+  await settle();
+  expect(all('.agents-rail .section-label').map(heading => heading.textContent)).toEqual(['Teams', 'Bots']);
+  expect(query('[data-testid=agents-new-team]').getAttribute('aria-label')).toBe('New team');
+  expect(text('[data-testid=agents-teams-empty]')).toBe('No team yet: put a few bots in one chat.');
+  expect(document.querySelector('[data-testid=agents-teams]')).toBeNull();
+});
+
+test('the dialog asks for a name and a bot, then creates the team on this machine and opens its chat', async () => {
+  const { client, store, bots } = await computer();
+  const [huginn, jeux, muninn] = bots as [typeof bots[0], typeof bots[0], typeof bots[0]];
+  page(store);
+  await vi.waitFor(() => query(`[data-testid="agent-entry-${huginn.id}"]`));
+  const dialog = await openDialog();
+  expect(document.activeElement).toBe(query('[data-testid=team-dialog-name]'));
+  expect(all('[data-testid=team-dialog-member]').map(row => row.textContent?.trim())).toEqual(['Huginn', 'Jeux', 'Muninn']);
+
+  // Nothing goes without a name, then without a bot.
+  query<HTMLButtonElement>('[data-testid=team-dialog-submit]').click(); await settle();
+  expect(text('[data-testid=team-dialog-problem]')).toBe('Give the team a name.');
+  type('[data-testid=team-dialog-name]', '  Launch   crew ');
+  expect(text('[data-testid=team-dialog-problem]')).toBe('Pick at least one bot.');
+  member(huginn.id).click(); member(muninn.id).click(); flushSync();
+  expect([member(huginn.id).getAttribute('aria-pressed'), member(jeux.id).getAttribute('aria-pressed'), member(muninn.id).getAttribute('aria-pressed')]).toEqual(['true', 'false', 'true']);
+  expect(text('[data-testid=team-dialog-count]')).toBe('2 of 12');
+  expect(document.querySelector('[data-testid=team-dialog-problem]')).toBeNull();
+  type('[data-testid=team-dialog-brief]', 'Ship the launch post.');
+
+  // Enter in the name sends it, as Create does.
+  query('[data-testid=team-dialog-name]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  await vi.waitFor(async () => expect((await client.call('teams.list', {})).teams).toHaveLength(1));
+  const [team] = (await client.call('teams.list', {})).teams;
+  expect([team!.name, team!.brief, team!.createdBy, team!.members.map(entry => entry.botId)]).toEqual(['Launch crew', 'Ship the launch post.', 'owner', [huginn.id, muninn.id]]);
+  await vi.waitFor(() => expect(store.openThread?.id).toBe(team!.threadId));
+  await vi.waitFor(() => expect(text('[data-testid=team-title]')).toBe('Launch crew'));
+  await vi.waitFor(() => query(`[data-testid="agent-team-${team!.id}"]`));
+  expect(document.querySelector('[data-testid=agents-teams-empty]')).toBeNull();
+  // The dialog plays its exit, then leaves.
+  dialog.dispatchEvent(new Event('animationend', { bubbles: true }));
+  await vi.waitFor(() => expect(document.querySelector('[data-testid=team-dialog]')).toBeNull());
+});
+
+test('a taken name says so as it is typed, and Escape closes the dialog without creating anything', async () => {
+  const { client, store, bots } = await computer();
+  await client.call('teams.create', { name: 'Skollheim', members: [bots[0]!.id] });
+  page(store);
+  await vi.waitFor(() => query('[data-testid=agents-teams]'));
+  const dialog = await openDialog();
+  type('[data-testid=team-dialog-name]', 'skollheim');
+  expect(text('[data-testid=team-dialog-problem]')).toBe('A team is already named skollheim.');
+  expect(query('[data-testid=team-dialog-name]').getAttribute('aria-invalid')).toBe('true');
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  flushSync();
+  expect(dialog.classList.contains('closing')).toBe(true);
+  expect((await client.call('teams.list', {})).teams).toHaveLength(1);
+});
+
+test("another machine's bots are listed greyed with why, and cannot be picked", async () => {
+  const local = await computer();
+  const remote = await machine(['Tour']);
+  workspace.machines = [{ id: 'local', label: 'Local', store: local.store }, { id: 'srv', label: 'Server', store: remote.store }];
+  page(local.store);
+  await vi.waitFor(() => query(`[data-testid="agent-entry-${remote.bots[0]!.id}"]`));
+  await openDialog();
+  const away = query<HTMLButtonElement>(`[data-testid=team-dialog-member][data-key='${JSON.stringify(['srv', remote.bots[0]!.id])}']`);
+  expect(away.getAttribute('aria-disabled')).toBe('true');
+  expect(away.title).toBe('On Server: a team takes the bots of one machine for now.');
+  expect(away.closest('li')?.querySelector('[data-testid=team-dialog-why]')).not.toBeNull();
+  away.click(); flushSync();
+  expect(away.getAttribute('aria-pressed')).toBe('false');
+  // A tap says why on a screen with no hover.
+  expect(text('[data-testid=team-dialog-told]')).toBe('On Server: a team takes the bots of one machine for now.');
+});
+
+test('the team header menu edits the name, brief and members, pauses and resumes, and archives after a confirm', async () => {
+  const { client, store, bots } = await computer();
+  const [huginn, jeux, muninn] = bots as [typeof bots[0], typeof bots[0], typeof bots[0]];
+  const team = await client.call('teams.create', { name: 'Skollheim', brief: 'Ship the site.', members: [huginn.id, jeux.id] });
+  page(store);
+  await vi.waitFor(() => query(`[data-testid="agent-team-${team.id}"]`));
+  query<HTMLButtonElement>(`[data-testid="agent-team-${team.id}"]`).click();
+  await vi.waitFor(() => query('[data-testid=team-menu]'));
+  const choose = async (id: string) => {
+    query<HTMLButtonElement>('[data-testid=team-menu]').click(); await settle();
+    query<HTMLButtonElement>(`[data-testid=team-menu-menu] [data-value="${id}"]`).click(); await settle();
+  };
+  const read = async () => (await client.call('teams.list', { archived: true })).teams[0]!;
+
+  await choose('edit');
+  expect(text('#' + CSS.escape(query('[data-testid=team-dialog]').getAttribute('aria-labelledby')!))).toBe('Edit Skollheim');
+  expect(query<HTMLInputElement>('[data-testid=team-dialog-name]').value).toBe('Skollheim');
+  type('[data-testid=team-dialog-name]', 'Skollheim crew');
+  type('[data-testid=team-dialog-brief]', 'Ship the site and the trailer.');
+  member(jeux.id).click(); member(muninn.id).click(); flushSync();
+  query<HTMLButtonElement>('[data-testid=team-dialog-submit]').click();
+  // Name and brief, then the member out, then the one in: the dialog closes once all three are done.
+  await vi.waitFor(() => expect(document.querySelector('[data-testid=team-dialog]:not(.closing)')).toBeNull());
+  const edited = await read();
+  expect([edited.name, edited.brief, edited.members.map(entry => entry.botId)]).toEqual(['Skollheim crew', 'Ship the site and the trailer.', [huginn.id, muninn.id]]);
+  await vi.waitFor(() => expect(text('[data-testid=team-title]')).toBe('Skollheim crew'));
+
+  await choose('pause');
+  await vi.waitFor(async () => expect((await read()).paused).toBe(true));
+  await vi.waitFor(() => expect(text('[data-testid=team-room]')).toBe('Paused'));
+  await choose('resume');
+  await vi.waitFor(async () => expect((await read()).paused).toBe(false));
+
+  await choose('archive');
+  await vi.waitFor(() => query('[data-testid=confirm-cancel]'));
+  expect(document.body.textContent).toContain('Archive Skollheim crew?');
+  query<HTMLButtonElement>('[data-testid=confirm-cancel]').click(); await settle();
+  expect((await read()).archived).toBe(false);
+  await choose('archive');
+  await vi.waitFor(() => query('[data-confirm]'));
+  query<HTMLButtonElement>('[data-confirm]').click();
+  await vi.waitFor(async () => expect((await read()).archived).toBe(true));
+  await vi.waitFor(() => expect(text('[data-testid=team-room]')).toBe('Archived'));
+  await choose('restore');
+  await vi.waitFor(async () => expect((await read()).archived).toBe(false));
+  expect(store.error).toBeFalsy();
+});
+
+test('a paired phone keeps New team and the team menu greyed, and says that changing teams stays on the computer', async () => {
+  const { client, store, bots } = await computer();
+  const team = await client.call('teams.create', { name: 'Skollheim', members: [bots[0]!.id] });
+  vi.spyOn(store, 'owner', 'get').mockReturnValue(false);
+  phone();
+  page(store);
+  await vi.waitFor(() => query(`[data-testid="agent-team-${team.id}"]`));
+  const button = query<HTMLButtonElement>('[data-testid=agents-new-team]');
+  expect(button.getAttribute('aria-disabled')).toBe('true');
+  button.click(); await settle();
+  expect(document.querySelector('[data-testid=team-dialog]')).toBeNull();
+  expect(text('[data-testid=agents-teams-guest]')).toBe('Only the computer running Boite can create or change teams.');
+
+  query<HTMLButtonElement>(`[data-testid="agent-team-${team.id}"]`).click();
+  await vi.waitFor(() => query('[data-testid=team-menu]'));
+  query<HTMLButtonElement>('[data-testid=team-menu]').click(); await settle();
+  const rows = all('[data-testid=team-menu-menu] [data-row]');
+  expect(rows.map(row => [row.getAttribute('data-value'), (row as HTMLButtonElement).disabled])).toEqual([['edit', true], ['pause', true], ['archive', true]]);
+  expect(query('[data-testid=team-menu-menu]').textContent).toContain('Only the computer running Boite can create or change teams.');
+});

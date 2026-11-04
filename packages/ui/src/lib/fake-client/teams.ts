@@ -250,7 +250,11 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
       gate();
       const team = require(params.teamId);
       if (typeof params.archived !== 'boolean') throw invalid('archived: expected a boolean');
-      return team.archived === params.archived ? structuredClone(team) : save(team, { archived: params.archived });
+      if (team.archived === params.archived) return structuredClone(team);
+      // As the core: a member this machine no longer has keeps the team archived until it is taken out.
+      const gone = params.archived ? [] : team.members.filter(entry => ctx.agents.profileOf(entry.botId) === null);
+      if (gone.length > 0) throw refused(`${team.name} has members on or going to another machine: ${gone.map(entry => entry.name).join(', ')}; remove them before restoring it, a team holds bots of one machine`, { field: 'teamId', reason: 'moving', members: gone.map(entry => entry.botId) });
+      return save(team, { archived: params.archived });
     },
     'teams.pause': async (params) => {
       gate();
