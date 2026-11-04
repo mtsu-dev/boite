@@ -191,6 +191,25 @@ export class ContactGroupLink {
     return { ok: true };
   }
 
+  /**
+   * The Bots host's bot forwarded a request a thread here asked through it:
+   * the thread reads it sent to that contact, under the host's name for it.
+   */
+  forwardedHere(peer: CoordinationPeer, payload: unknown): { ok: true } {
+    if (this.#core.group.roleOf('botsHome') !== peer.coreId) throw refused('contact.hand: only the group\'s Bots host reports a forward');
+    const raw = payload as { id?: unknown; contact?: unknown } | null;
+    const id = text(raw?.id, 'hand.id', 100), contact = text(raw?.contact, 'hand.contact', 100);
+    const requests = this.#store.requests.list();
+    const request = requests.find(entry => entry.id === id && entry.direction === 'out' && entry.from.coreId === this.#self());
+    // Answered meanwhile, or never asked here: nothing moves.
+    if (!request || request.status !== 'pending') return { ok: true };
+    request.contact = contact;
+    delete request.stage;
+    this.#store.requests.save(requests);
+    this.#store.changed();
+    return { ok: true };
+  }
+
   // -- The Bots host: taking a contact a member hands over.
 
   /** `contact.hand` from a member: a contact to take over, or the answer to a request one of its threads sent. */
@@ -198,8 +217,9 @@ export class ContactGroupLink {
     if (!this.#core.group.peers().some(entry => entry.coreId === peer.coreId)) throw refused('contact.hand: only a machine of this group hands a contact');
     const action = (payload as { action?: unknown } | null)?.action;
     if (action === 'answer') return this.answerHere(payload);
+    if (action === 'forwarded') return this.forwardedHere(peer, payload);
     if (action === 'bot') return this.#bot.coming(peer);
-    if (action !== 'hand') throw invalidParams('hand.action: expected hand, answer or bot');
+    if (action !== 'hand') throw invalidParams('hand.action: expected hand, answer, forwarded or bot');
     const self = this.#self();
     if (this.#core.group.roleOf('botsHome') !== self) throw refused('contact.hand: this machine is not the group\'s Bots host');
     const raw = payload as { contact?: Partial<StoredContact>; requests?: unknown; relations?: unknown };

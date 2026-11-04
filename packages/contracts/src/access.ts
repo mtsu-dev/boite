@@ -37,7 +37,8 @@ export const DEVICE_METHODS: ReadonlySet<RpcMethodName> = new Set<RpcMethodName>
   'delegation.get', 'delegation.result', 'delegation.wait', 'delegation.send', 'delegation.stop',
   // Follow a workflow, pause or stop it; resume and retry spend budget and are refused to a phone (checked in workflows.control).
   'workflows.list', 'workflows.get', 'workflows.control', 'workflows.templates.list',
-  // Coordination is visible with the conversation; only the owner enables it.
+  // Coordination is visible with the conversation; only the owner enables it. Its contact
+  // requests come with it: a phone shows where the thread's own asks stand, as the desktop does.
   'collaboration.get',
   // A phone's own rendering errors and failed calls land in the owner's diagnostics, bounded per connection.
   'diagnostics.report',
@@ -333,7 +334,7 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
   ['workflows.output', 'the structured result of the step this thread is, checked against its declared shape'],
   ['workflows.templates.list', 'the plans kept for its own project'],
   ['workflows.templates.save', 'keeping a new plan for its own project, never replacing a saved one; a template runs only through workflows.start'],
-  ['collaboration.get', 'its own coordination inbox, never other conversations'],
+  ['collaboration.get', 'its own coordination inbox and the contact requests it made, never other conversations; the Contacts bot also its forwards and settlements, which it reads anyway'],
   ['sharedProjects.list', 'associations of its own project, with locally configured contact names'],
   ['sharedProjects.get', 'one explicit association of its own project'],
   ['sharedProjects.threads', 'only the two associated endpoints under live grants and coordination settings'],

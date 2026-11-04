@@ -438,7 +438,12 @@ export class ContactStore implements LinkedContacts {
       if (name !== undefined) entry.name = name;
       if (params.trusted !== undefined) entry.trusted = params.trusted;
     });
-    if (name !== undefined) this.members.mark(this.members.holdersOf(contact.coreId));
+    if (name !== undefined) {
+      this.members.mark(this.members.holdersOf(contact.coreId));
+      // One name for the contact everywhere its address is written: requests, relations and so the directory.
+      this.relations.renamed(contact.coreId, contact.name);
+      this.requests.renamed(contact.coreId, contact.name);
+    }
     // Trusted now: what waited for the owner's card goes back to the bot.
     if (params.trusted === true) this.requests.trusted(contact.coreId);
     return this.view(contact);

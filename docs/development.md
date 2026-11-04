@@ -99,6 +99,7 @@ client. Development fixtures spend no provider tokens:
 | `?fake=1&open=recent` | Opens the latest thread instead of a new draft |
 | `?fake=1&readability=1&open=recent` | A request over three days: narration between calls, a mid-turn and an automatic compaction, pull-request and review wakes, day dividers |
 | `?fake=1&council=1` | A thread with a running and a finished council and an older debate; the cards and salon draw with the `debates` experiment on ([council](council.md)) |
+| `?fake=1&asks=1&open=recent` | The opened thread asked the Contacts bot four times: one request with the bot, one sent to Chris, one answered, one refused ([contacts](contacts.md#in-the-conversation)) |
 | `?fake=1&uninstalled=1` | No connected provider |
 | `?fake=1&policy=managed` | An admin policy that locks every key a control shows; `broken` adds problems, `closed` fails closed ([enterprise](enterprise.md)) |
 
