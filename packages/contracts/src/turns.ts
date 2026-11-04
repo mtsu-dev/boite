@@ -30,6 +30,13 @@ export type TurnExecution = Pick<ThreadSummary,
   operation?: 'compact' | 'coordination' | 'delegation' | 'background' | 'resume' | 'pull-request' | 'keepalive' | 'routine' | 'event';
   /** A `compact` the core opened by the `autoCompact` setting, or a `keepalive`: not one the user asked for. */
   automatic?: true;
+  /**
+   * Another agent's message that found the thread at rest: no turn under way, no
+   * background work, no pull request whose checks it waits on, no delegated agent
+   * at work. It starts a request of its own (`continuesRequest`). Set at admission,
+   * since what the thread was doing then is not in its turns.
+   */
+  opensRequest?: true;
 };
 
 export interface Turn {
@@ -76,10 +83,13 @@ export interface Turn {
  * background work it left finished, a delegated agent or another agent wrote
  * back, a pull request it watches changed, the core resumed after a restart,
  * or the context was compacted on its own. The user's message, not this turn, is where the request started.
+ * Another agent's message that found the thread at rest (`opensRequest`) carries
+ * nothing on: the user's last message may be a day old, and that time is not this
+ * work's. `journal/request-since.ts` reads the same rule in SQL.
  */
 export function continuesRequest(turn: Pick<Turn, 'execution'>): boolean {
   const execution = turn.execution;
-  if (!execution) return false;
+  if (!execution || execution.opensRequest) return false;
   const operation = execution.operation;
   return operation === 'background' || operation === 'delegation' || operation === 'coordination' || operation === 'resume' || operation === 'pull-request' || execution.automatic === true;
 }
@@ -91,8 +101,8 @@ export function queueOrder(a: Pick<Turn, 'id' | 'queuedAt'>, b: Pick<Turn, 'id' 
 
 /**
  * When the request each turn belongs to started: the start of the last turn
- * the user opened, carried through the turns Boite opened after it
- * (`continuesRequest`). Turns are ordered by `queuedAt`, then by id for the
+ * that opened one, the user's or another agent's on a thread at rest, carried
+ * through the turns Boite opened after it (`continuesRequest`). Turns are ordered by `queuedAt`, then by id for the
  * same millisecond, whatever order the list holds them in. A turn that never started maps to null and moves
  * nothing: a prompt still queued, or cancelled before it ran, has no start to
  * count from. When the user's turn is not in the list, a page not loaded yet,

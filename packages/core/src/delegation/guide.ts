@@ -1,8 +1,17 @@
 /** What an agent reads about its team: the mail Boite hands it and the manual of a parent. */
 import type { AgentLetter, DelegationConfig } from '@boite/contracts';
 import type { Core } from '../core.ts';
+import type { TurnOrigin } from '../threads/turn-origin.ts';
 import { anyModel } from './routes.ts';
 import { pauseLine } from './pauses.ts';
+
+/**
+ * The turn this mail opens. A thread with a parent takes mail from that parent
+ * alone: a follow-up, unlike a child's report or the resume after an update.
+ */
+export function mailOrigin(hasParent: boolean, letters: AgentLetter[]): TurnOrigin {
+  return hasParent && letters.some(letter => !letter.carriesOn) ? { kind: 'delegation', followUp: true } : { kind: 'delegation' };
+}
 
 /**
  * `relation` names the sender from the recipient's side: the parent that

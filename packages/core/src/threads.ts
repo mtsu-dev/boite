@@ -40,8 +40,8 @@ import { ThreadSpawns } from './threads/spawn.ts';
 import { checkAttachmentArray, checkAttachments, checkTurnRequest, titleOf } from './threads/inputs.ts';
 import { RestartHandoff } from './threads/handoff.ts';
 import { SYSTEM_LABEL, nativeCommandPrompt, systemOperation } from './threads/operations.ts';
-import { USER_ORIGIN, autonomousSource, originAutomatic, originOperation, type StartTurnOptions, type TurnInput, type TurnOrigin } from './threads/turn-origin.ts';
-import { saveThread, withLoad } from './threads/records.ts';
+import { USER_ORIGIN, autonomousSource, originAgentWrites, originAutomatic, originOperation, type StartTurnOptions, type TurnInput, type TurnOrigin } from './threads/turn-origin.ts';
+import { saveThread, threadAtRest, withLoad } from './threads/records.ts';
 import { isBusy, markQueued } from './threads/lifecycle.ts';
 import { admissionRefusal } from './threads/admission.ts';
 import { ThreadRecovery } from './threads/recovery.ts';
@@ -696,8 +696,8 @@ export class ThreadStore {
         ...(thread.sessionId !== null && thread.sessionResumeAt ? { sessionResumeAt: thread.sessionResumeAt } : executionChoice ? { sessionResumeAt: null } : {}),
         sessionGeneration: thread.sessionGeneration ?? 0, selectionVersion: thread.selectionVersion ?? 0,
         ...(executionChoice ? { frozenSelection: true as const } : {}),
-        ...(operation ? { operation } : {}),
-        ...(automatic ? { automatic: true as const } : {}),
+        ...(operation ? { operation } : {}), ...(automatic ? { automatic: true as const } : {}),
+        ...(originAgentWrites(origin) && threadAtRest(this.#core, thread) ? { opensRequest: true as const } : {}),
       },
     };
     const message: Message = {
