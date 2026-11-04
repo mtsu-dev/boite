@@ -531,6 +531,7 @@ export class AgentProjects {
       questions: this.#core.threads.listQuestions(target.id),
       permissions: this.#core.threads.listPermissions(target.id),
       lastAnswer: this.#core.delegation.result(last),
+      wake: this.#core.wakes.of(target.id),
     };
   }
 

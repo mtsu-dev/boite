@@ -228,6 +228,8 @@ export class Coordination {
     const config = this.config(threadId);
     if (config.paused) this.#saveConfig(threadId, { ...config, paused: false });
   }
+  /** Paused by Stop or by the owner: what holds a thread's own scheduled wake (`threads/scheduled-wakes.ts`). */
+  heldByUser(threadId: string): boolean { return this.config(threadId).paused && !this.#wakesForAgent(threadId); }
   /** A pause another agent's letter ends: a restart's or a failed wake's, not Stop's or the owner's. One saved before reasons were recorded reads as a restart's. */
   #wakesForAgent(threadId: string): boolean {
     const reason = this.#core.journal.getSetting(`${AUTO_PAUSE_PREFIX}${threadId}`);

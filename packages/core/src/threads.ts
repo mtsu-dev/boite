@@ -776,15 +776,15 @@ export class ThreadStore {
     this.require(threadId);
     this.handoff.forget(threadId);
     this.cacheKeepalive.forget(threadId);
-    // Stop on a thread waiting for a usage limit to reset means: do not resume it.
-    const plannedResume = this.resumes.cancel(threadId, 'the thread was stopped');
+    // Stop on a thread waiting for a usage limit to reset, or for the wake its agent scheduled, means: do not resume it.
+    const planned = [this.resumes.cancel(threadId, 'the thread was stopped'), this.#core.wakes.cancel(threadId, 'the thread was stopped')].includes(true);
     this.#core.coordination.pause(threadId);
     // Runs first: once they are stopped, a team with no child has nothing left to pause.
     const childrenStopped = this.#core.workflows.stopRoot(threadId, 'Stopped with its thread') + this.#core.delegation.stop(threadId);
     if (this.#core.scheduler.stop(threadId) || childrenStopped > 0) return true;
     // No turn left, but the agent still runs work in the background: Stop ends
     // the agent process, and that work with it.
-    if ((this.agentState.background.get(threadId)?.length ?? 0) === 0) return plannedResume;
+    if ((this.agentState.background.get(threadId)?.length ?? 0) === 0) return planned;
     this.releaseAgent(threadId);
     this.agentState.noteBackground(threadId, []);
     return true;

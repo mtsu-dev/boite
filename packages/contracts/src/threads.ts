@@ -314,8 +314,30 @@ export interface ThreadSummary {
    * missing on older cores.
    */
   retry?: ThreadRetry | null;
+  /**
+   * The wake the agent asked for with its ScheduleWakeup tool, which the core
+   * keeps across restarts and opens as a turn when it is due (`ThreadWake`).
+   * Null when none is pending; missing on older cores.
+   */
+  wake?: ThreadWake | null;
   createdAt: Timestamp;
   updatedAt: Timestamp;
+}
+
+/**
+ * A wake the agent scheduled for itself (Claude's ScheduleWakeup). The core
+ * opens a turn with `prompt` once `at` passed and the thread is free; a newer
+ * call replaces it, `stop: true`, Stop, a pause or an archive cancels it.
+ */
+export interface ThreadWake {
+  /** When the agent asked to be woken. */
+  at: Timestamp;
+  /** The prompt the wake opens with. */
+  prompt: string;
+  /** The agent's one-line reason for the delay, null when it gave none. */
+  reason: string | null;
+  /** The turn that scheduled it. */
+  turnId: TurnId;
 }
 
 /**

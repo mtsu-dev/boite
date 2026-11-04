@@ -77,6 +77,7 @@ export function withLoad(core: Core, thread: ThreadSummary): ThreadSummary {
     subagentQuestions: putAway ? [] : core.delegation?.questions(thread.id) ?? [],
     retry: core.threads?.runner?.retryOf(thread.id) ?? core.threads?.resumes?.retryOf(thread.id) ?? null,
     pullRequestWatches: watches,
+    wake: core.wakes?.of(thread.id) ?? null,
   };
 }
 

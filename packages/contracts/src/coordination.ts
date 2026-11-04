@@ -1,7 +1,7 @@
 import type { ProjectId, RequestId, ThreadId, Timestamp } from './ids';
 import type { PermissionRequest } from './permissions';
 import type { QuestionRequest } from './questions';
-import type { ThreadStatus, ThreadSummary } from './threads';
+import type { ThreadStatus, ThreadSummary, ThreadWake } from './threads';
 import type { ContactCapabilities, SharedProjectRef, SharedThreadRef } from './shared-projects';
 
 export type CoordinationMode = 'off' | 'brief' | 'team';
@@ -165,6 +165,8 @@ export interface ProjectThreadDetail {
   permissions: PermissionRequest[];
   /** The last assistant text, cut at 4,000 characters. */
   lastAnswer: string | null;
+  /** The wake the thread's agent scheduled for itself, null when none; missing on older cores. */
+  wake?: ThreadWake | null;
 }
 /**
  * What a persistent agent does to a thread of a project entrusted to it.
