@@ -167,6 +167,7 @@ describe('antigravity', () => {
     // Windows needs no file: its `BROWSER` is a cmd.exe command line.
     const dataDir = harness?.dataDir ?? '';
     expect(existsSync(join(dataDir, 'browser-noop.sh'))).toBe(process.platform !== 'win32');
+    expect(existsSync(join(dataDir, 'browser-noop.cmd'))).toBe(false);
 
     // No token yet: this is the account the Accounts page offers a login on.
     const accounts = await client.call('accounts.list', {});
