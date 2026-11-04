@@ -76,6 +76,8 @@ export interface LinkedContacts {
   reset(): void;
   /** Starts the contacts' timer, which retries the pushes. */
   arm(): void;
+  /** The contacts this core holds, told to every member, and those the members hold (`held.ts`). */
+  held: { outgoing(): unknown[]; mirrored(via: string, value: unknown): void };
 }
 
 function within<T>(job: Promise<T>, ms: number, what: string): Promise<T> {
@@ -391,7 +393,13 @@ export class ContactMembers {
       if (!member) { this.#settle(memberId, pending[memberId]!); continue; }
       if (this.#pushing.has(memberId)) continue;
       this.#pushing.add(memberId);
-      const job = this.#tell(member, pending[memberId]!).finally(() => this.#pushing.delete(memberId));
+      const version = pending[memberId]!;
+      const job = this.#tell(member, version).finally(() => {
+        this.#pushing.delete(memberId);
+        // A change marked while this copy was on its way goes now, not at the next flush.
+        const next = this.#pendingPush()[memberId];
+        if (next !== undefined && next !== version) this.push();
+      });
       this.#pending.add(job);
       void job.catch(error => { if (!this.#closed) this.#core.log('warn', `contacts: ${member.name} did not take its copy of the contacts (${messageOf(error)})`, { source: 'contacts' }); })
         .finally(() => this.#pending.delete(job));
@@ -403,7 +411,8 @@ export class ContactMembers {
       const entry = this.#entry(contact.coreId, member.coreId)!;
       return entry.grants.length > 0 || (entry.relations?.length ?? 0) > 0 ? [entry] : [];
     });
-    try { await within(this.#core.coordination.request(member, 'relay.mirror', { contacts }), RELAY_MS, member.name); }
+    // Every contact this core holds, by name, so the member's threads and the Bots host's bot can ask for it (`held.ts`).
+    try { await within(this.#core.coordination.request(member, 'relay.mirror', { contacts, held: this.#contacts.held.outgoing() }), RELAY_MS, member.name); }
     catch (error) { if (!(error instanceof PeerRefusal)) throw error; }
     this.#settle(member.coreId, version);
   }
@@ -488,7 +497,9 @@ export class ContactMembers {
   mirrored(via: string, payload: unknown): { ok: true } {
     const list = (payload as { contacts?: unknown } | null)?.contacts;
     if (!Array.isArray(list) || list.length > 32) throw invalidParams('mirror.contacts: expected up to 32 contacts');
-    this.#replace(via, list.map((entry, index) => this.#checkEntry(entry, `mirror.contacts[${index}]`)), true);
+    const entries = list.map((entry, index) => this.#checkEntry(entry, `mirror.contacts[${index}]`));
+    this.#contacts.held.mirrored(via, (payload as { held?: unknown }).held);
+    this.#replace(via, entries, true);
     return { ok: true };
   }
 

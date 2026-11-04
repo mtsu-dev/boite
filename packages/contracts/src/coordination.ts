@@ -452,7 +452,13 @@ export interface ContactsBotView {
   requests: ContactRequest[];
   relations: ContactRelation[];
   flags: ContactFlag[];
-  contacts: { name: string; coreId: string; trusted: boolean; link: Contact['link']; offers: string[]; granted: string[]; bot: boolean }[];
+  /**
+   * `heldBy`: the machine of this owner's group that keeps the contact's link,
+   * for a contact linked to another member; the bot forwards to it all the
+   * same, through that member. `heldReason`: why the link has not moved to
+   * this Bots host, when the member tried. Both absent from older cores.
+   */
+  contacts: { name: string; coreId: string; trusted: boolean; link: Contact['link']; offers: string[]; granted: string[]; bot: boolean; heldBy?: string; heldReason?: string }[];
   /** This core's projects the bot may start a thread on or propose to open, with their git remote. */
   projects: { id: ProjectId; name: string; gitRemote?: string }[];
 }
