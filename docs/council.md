@@ -28,9 +28,10 @@ boite delegate council table <id>
 
 `--` ends the flags, so what follows it is the text, even `table` or `--foo`. The
 request and the changes hold up to 12,000 characters. The command returns
-the council id as soon as the members' model lists are read, which takes up to a
-minute when none is saved yet; `delegate list` shows the council, `delegate wait` with
-no agent id also waits for a round under way and `delegate stop <id>` stops it.
+the council id once the members' model lists are read, up to a minute when none
+is saved yet, or refuses it when a read takes longer, as described below;
+`delegate list` shows the council, `delegate wait` with no agent id also waits
+for a round under way and `delegate stop <id>` stops it.
 `requestId` on `council.start` and `council.again` makes a retry return the same
 council or round.
 
@@ -39,12 +40,14 @@ council with the reason. Boite never replaces a member, so three providers do
 not quietly turn into two of the same. A route with a slash is that very
 provider and model: `twin/alpha` never falls through to `twin/alpha-next`, nor
 `antigravity/x` or a provider that does not exist to a gateway model spelled
-`codex/antigravity/x`. Before these checks Boite reads a fresh model list when a
-named route is missing from the one it holds, which an earlier version may have
-saved, and an ACP model's effort scale. A read still going after 30 seconds
-carries on for the next try. If the member cannot be confirmed without it, the
-refusal says the models were not read yet; if only the effort scale is missing,
-a warning says the member runs at its default.
+`codex/antigravity/x`. Before these checks Boite waits for two reads, 30 seconds
+at most each: the lists nobody read yet, then a fresh list when a named route is
+missing from the one it holds, which an earlier version may have saved, and an
+ACP model's effort scale. A read still going after that carries on for the next
+try and the command goes on without it. If the member cannot be confirmed without
+it, the command is refused with `models not read yet`, and running it again
+returns the id once the read is done; if only the effort scale is missing, a
+warning says the member runs at its default.
 
 A top-level thread starts a council. A subagent, a team chat, a salon, an
 archived thread and a thread whose subagents are paused are refused.
