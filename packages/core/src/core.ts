@@ -249,7 +249,7 @@ export class Core {
   };
 
   /** The server answers on one more address when a group asks; a core with no server answers on none. */
-  network: NetworkSink = { also: () => false };
+  network: NetworkSink = { also: () => ({ tailnet: false, lan: [] }), lanAllowed: () => false };
 
   /** The clients this core carries to other members of its group (`group/relay.ts`); none without a server. */
   relays: RelaySink = { size: 0, sweep: () => undefined };

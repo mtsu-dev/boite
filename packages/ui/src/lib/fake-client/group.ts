@@ -5,6 +5,7 @@ import { usableAddresses } from '../group-addresses';
 import { secureId } from '../secure-id';
 import { fakeCore, migratePeer } from './coordination';
 import type { FakeContext, FakeMethods } from './context';
+import { ownAddresses } from './lan';
 
 /** What the members of one fake group share. Each context points at the roster of the group it is in. */
 export interface FakeRoster {
@@ -28,7 +29,18 @@ const refuse = (message: string, field?: string) =>
 const invalid = (message: string, field: string) => new RpcFailure({ code: RpcErrorCode.InvalidParams, message, data: { field } });
 
 function card(ctx: FakeContext): GroupCore {
-  return { coreId: ctx.identity.coreId, name: ctx.identity.name, os: ctx.core.os, addresses: [ctx.identity.url], epoch: 1 };
+  return { coreId: ctx.identity.coreId, name: ctx.identity.name, os: ctx.core.os, addresses: ownAddresses(ctx), epoch: 1 };
+}
+
+/** This core's entry follows where it listens now, and every member hears a change. */
+export function refreshOwnCard(ctx: FakeContext): void {
+  const roster = ctx.roster;
+  const own = roster?.cores.find(core => core.coreId === ctx.identity.coreId);
+  const addresses = ownAddresses(ctx);
+  if (roster === null || own === undefined || addresses.join(' ') === own.addresses.join(' ')) return;
+  // The admission stays: `epoch` counts admissions only, as on the real core.
+  own.addresses = addresses;
+  announce(roster, [ctx]);
 }
 
 function view(ctx: FakeContext): Group | null {

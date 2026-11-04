@@ -147,7 +147,7 @@ export class Connection {
       // A handshake that fails after the wait says why in its own words; the screen keeps saying it did not answer.
       void connecting.then(() => {
         if (client !== null && this.ctx.currentClient(client, generation) && client.state !== 'ready' && s.error !== null) s.error = strings.machines.timeout;
-      });
+      }, () => undefined);
     } finally {
       clearTimeout(timer);
       this.booted = true;

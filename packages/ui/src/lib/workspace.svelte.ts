@@ -593,7 +593,6 @@ export class Workspace {
     await this.select(local, undefined, local.draft?.projectId ?? undefined);
   }
 
-  /** `dropped`: the group dropped this machine, as opposed to it having moved or the owner taking it off the list. */
   /** The network changed: every machine waiting to retry tries now; one whose handshake is under way keeps it (`WsClient.wake`). */
   resumeMachines(): void {
     for (const machine of this.machines) {
@@ -602,6 +601,7 @@ export class Workspace {
     }
   }
 
+  /** `dropped`: the group dropped this machine, as opposed to it having moved or the owner taking it off the list. */
   async remove(id: string, dropped = false): Promise<void> {
     const machine = this.machines.find((m) => m.id === id);
     if (!machine || machine.store === store) return;

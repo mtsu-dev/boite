@@ -103,12 +103,14 @@ address, and gives the other members these addresses, best first:
 1. its public HTTPS address, when `publicUrl` is set ([phone](phone.md));
 2. its MagicDNS name, `http://<name>:<port>`;
 3. its tailnet address, `http://100.x.y.z:<port>`;
-4. its LAN address, when the core listens on the network (`listenOnLan`).
+4. its private LAN addresses, `http://192.168.x.y:<port>`, while it listens
+   on them;
+5. its LAN address, when the core listens on every address (`listenOnLan`).
 
 A member dialing another asks the address that answered last, and the
 others once that one has failed or stayed silent for a second, and keeps the
 first that answers with a valid signature. A machine reachable by any of the
-four is reached. Each address is sent a request of its own, signed and sealed
+five is reached. Each address is sent a request of its own, signed and sealed
 for that attempt: the same request sent twice to a machine that has two
 addresses would be refused there as a replay, and counted against its sender.
 A request begun for a member leaves sealed or not at all, even when this
@@ -140,16 +142,54 @@ A machine with no tailnet gives its LAN address, and two machines on one LAN
 group the same way once both listen on the network.
 
 Joining or creating a group makes the core listen on the tailnet address too,
-on the same port, beside the address it was started on. It stops when the
-machine leaves. Nothing else is opened: a core that listens on itself stays
-closed to the LAN. `--host` or `--lan` on the command line names the only
-address a core answers on, and such a core opens no other. On Windows the
-first listener outside loopback raises the firewall prompt for the core, unless
-the rule Boite asks for is already there ([phone](phone.md#windows-defender-firewall)).
+on the same port, beside the address it was started on, and on each private
+LAN address, so a phone or a computer on the same Wi-Fi reaches it without
+Tailscale. A private address is RFC 1918 (10/8, 172.16/12, 192.168/16) on a
+physical adapter: never loopback, link-local, a public address, the tailnet's
+100.64/10, or a container, VM or VPN adapter (`privateLanAddresses`,
+`packages/core/src/server/lan.ts`). A public address would put the core on the
+internet, and a bridge of guests leads to them rather than to the owner's
+phone. On Linux, sysfs decides: an adapter with a `device`, or a bridge with
+such a port (`br0` or Proxmox's `vmbr0` carrying the NIC, which is the LAN
+itself). A machine with no physical adapter, a container whose `eth0` is
+virtual yet is its LAN, falls back to the names that Windows and macOS use,
+and sysfs still rules out its bridges and tunnels whatever their names. The
+listeners follow the set of addresses: a network change opens and closes them
+(`ExtraListeners`, `packages/core/src/server/extra-listeners.ts`), an address
+that refuses the bind is logged once and skipped, and all of them close when
+the machine leaves. Nothing opens with `--host` or `--lan`, which name the only
+address a core answers on, nor on a core already bound everywhere, nor when the
+policy turns off `network.lan` or `network.groups` ([admin policy](enterprise.md)).
+The trade-off: members still seal what they say to each other, but a client on
+that network talks to the core over plain `ws://`, readable by the LAN.
 
-A machine that only listens on itself and has no tailnet gives a loopback
-address, which reaches it from the same computer and nowhere else. The group
-card says so.
+On Windows the core opens a LAN address only once the firewall lets it through
+on a private network, and only on the adapters on such a network
+(`LanGate`, `packages/core/src/group/lan.ts`): a listener anywhere else would
+raise Windows' own prompt, and a public or work network stays closed. While
+grouped, the core watches for itself, with or without a window open: its
+interfaces every 2.5 seconds, and the firewall every two minutes, since Windows
+turns a network public or private without changing its address. It reads the
+firewall too when the group starts, after `firewall.allow`, whenever the owner
+reads its status, and when an address changes; one reading at a time, never at
+every tick, since each runs PowerShell. From an address change until the
+reading after it, and after a reading that failed, the LAN stays closed: an
+older rule that allowed every profile would otherwise keep the core open on a
+network that just turned public. The card reads the firewall again when its
+window comes back to the front, so a network the owner just marked private in
+Windows settings opens without waiting. A core that leaves its group forgets
+what Windows said: grouped again, perhaps on another network, it reads the
+firewall before any listener opens. The rule Boite adds covers the Private
+profile only ([phone](phone.md#windows-defender-firewall)).
+
+The group card says, under this machine's row, how the LAN reaches it: at
+which address, that Windows still keeps it closed (with Allow on private
+networks for the owner), that the network is public and must be marked private
+in Windows settings, or that the policy forbids it. A machine that listens
+only on itself and has no tailnet gives a loopback address, which reaches it
+from the same computer and nowhere else, and the card says that instead.
+`?fake=1&lan=on` with `firewall=unset`, `firewall=public` or `policy=lan` shows
+those states.
 
 What two members say to each other is signed and sealed to the recipient,
 whatever network carries it: the roster, agents' messages and the join
@@ -166,9 +206,9 @@ request whatever `groupBots` says ([bots](bots.md#moving-a-bot-to-another-machin
 
 What a client says to a core is not sealed. That link is as private as its
 transport: WireGuard on a tailnet, TLS on an HTTPS address. A core that listens
-on the local network (`listenOnLan`) serves its clients over `ws://` there, as
-a pairing link already does, and a ticket or a session key sent on that link
-is readable by that LAN.
+on the local network (`listenOnLan`, or a grouped core on its private
+addresses) serves its clients over `ws://` there, as a pairing link already
+does, and a ticket or a session key sent on that link is readable by that LAN.
 
 Clocks of two members may differ by one minute; past that, signed requests and
 tickets are refused for their date.

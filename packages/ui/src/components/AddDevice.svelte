@@ -70,7 +70,9 @@
   let servingFailure = $state('');
   $effect(() => {
     const client = store.client;
-    if (!plain || !store.owner || store.connection !== 'ready' || !client) { tailscale = null; return; }
+    // A failure belongs to the plain link it tried to replace.
+    if (!plain) { tailscale = null; servingFailure = ''; return; }
+    if (!store.owner || store.connection !== 'ready' || !client) { tailscale = null; return; }
     let live = true;
     untrack(() => void client.call('tailscale.status', {}).then((status) => { if (live) tailscale = status; }, () => undefined));
     return () => { live = false; };

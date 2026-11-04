@@ -86,6 +86,8 @@ export interface Listening {
   port: number;
   /** The server also answers on the tailnet address, through a listener of its own. */
   tailnet: boolean;
+  /** Private LAN addresses the server also answers on, each through a listener of its own. */
+  lan?: readonly string[];
   publicUrl?: string | null;
 }
 
@@ -108,7 +110,8 @@ function publicOrigin(publicUrl: string | null | undefined): string | null {
 
 /**
  * The origins another machine dials, best first: the public HTTPS address a
- * phone needs, the tailnet name, the tailnet address, the LAN address. A core
+ * phone needs, the tailnet name, the tailnet address, the LAN addresses. The
+ * tailnet goes before the LAN, which answers only on the same network. A core
  * that listens on itself only has just its loopback address to give, which
  * reaches it from the same computer and nowhere else.
  */
@@ -126,6 +129,7 @@ export function advertisedAddresses(
     if (tailnet.name !== null) addresses.push(origin(tailnet.name, port));
     addresses.push(origin(tailnet.ip, port));
   }
+  for (const address of listening.lan ?? []) addresses.push(origin(address, port));
   if (everywhere && lan !== null) addresses.push(origin(lan, port));
   if (!everywhere && !LOOPBACK.has(host)) addresses.push(origin(host, port));
   if (addresses.length === 0) addresses.push(origin(everywhere ? '127.0.0.1' : host, port));
@@ -157,12 +161,25 @@ export async function probeTailnet(known: Tailnet | null, stale: boolean): Promi
   return { ip, name: name ?? (known?.ip === ip ? known.name : null) };
 }
 
-/** What the server alone can do for the group: answer on one more address. */
+/** The addresses a group wants the server to answer on beside its main one. */
+export interface ExtraAddresses {
+  /** The tailnet address, for the members and for a contact dialing in. */
+  tailnet: string | null;
+  /** Private LAN addresses, for a phone or a computer on the same network: a member's only. */
+  lan: readonly string[];
+}
+
+/** Which of them a client that dials them reaches, through a listener of their own or the main one. */
+export interface ExtraReach {
+  tailnet: boolean;
+  /** The LAN addresses with a listener of their own. */
+  lan: string[];
+}
+
+/** What the server alone can do for the group: answer on more addresses (`server/extra-listeners.ts`). */
 export interface NetworkSink {
-  /**
-   * Listens on `host` beside the address the core was started on, or on no
-   * extra address for null. True when a client that dials `host` reaches this
-   * core, whether through that listener or the main one.
-   */
-  also(host: string | null): boolean;
+  /** Keeps a listener on each wanted address and closes the others. */
+  also(wanted: ExtraAddresses): ExtraReach;
+  /** Whether LAN listeners may open at all: no `--host` or `--lan`, not bound everywhere, policy `network.lan` and `network.groups` on. */
+  lanAllowed(): boolean;
 }
