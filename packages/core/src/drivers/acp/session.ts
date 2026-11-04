@@ -10,7 +10,6 @@ import type {
   SessionNotification,
 } from '@agentclientprotocol/sdk';
 import type { OsProfile, PermissionMode, ProviderDescriptor, ProviderId, ModelInfo } from '@boite/contracts';
-import pkg from '../../../package.json';
 import { messageOf, unavailable } from '../../errors.ts';
 import type { SpawnedChild } from '../../procs.ts';
 import { agentEnv, profileFor, resolveLaunch } from '../../providers/resolve.ts';
@@ -23,7 +22,7 @@ import { OpenCommands } from './commands.ts';
 import { ModelRefused, SessionControls } from './controls.ts';
 import { failureText, loadRefusal, LoadRefused, rpcReason, rpcRefusal } from './load.ts';
 import { AGENT_OWN_MODEL, agentModelsOf } from './models.ts';
-import { canDeleteSessions, CLIENT_NAME, discardSession, EXIT_GRACE_MS, isGrok, isHermes, STDERR_MAX, type AcpDeps, type Timer } from './protocol.ts';
+import { acpClientInfo, acpSessionMeta, canDeleteSessions, CLIENT_NAME, discardSession, EXIT_GRACE_MS, isGrok, isHermes, STDERR_MAX, type AcpDeps, type Timer } from './protocol.ts';
 import { jsonLinesOnly } from './stdout.ts';
 import { commandsOf, imageBlocksOf, usdCostOf, type AcpTurn } from './turn.ts';
 import { answerPermission, drawUpdate, sessionNotificationOf } from './updates.ts';
@@ -89,6 +88,8 @@ export class AcpSession {
   #canLoad = false;
   /** The agent deletes sessions on request: a discovery session does not outlive its reading. */
   #canDelete = false;
+  /** What every `session/new` and `session/load` of this process adds, from its `initialize` answer. */
+  #sessionMeta: { _meta?: Record<string, unknown> } = {};
   /** This process resumed the thread's session with `session/load`, rather than creating one. */
   #loaded = false;
   /** This process already opened the session that reads the agent's own model: a refusal is not asked again. */
@@ -188,7 +189,7 @@ export class AcpSession {
       this.#ownModelAsked = true;
       // Only a lookup: a refusal leaves the session where it is, and the next
       // process asks again.
-      const discovered = await agent.request('session/new', { cwd: ctx.thread.cwd, mcpServers: [] }).catch((error: unknown) => {
+      const discovered = await agent.request('session/new', { cwd: ctx.thread.cwd, mcpServers: [], ...this.#sessionMeta }).catch((error: unknown) => {
         ctx.log('warn', `acp: ${ctx.provider.id} refused the session that reads its own model: ${messageOf(error)}`);
         return null;
       });
@@ -593,8 +594,9 @@ export class AcpSession {
     const init = await connection.agent.request('initialize', {
       protocolVersion: sdk.PROTOCOL_VERSION,
       clientCapabilities: {},
-      clientInfo: { name: CLIENT_NAME, version: pkg.version },
+      clientInfo: acpClientInfo(ctx.provider),
     });
+    this.#sessionMeta = acpSessionMeta(ctx.provider, init);
     this.#canLoad = !this.#protection && init.agentCapabilities?.loadSession === true;
     if (this.#protection && (init.agentInfo?.name !== 'OpenCode' || init.agentInfo?.version !== '1.19.3')) throw new Error(`execution.acp.agentInfo: expected verified OpenCode 1.19.3, received ${init.agentInfo?.name} ${init.agentInfo?.version}`);
     this.#canDelete = canDeleteSessions(init);
@@ -616,6 +618,7 @@ export class AcpSession {
           sessionId: ctx.sessionId,
           cwd: ctx.thread.cwd,
           mcpServers: [],
+          ...this.#sessionMeta,
         });
       } catch (error) {
         // Only an answer from a live agent says anything about the session; a
@@ -666,7 +669,7 @@ export class AcpSession {
       // still has to be looked for.
       if (!isGrok(ctx.provider) && !this.#controls.hasOptions()
         && (ctx.thread.effort !== null || (ctx.thread.model !== AGENT_OWN_MODEL && !this.#controls.hasModels()))) {
-        const discovered = await connection.agent.request('session/new', { cwd: ctx.thread.cwd, mcpServers: [] });
+        const discovered = await connection.agent.request('session/new', { cwd: ctx.thread.cwd, mcpServers: [], ...this.#sessionMeta });
         const discoveredModels = agentModelsOf(discovered);
         this.seedConfig(discovered.configOptions ?? [], discoveredModels?.currentModelId ?? null);
         this.#controls.seedListedModels(discoveredModels);
@@ -686,6 +689,7 @@ export class AcpSession {
     const created = await connection.agent.request('session/new', {
       cwd: this.#protection?.cwd ?? ctx.thread.cwd,
       mcpServers: [],
+      ...this.#sessionMeta,
     });
     this.#sessionId = created.sessionId;
     this.#controls.noteSession(created.modes, created.configOptions ?? null, created, true);

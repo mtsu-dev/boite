@@ -7,7 +7,7 @@ import type {
 import type { Core } from '../core.ts';
 import { invalidParams, messageOf, refused } from '../errors.ts';
 import type { Connection } from '../router.ts';
-import { checkModel, checkEffort, agentProvider, modelsFor, PROBED_PROTOCOLS } from '../threads/selection.ts';
+import { checkModel, checkEffort, agentProvider, listsModel, modelsFor, PROBED_PROTOCOLS } from '../threads/selection.ts';
 import { probedModelsOf } from '../drivers/index.ts';
 import { readSavedCatalog } from '../providers/saved-catalogs.ts';
 import { withLoad } from '../threads/records.ts';
@@ -468,7 +468,7 @@ export class AgentStore {
     const account = this.core.journal.getAccount(agent.selection.accountId);
     if (account === null || account.providerId !== provider.id) return `Its account is gone; choose another one for ${agent.name} in its settings.`;
     const listed = agent.selection.model === null || provider.models.length === 0 ? null : this.#listedModels(provider, account.id);
-    if (listed !== null && !listed.some(m => m.id === agent.selection.model)) {
+    if (listed !== null && !listsModel(provider, listed, agent.selection.model!)) {
       return `${provider.name} no longer lists ${agent.selection.model}; choose another model for ${agent.name} in its settings.`;
     }
     return null;

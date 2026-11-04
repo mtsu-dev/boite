@@ -562,6 +562,7 @@ export class AccountStore {
       folders = loginFolders(this.#core, account, provider, loginThreadId(accountId));
       acp = runAcpLogin({
         methodId,
+        provider,
         executable: launch.executable,
         args: [...launch.prefix, ...(profile?.launch?.args ?? [])],
         cwd: account.isolationDir ?? this.#core.dataDir,

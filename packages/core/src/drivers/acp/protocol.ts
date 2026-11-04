@@ -3,10 +3,33 @@
  * name the client gives itself, and the limits and waits a turn, a probe and a
  * login all use.
  */
+import type { Implementation } from '@agentclientprotocol/sdk';
 import type { ProviderDescriptor } from '@boite/contracts';
+import pkg from '../../../package.json';
+import { ANTIGRAVITY_CLIENT_INFO, antigravitySessionMeta, isAntigravity } from '../antigravity.ts';
 
 /** What the agent sees as `clientInfo.name`, and the name of the JSON-RPC app. */
 export const CLIENT_NAME = 'boite';
+
+/**
+ * The `initialize` call's `clientInfo`: Boite's own, but for Antigravity, which
+ * hides models from unknown clients. Typed as the SDK's `Implementation`: a
+ * plain object type makes the SDK's `request` fall to its untyped overload.
+ */
+export function acpClientInfo(provider: ProviderDescriptor | undefined): Implementation {
+  return provider !== undefined && isAntigravity(provider) ? { ...ANTIGRAVITY_CLIENT_INFO } : { name: CLIENT_NAME, version: pkg.version };
+}
+
+/** What a `session/new` or `session/load` adds for this agent, given its `initialize` answer: spread into the params. */
+export function acpSessionMeta(
+  provider: ProviderDescriptor | undefined,
+  init: { agentInfo?: { version?: unknown } | null },
+): { _meta?: Record<string, unknown> } {
+  if (provider === undefined || !isAntigravity(provider)) return {};
+  const version = init.agentInfo?.version;
+  const meta = antigravitySessionMeta(typeof version === 'string' ? version : null);
+  return meta === undefined ? {} : { _meta: meta };
+}
 export const MINUTE_MS = 60_000;
 export const STDERR_MAX = 400;
 /** How long a failed prompt waits for the child's exit before blaming the error itself. */

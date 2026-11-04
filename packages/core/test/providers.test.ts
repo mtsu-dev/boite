@@ -471,10 +471,10 @@ describe('providers', () => {
     if (process.arch === requiredArch) {
       expect(antigravity?.install?.state).toBe('absent');
     } else {
-      expect(antigravity?.install).toEqual({ state: 'failed', version: 'agy_acp_server_1.4.1',
+      expect(antigravity?.install).toEqual({ state: 'failed', version: 'agy_acp_server_1.4.5',
         message: `antigravity requires ${requiredArch}; this machine is ${process.arch}` });
     }
-    expect(antigravity?.install?.version).toBe('agy_acp_server_1.4.1');
+    expect(antigravity?.install?.version).toBe('agy_acp_server_1.4.5');
     expect(antigravity?.available).toBe(false);
 
     const descriptor = harness.core.providers.require('antigravity');
@@ -489,7 +489,7 @@ describe('providers', () => {
     const windows = descriptor.profiles['windows'];
     expect(windows?.install?.url).toContain('dl.google.com');
     expect(windows?.install?.sha256).toHaveLength(64);
-    expect(windows?.install?.archiveBytes).toBe(129599308);
+    expect(windows?.install?.archiveBytes).toBe(100423655);
     expect(windows?.install?.files.map((file) => file.path)).toEqual([
       'agy_acp_server.exe',
       'localharness_external.exe',

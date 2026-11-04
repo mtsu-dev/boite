@@ -4,16 +4,18 @@
  */
 import { Readable, Writable } from 'node:stream';
 import type { ClientConnection } from '@agentclientprotocol/sdk';
-import pkg from '../../../package.json';
+import type { ProviderDescriptor } from '@boite/contracts';
 import { messageOf } from '../../errors.ts';
 import type { SpawnedChild, SpawnOptions } from '../../procs.ts';
 import { stderrDrained, stderrLines } from '../lines.ts';
-import { canDeleteSessions, CLIENT_NAME, discardSession, MINUTE_MS, preferExit, STDERR_MAX, type Timer } from './protocol.ts';
+import { acpClientInfo, acpSessionMeta, canDeleteSessions, CLIENT_NAME, discardSession, MINUTE_MS, preferExit, STDERR_MAX, type Timer } from './protocol.ts';
 import { jsonLinesOnly } from './stdout.ts';
 
 export interface AcpLoginInput {
   /** The `authenticate` method id the descriptor names. */
   methodId: string;
+  /** The provider signing in, for the dialect its `initialize` and session speak. */
+  provider?: ProviderDescriptor;
   executable: string;
   args: string[];
   cwd: string;
@@ -65,6 +67,7 @@ async function readCatalog(
   canDelete: boolean,
   cwd: string,
   child: SpawnedChild,
+  meta: { _meta?: Record<string, unknown> },
 ): Promise<AcpLoginCatalog> {
   let timer: Timer | null = null;
   const died = new Promise<never>((_resolve, reject) => {
@@ -73,7 +76,7 @@ async function readCatalog(
   died.catch(() => undefined);
   try {
     const read = (async () => {
-      const created = await agent.request('session/new', { cwd, mcpServers: [] });
+      const created = await agent.request('session/new', { cwd, mcpServers: [], ...meta });
       await discardSession(agent, canDelete, created.sessionId);
       return created;
     })();
@@ -153,6 +156,7 @@ export function runAcpLogin(input: AcpLoginInput): AcpLoginRun {
   };
 
   let catalog: AcpLoginCatalog = { created: null, error: null };
+  let sessionMeta: { _meta?: Record<string, unknown> } = {};
   const done = (async (): Promise<void> => {
     const sdk = await import('@agentclientprotocol/sdk');
     const expired = new Promise<never>((_resolve, reject) => {
@@ -173,13 +177,14 @@ export function runAcpLogin(input: AcpLoginInput): AcpLoginRun {
       const init = await open.agent.request('initialize', {
         protocolVersion: sdk.PROTOCOL_VERSION,
         clientCapabilities: {},
-        clientInfo: { name: CLIENT_NAME, version: pkg.version },
+        clientInfo: acpClientInfo(input.provider),
       });
       const offered = (init.authMethods ?? []).map((method) => method.id);
       if (offered.length > 0 && !offered.includes(input.methodId)) {
         throw new Error(`the agent offers no ${input.methodId} sign-in, only ${offered.join(', ')}`);
       }
       await open.agent.request('authenticate', { methodId: input.methodId });
+      sessionMeta = acpSessionMeta(input.provider, init);
       return canDeleteSessions(init);
     })();
 
@@ -191,7 +196,7 @@ export function runAcpLogin(input: AcpLoginInput): AcpLoginRun {
     }
     // Signed in. A second launch would unpack and start the whole agent again
     // to list the models; this one is already running.
-    if (input.catalogCwd !== undefined) catalog = await readCatalog(open.agent, canDelete, input.catalogCwd, child);
+    if (input.catalogCwd !== undefined) catalog = await readCatalog(open.agent, canDelete, input.catalogCwd, child, sessionMeta);
   })();
 
   return { done, kill, exited, catalog: done.then(() => catalog, () => ({ created: null, error: null })) };

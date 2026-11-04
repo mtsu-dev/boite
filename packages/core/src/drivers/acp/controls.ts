@@ -12,6 +12,7 @@ import type {
 import type { ModelInfo, PermissionMode } from '@boite/contracts';
 import { messageOf } from '../../errors.ts';
 import { PROXY_PREFIX_ENV } from '../../subscription-proxy.ts';
+import { antigravityLegacyFamily, isAntigravity } from '../antigravity.ts';
 import { grokReasoningEffortOf } from '../grok.ts';
 import type { SessionContext } from '../types.ts';
 import { AGENT_OWN_MODEL, agentModelsOf, categoryOption, modelsFrom, selectValues, type AgentModels } from './models.ts';
@@ -468,6 +469,17 @@ export class SessionControls {
     return categoryOption(this.#configOptions, 'model') ?? undefined;
   }
 
+  /**
+   * The model option for a pre-1.4 Antigravity id, such as
+   * `gemini-3.8-flash-low`, which the agent still takes although it lists only
+   * `gemini-3.8-flash` and its levels: threads and bots saved on one keep running.
+   */
+  #legacyModelOption(ctx: SessionContext, category: SessionConfigOptionCategory, wanted: string): SessionConfigOption | undefined {
+    if (category !== 'model' || !isAntigravity(ctx.provider)) return undefined;
+    const option = categoryOption(this.#configOptions, 'model');
+    return option !== null && antigravityLegacyFamily(selectValues(option), wanted) !== null ? option : undefined;
+  }
+
   /** One effort level on the session as it runs. False when the agent has no such option or refused it. */
   async applyEffort(ctx: SessionContext, effort: string): Promise<boolean> {
     if (isGrok(ctx.provider) || this.#configOptions.length === 0) return false;
@@ -508,7 +520,8 @@ export class SessionControls {
     if (this.#ownOptions && listed?.type === 'select' && String(listed.currentValue) === wanted) return null;
     const refusal = `${category}\0${wanted}`;
     if (category !== 'model' && this.#refused.has(refusal)) return { kind: 'refused', detail: `refused the ${category} ${wanted}` };
-    const option = listed ?? this.#injectedModelOption(ctx, category, wanted);
+    const legacy = listed === undefined ? this.#legacyModelOption(ctx, category, wanted) : undefined;
+    const option = listed ?? legacy ?? this.#injectedModelOption(ctx, category, wanted);
     if (option === undefined) {
       const offered = categoryOption(this.#configOptions, category);
       if (offered !== null && category === 'model') return { kind: 'unlisted', detail: `offers no model ${wanted}; it offers ${selectValues(offered).join(', ') || 'none'}` };
@@ -522,7 +535,7 @@ export class SessionControls {
     // injected into its configuration: asked at once, it does not know the
     // model yet, and half a second later it does. Only a model it never listed
     // is asked again; a refusal of one it lists is its answer.
-    const waits = listed === undefined ? INJECTED_MODEL_RETRY_MS : [];
+    const waits = listed === undefined && legacy === undefined ? INJECTED_MODEL_RETRY_MS : [];
     for (let attempt = 0; ; attempt += 1) {
       const live = this.#target();
       if (live.agent === null || live.sessionId === null) return gone;
