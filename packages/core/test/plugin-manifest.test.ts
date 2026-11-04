@@ -188,6 +188,9 @@ describe('a plugin source', () => {
     expect(read('git@github.com:owner/repo.git')).toEqual({ url: 'https://github.com/owner/repo.git', ref: 'HEAD' });
     expect(read('https://github.com/owner/repo/tree/release/1.x')).toEqual({ url: 'https://github.com/owner/repo', ref: 'release/1.x' });
     expect(read('https://github.com/owner/repo/releases/tag/v1.4.0')).toEqual({ url: 'https://github.com/owner/repo', ref: 'v1.4.0' });
+    expect(read('https://gitlab.com/group/sub/repo/-/releases/v1.0.0')).toEqual({ url: 'https://gitlab.com/group/sub/repo', ref: 'v1.0.0' });
+    // A file page keeps its path in the ref; the inspection ends it at a branch or tag the repository lists (refOfPath).
+    expect(read('https://github.com/owner/repo/blob/main/README.md')).toEqual({ url: 'https://github.com/owner/repo', ref: 'main/README.md' });
     expect(read('https://github.com/owner/repo/blob/main/boite-plugin.json')).toEqual({ url: 'https://github.com/owner/repo', ref: 'main' });
     expect(read('https://github.com/owner/repo/issues?q=x#top')).toEqual({ url: 'https://github.com/owner/repo', ref: 'HEAD' });
     expect(read('https://gitlab.com/group/sub/repo/-/tree/v2')).toEqual({ url: 'https://gitlab.com/group/sub/repo', ref: 'v2' });

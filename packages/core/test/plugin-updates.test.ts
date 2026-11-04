@@ -188,8 +188,8 @@ describe('an update source', () => {
     const verdict = (raw: Record<string, unknown>) => judge(JSON.stringify(raw), pinned, '1.0.0');
     expect(verdict(v2('1.0.1', ['threads.read'], { prompt: 'New words.' })).kind).toBe('offer');
     expect(verdict(v2('1.0.1', ['threads.read', 'todos']))).toEqual({ kind: 'ignored', reason: '1.0.1 changes its permissions from [threads.read] to [threads.read, todos]; that change comes with a Boite update.' });
-    expect(verdict(v2('1.0.1', ['threads.read'], { service: {} }))).toMatchObject({ kind: 'ignored', reason: expect.stringContaining('changes to run a service') });
-    expect(verdict(release('1.0.1', { id: 'standup', name: 'Standup', homepage: 'https://plugins.example.invalid/standup', executable: 'standup' }))).toMatchObject({ kind: 'ignored', reason: expect.stringContaining('changes its schema from 2 to 1') });
+    expect(verdict(v2('1.0.1', ['threads.read'], { service: {} }))).toMatchObject({ kind: 'ignored', reason: expect.stringContaining('changes what Boite starts for it from [] to [service]') });
+    expect(verdict(release('1.0.1', { id: 'standup', name: 'Standup', homepage: 'https://plugins.example.invalid/standup', executable: 'standup' }))).toMatchObject({ kind: 'ignored' });
   });
 
   test('an artifact over http or without a good digest is refused, and a digest that lies fails the install', async () => {

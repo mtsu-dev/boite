@@ -288,6 +288,28 @@ describe('plugins v2 end to end', () => {
     }
   }, 30_000);
 
+  test('a schema 1 dev folder that adds a desktop app waits for the owner, so the app never gets the owner token unasked', async () => {
+    harness = await startTestCore();
+    const dir2 = mkdtempSync(join(tmpdir(), 'boite-plugins-v2-'));
+    try {
+      const owner = await harness.connect();
+      const dir = join(dir2, 'pool'); mkdirSync(dir);
+      const file = join(dir, 'boite-plugin.json');
+      const manifest = { schema: 1, id: 'pool', name: 'Pool', version: '0.1.0', description: 'Switches logins.', homepage: 'https://example.com/pool',
+        executable: 'pool', provides: { accountPools: { providers: ['opencode'] } } };
+      writeFileSync(file, JSON.stringify(manifest));
+      writeFileSync(join(dir, process.platform === 'win32' ? 'pool.exe' : 'pool'), '');
+      await owner.call('plugins.dev', { path: dir });
+      writeFileSync(file, JSON.stringify({ ...manifest, provides: { ...manifest.provides, desktopApp: {} } }));
+      expect((await owner.call('plugins.list', {})).find((row) => row.id === 'pool')).toMatchObject({
+        status: 'error', error: expect.stringContaining('changed what Boite starts for it from [opencode pool] to [desktop app, opencode pool]'),
+      });
+    } finally {
+      await harness?.stop();
+      await removeDir(dir2);
+    }
+  }, 30_000);
+
   test('two loads naming one command: the second is refused, even after a refused reload, and a dropped gateway stops', async () => {
     harness = await startTestCore();
     const dir2 = mkdtempSync(join(tmpdir(), 'boite-plugins-v2-'));

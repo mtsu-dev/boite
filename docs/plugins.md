@@ -732,8 +732,10 @@ steps:
 
 1. The owner pastes the repository and, optionally, a branch, tag or commit
    (the default branch otherwise), then clicks Preview. The repository is
-   read the way people share it: its https URL, any page of it (a tag's
-   release page, a branch's tree or the manifest's file page names that ref),
+   read the way people share it: its https URL, any page of it (a release,
+   tag, commit, branch, folder or file page names that ref; for a folder or
+   file, the core asks the repository for its branches and tags,
+   `git ls-remote`, to tell where the ref ends and the path begins),
    `owner/repo` for GitHub, or the `git@host:path` clone URL, which names the
    same repository over https. A ref typed apart wins over the page's. Or
    the owner tells an agent "add this plugin: <link>": the agent runs

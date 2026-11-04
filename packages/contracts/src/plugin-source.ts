@@ -47,7 +47,7 @@ const BARE_HOST = /^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+(?::\d+)?\//;
  */
 const REF_PAGES: readonly RegExp[] = [
   /^(\/[^/]+\/[^/]+)\/(?:tree|blob|commit|releases\/tag)\/(.+)$/,
-  /^(\/.+?)\/-\/(?:tree|blob|commit|tags)\/(.+)$/,
+  /^(\/.+?)\/-\/(?:tree|blob|commit|tags|releases)\/(.+)$/,
   /^(\/[^/]+\/[^/]+)\/src\/(?:branch|tag|commit)\/(.+)$/,
 ];
 /** GitHub's other pages of a repository (issues, releases, pulls): the repository is the first two segments. */

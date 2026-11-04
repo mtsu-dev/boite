@@ -369,16 +369,24 @@ export function providesService(manifest: PluginManifest): boolean {
 
 /**
  * What `found` changes in the access the owner approved with `approved`: the
- * schema (schema 1 holds the owner token), the permissions or a service that
- * runs by itself. Null when it keeps them. A dev folder reread and a
- * recommended update both stop there until the owner loads it again.
+ * schema (schema 1 holds the owner token), the permissions, or what Boite
+ * starts on its own (a desktop app, a service, a gateway, account pools),
+ * each of which runs with that token. Null when it keeps them. A dev folder
+ * reread and a recommended update both stop there until the owner loads it
+ * again.
  */
 export function authorityChange(approved: PluginManifest, found: PluginManifest): string | null {
   if (found.schema !== approved.schema) return `its schema from ${approved.schema} to ${found.schema}`;
   const before = [...permissionsOf(approved)].sort().join(', ');
   const after = [...permissionsOf(found)].sort().join(', ');
   if (before !== after) return `its permissions from [${before}] to [${after}]`;
-  if (providesService(found) !== providesService(approved)) return providesService(found) ? 'to run a service' : 'to stop running a service';
+  const started = (manifest: PluginManifest): string => [
+    ...(providesApp(manifest) ? ['desktop app'] : []),
+    ...(providesService(manifest) ? ['service'] : []),
+    ...(providesGateway(manifest) ? ['gateway'] : []),
+    ...[...poolsOf(manifest)].sort().map((provider) => `${provider} pool`),
+  ].join(', ');
+  if (started(found) !== started(approved)) return `what Boite starts for it from [${started(approved)}] to [${started(found)}]`;
   return null;
 }
 

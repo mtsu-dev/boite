@@ -104,11 +104,11 @@ export function judge(text: string | null, pinned: PluginManifest, newest: strin
       return { kind: 'ignored', reason: `${found.version} changes ${field} from "${pinned[field]}" to "${found[field]}"; that change comes with a Boite update.` };
     }
   }
-  const changed = authorityChange(pinned, found);
-  if (changed !== null) return { kind: 'ignored', reason: `${found.version} changes ${changed}; that change comes with a Boite update.` };
   if (features(found.provides) !== features(pinned.provides)) {
     return { kind: 'ignored', reason: `${found.version} asks for other features than the reviewed entry; that change comes with a Boite update.` };
   }
+  const changed = authorityChange(pinned, found);
+  if (changed !== null) return { kind: 'ignored', reason: `${found.version} changes ${changed}; that change comes with a Boite update.` };
   const order = compareVersions(found.version, newest);
   if (order === 0) return { kind: 'current' };
   if (order < 0) return { kind: 'ignored', reason: `${found.version} found there, older than ${newest}; Boite never goes back.` };
