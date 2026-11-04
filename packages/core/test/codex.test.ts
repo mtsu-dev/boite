@@ -2149,6 +2149,20 @@ describe('native Codex fork', () => {
     expect(fakeLog()).toContain(`thread/resume ${fork.sessionId}`);
     expect(fakeLog().split('\n').filter(line => line.includes('"mcp_servers"'))).toHaveLength(1);
   });
+  test('a fork made through the subscription proxy resumes under the proxy provider', async () => {
+    const client = await startCore();
+    const threadId = await codexThread(client);
+    // The gateway's address reaches the driver in the account's environment, where `subscriptionProxyEnv` puts it.
+    const provider = harness!.core.providers.require('codex-fake');
+    for (const profile of Object.values(provider.profiles)) if (profile) profile.env = { ...profile.env, BOITE_SUBSCRIPTION_PROXY_URL: 'http://127.0.0.1:9/v1' };
+    const first = await completed(client, threadId, 'First');
+    await completed(client, threadId, 'Second');
+    await sourceIdle(threadId);
+    const fork = await client.call('threads.fork', { threadId, messageId: first.id });
+    await client.call('threads.subscribe', { threadId: fork.id });
+    await completed(client, fork.id, 'Fork continuation');
+    expect(fakeLog()).toContain(`thread/resume ${fork.sessionId}`);
+  });
   test('native fork failure leaves source and journal thread count unchanged', async () => {
     const client = await startCore(); const threadId = await codexThread(client);
     const reply = await completed(client, threadId, 'First');

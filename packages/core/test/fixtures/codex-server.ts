@@ -83,6 +83,28 @@ function log(line: string): void {
   appendFileSync(file, `${line}\n`, 'utf8');
 }
 
+/** The `model_provider` this process was started with, `openai` without one, as the real server reads it. */
+function providerOf(): string {
+  const flag = process.argv.find(arg => arg.startsWith('model_provider='));
+  return flag === undefined ? 'openai' : JSON.parse(flag.slice('model_provider='.length)) as string;
+}
+
+/**
+ * The real server writes the provider a thread opened under into its rollout
+ * and refuses to resume it under another. Kept beside the log, across processes.
+ */
+function recordProvider(id: string): void {
+  const file = process.env['CODEX_FAKE_LOG'];
+  if (file) appendFileSync(`${file}.providers`, `${id} ${providerOf()}\n`, 'utf8');
+}
+
+function recordedProvider(id: string): string | null {
+  const file = process.env['CODEX_FAKE_LOG'];
+  if (!file || !existsSync(`${file}.providers`)) return null;
+  const row = readFileSync(`${file}.providers`, 'utf8').split('\n').findLast(line => line.startsWith(`${id} `));
+  return row === undefined ? null : row.slice(id.length + 1);
+}
+
 // ---------------------------------------------------------------------------
 // The transport
 // ---------------------------------------------------------------------------
@@ -668,6 +690,7 @@ function handle(method: string, raw: unknown): unknown {
       log(
         `thread/start approvalPolicy=${textOf(params['approvalPolicy'])} sandbox=${textOf(params['sandbox'])} model=${textOf(params['model'])}${ephemeral ? ' ephemeral' : ''}`,
       );
+      recordProvider(threadId);
       const opened = { thread: threadRecord(), model: 'fake-codex', modelProvider: 'fake', serviceTier: null };
       // `CODEX_FAKE_SLOW_START=<ms>`: an app-server slow to open its thread.
       const slow = Number(process.env['CODEX_FAKE_SLOW_START'] ?? '0');
@@ -686,6 +709,7 @@ function handle(method: string, raw: unknown): unknown {
       if (process.env['CODEX_FAKE_FORK_ERROR'] === '1') throw new Error('native fork refused');
       forkBoundary = textOf(params['lastTurnId']);
       threadId = process.env['CODEX_FAKE_FORK_SAME'] === '1' ? textOf(params['threadId']) : `codex-fork-${crypto.randomUUID()}`;
+      recordProvider(threadId);
       const answer = { thread: threadRecord(), model: textOf(params['model']), modelProvider: 'fake' };
       return answer;
     }
@@ -704,6 +728,10 @@ function handle(method: string, raw: unknown): unknown {
       const answer = (): unknown => {
         // `CODEX_FAKE_LOST=1`: the rollout of every thread is gone, in the real server's words.
         if (process.env['CODEX_FAKE_LOST'] === '1') throw new Error(`no rollout found for thread id ${threadId}`);
+        const recorded = recordedProvider(threadId);
+        if (recorded !== null && recorded !== providerOf()) {
+          throw new Error(`This chat uses ${recorded}, but your current provider is ${providerOf()}. Switch to ${recorded} to continue.`);
+        }
         // The real server's refusal of a thread archived in the Codex app or CLI.
         if (process.env['CODEX_FAKE_ARCHIVED'] === '1' && !unarchived.has(threadId)) {
           throw new Error(`session ${threadId} is archived. Run \`codex unarchive ${threadId}\` to unarchive it.`);
