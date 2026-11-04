@@ -35,13 +35,15 @@ council or round.
 
 A member whose provider is missing, or who cannot run, refuses the whole
 council with the reason. Boite never replaces a member, so three providers do
-not quietly turn into two of the same. A route that names a provider is that very
-model: `twin/alpha` never falls through to `twin/alpha-next`, nor `antigravity/x` to
-a gateway model spelled `codex/antigravity/x`. Before these checks Boite reads a
-fresh model list when a named route is missing from the one it holds, which an
-earlier version may have saved, and an ACP model's effort scale. A read still
-going after 30 seconds carries on for the next try, and the refusal says the
-models were not read yet.
+not quietly turn into two of the same. A route with a slash is that very
+provider and model: `twin/alpha` never falls through to `twin/alpha-next`, nor
+`antigravity/x` or a provider that does not exist to a gateway model spelled
+`codex/antigravity/x`. Before these checks Boite reads a fresh model list when a
+named route is missing from the one it holds, which an earlier version may have
+saved, and an ACP model's effort scale. A read still going after 30 seconds
+carries on for the next try. If the member cannot be confirmed without it, the
+refusal says the models were not read yet; if only the effort scale is missing,
+a warning says the member runs at its default.
 
 A top-level thread starts a council. A subagent, a team chat, a salon, an
 archived thread and a thread whose subagents are paused are refused.
@@ -59,9 +61,12 @@ the member shows `no score`; a score is never made up.
 A round ends when every member has answered, when its time is up or when the
 owner closes it. A member past the time is absent from that round, without a
 score, and is asked again in the next one. A turn that ends on the member's own
-background work is not its answer: the turn that work wakes is, within the same
-time. A round nobody answers still goes back to the parent. A closed round leaves
-the council in `waiting`.
+background work answers only with a `Score:` line, and that work then stops;
+otherwise the turn that work wakes does, within the same time, and the answer is
+all the member wrote over the round. If nothing wakes it, what it wrote so far is
+its answer, without a score. Ending a round or a council stops any member's
+background work. A round nobody answers still goes back to the parent. A closed
+round leaves the council in `waiting`.
 
 ## Answers and the table
 
@@ -121,8 +126,8 @@ refuses edits and allows every command (`opencode debug agent plan`, 1.19.5,
 2026-11-04), so that prompt alone holds its commands back, and a warning says so.
 OpenCode 2 was not measured and gets the same warning.
 
-An ACP agent that lists no plan mode, or refuses it, fails the member's turn, so
-the member is absent from the round with the reason rather than running outside
+An ACP agent that lists no plan mode, refuses it or does not confirm it fails the
+member's turn, so the member is absent from the round with the reason rather than running outside
 read-only.
 
 On Windows a read-only Codex session leaves the Microsoft Store's folders off its
@@ -142,7 +147,7 @@ the answer, and the table of rounds under them.
 
 With the experiment off, every `council.*` method refuses with `experiment-off`,
 the subagent guide says nothing, the `boite-council` skill is left out and the
-app draws neither card nor salon. A round already under way still finishes and
+app draws no card; a salon tab left open says how to turn it on. A round already under way still finishes and
 its answers come back.
 
 ## Older debates

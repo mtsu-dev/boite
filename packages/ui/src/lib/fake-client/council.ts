@@ -179,9 +179,9 @@ export function councilMethods(ctx: FakeContext): CouncilMethods {
         const what = named ? `models[${index}]` : `default member ${model}`;
         try {
           const route = pickModel(ctx, parent, config, model, undefined);
-          // A route that names its provider is that very model, not one it is a part of.
+          // A route with a slash is that very provider/model, not one it is a part of.
           const head = model.slice(0, Math.max(0, model.indexOf('/')));
-          if (choices.some(choice => choice.providerId === head) && route.id.toLowerCase() !== model.toLowerCase()) throw new Error(`${head} does not offer it; the nearest is ${route.id}`);
+          if (head !== '' && route.id.toLowerCase() !== model.toLowerCase()) throw new Error(`${head} does not offer it; the nearest is ${route.id}`);
           const levels = choices.find(choice => `${choice.providerId}/${choice.model}` === route.id)?.efforts ?? [];
           if (levels.includes(effort)) return { ...route, effort };
           // A level a model lacks is said, not refused: its strongest below the one asked.

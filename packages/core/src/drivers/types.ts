@@ -90,7 +90,7 @@ export type QuestionTicket = Promise<QuestionAnswer | null> & { readonly questio
 export interface TurnContext {
   /** Immutable additional restriction for externally supplied work, never a provider/account replacement. */
   protectedExecution?: import('./protected.ts').ProtectedDriverExecution;
-  /** The turn may not run outside its permission mode: a council member's read-only rests on it. */
+  /** The turn may not run outside the plan mode it asks: a council member's read-only rests on it. */
   modeRequired?: boolean;
   thread: ThreadSummary;
   account: Account;

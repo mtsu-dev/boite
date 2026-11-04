@@ -1533,6 +1533,10 @@ describe('acp driver', () => {
     expect(refused.status).toBe('error');
     expect(refused.error).toContain('native agent refused plan');
     expect(fakeLog()).not.toContain('session/prompt');
+    // Outside plan, where Boite refuses its permissions instead, the turn runs.
+    delete process.env['ACP_FAKE_REFUSE_MODES'];
+    process.env['ACP_FAKE_NO_MODES'] = '1';
+    expect((await finishTurn(client, await acpThread(client), 'first')).status).toBe('done');
   });
 
   /** One `initialize` per agent process, which is what the probe cache saves. */

@@ -105,7 +105,7 @@ export class TurnContexts {
     return {
       thread, provider, account,
       protectedExecution: this.#core.sharedAccess.execution.context(threadId),
-      modeRequired: this.#core.council?.owns(threadId) === true,
+      modeRequired: thread.permissionMode === 'plan' && this.#core.council?.owns(threadId) === true,
       sessionId: thread.sessionId,
       resumeAt: thread.sessionResumeAt ?? null,
       sessionBefore: this.#sessionBefore(thread, ''),
@@ -412,7 +412,7 @@ export class TurnContexts {
     return {
       thread,
       protectedExecution,
-      modeRequired: this.#core.council?.owns(thread.id) === true,
+      modeRequired: thread.permissionMode === 'plan' && this.#core.council?.owns(thread.id) === true,
       account,
       provider,
       turn,

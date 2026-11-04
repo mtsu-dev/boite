@@ -281,11 +281,14 @@ test('a member who cannot run refuses the whole council: nobody is replaced', as
   for (const words of [['--models', 'twin/alpha'], ['--rounds', '3'], ['--timeout', '0']]) expect((await boite(h, threadId, ['delegate', 'council', REQUEST, ...words])).code).not.toBe(0);
   expect((await boite(h, threadId, ['delegate', 'council'])).err).toContain('needs a request');
   // A route naming a provider stays on it, though a gateway lists a model of that spelling.
-  await twinProvider(h, owner, [{ id: 'gated/beta', name: 'Gated beta' }], 'gateway');
+  await twinProvider(h, owner, [{ id: 'gated/beta', name: 'Gated beta' }, { id: 'ghost/beta', name: 'Ghost beta' }], 'gateway');
   await twinProvider(h, owner, [{ id: 'other', name: 'Other' }], 'gated');
   const swapped = await failure(() => start({ models: ['twin/alpha', 'gated/beta'] }));
   expect(swapped.message).toContain('gated/beta');
   expect(swapped.message).toContain('never replaced');
+  // A provider that does not exist is no way onto the gateway either.
+  const ghost = await failure(() => start({ models: ['twin/alpha', 'ghost/beta'] }));
+  expect(ghost.message).toContain('ghost does not offer it; the nearest is gateway/ghost/beta');
   // Nor is it another model of that provider the name is only a part of.
   await twinProvider(h, owner, [{ id: 'delta-next', name: 'Delta next' }], 'gated');
   const near = await failure(() => start({ models: ['twin/alpha', 'gated/delta'] }));
@@ -306,8 +309,17 @@ test('a read that hangs does not hold the start, and a council refused or retrie
   await twinProvider(h, owner, [{ id: 'one', name: 'One' }], 'slow');
   Object.assign(h.core.providers.require('slow'), { protocol: 'acp', models: [] });
   let reads = 0;
-  await prepareMembers(h.core, () => { reads += 1; return new Promise(() => {}); }, threadId, ['twin/alpha', 'slow/one'], 20);
+  const owed = await prepareMembers(h.core, () => { reads += 1; return new Promise(() => {}); }, threadId, ['twin/alpha', 'slow/one'], 20);
   expect(reads).toBe(1);
+  expect([...owed]).toEqual(['slow/one']);
+  // A list that holds a default model does not hide it: the refusal says what is owed, not that the model is missing.
+  Object.assign(h.core.providers.require('slow'), { models: [{ id: 'default', name: 'Default' }] });
+  const params = { threadId, request: REQUEST, models: ['twin/alpha', 'slow/one'] };
+  expect((await failure(() => h.core.council.start(params, owed))).message).toContain('slow: models not read yet');
+  // Nor does a level go down unsaid when only the scale is owed.
+  const low = h.core.council.start({ ...params, models: ['twin/alpha', 'twin/beta'] }, new Set(['twin/beta']));
+  expect(low.warnings.join(' ')).toContain('Beta: its effort levels were not read yet, so it runs at its default.');
+  h.core.council.stop({ councilId: low.id }, 'owner');
   prepare.mockClear();
   expect((await failure(() => start({ models: ['twin/alpha'] }))).message).toContain('expected 2 to');
   expect(prepare).not.toHaveBeenCalled();
@@ -317,30 +329,41 @@ test('a read that hangs does not hold the start, and a council refused or retrie
   expect(prepare).toHaveBeenCalledTimes(1);
 });
 
-test('a member that ends its turn on background work has not answered: the turn that work wakes is its score', async () => {
+test('a member that ends its turn on background work: a score answers, else the turn that work wakes, and the end of the round keeps what it wrote and stops that work', async () => {
   const d = driver();
-  const { h, start } = await setup();
-  const council = await start({ models: ['twin/alpha', 'twin/beta'] });
+  const { h, owner, start, read } = await setup();
+  const council = await start();
   const state = () => h.core.council.get({ councilId: council.id }).council;
-  await waitFor(() => d.round(1).length === 2);
-  const waiter = d.round(1).find(run => run.model === 'alpha')!;
-  waiter.ctx.background!([{ id: 'bg-1', kind: 'shell', description: 'read the logs', toolId: null, startedAt: Date.now() }]);
-  waiter.finish('Started reading the logs in the background.\n\nScore: 2/10');
-  d.round(1).find(run => run.model === 'beta')!.finish('Fine.\n\nScore: 8/10');
-  await waitFor(() => !by(state(), 'beta').pending);
-  // Its checkpoint is no answer: the round waits for it, and that 2 is not its score.
-  await waitFor(() => h.core.journal.listTurns(waiter.threadId).at(-1)?.status === 'done');
+  const bg = (run: Run) => h.core.threads.agentState.background.get(run.threadId)?.length ?? 0;
+  await waitFor(() => d.round(1).length === 3);
+  const member = (model: string) => d.round(1).find(run => run.model === model)!;
+  const [waker, scored, unwoken] = [member('alpha'), member('beta'), member('gamma')];
+  for (const [run, text] of [[waker, 'Started on the logs.'], [scored, 'Fine.\n\nScore: 8/10'], [unwoken, 'Looks thin so far.']] as const) {
+    run.ctx.background!([{ id: `bg-${run.model}`, kind: 'shell', description: 'read the logs', toolId: null, startedAt: Date.now() }]);
+    run.finish(text);
+  }
+  await waitFor(() => [waker, unwoken].every(run => h.core.journal.listTurns(run.threadId).at(-1)?.status === 'done'));
+  await waitFor(() => !by(state(), 'beta').pending && bg(scored) === 0);
+  expect(by(state(), 'beta').scores).toEqual([8]);
   expect(state().status).toBe('running');
-  expect(by(state(), 'alpha').pending).toBe(true);
-  expect(by(state(), 'alpha').scores[0] ?? null).toBeNull();
-  // The work ends and wakes it.
-  waiter.ctx.backgroundFinished!('bg-1', 'completed');
+  expect([by(state(), 'alpha').pending, by(state(), 'gamma').pending]).toEqual([true, true]);
+  waker.ctx.backgroundFinished!('bg-alpha', 'completed');
   const before = d.runs.length;
-  waiter.ctx.wake!('The logs are read.');
+  waker.ctx.wake!('The logs are read.');
   await waitFor(() => d.runs.length > before);
   d.runs.at(-1)!.finish('The logs are clean.\n\nScore: 9/10');
-  await waitFor(() => state().status === 'waiting');
+  await waitFor(() => !by(state(), 'alpha').pending);
   expect(by(state(), 'alpha').scores).toEqual([9]);
+  // Nothing wakes the last, as with an ACP command: closing keeps what it wrote and ends its work.
+  await owner.call('council.closeRound', { councilId: council.id });
+  await waitFor(() => state().status === 'waiting');
+  expect(by(state(), 'gamma').absent).toEqual([]);
+  expect(by(state(), 'gamma').scores[0] ?? null).toBeNull();
+  expect(bg(unwoken)).toBe(0);
+  const posts = (await read(council.id)).posts;
+  const text = (model: string) => posts.find(post => post.author === by(state(), model).id)?.text;
+  expect(text('alpha')).toBe('Started on the logs.\n\nThe logs are clean.\n\nScore: 9/10');
+  expect(text('gamma')).toBe('Looks thin so far.');
 });
 
 test('members stay read-only: the plan mode where there is one, every permission refused elsewhere, a warning for neither', async () => {

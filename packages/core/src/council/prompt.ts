@@ -11,13 +11,18 @@ export function clip(text: string, limit: number): string {
   return text.length <= limit ? text : `${text.slice(0, limit - 20).trimEnd()}\n[cut at ${limit} characters]`;
 }
 
+const SCORE_LINE = /^[\s>*_#`-]*score[\s*_`]*[:：]\s*(.+)$/gim;
+
+/** The text closes a review: it has a `Score:` line, `none` included. */
+export const hasScoreLine = (text: string): boolean => [...text.matchAll(SCORE_LINE)].length > 0;
+
 /**
  * The score of the answer's last `Score: n/10` line, in any case, with Markdown
  * emphasis around it. Anything else (`none`, `8`, `11/10`, `8/100`) is no score:
  * the core never makes one up.
  */
 export function scoreOf(text: string): number | null {
-  const last = [...text.matchAll(/^[\s>*_#`-]*score[\s*_`]*[:：]\s*(.+)$/gim)].at(-1)?.[1];
+  const last = [...text.matchAll(SCORE_LINE)].at(-1)?.[1];
   const found = last ? /^(\d+(?:[.,]\d+)?)\s*\/\s*10\b/.exec(last.replace(/[*_`]+/g, '').trim()) : null;
   if (!found) return null;
   const score = Number(found[1]!.replace(',', '.'));

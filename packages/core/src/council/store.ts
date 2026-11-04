@@ -10,7 +10,7 @@ import { childEnd } from '../delegation/completion.ts';
 import { catalog, providersNamed, type ChildRoute } from '../delegation/routes.ts';
 import { withLoad } from '../threads/records.ts';
 import { modelsFor } from '../threads/selection.ts';
-import { clip, endedMessage, roundMessage, roundPrompt, scoreOf } from './prompt.ts';
+import { clip, endedMessage, hasScoreLine, roundMessage, roundPrompt, scoreOf } from './prompt.ts';
 
 /** What the core keeps beside the council and never sends. */
 interface Internal {
@@ -273,34 +273,38 @@ export class CouncilStore {
    * then asks round 1. Routes were read by the RPC (`prepareRoutes`) before this
    * runs. A route that cannot run refuses the whole council: a member is never replaced.
    */
-  start(params: RpcParams<'council.start'>): Council {
+  /** `unread`: the routes whose lists or effort scales `prepareMembers` could not read. */
+  start(params: RpcParams<'council.start'>, unread: ReadonlySet<string> = new Set()): Council {
     const { parent, request, named, models, timeoutMinutes, effort, requestId, fingerprint, known } = this.admit(params);
     if (known) return known;
     const warnings: string[] = [];
     const route = (model: string, index: number): ChildRoute => {
       const what = named ? `models[${index}]` : `default member ${model}`;
       const unavailable = (why: string, details: Record<string, string>) => invalidParams(`${what}: ${why}. A council member is never replaced${named ? '' : '; name others with --models'}.`, { field: 'models', ...details });
-      // A route that names its provider is that very model: `antigravity/x` is not `codex/antigravity/x`, which a gateway may list, and `twin/alpha` is not `twin/alpha-next`.
+      // A route with a slash is that very provider/model: `antigravity/x` is not `codex/antigravity/x`, which a gateway may list, and `twin/alpha` is not `twin/alpha-next`.
       const head = providersNamed(this.#core, model)?.[0];
+      const prefix = model.includes('/') ? head ?? model.slice(0, model.indexOf('/')) : null;
+      const notRead = unread.has(model) ? `${prefix ?? model}: models not read yet` : null;
       let resolved: ChildRoute;
       try {
         const listed = catalog(this.#core, parent, true);
         if (head !== undefined && !listed.choices.some(choice => choice.providerId === head)) throw new Error(`${head}: ${listed.unavailable.find(entry => entry.providerId === head)?.reason ?? 'not installed'}`);
         resolved = this.#core.delegation.resolve(parent.id, { profileId: null, model });
       } catch (error) {
-        throw unavailable(messageOf(error), { model });
+        throw unavailable(notRead ?? messageOf(error), { model });
       }
-      if (head !== undefined && `${resolved.providerId}/${resolved.model}`.toLowerCase() !== model.toLowerCase()) throw unavailable(`${head} does not offer it; the nearest is ${resolved.providerId}/${resolved.model}`, { model });
+      if (prefix !== null && `${resolved.providerId}/${resolved.model}`.toLowerCase() !== model.toLowerCase()) throw unavailable(notRead ?? `${prefix} does not offer it; the nearest is ${resolved.providerId}/${resolved.model}`, { model });
       const provider = this.#core.providers.require(resolved.providerId);
       // One level across models that name theirs differently: the strongest not above the one asked, and any other than that is said.
       const levels = modelsFor(provider, resolved.accountId).find(entry => entry.id === resolved.model)?.effort?.levels ?? [];
       const level = levels.some(entry => entry.id === effort) ? effort : councilNearestEffort(levels.map(entry => entry.id), effort);
       if (level !== null) resolved = { ...resolved, effort: level };
-      if (level !== effort && (levels.length > 0 || params.effort !== undefined && params.effort !== null)) warnings.push(`${resolved.name} has no ${effort} effort, so it runs at ${resolved.effort ?? 'its default'}.`);
+      if (levels.length === 0 && unread.has(model)) warnings.push(`${resolved.name}: its effort levels were not read yet, so it runs at ${resolved.effort ?? 'its default'}.`);
+      else if (level !== effort && (levels.length > 0 || params.effort !== undefined && params.effort !== null)) warnings.push(`${resolved.name} has no ${effort} effort, so it runs at ${resolved.effort ?? 'its default'}.`);
       try {
         assertDriverRunnable(provider.protocol, this.#core.providers.summary(provider.id), this.#core.accounts.require(resolved.accountId), () => this.#core.providers.launcherScriptOnly(provider.id));
       } catch (error) {
-        throw unavailable(messageOf(error), { model });
+        throw unavailable(notRead ?? messageOf(error), { model });
       }
       const owner = this.#core.workforce.resident.ownerOf(parent.id);
       const permissionMode = readOnlyOf(this.#core, resolved.providerId) === 'native' ? 'plan' as const : 'default' as const;
@@ -519,12 +523,14 @@ export class CouncilStore {
     this.#settleSoon(id);
   }
 
-  /** Every member still asked is absent from the round, and its turn stops. */
+  /** Every member still asked stops: what it wrote so far, on its own background work, is its answer, or it is absent from the round. */
   #absentPending(id: string, why: string): void {
     const council = this.#load(id);
     if (!council || council.status !== 'running') return;
     for (const member of council.members.filter(m => m.pending)) {
-      this.#absent(id, member.id, council.round, why);
+      const said = member.threadId ? this.#said(council, member.threadId) : null;
+      if (said?.text) this.#record(council, member, said);
+      else this.#absent(id, member.id, council.round, why);
       if (member.threadId) this.#stopChild(member.threadId);
     }
   }
@@ -604,22 +610,34 @@ export class CouncilStore {
     const member = council.members.find(m => m.threadId === turn.threadId);
     const asked = member ? council.internal.turns[member.id] : null;
     if (!member?.pending || council.status !== 'running' || (asked !== turn.id && !(asked === STARTING && turn.queuedAt >= council.internal.roundStartedAt))) return;
-    // It ended to wait on its own background work: the turn that work wakes is its answer, and the round's time still runs.
-    if (end.kind === 'checkpoint') { this.#mutate(council.id, current => { current.internal.turns[member.id] = STARTING; }); return; }
-    const answer = turn.status === 'done' ? this.#answer(turn) : '';
-    if (!answer) return this.#absent(council.id, member.id, council.round, turn.status === 'done' ? 'its answer was empty' : turn.status === 'stopped' ? 'its turn was stopped' : `its turn failed${turn.error ? ` (${turn.error.slice(0, 200)})` : ''}`);
+    const said = this.#said(council, turn.threadId);
+    // It ended to wait on its own background work: unless a score closes what it wrote, the turn that work wakes answers, and the round's time still runs.
+    if (end.kind === 'checkpoint' && !hasScoreLine(said.text)) { this.#mutate(council.id, current => { current.internal.turns[member.id] = STARTING; }); return; }
+    if (!said.text) return this.#absent(council.id, member.id, council.round, turn.status === 'done' ? 'its answer was empty' : turn.status === 'stopped' ? 'its turn was stopped' : `its turn failed${turn.error ? ` (${turn.error.slice(0, 200)})` : ''}`);
+    this.#record(council, member, said);
+    // It has answered, and nobody reads what that work would wake.
+    if (end.kind === 'checkpoint') setTimeout(() => { if (!this.#gone) this.#stopChild(turn.threadId); }, 0).unref?.();
+  }
+
+  #record(council: Stored, member: CouncilMember, said: { text: string; turnId: string | null }): void {
     const round = council.round;
     const replied = this.#posts(council.id, 'AND round = ? AND author = ? AND to_id = ?', round, COUNCIL_OWNER, member.id).at(-1)?.id ?? null;
     this.#core.journal.db.transaction(() => {
-      this.#post(council.id, { round, author: member.id, text: clip(answer, COUNCIL_LIMITS.answerChars), to: null, inReplyTo: replied, turnId: turn.id });
+      this.#post(council.id, { round, author: member.id, text: clip(said.text, COUNCIL_LIMITS.answerChars), to: null, inReplyTo: replied, turnId: said.turnId });
       this.#mutate(council.id, current => {
         const now = current.members.find(m => m.id === member.id)!;
         now.pending = false;
-        now.scores[round - 1] = scoreOf(answer);
+        now.scores[round - 1] = scoreOf(said.text);
         current.internal.turns[member.id] = null;
       });
     })();
     this.#settleSoon(council.id);
+  }
+
+  /** All a member wrote over the round: a turn ended on its background work, then the one that work woke. */
+  #said(council: Stored, threadId: string): { text: string; turnId: string | null } {
+    const turns = this.#core.journal.listTurns(threadId).filter(turn => turn.status === 'done' && turn.queuedAt >= council.internal.roundStartedAt && childEnd(this.#core, turn).kind !== 'maintenance');
+    return { text: turns.map(turn => this.#answer(turn)).filter(Boolean).join('\n\n'), turnId: turns.at(-1)?.id ?? null };
   }
 
   /** The whole text of a turn's last answer. */
@@ -662,7 +680,8 @@ export class CouncilStore {
 
   #stopChild(threadId: string): void {
     const thread = this.#core.journal.getThread(threadId);
-    if (!thread || !threadActive(thread.status)) return;
+    // At rest on its own background work is at work too: Stop ends that work.
+    if (!thread || (!threadActive(thread.status) && (this.#core.threads.agentState.background.get(threadId)?.length ?? 0) === 0)) return;
     try { this.#core.threads.stopTurn(threadId); } catch (error) { this.#core.log('warn', `council member ${threadId} not stopped: ${messageOf(error)}`); }
   }
 

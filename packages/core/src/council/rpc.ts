@@ -14,26 +14,30 @@ import { needsModelDiscovery, PROBED_PROTOCOLS } from '../threads/selection.ts';
  * on it. A read that fails is left to the member's own check, which says why.
  * `timeoutMs` keeps the call well inside the CLI's wait: past it the reads go on
  * for a retry, and a caller that gave up never leaves a council it did not get.
+ * Returns the routes a read is still owed for, which the member's check says.
  */
-export async function prepareMembers(core: Core, probe: ProviderProbe, threadId: string, models: string[], timeoutMs = PROBE_TIMEOUT_MS): Promise<void> {
+export async function prepareMembers(core: Core, probe: ProviderProbe, threadId: string, models: string[], timeoutMs = PROBE_TIMEOUT_MS): Promise<Set<string>> {
   await core.delegation.prepareRoutes(threadId, probe, models);
   const parent = core.threads.require(threadId);
+  const unread = new Set<string>();
+  const read = async (model: string, request: Parameters<ProviderProbe>[0]) => { unread.add(model); await probe(request); unread.delete(model); };
   const reads = Promise.allSettled(models.map(async model => {
     const providerId = providersNamed(core, model)?.[0];
     const account = providerId === undefined ? undefined : accountFor(core, parent, providerId);
     if (account !== undefined && PROBED_PROTOCOLS.includes(core.providers.require(account.providerId).protocol)
       && !catalog(core, parent, true).choices.some(choice => `${choice.providerId}/${choice.model}` === model)) {
-      await probe({ providerId: account.providerId, accountId: account.id, refresh: true });
+      await read(model, { providerId: account.providerId, accountId: account.id, refresh: true });
     }
     const route = core.delegation.resolve(parent.id, { profileId: null, model });
     const provider = core.providers.require(route.providerId);
     if (provider.protocol === 'acp' && route.model !== null && needsModelDiscovery(provider, route.accountId, route.model, COUNCIL_DEFAULT_EFFORT, null)) {
-      await probe({ providerId: route.providerId, accountId: route.accountId, model: route.model });
+      await read(model, { providerId: route.providerId, accountId: route.accountId, model: route.model });
     }
   }));
   let timer: ReturnType<typeof setTimeout> | undefined;
   await Promise.race([reads, new Promise(resolve => { timer = setTimeout(resolve, timeoutMs); })]);
   clearTimeout(timer);
+  return unread;
 }
 
 export function registerCouncil(core: Core, probe: ProviderProbe): void {
@@ -46,8 +50,7 @@ export function registerCouncil(core: Core, probe: ProviderProbe): void {
     const body = object(params);
     const { parent, models, known } = core.council.admit(body);
     if (known) return known;
-    await prepareMembers(core, probe, parent.id, models);
-    return core.council.start(body);
+    return core.council.start(body, await prepareMembers(core, probe, parent.id, models));
   });
   core.router.register('council.again', (params, ctx) => core.council.again(object(params), ctx.connection.identity.principal));
   core.router.register('council.list', params => core.council.list(object(params ?? {})));

@@ -397,7 +397,7 @@ export class SessionControls {
     try {
       const answer = await agent.request('session/set_config_option', { sessionId, configId: option.id, value: modeId });
       const listed = (answer as { configOptions?: SessionConfigOption[] | null }).configOptions ?? null;
-      if (ctx.protectedExecution) {
+      if (ctx.protectedExecution || ctx.modeRequired) {
         const confirmed = categoryOption(listed ?? [], 'mode');
         if (confirmed?.type !== 'select' || String(confirmed.currentValue) !== modeId) throw new Error(`execution.acp.permissionMode: native agent did not confirm ${modeId}`);
       }
