@@ -84,7 +84,9 @@ export interface AutoCompact {
   /**
    * Independent token limit: compact at the next safe native tool boundary
    * when supported, otherwise between turns, even without a selected idle
-   * moment. Also gates turn-end/background; cache-expiry is independent.
+   * moment. With a limit, turn-end and background apply only once the context
+   * nears it, from where a background copy starts (85% of it, at least 64000
+   * tokens); cache-expiry is independent.
    * Null leaves only the selected idle moments.
    */
   tokens: number | null;

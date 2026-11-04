@@ -14,7 +14,8 @@
   /**
    * Automatic compaction: selected idle moments and an independent token limit.
    * The limit triggers at a safe native tool boundary where supported, otherwise
-   * between turns. It also gates turn-end/background moments, never cache expiry.
+   * between turns. Turn-end and background moments apply from 85% of it, never
+   * gating cache expiry.
    */
   let { store, target, embedded = false }: { store: Store; target?: CompactionTarget; embedded?: boolean } = $props();
   const uid = $props.id();

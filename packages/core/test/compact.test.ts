@@ -126,6 +126,44 @@ describe('automatic compaction', () => {
     client.close();
   });
 
+  test('with a token limit, the turn-end and background moments compact from where a background copy starts', async () => {
+    let reading = 0;
+    const restore = setDriver('echo', { ...echoDriver, startTurn(ctx) {
+      if (ctx.prompt === '[compact]') return echoDriver.startTurn(ctx);
+      return echoDriver.startTurn({ ...ctx, context: use => ctx.context({ ...use, tokens: reading }) });
+    } });
+    const client = await h.connect();
+    try {
+      const { threadId } = await quiet(client);
+      const automatic = () => {
+        const last = h.core.journal.lastTurn(threadId);
+        return last?.execution?.operation === 'compact' && last.execution.automatic === true && last.status === 'done';
+      };
+      // The band starts at 85% of the limit, 170000 here, above the 64000 floor.
+      await client.call('settings.set', { autoCompact: { tokens: 200_000, moments: ['turn-end', 'background'] } });
+      reading = 150_000;
+      await turn(client, threadId, 'below the band');
+      await pause(120);
+      expect(await compactions(client, threadId)).toEqual([]);
+
+      reading = 180_000;
+      await client.call('settings.set', { autoCompact: { tokens: 200_000, moments: ['background'] } });
+      h.core.threads.agentState.noteBackground(threadId, [{ id: 'bg1', kind: 'shell', description: 'watch', toolId: null, startedAt: Date.now() }]);
+      const finished = client.next('turn.finished', t => t.threadId === threadId);
+      await client.call('turns.start', { threadId, prompt: 'start the watch' });
+      const watched = await finished;
+      await waitFor(automatic, 2000);
+      // The settle delay still lets a queued prompt go first.
+      expect(h.core.journal.lastTurn(threadId)!.queuedAt).toBeGreaterThanOrEqual(watched.finishedAt! + AUTO_COMPACT.settleMs);
+
+      h.core.threads.agentState.noteBackground(threadId, []);
+      await client.call('settings.set', { autoCompact: { tokens: 200_000, moments: ['turn-end'] } });
+      await turn(client, threadId, 'the watch ended');
+      await waitFor(automatic, 2000);
+      expect(await compactions(client, threadId)).toHaveLength(2);
+    } finally { restore(); client.close(); }
+  });
+
   /**
    * Runs `change` in the core right after the thread's next finished turn arms
    * its timer, in the same tick, so a slow runner cannot let the delay lapse first.

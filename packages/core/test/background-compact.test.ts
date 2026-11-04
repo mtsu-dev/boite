@@ -116,6 +116,8 @@ describe('background compaction', () => {
     const client = await h.connect();
     try {
       const threadId = await setUp(client);
+      // No moment of its own, so only the limit compacts in place.
+      await client.call('settings.set', { autoCompact: { tokens: 1000, moments: [] } });
       await turn(client, threadId, 'x'.repeat(760));
       await waitFor(() => copies === 1);
       const compacted = client.next('turn.finished', t => t.threadId === threadId && t.execution?.operation === 'compact');
@@ -124,6 +126,20 @@ describe('background compaction', () => {
       const thread = await client.call('threads.get', { threadId });
       expect(thread.messages.flatMap(m => m.parts).some(p => p.type === 'compaction' && p.background === true)).toBe(false);
     } finally { restore(); client.close(); }
+  });
+
+  test('a ready copy that background work keeps from being taken leaves the background moment to compact in place', async () => {
+    const client = await h.connect();
+    try {
+      const threadId = await setUp(client);
+      await client.call('settings.set', { autoCompact: { tokens: 1000, moments: ['background'] } });
+      h.core.threads.agentState.noteBackground(threadId, [{ id: 'bg1', kind: 'shell', description: 'watch', toolId: null, startedAt: Date.now() }]);
+      const compacted = client.next('turn.finished', t => t.threadId === threadId && t.execution?.operation === 'compact');
+      await turn(client, threadId, 'x'.repeat(760));
+      expect(await compacted).toMatchObject({ status: 'done', execution: { automatic: true } });
+      const thread = await client.call('threads.get', { threadId });
+      expect(thread.messages.flatMap(m => m.parts).some(p => p.type === 'compaction' && p.background === true)).toBe(false);
+    } finally { client.close(); }
   });
 
   test('per-type background switches cover real children and bots, and a policy change cancels the old copy', async () => {
