@@ -322,7 +322,8 @@ member gave up. One of them that no longer lists the member stops every route
 to it, as it stops a direct ticket.
 
 On the socket, a refusal of the relay key (no key for the relaying machine, or
-a wrong one) is answered `Refused`, and a member it cannot reach `Unavailable`:
+a wrong one) is logged as a warning on the relaying machine and answered
+`Refused`, and a member it cannot reach `Unavailable`:
 never `Unauthorized`, which the client would take for its key on the member
 being revoked. A first frame that is not a hello is answered `Unauthorized`, as
 on a direct socket. A file or a view answers 404 for a machine that is not another member
@@ -603,7 +604,11 @@ asks as for a core nobody knows. No ticket is asked for it on the word of a
 member that still lists the admission that was dropped. It ends when a new key
 is issued for the address: a pairing made by hand, a link the owner said yes
 to, or the machine admitted again, which a member lists under a later
-admission. A window that is open lets the machine go as soon as another window
+admission. A mark also ends ten minutes after it was made (`DROPPED_HOLD_MS`)
+once every hand-paired machine of that group lists the machine: a roster lagging
+behind a removal has caught up by then, and an entry saved without an admission
+is dropped at the highest there is, which no later admission could outrank. A
+window that is open lets the machine go as soon as another window
 marks its address, whoever answers in that window, and a ticket exchange that
 began before the mark and ends after it is refused its key and closed. Only a
 machine the group dropped is marked, and only when something saved says the
@@ -622,7 +627,31 @@ minute at most. A key that is dropped is taken out of both places it is saved
 in, the list of machines and the core the window opens on next. These rules
 spare a client a useless attempt. They are not what keeps a key safe: the
 member is, by refusing a ticket for an address it gave up and by revoking the
-keys issued for it ([tickets](#how-it-works)).
+keys issued for it ([tickets](#how-it-works)). For the same reason, a hand-paired
+machine cut off for more than ten minutes, its roster stale, can have a client
+try again a member that was removed: the member refuses it.
+
+A device key saved for a member can outlive the way it was saved at: a route
+through a machine that left, an address the member no longer gives, a plain-HTTP
+address the page cannot open. Its client keeps trying that one way, and while it
+stood nothing else looked for the member. So a member the group lists is looked
+for again when its signed entry sits anywhere the roster no longer gives, or has
+closed, as a client does with no key left for the machine that carried it. The
+new attempt signs with the same key,
+at an address the roster gives or through a machine carrying it, and asks for a
+ticket if the member refuses that key. The old entry goes once the new one is
+in. Nothing is marked. A machine that is connected, still trying an address the
+roster gives, or the one the window opened on is left alone, and so is one at an
+address the roster gives that asks to be paired. A signed entry that fails on that
+attempt leaves the list instead of reading Offline, and so does a ticket that
+opened nothing. A route to a machine the member carrying it no longer lists is
+removed. So is one whose carrier is gone, once it holds no key and no machine
+paired by hand lists its target: a key held for a listed member is what the next
+attempt signs with. The roster is read once the remembered machines are in, or
+after thirty seconds when one of them never ends connecting
+(`SETTLE_WAIT_MS`), so a saved entry that hangs cannot hide the group's other
+machines. An older client left in that state repairs itself at its first load
+of a build with these rules, with no new pairing.
 
 At start, a key the group brought for a plain HTTP address is not sent before
 the machines paired by hand have been asked, each on a short connection of its

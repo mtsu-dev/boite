@@ -142,3 +142,57 @@ test('a phone that cannot reach a machine of its group reaches it through the ma
     b.close();
   }
 }, 90_000);
+
+test('a phone left with a dead route to a member that went and came back, and that mark on it, finds it again at the first reload', async () => {
+  const home = await startCore(),
+    desk = await startCore();
+  cores.push(home, desk);
+  const a = await connect(home.url, home.token);
+  const b = await connect(desk.url, desk.token);
+  try {
+    await Promise.all([a.call('settings.set', { browserOrigins: [url] }), b.call('settings.set', { browserOrigins: [url] })]);
+    const created = await a.call('group.create', { name: 'Home' });
+    const { invite } = await a.call('group.invite', {});
+    const joined = await b.call('group.join', { invite });
+    await page.evaluate('localStorage.clear()');
+    const grant = await a.call('pairing.grant', { role: 'device' });
+    await page.navigate(`${url}/?core=${encodeURIComponent(home.url)}&grant=${encodeURIComponent(grant.grant)}`);
+    await page.waitFor(`document.querySelector('${id('confirm-ok')}')`);
+    await page.click(id('confirm-ok'));
+    const relay = groupRelayUrl(home.url, joined.self);
+    const relayed = `globalThis.__boiteTest.workspace.machines.some(machine => machine.id === ${JSON.stringify(relay)} && machine.store.connection === 'ready')`;
+    await page.waitFor(relayed, 30_000);
+
+    // The member leaves and comes back: a later admission of the same machine.
+    await b.call('group.leave', {});
+    const back = await a.call('group.invite', {});
+    const rejoined = await b.call('group.join', { invite: back.invite });
+    const admission = (group: typeof rejoined) => group?.cores.find((core) => core.coreId === joined.self)?.epoch;
+    expect(admission(rejoined)).toBeGreaterThan(admission(joined)!);
+    await page.reload();
+    await page.waitFor(relayed, 30_000);
+
+    // What the phone was left with: that member saved only at a route through a machine long gone,
+    // marked at the highest admission there is, and a route to a machine out of the group since.
+    const stale = groupRelayUrl('http://127.0.0.1:1', joined.self);
+    const ghost = groupRelayUrl(home.url, '1'.repeat(64));
+    const saved = (entry: string, signs: string) => ({ url: entry, label: 'Saved', token: '', paired: true, signs });
+    const left = [saved(stale, joined.self), saved(ghost, '1'.repeat(64))];
+    const mark = { [`member ${created.id} ${joined.self}`]: { at: 1, epoch: Number.MAX_SAFE_INTEGER } };
+    await page.evaluate(`(() => {
+      const kept = JSON.parse(localStorage.getItem('boite.envs')).filter((entry) => entry.url !== ${JSON.stringify(relay)});
+      localStorage.setItem('boite.envs', JSON.stringify([...kept, ...${JSON.stringify(left)}]));
+      localStorage.setItem('boite.group.dropped', ${JSON.stringify(JSON.stringify(mark))});
+    })()`);
+    await page.reload();
+
+    // Nothing to do on the phone: the member is back through the machine it paired with, the dead ends are gone.
+    await page.waitFor(relayed, 45_000);
+    await page.waitFor(`globalThis.__boiteTest.workspace.machines.length === 2`, 15_000);
+    expect(await page.evaluate<string[]>(`globalThis.__boiteTest.workspace.machines.map(machine => machine.id).sort()`)).toEqual([home.url, relay].sort());
+    expect(await page.evaluate<string[]>(`JSON.parse(localStorage.getItem('boite.envs')).map((entry) => entry.url).sort()`)).toEqual([home.url, relay].sort());
+  } finally {
+    a.close();
+    b.close();
+  }
+}, 120_000);

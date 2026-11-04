@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { PROTOCOL_VERSION, RpcErrorCode, type Group, type GroupCore } from '@boite/contracts';
+import { groupRelayUrl, PROTOCOL_VERSION, RpcErrorCode, type Group, type GroupCore } from '@boite/contracts';
 import type { SocketLike } from './client';
 import { deviceKey } from './device-key';
 import { WsClient } from './ws-client';
 import { machineKey } from '../test/machine-key';
-import { ENVIRONMENTS_STORAGE_KEY, readEnvironments, rememberSession, removeBrought, type Endpoint } from './endpoint';
+import { DROPPED_STORAGE_KEY, ENVIRONMENTS_STORAGE_KEY, isDropped, isMemberDropped, keepDropped, readEnvironments, rememberSession, removeBrought, type Endpoint } from './endpoint';
 import { GroupLinks, usableAddresses } from './group-links.svelte';
 import type { Machine, Workspace } from './workspace.svelte';
 
@@ -835,6 +835,216 @@ describe('a removed machine the device key opens', () => {
 
   it('12. removed, it answers a roster without the machine that removed it (Sol r5): it leaves', async () => {
     expect(await left({ a: says('a', ['a']), b: says('b', ['b']) })).toContain(url('b'));
+  });
+});
+
+/**
+ * What a client saved never hides a member the group lists: the phone that lost sight of a machine after it
+ * left, came back and moved, with nothing of it reaching that machine any more, not even a probe.
+ */
+describe('a member the group lists, saved at a dead end', () => {
+  const ids = { page: 'a'.repeat(64), desk: 'b'.repeat(64), member: 'f'.repeat(64), away: 'e'.repeat(64), ghost: '1'.repeat(64) };
+  const PAGE = 'https://home.test:18443';
+  const DESK = 'https://desk.test';
+  const MEMBER = 'https://member.test:11443';
+  /** A route through a machine that no longer stands between this client and the member. */
+  const stale = groupRelayUrl('http://10.0.0.7:7337', ids.member);
+  const memberMark = `member grp ${ids.member}`;
+  const hoursAgo = () => Date.now() - 3 * 3_600_000;
+
+  const roster = (epoch = 2): GroupCore[] => [core(ids.page, [PAGE]), core(ids.member, [MEMBER, 'http://100.64.0.9:7337'], epoch)];
+  const page = (cores = roster()) => machine(PAGE, { group: group(ids.page, cores) });
+  const silent: Partial<FakeStore> = { connection: 'connecting', groupKnown: false };
+  const keep = (...entries: object[]) => localStorage.setItem(ENVIRONMENTS_STORAGE_KEY, JSON.stringify(entries));
+  const byHand = (url: string) => ({ url, label: url, token: `key-${url}`, paired: true });
+  const signed = (url: string, signs: string) => ({ url, label: url, token: '', paired: true, signs });
+  const marks = (entries: Record<string, { at: number; epoch: number }>) => localStorage.setItem(DROPPED_STORAGE_KEY, JSON.stringify(entries));
+  const firstAddress = async (addresses: string[]) => addresses[0] ?? null;
+  const signedIn = { url: MEMBER, token: '', signs: ids.member };
+  const ticketed = { url: MEMBER, token: '', ticket: `ticket-for-${PAGE}`, coreId: ids.member, groupId: 'grp', epoch: 2 };
+
+  it.each([
+    ['closed at a route through a machine long gone', 'closed', stale],
+    ['retrying that route', 'connecting', stale],
+    ['retrying an address this page may not open, which sends nothing at all', 'connecting', 'http://100.64.0.9:7337']
+  ] as const)('%s, a machine the device key opens is looked for where the roster says, and the old way goes only once that answers', async (_name, connection, route) => {
+    keep(byHand(PAGE), signed(route, ids.member));
+    const { workspace: ws, added, removed } = workspace([page(), machine(route, { connection, groupKnown: false })]);
+    let now = 1_000_000;
+    let answers = false;
+    const reach = vi.fn(async (addresses: string[]) => (answers ? addresses[0]! : null));
+    const links = new GroupLinks(ws, { reach, secure: () => true, now: () => now });
+    await links.reconcile();
+    await settle();
+    // Tried, and said so: no machine left on Connecting with no attempt behind it.
+    expect(reach).toHaveBeenCalledWith([MEMBER]);
+    expect(links.states).toEqual({ [ids.member]: 'unreachable' });
+    expect(removed).toEqual([]);
+    answers = true;
+    now += 60_000;
+    await links.reconcile();
+    await settle();
+    expect(added.map((entry) => entry.endpoint)).toEqual([signedIn]);
+    expect(removed).toEqual([route]);
+    expect(links.states).toEqual({});
+  });
+
+  it('closed at an address the roster still gives, it is opened again there, and stays', async () => {
+    keep(byHand(PAGE), signed(MEMBER, ids.member));
+    const { workspace: ws, added, removed } = workspace([page(), machine(MEMBER, { connection: 'closed', groupKnown: false })]);
+    await new GroupLinks(ws, { reach: firstAddress, secure: () => true }).reconcile();
+    await settle();
+    expect(added.map((entry) => entry.endpoint)).toEqual([signedIn]);
+    expect(removed).toEqual([]);
+  });
+
+  it('its key opening nothing at the new address, the machine that vouches asks for a ticket', async () => {
+    keep(byHand(PAGE), signed(stale, ids.member));
+    const { workspace: ws, added, removed, stub } = workspace([page(), machine(stale, silent)]);
+    stub.add.mockImplementationOnce(async () => false);
+    await new GroupLinks(ws, { reach: firstAddress, secure: () => true }).reconcile();
+    await settle();
+    expect(added.map((entry) => entry.endpoint)).toEqual([ticketed]);
+    expect(removed).toEqual([stale]);
+  });
+
+  it.each([
+    ['listed after', () => [page(), machine(MEMBER, {}), machine(stale, silent)]],
+    ['listed before', () => [page(), machine(stale, silent), machine(MEMBER, {})]]
+  ])('reached already with such an entry %s, that entry goes and nothing is tried', async (_name, machines) => {
+    keep(byHand(PAGE), signed(stale, ids.member), signed(MEMBER, ids.member));
+    const { workspace: ws, added, removed } = workspace(machines());
+    const reach = vi.fn(firstAddress);
+    await new GroupLinks(ws, { reach, secure: () => true }).reconcile();
+    await settle();
+    expect(reach).not.toHaveBeenCalled();
+    expect([added, removed]).toEqual([[], [stale]]);
+  });
+
+  it.each([
+    ['answering at a route no roster gives', () => [page(), machine(stale, { group: group(ids.member, roster()) })]],
+    ['retrying by itself at an address the roster gives', () => [page(), machine(MEMBER, silent)]],
+    ['the machine the window opened on', () => [machine(stale, silent), page()]]
+  ])('%s, it is left alone', async (_name, machines) => {
+    keep(byHand(PAGE), signed(stale, ids.member), signed(MEMBER, ids.member));
+    const { workspace: ws, added, removed, stub } = workspace(machines());
+    const reach = vi.fn(firstAddress);
+    await new GroupLinks(ws, { reach, secure: () => true }).reconcile();
+    await settle();
+    expect(reach).not.toHaveBeenCalled();
+    expect([added, removed, stub.dropPrimary.mock.calls]).toEqual([[], [], []]);
+  });
+
+  it.each([
+    ['the highest admission, an entry saved without one having written it', Number.MAX_SAFE_INTEGER],
+    ['the admission it is listed at, a roster lagging behind its return having dropped it', 2]
+  ])('a mark of hours ago at %s ends once every machine speaking for the group lists it', async (_name, epoch) => {
+    keep(byHand(PAGE));
+    marks({ [memberMark]: { at: hoursAgo(), epoch }, [MEMBER]: { at: hoursAgo(), epoch } });
+    const { workspace: ws, added } = workspace([page()]);
+    await new GroupLinks(ws, { reach: firstAddress, secure: () => true }).reconcile();
+    await settle();
+    expect(added.map((entry) => entry.endpoint)).toEqual([ticketed]);
+    expect([isMemberDropped('grp', ids.member, 2), isDropped(MEMBER, 2)]).toEqual([false, false]);
+  });
+
+  it('that mark stays while one of them no longer lists it', async () => {
+    keep(byHand(PAGE), byHand(DESK));
+    marks({ [memberMark]: { at: hoursAgo(), epoch: Number.MAX_SAFE_INTEGER } });
+    const desk = machine(DESK, { group: group(ids.desk, [core(ids.page, [PAGE]), core(ids.desk, [DESK])]) });
+    const { workspace: ws, added } = workspace([page(), desk]);
+    const reach = vi.fn(firstAddress);
+    await new GroupLinks(ws, { reach, secure: () => true }).reconcile();
+    await settle();
+    expect(reach).not.toHaveBeenCalled();
+    expect(added).toEqual([]);
+    expect(isMemberDropped('grp', ids.member, 2)).toBe(true);
+  });
+
+  it('a window that hears such a mark go does not put it back, or two windows would rewrite it without end', () => {
+    marks({ [memberMark]: { at: hoursAgo(), epoch: 1 } });
+    keepDropped();
+    marks({});
+    keepDropped();
+    expect(isMemberDropped('grp', ids.member, 1)).toBe(false);
+  });
+
+  it('a route through a machine whose roster no longer lists the one at the end goes, unmarked, and the others are still looked for', async () => {
+    const ghost = groupRelayUrl(PAGE, ids.ghost);
+    keep(byHand(PAGE), signed(ghost, ids.ghost));
+    const { workspace: ws, added, removed } = workspace([page(), machine(ghost, silent)]);
+    await new GroupLinks(ws, { reach: firstAddress, secure: () => true }).reconcile();
+    await settle();
+    expect(removed).toEqual([ghost]);
+    expect(added.map((entry) => entry.endpoint)).toEqual([ticketed]);
+    expect(localStorage.getItem(DROPPED_STORAGE_KEY)).toBeNull();
+  });
+
+  it('a route through a machine not in this window goes when nothing opens the way there, and waits when a key does', async () => {
+    const carried = groupRelayUrl(DESK, ids.ghost);
+    const links = async (...entries: object[]) => {
+      keep(byHand(PAGE), signed(carried, ids.ghost), ...entries);
+      const { workspace: ws, removed } = workspace([page([core(ids.page, [PAGE])]), machine(carried, silent)]);
+      await new GroupLinks(ws, { reach: firstAddress, secure: () => true }).reconcile();
+      return removed;
+    };
+    expect(await links()).toEqual([carried]);
+    expect(await links(byHand(DESK))).toEqual([]);
+  });
+
+  it('a machine reached through a member is asked what its group lists with the key that opens the way on that member', async () => {
+    keep(byHand(PAGE));
+    const hellos: { relay?: unknown }[] = [];
+    const socket = () => {
+      const opened = new AnchorSocket(group(ids.member, roster()), 0, 0);
+      const send = opened.send.bind(opened);
+      opened.send = (data) => {
+        const frame = JSON.parse(data) as { method: string; params: { relay?: unknown } };
+        if (frame.method === 'hello') hellos.push(frame.params);
+        send(data);
+      };
+      return opened;
+    };
+    const links = new GroupLinks(workspace([page()]).workspace, { socket, patience: 1000, secure: () => true });
+    // Refused by that member without it: the machine behind it would never have had its say.
+    const kept = await links.vet([{ url: 'http://10.0.0.9:1', label: 'gone', token: 'k', paired: true, coreId: ids.away, groupId: 'grp' }], [{ url: groupRelayUrl(PAGE, ids.member), token: 'its-key', paired: true }]);
+    expect(hellos.map((hello) => hello.relay)).toEqual([`key-${PAGE}`]);
+    expect(kept).toEqual([]);
+  });
+
+  /** As the phone was left: paired by hand with two members, a route to one long gone, one to a machine that is off, the dropped member's mark of hours ago. */
+  function phone(member: object, mark: { at: number; epoch: number }) {
+    const ghost = groupRelayUrl(PAGE, ids.ghost);
+    const away = groupRelayUrl(PAGE, ids.away);
+    localStorage.setItem('boite.core', JSON.stringify({ url: PAGE, token: `key-${PAGE}`, paired: true }));
+    keep(byHand(PAGE), byHand(DESK), signed(ghost, ids.ghost), signed(away, ids.away), member);
+    marks({ [memberMark]: mark });
+    const cores = [core(ids.page, [PAGE]), core(ids.desk, [DESK]), core(ids.member, [MEMBER, 'http://100.64.0.9:7337'], 2), core(ids.away, ['http://100.64.0.3:7337'])];
+    const answers: Record<string, Partial<FakeStore>> = { [PAGE]: { group: group(ids.page, cores) }, [DESK]: { group: group(ids.desk, cores) } };
+    const held = workspace(readEnvironments().map((entry) => machine(entry.url, answers[entry.url] ?? silent, entry.coreId === undefined ? undefined : { coreId: entry.coreId, ...(entry.groupId === undefined ? {} : { groupId: entry.groupId }) })));
+    return { ...held, ghost, reach: vi.fn(async (addresses: string[]) => addresses.find((address) => address === MEMBER) ?? null) };
+  }
+
+  it('that phone finds the member at its first pass, with the device key it saved there, and the dead routes go', async () => {
+    const { workspace: ws, added, removed, ghost, reach } = phone(signed(stale, ids.member), { at: hoursAgo(), epoch: Number.MAX_SAFE_INTEGER });
+    await new GroupLinks(ws, { reach, secure: () => true }).reconcile();
+    await settle();
+    expect(added.map((entry) => entry.endpoint)).toEqual([signedIn]);
+    expect(removed.sort()).toEqual([ghost, stale].sort());
+  });
+
+  it('that phone finds it too with the key a ticket left there, whose drop does not make the old mark look new', async () => {
+    const saved = { ...byHand(stale), coreId: ids.member, groupId: 'grp', epoch: 1 };
+    const { workspace: ws, added, removed, ghost, reach, stub } = phone(saved, { at: hoursAgo(), epoch: Number.MAX_SAFE_INTEGER });
+    stub.remove.mockImplementation(async (id: string, dropped?: boolean) => {
+      removed.push(id);
+      stub.machines = stub.machines.filter((entry) => entry.id !== id);
+      if (id === stale) removeBrought(id, { coreId: ids.member, groupId: 'grp' }, dropped === true ? 1 : undefined);
+    });
+    await new GroupLinks(ws, { reach, secure: () => true }).reconcile();
+    await settle();
+    expect(added.map((entry) => entry.endpoint)).toEqual([ticketed]);
+    expect(removed.sort()).toEqual([ghost, stale].sort());
   });
 });
 

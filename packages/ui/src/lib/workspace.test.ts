@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest';
-import { machineHealth, PRIMARY_PATIENCE_MS, Workspace } from './workspace.svelte';
+import { machineHealth, PRIMARY_PATIENCE_MS, SETTLE_WAIT_MS, Workspace } from './workspace.svelte';
 import { reveal } from './reveal';
 import { Store, store as primary } from './store.svelte';
 import { FakeClient } from './fake-client';
@@ -497,6 +497,26 @@ async function phoneOfTwo() {
   }));
   return { w, a, b, add, server: (connected = true) => answer(connected) };
 }
+
+test('a remembered machine that never finishes connecting does not keep the group links from looking for good', async () => {
+  vi.useFakeTimers();
+  const { w, a } = await phoneOfTwo();
+  vi.spyOn(a, 'boot').mockResolvedValue(undefined);
+  void w.boot();
+  await vi.advanceTimersByTimeAsync(SETTLE_WAIT_MS - 1);
+  expect(w.settled).toBe(false);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(w.settled).toBe(true);
+});
+
+test('a machine the group named that opens nothing with the device key is not left in the list', async () => {
+  const { w } = await setup();
+  vi.spyOn(Store.prototype, 'connectEndpoint').mockImplementation(async function (this: Store) {
+    this.connection = 'closed';
+  });
+  expect(await w.add({ url: 'https://member.test', token: '', signs: 'f'.repeat(64) }, 'Member', true)).toBe(false);
+  expect(w.machines.some((machine) => machine.id === 'https://member.test')).toBe(false);
+});
 
 test('a laptop switched off does not keep the phone waiting: the server is connected without it and the window opens there', async () => {
   vi.useFakeTimers();
