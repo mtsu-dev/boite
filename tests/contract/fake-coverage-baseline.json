@@ -160,7 +160,6 @@
   "sessions.list",
   "sessions.revoke",
   "settings.follow",
-  "settings.request",
   "sharedAccess.overrides",
   "sharedAccess.revokeOverride",
   "sharedBoard.start",
