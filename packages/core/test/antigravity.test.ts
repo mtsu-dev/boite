@@ -122,14 +122,14 @@ async function agyAccount(client: CoreClient): Promise<{ id: string; isolationDi
 }
 
 /** A signed-in account and a thread on it, subscribed. */
-async function agyThread(client: CoreClient): Promise<{ accountId: string; threadId: ThreadId }> {
+async function agyThread(client: CoreClient, model?: string): Promise<{ accountId: string; threadId: ThreadId }> {
   const account = await agyAccount(client);
   writeFileSync(join(account.isolationDir, 'antigravity-acp', 'acp_token.json'), JSON.stringify({ access_token: 'fake', expiry: 0 }), 'utf8');
   expect((await client.call('accounts.check', { accountId: account.id })).status).toBe('ok');
   const projectDir = join(harness!.dataDir, 'project');
   mkdirSync(projectDir, { recursive: true });
   const project = await client.call('projects.add', { path: projectDir, name: 'agy' });
-  const thread = await client.call('threads.create', { projectId: project.id, providerId: 'agy-fake', accountId: account.id, cwd: projectDir, title: 'agy' });
+  const thread = await client.call('threads.create', { projectId: project.id, providerId: 'agy-fake', accountId: account.id, cwd: projectDir, title: 'agy', ...(model === undefined ? {} : { model }) });
   await client.call('threads.subscribe', { threadId: thread.id });
   return { accountId: account.id, threadId: thread.id };
 }
@@ -164,9 +164,10 @@ describe('antigravity', () => {
     expect(readFileSync(seed, 'utf8')).toBe(SEED_BODY);
 
     // The launcher `BROWSER` points at, so the agent opens no window here.
+    // Windows needs no file: its `BROWSER` is a cmd.exe command line.
     const dataDir = harness?.dataDir ?? '';
-    const noop = join(dataDir, process.platform === 'win32' ? 'browser-noop.cmd' : 'browser-noop.sh');
-    expect(existsSync(noop)).toBe(true);
+    expect(existsSync(join(dataDir, 'browser-noop.sh'))).toBe(process.platform !== 'win32');
+    expect(existsSync(join(dataDir, 'browser-noop.cmd'))).toBe(false);
 
     // No token yet: this is the account the Accounts page offers a login on.
     const accounts = await client.call('accounts.list', {});
@@ -205,7 +206,7 @@ describe('antigravity', () => {
     expect(loggedEnv('GEMINI_HOME')).toBe(account.isolationDir);
     expect(loggedEnv('AGY_ACP_FORCE_FILE_STORAGE')).toBe('1');
     expect(loggedEnv('ANTIGRAVITY_HARNESS_PATH')).toContain('localharness_external');
-    expect(loggedEnv('BROWSER')).toContain('browser-noop');
+    expect(loggedEnv('BROWSER')).toContain(process.platform === 'win32' ? 'cmd.exe' : 'browser-noop.sh');
     expect(loggedEnv('GEMINI_API_KEY')).toBe('');
 
     // A pasted code is what a CLI login takes; this one takes the redirect URL.
@@ -266,8 +267,13 @@ describe('antigravity', () => {
 
     // The models came from the sign-in, and a probe after it starts nothing:
     // on a slow machine one launch of the real agent is a minute of unpacking.
-    const ids = ['default', 'gemini-3.8-flash-high', 'gemini-3.7-flash-high', 'gemini-pro-agent'];
-    expect((await probed).models.map((model) => model.id)).toEqual(ids);
+    // 1.4.5 lists each family once in its model option, Claude and GPT only
+    // for a client named zed; the legacy ids of its `models` list stay out.
+    const ids = ['default', 'gemini-3.8-flash', 'claude-opus-4-6-thinking', 'gpt-oss-120b-medium'];
+    const catalog = (await probed).models;
+    expect(catalog.map((model) => model.id)).toEqual(ids);
+    expect(fakeLog()).toContain('client:zed');
+    expect(catalog.find((model) => model.id === 'gemini-3.8-flash')?.effort?.levels.map((level) => level.id)).toEqual(['low', 'medium', 'high']);
     const probe = await client.call('providers.probe', { providerId: 'agy-fake', accountId: account.id });
     expect(probe.models.map((model) => model.id)).toEqual(ids);
     expect(fakeLog().split('\n').filter((line) => line === 'initialize')).toHaveLength(1);
@@ -293,7 +299,7 @@ describe('antigravity', () => {
     expect((await client.call('accounts.check', { accountId: account.id })).status).toBe('ok');
 
     const probe = await client.call('providers.probe', { providerId: 'agy-fake', accountId: account.id });
-    expect(probe.models.map((model) => model.id)).toContain('gemini-pro-agent');
+    expect(probe.models.map((model) => model.id)).toContain('claude-opus-4-6-thinking');
     const temp = loggedEnv('TEMP') ?? '';
     expect(temp.startsWith(join(account.isolationDir, LAUNCH_TEMP_DIR, 'run-'))).toBe(true);
     await waitFor(() => !existsSync(temp), 10_000);
@@ -319,6 +325,20 @@ describe('antigravity', () => {
     const temp = loggedEnv('TEMP') ?? '';
     expect(temp.startsWith(join(account.isolationDir, LAUNCH_TEMP_DIR, 'run-'))).toBe(true);
     await waitFor(() => !existsSync(temp), 10_000);
+  }, 30000);
+
+  test('a thread saved on a pre-1.4 model id runs, and no session lets the agent write its workflow skill', async () => {
+    const client = await startCore();
+    // Threads and bots made before 1.4 hold `gemini-3.8-flash-low`, which the
+    // model option no longer lists; the agent still takes it.
+    const { threadId } = await agyThread(client, 'gemini-3.8-flash-low');
+    await runTurn(client, threadId, 'ping');
+    const log = fakeLog().split('\n');
+    expect(log).toContain('set:model=gemini-3.8-flash-low');
+    expect(log).toContain('client:zed');
+    const metas = log.filter((line) => line.startsWith('meta:'));
+    expect(metas.length).toBeGreaterThan(0);
+    for (const meta of metas) expect(meta).toBe('meta:{"antigravity":{"disabledTools":["run_workflow"]}}');
   }, 30000);
 
   test('an agent that unpacks itself first gets longer to list its models than one that starts at once', async () => {

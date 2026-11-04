@@ -104,7 +104,9 @@ export class ContactsBotMethods {
 
   forward(params: RpcParams<'contacts.bot.forward'>): ContactRequest {
     requireBot(this.#core, params.threadId, 'contacts.bot.forward');
-    return this.#core.contacts.requests.forward(params);
+    const request = this.#core.contacts.requests.forward(params);
+    // Stamped here, after the forward itself: the bot's thread shows it at this time.
+    return this.#core.contacts.requests.forwarded(request.id) ?? request;
   }
 
   /** The contact's asking thread and one thread here may now write to each other. */

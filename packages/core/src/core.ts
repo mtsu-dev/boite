@@ -38,6 +38,7 @@ import { eraseIncognitoRoot } from './threads/incognito.ts';
 import { removeTranscripts } from './threads/transcript-purge.ts';
 import { ThreadStore } from './threads.ts';
 import { DraftPreparations } from './threads/draft-preparations.ts';
+import { ScheduledWakes } from './threads/scheduled-wakes.ts';
 import { AttachmentUploads } from './attachment-uploads.ts';
 import { scheduleThreadDeletionRetention } from './threads/deletion-retention.ts';
 import { scheduleDoneRetention } from './threads/done-retention.ts';
@@ -181,6 +182,8 @@ export class Core {
   readonly procs: ProcRegistry;
   readonly scheduler: Scheduler;
   readonly threads: ThreadStore;
+  /** The wakes agents schedule for themselves with ScheduleWakeup (`threads/scheduled-wakes.ts`). */
+  readonly wakes: ScheduledWakes;
   readonly drafts: DraftPreparations;
   readonly composer: Composer;
   readonly attachmentUploads: AttachmentUploads;
@@ -400,6 +403,7 @@ export class Core {
     this.threads = new ThreadStore(this);
     // Read before any recovery writes, the team and workflow ones included: whether the previous core died at work within the hour.
     this.threads.autoContinue.previousRunCut();
+    this.wakes = new ScheduledWakes(this, this.threads);
     this.drafts = new DraftPreparations(this);
     this.attachmentUploads = new AttachmentUploads(this.dataDir);
     this.quotas = new QuotaStore(this);
@@ -473,6 +477,8 @@ export class Core {
     try { this.teams.recover(); } catch (error) { this.log('warn', `teams recovery failed: ${String(error)}`); }
     // After recovery: a resume planned before the previous core stopped, a usage limit's among them, goes on.
     this.threads.resumes.start();
+    // A wake an agent scheduled before the previous core stopped is this core's to open.
+    this.wakes.start();
     // Watched limits are read on their own, so an alert reaches a phone with no window open.
     this.quotas.alerts.start();
     // What a dead core cut, and any resume planned before it died, goes on (`threads/auto-continue.ts`).
@@ -586,6 +592,7 @@ export class Core {
     this.threads.backgroundCompact.close();
     this.threads.cacheKeepalive.close();
     this.threads.resumes.close();
+    this.wakes.close();
     this.threads.autoContinue.close();
     this.quotas.alerts.close();
     this.#drainPromise = this.agentRuntime.close().then(() => this.scheduler.drain(timeoutMs));
@@ -621,6 +628,7 @@ export class Core {
     this.threads.backgroundCompact.close();
     this.threads.cacheKeepalive.close();
     this.threads.resumes.close();
+    this.wakes.close();
     this.threads.autoContinue.close();
     await this.threads.codeCheckpoints.close();
     await this.agentRuntime.close();

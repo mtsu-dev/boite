@@ -32,7 +32,7 @@ export const PERMISSION_WAKE_MS = 30_000;
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 /** Load and the derived live fields arrive in thread.updated without changing team history. */
 function teamState(thread: ThreadSummary): string {
-  const { load, progress, runningSince, requestSince, backgroundWork, backgroundWait, pendingMove, moveNote, pendingAnswers, openQuestions, subagentQuestions, retry, pullRequestWatches, ...stored } = thread;
+  const { load, progress, runningSince, requestSince, backgroundWork, backgroundWait, pendingMove, moveNote, pendingAnswers, openQuestions, subagentQuestions, retry, pullRequestWatches, wake, ...stored } = thread;
   return JSON.stringify(Object.fromEntries(Object.entries(stored).sort(([left], [right]) => left.localeCompare(right))));
 }
 /** A family of ordinary threads. No extra orchestrator model or provider process. */
@@ -758,9 +758,11 @@ export class Delegation {
     this.#core.pullRequestWatches.endThread(id);
     this.#core.activity.pauseAll(id);
     this.#core.coordination.pause(id);
-    const busy = this.#core.scheduler.stop(id) || waiting;
+    const turn = this.#core.scheduler.stop(id), busy = turn || waiting;
     closeQuestions(this.#core, id, 'the core, since the subagent was stopped');
     this.#core.threads.releaseAgent(id);
+    // A turn it stops settles its worktree as it ends, and a workflow step's run settles its own; one at rest settles now.
+    if (!turn && !this.#core.workflows.owns(id)) void this.worktrees.settle(id);
     this.#core.workflows.stepStopped(id);
     for (const letter of this.#letters(id, 'received')) this.#update(letter, 'rejected', 'Agent stopped');
     for (const letter of this.#letters(id, 'uncertain')) {

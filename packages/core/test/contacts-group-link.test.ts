@@ -175,12 +175,17 @@ test('a member without a Contacts bot asks through the Bots host: queued while t
   remoteOn(a, aThread);
   const xBot = await contactsBotOf(x, xClient);
   await botsHome(a, aClient, x, xId);
+  // A's threads are told to ask, as on the host: the direct send of the older paths is refused here.
+  expect(a.core.coordination.instructions(aThread)).toContain('boite threads ask');
+  expect(a.core.coordination.instructions(aThread)).not.toContain('their threads there are in `boite threads`');
   // X does not answer: the ask waits on A with a status that says so.
   const real = a.core.coordination.request.bind(a.core.coordination);
   let silent = true;
   a.core.coordination.request = (peer, operation, payload) => silent && operation === 'contact.route' ? Promise.reject(new Error('unreachable: test')) : real(peer, operation, payload);
   const queued = await aClient.call('collaboration.ask', { threadId: aThread, text: 'Who runs the build farm?' });
   expect(queued).toMatchObject({ status: 'pending', stage: 'host' });
+  // The member's thread learns its own request from its own core, wherever the bot lives.
+  expect(a.core.coordination.get(aThread).requests).toEqual([expect.objectContaining({ id: queued.id, stage: 'host' })]);
   expect(x.core.contacts.requests.list().some(request => request.id === queued.id)).toBe(false);
   const stale = await aClient.call('collaboration.ask', { threadId: aThread, text: 'An old question' });
   // A week later the host never took the second one: refused, with the reason.
@@ -195,16 +200,26 @@ test('a member without a Contacts bot asks through the Bots host: queued while t
   expect(requestOn(a, stale.id)!.reason).toContain('Bots host stayed unreachable for 7 days');
   expect(x.core.contacts.requests.list().some(request => request.id === stale.id)).toBe(false);
   await waitFor(() => requestOn(a, queued.id)?.stage !== 'host', 10000);
+  expect(a.core.coordination.get(aThread).requests!.find(request => request.id === queued.id)).toMatchObject({ stage: 'bot', status: 'pending' });
   // X's bot sends it to C, which reads A's thread at its alias on X; C's refusal comes back to A's thread.
   // A hand tried before X read the roster waits 30 s for its retry: offer it again until C follows.
   await waitFor(() => { if (!x.core.contacts.has(cId)) a.core.contacts.groupLink.sweep(true); return x.core.contacts.linkOf(cId) === 'connected'; }, 20000);
   await xClient.call('contacts.bot.forward', { threadId: xBot.threadId, id: queued.id, contact: x.core.contacts.find(cId)!.name });
+  // The host's bot thread shows the forward of the member's ask.
+  expect(x.core.coordination.get(xBot.threadId).requests).toEqual([expect.objectContaining({ id: queued.id, from: expect.objectContaining({ coreId: aId, threadId: aThread }), forwardedAt: expect.any(Number) })]);
   const incoming = () => c.core.contacts.requests.list().find(request => request.direction === 'in' && request.text === 'Who runs the build farm?');
   await waitFor(() => incoming() !== undefined, 10000);
   expect(incoming()!.from).toMatchObject({ coreId: xId, threadId: memberThreadId(aId, aThread) });
+  // Before any answer, the member's thread reads it sent to that contact, as X named it.
+  const onMember = () => a.core.coordination.get(aThread).requests!.find(request => request.id === queued.id)!;
+  await waitFor(() => onMember().stage === undefined, 10000);
+  expect(onMember()).toMatchObject({ status: 'pending', contact: x.core.contacts.find(cId)!.name });
+  // X's bot forwarded it, not a bot here: A's copy carries no forward time of its own.
+  expect(onMember().forwardedAt).toBeUndefined();
   await cClient.call('contacts.decide', { id: incoming()!.id, accept: false, reason: 'No contact knows' });
   await waitFor(() => requestOn(a, queued.id)?.status === 'refused', 10000);
   expect(requestOn(a, queued.id)!.reason).toBe('No contact knows');
+  expect(a.core.coordination.get(aThread).requests!.find(request => request.id === queued.id)).toMatchObject({ status: 'refused', reason: 'No contact knows' });
   await waitFor(() => requestOn(x, queued.id)?.pendingMember === undefined, 10000);
 }, 60000);
 

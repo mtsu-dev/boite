@@ -2,13 +2,12 @@
 import { Readable, Writable } from 'node:stream';
 import type { ClientConnection, SessionConfigOption } from '@agentclientprotocol/sdk/unstable';
 import type { AccountId, ModelInfo, ProviderId } from '@boite/contracts';
-import pkg from '../../../package.json';
 import { messageOf, unavailable } from '../../errors.ts';
 import { agentEnv, profileFor, resolveLaunch } from '../../providers/resolve.ts';
 import { stderrDrained, stderrLines } from '../lines.ts';
 import type { ProbeContext, ProbeResult } from '../types.ts';
 import { agentModelsOf, categoryOption, effortFrom, modelsFrom, selectValues, type AgentModels } from './models.ts';
-import { canDeleteSessions, CLIENT_NAME, discardSession, isGrok, preferExit, STDERR_MAX, type AcpDeps, type Timer } from './protocol.ts';
+import { acpClientInfo, acpSessionMeta, canDeleteSessions, CLIENT_NAME, discardSession, isGrok, preferExit, STDERR_MAX, type AcpDeps, type Timer } from './protocol.ts';
 import { jsonLinesOnly } from './stdout.ts';
 import { unpacksAtLaunch } from '../launch-temp.ts';
 
@@ -108,9 +107,9 @@ export async function readModels(ctx: ProbeContext, deps: AcpDeps, noteOptions: 
       const init = await open.agent.request('initialize', {
         protocolVersion: sdk.PROTOCOL_VERSION,
         clientCapabilities: {},
-        clientInfo: { name: CLIENT_NAME, version: pkg.version },
+        clientInfo: acpClientInfo(ctx.provider),
       });
-      const created = await open.agent.request('session/new', { cwd: ctx.cwd, mcpServers: [] });
+      const created = await open.agent.request('session/new', { cwd: ctx.cwd, mcpServers: [], ...acpSessionMeta(ctx.provider, init) });
       const options = created.configOptions ?? null;
       // OpenCode lists a model's efforts only once the session is on that model:
       // the `thought_level` option is absent from `session/new` and arrives in

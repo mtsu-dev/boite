@@ -1,5 +1,6 @@
 import type { AccountId, AgentProfile, AgentSelection, ModelInfo, Protocol, ProviderDescriptor } from '@boite/contracts';
 import type { Core } from '../core.ts';
+import { antigravityLegacyFamily, isAntigravity } from '../drivers/antigravity.ts';
 import { probedModelsOf } from '../drivers/index.ts';
 import { refused } from '../errors.ts';
 
@@ -33,6 +34,15 @@ export function modelsFor(provider: ProviderDescriptor, accountId: AccountId): M
   return [...probed, ...provider.models.filter((model) => !known.has(model.id))];
 }
 
+/**
+ * Whether `models` offers `model`: listed, or for Antigravity a pre-1.4 id of
+ * a listed family (`gemini-3.8-flash-low`), which the agent still runs.
+ */
+export function listsModel(provider: ProviderDescriptor, models: readonly ModelInfo[], model: string): boolean {
+  if (models.some((entry) => entry.id === model)) return true;
+  return isAntigravity(provider) && antigravityLegacyFamily(models.map((entry) => entry.id), model) !== null;
+}
+
 /** Read missing native metadata before validating a new choice, including ACP's per-model scale. */
 export function needsModelDiscovery(
   provider: ProviderDescriptor, accountId: AccountId, model: string | null, effort: string | null, speed: string | null,
@@ -52,7 +62,7 @@ export function needsModelDiscovery(
 export function checkModel(provider: ProviderDescriptor, accountId: AccountId, model: string | null): string | null {
   if (model === null) return null;
   const models = modelsFor(provider, accountId);
-  if (models.some((entry) => entry.id === model)) return model;
+  if (listsModel(provider, models, model)) return model;
   throw refused(
     PROBED_PROTOCOLS.includes(provider.protocol) && probedModelsOf(provider.protocol, provider.id, accountId) === null
       ? 'the agent has not listed this model: open the model picker so Boite reads its models first'
