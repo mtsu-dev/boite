@@ -261,8 +261,15 @@ sequenceDiagram
   A->>X: contact.hand (record, grants, requests, relations), sealed, members only
   X-->>A: X's card, X's signature over the move
   A->>C: contact.move (X's card, X's signature), signed by A's key
-  C->>X: dial X with the hello
-  C-->>A: ok, or unreachable
+  alt C dials A
+    C->>X: dial X with the hello (tailnet or Funnel origin)
+    C-->>A: ok, or unreachable
+  else A dials C, and C announces guestSeat
+    C-->>A: ok, seat guest (C waits for X's hello)
+    A->>X: contact.hand dial
+    X->>C: dial C at A's address with X's hello
+    X-->>A: ok, or unreachable
+  end
   A->>A: forget the contact once it accepted
 ```
 
@@ -301,17 +308,38 @@ sequenceDiagram
 3. The Bots host keeps the record waiting for the contact's hello (one hour),
    and answers with its card `{coreId, publicKey, box, url, machine}` and its
    signature over `boite-contact-move\n` followed by
-   `[old core id, Bots host core id, contact core id]` as JSON.
+   `[old core id, Bots host core id, contact core id]` as JSON. When its
+   Funnel mounts are up already, for another contact or an invitation, the
+   card also carries their origin as `internet`; nothing is mounted for a move.
 4. The member sends `contact.move { card, signature }` to the contact, in its
-   own signed envelope. The contact checks both signatures, refuses a card
-   that names itself or one of its own group's machines, and dials the Bots
-   host before switching. If it cannot within 3.5 s it answers
-   `unreachable: <reason>`, keeps the old link, and the member tries again 10
-   minutes later, then twice as long each time up to 6 hours, until the Bots
-   host changes or the member restarts. A roster change does not cut that
-   wait. The reason rides the member's held list (below), so the Bots host's
-   Contacts bot and `boite contacts view` show why the link stayed; the
-   Contacts page shows only the member (`heldBy`).
+   own signed envelope. The contact checks both signatures and refuses a card
+   that names itself or one of its own group's machines. Then:
+   - The contact dials the member (the member hosts it): it dials the Bots
+     host's `url` and its `internet` origin at once, keeps the first that
+     opens as the address it dials from now on, and switches.
+   - The member dials the contact (the member is its guest), and the contact
+     announces `guestSeat: 1`: the hand carries the address the member dials
+     (`seat: { url }`) and the move says `seat: 'guest'`. The contact dials
+     nothing. It answers `{ ok, seat: 'guest' }` and accepts, for 10 minutes,
+     a hello signed by the key that signed the move. The member then asks the
+     Bots host to dial (`contact.hand { action: 'dial' }`); the Bots host
+     dials the contact at that address, and the hello makes the contact
+     switch, keeping the Bots host as a contact that dials it. The Bots host
+     keeps the contact as one it dials and keeps that link open. A contact
+     whose name does not resolve from the group (Funnel on another tailnet,
+     the group on Headscale) moves this way, since only the Bots host has to
+     reach it. An older Bots host that does not answer `seat` gets the move
+     of the first case.
+   - If the dial does not open within 3.5 s, the answer is
+     `unreachable: <reason>`, the member keeps the old link and tries again 10
+     minutes later, then twice as long each time up to 6 hours, until the Bots
+     host changes or the member restarts. A roster change does not cut that
+     wait. A contact the member dials that does not announce `guestSeat` (an
+     older Boite) can only take the first case: its reason says that it must
+     update for the Bots host to dial it. The reason rides the member's held
+     list (below), so the Bots host's Contacts bot and `boite contacts view`
+     show why the link stayed; the Contacts page shows only the member
+     (`heldBy`).
 5. When it can, the contact re-keys everything to the Bots host: the record
    (trust, notes, grants and capabilities kept), requests, relations (the
    member's threads read `<thread>~<member prefix>` at the Bots host, and the
@@ -327,8 +355,9 @@ sequenceDiagram
 
 ### Contacts a member still holds
 
-A contact that cannot reach the Bots host, or never announces `groupLink`,
-stays linked to the member it joined. It still belongs to the whole group
+A contact the move cannot hand over (it cannot reach the Bots host and the
+Bots host cannot take its guest seat), or one that never announces
+`groupLink`, stays linked to its member. It still belongs to the whole group
 (`contacts/held.ts`). Each member tells every other member, with its copy of
 the contacts (`relay.mirror { contacts, held }`), the list of contacts it
 holds: up to 32 entries of name, core id, when the member linked it
@@ -590,7 +619,10 @@ bot's thread alone calls `contacts.bot.*`.
 stubbed `fetch`. `contacts-group.test.ts` links a contact to one machine of a two-machine
 group and opens it a project of the other. `contacts-group-link.test.ts`
 moves a contact from one member to the Bots host and checks the forged and
-unreachable moves. `contacts-funnel.test.ts` drives the Funnel mounts through
+unreachable moves. `contacts-group-seat.test.ts` moves a contact that cannot
+reach the Bots host: through the guest seat, or through the Bots host's Funnel
+origin, then stops the old member and runs an ask, its answer and letters both
+ways; it also checks the reason an older contact gives. `contacts-funnel.test.ts` drives the Funnel mounts through
 the fake CLI (`test/fixtures/fake-tailscale.ts`) and checks their reachability
 through stubbed DNS and requests, never the internet. `magic-dns.test.ts` covers
 the tailnet name lookup against a resolver on loopback.

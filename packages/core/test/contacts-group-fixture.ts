@@ -33,8 +33,8 @@ export function storedBy(harness: TestCore): string {
   return JSON.stringify([settings, rows.map(row => row.data)]);
 }
 
-/** A group "Team" of A and X, and a contact C that joined A. No Bots host yet. */
-export async function setup(cores: TestCore[]) {
+/** A group "Team" of A and X, and a contact C that joined A (A hosts it), or that A joined (`seat`: A is C's guest, it dials C). No Bots host yet. */
+export async function setup(cores: TestCore[], seat = false) {
   const a = await startTestCore(), x = await startTestCore(), c = await startTestCore();
   cores.push(a, x, c);
   named(a, 'pc-alpha');
@@ -48,7 +48,9 @@ export async function setup(cores: TestCore[]) {
   await a.core.group.create('Team');
   await x.core.group.join((await a.core.group.invite()).invite);
   await waitFor(() => a.core.group.peers().some(peer => peer.coreId === xId) && x.core.group.peers().some(peer => peer.coreId === aId), 10000);
-  await cClient.call('contacts.join', { link: (await aClient.call('contacts.invite', {})).link });
+  c.core.contacts.selfUrl = async () => c.url;
+  if (seat) await aClient.call('contacts.join', { link: (await cClient.call('contacts.invite', {})).link });
+  else await cClient.call('contacts.join', { link: (await aClient.call('contacts.invite', {})).link });
   await waitFor(() => a.core.contacts.linked(cId) && a.core.contacts.find(cId)?.capabilities?.groupLink === 1, 10000);
   return { a, x, c, aClient, xClient, cClient, aId, xId, cId };
 }

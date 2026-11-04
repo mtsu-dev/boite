@@ -13,6 +13,14 @@
  * keeps the link and keeps relaying. A contact whose core does not announce
  * `groupLink` is never sent a move.
  *
+ * A contact the member dials (it hosts the member) may sit where the Bots
+ * host's name does not resolve. When it announces `guestSeat`, the move
+ * hands the Bots host that seat instead: the hand carries the address the
+ * member dials, the contact waits for the Bots host's signed hello rather
+ * than dialing out, and the Bots host dials it from then on. A contact that
+ * dials the member is offered the Bots host's Funnel origin beside its
+ * tailnet one when those mounts are up already; nothing is mounted for it.
+ *
  * The relations the member's threads hold with the contact's go with it: the
  * Bots host keeps each under the thread's address there, `<thread>~<prefix>`,
  * the same address the contact re-keys its side to, and relays their letters
@@ -59,6 +67,8 @@ const UNREACHABLE_RETRY_MS = 10 * 60_000;
 const UNREACHABLE_MAX_MS = 6 * 3_600_000;
 /** The contact's dial to the Bots host must open before the member's request to it times out (5 s). */
 const PROBE_MS = 3500;
+/** How long a contact waits for the Bots host to take a guest seat it was moved to. */
+const SEAT_MS = 10 * 60_000;
 /** The contact's answer to the move leaves on the old link before it closes. */
 const RELEASE_MS = 2000;
 const ALIASED = /~[0-9a-f]{16}$/;
@@ -69,12 +79,18 @@ export function moveInput(from: string, to: string, contact: string): Buffer {
 }
 
 /** The Bots host's card, as the move carries it to the contact. */
-interface MoveCard { coreId: string; publicKey: string; box: string; url: string; machine: string }
+interface MoveCard { coreId: string; publicKey: string; box: string; url: string; machine: string; internet?: string }
 /** A relation the Bots host takes over, its local thread already at the member's address here. */
 type HandedRelation = Pick<ContactRelation, 'id' | 'local' | 'remote' | 'requestId'>;
 /** A local thread as a hand carries it: the machine of the group it lives on, and its own id there. */
 interface Owned { member: string; threadId: string }
-interface Incoming { from: string; at: number; contact: StoredContact; requests: StoredRequest[]; relations?: HandedRelation[] }
+/** `url`: the member was the contact's guest, and this Bots host dials it there (a guest seat). */
+interface Incoming { from: string; at: number; contact: StoredContact; requests: StoredRequest[]; relations?: HandedRelation[]; url?: string }
+
+/** Why a contact the member dials stays with it: its core cannot hand the Bots host that seat yet. */
+function older(name: string, reason: string): string {
+  return `unreachable: ${name} runs an older Boite, which must dial the Bots host itself; once it updates, the Bots host dials it instead. ${reason.replace(/^unreachable: /, '')}`;
+}
 
 function within<T>(job: Promise<T>, ms: number, what: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -90,6 +106,8 @@ export class ContactGroupLink {
   /** Contacts that could not reach the Bots host: which host, how many tries, the last reason, and when to try again. */
   readonly #stuck = new Map<string, { host: string; tries: number; reason: string; until: number }>();
   readonly #pending = new Set<Promise<unknown>>();
+  /** As the contact: Bots hosts a move gave the guest seat, by core id, until their first hello. */
+  readonly #seats = new Map<string, { from: string; card: MoveCard; until: number }>();
   /** The Contacts bot goes to the Bots host before the links do (`bot-home.ts`). */
   readonly #bot: ContactBotHome;
   #closed = false;
@@ -144,19 +162,33 @@ export class ContactGroupLink {
       this.#core.log('warn', `contacts: relation ${id} with ${contact.name} stays behind, its thread's machine left the group`, { source: 'contacts' });
       return [];
     });
-    const answer = await this.#core.coordination.request(host, 'contact.hand', { action: 'hand', contact: { ...kept, grants }, requests, relations }) as { card?: unknown; signature?: unknown; held?: unknown; linked?: unknown } | null;
+    // This member dials the contact: a contact that takes it lets the Bots host have that seat, and dial it here.
+    const guest = contact.role === 'guest' && contact.url !== undefined;
+    const seat = guest && contact.capabilities?.guestSeat === 1 ? { url: contact.url! } : undefined;
+    const answer = await this.#core.coordination.request(host, 'contact.hand', { action: 'hand', contact: { ...kept, grants }, requests, relations, ...(seat ? { seat } : {}) }) as { card?: unknown; signature?: unknown; held?: unknown; linked?: unknown; seat?: unknown } | null;
     if (answer?.held === true && answer.linked === true) { this.release(contact.coreId, host.coreId); return; }
     const raw = answer?.card as Partial<MoveCard> | undefined;
-    const card = { ...checkCard(raw, 'hand.card'), url: contactUrl(raw?.url, 'hand.card.url') };
+    const card: MoveCard = { ...checkCard(raw, 'hand.card'), url: contactUrl(raw?.url, 'hand.card.url'), ...(raw?.internet === undefined ? {} : { internet: contactUrl(raw.internet, 'hand.card.internet') }) };
     if (card.coreId !== host.coreId) throw invalidParams('hand.card.coreId: expected the Bots host');
     const signature = text(answer?.signature, 'hand.signature', 200);
     const peer = this.#store.peers().find(entry => entry.coreId === contact.coreId && !this.#store.isRelayPeer(entry));
     if (!peer) return;
-    try { await this.#core.coordination.request(peer, 'contact.move', { card, signature }); }
+    // An older Bots host takes no seat: the contact dials it, as before.
+    const seated = seat !== undefined && answer?.seat === 'guest';
+    let moved: { seat?: unknown } | null;
+    try { moved = await this.#core.coordination.request(peer, 'contact.move', { card, signature, ...(seated ? { seat: 'guest' } : {}) }) as typeof moved; }
     catch (error) {
       if (!(error instanceof PeerRefusal)) throw error;
-      if (error.message.startsWith('unreachable')) this.#unreachable(contact.coreId, host.coreId, error.message);
+      if (error.message.startsWith('unreachable')) this.#unreachable(contact.coreId, host.coreId, guest && !seat ? older(contact.name, error.message) : error.message);
       throw error;
+    }
+    // The contact waits for the Bots host's hello: the member lets go once the Bots host reached it.
+    if (seated && moved?.seat === 'guest') {
+      try { await this.#core.coordination.request(host, 'contact.hand', { action: 'dial', contact: contact.coreId }); }
+      catch (error) {
+        if (error instanceof PeerRefusal && error.message.startsWith('unreachable')) this.#unreachable(contact.coreId, host.coreId, error.message);
+        throw error;
+      }
     }
     this.release(contact.coreId, host.coreId);
   }
@@ -231,10 +263,13 @@ export class ContactGroupLink {
     // The answer to an ask this Bots host sent through the member, or to one of the member's own threads.
     if (action === 'answer') return this.#store.hostAsks.heldAnswer(peer, payload) ?? this.answerHere(payload);
     if (action === 'bot') return this.#bot.coming(peer);
-    if (action !== 'hand') throw invalidParams('hand.action: expected hand, answer or bot');
+    if (action === 'dial') return this.#take(peer, payload);
+    if (action !== 'hand') throw invalidParams('hand.action: expected hand, answer, bot or dial');
     const self = this.#self();
     if (this.#core.group.roleOf('botsHome') !== self) throw refused('contact.hand: this machine is not the group\'s Bots host');
-    const raw = payload as { contact?: Partial<StoredContact>; requests?: unknown; relations?: unknown };
+    const raw = payload as { contact?: Partial<StoredContact>; requests?: unknown; relations?: unknown; seat?: { url?: unknown } | null };
+    // The member dials the contact there: this host takes that seat once the contact agreed.
+    const seat = raw.seat === undefined ? undefined : contactUrl(raw.seat?.url, 'hand.seat.url');
     const contact = this.#checkContact(raw.contact, peer.coreId);
     if (contact.coreId === self || this.#core.group.peers().some(entry => entry.coreId === contact.coreId)) throw refused('hand.contact: that core is a machine of this group');
     if (!Array.isArray(raw.requests) || raw.requests.length > 256) throw invalidParams('hand.requests: expected up to 256 requests');
@@ -249,42 +284,71 @@ export class ContactGroupLink {
       if (this.#store.occupied(contact.coreId) + incoming.length >= this.#store.maxContacts) {
         throw refused(`contact.hand: this Bots host holds ${this.#store.maxContacts} contacts already, counting those on their way; ${peer.name} keeps ${contact.name} for now`, { field: 'contact', reason: 'full', max: this.#store.maxContacts });
       }
-      this.#core.journal.setSetting(INCOMING, [...incoming, { from: peer.coreId, at: Date.now(), contact, requests, relations }]);
+      this.#core.journal.setSetting(INCOMING, [...incoming, { from: peer.coreId, at: Date.now(), contact, requests, relations, ...(seat ? { url: seat } : {}) }]);
       this.#store.relisten();
     }
     const { publicKey } = this.#core.coordination.card();
-    const card: MoveCard = { coreId: self, publicKey, box: this.#core.group.boxPublic(), url: await this.#store.selfUrl(false), machine: contactFace(this.#core) };
-    return { card, signature: this.#core.coordination.signature(moveInput(peer.coreId, self, contact.coreId)).toString('base64'), held: held !== undefined, linked: held !== undefined && this.#store.linkOf(contact.coreId) === 'connected' };
+    // Funnel mounts already up for another contact also carry this one: offered, never mounted for it.
+    const internet = this.#store.publicUrl();
+    const card: MoveCard = { coreId: self, publicKey, box: this.#core.group.boxPublic(), url: await this.#store.selfUrl(false), machine: contactFace(this.#core), ...(internet ? { internet } : {}) };
+    return {
+      card, signature: this.#core.coordination.signature(moveInput(peer.coreId, self, contact.coreId)).toString('base64'), held: held !== undefined,
+      linked: held !== undefined && this.#store.linkOf(contact.coreId) === 'connected', ...(seat && !held ? { seat: 'guest' } : {}),
+    };
+  }
+
+  /**
+   * `contact.hand { action: 'dial' }`: the contact the member handed with its
+   * guest seat now waits for this host. Its hello there makes the contact
+   * follow; this host then keeps the record and dials it from now on.
+   */
+  async #take(peer: CoordinationPeer, payload: unknown): Promise<{ ok: true }> {
+    if (this.#core.group.roleOf('botsHome') !== this.#self()) throw refused('contact.hand: this machine is not the group\'s Bots host');
+    const coreId = text((payload as { contact?: unknown } | null)?.contact, 'hand.contact', 100);
+    if (this.#store.has(coreId)) return { ok: true };
+    const entry = this.#incoming().find(item => item.contact.coreId === coreId && item.from === peer.coreId && item.url !== undefined && Date.now() - item.at < INCOMING_MS);
+    if (!entry?.url) throw refused(`contact.hand: ${peer.name} handed no guest seat for that contact`);
+    // A hello that lands after the wait still moved the contact: this host keeps it then, and the member's next hand finds it linked.
+    const opened = dialContact(this.#core, entry.url, this.#store.helloHeaders(coreId)).then(socket => {
+      socket.close(1000, 'moved');
+      if (!this.#closed) this.commit(coreId);
+    });
+    try { await within(opened, PROBE_MS, entry.contact.name); }
+    catch (error) { throw refused(`unreachable: the Bots host could not dial ${entry.contact.name} at ${entry.url} (${messageOf(error)})`); }
+    return { ok: true };
   }
 
   #incoming(): Incoming[] { return (this.#core.journal.getSetting(INCOMING) as Incoming[] | undefined) ?? []; }
 
   /** A handed contact may dial in: listen on the tailnet for it. */
-  waiting(): boolean { return this.#incoming().some(entry => Date.now() - entry.at < INCOMING_MS); }
+  waiting(): boolean { return this.#incoming().some(entry => entry.url === undefined && Date.now() - entry.at < INCOMING_MS); }
 
   /** The record a handed contact's hello is checked against, before it is stored. */
   incoming(coreId: string): StoredContact | undefined {
     const entry = this.#incoming().find(item => item.contact.coreId === coreId && Date.now() - item.at < INCOMING_MS);
-    return entry ? this.#record(entry.contact) : undefined;
+    return entry ? this.#record(entry.contact, entry.url) : undefined;
   }
 
-  #record(contact: StoredContact): StoredContact {
+  /** The handed contact as this host keeps it: it dials in, or this host dials it at `url` (a guest seat). */
+  #record(contact: StoredContact, url?: string): StoredContact {
     const self = this.#core.coordination.card();
     const { url: _url, ...rest } = contact;
-    return { ...rest, role: 'host', fingerprint: fingerprintWords(self.publicKey, contact.publicKey), syncPending: 1 };
+    return { ...rest, ...(url === undefined ? { role: 'host' as const } : { role: 'guest' as const, url }), fingerprint: fingerprintWords(self.publicKey, contact.publicKey), syncPending: 1 };
   }
 
-  /** The contact's first hello reached this host: the handed contact becomes its own. */
+  /** The contact's first hello reached this host, or this host's reached the contact: the handed contact becomes its own. */
   commit(coreId: string): void {
     const entry = this.#incoming().find(item => item.contact.coreId === coreId);
     if (!entry || this.#store.has(coreId)) return;
     this.#core.journal.setSetting(INCOMING, this.#incoming().filter(item => item !== entry && item.contact.coreId !== coreId));
-    const record = this.#record(entry.contact);
+    const record = this.#record(entry.contact, entry.url);
     this.#store.put(record);
     this.#adoptRequests(record, entry.requests);
     this.#adoptRelations(record, entry.relations ?? []);
     this.#store.members.mark(this.#store.members.holdersOf(coreId));
     this.#store.arm();
+    if (record.role === 'guest') this.#store.dial(record);
+    this.#store.relisten();
   }
 
   /** The host already holds that contact: what the member had is added to it. */
@@ -411,27 +475,62 @@ export class ContactGroupLink {
   // -- The contact: following a move.
 
   /** `contact.move` from a contact: check both keys, reach the new core, then follow it. */
-  async moved(peer: CoordinationPeer, payload: unknown): Promise<{ ok: true }> {
+  async moved(peer: CoordinationPeer, payload: unknown): Promise<{ ok: true; seat?: 'guest' }> {
     const old = this.#store.find(peer.coreId);
     if (!old) throw refused('contact.move: only a contact moves');
-    const raw = payload as { card?: Partial<MoveCard>; signature?: unknown } | null;
+    const raw = payload as { card?: Partial<MoveCard>; signature?: unknown; seat?: unknown } | null;
     const card = checkCard(raw?.card, 'move.card');
     const url = contactUrl(raw?.card?.url, 'move.card.url');
+    const internet = raw?.card?.internet === undefined ? undefined : contactUrl(raw.card.internet, 'move.card.internet');
     const signature = text(raw?.signature, 'move.signature', 200);
+    if (raw?.seat !== undefined && raw.seat !== 'guest') throw invalidParams('move.seat: expected guest or nothing');
     const self = this.#self();
     if (!verify(null, moveInput(old.coreId, card.coreId, self), card.publicKey, Buffer.from(signature, 'base64'))) throw refused('move.signature: expected the new core\'s key to sign this move');
     if (card.coreId === self || this.#core.group.peers().some(entry => entry.coreId === card.coreId)) throw refused('move.card: that core is one of your machines');
     if (card.coreId === old.coreId) return { ok: true };
     const existing = this.#store.find(card.coreId);
+    // The member dials this core: the Bots host takes its seat, and its first hello here completes the move (`seated`).
+    if (!existing && raw?.seat === 'guest' && old.role === 'host') {
+      const now = Date.now();
+      for (const [key, seat] of this.#seats) if (seat.until <= now) this.#seats.delete(key);
+      this.#seats.set(card.coreId, { from: old.coreId, card: { ...card, url }, until: now + SEAT_MS });
+      return { ok: true, seat: 'guest' };
+    }
+    let reached = url;
     if (!existing) {
+      // The tailnet origin and the Funnel one are tried together: the first that opens is the one kept.
+      const origins = internet === undefined || internet === url ? [url] : [url, internet];
       try {
-        const socket = await within(dialContact(this.#core, url, this.#store.helloHeaders(card.coreId)), PROBE_MS, card.machine);
-        socket.close(1000, 'moved');
-      } catch (error) { throw refused(`unreachable: ${card.machine} at ${url} did not answer (${messageOf(error)})`); }
+        reached = await within(Promise.any(origins.map(async origin => {
+          const socket = await dialContact(this.#core, origin, this.#store.helloHeaders(card.coreId));
+          socket.close(1000, 'moved');
+          return origin;
+        })), PROBE_MS, card.machine);
+      } catch (error) {
+        const cause = error instanceof AggregateError ? error.errors[0] : error;
+        throw refused(`unreachable: ${card.machine} at ${origins.join(' or ')} did not answer (${messageOf(cause)})`);
+      }
       if (this.#store.find(old.coreId) === undefined) throw refused('contact.move: removed meanwhile');
     }
-    this.#follow(old, { ...card, url }, existing);
+    this.#follow(old, { ...card, url: reached }, existing);
     return { ok: true };
+  }
+
+  /** The Bots host a move gave this core's guest seat, checked by its first hello here (`link-hello.ts`). */
+  seat(coreId: string): StoredContact | undefined {
+    const seat = this.#seats.get(coreId);
+    const old = seat && seat.until > Date.now() ? this.#store.find(seat.from) : undefined;
+    return seat && old ? { ...old, coreId, publicKey: seat.card.publicKey, box: seat.card.box, role: 'host' } : undefined;
+  }
+
+  /** That Bots host's hello was good: this core follows it, and hosts it from now on. */
+  seated(coreId: string): void {
+    const seat = this.#seats.get(coreId);
+    if (!seat) return;
+    this.#seats.delete(coreId);
+    const old = this.#store.find(seat.from);
+    if (!old || seat.until <= Date.now() || this.#store.has(coreId)) return;
+    this.#follow(old, seat.card, undefined, true);
   }
 
   /**
@@ -439,7 +538,7 @@ export class ContactGroupLink {
    * keep their address as `<thread>~<prefix>`, and the new core's own threads,
    * which the old one kept at such an address, go back to their plain id.
    */
-  #follow(old: StoredContact, card: MoveCard, existing: StoredContact | undefined): void {
+  #follow(old: StoredContact, card: MoveCard, existing: StoredContact | undefined, hosts = false): void {
     const from = old.coreId, to = card.coreId;
     const self = this.#core.coordination.card();
     const renamed = old.name === old.machine ? card.machine : old.name;
@@ -451,7 +550,10 @@ export class ContactGroupLink {
     if (existing) this.#store.drop(from);
     else {
       // A move only ever leads to a Bots host: the contact is a group from now on, before its first sync says so (`letterTtl`).
-      this.#store.put({ ...old, coreId: to, name, machine: card.machine, group: card.machine, publicKey: card.publicKey, box: card.box, role: 'guest', url: card.url, fingerprint: fingerprintWords(self.publicKey, card.publicKey), syncPending: (old.syncPending ?? 0) + 1 }, from);
+      const { url: _url, ...kept } = old;
+      // This core dials the new one, or, holding the seat the member dialed, waits for it.
+      const role = hosts ? { role: 'host' as const } : { role: 'guest' as const, url: card.url };
+      this.#store.put({ ...kept, coreId: to, name, machine: card.machine, group: card.machine, publicKey: card.publicKey, box: card.box, ...role, fingerprint: fingerprintWords(self.publicKey, card.publicKey), syncPending: (old.syncPending ?? 0) + 1 }, from);
       setTimeout(() => { if (!this.#closed) this.#store.unlink(from); }, RELEASE_MS).unref?.();
     }
     this.#store.requests.save(this.#store.requests.list().map(request => request.coreId !== from ? request : {

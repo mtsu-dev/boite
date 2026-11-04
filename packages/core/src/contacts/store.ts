@@ -93,6 +93,8 @@ export class ContactStore implements LinkedContacts {
   selfUrl: (share: boolean) => Promise<string> = share => tailnetOrigin(this, this.#core, share);
   /** The origin an invitation for another network gives: the contact routes on Tailscale Funnel. Tests point it at loopback. */
   internetUrl: () => Promise<string> = () => this.funnel.open();
+  /** This core's Funnel origin while its mounts are up already, else null: nothing is mounted to answer. */
+  publicUrl: () => string | null = () => this.funnel.state()?.url ?? null;
   /** Guest side: the link this core keeps to each host. */
   readonly #dialed = new Map<string, { socket: TextSocket | null; state: 'connecting' | 'connected' }>();
   /** Host side: the link each guest keeps to this core, by the guest's id. */
@@ -587,9 +589,9 @@ export class ContactStore implements LinkedContacts {
   synced(coreId: string, payload: unknown): { ok: true } {
     const checked = checkedContactOffers(coreId, payload);
     const contact = this.find(coreId);
-    const raw = payload as { capabilities?: { sharedProjects?: unknown; humanLetters?: unknown; contactsBot?: unknown; groupLink?: unknown }; bot?: { threadId?: unknown; title?: unknown } | null; group?: unknown };
+    const raw = payload as { capabilities?: { sharedProjects?: unknown; humanLetters?: unknown; contactsBot?: unknown; groupLink?: unknown; guestSeat?: unknown }; bot?: { threadId?: unknown; title?: unknown } | null; group?: unknown };
     const rawCaps = raw.capabilities;
-    const capabilities = { ...(rawCaps?.sharedProjects === 1 ? { sharedProjects: 1 as const } : {}), ...(rawCaps?.humanLetters === 1 ? { humanLetters: 1 as const } : {}), ...(rawCaps?.contactsBot === 1 ? { contactsBot: 1 as const } : {}), ...(rawCaps?.groupLink === 1 ? { groupLink: 1 as const } : {}) };
+    const capabilities = { ...(rawCaps?.sharedProjects === 1 ? { sharedProjects: 1 as const } : {}), ...(rawCaps?.humanLetters === 1 ? { humanLetters: 1 as const } : {}), ...(rawCaps?.contactsBot === 1 ? { contactsBot: 1 as const } : {}), ...(rawCaps?.groupLink === 1 ? { groupLink: 1 as const } : {}), ...(rawCaps?.guestSeat === 1 ? { guestSeat: 1 as const } : {}) };
     // A group with a Bots host names itself after the group: the contact shows that name, never a machine's.
     const group = raw.group === undefined || raw.group === null ? undefined : checkMachine(raw.group, 'sync.group');
     const bot = raw.bot === undefined || raw.bot === null ? undefined : { threadId: text(raw.bot.threadId, 'bot.threadId', 128), title: text(raw.bot.title, 'bot.title', 200) };
@@ -637,7 +639,7 @@ export class ContactStore implements LinkedContacts {
       const version = contact.syncPending;
       const bot = contactsBot(this.#core);
       const own = bot ? { bot: { threadId: bot.threadId, title: this.#core.journal.getThread(bot.threadId)?.title.slice(0, 200) || bot.name } } : {};
-      try { await this.#core.coordination.request(peer(), 'contact.sync', { offers: contactOffers(this.#core, contact), capabilities: { sharedProjects: 1, humanLetters: 1, contactsBot: 1, groupLink: 1 }, ...own, ...(groupFace(this.#core) ? { group: groupFace(this.#core) } : {}) }); }
+      try { await this.#core.coordination.request(peer(), 'contact.sync', { offers: contactOffers(this.#core, contact), capabilities: { sharedProjects: 1, humanLetters: 1, contactsBot: 1, groupLink: 1, guestSeat: 1 }, ...own, ...(groupFace(this.#core) ? { group: groupFace(this.#core) } : {}) }); }
       catch (error) { if (!(error instanceof PeerRefusal)) throw error; }
       if (this.find(coreId)?.syncPending === version) this.#mutate(coreId, entry => { delete entry.syncPending; });
     }
