@@ -951,7 +951,10 @@ A built-in bot is one Boite ships (`AgentProfile.builtin`), one of each kind
 per core. The first is the Contacts bot (`contacts`,
 [contacts](contacts.md#the-contacts-bot)), created by the Contacts switch
 through `agents.builtin.ensure`, which returns the existing one when called
-again. Its row and header carry a Built-in badge. Its domain and instructions
+again. A new one runs on the machine's signed-in account and that account's
+default model, else its first listed one; on a provider whose agent lists its
+own models (Claude's descriptor names none), ensure and reset read that list
+first when nothing has read it since the core started. Its row and header carry a Built-in badge. Its domain and instructions
 are Boite's: the settings show them read-only, `agents.profile.save` and
 setting cards refuse a change to them, and a new Boite version rewrites them
 in place. The owner renames it, picks its robot, model, effort and permission

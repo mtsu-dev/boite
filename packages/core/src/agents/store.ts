@@ -7,7 +7,7 @@ import type {
 import type { Core } from '../core.ts';
 import { invalidParams, messageOf, refused } from '../errors.ts';
 import type { Connection } from '../router.ts';
-import { checkModel, checkEffort, agentProvider, modelsFor, PROBED_PROTOCOLS } from '../threads/selection.ts';
+import { botDefaultModel, checkModel, checkEffort, agentProvider, modelsFor, PROBED_PROTOCOLS } from '../threads/selection.ts';
 import { probedModelsOf } from '../drivers/index.ts';
 import { readSavedCatalog } from '../providers/saved-catalogs.ts';
 import { withLoad } from '../threads/records.ts';
@@ -263,7 +263,7 @@ export class AgentStore {
     // may drop that id (a gateway renamed it), which must not block an unrelated change.
     const kept = previous !== null && previous.selection.providerId === provider.id && previous.selection.accountId === account.id
       && v.selection.model != null && previous.selection.model === v.selection.model;
-    const model = kept ? v.selection.model! : checkModel(provider, account.id, v.selection.model ?? provider.models.find(m => m.default)?.id ?? provider.models[0]?.id ?? null);
+    const model = kept ? v.selection.model! : checkModel(provider, account.id, v.selection.model ?? botDefaultModel(provider, account.id));
     if (!model) throw refused('selection.model: choose a default model');
     if (previous && this.core.journal.getSetting(`agents:runtime:${previous.id}`) && JSON.stringify(previous.selection) !== JSON.stringify({ ...v.selection, model }) && !this.resident.allowed(previous.id, { ...v.selection, model })) throw refused('selection.model: default model must be allowed by this agent policy');
     const effort = kept && previous.selection.effort === v.selection.effort ? v.selection.effort : checkEffort(provider, account.id, model, v.selection.effort);
