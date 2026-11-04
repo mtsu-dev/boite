@@ -857,8 +857,14 @@ export class Coordination {
     else {
       try { answer = await firstAnswer(routes, attempt); }
       catch (error) {
-        if (this.bridge.available(peer.coreId)) answer = await attempt(null);
-        else throw error instanceof AggregateError ? error.errors[0] ?? new Error('peer unreachable') : error;
+        const direct = error instanceof AggregateError ? error.errors[0] ?? new Error('peer unreachable') : error;
+        if (!this.bridge.available(peer.coreId)) throw direct;
+        // The relay is a last try: when it fails too, why the addresses did comes first, or the relay's word hides it.
+        try { answer = await attempt(null); }
+        catch (relayed) {
+          const both = `${messageOf(direct)}; through the owner app: ${messageOf(relayed)}`;
+          throw relayed instanceof RpcFailure ? new RpcFailure(relayed.code, both, relayed.data) : new Error(both, { cause: relayed });
+        }
       }
     }
     policedRoutes(this.#core, peer, operation);

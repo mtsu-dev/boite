@@ -146,6 +146,15 @@ relays sealed requests between connected members when they cannot dial each
 other directly. Both owner connections must remain open for this route.
 Members that can reach each other communicate with the app closed.
 
+A request body is at most 256 KiB (`MAX_BODY`), since anyone can send one; an
+answer to this core's own request, sealed, is at most 4 MiB (`MAX_ANSWER`),
+direct or relayed by the app, because a model catalog behind Douane already
+passed 256 KiB. The peer seals every answer it signs, so a readable answer to
+a sealed request comes from whatever stood in its place: the error names the
+address, or `the owner app relay`, its HTTP status and the start of its body.
+When every address fails and the relay fails too, the error gives the
+addresses' reason first.
+
 The legacy collaboration API still supports manual links between machines
 sharing no group. Each core keeps its identity and configured permissions in
 its data directory. Migration replaces standing pairwise trust with group

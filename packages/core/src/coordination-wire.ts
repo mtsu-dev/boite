@@ -28,6 +28,14 @@ export type BotOperation = (typeof BOT_OPERATIONS)[number];
 /** A request as signed: who asks whom, when, once, for what. */
 export type Envelope = { from: string; to: string; at: number; nonce: string; operation: Operation; payload: unknown };
 export const MAX_BODY = 262_144;
+/**
+ * The most an answer to this core's own request may carry, sealed. A request
+ * a stranger can send stays under `MAX_BODY`; an answer comes only from an
+ * address this core chose to ask, and some are lists the asker cannot page:
+ * a `delegation.catalog` behind Douane routes measured 286 964 bytes of JSON
+ * for 1 220 models, 382 798 once sealed (2026-11-04).
+ */
+export const MAX_ANSWER = 4 * 1024 * 1024;
 export const ROUTE = '/agent-messages';
 
 /** The peer signed a refusal: asking again would get the same one. */
@@ -70,7 +78,7 @@ export async function boundedBody(body: ReadableStream<Uint8Array> | null, max =
 export function settle(url: string | null, publicKey: string, nonce: string, status: number, raw: string, signature: string, sealing: Sealing | null = null): Answer {
   if (!signature && status === 403) throw new Error('destination refused this core; reconnect the agent link in Machines');
   if (sealing !== null) {
-    if (signature !== SEALED) throw new Error('peer answered a sealed request in the clear');
+    if (signature !== SEALED) throw new Error(unsealed(url, status, raw));
     ({ body: raw, signature } = unpack(openResponse(raw, sealing.responseKey, sealing.context)));
   }
   if (!verify(null, Buffer.from(raw), publicKey, Buffer.from(signature, 'base64'))) throw new Error('invalid peer response signature');
@@ -83,6 +91,19 @@ export function settle(url: string | null, publicKey: string, nonce: string, sta
   if (reply.error && status === 400) return { url, refusal: reply.error };
   if (status < 200 || status >= 300) throw new Error('peer request failed');
   return { url, result: reply.result };
+}
+
+/**
+ * What a readable answer to a sealed request says. The peer seals every answer
+ * it signs, so one left readable came from whatever stood in its place: a
+ * proxy, a server now on that address, or the owner app's relay saying why it
+ * could not carry the request. Its status and first words are that reason.
+ */
+function unsealed(url: string | null, status: number, raw: string): string {
+  const from = url ?? 'the owner app relay';
+  const said = raw.replace(/[\u0000-\u001f\u007f]+/g, ' ').trim().slice(0, 200);
+  if (status >= 200 && status < 300) return `${from} answered HTTP ${status} unsealed to a sealed request, so not as the machine it was sealed to`;
+  return `${from} answered HTTP ${status}${said ? `: ${said}` : ''}`;
 }
 
 /** How long the address that answered last is asked alone before the others are tried. */
@@ -117,5 +138,5 @@ export async function post(url: string, from: string, publicKey: string, body: s
     headers: { 'content-type': 'application/json', 'x-boite-peer': from, 'x-boite-signature': signature },
     body,
   });
-  return settle(url, publicKey, nonce, response.status, await boundedBody(response.body), response.headers.get('x-boite-signature') ?? '', sealing);
+  return settle(url, publicKey, nonce, response.status, await boundedBody(response.body, MAX_ANSWER), response.headers.get('x-boite-signature') ?? '', sealing);
 }
