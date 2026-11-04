@@ -121,9 +121,11 @@ export interface WorkflowInstance {
    * A step with `machine`: its subagent on that machine. `childId` is that machine's thread id, never a local
    * `threadId`; `turnId` is its last turn already judged, so a report of it again settles nothing.
    * `correction`: an output correction decided and not yet taken there, sent again with the same request id
-   * until it is, a core restart included.
+   * until it is, a core restart included. `accepted`: a turn that ended on live background work with the step's
+   * result in its answer, and that result as it was read then; that work was stopped there, and the step ends on
+   * that result once its worktree there is kept or removed, with no second read.
    */
-  machine?: { name: string; coreId: string | null; requestId: string; childId: string | null; turnId: string | null; corrections: number; correction?: { requestId: string; text: string } };
+  machine?: { name: string; coreId: string | null; requestId: string; childId: string | null; turnId: string | null; corrections: number; correction?: { requestId: string; text: string }; accepted?: { turnId: string; result: string | null; output: unknown } };
 }
 
 export interface WorkflowNode {

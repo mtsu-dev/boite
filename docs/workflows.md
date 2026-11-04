@@ -140,6 +140,19 @@ it waiting; stop or archive prevents launch. A second invalid result fails it.
 The correction retains the execution's attempt count and original start time;
 it does not bypass the scheduler with a detached callback.
 
+A turn that delivers a valid result ends the step even when the agent leaves
+background work running (a watcher, a build): dependents start at once, and the
+core ends that agent and its process tree so the leftover work never wakes the
+finished step (`workflows/step-result.ts`). A step on another machine does the
+same from that machine's report: a checkpoint whose answer holds a valid `json`
+block is kept as the step's result (`machine.accepted`), and the stop goes to
+that machine, which settles the subagent's worktree once that work is stopped;
+the step ends on that kept result, with no second read, when its worktree there
+is kept or removed. The answer is read over the network, so a turn that began
+there meanwhile is not stopped for it: that turn's own answer settles the step.
+Without a valid result, a turn that ends on background work is a checkpoint:
+the step waits for that work, and its worktree stays in use.
+
 The step's brief tells it where it sits in the run, that other steps share the
 checkout, and that its answer is collected automatically. Steps share the
 parent's working directory: give parallel steps distinct files, or set

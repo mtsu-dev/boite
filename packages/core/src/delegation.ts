@@ -758,9 +758,11 @@ export class Delegation {
     this.#core.pullRequestWatches.endThread(id);
     this.#core.activity.pauseAll(id);
     this.#core.coordination.pause(id);
-    const busy = this.#core.scheduler.stop(id) || waiting;
+    const turn = this.#core.scheduler.stop(id), busy = turn || waiting;
     closeQuestions(this.#core, id, 'the core, since the subagent was stopped');
     this.#core.threads.releaseAgent(id);
+    // A turn it stops settles its worktree as it ends, and a workflow step's run settles its own; one at rest settles now.
+    if (!turn && !this.#core.workflows.owns(id)) void this.worktrees.settle(id);
     this.#core.workflows.stepStopped(id);
     for (const letter of this.#letters(id, 'received')) this.#update(letter, 'rejected', 'Agent stopped');
     for (const letter of this.#letters(id, 'uncertain')) {
