@@ -1,4 +1,5 @@
 import {
+  PLUGIN_MANIFEST_FILE,
   RpcErrorCode,
   type PluginAppState,
   type PluginManifest,
@@ -122,13 +123,15 @@ export class FakePlugins {
     'plugins.command': (params) => {
       const known = this.#plugins.flatMap((plugin) => plugin.status === 'installed' ? plugin.adds?.commands ?? [] : []);
       if (!known.includes(params.name)) {
-        throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `boite ${params.name} is no boite command and no installed plugin provides it; plugin commands: ${known.join(', ') || 'none'}`, data: { field: 'name' } });
+        const expected = known.length === 0 ? 'no installed plugin provides a command' : `one of ${known.join(', ')}`;
+        throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `boite ${params.name} is no boite command and no installed plugin provides it; plugin commands: ${known.join(', ') || 'none'}`, data: { field: 'name', expected } });
       }
       return { exitCode: 0, stdout: `${params.name}: nothing to report in the in-memory client.\n`, stderr: '', truncated: false };
     },
     'plugins.dev': (params) => {
       const plugin = this.#plugins.find((entry) => entry.origin === 'dev' && entry.devPath === params.path);
-      if (!plugin) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `plugin dev path must be an absolute path to a folder holding boite-plugin.json, got ${JSON.stringify(params.path)}`, data: { field: 'path' } });
+      const expected = `an absolute path to a folder holding ${PLUGIN_MANIFEST_FILE}`;
+      if (!plugin) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `plugin dev path must be ${expected}, got ${JSON.stringify(params.path)}`, data: { field: 'path', expected } });
       this.host.emit('plugins.updated', structuredClone(plugin));
       return structuredClone(plugin);
     },
