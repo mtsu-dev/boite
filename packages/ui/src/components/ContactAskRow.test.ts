@@ -102,4 +102,11 @@ test('the Contacts bot thread shows what it forwarded and what it settled, under
   unmount(running!); running = null;
   const answered = show(store, asks[1]!);
   expect([text(answered, 'contact-ask-kicker'), text(answered, 'contact-ask-title'), text(answered, 'contact-ask-status')]).toEqual(['Answered', 'Fix the login redirect', 'Put in touch with Trace the slow boot']);
+  unmount(running!); running = null;
+
+  // A forward the contact answered keeps its row on the bot thread, with the address it gave.
+  view(store, 't-bot', [{ ...requests.answered!, forwardedAt: 130 }]);
+  const [done] = contactAsksFor(store, 't-bot');
+  expect([done!.role, done!.state]).toEqual(['forwarded', 'answered']);
+  expect(text(show(store, done!), 'contact-ask-status')).toBe('Answered: write to Chris/chris-loader');
 });

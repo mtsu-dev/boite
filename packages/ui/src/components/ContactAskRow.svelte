@@ -76,7 +76,7 @@
       {:else if tone === 'refused'}<X size={12} strokeWidth={2.25} aria-hidden="true" />
       {:else}<Clock size={12} strokeWidth={2} aria-hidden="true" />{/if}
       <span class="text">{status}</span>
-      {#if ask.state === 'answered' && ask.role === 'asked' && address}<code class="address" data-testid="contact-ask-address">{address}</code>{/if}
+      {#if ask.state === 'answered' && ask.role !== 'settled' && address}<code class="address" data-testid="contact-ask-address">{address}</code>{/if}
     </span>
     {#if open}
       <span class="more" data-testid="contact-ask-more">
