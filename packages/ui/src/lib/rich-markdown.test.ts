@@ -53,7 +53,8 @@ describe('richMarkdown', () => {
       if (!found) throw new Error('not drawn yet');
       return found;
     });
-    expect(error.textContent).toBe("This diagram could not be drawn: Parse error on line 3: Expecting 'NODE_STRING', got 'EOF'");
+    // Line 2 holds the arrow with nothing after it. Since Pele 1.10.1 an error at the end of the input names it, not a line 3 the code does not have.
+    expect(error.textContent).toBe("This diagram could not be drawn: Parse error on line 2: Expecting 'NODE_STRING', got 'EOF'");
     expect(host.querySelector('.md-mermaid pre code')?.textContent).toBe('flowchart LR\n  A --> ');
     expect(host.querySelector('[data-testid="diagram"]')).toBeNull();
   });
