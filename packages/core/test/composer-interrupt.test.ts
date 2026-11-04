@@ -17,7 +17,7 @@ test.each([true, false])('Send now interrupts a running tool and starts the queu
   restore = setDriver('echo', { protocol: 'echo', startTurn(ctx) {
     started.push(ctx);
     if (started.length > 1) return { done: Promise.resolve({ status: 'done', sessionId: null, usage: null }), stop() {} };
-    ctx.emit.part(ctx.emit.startMessage('assistant'), 0, { type: 'tool', toolId: 'slow-command', name: 'Bash', input: { command: 'long-running-command' }, status: 'running' });
+    ctx.emit.part(ctx.emit.startMessage('assistant'), 0, { type: 'tool', toolId: 'slow-command', name: 'Bash', input: { command: 'long-running-command' }, output: null, status: 'running' });
     const done = Promise.withResolvers<TurnResult>();
     return { done: done.promise, stop() { stopped++; done.resolve({ status: 'stopped', sessionId: null, usage: null }); },
       ...(steering ? { async steer() { steered++; return true; } } : {}) };
