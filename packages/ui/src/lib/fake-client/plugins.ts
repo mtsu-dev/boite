@@ -289,7 +289,13 @@ export class FakePlugins {
     const plugin: PluginState = {
       id: manifest.id, name: manifest.name, origin: 'url', description: manifest.description, homepage: manifest.homepage,
       version: existing?.version ?? null, availableVersion: manifest.version, status: 'installing', progress: 0, error: null,
-      source: preview.source, artifact: preview.artifact, platform: preview.platform, commands: preview.commands, pools, rejected: null, app
+      source: preview.source, artifact: preview.artifact, platform: preview.platform, commands: preview.commands, pools, rejected: null, app,
+      // What the core derives from the manifest it installs: the token's permissions and the names the plugin adds.
+      permissions: [...(manifest.permissions ?? [])],
+      adds: {
+        commands: (manifest.provides.commands ?? []).map((command) => command.name), skills: (manifest.provides.skills ?? []).map((skill) => skill.name),
+        slashCommands: (manifest.provides.slashCommands ?? []).map((command) => command.name), prompt: manifest.provides.prompt !== undefined,
+      },
     };
     if (existing !== undefined) Object.assign(existing, plugin);
     else this.#plugins.push(plugin);

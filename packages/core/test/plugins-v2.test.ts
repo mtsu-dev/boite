@@ -70,7 +70,14 @@ describe('manifest schema 2', () => {
     expect(refusedField({ ...v2(), schema: 1 })).toBe('runtime');
   });
 
-  test('every built-in command word is one the CLI answers, and help names the plugin route', () => {
+  test('the built-in command words are exactly those the CLI answers, and help names the plugin route', () => {
+    // Read from the sources: a handler added to either file without its word here would let a plugin shadow it.
+    const cli = readFileSync(join(import.meta.dir, '../src/cli.ts'), 'utf8');
+    const table = cli.slice(cli.indexOf('const commands: Record<string, () => Promise<void | number>> = {'));
+    const keys = [...table.slice(0, table.indexOf('\n  };\n')).matchAll(/^ {4}'?([a-z][a-z-]*)'?: /gm)].map((match) => match[1]);
+    const control = [...readFileSync(join(import.meta.dir, '../src/control-cli.ts'), 'utf8').matchAll(/^ {4}case '([a-z-]+)':/gm)].map((match) => match[1]);
+    expect(keys.length).toBeGreaterThan(20);
+    expect([...BUILTIN_COMMANDS].sort()).toEqual([...new Set([...keys, ...control, 'help', 'mcp', 'agent', 'agents'])].sort() as string[]);
     // A built-in missing from the list would be offered to plugins and never reached; the reverse would refuse a free name.
     for (const word of BUILTIN_COMMANDS) {
       if (word === 'help' || word === 'agent' || word === 'agents') continue;

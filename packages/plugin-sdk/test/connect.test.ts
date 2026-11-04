@@ -5,7 +5,7 @@ import { connect, dispatch, PROTOCOL_VERSION, RPC_PATH, RpcError, socketUrl } fr
 type Frame = { jsonrpc: string; id?: number; method: string; params?: unknown };
 
 /** A core that answers `hello`, `threads.list` and refuses the rest, as the real one refuses a method the plugin lacks. */
-function fakeCore(options: { protocolVersion?: number; bigTitle?: number } = {}) {
+function fakeCore(options: { protocolVersion?: number; bigTitle?: number; eventBeforeList?: boolean } = {}) {
   const frames: Frame[] = [];
   const server = Bun.serve({
     port: 0,
@@ -28,6 +28,7 @@ function fakeCore(options: { protocolVersion?: number; bigTitle?: number } = {})
           return;
         }
         if (frame.method === 'threads.list') {
+          if (options.eventBeforeList) ws.send(JSON.stringify({ jsonrpc: '2.0', method: 'thread.created', params: { id: 'thr_event' } }));
           answer({ result: [{ id: 'thr_1', title: 'x'.repeat(options.bigTitle ?? 1) }] });
           return;
         }
@@ -89,6 +90,26 @@ describe('connect', () => {
   test('a wrong token rejects the hello with the core\'s message', async () => {
     core = fakeCore();
     expect(await failure(connect({ url: core.url, token: 'bad' }))).toContain('unknown token');
+  });
+
+  test('a handler that throws skips no other handler and leaves the socket working', async () => {
+    core = fakeCore({ eventBeforeList: true });
+    const client = await connect({ url: core.url, token: 'tok' });
+    const heard: unknown[] = [];
+    const logged: unknown[] = [];
+    const error = console.error;
+    console.error = (...args: unknown[]) => { logged.push(args[0]); };
+    try {
+      client.on('thread.created', () => { throw new Error('handler bug'); });
+      client.on('thread.created', payload => heard.push(payload));
+      await client.call('threads.list', {});
+      expect(heard).toEqual([{ id: 'thr_event' }]);
+      expect(logged).toEqual(['boite plugin: a thread.created handler threw:']);
+      expect((await client.call('threads.list', {})).length).toBe(1);
+    } finally {
+      console.error = error;
+      client.close();
+    }
   });
 
   test('another protocol version is refused by name', async () => {

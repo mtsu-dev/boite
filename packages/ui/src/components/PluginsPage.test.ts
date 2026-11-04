@@ -192,6 +192,13 @@ test('a schema 2 preview shows what the plugin adds and what its own token reach
   expect(q('[data-testid="plugin-preview-app"]')?.textContent).toContain('It reaches Boite only through what the plugin may reach');
   expect([...preview.querySelectorAll('[data-testid="plugin-adds-item"]')].map((el) => el.textContent)).toEqual(['/waiting']);
   expect([...preview.querySelectorAll('[data-testid="plugin-permission"]')].map((el) => el.getAttribute('title'))).toEqual(['threads.read', 'ui.reveal']);
+
+  // Installed, its row keeps what the preview showed.
+  q('[data-testid="plugin-add"]')!.click();
+  await vi.waitFor(() => expect(row('scoped-desktop-waiting')?.getAttribute('data-status')).toBe('installed'), { timeout: 3000 });
+  const installed = row('scoped-desktop-waiting')!;
+  expect([...installed.querySelectorAll('[data-testid="plugin-adds-item"]')].map((el) => el.textContent)).toEqual(['/waiting']);
+  expect([...installed.querySelectorAll('[data-testid="plugin-permission"]')].map((el) => el.getAttribute('title'))).toEqual(['threads.read', 'ui.reveal']);
 });
 
 test('a URL is read first, shown with what it downloads and runs, and installs only on confirm', async () => {

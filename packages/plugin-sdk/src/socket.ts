@@ -62,11 +62,17 @@ export class TextSocket {
     setTimeout(() => this.#socket.destroy(), 1000).unref?.();
   }
 
-  #ended(code: number, reason: string): void {
+  /** `flush`: a close frame was just written, so end the socket once it is sent instead of discarding it. */
+  #ended(code: number, reason: string, flush = false): void {
     if (this.#closed) return;
     this.#closed = true;
     this.#open = false;
-    this.#socket.destroy();
+    if (flush) {
+      this.#socket.end();
+      setTimeout(() => this.#socket.destroy(), 1000).unref?.();
+    } else {
+      this.#socket.destroy();
+    }
     this.#events.close(code, reason);
   }
 
@@ -77,7 +83,7 @@ export class TextSocket {
       payload.writeUInt16BE(code);
       this.#socket.write(encodeFrame(0x8, payload));
     }
-    this.#ended(code, reason);
+    this.#ended(code, reason, true);
   }
 
   #read(chunk: Buffer): void {
@@ -117,7 +123,7 @@ export class TextSocket {
           this.#open = false;
           this.#socket.write(encodeFrame(0x8, payload.subarray(0, 2)));
         }
-        this.#ended(code, payload.subarray(2).toString('utf8'));
+        this.#ended(code, payload.subarray(2).toString('utf8'), true);
         return;
       }
       case 0x9:

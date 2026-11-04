@@ -45,7 +45,10 @@ export interface PluginClient {
   /** `plugin` for a schema 2 plugin's token, `owner` for a schema 1 desktop app's. */
   readonly principal: Principal;
   call<M extends RpcMethodName>(method: M, params: RpcParams<M>): Promise<RpcResult<M>>;
-  /** Listens to an event the plugin's permissions let it hear. Returns the function that stops listening. */
+  /**
+   * Listens to an event the plugin's permissions let it hear. Returns the function that stops listening.
+   * A handler that throws is reported on stderr; the other handlers and the socket go on.
+   */
   on<E extends RpcEventName>(event: E, handler: (payload: RpcEvents[E]) => void): () => void;
   /** Resolves once the socket is closed, by either side. */
   readonly closed: Promise<{ code: number; reason: string }>;
@@ -113,7 +116,10 @@ export async function connect(options: ConnectOptions = {}): Promise<PluginClien
         return;
       }
       if (typeof frame.method !== 'string') return;
-      for (const handler of listeners.get(frame.method) ?? []) handler(frame.params);
+      for (const handler of listeners.get(frame.method) ?? []) {
+        // One handler that throws must not skip the others or break the socket's reader.
+        try { handler(frame.params); } catch (error) { console.error(`boite plugin: a ${frame.method} handler threw:`, error); }
+      }
     },
     close(code, reason) {
       const error = new Error(`the core closed the socket (${code}${reason ? `: ${reason}` : ''})`);

@@ -4,7 +4,8 @@
  * after it untouched, and the manifest reader refuses a plugin command that
  * takes one of these names: the built-in would always win.
  *
- * cli.test.ts checks this list against the CLI's own command table and help.
+ * plugins-v2.test.ts checks this list against the command table of cli.ts and
+ * the commands control-cli.ts answers.
  */
 export const BUILTIN_COMMANDS: ReadonlySet<string> = new Set([
   'help', 'mcp',
