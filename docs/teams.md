@@ -237,8 +237,12 @@ bot lands on the holder, it is a local member again.
 Until the holder answers, the bot is on its new machine without its teams: its
 `boite team` commands name no team there, and it joins them when the holder
 returns. A bot on its way joins no team, because neither machine would answer
-for it. An archived team whose member left before teams followed moves comes
-back with the bot where its move went, or without a member nobody can find.
+for it.
+
+An archived team may still hold a member that moved away before teams followed
+moves. When the owner restores that team, the member follows its bot to the
+machine the move's receipt names. If no receipt says where the bot went, the
+member leaves the team and the restore goes through.
 
 ## The owner
 
@@ -250,7 +254,10 @@ named by bot id, name or `<machine>/<bot>`. `teams.create`,
 `teams.members.add` and `teams.members.remove` take the `card` of a bot's
 proposal, which applies it and settles the card. A card a bot drew on a member's
 machine for a team held elsewhere is applied on that machine, which asks the
-holder (`team.owner`): it may add a bot, or take out only a bot of its own.
+holder (`team.owner`). The holder takes this only from a machine with a bot in
+the team. That machine may add any bot of the group the card names, whose own
+machine still answers for it (`team.bot`), and may take out only a bot of its
+own.
 
 The app draws a bot's card (`boite team propose`, `invite` or `leave`) in
 the dock above the bot's composer, with the core's only option, Refuse, and
