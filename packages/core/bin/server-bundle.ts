@@ -33,6 +33,7 @@ export function androidServerBundle(dist: string, ui: string, termux: string, ve
   const bun = androidBunPin(readFileSync(join(termux, 'install.sh'), 'utf8'));
   const entries: Record<string, Uint8Array> = {
     'boite-server.ts': readFileSync(join(termux, 'boite-server.ts')),
+    'managed-update.ts': readFileSync(join(termux, 'managed-update.ts')),
     'server-release.json': Buffer.from(JSON.stringify({ version, bun })),
     // The echo provider's login script, which the core finds beside its scripts (Dockerfile).
     'core/shipped/echo-login.ts': readFileSync(join(import.meta.dir, '../src/providers/shipped/echo-login.ts')),

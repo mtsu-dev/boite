@@ -7,6 +7,19 @@ import { FakeContext } from './fake-client/context';
 import { seed } from './fake-client/seed';
 import { threadMethods } from './fake-client/threads';
 
+test('Android server updates share the real contract, version guard and cancellation', async ({ createClient }) => {
+  const url = location.href;
+  history.replaceState(null, '', '/?serverMode=android&serverUpdate=available');
+  try {
+    const client = await createClient({ delayMs: 0 });
+    const offer = await client.call('core.updateStatus', { refresh: true });
+    expect(offer.mode).toBe('android');
+    await expect(client.call('core.updateInstall', { version: 'other' })).rejects.toMatchObject({ code: RpcErrorCode.Refused });
+    expect((await client.call('core.updateInstall', { version: offer.version! })).phase).toBe('downloading');
+    expect((await client.call('core.updateCancel', {})).phase).toBe('available');
+  } finally { history.replaceState(null, '', url); }
+});
+
 test('done expiry mirrors the core while manual archives and restored history remain recoverable', async ({ createClient }) => {
   const client = await createClient({ delayMs: 0 });
   expect((await client.call('settings.get', {})).threadDoneRetentionDays).toBe(3);

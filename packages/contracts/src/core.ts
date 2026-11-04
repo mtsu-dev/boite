@@ -83,7 +83,7 @@ export interface CoreInfo {
 
 /** The server on one machine, independently of the desktop application's updater. */
 export interface ServerUpdateStatus {
-  mode: 'systemd' | 'docker' | 'manual';
+  mode: 'systemd' | 'android' | 'docker' | 'manual';
   phase: 'idle' | 'checking' | 'current' | 'available' | 'downloading' | 'waiting' | 'installing' | 'error';
   currentVersion: string;
   version: string | null;

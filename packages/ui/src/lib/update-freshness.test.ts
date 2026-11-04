@@ -20,11 +20,11 @@ const HOURS = 60 * 60_000;
  * release came out since: only a new check finds it, as on the real core.
  */
 /** `age` null: never read. `fresh` names the one agent read a moment ago. */
-async function server(age: number | null, fresh: string | null = null) {
+async function server(age: number | null, fresh: string | null = null, mode: ServerUpdateStatus['mode'] = 'systemd') {
   const client = new FakeClient({ delayMs: 0, coreId: 'server', coreName: 'server' });
   const call = client.call.bind(client);
   const checkedAt = age === null ? null : Date.now() - age;
-  const reading: ServerUpdateStatus = { mode: 'systemd', phase: 'current', currentVersion: '2.0.0-nightly.20261024.1', version: null,
+  const reading: ServerUpdateStatus = { mode, phase: mode === 'android' && age === null ? 'idle' : 'current', currentVersion: '2.0.0-nightly.20261024.1', version: null,
     channel: 'nightly', publishedAt: null, checkedAt, received: 0, total: null, error: null };
   const found: ServerUpdateStatus = { ...reading, phase: 'available', version: '2.0.0-nightly.20261028.1', publishedAt: '2026-10-28T10:02:51Z', checkedAt: Date.now() };
   const spy = vi.spyOn(client, 'call').mockImplementation((async (method: string, params: { refresh?: boolean }) => {
@@ -47,6 +47,13 @@ test('connecting to a machine whose last check is hours old checks its Boite and
   expect(store.serverUpdater.snapshot?.version).toBe('2.0.0-nightly.20261028.1');
   await vi.waitFor(() => expect(refreshes('providers.updates')).toBe(1));
   expect(refreshes('core.updateStatus')).toBe(1);
+});
+
+test('connecting to an Android server checks Boite even when only its agents were read', async () => {
+  const { store, refreshes } = await server(null, 'claude', 'android');
+  await vi.waitFor(() => expect(store.harnessUpdates.length).toBeGreaterThan(0));
+  await vi.waitFor(() => expect(refreshes('core.updateStatus')).toBe(1));
+  expect(store.serverUpdater.snapshot?.phase).toBe('available');
 });
 
 test('one agent updated a moment ago does not hide the others\' stale or missing readings', async () => {

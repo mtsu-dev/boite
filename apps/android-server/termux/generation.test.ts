@@ -40,6 +40,7 @@ function release(dir: string, version: string, controller: string | Uint8Array =
   writeFileSync(join(dir, 'server-release.json'), JSON.stringify({ version, bun: BUN }));
   writeFileSync(join(dir, 'ui', 'index.html'), version);
   writeFileSync(join(dir, 'boite-server.ts'), controller);
+  writeFileSync(join(dir, 'managed-update.ts'), readFileSync(join(import.meta.dir, 'managed-update.ts')));
   writeFileSync(join(dir, 'core', 'main.js'), `
     const at = (flag) => process.argv[process.argv.indexOf(flag) + 1];
     Bun.serve({ hostname: at('--host'), port: Number(at('--port')), fetch: () => Response.json({ ok: true, pid: process.pid, version: ${JSON.stringify(version)} }) });
@@ -224,4 +225,39 @@ test.skipIf(process.platform !== 'linux')('another Boite answering on the core\'
   expect(await run('status', '--quick')).toMatchObject({ running: true, healthy: false });
   answer = { ok: true, pid: process.pid, version: '1.0.0' };
   expect(await run('status', '--quick')).toMatchObject({ running: true, healthy: true });
+});
+
+test('a controller installed by an older updater launches its managed worker from the signed release companion', async () => {
+  const root = temporary().replaceAll('\\', '/');
+  const directory = join(root, '.boite-update-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa').replaceAll('\\', '/');
+  const current = join(root, 'releases', '1.0.0');
+  release(current, '1.0.0');
+  mkdirSync(join(root, 'data'));
+  mkdirSync(directory);
+  symlinkSync(current, join(root, 'current'), process.platform === 'win32' ? 'junction' : 'dir');
+  writeFileSync(join(root, 'boite-server.ts'), readFileSync(CONTROLLER));
+  writeFileSync(join(root, 'config.json'), JSON.stringify({ channel: 'nightly' }));
+  const file = `${directory}/plan.json`;
+  writeFileSync(file, JSON.stringify({ id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', root, dataDir: `${root}/data`, version: '2.0.0', previousVersion: '1.0.0', originalPid: 999999, channel: 'nightly' }));
+  // No companion beside the root controller, exactly as the previous planActivation copied it.
+  expect(existsSync(join(root, 'managed-update.ts'))).toBe(false);
+  const launcher = Bun.spawn([process.execPath, join(root, 'boite-server.ts'), 'managed-update-launch', file], {
+    env: { ...process.env, BOITE_SERVER_HOME: root, HOME: root }, stdout: 'pipe', stderr: 'pipe',
+  });
+  const [out, err, code] = await Promise.all([new Response(launcher.stdout).text(), new Response(launcher.stderr).text(), launcher.exited]);
+  expect({ code, err }).toEqual({ code: 0, err: '' });
+  const launched = JSON.parse(out) as { ok: boolean; pid: number };
+  expect(launched).toMatchObject({ ok: true });
+  expect(Number.isSafeInteger(launched.pid)).toBe(true);
+  for (let i = 0; i < 400 && !existsSync(join(directory, 'error')); i++) await Bun.sleep(10);
+  // The real detached worker loaded both files and refused an unsupervised core before any network or stop.
+  expect(readFileSync(join(directory, 'error'), 'utf8')).toContain('originalPid must match');
+  expect(existsSync(join(directory, 'ready'))).toBe(false);
+  // Its error marker precedes process exit; Windows keeps the worker's cwd and log open until then.
+  let running = true;
+  for (let i = 0; i < 200 && running; i++) {
+    try { process.kill(launched.pid, 0); await Bun.sleep(10); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error; running = false; }
+  }
+  expect(running).toBe(false);
 });

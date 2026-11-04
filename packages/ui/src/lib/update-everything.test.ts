@@ -14,6 +14,14 @@ function machine(id: string, overrides: Partial<MachineReading> = {}): MachineRe
 
 const app: AppReading = { phase: 'available', currentVersion: '2.0.0', version: '2.1.0', channel: 'stable', received: 0, total: null, error: null };
 
+test('an Android server release is offered by the same update action as other managed servers', () => {
+  const android = machine('android');
+  android.server = { ...android.server!, mode: 'android' };
+  const plan = planOf([android], null);
+  expect(plan).toHaveLength(1);
+  expect(plan[0]?.parts).toEqual([expect.objectContaining({ id: 'boite', version: '2.1.0', startable: true })]);
+});
+
 test('lists what each machine can update, this computer first, and leaves out what a click cannot reach', () => {
   const plan = planOf([
     machine('m2', { agents: [agent('claude'), agent('codex', { skipped: '1.1.0', pending: false }), agent('opencode', { latest: '1.0.0', pending: false })] }),

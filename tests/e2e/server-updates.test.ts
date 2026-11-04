@@ -78,6 +78,31 @@ test('a server release shows in the footer and in Machines, and actions target t
   expect(await page.evaluate(`window.__boiteTest.workspace.machines.find(machine => machine.id !== 'http://builder.test').store.serverUpdater.snapshot.phase`)).toBe('available');
 }, 45_000);
 
+test('an Android server offers and cancels its update on desktop and phone', async () => {
+  for (const [width, label] of [[1400, 'desktop'], [390, 'phone']] as const) {
+    await size(width);
+    await page.navigate(`${base}/?fake=1&machines=1&open=recent&serverMode=android&serverUpdate=idle`);
+    await page.waitFor(`window.__boiteTest?.workspace.machines.length === 2`);
+    await page.evaluate(`window.__boiteTest.workspace.active.showSettings('machines')`);
+    await page.waitFor(`document.querySelector('${id('app-updates-card')}') && document.querySelector('${row}')`);
+    await page.waitFor(`window.__boiteTest.workspace.machines.find(machine => machine.id === 'http://builder.test').store.harnessUpdates.some(agent => agent.checkedAt !== null)`);
+    expect(await state()).toBe('');
+    await page.waitFor(`!window.__boiteTest.workspace.machines.find(machine => machine.id === 'http://builder.test').store.serverUpdater.busy`);
+    await page.evaluate(`(() => { const updater = window.__boiteTest.workspace.machines.find(machine => machine.id === 'http://builder.test').store.serverUpdater;
+      updater.apply({ ...updater.snapshot, phase: 'error', error: 'Android server controller does not support managed updates; run boite-server update in Termux once' }); })()`);
+    await page.waitFor(`document.querySelector('${id('updates-failure')}')?.textContent.includes('run boite-server update in Termux once')`);
+    expect(await state()).toBe('failed');
+    await capture(`android-check-error-${label}`);
+    await page.navigate(`${base}/?fake=1&machines=1&open=recent&serverMode=android&serverUpdate=available`);
+    await machines();
+    await page.waitFor(`document.querySelector('${row} ${id('machine-updates-state')}')?.dataset.state === 'available'`);
+    expect(await page.evaluate(`window.__boiteTest.workspace.machines.find(machine => machine.id === 'http://builder.test').store.serverUpdater.snapshot.mode`)).toBe('android');
+    expect(await builderPart()).toContain('2.0.0-beta.2');
+    await capture(`android-available-${label}`);
+    await updateAndCancel(`android-${label}`);
+  }
+}, 45_000);
+
 test('the phone can update and cancel its server without overflowing the screen', async () => {
   await size(390);
   await page.navigate(`${base}/?fake=1&machines=1&open=recent&serverUpdate=available`);

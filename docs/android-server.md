@@ -120,6 +120,32 @@ update. Until a stable release carries
 the target, the stable channel answers that none does and names the nightly
 one.
 
+Desktop and phone clients use `core.updateStatus`, `core.updateInstall` and
+`core.updateCancel` for this managed installation too (`mode: android`). The
+channel comes from the Android server's `config.json`, including when it
+differs from the running core's version. `boite server update` uses the same
+path. The machine policy's `updates.server` setting controls checks and installs.
+
+The core starts the controller through its traced process registry. The
+controller detaches a worker with a private copy of itself and its signed
+`managed-update.ts` companion, so stopping the core and its supervisor leaves
+the update running. It downloads, verifies and unpacks the exact offered
+version before signalling readiness. The core can cancel before admission;
+agent updates hold admission, and active turns use the normal restart handoff.
+Only admission lets the worker stop the server and activate the prepared
+release, using the same rollback and health checks as the Termux command.
+An offer or channel that changed since the check is refused.
+
+New supervisors export `BOITE_ANDROID_SERVER_ROOT`. Existing supervisors are
+also detected from their matching data, CLI and release UI paths. The core can
+run the controller and companion from the signed current release when an older
+updater copied only the root controller. If neither installed controller
+supports managed update protocol 1, the status reports an explicit error:
+run `boite-server update` once in Termux to install a release that supports it.
+It does not offer an update the installed controller cannot perform. A worker
+result is read again on status calls, so a rollback failure written after the
+restored core started remains visible after reconnecting.
+
 ## Running and starting with the phone
 
 `start` launches a supervisor detached from Termux, which takes Termux's wake

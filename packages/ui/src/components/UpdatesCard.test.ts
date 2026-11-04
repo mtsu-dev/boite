@@ -133,6 +133,18 @@ test('a browser has no app updater: it shows the version of the machine it is on
   expect(one<HTMLButtonElement>('updates-run-all')!.disabled).toBe(true);
 });
 
+test('an Android controller check failure explains why and retries the check without an offered version', async () => {
+  const { store, client } = await machine('android', false);
+  store.serverUpdater.apply({ ...store.serverUpdater.snapshot!, mode: 'android', phase: 'error', version: null,
+    error: 'Android server controller does not support managed updates; run boite-server update in Termux once' });
+  const calls = vi.spyOn(client, 'call');
+  view = mount(UpdatesCard, { target: document.body, props: { native: false } });
+  flushSync();
+  expect(one('updates-failure')?.textContent).toContain('run boite-server update in Termux once');
+  one('updates-failure')!.querySelector('button')!.click();
+  await vi.waitFor(() => expect(calls).toHaveBeenCalledWith('core.updateStatus', { refresh: true }));
+});
+
 test('a server too old for the button says it updates once by hand, and a paired device asks it nothing', async () => {
   const { store, client } = await machine('older', false);
   const original = client.call.bind(client);

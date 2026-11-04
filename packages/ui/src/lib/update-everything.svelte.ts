@@ -78,7 +78,7 @@ function appPart(app: AppReading): PlannedPart | null {
 
 function serverPart(server: NonNullable<MachineReading['server']>): PlannedPart | null {
   // Docker and manual installs update by their own command, not by a click.
-  if (server.mode !== 'systemd' || server.version === null) return null;
+  if (!['systemd', 'android'].includes(server.mode) || server.version === null) return null;
   const state: Partial<Record<ServerUpdateStatus['phase'], PartState>> = {
     available: 'offered', downloading: 'downloading', waiting: 'waiting', installing: 'installing', error: 'failed'
   };

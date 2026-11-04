@@ -1,5 +1,5 @@
 import type { MachineGpu, MachineVolume, ResourceByteUsage, Settings, TraceCapability } from '@boite/contracts';
-import type { ServerUpdatePlatform } from '../server-update/types.ts';
+import type { AndroidServerUpdatePlatform, ServerUpdatePlatform } from '../server-update/types.ts';
 import type { CgroupMemory } from './linux-cgroup.ts';
 import type { NativeExecutionBoundary } from './protected.ts';
 
@@ -157,6 +157,7 @@ export interface ProcessPlatform {
   /** Model tool execution only. Trusted account/control processes never gain authority from this descriptor. */
   protectedExecution?: NativeExecutionBoundary;
   serverUpdates?: ServerUpdatePlatform;
+  androidServerUpdates?: AndroidServerUpdatePlatform;
   /** Absolute path of the tailscale CLI, or null when it is not installed. */
   tailscaleCli?(): string | null;
   /** The command lines that read and fix the OS firewall for `program`; Windows only (`windows/firewall.ts`). */
