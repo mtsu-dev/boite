@@ -87,6 +87,8 @@ export const fr: Translation = {
     namePlaceholder: 'Mira, Scout, Pixel', whatItDoes: 'Ce qu’il fait', instructionsPlaceholder: 'Par exemple : chaque matin, lis les nouvelles issues et résume-les en cinq lignes.',
     openAgent: 'Ouvrir {name}',
     projects: 'Projets', projectsHint: 'Il suit leurs threads, en lance de nouveaux, répond à leurs questions et vous dit ce qui compte.', noProjects: 'Ouvrez d’abord un projet.',
+    projectsBotsOff: 'Activez "{setting}" dans {page} sur cette machine pour ajouter ses projets.',
+    projectsOutsideGroup: 'Cette machine ne fait plus partie du groupe.',
     eventWakes: 'Réveils automatiques des projets et du bureau', eventWakesHint: 'Désactivé, seuls les fils qu\'il a lancés, qu\'on lui a confiés ou qu\'il suit le réveillent ; les autres événements attendent la prochaine routine. Les messages directs restent actifs.',
     autoMemory: 'Mettre à jour la mémoire après chaque réponse', autoMemoryHint: 'Un petit assistant réécrit sa mémoire à partir de ce que vous avez demandé et de ce qu’il a répondu.',
     brainFolder: 'Dossier des cerveaux', brainFolderHint: 'Où chaque bot garde ses instructions et ses notes sur cette machine. Le changer les déplace tous.', brainDefault: 'Par défaut, dans le dossier de données de Boite',
