@@ -674,6 +674,8 @@ export class ContactStore implements LinkedContacts {
   attach(data: ContactSocketData['contact'], socket: LinkSocket): void {
     const contact = this.find(data.coreId);
     if (this.#closed || this.#core.policy.networkOff('contacts') || !contact || contact.role !== 'host') { socket.close(1008, 'not a contact'); return; }
+    // A probe's first frame proves this core's key (`dialProven`); an older guest ignores it.
+    if (data.proof) socket.send(JSON.stringify({ t: 'proof', signature: data.proof }));
     const previous = this.#hosted.get(data.coreId);
     if (previous) {
       this.#core.coordination.bridge.disconnect(previous.routeId);

@@ -6,11 +6,13 @@ import type { ContactStore } from './store.ts';
 import { TextSocket } from '../ws-client.ts';
 import { checkTailnetName } from './invite.ts';
 
-/** What the server keeps on a contact's link socket. */
-export interface ContactSocketData { contact: { coreId: string; routeId: string } }
+/** What the server keeps on a contact's link socket; `proof`: the host's signature over the hello, its first frame. */
+export interface ContactSocketData { contact: { coreId: string; routeId: string; proof?: string } }
 
 export const CONTACT_LINK_ROUTE = '/coordination/contact/link';
 export const HELLO_INPUT = 'boite-contact-hello\n';
+/** What the dialed core signs back for a dial that asks it to prove its key (`x-boite-probe: 1`). */
+export const PROOF_INPUT = 'boite-contact-proof\n';
 /** How long the upgrade to a host may take before the link counts as failed. */
 const LINK_DIAL_MS = 8000;
 
@@ -19,6 +21,31 @@ export async function dialContact(core: Core, url: string, headers: Record<strin
   await checkTailnetName(url, 'contact.url');
   core.policy.assert(core.policy.networkOff('contacts'), 'network.contacts');
   return TextSocket.connect(`${url.replace(/^http/, 'ws')}${CONTACT_LINK_ROUTE}`, LINK_DIAL_MS, { headers });
+}
+
+function proofFrame(text: string): { t?: unknown; signature?: unknown } | null {
+  try { return JSON.parse(text) as { t?: unknown; signature?: unknown } | null; } catch { return null; }
+}
+
+/**
+ * A dial that only counts once the core holding `publicKey` answered: its
+ * first frame signs this dial's hello back. An origin that merely takes the
+ * upgrade never sends it, and is closed after `ms`.
+ */
+export async function dialProven(core: Core, url: string, headers: Record<string, string>, publicKey: string, ms: number): Promise<TextSocket> {
+  const socket = await dialContact(core, url, { ...headers, 'x-boite-probe': '1' });
+  const signed = Buffer.concat([Buffer.from(PROOF_INPUT), Buffer.from(headers['x-boite-hello'] ?? '', 'base64url')]);
+  return new Promise<TextSocket>((resolve, reject) => {
+    const fail = (reason: string) => { clearTimeout(timer); socket.close(1008, 'no proof'); reject(new Error(`${url} ${reason}`)); };
+    const timer = setTimeout(() => fail(`sent no proof of its key in ${ms} ms`), ms);
+    socket.onClose(() => fail('closed before proving its key'));
+    socket.onMessage(text => {
+      const frame = proofFrame(text);
+      if (frame?.t !== 'proof' || typeof frame.signature !== 'string' || !verify(null, signed, publicKey, Buffer.from(frame.signature, 'base64'))) { fail('answered without the expected key\'s proof'); return; }
+      clearTimeout(timer);
+      resolve(socket);
+    });
+  });
 }
 
 export function contactHello(core: Core, store: ContactStore, request: Request): ContactSocketData['contact'] | Response {
@@ -40,5 +67,8 @@ export function contactHello(core: Core, store: ContactStore, request: Request):
     }
     if (!store.has(guest)) store.groupLink.commit(guest);
     if (!store.has(guest)) store.groupLink.seated(guest);
-    return { coreId: guest, routeId: `contact:${randomUUID()}` };
+    // A move's probe asks this core to prove it holds its key: the hello signed back, sent once the socket opens (`attach`).
+    const probe = request.headers.get('x-boite-probe') === '1';
+    const proof = probe ? core.coordination.signature(Buffer.concat([Buffer.from(PROOF_INPUT), Buffer.from(request.headers.get('x-boite-hello') ?? '', 'base64url')])).toString('base64') : undefined;
+    return { coreId: guest, routeId: `contact:${randomUUID()}`, ...(proof ? { proof } : {}) };
 }

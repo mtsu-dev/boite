@@ -41,7 +41,7 @@ import { tellBot } from './bot.ts';
 import { ContactBotHome } from './bot-home.ts';
 import { contactFace } from './face.ts';
 import { checkCard, checkSigningKey, contactUrl } from './invite.ts';
-import { dialContact } from './link-hello.ts';
+import { dialContact, dialProven } from './link-hello.ts';
 import { memberThreadId } from './member-address.ts';
 import { MAX_RELATIONS } from './relations.ts';
 import type { StoredRequest } from './requests.ts';
@@ -69,6 +69,8 @@ const UNREACHABLE_MAX_MS = 6 * 3_600_000;
 const PROBE_MS = 3500;
 /** How long a contact waits for the Bots host to take a guest seat it was moved to. */
 const SEAT_MS = 10 * 60_000;
+/** How long a guest seat this host dialed keeps being dialed while the contact refuses this host. */
+const RESUME_MS = 7 * 24 * 3_600_000;
 /** The contact's answer to the move leaves on the old link before it closes. */
 const RELEASE_MS = 2000;
 const ALIASED = /~[0-9a-f]{16}$/;
@@ -79,13 +81,17 @@ export function moveInput(from: string, to: string, contact: string): Buffer {
 }
 
 /** The Bots host's card, as the move carries it to the contact. */
-interface MoveCard { coreId: string; publicKey: string; box: string; url: string; machine: string; internet?: string }
+/** `proof: 1`: this host signs a probe's hello back, and the contact keeps only an origin that did (`dialProven`). */
+interface MoveCard { coreId: string; publicKey: string; box: string; url: string; machine: string; internet?: string; proof?: 1 }
 /** A relation the Bots host takes over, its local thread already at the member's address here. */
 type HandedRelation = Pick<ContactRelation, 'id' | 'local' | 'remote' | 'requestId'>;
 /** A local thread as a hand carries it: the machine of the group it lives on, and its own id there. */
 interface Owned { member: string; threadId: string }
 /** `url`: the member was the contact's guest, and this Bots host dials it there (a guest seat). */
 interface Incoming { from: string; at: number; contact: StoredContact; requests: StoredRequest[]; relations?: HandedRelation[]; url?: string; dialed?: true }
+
+/** A hand still waiting for its contact, or a guest seat this host already dialed, which waits until it is resolved (`#resume`). */
+const live = (entry: Incoming): boolean => entry.dialed === true || Date.now() - entry.at < INCOMING_MS;
 
 /** Why a contact the member dials stays with it: its core cannot hand the Bots host that seat yet. */
 function older(name: string, reason: string): string {
@@ -112,6 +118,8 @@ export class ContactGroupLink {
   readonly #seats = new Map<string, { from: string; admission: number; card: MoveCard; until: number }>();
   /** As the Bots host: guest seats it dials, by contact, so a member's `dial` and the resume share one probe. */
   readonly #dialing = new Map<string, Promise<void>>();
+  /** Guest seats a resume could not reach yet: how many tries, and when to dial again. */
+  readonly #resumes = new Map<string, { tries: number; until: number }>();
   /** The Contacts bot goes to the Bots host before the links do (`bot-home.ts`). */
   readonly #bot: ContactBotHome;
   #closed = false;
@@ -129,9 +137,11 @@ export class ContactGroupLink {
   /** Every contact this member holds that can move, offered to the Bots host. `force` ignores the retry wait. */
   sweep(force = false): void {
     if (this.#closed) return;
+    // A contact that followed this core stays its own, whichever machine is the Bots host now.
+    this.#resume();
     const home = this.#core.group.roleOf('botsHome');
     if (home === null) return;
-    if (home === this.#self()) { this.#bot.hosting(); this.#resume(); return; }
+    if (home === this.#self()) { this.#bot.hosting(); return; }
     const host = this.#core.group.peers().find(peer => peer.coreId === home);
     // The bot moves first: until the host holds one, this core keeps the links and the bot.
     if (!host || !this.#bot.ready(host, force)) return;
@@ -177,7 +187,7 @@ export class ContactGroupLink {
     const answer = await this.#core.coordination.request(host, 'contact.hand', { action: 'hand', contact: { ...kept, grants }, requests, relations, ...(seat ? { seat } : {}) }) as { card?: unknown; signature?: unknown; held?: unknown; linked?: unknown; seat?: unknown } | null;
     if (answer?.held === true && answer.linked === true) { this.release(contact.coreId, host.coreId); return; }
     const raw = answer?.card as Partial<MoveCard> | undefined;
-    const card: MoveCard = { ...checkCard(raw, 'hand.card'), url: contactUrl(raw?.url, 'hand.card.url'), ...(raw?.internet === undefined ? {} : { internet: contactUrl(raw.internet, 'hand.card.internet') }) };
+    const card: MoveCard = { ...checkCard(raw, 'hand.card'), url: contactUrl(raw?.url, 'hand.card.url'), ...(raw?.internet === undefined ? {} : { internet: contactUrl(raw.internet, 'hand.card.internet') }), ...(raw?.proof === 1 ? { proof: 1 as const } : {}) };
     if (card.coreId !== host.coreId) throw invalidParams('hand.card.coreId: expected the Bots host');
     const signature = text(answer?.signature, 'hand.signature', 200);
     const peer = this.#store.peers().find(entry => entry.coreId === contact.coreId && !this.#store.isRelayPeer(entry));
@@ -288,8 +298,9 @@ export class ContactGroupLink {
     const held = this.#store.find(contact.coreId);
     if (held) this.#merge(contact, requests, relations);
     else {
-      const before = this.#incoming().find(entry => entry.contact.coreId === contact.coreId && entry.from === peer.coreId && entry.url === seat && entry.dialed === true && Date.now() - entry.at < INCOMING_MS);
-      const incoming = this.#incoming().filter(entry => entry.contact.coreId !== contact.coreId && Date.now() - entry.at < INCOMING_MS);
+      // A seat this host already dialed may have moved the contact: a new hand of it keeps the resume (`#resume`).
+      const before = this.#incoming().find(entry => entry.contact.coreId === contact.coreId && entry.url === seat && entry.dialed === true);
+      const incoming = this.#incoming().filter(entry => entry.contact.coreId !== contact.coreId && live(entry));
       // The cap holds for the group's single entry too: the member keeps the contact, still relays for it, and hands it again later.
       if (this.#store.occupied(contact.coreId) + incoming.length >= this.#store.maxContacts) {
         throw refused(`contact.hand: this Bots host holds ${this.#store.maxContacts} contacts already, counting those on their way; ${peer.name} keeps ${contact.name} for now`, { field: 'contact', reason: 'full', max: this.#store.maxContacts });
@@ -300,7 +311,7 @@ export class ContactGroupLink {
     const { publicKey } = this.#core.coordination.card();
     // Funnel mounts already up for another contact also carry this one: offered, never mounted for it.
     const internet = this.#store.publicUrl();
-    const card: MoveCard = { coreId: self, publicKey, box: this.#core.group.boxPublic(), url: await this.#store.selfUrl(false), machine: contactFace(this.#core), ...(internet ? { internet } : {}) };
+    const card: MoveCard = { coreId: self, publicKey, box: this.#core.group.boxPublic(), url: await this.#store.selfUrl(false), machine: contactFace(this.#core), ...(internet ? { internet } : {}), proof: 1 };
     return {
       card, signature: this.#core.coordination.signature(moveInput(peer.coreId, self, contact.coreId)).toString('base64'), held: held !== undefined,
       linked: held !== undefined && this.#store.linkOf(contact.coreId) === 'connected', ...(seat && !held ? { seat: 'guest' } : {}),
@@ -316,7 +327,7 @@ export class ContactGroupLink {
     if (this.#core.group.roleOf('botsHome') !== this.#self()) throw refused('contact.hand: this machine is not the group\'s Bots host');
     const coreId = text((payload as { contact?: unknown } | null)?.contact, 'hand.contact', 100);
     if (this.#store.has(coreId)) return { ok: true };
-    const entry = this.#incoming().find(item => item.contact.coreId === coreId && item.from === peer.coreId && item.url !== undefined && Date.now() - item.at < INCOMING_MS);
+    const entry = this.#incoming().find(item => item.contact.coreId === coreId && item.from === peer.coreId && item.url !== undefined && live(item));
     if (!entry?.url) throw refused(`contact.hand: ${peer.name} handed no guest seat for that contact`);
     // From this hello on the contact may follow this host: a restart before `commit` resumes the dial (`#resume`).
     if (!entry.dialed) this.#core.journal.setSetting(INCOMING, this.#incoming().map(item => item.contact.coreId === coreId && item.from === entry.from ? { ...item, dialed: true as const } : item));
@@ -329,7 +340,10 @@ export class ContactGroupLink {
   #seatDial(coreId: string, url: string): Promise<void> {
     const running = this.#dialing.get(coreId);
     if (running) return running;
-    const opened = dialContact(this.#core, url, this.#store.helloHeaders(coreId)).then(socket => {
+    const entry = this.#incoming().find(item => item.contact.coreId === coreId && item.url === url);
+    if (!entry) return Promise.reject(new Error('no guest seat for that contact'));
+    // The contact signs this hello back: an origin that only takes the upgrade does not make this host keep it.
+    const opened = dialProven(this.#core, url, this.#store.helloHeaders(coreId), entry.contact.publicKey, PROBE_MS).then(socket => {
       socket.close(1000, 'moved');
       if (!this.#closed) this.commit(coreId);
     }).finally(() => this.#dialing.delete(coreId));
@@ -339,21 +353,39 @@ export class ContactGroupLink {
 
   /**
    * A guest seat this host already dialed and does not hold yet is dialed
-   * again on each sweep: if this host stopped after the contact followed it
-   * but before it kept the contact, the contact now only waits for this
-   * host, and the member's next move would be refused there.
+   * again on each sweep, however long this host was away: if it stopped
+   * after the contact followed it but before it kept the contact, the
+   * contact now only waits for this host, and the member's next move would
+   * be refused there. A failed dial waits 10 minutes, then twice as long up
+   * to 6 hours. The entry goes once this host keeps the contact, or once the
+   * contact still refuses this host's hello a week after the hand.
    */
   #resume(): void {
     if (this.#closed) return;
     const now = Date.now();
     for (const entry of this.#incoming()) {
-      if (entry.url === undefined || !entry.dialed || now - entry.at >= INCOMING_MS || this.#store.has(entry.contact.coreId) || this.#dialing.has(entry.contact.coreId)) continue;
-      this.#seatDial(entry.contact.coreId, entry.url).catch(() => {});
+      const coreId = entry.contact.coreId, url = entry.url;
+      if (url === undefined || !entry.dialed || this.#store.has(coreId) || this.#dialing.has(coreId) || (this.#resumes.get(coreId)?.until ?? 0) > now) continue;
+      this.#seatDial(coreId, url).then(() => this.#resumes.delete(coreId), error => {
+        // A contact that still refuses this host after a week never followed it: the entry is an ordinary hand again, which expires.
+        if (/\b403\b/.test(messageOf(error)) && Date.now() - entry.at > RESUME_MS) { this.#resumes.delete(coreId); this.#forget(coreId, url); return; }
+        const tries = (this.#resumes.get(coreId)?.tries ?? 0) + 1;
+        this.#resumes.set(coreId, { tries, until: Date.now() + Math.min(UNREACHABLE_RETRY_MS * 2 ** (tries - 1), UNREACHABLE_MAX_MS) });
+      });
     }
   }
 
   /** Guest seats still to dial keep the store's timer, which sweeps them again. */
-  resuming(): boolean { return this.#incoming().some(entry => entry.url !== undefined && entry.dialed === true && Date.now() - entry.at < INCOMING_MS && !this.#store.has(entry.contact.coreId)); }
+  resuming(): boolean { return this.#incoming().some(entry => entry.url !== undefined && entry.dialed === true && !this.#store.has(entry.contact.coreId)); }
+
+  /** The contact at `url` never took this host: its seat entry is an ordinary hand again, which expires. */
+  #forget(coreId: string, url: string): void {
+    this.#core.journal.setSetting(INCOMING, this.#incoming().map(item => {
+      if (item.contact.coreId !== coreId || item.url !== url || !item.dialed) return item;
+      const { dialed: _dialed, ...rest } = item;
+      return rest;
+    }));
+  }
 
   #incoming(): Incoming[] { return (this.#core.journal.getSetting(INCOMING) as Incoming[] | undefined) ?? []; }
 
@@ -519,6 +551,8 @@ export class ContactGroupLink {
     const card = checkCard(raw?.card, 'move.card');
     const url = contactUrl(raw?.card?.url, 'move.card.url');
     const internet = raw?.card?.internet === undefined ? undefined : contactUrl(raw.card.internet, 'move.card.internet');
+    // A Bots host that offers its Funnel origin proves its key on each origin: only an origin that did can win.
+    const proven = raw?.card?.proof === 1 || internet !== undefined;
     const signature = text(raw?.signature, 'move.signature', 200);
     if (raw?.seat !== undefined && raw.seat !== 'guest') throw invalidParams('move.seat: expected guest or nothing');
     const self = this.#self();
@@ -539,7 +573,8 @@ export class ContactGroupLink {
       const origins = internet === undefined || internet === url ? [url] : [url, internet];
       try {
         reached = await within(Promise.any(origins.map(async origin => {
-          const socket = await dialContact(this.#core, origin, this.#store.helloHeaders(card.coreId));
+          const headers = this.#store.helloHeaders(card.coreId);
+          const socket = proven ? await dialProven(this.#core, origin, headers, card.publicKey, PROBE_MS) : await dialContact(this.#core, origin, headers);
           socket.close(1000, 'moved');
           return origin;
         })), PROBE_MS, card.machine);

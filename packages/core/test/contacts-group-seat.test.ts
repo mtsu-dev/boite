@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { botView } from '../src/contacts/bot.ts';
 import { moveInput } from '../src/contacts/group-link.ts';
-import { dialContact } from '../src/contacts/link-hello.ts';
+import { dialContact, type ContactSocketData } from '../src/contacts/link-hello.ts';
 import { contactsBotOf } from './contacts-fixture.ts';
 import { startTestCore, waitFor, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
@@ -14,8 +14,10 @@ import { botsHome, letters, project, remoteOn, requestOn, setup, thread } from '
 
 const cores: TestCore[] = [];
 const scratch: string[] = [];
+const servers: ReturnType<typeof Bun.serve>[] = [];
 afterEach(async () => {
   for (const core of cores.splice(0)) await core.stop();
+  for (const server of servers.splice(0)) server.stop(true);
   for (const dir of scratch.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -106,14 +108,17 @@ test('a guest seat given before the contact was removed and linked again does no
   expect(c.core.contacts.has(aId)).toBe(true);
 }, 60000);
 
-test('a Bots host that stopped after the contact took its hello, before keeping the contact, dials it again once it is back', async () => {
+/** X stops right after C followed it, before it stored C, and comes back on its data `away` ms later: it dials C again by itself. */
+async function restartBeforeCommit(away: number): Promise<void> {
   const sides = await setup(cores, true);
   const { a, x, c, aClient, xId, cId } = sides;
   unreachable(x);
-  // X stops right after C followed it, before it stored C.
   x.core.contacts.groupLink.commit = () => { throw new Error('stopped before commit'); };
   await botsHome(a, aClient, x, xId);
   await waitFor(() => c.core.contacts.has(xId) && !x.core.contacts.has(cId), 20000);
+  // Away longer than a handed contact waits (1 h): only the hand's time ages, as if X had been off that long.
+  const incoming = x.core.journal.getSetting('contacts:incoming') as { at: number }[];
+  x.core.journal.setSetting('contacts:incoming', incoming.map(entry => ({ ...entry, at: entry.at - away })));
   const saved = mkdtempSync(join(tmpdir(), 'boite-seat-restart-'));
   scratch.push(saved);
   const dataDir = join(saved, 'data');
@@ -127,4 +132,41 @@ test('a Bots host that stopped after the contact took its hello, before keeping 
   await waitFor(() => back.core.contacts.has(cId) && back.core.contacts.linked(cId), 20000);
   expect(back.core.contacts.find(cId)).toMatchObject({ role: 'guest', url: c.url });
   await flowsWithoutHolder({ ...sides, x: back, xClient: await back.connect() });
+}
+
+test('a Bots host that stopped after the contact took its hello, before keeping the contact, dials it again once it is back', async () => {
+  await restartBeforeCommit(0);
 }, 90000);
+
+test('a Bots host back two hours after the contact took its hello still dials it again', async () => {
+  await restartBeforeCommit(2 * 3_600_000);
+}, 90000);
+
+test('a server that takes the upgrade without the Bots host\'s key does not win the move over the Bots host', async () => {
+  const { a, x, c, aClient, xId, cId } = await setup(cores);
+  // Answers every upgrade at once and holds no key of X: a wrong or replaced public origin.
+  const impostor = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch(request, server) { return server.upgrade(request) ? undefined : new Response('no'); }, websocket: { message() {} } });
+  servers.push(impostor);
+  // X itself, 200 ms further away.
+  const real = Bun.serve<ContactSocketData['contact']>({ hostname: '127.0.0.1', port: 0,
+    async fetch(request, server) {
+      await Bun.sleep(200);
+      const verdict = x.core.contacts.hello(request);
+      if (verdict instanceof Response) return verdict;
+      return server.upgrade(request, { data: verdict }) ? undefined : new Response('not an upgrade', { status: 400 });
+    },
+    websocket: {
+      open(socket) { x.core.contacts.attach(socket.data, socket); },
+      message(socket, frame) { x.core.contacts.frame(socket.data, frame); },
+      close(socket) { x.core.contacts.detach(socket.data); },
+    },
+  });
+  servers.push(real);
+  const tailnet = `http://127.0.0.1:${real.port}`;
+  x.core.contacts.selfUrl = async () => tailnet;
+  x.core.contacts.publicUrl = () => `http://127.0.0.1:${impostor.port}`;
+  await botsHome(a, aClient, x, xId);
+  await waitFor(() => x.core.contacts.has(cId) && !a.core.contacts.has(cId), 20000);
+  expect(c.core.contacts.find(xId)?.url).toBe(tailnet);
+  await waitFor(() => x.core.contacts.linked(cId) && c.core.contacts.linked(xId), 10000);
+}, 60000);
