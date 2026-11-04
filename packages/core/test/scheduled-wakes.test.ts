@@ -193,6 +193,33 @@ describe('ScheduleWakeup in a Boite thread', () => {
     expect(harness.core.journal.listTurns(threadId)).toHaveLength(2);
   });
 
+  test('a dropped native fire whose single result also answers the resume ends that turn with its words', async () => {
+    WAKE_TIMING.graceMs = 100;
+    harness.core.settings.set({ warmProcessMinutes: 5 });
+    const client = await harness.connect();
+    const threadId = await claudeThread(client);
+    const sessionId = 'sess-wake-folded';
+    schedules(sessionId, 1, false);
+    expect(await runTurn(client, threadId, 'pace yourself on the CI')).toBe('done');
+    const at = (await row(threadId)).wake!.at;
+    await waitFor(() => calls[0]!.prompts.length === 2, 5_000);
+    const resumed = client.next('turn.finished', (turn) => turn.threadId === threadId, 10_000);
+    // The CLI folds the core's resume prompt into its own wake run: one
+    // result, which names that prompt (as claude.background.test.ts models it).
+    const fake = queries[0]!;
+    fake.emit(sdk({ type: 'command_lifecycle', state: 'started', wakeup_source: 'loop_wakeup', scheduled_for: at, session_id: sessionId }));
+    fake.emit(init(sessionId));
+    fake.emit(assistant(sessionId, [{ type: 'text', text: 'CI IS GREEN' }]));
+    fake.emit(sdk({ ...(success(sessionId) as object), user_message_uuid: calls[0]!.ids[1], user_message_uuids: [calls[0]!.ids[1]] }));
+    fake.emit(sdk({ type: 'command_lifecycle', state: 'completed', session_id: sessionId }));
+    const turn = await resumed;
+    expect(turn.status).toBe('done');
+    expect(turn.execution?.operation).toBe('resume');
+    expect(texts(threadId, turn.id).at(-1)).toBe('CI IS GREEN');
+    expect((await client.call('threads.get', { threadId })).status).not.toBe('running');
+    expect(harness.core.journal.listTurns(threadId)).toHaveLength(2);
+  });
+
   test('a native fire beside a user turn shows in it and does not end it', async () => {
     WAKE_TIMING.graceMs = 60_000;
     harness.core.settings.set({ warmProcessMinutes: 5 });

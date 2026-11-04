@@ -83,6 +83,8 @@ export class ClaudeSession {
    * turn without ending it.
    */
   #native: 'drop' | 'beside' | null = null;
+  /** The frames of a `drop` run so far: a result that names the attached turn's prompt makes them that turn's. */
+  #dropped: SDKMessage[] = [];
   /**
    * Results still owed to a run the CLI started by itself, which a user's turn
    * took over before that run finished: they close that run, not the turn.
@@ -578,12 +580,24 @@ export class ClaudeSession {
     if (message.type === 'system') this.#noteTasks(message);
     if (this.#loopLifecycle(message)) return;
     if (this.#native === 'drop') {
-      if (message.type !== 'result') return;
+      if (message.type !== 'result') { this.#dropped.push(message); return; }
+      const run = this.#dropped.splice(0);
       this.#native = null;
+      const head = this.#head();
+      // The CLI folded the attached turn's prompt into the run: its result answers that turn, so the run is the turn's.
+      if (head !== null && this.#answers(head, message)) {
+        for (const frame of [...run, message]) this.#deliver(frame, false);
+        return;
+      }
       this.#totals.counted(message);
-      if (this.#head() === null) this.#afterTurns();
+      if (head === null) this.#afterTurns();
       return;
     }
+    this.#deliver(message, replayed);
+  }
+
+  /** What `#receive` does with a frame that belongs to a turn, or opens one. */
+  #deliver(message: SDKMessage, replayed: boolean): void {
     // A stop makes the CLI write an error result for the interrupt: that is the stop, not a failure.
     if (!replayed && !(message.type === 'result' && (this.#closing || this.#head()?.isStopped === true))) noteClaudeMessage(this.#head()?.ctx ?? this.#ctx, message, this.#spawnedAt);
     if (message.type === 'system' && message.subtype === 'init') { this.#spawnedAt = null; this.#totals.started(message.claude_code_version); }
@@ -803,6 +817,7 @@ export class ClaudeSession {
     this.#orphans = [];
     this.#woken = false;
     this.#native = null;
+    this.#dropped = [];
     this.#foreignResults = 0;
     this.#replayResult = false;
     this.#backgroundFinishers.clear();
