@@ -33,8 +33,8 @@ export type TurnExecution = Pick<ThreadSummary,
   /**
    * Another agent's message that found the thread at rest: no turn under way, no
    * background work, no pull request whose checks it waits on, no delegated agent
-   * at work. It starts a request of its own (`continuesRequest`). Set at admission,
-   * since what the thread was doing then is not in its turns.
+   * or workflow at work. It starts a request of its own (`continuesRequest`). Set at
+   * admission, since what the thread was doing then is not in its turns.
    */
   opensRequest?: true;
 };
