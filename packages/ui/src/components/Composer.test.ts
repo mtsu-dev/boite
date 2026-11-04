@@ -732,6 +732,28 @@ test('ArrowUp removes the latest queued prompt and restores its images for editi
   expect(store.composerStates['t-trace']!.queued.map((entry) => entry.text)).toEqual(['first pending', 'edited pending prompt']);
 });
 
+test('a queued prompt is a one-line chip; opening it shows the whole text, and Edit takes it back into the box', async ({ queueApp: _app }) => {
+  await store.open('t-trace');
+  await store.client!.call('turns.start', { threadId: 't-trace', prompt: 'Wait [permission]' });
+  await waitFor(() => store.openThread?.status === 'waiting');
+  await type('Check the parser first\nthen the error message');
+  press('Enter');
+  await waitFor(() => input().value === '' && store.composerStates['t-trace']?.queued.length === 1);
+  const chip = query<HTMLButtonElement>('[data-testid=composer-queued] .queued-bubble');
+  expect(chip.textContent).toContain('Queued:');
+  expect(chip.querySelector('.queued-text')!.textContent).toBe('Check the parser first then the error message');
+  expect(document.querySelector('[data-testid=composer-queued-full]')).toBeNull();
+  chip.click();
+  await waitFor(() => document.querySelector('[data-testid=composer-queued-full]') !== null);
+  expect(chip.getAttribute('aria-expanded')).toBe('true');
+  expect(query('[data-testid=composer-queued-full] .queued-body').textContent).toBe('Check the parser first\nthen the error message');
+  // Opening it moves nothing: the prompt stays queued until Edit.
+  expect(store.composerStates['t-trace']!.queued).toHaveLength(1);
+  query<HTMLButtonElement>('[data-testid=composer-queued-edit]').click();
+  await waitFor(() => input().value === 'Check the parser first\nthen the error message');
+  expect(store.composerStates['t-trace']!.queued).toHaveLength(0);
+});
+
 test('Escape stops the running turn and sends pending input next', async ({ app: _app }) => {
   await store.open('t-trace');
   await type('Wait for me [permission]');
@@ -1264,7 +1286,9 @@ test('a waiting question takes the composer as its free answer, with the card pi
   await waitFor(() => document.querySelector('[data-testid=composer-reply]') !== null, TYPING_PAUSE_MS);
   expect(input().placeholder).toBe('Write your answer');
   expect(query('[data-testid=composer-send]').getAttribute('aria-label')).toBe('Send the answer');
-  expect(pendingCard().querySelector('[data-testid=question-reply-hint]')).not.toBeNull();
+  // One submit: the composer's send. The card keeps its choices and Skip, no Answer button and no hint.
+  expect(pendingCard().querySelector('[data-testid=question-reply-hint]')).toBeNull();
+  expect(pendingCard().querySelector('[data-testid=question-submit]')).toBeNull();
 
   // Ignore gives the composer back to ordinary messages; the card offers it again.
   query<HTMLButtonElement>('[data-testid=composer-reply-ignore]').click();
@@ -1770,8 +1794,10 @@ test('permission menu offers YOLO beside Auto and preserves legacy modes until p
   query('[data-testid=composer-mode]').click();
   await waitFor(() => document.querySelector('[data-testid=composer-mode-menu]') !== null);
   const menu = query('[data-testid=composer-mode-menu]');
-  expect(Array.from(menu.querySelectorAll('.label')).map(row => row.textContent?.trim())).toEqual(['YOLO', 'Auto', 'Edit freely', 'Ask']);
-  for (const [mode, label] of [['yolo', 'YOLO'], ['bypassPermissions', 'Auto'], ['acceptEdits', 'Edit freely'], ['default', 'Ask']]) {
+  expect(Array.from(menu.querySelectorAll('.label')).map(row => row.textContent?.trim())).toEqual(['Full access', 'Smart auto', 'Auto-approve edits', 'Ask each time']);
+  // The old names stay in the tooltips, so a habit still finds them.
+  expect(Array.from(menu.querySelectorAll<HTMLElement>('[data-value]')).map(row => row.title)).toEqual(expect.arrayContaining([expect.stringContaining('Formerly YOLO'), expect.stringContaining('Formerly Edit freely')]));
+  for (const [mode, label] of [['yolo', 'Full access'], ['bypassPermissions', 'Smart auto'], ['acceptEdits', 'Auto-approve edits'], ['default', 'Ask each time']]) {
     query(`[data-testid=composer-mode-menu] [data-value="${mode}"]`).click();
     await waitFor(() => store.openThread?.permissionMode === mode);
     expect(query('[data-testid=composer-mode]').textContent?.trim()).toBe(label);

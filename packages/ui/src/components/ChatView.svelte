@@ -14,7 +14,7 @@
   import { slideFrom } from '../lib/motion';
   import Composer from './Composer.svelte';
   import FolderGoneNotice from './FolderGoneNotice.svelte';
-  import AgentDock from './AgentDock.svelte';
+  import StatusStrip from './StatusStrip.svelte';
   import ProjectChoice from './ProjectChoice.svelte';
   import MessageList from './MessageList.svelte';
   import ThreadLoading from './ThreadLoading.svelte';
@@ -27,6 +27,9 @@
   import DoneThreadNotice from './DoneThreadNotice.svelte';
   import WorktreeGoneNotice from './WorktreeGoneNotice.svelte';
   import ContactHoldNotice from './ContactHoldNotice.svelte';
+  import Inbox from './home/Inbox.svelte';
+  import FirstRun from './home/FirstRun.svelte';
+  import { firstRunSteps } from '../lib/first-run.svelte';
 
   /** `locked`: the conversation reads but takes nothing more, said in place of the composer (an archived agent's). */
   let { store, locked = null }: { store: Store; locked?: string | null } = $props();
@@ -153,7 +156,7 @@
       {/key}
     {:else if sending}
       <MessageList {store} threadId={DRAFT_STASH_KEY} {messages} />
-    {:else}
+    {:else if !firstRunSteps(store).active}
         <div class="mobile-welcome">
           <img src="./icons/icon.svg" alt="" width="42" height="42" />
           <h1>{strings.mobile.draftTitle}</h1>
@@ -203,10 +206,10 @@
     {#if store.openProject?.missing === true && !thread?.agentSessionId}<FolderGoneNotice {store} project={store.openProject} />{/if}
     {#if thread?.worktreeRemoved}<WorktreeGoneNotice removal={thread.worktreeRemoved} archived={thread.archived} />{/if}
     {#if thread?.contactHold && !thread.archived}<ContactHoldNotice {store} threadId={thread.id} contacts={thread.contactHold.contacts} />{/if}
-    <!-- Right on the composer, so the band of tasks rises by this bar's height alone, whatever notice stands above. -->
-    {#if thread}<div bind:offsetHeight={agentDockRoom}><AgentDock {store} threadId={thread.id} /></div>{/if}
+    <!-- Right on the composer, so the band of tasks rises by this line's height alone, whatever notice stands above. -->
+    {#if thread && !thread.archived && !locked}<div bind:offsetHeight={agentDockRoom}><StatusStrip {store} /></div>{/if}
     {#if locked}<p class="locked" data-testid="chat-locked">{locked}</p>
-    {:else if thread?.archived}<DoneThreadNotice {store} threadId={thread.id} />{:else}<Composer {store} centered={!thread && !sending} />{/if}
+    {:else if thread?.archived}<DoneThreadNotice {store} threadId={thread.id} />{:else if !thread && !sending && firstRunSteps(store).active}<FirstRun {store} />{:else}<Composer {store} centered={!thread && !sending} />{/if}
 
     <!-- The draft's heading and composer are one block in the middle of the
          column: the body above and this tail below share the free space. -->
@@ -214,7 +217,9 @@
       <div class="draft-tail">
         <!-- In the drafts the agent gets a fresh folder; someone with work of
              their own is one click from pointing it there instead. -->
-        {#if store.draftInDrafts && store.draft?.incognito}
+        {#if firstRunSteps(store).active}
+          <!-- The checklist's second step is the folder: nothing else to offer under it. -->
+        {:else if store.draftInDrafts && store.draft?.incognito}
           <!-- What the header's switch means, said where the eyes are. -->
           <p class="incognito-note" data-testid="draft-incognito-note">
             <VenetianMask size={14} strokeWidth={1.75} />
@@ -226,6 +231,8 @@
             <span class="ui-label">{strings.drafts.openFolder}</span>
           </button>
         {/if}
+        <!-- What waits on the user and what works, from every project and machine (home/Inbox.svelte). -->
+        {#if !firstRunSteps(store).active}<Inbox {store} />{/if}
       </div>
     {/if}
     <!-- Desktop drafts anchor against the whole chat so their centered heading stays clear. -->
@@ -305,9 +312,17 @@
     flex: 1 1 0;
     min-height: 0;
     display: flex;
-    justify-content: center;
-    align-items: flex-start;
+    flex-direction: column;
+    align-items: center;
   }
+
+  /* The home's accent sky: two still glows of the accent, the grain over them in its theme. */
+  .chat.drafting {
+    --sky: radial-gradient(70% 55% at 50% 0%, color-mix(in oklch, var(--color-accent) 14%, transparent), transparent 72%),
+      radial-gradient(90% 60% at 50% 78%, color-mix(in oklch, var(--color-accent) 6%, transparent), transparent 70%);
+    background: var(--sky);
+  }
+  :global(html[data-theme='grain']) .chat.drafting { background: var(--grain-tile), var(--sky); }
 
   /* Inline, so the mark stays with the first word when the line wraps on a phone. */
   .incognito-note {

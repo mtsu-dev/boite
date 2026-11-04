@@ -76,8 +76,17 @@
   </div>
   <div class="presets" role="group" aria-label={strings.settings.colors.palette}>
     {#each presets as preset (preset.id)}
+      <!-- Each card is drawn in the palette it sets: its frame, a card on it, lines of text and the accent. -->
       <button type="button" class="preset" aria-pressed={matching === preset.id} onclick={() => pick(preset.id)} data-testid="palette-{preset.id}">
-        <span class="ui-label">{strings.settings.colors.palettes[preset.id]}</span>{#if matching === preset.id}<Check size={14} />{/if}
+        <span class="art" aria-hidden="true" style:background={preset.palette.frame}>
+          <span class="sheet" style:background={preset.palette.surface}>
+            <span class="line" style:background={preset.palette.foreground}></span>
+            <span class="line short" style:background={preset.palette.foreground}></span>
+            <span class="pill" style:background={preset.palette.accent}></span>
+          </span>
+          {#if matching === preset.id}<span class="tick" style:background={preset.palette.accent} style:color={preset.palette.frame}><Check size={11} strokeWidth={3} /></span>{/if}
+        </span>
+        <span class="name ui-label">{strings.settings.colors.palettes[preset.id]}</span>
       </button>
     {/each}
   </div>
@@ -119,10 +128,19 @@
   h3 { display: flex; align-items: center; gap: 4px; font-size: var(--text-base); }
   .actions { display: flex; gap: 4px; }
   .actions button { display: inline-flex; align-items: center; gap: 6px; }
-  .presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
-  .preset { display: flex; justify-content: space-between; align-items: center; padding: 0 10px; gap: 8px; height: var(--control); border: 1px solid var(--color-border); background: transparent; border-radius: var(--radius-md); min-width: 0; text-align: left; color: var(--color-foreground); font-size: var(--text-sm); }
-  .preset:hover { border-color: var(--color-edge); }
-  .preset[aria-pressed='true'] { border-color: var(--color-accent); color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-accent); }
+  .presets { display: grid; grid-template-columns: repeat(auto-fill, 120px); gap: 14px 12px; margin-bottom: 14px; }
+  .preset { display: grid; gap: 7px; justify-items: start; width: 120px; height: auto; padding: 0; border: 0; background: transparent; box-shadow: none; text-align: left; color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 500; }
+  .preset:hover, .preset:active:not(:disabled) { background: transparent; transform: none; }
+  .art { position: relative; display: block; width: 120px; height: 72px; border-radius: var(--radius-lg); box-shadow: inset 0 0 0 1px var(--color-edge); overflow: hidden; transition: box-shadow var(--dur-2); }
+  .preset:hover .art { box-shadow: inset 0 0 0 1px var(--color-muted-foreground); }
+  .sheet { position: absolute; inset: 14px 0 0 14px; display: grid; align-content: start; gap: 6px; padding: 10px; border-radius: var(--radius-md) 0 0 0; }
+  .line { display: block; width: 72%; height: 4px; border-radius: var(--radius-full); opacity: 0.85; }
+  .line.short { width: 46%; opacity: 0.45; }
+  .pill { display: block; width: 28px; height: 8px; margin-top: 2px; border-radius: var(--radius-full); }
+  .tick { position: absolute; top: 6px; right: 6px; display: grid; place-items: center; width: 16px; height: 16px; border-radius: var(--radius-full); }
+  .preset[aria-pressed='true'] .art { box-shadow: 0 0 0 2px var(--color-accent); }
+  .preset[aria-pressed='true'] .name { color: var(--color-foreground); }
+  .name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .selection { display: flex; }
   .customize { display: inline-flex; align-items: center; gap: 7px; flex: none; }
   .editor { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; }
@@ -143,8 +161,9 @@
   .contrast > span:first-child { color: var(--color-danger); }
   .contrast > span:first-child { display: flex; align-items: center; }
   @media (max-width: 720px) {
-    .presets { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-    .preset { height: var(--touch-target); }
+    /* Two a row on a phone, each as wide as its column. */
+    .presets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .preset, .art { width: 100%; }
     .editor, .editor.customizing { grid-template-columns: minmax(0, 1fr); gap: 16px; }
     .customize { min-height: var(--touch-target); }
     .role-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }

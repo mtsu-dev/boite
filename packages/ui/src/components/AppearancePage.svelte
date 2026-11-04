@@ -456,9 +456,9 @@
     flex: none;
     gap: 2px;
     padding: 2px;
-    border: 1px solid var(--color-edge);
+    border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
-    background: var(--color-surface-2);
+    background: var(--color-segment-track);
   }
 
   .segmented button {
@@ -472,13 +472,15 @@
   }
 
   .segmented button:hover:not(.on) {
-    background: var(--color-surface-3);
+    background: var(--color-hover);
     color: var(--color-foreground);
   }
 
+  /* The chosen option is a card on the track, never a solid foreground pill. */
   .segmented button.on {
-    background: var(--color-foreground);
-    border-color: var(--color-foreground);
-    color: var(--color-on-foreground);
+    background: var(--color-segment-thumb);
+    border-color: var(--color-edge);
+    color: var(--color-foreground);
+    box-shadow: var(--shadow-e1);
   }
 </style>

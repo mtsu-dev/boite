@@ -618,7 +618,7 @@ test(
   'settings show the core the UI is connected to',
   async () => {
     await page.click(testid('nav-settings'));
-    await page.waitFor(`document.querySelector('${testid('settings-home')}')`);
+    await page.waitFor(`document.querySelector('${testid('settings-search')}')`);
     // The core the UI talks to sits under Advanced, with the rest a developer reads.
     await page.click(testid('settings-tab-advanced'));
     await page.waitFor(`document.querySelector('${testid('settings-endpoint')}')`);

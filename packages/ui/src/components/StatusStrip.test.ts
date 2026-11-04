@@ -1,0 +1,70 @@
+import { afterEach, expect, vi } from 'vitest';
+import { flushSync, mount, unmount } from 'svelte';
+import { test } from '../test/fake-client';
+import { workspace } from '../lib/workspace.svelte';
+import { undo } from '../lib/undo.svelte';
+import StatusStrip from './StatusStrip.svelte';
+
+let view: ReturnType<typeof mount> | undefined;
+afterEach(() => {
+  vi.restoreAllMocks();
+  if (view) unmount(view, { outro: false });
+  view = undefined;
+  document.body.replaceChildren();
+});
+
+const strip = () => document.querySelector<HTMLElement>('[data-testid="status-strip"]');
+
+test('a finished turn offers Mark done and Archive, and Archive leaves the Undo toast', async ({ ready }) => {
+  const { store } = await ready();
+  await store.open('t-trace');
+  view = mount(StatusStrip, { target: document.body, props: { store } });
+  flushSync();
+  expect(strip()?.dataset.state).toBe('finished');
+  expect(strip()?.textContent).toContain('Finished');
+  expect(document.querySelector('[data-testid="status-strip-done"]')?.textContent).toBe('Mark done');
+  document.querySelector<HTMLButtonElement>('[data-testid="status-strip-archive"]')!.click();
+  await vi.waitFor(() => expect(store.threads.some(thread => thread.id === 't-trace')).toBe(false));
+  expect(undo.current?.message).toMatch(/^Archived /);
+});
+
+test('a thread waiting on the user says so in amber, never Working, even while its turn runs', async ({ ready }) => {
+  const { store } = await ready();
+  await store.open('t-scheduler');
+  expect(store.openThread?.turns.at(-1)?.status).toBe('running');
+  view = mount(StatusStrip, { target: document.body, props: { store } });
+  flushSync();
+  expect(strip()?.dataset.state).toBe('waiting');
+  expect(document.querySelector('[data-testid="status-strip-waiting"]')?.textContent?.trim()).toMatch(/^Waiting for you · \d+(d \d+h|h \d\dm|m \d\ds|s)$/);
+  expect(document.querySelector('[data-testid="status-strip-working"]')).toBeNull();
+  expect(document.querySelector('[data-testid="status-strip-done"]')).toBeNull();
+});
+
+test('a running turn counts its time in the accent', async ({ ready }) => {
+  const { store } = await ready();
+  await store.open('t-trace');
+  store.openThread!.status = 'running';
+  view = mount(StatusStrip, { target: document.body, props: { store } });
+  flushSync();
+  expect(strip()?.dataset.state).toBe('working');
+  expect(document.querySelector('[data-testid="status-strip-elapsed"]')?.textContent).toMatch(/^\d+(s|m \d\ds|h \d\dm)$/);
+  expect(document.querySelector('[data-testid="status-strip-waiting"]')).toBeNull();
+});
+
+test('Next needs you opens the other thread that has waited longest, and changes nothing else', async ({ ready }) => {
+  const { store, client } = await ready();
+  await store.open('t-trace');
+  const others = store.threads.filter(thread => !thread.archived && thread.id !== 't-trace' && (thread.status === 'waiting' || (thread.openQuestions ?? 0) > 0));
+  expect(others.length).toBeGreaterThan(1);
+  const oldest = others.reduce((a, b) => (b.updatedAt < a.updatedAt ? b : a));
+  const select = vi.spyOn(workspace, 'select').mockResolvedValue();
+  const calls = vi.spyOn(client, 'call');
+  view = mount(StatusStrip, { target: document.body, props: { store } });
+  flushSync();
+  const next = document.querySelector<HTMLButtonElement>('[data-testid="status-strip-next"]')!;
+  expect(next.textContent).toContain(`Next needs you (${others.length})`);
+  next.click();
+  expect(select).toHaveBeenCalledWith(store, oldest.id);
+  // It only opens: no send, archive or move goes to the core.
+  expect(calls.mock.calls.map(([method]) => method).filter(method => !/\.(get|list)$/.test(method))).toEqual([]);
+});

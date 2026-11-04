@@ -33,9 +33,9 @@ test('queued prompts sit above the activity dock attached to the input', async (
       expect(gap).toBeLessThanOrEqual(40);
       expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
     }
-    // Going out, the queue has no Send now: its foot keeps the button's height so
-    // the label's ink room does not overflow the list into a scrollbar, and a
-    // long prompt shows three whole lines, not a sliver of the fourth.
+    // Going out, the queue has no Send now and its row keeps the chip's height,
+    // so nothing overflows the list into a scrollbar, and a long prompt stays
+    // one line on its chip.
     await page.evaluate(`(() => {
       const state = globalThis.__boiteTest.workspace.active.composerStates['t-trace'];
       state.queued[0].text = 'A follow-up long enough to need more than three lines in the bubble. '.repeat(8);
@@ -49,7 +49,7 @@ test('queued prompts sit above the activity dock attached to the input', async (
         const text = queue.querySelector('.queued-text');
         return { overflow: queue.scrollHeight - queue.clientHeight, lines: text.clientHeight / parseFloat(getComputedStyle(text).lineHeight) };
       })()`);
-      expect(fit).toEqual({ overflow: 0, lines: 3 });
+      expect(fit).toEqual({ overflow: 0, lines: 1 });
     }
     await page.evaluate(`globalThis.__boiteTest.workspace.active.composerStates['t-trace'].sending = false`);
     await page.evaluate(`globalThis.__boiteTest.workspace.active.openThread.activity = { goal: null, loop: null, tasks: [{ id: 'work', text: 'Keep the latest answer visible', status: 'in_progress' }] }`);

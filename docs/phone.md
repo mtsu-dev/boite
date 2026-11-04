@@ -10,8 +10,9 @@ the phone itself in Termux.
 
 ## Settings on a phone
 
-The bottom bar opens Conversations, Activity and Settings, with a central
-`+` for a new thread. The Bots and Contacts experiments add their own tabs.
+The bottom bar opens Threads, Inbox and Settings, and Bots when its
+experiment is on; a round New thread button floats over the two lists.
+Contacts sits in the Bots page header, or in Settings when bots are off.
 The list's header opens the machine's connection settings and the project
 picker, whose last row adds a project for owner connections. A conversation
 hides the bottom bar; its header holds Back, which carries a mark while
@@ -370,27 +371,39 @@ link scanned or pasted in the app asks nothing either: the owner just showed it.
 ## The app on the phone
 
 The browser uses mobile navigation at 720 px and below. A bar along the bottom edge
-(`MobileTabs.svelte`) holds the places: Conversations, Activity, a filled +
-that starts a thread, Bots and Contacts when they are on, and Settings.
-Activity's tab counts the conversations waiting for you; Bots counts the bots
-at work on every machine, as the desktop's switch does, in the waiting colour
-once one needs you. Conversations lists
-threads across connected machines; Activity puts waiting requests first,
-followed by running and queued turns. Each list's header shows the machine,
+(`MobileTabs.svelte`) holds four places with their full names: Threads, Inbox,
+Bots when its experiment is on, and Settings. Inbox's tab counts the
+conversations waiting for you; Bots counts the bots at work on every machine,
+as the desktop's switch does, in the waiting colour once one needs you. A
+56 px round New thread button sits over the Threads and Inbox lists, above
+the bar; it slides away while a list scrolls down and comes back on the way
+up or at the end. Contacts moved into the Bots page header with its request
+badge, or into Settings when bots are off. Threads lists threads across
+connected machines under the lifecycle strip (Needs you, Working, Done,
+Archived), whose tiles filter the list; Inbox puts waiting requests first,
+longest wait first, followed by running and queued turns. Both lists open on
+a 28 px title that folds into the bar once it scrolls away, and a project's
+header stays at the top while its rows scroll under it. Each list's header shows the machine,
 which opens its connection settings, over the screen's name, and the project
 the + starts in, whose sheet also adds a project for owners. A conversation, a bot's
 page and an open keyboard hide the bar; the conversation's header shows its
 title over its project, and its machine once there are two.
 
-Each row in the list leads with who runs the thread, the bot's picture or the
-provider's logo. A finger that slides a row left uncovers Pin and Archive
-(`lib/swipe-row.ts`); a vertical drag stays the list's scroll and one row is
-open at a time. A phone has no right-click, so the actions a desktop finds
-there open from a tap: the conversation's title in its header lists Browser,
-files and tools (the right panel), pin, rename, find in this thread, Subagents
-when the thread has some, archive and delete, and the `...` button of a row in
-the list offers the same actions a thread keeps on a phone, with Mark done in
-the list. A new title by the agent, moving to a project, the path,
+Each row in the list (`PhoneThreadRow.svelte`, 64 px at least) leads with
+who runs the thread, the bot's picture or the provider's logo, inside the
+state ring, then the title on up to two lines and one line of facts (project,
+machine when the list mixes them, pull request, agents, branch) ending on the
+time. A finger that slides a row right marks it done, and left archives it,
+each with the Undo toast; past 35 % of the row's width the reveal under it
+arms, short of it the row springs back (`lib/swipe-actions.ts`). A way the
+row's menu does not offer, such as Mark done on a thread at work, only
+resists. A vertical drag stays the list's scroll. A phone has no right-click,
+so the actions a desktop finds there open from a tap: the conversation's title
+in its header lists Browser, files and tools (the right panel), pin, rename,
+find in this thread, Subagents when the thread has some, archive and delete,
+and a long press on a row opens the sheet of the actions a thread keeps on a
+phone, with Mark done in the list; the sheet's trigger stays in the row for a
+screen reader and a keyboard. A new title by the agent, moving to a project, the path,
 coordination and the terminal stay on the desktop. A draft's header shows its
 "New thread" label.
 

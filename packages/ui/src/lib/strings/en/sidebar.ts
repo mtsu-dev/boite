@@ -180,6 +180,32 @@ export const strings = {
     draftStarting: 'Starting on {machine}',
     draftQueueFailed: 'Not started: {reason}',
     /** Its menu takes the queued prompt back into the draft, which then waits to be sent again. */
-    cancelQueuedDraft: 'Cancel the start'
+    cancelQueuedDraft: 'Cancel the start',
+    /** The four buttons over the thread list: each filters it to one state across every project. */
+    lifecycle: {
+      label: 'Filter threads by state',
+      waiting: 'Needs you',
+      working: 'Working',
+      done: 'Done',
+      archived: 'Archived',
+      waitingHint: 'Threads waiting on your answer or that failed: {count}',
+      workingHint: 'Threads at work: {count}',
+      doneHint: 'Threads marked done: {count}',
+      archivedHint: 'Threads archived to pick up later: {count}',
+      /** Said in the button's tooltip while it filters the list. */
+      clearHint: 'Click again or press Escape to show every thread',
+      none: 'No thread in this state.',
+      showAll: 'Show every thread'
+    },
+    /** A project's count chips beside its name. */
+    projectNeedsYou: '{project}: {count} need you',
+    projectFailed: '{project}: {count} failed',
+    /** The row closing a busy project: the resting threads it folds, opened in place. */
+    moreRows: '{count} more',
+    moreRowsLabel: '{project}: show {count} more threads',
+    fewerRows: 'Show fewer',
+    /** The second line's chip for a thread's delegated agents. */
+    agentsOne: '1 agent',
+    agentsMany: '{count} agents'
   }
 } as const;

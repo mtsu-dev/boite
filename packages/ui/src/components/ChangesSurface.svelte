@@ -176,7 +176,7 @@
   <div class="split">
     <div class="list" role="listbox" aria-label={strings.rightPanel.changes} tabindex="-1">
       {#if status && status.changes.length === 0}
-        <p class="empty" data-testid="changes-empty">{strings.changes.clean}</p>
+        <p class="empty" data-testid="changes-empty">{strings.changes.clean}<span class="empty-hint">{strings.changes.cleanHint}</span></p>
       {/if}
       {#each status?.changes ?? [] as change (change.path)}
         <button
@@ -489,6 +489,7 @@
     font-size: var(--text-sm);
     color: var(--color-muted-foreground);
   }
+  .empty-hint { display: block; margin-top: 4px; font-size: var(--text-xs); color: var(--color-subtle); }
 
   .notice {
     margin: 6px 0;

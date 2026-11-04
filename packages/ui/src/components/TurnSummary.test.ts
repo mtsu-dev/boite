@@ -41,7 +41,7 @@ function text(testid: string): string | null {
   return document.querySelector(`[data-testid=${testid}]`)?.textContent ?? null;
 }
 
-test('a silent running turn reports work without implying an answer is being written', () => {
+test('a silent running turn leaves its time to the status strip and draws no spinner', () => {
   const message = { id: 'prompt', role: 'user', turnId: 'turn-1', parts: [{ type: 'text', text: 'Check the files' }] } as Message;
   running = mount(MessageTurnSummary, { target: document.body, props: {
     store: { connection: 'ready', openThread: { id: 't-1', status: 'running', turns: [] } } as unknown as Store,
@@ -49,14 +49,19 @@ test('a silent running turn reports work without implying an answer is being wri
   } });
   flushSync();
   expect(document.querySelector('[data-testid=typing-indicator]')).toBeNull();
-  expect(text('turn-elapsed')).toMatch(/^Working for /);
-  expect(document.querySelector('[data-testid=turn-summary] .spinner')).not.toBeNull();
+  // The status strip above the composer counts the running time; the timeline adds nothing.
+  expect(document.querySelector('[data-testid=turn-summary]')).toBeNull();
+  expect(document.querySelector('.spinner')).toBeNull();
 });
 
 test('a finished turn reads how long it worked, when it was done and what it spent', () => {
   running = mount(TurnSummary, { target: document.body, props: { turn: turn() } });
   flushSync();
-  expect(text('turn-elapsed')).toBe('Worked for 4m 41s');
+  // One muted line, `4m 41s · done 10:31`: the words stay in the tooltip, the tokens wait for the pointer.
+  expect(text('turn-elapsed')).toBe('4m 41s');
+  expect(document.querySelector('[data-testid=turn-elapsed]')?.getAttribute('title')).toBe('Worked for 4m 41s');
+  expect(document.querySelector('[data-testid=turn-tokens]')?.closest('.metric')?.classList.contains('on-hover')).toBe(true);
+  expect(document.querySelector('[data-testid=turn-finished-at]')?.closest('.metric')?.classList.contains('on-hover')).toBe(false);
   expect(text('turn-finished-at')).toBe(`done ${clockTime(STARTED + 281_000)}`);
   expect(text('turn-tokens')).toContain('tokens');
   expect(document.querySelector('[data-testid=turn-background]')).toBeNull();
@@ -65,7 +70,7 @@ test('a finished turn reads how long it worked, when it was done and what it spe
 test('a failed turn keeps its duration and timestamps without claiming it completed successfully', () => {
   running = mount(TurnSummary, { target: document.body, props: { turn: turn({ status: 'error' }) } });
   flushSync();
-  expect(text('turn-elapsed')).toBe('Worked for 4m 41s');
+  expect(text('turn-elapsed')).toBe('4m 41s');
   expect(text('turn-finished-at')).toBe(`failed ${clockTime(STARTED + 281_000)}`);
   expect(document.querySelector('[data-testid=turn-summary]')?.getAttribute('aria-label')).toBe('Failed');
 });
@@ -75,7 +80,7 @@ test('a turn that carries on after monitoring counts from the user request, its 
   running = mount(TurnSummary, { target: document.body, props: { turn: turn(), workedBefore: 1_800_000 } });
   flushSync();
   const shown = document.querySelector('[data-testid=turn-elapsed]');
-  expect(shown?.textContent).toBe('Worked for 34m 41s');
+  expect(shown?.textContent).toBe('34m 41s');
   expect(shown?.getAttribute('title')).toBe('This reply alone: 4m 41s');
 });
 
@@ -91,7 +96,7 @@ test('a wake on a watched pull request the next day counts the work, not the nig
   running = mount(MessageTurnSummary, { target: document.body, props: { store, threadId: 't-1', turn: wake, turns: [user, ping, review, wake], message, messages: [message] } });
   flushSync();
   // 20 min, the 10 min the review ran in the background (the ping does not cut it), its 5 min turn, then the wake's own 6 min.
-  expect(text('turn-elapsed')).toBe('Worked for 41m 00s');
+  expect(text('turn-elapsed')).toBe('41m 00s');
   expect(document.querySelector('[data-testid=turn-elapsed]')?.getAttribute('title')).toBe('This reply alone: 6m 00s');
 });
 
@@ -111,7 +116,8 @@ test.each([
 ] as const)('%s waits for the pointer only when nothing in it needs attention', (_name, overrides, background, settled) => {
   running = mount(TurnSummary, { target: document.body, props: { turn: turn(overrides as Partial<Turn>), background: [...background] as BackgroundTask[] } });
   flushSync();
-  expect(document.querySelector('[data-testid=turn-summary]')?.classList.contains('settled')).toBe(settled);
+  // A running turn with nothing to add draws no line at all: the status strip carries it.
+  expect(document.querySelector('[data-testid=turn-summary]')?.classList.contains('settled') ?? false).toBe(settled);
 });
 
 test('work left in the background is counted by kind and can be stopped', () => {
@@ -135,7 +141,7 @@ test('a running turn shows no finish time and no stop for its background work', 
     props: { turn: turn({ status: 'running', finishedAt: null, usage: null }), activeTool: true, background: tasks, stop: () => {} }
   });
   flushSync();
-  expect(text('turn-elapsed')).toMatch(/^Working for /);
+  expect(document.querySelector('[data-testid=turn-elapsed]')).toBeNull();
   expect(document.querySelector('[data-testid=turn-finished-at]')).toBeNull();
   expect(document.querySelector('[data-testid=turn-tokens]')).toBeNull();
   expect(text('turn-background')).toBe('1 shell still running');
@@ -171,7 +177,7 @@ test('a finished turn ignores retained provider progress', () => {
   } });
   flushSync();
   expect(document.querySelector('[data-testid=turn-progress]')).toBeNull();
-  expect(text('turn-elapsed')).toBe('Worked for 4m 41s');
+  expect(text('turn-elapsed')).toBe('4m 41s');
 });
 
 test('provider signals do not imply new execution progress or text', () => {

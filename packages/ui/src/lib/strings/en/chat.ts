@@ -12,6 +12,22 @@ export const strings = {
     /** The footer of a turn: `Working 12s`, then `Worked 4m 41s`. */
     workingFor: 'Working for {time}',
     workedFor: 'Worked for {time}',
+    noticeMore: 'Show the details',
+    noticeLess: 'Hide the details',
+    /** The status strip above the composer: the thread's one live summary. */
+    strip: {
+      working: 'Working',
+      waiting: 'Waiting for you',
+      finished: 'Finished {time}',
+      finishedNow: 'Finished just now',
+      subagentOne: '1 subagent',
+      subagentMany: '{count} subagents',
+      showAgents: 'Show the subagents and workflows',
+      next: 'Next needs you ({count})',
+      nextTitle: 'Open "{title}", the thread that has waited longest for you',
+      days: '{days}d {hours}h',
+      waitingSince: 'Waiting since {time}'
+    },
     compacting: 'Compacting conversation',
     compactionElapsed: 'Elapsed: {time}',
     turnOwnTime: 'This reply alone: {time}',
@@ -194,7 +210,6 @@ export const strings = {
     questionSkip: 'Skip',
     questionOpenPage: 'Open',
     /** The composer is the free field of the question; the card points there. */
-    questionReplying: 'Write your answer in the message box below, with any photos or files.',
     questionWrite: 'Answer in writing',
     /** The timeline's line for a question waiting in the dock above the composer. */
     questionDocked: 'Waiting for your answer above the message box',

@@ -1,9 +1,11 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
-  import { ArrowLeft, ArrowRightToLine, ChevronLeft, ChevronRight, ListX, Maximize2, Minimize2, Plus, SquareX, X, GripHorizontal, PanelsTopLeft } from '@lucide/svelte';
+  import { ArrowLeft, ArrowRightToLine, ChevronLeft, ChevronRight, Ellipsis, ListX, Maximize2, Minimize2, SquareKanban, SquareTerminal, SquareX, X, GripHorizontal, PanelsTopLeft } from '@lucide/svelte';
+  import { PanelCounts, PRIMARY, stripItems } from '../lib/panel-strip.svelte';
+  import { work } from '../lib/work-prefs.svelte';
   import { floatingPanel, RESIZE_DIRECTIONS } from '../lib/floating-panel';
   import { browserBridge } from '../lib/browser-bridge';
-  import { stripOverflows } from '../lib/strip-overflow';
+  import { StripScroll } from '../lib/strip-scroll.svelte';
   import { contextMenu } from '../lib/context-menu.svelte';
   import { longPress } from '../lib/long-press';
   import { controlMenu, CONTROLS_SECTION } from '../lib/controls';
@@ -16,24 +18,11 @@
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import { offeredCards, available as availableTo, kindName, label, tooltip, unavailable } from '../lib/surface-labels';
-  import BrowserSurface from './BrowserSurface.svelte';
-  import AgentBrowserSurface from './AgentBrowserSurface.svelte';
-  import DelegationSurface from './DelegationSurface.svelte';
-  import AgentMessagesSurface from './AgentMessagesSurface.svelte';
-  import ChangesSurface from './ChangesSurface.svelte';
-  import DeviceSurface from './DeviceSurface.svelte';
-  import WindowSurface from './WindowSurface.svelte';
-  import FileSurface from './FileSurface.svelte';
-  import FilesSurface from './FilesSurface.svelte';
   import Menu from './Menu.svelte';
   import PanelResizeHandle from './PanelResizeHandle.svelte';
   import SurfaceIcon from './SurfaceIcon.svelte';
   import { surfaceGlyph } from '../lib/surface-glyphs';
-  import SurfaceLauncher from './SurfaceLauncher.svelte';
-  import TasksSurface from './TasksSurface.svelte';
-  import TraceSurface from './TraceSurface.svelte';
-  import AgentDesk from './agents/AgentDesk.svelte';
-  import DebateSalon from './debates/DebateSalon.svelte';
+  import PanelSurfaceView from './PanelSurfaceView.svelte';
 
   let {
     store,
@@ -63,7 +52,6 @@
 
   let tabs = $state<HTMLDivElement | undefined>(undefined);
   let root = $state<HTMLElement | undefined>(undefined);
-  let overflowing = $state(false);
   let dragging = $state(false);
   let near = $state(false);
   /**
@@ -113,55 +101,14 @@
     return availableTo(kind, inShell, store.owner);
   }
 
-  function measure(): void {
-    const node = tabs;
-    // A strip with no width yet, a phone's sheet still coming in, has nothing to
-    // measure: the observer calls again once it has one. Measured at zero, 44 px
-    // chevrons wider than the tabs flipped the state on every run.
-    if (!node || node.clientWidth === 0) return;
-    const gap = parseFloat(getComputedStyle(node.parentElement ?? node).columnGap) || 0;
-    const room = [...(node.parentElement?.querySelectorAll<HTMLElement>(':scope > .chev') ?? [])].reduce((sum, chevron) => sum + chevron.offsetWidth + gap, 0);
-    overflowing = stripOverflows(node.scrollWidth, node.clientWidth, room, untrack(() => overflowing));
-    readEdges();
-  }
-
-  /** Which ends of the strip hide a tab: that end fades instead of cutting a label in half, and its chevron rests. */
-  let hiddenStart = $state(false);
-  let hiddenEnd = $state(false);
-  function readEdges(): void {
-    const node = tabs;
-    if (!node) return;
-    hiddenStart = node.scrollLeft > 1;
-    hiddenEnd = node.scrollLeft < node.scrollWidth - node.clientWidth - 1;
-  }
-
-  $effect(() => {
-    const node = tabs;
-    if (!node) return;
-    // The strip is remeasured when its width or its content changes.
-    void surfaces.length;
-    untrack(measure);
-    // jsdom lays nothing out and ships no ResizeObserver: the strip still renders.
-    if (typeof ResizeObserver === 'undefined') return;
-    // The chevrons resize the observed tabs: toggling them inside the callback
-    // was a resize the observer could not deliver that frame (a loop error).
-    let frame = 0;
-    const observer = new ResizeObserver(() => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(measure);
-    });
-    observer.observe(node);
-    return () => {
-      cancelAnimationFrame(frame);
-      observer.disconnect();
-    };
-  });
+  /** The strip's overflow, its hidden ends and the chevrons that scroll it (`lib/strip-scroll.svelte.ts`). */
+  const scroller = new StripScroll(() => tabs, () => surfaces.length);
 
   // The tab that is showing is always the one in view, also once the chevrons
   // that an overflow brings have narrowed the strip under it.
   $effect(() => {
     const id = panel.activeSurfaceId;
-    void overflowing;
+    void scroller.overflowing;
     if (!id || !tabs) return;
     const tab = tabs.querySelector<HTMLElement>(`[data-surface-id="${CSS.escape(id)}"]`);
     // jsdom has no layout, so it has no `scrollIntoView` either.
@@ -172,20 +119,6 @@
   function shut(): void {
     panel.hide();
     if (!phone) document.querySelector<HTMLElement>('[data-testid="panel-toggle"]')?.focus({ preventScroll: true });
-  }
-
-  function scrollBy(direction: -1 | 1): void {
-    const node = tabs;
-    if (!node) return;
-    const step = Math.max(120, Math.round(node.clientWidth * 0.75));
-    node.scrollBy({ left: step * direction, behavior: 'smooth' });
-  }
-
-  function onwheel(event: WheelEvent): void {
-    const node = tabs;
-    if (!node || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
-    event.preventDefault();
-    node.scrollLeft += event.deltaY;
   }
 
   function openTabMenu(event: MouseEvent, surface: Surface): void {
@@ -264,12 +197,19 @@
     launch(card.kind);
   }
 
+  /** The strip's fixed kinds first, open or not, then the other open surfaces; with their counts (`lib/panel-strip.svelte.ts`). */
+  let strip = $derived(stripItems(surfaces, available));
+  const counts = new PanelCounts(() => store);
+
+  /** The drawers under the chat open from the strip too: the title bar no longer carries them. */
+  let terminalTab = $derived(!!store.openThread && store.owner && !store.openThread.teamId && !store.openThread.debateId && work.shows('header.terminal'));
+  let boardTab = $derived(!!store.openThread && store.boardAvailable());
 
   /** A persistent agent's own thread has a desk, offered first. */
   const agentThread = $derived(!!store.openThread?.agentSessionId);
   let menuItems = $derived([
     ...(agentThread ? [{ id: 'desk', label: kindName('desk'), glyph: surfaceGlyph('desk') }] : []),
-    ...offeredCards().map((card) => ({
+    ...offeredCards().filter((card) => !PRIMARY.includes(card.kind)).map((card) => ({
       id: card.kind,
       label: kindName(card.kind),
       glyph: surfaceGlyph(card.kind),
@@ -327,14 +267,14 @@
         <GripHorizontal size={16} />
       </button>
     {/if}
-    {#if overflowing}
+    {#if scroller.overflowing}
       <button
         type="button"
         class="ghost small icon chev"
         title={strings.rightPanel.scrollLeft}
         aria-label={strings.rightPanel.scrollLeft}
-        disabled={!hiddenStart}
-        onclick={() => scrollBy(-1)}
+        disabled={!scroller.hiddenStart}
+        onclick={() => scroller.scrollBy(-1)}
       >
         <ChevronLeft size={14} strokeWidth={1.75} />
       </button>
@@ -342,17 +282,20 @@
 
     <div
       class="tabs"
-      class:hidden-start={overflowing && hiddenStart}
-      class:hidden-end={overflowing && hiddenEnd}
+      class:hidden-start={scroller.overflowing && scroller.hiddenStart}
+      class:hidden-end={scroller.overflowing && scroller.hiddenEnd}
       role="tablist"
       tabindex="-1"
       bind:this={tabs}
-      {onwheel}
-      onscroll={readEdges}
+      onwheel={scroller.onwheel}
+      onscroll={scroller.readEdges}
       onkeydown={onTabsKey}
       data-testid="panel-tabs"
     >
-      {#each surfaces as surface (surface.id)}
+      {#each strip as item (item.key)}
+        {@const count = counts.of(item.kind)}
+        {#if item.surface}
+        {@const surface = item.surface}
         <div
           class="tab"
           use:arrive
@@ -363,7 +306,7 @@
           data-surface-id={surface.id}
           data-kind={surface.kind}
           data-testid="panel-tab"
-          title={tooltip(surface)}
+          title={count ? `${tooltip(surface)}: ${count.label}` : tooltip(surface)}
           onclick={() => panel.activate(surface.id)}
           onkeydown={(event) => onTabKey(event, surface)}
           onmousedown={(event) => onTabPointerDown(event, surface)}
@@ -377,7 +320,10 @@
             data-testid="panel-tab-close"
             onclick={(event) => {
               event.stopPropagation();
-              void closeTabs(panel, 'close', surface.id);
+              // A finger sees no cross before it taps: on a phone a tab in the
+              // background opens, and only the tab in front closes.
+              if (phone && surface.id !== panel.activeSurfaceId) panel.activate(surface.id);
+              else void closeTabs(panel, 'close', surface.id);
             }}
           >
             <span class="glyph">
@@ -386,36 +332,78 @@
             <span class="cross"><X size={14} strokeWidth={2} /></span>
           </button>
           <span class="name ui-label">{label(surface)}</span>
+          {#if count}<span class="count" aria-label={count.label}>{count.value}</span>{/if}
         </div>
+        {:else}
+        <!-- A surface not open yet keeps its place in the strip: one click opens it. -->
+        <button
+          type="button"
+          class="tab kind"
+          role="tab"
+          aria-selected="false"
+          data-kind={item.kind}
+          data-testid="panel-kind"
+          title={count ? `${kindName(item.kind)}: ${count.label}` : kindName(item.kind)}
+          onclick={() => launch(item.kind)}
+          oncontextmenu={(event) => controlMenu(event, store, `panel.${item.kind}` as ControlId)}
+        >
+          <span class="glyph"><SurfaceIcon kind={item.kind} size={14} /></span>
+          <span class="name ui-label">{kindName(item.kind)}</span>
+          {#if count}<span class="count" aria-label={count.label}>{count.value}</span>{/if}
+        </button>
+        {/if}
       {/each}
     </div>
 
-    {#if overflowing}
+    {#if scroller.overflowing}
       <button
         type="button"
         class="ghost small icon chev"
         title={strings.rightPanel.scrollRight}
         aria-label={strings.rightPanel.scrollRight}
-        disabled={!hiddenEnd}
-        onclick={() => scrollBy(1)}
+        disabled={!scroller.hiddenEnd}
+        onclick={() => scroller.scrollBy(1)}
       >
         <ChevronRight size={14} strokeWidth={1.75} />
       </button>
     {/if}
 
-    {#if !empty}
+    <!-- The drawers under the chat: toggles beside the tabs, not tabs, and never scrolled out of reach. -->
+    {#if terminalTab && store.openThread}
+      {@const terminalKey = store.keyLabel('terminal')}
+      {@const on = store.terminalShown(store.openThread.id)}
+      <button type="button" class="tab kind drawer" class:active={on}
+        title={terminalKey ? `${strings.thread.terminalHint} (${terminalKey})` : strings.thread.terminalHint}
+        aria-label={strings.thread.terminalHint} aria-pressed={on} data-testid="terminal-toggle"
+        onclick={() => store.toggleTerminal()} oncontextmenu={(event) => controlMenu(event, store, 'header.terminal')}>
+        <span class="glyph"><SquareTerminal size={14} strokeWidth={1.75} /></span>
+        <span class="name ui-label">{strings.rightPanel.terminal}</span>
+      </button>
+    {/if}
+    {#if boardTab}
+      <button type="button" class="tab kind drawer" class:active={store.boardShown}
+        title={store.keyLabel('terminal') ? `${strings.board.open} (${store.keyLabel('terminal')})` : strings.board.open}
+        aria-label={strings.board.open} aria-pressed={store.boardShown} data-testid="board-toggle"
+        onclick={() => store.toggleBoard()}>
+        <span class="glyph"><SquareKanban size={14} strokeWidth={1.75} /></span>
+        <span class="name ui-label">{strings.rightPanel.board}</span>
+      </button>
+    {/if}
+
+    <!-- Every other surface, and the way back to a kind this device put away. -->
+    <span class="more">
       <Menu
         items={menuItems}
         onpick={pickNew}
         placement="bottom"
         align="end"
         variant="ghost"
-        label={strings.rightPanel.newSurface}
+        label={strings.rightPanel.more}
         testid="panel-add"
       >
-        <Plus size={14} strokeWidth={1.75} />
+        <Ellipsis size={14} strokeWidth={1.75} />
       </Menu>
-    {/if}
+    </span>
 
     <span class="spacer"></span>
 
@@ -463,52 +451,7 @@
          than swapping it in one frame, the way a settings page arrives. -->
     {#key active?.id}
     <div class="surface" use:arrive>
-    {#if active?.kind === 'desk'}
-      {#if store.openThread?.agentSessionId}
-        {#key store.threadKey(store.openThread.id)}<AgentDesk {store} />{/key}
-      {/if}
-    {:else if active?.kind === 'agents'}
-      <DelegationSurface {store} surface={active} {panel} />
-    {:else if active?.kind === 'messages'}
-      <AgentMessagesSurface {store} surface={active} {panel} />
-    {:else if active?.kind === 'trace'}
-      <TraceSurface {store} />
-    {:else if active?.kind === 'browser'}
-      {#key active.id}<BrowserSurface surface={active} {panel} {store} />{/key}
-    {:else if active?.kind === 'agent-browser'}
-      {#if store.openThread}
-        {#key store.threadKey(store.openThread.id)}<AgentBrowserSurface {store} threadId={store.openThread.id} />{/key}
-      {/if}
-    {:else if active?.kind === 'changes'}
-      <ChangesSurface {store} surface={active} {panel} />
-    {:else if active?.kind === 'files'}
-      <FilesSurface {store} surface={active} {panel} />
-    {:else if active?.kind === 'file'}
-      <!-- One editor per document: the same path open in another thread is another file's tab. -->
-      {#key `${panel.threadId}\n${active.id}`}
-        <FileSurface {store} surface={active} {panel} />
-      {/key}
-    {:else if active?.kind === 'device'}
-      {#if store.openThread}
-        {#key store.threadKey(store.openThread.id)}<DeviceSurface {store} threadId={store.openThread.id} />{/key}
-      {/if}
-    {:else if active?.kind === 'window'}
-      {#if store.openThread}
-        {#key store.threadKey(store.openThread.id)}<WindowSurface {store} threadId={store.openThread.id} />{/key}
-      {/if}
-    {:else if active?.kind === 'tasks'}
-      <TasksSurface {store} />
-    {:else if active?.kind === 'debate' && active.debateId}
-      <!-- One salon per debate: the tab moved to another debate starts its reading afresh. -->
-      {#key active.debateId}<DebateSalon {store} debateId={active.debateId} threadId={panel.threadId ?? undefined} />{/key}
-    {:else}
-      <SurfaceLauncher
-        {available}
-        onlaunch={launch}
-        onmenu={(event, kind) => controlMenu(event, store, `panel.${kind}` as ControlId)}
-        oncustomize={() => store.showSettings('appearance', CONTROLS_SECTION)}
-      />
-    {/if}
+    <PanelSurfaceView {store} {panel} {active} {available} onlaunch={launch} />
     </div>
     {/key}
   </div>
@@ -566,6 +509,8 @@
     border-bottom: 1px solid var(--color-border);
     flex: none;
     min-width: 0;
+    /* The panel's width decides which labels the strip can afford. */
+    container: strip / inline-size;
   }
 
   /* The strip's controls are as tall as its tabs. */
@@ -701,6 +646,49 @@
     display: inline-flex;
   }
 
+  /* A surface not open yet, and the drawers under the chat: a plain button that
+     reads like a tab, its icon never turning into a close cross. */
+  .tab.kind {
+    gap: 5px;
+    padding: 0 8px;
+    min-height: 0;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    font-size: var(--text-xs);
+  }
+  .tab.kind:hover { background: var(--color-hover); color: var(--color-foreground); }
+  .tab.kind.active { background: var(--color-active); color: var(--color-foreground); }
+  .tab.kind:active { transform: none; }
+  .tab.kind .glyph { display: inline-flex; }
+
+  /* A count while there is one: changed files, agents at work. */
+  .count {
+    flex: none;
+    min-width: 16px;
+    height: 16px;
+    margin-left: 3px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: var(--color-surface-3);
+    color: var(--color-foreground);
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 16px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Under 620 px a surface not open shows its icon alone; under 400 px every
+     tab does, its name in the tooltip. */
+  @container strip (max-width: 619px) {
+    .tab.kind .name { display: none; }
+  }
+  @container strip (max-width: 399px) {
+    .tab:not(.active) .name, .tab.kind .name { display: none; }
+    .tab.kind { padding: 0 6px; }
+  }
+
   .chev {
     flex: none;
   }
@@ -819,6 +807,16 @@
       width: var(--touch-target);
       height: var(--touch-target);
     }
+
+    .tab.kind {
+      justify-content: center;
+      min-width: var(--touch-target);
+      height: var(--touch-target);
+    }
+
+    /* Only the tab in front offers its cross; the others keep their icon. */
+    .tab:not(.active) .glyph { display: inline-flex; }
+    .tab:not(.active) .cross { display: none; }
 
     /* The sheet already fills the screen. */
     .maximize {

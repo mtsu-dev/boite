@@ -2,14 +2,18 @@
   import { tick, untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import WindowList from './WindowList.svelte';
-  import { ChevronRight, Ellipsis, FolderX, GripVertical, LoaderCircle, FolderPlus } from '@lucide/svelte';
-  import type { Project, ThreadId } from '@boite/contracts';
+  import { ChevronDown, ChevronRight, Ellipsis, FolderX, GripVertical, FolderPlus, LoaderCircle } from '@lucide/svelte';
+  import type { Project, ThreadId, ThreadSummary } from '@boite/contracts';
   import type { Store } from '../lib/store.svelte';
   import { workspace, type Machine } from '../lib/workspace.svelte';
   import { fill, strings } from '../lib/strings';
   import { projectName } from '../lib/format';
   import { compareThreads } from '../lib/thread-order';
-  import { projectRollup } from '../lib/thread-state';
+  import { projectRollup, threadState } from '../lib/thread-state';
+  import { hasUnsentDraft } from '../lib/composer-queue';
+  import { moreRows, threadLanes, type Lanes } from '../lib/thread-lanes.svelte';
+  import { lifecycleFilter, lifecycleProjects } from '../lib/lifecycle-filter.svelte';
+  import LifecycleStrip from './LifecycleStrip.svelte';
   import { groupWorkingThread, recentPreferences } from '../lib/recent.svelte';
   import { dropKey as threadDropKey, takesDrop, threadDrag } from '../lib/thread-move.svelte';
   import { controlMenu } from '../lib/controls';
@@ -123,6 +127,27 @@
   const listsFor = projectListMap();
   /** Each listed project's sorted rows, shared by its section and by Alt+digit. */
   let projectLists = $derived(listsFor(activeGroups));
+  /**
+   * A project's rows in lanes: needs you and failed first, never folded, then
+   * the rows at work it lists inline, then the rest by recency, the first six
+   * shown and the others under one `n more` row. The open thread, a pin and an
+   * unsent draft never fold away.
+   */
+  function lanesOf(entry: ProjectEntry, attention: ThreadSummary[]): Lanes<ThreadSummary> {
+    const store = entry.machine.store;
+    return threadLanes(attention, thread => threadState(thread, store.subagents(thread.id)), {
+      expanded: moreRows.isOpen(projectKey(entry)),
+      keep: thread => thread.pinned || (workspace.active === store && store.openThread?.id === thread.id) || hasUnsentDraft(store.composerStates[thread.id])
+    });
+  }
+  /** The chips count needs, failures and work; a folded project still marks its news (finished, unread) and a queued start. */
+  function foldedNews(owner: Store, projectId: Project['id']) {
+    const threads = owner.threadsOf(projectId).filter(thread => { const state = threadState(thread, owner.subagents(thread.id)); return state === 'done' || state === 'queued'; });
+    return projectRollup(threads, thread => owner.subagents(thread.id));
+  }
+  /** The filter over the list: its projects and their rows, the headers kept. */
+  let filtered = $derived(lifecycleFilter.current === null ? null : lifecycleProjects(groups, lifecycleFilter.current).map(({ entry, threads }) => ({ entry, threads: threads.slice().sort(compareThreads) })));
+  let filteredDoneRows = $state.raw<Record<string, { store: Store; threadId: ThreadId }[]>>({});
   /** The rows of the listed projects in drawn order, read only as far as the ninth: projects below it cost nothing. */
   function projectRows(): { store: Store; threadId: ThreadId }[] {
     const rows: { store: Store; threadId: ThreadId }[] = [];
@@ -133,14 +158,16 @@
       if (later ? !projectThreadView.laterOpen : sections.working.includes(entry) && !projectThreadView.workingOpen) continue;
       const open = projectThreadView.isOpen(entry, 'working');
       const { lists } = projectLists.get(projectKey(entry))!;
-      for (const thread of open ? [...lists.attention, ...lists.working] : lists.attention) rows.push({ store: entry.machine.store, threadId: thread.id });
+      const lanes = lanesOf(entry, lists.attention);
+      for (const thread of [...lanes.needs, ...lanes.live, ...(open ? lists.working : []), ...lanes.rest]) rows.push({ store: entry.machine.store, threadId: thread.id });
       for (const kind of ['done', 'archived'] as const) if ((later && kind === 'archived') || projectThreadView.isOpen(entry, kind)) rows.push(...projectDoneRows[JSON.stringify([kind, projectKey(entry)])] ?? []);
     }
     return rows;
   }
   // Alt+1 to Alt+9 count the rows as drawn: this view, open projects, then unfolded idle history.
   $effect(() => {
-    sidebarRows.list = (workspace.view === 'recent'
+    sidebarRows.list = (filtered ? filtered.flatMap(({ entry, threads }) => threads.map(thread => ({ store: entry.machine.store, threadId: thread.id })).concat(filteredDoneRows[projectKey(entry)] ?? []))
+      : workspace.view === 'recent'
       ? [...attention, ...(workingOpen ? working : [])].map(({ machine, thread }) => ({ store: machine.store, threadId: thread.id })).concat(doneRows, archivedRows)
       : projectRows().concat(idleRows)
     ).slice(0, 9);
@@ -171,9 +198,34 @@
 
 <RailFrame {store} kind="sidebar" label={strings.sidebar.threads} testid="sidebar" drawer bind:scroller={scrollRoot} onscroll={() => { if (showRows && scrollRoot) savedScroll = scrollRoot.scrollTop; }}>
   {#snippet head()}<ProjectViews entries={groups} {store} />{/snippet}
+  {#snippet subhead()}{#if showRows && groups.length > 0}<div class="strip"><LifecycleStrip entries={groups} /></div>{/if}{/snippet}
     {#if showRows}
     {#if groups.length === 0}<p class="empty">{strings.sidebar.noProjects}</p>{/if}
-    {#if workspace.view === 'recent'}
+    {#if filtered}
+      {@const kind = lifecycleFilter.current}
+      {#each filtered as { entry, threads } (projectKey(entry))}
+        {@const { machine, project } = entry}
+        {@const key = projectKey(entry)}
+        <section class="project filtered" data-testid="project" data-filter={kind} data-project-id={project.id} data-machine-id={machine.id} data-project-key={key} data-project-name={projectName(project)}>
+          <div class="head">
+            <span class="toggle static" title={multi ? `${project.path} · ${machine.label}` : project.path}>
+              <span class="mark"><ProjectTile {project} store={machine.store} /></span
+              >{#if multi}<span class="host" data-testid="project-host" class:offline={machine.store.connection !== 'ready'}
+                title={`${machine.label} · ${strings.connection[machine.store.connection]}`} aria-label={machine.label}><MachineIcon icon={machine.icon} os={machine.store.core?.os} size={14} /></span>{/if}<span class="name ui-label">{projectName(project)}</span>
+            </span>
+          </div>
+          {#if kind === 'done' || kind === 'archived'}
+            <RecentDone {kind} entries={[entry]} {scrollRoot} {now} open header={false} onrows={rows => filteredDoneRows = { ...filteredDoneRows, [key]: rows }} />
+          {:else}
+            <WindowList items={threads} keyOf={thread => JSON.stringify([machine.id, thread.id])} {scrollRoot} estimate={36} measurements={measurements(JSON.stringify([machine.id, project.id, 'filter']))}>
+              {#snippet row(thread)}<ThreadCard {machine} {project} {thread} {now} showProject={false} showMachine={false} showDone />{/snippet}
+            </WindowList>
+          {/if}
+        </section>
+      {:else}
+        <p class="none" data-testid="lifecycle-empty">{strings.sidebar.lifecycle.none}</p>
+      {/each}
+    {:else if workspace.view === 'recent'}
       {#each visible as machine (machine.id)}
         {#each machine.store.draftEntries.filter(entry => !selected || (selected.machine.id === machine.id && selected.project.id === entry.projectId)) as entry (entry.id)}
           <DraftRow owner={machine.store} {entry} />
@@ -210,13 +262,15 @@
         {@const doneOpen = archiveCount(project, 'done') > 0 && projectThreadView.isOpen(entry, 'done')}
         {@const archivedOpen = archiveCount(project, 'archived') > 0 && (later || projectThreadView.isOpen(entry, 'archived'))}
         {@const { lists } = projectLists.get(projectKey(entry))!}
-        {@const controls = `sidebar-project-${encodeURIComponent(projectKey(entry))}`}
+        {@const key = projectKey(entry)}
+        {@const controls = `sidebar-project-${encodeURIComponent(key)}`}
         {@const collapsed = owner.isCollapsed(project.id)}
         {@const away = owner.connection !== 'ready'}
-        {@const rollup = collapsed && !away ? projectRollup(owner.threadsOf(project.id), thread => owner.subagents(thread.id)) : null}
+        {@const rollup = collapsed && !away ? foldedNews(owner, project.id) : null}
+        {@const lanes = lanesOf(entry, lists.attention)}
+        {@const moreOpen = moreRows.isOpen(key)}
         {@const draftsHere = owner.draftEntries.filter(entry => entry.projectId === project.id)}
         {@const dropKey = threadDropKey(machine.id, project.id)}
-        {@const key = projectKey(entry)}
         <section
           class="project"
           class:inactive={!activeProject(entry)}
@@ -251,17 +305,10 @@
                 title={`${machine.label} · ${strings.connection[owner.connection]}`} aria-label={machine.label}><MachineIcon icon={machine.icon} os={owner.core?.os} size={14} /></span>{/if}<span class="name ui-label" class:gone={project.missing === true}>{projectName(project)}</span
               >{#if project.missing === true}<span class="missing" data-testid="project-missing" title={strings.sidebar.projectMissing} aria-label={strings.sidebar.projectMissing}><FolderX size={13} aria-hidden="true" /></span>{/if}{#if rollup}{@const label = fill(rollup.count === 1 ? strings.sidebar.rollupOne : strings.sidebar.rollupMany, { count: String(rollup.count), state: strings.sidebar.state[rollup.kind] })}<span
                   class="rollup {rollup.kind}" data-testid="project-rollup" data-state={rollup.kind} title={label} aria-label={label}
-                  >{#if rollup.kind === 'working'}<LoaderCircle size={11} class="spinner" aria-hidden="true" />{:else}<span class="dot" aria-hidden="true"></span>{/if}{#if rollup.count > 1}<span class="ui-label">{rollup.count}</span>{/if}</span
+                  ><span class="dot" aria-hidden="true"></span>{#if rollup.count > 1}<span class="ui-label">{rollup.count}</span>{/if}</span
                 >{/if}
             </button>
-            {#each residentsOf(owner, project.id).slice(0, 2) as resident (resident.id)}
-              <!-- An agent the owner entrusted this project to: its robot, and the way to its conversation. -->
-              <button type="button" class="ghost icon small resident-mark" title={fill(strings.resident.lookedAfterBy, { name: resident.name })} aria-label={fill(strings.resident.lookedAfterBy, { name: resident.name })}
-                onclick={() => openResident(owner, resident.id)} data-testid="project-resident" data-agent-id={resident.id}>
-                <AgentAvatar kind="profile" id={resident.id} name={resident.name} avatar={resident.avatar} size={18} />
-              </button>
-            {/each}
-            <ProjectThreadCounters {entry} working={lists.working.length} {controls} {collapsed} {away} body={later ? laterLists : undefined} />
+            <!-- Over the toggle's end, shown on hover or focus: it takes no width from the name at rest. -->
             <button
               class="ghost small icon project-actions"
               data-testid="project-menu"
@@ -269,12 +316,25 @@
               aria-label={strings.sidebar.projectMenu}
               onclick={(e) => openProjectMenu(e, machine, project, list)}><Ellipsis size={15} /></button
             >
+            {#each [residentsOf(owner, project.id)] as residents}
+              {#each residents.slice(0, 1) as resident (resident.id)}
+                {@const label = fill(strings.resident.lookedAfterBy, { name: residents.map(agent => agent.name).join(', ') })}
+                <!-- An agent the owner entrusted this project to: its robot, and the way to its conversation.
+                     Only the first robot is drawn, with a +n for the others, so the name keeps its room. -->
+                <button type="button" class="ghost icon small resident-mark" title={label} aria-label={label}
+                  onclick={() => openResident(owner, resident.id)} data-testid="project-resident" data-agent-id={resident.id} data-count={residents.length}>
+                  <AgentAvatar kind="profile" id={resident.id} name={resident.name} avatar={resident.avatar} size={18} />
+                  {#if residents.length > 1}<span class="resident-more" aria-hidden="true">+{residents.length - 1}</span>{/if}
+                </button>
+              {/each}
+            {/each}
+            <ProjectThreadCounters {entry} working={lists.working.length} {controls} {collapsed} {away} body={later ? laterLists : undefined} />
           </div>
           <div class="disclosure-fold" class:open={!collapsed} inert={collapsed}>
             <div>
               <SharedProjectThreads store={owner} projectId={project.id} active={!collapsed && !away}>
               {#each draftsHere as draft (draft.id)}<DraftRow {owner} entry={draft} />{/each}
-              <WindowList items={lists.attention} keyOf={thread => JSON.stringify([machine.id, thread.id])} {scrollRoot} active={!collapsed} estimate={34} measurements={measurements(JSON.stringify([machine.id, project.id]))}>
+              <WindowList items={[...lanes.needs, ...lanes.live]} keyOf={thread => JSON.stringify([machine.id, thread.id])} {scrollRoot} active={!collapsed} estimate={36} measurements={measurements(JSON.stringify([machine.id, project.id]))}>
                 {#snippet row(thread)}<ThreadCard {machine} {project} {thread} {now} showProject={false} showMachine={false} showDone />{/snippet}
               </WindowList>
               <div id="{controls}-working" hidden={!workingOpen || lists.working.length === 0} data-testid="project-working">
@@ -284,6 +344,17 @@
                   </WindowList>
                 {/if}
               </div>
+              <WindowList items={lanes.rest} keyOf={thread => JSON.stringify([machine.id, thread.id])} {scrollRoot} active={!collapsed} estimate={36} measurements={measurements(JSON.stringify([machine.id, project.id, 'rest']))}>
+                {#snippet row(thread)}<ThreadCard {machine} {project} {thread} {now} showProject={false} showMachine={false} showDone />{/snippet}
+              </WindowList>
+              {#if lanes.foldable > 0}
+                  <button type="button" class="ghost more-row" data-testid="project-more" data-count={lanes.hidden.length} aria-expanded={moreOpen}
+                    aria-label={moreOpen ? strings.sidebar.fewerRows : fill(strings.sidebar.moreRowsLabel, { project: projectName(project), count: String(lanes.hidden.length) })}
+                    onclick={() => moreRows.toggle(key)}>
+                    <ChevronDown size={13} aria-hidden="true" class={moreOpen ? 'flip' : ''} /><span class="ui-label">{moreOpen ? strings.sidebar.fewerRows : fill(strings.sidebar.moreRows, { count: String(lanes.hidden.length) })}</span>{#if !moreOpen && lanes.hiddenLive > 0}{@const busy = fill(strings.sidebar.projectWorkingThreads, { project: projectName(project), count: String(lanes.hiddenLive) })}<span
+                      class="more-live" data-testid="project-more-working" data-count={lanes.hiddenLive} role="img" title={busy} aria-label={busy}><LoaderCircle size={11} aria-hidden="true" /><span class="ui-label">{lanes.hiddenLive}</span></span>{/if}
+                  </button>
+              {/if}
               <div id="{controls}-done" hidden={!doneOpen} data-testid="project-done">
                 {#if doneOpen}<GroupLabel kind="done" count={archiveCount(project, 'done')} />{/if}
                 <RecentDone entries={[entry]} {scrollRoot} {now} open={doneOpen && !collapsed} header={false}
@@ -336,14 +407,34 @@
   @container sidebar (max-width: 240px) {
     .project .head { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
     .head .toggle { grid-column: 1; grid-row: 1; }
-    .head .project-actions { grid-column: 2; grid-row: 1; }
+    .head .project-actions { grid-column: 2; grid-row: 1; margin-left: 0; }
     .head :global(.counters) { grid-column: 1 / -1; grid-row: 2; justify-content: flex-end; margin-bottom: 4px; }
   }
+  .strip { margin: 0 10px; }
+  /* The `n more` row closing a busy project: quiet, aligned with the titles. */
+  .more-row {
+    width: 100%;
+    height: 28px;
+    justify-content: flex-start;
+    gap: 6px;
+    padding: 0 8px 0 9px;
+    font-size: var(--text-xs);
+    color: var(--color-muted-foreground);
+  }
+  .more-row :global(svg) { flex: none; transition: transform var(--dur-2) var(--ease-out-quint); }
+  .more-row :global(svg.flip) { transform: rotate(180deg); }
+  /* What the fold holds at work keeps its count in the accent, so folding never hides that work goes on. */
+  .more-live { display: inline-flex; align-items: center; gap: 3px; height: 18px; padding: 0 6px 0 5px; border-radius: var(--radius-full);
+    color: var(--color-accent); background: var(--color-accent-soft); font-weight: 600; font-variant-numeric: tabular-nums; }
+  /* A filtered project keeps its header, which folds nothing. */
+  .toggle.static { display: flex; align-items: center; cursor: default; }
   .recent-folds { margin-top: auto; padding-top: 12px; }
   .project-folds { margin-top: auto; }
   .project {
-    margin-bottom: 10px;
-    padding: 4px;
+    /* The dots of the rows' rings cut out of the card's own colour. */
+    --ring-ground: color-mix(in srgb, var(--color-surface-2) 55%, var(--color-frame));
+    margin-bottom: 8px;
+    padding: 2px 3px 3px;
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
     background: color-mix(in srgb, var(--color-surface-2) 55%, transparent);
@@ -407,10 +498,10 @@
   .toggle {
     flex: 1;
     min-width: 0;
-    height: var(--control-lg);
+    height: 32px;
     padding: 0 4px;
     justify-content: flex-start;
-    gap: 6px;
+    gap: 5px;
   }
   .name {
     flex: 1;
@@ -419,6 +510,7 @@
     text-overflow: ellipsis;
     text-align: left;
     white-space: nowrap;
+    font-size: var(--text-sm);
     font-weight: 600;
     color: var(--color-foreground);
   }
@@ -481,13 +573,39 @@
   .host.offline {
     color: var(--color-danger);
   }
-  .resident-mark { flex: none; width: var(--control-sm); height: var(--control-sm); padding: 0; }
-  /* The menu keeps its slot at the right end even while hidden, so it sits at
-     the same place on every project and the counters never move. */
+  .resident-mark { flex: none; width: 20px; height: var(--control-sm); padding: 0; }
+  .resident-mark { position: relative; }
+  /* The other robots' count rides the first one's corner, taking no width from the name. */
+  .resident-more {
+    position: absolute;
+    right: -4px;
+    bottom: 1px;
+    min-width: 13px;
+    height: 13px;
+    padding: 0 2px;
+    border-radius: var(--radius-full);
+    background: var(--color-surface-3);
+    box-shadow: 0 0 0 1.5px var(--ring-ground, var(--color-frame));
+    color: var(--color-foreground);
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 13px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+  /* The menu lies over the toggle's end, on the card's ground, so the name keeps
+     that room at rest and the counters never move when it shows. */
   .project-actions {
+    position: relative;
+    z-index: 1;
     flex: none;
+    margin-left: calc(-2px - var(--control-sm));
+    background: var(--ring-ground, var(--color-frame));
+    box-shadow: -8px 0 6px -2px var(--ring-ground, var(--color-frame));
     opacity: 0;
   }
+  /* The hover tint over the ground, never see-through over the name. */
+  .project-actions:hover:not(:disabled) { background: linear-gradient(var(--color-hover), var(--color-hover)), var(--ring-ground, var(--color-frame)); }
   .head:hover .project-actions,
   .head:focus-within .project-actions {
     opacity: 1;
@@ -505,6 +623,8 @@
   }
   @media (max-width: 720px) {
     .project-actions {
+      margin-left: 0;
+      box-shadow: none;
       opacity: 1;
     }
   }

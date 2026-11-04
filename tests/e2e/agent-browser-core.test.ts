@@ -88,7 +88,10 @@ real('the core runs the agent browser; desktop and phone show it covered, then l
         // its own deferred fit, so neither can overwrite the later preset.
         await pages[0]!.waitFor(`document.querySelectorAll('${id('agent-browser-tab')}').length === 2`);
         await pages[0]!.waitFor(frameShown(), 20_000);
-        await page.click(id('phone-browser-toggle'));
+        // The phone's one panel button, then the strip's Browser tab.
+        if (await page.evaluate(`!document.querySelector('[data-testid="right-panel"]')`)) await page.click(id('panel-toggle'));
+        await page.waitFor(`document.querySelector('[data-testid="panel-tabs"] [data-kind="agent-browser"]')`);
+        if (await page.evaluate(`!document.querySelector('[data-testid="panel-tabs"] [data-kind="agent-browser"][aria-selected="true"]')`)) await page.click('[data-testid="panel-tabs"] [data-kind="agent-browser"]');
       }
       await page.waitFor(`document.querySelector('${id('agent-browser-cover-text')}')?.getBoundingClientRect().width > 0`, 20_000);
       expect(await page.text(id('agent-browser-cover-text'))).toMatch(/^This agent controls a browser on .+/);
@@ -137,7 +140,10 @@ real('the core runs the agent browser; desktop and phone show it covered, then l
         // its own. A tap between those two resizes targets an obsolete frame.
         await pages[0]!.waitFor(`document.querySelectorAll('${id('agent-browser-tab')}').length === 3`);
         await pages[0]!.waitFor(frameShown(), 20_000);
-        await page.click(id('phone-browser-toggle'));
+        // The phone's one panel button, then the strip's Browser tab.
+        if (await page.evaluate(`!document.querySelector('[data-testid="right-panel"]')`)) await page.click(id('panel-toggle'));
+        await page.waitFor(`document.querySelector('[data-testid="panel-tabs"] [data-kind="agent-browser"]')`);
+        if (await page.evaluate(`!document.querySelector('[data-testid="panel-tabs"] [data-kind="agent-browser"][aria-selected="true"]')`)) await page.click('[data-testid="panel-tabs"] [data-kind="agent-browser"]');
         await page.waitFor(`document.querySelectorAll('${id('agent-browser-tab')}').length === 3`);
         await page.waitFor(frameShown(), 20_000);
         const nextBefore = await button();

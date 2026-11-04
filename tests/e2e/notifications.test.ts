@@ -94,7 +94,7 @@ test('a failed turn offers a compact link to its thread on desktop and phone', a
       workspace.active.showSettings();
       workspace.active.client.emitCoreLog('error', 'turn trn-cyber failed: This content was flagged for possible cybersecurity risk. Apply for Daybreak access before retrying.', { threadId: 't-trace' });
     })()`);
-    await page.waitFor(`document.querySelector('[data-testid="settings-home"], [data-testid="mobile-settings-home"]')`);
+    await page.waitFor(`document.querySelector('[data-testid="settings-search"], [data-testid="mobile-settings-home"]')`);
     await page.evaluate(`document.fonts.ready`);
     await page.waitFor(`document.querySelector('[data-testid="error-toast"] .open-thread')`);
     const text = await page.evaluate<string>(`document.querySelector('[data-testid="error-toast"]').textContent`);

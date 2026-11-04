@@ -1,28 +1,28 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
-  import { Brain, CalendarClock, Check, ChevronDown, ChevronRight, ListTodo, LoaderCircle, Pencil, TriangleAlert } from '@lucide/svelte';
+  import { Brain, CalendarClock, ChevronDown, ChevronRight, ListTodo, Pencil, TriangleAlert } from '@lucide/svelte';
   import type { AgentBrain, AgentWatch } from '@boite/contracts';
-  import { AgentsView, agentOfThread, moodOf, liveState, liveStep, statusOf, waitingOn } from '../../lib/agents.svelte';
-  import { budgetMeter, deskOrder, dollars, runningTurn, turnSteps } from '../../lib/agent-desk';
-  import { workedTime } from '../../lib/agent-turns';
+  import { AgentsView, agentOfThread, liveState, statusOf, waitingOn } from '../../lib/agents.svelte';
+  import { budgetMeter, deskOrder, deskState, dollars } from '../../lib/agent-desk';
   import { minuteClock } from '../../lib/clock.svelte';
   import { errorText } from '../../lib/errors';
-  import { dateTime } from '../../lib/schedule';
   import { relativeTime } from '../../lib/format';
   import type { Store } from '../../lib/store.svelte';
   import { GroupLinks } from '../../lib/group-links.svelte';
   import { workspace } from '../../lib/workspace.svelte';
   import { fill, strings } from '../../lib/strings';
-  import { toolLine } from '../../lib/tool-groups';
-  import Elapsed from '../Elapsed.svelte';
   import Prose from '../Prose.svelte';
-  import AgentAvatar from './AgentAvatar.svelte';
   import AgentBrainEditor from './AgentBrainEditor.svelte';
   import AgentRoutines from './AgentRoutines.svelte';
   import DeskCard from './DeskCard.svelte';
   import './agents.css';
 
-  /** Now stays visible; followed work, routines and memory each have a tab. */
+  /**
+   * The desk opens on the threads that need action (a question, a stalled
+   * turn, a failure), then a tab each for the rest of its work, its routines
+   * and its memory. How the bot itself stands is its header's, and its own ask
+   * is the question card in its conversation: the desk says neither again.
+   */
   let { store }: { store: Store } = $props();
   const deskId = $props.id();
   const panes = ['work', 'routines', 'memory'] as const;
@@ -39,16 +39,13 @@
   const standing = $derived(agent ? liveState(agent, status, thread, !!pending) : 'idle');
   const now = $derived(minuteClock.now);
 
-  const turn = $derived(standing === 'working' ? runningTurn(thread) : null);
-  const steps = $derived(turn && thread ? turnSteps(thread.messages, turn.id) : []);
-  /** The last calls, newest at the bottom: each new one slides in under the others. */
-  const recent = $derived(steps.slice(-4));
-  const step = $derived(liveStep(status, thread));
-  const since = $derived(thread?.runningSince ?? turn?.startedAt ?? null);
-
   // The snapshot carries the open agent's desk only; the Agents page asks for it too, this asks wherever the desk is drawn.
   $effect(() => { const id = agent?.id; if (id) untrack(() => view.showDesk(id)); });
   const watches = $derived<AgentWatch[]>(agent ? deskOrder(view.snapshot?.watches.filter(w => w.agentId === agent.id) ?? []) : []);
+  const ACTION = new Set(['needs-you', 'stalled', 'failed']);
+  /** Each thread shows once: on top while it needs action, under Work otherwise. */
+  const needs = $derived(watches.filter(watch => ACTION.has(deskState(watch))));
+  const work = $derived(watches.filter(watch => !ACTION.has(deskState(watch))));
   const routines = $derived(view.snapshot?.routines.filter(r => r.agentId === agent?.id) ?? []);
   const today = $derived(status?.today ?? { turns: 0, wakes: 0, quiet: 0, costUsd: 0 });
 
@@ -116,53 +113,25 @@
   }
 </script>
 
+{#snippet card(watch: AgentWatch)}
+  <DeskCard {watch} {now} project={watch.coreId === undefined ? store.projects.find(p => p.id === watch.projectId) ?? null : null}
+    onopen={watch.coreId === undefined || remoteOf(watch) ? () => open(watch) : undefined}
+    ondrop={store.owner ? () => void drop(watch) : undefined}
+    onanswer={watch.coreId === undefined || remoteOf(watch) ? option => answer(watch, option) : undefined} />
+{/snippet}
+
 <div class="agent-desk" data-state={standing} data-testid="agent-desk">
   {#if !agent}
     <p class="agent-empty">{strings.app.loading}</p>
   {:else}
-    <section class="desk-now" data-state={standing} data-testid="desk-now" aria-live="polite">
-      <div class="desk-now-head">
-        <span class="desk-now-robot"><AgentAvatar kind="profile" id={agent.id} name={agent.name} avatar={agent.avatar} mood={moodOf(standing)} size={40} ring /></span>
-        <div class="desk-now-text">
-          {#if standing === 'working'}
-            {#key step}<strong class="desk-now-line" data-testid="desk-now-step">{step ?? strings.agents.state.working}</strong>{/key}
-            <span class="desk-now-meta">
-              {#if since !== null}<Elapsed startedAt={since} finishedAt={null} active />{/if}
-            </span>
-          {:else if standing === 'waiting' || standing === 'queued'}
-            <strong class="desk-now-line">{standing === 'queued' ? strings.agents.state.queued : pending ?? strings.agents.state.waiting}</strong>
-            <span class="desk-now-meta">{t.waitingHint}</span>
-          {:else if standing === 'error'}
-            <strong class="desk-now-line">{status?.problem ?? strings.agents.state.error}</strong>
-          {:else if standing === 'paused' || standing === 'archived'}
-            <strong class="desk-now-line">{strings.agents.state[standing]}</strong>
-            {#if standing === 'paused'}<span class="desk-now-meta">{t.pausedHint}</span>{/if}
-          {:else if status?.nextWake}
-            <strong class="desk-now-line">{status.nextWake.label}</strong>
-            <span class="desk-now-meta">{dateTime(status.nextWake.at, now)} · {fill(t.nextIn, { time: workedTime(Math.max(60_000, status.nextWake.at - now)) })}</span>
-          {:else}
-            <strong class="desk-now-line">{t.idle}</strong>
-            <span class="desk-now-meta">{t.idleHint}</span>
-          {/if}
+    {#if needs.length}
+      <section class="desk-section desk-needs" aria-labelledby="{deskId}-needs" data-testid="desk-needs">
+        <header class="desk-head"><h3 id="{deskId}-needs">{t.needsAction}</h3><span class="desk-tab-count">{needs.length}</span></header>
+        <div class="desk-rows">
+          {#each needs as watch (`${watch.coreId ?? ''}/${watch.threadId}`)}{@render card(watch)}{/each}
         </div>
-      </div>
-      {#if recent.length}
-        <details class="desk-activity" data-testid="desk-activity">
-          <summary><ChevronRight size={12} class="fold-caret" />{steps.length === 1 ? t.stepOne : fill(t.stepMany, { count: String(steps.length) })}</summary>
-          <ol class="desk-steps" data-testid="desk-steps">
-            {#each recent as part (part.toolId)}
-              {@const line = toolLine(part)}
-              <li data-status={part.status}>
-                <span class="desk-step-mark" aria-hidden="true">
-                  {#if part.status === 'running'}<LoaderCircle size={12} strokeWidth={1.75} />{:else if part.status === 'error'}<TriangleAlert size={12} strokeWidth={1.75} />{:else}<Check size={12} strokeWidth={1.75} />{/if}
-                </span>
-                <span class="desk-step-text" class:mono={line.mono} title={line.title}>{line.text}</span>
-              </li>
-            {/each}
-          </ol>
-        </details>
-      {/if}
-    </section>
+      </section>
+    {/if}
 
     {#if view.error}<p class="agent-error desk-error" role="alert">{view.error}</p>{/if}
 
@@ -176,7 +145,7 @@
           onclick={() => { pane = tab; }} data-testid="desk-tab-{tab}">
           {#if tab === 'work'}<ListTodo size={14} strokeWidth={1.75} />{:else if tab === 'routines'}<CalendarClock size={14} strokeWidth={1.75} />{:else}<Brain size={14} strokeWidth={1.75} />{/if}
           <span>{tab === 'routines' ? strings.agents.planned : t[tab]}</span>
-          {#if tab === 'work' && watches.length}<span class="desk-tab-count">{watches.length}</span>{/if}
+          {#if tab === 'work' && work.length}<span class="desk-tab-count">{work.length}</span>{/if}
           {#if tab === 'routines' && routines.length}<span class="desk-tab-count">{routines.length}</span>{/if}
           {#if memoryError}<TriangleAlert size={12} class="desk-tab-alert" aria-hidden="true" />{/if}
         </button>
@@ -186,13 +155,10 @@
     <div class="desk-section desk-pane" role="tabpanel" id="{deskId}-pane-work" aria-labelledby="{deskId}-tab-work" tabindex="0" hidden={pane !== 'work'} data-testid="desk-work">
       <header class="desk-head"><h3>{t.following}</h3></header>
       <div class="desk-rows">
-        {#each watches as watch (`${watch.coreId ?? ''}/${watch.threadId}`)}
-          <DeskCard {watch} {now} project={watch.coreId === undefined ? store.projects.find(p => p.id === watch.projectId) ?? null : null}
-            onopen={watch.coreId === undefined || remoteOf(watch) ? () => open(watch) : undefined}
-            ondrop={store.owner ? () => void drop(watch) : undefined}
-            onanswer={watch.coreId === undefined || remoteOf(watch) ? option => answer(watch, option) : undefined} />
+        {#each work as watch (`${watch.coreId ?? ''}/${watch.threadId}`)}
+          {@render card(watch)}
         {:else}
-          <p class="desk-empty">{t.workEmpty}</p>
+          <p class="desk-empty">{needs.length ? t.workRest : t.workEmpty}</p>
         {/each}
       </div>
     </div>

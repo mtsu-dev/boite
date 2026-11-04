@@ -53,7 +53,7 @@ test('offline controls stay disabled and a response from a detached machine cann
   view = mount(ThreadRecovery, { target: document.body, props: { store } });
   store.connection = 'closed';
   flushSync();
-  expect([...document.querySelectorAll<HTMLButtonElement>('button')].every(button => button.disabled)).toBe(true);
+  expect([...document.querySelectorAll<HTMLButtonElement>('button:not([data-testid=notice-disclose])')].every(button => button.disabled)).toBe(true);
   store.connection = 'ready';
   let reject: (error: Error) => void = () => undefined;
   const call = client.call.bind(client);

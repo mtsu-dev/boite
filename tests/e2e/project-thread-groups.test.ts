@@ -29,7 +29,7 @@ for (const width of [1280, 390]) {
       if (width < 720) await mobileAction(page, 'mobile-conversations');
       const root = width < 720 ? id('mobile-list') : id('sidebar'), prefix = width < 720 ? 'mobile-' : '';
       const menu = id(`${prefix}grouping-options-menu`);
-      const row = (thread: string) => `${root} ${width < 720 ? '.row' : id('thread-row')}[data-machine-id="${main}"][data-thread-id="${thread}"]`;
+      const row = (thread: string) => `${root} ${width < 720 ? id('mobile-row') : id('thread-row')}[data-machine-id="${main}"][data-thread-id="${thread}"]`;
       const revealProject = (thread: string) => page.waitFor(`(() => {
         document.querySelector('${root} ${id(width < 720 ? 'mobile-project-group' : 'project')}[data-machine-id="${main}"][data-project-id="p-boite"]')?.scrollIntoView({block:'center'});
         return !!document.querySelector('${row(thread)}');
@@ -122,7 +122,7 @@ for (const width of [1280, 390]) {
       const root = width < 720 ? id('mobile-list') : id('sidebar');
       const project = (machine: string, projectId: string) => `${root} ${id(width < 720 ? 'mobile-project-group' : 'project')}[data-machine-id="${machine}"][data-project-id="${projectId}"]`;
       const first = project(main, 'p-boite'), second = project(remote, 'p-boite');
-      const row = (project: string, thread: string) => `${project} ${width < 720 ? '.row' : id('thread-row')}[data-thread-id="${thread}"]`;
+      const row = (project: string, thread: string) => `${project} ${width < 720 ? id('mobile-row') : id('thread-row')}[data-thread-id="${thread}"]`;
       const click = async (selector: string) => { await page.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`); await page.click(selector); };
       const shot = async (name: string) => {
         await page.settleAnimations();

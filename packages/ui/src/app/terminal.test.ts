@@ -17,7 +17,10 @@ test('Ctrl+J opens the shell of the thread under the chat, hides it again, and i
   await waitFor(() => document.querySelector(`[data-testid=terminal][data-terminal-id="terminal:${threadId}"]`) !== null);
   // xterm draws what the fake shell printed: its prompt, in the thread's folder.
   await waitFor(() => document.querySelector('[data-testid=terminal-drawer]')?.textContent?.includes('PS ') === true);
-  expect(query('[data-testid=terminal-toggle]').classList.contains('on')).toBe(true);
+  // The drawer's button lives in the right panel's strip now, beside the surfaces.
+  if (!store.panelOpen) store.togglePanel();
+  await waitFor(() => document.querySelector('[data-testid=terminal-toggle]') !== null);
+  expect(query('[data-testid=terminal-toggle]').getAttribute('aria-pressed')).toBe('true');
   expect(query<HTMLButtonElement>('[data-testid=terminal-toggle]').title).toContain('Ctrl+J');
   await store.open(threadId);
   await waitFor(() => document.activeElement?.classList.contains('xterm-helper-textarea') === true);

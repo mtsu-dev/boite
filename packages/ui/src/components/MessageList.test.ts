@@ -281,7 +281,7 @@ test('an agent thread folds a finished turn\'s steps behind the count on its sum
   expect([...document.querySelectorAll('[data-testid="message-model"]')].map(node => node.textContent?.trim())).toContain('Nova');
   expect(timeline()).not.toMatch(/^Echo|\bEcho\b/);
   expect(worked.map(button => button.textContent?.trim())).toEqual(['2 steps', '4 steps']);
-  expect(worked[1]!.closest('[data-testid="turn-summary"]')?.textContent).toMatch(/Worked for 2m 0\ds.*done/);
+  expect(worked[1]!.closest('[data-testid="turn-summary"]')?.textContent).toMatch(/2m 0\ds.*done/);
   expect(timeline()).toContain('The login fix opened PR #482');
   expect(timeline()).not.toContain('The e2e job fails; its log names the redirect test.');
   // The running turn keeps its steps open and live.
@@ -851,13 +851,13 @@ test('what arrives while the reader is scrolled up is counted on the way back, a
   timeline.dispatchEvent(new Event('scroll'));
   await settle();
   const jumpButton = () => document.querySelector<HTMLButtonElement>('[data-testid=jump-to-latest]');
-  expect(jumpButton()?.textContent?.trim()).toBe('Jump to latest');
+  expect(jumpButton()?.getAttribute('aria-label')).toBe('Jump to latest');
 
   const last = messages.at(-1)!;
   messages.push({ ...JSON.parse(JSON.stringify(last)), id: 'm-new-1' }, { ...JSON.parse(JSON.stringify(last)), id: 'm-new-2' });
   scrollHeight = messages.length * ESTIMATE;
   await settle();
-  expect(jumpButton()?.textContent?.trim()).toBe('2 new messages');
+  expect(jumpButton()?.getAttribute('aria-label')).toBe('2 new messages');
 
   jumpButton()!.click();
   await settle();
@@ -874,12 +874,12 @@ test('a thread reopened where the reader left it, above the bottom, counts what 
   running = mount(MessageList, { target: document.body, props: { store: live, threadId: 't-long', messages } });
   await settle();
   const jumpButton = () => document.querySelector<HTMLButtonElement>('[data-testid=jump-to-latest]');
-  expect(jumpButton()?.textContent?.trim()).toBe('Jump to latest');
+  expect(jumpButton()?.getAttribute('aria-label')).toBe('Jump to latest');
 
   messages.push({ ...JSON.parse(JSON.stringify(messages.at(-1)!)), id: 'm-new-1' });
   scrollHeight = messages.length * ESTIMATE;
   await settle();
-  expect(jumpButton()?.textContent?.trim()).toBe('1 new message');
+  expect(jumpButton()?.getAttribute('aria-label')).toBe('1 new message');
 });
 
 test('a saved message anchor is rendered even when the old scroll offset points elsewhere', () => {
@@ -1591,5 +1591,5 @@ test('a thread over several days reads by day, its wakes on a line each, its com
   expect(all('narration')).toContain('Tests pass. Sol reviews it before I open the pull request.');
   // The wakes fold their steps. The request's time adds each turn's own and the hour the delegated review ran, never the night the watch waited.
   expect(all('turn-steps').length).toBe(3);
-  expect(all('turn-elapsed')).toEqual(['Worked for 22m 00s', 'Worked for 29m 00s', 'Worked for 30m 00s', 'Worked for 1h 38m', 'Worked for 1m 00s']);
+  expect(all('turn-elapsed')).toEqual(['22m 00s', '29m 00s', '30m 00s', '1h 38m', '1m 00s']);
 });

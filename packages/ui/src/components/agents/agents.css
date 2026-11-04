@@ -146,9 +146,9 @@ fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-p
 .agent-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 
 /* Planning: the form that plans a task, and each routine in words. */
-.agent-schedule .segmented { display: flex; flex-wrap: wrap; gap: 2px; padding: 3px; border-radius: var(--radius-md); background: var(--color-surface-2); align-self: flex-start; }
-.agent-schedule .segmented button { height: var(--control-sm); padding: 0 12px; border: 0; background: none; color: var(--color-muted-foreground); font-weight: 500; }
-.agent-schedule .segmented button.on { background: var(--color-active); color: var(--color-foreground); box-shadow: var(--shadow-e1); }
+.agent-schedule .segmented { display: flex; flex-wrap: wrap; gap: 2px; padding: 3px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-segment-track); align-self: flex-start; }
+.agent-schedule .segmented button { height: var(--control-sm); padding: 0 12px; border: 1px solid transparent; background: none; color: var(--color-muted-foreground); font-weight: 500; }
+.agent-schedule .segmented button.on { background: var(--color-segment-thumb); border-color: var(--color-edge); color: var(--color-foreground); box-shadow: var(--shadow-e1); }
 .schedule-detail { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
 .schedule-detail .chip { cursor: pointer; }
 .schedule-detail .chip.on { border-color: var(--color-accent); background: var(--color-accent-soft); color: var(--color-foreground); }
@@ -228,19 +228,8 @@ fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-p
 .agent-desk { display: flex; flex-direction: column; gap: 20px; height: 100%; min-height: 0; overflow-y: auto; box-sizing: border-box; padding: 12px 12px 28px; container-type: inline-size; }
 .agent-desk > * { flex: none; }
 .agent-desk .hint { color: var(--color-muted-foreground); font-size: var(--text-sm); line-height: 1.5; }
-.desk-now { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); box-shadow: var(--shadow-e1); }
-.desk-now-head { display: flex; align-items: center; gap: 14px; min-width: 0; }
-.desk-now-robot { flex: none; display: inline-flex; padding: 3px; }
-.desk-now-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.desk-now-line { font-size: var(--text-md); font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; animation: rise var(--dur-3) var(--ease-out-quint); }
-.desk-now[data-state='waiting'] .desk-now-line { color: var(--color-live); }
-.desk-now[data-state='error'] .desk-now-line { color: var(--color-danger); }
-.desk-now-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; font-size: var(--text-sm); color: var(--color-muted-foreground); font-variant-numeric: tabular-nums; }
-.desk-activity { border-top: 1px solid var(--color-border); padding-top: 4px; }
-.desk-activity > summary { display: flex; align-items: center; gap: 6px; min-height: var(--control-sm); color: var(--color-muted-foreground); font-size: var(--text-xs); cursor: pointer; list-style: none; }
-.desk-activity > summary:hover { color: var(--color-foreground); }
-.desk-activity > summary::-webkit-details-marker, .desk-day > summary::-webkit-details-marker { display: none; }
-.desk-activity[open] > summary .fold-caret, .desk-day[open] > summary .fold-caret { transform: rotate(90deg); }
+.desk-day > summary::-webkit-details-marker { display: none; }
+.desk-day[open] > summary .fold-caret { transform: rotate(90deg); }
 .desk-tabs { display: flex; gap: 2px; padding: 3px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); }
 .desk-tabs > button { flex: 1; min-width: 0; min-height: var(--control); gap: 6px; padding: 4px 6px; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--color-muted-foreground); font-size: var(--text-sm); box-shadow: none; }
 .desk-tabs > button:hover { background: var(--color-hover); color: var(--color-foreground); }
@@ -251,16 +240,6 @@ fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-p
 .desk-pane[hidden] { display: none; }
 .desk-pane { outline-offset: 4px; }
 /* The last calls on a slim timeline: a hairline down the marks, the running one spinning, each new one rising in. */
-.desk-steps { list-style: none; margin: 0; padding: 2px 0 0 15px; display: flex; flex-direction: column; gap: 1px; position: relative; }
-.desk-steps::before { content: ''; position: absolute; left: 22px; top: 10px; bottom: 10px; width: 1px; background: var(--color-border); }
-.desk-steps li { position: relative; display: flex; align-items: center; gap: 10px; min-height: 24px; font-size: var(--text-sm); color: var(--color-muted-foreground); animation: rise var(--dur-3) var(--ease-out-quint); }
-.desk-steps li[data-status='running'] { color: var(--color-foreground); }
-.desk-step-mark { flex: none; z-index: 1; width: 15px; height: 15px; display: grid; place-items: center; border-radius: 50%; background: var(--color-surface); color: var(--color-success); }
-.desk-steps li[data-status='running'] .desk-step-mark { color: var(--color-foreground); }
-.desk-steps li[data-status='running'] .desk-step-mark svg { animation: spin 1s linear infinite var(--loops); }
-.desk-steps li[data-status='error'] .desk-step-mark { color: var(--color-danger); }
-.desk-step-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.desk-step-text.mono { font-family: var(--font-mono); font-size: var(--text-xs); }
 .agent-desk .desk-error { margin: 0; }
 /* A section: a small label, then rows parted by hairlines. */
 .desk-section { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
@@ -274,19 +253,15 @@ fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-p
 /* A thread on its desk, one row: the dot says how it stands, the title, when it moved, one meta line; the question under it. */
 .desk-row { --tone: var(--color-subtle); position: relative; display: flex; align-items: flex-start; gap: 10px; padding: 8px 2px 8px 4px; border-radius: var(--radius-md); animation: rise var(--dur-3) var(--ease-out-quint); transition: background var(--dur-2) var(--ease-out-quint); }
 .desk-row:hover, .desk-row:focus-within { background: var(--color-hover); }
+/* The thread lists' ring around how the bot came to the thread, on the desk's own ground. */
+.desk-ring { flex: none; display: inline-flex; margin-top: -1px; }
+.desk-origin { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--color-surface-2); color: var(--color-muted-foreground); }
+.desk-needs .desk-head { display: flex; align-items: center; gap: 8px; }
 .desk-card-open { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; padding: 0; border: 0; border-radius: inherit; background: none; cursor: pointer; }
 .desk-card-open:hover { background: none; }
 .desk-card-open:focus-visible { outline-offset: -2px; }
 .desk-row > :not(.desk-card-open) { position: relative; z-index: 1; pointer-events: none; }
 .desk-row button:not(.desk-card-open), .desk-row a { pointer-events: auto; }
-.desk-dot { --tone: var(--color-edge); flex: none; width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; border: 1.5px solid var(--tone); background: transparent; transition: background var(--dur-2) var(--ease-out-quint), border-color var(--dur-2) var(--ease-out-quint); }
-.desk-dot[data-tone='accent'] { --tone: var(--color-accent); }
-.desk-dot[data-tone='live'] { --tone: var(--color-live); }
-.desk-dot[data-tone='danger'] { --tone: var(--color-danger); }
-.desk-dot[data-tone='success'] { --tone: var(--color-success); }
-.desk-row:is([data-state='working'], [data-state='needs-you'], [data-state='failed'], [data-state='merged'], [data-state='done']) .desk-dot { background: var(--tone); }
-.desk-row[data-state='queued'] .desk-dot { border-style: dashed; --tone: var(--color-muted-foreground); }
-.desk-row:is([data-state='working'], [data-state='needs-you'], [data-state='queued']) .desk-dot { animation: pulse 1.6s var(--loop-ease-in-out-48) infinite var(--loops); }
 .desk-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .desk-row-head { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 20px; }
 .desk-card-title { flex: 1; min-width: 0; font-size: var(--text-base); font-weight: 500; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -374,14 +349,14 @@ fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-p
 }
 /* Reduced motion stills the desk: no pulse, no spin, no entrance. */
 @media (prefers-reduced-motion: reduce) {
-  .desk-dot, .desk-step-mark svg, .desk-card-pr svg, .desk-memory-pass > svg { animation: none !important; }
-  .desk-now-line, .desk-steps li, .desk-row, .desk-chip { animation: none; }
+  .desk-card-pr svg, .desk-memory-pass > svg { animation: none !important; }
+  .desk-row, .desk-chip { animation: none; }
 }
-html[data-motion='reduced'] :is(.desk-memory-pass > svg, .desk-dot, .desk-step-mark svg, .desk-card-pr svg) { animation: none !important; }
-html[data-motion='reduced'] :is(.desk-now-line, .desk-steps li, .desk-row, .desk-chip) { animation: none; }
+html[data-motion='reduced'] :is(.desk-memory-pass > svg, .desk-card-pr svg) { animation: none !important; }
+html[data-motion='reduced'] :is(.desk-row, .desk-chip) { animation: none; }
 @media (max-width: 720px) {
   .agent-desk { padding: 12px 12px 24px; }
-  .desk-tabs > button, .desk-day > summary, .desk-activity > summary { min-height: var(--control-touch); }
+  .desk-tabs > button, .desk-day > summary { min-height: var(--control-touch); }
   .desk-card-drop, .desk-routine-actions { opacity: 1; }
   .desk-card-drop { width: var(--control-touch); height: var(--control-touch); margin: -10px -8px -10px -6px; }
   .desk-routine-actions button { width: 32px; height: 32px; }

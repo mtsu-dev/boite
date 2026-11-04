@@ -82,7 +82,8 @@
         {:else if state === 'queued'}
           <span class="agent-live-text">{labels.state.queued}</span>
         {:else if state === 'waiting'}
-          <span class="agent-live-text">{pending ? fill(labels.waitingOn, { what: pending }) : labels.state.waiting}</span>
+          <!-- The ask itself is the question card right below: said once per screen. -->
+          <span class="agent-live-text">{labels.state.waiting}</span>
         {:else if state === 'error'}
           <span class="agent-live-text">{labels.state.error}</span>
         {:else if state === 'paused' || state === 'archived'}

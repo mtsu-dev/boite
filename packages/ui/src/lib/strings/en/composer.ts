@@ -14,7 +14,7 @@ export const strings = {
     replying: 'Answering: {question}',
     replyPlaceholder: 'Write your answer',
     replySend: 'Send the answer',
-    replyIgnore: 'Write a message',
+    replyIgnore: 'Write a message instead',
     replyIgnoreHint: 'Leave the question waiting and write an ordinary message',
     switchTitle: 'Switch a {tokens} token thread to {provider}?',
     switchBody: '{provider} starts a new session and receives excerpts of the opening and of the most recent exchanges, about 20k tokens. The rest is lost to it. Compacting first changes nothing.',
@@ -94,6 +94,12 @@ export const strings = {
     /** Images sent with the prompt: the strip above the box and what refuses one. */
     attach: 'Attach files',
     editQueued: 'Edit this pending message, or press Up in the empty composer',
+    /** The chip a pending message becomes on the composer's top edge: its label, opened and held. */
+    queuedChip: 'Queued',
+    heldChip: 'Held',
+    editQueuedShort: 'Edit',
+    showQueued: 'Show the whole message',
+    hideQueued: 'Hide the message',
     attachReadError: '{name} could not be read.',
     attachRemove: 'Remove {name}',
     attachAlt: 'Attached file',

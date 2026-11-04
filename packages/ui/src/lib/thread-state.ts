@@ -1,5 +1,6 @@
 import { pullRequestWatchWaits, type ThreadStatus, type ThreadSummary, type WorkflowStatus, type WorkflowStepStatus } from '@boite/contracts';
-import { strings } from './strings';
+import { fill, strings } from './strings';
+import { formatLocale } from './i18n.svelte';
 
 /**
  * What a thread row says in place of its time: the agent works, needs the
@@ -99,4 +100,42 @@ export function threadTone(status: ThreadStatus, unread = false): StatusMarkProp
 export function workflowTone(status: WorkflowStatus | WorkflowStepStatus, run = false): StatusMarkProps {
   const label = run ? strings.workflow.status[status as WorkflowStatus] : strings.workflow.stepStatus[status as WorkflowStepStatus];
   return { tone: status === 'failed' ? 'error' : status === 'waiting' ? 'idle' : status, label };
+}
+
+/**
+ * A row's delegated agents as its second line shows them: how many work, or,
+ * when none does, how many still ask, with the full sentence for the title.
+ * Null when it has none.
+ */
+export function delegatedChip(subagents: { count: number; asking: number } | null | undefined): { shown: number; asking: boolean; text: string; label: string } | null {
+  const count = subagents?.count ?? 0, asking = subagents?.asking ?? 0;
+  if (count === 0 && asking === 0) return null;
+  const many = (one: string, other: string, n: number) => n === 1 ? one : fill(other, { count: String(n) });
+  const atWork = count > 0 ? many(strings.sidebar.state.subagentsOne, strings.sidebar.state.subagentsMany, count) : null;
+  const asks = asking > 0 ? many(strings.sidebar.state.subagentsAskingOne, strings.sidebar.state.subagentsAskingMany, asking) : null;
+  const shown = count > 0 ? count : asking;
+  return { shown, asking: asking > 0, text: many(strings.sidebar.agentsOne, strings.sidebar.agentsMany, shown), label: [atWork, asks].filter(Boolean).join('\n') };
+}
+
+const shortSets = new Map<string, { minute: Intl.NumberFormat; hour: Intl.NumberFormat; day: Intl.NumberFormat; calendar: Intl.DateTimeFormat }>();
+
+/**
+ * A row's age in two or three characters ("5m", "3h", "2d", then "3 Sep"),
+ * so a sidebar row at 288 px keeps its width for the title. The row's tooltip
+ * keeps the exact time.
+ */
+export function shortAgo(value: number, now = Date.now()): string {
+  const delta = now - value;
+  if (delta < 45_000) return strings.time.now;
+  const tag = formatLocale();
+  let set = shortSets.get(tag);
+  if (!set) {
+    const unit = (name: string) => new Intl.NumberFormat(tag, { style: 'unit', unit: name, unitDisplay: 'narrow' });
+    set = { minute: unit('minute'), hour: unit('hour'), day: unit('day'), calendar: new Intl.DateTimeFormat(tag, { day: 'numeric', month: 'short' }) };
+    shortSets.set(tag, set);
+  }
+  if (delta < 3_600_000) return set.minute.format(Math.round(delta / 60_000));
+  if (delta < 86_400_000) return set.hour.format(Math.floor(delta / 3_600_000));
+  if (delta < 7 * 86_400_000) return set.day.format(Math.floor(delta / 86_400_000));
+  return set.calendar.format(new Date(value));
 }

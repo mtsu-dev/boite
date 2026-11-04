@@ -8,9 +8,11 @@
   import { tick } from 'svelte';
   import { Closing } from '../lib/closing.svelte';
 
-  let { messages, active, jump, hasOlder, loading, loadOlder }: {
+  let { messages, active, jump, hasOlder, loading, loadOlder, near = false }: {
     messages: Message[]; active: string | null; jump: (id: string) => void;
     hasOlder: boolean; loading: boolean; loadOlder: () => void;
+    /** The pointer is in the left gutter: a mouse sees the rail only there, or while it holds focus. */
+    near?: boolean;
   } = $props();
   const prompts = $derived(messages.filter(message => message.role === 'user'));
   const activeIndex = $derived(prompts.findIndex(message => message.id === active));
@@ -176,7 +178,7 @@
 <svelte:window onpointerdown={event => { if (!(event.target instanceof Element) || !event.target.closest('.group-menu, .outline-group')) disclosure.hide(); }} />
 
 {#if prompts.length > 1 || hasOlder}
-  <nav class="outline" class:open={unfold !== null} bind:this={rail} aria-label={strings.chat.outline} data-testid="message-outline" data-message-count={prompts.length} onscroll={() => shown = null} onpointermove={point} onpointerleave={release}>
+  <nav class="outline" class:open={unfold !== null} class:near class:held={disclosure.open} bind:this={rail} aria-label={strings.chat.outline} data-testid="message-outline" data-message-count={prompts.length} onscroll={() => shown = null} onpointermove={point} onpointerleave={release}>
     {#if paged || hasOlder}
       {@const label = hasOlder ? strings.chat.earlierMessages : strings.chat.outlineEarlier}
       <button class="step" style:--offset={`${unfold ? (centers[0] ?? 0) - OPEN / 2 : 0}px`} disabled={loading || !(hasOlder || canEarlier)} {onkeydown}
@@ -267,6 +269,12 @@
   .preview .number { color: var(--color-accent); font-family: var(--font-mono); }
   .command { color: var(--color-accent); font-weight: 600; }
   p { margin: 0; line-height: 1.5; color: var(--color-foreground); overflow-wrap: anywhere; white-space: pre-wrap; display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  /* With a mouse the rail stays out of the reading until the pointer nears the left
+     gutter; a keyboard reaches it by Tab, and a finger always sees it (below). */
+  @media (hover: hover) and (pointer: fine) {
+    .outline { opacity: 0; transition: opacity var(--dur-2) var(--ease-out-quint); }
+    .outline.near, .outline.open, .outline.held, .outline:hover, .outline:focus-within { opacity: 1; }
+  }
   /* A finger has no hover to open the rail: wider rows, and the rail scrolls when a short timeline cannot hold it. */
   @media (pointer: coarse) {
     .outline { max-height: min(60%, 320px); overflow-y: auto; scrollbar-width: none; }

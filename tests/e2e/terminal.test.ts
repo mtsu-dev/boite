@@ -32,6 +32,8 @@ test("Ctrl+J opens a shell under the thread, typing reaches it, and OpenCode sig
   try {
     // Exercise normal motion independently of the host preference; reduced motion is checked below.
     await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
+    await page.waitFor('document.querySelector("[data-testid=panel-toggle]")');
+    await page.evaluate(`document.querySelector('[data-testid="right-panel"]') ? null : document.querySelector('[data-testid="panel-toggle"]')?.click()`); // The terminal's button is in the panel's strip.
     await page.waitFor('document.querySelector("[data-testid=terminal-toggle]")');
     await settled(page);
     await page.evaluate(`(() => {
@@ -155,6 +157,7 @@ test("Ctrl+J opens a shell under the thread, typing reaches it, and OpenCode sig
     await page.evaluate('document.documentElement.dataset.motion = "reduced"');
     await page.click('[data-testid=terminal-hide]');
     await page.waitFor('!document.querySelector("[data-testid=terminal-drawer]")');
+    await page.evaluate(`document.querySelector('[data-testid="right-panel"]') ? null : document.querySelector('[data-testid="panel-toggle"]')?.click()`); // The terminal's button is in the panel's strip.
     await page.click('[data-testid=terminal-toggle]');
     await page.waitFor('document.querySelector("[data-testid=terminal-drawer] .xterm-rows")?.textContent.includes("git status")');
     expect(await page.evaluate(`parseFloat(getComputedStyle(document.querySelector('[data-testid=terminal-drawer]')).transitionDuration)`)).toBeLessThan(.01);
@@ -208,6 +211,7 @@ test("switching Stores with colliding terminal ids restores the owning screen an
     // Both public fake machines retain the same thread id and keep their own shell.
     for (let owner = 0; owner < 2; owner++) {
       await page.evaluate(`globalThis.__boiteTest.workspace.select(globalThis.__terminalOwners[${owner}], 't-trace')`);
+      await page.evaluate(`document.querySelector('[data-testid="right-panel"]') ? null : document.querySelector('[data-testid="panel-toggle"]')?.click()`); // The terminal's button is in the panel's strip.
       await page.click('[data-testid=terminal-toggle]');
       await page.waitFor('document.querySelector("[data-testid=terminal-drawer] .xterm-rows")?.textContent.includes("PS ")');
       await settled(page);

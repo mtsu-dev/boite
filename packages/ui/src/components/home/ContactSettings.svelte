@@ -118,10 +118,10 @@
   .fix { display: grid; gap: 8px; padding-bottom: 16px; }
   .fix textarea { width: 100%; min-width: 0; resize: none; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-2); font-size: var(--text-xs); line-height: 1.6; white-space: pre; overflow-x: auto; }
   .fix button { justify-self: start; }
-  .segmented { display: flex; flex: none; gap: 2px; padding: 3px; border-radius: var(--radius-md); background: var(--color-surface-2); box-shadow: inset 0 0 0 1px var(--color-border); }
-  .segmented button { height: var(--control-sm); padding: 0 12px; border: 0; background: none; color: var(--color-muted-foreground); font-weight: 500; }
+  .segmented { display: flex; flex: none; gap: 2px; padding: 3px; border-radius: var(--radius-md); background: var(--color-segment-track); box-shadow: inset 0 0 0 1px var(--color-border); }
+  .segmented button { height: var(--control-sm); padding: 0 12px; border: 1px solid transparent; background: none; color: var(--color-muted-foreground); font-weight: 500; }
   .segmented button:hover:not(:disabled) { color: var(--color-foreground); background: var(--color-hover); }
-  .segmented button.on { background: var(--color-active); color: var(--color-foreground); box-shadow: var(--shadow-e1); }
+  .segmented button.on { background: var(--color-segment-thumb); border-color: var(--color-edge); color: var(--color-foreground); box-shadow: var(--shadow-e1); }
   @media (prefers-reduced-motion: reduce) { .more, .configure :global(svg) { animation: none; transition: none; } }
   :global(html[data-motion='reduced']) .more, :global(html[data-motion='reduced']) .configure :global(svg) { animation: none; transition: none; }
   @media (max-width: 720px) {

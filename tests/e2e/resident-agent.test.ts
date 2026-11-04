@@ -32,12 +32,14 @@ test('an agent entrusted with a project shows on its header and on its threads, 
     await window.__boiteTest.workspace.select(store, thread.id);
     return { agent: agent.id, name: agent.name, thread: thread.id };
   })()`) as { agent: string; name: string; thread: string };
-  const robot = `[data-testid="project-resident"][data-agent-id="${ids.agent}"]`;
+  // A project's header draws its first robot only, with a +n badge; its label names every robot looking after it.
+  const robot = `[data-testid="project-resident"][aria-label*=${JSON.stringify(ids.name).replace(/'/g, "\\'")}]`;
   const chip = `[data-testid="thread-resident-chip"][data-agent-id="${ids.agent}"]`;
   await page.waitFor(`document.querySelector('${robot}') && document.querySelector('${chip}')`);
-  expect(await page.evaluate(`document.querySelector('${robot}').getAttribute('aria-label')`)).toBe(`Looked after by ${ids.name}`);
+  expect(await page.evaluate<string>(`document.querySelector('${robot}').getAttribute('aria-label')`)).toMatch(new RegExp(`^Looked after by (.+, )?${ids.name}(, .+)?$`));
   expect(await page.evaluate(`document.querySelector('${chip}').getAttribute('aria-label')`)).toBe(`Looked after by ${ids.name}`);
-  expect((await page.text(chip)).trim()).toBe(`Looked after by ${ids.name}`);
+  // The title bar's pill shows the agent's face alone: its name is in the label and the tooltip.
+  expect(await page.evaluate(`document.querySelector('${chip}').getAttribute('title')`)).toBe(`Looked after by ${ids.name}`);
   await capture('resident-agent-desktop.png');
 
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });

@@ -1,14 +1,14 @@
 <script lang="ts">
   import { onDestroy, onMount, tick, untrack } from 'svelte';
-  import { ArrowDown } from '@lucide/svelte';
   import { MESSAGE_PAGE, type MemoryEvent, type Message, type Turn } from '@boite/contracts';
-  import { fill, strings } from '../lib/strings';
+  import { strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import MessageTurnSummary from './MessageTurnSummary.svelte';
   import TurnFiles from './TurnFilesLoader.svelte';
   import { TurnFileCache, answersByTurn, showsTurnFiles, type TurnFilesData } from '../lib/turn-files';
   import { chatPrefs } from '../lib/chat-prefs.svelte';
   import MessageOutline from './MessageOutline.svelte';
+  import JumpToLatest from './JumpToLatest.svelte';
   import AgentMessageGroup from './AgentMessageGroup.svelte';
   import WakeMarker, { wakeKind } from './WakeMarker.svelte';
   import TurnFoldRow from './TurnFoldRow.svelte';
@@ -603,6 +603,9 @@
   $effect(() => { void rows.length; void viewHeight; fillShort(viewport, store.openThread?.id === threadId, () => !!(navigationTarget || promptTarget), LOAD_AT, box => { loadAbove(box); pullNewer(store, box, LOAD_AT); }); });
 
   // The reader's own prompt takes the bottom, wherever the history was scrolled to.
+  /** The mouse is within this many px of the list's left edge: the outline rail shows. */
+  const GUTTER = 72;
+  let nearGutter = $state(false);
   let jumpedFor = '';
   $effect(() => {
     const last = messages.at(-1);
@@ -738,12 +741,15 @@
 
 </script>
 
-<div class="timeline-wrap" style:--dock-room="{dockRoom.height}px" style:--dock-clearance="{dockRoom.clearance}px">
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div class="timeline-wrap" style:--dock-room="{dockRoom.height}px" style:--dock-clearance="{dockRoom.clearance}px"
+  onpointermove={(event) => { if (event.pointerType !== 'mouse') return; const near = event.clientX - event.currentTarget.getBoundingClientRect().left < GUTTER; if (near !== nearGutter) nearGutter = near; }}
+  onpointerleave={() => { nearGutter = false; }}>
   {#if store.findOpen && FindBar}
     <FindBar {messages} {viewport} request={store.findRequest} jump={(id, part) => jumpToMessage(id, part)}
       rowOf={(id, part) => { const row = rows[rowIndexOf(rows, id, part)]; return row?.failures ? { id: `failure:${id}`, from: 0 } : row ?? { id, from: 0 }; }} onclose={() => (store.findOpen = false)} />
   {/if}
-  {#if !narrow.current}<MessageOutline {messages} active={activePrompt} jump={id => void jumpToMessage(id)}
+  {#if !narrow.current}<MessageOutline {messages} active={activePrompt} near={nearGutter} jump={id => void jumpToMessage(id)}
     hasOlder={store.messagesBefore !== null} loading={store.loadingOlder} loadOlder={() => { if (viewport) { releaseNavigation(); viewport.scrollTop = rows[0]?.gap ? Math.max(0, (totals(rows)[1] ?? 0) - viewport.clientHeight) : 0; pinned = false; loadAbove(viewport); } }} />{/if}
   <!-- Input releases restored and navigation anchors; programmatic corrections keep them. A tap on a phone shows a message's buttons. -->
   <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
@@ -827,10 +833,7 @@
   </div>
 
   {#if behind}
-    <button type="button" class="small jump" onclick={jump} data-testid="jump-to-latest">
-      <ArrowDown size={14} strokeWidth={2} />
-      <span class="ui-label">{unseen > 0 ? fill(unseen === 1 ? strings.chat.newMessage : strings.chat.newMessages, { count: String(unseen) }) : strings.chat.jumpToLatest}</span>
-    </button>
+    <JumpToLatest {unseen} onjump={jump} />
   {/if}
 </div>
 {#if viewing}{@const view = viewing}<Deferred part={parts.ImageViewer} floating>{#snippet children(ImageViewer)}<ImageViewer items={view.items} index={view.index} onclose={() => { viewing = null; releaseHeld(); }} />{/snippet}</Deferred>{/if}
@@ -883,18 +886,4 @@
     animation: none;
   }
 
-  .jump {
-    position: absolute;
-    left: 50%;
-    bottom: calc(var(--dock-clearance, 0px) + 12px);
-    /* The entrance animates transform; centering must survive every frame. */
-    translate: -50% 0;
-    max-width: calc(100% - 24px);
-    padding: 0 10px 0 8px;
-    border-radius: 999px;
-    background: var(--color-surface-2);
-    box-shadow: var(--shadow-e2);
-    font-size: var(--text-sm);
-    animation: rise var(--dur-2) var(--ease-out-quint);
-  }
 </style>

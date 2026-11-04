@@ -87,8 +87,10 @@ test('answering the docked question shows a queued user bubble, then one sent me
   await page.waitFor(`document.querySelector('${id('question-queued')}')`);
   for (const width of [1300, 390]) {
     await page.send('Emulation.setDeviceMetricsOverride', { width, height: 850, deviceScaleFactor: 1, mobile: width < 720 });
-    expect(await page.text(id('question-queued'))).toContain('> Which file should be checked first?\n\nParser');
-    expect(await page.evaluate(`document.querySelector('${id('question-queued')} .queued-bubble').disabled`)).toBe(true);
+    // The answer waits as a chip; opened, it shows the whole text and cannot be edited back.
+    if (!await page.evaluate(`!!document.querySelector('${id('question-queued')} ${id('composer-queued-full')}')`)) await page.click(`${id('question-queued')} .queued-bubble`);
+    expect(await page.text(`${id('question-queued')} ${id('composer-queued-full')}`)).toContain('> Which file should be checked first?\n\nParser');
+    expect(await page.evaluate(`document.querySelector('${id('question-queued')} ${id('composer-queued-edit')}').disabled`)).toBe(true);
     expect(await page.evaluate(`document.querySelector('${id('question-queued')} ${id('composer-send-now')}') === null`)).toBe(true);
     await capture(`chat-delivery-answer-${width < 720 ? 'phone' : 'desktop'}`);
     expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);

@@ -3,6 +3,7 @@
   import type { ThreadWorktreeRemoval } from '@boite/contracts';
   import { exactTime, relativeTime } from '../lib/format';
   import { fill, strings } from '../lib/strings';
+  import NoticeBanner from './NoticeBanner.svelte';
 
   /*
    * Above the composer, or the done notice, of a thread whose worktree Boite
@@ -19,41 +20,13 @@
   const branch = $derived(removal.branch === null ? '' : fill(removal.branchDeleted ? t.branchDeleted : t.branchKept, { branch: removal.branch }));
 </script>
 
-<article class="worktree-gone" data-testid="worktree-gone" role="status">
-  <span class="mark"><FolderMinus size={16} aria-hidden="true" /></span>
-  <div class="text">
-    <strong title={exactTime(removal.removedAt)}>{t.title}</strong>
-    <p>
-      {#if removal.pullRequest}
-        <a href={removal.pullRequest.url} target="_blank" rel="noopener noreferrer">{why}</a>
-      {:else}
-        {why}
-      {/if}
-      {branch} {archived ? t.archived : t.live}
-    </p>
-  </div>
-</article>
+<NoticeBanner icon={FolderMinus} testid="worktree-gone" title={t.title} titleTip={exactTime(removal.removedAt)} text={[why, branch, archived ? t.archived : t.live].filter(Boolean).join(' ')}>
+  {#snippet actions()}
+    {#if removal.pullRequest}<a class="pr" href={removal.pullRequest.url} target="_blank" rel="noopener noreferrer">#{removal.pullRequest.number}</a>{/if}
+  {/snippet}
+</NoticeBanner>
 
 <style>
-  .worktree-gone {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    /* The composer's own column, like the notice of a project folder that is gone. */
-    flex: none;
-    box-sizing: border-box;
-    width: min(calc(100% - 40px), var(--content));
-    margin: 0 auto 8px;
-    padding: 10px 12px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    background: var(--color-surface-2);
-    font-size: var(--text-sm);
-  }
-  .mark { display: flex; flex: none; padding-top: 2px; color: var(--color-muted-foreground); }
-  .text { flex: 1 1 240px; min-width: 0; }
-  p { margin: 2px 0 0; color: var(--color-muted-foreground); line-height: 1.5; overflow-wrap: anywhere; }
-  a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
-  a:hover { color: var(--color-foreground); }
-  @media (max-width: 720px) { .worktree-gone { width: calc(100% - 20px); } }
+  .pr { display: inline-flex; align-items: center; height: 26px; padding: 0 8px; border-radius: var(--radius-sm); color: var(--color-accent); font-size: var(--text-xs); font-weight: 500; font-variant-numeric: tabular-nums; text-decoration: none; }
+  .pr:hover, .pr:focus-visible { background: var(--color-hover); text-decoration: underline; text-underline-offset: 2px; }
 </style>

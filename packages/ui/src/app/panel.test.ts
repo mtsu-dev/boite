@@ -41,6 +41,9 @@ test("a header button's right click hides it, and the Appearance page brings it 
   await mountOnFake('/?fake=1&team=1');
   await waitFor(() => document.querySelector('[data-thread-id="t-trace"]') !== null);
   query<HTMLButtonElement>('[data-thread-id="t-trace"]').click();
+  // The terminal's button stands in the panel's strip.
+  await waitFor(() => store.openThread?.id === 't-trace');
+  if (!store.panelOpen) store.togglePanel();
   await waitFor(() => document.querySelector('[data-testid=terminal-toggle]') !== null);
 
   query('[data-testid=terminal-toggle]').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 30 }));

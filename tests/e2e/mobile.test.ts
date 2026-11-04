@@ -113,7 +113,7 @@ test('phone navigates conversations, activity and settings without a sidebar', a
   expect(await page.evaluate(`document.querySelector('[data-testid=mobile-tabs]') === null`)).toBe(true);
   expect(await page.evaluate(`document.querySelector('[data-testid=mobile-header]').getBoundingClientRect().bottom <= document.querySelector('[data-testid=timeline]').getBoundingClientRect().top`)).toBe(true);
   await navigateMobile('mobile-activity');
-  await page.waitFor(`document.querySelector('[data-testid=mobile-header] strong')?.textContent === 'Activity' && !document.querySelector('[data-testid=mobile-list] h1')`);
+  await page.waitFor(`document.querySelector('[data-testid=mobile-header] strong')?.textContent === 'Inbox' && !document.querySelector('[data-testid=mobile-list] h1')`);
   await capture('mobile-activity.png');
   await navigateMobile('mobile-settings');
   await page.waitFor(`document.querySelector('[data-testid=settings]')`);
@@ -349,9 +349,9 @@ test('the connect sheet keeps its last button above the home indicator', async (
   await page.navigate(`${origin}/?fake=1&uninstalled=1`);
   await page.send('Emulation.setSafeAreaInsetsOverride', { insets: { top: 47, bottom: 34, left: 0, right: 0 } });
   try {
-    await page.waitFor(`document.querySelector('[data-testid=composer-connect], [data-testid=mobile-new]')`);
-    if (!(await page.evaluate<boolean>(`!!document.querySelector('[data-testid=composer-connect]')`))) await newMobileThread();
-    await page.click('[data-testid=composer-connect]');
+    // An empty app opens on its first steps, in the conversation or on the list: either one's Connect opens the sheet.
+    await page.waitFor(`document.querySelector('[data-testid=first-run-connect], [data-testid=mobile-first-run-connect]')`);
+    await page.click(await page.evaluate<string>(`document.querySelector('[data-testid=first-run-connect]') ? '[data-testid=first-run-connect]' : '[data-testid=mobile-first-run-connect]'`));
     await page.click('[data-testid=connect-service][data-provider=claude]');
     await page.click('[data-testid=connect-install]');
     await page.waitFor(`document.querySelector('[data-testid=connect-step]')?.dataset.step === 'installing'`);
@@ -395,9 +395,10 @@ test('a phone pins and archives a thread without a right-click, from the header 
   const id = await page.evaluate<string>('__boiteTest.workspace.active.openThread.id');
   const trigger = await page.evaluate<{ width: number; height: number }>(`(() => { const r = document.querySelector('[data-testid=thread-menu-trigger]').getBoundingClientRect(); return { width: r.width, height: r.height }; })()`);
   expect(trigger.height).toBeGreaterThanOrEqual(44);
-  // The header is Back and this one menu: no panel, terminal or navigation button beside the title.
+  // The header is Back, this one menu and one panel button: the terminal and the browser live in the panel's strip.
   expect(trigger.width).toBeGreaterThanOrEqual(100);
-  expect(await page.evaluate(`['terminal-toggle', 'panel-toggle'].map(id => document.querySelector('[data-testid=' + id + ']')?.offsetParent ?? null)`)).toEqual([null, null]);
+  expect(await page.evaluate(`document.querySelector('[data-testid=terminal-toggle]')?.offsetParent ?? null`)).toBeNull();
+  expect(await page.evaluate(`(() => { const r = document.querySelector('[data-testid=panel-toggle]')?.getBoundingClientRect(); return !!r && r.width >= 44 && r.height >= 44; })()`)).toBe(true);
   expect(await page.evaluate(`document.querySelector('[data-testid=mobile-tabs]')`)).toBeNull();
   await page.click('[data-testid=thread-menu-trigger]');
   await page.waitFor(`document.querySelector('[data-testid=thread-menu-trigger-menu]')`);
@@ -565,7 +566,7 @@ test('every phone control on the chat, the panel, the list and Appearance takes 
   }
 }, 30_000);
 
-test('a finger slides a row left to uncover Pin and Archive; a vertical drag stays the scroll', async () => {
+test('a finger slides a row right to mark it done and left to archive it; a vertical drag stays the scroll', async () => {
   const origin = await page.evaluate<string>('location.origin');
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
@@ -581,28 +582,35 @@ test('a finger slides a row left to uncover Pin and Archive; a vertical drag sta
     await page.navigate(`${origin}/?fake=1&open=recent`);
     await page.waitFor(`document.querySelector('[data-testid=composer-input]')`);
     await navigateMobile('mobile-conversations');
-    const row = `document.querySelector('[data-testid=mobile-list] .row:has(.swipe.pin)')`;
-    await page.waitFor(`!!${row}`);
-    const id = await page.evaluate<string>(`${row}.dataset.threadId`);
-    const body = `document.querySelector('[data-thread-id="${id}"] .row-body')`;
-    const box = () => page.evaluate<{ left: number; right: number; y: number }>(`(() => { const r = ${body}.getBoundingClientRect(); return { left: r.left, right: r.right, y: r.top + r.height / 2 }; })()`);
-    let at = await box();
+    // Two resting threads: what the row's menu lets a finger do is what the slide may do.
+    const resting = `Array.from(document.querySelectorAll('[data-testid=mobile-list] [data-testid=mobile-row]')).map(row => row.dataset.threadId).filter(id => { const t = __boiteTest.workspace.active.threads.find(t => t.id === id); return t && !t.archived && !['running', 'queued', 'waiting'].includes(t.status); })`;
+    await page.waitFor(`${resting}.length >= 2`);
+    const [doneId, archiveId] = await page.evaluate<[string, string]>(`${resting}.slice(0, 2)`);
+    const body = (id: string) => `document.querySelector('[data-testid=mobile-row][data-thread-id="${id}"] .body')`;
+    const box = (id: string) => page.evaluate<{ left: number; right: number; y: number }>(`(() => { const r = ${body(id)}.getBoundingClientRect(); return { left: r.left, right: r.right, y: r.top + r.height / 2 }; })()`);
+    const archived = (id: string) => `!!__boiteTest.workspace.active.threads.find(t => t.id === '${id}')?.archived`;
+    let at = await box(doneId);
+    // Mostly vertical: the list's scroll, the row stays where it is.
     await drag([at.left + 120, at.y], [at.left + 116, at.y - 70]);
     await Bun.sleep(300);
-    expect(await page.evaluate(`${body}.dataset.swiped !== 'true'`)).toBe(true);
-    at = await box();
-    await drag([at.right - 60, at.y], [at.right - 280, at.y + 4]);
-    await page.waitFor(`${body}.dataset.swiped === 'true'`);
-    // The slide does not open the conversation under the finger.
+    expect(await page.evaluate(archived(doneId))).toBe(false);
+    // Short of the threshold the row springs back and nothing runs.
+    at = await box(doneId);
+    await drag([at.left + 40, at.y], [at.left + 90, at.y + 2]);
+    await Bun.sleep(300);
+    expect(await page.evaluate(archived(doneId))).toBe(false);
+    expect(await page.evaluate(`!${body(doneId)}.style.getPropertyValue('--swipe')`)).toBe(true);
+    // Right, past the threshold: marked done, and the slide opens no conversation under the finger.
+    at = await box(doneId);
+    await drag([at.left + 30, at.y], [at.right - 30, at.y + 4]);
+    await page.waitFor(archived(doneId));
     expect(await page.evaluate(`!!document.querySelector('[data-testid=mobile-list]')`)).toBe(true);
+    // Left, past the threshold: archived.
+    at = await box(archiveId);
+    await drag([at.right - 30, at.y], [at.left + 30, at.y + 4]);
+    await page.waitFor(archived(archiveId));
     await Bun.sleep(300);
     await capture('mobile-row-swiped.png');
-    const pinned = await page.evaluate<boolean>(`!!__boiteTest.workspace.active.threads.find(t => t.id === '${id}').pinned`);
-    // The uncovered button takes the finger; this browser turns no emulated tap into a click, so the test clicks it.
-    expect(await page.evaluate(`(() => { const r = document.querySelector('[data-testid=mobile-swipe-pin-${id}]').getBoundingClientRect(); return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)?.closest('[data-testid]')?.dataset.testid; })()`)).toBe(`mobile-swipe-pin-${id}`);
-    await page.click(`[data-testid=mobile-swipe-pin-${id}]`);
-    await page.waitFor(`!!__boiteTest.workspace.active.threads.find(t => t.id === '${id}').pinned === ${!pinned}`);
-    await page.waitFor(`document.querySelector('[data-thread-id="${id}"] .row-body')?.dataset.swiped !== 'true'`);
     expect(page.errors()).toEqual([]);
   } finally {
     await page.send('Emulation.setTouchEmulationEnabled', { enabled: false });
@@ -667,7 +675,7 @@ test('screens slide over the one they open from, the panel and sheets from their
   await page.click('[data-testid=mobile-list] .thread');
   await page.waitFor(`!document.querySelector('[data-testid=mobile-list]') && ${still}`);
   await moves();
-  await swipeBack(`document.querySelector('[data-testid=mobile-list] .thread')`);
+  await swipeBack(`document.querySelector('[data-testid=mobile-list] [data-testid=mobile-row]')`);
   expect(await moves()).toEqual([]);
   expect(await page.evaluate(`document.querySelector('[data-testid=mobile-header]').dataset.slide ?? null`)).toBe(null);
 

@@ -31,12 +31,20 @@
   import { tick, type Snippet } from 'svelte';
   import { revealSettingsCard } from '../lib/settings-flash';
   import { phonePage } from '../lib/settings-tabs';
+  import { experimentOn } from '../lib/experiments.svelte';
+  import { contactsShown } from '../lib/contacts-rail.svelte';
+  import { mobileChrome } from '../lib/mobile-chrome.svelte';
 
   /**
    * `target` is the machine the settings bar picked, `store` this window's:
    * the pages of one machine show the target, under the bar.
    */
   let { store, target = store, bar, onopenthread }: { store: Store; target?: Store; bar?: Snippet; onopenthread?: () => void } = $props();
+  let ContactsButton = $state<typeof import('./home/ContactsButton.svelte').default>();
+  $effect(() => {
+    if (!contactsShown(store) || ContactsButton) return;
+    void import('./home/ContactsButton.svelte').then(module => { ContactsButton = module.default; }).catch(() => {});
+  });
   let phone = $state(false);
   /** The analytics switches, on a screen of their own beside the notifications. */
   let privacy = $state(false);
@@ -49,6 +57,13 @@
    */
   let routed = $derived(phonePage(store.settingsTab, store.settingsSection?.id, store.owner));
   let page = $derived(routed !== 'home' && routed === store.settingsTab ? routed : phone ? 'phone' : privacy ? 'privacy' : routed);
+  let homeList = $state<HTMLElement>();
+  /** The list's large title says Settings until it scrolls under the bar, whose own title takes over. */
+  function titleInView() { mobileChrome.largeTitle = page === 'home' && (homeList?.scrollTop ?? 0) <= 28; }
+  $effect(() => {
+    titleInView();
+    return () => { mobileChrome.largeTitle = false; };
+  });
   let machine = $derived(workspace.machines.find(machine => machine.store === store));
   const titleOf = (page: string): string => page === 'brain' ? strings.brain.heading : page === 'phone' ? strings.mobile.settingsPhone
     : page === 'privacy' ? strings.mobile.settingsPrivacy
@@ -115,8 +130,9 @@
   {#each screens as shown (shown)}
   <div class="settings-screen" class:left={shown !== page} class:arrived={shown === arrived} data-slide={motionOf(shown)} inert={shown !== page || slide.direction === 'pop'}>
   {#if shown === 'home'}
-    <!-- The header already says Settings: the screen opens on its two groups, what this phone keeps and what the machine runs. -->
-    <div class="home" data-testid="mobile-settings-home">
+    <!-- A large Settings title, then its two groups: what this phone keeps and what the machine runs. -->
+    <div class="home" data-testid="mobile-settings-home" bind:this={homeList} onscroll={titleInView}>
+      <p class="large-title" aria-hidden="true">{strings.settings.heading}</p>
       <PolicyBanner store={target} />
       <section aria-labelledby="phone-preferences">
         <h2 id="phone-preferences">{strings.mobile.settingsDevice}</h2>
@@ -143,6 +159,8 @@
           <button class="ghost row machine-link" data-testid="mobile-settings-connection" onclick={() => store.showSettings('machines')}>
             <Monitor size={20} /><span><strong class="ui-label">{machine?.label ?? strings.machines.heading}</strong><small class:ready={store.connection === 'ready'}>{store.pairingRequired ? strings.mobile.pairingRequired : strings.connection[store.connection]}</small></span><ChevronRight size={18} />
           </button>
+          <!-- With bots off the bottom bar has no Bots page, whose header holds Contacts: the machine's group lists them. -->
+          {#if ContactsButton && !experimentOn('resident-agents') && contactsShown(store)}<ContactsButton {store} variant="row" />{/if}
           <button class="ghost row" data-testid="settings-tab-usage" onclick={() => store.showSettings('usage')}>
             <Coins size={20} /><span class="ui-label">{strings.usage.heading}</span><ChevronRight size={18} />
           </button>
@@ -256,7 +274,8 @@
   .settings-screen[data-slide='under-out'] { animation-name: screen-under-out; }
   .home, .detail { animation: fade var(--dur-2) var(--ease-out-quint); min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
   .settings-screen:is([data-slide], .arrived) > :is(.home, .detail) { animation: none; }
-  .home { padding: 16px; }
+  .home { padding: 8px 16px 16px; }
+  .large-title { margin: 6px 2px 14px; font-size: 28px; font-weight: 700; letter-spacing: -0.6px; line-height: 1.15; color: var(--color-foreground); }
   .home > :global(.policy-banner) { margin-bottom: 20px; }
   /* The group's first row is the machine itself: its name over its connection. */
   .machine-link { min-height: 64px; }
@@ -277,10 +296,10 @@
   header h1 { margin: 0; font-size: var(--text-md); font-weight: 600; }
   header.limits h1 { flex: 1; min-width: 0; margin-right: 54px; }
   .phone-page { padding: 16px; }
-  /* Usage and Limits: two tabs of one screen, in one track, the chosen one filled. */
-  .tabs { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 2px; margin: 16px 16px 0; padding: 2px; border: 1px solid var(--color-edge); border-radius: var(--radius-lg); background: var(--color-surface-2); }
+  /* Usage and Limits: two tabs of one screen, in one track, the chosen one a card on it. */
+  .tabs { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 2px; margin: 16px 16px 0; padding: 2px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-segment-track); }
   .tab { min-width: 0; min-height: var(--touch-target); gap: 8px; border: 1px solid transparent; border-radius: var(--radius-md); background: transparent; color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 500; transition: background var(--dur-2) var(--ease-out-quint), color var(--dur-2) var(--ease-out-quint); }
-  .tab.on { background: var(--color-foreground); border-color: var(--color-foreground); color: var(--color-on-foreground); }
+  .tab.on { background: var(--color-segment-thumb); border-color: var(--color-edge); color: var(--color-foreground); box-shadow: var(--shadow-e1); }
   .tab :global(svg) { flex: none; }
   /* The bar carries the page's name and its "i": the card's own heading steps aside. */
   .privacy-page :global(.card > h2) { display: none; }

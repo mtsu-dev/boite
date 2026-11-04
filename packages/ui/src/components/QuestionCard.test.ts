@@ -104,7 +104,7 @@ test('Skip sends no answer, prevents duplicate presses and allows retry after fa
   settle(true);
 });
 
-test('what the composer holds is enough to answer, and the card points to it', () => {
+test('the card submits on its own until the composer takes the answer, then the composer is the one submit', () => {
   const sent: string[][] = [];
   const onwrite = vi.fn();
   const card = (replying: boolean, drafted: boolean) => {
@@ -127,16 +127,14 @@ test('what the composer holds is enough to answer, and the card points to it', (
   query<HTMLButtonElement>('[data-testid=question-write]').click();
   expect(onwrite).toHaveBeenCalledTimes(1);
 
+  // The composer holds the answer: no second Answer button and no hint repeating its Answering line.
   card(true, false);
   expect(document.querySelector('[data-testid=question-write]')).toBeNull();
-  expect(query('[data-testid=question-reply-hint]').textContent).toContain('message box below');
-  expect(submit().disabled).toBe(true);
-
+  expect(document.querySelector('[data-testid=question-reply-hint]')).toBeNull();
+  expect(document.querySelector('[data-testid=question-submit]')).toBeNull();
   card(true, true);
-  expect(submit().disabled).toBe(false);
-  submit().click();
-  flushSync();
-  expect(sent).toEqual([[]]);
+  expect(document.querySelector('[data-testid=question-submit]')).toBeNull();
+  expect(sent).toEqual([]);
 });
 test('a question without free text never offers the composer', () => {
   running = mount(QuestionCard, {

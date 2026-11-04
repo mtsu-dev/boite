@@ -53,10 +53,10 @@ test('native agents remain visible beside Boite subagents on desktop and phone',
 test('running native agents contribute to one count without becoming Boite subagents', async () => {
   await onStore('store.delegation.nativeAgents[1].status = "running";');
   await page.waitFor('!!document.querySelector("[data-testid=active-subagents]")');
-  expect(await page.text('[data-testid="active-subagents"]')).toContain('1 active subagent');
+  expect(await page.text('[data-testid="active-subagents"]')).toContain('1 subagent');
   await onStore('store.delegation.nativeAgents[0].status = "running";');
-  await page.waitFor('document.querySelector("[data-testid=active-subagents]")?.textContent.includes("2 active subagents")');
-  expect(await page.evaluate('document.querySelectorAll("[data-testid=agent-dock] button").length')).toBe(1);
+  await page.waitFor('document.querySelector("[data-testid=active-subagents]")?.textContent.includes("2 subagents")');
+  expect(await page.evaluate('document.querySelectorAll("[data-testid=status-strip] [data-testid=active-subagents]").length')).toBe(1);
   await page.click('[data-testid="panel-close"]');
   await page.click('[data-testid="active-subagents"]');
   await page.waitFor('!!document.querySelector("[data-testid=native-agents]")');
@@ -69,7 +69,7 @@ test('a detached CLI agent keeps the count and timer visible until its own exit 
   await page.click('[data-testid="panel-close"]');
   await onStore('await store.open("t-cli");');
   await page.waitFor('!!document.querySelector("[data-testid=active-subagents]")');
-  expect(await page.text('[data-testid="active-subagents"]')).toContain('1 active subagent');
+  expect(await page.text('[data-testid="active-subagents"]')).toContain('1 subagent');
   expect(await page.text('[data-testid="active-subagents"]')).not.toContain('claude-opus-5-5');
   const elapsed = await page.text('[data-testid="active-subagents"] [data-testid="agent-elapsed"]');
   await page.waitFor(`document.querySelector('[data-testid=active-subagents] [data-testid=agent-elapsed]')?.textContent !== ${JSON.stringify(elapsed)}`);

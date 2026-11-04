@@ -25,6 +25,11 @@ export const fr: Translation = {
     window: 'Fenêtre',
     ownerOnly: "Seulement dans l'application du propriétaire",
     launcher: 'Ouvrir une surface dans ce panneau',
-    untitled: 'Navigateur'
+    untitled: 'Navigateur',
+    terminal: 'Terminal',
+    board: 'Tableau',
+    more: 'Plus',
+    changesCount: '{count} fichiers modifiés',
+    agentsCount: '{count} au travail'
   }
 };

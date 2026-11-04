@@ -157,6 +157,7 @@ test('drafts survive reload and composer menus stay above the chrome', async () 
     await page.waitFor('window.panelAnimations.length > 1');
     expect(await page.evaluate('window.panelAnimations')).toEqual(['slide-left', 'slide-right-out']);
     await page.waitFor('!document.querySelector("[data-testid=right-panel]")');
+    await page.evaluate(`document.querySelector('[data-testid="right-panel"]') ? null : document.querySelector('[data-testid="panel-toggle"]')?.click()`); // The terminal's button is in the panel's strip.
     await page.click('[data-testid=terminal-toggle]');
     await page.waitFor('document.querySelector("[data-testid=terminal-drawer]")');
     await page.settleAnimations();

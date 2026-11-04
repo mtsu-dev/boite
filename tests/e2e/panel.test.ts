@@ -177,9 +177,8 @@ test('the panel opens on its launcher, and the workbench surfaces fit both width
     { id: 'draw-changes', text: 'Draw the changes surface', status: 'in_progress' },
     { id: 'wire-tree', text: 'Wire the file tree', status: 'pending' }
   ] };`);
-  await page.click(id('panel-add'));
-  await page.waitFor(`document.querySelector('${id('panel-add-menu')}')`);
-  await page.click(`${id('panel-add-menu')} [data-value=tasks]`);
+  // Tasks keeps its place in the strip, open or not: one click opens it.
+  await page.click(`${id('panel-kind')}[data-kind=tasks]`);
   await page.waitFor(`document.querySelectorAll('${id('todo-row')}').length === 3`);
   await page.waitFor(`document.querySelectorAll('${id('agent-task')}').length === 3`);
   expect(await page.evaluate(`document.querySelectorAll('${id('panel-tab')}').length`)).toBe(2);

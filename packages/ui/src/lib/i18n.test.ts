@@ -89,7 +89,7 @@ test('picking a language stores it, stamps the root and swaps every sentence at 
   expect(strings.common.yes).toBe('oui');
   expect(strings.settings.tabs.appearance).toBe('Apparence');
   // A list of sentences comes over whole rather than one proxy per item.
-  expect(strings.settings.accentNames[0]).toBe('Bleu');
+  expect(strings.settings.accentNames[0]).toBe('Violet');
   expect(Array.isArray(strings.settings.accentNames)).toBe(true);
 
   setLocaleSetting('en');

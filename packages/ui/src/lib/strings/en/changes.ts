@@ -3,6 +3,8 @@ export const strings = {
   /** The changes surface: `git status` of the thread's working directory. */
   changes: {
     clean: 'Working tree clean',
+    /** Under it: what the surface will list. */
+    cleanHint: 'Files the agent or you change appear here, with their diff.',
     noBranch: 'No branch',
     ahead: '{count} ahead',
     behind: '{count} behind',

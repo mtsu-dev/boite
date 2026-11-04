@@ -283,10 +283,11 @@
   }
 
   /* The family has no green or red surface token, so both tints are the status
-     colour mixed into the well's own fill rather than a new hex. */
+     colour mixed into the well's own fill rather than a new hex: 8 %, with a
+     3 px bar at the line's start. The code keeps its own syntax colours. */
   .row.add {
-    color: var(--color-success);
-    background: color-mix(in srgb, var(--color-success) 14%, var(--color-surface-2));
+    background: color-mix(in srgb, var(--color-success) 8%, var(--color-surface-2));
+    box-shadow: inset 3px 0 0 var(--color-success);
   }
 
   .row.add .gutter {
@@ -294,18 +295,13 @@
   }
 
   .row.remove {
-    color: var(--color-danger);
-    background: color-mix(in srgb, var(--color-danger) 14%, var(--color-surface-2));
+    background: color-mix(in srgb, var(--color-danger) 8%, var(--color-surface-2));
+    box-shadow: inset 3px 0 0 var(--color-danger);
   }
 
   .row.remove .gutter {
     color: var(--color-danger);
   }
-
-  .row.add .num,
-  .row.remove .num { color: inherit; opacity: 0.75; }
-  .row.add :global(.text span),
-  .row.remove :global(.text span) { color: inherit; }
 
   .row.gap {
     color: var(--color-subtle);

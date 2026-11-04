@@ -112,12 +112,18 @@
    */
   let accountRemoved = $derived(!target && store.openThread !== null && store.accounts.length > 0 && store.accountOf(store.openThread.accountId) === null
     && store.usableAccountOf(store.openThread.providerId, store.openThread.accountId) === null);
+  /** The mode's hint, then the old name it had, so a habit still finds it. */
+  function modeTitle(mode: PermissionMode): string {
+    const was = strings.permissionModeWas[mode];
+    return was && was !== modeLabel(mode, provider) ? `${modeHint(mode, provider)}. ${fill(strings.permissionModeWas.line, { name: was })}` : modeHint(mode, provider);
+  }
+  let stopShown = $derived(!!(target ? target.busy && target.stop : store.busy));
   let modeItems = $derived(
     modes.map((mode) => ({
       id: mode,
       label: modeLabel(mode, provider),
-      // One word per row: what the mode allows is said on hover, not printed three times over.
-      title: modeHint(mode, provider),
+      // One name per row: what the mode allows, and the name it had before, are said on hover.
+      title: modeTitle(mode),
       glyph: modeIcon(mode),
       active: displayedMode === mode
     }))
@@ -304,7 +310,7 @@
       <Menu items={modeItems} onpick={pickMode} label={strings.composer.mode} testid="composer-mode" align="end" variant="ghost">
         {@const ModeIcon = modeIcon(displayedMode)}
         <span class="mode-icon"><ModeIcon size={14} strokeWidth={1.75} /></span>
-        <span class="ui-label">{modeLabel(displayedMode, provider)}</span>
+        <span class="ui-label" title={modeTitle(displayedMode)}>{modeLabel(displayedMode, provider)}</span>
       </Menu>
     {/if}
     </div>
@@ -314,7 +320,7 @@
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="context-control" oncontextmenu={(event) => controlMenu(event, store, 'header.context')}><ContextControl {store} /></div>
   {/if}
-  {#if target ? target.busy && target.stop : store.busy}
+  {#if stopShown}
     <button type="button" class="icon stop" data-testid="composer-stop" title={strings.composer.stop} aria-label={strings.composer.stop} onmousedown={keepFocus} onclick={() => { if (target) target.stop?.(); else void store.stop(); }}>
       <Square size={12} strokeWidth={2.5} />
     </button>
@@ -356,6 +362,8 @@
     {/key}
   {/key}
   {/if}
+  <!-- While it works, Stop holds the end alone; Send joins it once the box has something to send. -->
+  {#if !stopShown || canSend || waiting || answering}
   <button
     type="button"
     class="primary icon send"
@@ -370,6 +378,7 @@
     {#if waiting}<LoaderCircle size={16} strokeWidth={2.25} class="spinner" />{:else}<ArrowUp size={16} strokeWidth={2.25} />{/if}
     {#if answering}<span class="ui-label">{sendLabel}</span>{/if}
   </button>
+  {/if}
 </div>
 
 <style>
@@ -411,8 +420,9 @@
   }
   .desktop-options { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 
+  /* 28 px chips: the surface step marks them, no outline on top of it. */
   .chips :global(.trigger), .chips .worktree {
-    height: var(--control);
+    height: 28px;
     padding: 0 10px;
     gap: 7px;
     border-radius: var(--radius-md);
@@ -421,7 +431,7 @@
   }
 
   .chips :global(.trigger) {
-    border-color: var(--color-edge);
+    border-color: transparent;
     background: var(--control-glaze) var(--color-control-surface);
     color: var(--color-foreground);
   }

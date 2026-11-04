@@ -29,20 +29,22 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await page?.close(); await server?.close(); }, 60_000);
 
-test('the bot desk separates work, routines and memory without overflowing on desktop or phone', async () => {
+test('the bot desk opens on what needs action, then separates work, routines and memory without overflowing on desktop or phone', async () => {
   for (const width of [1440, 390]) {
     await page.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: width === 390 });
     await page.click(id('desk-tab-work'));
     await page.waitFor(visible('desk-work'));
     expect(await page.evaluate(visible('desk-schedule'))).toBe(false);
     expect(await page.evaluate(visible('desk-memory'))).toBe(false);
-    expect(await page.evaluate(visible('desk-steps'))).toBe(false);
+    expect(await page.evaluate(visible('desk-needs'))).toBe(true);
     expect(await page.evaluate(visible('desk-budget'))).toBe(false);
     await capture(`work-${width}`);
     // All three tabs and every card stay inside the panel, including their text.
     const layout = await page.evaluate<{ inside: boolean; overflow: number; tabs: number[] }>(`(() => {
       const desk = document.querySelector('${id('agent-desk')}');
       const box = desk.getBoundingClientRect();
+      // What needs action sits above the tabs.
+      if (desk.querySelector('${id('desk-needs')}').compareDocumentPosition(desk.querySelector('[role=tablist]')) !== Node.DOCUMENT_POSITION_FOLLOWING) return { inside: false, overflow: 1, tabs: [] };
       return { inside: box.width > 0 && box.left >= 0 && box.right <= innerWidth + 1,
         overflow: desk.scrollWidth - desk.clientWidth,
         tabs: [...desk.querySelectorAll('[role=tab]')].map(tab => tab.scrollWidth - tab.clientWidth) };
@@ -51,10 +53,6 @@ test('the bot desk separates work, routines and memory without overflowing on de
     expect(layout.overflow).toBeLessThanOrEqual(0);
     expect(layout.tabs).toHaveLength(3);
     expect(layout.tabs.every(overflow => overflow <= 0)).toBe(true);
-
-    await page.click(`${id('desk-activity')} > summary`);
-    await page.waitFor(visible('desk-steps'));
-    await page.click(`${id('desk-activity')} > summary`);
 
     await page.click(id('desk-tab-routines'));
     await page.waitFor(visible('desk-schedule'));

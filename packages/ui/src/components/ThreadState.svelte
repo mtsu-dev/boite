@@ -5,7 +5,7 @@
   import { secondClock } from '../lib/clock.svelte';
   import { ago, elapsed, exactTime } from '../lib/format';
   import { fill, strings } from '../lib/strings';
-  import { threadState } from '../lib/thread-state';
+  import { shortAgo, threadState } from '../lib/thread-state';
   import type { WorkingChildren } from '../lib/thread-rows';
 
   /**
@@ -14,8 +14,11 @@
    * parent at work says it has children on a computer and a phone alike.
    * `away`: its machine is not connected, so a turn it last saw at work may have
    * ended long ago. The row says so instead of spinning and counting time.
+   * `compact`: the sidebar's row, whose ring draws the state: only the time,
+   * or the elapsed time while it works, in the state's colour. The words stay
+   * in its title and label, and the sub-agents chip moves to the row's second line.
    */
-  let { thread, now, subagents = null, away = false }: { thread: Pick<ThreadSummary, 'status' | 'unread' | 'runningSince' | 'requestSince' | 'backgroundWork' | 'openQuestions' | 'lastUserMessageAt' | 'createdAt'> & Partial<Pick<ThreadSummary, 'backgroundWait' | 'pullRequestWatches'>>; now: number; subagents?: WorkingChildren | null; away?: boolean } = $props();
+  let { thread, now, subagents = null, away = false, compact = false }: { thread: Pick<ThreadSummary, 'status' | 'unread' | 'runningSince' | 'requestSince' | 'backgroundWork' | 'openQuestions' | 'lastUserMessageAt' | 'createdAt'> & Partial<Pick<ThreadSummary, 'backgroundWait' | 'pullRequestWatches'>>; now: number; subagents?: WorkingChildren | null; away?: boolean; compact?: boolean } = $props();
 
   function earliest(a: number | null | undefined, b: number | null | undefined): number | null {
     return a == null ? b ?? null : b == null ? a : Math.min(a, b);
@@ -83,13 +86,19 @@
   });
 </script>
 
-{#if stale && kind !== null}
+{#if compact && kind !== null}
+  {@const text = stale ? null : spent}
+  {@const full = stale ? fill(strings.sidebar.state.unreachableWas, { state: strings.sidebar.state[kind] }) : label}
+  <span class="when state compact {stale ? 'unreachable' : kind}" class:live={live && !stale} data-testid="thread-state" data-state={stale ? 'unreachable' : kind} title={full} aria-label={full}>
+    {#if stale}<CloudOff size={11} aria-hidden="true" />{/if}<span class="ui-label" data-testid="thread-state-text">{text ?? shortAgo(thread.lastUserMessageAt ?? thread.createdAt, now)}</span>
+  </span>
+{:else if stale && kind !== null}
   {@const was = fill(strings.sidebar.state.unreachableWas, { state: strings.sidebar.state[kind] })}
   <span class="when state unreachable" data-testid="thread-state" data-state="unreachable" title={was} aria-label={was}>
     <CloudOff size={11} aria-hidden="true" /><span class="ui-label">{strings.sidebar.state.unreachable}</span>
   </span>
 {:else if kind === null}
-  <span class="when" title={exactTime(thread.lastUserMessageAt ?? thread.createdAt)}>{ago(thread.lastUserMessageAt ?? thread.createdAt, now)}</span>
+  <span class="when" class:compact title={exactTime(thread.lastUserMessageAt ?? thread.createdAt)}>{(compact ? shortAgo : ago)(thread.lastUserMessageAt ?? thread.createdAt, now)}</span>
 {:else}
   <span class="when state {kind}" data-testid="thread-state" data-state={kind} title={label} aria-label={label}>
     {#if kind === 'working'}<LoaderCircle size={11} class="spinner" aria-hidden="true" /><span class="ui-label">{spent ?? strings.sidebar.state.working}</span>
@@ -111,6 +120,9 @@
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
+  /* The ring says the state: the time keeps the row's weight, only its colour follows the tone. */
+  .state.compact { font-weight: 400; }
+  .compact.working, .compact.delegating, .compact.monitoring, .compact.background, .compact.watching { font-weight: 500; }
   .state {
     display: inline-flex;
     align-items: center;

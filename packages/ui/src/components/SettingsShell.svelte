@@ -3,7 +3,7 @@
   import { tick } from 'svelte';
   import MobileSettings from './MobileSettings.svelte';
   import BrainPage from './BrainPage.svelte';
-  import { Activity, ArrowLeft, Brain, ChevronRight, Coins, FlaskConical, Gauge, House, Keyboard, Mic, Monitor, Palette, Puzzle, Settings2, ShieldCheck, SlidersHorizontal, Stethoscope, Users } from '@lucide/svelte';
+  import { Activity, ArrowLeft, Brain, ChevronRight, Coins, FlaskConical, Gauge, Keyboard, Mic, Monitor, Palette, Puzzle, Settings2, ShieldCheck, SlidersHorizontal, Stethoscope, Users } from '@lucide/svelte';
   import KeyboardPage from './KeyboardPage.svelte';
   import LimitsPage from './LimitsPage.svelte';
   import PluginsPage from './PluginsPage.svelte';
@@ -22,7 +22,7 @@
   import MachinesPage from './MachinesPage.svelte';
   import ResourcesPage from './ResourcesPage.svelte';
   import TaskManagerLoader from './TaskManagerLoader.svelte';
-  import SettingsHome, { type SettingsEntry, type SettingsTile } from './SettingsHome.svelte';
+  import SettingsSearch, { type SettingsEntry, type SettingsTile } from './SettingsSearch.svelte';
   import UsagePage from './UsagePage.svelte';
   import VoiceSettings from './VoiceSettings.svelte';
   import { providerGroups } from '../lib/provider-family';
@@ -50,14 +50,21 @@
   let chosen = $derived(choices.find((machine) => machine.id === picked)
     ?? (store.settingsTab === 'plugins' ? choices.find(isThisPC) : undefined)
     ?? choices.find((machine) => machine.store === store));
-  let target = $derived(machinePage(store.settingsTab) ? chosen?.store ?? store : store);
+  const narrow = new MediaQuery('(max-width: 720px)');
+  /**
+   * The page shown: on a desktop, Settings opens on its first page (the
+   * route's "home" is the phone's list), and a page only the owner may open
+   * lands there too on a paired device.
+   */
+  let tab = $derived(desktopSettings(narrow.current) ? desktopPage(store.settingsTab, store.owner) : store.settingsTab);
+  let target = $derived(machinePage(tab) ? chosen?.store ?? store : store);
   /** A plugin card's Preview reads the repository on the card's machine, where the agent that asked runs. */
   $effect(() => {
     if (!store.pluginSource) return;
     untrack(() => { picked = choices.find((machine) => machine.store === store)?.id ?? picked; });
   });
   /** The bar when there is a machine to pick or a default machine to speak of. */
-  let bar = $derived(machinePage(store.settingsTab) && chosen !== undefined && (choices.length > 1 || chosen.store.group?.settingsHome !== undefined));
+  let bar = $derived(machinePage(tab) && chosen !== undefined && (choices.length > 1 || chosen.store.group?.settingsHome !== undefined));
   /** The policy banner stands above the page, so the panel scrolls both on one column, as under the bar. */
   let banner = $derived(target.policy?.present === true && target.policy.problems.length > 0);
   /**
@@ -69,16 +76,14 @@
     if (machine === store) return;
     untrack(() => { machine.settingsTab = tab; machine.settingsSection = section; });
   });
-  const narrow = new MediaQuery('(max-width: 720px)');
   const inShell = window.__TAURI_INTERNALS__ !== undefined;
 
   type Tab = SettingsTile;
 
   // Derived, not built once: the nav is written in the language the app is
-  // speaking, and the language changes without a reload. Four groups: the
-  // app itself, the agents, what they cost, where they run.
+  // speaking, and the language changes without a reload. Four labelled
+  // groups: the app itself, the agents, what they cost, where they run.
   let all = $derived<Tab[]>([
-    { id: 'home', label: strings.settings.tabs.home, icon: House, group: 0 },
     { id: 'general', label: strings.settings.tabs.general, icon: Settings2, group: 0 },
     { id: 'appearance', label: strings.settings.tabs.appearance, icon: Palette, group: 0 },
     { id: 'keyboard', label: strings.settings.tabs.keyboard, icon: Keyboard, group: 0 },
@@ -161,8 +166,9 @@
   );
 
   let tabs = $derived(all.filter((tab) => store.owner || !ownerOnly(tab.id)));
-  /** A page only the owner may open lands on Home on a paired device, as it does on a phone. */
-  let tab = $derived(desktopPage(store.settingsTab, store.owner));
+  /** Opened on no page in particular, Settings is there to be looked through: the keyboard goes to the search. */
+  // Read once on purpose: moving to a page later must not pull the focus back.
+  const searchFirst = untrack(() => store.settingsTab === 'home');
 
   /**
    * Single settings the search also finds, each with the card it sits on:
@@ -223,7 +229,7 @@
     ['diagnostics', 'diagnostics-log', strings.diagnostics.search]
   ]);
 
-  /** Every page, every section the nav names and the settings above: what the home page's search looks through. */
+  /** Every page, every section the nav names and the settings above: what the nav's search looks through. */
   let entries = $derived<SettingsEntry[]>(tabs.flatMap((entry) => {
     const sections = children[entry.id] ?? [];
     const words = settingsWords.filter(([tab, section]) => tab === entry.id && (section === null || sections.some((child) => child.id === section)));
@@ -313,34 +319,36 @@
       <ArrowLeft size={15} strokeWidth={1.75} />
       <span class="ui-label">{strings.settings.back}</span>
     </button>
-    {#each tabs as entry, index (entry.id)}
-      {@const Icon = entry.icon}
-      {#if index > 0 && tabs[index - 1]?.group !== entry.group}<div class="rule" role="separator"></div>{/if}
-      <div class="category">
-      <button
-        type="button"
-        class="ghost tab"
-        class:active={tab === entry.id}
-        data-testid="settings-tab-{entry.id}"
-        aria-current={tab === entry.id ? 'page' : undefined}
-        aria-expanded={toc[entry.id] ? tab === entry.id : undefined}
-        onclick={() => { selectedSection = ''; store.showSettings(entry.id); }}
-      >
-        <Icon size={15} strokeWidth={1.75} />
-        <span class="ui-label">{entry.label}</span>
-        {#if toc[entry.id]}<ChevronRight size={14} class={tab === entry.id ? 'fold-caret open' : 'fold-caret'} />{/if}
-      </button>
-      {#if toc[entry.id]}
-        <div class="subcategories disclosure-fold" class:open={tab === entry.id} inert={tab !== entry.id}>
-          <div>
-            {#each toc[entry.id] ?? [] as child (child.id)}
-              <button class="ghost subsection" class:chosen={chosenSection === child.id} data-settings-section={child.id} title={child.label} onclick={() => jump(child.id)}><span class="ui-label">{child.label}</span></button>
-            {/each}
+    <SettingsSearch {entries} onopen={open} focus={searchFirst}>
+      {#each tabs as entry, index (entry.id)}
+        {@const Icon = entry.icon}
+        {#if index === 0 || tabs[index - 1]?.group !== entry.group}<h2 class="group" class:first={index === 0}>{strings.settings.homeGroups[entry.group]}</h2>{/if}
+        <div class="category">
+        <button
+          type="button"
+          class="ghost tab"
+          class:active={tab === entry.id}
+          data-testid="settings-tab-{entry.id}"
+          aria-current={tab === entry.id ? 'page' : undefined}
+          aria-expanded={toc[entry.id] ? tab === entry.id : undefined}
+          onclick={() => { selectedSection = ''; store.showSettings(entry.id); }}
+        >
+          <Icon size={15} strokeWidth={1.75} />
+          <span class="ui-label">{entry.label}</span>
+          {#if toc[entry.id]}<ChevronRight size={14} class={tab === entry.id ? 'fold-caret open' : 'fold-caret'} />{/if}
+        </button>
+        {#if toc[entry.id]}
+          <div class="subcategories disclosure-fold" class:open={tab === entry.id} inert={tab !== entry.id}>
+            <div>
+              {#each toc[entry.id] ?? [] as child (child.id)}
+                <button class="ghost subsection" class:chosen={chosenSection === child.id} data-settings-section={child.id} title={child.label} onclick={() => jump(child.id)}><span class="ui-label">{child.label}</span></button>
+              {/each}
+            </div>
           </div>
+        {/if}
         </div>
-      {/if}
-      </div>
-    {/each}
+      {/each}
+    </SettingsSearch>
   </nav>
 
   {#if toc[tab]}
@@ -358,9 +366,7 @@
       {#if bar && tab !== 'experiments'}{@render machineBar()}{/if}
       {#key target}
       <PolicyBanner store={target} />
-      {#if tab === 'home'}
-        <SettingsHome {store} tiles={tabs} {entries} onopen={open} />
-      {:else if tab === 'brain'}
+      {#if tab === 'brain'}
         <BrainPage store={target} />
       {:else if tab === 'voice'}
         <VoiceSettings store={target} />
@@ -414,7 +420,8 @@
     .framed > :global(.policy-banner) { margin: 16px 16px 0; }
   }
   .category { flex: none; }
-  .rule { flex: none; height: 1px; margin: 8px 10px; background: var(--color-border); }
+  .group { flex: none; margin: 14px 10px 4px; font-size: var(--text-xs); font-weight: 600; letter-spacing: 0.02em; color: var(--color-subtle); }
+  .group.first { margin-top: 4px; }
   .tab span { flex: 1; text-align: left; }
   .tab :global(.fold-caret) { color: inherit; }
   /* Block rather than flex, and a label longer than the rail wraps onto a second
@@ -495,7 +502,8 @@
       border-bottom: 1px solid var(--color-border);
     }
 
-    .rule { width: 1px; height: auto; align-self: stretch; margin: 6px 4px; }
+    .group { display: none; }
+    nav > :global(.search) { flex: 0 0 180px; margin: 0 6px 0 0; }
     .subcategories { display: none; }
     .mobile-subcategories { display: flex; gap: 4px; padding: 8px 14px; overflow-x: auto; flex: none; border-bottom: 1px solid var(--color-border); }
     .mobile-subcategories button { flex: none; font-size: var(--text-sm); }

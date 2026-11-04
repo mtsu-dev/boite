@@ -179,7 +179,10 @@ test('a phone chooses between chat and the agent browser without closing its pag
   expect(await page.evaluate(`document.querySelector('[data-testid=right-panel]') === null`)).toBe(true);
   await capture('agent-browser-chat-phone.png');
 
-  await page.click(id('phone-browser-toggle'));
+  // The phone's one panel button, then the strip's Browser tab.
+  if (await page.evaluate(`!document.querySelector('[data-testid="right-panel"]')`)) await page.click(id('panel-toggle'));
+  await page.waitFor(`document.querySelector('[data-testid="panel-tabs"] [data-kind="agent-browser"]')`);
+  if (await page.evaluate(`!document.querySelector('[data-testid="panel-tabs"] [data-kind="agent-browser"][aria-selected="true"]')`)) await page.click('[data-testid="panel-tabs"] [data-kind="agent-browser"]');
   await page.waitFor(`document.querySelector('${id('agent-browser-cover')}')`);
   await page.click(id('agent-browser-show'));
   await page.waitFor(`document.querySelector('${id('remote-browser-frame')}')?.naturalWidth > 100`);
@@ -196,7 +199,10 @@ test('a phone chooses between chat and the agent browser without closing its pag
   await page.evaluate(`${store}.client.call('panel.open', { threadId: 't-trace', surface: { kind: 'browser', url: 'https://shop.example/cart' } })`);
   await page.settleAnimations();
   expect(await page.evaluate(`${store}.panelOpen`)).toBe(false);
-  await page.click(id('phone-browser-toggle'));
+  // The phone's one panel button, then the strip's Browser tab.
+  if (await page.evaluate(`!document.querySelector('[data-testid="right-panel"]')`)) await page.click(id('panel-toggle'));
+  await page.waitFor(`document.querySelector('[data-testid="panel-tabs"] [data-kind="agent-browser"]')`);
+  if (await page.evaluate(`!document.querySelector('[data-testid="panel-tabs"] [data-kind="agent-browser"][aria-selected="true"]')`)) await page.click('[data-testid="panel-tabs"] [data-kind="agent-browser"]');
   await page.waitFor(`document.querySelectorAll('${id('agent-browser-tab')}').length === 2 && document.querySelector('${id('remote-browser-address')}')?.value === 'https://shop.example/cart'`);
   await page.evaluate('history.back()');
   await page.waitFor(`!document.querySelector('${id('right-panel')}')`);

@@ -98,6 +98,8 @@ async function reset(page: any): Promise<boolean> {
   await page.evaluate(() => {
     for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) document.body.dispatchEvent(new MouseEvent(type, { bubbles: true }));
     (document.activeElement as HTMLElement | null)?.blur?.();
+    // The lifecycle filter lasts the session: one pressed button clears it for desktop and phone alike.
+    document.querySelector<HTMLButtonElement>('[data-testid$="lifecycle"] [aria-pressed="true"]')?.click();
   });
   await page.mouse.move(1, 1);
   const waiting = await store(page, `
@@ -266,11 +268,28 @@ const steps: Step[] = [
   },
   {
     name: 'panel-terminal', caption: 'The terminal drawer under the conversation.', devices: desktop,
-    async run(page) { await page.getByRole('button', { name: "Terminal in this thread's folder" }).click(); await page.waitForTimeout(1200); },
+    // The drawers open from the right panel's tab strip.
+    async run(page) { await panel(page, 's.panel.openTasks();'); await page.getByTestId('terminal-toggle').click(); await page.waitForTimeout(1200); },
   },
   {
     name: 'panel-board', caption: 'The project board drawer.', devices: desktop,
-    async run(page) { await page.getByRole('button', { name: 'Project board' }).first().click(); await page.waitForTimeout(1000); },
+    async run(page) { await panel(page, 's.panel.openTasks();'); await page.getByTestId('board-toggle').click(); await page.waitForTimeout(1000); },
+  },
+  {
+    name: 'thread-finished', caption: 'A finished thread: the status strip with Mark done and Archive, the title bar context pill.', devices: both,
+    async run(page) { await openThread(page, 't-sc-saves'); await scrollTimeline(page, 'bottom'); },
+  },
+  {
+    name: 'notice', caption: 'A merged thread whose worktree was removed: the one-line notice banner above the composer.', devices: both,
+    async run(page) {
+      await openThread(page, 't-sc-openapi');
+      await store(page, 's.openThread.worktreeRemoved = { path: "/home/boite/projects/boite/.boite/worktrees/wt-openapi", branch: "atlas/openapi", branchDeleted: true, reason: "pr-merged" }; if (s.boardShown) s.toggleBoard();');
+      await scrollTimeline(page, 'bottom');
+    },
+  },
+  {
+    name: 'phone-thread', caption: 'The phone thread screen: back, title, project · branch · PR, one panel button.', devices: phone,
+    async run(page) { await openThread(page, 't-sc-ratelimit'); await scrollTimeline(page, 'bottom'); },
   },
   {
     name: 'palette', caption: 'The command palette.', devices: desktop,
@@ -281,7 +300,8 @@ const steps: Step[] = [
     async run(page) {
       if (await page.evaluate(() => innerWidth < 600)) {
         await phoneList(page);
-        await page.getByTestId(`mobile-thread-menu-${QUESTION}`).click();
+        // No menu button on a phone row: a long press opens its sheet, through the row's contextmenu.
+        await page.locator(`[data-testid="mobile-row"][data-thread-id="${QUESTION}"] .body`).first().dispatchEvent('contextmenu');
       } else {
         await row(page, QUESTION).hover();
         await row(page, QUESTION).getByRole('button', { name: 'Thread actions' }).click();
@@ -310,6 +330,16 @@ const steps: Step[] = [
     name: 'display-options', caption: 'The sidebar display options popover.', devices: desktop,
     async run(page) { await page.getByRole('button', { name: 'Display options' }).first().click(); await page.waitForTimeout(400); },
   },
+  ...(['waiting', 'archived'] as const).map((kind): Step => ({
+    name: kind === 'waiting' ? 'filter-needs-you' : 'filter-archived',
+    caption: `The lifecycle strip filtered to ${kind === 'waiting' ? 'Needs you' : 'Archived'}: matching threads under their project headers.`, devices: both,
+    async run(page) {
+      const phone = await page.evaluate(() => innerWidth < 600);
+      if (phone) await phoneList(page);
+      await page.getByTestId(`${phone ? 'mobile-' : ''}lifecycle-${kind}`).first().click();
+      await page.waitForTimeout(600);
+    },
+  })),
   {
     name: 'limits', caption: 'The account limits popover with usage numbers.', devices: desktop,
     async run(page) { await page.getByRole('button', { name: 'Account limits' }).first().click(); await page.waitForTimeout(500); },
@@ -380,8 +410,43 @@ const steps: Step[] = [
     async run(page) { await store(page, 's.showSettings("home");'); await page.waitForTimeout(700); },
   },
   {
-    name: 'first-run', caption: 'First run: no provider and no project yet.', devices: desktop, query: 'fake=1&uninstalled=1',
-    async run(page) { await dismissBanners(page); },
+    name: 'first-run', caption: 'First run: no provider and no project yet.', devices: both, query: 'fake=1&uninstalled=1',
+    async run(page) { await dismissBanners(page); await page.waitForTimeout(400); },
+  },
+  {
+    name: 'inbox', caption: 'The home Inbox: threads that need you, then the ones at work (desktop); the phone Inbox tab.', devices: both,
+    async run(page) {
+      if (await page.evaluate(() => innerWidth < 600)) {
+        await phoneList(page);
+        await page.getByTestId('mobile-activity').click();
+        await page.waitForTimeout(500);
+      } else {
+        await store(page, 's.startDraft("p-boite", { fresh: true });');
+        await page.getByTestId('inbox').waitFor({ timeout: 5000 });
+        await page.waitForTimeout(400);
+      }
+    },
+  },
+  {
+    name: 'inbox-empty', caption: 'The home Inbox with nothing waiting: the quiet line on the sky, the work still listed.', devices: both, query: QUERY,
+    // Its own page: what it answers in place would leave the next screens with nothing waiting.
+    async run(page) {
+      // Answer everything in place: nothing asks, nothing failed unread.
+      await store(page, `
+        for (const m of globalThis.__boiteTest.workspace.machines.length ? globalThis.__boiteTest.workspace.machines.map((m) => m.store) : [s]) {
+          m.threads = m.threads.map((t) => ({ ...t, status: t.status === 'waiting' || t.status === 'error' ? 'idle' : t.status, openQuestions: 0, subagentQuestions: [], unread: false }));
+          m.pendingQuestions = []; m.pendingPermissions = [];
+        }`);
+      if (await page.evaluate(() => innerWidth < 600)) {
+        await phoneList(page);
+        await page.getByTestId('mobile-activity').click();
+        await page.waitForTimeout(500);
+      } else {
+        await store(page, 's.startDraft("p-boite", { fresh: true });');
+        await page.getByTestId('inbox-empty').waitFor({ timeout: 5000 });
+        await page.waitForTimeout(400);
+      }
+    },
   },
 ];
 

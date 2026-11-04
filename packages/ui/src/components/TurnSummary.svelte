@@ -70,7 +70,9 @@
   const ownLabel = $derived(own !== null && spent !== null && spent - own >= 1000 ? fill(strings.chat.turnOwnTime, { time: elapsed(own) }) : undefined);
   /** A compaction inside a turn counts from when its phase began, which an older core does not send. */
   const compactionSpent = $derived(compactOperation ? spent : observed?.since == null ? null : Math.max(0, now - observed.since));
-  const elapsedLabel = $derived(compactOperation ? turn.status === 'done' ? strings.chat.compactedFor : strings.chat.compactionElapsed : running ? strings.chat.workingFor : strings.chat.workedFor);
+  /** A compaction names what it timed; an answer's footer reads the bare stopwatch, its words in the tooltip. */
+  const elapsedLabel = $derived(compactOperation ? turn.status === 'done' ? strings.chat.compactedFor : strings.chat.compactionElapsed : '{time}');
+  const elapsedTitle = $derived(ownLabel ?? (compactOperation || spent === null ? undefined : fill(strings.chat.workedFor, { time: elapsed(spent) })));
   const usage = $derived(turn.usage);
   const total = $derived(usage === null ? 0 : totalTokens(usage));
   const breakdown = $derived(usage === null ? '' : [
@@ -89,12 +91,20 @@
   const memoryTitle = $derived(memory ? [fold.memory[memory.pass.status], ...(memory.pass.summary && memory.pass.status !== 'running' ? [memory.pass.summary] : [])].join(' · ') : '');
   /** A line that counts steps or carries a memory mark reads at rest: it is what the agent did, not a measurement. */
   const marked = $derived(!!steps || !!memory || compactions.length > 0);
+  /** The progress words the line adds while it runs: the tool row or the streaming text already says the rest. */
+  const showProgress = $derived(!!observed && (!activeTool && !activeContent || observed.phase === 'retrying' || quiet >= 60_000));
+  /**
+   * While an answer runs, the status strip above the composer carries its time:
+   * the line here only shows what the strip does not, its progress and what runs
+   * in the background.
+   */
+  const live = $derived(running && !compacting);
 </script>
 
-{#snippet metric(id: string, text: string | null, title?: string, quiet = false)}
-  <span class="metric"><span class="dot ui-label" aria-hidden="true">·</span><span class="ui-label" class:quiet data-testid={id} {title}>{text}</span></span>
+{#snippet metric(id: string, text: string | null, title?: string, quiet = false, onHover = false)}
+  <span class="metric" class:on-hover={onHover}><span class="dot ui-label" aria-hidden="true">·</span><span class="ui-label" class:quiet data-testid={id} {title}>{text}</span></span>
 {/snippet}
-{#if turn.status !== 'queued' && !(running && activeTool && !waiting && background.length === 0 && !observed && !compacting)}
+{#if turn.status !== 'queued' && !(live && !showProgress && !still)}
   <div class="summary" class:compacting class:settled class:pointed class:marked class:paused={hidden || waiting} data-testid="turn-summary" data-status={turn.status} role="status" aria-label={label} title={label}>
     {#if compacting}
       <LoaderCircle size={18} class="spinner compaction-icon" aria-hidden="true" />
@@ -105,15 +115,15 @@
         {/if}
       </div>
     {:else}
-    {#if turn.status === 'done'}<Check size={14} />{:else if turn.status === 'error'}<CircleAlert size={14} />{:else if turn.status === 'stopped'}<Square size={12} />{:else if !activeContent && !activeTool}<LoaderCircle size={16} class="spinner" />{/if}
-    {#if spent !== null}
-      <span class="ui-label" data-testid="turn-elapsed" title={ownLabel}>{fill(elapsedLabel, { time: elapsed(spent) })}</span>
+    {#if turn.status === 'done'}<Check size={14} />{:else if turn.status === 'error'}<CircleAlert size={14} />{:else if turn.status === 'stopped'}<Square size={12} />{/if}
+    {#if spent !== null && !live}
+      <span class="ui-label" data-testid="turn-elapsed" title={elapsedTitle}>{fill(elapsedLabel, { time: elapsed(spent) })}</span>
     {/if}
     {#if compactOperation && (turn.status === 'error' || turn.status === 'stopped')}
       {@render metric('compaction-result', label)}
     {/if}
     {#if observed}
-      {#if !activeTool && !activeContent || observed.phase === 'retrying' || quiet >= 60_000}
+      {#if showProgress}
         {@render metric('turn-progress', observed.detail ? `${activityLabel}: ${observed.detail}` : activityLabel, observed.detail ?? undefined)}
       {/if}
       {#if quiet >= 60_000}
@@ -147,7 +157,7 @@
       {#each compactions as part, at (at)}{@render metric('turn-compaction', compactionMark(part), compactionText(part), true)}{/each}
     {/if}
     {#if total > 0}
-      {@render metric('turn-tokens', `${formatTokens(total)} ${strings.units.tokens}`, breakdown)}
+      {@render metric('turn-tokens', `${formatTokens(total)} ${strings.units.tokens}`, breakdown, false, settled)}
     {/if}
     {#if still}
       <span class="metric">
@@ -177,13 +187,13 @@
   .metric { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
   .tail { display: inline-flex; }
   .summary[data-status='running'] { color: var(--color-muted-foreground); }
-  /* Read on demand: the message under the pointer or the keyboard shows it, a finger always does. */
-  .summary.settled { opacity: 0; transition: opacity var(--dur-2); }
-  :global(.message:hover) .summary.settled, .summary.settled.pointed, .summary.settled:focus-within, .summary.settled:not(:has(button)) { opacity: 1; }
+  /* A settled turn's time and finish always read, muted; its tokens wait for the
+     pointer or the keyboard, a finger always sees them. */
+  .on-hover { opacity: 0; transition: opacity var(--dur-2); }
+  :global(.message:hover) .summary .on-hover, .summary.pointed .on-hover, .summary:focus-within .on-hover { opacity: 1; }
   /* Pointed from another message of the turn, its buttons show with it. */
   .summary.settled.pointed :global(.act) { opacity: 1; }
-  @media (hover: none) { .summary.settled { opacity: 1; } }
-  .summary.settled.marked { opacity: 1; }
+  @media (hover: none) { .on-hover { opacity: 1; } }
   /* The step count and the memory mark: text buttons on the line, no box, the foreground on hover. */
   .mark { display: inline-flex; align-items: center; gap: 2px; height: 18px; padding: 0 2px; margin: -2px 0; border: 0; border-radius: var(--radius-sm); background: none; color: inherit; font-size: inherit; font-variant-numeric: inherit; cursor: pointer; transition: color var(--dur-2) var(--ease-out-quint); }
   .mark:hover:not(:disabled), .mark:focus-visible { color: var(--color-foreground); background: none; }

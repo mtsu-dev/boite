@@ -1122,7 +1122,7 @@ that is known.
 Boite has six: `default`, `acceptEdits`, `plan`, `bypassPermissions`, `yolo`, `dontAsk`.
 Drivers translate them according to their protocol capabilities.
 
-YOLO is separate from Auto (`bypassPermissions`). It selects the agent's most
+Full access (`yolo`, formerly YOLO) is separate from Smart auto (`bypassPermissions`, formerly Auto). It selects the agent's most
 permissive execution mode and automatically accepts tool approval requests that
 still reach Boite, without a permission card. Claude runs with
 `bypassPermissions` and `disableAllHooks: true`, disabling configured and plugin
@@ -1245,8 +1245,10 @@ live inference. The exact release and gate are described under [Muse Code](#muse
   cannot enforce a permission gate.
 
 The composer offers four of the six and names each by what the agent may do
-without asking (`lib/permission-modes.ts`): Ask, Edit freely, Auto and YOLO.
-The list follows the agent. Codex loses Edit freely, which is the same pair as
+without asking (`lib/permission-modes.ts`): Ask each time, Auto-approve edits,
+Smart auto and Full access. Each one's tooltip starts with its former name
+(Ask, Edit freely, Auto, YOLO), so a habit still finds it.
+The list follows the agent. Codex loses Auto-approve edits, which is the same pair as
 its default, and its default reads "This folder", because workspace-write lets
 it edit and run commands there without a card. An agent whose `capabilities.approvals` is false gets no mode chip: every
 choice would describe something it does not do. No confirmation keeps the warning colour on its chip,

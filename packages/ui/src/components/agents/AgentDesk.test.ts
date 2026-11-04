@@ -8,7 +8,7 @@ import AgentDesk from './AgentDesk.svelte';
 const chips = () => [...document.querySelectorAll('[data-testid=desk-chip]')].map(chip => chip.textContent?.trim());
 const card = (title: string) => [...document.querySelectorAll<HTMLElement>('[data-testid=desk-card]')].find(node => node.querySelector('.desk-card-title')?.textContent === title);
 
-test('Nova\'s desk shows its live step, every card state in order, answers a question in place, drops a card and meters its day', async ({ ready }) => {
+test('Nova\'s desk opens on what needs action, then its other work in order, answers a question in place, drops a card and meters its day', async ({ ready }) => {
   setExperiment('resident-agents', true);
   let desk: ReturnType<typeof mount> | null = null;
   try {
@@ -26,18 +26,20 @@ test('Nova\'s desk shows its live step, every card state in order, answers a que
     expect(document.querySelector('[data-testid=desk-tab-work]')?.getAttribute('aria-selected')).toBe('true');
     expect(document.querySelector<HTMLElement>('[data-testid=desk-schedule]')?.hidden).toBe(true);
     expect(document.querySelector<HTMLElement>('[data-testid=desk-memory]')?.hidden).toBe(true);
-    expect(document.querySelector<HTMLDetailsElement>('[data-testid=desk-activity]')?.open).toBe(false);
     expect(document.querySelector<HTMLDetailsElement>('[data-testid=desk-today]')?.open).toBe(false);
 
-    // Now: the step its turn is on, live, and the calls so far on the rail.
-    expect(document.querySelector('[data-testid=desk-now]')?.getAttribute('data-state')).toBe('working');
-    expect(document.querySelector('[data-testid=desk-now-step]')?.textContent).toBe('Run the UI tests');
-    expect(document.querySelector('[data-testid=desk-now]')?.textContent).toContain('4 steps so far');
-    expect(document.querySelectorAll('[data-testid=desk-steps] li')).toHaveLength(4);
-    expect(document.querySelector('[data-testid=desk-steps] li:last-child')?.getAttribute('data-status')).toBe('running');
+    // How Nova stands is its header's: the desk no longer repeats it in a card of its own.
+    expect(document.querySelector('[data-testid=desk-now]')).toBeNull();
 
-    // Work: what needs the user first, then the silent turn, the work, the open pull request with failing checks, the merged one, the other machine's quiet thread.
-    expect(chips()).toEqual(['Needs you', 'Stalled', 'Working', 'PR open', 'Merged', 'Idle']);
+    // On top, what needs action: the question for the user, then the silent turn, each with the thread lists' ring.
+    const needs = document.querySelector<HTMLElement>('[data-testid=desk-needs]')!;
+    expect([...needs.querySelectorAll('[data-testid=desk-chip]')].map(chip => chip.textContent?.trim())).toEqual(['Needs you', 'Stalled']);
+    expect([...needs.querySelectorAll('[data-testid=state-ring]')].map(ring => ring.getAttribute('data-ring'))).toEqual(['waiting', 'waiting']);
+    // Work: the rest, each once: the work, the open pull request with failing checks, the merged one, the other machine's quiet thread.
+    const rest = document.querySelector<HTMLElement>('[data-testid=desk-work]')!;
+    expect([...rest.querySelectorAll('[data-testid=desk-chip]')].map(chip => chip.textContent?.trim())).toEqual(['Working', 'PR open', 'Merged', 'Idle']);
+    expect([...rest.querySelectorAll('[data-testid=state-ring]')].map(ring => ring.getAttribute('data-ring'))).toEqual(['working', 'rest', 'done', 'rest']);
+    expect(document.querySelector('[data-testid=desk-tab-work] .desk-tab-count')?.textContent).toBe('4');
     expect(card('Migrate the settings store')?.textContent).toContain('silent for 24 min');
     expect(card('Fix login redirect loop')?.querySelector('[data-testid=desk-card-pr]')?.textContent).toMatch(/PR #482\s*checks failing/);
     expect(card('Release notes 2.0.4')?.querySelector('[data-testid=desk-card-pr]')?.textContent).toContain('PR #479 merged');

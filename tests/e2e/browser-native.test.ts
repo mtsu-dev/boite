@@ -137,14 +137,14 @@ test.skip('native browser fills its panel and floats inside the app without losi
     await page.click('[data-testid=panel-add]');
     await page.waitFor("document.querySelector('[data-testid=browser-overlay-preview]')?.naturalWidth > 0");
     expect((await command({ kind: 'evaluate', expression: 'document.hidden' })).value).toBe(true);
-    expect(await page.evaluate(`(() => { const rows=[...document.querySelectorAll('[data-testid=panel-add-menu] [role=menuitem]')]; return rows.length>4 && rows.filter(row=>!row.disabled).every(row=>{const r=row.getBoundingClientRect();return row.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));}); })()`)).toBe(true);
+    expect(await page.evaluate(`(() => { const rows=[...document.querySelectorAll('[data-testid=panel-add-menu] [role=menuitem]')]; return rows.length>=3 && rows.filter(row=>!row.disabled).every(row=>{const r=row.getBoundingClientRect();return row.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));}); })()`)).toBe(true);
     await page.screenshot(join(captures, 'browser-floating-menu.png'));
     // Pick an item below the first row using pointer input, then return to the
     // original browser tab. This also checks that menus don't start a drag.
-    const menuItem = await center('[data-testid=panel-add-menu] [data-value=files]');
+    const menuItem = await center('[data-testid=panel-add-menu] [data-value=messages]');
     await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...menuItem, button: 'left', clickCount: 1 });
     await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...menuItem, button: 'left', clickCount: 1 });
-    await page.waitFor("document.querySelector('[data-testid=panel-tab][data-kind=files][aria-selected=true]')");
+    await page.waitFor("document.querySelector('[data-testid=panel-tab][data-kind=messages][aria-selected=true]')");
     await page.click(`[data-surface-id="${tabId}"][role=tab]`);
     await fillsSlot();
     await page.click('[data-testid=panel-add]');

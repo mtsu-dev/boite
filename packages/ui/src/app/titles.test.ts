@@ -48,9 +48,11 @@ test('the chat header keeps the title alone, and the rows say what each agent is
   expect(query('[data-testid=thread-header]').getAttribute('data-status')).toBe('idle');
   expect(query('[data-testid=thread-title]').textContent?.trim()).toBe(store.openThread?.title);
 
-  // No dot on any row; a thread waiting on the user says so in words.
+  // No dot on any row; a thread waiting on the user says so in words, in its label:
+  // the ring draws the state, so the row's own text is only the time.
   expect(document.querySelector('[data-testid=thread-row] .mark')).toBeNull();
   const waiting = query('[data-testid=thread-row][data-thread-id=t-scheduler] [data-testid=thread-state]');
   expect(waiting.dataset['state']).toBe('waiting');
-  expect(waiting.textContent?.trim()).toBe('Needs you');
+  expect(waiting.getAttribute('aria-label')).toBe('Needs you');
+  expect(waiting.textContent?.trim()).not.toContain('Needs you');
 });

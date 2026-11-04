@@ -1,14 +1,17 @@
 <script lang="ts">
-  import { CircleCheck, CircleX, GitMerge, GitPullRequest, GitPullRequestClosed, LoaderCircle, X } from '@lucide/svelte';
+  import { CircleCheck, CircleX, Eye, GitMerge, GitPullRequest, GitPullRequestClosed, Handshake, LoaderCircle, MessageSquare, Play, X } from '@lucide/svelte';
   import type { AgentWatch, Project } from '@boite/contracts';
-  import { deskState, deskTone } from '../../lib/agent-desk';
+  import { deskState, deskTone, type DeskState } from '../../lib/agent-desk';
+  import type { ThreadState } from '../../lib/thread-state';
+  import StateRing from '../StateRing.svelte';
   import { workedTime } from '../../lib/agent-turns';
   import { ago, exactTime } from '../../lib/format';
   import { fill, strings } from '../../lib/strings';
 
   /**
-   * One thread on an agent's desk, as a row: a status dot (breathing while
-   * the thread works or waits on the user), its title, when it last moved,
+   * One thread on an agent's desk, as a row: the thread lists' StateRing
+   * around how the bot came to it (started, entrusted, followed, wrote
+   * there), its title, when it last moved,
    * and one meta line with how it stands, its project and its pull request
    * with its checks. A thread that asks the user opens its question under
    * the line with the options, answered here. The row opens its thread; the
@@ -31,6 +34,10 @@
   const standing = $derived(deskState(watch));
   const tone = $derived(deskTone(standing));
   const pr = $derived(watch.pullRequest);
+  /** The ring the thread lists draw for the same state: a stalled turn waits on someone, as one that asks. */
+  const RING: Record<DeskState, ThreadState | null> = { 'needs-you': 'waiting', stalled: 'waiting', failed: 'error', working: 'working', queued: 'queued', merged: 'done', review: null, done: null, idle: null, archived: null };
+  const ORIGIN = { started: Play, entrusted: Handshake, followed: Eye, touched: MessageSquare } as const;
+  const Origin = $derived(ORIGIN[watch.origin]);
   let answering = $state<string | null>(null);
 
   async function answer(option: string) {
@@ -42,7 +49,7 @@
 
 <article class="desk-row" data-state={standing} data-tone={tone} data-testid="desk-card" data-thread={watch.threadId}>
   {#if onopen}<button type="button" class="desk-card-open" onclick={onopen} aria-label={fill(t.open, { title: watch.title })} title={fill(t.open, { title: watch.title })}></button>{/if}
-  <span class="desk-dot" data-tone={tone} title={t.origin[watch.origin]} aria-hidden="true"></span>
+  <span class="desk-ring" title={t.origin[watch.origin]}><StateRing kind={RING[standing]} size={18} ground="var(--color-background)"><span class="desk-origin"><Origin size={12} strokeWidth={2} /></span></StateRing></span>
   <div class="desk-row-text">
     <div class="desk-row-head">
       <strong class="desk-card-title">{watch.title}</strong>

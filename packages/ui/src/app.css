@@ -173,6 +173,9 @@
   --color-surface-3: #24232b;
   --color-border: rgba(255, 255, 255, 0.07);
   --color-edge: rgba(255, 255, 255, 0.14);
+  /* A segmented control: a sunk track and a card thumb with an edge, never a solid foreground pill. */
+  --color-segment-track: var(--color-surface-2);
+  --color-segment-thumb: var(--color-surface-3);
   /* The lift a hovered or selected row takes: light over the ground, never a new grey. */
   --color-hover: rgba(255, 255, 255, 0.05);
   --color-active: rgba(255, 255, 255, 0.09);
@@ -354,7 +357,7 @@
   --chat-part-gap: 4px;
   --chat-block-gap: 12px;
   --chat-message-gap: 20px;
-  --radius-bubble: 18px;
+  --radius-bubble: 16px;
   /* Balanced timeline margins, with room for the message outline rail. */
   --outline-room: 38px;
   --settings-width: 880px;
@@ -737,6 +740,9 @@ html[data-chat-width='full'] {
   --color-surface-3: #ecebf1;
   --color-border: rgba(0, 0, 0, 0.08);
   --color-edge: rgba(0, 0, 0, 0.16);
+  /* Light grounds are the card's white: the track sinks to surface-3 so the white thumb stands on it. */
+  --color-segment-track: var(--color-surface-3);
+  --color-segment-thumb: var(--color-surface-2);
   --color-hover: rgba(0, 0, 0, 0.045);
   --color-active: rgba(0, 0, 0, 0.08);
   --color-foreground: #1c1c21;
@@ -803,7 +809,7 @@ html[data-chat-width='full'] {
        spread-only ring draws a second, hard outline. The halo spreads outward: a negative spread shrinks
        its corner radius below the box's, and the corners went darker than the sides (19 against 30 of
        luminance, 4 px out, on the dark ground at 16). The edge itself is a gradient, below. */
-    --composer-glow: 0 12px 32px -6px color-mix(in oklch, var(--color-accent) 30%, transparent), inset 0 1px 0 transparent, 0 0 14px 4px color-mix(in oklch, var(--color-accent) 13%, transparent);
+    --composer-glow: 0 12px 32px -6px color-mix(in oklch, var(--color-accent) 15%, transparent), inset 0 1px 0 transparent, 0 0 14px 4px color-mix(in oklch, var(--color-accent) 6%, transparent);
     --composer-edge: linear-gradient(to bottom, color-mix(in oklch, var(--color-accent) 85%, var(--color-foreground)), color-mix(in oklch, var(--color-accent) 50%, transparent) 45%, color-mix(in oklch, var(--color-accent) 24%, transparent));
     --color-control-surface: color-mix(in oklab, var(--color-surface-2) 82%, transparent);
     --color-control-hover: color-mix(in oklab, var(--color-surface-3) 90%, transparent);
@@ -811,7 +817,7 @@ html[data-chat-width='full'] {
   }
   /* On a light page the bloom reads stronger: half as much. */
   [data-theme='light'] {
-    --composer-glow: 0 12px 32px -6px color-mix(in oklch, var(--color-accent) 22%, transparent), inset 0 1px 0 transparent, 0 0 14px 4px color-mix(in oklch, var(--color-accent) 9%, transparent);
+    --composer-glow: 0 12px 32px -6px color-mix(in oklch, var(--color-accent) 11%, transparent), inset 0 1px 0 transparent, 0 0 14px 4px color-mix(in oklch, var(--color-accent) 4%, transparent);
   }
 }
 
@@ -2158,10 +2164,13 @@ input[type=checkbox][role=switch]:disabled { opacity: .45; cursor: not-allowed; 
 @media (max-width: 720px) {
   .mobile-sheet-backdrop { position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; border-radius: 0; background: var(--color-scrim); animation: fade var(--dur-2) var(--ease-out-quint); }
   .mobile-sheet-backdrop.closing { animation-name: fade-out; pointer-events: none; }
-  [data-mobile-sheet='true'] { position: fixed !important; max-width: none !important; box-sizing: border-box; overflow-y: auto; overscroll-behavior: contain; border-radius: var(--radius-xl) !important; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
-  /* A sheet rises from the bottom edge and goes back down, where its popover pops in place (lib/floating.ts). */
-  [data-mobile-sheet='true'] { animation-name: sheet-up !important; animation-duration: var(--dur-3) !important; animation-timing-function: var(--ease-slide) !important; }
-  [data-mobile-sheet='true'].closing { animation-name: sheet-down !important; }
+  /* lib/floating.ts lays a sheet on the bottom edge, above the keyboard: full width, round top corners, its grabber on top. */
+  [data-mobile-sheet='true'] { position: fixed !important; max-width: none !important; box-sizing: border-box; overflow-y: auto; overscroll-behavior: contain; border-radius: var(--radius-xl) var(--radius-xl) 0 0 !important; border-width: 1px 0 0 !important; padding-top: 16px !important; padding-bottom: max(12px, env(safe-area-inset-bottom)) !important; }
+  /* The grabber: a sheet says it can be put away, as a phone's own sheets do. */
+  [data-mobile-sheet='true']::after { content: ''; position: absolute; top: 6px; left: 50%; width: 36px; height: 4px; margin-left: -18px; border-radius: var(--radius-full); background: var(--color-edge); pointer-events: none; }
+  /* A sheet rises from the bottom edge in 240 ms and goes back down in 180 ms, where its popover pops in place (lib/floating.ts). */
+  [data-mobile-sheet='true'] { animation-name: sheet-up !important; animation-duration: 240ms !important; animation-timing-function: var(--ease-slide) !important; }
+  [data-mobile-sheet='true'].closing { animation-name: sheet-down !important; animation-duration: 180ms !important; animation-timing-function: ease-in !important; }
   /* No outline rail on a phone (MessageList.svelte): the timeline's left edge matches its right. */
   :root { --outline-room: 20px; }
   :root { --text-reading: var(--text-md); --settings-padding: 18px; --control: var(--touch-target); --control-sm: var(--touch-target); --control-lg: var(--touch-target); --input: var(--touch-target); --row: var(--touch-target); }

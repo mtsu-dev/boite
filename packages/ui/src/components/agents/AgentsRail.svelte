@@ -62,7 +62,13 @@
   let searching = $state(false);
   const now = $derived(minuteClock.now);
 
-  const multi = $derived(workspace.machinesOr(view.store).length > 1);
+  const several = $derived(workspace.machinesOr(view.store).length > 1);
+  /**
+   * The machine glyph tells rows apart only once bots live on more than one
+   * machine; a row whose machine is away keeps it, drawn in its offline colour.
+   */
+  const multi = $derived(several && lists.filter(list => (list.view.snapshot?.profiles.length ?? 0) > 0).length > 1);
+  const glyphOf = (machine: Machine) => multi || (several && machine.store.connection !== 'ready') ? machine : undefined;
   const needle = $derived(query.trim().toLowerCase());
   const rows = $derived(lists
     .flatMap(list => agentRows(list.view.snapshot).filter(row => !needle || row.profile.name.toLowerCase().includes(needle)).map(row => ({ ...list, row })))
@@ -110,18 +116,19 @@
   };
   /**
    * What the row says under the name, with its glyph: the step it is on while
-   * it works, the question it waits on, why it failed, that it sleeps, else
-   * the last thing it said; a new agent shows what it is for.
+   * it works, that it waits on you or failed (the ask and the error are said
+   * in its conversation; the ring marks the row), that it sleeps, else the
+   * last thing it said; a new agent shows what it is for.
    */
-  function lineOf(machine: Machine, row: AgentRowData, thread: ThreadSummary | null, tone: Tone): { text: string; icon?: Component<{ size?: number; strokeWidth?: number }> } {
+  function lineOf(row: AgentRowData, thread: ThreadSummary | null, tone: Tone): { text: string; icon?: Component<{ size?: number; strokeWidth?: number }> } {
     if (tone === 'asleep') return { text: labels.state.paused, icon: Moon };
     if (tone === 'working') {
       const step = liveActivity(row.status, thread);
       return { text: step?.text ?? labels.state.working, icon: GLYPHS[step?.kind ?? 'thinking'] };
     }
     if (tone === 'queued') return { text: labels.state.queued, icon: Hourglass };
-    if (tone === 'waiting') return { text: waitingOn(machine.store, row.status?.threadId) ?? labels.state.waiting, icon: MessageCircleQuestionMark };
-    if (tone === 'error') return { text: row.status?.problem ?? labels.state.error, icon: TriangleAlert };
+    if (tone === 'waiting') return { text: labels.state.waiting, icon: MessageCircleQuestionMark };
+    if (tone === 'error') return { text: labels.state.error, icon: TriangleAlert };
     return { text: row.status?.last ? previewOf(row.status.last.text) : row.profile.domain };
   }
   /** What the ring says: the tone, with answers not read yet over a rest. */
@@ -193,7 +200,7 @@
         {@const names = listNames(row.team.members.map(member => member.name))}
         <AgentRow title={row.team.name} open={row.machine.store === view.store && activeTeam === row.team.threadId} marked={!!row.chat?.unread}
           away={row.machine.store.connection !== 'ready'} at={lastPost(row)} {now} detail={names} tone={row.team.paused ? 'asleep' : 'idle'}
-          machine={multi ? row.machine : undefined} testid="agent-team-{row.team.id}" onclick={() => onteam(row.machine, row.team)}>
+          machine={glyphOf(row.machine)} testid="agent-team-{row.team.id}" onclick={() => onteam(row.machine, row.team)}>
           {#snippet picture()}<AgentAvatar kind="team" id={row.team.id} name={row.team.name} members={pictures(row)} size={34} />{/snippet}
         </AgentRow>
       {/each}
@@ -205,13 +212,13 @@
       {#each rows as { machine, view: owner, row } (JSON.stringify([machine.id, row.profile.id]))}
         {@const thread = threadOf(machine, row.status)}
         {@const tone = toneOf(row, thread, !!waitingOn(machine.store, row.status?.threadId))}
-        {@const line = lineOf(machine, row, thread, tone)}
+        {@const line = lineOf(row, thread, tone)}
         {@const unread = row.status?.unread ?? 0}
         <AgentRow title={row.profile.name} builtin={!!row.profile.builtin} open={owner === view && active === row.profile.id} {unread} away={machine.store.connection !== 'ready'}
           at={row.status?.last?.at ?? 0} {now} tone={tone === 'queued' ? 'idle' : tone} detail={line.text} icon={line.icon}
           since={tone === 'working' ? earliest(thread?.requestSince, thread?.runningSince) : null}
           wake={tone === 'idle' && row.profile.status === 'active' && row.status?.nextWake ? row.status.nextWake : null}
-          machine={multi ? machine : undefined} testid="agent-entry-{row.profile.id}" onclick={() => onopen(machine, row.profile.id)}
+          machine={glyphOf(machine)} testid="agent-entry-{row.profile.id}" onclick={() => onopen(machine, row.profile.id)}
           pending={leavingLine(owner, row.profile.id)} pinned={row.profile.pinned === true} onmenu={event => menu(event, machine, owner, row.profile.id)}
           renaming={renaming === rowKey(machine, row.profile.id)} onrename={name => rename(owner, row.profile.id, name)}>
           {#snippet picture()}<AgentAvatar kind="profile" id={row.profile.id} name={row.profile.name} avatar={row.profile.avatar} mood={moodOf(tone, unread)} size={34} ring />{/snippet}
@@ -222,7 +229,7 @@
   {#if found.length}
     <section class="agents-card">
       {#each found as entry (JSON.stringify([entry.machine.id, entry.profile.id]))}
-        <AgentRow title={entry.profile.name} at={0} {now} detail={labels.state.archived} machine={multi ? entry.machine : undefined} testid="agent-entry-{entry.profile.id}" onclick={() => onopen(entry.machine, entry.profile.id)}>
+        <AgentRow title={entry.profile.name} at={0} {now} detail={labels.state.archived} machine={glyphOf(entry.machine)} testid="agent-entry-{entry.profile.id}" onclick={() => onopen(entry.machine, entry.profile.id)}>
           {#snippet picture()}<AgentAvatar kind="profile" id={entry.profile.id} name={entry.profile.name} avatar={entry.profile.avatar} size={34} />{/snippet}
           {#snippet aside()}{/snippet}
         </AgentRow>

@@ -375,7 +375,7 @@ test('the sidebar floats a thread that waits on the user, in both views, and nam
   store.threads.find((t) => t.id === last)!.status = 'waiting';
   await waitFor(() => rowsOf()[0] === last);
   expect(document.querySelector('[data-testid=thread-project]')).toBeNull();
-  // Every row names its provider; a branch waits for a second line, which a project row lacks without a PR.
+  // Every row names its provider; a worktree branch is a fact of its own and opens the second line, PR or not.
   const branched = store.threadsOf(project.id).find((t) => !t.pullRequest)!;
   branched.branch = 'boite/port-the-scheduler';
   const providers = () => Array.from(document.querySelectorAll('[data-testid=thread-provider]'));
@@ -384,9 +384,11 @@ test('the sidebar floats a thread that waits on the user, in both views, and nam
   expect(provider.getAttribute('title')).toContain(store.providers.find((p) => p.id === branched.providerId)!.name);
   const card = () => document.querySelector(`[data-thread-id="${branched.id}"]`)!.closest('.thread')!;
   expect(card().querySelector('[data-testid=thread-pr]')).toBeNull();
-  expect(card().querySelector('[data-testid=thread-branch]')).toBeNull();
-  // The seeded trace thread has a PR, so its second line carries its branch too.
-  for (const branch of document.querySelectorAll('[data-testid=thread-branch]')) expect(branch.closest('.thread')!.querySelector('[data-testid=thread-pr]')).not.toBeNull();
+  await waitFor(() => card().querySelector('[data-testid=thread-branch]')?.textContent === 'boite/port-the-scheduler');
+  // A row with nothing beyond its title stays one line.
+  branched.branch = null;
+  await waitFor(() => card().querySelector('.metadata') === null);
+  branched.branch = 'boite/port-the-scheduler';
 
   workspace.view = 'recent';
   await waitFor(() => rows()[0] === last);
@@ -433,23 +435,34 @@ test('a thread left with words in its box carries a draft mark on its row, the o
   await waitFor(() => rowOf(first).querySelector('[data-testid=thread-draft]') === null);
 });
 
-test('a folded project keeps saying what its hidden threads do, and the mark goes when it unfolds', async () => {
+test('a folded project keeps its count chips, and marks its unread news until it unfolds', async () => {
   await mountOnFake();
   workspace.view = 'projects';
   const project = store.projects.find((p) => store.threadsOf(p.id).length >= 2)!;
   for (const thread of store.threadsOf(project.id)) { thread.status = 'idle'; thread.unread = false; }
   const head = () => query(`[data-testid=project-row][data-project-id="${project.id}"]`);
+  const card = () => head().closest('section[data-testid=project]')!;
   await waitFor(() => document.querySelector(`[data-testid=project-row][data-project-id="${project.id}"]`) !== null);
   if (!store.isCollapsed(project.id)) store.toggleProject(project.id);
   flushSync();
+  expect(card().querySelector('[data-testid=project-waiting-count]')).toBeNull();
   expect(head().querySelector('[data-testid=project-rollup]')).toBeNull();
   const [first, second] = store.threadsOf(project.id);
   first!.status = 'running';
   second!.status = 'waiting';
-  await waitFor(() => head().querySelector('[data-testid=project-rollup]')?.getAttribute('data-state') === 'waiting');
-  expect(head().querySelector('[data-testid=project-rollup]')!.getAttribute('title')).toBe('1 thread: Needs you');
+  // Folded, the header still counts who needs the user and what works, as chips with their words in the tooltip.
+  await waitFor(() => card().querySelector('[data-testid=project-waiting-count]')?.getAttribute('data-count') === '1');
+  expect(card().querySelector('[data-testid=project-waiting-count]')!.getAttribute('title')).toMatch(/: 1 need you$/);
+  expect(card().querySelector('[data-testid=project-working-toggle]')?.getAttribute('data-count')).toBe('1');
+  // The chips never stand in as a dead button.
+  for (const chip of card().querySelectorAll('.counter')) expect((chip as HTMLButtonElement).disabled ?? false).toBe(false);
+  // Finished and unread, a thread leaves the chips; the header marks the news instead.
+  first!.status = 'idle'; first!.unread = true;
+  await waitFor(() => head().querySelector('[data-testid=project-rollup]')?.getAttribute('data-state') === 'done');
+  expect(head().querySelector('[data-testid=project-rollup]')!.getAttribute('title')).toBe('1 thread: Done');
   store.toggleProject(project.id);
   await waitFor(() => head().querySelector('[data-testid=project-rollup]') === null);
+  expect(card().querySelector('[data-testid=project-waiting-count]')).not.toBeNull();
 });
 
 async function openIdleThread(): Promise<string> {

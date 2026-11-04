@@ -1,15 +1,17 @@
 <script lang="ts">
-  import { Clock, Paperclip, X } from '@lucide/svelte';
+  import { ChevronUp, Clock, Paperclip, X } from '@lucide/svelte';
+  import { slide } from 'svelte/transition';
   import type { Attachment, PreviewReference } from '@boite/contracts';
   import type { OutboxRequest } from '../lib/store/composer.svelte';
   import { fill, strings } from '../lib/strings';
+  import { glides } from '../lib/motion';
 
   /**
-   * The prompts waiting behind the running turn, drawn where they will land: a
-   * user bubble on the right, outline only and dashed, since it has not gone
-   * yet. A click takes one back into the box; Send now sends them together.
-   * One written while the machine was away says so under it, or says why the
-   * core refused it, with Send again; any of them can be removed.
+   * The prompts waiting behind the running turn, as chips on the composer's top
+   * edge: `Queued: <first words>`, the rest behind an ellipsis. Opening one shows
+   * the whole text with Edit, which takes it back into the box; Send now sends
+   * them together. One written while the machine was away says what it waits
+   * for, or why the core refused it, with Send again; any of them can be removed.
    */
   let {
     queued,
@@ -48,157 +50,180 @@
     onsendnow: () => void;
   } = $props();
 
+  type Entry = (typeof queued)[number];
+
   let outbox = $derived(queued.length > 0 && queued.every((entry) => entry.request));
+  /** What the old caption under the bubbles said: now the chip's tooltip and the opened view's foot. */
+  let caption = $derived(outbox && starts ? fill(strings.composer.outboxStarts, { machine }) : outbox ? strings.composer.outboxKept : paused ? strings.composer.queuedPaused : strings.composer.queued);
+  let label = $derived(paused ? strings.composer.heldChip : strings.composer.queuedChip);
+  /** The entry opened, by identity: a send ahead of it shifts the indexes, not the object.
+      Raw, so the entry is kept as it is and not wrapped in a proxy that would equal no entry. */
+  let opened = $state.raw<Entry | null>(null);
+  $effect(() => { if (opened && !queued.includes(opened)) opened = null; });
+  const uid = $props.id();
+
+  /** The chip's words: the text on one line, cut by the chip's own width. */
+  const firstWords = (text: string) => text.replace(/\s+/g, ' ').trim();
 </script>
 
-<div class="queued" data-testid="composer-queued">
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div class="queued" data-testid="composer-queued" onkeydown={(event) => {
+  if (event.key === 'Escape' && opened) { event.preventDefault(); event.stopPropagation(); opened = null; }
+}}>
   {#each queued as entry, at (entry)}
-    <div class="queued-item" class:failed={entry.request?.failed !== undefined} data-testid="composer-queued-item">
-      <button type="button" class="queued-bubble"
-        title={strings.composer.editQueued}
-        disabled={disabled || !!entry.request?.start}
-        onclick={() => onrestore(at)}>
-        <span class="queued-text">{entry.text || strings.composer.attachAlt}</span>
-        {#if entry.attachments.length || entry.previewReferences?.length}
-          <span class="queued-extras">
-            {#if entry.attachments.length}<span><span class="ui-label">{entry.attachments.length}</span> <Paperclip size={12} /></span>{/if}
-            {#if entry.previewReferences?.length}<span>@{entry.previewReferences.length}</span>{/if}
-          </span>
-        {/if}
-      </button>
-      {#if entry.request || onremove}
-        <div class="queued-state">
-          {#if entry.request?.failed !== undefined}
-            <span class="queued-error" data-testid="composer-outbox-failed">{fill(strings.composer.outboxFailed, { reason: entry.request.failed })}</span>
-            {#if onretry}
-              <button type="button" class="ghost small" data-testid="composer-outbox-retry" disabled={sending} onclick={() => onretry(at)}><span class="ui-label">{strings.composer.outboxRetry}</span></button>
-            {/if}
-          {:else if entry.request}
-            <span class="queued-pending" data-testid="composer-outbox-pending"><Clock size={12} />{at < outgoing ? strings.composer.outboxSending
-              : connected ? strings.composer.outboxNext : fill(strings.composer.outboxWaiting, { machine })}</span>
-          {/if}
-          {#if onremove}
-            <button type="button" class="ghost small icon" data-testid="composer-queued-remove"
-              title={strings.composer.removeQueued} aria-label={strings.composer.removeQueued}
-              disabled={at < outgoing || !!entry.request?.start} onclick={() => onremove(at)}><X size={14} /></button>
-          {/if}
+    {@const open = opened === entry}
+    {@const failed = entry.request?.failed !== undefined}
+    <div class="queued-item" class:failed class:open data-testid="composer-queued-item">
+      {#if open}
+        <div class="queued-full" id="{uid}-{at}" data-testid="composer-queued-full" transition:slide={{ duration: glides() ? 160 : 0 }}>
+          <p class="queued-body">{entry.text || strings.composer.attachAlt}</p>
+          <div class="queued-full-foot">
+            <span class="ui-label caption">{caption}</span>
+            <button type="button" class="ghost small" data-testid="composer-queued-edit"
+              title={strings.composer.editQueued}
+              disabled={disabled || !!entry.request?.start}
+              onclick={() => { opened = null; onrestore(at); }}><span class="ui-label">{strings.composer.editQueuedShort}</span></button>
+          </div>
         </div>
       {/if}
+      <div class="queued-row">
+        <span class="chip">
+          <button type="button" class="queued-bubble"
+            title={caption}
+            aria-expanded={open}
+            aria-controls="{uid}-{at}"
+            aria-label="{label}: {firstWords(entry.text || strings.composer.attachAlt)}. {open ? strings.composer.hideQueued : strings.composer.showQueued}"
+            onclick={() => (opened = open ? null : entry)}>
+            <span class="prefix">{label}:</span>
+            <span class="queued-text">{firstWords(entry.text || strings.composer.attachAlt)}</span>
+            {#if entry.attachments.length}<span class="extra"><span class="ui-label">{entry.attachments.length}</span><Paperclip size={12} /></span>{/if}
+            {#if entry.previewReferences?.length}<span class="extra">@{entry.previewReferences.length}</span>{/if}
+            <span class="fold" aria-hidden="true"><ChevronUp size={13} strokeWidth={2} /></span>
+          </button>
+          {#if onremove}
+            <button type="button" class="queued-remove" data-testid="composer-queued-remove"
+              title={strings.composer.removeQueued} aria-label={strings.composer.removeQueued}
+              disabled={at < outgoing || !!entry.request?.start} onclick={() => onremove(at)}><X size={13} strokeWidth={2} /></button>
+          {/if}
+        </span>
+        {#if failed}
+          <span class="queued-error" data-testid="composer-outbox-failed" title={fill(strings.composer.outboxFailed, { reason: entry.request!.failed! })}>{fill(strings.composer.outboxFailed, { reason: entry.request!.failed! })}</span>
+          {#if onretry}
+            <button type="button" class="ghost small" data-testid="composer-outbox-retry" disabled={sending} onclick={() => onretry(at)}><span class="ui-label">{strings.composer.outboxRetry}</span></button>
+          {/if}
+        {:else if entry.request}
+          <span class="queued-pending" data-testid="composer-outbox-pending"><Clock size={12} />{at < outgoing ? strings.composer.outboxSending
+            : connected ? strings.composer.outboxNext : fill(strings.composer.outboxWaiting, { machine })}</span>
+        {/if}
+        {#if sendNow && at === queued.length - 1}
+          <button type="button" class="ghost small send-now" data-testid="composer-send-now"
+            title={sendNow === 'steer' ? strings.composer.sendNowHint : strings.composer.retryQueuedHint}
+            onclick={onsendnow}><span class="ui-label">{strings.composer.sendNow}</span></button>
+        {/if}
+      </div>
     </div>
   {/each}
-  <div class="queued-foot">
-    <span class="ui-label">{outbox && starts ? fill(strings.composer.outboxStarts, { machine }) : outbox ? strings.composer.outboxKept : paused ? strings.composer.queuedPaused : strings.composer.queued}</span>
-    {#if sendNow}
-      <button type="button" class="ghost small" data-testid="composer-send-now"
-        title={sendNow === 'steer' ? strings.composer.sendNowHint : strings.composer.retryQueuedHint}
-        onclick={onsendnow}><span class="ui-label">{strings.composer.sendNow}</span></button>
-    {/if}
-  </div>
 </div>
 
 <style>
+  /* The chips sit on the composer's top edge, in its column. */
   .queued {
     display: flex;
     flex-direction: column;
-    align-items: flex-end;
-    gap: 6px;
-    width: 100%;
-    max-width: var(--content);
+    align-items: stretch;
+    gap: 4px;
+    width: min(calc(100% - 40px), var(--content));
     max-height: 35vh;
-    margin: 0 auto 8px;
+    margin: 0 auto 6px;
     overflow-y: auto;
   }
 
-  /* The user bubble of the timeline, minus its fill and shadow: the dashes say
-     it is written but not sent. */
-  .queued-bubble {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 6px;
-    flex: none;
-    max-width: 75%;
-    height: auto;
-    padding: 10px 14px;
-    border: 1px dashed color-mix(in oklch, var(--color-accent) 60%, transparent);
-    border-radius: var(--radius-lg);
-    border-bottom-right-radius: var(--radius-sm);
-    background: transparent;
+  .queued-item { display: flex; flex-direction: column; gap: 4px; flex: none; min-width: 0; animation: rise var(--dur-3) var(--ease-out-quint); }
+
+  .queued-row { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 28px; }
+
+  /* One pill: the opener and its ×, no outline of its own beyond the surface step. */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: min(100%, 520px);
+    height: 28px;
+    border-radius: 999px;
+    background: var(--color-surface-2);
     color: var(--color-foreground);
+    box-shadow: inset 0 0 0 1px var(--color-border);
+  }
+  .failed .chip { box-shadow: inset 0 0 0 1px var(--color-danger); }
+
+  .queued-bubble {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex: 0 1 auto;
+    min-width: 0;
+    height: 28px;
+    min-height: 0;
+    padding: 0 6px 0 12px;
+    border: 0;
+    border-radius: 999px;
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-size: var(--text-sm);
     font-weight: 400;
-    font-size: var(--text-base);
-    line-height: 1.5;
     text-align: left;
-    white-space: normal;
-    animation: rise var(--dur-3) var(--ease-out-quint);
+    cursor: pointer;
   }
+  .queued-bubble:hover, .queued-bubble:focus-visible { background: var(--color-hover); }
+  .chip:has(.queued-remove) .queued-bubble { border-top-right-radius: 0; border-bottom-right-radius: 0; }
 
-  .queued-bubble:hover:not(:disabled) {
-    background: transparent;
-    border-color: var(--color-accent);
-  }
+  .prefix { flex: none; color: var(--color-muted-foreground); font-weight: 500; }
+  .queued-text { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 20px; }
+  .extra { display: inline-flex; flex: none; align-items: center; gap: 3px; color: var(--color-muted-foreground); font-size: var(--text-xs); }
+  .fold { display: inline-flex; flex: none; color: var(--color-muted-foreground); transition: rotate var(--dur-2) var(--ease-out-quint); }
+  .open .fold { rotate: 180deg; }
 
-  /* Still waiting to go while the box holds other text: the bubble stays legible. */
-  .queued-bubble:disabled { opacity: 1; }
-
-  .queued-text {
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 3;
-    line-clamp: 3;
-    overflow: hidden;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-  }
-
-  .queued-item {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 2px;
+  .queued-remove {
+    position: relative;
+    display: inline-grid;
+    place-items: center;
     flex: none;
-    max-width: 75%;
-  }
-
-  .queued-item > .queued-bubble { max-width: 100%; }
-
-  .queued-item.failed > .queued-bubble { border-color: var(--color-danger); }
-
-  .queued-state {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    flex-wrap: wrap;
-    gap: 4px;
+    width: 28px;
+    height: 28px;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0 999px 999px 0;
+    background: none;
     color: var(--color-muted-foreground);
-    font-size: var(--text-xs);
+    cursor: pointer;
   }
+  .queued-remove:hover:not(:disabled), .queued-remove:focus-visible { background: var(--color-hover); color: var(--color-foreground); }
 
-  .queued-pending { display: inline-flex; align-items: center; gap: 4px; }
+  .queued-pending { display: inline-flex; flex: none; align-items: center; gap: 4px; color: var(--color-muted-foreground); font-size: var(--text-xs); white-space: nowrap; }
+  .queued-error { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-danger); font-size: var(--text-xs); }
+  .queued-row :global(button.small) { flex: none; font-size: var(--text-xs); }
+  .send-now { margin-left: auto; }
 
-  .queued-error {
-    color: var(--color-danger);
-    overflow-wrap: anywhere;
-    text-align: right;
+  /* Opened: the whole message above its chip, so the chip stays on the edge. */
+  .queued-full {
+    padding: 10px 12px 8px;
+    border-radius: var(--radius-lg);
+    background: var(--color-surface-2);
+    box-shadow: inset 0 0 0 1px var(--color-border);
   }
+  .queued-body { margin: 0; max-height: 24vh; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
+  .queued-full-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; color: var(--color-muted-foreground); font-size: var(--text-xs); }
+  .queued-full-foot button { flex: none; font-size: var(--text-xs); }
+  .caption { min-width: 0; }
 
-  .queued-state button { font-size: var(--text-xs); }
-
-  .queued-extras { display: flex; gap: 8px; color: var(--color-muted-foreground); font-size: var(--text-sm); }
-  .queued-extras > span { display: inline-flex; align-items: center; gap: 4px; }
-
-  /* As tall as the Send now button, present or not: the row does not jump when
-     it comes, and its label's ink room stays inside the scrolling list instead
-     of overflowing it into a scrollbar. */
-  .queued-foot {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    flex: none;
-    min-height: var(--control-sm);
-    color: var(--color-muted-foreground);
-    font-size: var(--text-xs);
+  @media (max-width: 720px) {
+    .queued { width: calc(100% - 20px); }
+    /* A finger's target grows past the 28 px pill; the pill keeps its height. */
+    .queued-bubble, .queued-remove { position: relative; }
+    .queued-bubble::after, .queued-remove::after { content: ''; position: absolute; inset: -8px 0; }
   }
-
-  .queued-foot button { font-size: var(--text-xs); }
+  @media (prefers-reduced-motion: reduce) { .queued-item { animation: none; } }
 </style>

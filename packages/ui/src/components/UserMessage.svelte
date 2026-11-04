@@ -219,14 +219,14 @@
 
   .command { color: var(--color-accent); font-weight: 600; }
 
+  /* What the user sent: a neutral raised surface on the right, no tint, so the
+     accent stays for what is live. The answer beside it is bare prose. */
   .bubble {
     max-width: min(85%, var(--prose));
-    padding: 12px 16px;
-    background: var(--color-accent-soft);
-    border: 1px solid color-mix(in oklch, var(--color-accent) 35%, transparent);
+    padding: 10px 16px;
+    background: var(--color-surface-3);
+    border: 1px solid transparent;
     border-radius: var(--radius-bubble);
-    border-bottom-right-radius: var(--radius-sm);
-    box-shadow: var(--shadow-e1);
   }
 
   .bubble.agent { align-self: flex-start; }

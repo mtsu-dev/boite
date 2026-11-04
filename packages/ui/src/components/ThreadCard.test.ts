@@ -177,11 +177,14 @@ test('a turn left running on a machine that went away stops spinning until the m
   mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'laptop', label: 'Laptop', store }, project, thread, now: Date.now(), showProject: false } });
   await settle();
   const state = () => document.querySelector<HTMLElement>('[data-testid=thread-state]');
+  // The ring around the picture turns while it works; the row's right end counts the time.
+  const ring = () => document.querySelector<HTMLElement>('[data-testid=state-ring]');
   expect(state()?.dataset.state).toBe('working');
-  expect(state()?.querySelector('.spinner')).not.toBeNull();
+  expect(ring()?.dataset.ring).toBe('working');
+  expect(state()?.textContent).toMatch(/^\s*3h/);
   store.connection = 'connecting'; await settle();
   expect(state()?.dataset.state).toBe('unreachable');
-  expect(state()?.querySelector('.spinner')).toBeNull();
+  expect(ring()?.dataset.ring).toBe('rest');
   expect(state()?.getAttribute('title')).toBe('Machine unreachable. Last known state: Working');
   store.connection = 'ready'; await settle();
   expect(state()?.dataset.state).toBe('working');

@@ -13,7 +13,7 @@ let remote: string;
 const id = (name: string) => `[data-testid="${name}"]`;
 const desktopRow = (machine: string, thread = 't-trace') => `${id('thread-row')}[data-machine-id="${machine}"][data-thread-id="${thread}"]`;
 const doneRow = (machine: string, thread = 't-trace') => `${id('done-thread')}[data-machine-id="${machine}"][data-thread-id="${thread}"]`;
-const phoneRow = (machine: string, thread = 't-trace') => `.row[data-machine-id="${machine}"][data-thread-id="${thread}"]`;
+const phoneRow = (machine: string, thread = 't-trace') => `[data-testid=mobile-row][data-machine-id="${machine}"][data-thread-id="${thread}"]`;
 const inGroup = (kind: 'done' | 'archived', machine: string, thread = 't-trace') => `${id(`recent-${kind}`)} ${doneRow(machine, thread)}`;
 const phoneArchived = (machine: string) => `${id('mobile-list')} ${inGroup('archived', machine)}`;
 const phoneToggle = (kind: 'done' | 'archived' | 'working') => `${id('mobile-list')} ${id(`recent-${kind}-toggle`)}`;

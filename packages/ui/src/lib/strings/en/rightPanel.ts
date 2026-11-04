@@ -24,6 +24,12 @@ export const strings = {
     window: 'Window',
     ownerOnly: "Only in the owner's app",
     launcher: 'Open a surface in this panel',
-    untitled: 'Browser'
+    untitled: 'Browser',
+    /** The strip's own entries: the drawers it opens, the rest of the surfaces, what a count says. */
+    terminal: 'Terminal',
+    board: 'Board',
+    more: 'More',
+    changesCount: '{count} changed files',
+    agentsCount: '{count} at work'
   }
 } as const;

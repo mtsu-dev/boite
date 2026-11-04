@@ -34,7 +34,7 @@ export const strings = {
     settingsPrivacy: 'Privacy',
     settingsMachine: 'Machine',
     settingsBack: 'Back to settings',
-    navigation: 'Navigation', threads: 'Conversations', activity: 'Activity', project: 'Choose project',
+    navigation: 'Navigation', threads: 'Threads', activity: 'Inbox', project: 'Choose project',
     waitingElsewhere: '{count} waiting for you',
     search: 'Find a conversation', noActivity: 'No agents need your attention.', noThreads: 'No matching conversations.'
   }

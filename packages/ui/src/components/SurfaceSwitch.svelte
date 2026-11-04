@@ -12,7 +12,9 @@
    * list or the Agents page, each with how much works there now, every
    * machine counted. The count turns to the waiting colour when something
    * there needs the user. With the Agents experiment off there is only one
-   * place to be, so the switch is not drawn at all.
+   * place to be, so the switch is not drawn at all. On the thread list the
+   * lifecycle strip under it already counts what works, so the Threads side
+   * shows its count only from the Agents page.
    */
   let { store, current, prefix = '' }: { store: Store; current: 'threads' | 'agents'; prefix?: string } = $props();
 
@@ -42,7 +44,7 @@
   <div class="surface-switch" role="group" aria-label={strings.sidebar.surface}>
     <button type="button" class="ghost small view" class:chosen={current === 'threads'} aria-pressed={current === 'threads'} data-testid={`${prefix}view-threads`}
       onclick={() => { if (current !== 'threads') store.showChat(); }}>
-      <MessagesSquare size={13} /><span class="label ui-label">{strings.sidebar.threads}</span>{@render badge(threads, `${prefix}threads-at-work`)}
+      <MessagesSquare size={13} /><span class="label ui-label">{strings.sidebar.threads}</span>{#if current !== 'threads'}{@render badge(threads, `${prefix}threads-at-work`)}{/if}
     </button>
     <button type="button" class="ghost small view" class:chosen={current === 'agents'} aria-pressed={current === 'agents'} data-testid={`${prefix}view-agents`} data-preload-view="agents"
       onclick={() => { if (current !== 'agents') store.showAgents(); }}>

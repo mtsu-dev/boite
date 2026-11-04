@@ -325,7 +325,7 @@ test('PR links appear during work without remounting and disappear after a move 
   const phonePr = `${id('mobile-list')} [data-thread-id="t-trace"] ${id('thread-pr')}`;
   await page.waitFor(`document.querySelector('${phonePr}')?.textContent.includes('#185')`);
   expect(await page.evaluate(`document.querySelector('${phonePr}').getAttribute('href')`)).toBe('https://github.com/example/repo/pull/185');
-  expect(await page.evaluate(`Array.from(document.querySelectorAll('${id('mobile-list')} .thread')).filter(row => row.textContent.includes('shared-folder conversation')).every(row => !row.closest('.row').querySelector('${id('thread-pr')}'))`)).toBe(true);
+  expect(await page.evaluate(`Array.from(document.querySelectorAll('${id('mobile-list')} .thread')).filter(row => row.textContent.includes('shared-folder conversation')).every(row => !row.closest('[data-testid=mobile-row]').querySelector('${id('thread-pr')}'))`)).toBe(true);
   expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
   await capture('pr-links-phone');
   await page.send('Emulation.setDeviceMetricsOverride', { width:1300, height:850, deviceScaleFactor:1, mobile:false });

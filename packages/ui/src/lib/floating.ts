@@ -63,11 +63,13 @@ export function floating(node: HTMLElement, options: { anchor: () => HTMLElement
     const viewport = window.visualViewport;
     const height = viewport?.height ?? window.innerHeight;
     const offset = viewport?.offsetTop ?? 0;
+    /* A phone's sheet sits on the bottom edge, full width, as the system's own sheets do;
+       the visual viewport's bottom is the keyboard's top while it is open. */
     if (sheet) {
-      node.style.width = `${width - margin * 2}px`;
+      node.style.width = `${width}px`;
       node.style.maxHeight = `${Math.max(0, height - margin * 2) * .75}px`;
-      node.style.top = `${Math.max(offset + margin, offset + height - node.offsetHeight - margin)}px`;
-      node.style.left = `${margin}px`;
+      node.style.top = `${Math.max(offset + margin, offset + height - node.offsetHeight)}px`;
+      node.style.left = '0px';
       node.style.transformOrigin = 'bottom center';
       return;
     }

@@ -3,7 +3,7 @@ export const SETTINGS_TABS = ['home', 'advanced', 'brain', 'voice', 'general', '
 export type SettingsTab = typeof SETTINGS_TABS[number];
 
 interface SettingsPage {
-  /** Its page calls something only the owner may call: a paired device lands on Home. */
+  /** Its page calls something only the owner may call: a paired device lands on Home, the desktop on General. */
   owner?: true;
   /** It changes one machine, picked from the bar above it. */
   machine?: true;
@@ -68,9 +68,13 @@ export function desktopSettings(phoneWidth: boolean): boolean {
   return !phoneWidth || window.__TAURI_INTERNALS__ !== undefined;
 }
 
-/** The page a desktop shows for a route. */
+/**
+ * The page a desktop shows for a route. Its nav already lists every page, so
+ * "home", the phone's list, opens the first page, as does a page only the
+ * owner may open on a paired device.
+ */
 export function desktopPage(tab: SettingsTab, owner: boolean): SettingsTab {
-  return owner || !ownerOnly(tab) ? tab : 'home';
+  return tab !== 'home' && (owner || !ownerOnly(tab)) ? tab : 'general';
 }
 
 /** The page a phone shows for a route: a whole page, one card's page, or Home. */

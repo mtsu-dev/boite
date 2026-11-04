@@ -70,15 +70,17 @@ test('a draft offers the worktree switch only on a folder where git was found', 
   await waitFor(() => document.querySelector('[data-testid=composer-worktree]') !== null);
 });
 
-test('a machine with no AI offers to connect one, and the composer keeps its text and lands on it', async () => {
+test('an empty app opens on its two steps in plain words, connecting an AI ticks the first, and skipping the folder lands on the composer', async () => {
   await mountOnFake('/?fake=1&uninstalled=1');
-  if (!store.draft) query<HTMLButtonElement>('[data-testid=new-thread]').click();
-  await waitFor(() => document.querySelector('[data-testid=composer-connect]') !== null);
-  const input = query<HTMLTextAreaElement>('[data-testid=composer-input]');
-  input.value = 'Sort my holiday photos';
-  input.dispatchEvent(new Event('input', { bubbles: true }));
+  await waitFor(() => document.querySelector('[data-testid=first-run-connect]') !== null);
+  // The steps stand where a composer that could send nothing would: no field, no Incognito, no jargon.
+  expect(document.querySelector('[data-testid=composer-input]')).toBeNull();
+  const words = query('[data-testid=first-run]').textContent!.toLowerCase();
+  for (const jargon of ['provider', 'worktree', 'draft', 'incognito']) expect(words).not.toContain(jargon);
+  expect(query('[data-testid=first-run-connect]').dataset.done).toBe('false');
+  expect(document.querySelector('[data-testid=first-run-skip]')).toBeNull();
 
-  query<HTMLButtonElement>('[data-testid=composer-connect]').click();
+  query<HTMLButtonElement>('[data-testid=first-run-connect]').click();
   await waitFor(() => document.querySelector('[data-testid=connect-dialog]') !== null);
   // The two services most people already pay for come first, each saying which plan it uses.
   const services = Array.from(document.querySelectorAll('[data-testid=connect-service]')).map((row) => row.getAttribute('data-provider'));
@@ -111,16 +113,20 @@ test('a machine with no AI offers to connect one, and the composer keeps its tex
   query<HTMLButtonElement>('[data-testid=connect-use]').click();
 
   await waitFor(() => document.querySelector('[data-testid=connect-dialog]') === null);
-  await waitFor(() => document.querySelector('[data-testid=composer-connect]') === null);
+  await waitFor(() => document.querySelector('[data-testid=first-run-connect]')?.getAttribute('data-done') === 'true');
+  // The folder is the step now; someone who only wants to chat skips it, once, and gets the composer.
+  expect(query('[data-testid=first-run-folder]').classList.contains('next')).toBe(true);
+  query<HTMLButtonElement>('[data-testid=first-run-skip]').click();
+  await waitFor(() => document.querySelector('[data-testid=first-run]') === null);
+  await waitFor(() => document.querySelector('[data-testid=composer-input]') !== null);
   expect(query('[data-testid=composer-picker]').textContent).not.toContain('No AI connected');
-  expect(query<HTMLTextAreaElement>('[data-testid=composer-input]').value).toBe('Sort my holiday photos');
+  expect(localStorage.getItem('boite.first-run-folder-skipped')).toBe('1');
 });
 
 test('the keyboard stays in the connect dialog while its steps replace the button it pressed', async () => {
   await mountOnFake('/?fake=1&uninstalled=1');
-  if (!store.draft) query<HTMLButtonElement>('[data-testid=new-thread]').click();
-  await waitFor(() => document.querySelector('[data-testid=composer-connect]') !== null);
-  query<HTMLButtonElement>('[data-testid=composer-connect]').click();
+  await waitFor(() => document.querySelector('[data-testid=first-run-connect]') !== null);
+  query<HTMLButtonElement>('[data-testid=first-run-connect]').click();
   await waitFor(() => document.querySelector('[data-testid=connect-service]') !== null);
   query<HTMLButtonElement>('[data-testid=connect-service][data-provider=claude]').click();
   await waitFor(() => document.querySelector('[data-testid=connect-install]') !== null);

@@ -153,6 +153,27 @@ export const fr: Translation = {
     draftQueued: 'Démarre au retour de {machine}',
     draftStarting: 'Démarrage sur {machine}',
     draftQueueFailed: 'Non démarrée : {reason}',
-    cancelQueuedDraft: 'Annuler le démarrage'
+    cancelQueuedDraft: 'Annuler le démarrage',
+    lifecycle: {
+      label: 'Filtrer les conversations par état',
+      waiting: 'À vous',
+      working: 'En cours',
+      done: 'Terminées',
+      archived: 'Archivées',
+      waitingHint: 'Conversations qui attendent votre réponse ou ont échoué : {count}',
+      workingHint: 'Conversations au travail : {count}',
+      doneHint: 'Conversations marquées terminées : {count}',
+      archivedHint: 'Conversations archivées pour plus tard : {count}',
+      clearHint: 'Cliquez à nouveau ou appuyez sur Échap pour tout afficher',
+      none: 'Aucune conversation dans cet état.',
+      showAll: 'Afficher toutes les conversations'
+    },
+    projectNeedsYou: '{project} : {count} vous attendent',
+    projectFailed: '{project} : {count} en échec',
+    moreRows: '{count} de plus',
+    moreRowsLabel: '{project} : afficher {count} conversations de plus',
+    fewerRows: 'Afficher moins',
+    agentsOne: '1 agent',
+    agentsMany: '{count} agents'
   }
 };

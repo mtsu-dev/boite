@@ -3,6 +3,7 @@
   import { clockTime, elapsed } from '../lib/format';
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
+  import NoticeBanner from './NoticeBanner.svelte';
 
   /**
    * What the core will try again by itself on the open thread: the next try
@@ -41,29 +42,11 @@
 </script>
 
 {#if retry}
-  <aside class="retry" data-testid="thread-retry" data-kind={retry.kind} aria-label={title}>
-    <Hourglass size={18} aria-hidden="true" />
-    <div class="body">
-      <p class="title ui-label-box"><span class="ui-label">{title}</span></p>
-      <p class="countdown" role="timer" aria-live="off">{body}</p>
-    </div>
-    <button class="small ghost" data-testid="thread-retry-cancel" disabled={pending || store.connection !== 'ready'} onclick={cancel}>
-      <span class="ui-label">{retry.kind === 'capacity' ? strings.thread.retryCapacityCancel : strings.thread.retryLimitCancel}</span>
-    </button>
-  </aside>
+  <NoticeBanner icon={Hourglass} tone={retry.kind === 'usage-limit' ? 'warning' : 'neutral'} testid="thread-retry" kind={retry.kind} {title} text={body} timer>
+    {#snippet actions()}
+      <button class="small ghost" data-testid="thread-retry-cancel" disabled={pending || store.connection !== 'ready'} onclick={cancel}>
+        <span class="ui-label">{retry.kind === 'capacity' ? strings.thread.retryCapacityCancel : strings.thread.retryLimitCancel}</span>
+      </button>
+    {/snippet}
+  </NoticeBanner>
 {/if}
-
-<style>
-  .retry { box-sizing: border-box; display: flex; align-items: center; gap: 10px; width: calc(100% - 32px); max-width: var(--content); margin: 8px auto 0; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); }
-  .retry > :global(svg) { flex: none; color: var(--color-muted-foreground); }
-  .body { flex: 1; min-width: 0; }
-  p { margin: 0; font-size: var(--text-sm); }
-  .title { display: flex; font-weight: 600; margin-bottom: 2px; }
-  .countdown { color: var(--color-muted-foreground); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-  button { flex: none; }
-  @media (max-width: 720px) { .retry { width: calc(100% - 24px); } }
-  @media (max-width: 480px) {
-    .retry { flex-wrap: wrap; }
-    button { margin-left: 28px; }
-  }
-</style>

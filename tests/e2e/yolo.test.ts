@@ -32,7 +32,7 @@ test('desktop and phone can select YOLO, run without a permission card and resto
   const yolo = `${selector('composer-mode-menu')} [data-value="yolo"]`;
   const yoloSaved = client.next('thread.updated', thread => thread.id === threadId && thread.permissionMode === 'yolo');
   await page.click(yolo);
-  await page.waitFor(`document.querySelector('${selector('composer-mode')}')?.textContent.includes('YOLO')`);
+  await page.waitFor(`document.querySelector('${selector('composer-mode')}')?.textContent.includes('Full access')`);
   await yoloSaved;
   expect((await client.call('threads.get', { threadId })).permissionMode).toBe('yolo');
   await page.click(selector('composer-mode'));

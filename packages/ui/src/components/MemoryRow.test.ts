@@ -16,7 +16,7 @@ test.each([['en', 'thread-quota'], ['en', 'budget'], ['en', 'machine'], ['fr', '
   flushSync();
   const row = document.querySelector('[data-testid=memory-row]')!;
   expect(row.querySelector('.title')?.textContent).toBe(strings.resources.killTitle);
-  expect(row.querySelector('p')?.textContent).toBe(strings.resources.killReason[reason](locale === 'fr' ? '9,5 Go' : '9.5 GB'));
+  expect(row.querySelector('.summary')?.textContent).toBe(strings.resources.killReason[reason](locale === 'fr' ? '9,5 Go' : '9.5 GB'));
   expect(row.querySelector('.process')?.textContent).toBe('cargo.exe');
   expect(row.querySelector('.size')?.textContent).toBe(locale === 'fr' ? '2,0 Go' : '2.0 GB');
   expect(row.textContent).not.toContain('C:\\bin');
@@ -33,7 +33,7 @@ test.each(['en', 'fr'] as const)('renders a %s throttling notice with its limit 
   flushSync();
   const row = document.querySelector('[data-testid=memory-row]')!;
   expect(row.getAttribute('data-kind')).toBe('throttled');
-  expect(row.querySelector('p')?.textContent).toBe(strings.resources.throttled(locale === 'fr' ? '5,0 Go' : '5.0 GB'));
+  expect(row.querySelector('.summary')?.textContent).toBe(strings.resources.throttled(locale === 'fr' ? '5,0 Go' : '5.0 GB'));
   expect(row.querySelector('.title')).toBeNull();
   expect(row.querySelector('.details')).toBeNull();
 });
@@ -74,7 +74,7 @@ test('live stops share a compact disclosure and stay at their boundary as the an
     const row = document.querySelector('[data-testid=memory-row]')!;
     expect(document.querySelectorAll('[data-testid=memory-row]')).toHaveLength(1);
     expect(row.textContent).toContain(strings.resources.killCount(3));
-    expect(row.querySelector('details')!.open).toBe(false);
+    expect(row.querySelector('[data-testid=notice-disclose]')!.getAttribute('aria-expanded')).toBe('false');
     expect([...row.querySelectorAll('.process')].map(node => node.textContent)).toEqual(['cargo.exe', 'rustc.exe', 'node.exe']);
     const text = document.querySelector('[data-testid=timeline]')!.textContent!;
     expect(text.indexOf(strings.resources.killCount(3))).toBeLessThan(text.indexOf('Build retried'));

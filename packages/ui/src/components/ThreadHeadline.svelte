@@ -8,6 +8,8 @@
   import MachineIcon from './MachineIcon.svelte';
   import ThreadPicture from './ThreadPicture.svelte';
   import ThreadState from './ThreadState.svelte';
+  import StateRing from './StateRing.svelte';
+  import { threadState } from '../lib/thread-state';
 
   /**
    * A thread row's first line, in the sidebar and in a phone's list: who runs
@@ -22,7 +24,8 @@
     machine,
     open = false,
     wrap = false,
-    picture = true
+    picture = true,
+    ring = false
   }: {
     owner: Store;
     thread: ThreadSummary;
@@ -36,22 +39,28 @@
     wrap?: boolean;
     /** A phone's row draws the picture itself, in a tile beside the lines. */
     picture?: boolean;
+    /** The sidebar's row: the state rings the picture, and the right end keeps only the time. */
+    ring?: boolean;
   } = $props();
   let draft = $derived(!open && hasUnsentDraft(owner.composerStates[thread.id]));
+  let subagents = $derived(owner.subagents(thread.id));
+  let away = $derived(owner.connection !== 'ready');
 </script>
 
-<span class="headline" class:wrap class:unread={thread.unread && !wrap}>
+<span class="headline" class:wrap class:ring class:unread={thread.unread && !wrap}>
   {#if machine}
     <span class="machine" class:offline={owner.connection !== 'ready'}
       title={`${machine.label} · ${strings.connection[owner.connection]}`} aria-label={machine.label}>
       <MachineIcon icon={machine.icon} os={owner.core?.os} />
     </span>
   {/if}
-  {#if picture}<ThreadPicture {owner} {thread} size={wrap ? 13 : 12} />{/if}
+  {#if picture && ring}
+    <StateRing kind={threadState(thread, subagents)} stale={away} ground="var(--ring-ground, var(--color-frame))"><ThreadPicture {owner} {thread} size={16} logo={13} /></StateRing>
+  {:else if picture}<ThreadPicture {owner} {thread} size={wrap ? 13 : 12} />{/if}
   <span class="title" class:ui-label={!wrap}>{thread.title}</span>
   {#if draft}<span class="draft" data-testid="thread-draft" title={strings.sidebar.unsentDraft} aria-label={strings.sidebar.unsentDraft}><PencilLine size={12} /></span>{/if}
   {#if thread.pinned}<span class="pin"><Pin size={12} /></span>{/if}
-  {#if now !== undefined}<ThreadState {thread} {now} subagents={owner.subagents(thread.id)} away={owner.connection !== 'ready'} />{/if}
+  {#if now !== undefined}<ThreadState {thread} {now} {subagents} {away} compact={ring} />{/if}
 </span>
 
 <style>
@@ -75,6 +84,10 @@
   .unread .title {
     font-weight: 600;
   }
+  /* The ringed row: a tighter gap and 13 px give the title its 28 characters at 288 px, and unread reads at 500. */
+  .ring { gap: 6px; }
+  .ring .title { font-size: var(--text-sm); }
+  .ring.unread .title { font-weight: 500; }
   .machine,
   .draft,
   .pin {

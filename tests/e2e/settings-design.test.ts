@@ -17,7 +17,8 @@ test("settings reveal sections and protection switches persist across navigation
   }
   try {
     await page.click("[data-testid=nav-settings]");
-    await page.waitFor('document.querySelector("[data-testid=settings-home]")');
+    // Settings opens on its first page: the nav lists every page, no tile grid repeats it.
+    await page.waitFor('document.querySelector("[data-testid=settings-tab-general][aria-current=page]") && document.querySelector("nav [data-testid=settings-search]")');
     await settled();
     await page.screenshot("tests/e2e/.artifacts/settings-after.png");
     await page.click("[data-testid=settings-tab-resources]");
@@ -83,9 +84,9 @@ test("settings reveal sections and protection switches persist across navigation
   }
 }, 60_000);
 
-// French names run long ("Machines et mises à jour"): a tile once let its label
-// spill over the next one, and the page hugged the left of a wide window.
-test("settings home keeps every tile's words inside it and centres its column", async () => {
+// French names run long ("Machines et mises à jour"): a label once spilled out
+// of its box, and the page hugged the left of a wide window.
+test("the settings nav keeps every French label inside it, its search opens a setting, and the page centres its column", async () => {
   const port = await freePort();
   const server = await startUi(port);
   const page = await BrowserPage.launch({
@@ -97,28 +98,27 @@ test("settings home keeps every tile's words inside it and centres its column", 
     await page.evaluate("location.reload()");
     await page.waitFor('document.querySelector("[data-testid=nav-settings]")');
     await page.click("[data-testid=nav-settings]");
-    await page.waitFor('document.querySelector("[data-testid=settings-home-machines]")');
+    await page.waitFor('document.querySelector("[data-testid=settings-tab-machines]")');
     await page.evaluate("document.fonts.ready");
     for (const width of [1920, 1440, 1100, 900]) {
       await page.send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: false });
-      const layout = JSON.parse(String(await page.evaluate(`(() => {
-        const frame = document.querySelector('.settings section.framed').getBoundingClientRect();
-        const search = document.querySelector('[data-testid=settings-search]').closest('label').getBoundingClientRect();
-        const tiles = [...document.querySelectorAll('[data-testid^=settings-home-]')].filter(tile => tile.tagName === 'BUTTON');
-        const spills = tiles.filter(tile => {
-          const box = tile.getBoundingClientRect();
-          return [...tile.querySelectorAll('span')].some(part => {
-            const inner = part.getBoundingClientRect();
-            return part.scrollWidth > part.clientWidth + 1 || inner.right > box.right + 0.5 || inner.bottom > box.bottom + 0.5;
-          });
-        }).map(tile => tile.dataset.testid);
-        const heights = [...new Set(tiles.map(tile => Math.round(tile.getBoundingClientRect().height)))];
-        return JSON.stringify({ left: search.left - frame.left, right: frame.right - search.right, spills, heights });
+      const spills = JSON.parse(String(await page.evaluate(`(() => {
+        const nav = document.querySelector('.settings nav').getBoundingClientRect();
+        const rows = [...document.querySelectorAll('.settings nav [data-testid^=settings-tab-], .settings nav h2')];
+        return JSON.stringify(rows.filter(row => {
+          const box = row.getBoundingClientRect();
+          return row.scrollWidth > row.clientWidth + 1 || box.right > nav.right + 0.5;
+        }).map(row => row.dataset.testid ?? row.textContent));
       })()`)));
-      expect({ width, spills: layout.spills }).toEqual({ width, spills: [] });
-      expect({ width, heights: layout.heights }).toEqual({ width, heights: [layout.heights[0]] });
-      if (width >= 1440) expect(Math.abs(layout.left - layout.right)).toBeLessThanOrEqual(2);
+      expect({ width, spills }).toEqual({ width, spills: [] });
     }
+    // The groups are named, and the search finds a single setting by its own word and opens its page.
+    expect(await page.evaluate(`[...document.querySelectorAll('.settings nav h2')].map(h => h.textContent).join('|')`)).toBe("Application|Agents|Consommation et limites|Système");
+    await page.evaluate(`(() => { const field = document.querySelector('[data-testid=settings-search]'); field.focus(); field.value = 'accent'; field.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+    await page.waitFor('document.querySelector("[data-testid=settings-search-result]") && !document.querySelector("[data-testid=settings-tab-general]")');
+    await page.evaluate(`document.querySelector('[data-testid=settings-search]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))`);
+    await page.waitFor('document.querySelector("[data-testid=settings-tab-appearance][aria-current=page]")');
+    expect(await page.evaluate(`document.querySelector('[data-testid=settings-search]').value`)).toBe("");
     // A page with its own root styles (Machines, Protection under its machine bar) centres the same way.
     await page.send("Emulation.setDeviceMetricsOverride", { width: 1920, height: 900, deviceScaleFactor: 1, mobile: false });
     const centred = async (selector: string) => {

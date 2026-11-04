@@ -178,7 +178,8 @@
     gap: 2px;
     padding: 2px;
     border-radius: var(--radius-md);
-    background: var(--color-edge);
+    background: var(--color-segment-track);
+    box-shadow: inset 0 0 0 1px var(--color-border);
   }
   .segment {
     min-width: 0;
@@ -196,7 +197,7 @@
   .segment span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .segment :global(svg) { flex: none; }
   .segment:hover:not(.checked) { color: var(--color-foreground); background: var(--color-hover); }
-  .segment.checked { background: var(--color-active); color: var(--color-foreground); box-shadow: var(--shadow-control); }
+  .segment.checked { background: var(--color-segment-thumb); color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-edge), var(--shadow-control); }
   .segment.checked :global(svg) { color: var(--color-accent); }
   .option {
     display: flex;

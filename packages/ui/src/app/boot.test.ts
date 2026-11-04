@@ -154,7 +154,10 @@ test('New thread opens a draft and the first send creates the thread titled from
 
 test('first run opens a draft in the drafts, and the first send makes them', async ({ app: _app }) => {
   await emptyCore();
-  await waitFor(() => store.draft !== null);
+  // An AI is signed in: the welcome offers a folder, and starting without one lands on the draft.
+  await waitFor(() => document.querySelector('[data-testid=first-run-skip], [data-testid=composer-input]') !== null);
+  document.querySelector<HTMLButtonElement>('[data-testid=first-run-skip]')?.click();
+  await waitFor(() => store.draft !== null && document.querySelector('[data-testid=composer-input]') !== null);
   expect(store.draft?.projectId).toBeNull();
   expect(query('[data-testid=draft-project]').textContent).toContain('Drafts');
   // A draft in the drafts has no repository to branch.
@@ -175,8 +178,10 @@ test('first run opens a draft in the drafts, and the first send makes them', asy
 
 test('first run keeps opening a folder one click away', async ({ app: _app }) => {
   await emptyCore();
-  await waitFor(() => document.querySelector('[data-testid=draft-open-folder]') !== null);
-  query<HTMLButtonElement>('[data-testid=draft-open-folder]').click();
+  // The welcome's folder step, or the draft's own button once that step was skipped on this device.
+  const button = '[data-testid=first-run-folder], [data-testid=draft-open-folder]';
+  await waitFor(() => document.querySelector(button) !== null);
+  query<HTMLButtonElement>(button).click();
   await waitFor(() => document.querySelector('[data-testid=project-path]') !== null);
   await type(query<HTMLInputElement>('[data-testid=project-path]'), 'D:\\work\\first-project');
   query<HTMLButtonElement>('[data-testid=project-add]').click();

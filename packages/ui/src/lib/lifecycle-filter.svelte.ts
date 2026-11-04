@@ -1,0 +1,71 @@
+import type { ThreadSummary } from '@boite/contracts';
+import type { ProjectEntry } from './project-view.svelte';
+import { archiveCount } from './project-threads.svelte';
+import { threadState } from './thread-state';
+import { liveState, needsHand } from './thread-lanes.svelte';
+
+/** The four lifecycle buttons over the thread list, in drawn order. */
+export const LIFECYCLES = ['waiting', 'working', 'done', 'archived'] as const;
+export type Lifecycle = (typeof LIFECYCLES)[number];
+
+/** The lifecycle the sidebar is filtered to, shared by desktop and phone for the session. */
+class LifecycleFilter {
+  current = $state<Lifecycle | null>(null);
+
+  toggle(kind: Lifecycle): void {
+    this.current = this.current === kind ? null : kind;
+  }
+
+  clear(): void {
+    this.current = null;
+  }
+}
+
+export const lifecycleFilter = new LifecycleFilter();
+
+/**
+ * Whether a listed thread belongs to a live lifecycle: needs you (a question,
+ * a failure or work that stopped short, all waiting on the user's hand) or
+ * working (the rows the working fold groups). Done and archived threads are
+ * out of the store's open list and come from the project's counts.
+ */
+export function inLifecycle(entry: ProjectEntry, thread: ThreadSummary, kind: 'waiting' | 'working'): boolean {
+  const state = threadState(thread, entry.machine.store.subagents(thread.id));
+  return kind === 'waiting' ? needsHand(state) : liveState(state);
+}
+
+/**
+ * The counts over every listed project, on every machine the sidebar shows.
+ * Live counts skip a machine that is not connected, as the switch's badge did:
+ * its last known turn may have ended long ago. Done and archived are the
+ * projects' own counts, the numbers their folds list.
+ */
+export function lifecycleCounts(entries: readonly ProjectEntry[]): Record<Lifecycle, number> {
+  const counts: Record<Lifecycle, number> = { waiting: 0, working: 0, done: 0, archived: 0 };
+  for (const entry of entries) {
+    counts.done += archiveCount(entry.project, 'done');
+    counts.archived += archiveCount(entry.project, 'archived');
+    const store = entry.machine.store;
+    if (store.connection !== 'ready') continue;
+    for (const thread of store.threadsOf(entry.project.id)) {
+      if (inLifecycle(entry, thread, 'waiting')) counts.waiting += 1;
+      else if (inLifecycle(entry, thread, 'working')) counts.working += 1;
+    }
+  }
+  return counts;
+}
+
+/** The projects a filter keeps, each with the rows it shows: a live filter lists threads, done and archived list the project's fold. */
+export function lifecycleProjects(entries: readonly ProjectEntry[], kind: Lifecycle): { entry: ProjectEntry; threads: ThreadSummary[] }[] {
+  const kept: { entry: ProjectEntry; threads: ThreadSummary[] }[] = [];
+  for (const entry of entries) {
+    if (kind === 'done' || kind === 'archived') {
+      if (archiveCount(entry.project, kind) > 0) kept.push({ entry, threads: [] });
+      continue;
+    }
+    if (entry.machine.store.connection !== 'ready') continue;
+    const threads = entry.machine.store.threadsOf(entry.project.id).filter(thread => inLifecycle(entry, thread, kind));
+    if (threads.length > 0) kept.push({ entry, threads });
+  }
+  return kept;
+}

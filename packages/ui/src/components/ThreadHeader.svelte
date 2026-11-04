@@ -5,7 +5,7 @@
   import { entrust } from '../lib/thread-entrust';
   import { tick } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
-  import { ChevronDown, FolderInput, GitBranch, GitPullRequest, Globe, MessagesSquare, Network, PanelRight, Search, SquareKanban, SquareTerminal, UsersRound, VenetianMask } from '@lucide/svelte';
+  import { ChevronDown, FolderInput, GitBranch, GitPullRequest, MessagesSquare, Network, PanelRight, Search, SquareKanban, UsersRound, VenetianMask } from '@lucide/svelte';
   import { focusOnMount } from '../lib/actions';
   import { contextMenu } from '../lib/context-menu.svelte';
   import { pendingLine } from '../lib/thread-move.svelte';
@@ -22,15 +22,21 @@
   import { watchStatus } from '../lib/pull-request-watch';
   import ContextModeBadge from './ContextModeBadge.svelte';
   import CoordinationDialog from './CoordinationDialog.svelte';
+  import ThreadPullRequest from './ThreadPullRequest.svelte';
+  import { firstRunSteps } from '../lib/first-run.svelte';
   let { store }: { store: Store } = $props();
   let thread = $derived(store.openThread);
   const mobile = new MediaQuery('(max-width: 720px)');
-  /** Under a phone's title: where the conversation lives, its machine once there are two. */
+  /**
+   * Under a phone's title: where the conversation lives (its machine once there
+   * are two) and its branch; the PR number follows from ThreadPullRequest.
+   */
   let place = $derived.by(() => {
     if (!thread) return '';
     const project = thread.projectId ? store.projects.find(p => p.id === thread!.projectId) : undefined;
     const machines = workspace.machinesOr(store);
-    return [project ? projectName(project) : null, machines.length > 1 ? machines.find(m => m.store === store)?.label : null].filter(Boolean).join(' · ');
+    const branch = thread.branch && work.shows('header.branch') ? thread.branch : null;
+    return [project ? projectName(project) : null, machines.length > 1 ? machines.find(m => m.store === store)?.label : null, branch].filter(Boolean).join(' · ');
   });
   /** The rename in progress, bound to the thread it began on rather than to whatever is open later. */
   let rename = $state<ThreadRename | null>(null);
@@ -193,7 +199,7 @@
           <!-- A small chevron exposes thread actions; on phones it also holds the title. -->
           <span class="title-menu">
             <Menu items={mobile.current ? phoneItems : desktopItems} onpick={titleAction} label={strings.sidebar.threadMenu} placement="bottom" variant="text" testid="thread-menu-trigger">
-              <span class="title-lines"><span class="title-text ui-label">{thread.title}</span>{#if place}<span class="title-place ui-label" data-testid="thread-place">{place}</span>{/if}</span><ChevronDown size={14} />
+              <span class="title-lines"><span class="title-text ui-label">{thread.title}</span>{#if place || mobile.current}<span class="title-place ui-label" data-testid="thread-place"><span class="place-text">{place}</span>{#if mobile.current}<span class="place-pr"><ThreadPullRequest owner={store} {thread} text separated={!!place} /></span>{/if}</span>{/if}</span><ChevronDown size={14} />
             </Menu>
           </span>
         {/if}
@@ -211,8 +217,8 @@
 
       <span class="spacer"></span>
 
-      <!-- Incognito is chosen before the first send, in the drafts only. -->
-      {#if !thread && store.draftInDrafts}
+      <!-- Incognito is chosen before the first send, in the drafts only, once there is an AI to send to. -->
+      {#if !thread && store.draftInDrafts && !firstRunSteps(store).active}
         {@const on = store.draft?.incognito === true}
         <button
           type="button"
@@ -238,94 +244,62 @@
         <span class="context-chip"><ContextModeBadge mode={thread.contextMode} testid="thread-context-mode" /></span>
       {/if}
 
-      {#if carrier}
-        <!-- The agent this thread was entrusted to: its menu opens the agent or takes the thread back. -->
-        <button type="button" class="chip entrusted" title={fill(strings.agents.entrustedTo, { name: carrier.agent.name })} data-testid="thread-entrusted-chip"
-          onclick={(event) => carrierMenu(event.currentTarget)}>
-          <AgentAvatar kind="profile" id={carrier.agent.id} name={carrier.agent.name} avatar={carrier.agent.avatar} size={16} />
-          <span class="chip-name ui-label">{fill(strings.agents.entrustedTo, { name: carrier.agent.name })}</span>
-        </button>
-      {/if}
-      {#if resident}
-        <!-- The agent that looks after this thread's project: a click opens its conversation. -->
-        <button type="button" class="chip resident" title={fill(strings.resident.lookedAfterBy, { name: resident.name })}
-          aria-label={fill(strings.resident.lookedAfterBy, { name: resident.name })} data-testid="thread-resident-chip" data-agent-id={resident.id}
-          onclick={() => openResident(store, resident!.id)}>
-          <AgentAvatar kind="profile" id={resident.id} name={resident.name} avatar={resident.avatar} size={16} />
-          <span class="chip-name ui-label">{fill(strings.resident.lookedAfterBy, { name: resident.name })}</span>
-        </button>
-      {/if}
-      {#if thread && (thread.pullRequestWatches?.length ?? 0) > 0}
-        {@const watches = thread.pullRequestWatches ?? []}
-        <!-- What a watch saw and its Stop, on a phone too: a paired phone has no Tasks panel. -->
-        <span class="watch-chip" data-testid="thread-watches">
-          <Menu
-            items={watches.map((watch): MenuItem => ({ id: watch.url, label: fill(strings.tasks.stopWatchOf, { number: String(watch.number) }), hint: watchStatus(watch), title: watch.url, glyph: GitPullRequest }))}
-            onpick={(url) => void store.unwatchPullRequest(thread.id, url)}
-            label={strings.tasks.watchSection}
-            placement="bottom"
-            testid="thread-watches-trigger"
-          >
-            <GitPullRequest size={13} strokeWidth={1.75} /><span class="ui-label">{watches.map((watch) => `#${watch.number}`).join(' ')}</span>
-          </Menu>
+      {#if thread && !thread.teamId && !thread.debateId}
+        <!-- Where the thread works and who looks after it, in one neutral pill:
+             the branch, its PR, then the real avatar of the agent it is
+             entrusted to or of the one looking after its project. A phone keeps
+             the avatar alone: the branch and the PR are under its title. -->
+        <span class="context-pill" data-testid="thread-context">
+          {#if thread.branch && work.shows('header.branch')}
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <span class="path branch mono" title="{thread.branch}: {strings.thread.branchHint}: {thread.cwd}" data-testid="thread-branch" oncontextmenu={(event) => controlMenu(event, store, 'header.branch')}>
+              <GitBranch size={13} strokeWidth={1.75} />
+              <span class="branch-name ui-label">{thread.branch}</span>
+            </span>
+          {/if}
+          {#if !mobile.current}<span class="pr"><ThreadPullRequest owner={store} {thread} /></span>{/if}
+          {#if (thread.pullRequestWatches?.length ?? 0) > 0}
+            {@const watches = thread.pullRequestWatches ?? []}
+            <!-- What a watch saw and its Stop, on a phone too: a paired phone has no Tasks panel. -->
+            <span class="watch-chip" data-testid="thread-watches">
+              <Menu
+                items={watches.map((watch): MenuItem => ({ id: watch.url, label: fill(strings.tasks.stopWatchOf, { number: String(watch.number) }), hint: watchStatus(watch), title: watch.url, glyph: GitPullRequest }))}
+                onpick={(url) => void store.unwatchPullRequest(thread.id, url)}
+                label={strings.tasks.watchSection}
+                placement="bottom"
+                testid="thread-watches-trigger"
+              >
+                <GitPullRequest size={13} strokeWidth={1.75} /><span class="ui-label">{watches.map((watch) => `#${watch.number}`).join(' ')}</span>
+              </Menu>
+            </span>
+          {/if}
+          {#if carrier}
+            <!-- The agent this thread was entrusted to: its menu opens the agent or takes the thread back. -->
+            <button type="button" class="ghost avatar entrusted" title={fill(strings.agents.entrustedTo, { name: carrier.agent.name })}
+              aria-label={fill(strings.agents.entrustedTo, { name: carrier.agent.name })} data-testid="thread-entrusted-chip"
+              onclick={(event) => carrierMenu(event.currentTarget)}>
+              <AgentAvatar kind="profile" id={carrier.agent.id} name={carrier.agent.name} avatar={carrier.agent.avatar} size={mobile.current ? 24 : 20} />
+            </button>
+          {/if}
+          {#if resident}
+            <!-- The agent that looks after this thread's project: a click opens its conversation. -->
+            <button type="button" class="ghost avatar resident" title={fill(strings.resident.lookedAfterBy, { name: resident.name })}
+              aria-label={fill(strings.resident.lookedAfterBy, { name: resident.name })} data-testid="thread-resident-chip" data-agent-id={resident.id}
+              onclick={() => openResident(store, resident!.id)}>
+              <AgentAvatar kind="profile" id={resident.id} name={resident.name} avatar={resident.avatar} size={mobile.current ? 24 : 20} />
+            </button>
+          {/if}
         </span>
-      {/if}
-      {#if thread?.branch && work.shows('header.branch')}
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <span class="chip path branch mono" title="{thread.branch}: {strings.thread.branchHint}: {thread.cwd}" data-testid="thread-branch" oncontextmenu={(event) => controlMenu(event, store, 'header.branch')}>
-          <GitBranch size={13} strokeWidth={1.75} />
-          <span class="branch-name ui-label">{thread.branch}</span>
-        </span>
-      {/if}
-      <!-- The shell is the owner's: a phone reaches it by this button, not by Ctrl+J. -->
-      {#if thread && store.owner && !thread.teamId && !thread.debateId}
-        {@const terminalKey = store.keyLabel('terminal')}
-        {#if work.shows('header.terminal')}
-        <button
-          type="button"
-          class="ghost trace in-title-menu"
-          class:on={store.terminalShown(thread.id)}
-          title={terminalKey ? `${strings.thread.terminalHint} (${terminalKey})` : strings.thread.terminalHint}
-          aria-label={strings.thread.terminalHint}
-          aria-pressed={store.terminalShown(thread.id)}
-          data-testid="terminal-toggle"
-          onclick={() => store.toggleTerminal()}
-          oncontextmenu={(event) => controlMenu(event, store, 'header.terminal')}
-        >
-          <SquareTerminal size={16} strokeWidth={1.75} />
-        </button>
-        {/if}
-      {/if}
-      <!-- The project board, in the drawer under the chat: a phone's way to it, and the owner's beside Ctrl+J. -->
-      {#if thread && store.boardAvailable()}
-        <button
-          type="button"
-          class="ghost trace in-title-menu"
-          class:on={store.boardShown}
-          title={store.keyLabel('terminal') ? `${strings.board.open} (${store.keyLabel('terminal')})` : strings.board.open}
-          aria-label={strings.board.open}
-          aria-pressed={store.boardShown}
-          data-testid="board-toggle"
-          onclick={() => store.toggleBoard()}
-        >
-          <SquareKanban size={16} strokeWidth={1.75} />
-        </button>
       {/if}
       <!-- A paired device opens the panel too: the Agents and Workflows surfaces are
            its to follow, and the panel's menu offers only what available() allows.
            A team's chat has no title menu: a phone keeps this button, its one way to the panel. -->
       {#if thread}
-        {#if mobile.current && !thread.teamId && !thread.debateId}
-          <button type="button" class="ghost phone-browser" data-testid="phone-browser-toggle"
-            aria-label={strings.rightPanel.browser} aria-pressed={store.panelOpen && store.panel.active?.kind === 'agent-browser'}
-            onclick={() => store.panel.open('agent-browser')}>
-            <Globe size={18} strokeWidth={1.75} />
-          </button>
-        {/if}
+        <!-- The one way to the panel, on a phone too: its strip holds the browser,
+             the terminal and the board. -->
         <button
           type="button"
-          class="ghost icon"
-          class:in-title-menu={!thread.teamId && !thread.debateId}
+          class="ghost icon panel-toggle"
           class:on={store.panelOpen}
           title={`${strings.thread.panelHint}${store.keyHint('panel')}`}
           aria-label={strings.thread.panelHint}
@@ -348,6 +322,7 @@
     height: var(--control);
     padding: 0 6px;
     margin-left: -6px;
+    font-size: var(--text-md);
     font-weight: 600;
     color: var(--color-foreground);
     max-width: 50%;
@@ -388,7 +363,6 @@
     flex: 1;
   }
 
-  .phone-browser { flex: none; width: var(--touch-target); min-height: var(--touch-target); padding: 0; justify-content: center; }
 
   .path {
     flex: 0 1 auto;
@@ -396,10 +370,31 @@
     max-width: min(240px, 35%);
     font-size: var(--text-sm);
   }
+  .panel-toggle { flex: none; }
 
-  .resident { flex: 0 1 auto; min-width: 0; max-width: 220px; gap: 6px; padding-left: 4px; border-color: color-mix(in oklch, var(--color-resident) 45%, transparent); background: var(--color-resident-soft); color: var(--color-resident); cursor: pointer; }
-  .entrusted { flex: 0 1 auto; min-width: 0; max-width: 220px; gap: 6px; padding-left: 4px; border-color: color-mix(in oklch, var(--color-accent) 40%, transparent); background: var(--color-accent-soft); color: var(--color-accent); cursor: pointer; }
-  .chip-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* One neutral pill: the branch, its PR and the agent's face, no colour of its own. */
+  .context-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: min(420px, 45%);
+    height: 28px;
+    padding: 0 4px 0 10px;
+    border-radius: 999px;
+    background: var(--color-surface-2);
+    box-shadow: inset 0 0 0 1px var(--color-border);
+    color: var(--color-muted-foreground);
+    font-size: var(--text-sm);
+  }
+  /* Nothing to hold (no branch, PR, watch or agent): no pill at all. */
+  .context-pill:not(:has(.path, .avatar, .watch-chip, .pr a)) { display: none; }
+  .context-pill .path { display: inline-flex; align-items: center; gap: 5px; max-width: none; }
+  .context-pill .pr { display: inline-flex; flex: none; }
+  .context-pill .pr:not(:has(a)) { display: none; }
+  .avatar { display: inline-grid; place-items: center; flex: none; width: 24px; height: 24px; min-height: 0; padding: 0; border-radius: 999px; }
+  .context-pill > :last-child:not(.avatar) { margin-right: 6px; }
   .branch-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .branch :global(svg) { flex: none; }
   .watch-chip { flex: none; display: inline-flex; color: var(--color-accent); }
@@ -448,6 +443,8 @@
   .title { min-width: 0; }
   .title-menu { display: flex; flex: none; }
   .title-text, .title-lines { display: none; }
+  .place-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .place-pr { flex: none; white-space: pre; }
   @media (max-width: 720px) {
     /* The title is what tells one conversation from another: the buttons give
        up their words for it, and keep a finger-sized square. */
@@ -458,10 +455,11 @@
     .trace { padding: 0; min-width: var(--touch-target); justify-content: center; }
     .trace .label, .incognito .label, .context-chip :global(.label) { display: none; }
     .context-chip :global(.chip) { min-width: var(--touch-target); justify-content: center; }
-    .resident { flex: none; padding: 0; min-width: var(--touch-target); justify-content: center; }
-    .resident .chip-name { display: none; }
-    /* The title's sheet holds these on a phone. */
-    .in-title-menu { display: none; }
+    /* The avatar alone, a finger's square around it; the rest is under the title. */
+    .context-pill { padding: 0; height: auto; background: none; box-shadow: none; max-width: none; flex: none; }
+    .context-pill > :not(.avatar) { display: none; }
+    .avatar { width: var(--touch-target); height: var(--touch-target); }
+    .panel-toggle { width: var(--touch-target); height: var(--touch-target); }
     .rename { width: 100%; }
     /* The thread's title button gives way to its menu; a draft's label and a team's name have no menu and stay. */
     .title:not(.draft):not(.team) { display: none; }
@@ -474,7 +472,9 @@
     /* Two lines stacked: a label's ascender room and its trim to the capitals would pull the second over the first. */
     .title-lines > .ui-label { margin-block: 0; padding-block: 0; text-box: normal; }
     .title-text { display: block; max-width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .title-place { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); font-weight: 400; color: var(--color-muted-foreground); }
+    /* The place gives way first: the PR number after it always shows. */
+    .title-place:not(:has(.place-text:not(:empty), .place-pr:not(:empty))) { display: none; }
+    .title-place { display: flex; max-width: 100%; min-width: 0; white-space: nowrap; font-size: var(--text-xs); font-weight: 400; color: var(--color-muted-foreground); }
     .title-menu :global(.trigger svg) { flex: none; color: var(--color-muted-foreground); }
     .crumb { min-height: var(--touch-target); }
     .crumb-sep { margin: 0; }

@@ -3,6 +3,7 @@
   import { PanelLeftClose, PanelLeftOpen, Users } from '@lucide/svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import ThreadHeader from './ThreadHeader.svelte';
+  import BoiteMark from './BoiteMark.svelte';
   import type { Window as TauriWindow } from '@tauri-apps/api/window';
   import { strings } from '../lib/strings';
   import { projectName } from '../lib/format';
@@ -14,6 +15,8 @@
   import ProjectTile from './ProjectTile.svelte';
   import WindowResizeHandles from './WindowResizeHandles.svelte';
   import { contactsRail, contactsShown } from '../lib/contacts-rail.svelte';
+  import { firstRunSteps } from '../lib/first-run.svelte';
+  import { workspace } from '../lib/workspace.svelte';
 
   let { store }: { store: Store } = $props();
   let ContactRequestNotice = $state<typeof import('./home/ContactRequestNotice.svelte').default>();
@@ -37,7 +40,12 @@
    */
   let foldable = $derived(store.booted && (store.page === 'chat' || store.page === 'home' || (store.page === 'agents' && !mobile.current)));
   /** The contacts column folds from the bar's other end, beside the pages that keep it. */
-  let contactsToggle = $derived(store.booted && contactsShown(store) && !mobile.current && (store.page === 'chat' || store.page === 'home'));
+  /** An empty app (no AI, no folder yet) shows its two first steps and nothing else to answer.
+      Empty means every machine it reaches: a new PC beside a busy workstation still shows the workstation's requests. */
+  let empty = $derived(store.booted && (workspace.machines.length ? workspace.machines.map(machine => machine.store) : [store]).every(each => firstRunSteps(each).active));
+  let contactsToggle = $derived(store.booted && contactsShown(store) && !mobile.current && !empty
+    // In a thread the button shows only when it has something: the column open, or a request waiting.
+    && (store.page === 'home' || (store.page === 'chat' && (!contactsRail.folded || contactsRail.waiting > 0))));
   function toggleSidebar() {
     if (mobile.current) store.sidebarOpen = !store.sidebarOpen;
     else store.toggleSidebar();
@@ -149,9 +157,10 @@
   {#if threadHeader && (inShell || !mobile.current)}
     {#key store}<ThreadHeader {store} />{/key}
   {:else}
+    {#if store.page === 'settings'}<span class="mark" data-testid="titlebar-mark"><BoiteMark size={18} /></span>{/if}
     <span class="name ui-label">{store.page === 'agents' ? strings.agents.heading : store.page === 'home' ? strings.contacts.heading : heading}</span>
   {/if}
-  {#if ContactRequestNotice && contactsShown(store) && (inShell || !mobile.current)}<ContactRequestNotice {store} />{/if}
+  {#if ContactRequestNotice && contactsShown(store) && (inShell || !mobile.current) && !empty}<ContactRequestNotice {store} />{/if}
   {#if contactsToggle}
     <button type="button" class="ghost icon contacts-toggle" class:open={!contactsRail.folded}
       aria-label={contactsRail.folded ? strings.contacts.rail.show : strings.contacts.rail.hide}
@@ -213,6 +222,9 @@
   /* macOS: the traffic lights, 16 px in and about 52 px wide, then the usual gap. */
   .titlebar.mac { padding-left: 80px; padding-right: 8px; }
   .sidebar-toggle { flex: none; }
+  /* Settings keep the app's mark where a thread's title stands. */
+  .mark { display: inline-flex; flex: none; padding-left: 8px; color: var(--color-foreground); }
+  .mark + .name { padding-left: 0; }
   .contacts-toggle { position: relative; flex: none; margin-left: auto; }
   .contacts-toggle.open { color: var(--color-foreground); }
   /* Folded, the button alone says a contact asks something. */

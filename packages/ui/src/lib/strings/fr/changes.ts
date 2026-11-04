@@ -4,6 +4,7 @@ export const fr: Translation = {
 
   changes: {
     clean: 'Copie de travail propre',
+    cleanHint: "Les fichiers modifiés par l'agent ou par vous apparaissent ici, avec leur diff.",
     noBranch: 'Aucune branche',
     ahead: '{count} en avance',
     behind: '{count} en retard',

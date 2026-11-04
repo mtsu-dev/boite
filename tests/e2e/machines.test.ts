@@ -163,6 +163,7 @@ test('two real cores pair, route turns independently, reconnect and survive a re
     await page.waitFor(`document.querySelector('[data-thread-id="${tb.id}"]')`);
     await page.click(`[data-thread-id="${tb.id}"]`);
     await page.waitFor(`document.querySelector('${id('thread-title')}')?.textContent === 'Remote project'`);
+    await page.evaluate(`document.querySelector('[data-testid="right-panel"]') ? null : document.querySelector('[data-testid="panel-toggle"]')?.click()`); // The terminal's button is in the panel's strip.
     await page.click(id('terminal-toggle'));
     // PowerShell expands Windows short paths such as RUNNER~1 in its prompt.
     try {

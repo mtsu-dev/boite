@@ -168,10 +168,6 @@
       </div>
     {/if}
 
-    {#if pending && replying && !docked}
-      <p class="muted description" data-testid="question-reply-hint">{strings.chat.questionReplying}</p>
-    {/if}
-
     {#if pending}
       <div class="actions">
         {#if page && onopen}
@@ -183,7 +179,8 @@
         {#if allowText && !replying && onwrite}
           <button type="button" class="ghost" data-testid="question-write" disabled={sent} onclick={onwrite}><span class="ui-label">{strings.chat.questionWrite}</span></button>
         {/if}
-        {#if !docked || !replying}
+        <!-- The composer answers while it holds this question: its send is the one submit, said on its Answering line. -->
+        {#if !replying}
         <button
           type="button"
           class="primary"

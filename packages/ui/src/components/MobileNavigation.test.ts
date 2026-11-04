@@ -1,4 +1,5 @@
-import { afterEach, expect, test, vi } from 'vitest';
+import { afterEach, expect, onTestFinished, test, vi } from 'vitest';
+import type { ThreadSummary } from '@boite/contracts';
 import { flushSync, mount, unmount } from 'svelte';
 import { setExperiment } from '../lib/experiments';
 import { FakeClient } from '../lib/fake-client';
@@ -78,14 +79,14 @@ test('the logo goes back to the conversations, as Back does in a conversation', 
   mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'activity' } });
   await settle();
   const list = () => document.querySelector('[data-testid=mobile-list]')?.getAttribute('aria-label');
-  expect(list()).toBe('Activity');
+  expect(list()).toBe('Inbox');
   document.querySelector<HTMLButtonElement>('[data-testid=mobile-home]')!.click(); await settle();
-  expect(list()).toBe('Conversations');
+  expect(list()).toBe('Threads');
   store.showSettings('machines'); await settle();
   expect(list()).toBeUndefined();
   document.querySelector<HTMLButtonElement>('[data-testid=mobile-home]')!.click(); await settle();
   expect(store.page).toBe('chat');
-  expect(list()).toBe('Conversations');
+  expect(list()).toBe('Threads');
   await unmount(mounted); document.body.innerHTML = '';
   mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'chat' } }); await settle();
   expect(document.querySelector('[data-testid=mobile-home]')).toBeNull();
@@ -118,14 +119,15 @@ test('a parent on another machine shows its working sub-agents, counted, and Rec
     const state = () => document.querySelector<HTMLElement>(`[data-machine-id="${remote.machineId}"][data-thread-id="${parent.id}"] [data-testid=thread-state]`);
     expect(state()?.dataset['state']).toBe('delegating');
     expect(state()?.querySelector('[data-testid=thread-state-text]')?.textContent).toMatch(/^1m/);
-    // The count rides the same chip a computer's row shows: once, never also written out.
-    expect(state()?.querySelector('[data-testid=thread-subagents]')?.textContent).toBe('2');
+    // The count rides the row's facts line, as a computer's row shows it: once, never also written out.
+    const agents = document.querySelector<HTMLElement>(`[data-machine-id="${remote.machineId}"][data-thread-id="${parent.id}"] [data-testid=thread-subagents]`);
+    expect([agents?.dataset['count'], agents?.textContent]).toEqual(['2', '2 agents']);
     expect(state()?.textContent).not.toContain('sub-agents');
     expect(state()?.getAttribute('title')).toMatch(/^Waiting on 2 sub-agents/);
     // A child is never a row of its own.
     expect(document.querySelector('[data-thread-id="child-1"]')).toBeNull();
 
-    const rows = () => [...document.querySelectorAll<HTMLElement>('.mobile-list .row')].map(row => row.dataset['threadId']);
+    const rows = () => [...document.querySelectorAll<HTMLElement>('.mobile-list [data-testid=mobile-row]')].map(row => row.dataset['threadId']);
     const everything = rows().length;
     expect(everything).toBeGreaterThan(1);
     const chip = () => document.querySelector<HTMLButtonElement>('[data-testid=mobile-at-work]');
@@ -159,6 +161,65 @@ test('a parent on another machine shows its working sub-agents, counted, and Rec
   } finally {
     remote.detach(); remoteClient.close();
   }
+});
+
+test('the Inbox tab lists what waits on the user, longest wait first, before the work going on, under a large title the bar takes over on scroll', async () => {
+  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
+    media, matches: true, onchange: null, addListener() {}, removeListener() {}
+  }));
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  workspace.machines = [{ id: 'local', label: 'Local', store }]; workspace.active = store;
+  const [older, newer, busy, quiet] = store.threads.filter(thread => !thread.archived && !thread.incognito && !thread.teamId && !thread.debateId && !thread.parentThreadId);
+  const rest = { status: 'idle' as const, openQuestions: 0, subagentQuestions: [] as NonNullable<ThreadSummary['subagentQuestions']>, unread: false };
+  store.pendingQuestions = []; store.pendingPermissions = [];
+  store.threads = store.threads.map(thread => thread.id === older!.id ? { ...thread, ...rest, status: 'waiting', runningSince: 1_000 }
+    : thread.id === newer!.id ? { ...thread, ...rest, status: 'waiting', runningSince: 5_000 }
+    : thread.id === busy!.id ? { ...thread, ...rest, status: 'running', runningSince: 2_000 }
+    : { ...thread, ...rest });
+  mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'activity' } });
+  await settle();
+  const list = document.querySelector<HTMLElement>('[data-testid=mobile-list]')!;
+  const order = Array.from(list.querySelectorAll<HTMLElement>('[data-testid=mobile-inbox-needs], [data-testid=mobile-inbox-working], [data-thread-id]'))
+    .map(node => node.dataset.threadId ?? node.dataset.testid);
+  expect(order.filter((id, index) => order.indexOf(id) === index)).toEqual(['mobile-inbox-needs', older!.id, newer!.id, 'mobile-inbox-working', busy!.id]);
+  expect(order).not.toContain(quiet!.id);
+  expect(document.querySelector('[data-testid=mobile-inbox-needs] .count')!.textContent).toBe('2');
+
+  // The list's name, large and hidden from readers, until it scrolls under the bar, whose title then fades in.
+  const title = document.querySelector('[data-testid=mobile-title]')!;
+  expect(list.querySelector('.large-title')!.textContent).toBe('Inbox');
+  expect(list.querySelector('.large-title')!.getAttribute('aria-hidden')).toBe('true');
+  expect(list.querySelector('h1')).toBeNull();
+  expect(title.classList.contains('folded')).toBe(true);
+  list.scrollTop = 120; list.dispatchEvent(new Event('scroll')); await settle();
+  expect(title.classList.contains('folded')).toBe(false);
+});
+
+test('Contacts left the bar: the Bots page header carries it for the owner, a paired device gets no way in', async () => {
+  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
+    media, matches: true, onchange: null, addListener() {}, removeListener() {}
+  }));
+  setExperiment('contacts', true);
+  setExperiment('resident-agents', true);
+  onTestFinished(() => setExperiment('resident-agents', false));
+  client = new FakeClient({ delayMs: 0, principal: 'session' });
+  store = new Store(); store.attach(client); await store.connect();
+  workspace.machines = [{ id: 'local', label: 'Local', store }]; workspace.active = store;
+  store.showAgents();
+  mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'threads' } });
+  for (let i = 0; i < 5; i++) { await new Promise(resolve => setTimeout(resolve, 0)); await settle(); }
+  expect(document.querySelector('[data-testid=mobile-contacts]')).toBeNull();
+  await unmount(mounted); mounted = undefined; store.detach(); client.close(); document.body.innerHTML = '';
+
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  workspace.machines = [{ id: 'local', label: 'Local', store }]; workspace.active = store;
+  store.showAgents();
+  mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'threads' } });
+  await vi.waitFor(async () => { await settle(); expect(document.querySelector('[data-testid=mobile-contacts]')).not.toBeNull(); });
+  document.querySelector<HTMLButtonElement>('[data-testid=mobile-contacts]')!.click(); await settle();
+  expect(store.page).toBe('home');
 });
 
 test("a contact's page opened from the list leaves for the board on the chat screen, and Back returns to the list", async () => {
