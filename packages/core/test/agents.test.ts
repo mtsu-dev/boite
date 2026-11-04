@@ -64,6 +64,25 @@ test('a restart that has not read an agent\'s models yet does not report the bot
   } finally { reset(); descriptor.protocol = 'echo'; }
 });
 
+test('an Antigravity bot saved on a pre-1.4 model id is not reported as gone', async () => {
+  // Antigravity 1.4 lists `gemini-3.8-flash` and takes the level apart, yet
+  // still runs the `gemini-3.8-flash-low` a bot made before it holds.
+  const descriptor = h.core.providers.require('echo');
+  descriptor.protocol = 'acp';
+  descriptor.quirks = ['antigravity'];
+  const cache = new ModelProbes(async () => [{ id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash' }]);
+  const reset = setDriver('acp', { ...echoDriver, protocol: 'acp', probe: ctx => cache.probe(ctx), probedModels: (p, a) => cache.models(p, a), forgetProbes: f => cache.forget(f) });
+  try {
+    const accountId = echoAccount(h);
+    await client.call('providers.probe', { providerId: 'echo', accountId });
+    const save = (model: string) => client.call('agents.profile.save', { value: agentValue(accountId, { selection: { providerId: 'echo', accountId, model, effort: null, permissionMode: 'default' } }) });
+    const problem = async (id: string) => (await client.call('agents.snapshot', {})).status.find(s => s.agentId === id)!.problem;
+    expect(await problem((await save('gemini-3.8-flash-low')).id)).toBeNull();
+    // A family the agent does not list is still refused, level or not.
+    expect(await thrown(save('gemini-3.7-flash-low'))).toThrow('the provider does not offer this model');
+  } finally { reset(); descriptor.protocol = 'echo'; delete descriptor.quirks; }
+});
+
 test('a pinned bot stays pinned through a save that predates the field, until it is unpinned', async () => {
   const value = agentValue(echoAccount(h));
   const agent = await client.call('agents.profile.save', { value });

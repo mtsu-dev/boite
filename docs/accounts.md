@@ -236,7 +236,9 @@ to the new step's first control whenever focus has fallen out of it: a
 keyboard user goes from `Install` to `Cancel`, to the sign-in link, then to
 `Use <provider>` without reaching for the mouse. On a phone the dialog is a
 sheet at the bottom of the screen, and its last button stays above the home
-indicator.
+indicator. The dialog renders beside the app root, so the link listener that
+hands `http(s)` links to the shell's system browser sits on the document body:
+on the root alone, the dialog's sign-in link did nothing in the desktop app.
 
 An account that answered `unauthenticated`, with no other account of its agent
 signed in, gets a `Sign in again` chip beside
