@@ -26,8 +26,13 @@ export function isHermes(provider: ProviderDescriptor): boolean {
   return provider.quirks?.includes('hermes') === true;
 }
 
-/** The whole SDK, loaded on the first ACP turn: nothing heavy loads at core start. */
-export type AcpSdk = typeof import('@agentclientprotocol/sdk');
+/**
+ * The whole SDK, loaded on the first ACP turn: nothing heavy loads at core start.
+ * SDK 2 keeps unstable v1 fields (the prompt response's `usage` among them)
+ * out of its default entry's types and validators, so every import in the
+ * driver, its tests and its fixtures goes through `/unstable`.
+ */
+export type AcpSdk = typeof import('@agentclientprotocol/sdk/unstable');
 
 export interface AcpDeps {
   loadSdk: () => Promise<AcpSdk>;

@@ -108,7 +108,7 @@ describe('the real antigravity release', () => {
           env,
         });
         try {
-          const sdk = await import('@agentclientprotocol/sdk');
+          const sdk = await import('@agentclientprotocol/sdk/unstable');
           const stream = sdk.ndJsonStream(
             Writable.toWeb(child.stdin) as unknown as WritableStream<Uint8Array>,
             jsonLinesOnly(Readable.toWeb(child.stdout) as unknown as ReadableStream<Uint8Array>, (line) => {
