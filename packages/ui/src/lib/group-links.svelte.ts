@@ -3,7 +3,7 @@ import { groupRelayUrl, parseGroupRelayUrl, RPC_PATH, withoutTrailingSlashes, ty
 import { WsClient, type SocketFactory, type SocketLike } from './client';
 import { browserSocket } from './ws-client-utils';
 import { deviceKey } from './device-key';
-import { DROPPED_STORAGE_KEY, isDropped, isMemberDropped, keepDropped, readEnvironments, rememberGroupAddresses, removeBrought, signsFor, type Endpoint, type StoredEnvironment } from './endpoint';
+import { clearMemberDropped, DROPPED_HOLD_MS, DROPPED_STORAGE_KEY, droppedAt, isDropped, isMemberDropped, keepDropped, memberDroppedAt, readEnvironments, relayKeyFor, rememberGroupAddresses, removeBrought, setDropped, signsFor, type Endpoint, type StoredEnvironment } from './endpoint';
 import { usableAddresses } from './group-addresses';
 import { onNetworkChange } from './network-change';
 import type { Machine, Workspace } from './workspace.svelte';
@@ -80,7 +80,9 @@ function askGroup(endpoint: Endpoint, patience: number, socket: SocketFactory): 
     // A slow hello is that slow answer too: the client's own 10 s must not give up on it first.
     openDeadline: () => wait,
     // A machine this device's key opens answers a signed hello.
-    ...(endpoint.signs === undefined ? {} : { signer: { key: deviceKey, coreId: endpoint.signs } })
+    ...(endpoint.signs === undefined ? {} : { signer: { key: deviceKey, coreId: endpoint.signs } }),
+    // Reached through a member, which refuses a client that does not open the way on it.
+    ...(parseGroupRelayUrl(endpoint.url) === null ? {} : { relay: () => relayKeyFor(endpoint.url) })
   });
   const timers: ReturnType<typeof setTimeout>[] = [];
   return new Promise<Group | null | undefined>((resolve) => {
@@ -323,7 +325,9 @@ export class GroupLinks {
     // By its address or by what it is: the machine may be held here under another address than the one that was marked.
     for (const machine of [...this.workspace.machines]) {
       if (machine.coreId === undefined) continue;
-      if (isDropped(machine.id, machine.epoch) || isMemberDropped(machine.groupId, machine.coreId, machine.epoch)) await this.#drop(machine, true);
+      if (!isDropped(machine.id, machine.epoch) && !isMemberDropped(machine.groupId, machine.coreId, machine.epoch)) continue;
+      // Under a mark that outlived its hold it goes all the same, but marks no address anew: that would hide the machine, should the group list it, for one more hold.
+      await this.#drop(machine, machine.groupId === undefined || !this.#outlived(memberDroppedAt(machine.groupId, machine.coreId)));
     }
     // Remembered machines are still being added: one of them may be the member that looks missing.
     if (!this.workspace.settled) return;
@@ -336,6 +340,7 @@ export class GroupLinks {
     const anchors = informed.filter((machine) => machine.coreId === undefined);
     await this.#prune(informed, anchors);
     await this.#pruneSigned(anchors);
+    await this.#pruneRoutes(informed);
     // A link to one of these later asks nothing: they are this device's own group.
     // Only addresses a key could go to, and that every machine this device's key opens in that group lists:
     // one of them holding an older or a forged roster vouches for nothing on its own.
@@ -353,15 +358,19 @@ export class GroupLinks {
       if (group === null || via.store.endpointUrl === null) continue;
       for (const core of group.cores) {
         if (core.coreId === group.self || wanted.has(core.coreId)) continue;
-        // The group dropped this admission of the machine: a member still listing it has not caught up.
-        if (isMemberDropped(group.id, core.coreId, core.epoch)) continue;
         // Two hand-paired machines of one group that disagree: the one that no longer lists it wins.
         if (anchors.some((other) => other.store.group?.id === group.id && !other.store.group.cores.some((listed) => listed.coreId === core.coreId))) continue;
+        // The group dropped this admission of the machine: a member still listing it has not caught up.
+        // All of them still do once the mark outlived its hold: the machine came back, whatever admission was written.
+        if (isMemberDropped(group.id, core.coreId, core.epoch)) {
+          if (!this.#outlived(memberDroppedAt(group.id, core.coreId))) continue;
+          clearMemberDropped(group.id, core.coreId);
+        }
         // An address the group dropped that machine at is not dialled on the word of a member still listing
-        // the admission that was dropped: only a later admission, the machine having come back, opens it again.
+        // the admission that was dropped: a later admission, the machine having come back, opens it again, as does that hold.
         wanted.set(core.coreId, {
           core, via,
-          addresses: this.#agreed(core.coreId, group.id, anchors).filter((address) => !isDropped(address, core.epoch)),
+          addresses: this.#agreed(core.coreId, group.id, anchors).filter((address) => this.#open(address, core.epoch)),
           relays: this.#relays(core.coreId, group.id, anchors),
         });
       }
@@ -377,13 +386,27 @@ export class GroupLinks {
       const routes = JSON.stringify([want.core.epoch, want.core.addresses, addresses, relays]);
       if (this.#routes.has(coreId) && this.#routes.get(coreId) !== routes) this.#failures.delete(coreId);
       this.#routes.set(coreId, routes);
-      let existing = this.workspace.machines.find((machine) => GroupLinks.coreOf(machine) === coreId);
+      const held = this.workspace.machines.filter((machine) => GroupLinks.coreOf(machine) === coreId);
+      let existing = held.find((machine) => machine.store.connection === 'ready') ?? held[0];
+      const open = [...addresses, ...relays];
+      // Already reached one way: a second entry that strayed has nothing left to find.
+      if (existing?.store.connection === 'ready') {
+        for (const other of held) if (other !== existing && this.#strayed(other, coreId, open)) await this.#drop(other, false);
+      }
       // A key the group handed out for an address the machine no longer gives, or no longer
       // allows now that it has HTTPS, is not sent there again: the machine is reached anew.
       // Through a member, the route stands while that member is one this client was paired with and lists the machine.
       if (existing?.coreId !== undefined && !addresses.includes(existing.id) && !relays.includes(existing.id)) {
         await this.#drop(existing, false);
         existing = undefined;
+      }
+      // Lost, or still trying a way nobody gives any more: looked for where the roster says, and let go only once found.
+      if (existing !== undefined && this.#strayed(existing, coreId, open)) {
+        if (!this.#running.has(coreId) && this.#due(coreId)) {
+          states[coreId] ??= 'connecting';
+          starting.push({ ...want, upgrade: existing });
+        }
+        continue;
       }
       if (existing !== undefined && (existing.store.connection !== 'closed' || this.#holdsKey(existing))) {
         delete states[coreId];
@@ -403,6 +426,33 @@ export class GroupLinks {
     // Written before any attempt starts: one that ends at once writes its own state after this.
     this.states = states;
     for (const want of starting) void this.#connect(want);
+  }
+
+  /** Whether a mark made `at` has stood its hold. */
+  #outlived(at: number | undefined): boolean {
+    return at !== undefined && this.#now() - at >= DROPPED_HOLD_MS;
+  }
+
+  /** Whether this address may be dialled for that admission: unmarked, or its mark ended now for having stood its hold. */
+  #open(address: string, epoch: number): boolean {
+    if (!isDropped(address, epoch)) return true;
+    if (!this.#outlived(droppedAt(address))) return false;
+    setDropped(address, null);
+    return true;
+  }
+
+  /**
+   * Whether an entry this device's key opens, saved for a member the group lists, leads nowhere. At an address the
+   * roster no longer gives, or none this page may open, or a route through a machine long gone, its client retries
+   * that one way for good, and nothing else looks for the machine. At one still given, once closed: its client tries
+   * no more (no key left for the machine that carried it, say), and the way may have opened since. A machine that
+   * refused this device is `#pruneSigned`'s. One that answers and the window's own stay; a machine the group brought
+   * is dropped above when it moves, and a machine paired by hand is not touched.
+   */
+  #strayed(existing: Machine, coreId: string, routes: readonly string[]): boolean {
+    const { connection, pairingRequired } = existing.store;
+    if (existing.store === this.workspace.primary || connection === 'ready' || signsFor(existing.id) !== coreId) return false;
+    return !routes.includes(existing.id) || (connection === 'closed' && !pairingRequired);
   }
 
   /**
@@ -498,6 +548,23 @@ export class GroupLinks {
     }
   }
 
+  /**
+   * A route through a member to a machine that member no longer lists: it refuses or keeps failing for good, and
+   * the client behind it retries with no end. A machine that answers on it keeps it, and the window's own stays.
+   * With that member away, the route only goes once no key opens the way on it and nobody here lists the machine:
+   * listed, `#strayed` replaces it once the machine is found. Nothing is marked: a machine let back in is listed again.
+   */
+  async #pruneRoutes(informed: readonly Machine[]): Promise<void> {
+    for (const machine of [...this.workspace.machines]) {
+      if (machine.store.connection === 'ready' || machine.store === this.workspace.primary) continue;
+      const relay = parseGroupRelayUrl(machine.id);
+      if (relay === null) continue;
+      const lists = (other: Machine): boolean => other.store.group?.cores.some((core) => core.coreId === relay.coreId) === true;
+      const carrier = informed.find((other) => other.store.endpointUrl === relay.member);
+      if (carrier !== undefined ? !lists(carrier) : relayKeyFor(machine.id) === null && !informed.some(lists)) await this.#drop(machine, false);
+    }
+  }
+
   /** The machine this window opened on cannot leave the list: its key goes and the window falls back to its own core. */
   /** `gone`: the group dropped it, and its address is marked for every window. Otherwise it only moved, or its key died. */
   async #drop(machine: Machine, gone: boolean): Promise<void> {
@@ -538,7 +605,9 @@ export class GroupLinks {
     const coreId = core.coreId;
     this.#running.add(coreId);
     this.#attempts.set(coreId, this.#now());
-    let state: GroupLinkState | null = upgrade === undefined ? 'unreachable' : null;
+    // A machine a member carries is reached, whatever a better route does. One that strayed is not.
+    const carried = upgrade?.store.connection === 'ready';
+    let state: GroupLinkState | null = carried ? null : 'unreachable';
     let moved = false;
     // No route answered: nothing was spent, and the member is probed again soon rather than after a longer wait each time.
     let unreached = false;
@@ -551,7 +620,7 @@ export class GroupLinks {
       const url = direct ?? relay;
       if (url === null) {
         if (addresses.length === 0 && relays.length === 0) {
-          if (upgrade === undefined) state = 'insecure';
+          if (!carried) state = 'insecure';
         } else unreached = true;
         return;
       }
@@ -566,21 +635,31 @@ export class GroupLinks {
         return;
       }
       const sitting = this.workspace.machines.find((machine) => machine.id === withoutTrailingSlashes(url));
+      // Once the machine is in at `url`, the way it was held by goes, unless that was this very address.
+      const letGo = async (): Promise<void> => {
+        if (upgrade !== undefined && upgrade.id !== withoutTrailingSlashes(url) && this.workspace.machines.includes(upgrade)) await this.#drop(upgrade, false);
+      };
+      const signedVia = signsFor(via.id) !== undefined;
       // A device of the group signs its own way in: no ticket, nothing a member hands over. The machine
       // already at that address is taken over when it holds no key of its own there, the page's own core
       // waiting to be paired included; one this device holds a key for stays as it is.
-      if (signsFor(via.id) !== undefined) {
+      // So does a device that saved this very machine under its key at a route that led nowhere, whatever opened the machine that vouches.
+      if (signedVia || (upgrade !== undefined && signsFor(upgrade.id) === coreId)) {
         if (sitting !== undefined && sitting.coreId !== coreId && this.#holdsKey(sitting) && signsFor(sitting.id) !== coreId) {
           state = null;
           settled = true;
           return;
         }
+        // Written where the key is read back: an older admission's mark on that address would hide it.
+        setDropped(url, null);
         if (await this.workspace.add({ url, token: '', signs: coreId }, core.name, true)) {
           state = null;
           settled = true;
-          if (upgrade !== undefined && this.workspace.machines.includes(upgrade)) await this.#drop(upgrade, false);
+          await letGo();
+          return;
         }
-        return;
+        // Its key no longer opens the machine and the one that vouches was paired another way: that one can still ask for a ticket.
+        if (signedVia) return;
       }
       // A machine paired by hand already sits at that address: it is that machine's to reach, with the key it has.
       if (sitting !== undefined && sitting.coreId !== coreId) {
@@ -601,7 +680,7 @@ export class GroupLinks {
         state = null;
         settled = true;
         // A direct route found for a machine a member carried: the carried one goes once the direct one is in, never before.
-        if (upgrade !== undefined && this.workspace.machines.includes(upgrade)) await this.#drop(upgrade, false);
+        await letGo();
       }
     } catch {
       // The machine that vouches went away, or the member refused: the next pass asks again.

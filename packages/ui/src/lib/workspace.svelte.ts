@@ -98,6 +98,8 @@ export function machineHealth(machine: Machine, primary: Store): MachineHealth {
 export const PRIMARY_PATIENCE_MS = 2000;
 /** How long the window keeps its loading screen while another machine may still answer in place of the one it opened on. */
 export const STAND_IN_WAIT_MS = 6000;
+/** How long the group links wait for the remembered machines to be in: a connection that never ends must not hide the group's other machines for good. */
+export const SETTLE_WAIT_MS = 30_000;
 
 export const machineIcons = [
   'desktop', 'laptop', 'phone', 'tablet', 'apple', 'server', 'rack', 'nas',
@@ -183,10 +185,12 @@ export class Workspace {
     // A link in the address bar is the owner asking for that machine: its answer is waited for, whatever it is.
     this.waiting = !opensFromLink();
     const hold = setTimeout(() => { if (this.#current(lifecycle)) this.waiting = false; }, STAND_IN_WAIT_MS);
+    const settling = setTimeout(() => { if (this.#current(lifecycle)) this.settled = true; }, SETTLE_WAIT_MS);
     try {
       await this.#boot(thread);
     } finally {
       clearTimeout(hold);
+      clearTimeout(settling);
       this.settled = true;
       this.waiting = false;
     }
@@ -496,8 +500,9 @@ export class Workspace {
       return false;
     }
     if (target.connection !== 'ready') {
-      // A ticket that opened nothing leaves no key to retry with: the group asks for another.
-      if (endpoint.ticket !== undefined && !existing) {
+      // A machine only tried leaves nothing to retry with, a spent ticket or a device key it refused: the group links try again.
+      // Kept, it would sit in the list as Offline with its client retrying that address for good.
+      if (quiet && !existing) {
         target.client?.close();
         target.detach();
         this.machines = this.machines.filter((m) => m.store !== target);

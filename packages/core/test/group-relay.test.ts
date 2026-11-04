@@ -207,6 +207,11 @@ test('a relay carries only a client of its own machine, and says so without touc
     expect(failure.code).toBe(RpcErrorCode.Refused);
     expect(failure.message).toContain('carries to the other machines of its group only a client paired with it');
   }
+  // Told in the log of the machine that refused, the only one that hears of it: the other never sees the socket. Without the key.
+  const refused = (await a.core.logs.select((record) => record.level === 'warn' && record.message.includes('refused to carry a client'), 10)).map((record) => record.message);
+  expect(refused.some((message) => message.includes(id(b).slice(0, 8)) && message.includes('no relay key'))).toBe(true);
+  expect(refused.some((message) => message.includes('opens nothing here'))).toBe(true);
+  expect(refused.join(' ')).not.toContain(key);
   // An agent's token is no key for the relay either.
   expect((await refusal(connect(relay, key, { relay: a.core.agents.tokenFor('thr_none' as never), client: { name: 'pwa', version: '1' } }))).code).toBe(RpcErrorCode.Refused);
   // b still takes the key directly: nothing above reached it.
