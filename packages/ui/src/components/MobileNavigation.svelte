@@ -3,7 +3,7 @@
   import WindowList from './WindowList.svelte';
   import MobileTabs from './MobileTabs.svelte';
   import ThreadHeader from './ThreadHeader.svelte';
-  import { Activity, ArrowLeft, ArrowUpDown, ChevronDown, Ellipsis, Folder, FolderOpen, FolderPlus, MessageSquare, Plus, Search, Radar, X } from '@lucide/svelte';
+  import { Activity, ArrowLeft, ArrowUpDown, Bot, ChevronDown, Ellipsis, Folder, FolderOpen, FolderPlus, MessageSquare, Plus, Search, Radar, X } from '@lucide/svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import MobileConnect from './MobileConnect.svelte';
   import type { Store } from '../lib/store.svelte';
@@ -40,7 +40,7 @@
   import { minuteClock } from '../lib/clock.svelte';
   import { contactsShown } from '../lib/contacts-rail.svelte';
   import { ScreenSlide } from '../lib/screen-slide.svelte';
-  import { inbox } from '../lib/inbox';
+  import { inbox, storeSources } from '../lib/inbox';
   import { firstRunSteps } from '../lib/first-run.svelte';
   import FirstRun from './home/FirstRun.svelte';
 
@@ -122,11 +122,7 @@
     return machine.store.threads.filter(t => !t.archived && !t.incognito && !t.teamId && !t.debateId).map(thread => ({ machine, thread, project: thread.projectId === null ? undefined : byId.get(thread.projectId) }));
   }));
   /** The Inbox tab: what waits on the user, longest wait first, then the work going on (`lib/inbox.ts`, the desktop home's Inbox too). */
-  let lists = $derived(inbox(machines.map(machine => ({
-    machine, threads: machine.store.threads, projects: machine.store.projects,
-    questions: machine.store.pendingQuestions, permissions: machine.store.pendingPermissions,
-    secrets: machine.store.pendingSecrets, accounts: machine.store.accounts
-  }))));
+  let lists = $derived(inbox(storeSources(machines)));
   let waiting = $derived(lists.needs);
   /** What waits on the user besides the conversation on screen: Back carries its mark. */
   let elsewhere = $derived(waiting.filter(e => !(e.machine.store === store && e.thread.id === store.openThread?.id)).length);
@@ -368,7 +364,9 @@
     {:else if listScreen === 'activity'}
       <!-- Two lanes, as the desktop home's Inbox: what waits on the user, then the work going on. -->
       {#if inboxNeeds.length > 0}
-        <h2 class="lane" data-testid="mobile-inbox-needs"><span class="ui-label">{strings.inbox.needsYou}</span><span class="count">{inboxNeeds.length}</span></h2>
+        {@const bots = inboxNeeds.filter(row => row.thread.agentSessionId).length}
+        <!-- As on the desktop home: the threads' number is the strip's Needs you, a bot's ask counts apart. -->
+        <h2 class="lane" data-testid="mobile-inbox-needs"><span class="ui-label">{strings.inbox.needsYou}</span>{#if inboxNeeds.length > bots}<span class="count" title={fill(strings.inbox.threadsCount, { count: String(inboxNeeds.length - bots) })}>{inboxNeeds.length - bots}</span>{/if}{#if bots}<span class="count bots" title={fill(strings.inbox.botsCount, { count: String(bots) })} aria-label={fill(strings.inbox.botsCount, { count: String(bots) })}><Bot size={11} aria-hidden="true" />{bots}</span>{/if}</h2>
         <WindowList items={inboxNeeds} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} estimate={77} measurements={measurements('inbox-needs')}>
           {#snippet row(entry)}{@render threadRow(entry)}{/snippet}
         </WindowList>
@@ -463,6 +461,7 @@
     .lane { display: flex; align-items: center; gap: 8px; margin: 4px 2px 6px; font-size: var(--text-xs); font-weight: 600; color: var(--color-muted-foreground); }
     .lane.working { margin-top: 18px; }
     .lane .count { padding: 0 7px; border-radius: var(--radius-full); line-height: 18px; font-variant-numeric: tabular-nums; background: color-mix(in oklch, var(--color-live-fill) 18%, transparent); color: var(--color-live); }
+    .lane .count.bots { display: inline-flex; align-items: center; gap: 3px; padding-left: 6px; }
     .lane.working .count { background: var(--color-accent-soft); color: var(--color-accent); }
     .first-run-slot { display: flex; padding: 12px 0 24px; }
     .first-run-slot :global(.first-run) { width: 100%; }

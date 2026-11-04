@@ -21,7 +21,10 @@ export const fr: Translation = {
   },
   inbox: {
     label: 'Réception',
-    needsYou: 'Vous attend',
+    needsYou: 'À vous',
+    threadsCount: '{count} conversations',
+    botsCount: '{count} venant des bots',
+    bot: 'Bot',
     workingNow: 'Au travail',
     nothing: 'Rien ne vous attend',
     more: '{count} de plus',
@@ -31,7 +34,8 @@ export const fr: Translation = {
       permission: 'Demande votre permission',
       secret: 'A besoin d\'une clé',
       'sign-in': 'Vous demande de vous connecter',
-      failed: 'Le tour a échoué'
+      failed: 'Le tour a échoué',
+      interrupted: 'Arrêté avant la fin'
     },
     waited: 'Attend depuis {time}',
     working: 'Travaille depuis {time}',

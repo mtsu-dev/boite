@@ -1,5 +1,7 @@
 import { requestExcerpt, type Account, type PermissionRequest, type Project, type QuestionRequest, type SecretRequest, type ThreadSummary } from '@boite/contracts';
-import { needsUser } from './thread-state';
+import { needsUser, threadState, type Delegated } from './thread-state';
+import { liveState } from './thread-lanes.svelte';
+import type { Store } from './store.svelte';
 
 /**
  * What the home's Inbox and the phone's Inbox tab list: the threads that wait
@@ -8,7 +10,7 @@ import { needsUser } from './thread-state';
  */
 
 /** Why a thread waits on the user, in the words of its card. */
-export type InboxReason = 'question' | 'permission' | 'secret' | 'sign-in' | 'failed';
+export type InboxReason = 'question' | 'permission' | 'secret' | 'sign-in' | 'failed' | 'interrupted';
 
 export interface InboxSource<M> {
   machine: M;
@@ -18,6 +20,8 @@ export interface InboxSource<M> {
   permissions: readonly PermissionRequest[];
   secrets?: readonly SecretRequest[];
   accounts?: readonly Pick<Account, 'id' | 'status'>[];
+  /** The thread's delegated agents at work or asking, as the sidebar reads them, so both count the same threads. */
+  subagents?: (threadId: string) => Delegated;
 }
 
 export interface InboxCard<M> {
@@ -37,6 +41,20 @@ export interface InboxRow<M> {
   project: Project | undefined;
   /** When the work the row counts started. */
   since: number;
+}
+
+/** What each machine's store holds for the Inbox: the home, the phone's tab and the status strip's Next read the same lists. */
+export function storeSources<M extends { store: Store }>(machines: readonly M[]): InboxSource<M>[] {
+  return machines.map(machine => ({
+    machine,
+    threads: machine.store.threads,
+    projects: machine.store.projects,
+    questions: machine.store.pendingQuestions ?? [],
+    permissions: machine.store.pendingPermissions ?? [],
+    secrets: machine.store.pendingSecrets,
+    accounts: machine.store.accounts,
+    subagents: (id: string) => machine.store.subagents(id)
+  }));
 }
 
 /** The cards the home shows before folding the rest under `n more`. */
@@ -62,9 +80,10 @@ export function inbox<M>(sources: readonly InboxSource<M>[]): { needs: InboxCard
       if (!listed(thread)) continue;
       if (thread.parentThreadId && ids.has(thread.parentThreadId)) continue;
       const project = thread.projectId === null ? undefined : projects.get(thread.projectId);
-      const card = cardOf(source, thread);
+      const state = threadState(thread, source.subagents?.(thread.id) ?? 0);
+      const card = cardOf(source, thread, state);
       if (card) needs.push({ machine: source.machine, thread, project, ...card });
-      else if (thread.status === 'running' || thread.status === 'queued') {
+      else if (liveState(state)) {
         working.push({ machine: source.machine, thread, project, since: thread.requestSince ?? thread.runningSince ?? thread.updatedAt });
       }
     }
@@ -74,7 +93,12 @@ export function inbox<M>(sources: readonly InboxSource<M>[]): { needs: InboxCard
   return { needs, working };
 }
 
-function cardOf<M>(source: InboxSource<M>, thread: ThreadSummary): Pick<InboxCard<M>, 'reason' | 'detail' | 'since'> | null {
+/**
+ * The same threads the sidebar's Needs you counts (`needsHand`): a question,
+ * a permission, a key, a child asking, a failed turn read or not, and work
+ * that stopped short. Only the words are the Inbox's own.
+ */
+function cardOf<M>(source: InboxSource<M>, thread: ThreadSummary, state: ReturnType<typeof threadState>): Pick<InboxCard<M>, 'reason' | 'detail' | 'since'> | null {
   const turn = thread.runningSince ?? thread.updatedAt;
   const question = source.questions.find(request => request.threadId === thread.id);
   if (question) return { reason: 'question', detail: requestExcerpt(question), since: question.createdAt };
@@ -85,10 +109,11 @@ function cardOf<M>(source: InboxSource<M>, thread: ThreadSummary): Pick<InboxCar
   if (needsUser(thread)) return { reason: 'question', detail: null, since: turn };
   const asked = thread.subagentQuestions?.[0];
   if (asked) return { reason: 'question', detail: asked.title, since: turn };
-  // A failed turn the user has not read yet: once opened, the thread says it itself.
-  if (thread.status === 'error' && thread.unread) {
+  if (state === 'waiting') return { reason: 'question', detail: null, since: turn };
+  if (state === 'error') {
     const account = source.accounts?.find(entry => entry.id === thread.accountId);
     return { reason: account?.status === 'unauthenticated' ? 'sign-in' : 'failed', detail: null, since: thread.updatedAt };
   }
+  if (state === 'interrupted') return { reason: 'interrupted', detail: thread.backgroundWait?.for ?? null, since: thread.updatedAt };
   return null;
 }

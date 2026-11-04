@@ -23,6 +23,10 @@ export const strings = {
   inbox: {
     label: 'Inbox',
     needsYou: 'Needs you',
+    /** The heading's numbers: the threads, as the sidebar's Needs you counts them, and the bots apart. */
+    threadsCount: '{count} threads',
+    botsCount: '{count} from bots',
+    bot: 'Bot',
     workingNow: 'Working now',
     nothing: 'Nothing needs you',
     more: '{count} more',
@@ -32,7 +36,8 @@ export const strings = {
       permission: 'Wants your permission',
       secret: 'Needs a key',
       'sign-in': 'Needs you to sign in',
-      failed: 'Turn failed'
+      failed: 'Turn failed',
+      interrupted: 'Stopped before the end'
     },
     /** How long a card has waited and a row has worked, beside it and in full in its label. */
     waited: 'Waiting for {time}',

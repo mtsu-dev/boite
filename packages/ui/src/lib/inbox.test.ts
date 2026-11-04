@@ -22,14 +22,16 @@ test('the cards come from every machine, longest wait first, each saying what it
     ], { accounts: [{ id: 'a', status: 'ok' }, { id: 'b', status: 'unauthenticated' }] })
   ]);
   expect(needs.map(card => [card.machine, card.thread.id, card.reason, card.since])).toEqual([
+    ['server', 'read-error', 'failed', 50],
     ['pc', 'wants', 'permission', 100],
     ['server', 'failed', 'failed', 200],
     ['pc', 'asks', 'question', 300],
     ['server', 'signed-out', 'sign-in', 400]
   ]);
   expect(needs.find(card => card.thread.id === 'asks')!.detail).toContain('Which icon set?');
-  expect(needs[0]!.project).toBe(project);
-  // An error already read says itself once opened; a quiet thread is nowhere.
+  expect(needs[1]!.project).toBe(project);
+  // A failed turn waits on the user until it is retried, done or archived, read or not,
+  // as the sidebar's Needs you counts it; a quiet thread is nowhere.
   expect(working).toEqual([]);
 });
 
@@ -47,6 +49,16 @@ test('the work going on is listed longest running first; a sub-agent is left to 
   // The parent carries its child's question; a child whose parent is elsewhere stands for itself.
   expect(needs.map(card => [card.thread.id, card.detail])).toEqual([['parent', 'Keep the old key?'], ['orphan', null]]);
   expect(working.map(row => [row.thread.id, row.since])).toEqual([['long', 100], ['recent', 900]]);
+});
+
+test('the Inbox counts the threads the sidebar counts: work that stopped short waits on the user, delegated work is at work', () => {
+  const { needs, working } = inbox([source('pc', [
+    thread('stopped', { updatedAt: 40, backgroundWait: { state: 'interrupted', for: 'the build', reason: 'core-restarted', at: 40 } } as Partial<ThreadSummary>),
+    thread('delegating', { updatedAt: 60 }),
+    thread('done', { unread: true })
+  ], { subagents: id => id === 'delegating' ? { count: 2, asking: 0 } as never : null })]);
+  expect(needs.map(card => [card.thread.id, card.reason, card.detail])).toEqual([['stopped', 'interrupted', 'the build']]);
+  expect(working.map(row => row.thread.id)).toEqual(['delegating']);
 });
 
 test('the home folds the cards past the first four', () => {

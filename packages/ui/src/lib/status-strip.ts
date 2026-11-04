@@ -1,5 +1,6 @@
 import { requestWork, type Thread, type ThreadSummary } from '@boite/contracts';
 import { needsUser } from './thread-state';
+import { inbox, storeSources } from './inbox';
 import type { Machine } from './workspace.svelte';
 import type { Store } from './store.svelte';
 
@@ -43,17 +44,12 @@ export type Waiting = { store: Store; thread: ThreadSummary };
 
 /**
  * Every other thread, on every machine the user sees, that waits on the user,
- * the longest waiting first. Archived threads and the one on screen are out:
+ * in the Inbox's order (the longest wait first) and by the Inbox's rule, so
+ * the walk and the home count the same threads. The one on screen is out:
  * the link walks the user to work still open elsewhere.
  */
 export function waitingElsewhere(machines: readonly Pick<Machine, 'store'>[], open: { store: Store; threadId: string | null }): Waiting[] {
-  const rows: Waiting[] = [];
-  for (const { store } of machines) {
-    for (const thread of store.threads) {
-      if (thread.archived || !needsUser(thread)) continue;
-      if (store === open.store && thread.id === open.threadId) continue;
-      rows.push({ store, thread });
-    }
-  }
-  return rows.sort((a, b) => a.thread.updatedAt - b.thread.updatedAt);
+  return inbox(storeSources(machines)).needs
+    .filter(card => !(card.machine.store === open.store && card.thread.id === open.threadId))
+    .map(card => ({ store: card.machine.store, thread: card.thread }));
 }

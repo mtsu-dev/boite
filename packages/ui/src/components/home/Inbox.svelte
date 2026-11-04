@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { KeyRound, LogIn, MessageCircleQuestion, ShieldQuestion, TriangleAlert } from '@lucide/svelte';
+  import { Bot, CirclePause, KeyRound, LogIn, MessageCircleQuestion, ShieldQuestion, TriangleAlert } from '@lucide/svelte';
   import { minuteClock, secondClock } from '../../lib/clock.svelte';
   import { elapsed, exactTime, projectName } from '../../lib/format';
-  import { INBOX_CARDS, inbox, type InboxCard, type InboxReason, type InboxRow } from '../../lib/inbox';
+  import { INBOX_CARDS, inbox, storeSources, type InboxCard, type InboxReason, type InboxRow } from '../../lib/inbox';
   import { fill, strings } from '../../lib/strings';
   import type { Store } from '../../lib/store.svelte';
+  import type { ThreadSummary } from '@boite/contracts';
   import { threadState } from '../../lib/thread-state';
   import { workspace, type Machine } from '../../lib/workspace.svelte';
   import ProjectTile from '../ProjectTile.svelte';
@@ -22,15 +23,11 @@
   const labels = $derived(strings.inbox);
   const machines = $derived(workspace.machinesOr(store));
   const several = $derived(machines.length > 1);
-  const lists = $derived(inbox(machines.map(machine => ({
-    machine,
-    threads: machine.store.threads,
-    projects: machine.store.projects,
-    questions: machine.store.pendingQuestions,
-    permissions: machine.store.pendingPermissions,
-    secrets: machine.store.pendingSecrets,
-    accounts: machine.store.accounts
-  }))));
+  const lists = $derived(inbox(storeSources(machines)));
+  /** A bot's own thread has no project and is no row of the sidebar. */
+  const fromBot = (thread: ThreadSummary) => !!thread.agentSessionId;
+  const botNeeds = $derived(lists.needs.filter(card => fromBot(card.thread)).length);
+  const threadNeeds = $derived(lists.needs.length - botNeeds);
   let allCards = $state(false);
   let allRows = $state(false);
   const WORKING_ROWS = 5;
@@ -38,7 +35,7 @@
   const rows = $derived(allRows ? lists.working : lists.working.slice(0, WORKING_ROWS));
   const now = $derived(minuteClock.now);
 
-  const icons: Record<InboxReason, typeof KeyRound> = { question: MessageCircleQuestion, permission: ShieldQuestion, secret: KeyRound, 'sign-in': LogIn, failed: TriangleAlert };
+  const icons: Record<InboxReason, typeof KeyRound> = { question: MessageCircleQuestion, permission: ShieldQuestion, secret: KeyRound, 'sign-in': LogIn, failed: TriangleAlert, interrupted: CirclePause };
 
   /** `12m`, `2h 57m`, `3d`: how long a card has waited, coarse enough to read at a glance. */
   function waited(since: number): string {
@@ -55,7 +52,8 @@
 
 <section class="inbox" data-testid="inbox" aria-label={labels.label}>
   {#if lists.needs.length}
-    <h2 class="lane"><span class="ui-label">{labels.needsYou}</span><span class="count" data-testid="inbox-needs-count">{lists.needs.length}</span></h2>
+    <!-- The threads' number is the sidebar's Needs you; a bot's ask is counted apart, behind a robot, as the Threads switch does. -->
+    <h2 class="lane"><span class="ui-label">{labels.needsYou}</span>{#if threadNeeds}<span class="count" data-testid="inbox-needs-count" title={fill(labels.threadsCount, { count: String(threadNeeds) })}>{threadNeeds}</span>{/if}{#if botNeeds}<span class="count bots" data-testid="inbox-needs-bots" title={fill(labels.botsCount, { count: String(botNeeds) })} aria-label={fill(labels.botsCount, { count: String(botNeeds) })}><Bot size={11} aria-hidden="true" />{botNeeds}</span>{/if}</h2>
     <ul class="cards">
       {#each cards as card (`${card.machine.id}:${card.thread.id}`)}
         {@render needsCard(card)}
@@ -90,14 +88,15 @@
   {@const reason = labels.reasons[card.reason]}
   {@const time = waited(card.since)}
   <li>
-    <button type="button" class="card" class:failed={card.reason === 'failed' || card.reason === 'sign-in'} data-testid="inbox-card" data-thread-id={card.thread.id} data-machine-id={card.machine.id} data-reason={card.reason}
+    <button type="button" class="card" class:failed={card.reason === 'failed' || card.reason === 'sign-in' || card.reason === 'interrupted'} data-testid="inbox-card" data-thread-id={card.thread.id} data-machine-id={card.machine.id} data-reason={card.reason}
       aria-label={`${fill(labels.open, { title: card.thread.title })}. ${reason}${card.detail ? `: ${card.detail}` : ''}. ${fill(labels.waited, { time })}`} onclick={() => open(card)}>
-      <StateRing kind={card.reason === 'failed' || card.reason === 'sign-in' ? 'error' : 'waiting'} size={26} stale={card.machine.store.connection !== 'ready'} ground="var(--color-surface-2)">
+      <StateRing kind={card.reason === 'failed' || card.reason === 'sign-in' || card.reason === 'interrupted' ? 'error' : 'waiting'} size={26} stale={card.machine.store.connection !== 'ready'} ground="var(--color-surface-2)">
         <ThreadPicture owner={card.machine.store} thread={card.thread} size={20} />
       </StateRing>
       <span class="body">
         <span class="top">
-          {#if card.project}<span class="chip"><ProjectTile project={card.project} store={card.machine.store} size={14} /><span class="ui-label">{projectName(card.project)}</span></span>{/if}
+          {#if card.project}<span class="chip"><ProjectTile project={card.project} store={card.machine.store} size={14} /><span class="ui-label">{projectName(card.project)}</span></span>
+          {:else if fromBot(card.thread)}<span class="chip bot" data-testid="inbox-card-bot"><Bot size={12} aria-hidden="true" /><span class="ui-label">{labels.bot}</span></span>{/if}
           {#if several}<span class="machine ui-label">{card.machine.label}</span>{/if}
           <time class="since" datetime={new Date(card.since).toISOString()} title={`${fill(labels.waited, { time })} · ${exactTime(card.since)}`}>{time}</time>
         </span>
@@ -149,6 +148,8 @@
   .body { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
   .top { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--text-xs); color: var(--color-muted-foreground); }
   .chip { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 70%; padding: 1px 7px 1px 3px; border: 1px solid var(--color-border); border-radius: var(--radius-full); background: var(--color-surface); }
+  .chip.bot { padding-left: 6px; color: var(--color-muted-foreground); }
+  .lane .count.bots { display: inline-flex; align-items: center; gap: 3px; padding-left: 6px; }
   .chip .ui-label, .machine { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .since { margin-left: auto; flex: none; font-variant-numeric: tabular-nums; font-weight: 600; color: var(--color-live); }
   .failed .since { color: var(--color-danger); }

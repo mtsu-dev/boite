@@ -2,6 +2,7 @@ import { afterEach, expect, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import { test } from '../test/fake-client';
 import { workspace } from '../lib/workspace.svelte';
+import { inbox, storeSources } from '../lib/inbox';
 import { undo } from '../lib/undo.svelte';
 import StatusStrip from './StatusStrip.svelte';
 
@@ -51,12 +52,13 @@ test('a running turn counts its time in the accent', async ({ ready }) => {
   expect(document.querySelector('[data-testid="status-strip-waiting"]')).toBeNull();
 });
 
-test('Next needs you opens the other thread that has waited longest, and changes nothing else', async ({ ready }) => {
+test('Next needs you walks the Inbox: it counts the same threads and opens the one that has waited longest, changing nothing else', async ({ ready }) => {
   const { store, client } = await ready();
   await store.open('t-trace');
-  const others = store.threads.filter(thread => !thread.archived && thread.id !== 't-trace' && (thread.status === 'waiting' || (thread.openQuestions ?? 0) > 0));
+  // The home's Inbox and the strip read one list (lib/inbox.test.ts holds its rule).
+  const others = inbox(storeSources(workspace.machinesOr(store))).needs.filter(card => card.thread.id !== 't-trace');
   expect(others.length).toBeGreaterThan(1);
-  const oldest = others.reduce((a, b) => (b.updatedAt < a.updatedAt ? b : a));
+  const oldest = others[0]!.thread;
   const select = vi.spyOn(workspace, 'select').mockResolvedValue();
   const calls = vi.spyOn(client, 'call');
   view = mount(StatusStrip, { target: document.body, props: { store } });
