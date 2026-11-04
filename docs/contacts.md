@@ -455,7 +455,8 @@ Every turn of a thread that may reach a contact carries a short guide
 (`coordinationGuide` in `coordination-letter.ts`). With a Contacts bot on
 this core, or on the group's Bots host for a member that asks through it, the
 guide names `boite threads ask`; the bot's own thread reads `boite contacts`.
-Only a core with no bot anywhere in its group reads the older direct paths.
+Only a core with no Contacts bot of its own and no Bots host elsewhere in its
+group reads the older direct paths.
 
 ### Contacts through your group
 
