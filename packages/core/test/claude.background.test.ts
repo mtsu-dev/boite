@@ -1,5 +1,6 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, setSystemTime, test } from 'bun:test';
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import { AUTO_CONTINUE } from '../src/threads/auto-continue.ts';
 import { waitFor } from './harness.ts';
 import {
   answerEach,
@@ -18,6 +19,12 @@ import {
 } from './fixtures/claude-query.ts';
 
 useClaudeHarness();
+
+const carryOn = { ...AUTO_CONTINUE, delaysMs: [...AUTO_CONTINUE.delaysMs] };
+afterEach(() => {
+  Object.assign(AUTO_CONTINUE, { ...carryOn, delaysMs: [...carryOn.delaysMs] });
+  setSystemTime();
+});
 
 describe('claude driver: questions and background work', () => {
   test('a background shell keeps the CLI after the turn, and what it writes when done opens a turn of its own', async () => {
@@ -407,5 +414,41 @@ describe('claude driver: questions and background work', () => {
     expect(messages.at(-1)?.parts.at(-1)).toEqual({ type: 'text', text: 'JOB DONE' });
     expect(calls).toHaveLength(1);
     await waitFor(() => (queries[0] as unknown as { ended: boolean }).ended);
+  });
+
+  test('an idle CLI that crashes under a live background task wakes its thread once, naming the task', async () => {
+    AUTO_CONTINUE.delaysMs = [30, 30];
+    const client = await harness.connect();
+    const threadId = await claudeThread(client);
+    const sessionId = 'sess-bg-crash';
+    scripted((fake) => {
+      // The CLI the resume opens answers it.
+      if (queries.length > 1) { fake.emit(init(sessionId)); fake.emit(assistant(sessionId, [{ type: 'text', text: 'relaunched the waiter' }])); fake.emit(success(sessionId)); return; }
+      fake.emit(init(sessionId));
+      fake.emit(assistant(sessionId, [{ type: 'tool_use', id: 'toolu_ci', name: 'Bash', input: { command: 'gh run watch', run_in_background: true } }]));
+      fake.emit(sdk({ type: 'system', subtype: 'task_started', session_id: sessionId, task_id: 'bash-ci', tool_use_id: 'toolu_ci', description: 'gh run watch', task_type: 'local_bash', is_backgrounded: true }));
+      fake.emit(sdk({ type: 'system', subtype: 'background_tasks_changed', session_id: sessionId, tasks: [{ task_id: 'bash-ci', task_type: 'local_bash', description: 'gh run watch' }] }));
+      fake.emit(toolResult(sessionId, 'toolu_ci', 'Command running in background with ID: bash-ci'));
+      fake.emit(success(sessionId));
+    });
+    expect(await runTurn(client, threadId, 'wait for CI')).toBe('done');
+    // The CLI stays for its task, then dies with it.
+    await Bun.sleep(100);
+    const cleared = client.next('thread.background', (event) => event.threadId === threadId && event.tasks.length === 0, 10000);
+    queries[0]!.exitError = 'Claude Code process exited with code 1';
+    queries[0]!.end();
+    await cleared;
+    expect((await client.call('threads.get', { threadId })).backgroundHistory).toMatchObject([{ id: 'bash-ci', state: 'ended', reason: 'no-longer-reported' }]);
+    // Past the moment the agent had to wake on it by itself.
+    setSystemTime(new Date(Date.now() + 31_000));
+    harness.core.bus.emit('thread.background', { threadId, tasks: [] });
+    const turns = () => harness.core.journal.listTurns(threadId);
+    await waitFor(() => turns().length === 2 && turns()[1]!.status === 'done');
+    expect(turns()[1]!.execution?.operation).toBe('resume');
+    expect(calls[1]!.prompts[0]).toContain('gh run watch');
+    expect(calls[1]!.prompts[0]).toContain('its agent stopped reporting the task (its process ended)');
+    // Once: the resume answered, and nothing else is planned.
+    await Bun.sleep(200);
+    expect(turns()).toHaveLength(2);
   });
 });
