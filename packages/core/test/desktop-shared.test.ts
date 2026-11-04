@@ -4,15 +4,16 @@
  * macOS, only toward the apps the conversation started.
  */
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, realpathSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { AGENT_ENV } from '@boite/contracts';
 import { runCli } from '../src/cli.ts';
 import { AgentDesktopTool } from '../src/desktop/agent-desktop.ts';
 import { DESKTOP_EXEC, desktopExecCommand } from '../src/desktop/launcher.ts';
-import { descendants, macosTargetProblem, ownedListing, sharedSessionRefusal, type ListedWindow } from '../src/desktop/scope.ts';
-import { macosProgram, VirtualDesktops, type VirtualDesktopsOptions } from '../src/desktop/service.ts';
-import { hiddenDesktops, quoteWindowsArg, windowsCommandLine } from '../src/platform/windows/hidden-desktop.ts';
+import { descendants, macosTargetProblem, ownedListing, parsePs, sharedSessionRefusal, type ListedWindow } from '../src/desktop/scope.ts';
+import { imageName, singleInstanceLaunch } from '../src/desktop/single-instance.ts';
+import { macosLaunch, macosProgram, VirtualDesktops, type VirtualDesktopsOptions } from '../src/desktop/service.ts';
+import { hiddenDesktops, quoteBatchArg, quoteWindowsArg, windowsCommandLine } from '../src/platform/windows/hidden-desktop.ts';
 import type { HiddenDesktop, HiddenDesktops } from '../src/platform/types.ts';
 import { echoThread, startTestCore, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
@@ -30,6 +31,17 @@ test('where the session is shared, only semantic input reaches the apps', () => 
   expect(sharedSessionRefusal('windows', ['snapshot', '--surface', 'dock'])).toContain('the user\'s, not an app\'s');
   expect(sharedSessionRefusal('windows', ['wait', '--notification'])).toContain('notifications');
   expect(sharedSessionRefusal('macos', ['type', '@s1:e1', 'hello'])).toContain('type is refused on macOS, among the user\'s own apps');
+  // A whole display holds the user's windows, whatever ref comes with it.
+  expect(sharedSessionRefusal('windows', ['screenshot', '--screen', '0', '@s123:e1'])).toContain('--screen is refused');
+  expect(sharedSessionRefusal('macos', ['snapshot', '--screenshot=/tmp/x.html', '--app', 'x'])).toContain('--screenshot is refused');
+  // Prompts and settings in the user's session are the user's to answer.
+  expect(sharedSessionRefusal('macos', ['permissions'])).toBeNull();
+  expect(sharedSessionRefusal('macos', ['permissions', '--guide'])).toContain('permissions only reads here');
+  expect(sharedSessionRefusal('windows', ['permissions', '--request'])).toContain('permissions only reads here');
+  // close-app finds the app by name, which may be the user's copy.
+  expect(sharedSessionRefusal('windows', ['close-app', 'charmap'])).toContain('close-app is refused');
+  expect(sharedSessionRefusal('macos', ['close-app', '--force', 'Calculator'])).toContain('close-app --force is refused');
+  expect(sharedSessionRefusal('macos', ['close-app', 'Calculator'])).toBeNull();
 });
 
 test('on macOS a command reaches only the apps the conversation started', () => {
@@ -52,6 +64,15 @@ test('on macOS a command reaches only the apps the conversation started', () => 
   expect(macosTargetProblem(['wait', '500'], windows, owned)).toBeNull();
   expect(macosTargetProblem(['list-windows'], windows, owned)).toBeNull();
   expect(macosTargetProblem(['snapshot', '-i'], windows, owned)).toContain('needs --app or --window-id');
+  // A ref proves the target only where agent-desktop reads it: right after the command.
+  expect(macosTargetProblem(['screenshot', '@s8f3k2p9:e1'], windows, owned)).toContain('needs --app or --window-id');
+  expect(macosTargetProblem(['click', '--timeout-ms', '1', '@s8f3k2p9:e1'], windows, owned)).toContain('takes its ref right after it');
+  expect(macosTargetProblem(['wait', '--element', '@s8f3k2p9:e1'], windows, owned)).toBeNull();
+  expect(macosTargetProblem(['wait', '--element', '@s8f3k2p9:e1', '--app', 'Safari'], windows, owned)).toContain('start it with boite desktop run');
+  // close-app names its app as its first word.
+  expect(macosTargetProblem(['close-app', 'Preview'], windows, owned)).toBeNull();
+  expect(macosTargetProblem(['close-app', 'TextEdit'], windows, owned)).toContain('the user runs TextEdit too');
+  expect(macosTargetProblem(['close-app', 'Safari'], windows, owned)).toContain('start it with boite desktop run');
 });
 
 test('app and window lists keep only the conversation\'s apps', () => {
@@ -59,16 +80,22 @@ test('app and window lists keep only the conversation\'s apps', () => {
   expect(JSON.parse(ownedListing(JSON.stringify({ ok: true, data: [{ pid: 10, id: 'w-1' }, { pid: 20, id: 'w-2' }] }), owned))).toEqual({ ok: true, data: [{ pid: 10, id: 'w-1' }] });
   expect(JSON.parse(ownedListing(JSON.stringify({ ok: true, data: { apps: [{ pid: 20 }, { pid: 11 }] } }), owned))).toEqual({ ok: true, data: { apps: [{ pid: 11 }] } });
   expect(ownedListing('not json\n', owned)).toBe('not json\n');
-  expect([...descendants([1], '  1     0\n  2     1\n  3     2\n  4     9\n')].sort()).toEqual([1, 2, 3]);
+  const ps = parsePs('  1     0 /sbin/launchd\n  2     1 /Applications/Google Chrome.app/Contents/MacOS/Google Chrome\n  3     2\n  4     9 x\n');
+  expect(ps[1]).toEqual({ pid: 2, ppid: 1, name: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' });
+  expect([...descendants([1], ps)].sort()).toEqual([1, 2, 3]);
 });
 
-test('a macOS app name runs the executable inside its bundle, so the app stays the core\'s child', () => {
+test('a macOS app name finds its bundle, which LaunchServices opens in the background', () => {
   const plist = (name: string) => () => `<plist><dict><key>CFBundleExecutable</key>\n\t<string>${name}</string></dict></plist>`;
   expect(macosProgram('TextEdit', () => null, path => path === '/System/Applications/TextEdit.app', plist('TextEdit'))).toBe('/System/Applications/TextEdit.app/Contents/MacOS/TextEdit');
   expect(macosProgram('/Applications/Visual Studio Code.app/', () => null, () => true, plist('Electron'))).toBe('/Applications/Visual Studio Code.app/Contents/MacOS/Electron');
   expect(macosProgram('Tool.app', () => null, () => true, () => { throw new Error('no plist'); })).toBe('Tool.app/Contents/MacOS/Tool');
   expect(macosProgram('open', () => '/usr/bin/open', () => true, plist('x'))).toBe('open');
   expect(macosProgram('Nothing', () => null, () => false, plist('x'))).toBe('Nothing');
+  // macOS kills an Apple app started by another parent than launchd; -g keeps the user's front app, -W keeps open the core's child.
+  expect(macosLaunch('/System/Applications/TextEdit.app/Contents/MacOS/TextEdit', [])).toEqual(['/usr/bin/open', '-n', '-g', '-W', '-a', '/System/Applications/TextEdit.app']);
+  expect(macosLaunch('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', ['--user-data-dir=/t/p', 'https://x'])).toEqual(['/usr/bin/open', '-n', '-g', '-W', '-a', '/Applications/Google Chrome.app', '--args', '--user-data-dir=/t/p', 'https://x']);
+  expect(macosLaunch('/usr/local/bin/tool', ['a'])).toEqual(['/usr/local/bin/tool', 'a']);
 });
 
 test('a Windows command line reads back as the words it was made of', () => {
@@ -82,8 +109,29 @@ test('a Windows command line reads back as the words it was made of', () => {
   expect(windowsCommandLine(['charmap'], () => 'C:\\Windows\\System32\\charmap.exe')).toEqual({ application: 'C:\\Windows\\System32\\charmap.exe', commandLine: 'C:\\Windows\\System32\\charmap.exe' });
   const batch = windowsCommandLine(['tool', 'x y'], () => 'C:\\t\\tool.cmd');
   expect(batch.application).toEndWith('\\System32\\cmd.exe');
-  expect(batch.commandLine).toEndWith(' /d /s /c "C:\\t\\tool.cmd "x y""');
+  // cmd.exe reads the line, then the batch file's own lines again: each character it reads gets a caret, twice.
+  expect(batch.commandLine).toEndWith(' /d /s /c "C:\\t\\tool.cmd ^^^"x^^^ y^^^""');
+  expect(quoteBatchArg('a&b')).toBe('^^^"a^^^&b^^^"');
+  expect(quoteBatchArg('%PATH%')).toBe('^^^"^^^%PATH^^^%^^^"');
+  expect(windowsCommandLine(['tool'], () => 'C:\\my tools\\tool.cmd').commandLine).toEndWith(' /d /s /c "C:\\my^ tools\\tool.cmd"');
   expect(() => windowsCommandLine([])).toThrow('a program to run is needed');
+});
+
+test('an app that keeps one copy per user gets a profile of its own, or is refused while the user runs it', () => {
+  expect(imageName('C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe')).toBe('chrome');
+  expect(imageName('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome')).toBe('google chrome');
+  const user = [{ pid: 50, ppid: 1, name: 'chrome.exe' }, { pid: 60, ppid: 1, name: 'Notepad.exe' }, { pid: 70, ppid: 9, name: 'notepad.exe' }, { pid: 9, ppid: 1, name: 'boite-core.exe' }];
+  const dir = join('D:', 'tmp', 'boite-desktop-1');
+  expect(singleInstanceLaunch('chrome', ['https://example.com'], dir, user, [])).toEqual({ args: [`--user-data-dir=${join(dir, 'profiles', 'chrome')}`, 'https://example.com'], profile: join(dir, 'profiles', 'chrome') });
+  expect(singleInstanceLaunch('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', [], dir, [], [])).toMatchObject({ profile: join(dir, 'profiles', 'google chrome') });
+  expect(singleInstanceLaunch('msedge.exe', ['--user-data-dir=X:\\p'], dir, user, [])).toEqual({ args: ['--user-data-dir=X:\\p'], profile: null });
+  expect(singleInstanceLaunch('firefox', ['about:blank'], dir, user, [])).toEqual({ args: ['-no-remote', '-profile', join(dir, 'profiles', 'firefox'), 'about:blank'], profile: join(dir, 'profiles', 'firefox') });
+  expect(singleInstanceLaunch('firefox', ['-P', 'dev'], dir, user, [])).toEqual({ args: ['-P', 'dev'], profile: null });
+  expect(singleInstanceLaunch('C:\\Windows\\explorer.exe', [], dir, user, [])).toMatchObject({ refused: expect.stringContaining('the user\'s own Explorer') });
+  // The user's Notepad would take the launch; the conversation's own copy would not.
+  expect(singleInstanceLaunch('notepad', [], dir, user, [])).toMatchObject({ refused: expect.stringContaining('notepad already runs on the user\'s desktop') });
+  expect(singleInstanceLaunch('notepad', [], dir, user.filter(entry => entry.pid !== 60), [9])).toEqual({ args: [], profile: null });
+  expect(singleInstanceLaunch('charmap', ['x'], dir, user, [])).toEqual({ args: ['x'], profile: null });
 });
 
 test('the launcher onto a hidden desktop is the core itself, from its bundle or its sources', () => {
@@ -120,6 +168,7 @@ describe('boite desktop on a shared session', () => {
     const desktops: HiddenDesktops = {
       unsupported: () => unsupported,
       privateFolder: path => { folders.push(path); },
+      processes: () => [{ pid: 4242, ppid: 1, name: 'notepad.exe' }],
       run: () => { throw new Error('fake desktops run nothing'); },
       create: (name: string): HiddenDesktop => {
         const record = { name, closed: false };
@@ -158,6 +207,10 @@ describe('boite desktop on a shared session', () => {
     expect((await cli('env')).error).toContain('env is for a Linux desktop');
     // Refused before any agent-desktop runs: the keyboard is the user's.
     expect((await cli('press', 'ctrl+c')).error).toContain('press is refused on a hidden Windows desktop');
+    // The user's Notepad and Explorer would open the window on the user's screen.
+    expect((await cli('run', 'notepad')).error).toContain('notepad already runs on the user\'s desktop');
+    expect((await cli('run', 'explorer', '.')).error).toContain('the user\'s own Explorer');
+    expect((await harness.core.desktops.status({ threadId })).session!.apps).toEqual([]);
     expect((await cli('stop')).out).toContain('desktop stopped');
     expect(made).toEqual([{ name: session.display, closed: true }]);
     expect(existsSync(dirname(home))).toBe(false);
@@ -219,6 +272,29 @@ describe('boite desktop on a shared session', () => {
     expect(await until(() => [helper, ...owners].filter(alive), left => left.length === 0)).toEqual([]);
   }, 30_000);
 
+  test.skipIf(!windows)('Windows: the process list names this process and its parent', () => {
+    const self = hidden!.processes().find(entry => entry.pid === process.pid);
+    expect(self).toEqual({ pid: process.pid, ppid: process.ppid, name: expect.stringMatching(/^bun(\.exe)?$/i) });
+  });
+
+  test.skipIf(!windows)('Windows: a batch file on the hidden desktop gets its arguments as given, and cmd.exe runs none of them', () => {
+    const folder = join(harness.dataDir, 'batch & tools');
+    mkdirSync(folder, { recursive: true });
+    const script = join(folder, 'argv.js'), batch = join(folder, 'argv.cmd'), mark = join(folder, 'ran');
+    writeFileSync(script, 'process.stdout.write(JSON.stringify(process.argv.slice(2)))');
+    writeFileSync(batch, `@"${process.execPath}" "${script}" %*\r\n`);
+    const words = ['a&b', '%PATH%', 'x y', 'say "hi"', 'a"&b', 'C:\\dir\\', '', '(p)|q<r>^!', `& echo ran> "${mark}"`];
+    const desktop = hidden!.create(`boite-test-${process.pid}`);
+    try {
+      const run = Bun.spawnSync({ cmd: desktopExecCommand(desktop.path, [batch, ...words]), stdout: 'pipe', stderr: 'pipe', windowsHide: true });
+      expect(run.stderr.toString()).toBe('');
+      expect(JSON.parse(run.stdout.toString())).toEqual(words);
+      expect(existsSync(mark)).toBe(false);
+    } finally {
+      desktop.close();
+    }
+  }, 30_000);
+
   // Opt-in: downloads the pinned agent-desktop, as a first use on the machine would.
   test.skipIf(!windows || process.env['BOITE_E2E_DESKTOP'] !== '1')('Windows: agent-desktop reads, fills and captures an app on the hidden desktop', async () => {
     const { desktops } = watched();
@@ -259,7 +335,9 @@ describe('boite desktop on a shared session', () => {
     expect(listed.data.apps.map(app => app.pid)).toEqual([pid]);
     expect((await cli('snapshot', '-i')).error).toContain('needs --app or --window-id');
     const snapshot = (await cli('snapshot', '--window-id', window!.id, '-i', '--compact')).out;
-    const seven = /"name":"7"[^{}]*"ref_id":"(@[^"]+)"|"ref_id":"(@[^"]+)"[^{}]*"name":"7"/.exec(snapshot)?.slice(1).find(Boolean);
+    type Node = { name?: string; ref_id?: string; children?: Node[] };
+    const ref = (node: Node, name: string): string | undefined => node.name === name && node.ref_id ? node.ref_id : (node.children ?? []).map(child => ref(child, name)).find(Boolean);
+    const seven = ref((JSON.parse(snapshot) as { data: { tree: Node } }).data.tree, '7');
     expect(seven).toBeDefined();
     expect((await cli('click', seven!)).code).toBe(0);
     const shot = process.env['BOITE_E2E_DESKTOP_SHOT'] ?? join(harness.dataDir, 'calculator.png');

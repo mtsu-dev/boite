@@ -305,7 +305,7 @@ describe.skipIf(!posix)('the agent-desktop Boite installs', () => {
     const { pinned, fetched, fetch } = release();
     const tools = join(dir, 'tools');
     const tool = () => new AgentDesktopTool(tools, harness.core.procs, { release: pinned, platform: 'linux', arch: 'x64', fetch });
-    const intact = (path: string) => existsSync(path) && sha(readFileSync(path)) === pinned.builds.x64![0]!.sha256;
+    const intact = (path: string) => existsSync(path) && sha(readFileSync(path)) === pinned.builds['linux-x64']![0]!.sha256;
     // Two at once: each keeps the install it made, both stay.
     const [first, second] = await Promise.all([tool().path(), tool().path()]);
     expect(fetched).toHaveLength(2);

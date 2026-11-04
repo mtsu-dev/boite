@@ -32,11 +32,26 @@ const REFUSED: Record<string, string> = {
   batch: 'runs commands Boite cannot check one by one; run them one at a time',
 };
 
+/** Flags that read or show more than an app's window: a display, an HTML capture, the session's events. */
+const SCREEN_FLAGS: Record<string, string> = {
+  '--screen': 'captures a whole display, the user\'s windows included; use --window-id',
+  '--screenshot': 'writes a capture Boite cannot aim at one window',
+  '--debug': 'writes a capture Boite cannot aim at one window',
+  '--event': 'watches every app and window of the session',
+  '--notification': 'reads the user\'s notifications',
+};
+
 /** The surfaces of an app's own windows; the others (Dock, taskbar, menu bar extras) are the user's. */
 const APP_SURFACES = new Set(['window', 'focused', 'menu', 'sheet', 'popover', 'alert']);
 
 /** Commands that read or act on no app: they need no target. */
 const UNTARGETED = new Set(['status', 'permissions', 'version', 'skills', 'session', 'trace', 'help', 'list-displays', 'list-apps', 'list-windows']);
+
+/** Commands whose word right after the command is a ref from a snapshot. */
+const REF_COMMANDS = new Set(['click', 'right-click', 'set-value', 'clear', 'select', 'toggle', 'check', 'uncheck', 'expand', 'collapse', 'scroll', 'scroll-to', 'get', 'is']);
+
+/** A ref from a snapshot, `@s8f3k2p9:e1`: snapshots only reach the conversation's apps, so their refs do too. */
+const REF = /^@[A-Za-z0-9]+:e\d+$/;
 
 /** The words before `--`: after it come texts, never flags. */
 export function flagWords(args: string[]): string[] {
@@ -54,26 +69,37 @@ export function flagValue(args: string[], name: string): string | null {
   return null;
 }
 
+/** True when `words` holds `name` or `name=value`. */
+function hasFlag(words: string[], name: string): boolean {
+  return words.some(word => word === name || word.startsWith(`${name}=`));
+}
+
 /** Why `args` may not run on a desktop of kind `kind`, or null. Linux takes everything. */
 export function sharedSessionRefusal(kind: VirtualDesktopKind, args: string[]): string | null {
   if (kind === 'x11') return null;
   const where = kind === 'windows' ? 'a hidden Windows desktop' : 'macOS, among the user\'s own apps';
   const [command = ''] = args;
   const words = flagWords(args);
-  if (words.includes('--headed')) return `--headed is refused on ${where}: it drives the user's own keyboard and mouse`;
+  if (hasFlag(words, '--headed')) return `--headed is refused on ${where}: it drives the user's own keyboard and mouse`;
   const reason = REFUSED[command];
   if (reason) return `${command} is refused on ${where}: it ${reason}`;
   if (!SHARED_SESSION_COMMANDS.has(command)) return `${command} is not one boite desktop runs on ${where}`;
+  for (const [flag, why] of Object.entries(SCREEN_FLAGS)) {
+    if (hasFlag(words, flag)) return `${flag} is refused on ${where}: it ${why}`;
+  }
+  // agent-desktop finds the app by process name, which may be the user's copy; stop ends the conversation's apps.
+  if (command === 'close-app' && (kind === 'windows' || hasFlag(words, '--force'))) {
+    return `close-app${kind === 'windows' ? '' : ' --force'} is refused on ${where}: it can reach the user's copy of the app; boite desktop stop ends the conversation's apps`;
+  }
+  if (command === 'permissions' && (hasFlag(words, '--request') || hasFlag(words, '--guide'))) {
+    return 'permissions only reads here: --request and --guide open prompts and settings in the user\'s session, which are the user\'s to answer';
+  }
   const surface = flagValue(args, '--surface');
   if (surface !== null && !APP_SURFACES.has(surface)) return `--surface ${surface} is the user's, not an app's; use one of ${[...APP_SURFACES].join(', ')}`;
-  if (command === 'wait' && words.includes('--notification')) return 'wait --notification reads the user\'s notifications';
   return null;
 }
 
 export interface ListedWindow { id: string; pid: number; app_name?: string; title?: string }
-
-/** A ref from a snapshot, `@s8f3k2p9:e1`: snapshots only reach the conversation's apps, so their refs do too. */
-const REF = /^@[A-Za-z0-9]+:e\d+$/;
 
 /**
  * macOS: why `args` would reach an app the conversation did not start, or
@@ -84,25 +110,36 @@ export function macosTargetProblem(args: string[], windows: ListedWindow[], owne
   const [command = ''] = args;
   if (UNTARGETED.has(command)) return null;
   const words = flagWords(args).slice(1);
-  const ownedIds = () => windows.filter(window => owned.has(window.pid)).map(window => `${window.id} (${window.app_name ?? 'app'}${window.title ? `: ${window.title}` : ''})`);
   const windowId = flagValue(args, '--window-id');
   if (windowId !== null) {
     const window = windows.find(found => found.id === windowId);
-    if (window && owned.has(window.pid)) return null;
-    return `window ${windowId} is not one of this conversation's apps${ownedIds().length ? `; its windows: ${ownedIds().join(', ')}` : ''}`;
+    if (!window || !owned.has(window.pid)) {
+      const mine = windows.filter(found => owned.has(found.pid)).map(found => `${found.id} (${found.app_name ?? 'app'}${found.title ? `: ${found.title}` : ''})`);
+      return `window ${windowId} is not one of this conversation's apps${mine.length ? `; its windows: ${mine.join(', ')}` : ''}`;
+    }
   }
-  const app = flagValue(args, '--app');
-  if (app !== null) {
-    const named = windows.filter(window => sameApp(window.app_name, app));
-    const mine = named.filter(window => owned.has(window.pid));
-    if (mine.length === 0) return `${app} is not one of this conversation's apps: start it with boite desktop run`;
-    if (mine.length < named.length) return `the user runs ${app} too: name the window with --window-id ${mine[0]!.id}`;
-    return null;
+  // close-app names its app as its first word.
+  const app = command === 'close-app' ? words.find(word => !word.startsWith('-')) ?? null : flagValue(args, '--app');
+  if (app !== null) return appProblem(app, windows, owned);
+  if (windowId !== null) return null;
+  // A ref right after the command comes from a snapshot, which only reached the conversation's apps.
+  if (REF_COMMANDS.has(command) && REF.test(words[0] ?? '')) return null;
+  if (command === 'wait') {
+    const element = flagValue(args, '--element');
+    if (element !== null && REF.test(element) && words.length === 2) return null;
+    if (words.length === 1 && /^\d+$/.test(words[0]!)) return null;
   }
-  // A ref, or a wait on time or on a ref, needs no app of its own.
-  if (words.some(word => REF.test(word))) return null;
-  if (command === 'wait' && (words.length === 0 || /^\d+$/.test(words[0]!))) return null;
-  return `${command} needs --app or --window-id naming an app this conversation started; without one it reads the user's front app`;
+  if (REF_COMMANDS.has(command)) return `${command} takes its ref right after it here: boite desktop ${command} @ref ...`;
+  return `${command} needs --app or --window-id naming an app this conversation started; without one it reaches the user's front app`;
+}
+
+/** Why the app named `app` is not only the conversation's, or null. */
+function appProblem(app: string, windows: ListedWindow[], owned: ReadonlySet<number>): string | null {
+  const named = windows.filter(window => sameApp(window.app_name, app));
+  const mine = named.filter(window => owned.has(window.pid));
+  if (mine.length === 0) return `${app} is not one of this conversation's apps: start it with boite desktop run`;
+  if (mine.length < named.length) return `the user runs ${app} too: name the window with --window-id ${mine[0]!.id}`;
+  return null;
 }
 
 function sameApp(listed: string | undefined, wanted: string): boolean {
@@ -120,14 +157,22 @@ export function ownedListing(stdout: string, owned: ReadonlySet<number>): string
   return `${JSON.stringify(parsed)}\n`;
 }
 
-/** The pids under `roots`, roots included, from `ps -axo pid=,ppid=` output. */
-export function descendants(roots: number[], ps: string): Set<number> {
-  const children = new Map<number, number[]>();
+export interface ProcessEntry { pid: number; ppid: number; name: string }
+
+/** `ps -axo pid=,ppid=,comm=` output; `comm`, the executable, may hold spaces. */
+export function parsePs(ps: string): ProcessEntry[] {
+  const entries: ProcessEntry[] = [];
   for (const line of ps.split('\n')) {
-    const [pid, ppid] = line.trim().split(/\s+/).map(Number);
-    if (!Number.isInteger(pid) || !Number.isInteger(ppid)) continue;
-    children.set(ppid!, [...(children.get(ppid!) ?? []), pid!]);
+    const found = /^\s*(\d+)\s+(\d+)\s*(.*)$/.exec(line);
+    if (found) entries.push({ pid: Number(found[1]), ppid: Number(found[2]), name: found[3]!.trim() });
   }
+  return entries;
+}
+
+/** The pids under `roots`, roots included. */
+export function descendants(roots: number[], processes: ProcessEntry[]): Set<number> {
+  const children = new Map<number, number[]>();
+  for (const { pid, ppid } of processes) children.set(ppid, [...(children.get(ppid) ?? []), pid]);
   const found = new Set<number>();
   const queue = [...roots];
   while (queue.length > 0) {

@@ -144,12 +144,28 @@ accessibility action does on the conversation's own apps:
   `cursor-overlay`, `launch` (use `run`) and `batch`. A `--surface` other than
   an app's own window, menu, sheet, popover or alert is refused. The keyboard,
   mouse, clipboard, notifications, taskbar and Dock are the user's.
+- Refused because they reach past the app's window: `--screen` (a whole
+  display), `--screenshot` and `--debug` (an HTML capture), `wait --event` and
+  `wait --notification`. `permissions` only reads: `--request` and `--guide`
+  open prompts and settings that are the user's to answer.
+- `close-app` finds the app by its name, which may be the user's copy:
+  Windows refuses it, macOS refuses `--force` and checks the name as `--app`.
+  `boite desktop stop` ends the conversation's apps.
 - Type text with `set-value @ref "text"`, press a button or menu item with
   `click @ref`.
 - `env` is refused: an environment puts no window on these desktops.
 - `start` takes no size: the desktop has the size of the screen.
 - The folder is a fresh `boite-desktop-*` under the temporary folder with the
-  app logs and `AGENT_DESKTOP_HOME`. Apps keep the user's `HOME` and profile.
+  app logs and `AGENT_DESKTOP_HOME`. Apps keep the user's `HOME`.
+- An app that keeps one copy per user would hand a new launch to the user's
+  running copy, which opens the window on the user's screen. Chromium
+  browsers (Chrome, Edge, Brave, Vivaldi, Opera) and the Electron editors (VS
+  Code, Cursor, Windsurf) get `--user-data-dir=<folder>/profiles/<app>`,
+  Firefox `-no-remote -profile <folder>/profiles/firefox`, unless the command
+  gives a profile. They start with a fresh profile; copy in what one needs.
+  Explorer is refused, and so are Notepad, Calculator, Paint, Office, Teams,
+  Discord, Slack, Spotify, Steam, Obsidian and Windows Terminal while the user
+  runs them.
 
 ### Windows
 
@@ -162,7 +178,8 @@ each app, and the CLI each agent-desktop command, through a launcher:
 program there, waits for it and returns its exit code. The launcher is a
 normal child of the core, so the app stays in the conversation's job, its
 trace and its log, and stopping the launcher's tree stops the app. A `.cmd` or
-`.bat` runs through `cmd.exe`.
+`.bat` runs through `cmd.exe`, each argument escaped so that `&`, `|` or
+`%NAME%` stays text.
 
 UI Automation, `PrintWindow` and Windows Graphics Capture work on a hidden
 desktop: snapshots, accessibility actions and screenshots behave as on screen.
@@ -177,9 +194,8 @@ Limits:
 
 - A core running in session 0, as a service, or outside `WinSta0` gets no
   desktop, and `status` says why.
-- A single-instance app already open on the user's desktop, such as Chrome
-  with the user's profile, hands the new window to that copy. Give it its own
-  profile: `boite desktop run chrome --user-data-dir=<folder>`.
+- A single-instance app missing from the list above hands its window to the
+  user's copy the same way; the window then shows on the user's screen.
 - The clipboard is shared with the user's desktop; agent-desktop's clipboard
   commands are refused, and an app's own Copy button still writes it.
 
@@ -187,9 +203,19 @@ Limits:
 
 macOS has no hidden desktop that accessibility reaches, so the apps run in the
 user's session, behind the user's windows. `run TextEdit`, or the path of a
-`.app`, starts the executable inside the bundle (`Contents/MacOS/<its
-CFBundleExecutable>`) as the core's child instead of going through `open`:
-the app stays in the conversation's process tree and stops with the desktop.
+`.app`, opens the bundle with `open -n -g -W -a <bundle> [--args ...]`:
+
+- macOS kills an Apple app's executable that a parent other than launchd
+  starts, so the bundle goes through LaunchServices.
+- `-n` makes a new copy beside any the user runs, `-g` leaves the user's front
+  app in front, and `-W` keeps `open` the core's child until the app quits.
+- The core finds the new copy's pid, the process that runs the bundle's
+  executable (`Contents/MacOS/<its CFBundleExecutable>`) and was not there
+  before, and records it as the app's pid. A stop sends it `SIGTERM`, then
+  `SIGKILL` after 3 s.
+- The app gets the user's environment from LaunchServices, not the core's.
+
+A program that is no bundle runs as the core's child.
 
 Every agent-desktop command must aim at an app the conversation started, the
 running apps and the processes under them:
@@ -206,8 +232,8 @@ running apps and the processes under them:
 agent-desktop needs the Accessibility permission, and Screen Recording for
 screenshots, granted in System Settings > Privacy & Security to the app that
 launches it: Boite, or the terminal running the core.
-`boite desktop permissions --guide` shows the steps. Those prompts are the
-user's to answer.
+`boite desktop permissions` says what is missing. The user grants it, or runs
+`agent-desktop permissions --guide` from a terminal of their own.
 
 ## Security
 
@@ -285,7 +311,12 @@ fake hidden desktops. On Windows it starts a real hidden desktop, runs
 `charmap` on it, checks that its window is on that desktop and that `stop`
 ends it. `BOITE_E2E_DESKTOP=1` adds the pinned agent-desktop download and a
 snapshot, `set-value`, `get` and `screenshot` of `charmap` there;
-`BOITE_E2E_DESKTOP_SHOT=<file.png>` keeps the capture.
+`BOITE_E2E_DESKTOP_SHOT=<file.png>` keeps the capture. A batch file run on a
+hidden desktop gets back arguments holding `&`, `%PATH%`, quotes and carets
+unchanged, and runs none of them. On macOS, in a GUI session that granted the
+terminal Accessibility and Screen Recording, `BOITE_E2E_DESKTOP=1` opens
+Calculator, clicks 7, captures its window and checks that the front app did
+not change.
 
 `BOITE_E2E_DESKTOP=1` with agent-desktop and `google-chrome` on `PATH` adds a
 live test: Chrome opens a page, agent-desktop finds its button in a snapshot,

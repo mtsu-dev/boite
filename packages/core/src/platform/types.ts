@@ -262,6 +262,8 @@ export interface HiddenDesktops {
   create(name: string): HiddenDesktop;
   /** Leaves a folder, and what it will hold, to the user's account alone. */
   privateFolder(path: string): void;
+  /** Every process of the machine, with its parent and executable file name. */
+  processes(): { pid: number; ppid: number; name: string }[];
   /** Runs `argv` on the desktop `path` (`WinSta0\name`) and waits: the `--desktop-exec` launcher. */
   run(path: string, argv: string[]): number;
 }

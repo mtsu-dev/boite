@@ -50,6 +50,9 @@ function loadKernel32() {
     GetCurrentProcessId: { args: [], returns: FFIType.u32 },
     ProcessIdToSessionId: { args: [FFIType.u32, FFIType.ptr], returns: FFIType.i32 },
     GetCurrentProcess: { args: [], returns: FFIType.u64 },
+    CreateToolhelp32Snapshot: { args: [FFIType.u32, FFIType.u32], returns: FFIType.u64 },
+    Process32FirstW: { args: [FFIType.u64, FFIType.ptr], returns: FFIType.i32 },
+    Process32NextW: { args: [FFIType.u64, FFIType.ptr], returns: FFIType.i32 },
     LocalFree: { args: [FFIType.u64], returns: FFIType.u64 },
   });
 }
@@ -181,11 +184,37 @@ export function privateFolder(path: string): void {
   }
 }
 
-export const hiddenDesktops: HiddenDesktops = { unsupported: hiddenDesktopUnsupported, create: createHiddenDesktop, privateFolder, run: (path, argv) => runOnDesktop(path, argv) };
+const TH32CS_SNAPPROCESS = 2;
+/** PROCESSENTRY32W on 64-bit Windows: the pid at 8, the parent's at 32, the file name from 44. */
+const PROCESS_ENTRY_SIZE = 568;
+
+/** Every process of the machine, with its parent and executable file name. */
+export function processes(): { pid: number; ppid: number; name: string }[] {
+  const snapshot = k32().CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+  if (snapshot === 0xffff_ffff_ffff_ffffn) throw new Error(`CreateToolhelp32Snapshot failed with Windows error ${k32().GetLastError()}`);
+  const found: { pid: number; ppid: number; name: string }[] = [];
+  try {
+    const entry = Buffer.alloc(PROCESS_ENTRY_SIZE);
+    entry.writeUInt32LE(PROCESS_ENTRY_SIZE, 0);
+    for (let more = k32().Process32FirstW(snapshot, ptr(entry)); more !== 0; more = k32().Process32NextW(snapshot, ptr(entry))) {
+      const name = entry.toString('utf16le', 44, PROCESS_ENTRY_SIZE);
+      found.push({ pid: entry.readUInt32LE(8), ppid: entry.readUInt32LE(32), name: name.slice(0, Math.max(0, name.indexOf('\0'))) });
+    }
+  } finally {
+    k32().CloseHandle(snapshot);
+  }
+  return found;
+}
+
+export const hiddenDesktops: HiddenDesktops = { unsupported: hiddenDesktopUnsupported, create: createHiddenDesktop, privateFolder, processes, run: (path, argv) => runOnDesktop(path, argv) };
 
 /** One word of a command line, as the C runtime's argv parser reads it back. */
 export function quoteWindowsArg(word: string): string {
-  if (word.length > 0 && !/[\s"]/.test(word)) return word;
+  return word.length > 0 && !/[\s"]/.test(word) ? word : quoted(word);
+}
+
+/** `word` in quotes, its quotes and the backslashes before them escaped for the C runtime. */
+function quoted(word: string): string {
   let quoted = '"', slashes = 0;
   for (const char of word) {
     if (char === '\\') { slashes++; continue; }
@@ -196,6 +225,20 @@ export function quoteWindowsArg(word: string): string {
   return `${quoted}${'\\'.repeat(slashes * 2)}"`;
 }
 
+/** The characters cmd.exe reads in a command line, quotes included. */
+const CMD_SPECIAL = /([()\][%!^"`<>&|;, *?])/g;
+const caret = (text: string) => text.replace(CMD_SPECIAL, '^$1');
+
+/**
+ * One argument of a batch file run as `cmd.exe /d /s /c "..."`: quoted for the
+ * C runtime, then every character cmd.exe reads escaped with a caret, twice:
+ * cmd.exe reads the line once, then again where the batch file puts `%1` or
+ * `%*` into its own lines. `&` runs nothing and `%PATH%` stays text.
+ */
+export function quoteBatchArg(word: string): string {
+  return caret(caret(quoted(word)));
+}
+
 /** The program and command line `CreateProcessW` takes for `argv`: a batch file goes through cmd.exe. */
 export function windowsCommandLine(argv: string[], which: (name: string) => string | null = name => Bun.which(name)): { application: string; commandLine: string } {
   const [program, ...args] = argv;
@@ -203,7 +246,7 @@ export function windowsCommandLine(argv: string[], which: (name: string) => stri
   const resolved = which(program) ?? program;
   if (/\.(cmd|bat)$/i.test(resolved)) {
     const cmd = `${process.env['SystemRoot'] ?? 'C:\\Windows'}\\System32\\cmd.exe`;
-    return { application: cmd, commandLine: `${quoteWindowsArg(cmd)} /d /s /c "${[resolved, ...args].map(quoteWindowsArg).join(' ')}"` };
+    return { application: cmd, commandLine: `${quoteWindowsArg(cmd)} /d /s /c "${[caret(resolved), ...args.map(quoteBatchArg)].join(' ')}"` };
   }
   return { application: resolved, commandLine: [resolved, ...args].map(quoteWindowsArg).join(' ') };
 }

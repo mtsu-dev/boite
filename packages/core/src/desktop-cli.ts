@@ -13,7 +13,7 @@ import type { CliIo } from './cli.ts';
 import { Usage } from './cli-args.ts';
 import { DESKTOP_MARK, withDesktopEnv } from './desktop/env.ts';
 import { desktopExecCommand } from './desktop/launcher.ts';
-import { descendants, flagValue, macosTargetProblem, ownedListing, sharedSessionRefusal, type ListedWindow } from './desktop/scope.ts';
+import { descendants, flagValue, parsePs, macosTargetProblem, ownedListing, sharedSessionRefusal, type ListedWindow } from './desktop/scope.ts';
 
 export const DESKTOP_HELP = `boite desktop <command> [args]
   status                         this conversation's desktop, its apps, and what
@@ -140,7 +140,7 @@ async function agentDesktop(binary: string, args: string[], io: CliIo, env: Reco
 function macosOwned(session: VirtualDesktopSession): Set<number> {
   const roots = session.apps.filter(app => app.exitCode === null).map(app => app.pid);
   const ps = Bun.spawnSync({ cmd: ['ps', '-axo', 'pid=,ppid='], stdout: 'pipe', stderr: 'ignore' });
-  return descendants(roots, ps.stdout.toString());
+  return descendants(roots, parsePs(ps.stdout.toString()));
 }
 
 /**
@@ -150,7 +150,7 @@ function macosOwned(session: VirtualDesktopSession): Set<number> {
 async function macosAgentDesktop(binary: string, args: string[], io: CliIo, session: VirtualDesktopSession): Promise<DesktopCliResult> {
   const owned = macosOwned(session);
   let windows: ListedWindow[] = [];
-  if (flagValue(args, '--app') !== null || flagValue(args, '--window-id') !== null) {
+  if (args[0] === 'close-app' || flagValue(args, '--app') !== null || flagValue(args, '--window-id') !== null) {
     const listed = await agentDesktop(binary, ['list-windows'], io, session.env, session);
     try { windows = (JSON.parse(listed.output!.stdout) as { data?: ListedWindow[] }).data ?? []; } catch { windows = []; }
   }
