@@ -287,14 +287,15 @@ test('a held mouse is let go on the page when the view fails mid-drag, and when 
   app = mount(RemoteBrowser, { target: document.body, props: { store, threadId: 't-trace' } }); await settle();
   await vi.advanceTimersByTimeAsync(1); await settle();
   const screen = () => document.querySelector<HTMLButtonElement>('.screen')!;
-  const mouse = (type: string, x: number, y: number) => { const event = new MouseEvent(type, { clientX: x, clientY: y, button: 0, bubbles: true }); Object.defineProperty(event, 'pointerType', { value: 'mouse' }); screen().dispatchEvent(event); };
+  const mouse = (type: string, x: number, y: number, target: EventTarget = screen()) => { const event = new MouseEvent(type, { clientX: x, clientY: y, button: 0, bubbles: true }); Object.defineProperty(event, 'pointerType', { value: 'mouse' }); target.dispatchEvent(event); };
   const at = (x: number, y: number) => ({ x: x / 390, y: y / 300, width: 780, height: 600 });
   const sent = () => inputs.map(({ frameId: _, ...input }) => input);
   mouse('pointerdown', 100, 150); mouse('pointermove', 140, 150); await settle();
   failing = true;
   await vi.advanceTimersByTimeAsync(2000); await settle();
   expect(screen().disabled).toBe(true);
-  mouse('pointerup', 160, 150); await settle();
+  // A browser sends no pointer event to a disabled button: the release reaches only the window.
+  mouse('pointerup', 160, 150, window); await settle();
   expect(sent()).toEqual([
     { kind: 'pointer', action: 'down', ...at(100, 150) },
     { kind: 'pointer', action: 'move', ...at(140, 150), buttons: 1 },

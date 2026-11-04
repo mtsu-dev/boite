@@ -232,6 +232,13 @@ export class RemoteDrive {
       throw refused('refresh the live browser before interacting');
     }
     const tab = this.#context.tabOf(threadId, saved.frame.tabId);
+    // The button is held on another tab, the one the viewer showed before: it is let go there,
+    // and a release that this ends has nothing left to do on the new tab.
+    if (input.kind === 'pointer' && held && held.tabId !== tab.id) {
+      this.#held.delete(key);
+      await this.#release(held);
+      if (input.action === 'up') return { ok: true };
+    }
     const pressing = input.kind === 'pointer' && input.action === 'down' ? { left: false } : null;
     if (pressing) this.#pressing.set(key, pressing);
     let result: Awaited<ReturnType<RemoteDrive['remoteInput']>>;

@@ -212,6 +212,16 @@ real('a viewer on another device watches and drives the tab, and hears it come a
     await leave(100, false);
     await leave(120, true);
     expect(await evaluate('JSON.stringify(ups)')).toBe('[220,100,120]');
+    // A viewer that switches tabs mid-drag lets go on the tab it pressed, not on the one it shows now.
+    await act({ kind: 'pointer', action: 'down', ...at(140, 369) });
+    const other = (await agent.call('browser.command', { threadId, action: { kind: 'open', url: url() } })).tabId;
+    await evaluate('window.ups = []; addEventListener("mouseup", e => ups.push(Math.round(e.clientX)))', other);
+    await Bun.sleep(150);
+    const onOther = await picture(phone.call('browser.remoteFrame', { threadId, tabId: other }));
+    await phone.call('browser.remoteInput', { threadId, frameId: onOther.id, input: { kind: 'pointer', action: 'up', x: 300 / onOther.width, y: 369 / onOther.height, width: onOther.width, height: onOther.height } });
+    expect(await evaluate('JSON.stringify(ups)', other)).toBe('[]');
+    await agent.call('browser.command', { threadId, tabId: other, action: { kind: 'close' } });
+    expect(await evaluate('JSON.stringify(ups)', tabId)).toBe('[220,100,120,140]');
     await evaluate('document.querySelector("#name").type = "password"');
     await act({ kind: 'tap', ...at(150, 230) });
     await act({ kind: 'select-all' });

@@ -397,6 +397,9 @@
       if (start.mouse) direct(tap, start.frame); else void input(tap, start.frame);
     }
   }
+  /** A browser sends no pointer event to a disabled button: a drag held while the view failed ends here. */
+  function windowUp(event: PointerEvent) { if (pointer) up(event); }
+  function windowCancel() { if (pointer) cancel(); }
   /** A held mouse the system took away lets go of the page where it was last seen. */
   function cancel() {
     const start = pointer; pointer = undefined;
@@ -422,6 +425,8 @@
     else if (event.key === 'Backspace' && text === '') { event.preventDefault(); void input({ kind: 'key', key: 'Backspace' }); }
   }
 </script>
+
+<svelte:window onpointerup={windowUp} onpointercancel={windowCancel} />
 
 <section class="remote" data-testid="remote-browser" aria-label={strings.remoteBrowser.title}>
   <BrowserNav {addressId} {secure} loading={!!frame && !fresh && !paused} spinning={!!frame && !fresh} disabled={!usable} onsubmit={go}
