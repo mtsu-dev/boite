@@ -232,6 +232,14 @@ require an enabled team or custom profile; pause still holds launches. Workflow
 steps remain separate from the team's agent list. That guide owns plan syntax,
 structured output, commands and recovery.
 
+## Debates
+
+[Debates](debates.md), behind the AI debates experiment, ask several models
+one question in rounds over read-only child threads, then a model that did not
+debate writes the summary, which returns like a child's result.
+`boite delegate debate` starts one, `delegate list` shows it and
+`delegate stop <dbt_id>` stops it.
+
 ## On another machine of the group
 
 `boite delegate spawn "<brief>" --machine <name>` (MCP: `machine` on

@@ -235,7 +235,7 @@ test('Automatic goals is off by default; on, its threshold row sits under the sw
   expect(document.querySelector('[data-testid=auto-goal-settings]')).toBeNull();
 });
 
-test('Contacts waits on Bots: greyed until Bots is on, made with the Operator, and off again with Bots', async () => {
+test('Contacts and Teams wait on Bots: greyed until Bots is on, Contacts made with the Operator, and both off again with Bots', async () => {
   const client = new FakeClient({ delayMs: 0 });
   const store = new Store();
   store.attach(client);
@@ -244,6 +244,7 @@ test('Contacts waits on Bots: greyed until Bots is on, made with the Operator, a
   running = mount(ExperimentsPage, { target: document.body, props: { store } });
   flushSync();
   const contacts = () => query<HTMLInputElement>('[data-testid=experiment-contacts]');
+  const teams = () => query<HTMLInputElement>('[data-testid=experiment-teams]');
   const bots = () => query<HTMLInputElement>('[data-testid=experiment-resident-agents]');
 
   // Bots off: the switch cannot be turned on, and its "i" says why.
@@ -252,10 +253,19 @@ test('Contacts waits on Bots: greyed until Bots is on, made with the Operator, a
   help.click();
   flushSync();
   expect(document.getElementById(help.getAttribute('aria-describedby')!)?.textContent).toBe(strings.experiments.contacts.needsBots);
+  // A team's chat is listed on the Bots page: Teams waits the same way, with its own reason.
+  expect(teams().disabled).toBe(true);
+  const teamsHelp = teams().closest('label')!.querySelector<HTMLButtonElement>('[data-testid=info-tip]')!;
+  teamsHelp.click();
+  flushSync();
+  expect(document.getElementById(teamsHelp.getAttribute('aria-describedby')!)?.textContent).toBe(strings.experiments.teams.needsBots);
 
   bots().click();
   flushSync();
-  expect(contacts().disabled).toBe(false);
+  expect([contacts().disabled, teams().disabled]).toEqual([false, false]);
+  teams().click();
+  flushSync();
+  expect(isExperimentEnabled('teams')).toBe(true);
   expect((await client.call('contacts.get', {})).bot).toBeNull();
   const call = vi.spyOn(client, 'call');
   contacts().click();
@@ -265,11 +275,12 @@ test('Contacts waits on Bots: greyed until Bots is on, made with the Operator, a
   expect(call.mock.calls.filter(([method]) => method === 'agents.builtin.ensure').map(([, params]) => params)).toEqual([{ kind: 'contacts', name: strings.agents.builtin.name.contacts }]);
   expect(isExperimentEnabled('contacts')).toBe(true);
 
-  // Bots off takes Contacts with it.
+  // Bots off takes Contacts and Teams with it.
   bots().click();
   flushSync();
   await tick();
   expect([isExperimentEnabled('resident-agents'), isExperimentEnabled('contacts'), contacts().checked, contacts().disabled]).toEqual([false, false, false, true]);
+  expect([isExperimentEnabled('teams'), teams().checked, teams().disabled]).toEqual([false, false, true]);
 });
 
 test('turning Contacts on makes nothing when a machine of the group has the Operator, and a failure is told with the switch left on', async () => {

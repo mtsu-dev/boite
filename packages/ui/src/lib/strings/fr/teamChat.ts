@@ -3,7 +3,9 @@ import type { Translation } from '../../i18n.svelte';
 export const fr: Translation = {
   teamChat: {
     heading: 'Équipes',
-    unread: '{count} non lus',
+    room: "Salon d'équipe",
+    roomOne: "Salon d'équipe · un bot et vous",
+    roomMany: "Salon d'équipe · {count} bots et vous",
     members: 'Membres',
     you: 'Vous',
     youInText: 'vous',

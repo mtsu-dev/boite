@@ -12,8 +12,9 @@ import { createSharedCompute } from '../contacts/compute-journal.ts';
 import { createSharedAccess } from '../contacts/access-journal.ts';
 import { createSharedReview } from '../contacts/review-journal.ts';
 import { createTeams } from '../teams/journal.ts';
+import { createDebates } from '../debates/journal.ts';
 
-export const SCHEMA_VERSION = 46;
+export const SCHEMA_VERSION = 47;
 
 /** Raised when the journal was written by a newer core than this one. */
 export class JournalTooNewError extends Error {
@@ -480,6 +481,12 @@ export function migrate(db: Database, file: string): { from: number; to: number 
     if (!hasColumn('threads', 'team_id')) db.exec('ALTER TABLE threads ADD COLUMN team_id TEXT');
     createTeams(db);
     version = 46;
+  }
+  // Debates between AIs (`docs/debates.md`): the debates, their posts and the children each one runs.
+  if (version < 47) {
+    if (!hasColumn('threads', 'debate_id')) db.exec('ALTER TABLE threads ADD COLUMN debate_id TEXT');
+    createDebates(db);
+    version = 47;
   }
   createSharedProjects(db);
   createSharedBoard(db);

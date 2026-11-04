@@ -147,6 +147,8 @@ export interface FakeClientOptions {
   watchDemo?: boolean;
   /** Window captures, consent cards in each state and a watched Unity window on the trace thread, on `?fake=1&windows=1`. */
   windowsDemo?: boolean;
+  /** A thread that started a finished debate and one under way, with their salons, on `?fake=1&debates=1`. */
+  debatesDemo?: boolean;
   /** Who this client is. `'session'` makes it a paired phone, refused like one. */
   principal?: Principal;
   /** The thread an agent's token names; with none, every agent call fails closed, as on the core. */
@@ -534,7 +536,7 @@ export class FakeContext {
       version: '2.0.0-beta.1',
       coreId,
       protocolVersion: PROTOCOL_VERSION,
-      features: { draftPreparation: true, attachmentUploads: true, threadSnapshots: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, projectBoard: true, settingsHome: true, botsHome: true, botMove: true, sharedProjects: 1, listChanges: true },
+      features: { draftPreparation: true, attachmentUploads: true, threadSnapshots: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, projectBoard: true, settingsHome: true, botsHome: true, botMove: true, botMoveQueue: true, sharedProjects: 1, listChanges: true },
       os: 'windows',
       channel: 'stable',
       pid: 4242,

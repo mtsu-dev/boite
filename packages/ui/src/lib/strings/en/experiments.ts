@@ -39,7 +39,12 @@ export const strings = {
     },
     teams: {
       title: 'Teams',
-      hint: 'Bots that work together in a shared chat: a post wakes the bots it names, and each answers in the group or privately. Your bots post with boite team. Not ready for everyday use'
+      hint: 'Bots that work together in a shared chat, listed above them on the Bots page: a post wakes the bots it names, and each answers in the group or privately. Your bots post with boite team. Not ready for everyday use',
+      needsBots: 'Needs Bots: a team\'s chat is listed with its bots. Turn Bots on first'
+    },
+    debates: {
+      title: 'AI debates',
+      hint: 'Your agents can ask several AIs to debate a question in rounds with boite delegate debate. You follow them in a salon and may write there, and an AI that did not debate sends the summary back to the thread. Not ready for everyday use'
     }
   }
 } as const;

@@ -723,6 +723,7 @@ export function startServer(options: ServerOptions): RunningServer {
       // The children and steps the handoff cut go on with their conversations.
       core.delegation.resumeAfterRestart();
       core.workflows.resumeAfterRestart();
+      core.debates.resumeAfterRestart();
     });
     // Desktop-app plugins the owner left enabled, now that they have an address to reach.
     core.plugins.startApps();

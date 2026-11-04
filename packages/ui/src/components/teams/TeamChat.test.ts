@@ -5,6 +5,7 @@ import { FakeClient } from '../../lib/fake-client';
 import { Store } from '../../lib/store.svelte';
 import { workspace } from '../../lib/workspace.svelte';
 import MobileNavigation from '../MobileNavigation.svelte';
+import AgentsPage from '../agents/AgentsPage.svelte';
 import TeamChat from './TeamChat.svelte';
 
 const mounted: ReturnType<typeof mount>[] = [];
@@ -16,7 +17,9 @@ afterEach(async () => {
   for (const close of closers.splice(0)) close();
   workspace.machines = []; workspace.active = previousActive;
   setExperiment('teams', false);
+  setExperiment('resident-agents', false);
   vi.restoreAllMocks(); document.body.innerHTML = ''; localStorage.clear();
+  document.documentElement.classList.remove('agents-detail-open');
 });
 
 async function settle(): Promise<void> {
@@ -61,32 +64,98 @@ function type(text: string) {
   flushSync();
 }
 
-test("the phone's Teams section lists the team with its unread chat, keeps the chat out of the thread rows, and opens it", async () => {
+/** A phone's width: every `max-width` query matches. */
+function phone() {
   vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
-    media, matches: true, onchange: null, addListener() {}, removeListener() {}
+    media, matches: media.includes('max-width'), onchange: null, addListener() {}, removeListener() {}
   }));
+}
+
+/** The Bots page with Bots on, where the teams are listed while Teams is on. */
+function botsPage(store: Store, narrow: boolean) {
+  if (narrow) phone();
+  setExperiment('resident-agents', true);
+  store.showAgents();
+  mounted.push(mount(AgentsPage, { target: document.body, props: { store } }));
+  flushSync();
+}
+
+function search(text: string) {
+  const field = query<HTMLInputElement>('.agents-search input');
+  field.value = text;
+  field.dispatchEvent(new Event('input', { bubbles: true }));
+  flushSync();
+}
+
+test("the Bots page lists the teams above the bots, opens a team's chat beside them, and its search finds teams by name", async () => {
   const { store, team, huginn, say } = await skollheim();
   await say(huginn.id, 'The draft is up. @tous have a look.');
-  mounted.push(mount(MobileNavigation, { target: document.body, props: { store, screen: 'threads' } }));
+  botsPage(store, false);
 
-  await vi.waitFor(() => expect(document.querySelector(`[data-testid=sidebar-team][data-team-id="${team.id}"]`)?.getAttribute('data-unread')).toBe('true'));
-  const row = query<HTMLButtonElement>('[data-testid=sidebar-team]');
-  expect(row.textContent).toContain('Skollheim');
-  expect(row.textContent).toContain('Huginn (Réseaux) and Jeux (Producteur)');
+  const row = `[data-testid="agent-team-${team.id}"]`;
+  const bot = `[data-testid="agent-entry-${huginn.id}"]`;
+  await vi.waitFor(() => expect(document.querySelector(row)?.getAttribute('data-unread')).toBe('true'));
+  await vi.waitFor(() => query(bot));
+  expect(all('.agents-rail .section-label').map(heading => heading.textContent)).toEqual(['Teams', 'Bots']);
+  expect(query(row).textContent).toContain('Skollheim');
+  expect(query(row).textContent).toContain('Huginn (Réseaux) and Jeux (Producteur)');
+  // The desktop's default bot is open first; the team's row then takes the card.
+  await vi.waitFor(() => expect(store.openThread?.agentSessionId).toBeTruthy());
+
+  query<HTMLButtonElement>(row).click();
+  await vi.waitFor(() => expect(store.openThread?.id).toBe(team.threadId));
+  expect(store.page).toBe('agents');
+  await vi.waitFor(() => query('[data-testid=team-chat]'));
+  expect([query('[data-testid=team-title]').textContent, query('[data-testid=team-room]').textContent]).toEqual(['Skollheim', 'Team chat · 2 bots and you']);
+  expect(query(row).getAttribute('aria-current')).toBe('page');
+  await vi.waitFor(() => expect(document.querySelector(row)?.hasAttribute('data-unread')).toBe(false));
+  // A desktop has no way back to a list it already shows.
+  expect(document.querySelector('[data-testid=agent-back]')).toBeNull();
+
+  query<HTMLButtonElement>('[data-testid=agents-search-toggle]').click(); flushSync();
+  search('skoll');
+  expect([!!document.querySelector(row), !!document.querySelector(bot)]).toEqual([true, false]);
+  search('huginn');
+  expect([!!document.querySelector(row), !!document.querySelector(bot)]).toEqual([false, true]);
+  // One card left: no headings over it.
+  expect(all('.agents-rail .section-label')).toHaveLength(0);
+});
+
+test("a phone's Bots list holds the teams, a team's chat opens full screen over it and goes back to it, and no thread row lists the chat", async () => {
+  const { store, team } = await skollheim();
+  phone();
+  const threads = mount(MobileNavigation, { target: document.body, props: { store, screen: 'threads' } });
+  await settle();
   // The chat refuses an agent's composer: it is no thread row of the list.
   expect(store.threads.some(thread => thread.id === team.threadId)).toBe(true);
   expect(document.querySelector(`[data-thread-id="${team.threadId}"]`)).toBeNull();
+  await unmount(threads);
 
-  // Folded, the section's head still says a chat waits unread.
-  query<HTMLButtonElement>('[data-testid=sidebar-teams-toggle]').click(); await settle();
-  expect(query('[data-testid=sidebar-teams-unread]').textContent).toBe('1');
-  query<HTMLButtonElement>('[data-testid=sidebar-teams-toggle]').click(); await settle();
-
-  query<HTMLButtonElement>('[data-testid=sidebar-team]').click();
+  botsPage(store, true);
+  const row = `[data-testid="agent-team-${team.id}"]`;
+  await vi.waitFor(() => query(row));
+  const covered = () => document.documentElement.classList.contains('agents-detail-open');
+  expect(covered()).toBe(false);
+  query<HTMLButtonElement>(row).click();
   await vi.waitFor(() => expect(store.openThread?.id).toBe(team.threadId));
+  await vi.waitFor(() => query('[data-testid=team-chat]'));
+  expect(covered()).toBe(true);
+  query<HTMLButtonElement>('[data-testid=agent-back]').click(); flushSync();
+  expect(covered()).toBe(false);
+  // The chat stays open behind the list.
+  expect(store.openThread?.id).toBe(team.threadId);
+});
+
+test('with Teams off the Bots page lists the bots alone, and a team chat opens in the chat', async () => {
+  const { store, team, huginn } = await skollheim();
+  setExperiment('teams', false);
+  botsPage(store, false);
+  await vi.waitFor(() => query(`[data-testid="agent-entry-${huginn.id}"]`));
   await settle();
-  expect(document.querySelector('.mobile-list')).toBeNull();
-  await vi.waitFor(() => expect(store.threads.find(thread => thread.id === team.threadId)?.unread).toBe(false));
+  expect(document.querySelector('[data-testid=agents-teams]')).toBeNull();
+  expect(all('.agents-rail .section-label')).toHaveLength(0);
+  await store.open(team.threadId);
+  expect(store.page).toBe('chat');
 });
 
 test('the team chat draws each post with its author, a private post with its recipient, and who each post woke', async () => {
