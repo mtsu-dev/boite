@@ -33,7 +33,7 @@ console.info('shop ready'); setInterval(probe, 0);</script>
 const browserFixture = createBrowserFixture();
 const chromium = findChromium().path;
 // The page must be served under a public name: a wrapper maps `*.example` to this machine.
-const real = chromium && process.platform !== 'win32' ? browserFixture.real : browserFixture.real.skip;
+const real = chromium && process.platform !== 'win32' ? browserFixture.real : test.skip;
 
 let site: ReturnType<typeof Bun.serve>, wrapperDir = '', savedBrowser: string | undefined;
 beforeAll(() => {
