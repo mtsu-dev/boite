@@ -232,6 +232,9 @@ test('a member without a Contacts bot asks through the Bots host: queued while t
   remoteOn(a, aThread);
   const xBot = await contactsBotOf(x, xClient);
   await botsHome(a, aClient, x, xId);
+  // A's threads are told to ask, as on the host: the direct send of the older paths is refused here.
+  expect(a.core.coordination.instructions(aThread)).toContain('boite threads ask');
+  expect(a.core.coordination.instructions(aThread)).not.toContain('their threads there are in `boite threads`');
   // X does not answer: the ask waits on A with a status that says so.
   const real = a.core.coordination.request.bind(a.core.coordination);
   let silent = true;
