@@ -376,3 +376,43 @@ for (const ending of ['completed', 'error', 'refused'] as const) test(`a remote 
   await waitFor(() => run(started.id).status === 'done');
   expect(step().result).toBe('Final result: CI passed.');
 }, 20_000);
+
+test('a remote step whose answer carries its result settles at once, and the background work it left there is stopped', async () => {
+  const runs = new Map<string, { ctx: TurnContext; finish: (text: string) => void }>();
+  const prompts: string[] = [];
+  restores.push(setDriver('echo', { protocol: 'echo', startTurn(ctx) {
+    prompts.push(ctx.prompt);
+    const done = Promise.withResolvers<TurnResult>();
+    const finish = (text: string) => {
+      const id = ctx.emit.startMessage('assistant');
+      ctx.emit.part(id, 0, { type: 'text', text });
+      ctx.emit.complete(id, 'complete');
+      done.resolve({ status: 'done', sessionId: `session:${ctx.thread.id}`, usage: null });
+    };
+    if (ctx.prompt.includes('step bus') || runs.has(ctx.thread.id)) runs.set(ctx.thread.id, { ctx, finish });
+    else finish('Summary read.');
+    return { done: done.promise, stop() { done.resolve({ status: 'stopped', sessionId: null, usage: null }); } };
+  } }));
+  const { desk, pc, owner, threadId, machine, onPc, run } = await setup();
+  const started = await owner.call('workflows.start', { threadId, requestId: 'remote-result', plan: { name: 'Remote bus', steps: [
+    { id: 'bus', machine, project: 'notes', task: 'Build the bus.', output: { branch: 'string' } },
+    { id: 'shots', after: ['bus'], task: 'Shoot {{bus.branch}}' },
+  ] } });
+  await waitFor(() => onPc().some(child => runs.has(child.id)));
+  const childId = onPc()[0]!.id, first = runs.get(childId)!;
+  const step = () => run(started.id).nodes[0]!.instances[0]!;
+  first.ctx.background!([{ id: 'watch', kind: 'monitor', description: 'Build watcher', toolId: null, startedAt: Date.now() }]);
+  first.finish(JSON_BLOCK({ branch: 'feat/bus' }));
+  // Long before the watcher would end: the step settles on its result and the step after it starts here.
+  await waitFor(() => step().status === 'done', 3000);
+  expect(step().output).toEqual({ branch: 'feat/bus' });
+  await waitFor(() => prompts.some(prompt => prompt.includes('Shoot feat/bus')), 3000);
+  // The watcher is stopped there and never wakes the finished step.
+  await waitFor(() => (pc.core.threads.agentState.background.get(childId) ?? []).length === 0, 3000);
+  expect(pc.core.threads.agentState.backgroundHistory.list(childId).find(task => task.id === 'watch')?.state).toBe('cancelled');
+  await new Promise(resolve => setTimeout(resolve, 200));
+  expect(runs.get(childId)).toBe(first);
+  expect(pc.core.journal.listTurns(childId)).toHaveLength(1);
+  await waitFor(() => run(started.id).status === 'done');
+  expect(desk.core.workflows.get(threadId, started.id).nodes[0]!.instances[0]!.status).toBe('done');
+}, 20_000);

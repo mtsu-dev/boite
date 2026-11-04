@@ -11,6 +11,7 @@ import { fingerprint } from '../contacts/project-journal.ts';
 import { memberNamed } from '../threads/group-spawn.ts';
 import { INTERRUPTION_TEXT } from '../delegation/interruption.ts';
 import { stepPrompt } from './prompt.ts';
+import { shapedOutput } from './step-result.ts';
 
 interface Hooks {
   load: (id: string) => WorkflowRun | null;
@@ -33,6 +34,8 @@ export class MachineWorkflowSteps {
   readonly #pending = new Set<Promise<unknown>>();
   /** `run:key:turn` being read now, so a report arriving meanwhile does not judge the same turn twice. */
   readonly #judging = new Set<string>();
+  /** `run:key:turn` checkpoints already read for a result, so each report does not read them again. */
+  readonly #checkpoints = new Set<string>();
   /** Correction request ids out now, so a report arriving meanwhile does not send one twice at once. */
   readonly #sending = new Set<string>();
 
@@ -157,8 +160,11 @@ export class MachineWorkflowSteps {
       this.#correct(run!, key, machine.requestId, record.childId, machine.correction);
       return;
     }
-    // At work, or ended to wait on its own background work, or cut by a restart there that resumes it, or already judged.
-    if (turn === null || ['queued', 'running'].includes(turn.status) || state.thread.backgroundWait?.state === 'waiting' || state.restarting || turn.id === machine.turnId) return;
+    // At work, or cut by a restart there that resumes it, or already judged.
+    if (turn === null || ['queued', 'running'].includes(turn.status) || state.restarting || turn.id === machine.turnId) return;
+    const step = run!.plan.steps.find(s => s.id === key.split('#')[0])!;
+    // Ended to wait on its own background work: only a result its answer delivered settles the step now.
+    if (state.thread.backgroundWait?.state === 'waiting') return this.#checkpoint(runId, key, run!.rootThreadId, machine.requestId, record.childId, turn, state.result, step);
     if (record.interruption?.turnId === turn.id) {
       this.#fail(runId, key, machine.requestId, record.interruption.error);
       return;
@@ -173,11 +179,30 @@ export class MachineWorkflowSteps {
     const mark = `${runId}:${key}:${turn.id}`;
     if (this.#judging.has(mark)) return;
     this.#judging.add(mark);
-    const step = run!.plan.steps.find(s => s.id === key.split('#')[0])!;
     const work = (async () => {
       const answer = turn.status === 'done' ? await this.#answer(run!.rootThreadId, record.childId!, turn.id, state.result) : '';
       this.#judge(runId, key, machine.requestId, turn, answer, step);
     })().catch(error => this.#fail(runId, key, machine.requestId, messageOf(error))).finally(() => this.#judging.delete(mark));
+    this.#track(work);
+  }
+
+  /**
+   * A turn there that ended on live background work is a checkpoint, unless
+   * its answer carries the step's result: then that work is stopped there, so
+   * it never wakes the finished step, and the step settles on that answer.
+   */
+  #checkpoint(runId: string, key: string, rootId: string, requestId: string, childId: string, turn: Turn, reported: string | null, step: WorkflowStepPlan): void {
+    const mark = `${runId}:${key}:${turn.id}`;
+    if (turn.status !== 'done' || step.output === undefined || this.#checkpoints.has(mark) || this.#judging.has(mark)) return;
+    this.#checkpoints.add(mark);
+    this.#judging.add(mark);
+    const work = (async () => {
+      const answer = await this.#answer(rootId, childId, turn.id, reported);
+      if (!('value' in shapedOutput(answer, step.output!)) || !this.#running(this.#hooks.load(runId), key)) return;
+      this.#core.log('info', `workflow step ${key} on another machine: its result is in, so the background work it left there is stopped`);
+      this.#halt(rootId, requestId);
+      this.#judge(runId, key, requestId, turn, answer, step);
+    })().catch(error => this.#fail(runId, key, requestId, messageOf(error))).finally(() => this.#judging.delete(mark));
     this.#track(work);
   }
 

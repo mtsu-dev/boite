@@ -143,8 +143,11 @@ it does not bypass the scheduler with a detached callback.
 A turn that delivers a valid result ends the step even when the agent leaves
 background work running (a watcher, a build): dependents start at once, and the
 core ends that agent and its process tree so the leftover work never wakes the
-finished step (`workflows/step-result.ts`). Without a valid result, a turn that
-ends on background work is a checkpoint and the step waits for that work.
+finished step (`workflows/step-result.ts`). A step on another machine does the
+same from that machine's report: a checkpoint whose answer holds a valid `json`
+block settles the step, and the stop goes to that machine. Without a valid
+result, a turn that ends on background work is a checkpoint: the step waits for
+that work, and its worktree stays in use.
 
 The step's brief tells it where it sits in the run, that other steps share the
 checkout, and that its answer is collected automatically. Steps share the

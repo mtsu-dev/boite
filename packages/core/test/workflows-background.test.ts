@@ -1,4 +1,5 @@
 import { afterEach, expect, spyOn, test } from 'bun:test';
+import { existsSync } from 'node:fs';
 import { BACKGROUND_WAKE_GRACE_MS, DEFAULT_DELEGATION_CONFIG } from '@boite/contracts';
 import type { DelegationConfig, WorkflowPlan } from '@boite/contracts';
 import { setDriver } from '../src/drivers/index.ts';
@@ -254,14 +255,27 @@ const SHAPED: WorkflowPlan = { name: 'Build bus', steps: [
   { id: 'shots', profile: 'fast', after: ['bus'], task: 'Shoot {{bus.branch}}' },
 ] };
 
+/** The test project as a git repository, for a step with a worktree. */
+function gitRepo(cwd: string): void {
+  const env = { ...process.env, GIT_AUTHOR_NAME: 'boite test', GIT_AUTHOR_EMAIL: 'test@boite.invalid', GIT_COMMITTER_NAME: 'boite test', GIT_COMMITTER_EMAIL: 'test@boite.invalid' };
+  for (const args of [['init', '-q'], ['config', 'core.autocrlf', 'false'], ['commit', '-q', '--allow-empty', '-m', 'init']]) {
+    const run = Bun.spawnSync({ cmd: ['git', ...args], cwd, env, stdout: 'pipe', stderr: 'pipe', windowsHide: true });
+    if (!run.success) throw new Error(`git ${args.join(' ')} failed: ${run.stderr.toString()}`);
+  }
+}
+/** Git on a Windows runner takes seconds per worktree. */
+const SLOW_GIT_MS = 30_000;
+
 /** A shaped step whose agent leaves a watcher running in the background; returns its first turn, still running. */
-async function shaped() {
+async function shaped(worktree = false) {
   const base = await parent();
   const { h, owner, threadId, runs } = base;
-  const run = await owner.call('workflows.start', { threadId, requestId: 'bus', plan: SHAPED });
+  if (worktree) gitRepo(h.dataDir);
+  const plan: WorkflowPlan = worktree ? { ...SHAPED, steps: [{ ...SHAPED.steps[0]!, worktree: true }, SHAPED.steps[1]!] } : SHAPED;
+  const run = await owner.call('workflows.start', { threadId, requestId: 'bus', plan });
   const step = () => h.core.workflows.get(threadId, run.id).nodes[0]!.instances[0]!;
   const shots = () => h.core.workflows.get(threadId, run.id).nodes[1]!.instances[0];
-  await waitFor(() => !!step()?.threadId && runs.has(step().threadId!));
+  await waitFor(() => !!step()?.threadId && runs.has(step().threadId!), SLOW_GIT_MS);
   const childId = step().threadId!, first = runs.get(childId)!;
   first.ctx.background!([{ id: 'watch-1', kind: 'monitor', description: 'Build watcher', toolId: null, startedAt: Date.now() }]);
   const release = spyOn(h.core.threads, 'releaseAgent');
@@ -272,7 +286,7 @@ async function shaped() {
     // Long before any watcher ends: the step settles on the result, not on that work.
     await waitFor(() => step().status === 'done', 2000);
     expect(step().output).toEqual({ branch });
-    await waitFor(() => !!shots()?.threadId && runs.has(shots()!.threadId!));
+    await waitFor(() => !!shots()?.threadId && runs.has(shots()!.threadId!), SLOW_GIT_MS);
     expect(base.prompts.find(entry => entry.threadId === shots()!.threadId)!.prompt).toContain(`Shoot ${branch}`);
     expect(release).toHaveBeenCalledWith(childId);
     expect(kill).toHaveBeenCalledWith(childId);
@@ -285,21 +299,31 @@ async function shaped() {
 }
 
 test('a shaped step whose answer carries its result is done at once, though its background work is still live', async () => {
-  const { h, step, shots, childId, first, release, runs, settled } = await shaped();
-  // Without a result, a turn ended on live work stays a checkpoint: no correction, nothing released.
+  const { h, step, shots, childId, first, release, runs, settled } = await shaped(true);
+  const settle = spyOn(h.core.delegation.worktrees, 'settle');
+  restores.push(() => settle.mockRestore());
+  const { path } = h.core.delegation.worktrees.get(childId)!;
+  // Without a result, a turn ended on live work stays a checkpoint: no correction, nothing released,
+  // and its clean worktree stays in use rather than being settled and removed under that work.
   first.finish('Checkpoint: the build is still running.');
   await waitFor(() => h.core.threads.require(childId).status === 'idle');
-  await new Promise(resolve => setTimeout(resolve, 100));
+  await new Promise(resolve => setTimeout(resolve, 300));
   expect(step()).toMatchObject({ status: 'running', output: null });
   expect(shots()?.threadId ?? null).toBeNull();
   expect(release).not.toHaveBeenCalledWith(childId);
+  expect(settle).not.toHaveBeenCalledWith(childId);
+  expect(existsSync(path)).toBe(true);
+  expect(h.core.threads.agentState.background.get(childId)).toHaveLength(1);
   // Woken, it answers with its result while the watcher still runs.
   first.ctx.wake!('Build finished.');
   await waitFor(() => runs.get(childId) !== first, 5000);
   const second = runs.get(childId)!;
   second.finish('Built.\n```json\n{"branch": "feat/bus"}\n```');
   await settled('feat/bus', second);
-});
+  // Its work ended first, then the clean worktree went with its branch.
+  expect(h.core.delegation.worktrees.get(childId)).toMatchObject({ state: 'removed' });
+  expect(existsSync(path)).toBe(false);
+}, 90_000);
 
 test('a step whose result went through boite workflow output is done when its turn ends on live background work', async () => {
   const { h, childId, first, settled } = await shaped();

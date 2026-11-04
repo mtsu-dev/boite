@@ -507,7 +507,7 @@ export class Workflows {
     }
     const end = childEnd(this.#core, turn);
     if (end.kind === 'maintenance') return;
-    let correction = false, cut = false, leftovers = false;
+    let correction = false, cut = false, leftovers = false, checkpoint = false;
     this.#mutate(entry.runId, run => {
       const inst = this.#instance(run, entry.key);
       // A retry past an archived conversation runs in a new one: the old one speaks for nothing.
@@ -516,7 +516,8 @@ export class Workflows {
       // A turn that delivered the step's result is its answer, whatever it left running.
       const step = run.plan.steps.find(s => s.id === entry.key.split('#')[0])!;
       if (end.kind === 'checkpoint') {
-        if (!delivered(this.#core, turn, inst, step.output)) return false;
+        checkpoint = !delivered(this.#core, turn, inst, step.output);
+        if (checkpoint) return false;
         leftovers = true;
       }
       // A restart handoff stopped it on purpose: the step waits, and the next core runs it again.
@@ -546,6 +547,8 @@ export class Workflows {
         Object.assign(inst, { status: 'stopped', error: 'Stopped', finishedAt: now });
       } else Object.assign(inst, { status: 'failed', error: turn.error ?? 'The turn failed', finishedAt: now });
     });
+    // Still at work: its worktree and background work stay as they are.
+    if (checkpoint) return;
     // Its leftover background work would only wake a finished step: it ends before the worktree settles.
     if (leftovers) endLeftovers(this.#core, turn.threadId);
     // Its worktree stays for the next attempt, and nothing new launches while the core stops.
