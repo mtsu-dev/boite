@@ -190,6 +190,8 @@ test('a post, an @name and a private post reach the bot of the other machine, it
   expect(page.errors()).toEqual([]);
 
   // No app spoke to the machine that came back, and its bot still finds the team the other machine holds.
-  const mirrored = await backOwner.call('teams.list', { threadId: munin.threadId });
-  expect(mirrored.teams.map((entry: { id: string }) => entry.id).sort()).toEqual([team.id, (await byHand())!.id].sort());
+  const byHandId = (await byHand())!.id;
+  const mirrored = () => backOwner.call('teams.list', { threadId: munin.threadId }).then(({ teams }: { teams: readonly Team[] }) => teams.map(entry => entry.id).sort());
+  await until(async () => (await mirrored()).includes(byHandId), 'the mirror of the team written in the dialog');
+  expect(await mirrored()).toEqual([team.id, byHandId].sort());
 }, 180_000);

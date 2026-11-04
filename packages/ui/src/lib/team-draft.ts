@@ -56,13 +56,14 @@ export function teamChoices(view: AgentsView, others: readonly { machine: Machin
     const coreId = GroupLinks.coreOf(machine);
     const near = coreId !== undefined && group.some(core => core.coreId === coreId) ? coreId : null;
     const name = moveName(machine);
-    return live(owner).map((profile: AgentProfile): TeamChoice => ({
+    // A member whose machine left the group is one row, the one below, so it can still be taken out.
+    return live(owner).filter(profile => near !== null || !members.some(member => member.coreId === coreId && member.botId === profile.id)).map((profile: AgentProfile): TeamChoice => ({
       key: near === null ? JSON.stringify([machine.id, profile.id]) : teamMemberKey(near, profile.id),
       botId: profile.id, name: profile.name, avatar: profile.avatar, machine: name,
       reason: near === null ? fill(words.otherMachine, { machine: name }) : leaving(owner, profile.id) ? words.moving : null,
     }));
   });
-  // A member on a machine this app does not reach is not among those: it stays shown under its last known name.
+  // A member on a machine this app does not reach, or out of the group, is not among those: it stays shown under its last known name.
   const held = members.filter(member => member.machine && !away.some(choice => choice.key === draftKey(member))).map((member): TeamChoice => ({
     key: draftKey(member), botId: member.botId, name: member.name, avatar: '', ...(member.machine ? { machine: member.machine } : {}), reason: null,
   }));

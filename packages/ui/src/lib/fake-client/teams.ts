@@ -131,7 +131,7 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
     key: teamMemberKey(entry.coreId, entry.id), coreId: entry.coreId, botId: entry.id, name: entry.name, joinedSeq, ...(entry.machine ? { machine: entry.machine } : {})
   });
   /** A bot's id here counts from this fake machine's seed, so another machine's bot may share it: a member is the bot and its machine. */
-  const isMember = (team: Team, entry: FakeBot) => team.members.some(member => member.key === teamMemberKey(entry.coreId, entry.id));
+  const isMember = (team: Team, entry: FakeBot) => team.members.some(member => member.coreId === entry.coreId && member.botId === entry.id);
   const labelOf = (entry: FakeBot) => (entry.machine ? `${entry.name} (${entry.machine})` : entry.name);
   const bots = (refs: unknown): FakeBot[] => {
     if (!Array.isArray(refs) || refs.length === 0 || refs.length > TEAM_MEMBERS_MAX) throw invalid(`members: expected 1 to ${TEAM_MEMBERS_MAX} bots`);
@@ -257,7 +257,7 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
     const named = team.members.filter(entry => entry.name.toLowerCase() === wanted.toLowerCase() || onMachine(entry));
     const found = team.members.find(entry => entry.botId === wanted || entry.key === wanted) ?? (named.length === 1 ? named[0] : undefined);
     if (found) return found;
-    throw refused(named.length > 1 ? `${field}: ${named.length} members are named ${JSON.stringify(wanted)}; name one by id: ${named.map(entry => entry.botId).join(', ')}`
+    throw refused(named.length > 1 ? `${field}: ${named.length} members are named ${JSON.stringify(wanted)}; name one by id: ${named.map(entry => entry.key).join(', ')}`
       : `${field}: ${JSON.stringify(wanted)} is no member of ${team.name}`, { field });
   };
 
@@ -308,7 +308,7 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
       const team = require(params.teamId);
       if (typeof params.archived !== 'boolean') throw invalid('archived: expected a boolean');
       if (team.archived === params.archived) return structuredClone(team);
-      // As the core: a member whose bot is gone from this machine leaves as the team comes back. A move here takes the member along at once.
+      // As the core: a member whose bot is gone from this machine leaves as the team comes back, and a member of another machine holds nothing back.
       const kept = params.archived ? team.members : team.members.filter(entry => entry.coreId !== self() || ctx.agents.profileOf(entry.botId) !== null);
       return save(team, { archived: params.archived, ...(kept.length === team.members.length ? {} : { members: kept }) });
     },

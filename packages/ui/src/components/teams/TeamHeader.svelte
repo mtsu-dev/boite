@@ -35,9 +35,9 @@
   let editing = $state(false);
   let busy = $state(false);
 
-  /** The members as pictures: the bot's own once this machine's agents are read, else the robot its id picks. */
+  /** The members as pictures: a bot of this machine's own once its agents are read, else the robot its id picks. */
   const pictures = $derived((team?.members ?? []).map((member): Pick<AgentProfile, 'id' | 'name' | 'avatar'> =>
-    view.snapshot?.profiles.find(profile => profile.id === member.botId) ?? { id: member.botId, name: member.name, avatar: '' }));
+    (member.machine ? undefined : view.snapshot?.profiles.find(profile => profile.id === member.botId)) ?? { id: member.botId, name: member.name, avatar: '' }));
   const members = $derived(team?.members.length ?? 0);
   const room = $derived(team?.archived ? labels.archivedShort : team?.paused ? labels.pausedShort
     : members === 0 ? labels.room : fill(members === 1 ? labels.roomOne : labels.roomMany, { count: count(members) }));
