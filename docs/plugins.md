@@ -309,8 +309,9 @@ present they are ignored.
 
 - Commands, skills, the prompt and slash commands are read from the folder on
   each use, so an edit applies at once.
-- The schema, the permissions and whether it runs a service stay those of the
-  last `boite plugin dev`. An edit that changes one turns the row to an error
+- The schema, the permissions and what Boite starts for it (a desktop app, a
+  service, a gateway, account pools) stay those of the last
+  `boite plugin dev`. An edit that changes one turns the row to an error
   and closes the plugin's token, its sockets with it, until you run
   `boite plugin dev <folder>` again: anything that can write the folder, an
   agent working in it say, cannot give the plugin more than you loaded.
