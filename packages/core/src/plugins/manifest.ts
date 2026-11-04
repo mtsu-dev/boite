@@ -305,7 +305,7 @@ export function parseManifest(raw: unknown, file: string, prefix = '', dev = fal
   if (schema === 1) {
     return { schema: 1, ...head, executable: executable(native), ...(dev && raw['artifacts'] === undefined ? {} : { artifacts: read.artifacts(raw['artifacts'], 'native') }), provides: read.provides(raw['provides'], 1) };
   }
-  const runtime = raw['runtime'] ?? 'native';
+  const runtime = raw['runtime'] === undefined ? 'native' : raw['runtime'];
   if (runtime !== 'native' && runtime !== 'bun') read.refuse('runtime', 'native or bun', raw['runtime']);
   const provides = read.provides(raw['provides'], 2);
   const manifest: PluginManifest = { schema: 2, ...head, provides };

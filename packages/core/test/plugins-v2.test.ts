@@ -63,6 +63,7 @@ describe('manifest schema 2', () => {
     expect(refusedField(v2({}, { commands: [{ name: 'browser', description: 'x' }] }))).toBe('provides.commands[0].name');
     expect(refusedField(v2({ artifacts: { 'linux-x64': { url: 'https://example.com/a', sha256: 'a'.repeat(64) } } }))).toBe('artifacts');
     expect(refusedField(v2({ permissions: ['everything'] }))).toBe('permissions[0]');
+    expect(refusedField(v2({ runtime: null }))).toBe('runtime');
     expect(refusedField(v2({}, { prompt: 'x'.repeat(1001) }))).toBe('provides.prompt');
     expect(refusedField(v2({}, { commands: [{ name: 'Hello', description: 'x' }] }))).toBe('provides.commands[0].name');
     expect(refusedField({ ...v2(), provides: { skills: [{ name: 's', description: 'd', body: 'b' }] } })).toBe('executable');
@@ -275,12 +276,17 @@ describe('plugins v2 end to end', () => {
       await plugins.dev({ path: d });
       expect(plugins.installedPlugins().map((plugin) => plugin.id).sort()).toEqual(['hello', 'third']);
 
-      // A reload whose manifest no longer provides a gateway stops the one that ran.
-      const forgotten: string[] = [];
+      // A reload that adds a gateway starts it; one whose manifest drops it stops it.
+      const calls: string[] = [];
       const forget = plugins.gateways.forget.bind(plugins.gateways);
-      plugins.gateways.forget = (id) => { forgotten.push(id); return forget(id); };
+      plugins.gateways.control = async (id, _dir, action) => { calls.push(`${action} ${id}`); };
+      plugins.gateways.forget = (id) => { calls.push(`forget ${id}`); return forget(id); };
+      const plain = readFileSync(join(a, 'boite-plugin.json'), 'utf8');
+      writeFileSync(join(a, 'boite-plugin.json'), JSON.stringify({ ...JSON.parse(plain), provides: { ...JSON.parse(plain).provides, gateway: {} } }));
       await plugins.dev({ path: a });
-      expect(forgotten).toEqual(['hello']);
+      writeFileSync(join(a, 'boite-plugin.json'), plain);
+      await plugins.dev({ path: a });
+      expect(calls).toEqual(['restart hello', 'forget hello']);
     } finally {
       await harness?.stop();
       await removeDir(dir2);

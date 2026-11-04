@@ -329,7 +329,7 @@ export class PluginStore {
       commands: running ? commandsOf(running) : [],
       pools: running ? poolsOf(running) : [],
       rejected: disk.kind === 'rejected' ? disk.rejected : null,
-      permissions: running ? permissionsOf(running) : [],
+      ...(running?.schema === 1 ? {} : { permissions: running ? permissionsOf(running) : [] }),
       adds: running ? addsOf(running) : null,
       devPath: dev,
       app: running !== null && (providesApp(running) || providesService(running)) ? this.apps.state(id, this.#directory(id), providesService(running)) : null,

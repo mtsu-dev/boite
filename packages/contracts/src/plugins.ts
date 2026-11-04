@@ -100,7 +100,7 @@ export interface PluginSlashCommand {
   prompt: string;
 }
 
-/** One native executable, downloaded over https and checked against its digest. */
+/** One release file, downloaded over https and checked against its digest: a native executable, or a `bun` plugin's script. */
 export interface PluginArtifact {
   url: string;
   /** Lowercase hex SHA-256 of the file at `url`. */
@@ -294,7 +294,7 @@ export interface PluginState {
   pools: ProviderId[];
   /** Set exactly when `status` is `rejected`. */
   rejected: PluginRejected | null;
-  /** The desktop app the plugin provides, null when it provides none. */
+  /** The desktop app or service the plugin provides, null when it provides neither. */
   app: PluginAppState | null;
   /** The gateway the plugin provides, null when it provides none. Absent from cores older than gateway plugins. */
   gateway?: PluginGatewayState | null;
@@ -304,7 +304,11 @@ export interface PluginState {
    * from cores older than update sources.
    */
   updates?: PluginUpdates | null;
-  /** What the plugin's own token reaches. Absent from older cores. */
+  /**
+   * What a schema 2 plugin's own token reaches, empty when it declared none.
+   * Absent for a schema 1 plugin, whose processes get the owner token, and
+   * from older cores, where every plugin does.
+   */
   permissions?: PluginPermission[];
   /** What it adds to agents and to the composer, by name. Absent from older cores. */
   adds?: PluginAdds | null;
@@ -390,15 +394,15 @@ export interface PluginsRpcMethods {
     result: PluginPool[];
   };
   /**
-   * Controls a desktop-app plugin. `start` enables and launches it, `stop`
+   * Controls a plugin's desktop app or service. `start` enables and launches it, `stop`
    * disables and kills it, `restart` kills and launches it again.
    */
   'plugins.app': { params: { id: string; action: 'start' | 'stop' | 'restart' }; result: PluginState };
   /** Owner-only. Start, stop or restart a gateway plugin. */
   'plugins.gateway': { params: { id: string; action: 'start' | 'stop' | 'restart' }; result: PluginState };
   /**
-   * Owner-only. Whether the plugin's desktop app and gateway start when the
-   * core starts. It changes nothing running now; a stop no longer keeps a
+   * Owner-only. Whether the plugin's desktop app or service and its gateway
+   * start when the core starts. It changes nothing running now; a stop no longer keeps a
    * plugin off across core starts once this is on. A client offers it only
    * when the plugin's state carries `autostart`.
    */

@@ -632,8 +632,9 @@ machine, or has it but not connected, it says so on the page it shows and opens
 nothing. Browser tabs, paired devices and windows following another machine do
 nothing.
 
-`ui.reveal` is owner-only, as is the event: a paired device or an agent that
-calls it is refused, and neither receives it.
+The owner and a plugin granted the `ui.reveal` permission may call `ui.reveal`;
+the event stays owner-only. A paired device or an agent that calls it is
+refused, and neither receives it.
 
 ## Gateways
 
