@@ -54,7 +54,8 @@ export function draftProblem(draft: TeamDraft, teams: readonly Team[], except: s
   if (!name) return { field: 'name', text: words.nameRequired };
   if (name.startsWith('@')) return { field: 'name', text: words.nameAt };
   if (teams.some(team => !team.archived && team.id !== except && team.name.toLowerCase() === name.toLowerCase())) return { field: 'taken', text: fill(words.nameTaken, { name }) };
-  if (draft.members.length === 0) return { field: 'members', text: words.membersRequired };
+  // A new team needs a bot; an existing one may be emptied, as the core allows, so an archived team whose members all left can be restored.
+  if (draft.members.length === 0 && except === null) return { field: 'members', text: words.membersRequired };
   if (draft.members.length > TEAM_MEMBERS_MAX) return { field: 'members', text: fill(words.full, { max: count(TEAM_MEMBERS_MAX) }) };
   return null;
 }
@@ -64,8 +65,10 @@ export const TEAM_LIMITS = { name: TEAM_NAME_MAX, brief: TEAM_BRIEF_MAX, members
 /**
  * Creates the team on the page's machine, or brings `team` to the draft: its
  * name and brief, then the members taken out, then the new ones, each with the
- * owner method the core already has. A refusal stops there and throws; what
- * went before it stays done, and `teams.changed` shows it.
+ * owner method the core already has. The changes are worked out against the
+ * team as the core holds it now, not as the dialog opened it, so a retry after
+ * a refusal sends only what is still missing. A refusal stops there and
+ * throws; what went before it stays done, and `teams.changed` shows it.
  */
 export async function saveTeam(view: AgentsView, team: Team | null, draft: TeamDraft): Promise<Team> {
   const client = view.store.client;
@@ -73,15 +76,18 @@ export async function saveTeam(view: AgentsView, team: Team | null, draft: TeamD
   const name = draft.name.trim().replace(/\s+/g, ' ');
   const brief = draft.brief.trim();
   if (!team) return client.call('teams.create', { name, ...(brief ? { brief } : {}), members: [...draft.members] });
-  let saved = team;
-  const change = { ...(name !== team.name ? { name } : {}), ...(brief !== team.brief ? { brief } : {}) };
-  if (Object.keys(change).length > 0) saved = await client.call('teams.update', { teamId: team.id, ...change });
+  const { teams } = await client.call('teams.list', { archived: true });
+  const current = teams.find(entry => entry.id === team.id);
+  if (!current) throw new Error(fill(strings.teamChat.dialog.vanished, { team: team.name }));
+  let saved = current;
+  const change = { ...(name !== current.name ? { name } : {}), ...(brief !== current.brief ? { brief } : {}) };
+  if (Object.keys(change).length > 0) saved = await client.call('teams.update', { teamId: current.id, ...change });
   // Out first: a full team makes room before the new members come in.
-  for (const member of team.members) {
-    if (!draft.members.includes(member.botId)) saved = await client.call('teams.members.remove', { teamId: team.id, botId: member.botId });
+  for (const member of current.members) {
+    if (!draft.members.includes(member.botId)) saved = await client.call('teams.members.remove', { teamId: current.id, botId: member.botId });
   }
   for (const botId of draft.members) {
-    if (!team.members.some(member => member.botId === botId)) saved = await client.call('teams.members.add', { teamId: team.id, botId });
+    if (!current.members.some(member => member.botId === botId)) saved = await client.call('teams.members.add', { teamId: current.id, botId });
   }
   return saved;
 }

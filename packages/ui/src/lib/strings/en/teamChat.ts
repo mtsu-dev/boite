@@ -45,6 +45,7 @@ export const strings = {
       full: 'A team holds at most {max} bots.',
       archived: 'The team is archived: restore it to add a bot.',
       gone: 'No longer a bot of this machine: unselect it to take it out.',
+      vanished: '{team} is no longer on this machine.',
       why: 'Why {name} cannot join',
     },
     /** Under the team's name over its chat: what the place is and who talks there. */

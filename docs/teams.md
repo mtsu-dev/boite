@@ -203,11 +203,14 @@ Paused or Archived, without terminal or panel. Its menu holds Edit the team,
 Pause or Resume, and Archive, which asks first; an archived team's menu holds
 Edit the team and Restore. Edit opens the same dialog on the team: its name and
 brief go through `teams.update`, then each bot taken out through
-`teams.members.remove`, then each new one through `teams.members.add`; a
-refusal stops there, shows the core's reason in the dialog, and what went
-before it stays done. A member this machine no longer lists stays in the
-dialog, greyed, so it can be taken out; an archived team takes no new member,
-and restoring it waits until every member is a bot of this machine again.
+`teams.members.remove`, then each new one through `teams.members.add`, worked
+out against the team `teams.list` returns at that moment; a refusal stops
+there, shows the core's reason in the dialog, and what went before it stays
+done, so Save again sends only what is still missing. A member this machine no
+longer lists stays in the dialog, greyed, so it can be taken out; an edit may
+leave a team with no member, a new team needs one. An archived team takes no
+new member, and restoring it waits until every member is a bot of this machine
+again: taking out the ones that left, even all of them, lets it come back.
 Over the posts, the members; a member opens its bot's page. The posts are the
 thread's messages, oldest first, paged like a thread's, so they arrive live and
 opening the chat marks it read. Each post shows:
