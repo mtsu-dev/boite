@@ -18,6 +18,7 @@ import {
   type TeamAsk,
   type TeamAudience,
   type TeamDelivery,
+  type TeamMember,
   type TeamParty,
   type TeamPost,
   type TeamPostRef,
@@ -27,10 +28,16 @@ import {
 import { RpcFailure } from '../client';
 import { DATA_DIR } from './shared';
 import { askTeam } from './requests';
+import { fakeCore } from './coordination';
 import type { FakeContext, FakeMethods } from './context';
 
-const LATER = 'members on other machines come in a later version';
-const refused = (message: string, data: Record<string, unknown> = {}) => new RpcFailure({ code: RpcErrorCode.Refused, message, data });
+/** A bot a team may take: one of this machine, or of another machine of the group, with that machine's name. */
+type FakeBot = AgentProfile & { coreId: string; machine?: string };
+type PostInput = { id: unknown; author: TeamParty; text: unknown; audience: TeamAudience; to?: TeamParty[]; inReplyTo?: unknown };
+/** How each fake core takes a post: a bot of another machine posts on the one holding its team. */
+const posters = new WeakMap<FakeContext, (team: Team, input: PostInput) => TeamPost>();
+
+const refused =(message: string, data: Record<string, unknown> = {}) => new RpcFailure({ code: RpcErrorCode.Refused, message, data });
 const invalid = (message: string) => new RpcFailure({ code: RpcErrorCode.InvalidParams, message });
 
 interface TeamState { teams: Map<string, Team>; posts: Map<string, TeamPost[]>; deliveries: TeamDelivery[] }
@@ -82,20 +89,52 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
     if (!team) throw new RpcFailure({ code: RpcErrorCode.NotFound, message: `teamId: no team ${JSON.stringify(teamId)}`, data: { field: 'teamId' } });
     return team;
   };
-  const bot = (ref: unknown, field = 'members'): AgentProfile => {
+  /** A bot among those of one machine, by id or by a name no other has. */
+  const among = (live: AgentProfile[], wanted: string): AgentProfile | undefined => {
+    const named = live.filter(agent => agent.name.toLowerCase() === wanted.toLowerCase());
+    return live.find(agent => agent.id === wanted) ?? (named.length === 1 ? named[0] : undefined);
+  };
+  /** `<machine>/<bot>`: the other machine answers for its bot, as `team.bot` does, and its own switch lets it in or not. The fake keeps no mirror on that machine. */
+  const distant = (wanted: string, field: string): FakeBot => {
+    const slash = wanted.indexOf('/');
+    const machine = wanted.slice(0, slash).trim();
+    const name = wanted.slice(slash + 1).trim();
+    if (!machine || !name) throw invalid(`${field}: expected <machine>/<bot>`);
+    if (ctx.roster === null) throw refused(`${field}: this machine is in no group, so ${JSON.stringify(wanted)} names no bot`, { field });
+    const peer = ctx.roster.cores.find(core => core.coreId === machine) ?? ctx.roster.cores.find(core => core.name.toLowerCase() === machine.toLowerCase());
+    if (!peer) throw refused(`${field}: no machine ${machine} in this group`, { field });
+    if (peer.coreId === self()) {
+      const here = among(ctx.agents.liveProfiles(), name);
+      if (!here) throw refused(`${field}: no bot ${JSON.stringify(name)}`, { field });
+      return { ...here, coreId: self() };
+    }
+    const there = fakeCore(peer.coreId);
+    if (!there) throw refused(`${field}: ${peer.name} did not answer; its bots can join once it answers`, { field, reason: 'unreachable' });
+    if (!(there.desktopExperiments ?? there.clientPreferences?.experiments ?? []).includes('teams')) {
+      throw refused(`${peer.name}: teams need the Teams experiment, which is off in the desktop app (Settings, Experiments)`, { field, reason: 'experiment-off' });
+    }
+    const found = among(there.agents.liveProfiles(), name);
+    if (!found) throw refused(`${peer.name}: bot: no bot ${JSON.stringify(name)}`, { field, reason: 'peer-refused' });
+    return { ...found, coreId: peer.coreId, machine: peer.name };
+  };
+  const bot = (ref: unknown, field = 'members'): FakeBot => {
     const wanted = typeof ref === 'string' ? ref.trim() : '';
     if (!wanted) throw invalid(`${field}: expected a bot name or id`);
-    if (wanted.includes('/')) throw refused(LATER, { field });
-    const live = ctx.agents.liveProfiles();
-    const named = live.filter(agent => agent.name.toLowerCase() === wanted.toLowerCase());
-    const found = live.find(agent => agent.id === wanted) ?? (named.length === 1 ? named[0] : undefined);
-    if (!found) throw refused(`${field}: no bot ${JSON.stringify(wanted)}`, { field });
-    return found;
+    const local = among(ctx.agents.liveProfiles(), wanted);
+    if (local) return { ...local, coreId: self() };
+    if (wanted.includes('/')) return distant(wanted, field);
+    throw refused(`${field}: no bot ${JSON.stringify(wanted)}`, { field });
   };
-  const bots = (refs: unknown): AgentProfile[] => {
+  /** A team's own word for a bot: its id here, `<coreId>/<botId>` elsewhere. */
+  const refOf = (entry: FakeBot) => (entry.coreId === self() ? entry.id : teamMemberKey(entry.coreId, entry.id));
+  const memberOf = (entry: FakeBot, joinedSeq: number): TeamMember => ({
+    key: teamMemberKey(entry.coreId, entry.id), coreId: entry.coreId, botId: entry.id, name: entry.name, joinedSeq, ...(entry.machine ? { machine: entry.machine } : {})
+  });
+  const labelOf = (entry: FakeBot) => (entry.machine ? `${entry.name} (${entry.machine})` : entry.name);
+  const bots = (refs: unknown): FakeBot[] => {
     if (!Array.isArray(refs) || refs.length === 0 || refs.length > TEAM_MEMBERS_MAX) throw invalid(`members: expected 1 to ${TEAM_MEMBERS_MAX} bots`);
     const found = refs.map(ref => bot(ref));
-    return found.filter((entry, index) => found.findIndex(other => other.id === entry.id) === index);
+    return found.filter((entry, index) => found.findIndex(other => other.id === entry.id && other.coreId === entry.coreId) === index);
   };
   const checkName = (value: unknown, except?: string): string => {
     if (typeof value !== 'string' || !value.trim() || value.trim().length > TEAM_NAME_MAX) throw invalid(`name: expected 1 to ${TEAM_NAME_MAX} characters`);
@@ -114,17 +153,24 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
     if (!found) throw refused('threadId: teams are for bots; this thread is no bot\'s conversation', { field: 'threadId' });
     return found;
   };
-  const named = (ref: unknown, member: TeamParty): Team => {
+  const named = (ref: unknown, member: TeamParty, pool = all()): Team => {
     const wanted = typeof ref === 'string' ? ref.trim() : '';
     if (!wanted) throw invalid('team: expected a team name or id');
-    const mine = all().filter(team => member === TEAM_OWNER || team.members.some(entry => entry.key === member));
+    const mine = pool.filter(team => member === TEAM_OWNER || team.members.some(entry => entry.key === member));
     const found = mine.find(team => team.id === wanted) ?? mine.find(team => !team.archived && team.name.toLowerCase() === wanted.toLowerCase());
     if (!found) throw refused(`team: no team ${JSON.stringify(wanted)}`, { field: 'team' });
     return found;
   };
+  /** What a bot may name: the teams held here and those another machine of the group holds, where the real core keeps a mirror. */
+  const reachable = (): Team[] => [...all(), ...(ctx.roster?.cores ?? []).flatMap(core => {
+    const there = core.coreId === self() ? undefined : fakeCore(core.coreId);
+    return there ? [...state(there).teams.values()] : [];
+  })];
+  /** The machine holding a team, which keeps its posts. */
+  const holderOf = (team: Team): FakeContext => (team.host === self() ? ctx : fakeCore(team.host) ?? ctx);
   const mine = (threadId: unknown, ref: unknown) => {
     const agent = caller(threadId);
-    return { agent, member: key(agent.id), team: named(ref, key(agent.id)) };
+    return { agent, member: key(agent.id), team: named(ref, key(agent.id), reachable()) };
   };
   const card = (id: unknown, kind: TeamAsk['kind']): TeamAsk => {
     const ask = typeof id === 'string' ? ctx.pendingQuestions.get(id)?.request.team : undefined;
@@ -149,7 +195,9 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
   };
 
   /** One post: kept once by its id, routed, and shown in the team chat as a turn of its own. */
-  const post = (team: Team, input: { id: unknown; author: TeamParty; text: unknown; audience: TeamAudience; to?: TeamParty[]; inReplyTo?: unknown }): TeamPost => {
+  const post = (team: Team, input: PostInput): TeamPost => {
+    const holder = holderOf(team);
+    if (holder !== ctx) return posters.get(holder)!(team, input);
     const id = typeof input.id === 'string' ? input.id.trim() : '';
     if (!id || id.length > 100) throw invalid('id: expected 1 to 100 characters');
     const text = typeof input.text === 'string' ? input.text.trim() : '';
@@ -196,12 +244,14 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
     changed(state(ctx).teams.get(team.id)!);
     return structuredClone(saved);
   };
+  posters.set(ctx, post);
   /** A member by bot id, or by a name no other member has. */
   const member = (team: Team, ref: unknown, field = 'to') => {
     const wanted = typeof ref === 'string' ? ref.trim() : '';
-    if (wanted.includes('/')) throw refused(LATER, { field });
-    const named = team.members.filter(entry => entry.name.toLowerCase() === wanted.toLowerCase());
-    const found = team.members.find(entry => entry.botId === wanted) ?? (named.length === 1 ? named[0] : undefined);
+    const slash = wanted.indexOf('/');
+    const onMachine = (entry: TeamMember) => slash > 0 && entry.machine?.toLowerCase() === wanted.slice(0, slash).trim().toLowerCase() && entry.name.toLowerCase() === wanted.slice(slash + 1).trim().toLowerCase();
+    const named = team.members.filter(entry => entry.name.toLowerCase() === wanted.toLowerCase() || onMachine(entry));
+    const found = team.members.find(entry => entry.botId === wanted || entry.key === wanted) ?? (named.length === 1 ? named[0] : undefined);
     if (found) return found;
     throw refused(named.length > 1 ? `${field}: ${named.length} members are named ${JSON.stringify(wanted)}; name one by id: ${named.map(entry => entry.botId).join(', ')}`
       : `${field}: ${JSON.stringify(wanted)} is no member of ${team.name}`, { field });
@@ -211,7 +261,8 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
     'teams.list': async (params) => {
       gate();
       const reader = params?.threadId === undefined ? TEAM_OWNER : key(caller(params.threadId).id);
-      return { teams: structuredClone(all().filter(team => (params?.archived === true || !team.archived) && (reader === TEAM_OWNER || team.members.some(entry => entry.key === reader)))) };
+      const pool = reader === TEAM_OWNER ? all() : reachable();
+      return { teams: structuredClone(pool.filter(team => (params?.archived === true || !team.archived) && (reader === TEAM_OWNER || team.members.some(entry => entry.key === reader)))) };
     },
     'teams.create': async (params) => {
       gate();
@@ -221,14 +272,15 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
       const members = bots(params.members);
       const id = `team-${++ctx.seq}`;
       const now = ctx.now();
-      const first = members[0]!;
+      const first = members.find(entry => entry.coreId === self());
+      if (!first) throw refused('members: this machine has no bot to take the settings of the team chat from', { field: 'members' });
       const thread: Thread = { id: `t-${++ctx.seq}`, projectId: null, teamId: id, ...first.selection, title: name, titleSource: 'user', speed: null, cwd: `${DATA_DIR}/teams/${id}`, branch: null,
         status: 'idle', unread: false, archived: false, pinned: false, sessionId: null, sessionGeneration: 0, selectionVersion: 0, load: null, context: null,
         createdAt: now, updatedAt: now, messages: [], messagesBefore: null, turns: [], commands: [] };
       ctx.threads.set(thread.id, thread);
       ctx.touch(thread);
       const team: Team = {
-        id, host: self(), version: 1, name, brief, members: members.map(entry => ({ key: key(entry.id), coreId: self(), botId: entry.id, name: entry.name, joinedSeq: 0 })),
+        id, host: self(), version: 1, name, brief, members: members.map(entry => memberOf(entry, 0)),
         dispatcher: null, paused: false, archived: false, createdBy: ask === null ? TEAM_OWNER : key(ask.by), threadId: thread.id, lastSeq: 0, createdAt: now, updatedAt: now
       };
       state(ctx).teams.set(id, team);
@@ -267,7 +319,7 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
       if (team.archived) throw refused(`${team.name} is archived`, { field: 'teamId' });
       if (team.members.some(entry => entry.botId === agent.id)) throw refused(`${agent.name} is already a member of ${team.name}`, { field: 'botId' });
       if (team.members.length >= TEAM_MEMBERS_MAX) throw refused(`a team holds at most ${TEAM_MEMBERS_MAX} bots`, { field: 'botId' });
-      const saved = save(team, { members: [...team.members, { key: key(agent.id), coreId: self(), botId: agent.id, name: agent.name, joinedSeq: team.lastSeq }] });
+      const saved = save(team, { members: [...team.members, memberOf(agent, team.lastSeq)] });
       settle(params.card, `applied: ${agent.name} joined ${team.name}`);
       return saved;
     },
@@ -292,12 +344,12 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
     'teams.read': async (params) => {
       gate();
       const reader = params.threadId === undefined ? TEAM_OWNER : key(caller(params.threadId).id);
-      const team = named(params.team, reader);
+      const team = named(params.team, reader, reader === TEAM_OWNER ? all() : reachable());
       const limit = params.limit ?? 30;
       if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw invalid('limit: expected 1 to 100');
       const before = params.before ?? Number.MAX_SAFE_INTEGER;
       if (!Number.isSafeInteger(before) || before < 1) throw invalid('before: expected a post number');
-      const visible = (state(ctx).posts.get(team.id) ?? []).filter(entry => entry.seq < before && teamPostVisible(entry, reader));
+      const visible = (state(holderOf(team)).posts.get(team.id) ?? []).filter(entry => entry.seq < before && teamPostVisible(entry, reader));
       const posts = visible.slice(-limit);
       const ids = new Set(posts.map(entry => entry.id));
       const deliveries = reader === TEAM_OWNER ? state(ctx).deliveries.filter(entry => ids.has(entry.postId)) : [];
@@ -323,16 +375,16 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
       const brief = checkBrief(params.brief);
       const others = bots(params.members).filter(other => other.id !== agent.id);
       if (others.length === 0) throw invalid('members: name at least one other bot');
-      const members = [agent, ...others];
-      return draw(params.threadId, `${agent.name} proposes the team ${JSON.stringify(name)}: ${members.map(entry => entry.name).join(', ')}.${brief ? ` ${brief}` : ''}`,
-        { kind: 'create', by: agent.id, name, brief, members: members.map(entry => entry.id) });
+      const members: FakeBot[] = [{ ...agent, coreId: self() }, ...others];
+      return draw(params.threadId, `${agent.name} proposes the team ${JSON.stringify(name)}: ${members.map(labelOf).join(', ')}.${brief ? ` ${brief}` : ''}`,
+        { kind: 'create', by: agent.id, name, brief, members: members.map(refOf) });
     },
     'teams.invite': async (params) => {
       gate();
       const { team, agent } = mine(params.threadId, params.team);
       const guest = bot(params.bot, 'bot');
       if (team.members.some(entry => entry.botId === guest.id)) throw refused(`${guest.name} is already a member of ${team.name}`, { field: 'bot' });
-      return draw(params.threadId, `${agent.name} asks to add ${guest.name} to the team ${JSON.stringify(team.name)}.`, { kind: 'invite', by: agent.id, teamId: team.id, teamName: team.name, botId: guest.id });
+      return draw(params.threadId, `${agent.name} asks to add ${labelOf(guest)} to the team ${JSON.stringify(team.name)}.`, { kind: 'invite', by: agent.id, teamId: team.id, teamName: team.name, botId: refOf(guest) });
     },
     'teams.leave': async (params) => {
       gate();

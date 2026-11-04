@@ -90,7 +90,7 @@ const holdDelivery = (h: TestCore) => {
   return () => spy.mockRestore();
 };
 
-test('teams stay closed while the experiment is off, and members on other machines wait for a later version', async () => {
+test('teams stay closed while the experiment is off, and a machine in no group names no bot of another', async () => {
   const { h, owner, bots, team } = await setup();
   await experiment(owner, false);
   const off = await failure(() => owner.call('teams.list', {}));
@@ -98,8 +98,8 @@ test('teams stay closed while the experiment is off, and members on other machin
   expect((await failure(() => owner.call('teams.post', { teamId: team.id, id: 'x', text: 'hi' }))).rpc.data).toMatchObject({ reason: 'experiment-off' });
   await experiment(owner);
   expect((await owner.call('teams.list', {})).teams.map(entry => entry.name)).toEqual(['Crew']);
-  const later = await failure(() => owner.call('teams.members.add', { teamId: team.id, botId: 'pc/Bob' }));
-  expect(later.message).toContain('members on other machines come in a later version');
+  const alone = await failure(() => owner.call('teams.members.add', { teamId: team.id, botId: 'pc/Bob' }));
+  expect(alone.message).toContain('this machine is in no group');
   // The team chat runs no agent and is no coordination contact.
   expect(h.core.journal.getThread(team.threadId)).toMatchObject({ teamId: team.id, projectId: null });
   expect(() => h.core.threads.startTurn(team.threadId, 'hello')).toThrow('a team chat runs no agent');
@@ -460,7 +460,7 @@ test('boite team: a bot lists, posts, reads and asks for cards; the experiment a
   expect((await boiteAs(h, bob!.threadId, ['team', 'leave', 'Crew'])).out).toContain('card: leave Crew');
   const remote = await boiteAs(h, ada!.threadId, ['team', 'invite', 'Crew', 'pc/Cy']);
   expect(remote.code).not.toBe(0);
-  expect(remote.err).toContain('members on other machines come in a later version');
+  expect(remote.err).toContain('this machine is in no group');
   await experiment(owner, false);
   const off = await boiteAs(h, ada!.threadId, ['team', 'list']);
   expect(off.code).not.toBe(0);

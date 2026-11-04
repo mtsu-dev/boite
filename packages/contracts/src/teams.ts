@@ -2,9 +2,10 @@ import type { RequestId, ThreadId, Timestamp, TurnId } from './ids';
 
 /**
  * Teams of bots (`docs/teams.md`): a few bots and the owner talk in one
- * group, each bot from its own thread. A member is keyed by the core it runs
- * on and its bot id, `<coreId>/<botId>`, so a key reads the same on every
- * machine of the group. The owner is `owner`.
+ * group, each bot from its own thread, on any machine of the owner's group. A
+ * member is keyed by the core it joined on and its bot id, `<coreId>/<botId>`,
+ * so a key reads the same on every machine and never changes: a bot that moves
+ * keeps it, and `TeamMember.coreId` says where it runs now. The owner is `owner`.
  */
 export type TeamMemberKey = string;
 /** Who writes or receives a post: a member, or the owner. */
@@ -25,18 +26,22 @@ export const TEAM_LETTERS_PER_BATCH = 2;
 export function teamMemberKey(coreId: string, botId: string): TeamMemberKey { return `${coreId}/${botId}`; }
 
 export interface TeamMember {
+  /** Fixed when the bot joins, wherever it moves afterwards. */
   key: TeamMemberKey;
+  /** The core the bot runs on now. */
   coreId: string;
   botId: string;
   /** The bot's current name; the last one known once it is gone or on another machine. Mentions match it. */
   name: string;
-  /** The seq the bot joined at: it starts reading after it. */
+  /** The machine the bot runs on, by name, when that is not the machine answering. */
+  machine?: string;
+  /** The seq the bot joined at, or arrived on its machine at: it starts reading after it. */
   joinedSeq: number;
 }
 
 export interface Team {
   id: string;
-  /** The core that orders the team's posts. */
+  /** The core that created the team: it orders the posts and holds the team chat. */
   host: string;
   /** Bumped by every change of name, brief, members, dispatcher, pause or archive. */
   version: number;
@@ -161,9 +166,9 @@ export interface TeamReading {
 }
 
 export interface TeamsRpcMethods {
-  /** The owner's teams, or the teams the calling bot's thread belongs to. Refused while the `teams` experiment is off. */
+  /** The teams this machine holds, or the teams the calling bot's thread belongs to, on any machine. Refused while the `teams` experiment is off. */
   'teams.list': { params: { threadId?: ThreadId; archived?: boolean }; result: { teams: Team[] } };
-  /** `members` are bot ids of this machine. `card` applies a bot's proposal card and settles it. */
+  /** `members` are bot names or ids, `<machine>/<bot>` on another machine of the group. `card` applies a bot's proposal card and settles it. */
   'teams.create': { params: { name: string; brief?: string; members: string[]; card?: RequestId }; result: Team };
   'teams.update': { params: { teamId: string; name?: string; brief?: string }; result: Team };
   /** Archived, a team takes no post and its waiting letters are rejected. */
@@ -183,7 +188,7 @@ export interface TeamsRpcMethods {
   'teams.dm': { params: { threadId: ThreadId; team: string; to: string; text: string; id?: string }; result: TeamPost };
   /** A bot proposes a team: a card in its thread the owner applies or refuses. */
   'teams.propose': { params: { threadId: ThreadId; name: string; members: string[]; brief?: string }; result: { questionId: RequestId } };
-  /** `bot` is a bot name or id of this machine. */
+  /** `bot` is a bot name or id, `<machine>/<bot>` on another machine of the group. */
   'teams.invite': { params: { threadId: ThreadId; team: string; bot: string }; result: { questionId: RequestId } };
   'teams.leave': { params: { threadId: ThreadId; team: string }; result: { questionId: RequestId } };
 }

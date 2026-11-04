@@ -57,7 +57,9 @@ export class TeamLetters {
     }
     const thread = this.#core.threads.require(threadId);
     const machine = this.#core.info().hostname ?? 'Boite';
-    const from: AgentContact = { ...this.#side.self(team.threadId), title: `Team ${team.name}`.slice(0, 200), machine, resources: '', status: 'idle', mode: 'brief' };
+    // Local on any machine, `from` included, as the letter's rules read it; only its words say where the team is held.
+    const holder = team.host === this.#side.self('').coreId ? machine : this.#core.teams.machineName(team.host);
+    const from: AgentContact = { ...this.#side.self(team.threadId), title: `Team ${team.name}`.slice(0, 200), machine: holder, resources: '', status: 'idle', mode: 'brief' };
     this.#side.accept({
       id: randomUUID(), from, to: this.#side.self(threadId), toTitle: thread.title.slice(0, 200), toProject: projectName(this.#core, threadId), toMachine: machine,
       text: `Posts of the team ${team.name}`, replyTo: null, createdAt: now, expiresAt: now + RESIDENT_LETTER_TTL_MS, status: 'received', error: null,

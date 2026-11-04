@@ -3,8 +3,9 @@
  * team chat is a projectless thread that runs no agent; each post is one turn
  * there. A post addressed to a bot becomes a team letter in its inbox
  * (`TeamLetters.accept`, `coordination-team.ts`), rendered from what that bot has not seen
- * yet. Member keys are `<coreId>/<botId>`, so the rows fit members on other
- * machines; this version takes this machine's bots only.
+ * yet. The machine that creates a team holds it: its posts, their order and its
+ * chat. A machine with a member on it keeps a mirror (`peers.ts`), the team's
+ * row and the posts it may have, so a letter runs there as it does here.
  */
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
@@ -19,7 +20,9 @@ import { invalidParams, messageOf, notFound, refused } from '../errors.ts';
 import { newId } from '../ids.ts';
 import { finalText, quietText } from '../agents/runtime.ts';
 import { RESIDENT_LETTER_TTL_MS } from '../coordination-letter.ts';
+import { foldMachine } from '../threads/group-spawn.ts';
 import { withLoad } from '../threads/records.ts';
+import { TeamPeers, TEAM_WAKE_MAX_MS, type TeamPeerPost, type TeamPeerReport } from './peers.ts';
 import { planTeamLetter, teamPostLine, teamPrompt, type TeamChannel } from './prompt.ts';
 
 type TeamRow = { id: string; host: string; version: number; thread_id: string; last_seq: number; data: string; created_at: number; updated_at: number };
@@ -28,12 +31,23 @@ type PostRow = {
   routed_by: TeamPost['routedBy']; why: string | null; in_reply_to: string | null; turn_id: string | null; notice: string | null; created_at: number;
 };
 type Stored = Pick<Team, 'name' | 'brief' | 'members' | 'dispatcher' | 'paused' | 'archived' | 'createdBy'>;
+type PostInput = { id: unknown; author: TeamParty; text: unknown; audience: TeamAudience; to?: TeamParty[]; inReplyTo?: unknown; turnId?: string | null };
+
+/** A bot a team can take, on any machine of the group. */
+export interface TeamBot { coreId: string; botId: string; name: string }
+
+/** What a row keeps of a team: the machine a member shows is said by the machine showing it. */
+const storedOf = (team: Stored): Stored => ({
+  name: team.name, brief: team.brief, dispatcher: team.dispatcher, paused: team.paused, archived: team.archived, createdBy: team.createdBy,
+  members: team.members.map(member => { const kept = { ...member }; delete kept.machine; return kept; }),
+});
 
 /** The letter states that keep a snapshot in flight; any other ends it. */
 const IN_FLIGHT = new Set(['Queued for provider delivery', 'Awaiting provider acknowledgement']);
 const inFlight = (error: string | null): boolean => error !== null && (IN_FLIGHT.has(error) || error.startsWith('Awaiting provider turn '));
 const ACTIVE = new Set(['queued', 'running']);
-const LATER = 'members on other machines come in a later version';
+/** What ends a bot's letters on the machine it left: its posts wait for it on the next one, so they settle nothing. */
+const MOVED = 'moved to another machine';
 
 /** A final answer's post id: the same turn always gives the same id, so a retried publication posts once. */
 export function answerPostId(turnId: string): string {
@@ -54,9 +68,12 @@ export interface TeamRendering {
 export class TeamStore {
   readonly #core: Core;
   readonly #off: () => void;
+  /** The team's other machines: what goes between them, and every command that may have to. */
+  readonly peers: TeamPeers;
 
   constructor(core: Core) {
     this.#core = core;
+    this.peers = new TeamPeers(core, this);
     this.#off = core.bus.onAny((name, payload) => {
       if (name !== 'turn.finished' || core.journal.isClosed()) return;
       const turn = payload as Turn;
@@ -66,7 +83,10 @@ export class TeamStore {
     });
   }
 
-  close(): void { this.#off(); }
+  close(): void {
+    this.#off();
+    this.peers.close();
+  }
 
   /**
    * After a restart, what a stopped core left half done: snapshots of
@@ -77,23 +97,41 @@ export class TeamStore {
     this.#releaseOrphans();
     this.#repair();
     this.#replayAnswers();
+    this.peers.start();
   }
 
   get #db() { return this.#core.journal.db; }
   get #self(): string { return this.#core.coordination.card().coreId; }
 
-  /** Every team method and command refuses while the `teams` experiment is off. */
-  gate(): void {
+  #open(): boolean {
     const experiments = this.#core.clients.desktopExperiments() ?? this.#core.clients.current()?.experiments ?? [];
-    if (!experiments.includes('teams')) throw refused('teams need the Teams experiment, which is off in the desktop app (Settings, Experiments)', { reason: 'experiment-off' });
+    return experiments.includes('teams');
+  }
+
+  /** The `teams` experiment: off, the machine holding a team refuses its methods, and a machine lets no bot of its own join a team. */
+  gate(): void {
+    if (!this.#open()) throw refused('teams need the Teams experiment, which is off in the desktop app (Settings, Experiments)', { reason: 'experiment-off' });
   }
 
   // Teams.
 
   #team(row: TeamRow): Team {
     const stored = JSON.parse(row.data) as Stored;
-    const members = stored.members.map(member => ({ ...member, name: this.#botName(member) }));
+    const members = stored.members.map(member => this.#shown(member));
     return { id: row.id, host: row.host, version: row.version, ...stored, members, threadId: row.thread_id, lastSeq: row.last_seq, createdAt: row.created_at, updatedAt: row.updated_at };
+  }
+
+  /** A member as this machine shows it: named as it is now, with its machine when it runs elsewhere. */
+  #shown(member: TeamMember): TeamMember {
+    const shown: TeamMember = { ...member, name: this.#botName(member) };
+    if (member.coreId === this.#self) delete shown.machine;
+    else shown.machine = this.machineName(member.coreId);
+    return shown;
+  }
+
+  /** A machine of the group by name; one that left it by the start of its id. */
+  machineName(coreId: string): string {
+    return this.#core.group.peers().find(peer => peer.coreId === coreId)?.name ?? coreId.slice(0, 8);
   }
 
   get(teamId: string): Team | null {
@@ -101,27 +139,36 @@ export class TeamStore {
     return row ? this.#team(row) : null;
   }
 
+  /** A team this machine holds: the owner changes a team where it is held. */
   #require(teamId: unknown): Team {
     const team = typeof teamId === 'string' ? this.get(teamId) : null;
-    if (!team) throw notFound(`teamId: no team ${JSON.stringify(teamId)}`, { field: 'teamId' });
+    if (!team || team.host !== this.#self) throw notFound(`teamId: no team ${JSON.stringify(teamId)}`, { field: 'teamId' });
     return team;
-  }
-
-  /** The live teams a bot of this machine belongs to, whether the experiment is on or off: a move must not strand them. */
-  namesOf(botId: string): string[] {
-    const key = this.#key(botId);
-    return this.#all().filter(team => !team.archived && team.members.some(member => member.key === key)).map(team => team.name);
   }
 
   #all(): Team[] { return (this.#db.query('SELECT * FROM teams ORDER BY created_at').all() as TeamRow[]).map(row => this.#team(row)); }
 
-  /** The team a bot names, by id or name, among the teams it belongs to; the owner names any. */
-  #named(ref: unknown, member: TeamParty): Team {
+  /** The teams this machine holds, the only ones its owner sees here: a mirror shows on the machine holding its team. */
+  #hosted(): Team[] { return this.#all().filter(team => team.host === this.#self); }
+
+  #mirrors(): boolean { return this.#db.query('SELECT 1 FROM teams WHERE host <> ? LIMIT 1').get(this.#self) !== null; }
+
+  /** A bot of this machine in a team. Its key stays the one it joined with; `coreId` says where it runs now. */
+  #memberHere(team: Pick<Team, 'members'>, botId: string): TeamMember | undefined {
+    return team.members.find(member => member.botId === botId && member.coreId === this.#self);
+  }
+
+  /** The team a bot names, by id or name, among the teams it belongs to; the owner (`null`) names any team held here. */
+  #named(ref: unknown, botId: string | null): Team {
     const wanted = typeof ref === 'string' ? ref.trim() : '';
     if (!wanted) throw invalidParams('team: expected a team name or id');
-    const mine = this.#all().filter(team => member === TEAM_OWNER || team.members.some(entry => entry.key === member));
-    const found = mine.find(team => team.id === wanted) ?? mine.filter(team => !team.archived && team.name.toLowerCase() === wanted.toLowerCase())[0];
-    if (!found) throw refused(`team: no team ${JSON.stringify(wanted)}${member === TEAM_OWNER ? '' : ' you are a member of'}; yours: ${mine.filter(team => !team.archived).map(team => team.name).join(', ') || 'none'}`, { field: 'team' });
+    const mine = botId === null ? this.#hosted() : this.#all().filter(team => this.#memberHere(team, botId) !== undefined);
+    const byId = mine.find(team => team.id === wanted);
+    // Two machines may each hold a team of that name, with the same bot in both.
+    const named = mine.filter(team => !team.archived && team.name.toLowerCase() === wanted.toLowerCase());
+    if (!byId && named.length > 1) throw refused(`team: ${named.length} of your teams are named ${JSON.stringify(wanted)}; name one by id: ${named.map(team => team.id).join(', ')}`, { field: 'team' });
+    const found = byId ?? named[0];
+    if (!found) throw refused(`team: no team ${JSON.stringify(wanted)}${botId === null ? '' : ' you are a member of'}; yours: ${mine.filter(team => !team.archived).map(team => team.name).join(', ') || 'none'}`, { field: 'team' });
     return found;
   }
 
@@ -141,49 +188,78 @@ export class TeamStore {
 
   #key(botId: string): TeamParty { return teamMemberKey(this.#self, botId); }
 
-  /** A bot of this machine, by id or name. `<machine>/<bot>` waits for a later version; a bot on its way to another machine joins nothing. */
-  #bot(ref: unknown, field = 'members'): AgentProfile {
+  /** A bot of this machine, by id or name, as a team takes it; one on its way to another machine joins once it arrived. */
+  localBot(ref: unknown, field = 'members'): TeamBot {
     const bot = this.#find(ref, field);
-    if (this.#core.workforce.moves.moving(bot.id)) throw refused(`${field}: ${bot.name} is moving to another machine; a team holds bots of one machine`, { field, reason: 'moving' });
-    return bot;
+    if (this.#core.workforce.moves.moving(bot.id)) throw refused(`${field}: ${bot.name} is moving to another machine; name it there once it arrived`, { field, reason: 'moving' });
+    return { coreId: this.#self, botId: bot.id, name: bot.name };
   }
+
+  /** Whether exactly this names a bot of this machine: a name may hold the slash of `<machine>/<bot>`. */
+  namesLocalBot(wanted: string): boolean {
+    return this.#live().some(agent => agent.id === wanted || agent.name.toLowerCase() === wanted.toLowerCase());
+  }
+
+  #live(): AgentProfile[] { return this.#core.workforce.records.list('profile').filter(agent => agent.status !== 'archived'); }
 
   #find(ref: unknown, field: string): AgentProfile {
     const wanted = typeof ref === 'string' ? ref.trim() : '';
     if (!wanted) throw invalidParams(`${field}: expected a bot name or id`);
-    if (wanted.includes('/')) throw refused(LATER, { field });
-    const live = this.#core.workforce.records.list('profile').filter(agent => agent.status !== 'archived');
+    const live = this.#live();
     const byId = live.find(agent => agent.id === wanted);
     if (byId) return byId;
     const named = live.filter(agent => agent.name.toLowerCase() === wanted.toLowerCase());
     if (named.length === 1) return named[0]!;
     if (named.length > 1) throw refused(`${field}: ${named.length} bots are named ${JSON.stringify(wanted)}; name it by id: ${named.map(agent => agent.id).join(', ')}`, { field });
-    throw refused(`${field}: no bot ${JSON.stringify(wanted)}; the bots are ${live.map(agent => agent.name).join(', ') || 'none yet'}`, { field });
+    const elsewhere = this.#core.group.peers().length > 0 ? '; a bot of another machine is written <machine>/<bot>' : '';
+    throw refused(`${field}: no bot ${JSON.stringify(wanted)}; the bots are ${live.map(agent => agent.name).join(', ') || 'none yet'}${elsewhere}`, { field });
   }
 
   /** The bot whose own thread calls. */
-  #caller(threadId: unknown): AgentProfile {
+  caller(threadId: unknown): AgentProfile {
     const bot = typeof threadId === 'string' ? this.#core.workforce.agentOfThread(threadId) : null;
     if (!bot) throw refused('threadId: teams are for bots; this thread is no bot\'s conversation', { field: 'threadId' });
     return bot;
   }
 
-  /** A team the calling bot belongs to, and its key there. */
-  #mine(threadId: unknown, ref: unknown): { team: Team; bot: AgentProfile; key: TeamParty } {
-    const bot = this.#caller(threadId);
-    const key = this.#key(bot.id);
-    return { team: this.#named(ref, key), bot, key };
+  /**
+   * A team the calling bot belongs to, and its key there. The experiment is
+   * the word of the machine holding the team: off here, a team held here
+   * refuses, and a team held elsewhere goes on asking there.
+   */
+  mine(threadId: unknown, ref: unknown): { team: Team; bot: AgentProfile; key: TeamParty } {
+    const open = this.#open();
+    if (!open && !this.#mirrors()) this.gate();
+    const bot = this.caller(threadId);
+    const team = this.#named(ref, bot.id);
+    if (!open && team.host === this.#self) this.gate();
+    return { team, bot, key: this.#memberHere(team, bot.id)!.key };
   }
 
-  /** A member by bot id, or by a name no other member has. */
-  #member(team: Team, ref: unknown, field: string): TeamMember {
+  /** A member by key, by bot id or by a name no other member has; `<machine>/<bot>` tells a shared name apart. */
+  member(team: Team, ref: unknown, field: string): TeamMember {
     const wanted = typeof ref === 'string' ? ref.trim() : '';
-    if (wanted.includes('/')) throw refused(LATER, { field });
-    const named = team.members.filter(entry => entry.name.toLowerCase() === wanted.toLowerCase());
-    const member = team.members.find(entry => entry.botId === wanted) ?? (named.length === 1 ? named[0] : undefined);
-    if (member) return member;
+    const exact = team.members.find(entry => entry.key === wanted || entry.botId === wanted);
+    if (exact) return exact;
+    const same = (entry: TeamMember, name: string) => entry.botId === name || entry.name.toLowerCase() === name.toLowerCase();
+    let named = team.members.filter(entry => same(entry, wanted));
+    const slash = wanted.indexOf('/');
+    if (named.length === 0 && slash > 0) named = team.members.filter(entry => this.#onMachine(entry, wanted.slice(0, slash)) && same(entry, wanted.slice(slash + 1).trim()));
+    if (named.length === 1) return named[0]!;
     throw refused(named.length > 1 ? `${field}: ${named.length} members are named ${JSON.stringify(wanted)}; name one by id: ${named.map(entry => entry.botId).join(', ')}`
       : `${field}: ${JSON.stringify(wanted)} is no member of ${team.name}`, { field });
+  }
+
+  #onMachine(member: TeamMember, query: string): boolean {
+    const wanted = query.trim();
+    if (member.coreId === wanted || (/^[0-9a-f]{6,}$/.test(wanted) && member.coreId.startsWith(wanted))) return true;
+    const here = this.#core.group.view('owner')?.cores.find(entry => entry.coreId === this.#self)?.name ?? this.#core.info().hostname ?? '';
+    return foldMachine(member.machine ?? here) === foldMachine(wanted);
+  }
+
+  /** A bot as a card and an answer name it: with its machine when it runs elsewhere. */
+  #label(bot: { coreId: string; name: string }): string {
+    return bot.coreId === this.#self ? bot.name : `${bot.name} (${this.machineName(bot.coreId)})`;
   }
 
   /** A member's own thread on this machine. */
@@ -196,7 +272,7 @@ export class TeamStore {
     if (typeof value !== 'string' || !value.trim() || value.trim().length > TEAM_NAME_MAX) throw invalidParams(`name: expected 1 to ${TEAM_NAME_MAX} characters`);
     const name = value.trim().replace(/\s+/g, ' ');
     if (name.startsWith('@')) throw invalidParams('name: a team name does not start with @');
-    if (this.#all().some(team => !team.archived && team.id !== except && team.name.toLowerCase() === name.toLowerCase())) throw refused(`name: a team is already named ${JSON.stringify(name)}`, { field: 'name' });
+    if (this.#hosted().some(team => !team.archived && team.id !== except && team.name.toLowerCase() === name.toLowerCase())) throw refused(`name: a team is already named ${JSON.stringify(name)}`, { field: 'name' });
     return name;
   }
 
@@ -206,10 +282,15 @@ export class TeamStore {
     return value.trim();
   }
 
-  #bots(refs: unknown): AgentProfile[] {
+  /** The bots a list names; `elsewhere` holds what `TeamPeers` found on other machines, by the words given. */
+  #bots(refs: unknown, elsewhere?: ReadonlyMap<string, TeamBot>): TeamBot[] {
     if (!Array.isArray(refs) || refs.length === 0 || refs.length > TEAM_MEMBERS_MAX) throw invalidParams(`members: expected 1 to ${TEAM_MEMBERS_MAX} bots`);
-    const bots = refs.map(ref => this.#bot(ref));
-    return bots.filter((bot, index) => bots.findIndex(other => other.id === bot.id) === index);
+    const bots = refs.map(ref => (typeof ref === 'string' ? elsewhere?.get(ref) : undefined) ?? this.localBot(ref));
+    return bots.filter((bot, index) => bots.findIndex(other => other.botId === bot.botId) === index);
+  }
+
+  #joining(bot: TeamBot, joinedSeq: number): TeamMember {
+    return { key: teamMemberKey(bot.coreId, bot.botId), coreId: bot.coreId, botId: bot.botId, name: bot.name, joinedSeq };
   }
 
   #changed(team: Pick<Team, 'id' | 'version'>): void { this.#core.bus.emit('teams.changed', { teamId: team.id, version: team.version }); }
@@ -217,48 +298,59 @@ export class TeamStore {
   /** Saves a change of the team: its version moves on, so a member on another machine can tell it apart. */
   #save(team: Team, change: Partial<Stored>): Team {
     const next: Team = { ...team, ...change, version: team.version + 1, updatedAt: Date.now() };
-    const stored: Stored = { name: next.name, brief: next.brief, members: next.members, dispatcher: next.dispatcher, paused: next.paused, archived: next.archived, createdBy: next.createdBy };
+    const stored = storedOf(next);
     this.#core.journal.append({ type: 'teams.saved', threadId: team.threadId, version: 1, payload: { teamId: team.id, version: next.version, ...stored } }, db => {
       const saved = db.query('UPDATE teams SET version = ?, data = ?, updated_at = ? WHERE id = ? AND version = ?').run(next.version, JSON.stringify(stored), next.updatedAt, team.id, team.version);
       if (saved.changes !== 1) throw refused(`${team.name} changed meanwhile; read it again`, { field: 'teamId' });
+      this.peers.track(team.id, team.members, next.members);
     });
     this.#changed(next);
+    this.peers.kick(team.id);
     return this.get(team.id)!;
   }
 
   list(params: RpcParams<'teams.list'> = {}): Team[] {
-    this.gate();
-    const member = params.threadId === undefined ? TEAM_OWNER : this.#key(this.#caller(params.threadId).id);
-    return this.#all().filter(team => (params.archived === true || !team.archived) && (member === TEAM_OWNER || team.members.some(entry => entry.key === member)));
+    const open = this.#open();
+    if (!open && (params.threadId === undefined || !this.#mirrors())) this.gate();
+    const botId = params.threadId === undefined ? null : this.caller(params.threadId).id;
+    const teams = (botId === null ? this.#hosted() : this.#all().filter(team => this.#memberHere(team, botId) !== undefined && (open || team.host !== this.#self)))
+      .filter(team => params.archived === true || !team.archived);
+    if (!open && teams.length === 0) this.gate();
+    return teams;
   }
 
-  create(params: RpcParams<'teams.create'>): Team {
+  create(params: RpcParams<'teams.create'>, elsewhere?: ReadonlyMap<string, TeamBot>): Team {
     this.gate();
-    const ask = params.card === undefined ? null : this.#card(params.card, 'create');
+    const ask = params.card === undefined ? null : this.card(params.card, 'create');
     const name = this.#checkName(params.name);
     const brief = this.#checkBrief(params.brief);
-    const bots = this.#bots(params.members);
+    const bots = this.#bots(params.members, elsewhere);
+    // The chat runs no agent, yet a thread carries a selection: the one of a bot of this machine.
+    const local = bots.find(bot => bot.coreId === this.#self);
+    const first = (local ? this.#core.workforce.records.find('profile', local.botId) : null) ?? this.#live()[0];
+    if (!first) throw refused('members: this machine has no bot to take the settings of the team chat from', { field: 'members' });
     const id = randomUUID();
     const now = Date.now();
     const cwd = join(this.#core.dataDir, 'teams', id);
     mkdirSync(cwd, { recursive: true });
-    const first = bots[0]!;
     const thread: ThreadSummary = {
       id: newId('thr_'), projectId: null, teamId: id, title: name, titleSource: 'user', ...first.selection, speed: null, cwd, branch: null,
       status: 'idle', unread: false, archived: false, pinned: false, sessionId: null, sessionGeneration: 0, selectionVersion: 0, load: null, context: null, createdAt: now, updatedAt: now,
     };
     const stored: Stored = {
-      name, brief, members: bots.map(bot => ({ key: this.#key(bot.id), coreId: this.#self, botId: bot.id, name: bot.name, joinedSeq: 0 })),
+      name, brief, members: bots.map(bot => this.#joining(bot, 0)),
       dispatcher: null, paused: false, archived: false, createdBy: ask === null ? TEAM_OWNER : this.#key(ask.by),
     };
     this.#core.journal.append({ type: 'thread.created', threadId: thread.id, version: 1, payload: thread }, db => {
       this.#core.journal.putThread(thread);
       db.query('INSERT INTO teams (id, host, version, thread_id, last_seq, data, created_at, updated_at) VALUES (?, ?, 1, ?, 0, ?, ?, ?)').run(id, this.#self, thread.id, JSON.stringify(stored), now, now);
+      this.peers.track(id, [], stored.members);
     });
     this.#core.bus.emit('thread.created', withLoad(this.#core, thread));
     const team = this.get(id)!;
     this.#changed(team);
-    if (params.card !== undefined) this.#settle(params.card, `applied: the team ${JSON.stringify(name)} exists, with ${team.members.map(member => member.name).join(', ')}`);
+    this.peers.kick(id);
+    if (params.card !== undefined) this.settle(params.card, `applied: the team ${JSON.stringify(name)} exists, with ${team.members.map(member => this.#label(member)).join(', ')}`);
     return team;
   }
 
@@ -280,12 +372,10 @@ export class TeamStore {
 
   archive(params: RpcParams<'teams.archive'>): Team {
     this.gate();
-    const team = this.#require(params.teamId);
+    const asked = this.#require(params.teamId);
     if (typeof params.archived !== 'boolean') throw invalidParams('archived: expected a boolean');
-    if (team.archived === params.archived) return team;
-    // A member moving or moved to another machine has no thread here to read the team: restoring waits for its removal.
-    const gone = params.archived ? [] : team.members.filter(member => this.#core.workforce.moves.moving(member.botId) || this.#core.workforce.records.find('profile', member.botId) === null);
-    if (gone.length > 0) throw refused(`${team.name} has members on or going to another machine: ${gone.map(member => member.name).join(', ')}; remove them before restoring it, a team holds bots of one machine`, { field: 'teamId', reason: 'moving', members: gone.map(member => member.botId) });
+    if (asked.archived === params.archived) return asked;
+    const team = params.archived ? asked : this.#followGone(asked);
     const saved = this.#save(team, { archived: params.archived });
     if (params.archived) this.#core.coordination.teamLetters.reject(team.id, null, `The team ${team.name} was archived`);
     else this.#kickMembers(saved);
@@ -303,6 +393,23 @@ export class TeamStore {
     return saved;
   }
 
+  /**
+   * Members that left this machine before a move took their teams along: one
+   * follows its bot to where the move's receipt says; one nothing is known of
+   * leaves, or the team could never be restored.
+   */
+  #followGone(asked: Team): Team {
+    let team = asked;
+    for (const member of asked.members) {
+      if (member.coreId !== this.#self || this.#core.workforce.records.find('profile', member.botId) !== null) continue;
+      const to = this.#core.workforce.moves.movedTo(member.botId);
+      if (to !== null) { team = this.moveMember(team, member, to); continue; }
+      this.#core.log('warn', `team ${team.id}: ${member.name} is gone from this machine and no move says where; it leaves the team`);
+      team = this.#save(team, { members: team.members.filter(entry => entry.key !== member.key) });
+    }
+    return team;
+  }
+
   #kickMembers(team: Team): void {
     for (const member of team.members) {
       const threadId = this.#threadOf(member);
@@ -310,27 +417,27 @@ export class TeamStore {
     }
   }
 
-  addMember(params: RpcParams<'teams.members.add'>): Team {
+  addMember(params: RpcParams<'teams.members.add'>, guest?: TeamBot): Team {
     this.gate();
     const team = this.#require(params.teamId);
-    const ask = params.card === undefined ? null : this.#card(params.card, 'invite');
+    const ask = params.card === undefined ? null : this.card(params.card, 'invite');
     if (ask !== null && ask.kind === 'invite' && ask.teamId !== team.id) throw refused(`card: it asks about another team, ${ask.teamName}`, { field: 'card' });
-    const bot = this.#bot(params.botId, 'botId');
+    const bot = guest ?? this.localBot(params.botId, 'botId');
     if (team.archived) throw refused(`${team.name} is archived`, { field: 'teamId' });
-    if (team.members.some(member => member.botId === bot.id)) throw refused(`${bot.name} is already a member of ${team.name}`, { field: 'botId' });
+    if (team.members.some(member => member.botId === bot.botId)) throw refused(`${bot.name} is already a member of ${team.name}`, { field: 'botId' });
     if (team.members.length >= TEAM_MEMBERS_MAX) throw refused(`a team holds at most ${TEAM_MEMBERS_MAX} bots`, { field: 'botId' });
     // A new member starts reading after the posts already there; `boite team read` shows the older ones.
-    const saved = this.#save(team, { members: [...team.members, { key: this.#key(bot.id), coreId: this.#self, botId: bot.id, name: bot.name, joinedSeq: team.lastSeq }] });
-    if (params.card !== undefined) this.#settle(params.card, `applied: ${bot.name} joined ${team.name}`);
+    const saved = this.#save(team, { members: [...team.members, this.#joining(bot, team.lastSeq)] });
+    if (params.card !== undefined) this.settle(params.card, `applied: ${this.#label(bot)} joined ${team.name}`);
     return saved;
   }
 
   removeMember(params: RpcParams<'teams.members.remove'>): Team {
     this.gate();
     const team = this.#require(params.teamId);
-    const ask = params.card === undefined ? null : this.#card(params.card, 'leave');
+    const ask = params.card === undefined ? null : this.card(params.card, 'leave');
     if (ask !== null && ask.kind === 'leave' && ask.teamId !== team.id) throw refused(`card: it asks about another team, ${ask.teamName}`, { field: 'card' });
-    const member = this.#member(team, params.botId, 'botId');
+    const member = this.member(team, params.botId, 'botId');
     const saved = this.#save(team, { members: team.members.filter(entry => entry.key !== member.key) });
     const threadId = this.#threadOf(member);
     const reason = `${member.name} left the team ${team.name}`;
@@ -342,8 +449,66 @@ export class TeamStore {
       db.query('DELETE FROM team_cursors WHERE team_id = ? AND member = ?').run(team.id, member.key);
       db.query('DELETE FROM team_seen WHERE team_id = ? AND member = ?').run(team.id, member.key);
     });
-    if (params.card !== undefined) this.#settle(params.card, `applied: ${member.name} left ${team.name}`);
+    if (params.card !== undefined) this.settle(params.card, `applied: ${this.#label(member)} left ${team.name}`);
     return saved;
+  }
+
+  /**
+   * A member now runs on `to`: its key stays, so posts and fingerprints hold.
+   * Posts still waiting for it wait for it there; the ones too old to wake it
+   * end here, as they do for a machine long away.
+   */
+  moveMember(team: Team, member: TeamMember, to: string): Team {
+    const now = Date.now();
+    let joinedSeq = team.lastSeq;
+    this.#core.journal.append({ type: 'teams.member.moved', threadId: team.threadId, version: 1, payload: { teamId: team.id, member: member.key, to } }, db => {
+      const ofTeam = 'post_id IN (SELECT id FROM team_posts WHERE team_id = ?)';
+      db.query(`UPDATE team_deliveries SET state = 'expired', reason = ?, at = ? WHERE member = ? AND state IN ('waiting', 'unreachable') AND post_id IN (SELECT id FROM team_posts WHERE team_id = ? AND created_at < ?)`)
+        .run(`${member.name} moved after this post had waited too long`, now, member.key, team.id, now - TEAM_WAKE_MAX_MS);
+      const oldest = db.query(`SELECT MIN(p.seq) AS seq FROM team_deliveries d JOIN team_posts p ON p.id = d.post_id WHERE p.team_id = ? AND d.member = ? AND d.state IN ('waiting', 'unreachable')`).get(team.id, member.key) as { seq: number | null };
+      if (oldest.seq !== null) joinedSeq = Math.max(member.joinedSeq, oldest.seq - 1);
+      db.query(`UPDATE team_deliveries SET state = 'waiting', reason = NULL, at = ? WHERE member = ? AND state IN ('waiting', 'unreachable') AND ${ofTeam}`).run(now, member.key, team.id);
+      db.query('DELETE FROM team_cursors WHERE team_id = ? AND member = ?').run(team.id, member.key);
+      db.query('DELETE FROM team_seen WHERE team_id = ? AND member = ?').run(team.id, member.key);
+    });
+    const saved = this.#save(team, { members: team.members.map(entry => (entry.key === member.key ? { ...entry, coreId: to, joinedSeq } : entry)) });
+    if (to === this.#self) this.#repair();
+    return saved;
+  }
+
+  /**
+   * A bot of this machine is leaving for `to`, which already holds it
+   * (`agents/move.ts`): its letters here end, what it read here goes, and the
+   * machine holding each team, this one or another, follows it. Archived teams
+   * too: restoring one must not find a member nobody can reach.
+   */
+  memberMoved(botId: string, to: string): void {
+    for (const team of this.#all()) {
+      const member = this.#memberHere(team, botId);
+      if (!member) continue;
+      try {
+        const threadId = this.#threadOf(member);
+        if (threadId !== null) this.#core.coordination.teamLetters.reject(team.id, threadId, MOVED);
+        if (team.host === this.#self) { this.moveMember(team, member, to); continue; }
+        this.#core.journal.append({ type: 'teams.member.moved', threadId: null, version: 1, payload: { teamId: team.id, member: member.key, to } }, db => {
+          db.query('DELETE FROM team_cursors WHERE team_id = ? AND member = ?').run(team.id, member.key);
+          db.query('DELETE FROM team_seen WHERE team_id = ? AND member = ?').run(team.id, member.key);
+          this.peers.queue(team.host, 'team.moved', { teamId: team.id, botId, to });
+        });
+      } catch (error) { this.#core.log('warn', `team ${team.id} after ${member.name} moved: ${messageOf(error)}`); }
+    }
+  }
+
+  /** A bot of this machine got a new name: a team held here keeps it and tells its machines; the holder of any other hears it. */
+  botRenamed(botId: string): void {
+    for (const team of this.#all()) {
+      const member = this.#memberHere(team, botId);
+      if (!member) continue;
+      try {
+        if (team.host === this.#self) this.#save(team, {});
+        else this.peers.queue(team.host, 'team.report', { teamId: team.id, reports: [], names: { [botId]: member.name } });
+      } catch (error) { this.#core.log('warn', `team ${team.id} after ${member.name} was renamed: ${messageOf(error)}`); }
+    }
   }
 
   // Posts.
@@ -371,7 +536,8 @@ export class TeamStore {
    * the team chat as a turn of its own, then handed to each recipient bot as a
    * team letter. A retry with the same id and content returns the first post.
    */
-  #post(team: Team, input: { id: unknown; author: TeamParty; text: unknown; audience: TeamAudience; to?: TeamParty[]; inReplyTo?: unknown; turnId?: string | null }): TeamPost {
+  #post(team: Team, input: PostInput): TeamPost {
+    if (team.host !== this.#self) throw refused(`${team.name} is held by ${this.machineName(team.host)}, which orders its posts`, { field: 'team' });
     const id = typeof input.id === 'string' ? input.id.trim() : '';
     if (!id || id.length > 100) throw invalidParams('id: expected 1 to 100 characters');
     const text = typeof input.text === 'string' ? input.text.trim() : '';
@@ -384,6 +550,7 @@ export class TeamStore {
       if (known.teamId !== team.id || known.fingerprint !== fingerprint) throw refused('id: already used for a different post', { field: 'id' });
       // A retry after an interruption hands over the letters the first try did not.
       this.#repair(known.id);
+      this.peers.kick(team.id);
       return known;
     }
     if (team.archived) throw refused(`${team.name} is archived`, { field: 'team' });
@@ -436,8 +603,12 @@ export class TeamStore {
     if (saved.audience === 'private' && saved.to[0] === TEAM_OWNER) this.#core.push.teamPost(thread.id, `${this.#name(team, saved.author)}: ${text}`, `team-post-${saved.id}`);
     this.#changed(team);
     this.#hand(team, saved);
+    this.peers.kick(team.id);
     return saved;
   }
+
+  /** A post of a member of another machine, `author` being what this machine found for the machine asking. */
+  postAs(team: Team, input: PostInput): TeamPost { return this.#post(team, input); }
 
   /** Each recipient's letter. */
   #hand(team: Team, post: TeamPost): void {
@@ -479,32 +650,41 @@ export class TeamStore {
     const team = this.#require(params.teamId);
     const audience = params.audience ?? 'team';
     if (audience !== 'team' && audience !== 'private') throw invalidParams('audience: expected team or private');
-    const to = (params.to ?? []).map(ref => this.#member(team, ref, 'to').key);
+    const to = (params.to ?? []).map(ref => this.member(team, ref, 'to').key);
     return this.#post(team, { id: params.id, author: TEAM_OWNER, text: params.text, audience, to, inReplyTo: params.inReplyTo });
   }
 
   /** `boite team say`: a group post from the bot's own thread. */
   say(params: RpcParams<'teams.say'>): TeamPost {
-    this.gate();
-    const { team, key } = this.#mine(params.threadId, params.team);
+    const { team, key } = this.mine(params.threadId, params.team);
     return this.#post(team, { id: params.id ?? randomUUID(), author: key, text: params.text, audience: 'team', inReplyTo: params.inReplyTo, turnId: this.#core.journal.runningTurn(params.threadId)?.id ?? null });
   }
 
   /** `boite team dm`: a private post to one member or the owner. */
   dm(params: RpcParams<'teams.dm'>): TeamPost {
-    this.gate();
-    const { team, key } = this.#mine(params.threadId, params.team);
-    const wanted = typeof params.to === 'string' ? params.to.trim() : '';
+    const { team, key } = this.mine(params.threadId, params.team);
+    return this.#post(team, { id: params.id ?? randomUUID(), author: key, text: params.text, audience: 'private', to: [this.recipient(team, params.to)], turnId: this.#core.journal.runningTurn(params.threadId)?.id ?? null });
+  }
+
+  /** Who a `dm` writes to. */
+  recipient(team: Team, to: unknown): TeamParty {
+    const wanted = typeof to === 'string' ? to.trim() : '';
     if (!wanted) throw invalidParams('to: expected a member or owner');
-    const recipient = wanted.toLowerCase() === TEAM_OWNER ? TEAM_OWNER : this.#member(team, wanted, 'to').key;
-    return this.#post(team, { id: params.id ?? randomUUID(), author: key, text: params.text, audience: 'private', to: [recipient], turnId: this.#core.journal.runningTurn(params.threadId)?.id ?? null });
+    return wanted.toLowerCase() === TEAM_OWNER ? TEAM_OWNER : this.member(team, wanted, 'to').key;
   }
 
   /** Posts before `before`, the newest page, oldest first; a bot reads only what it may see. */
   read(params: RpcParams<'teams.read'>): TeamReading {
+    if (params.threadId !== undefined) {
+      const { team, key } = this.mine(params.threadId, params.team);
+      return this.page(team, key, params);
+    }
     this.gate();
-    const reader = params.threadId === undefined ? TEAM_OWNER : this.#key(this.#caller(params.threadId).id);
-    const team = this.#named(params.team, reader);
+    return this.page(this.#named(params.team, null), TEAM_OWNER, params);
+  }
+
+  /** A page of what `reader` may see of a team held here. */
+  page(team: Team, reader: TeamParty, params: Pick<RpcParams<'teams.read'>, 'before' | 'limit'>): TeamReading {
     const limit = params.limit === undefined ? 30 : params.limit;
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw invalidParams('limit: expected 1 to 100');
     const before = params.before === undefined ? Number.MAX_SAFE_INTEGER : params.before;
@@ -529,13 +709,13 @@ export class TeamStore {
 
   // Cards: a bot never creates or joins a team by itself.
 
-  #card(card: RequestId, kind: TeamAsk['kind']): TeamAsk {
+  card(card: RequestId, kind: TeamAsk['kind']): TeamAsk {
     const ask = this.#core.threads.listQuestions().find(request => request.id === card)?.team;
     if (ask === undefined || ask.kind !== kind) throw notFound(`card: ${String(card)} is no open team ${kind} card`, { field: 'card' });
     return ask;
   }
 
-  #settle(card: RequestId, text: string): void {
+  settle(card: RequestId, text: string): void {
     this.#core.threads.cards.settle(request => (request.id === card ? { optionIds: [], text } : null), 'the owner');
   }
 
@@ -548,29 +728,30 @@ export class TeamStore {
     return this.#core.threads.cards.drawAsync(thread, { text, options: [{ id: 'refuse', label: 'Refuse' }], allowText: false, multiple: false, async: true, team });
   }
 
-  propose(params: RpcParams<'teams.propose'>): { questionId: RequestId } {
+  /** How a card names a bot, read again when the owner applies it: its id here, `<coreId>/<botId>` on another machine. */
+  #cardRef(bot: TeamBot): string { return bot.coreId === this.#self ? bot.botId : `${bot.coreId}/${bot.botId}`; }
+
+  propose(params: RpcParams<'teams.propose'>, elsewhere?: ReadonlyMap<string, TeamBot>): { questionId: RequestId } {
     this.gate();
-    const bot = this.#caller(params.threadId);
+    const bot = this.caller(params.threadId);
     const name = this.#checkName(params.name);
     const brief = this.#checkBrief(params.brief);
-    const others = this.#bots(params.members).filter(other => other.id !== bot.id);
+    const others = this.#bots(params.members, elsewhere).filter(other => other.botId !== bot.id);
     if (others.length === 0) throw invalidParams('members: name at least one other bot');
-    const members = [bot, ...others];
-    const text = `${bot.name} proposes the team ${JSON.stringify(name)}: ${members.map(member => member.name).join(', ')}.${brief ? ` ${brief}` : ''}`;
-    return this.#draw(params.threadId, text, { kind: 'create', by: bot.id, name, brief, members: members.map(member => member.id) });
+    const members: TeamBot[] = [{ coreId: this.#self, botId: bot.id, name: bot.name }, ...others];
+    const text = `${bot.name} proposes the team ${JSON.stringify(name)}: ${members.map(member => this.#label(member)).join(', ')}.${brief ? ` ${brief}` : ''}`;
+    return this.#draw(params.threadId, text, { kind: 'create', by: bot.id, name, brief, members: members.map(member => this.#cardRef(member)) });
   }
 
-  invite(params: RpcParams<'teams.invite'>): { questionId: RequestId } {
-    this.gate();
-    const { team, bot } = this.#mine(params.threadId, params.team);
-    const guest = this.#bot(params.bot, 'bot');
-    if (team.members.some(member => member.botId === guest.id)) throw refused(`${guest.name} is already a member of ${team.name}`, { field: 'bot' });
-    return this.#draw(params.threadId, `${bot.name} asks to add ${guest.name} to the team ${JSON.stringify(team.name)}.`, { kind: 'invite', by: bot.id, teamId: team.id, teamName: team.name, botId: guest.id });
+  invite(params: RpcParams<'teams.invite'>, found?: TeamBot): { questionId: RequestId } {
+    const { team, bot } = this.mine(params.threadId, params.team);
+    const guest = found ?? this.localBot(params.bot, 'bot');
+    if (team.members.some(member => member.botId === guest.botId)) throw refused(`${guest.name} is already a member of ${team.name}`, { field: 'bot' });
+    return this.#draw(params.threadId, `${bot.name} asks to add ${this.#label(guest)} to the team ${JSON.stringify(team.name)}.`, { kind: 'invite', by: bot.id, teamId: team.id, teamName: team.name, botId: this.#cardRef(guest) });
   }
 
   leave(params: RpcParams<'teams.leave'>): { questionId: RequestId } {
-    this.gate();
-    const { team, bot } = this.#mine(params.threadId, params.team);
+    const { team, bot } = this.mine(params.threadId, params.team);
     return this.#draw(params.threadId, `${bot.name} asks to leave the team ${JSON.stringify(team.name)}.`, { kind: 'leave', by: bot.id, teamId: team.id, teamName: team.name, botId: bot.id });
   }
 
@@ -581,9 +762,9 @@ export class TeamStore {
     const ref = letter.team;
     if (ref === undefined) return false;
     const team = this.get(ref.teamId);
-    if (!team || team.host !== this.#self || team.paused || team.archived) return false;
+    if (!team || team.paused || team.archived) return false;
     const bot = this.#core.workforce.agentOfThread(letter.to.threadId);
-    if (!bot || !team.members.some(member => member.key === this.#key(bot.id))) return false;
+    if (!bot || !this.#memberHere(team, bot.id)) return false;
     return ref.owner || !this.#core.agentRuntime.holds(letter.to.threadId);
   }
 
@@ -625,10 +806,10 @@ export class TeamStore {
     const rendering: TeamRendering = { texts: new Map(), leftovers: [], channel: null };
     const bot = this.#core.workforce.agentOfThread(threadId);
     if (letters.length === 0 || !bot) return rendering;
-    const you = this.#key(bot.id);
     const planned = letters.map(letter => {
       const team = this.get(letter.team!.teamId)!;
-      const member = team.members.find(entry => entry.key === you)!;
+      const member = this.#memberHere(team, bot.id)!;
+      const you = member.key;
       const low = this.#low(team, member);
       const triggers = letter.team!.triggers.map(seq => this.#postAt(team.id, seq)).filter((post): post is TeamPost => post !== null);
       const newest = Math.max(0, ...triggers.map(post => post.seq));
@@ -647,6 +828,7 @@ export class TeamStore {
         rendering.leftovers.push({ letter, seqs: plan.leftover.map(post => post.seq), owner: owner(plan.leftover) });
         letter.team = { ...letter.team!, triggers: plan.triggers.map(post => post.seq), owner: owner(plan.triggers) };
       }
+      const you = member.key;
       rendering.texts.set(letter.id, teamPrompt({ team: team.name, you, plan, channel: rendering.channel, name }));
       const seqs = [...plan.triggers, ...plan.context, ...plan.omitted].map(post => post.seq);
       const low = this.#low(team, member);
@@ -690,17 +872,23 @@ export class TeamStore {
     if (letter.status === 'uncertain' && inFlight(letter.error)) return;
     const team = this.get(ref.teamId);
     const bot = this.#core.workforce.agentOfThread(letter.to.threadId);
-    const member = team && bot ? team.members.find(entry => entry.key === this.#key(bot.id)) : undefined;
+    const member = team && bot ? this.#memberHere(team, bot.id) : undefined;
     if (letter.status === 'delivered') this.#db.query("UPDATE team_seen SET state = 'seen', letter_id = NULL WHERE letter_id = ? AND state = 'flight'").run(letter.id);
     else this.#db.query("DELETE FROM team_seen WHERE letter_id = ? AND state = 'flight'").run(letter.id);
     if (team && member && letter.status === 'delivered') this.#fold(team, member);
+    // A bot on its way to another machine: its posts wait for it there.
+    if (letter.error === MOVED) return;
     const state = letter.status === 'delivered' ? 'delivered' : letter.status === 'rejected' ? 'rejected' : letter.status === 'expired' ? 'expired' : null;
-    if (team && bot && state !== null) {
-      for (const seq of ref.triggers) {
-        const post = this.#postAt(team.id, seq);
-        if (post) this.#db.query('UPDATE team_deliveries SET state = ?, reason = ?, letter_id = ?, at = ? WHERE post_id = ? AND member = ?').run(state, state === 'delivered' ? null : letter.error, letter.id, Date.now(), post.id, this.#key(bot.id));
-      }
+    if (!team || !member || state === null) return;
+    const reports: TeamPeerReport[] = [];
+    const reason = state === 'delivered' ? null : letter.error;
+    for (const seq of ref.triggers) {
+      const post = this.#postAt(team.id, seq);
+      if (!post) continue;
+      this.#db.query('UPDATE team_deliveries SET state = ?, reason = ?, letter_id = ?, at = ? WHERE post_id = ? AND member = ?').run(state, reason, letter.id, Date.now(), post.id, member.key);
+      reports.push({ postId: post.id, member: member.key, state, reason });
     }
+    if (team.host !== this.#self && reports.length > 0) this.peers.queue(team.host, 'team.report', { teamId: team.id, reports });
   }
 
   /** A team wake that settled without reaching its provider's answer: its snapshot is released, its letter stays as it is. */
@@ -769,13 +957,162 @@ export class TeamStore {
   #answer(turn: Pick<Turn, 'id' | 'threadId'>, envelope: { thread_id: string; team_id: string; audience: TeamAudience; recipient: string | null; in_reply_to: string | null }): TeamPost | null {
     const team = this.get(envelope.team_id);
     const bot = this.#core.workforce.agentOfThread(envelope.thread_id);
-    if (!team || team.archived || !bot || !team.members.some(member => member.botId === bot.id)) return null;
-    if (envelope.recipient !== null && envelope.recipient !== TEAM_OWNER && !team.members.some(member => member.key === envelope.recipient)) return null;
+    const member = team && bot ? this.#memberHere(team, bot.id) : undefined;
+    if (!team || team.archived || !bot || !member) return null;
+    if (envelope.recipient !== null && envelope.recipient !== TEAM_OWNER && !team.members.some(entry => entry.key === envelope.recipient)) return null;
     const text = finalText(this.#core, turn);
     if (!text || quietText(text)) return null;
-    return this.#post(team, {
-      id: answerPostId(turn.id), author: this.#key(bot.id), text: text.slice(0, TEAM_POST_MAX), audience: envelope.audience,
+    const answer = {
+      id: answerPostId(turn.id), text: text.slice(0, TEAM_POST_MAX), audience: envelope.audience,
       ...(envelope.recipient === null ? {} : { to: [envelope.recipient] }), inReplyTo: envelope.in_reply_to, turnId: turn.id,
+    };
+    if (team.host === this.#self) return this.#post(team, { ...answer, author: member.key });
+    // It waits for the machine holding the team, which orders it among the others and keeps it once, by its id.
+    this.peers.queue(team.host, 'team.post', { ...answer, teamId: team.id, botId: bot.id, answer: true });
+    return null;
+  }
+
+  // The machines of a team (`peers.ts`).
+
+  /**
+   * The next posts a machine may have of a team held here, oldest first, within
+   * `bytes`: group posts and private posts to one of its members, never the
+   * others. `upTo` covers what it was not sent. `wake` names who still waits for
+   * a post there; a post that waited too long stays readable and wakes nobody.
+   */
+  batchFor(team: Team, coreId: string, after: number, bytes: number): { posts: TeamPeerPost[]; upTo: number } {
+    const members = team.members.filter(member => member.coreId === coreId);
+    const posts: TeamPeerPost[] = [];
+    if (members.length === 0) return { posts, upTo: team.lastSeq };
+    let size = Buffer.byteLength(JSON.stringify(team));
+    let cursor = after;
+    for (;;) {
+      const rows = this.#db.query('SELECT * FROM team_posts WHERE team_id = ? AND seq > ? ORDER BY seq LIMIT 100').all(team.id, cursor) as PostRow[];
+      if (rows.length === 0) return { posts, upTo: team.lastSeq };
+      for (const row of rows) {
+        const post = this.#toPost(row);
+        if (post.audience === 'team' || members.some(member => post.to.includes(member.key))) {
+          const length = Buffer.byteLength(JSON.stringify(post));
+          if (posts.length > 0 && size + length > bytes) return { posts, upTo: cursor };
+          posts.push({ post, wake: this.#wakes(post, members) });
+          size += length;
+        }
+        cursor = post.seq;
+      }
+    }
+  }
+
+  #wakes(post: TeamPost, members: TeamMember[]): TeamParty[] {
+    const wake = members.filter(member => post.to.includes(member.key) && post.seq > member.joinedSeq).map(member => member.key).filter(key => {
+      const delivery = this.#db.query('SELECT state FROM team_deliveries WHERE post_id = ? AND member = ?').get(post.id, key) as { state: string } | null;
+      return delivery?.state === 'waiting' || delivery?.state === 'unreachable';
+    });
+    if (wake.length === 0 || Date.now() - post.createdAt < TEAM_WAKE_MAX_MS) return wake;
+    const now = Date.now();
+    this.#core.journal.append({ type: 'teams.post.expired', threadId: null, version: 1, payload: { postId: post.id, members: wake } }, db => {
+      for (const key of wake) db.query("UPDATE team_deliveries SET state = 'expired', reason = 'its machine was away too long', at = ? WHERE post_id = ? AND member = ?").run(now, post.id, key);
+    });
+    return [];
+  }
+
+  /** A machine that did not take what it has coming: what waits for its bots says why, until it does (`reached`). */
+  unreachable(coreId: string, reason: string): void {
+    const now = Date.now();
+    for (const team of this.#hosted()) {
+      let marked = 0;
+      for (const member of team.members.filter(entry => entry.coreId === coreId)) {
+        marked += this.#db.query("UPDATE team_deliveries SET state = 'unreachable', reason = ?, at = ? WHERE member = ? AND state = 'waiting' AND post_id IN (SELECT id FROM team_posts WHERE team_id = ?)")
+          .run(reason, now, member.key, team.id).changes;
+      }
+      if (marked > 0) this.#changed(team);
+    }
+  }
+
+  /** A machine took a batch: its posts are on their way to a letter there, whose fate it reports. */
+  reached(team: Team, coreId: string, upTo: number): void {
+    const now = Date.now();
+    let changed = 0;
+    for (const member of team.members.filter(entry => entry.coreId === coreId)) {
+      changed += this.#db.query("UPDATE team_deliveries SET state = 'waiting', reason = NULL, at = ? WHERE member = ? AND state = 'unreachable' AND post_id IN (SELECT id FROM team_posts WHERE team_id = ? AND seq <= ?)")
+        .run(now, member.key, team.id, upTo).changes;
+    }
+    if (changed > 0) this.#changed(team);
+  }
+
+  /** What a member's machine says of its letters and of its bots' names; it speaks for its own bots only. */
+  reported(team: Team, coreId: string, reports: TeamPeerReport[], names: Record<string, string>): void {
+    const own = team.members.filter(member => member.coreId === coreId);
+    const kept = reports.filter(report => own.some(member => member.key === report.member));
+    if (kept.length > 0) {
+      const now = Date.now();
+      this.#core.journal.append({ type: 'teams.reported', threadId: team.threadId, version: 1, payload: { teamId: team.id, reports: kept.length } }, db => {
+        for (const report of kept) {
+          db.query('UPDATE team_deliveries SET state = ?, reason = ?, at = ? WHERE post_id = ? AND member = ? AND post_id IN (SELECT id FROM team_posts WHERE team_id = ?)').run(report.state, report.reason, now, report.postId, report.member, team.id);
+        }
+      });
+      this.#changed(team);
+    }
+    const renamed = own.filter(member => typeof names[member.botId] === 'string' && names[member.botId] !== member.name);
+    if (renamed.length > 0) this.#save(team, { members: team.members.map(entry => (renamed.includes(entry) ? { ...entry, name: names[entry.botId]! } : entry)) });
+  }
+
+  /**
+   * A batch from the machine holding a team: its state, the posts this machine
+   * may have, and who they wake. `#repair` hands each post over as it does after
+   * an interruption here: it looks at the letters already written, so a batch
+   * sent twice wakes nobody twice. Once no bot of this machine is left in the
+   * team, nothing of it stays here.
+   */
+  mirror(incoming: Team, posts: TeamPeerPost[], upTo: number): void {
+    const before = this.get(incoming.id);
+    const current = before !== null && before.version > incoming.version ? before : incoming;
+    const stays = current.members.filter(member => member.coreId === this.#self);
+    if (before === null && stays.length === 0) return;
+    const lost = (before?.members ?? []).filter(member => member.coreId === this.#self && !stays.some(entry => entry.key === member.key));
+    const now = Date.now();
+    const leftReason = (member: TeamMember) => `${member.name} left the team ${current.name}`;
+    this.#core.journal.append({ type: 'teams.mirrored', threadId: null, version: 1, payload: { teamId: incoming.id, version: incoming.version, upTo, posts: posts.length } }, db => {
+      db.query(`INSERT INTO teams (id, host, version, thread_id, last_seq, data, created_at, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?, ?)
+        ON CONFLICT (id) DO UPDATE SET version = excluded.version, data = excluded.data, updated_at = excluded.updated_at WHERE excluded.version >= teams.version`)
+        .run(incoming.id, incoming.host, incoming.version, incoming.threadId, JSON.stringify(storedOf(incoming)), incoming.createdAt, incoming.updatedAt);
+      db.query('UPDATE teams SET last_seq = MAX(last_seq, ?) WHERE id = ?').run(upTo, incoming.id);
+      for (const { post, wake } of posts) {
+        db.query(`INSERT OR IGNORE INTO team_posts (team_id, seq, id, fingerprint, author, text, audience, to_keys, routed_by, why, in_reply_to, turn_id, notice, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(post.teamId, post.seq, post.id, post.fingerprint, post.author, post.text, post.audience, JSON.stringify(post.to), post.routedBy, post.why, post.inReplyTo, post.turnId, post.notice ?? null, post.createdAt);
+        for (const key of wake) {
+          if (!stays.some(member => member.key === key)) continue;
+          // Sent again and still waiting, it gets another six hours; any other state stands.
+          db.query(`INSERT INTO team_deliveries (post_id, member, state, reason, letter_id, at) VALUES (?, ?, 'waiting', NULL, NULL, ?)
+            ON CONFLICT (post_id, member) DO UPDATE SET at = excluded.at WHERE state = 'waiting'`).run(post.id, key, now);
+        }
+      }
+      for (const member of lost) {
+        db.query("UPDATE team_deliveries SET state = 'rejected', reason = ?, at = ? WHERE member = ? AND state = 'waiting' AND post_id IN (SELECT id FROM team_posts WHERE team_id = ?)").run(leftReason(member), now, member.key, incoming.id);
+        db.query('DELETE FROM team_cursors WHERE team_id = ? AND member = ?').run(incoming.id, member.key);
+        db.query('DELETE FROM team_seen WHERE team_id = ? AND member = ?').run(incoming.id, member.key);
+      }
+    });
+    const letters = this.#core.coordination.teamLetters;
+    for (const member of lost) {
+      const threadId = this.#threadOf(member);
+      if (threadId !== null) letters.reject(incoming.id, threadId, leftReason(member));
+    }
+    if (before !== null && !before.archived && current.archived) letters.reject(incoming.id, null, `The team ${current.name} was archived`);
+    if (before !== null && ((before.archived && !current.archived) || (before.paused && !current.paused))) {
+      this.#repair();
+      this.#kickMembers(current);
+    }
+    for (const { post, wake } of posts) if (wake.length > 0) this.#repair(post.id);
+    if (stays.length === 0) this.#forget(incoming.id);
+  }
+
+  #forget(teamId: string): void {
+    this.#core.journal.append({ type: 'teams.forgotten', threadId: null, version: 1, payload: { teamId } }, db => {
+      db.query('DELETE FROM team_deliveries WHERE post_id IN (SELECT id FROM team_posts WHERE team_id = ?)').run(teamId);
+      db.query('DELETE FROM team_posts WHERE team_id = ?').run(teamId);
+      db.query('DELETE FROM team_cursors WHERE team_id = ?').run(teamId);
+      db.query('DELETE FROM team_seen WHERE team_id = ?').run(teamId);
+      db.query('DELETE FROM teams WHERE id = ?').run(teamId);
     });
   }
 }
