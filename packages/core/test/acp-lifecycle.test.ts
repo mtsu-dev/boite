@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { join } from 'node:path';
-import type { ClientContext, SessionConfigOption } from '@agentclientprotocol/sdk';
+import type { ClientContext, SessionConfigOption } from '@agentclientprotocol/sdk/unstable';
 import type { MessagePart } from '@boite/contracts';
 import { SessionControls, type ControlTarget } from '../src/drivers/acp/controls.ts';
 import { AcpSession } from '../src/drivers/acp/session.ts';
@@ -68,7 +68,7 @@ for (const stopped of [false, true]) {
           harness.core.procs.killTree(threadId);
         },
       } as unknown as TurnContext;
-      session = new AcpSession('lifecycle', 300_000, { loadSdk: () => import('@agentclientprotocol/sdk') },
+      session = new AcpSession('lifecycle', 300_000, { loadSdk: () => import('@agentclientprotocol/sdk/unstable') },
         { costPerProcess: new Set(), refusedLoads: new Set() }, () => order.push(`session ended: ${turn.settled}`));
       turn = new AcpTurn(ctx);
       session.attach(turn, 300_000);

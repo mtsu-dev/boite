@@ -47,7 +47,7 @@ for await (const line of console) {
     spawnChild: (_command: string, args: string[], options: Parameters<TestCore['core']['procs']['spawnChild']>[3]) => h!.core.procs.spawnChild(captured, process.execPath, [fixture, ...args], options),
     killTree: () => h!.core.procs.killTree(captured),
   } as unknown as SessionContext;
-  driver = protocol === 'pi' ? createPiDriver() : createAcpDriver({loadSdk: () => import('@agentclientprotocol/sdk')});
+  driver = protocol === 'pi' ? createPiDriver() : createAcpDriver({loadSdk: () => import('@agentclientprotocol/sdk/unstable')});
   expect(await thrown(driver.prepare!(ctx))).toThrow(posture === 'wrong-agent' || posture === 'unverified-acp-patch' ? 'execution.acp.agentInfo' : 'did not initialize');
   const wire = readFileSync(log, 'utf8');
   expect(wire).not.toContain('session/prompt'); expect(wire).not.toContain('\nprompt');
@@ -68,7 +68,7 @@ test('a rejected protected ACP launch leaves no unpacking directory', async () =
     protectedExecution: {fingerprint: 'fixture', check() {}}, sessionId: null, warmProcessMinutes: 0, log() {},
     spawnChild() {throw new Error('admission must precede spawning');},
   } as unknown as SessionContext;
-  driver = createAcpDriver({loadSdk: () => import('@agentclientprotocol/sdk')});
+  driver = createAcpDriver({loadSdk: () => import('@agentclientprotocol/sdk/unstable')});
   expect(await thrown(driver.prepare!(ctx))).toThrow('execution.acp.permissionMode');
   const tempRoot = join(accountRoot, 'tmp');
   expect(existsSync(tempRoot) ? readdirSync(tempRoot) : []).toEqual([]);
@@ -96,7 +96,7 @@ test.each(['opencode', 'pi'] as const)('%s preserves an early spawn failure whil
     protectedExecution: {fingerprint: 'fixture', check() {}}, sessionId: null, warmProcessMinutes: 0, log() {},
     spawnChild() {throw new Error('synthetic spawn failure');},
   } as unknown as SessionContext;
-  driver = protocol === 'pi' ? createPiDriver() : createAcpDriver({loadSdk: () => import('@agentclientprotocol/sdk')});
+  driver = protocol === 'pi' ? createPiDriver() : createAcpDriver({loadSdk: () => import('@agentclientprotocol/sdk/unstable')});
   try {
     expect(await thrown(driver.prepare!(ctx))).toThrow('synthetic spawn failure');
     expect(released).toBeDefined();

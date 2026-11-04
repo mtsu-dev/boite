@@ -20,7 +20,7 @@
  * the server's own Python finds none.
  */
 import { isAbsolute } from 'node:path';
-import type { RequestPermissionRequest } from '@agentclientprotocol/sdk';
+import type { RequestPermissionRequest } from '@agentclientprotocol/sdk/unstable';
 import type { NativeAgentUpdate, ToolStatus } from '@boite/contracts';
 
 /** A tool's text is bounded at this, the tail kept: the end of a log is the part that matters. */

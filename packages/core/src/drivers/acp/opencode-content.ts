@@ -1,6 +1,6 @@
 import { open } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import type { ToolCallContent } from '@agentclientprotocol/sdk';
+import type { ToolCallContent } from '@agentclientprotocol/sdk/unstable';
 import { object, list, text } from './opencode-controls.ts';
 
 const MAX_TEXT = 64 * 1024;

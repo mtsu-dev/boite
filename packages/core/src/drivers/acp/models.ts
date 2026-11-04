@@ -2,7 +2,7 @@
  * What an agent says about its models, read off a `session/new` answer: the
  * protocol's `models` list, or the `model` and `thought_level` config options.
  */
-import type { SessionConfigOption, SessionConfigOptionCategory } from '@agentclientprotocol/sdk';
+import type { SessionConfigOption, SessionConfigOptionCategory } from '@agentclientprotocol/sdk/unstable';
 import type { ModelInfo, ProviderDescriptor } from '@boite/contracts';
 import { grokEffortOf } from '../grok.ts';
 import { isGrok } from './protocol.ts';
