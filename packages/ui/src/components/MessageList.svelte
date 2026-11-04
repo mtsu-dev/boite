@@ -10,6 +10,7 @@
   import { chatPrefs } from '../lib/chat-prefs.svelte';
   import MessageOutline from './MessageOutline.svelte';
   import AgentMessageGroup from './AgentMessageGroup.svelte';
+  import TimelineCard from './TimelineCard.svelte';
   import WakeMarker, { wakeKind } from './WakeMarker.svelte';
   import TurnFoldRow from './TurnFoldRow.svelte';
   import DayDivider from './DayDivider.svelte';
@@ -17,8 +18,7 @@
   import { AgentTimeline, memoryPassOf, summaryMarks } from '../lib/agent-turns';
   import { groupTimeline } from '../lib/timeline-group';
   import { agentMailFor } from '../lib/agent-mail';
-  import DelegationActivity from './DelegationActivity.svelte';
-  import { teamLaunches } from '../lib/delegation-progress';
+  import { timelineCards } from '../lib/timeline-cards';
   import UserMessage from './UserMessage.svelte';
   import Deferred, { parts } from './Deferred.svelte';
   import { provideViewerHost, type Gallery } from '../lib/media-gallery';
@@ -38,7 +38,6 @@
   import { TimelineRows, rowEstimate, rowIndexOf, seam, type TimelineRow } from '../lib/timeline-rows';
   import { GapRows, NO_GAPS, READ_AHEAD, RangeAsk, gapHeight, heldNear, loadKeepingReader, wantedRange } from '../lib/history-gaps';
   import TimelineGap from './TimelineGap.svelte';
-  import WorkflowActivity from './WorkflowActivity.svelte';
   import { dockRoom } from '../lib/question-dock.svelte';
   import { glides } from '../lib/motion';
   import { BottomEdge, BottomGlide, PointerHold, keysUp, pointedTurn, typingKey, watchWheel, wheelsUp } from '../lib/timeline-follow';
@@ -72,7 +71,6 @@
   $effect(() => {
     if (store.findOpen && !FindBar) void import('./FindBar.svelte').then((module) => { FindBar = module.default; }).catch(() => { store.findOpen = false; });
   });
-  const delegation = $derived(store.delegation && (store.delegation.rootThreadId === threadId || store.delegation.agents.some(agent => agent.thread.id === threadId)) ? store.delegation : null);
   const mail = $derived(agentMailFor(store, threadId));
   /** The thread's account is signed out and no other of its agent can take the next turn: an error carries the way back in. */
   const signedOut = $derived.by(() => {
@@ -81,14 +79,11 @@
     const account = store.accountOf(thread.accountId);
     return account?.status === 'unauthenticated' && store.usableAccountOf(account.providerId, account.id) === null ? account : null;
   });
-  const team = $derived(delegation?.rootThreadId === threadId ? delegation.agents : []);
-  /** One card per launch, where it happened; children outside the held page wait for theirs. */
-  const launches = $derived(new Map(teamLaunches(team, messages, store.openThread?.id === threadId && store.openThread.messagesBefore !== null, store.openThread?.id === threadId && (store.openThread.messagesAfter ?? null) !== null).map(launch => [launch.id, launch])));
-  /** The runs this thread started, each a card where it began. */
-  const workflowRows = $derived(new Map(store.workflowsOf(threadId).filter(run => run.rootThreadId === threadId).map(run => [`workflow:${run.id}`, run])));
+  /** Launches, workflow runs and contact requests, each a card where it happened (`timelineCards`). */
+  const cards = $derived(timelineCards(store, threadId, messages));
   /** The turns of the thread this list shows, open or delegated. */
   const shownTurns = $derived(store.openThread?.id === threadId ? store.openThread.turns : store.delegationThread?.id === threadId ? store.delegationThread.turns : []);
-  const grouped = $derived.by(() => groupTimeline(messages, threadId, shownTurns, mail, launches, workflowRows, memoryRows));
+  const grouped = $derived.by(() => groupTimeline(messages, threadId, shownTurns, mail, cards, memoryRows));
   /** The pages each turn published: its answer places them, or they go after it once the turn ends (`placeViews`). */
   let shownViews: ReadonlyMap<string, Message[]> | undefined;
   const views = $derived.by(() => (shownViews = turnViews(grouped.timeline, shownViews)));
@@ -777,10 +772,8 @@
             <FailedAttempts {store} {threadId} messages={row.failures} turns={shownTurns} {signedOut} canFork={!narrow.current && forkable && !store.openThread?.incognito} reveal={failureTarget} oninspect={inspectFailures} />
           {:else if quietFold}
             <TurnFoldRow fold={quietFold} at={message.createdAt} compactions={shaped.compactions.get(quietFold.turnId)} />
-          {:else if launches.has(message.id)}
-            <DelegationActivity {store} agents={launches.get(message.id)!.agents} />
-          {:else if workflowRows.has(message.id)}
-            <WorkflowActivity {store} run={workflowRows.get(message.id)!} />
+          {:else if cards.has(message.id)}
+            <TimelineCard {store} card={cards.get(message.id)!} {mail} />
           {:else if group}
             <AgentMessageGroup {store} {group} />
           {:else if grouped.notices.has(message.id)}

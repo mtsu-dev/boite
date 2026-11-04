@@ -405,6 +405,28 @@ sequenceDiagram
    it now works with. Both threads write to each other with
    `boite threads send <contact>/<thread-id>`.
 
+### In the conversation
+
+Each request shows in the timeline where it happened, as a row in the style
+of the agent mail rows (`ContactAskRow.svelte`). The asking thread reads the
+Contacts bot it asked, the contact's chip once one is named, its words on one
+line and where it stands: waiting for the group's Bots machine (`stage:
+'host'`), with the bot (`'bot'`), waiting for the owner's card (`'owner'`),
+sent to the contact, answered with the `<contact>/<thread-id>` to write to,
+or refused with the reason. The bot's own thread shows a row for each request
+it forwarded (`forwardedAt`) and each it settled. A tap opens the answer's
+discussion in the panel once a letter of it reached the thread, else unfolds
+the whole request.
+
+The rows come from `CoordinationView.requests` (`collaboration.get`, so a
+paired phone reads them too): the thread's own requests, plus on the bot's
+thread its forwards and settlements, oldest first, at most 50. A change to a
+request emits `collaboration.changed` for the asking thread and the bot's.
+A member that asked through the Bots host learns no forward: its row stays
+"with the bot" until the answer arrives. A letter sent to a contact's thread,
+through a member gateway included, is ordinary agent mail with the contact's
+chip (`AgentLetter.contact`).
+
 A relation (`ContactRelation`) joins two threads, one per side, and lets
 letters through for as long as it lasts, whatever projects are opened. It
 carries no file, read or command: each thread works in its own checkout.
