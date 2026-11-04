@@ -26,7 +26,8 @@ boite delegate council table <id>
 | `--effort` | `xhigh` | A model without that level runs at its strongest level below it, and a warning says so |
 | `--timeout` | 30 minutes a round | 1 to 120 |
 
-The request and the changes hold up to 12,000 characters. The command returns
+`--` ends the flags, so what follows it is the text, even `table` or `--foo`. The
+request and the changes hold up to 12,000 characters. The command returns
 the council id as soon as the members' model lists are read, which takes up to a
 minute when none is saved yet; `delegate list` shows the council, `delegate wait` with
 no agent id also waits for a round under way and `delegate stop <id>` stops it.

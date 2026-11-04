@@ -5,6 +5,8 @@ import { AGENT_ENV, BACKGROUND_WAKE_GRACE_MS, DEFAULT_DELEGATION_CONFIG, council
 import type { CoreClient } from '../src/client.ts';
 import { runCli } from '../src/cli.ts';
 import { Core } from '../src/core.ts';
+import { parse } from '../src/cli-args.ts';
+import { councilParams } from '../src/council/cli.ts';
 import { hasScoreLine, scoreOf } from '../src/council/prompt.ts';
 import { prepareMembers } from '../src/council/rpc.ts';
 import { readOnlyWarning } from '../src/council/store.ts';
@@ -260,6 +262,14 @@ test('a council needs no git, no pull request and no code', async () => {
   expect((await boite(h, threadId, ['delegate', 'council', 'again', councilId, 'Priced the free tier.'], folder)).code).toBe(0);
   await waitFor(() => d.delivered().length === 2);
   expect(existsSync(join(folder, '.git'))).toBe(false);
+});
+
+test('after -- the words are the request, flag-like or naming a subcommand', () => {
+  const words = (...argv: string[]) => parse(['delegate', 'council', ...argv]).positional.slice(2);
+  expect(councilParams(words('--', '--foo', 'bar', '--json')).request).toBe('--foo bar --json');
+  expect(words('--', 'table')).toEqual(['--', 'table']);
+  expect(councilParams(words('--', 'table')).request).toBe('table');
+  expect(councilParams(words('fix it', '--effort', 'high')).effort).toBe('high');
 });
 
 test('a member who cannot run refuses the whole council: nobody is replaced', async () => {
