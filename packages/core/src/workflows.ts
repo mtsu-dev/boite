@@ -1,7 +1,7 @@
 import { threadActive } from '@boite/contracts';
 import { createHash } from 'node:crypto';
 import {
-  DEFAULT_WORKFLOW_LIMITS, WORKFLOW_LIMITS, checkPlan, checkSteps, conditionHolds, extractJson, itemLabel, renderTask,
+  DEFAULT_WORKFLOW_LIMITS, WORKFLOW_LIMITS, checkPlan, checkSteps, conditionHolds, itemLabel, renderTask,
   resolvePath, shapeMismatch, workflowLevels,
 } from '@boite/contracts';
 import type {
@@ -25,6 +25,7 @@ import { workflowUsage } from './workflows/usage.ts';
 import { SharedWorkflowCompute } from './workflows/shared-compute.ts';
 import { MachineWorkflowSteps } from './workflows/machine-steps.ts';
 import { stepPrompt } from './workflows/prompt.ts';
+import { delivered, endLeftovers, shapedOutput, stepAnswer } from './workflows/step-result.ts';
 export { registerWorkflowMethods } from './workflows/register.ts';
 
 interface DataRow { data: string }
@@ -493,15 +494,6 @@ export class Workflows {
 
   // -- turns -------------------------------------------------------------------
 
-  /** The whole text of a turn's last answer, for JSON that may run past the bounded result. */
-  #answer(turn: Turn): string {
-    const rows = this.#core.journal.db.query(`SELECT (SELECT group_concat(json_extract(value, '$.text'), char(10))
-      FROM json_each(messages.parts) WHERE json_extract(value, '$.type') = 'text') AS answer
-      FROM messages WHERE turn_id = ? AND role = 'assistant' ORDER BY rowid DESC LIMIT 8`).all(turn.id) as { answer: string | null }[];
-    for (const row of rows) if (row.answer?.trim()) return row.answer.slice(0, 64_000);
-    return '';
-  }
-
   #turnFinished(turn: Turn): void {
     const entry = this.#stepOf.get(turn.threadId);
     if (!entry) {
@@ -514,13 +506,19 @@ export class Workflows {
       return;
     }
     const end = childEnd(this.#core, turn);
-    // A checkpoint is no answer: the step runs on until the turn its background work wakes ends.
-    if (end.kind !== 'final') return;
-    let correction = false, cut = false;
+    if (end.kind === 'maintenance') return;
+    let correction = false, cut = false, leftovers = false;
     this.#mutate(entry.runId, run => {
       const inst = this.#instance(run, entry.key);
       // A retry past an archived conversation runs in a new one: the old one speaks for nothing.
       if (!inst || inst.status !== 'running' || inst.threadId !== turn.threadId) return false;
+      // A checkpoint is no answer: the step runs on until the turn its background work wakes ends.
+      // A turn that delivered the step's result is its answer, whatever it left running.
+      const step = run.plan.steps.find(s => s.id === entry.key.split('#')[0])!;
+      if (end.kind === 'checkpoint') {
+        if (!delivered(this.#core, turn, inst, step.output)) return false;
+        leftovers = true;
+      }
       // A restart handoff stopped it on purpose: the step waits, and the next core runs it again.
       // A Stop of the run or its conversation recorded the run stopped before stopping the turn.
       if (turn.status === 'stopped' && this.#core.threads.handoff.active && (run.status === 'running' || run.status === 'paused')) {
@@ -528,28 +526,28 @@ export class Workflows {
         cut = true;
         return;
       }
-      const step = run.plan.steps.find(s => s.id === entry.key.split('#')[0])!;
       const now = Date.now();
       if (turn.status === 'done') {
-        const answer = this.#answer(turn);
+        const answer = stepAnswer(this.#core, turn);
         inst.result = answer ? clip(answer, WORKFLOW_LIMITS.resultChars) : null;
         if (step.output !== undefined && inst.output === null) {
-          const parsed = extractJson(answer);
-          const mismatch = parsed ? shapeMismatch(parsed.value, step.output) ?? tooLong(parsed.value) : 'the answer has no ```json block';
-          if (!mismatch) inst.output = parsed!.value;
+          const shaped = shapedOutput(answer, step.output);
+          if ('value' in shaped) inst.output = shaped.value;
           else if (inst.attempts < WORKFLOW_LIMITS.attempts) {
             inst.attempts += 1;
-            inst.outputCorrection = `Your result does not match this workflow step's output shape: ${mismatch}. Reply with only one \`\`\`json block matching ${JSON.stringify(step.output)}, or run boite workflow output '<json>'.`;
+            inst.outputCorrection = `Your result does not match this workflow step's output shape: ${shaped.mismatch}. Reply with only one \`\`\`json block matching ${JSON.stringify(step.output)}, or run boite workflow output '<json>'.`;
             inst.status = 'waiting';
             correction = true;
             return;
-          } else return void Object.assign(inst, { status: 'failed', error: `output: ${mismatch}`, finishedAt: now });
+          } else return void Object.assign(inst, { status: 'failed', error: `output: ${shaped.mismatch}`, finishedAt: now });
         }
         Object.assign(inst, { status: 'done', finishedAt: now });
       } else if (turn.status === 'stopped') {
         Object.assign(inst, { status: 'stopped', error: 'Stopped', finishedAt: now });
       } else Object.assign(inst, { status: 'failed', error: turn.error ?? 'The turn failed', finishedAt: now });
     });
+    // Its leftover background work would only wake a finished step: it ends before the worktree settles.
+    if (leftovers) endLeftovers(this.#core, turn.threadId);
     // Its worktree stays for the next attempt, and nothing new launches while the core stops.
     if (!cut) this.#ended(entry, turn.threadId, correction);
   }

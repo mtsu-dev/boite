@@ -248,3 +248,62 @@ test('background work completed before the checkpoint in the same millisecond do
   expect(runs.get(childId)).toBe(first);
   expect(step().result).toBe('Final result: CI passed before the turn ended.');
 });
+
+const SHAPED: WorkflowPlan = { name: 'Build bus', steps: [
+  { id: 'bus', profile: 'fast', task: 'Build the bus.', output: { branch: 'string' } },
+  { id: 'shots', profile: 'fast', after: ['bus'], task: 'Shoot {{bus.branch}}' },
+] };
+
+/** A shaped step whose agent leaves a watcher running in the background; returns its first turn, still running. */
+async function shaped() {
+  const base = await parent();
+  const { h, owner, threadId, runs } = base;
+  const run = await owner.call('workflows.start', { threadId, requestId: 'bus', plan: SHAPED });
+  const step = () => h.core.workflows.get(threadId, run.id).nodes[0]!.instances[0]!;
+  const shots = () => h.core.workflows.get(threadId, run.id).nodes[1]!.instances[0];
+  await waitFor(() => !!step()?.threadId && runs.has(step().threadId!));
+  const childId = step().threadId!, first = runs.get(childId)!;
+  first.ctx.background!([{ id: 'watch-1', kind: 'monitor', description: 'Build watcher', toolId: null, startedAt: Date.now() }]);
+  const release = spyOn(h.core.threads, 'releaseAgent');
+  const kill = spyOn(h.core.procs, 'killTree');
+  restores.push(() => { release.mockRestore(); kill.mockRestore(); });
+  /** The step is done on its result: its dependent starts and the leftover watcher is gone, never waking it. */
+  const settled = async (branch: string, last = first) => {
+    // Long before any watcher ends: the step settles on the result, not on that work.
+    await waitFor(() => step().status === 'done', 2000);
+    expect(step().output).toEqual({ branch });
+    await waitFor(() => !!shots()?.threadId && runs.has(shots()!.threadId!));
+    expect(base.prompts.find(entry => entry.threadId === shots()!.threadId)!.prompt).toContain(`Shoot ${branch}`);
+    expect(release).toHaveBeenCalledWith(childId);
+    expect(kill).toHaveBeenCalledWith(childId);
+    expect(h.core.threads.agentState.background.get(childId) ?? []).toEqual([]);
+    expect(h.core.threads.agentState.backgroundHistory.list(childId).find(task => task.id === 'watch-1')?.state).toBe('cancelled');
+    await new Promise(resolve => setTimeout(resolve, 100));
+    expect(runs.get(childId)).toBe(last);
+  };
+  return { ...base, run, step, shots, childId, first, release, settled };
+}
+
+test('a shaped step whose answer carries its result is done at once, though its background work is still live', async () => {
+  const { h, step, shots, childId, first, release, runs, settled } = await shaped();
+  // Without a result, a turn ended on live work stays a checkpoint: no correction, nothing released.
+  first.finish('Checkpoint: the build is still running.');
+  await waitFor(() => h.core.threads.require(childId).status === 'idle');
+  await new Promise(resolve => setTimeout(resolve, 100));
+  expect(step()).toMatchObject({ status: 'running', output: null });
+  expect(shots()?.threadId ?? null).toBeNull();
+  expect(release).not.toHaveBeenCalledWith(childId);
+  // Woken, it answers with its result while the watcher still runs.
+  first.ctx.wake!('Build finished.');
+  await waitFor(() => runs.get(childId) !== first, 5000);
+  const second = runs.get(childId)!;
+  second.finish('Built.\n```json\n{"branch": "feat/bus"}\n```');
+  await settled('feat/bus', second);
+});
+
+test('a step whose result went through boite workflow output is done when its turn ends on live background work', async () => {
+  const { h, childId, first, settled } = await shaped();
+  h.core.workflows.output(childId, { branch: 'feat/output' });
+  first.finish('Result sent with boite workflow output.');
+  await settled('feat/output');
+});
