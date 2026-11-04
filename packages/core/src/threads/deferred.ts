@@ -206,7 +206,7 @@ export class DeferredInput {
    * started finished. A turn opens for what it writes next; when the thread is
    * busy the running turn takes that output instead.
    */
-  wake(threadId: ThreadId, text: string): void {
+  wake(threadId: ThreadId, text: string, display?: string): void {
     const thread = this.#core.journal.getThread(threadId);
     if (thread === null || thread.archived) return;
     if (this.#threads.isBusy(threadId)) {
@@ -215,7 +215,7 @@ export class DeferredInput {
       return;
     }
     try {
-      this.#threads.startTurn(threadId, text, { kind: 'background' });
+      this.#threads.startTurn(threadId, display === undefined ? text : { prompt: text, display }, { kind: 'background' });
     } catch (error) {
       if (isAgentHeld(error)) {
         this.#heldWakes.set(threadId, [...this.#heldWakes.get(threadId) ?? [], text]);

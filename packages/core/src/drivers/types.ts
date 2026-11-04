@@ -188,9 +188,17 @@ export interface TurnContext {
    * The agent resumed on its own after the turn ended (a background shell
    * finished and it went on). The core opens a turn for it with `text` as its
    * system message; the driver that sees that turn attaches it to the output
-   * already flowing instead of sending a prompt.
+   * already flowing instead of sending a prompt. `display` labels it in the
+   * conversation instead of the background label.
    */
-  wake?(text: string): void;
+  wake?(text: string, display?: string): void;
+  /**
+   * The agent's CLI fired a ScheduleWakeup timer by itself (`scheduledFor`,
+   * epoch ms, null when it did not say). True when the core still wants that
+   * wake, which this consumes; false when it was cancelled or replaced, and the
+   * driver drops the run.
+   */
+  loopWake?(scheduledFor: number | null): boolean;
   /**
    * The context meter: what the agent's last request carried and the model's
    * window when the agent names it. The core writes it on the thread and
@@ -236,7 +244,7 @@ export interface TurnContext {
 export type SessionContext = Pick<TurnContext,
   'thread' | 'account' | 'provider' | 'sessionId' | 'resumeAt' | 'sessionBefore' |
   'accountEnv' | 'systemGuide' | 'warmProcessMinutes' | 'toolSummaries' | 'shortAnswers' | 'autoCompactTokens' | 'compactionSummary' | 'log' | 'diagnostic' | 'authenticationFailed' | 'commands' | 'context' | 'hook' |
-  'background' | 'backgroundFinished' | 'wake' | 'spawnChild' | 'finishStartup' | 'killTree' | 'quota' | 'lazyMcp' | 'protectedExecution'>;
+  'background' | 'backgroundFinished' | 'wake' | 'loopWake' | 'spawnChild' | 'finishStartup' | 'killTree' | 'quota' | 'lazyMcp' | 'protectedExecution'>;
 
 export type DiagnosticLevel = 'debug' | 'info' | 'warn' | 'error';
 /** Scalars only: never a prompt, a tool input or output, a command line or a token. */

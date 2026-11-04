@@ -32,7 +32,7 @@ export const PERMISSION_WAKE_MS = 30_000;
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 /** Load and the derived live fields arrive in thread.updated without changing team history. */
 function teamState(thread: ThreadSummary): string {
-  const { load, progress, runningSince, requestSince, backgroundWork, backgroundWait, pendingMove, moveNote, pendingAnswers, openQuestions, subagentQuestions, retry, pullRequestWatches, ...stored } = thread;
+  const { load, progress, runningSince, requestSince, backgroundWork, backgroundWait, pendingMove, moveNote, pendingAnswers, openQuestions, subagentQuestions, retry, pullRequestWatches, wake, ...stored } = thread;
   return JSON.stringify(Object.fromEntries(Object.entries(stored).sort(([left], [right]) => left.localeCompare(right))));
 }
 /** A family of ordinary threads. No extra orchestrator model or provider process. */

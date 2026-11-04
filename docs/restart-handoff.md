@@ -121,6 +121,31 @@ the row: the third stop stays on the thread and notifies like any failure. The
 user's next message, or a turn of another kind that answers, starts a new row;
 a resume that answers but leaves background work that dies again does not.
 
+## Scheduled wakes
+
+An agent that paces itself with Claude Code's `ScheduleWakeup` tool arms a
+timer inside its CLI, which dies when the core closes that CLI.
+`packages/core/src/threads/scheduled-wakes.ts` keeps the call's wake
+(`prompt`, `reason`, and when it is due from the tool's `(in Ns)` answer) in
+the journal setting `scheduled-wakes`, one per thread: a newer call replaces
+it, and `stop: true`, Stop, the owner's pause or an archive cancels it; an
+unpause does not bring it back. The row shows it as `wake`, and
+`boite thread show` prints `wake: due <time> (<reason>)`.
+
+A CLI still alive fires its own timer (`command_lifecycle` `started` with
+`wakeup_source: loop_wakeup`, CLI 2.1.318, then the run up to its result):
+that consumes the wake, and the `background` turn labelled Scheduled wake
+opens on that frame, before the first API request, so no idle window closes
+the CLI in between. A run for a wake cancelled, replaced or paused since writes
+nothing: interrupted when no turn is attached, dropped up to its result beside
+one, unless that result names the attached turn's prompt, which the CLI folded
+in: then the run is that turn's. A wanted run that starts beside another turn shows in that turn without
+ending it. Otherwise, 30 s past its time with the thread free, the core opens a
+`resume` turn with the wake's prompt, and the commit that queues that turn
+takes the wake off the record, so a core that dies in between keeps it. A busy
+thread gets it 30 s after its turn ends, and a restart arms it again, 3 s
+after the start at the earliest.
+
 ## What starts it
 
 | Caller | Trigger |
