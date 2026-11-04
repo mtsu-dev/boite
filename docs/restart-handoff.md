@@ -138,7 +138,8 @@ that consumes the wake, and the `background` turn labelled Scheduled wake
 opens on that frame, before the first API request, so no idle window closes
 the CLI in between. A run for a wake cancelled, replaced or paused since writes
 nothing: interrupted when no turn is attached, dropped up to its result beside
-one. A wanted run that starts beside another turn shows in that turn without
+one, unless that result names the attached turn's prompt, which the CLI folded
+in: then the run is that turn's. A wanted run that starts beside another turn shows in that turn without
 ending it. Otherwise, 30 s past its time with the thread free, the core opens a
 `resume` turn with the wake's prompt, and the commit that queues that turn
 takes the wake off the record, so a core that dies in between keeps it. A busy
