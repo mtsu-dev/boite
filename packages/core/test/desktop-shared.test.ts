@@ -240,4 +240,34 @@ describe('boite desktop on a shared session', () => {
     // The keyboard stays the user's.
     expect((await cli('press', 'ctrl+c', '--app', 'charmap')).error).toContain('press is refused');
   }, 120_000);
+
+  // Opt-in, in a signed-in macOS session that granted agent-desktop's launcher Accessibility and Screen Recording.
+  const front = () => Bun.spawnSync({ cmd: ['osascript', '-e', 'tell application "System Events" to get name of first process whose frontmost is true'] }).stdout.toString().trim();
+  test.skipIf(process.platform !== 'darwin' || process.env['BOITE_E2E_DESKTOP'] !== '1')('macOS: agent-desktop drives the Calculator the conversation started, and the user keeps the front app', async () => {
+    useDesktops({ platform: 'darwin' }, new AgentDesktopTool(join(harness.dataDir, 'tools'), harness.core.procs));
+    const before = front();
+    const run = await cli('run', 'Calculator');
+    expect(run.error).toBe('');
+    const pid = Number(/running as pid (\d+)/.exec(run.out)?.[1]);
+    const window = await until(async () => {
+      const listed = JSON.parse((await cli('list-windows')).out || '{}') as { data?: ListedWindow[] };
+      return (listed.data ?? []).find(found => found.title !== undefined);
+    }, found => found !== undefined, 20_000);
+    expect(window?.pid).toBe(pid);
+    // Only the conversation's apps are listed, and a command with no target is refused.
+    const listed = JSON.parse((await cli('list-apps')).out) as { data: { apps: { pid: number }[] } };
+    expect(listed.data.apps.map(app => app.pid)).toEqual([pid]);
+    expect((await cli('snapshot', '-i')).error).toContain('needs --app or --window-id');
+    const snapshot = (await cli('snapshot', '--window-id', window!.id, '-i', '--compact')).out;
+    const seven = /"name":"7"[^{}]*"ref_id":"(@[^"]+)"|"ref_id":"(@[^"]+)"[^{}]*"name":"7"/.exec(snapshot)?.slice(1).find(Boolean);
+    expect(seven).toBeDefined();
+    expect((await cli('click', seven!)).code).toBe(0);
+    const shot = process.env['BOITE_E2E_DESKTOP_SHOT'] ?? join(harness.dataDir, 'calculator.png');
+    expect((await cli('screenshot', '--window-id', window!.id, shot)).code).toBe(0);
+    expect(statSync(shot).size).toBeGreaterThan(1_000);
+    // Started, read and clicked without taking the user's front app.
+    expect(front()).toBe(before);
+    expect((await cli('stop')).out).toContain('desktop stopped');
+    expect(await until(() => alive(pid), running => !running)).toBe(false);
+  }, 120_000);
 });
