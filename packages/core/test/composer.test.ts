@@ -178,18 +178,18 @@ test('steering waits for a tool boundary, locks only the captured item and prese
   await Bun.sleep(30); expect(inputs).toHaveLength(2);
   forced.input.paused = false;
   await a.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: paused.record.revision, value: forced });
-  await waitFor(() => inputs.length === 3); accept(true);
+  await waitFor(() => h.core.journal.listTurns(threadId).length === 2 && driver.context().prompt.includes('send once unpaused'));
+  expect(inputs).toHaveLength(2);
   await waitFor(() => h.core.composer.storage.get('inputs', threadId).value?.input.queued.length === 0);
   a.close();
 });
 
-test.each(['preparing', 'native'] as const)('Send now during %s startup reaches the running turn without a tool boundary', async phase => {
+test.each(['preparing', 'native'] as const)('Send now during %s startup stops the old turn before starting the message', async phase => {
   h = await startTestCore();
   const owner = await h.connect();
   const { threadId } = await echoThread(h, owner);
   const inputs: string[] = [];
-  let ready = false, attempts = 0;
-  const driver = scripted(async text => { attempts++; if (!ready) return false; inputs.push(text); return true; });
+  const driver = scripted(async text => { inputs.push(text); return true; });
   const execution = h.core.sharedAccess.execution, prepare = execution.prepare;
   const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
   let calls = 0;
@@ -204,22 +204,18 @@ test.each(['preparing', 'native'] as const)('Send now during %s startup reaches 
     expect(h.core.threads.progress.get(threadId)?.phase).toBe('starting');
     await owner.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: 0, sendNow: true,
       value: { input: { ...value('').input, queued: [{ id: 'startup-followup', text: 'also check the bots', attachments: [] }] } } });
-    if (phase === 'native') await waitFor(() => attempts > 0);
     expect(inputs).toEqual([]);
-    ready = true;
     release.resolve();
-    await waitFor(() => h.core.threads.runner.handles.has(threadId));
-    // The native turn can accept input before it emits any model output.
-    if (phase === 'native') driver.context().inputReady?.();
-    await waitFor(() => inputs.length > 0);
-    expect(inputs).toEqual(['also check the bots']);
+    await waitFor(() => h.core.journal.listTurns(threadId).length === 2 && h.core.threads.runner.handles.has(threadId));
+    expect(driver.context().prompt).toContain('also check the bots');
+    expect(inputs).toEqual([]);
     await waitFor(() => h.core.composer.storage.get('inputs', threadId).value?.input.queued.length === 0);
-    expect(h.core.journal.listTurns(threadId)).toHaveLength(1);
+    expect(h.core.journal.listTurns(threadId)).toHaveLength(2);
     expect(h.core.journal.listMessages(threadId).filter(message => message.role === 'user')).toHaveLength(2);
-    expect(h.core.journal.getTurn(turn.id)?.status).toBe('running');
+    expect(h.core.journal.getTurn(turn.id)?.status).toBe('stopped');
     driver.context().emit.part(driver.context().emit.startMessage('assistant'), 0, { type: 'text', text: 'Checking both.' });
     await Bun.sleep(20);
-    expect(inputs).toEqual(['also check the bots']);
+    expect(inputs).toEqual([]);
     driver.finish();
   } finally { release.resolve(); execution.prepare = prepare; }
 });
@@ -395,7 +391,8 @@ test('an uncertain native steering acknowledgement is held through a restart', a
   scripted(async () => { submissions++; throw new Error('native acknowledgement lost'); });
   await a.call('turns.start', { threadId, prompt: 'working' });
   await waitFor(() => h.core.threads.runner.handles.has(threadId));
-  await a.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: 0, sendNow: true, value: { input: { ...value().input, queued: [{ id: 'ambiguous-input', text: 'uncertain follow up', attachments: [] }] } } });
+  await a.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: 0, value: { input: { ...value().input, queued: [{ id: 'ambiguous-input', text: 'uncertain follow up', attachments: [] }] } } });
+  h.core.bus.emit('turn.toolCompleted', { threadId, turnId: h.core.journal.runningTurn(threadId)!.id, boundary: 'uncertain-boundary' });
   await waitFor(() => h.core.composer.storage.get('inputs', threadId).value?.input.paused === true);
   expect(submissions).toBe(1);
   expect(h.core.composer.storage.get('inputs', threadId).value?.input.queued[0]?.request?.failed).toContain('unconfirmed');

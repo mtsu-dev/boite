@@ -302,10 +302,11 @@ clicking a pending message does the same. When the core reports a completed
 tool boundary, the queue tries the driver's native steering operation, even
 when another conversation is open. A driver that declines it retains input
 for the next turn. Enter again in the emptied composer (not where the primary
-pointer is coarse), or Send now under the bubbles, submits it immediately without stopping the agent when the driver accepts it.
+pointer is coarse), or Send now under the bubbles, stops the active turn and
+submits the queued messages as a new turn, even on drivers without steering.
 Permissions and blocking questions hold it until answered.
 Send now also works during agent startup: the core retains the request and
-delivers it when the native turn accepts input, without waiting for tool output.
+interrupts as soon as the native handle is available, without waiting for tool output.
 Answers to asynchronous questions and bot setting cards share the running
 turn's steering channel. Answers received while another message or memory
 notice is being delivered resume when that delivery finishes, in order. Each
@@ -315,7 +316,8 @@ attachments and preview references. While that batch goes out its bubbles stay
 drawn and cannot be removed or taken back for editing; a declined attempt
 leaves them in place, editable again until the next boundary. Messages added
 during that send wait for
-the next delivery. A changed model or account keeps input for its next turn.
+the next delivery. A changed model or account keeps automatic input for its next turn;
+Send now interrupts the old execution and uses the queued selection.
 Escape stops the current turn. An Escape that closes something first (a popover, a menu, a
 confirmation, the command palette, a rename field) only closes it, and the focus
 goes back to where it was, or to the composer when that is gone, so a second
