@@ -737,7 +737,9 @@ steps:
    file, the core asks the repository for its branches and tags,
    `git ls-remote`, to tell where the ref ends and the path begins),
    `owner/repo` for GitHub, or the `git@host:path` clone URL, which names the
-   same repository over https. A ref typed apart wins over the page's. Or
+   same repository over https. A ref typed apart wins over the page's and,
+   like a release, tag or commit page's, is fetched exactly: a missing one
+   is refused, never cut back to a branch that exists. Or
    the owner tells an agent "add this plugin: <link>": the agent runs
    `boite plugin add <link> --why <reason>`, and the card it puts in the
    conversation opens this preview ([CLI](cli.md#commands)). The core fetches

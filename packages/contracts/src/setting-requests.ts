@@ -405,7 +405,7 @@ function pluginCard(params: Extract<SettingRequestParams, { page: string }>, rea
     return { ok: false, message: `a card about the plugin at ${read.url} is already open in this thread`, data: { field: 'plugin.url', url: read.url } };
   }
   return {
-    ok: true, reason, setting: { kind: 'open', page: 'plugins', section: PLUGIN_ADD_SECTION, plugin: { url: read.url, ref: read.ref } },
+    ok: true, reason, setting: { kind: 'open', page: 'plugins', section: PLUGIN_ADD_SECTION, plugin: { url: read.url, ref: read.ref, ...(read.page === undefined ? {} : { page: read.page }) } },
     options: [{ id: 'open', label: 'Preview' }, { id: 'refuse', label: 'Dismiss' }],
   };
 }

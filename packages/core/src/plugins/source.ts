@@ -59,11 +59,11 @@ export function normalizeSourceUrl(input: unknown, allowLocal = false): string {
  * a page, `owner/repo` or a clone URL, with the ref a page names unless `ref`
  * names one. HEAD when neither does.
  */
-export function readSource(url: unknown, ref: unknown, allowLocal = false): { url: string; ref: string } {
-  if (allowLocal && typeof url === 'string' && isAbsolute(url.trim()) && existsSync(url.trim())) return { url: resolve(url.trim()), ref: checkRef(ref) };
+export function readSource(url: unknown, ref: unknown, allowLocal = false): { url: string; ref: string; pagePath: boolean } {
+  if (allowLocal && typeof url === 'string' && isAbsolute(url.trim()) && existsSync(url.trim())) return { url: resolve(url.trim()), ref: checkRef(ref), pagePath: false };
   const read = readPluginSource(url, ref);
   if (!read.ok) throw invalidParams(read.message, { field: read.field, expected: read.expected, ...(typeof url === 'string' ? { url: url.slice(0, 200) } : {}) });
-  return { url: read.url, ref: read.ref ?? 'HEAD' };
+  return { url: read.url, ref: read.ref ?? 'HEAD', pagePath: read.page !== undefined };
 }
 
 /** A branch, a tag or a commit: no leading dash, no `..`, nothing git would read as an option. */
@@ -119,8 +119,9 @@ export function refOfPath(path: string, listed: string): string | null {
 /**
  * Fetches `ref` of `url` and returns the ref fetched, the commit it resolved
  * to and the text of the manifest at that commit, null when the commit has no
- * such file. A ref holding `/` may be a page's `<ref>/<path>`: with
- * `pagePath`, the repository's branches and tags decide where the ref ends.
+ * such file. With `pagePath`, `ref` came from a file or folder page and may
+ * be `<ref>/<path>`: the repository's branches and tags decide where it ends.
+ * Without it, the ref is fetched exactly as given.
  */
 export async function fetchManifest(
   core: Core,

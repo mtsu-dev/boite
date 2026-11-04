@@ -92,7 +92,8 @@ test('a plugin card shows the repository, Preview opens Plugins with it read, an
     expect(store.page).toBe('settings');
     expect(store.settingsTab).toBe('plugins');
     expect(store.settingsSection).toMatchObject({ id: 'plugins-add', flash: true });
-    expect(store.pluginSource).toMatchObject({ url: 'https://github.com/example/standup', ref: 'v1.2.0' });
+    // A folder page goes to the Plugins page as the link, so the core settles where its ref ends.
+    expect(store.pluginSource).toMatchObject({ url: 'https://github.com/example/standup/tree/v1.2.0', ref: null });
     await vi.waitFor(() => expect(store.openThread!.messages.some((message) => message.role === 'user' && message.parts.some((part) => part.type === 'text'
       && part.text.startsWith('> Adds the standup command\n\nopened: the user is reading the preview of https://github.com/example/standup at v1.2.0')))).toBe(true));
   } finally {

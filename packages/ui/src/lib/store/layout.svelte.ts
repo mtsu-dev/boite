@@ -115,9 +115,14 @@ export class Layout {
     if (tab === 'resources') void this.ctx.store.refreshResources();
   }
 
-  /** Settings > Plugins with `source` read, as a plugin card's Preview asks (`boite plugin add`). */
-  showPluginPreview(source: { url: string; ref: string | null }): void {
-    this.pluginSource = { url: source.url, ref: source.ref, request: (this.pluginSource?.request ?? 0) + 1 };
+  /**
+   * Settings > Plugins with `source` read, as a plugin card's Preview asks
+   * (`boite plugin add`). A file or folder page goes in as the link itself,
+   * so the core settles where its `<ref>/<path>` ends; any other ref is exact.
+   */
+  showPluginPreview(source: { url: string; ref: string | null; page?: string }): void {
+    const asked = source.page === undefined ? { url: source.url, ref: source.ref } : { url: source.page, ref: null };
+    this.pluginSource = { ...asked, request: (this.pluginSource?.request ?? 0) + 1 };
     this.showSettings('plugins', PLUGIN_ADD_SECTION, { flash: true });
   }
 

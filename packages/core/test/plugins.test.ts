@@ -427,8 +427,10 @@ describe('plugins from a git URL', () => {
     // A file or folder page's `<ref>/<path>`: the repository's branches decide where the ref ends.
     git(repo.path, 'branch', 'feature/pools');
     for (const [given, ref] of [['v1.4.0/README.md', 'v1.4.0'], ['feature/pools/docs/setup.md', 'feature/pools']] as const) {
-      expect((await client.call('plugins.inspect', { url: repo.path, ref: given })).source).toEqual({ url: repo.path, ref, commit: repo.commit });
+      expect(await fetchManifest(harness.core, repo.path, given, { allowLocal: true, pagePath: true })).toMatchObject({ ref, commit: repo.commit });
     }
+    // A ref named apart is fetched exactly: a missing one is refused, never cut back to a branch that exists.
+    expect(await thrown(client.call('plugins.inspect', { url: repo.path, ref: 'feature/pools/missing' }))).toThrow('could not fetch feature/pools/missing');
 
     // The same URL again is an update, and the preview says what it replaces.
     const bytes2 = new Uint8Array([8, 8]);

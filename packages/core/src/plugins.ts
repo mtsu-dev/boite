@@ -553,8 +553,8 @@ export class PluginStore {
    */
   async inspect(params: RpcParams<'plugins.inspect'>): Promise<PluginPreview> {
     if (this.#closing) throw refused('Boite is shutting down.');
-    const { url, ref } = readSource(params.url, params.ref, this.allowLocalSources);
-    const fetching = fetchManifest(this.#core, url, ref, { allowLocal: this.allowLocalSources, signal: this.#shutdown.signal, pagePath: true });
+    const { url, ref, pagePath } = readSource(params.url, params.ref, this.allowLocalSources);
+    const fetching = fetchManifest(this.#core, url, ref, { allowLocal: this.allowLocalSources, signal: this.#shutdown.signal, pagePath });
     this.#inspecting.add(fetching);
     let fetched: Awaited<typeof fetching>;
     try { fetched = await fetching; } finally { this.#inspecting.delete(fetching); }

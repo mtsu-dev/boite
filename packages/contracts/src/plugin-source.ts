@@ -21,6 +21,13 @@ export const PLUGIN_REF_EXPECTED = 'a branch, tag or commit: letters, digits, .,
 export interface PluginSourceInput {
   url: string;
   ref: string | null;
+  /**
+   * The file or folder page `ref` was read from, without its query. Its ref
+   * may end in a path (`main/README.md`): fetching it, the repository's
+   * branches and tags decide where the ref ends. Absent when the ref came
+   * from the caller, a tag, a release or a commit page: that ref is exact.
+   */
+  page?: string;
 }
 
 export type PluginSourceCheck =
@@ -46,10 +53,12 @@ const BARE_HOST = /^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+(?::\d+)?\//;
  * manifest's name.
  */
 const REF_PAGES: readonly RegExp[] = [
-  /^(\/[^/]+\/[^/]+)\/(?:tree|blob|commit|releases\/tag)\/(.+)$/,
-  /^(\/.+?)\/-\/(?:tree|blob|commit|tags|releases)\/(.+)$/,
-  /^(\/[^/]+\/[^/]+)\/src\/(?:branch|tag|commit)\/(.+)$/,
+  /^(\/[^/]+\/[^/]+)\/(tree|blob|commit|releases\/tag)\/(.+)$/,
+  /^(\/.+?)\/-\/(tree|blob|commit|tags|releases)\/(.+)$/,
+  /^(\/[^/]+\/[^/]+)\/(src)\/(?:branch|tag|commit)\/(.+)$/,
 ];
+/** The pages that show a file or a folder: what follows the marker is `<ref>/<path>`. */
+const PATH_PAGES = new Set(['tree', 'blob', 'src']);
 /** GitHub's other pages of a repository (issues, releases, pulls): the repository is the first two segments. */
 const GITHUB_HOSTS = new Set(['github.com', 'www.github.com']);
 
@@ -83,11 +92,13 @@ export function readPluginSource(url: unknown, ref?: unknown): PluginSourceCheck
   if (parsed.username !== '' || parsed.password !== '') return refused('url', `plugin url must be ${PLUGIN_URL_EXPECTED}, found a URL carrying credentials`);
   let path = parsed.pathname.replace(/\/+$/, '');
   let named: string | null = null;
-  for (const page of REF_PAGES) {
-    const found = page.exec(path);
+  let page: string | undefined;
+  for (const pattern of REF_PAGES) {
+    const found = pattern.exec(path);
     if (!found) continue;
+    if (PATH_PAGES.has(found[2]!)) page = `${parsed.origin}${path}`;
     path = found[1]!;
-    try { named = decodeURIComponent(found[2]!); } catch { return refused('ref', `plugin ref must be ${PLUGIN_REF_EXPECTED}, found a malformed escape`); }
+    try { named = decodeURIComponent(found[3]!); } catch { return refused('ref', `plugin ref must be ${PLUGIN_REF_EXPECTED}, found a malformed escape`); }
     named = named.replace(/\/boite-plugin\.json$/, '');
     break;
   }
@@ -99,7 +110,7 @@ export function readPluginSource(url: unknown, ref?: unknown): PluginSourceCheck
   const given = typeof ref === 'string' && ref.trim() !== '' ? ref.trim() : null;
   const chosen = given ?? named;
   if (chosen !== null && pluginRefProblem(chosen)) return refused('ref', `plugin ref must be ${PLUGIN_REF_EXPECTED}, found ${JSON.stringify(chosen.slice(0, 80))}`);
-  return { ok: true, url: `${parsed.origin}${path}`, ref: chosen };
+  return { ok: true, url: `${parsed.origin}${path}`, ref: chosen, ...(given === null && page !== undefined ? { page } : {}) };
 }
 
 /**

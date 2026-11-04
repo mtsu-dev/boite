@@ -6,7 +6,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { ManifestRefused, POOL_PROVIDERS, commandsOf, parseManifest, parseManifestText } from '../src/plugins/manifest.ts';
 import { checkRef, normalizeSourceUrl, readSource } from '../src/plugins/source.ts';
-import { sameRepository } from '@boite/contracts';
+import { readPluginSource, sameRepository } from '@boite/contracts';
 import { recommendedPlugins, recommendedUpdates } from '../src/plugins.ts';
 import { startTestCore, type TestCore } from './harness.ts';
 
@@ -183,20 +183,27 @@ describe('a plugin source', () => {
 
   test('reads a repository the way people share it, and the ref its page names', () => {
     const read = (url: string, ref?: string) => readSource(url, ref);
-    expect(read('owner/repo')).toEqual({ url: 'https://github.com/owner/repo', ref: 'HEAD' });
-    expect(read('github.com/owner/repo')).toEqual({ url: 'https://github.com/owner/repo', ref: 'HEAD' });
-    expect(read('git@github.com:owner/repo.git')).toEqual({ url: 'https://github.com/owner/repo.git', ref: 'HEAD' });
-    expect(read('https://github.com/owner/repo/tree/release/1.x')).toEqual({ url: 'https://github.com/owner/repo', ref: 'release/1.x' });
-    expect(read('https://github.com/owner/repo/releases/tag/v1.4.0')).toEqual({ url: 'https://github.com/owner/repo', ref: 'v1.4.0' });
-    expect(read('https://gitlab.com/group/sub/repo/-/releases/v1.0.0')).toEqual({ url: 'https://gitlab.com/group/sub/repo', ref: 'v1.0.0' });
-    // A file page keeps its path in the ref; the inspection ends it at a branch or tag the repository lists (refOfPath).
-    expect(read('https://github.com/owner/repo/blob/main/README.md')).toEqual({ url: 'https://github.com/owner/repo', ref: 'main/README.md' });
-    expect(read('https://github.com/owner/repo/blob/main/boite-plugin.json')).toEqual({ url: 'https://github.com/owner/repo', ref: 'main' });
-    expect(read('https://github.com/owner/repo/issues?q=x#top')).toEqual({ url: 'https://github.com/owner/repo', ref: 'HEAD' });
-    expect(read('https://gitlab.com/group/sub/repo/-/tree/v2')).toEqual({ url: 'https://gitlab.com/group/sub/repo', ref: 'v2' });
-    expect(read('https://codeberg.org/owner/repo/src/tag/v3')).toEqual({ url: 'https://codeberg.org/owner/repo', ref: 'v3' });
-    // A ref typed apart wins over the page's.
-    expect(read('https://github.com/owner/repo/tree/main', 'v1.0.0')).toEqual({ url: 'https://github.com/owner/repo', ref: 'v1.0.0' });
+    const exact = (url: string, ref: string) => ({ url, ref, pagePath: false });
+    expect(read('owner/repo')).toEqual(exact('https://github.com/owner/repo', 'HEAD'));
+    expect(read('github.com/owner/repo')).toEqual(exact('https://github.com/owner/repo', 'HEAD'));
+    expect(read('git@github.com:owner/repo.git')).toEqual(exact('https://github.com/owner/repo.git', 'HEAD'));
+    expect(read('https://github.com/owner/repo/releases/tag/v1.4.0')).toEqual(exact('https://github.com/owner/repo', 'v1.4.0'));
+    expect(read('https://gitlab.com/group/sub/repo/-/releases/v1.0.0')).toEqual(exact('https://gitlab.com/group/sub/repo', 'v1.0.0'));
+    expect(read('https://gitlab.com/group/sub/repo/-/tags/release/2')).toEqual(exact('https://gitlab.com/group/sub/repo', 'release/2'));
+    expect(read('https://github.com/owner/repo/issues?q=x#top')).toEqual(exact('https://github.com/owner/repo', 'HEAD'));
+    // A file or folder page may hold a path after its ref; the inspection ends it at a branch or tag the repository lists (refOfPath).
+    const page = (url: string, ref: string) => ({ url, ref, pagePath: true });
+    expect(read('https://github.com/owner/repo/tree/release/1.x')).toEqual(page('https://github.com/owner/repo', 'release/1.x'));
+    expect(read('https://github.com/owner/repo/blob/main/README.md')).toEqual(page('https://github.com/owner/repo', 'main/README.md'));
+    expect(read('https://github.com/owner/repo/blob/main/boite-plugin.json')).toEqual(page('https://github.com/owner/repo', 'main'));
+    expect(read('https://gitlab.com/group/sub/repo/-/tree/v2')).toEqual(page('https://gitlab.com/group/sub/repo', 'v2'));
+    expect(read('https://codeberg.org/owner/repo/src/tag/v3')).toEqual(page('https://codeberg.org/owner/repo', 'v3'));
+    // A ref typed apart wins over the page's, and is fetched exactly.
+    expect(read('https://github.com/owner/repo/tree/main', 'v1.0.0')).toEqual(exact('https://github.com/owner/repo', 'v1.0.0'));
+    expect(read('https://github.com/owner/repo', 'main/missing')).toEqual(exact('https://github.com/owner/repo', 'main/missing'));
+    // The card keeps the page, without its query, so its Preview reads it the same way.
+    expect(readPluginSource('https://github.com/owner/repo/blob/main/README.md?plain=1')).toEqual({ ok: true, url: 'https://github.com/owner/repo', ref: 'main/README.md', page: 'https://github.com/owner/repo/blob/main/README.md' });
+    expect(readPluginSource('https://github.com/owner/repo/blob/main/README.md', 'v1')).toEqual({ ok: true, url: 'https://github.com/owner/repo', ref: 'v1' });
   });
 
   test('refuses what git must never run, however it is pasted', () => {
