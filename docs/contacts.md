@@ -321,11 +321,17 @@ sequenceDiagram
      announces `guestSeat: 1`: the hand carries the address the member dials
      (`seat: { url }`) and the move says `seat: 'guest'`. The contact dials
      nothing. It answers `{ ok, seat: 'guest' }` and accepts, for 10 minutes,
-     a hello signed by the key that signed the move. The member then asks the
+     a hello signed by the key that signed the move. The seat belongs to the
+     member's admission: if the contact removes that member, or removes and
+     links it again (a new `addedAt`), the seat is gone. The member then asks the
      Bots host to dial (`contact.hand { action: 'dial' }`); the Bots host
      dials the contact at that address, and the hello makes the contact
      switch, keeping the Bots host as a contact that dials it. The Bots host
-     keeps the contact as one it dials and keeps that link open. A contact
+     keeps the contact as one it dials and keeps that link open. From its
+     first dial on, the Bots host marks the handed entry `dialed`: if it stops
+     after the contact switched but before it stored the contact, it dials
+     that address again on each sweep after its restart, since the contact
+     now refuses the member's next move. A contact
      whose name does not resolve from the group (Funnel on another tailnet,
      the group on Headscale) moves this way, since only the Bots host has to
      reach it. An older Bots host that does not answer `seat` gets the move
@@ -622,7 +628,9 @@ moves a contact from one member to the Bots host and checks the forged and
 unreachable moves. `contacts-group-seat.test.ts` moves a contact that cannot
 reach the Bots host: through the guest seat, or through the Bots host's Funnel
 origin, then stops the old member and runs an ask, its answer and letters both
-ways; it also checks the reason an older contact gives. `contacts-funnel.test.ts` drives the Funnel mounts through
+ways; it also checks the reason an older contact gives, that a seat dies
+with the admission that gave it, and that a Bots host restarted between the
+contact's switch and its own record dials the contact again. `contacts-funnel.test.ts` drives the Funnel mounts through
 the fake CLI (`test/fixtures/fake-tailscale.ts`) and checks their reachability
 through stubbed DNS and requests, never the internet. `magic-dns.test.ts` covers
 the tailnet name lookup against a resolver on loopback.

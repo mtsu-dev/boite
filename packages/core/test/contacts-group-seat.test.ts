@@ -1,14 +1,22 @@
 import { afterEach, expect, test } from 'bun:test';
+import { cpSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { botView } from '../src/contacts/bot.ts';
+import { moveInput } from '../src/contacts/group-link.ts';
+import { dialContact } from '../src/contacts/link-hello.ts';
 import { contactsBotOf } from './contacts-fixture.ts';
-import { waitFor, type TestCore } from './harness.ts';
+import { startTestCore, waitFor, type TestCore } from './harness.ts';
+import { thrown } from './settle.ts';
 import { botsHome, letters, project, remoteOn, requestOn, setup, thread } from './contacts-group-fixture.ts';
 
 /* A contact that cannot reach the group's Bots host still moves there: the Bots host dials it, or it dials the Bots host's Funnel. */
 
 const cores: TestCore[] = [];
+const scratch: string[] = [];
 afterEach(async () => {
   for (const core of cores.splice(0)) await core.stop();
+  for (const dir of scratch.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
 /** C cannot reach X's tailnet address: on another network, it cannot resolve the Bots host's name. */
@@ -80,4 +88,43 @@ test('a contact that dials its member and cannot reach the Bots host\'s tailnet 
   expect(x.core.contacts.find(cId)).toMatchObject({ role: 'host' });
   await waitFor(() => c.core.contacts.linked(xId), 10000);
   await flowsWithoutHolder(sides);
+}, 90000);
+
+test('a guest seat given before the contact was removed and linked again does not take the new link', async () => {
+  const { a, x, c, aClient, cClient, aId, xId, cId } = await setup(cores, true);
+  const card = { ...x.core.coordination.card(), box: x.core.group.boxPublic(), url: x.url, machine: 'Team' };
+  const signature = x.core.coordination.signature(moveInput(aId, xId, cId)).toString('base64');
+  const peer = a.core.contacts.peers().find(entry => entry.coreId === cId)!;
+  expect(await a.core.coordination.request(peer, 'contact.move', { card, signature, seat: 'guest' })).toMatchObject({ seat: 'guest' });
+  await aClient.call('contacts.remove', { coreId: cId });
+  await cClient.call('contacts.remove', { coreId: aId });
+  await aClient.call('contacts.join', { link: (await cClient.call('contacts.invite', {})).link });
+  await waitFor(() => a.core.contacts.linked(cId), 10000);
+  // X's hello is fresh, but the seat came from the removed link: C refuses it and keeps the new one.
+  expect(await thrown(dialContact(x.core, c.url, x.core.contacts.helloHeaders(cId)))).toThrow('403');
+  expect(c.core.contacts.has(xId)).toBe(false);
+  expect(c.core.contacts.has(aId)).toBe(true);
+}, 60000);
+
+test('a Bots host that stopped after the contact took its hello, before keeping the contact, dials it again once it is back', async () => {
+  const sides = await setup(cores, true);
+  const { a, x, c, aClient, xId, cId } = sides;
+  unreachable(x);
+  // X stops right after C followed it, before it stored C.
+  x.core.contacts.groupLink.commit = () => { throw new Error('stopped before commit'); };
+  await botsHome(a, aClient, x, xId);
+  await waitFor(() => c.core.contacts.has(xId) && !x.core.contacts.has(cId), 20000);
+  const saved = mkdtempSync(join(tmpdir(), 'boite-seat-restart-'));
+  scratch.push(saved);
+  const dataDir = join(saved, 'data');
+  cpSync(x.dataDir, dataDir, { recursive: true });
+  const port = Number(new URL(x.url).port);
+  await x.stop();
+  const back = await startTestCore({ dataDir, port });
+  cores.push(back);
+  unreachable(back);
+  // Back on its data, X dials C at the seat it was handed: nothing waits for A.
+  await waitFor(() => back.core.contacts.has(cId) && back.core.contacts.linked(cId), 20000);
+  expect(back.core.contacts.find(cId)).toMatchObject({ role: 'guest', url: c.url });
+  await flowsWithoutHolder({ ...sides, x: back, xClient: await back.connect() });
 }, 90000);
