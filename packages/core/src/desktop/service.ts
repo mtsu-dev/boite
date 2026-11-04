@@ -231,7 +231,7 @@ interface Running {
   app: VirtualDesktopApp;
   spawned: SpawnedProcess;
   /** macOS: the app `open` asked LaunchServices for, outside the core's tree, and the executable it runs. */
-  opened?: { pid: number; executable: string };
+  opened?: { pid: number; executable: string; mark: string };
 }
 
 interface Session {
@@ -399,8 +399,9 @@ export class VirtualDesktops {
       // An app LaunchServices opened is launchd's child, not `open`'s: the scope and the stop go by its own pid.
       const opened = await this.#launched(session, executable, before, mark, spawned.exited);
       if (opened !== null) {
-        running.opened = { pid: opened, executable };
+        running.opened = { pid: opened, executable, mark };
         app.pid = opened;
+        // A stop that came meanwhile could not see this pid yet.
         if (session.stopping) await this.#stopOpened(session, [running]);
       }
     }
@@ -465,11 +466,12 @@ export class VirtualDesktops {
 
   /**
    * macOS: SIGTERM, then SIGKILL after 3 s, to each app LaunchServices opened
-   * that still runs: `open -W` has not returned and the pid still runs the
-   * same executable, so a pid reused by another process is never signalled.
+   * that still carries its launch mark, whatever its `open` did since: a pid
+   * reused by another process is never signalled.
    */
   async #stopOpened(session: Session, apps: Running[]): Promise<void> {
-    const opened = apps.filter(({ app, opened }) => opened && app.exitCode === null).map(({ opened }) => opened!);
+    const opened: { pid: number; executable: string }[] = [];
+    for (const { opened: app } of apps) if (app && (await this.#environment(app.pid)).includes(` ${app.mark}`)) opened.push(app);
     if (opened.length === 0) return;
     const alive = async () => {
       const now = await this.#processes(session).catch(() => []);

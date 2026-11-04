@@ -213,9 +213,9 @@ user's session, behind the user's windows. `run TextEdit`, or the path of a
   pid among the new processes running the bundle's executable
   (`Contents/MacOS/<its CFBundleExecutable>`) by that mark, which `ps -E`
   shows, so a copy the user opens at the same moment is never taken for it.
-- A stop sends `SIGTERM`, then `SIGKILL` after 3 s, to each such app that
-  still runs: its `open -W` has not returned and the pid still runs the same
-  executable.
+- A stop sends `SIGTERM`, then `SIGKILL` after 3 s, to each such app whose
+  pid still carries its mark, so a reused pid is never signalled. An app
+  found after a stop began is stopped as soon as it is found.
 - The app gets the user's environment from LaunchServices, not the core's.
 
 A program that is no bundle runs as the core's child.
