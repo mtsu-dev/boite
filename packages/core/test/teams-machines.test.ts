@@ -304,10 +304,11 @@ test('the experiment: a machine with it off lets no bot of its own join, and the
   expect(host.core.teams.get(team.id)!.members.map(member => member.key)).toEqual([adaKey, bobKey]);
 }, 120_000);
 
-test('a machine too old for teams across machines is named, and one that has no bot of that name says so', async () => {
+test('a machine too old for teams across machines is named and not asked again each time it speaks; one that has no bot of that name says so; a team needs a bot of the machine holding it', async () => {
   const { host, ada, hostOwner, awayId } = await machines();
   speak();
   expect(await thrown(hostOwner.call('teams.create', { name: 'Crew', members: [ada.agent.id, `${awayId}/Nobody`] }))).toThrow('no bot "Nobody"');
+  expect(await thrown(hostOwner.call('teams.create', { name: 'Crew', members: [`${awayId}/Bob`] }))).toThrow('name a bot of this machine');
   const request = host.core.coordination.request.bind(host.core.coordination);
   host.core.coordination.request = async (peer: CoordinationPeer, operation, payload) => {
     if (operation === 'team.bot') throw new PeerRefusal('operation: expected coordination.ask, not team.bot');
@@ -316,6 +317,26 @@ test('a machine too old for teams across machines is named, and one that has no 
   const old = await thrown(hostOwner.call('teams.create', { name: 'Crew', members: [ada.agent.id, `${awayId}/Bob`] }));
   expect(old).toThrow('is too old for teams across machines');
   expect(await thrown(hostOwner.call('teams.create', { name: 'Crew', members: [ada.agent.id, 'nowhere/Bob'] }))).toThrow('no machine nowhere');
+  host.core.coordination.request = request;
+
+  // Away first, then back and refusing: the retry that was running does not make each word it says a new try.
+  const team = await hostOwner.call('teams.create', { name: 'Crew', members: [ada.agent.id, `${awayId}/Bob`] });
+  let failures = 0, refusals = 0, refusing = false;
+  host.core.coordination.request = async (peer: CoordinationPeer, operation, payload) => {
+    if (operation !== 'team.sync') return request(peer, operation, payload);
+    if (!refusing) { failures++; throw new Error('connection refused'); }
+    refusals++;
+    throw new PeerRefusal('operation: expected coordination.ask, not team.sync');
+  };
+  host.core.teams.ownerPost({ teamId: team.id, id: 'to-old', text: 'hello' });
+  await waitFor(() => failures >= 1);
+  refusing = true;
+  host.core.teams.peers.heard(awayId);
+  await waitFor(() => refusals >= 1);
+  const asked = refusals;
+  host.core.teams.peers.heard(awayId);
+  await Bun.sleep(200);
+  expect(refusals).toBe(asked);
   host.core.coordination.request = request;
 }, 60_000);
 

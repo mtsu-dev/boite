@@ -130,6 +130,8 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
   const memberOf = (entry: FakeBot, joinedSeq: number): TeamMember => ({
     key: teamMemberKey(entry.coreId, entry.id), coreId: entry.coreId, botId: entry.id, name: entry.name, joinedSeq, ...(entry.machine ? { machine: entry.machine } : {})
   });
+  /** A bot's id here counts from this fake machine's seed, so another machine's bot may share it: a member is the bot and its machine. */
+  const isMember = (team: Team, entry: FakeBot) => team.members.some(member => member.key === teamMemberKey(entry.coreId, entry.id));
   const labelOf = (entry: FakeBot) => (entry.machine ? `${entry.name} (${entry.machine})` : entry.name);
   const bots = (refs: unknown): FakeBot[] => {
     if (!Array.isArray(refs) || refs.length === 0 || refs.length > TEAM_MEMBERS_MAX) throw invalid(`members: expected 1 to ${TEAM_MEMBERS_MAX} bots`);
@@ -245,6 +247,8 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
     return structuredClone(saved);
   };
   posters.set(ctx, post);
+  /** With its machine's id: the machine holding the team takes posts from machines whose counters run alike. */
+  const autoPostId = () => `post-${self()}-${++ctx.seq}`;
   /** A member by bot id, or by a name no other member has. */
   const member = (team: Team, ref: unknown, field = 'to') => {
     const wanted = typeof ref === 'string' ? ref.trim() : '';
@@ -270,10 +274,11 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
       const name = checkName(params.name);
       const brief = checkBrief(params.brief);
       const members = bots(params.members);
-      const id = `team-${++ctx.seq}`;
+      // With its machine's id: a bot may name the teams of several machines, whose counters run alike.
+      const id = `team-${self()}-${++ctx.seq}`;
       const now = ctx.now();
       const first = members.find(entry => entry.coreId === self());
-      if (!first) throw refused('members: this machine has no bot to take the settings of the team chat from', { field: 'members' });
+      if (!first) throw refused('members: name a bot of this machine; the team stays here and needs one of its own', { field: 'members' });
       const thread: Thread = { id: `t-${++ctx.seq}`, projectId: null, teamId: id, ...first.selection, title: name, titleSource: 'user', speed: null, cwd: `${DATA_DIR}/teams/${id}`, branch: null,
         status: 'idle', unread: false, archived: false, pinned: false, sessionId: null, sessionGeneration: 0, selectionVersion: 0, load: null, context: null,
         createdAt: now, updatedAt: now, messages: [], messagesBefore: null, turns: [], commands: [] };
@@ -317,7 +322,7 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
       if (ask !== null && ask.kind === 'invite' && ask.teamId !== team.id) throw refused(`card: it asks about another team, ${ask.teamName}`, { field: 'card' });
       const agent = bot(params.botId, 'botId');
       if (team.archived) throw refused(`${team.name} is archived`, { field: 'teamId' });
-      if (team.members.some(entry => entry.botId === agent.id)) throw refused(`${agent.name} is already a member of ${team.name}`, { field: 'botId' });
+      if (isMember(team, agent)) throw refused(`${agent.name} is already a member of ${team.name}`, { field: 'botId' });
       if (team.members.length >= TEAM_MEMBERS_MAX) throw refused(`a team holds at most ${TEAM_MEMBERS_MAX} bots`, { field: 'botId' });
       const saved = save(team, { members: [...team.members, memberOf(agent, team.lastSeq)] });
       settle(params.card, `applied: ${agent.name} joined ${team.name}`);
@@ -358,7 +363,7 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
     'teams.say': async (params) => {
       gate();
       const { team, member: author } = mine(params.threadId, params.team);
-      return post(team, { id: params.id ?? `post-${++ctx.seq}`, author, text: params.text, audience: 'team', inReplyTo: params.inReplyTo });
+      return post(team, { id: params.id ?? autoPostId(), author, text: params.text, audience: 'team', inReplyTo: params.inReplyTo });
     },
     'teams.dm': async (params) => {
       gate();
@@ -366,14 +371,14 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
       const wanted = typeof params.to === 'string' ? params.to.trim() : '';
       if (!wanted) throw invalid('to: expected a member or owner');
       const recipient = wanted.toLowerCase() === TEAM_OWNER ? TEAM_OWNER : member(team, wanted).key;
-      return post(team, { id: params.id ?? `post-${++ctx.seq}`, author, text: params.text, audience: 'private', to: [recipient] });
+      return post(team, { id: params.id ?? autoPostId(), author, text: params.text, audience: 'private', to: [recipient] });
     },
     'teams.propose': async (params) => {
       gate();
       const agent = caller(params.threadId);
       const name = checkName(params.name);
       const brief = checkBrief(params.brief);
-      const others = bots(params.members).filter(other => other.id !== agent.id);
+      const others = bots(params.members).filter(other => other.id !== agent.id || other.coreId !== self());
       if (others.length === 0) throw invalid('members: name at least one other bot');
       const members: FakeBot[] = [{ ...agent, coreId: self() }, ...others];
       return draw(params.threadId, `${agent.name} proposes the team ${JSON.stringify(name)}: ${members.map(labelOf).join(', ')}.${brief ? ` ${brief}` : ''}`,
@@ -383,7 +388,7 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
       gate();
       const { team, agent } = mine(params.threadId, params.team);
       const guest = bot(params.bot, 'bot');
-      if (team.members.some(entry => entry.botId === guest.id)) throw refused(`${guest.name} is already a member of ${team.name}`, { field: 'bot' });
+      if (isMember(team, guest)) throw refused(`${guest.name} is already a member of ${team.name}`, { field: 'bot' });
       return draw(params.threadId, `${agent.name} asks to add ${labelOf(guest)} to the team ${JSON.stringify(team.name)}.`, { kind: 'invite', by: agent.id, teamId: team.id, teamName: team.name, botId: refOf(guest) });
     },
     'teams.leave': async (params) => {

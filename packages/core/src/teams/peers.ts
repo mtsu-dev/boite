@@ -236,6 +236,7 @@ export class TeamPeers {
         // It answers and says no: trying sooner would only ask the same again. Hearing from it changes nothing, so no attempt is kept.
         this.#core.log('warn', `teams toward ${peer.name}: ${error.message}`);
         this.#mirror.unreachable(coreId, `${peer.name} refused: ${error.message}`);
+        this.#attempts.delete(coreId);
         this.#schedule(coreId, LAST_RETRY_MS);
         return;
       }

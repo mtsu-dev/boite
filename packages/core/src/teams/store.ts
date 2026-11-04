@@ -308,10 +308,10 @@ export class TeamStore {
     const name = this.#checkName(params.name);
     const brief = this.#checkBrief(params.brief);
     const bots = this.#bots(params.members, elsewhere);
-    // The chat runs no agent, yet a thread carries a selection: the one of a bot of this machine.
+    // The chat runs no agent, yet a thread carries a selection: the one of a bot of this machine in the team.
     const local = bots.find(bot => bot.coreId === this.#self);
-    const first = (local ? this.#core.workforce.records.find('profile', local.botId) : null) ?? this.#live()[0];
-    if (!first) throw refused('members: this machine has no bot to take the settings of the team chat from', { field: 'members' });
+    const first = local ? this.#core.workforce.records.find('profile', local.botId) : null;
+    if (!first) throw refused('members: name a bot of this machine; the team stays here and needs one of its own', { field: 'members' });
     const id = randomUUID();
     const now = Date.now();
     const cwd = join(this.#core.dataDir, 'teams', id);
