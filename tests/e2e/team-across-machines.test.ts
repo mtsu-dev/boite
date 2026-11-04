@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import type { ExperimentId, TeamReading } from '../../packages/contracts/src/index.ts';
+import type { ExperimentId, Team, TeamReading } from '../../packages/contracts/src/index.ts';
 import { connect, type CoreClient } from '../../packages/core/src/client.ts';
 import { quietAgent } from '../../packages/core/test/harness.ts';
 import { BrowserPage, freePort } from './lib/cdp.ts';
@@ -164,9 +164,32 @@ test('a post, an @name and a private post reach the bot of the other machine, it
   await page.waitFor(`document.querySelector('${card}')?.getBoundingClientRect().width > 0`);
   expect(await page.evaluate(fits)).toBe(true);
   await shot('card-330.png');
+
+  // A team written by hand takes that bot too, through the real core, and the dialog says where it runs.
+  await page.send('Emulation.setDeviceMetricsOverride', WIDE);
+  await page.waitFor(`document.querySelector('[data-testid=agents-new-team]')`);
+  await page.click('[data-testid=agents-new-team]');
+  const far = `[data-testid=team-dialog-member][data-key="${distant.key}"]`;
+  await page.waitFor(`document.querySelector('${far}')`);
+  // Both cores run on this PC here, so the app may add its "(you)".
+  expect(await page.text(`${far} [data-testid=team-dialog-machine]`)).toContain('Firebat');
+  expect(await page.evaluate(`document.querySelector('${far}').getAttribute('aria-disabled')`)).not.toBe('true');
+  expect(await page.evaluate(`document.querySelector('[data-testid=team-dialog-member][data-key="${huginn.id}"] [data-testid=team-dialog-machine]')`)).toBeNull();
+  await page.click(far);
+  await page.click(`[data-testid=team-dialog-member][data-key="${huginn.id}"]`);
+  await shot('dialog-816.png');
+  await page.send('Emulation.setDeviceMetricsOverride', NARROW);
+  await page.waitFor(`document.querySelector('[data-testid=team-dialog]')?.getBoundingClientRect().width > 0`);
+  expect(await page.evaluate(fits)).toBe(true);
+  await shot('dialog-330.png');
+  await page.type('[data-testid=team-dialog-name]', 'By hand');
+  await page.click('[data-testid=team-dialog-submit]');
+  const byHand = async () => ((await a.call('teams.list', {})).teams as readonly Team[]).find(entry => entry.name === 'By hand');
+  await until(async () => (await byHand()) !== undefined, 'the team written in the dialog');
+  expect((await byHand())!.members.map(member => member.key).sort()).toEqual([local.key, distant.key].sort());
   expect(page.errors()).toEqual([]);
 
   // No app spoke to the machine that came back, and its bot still finds the team the other machine holds.
   const mirrored = await backOwner.call('teams.list', { threadId: munin.threadId });
-  expect(mirrored.teams.map((entry: { id: string }) => entry.id)).toEqual([team.id]);
+  expect(mirrored.teams.map((entry: { id: string }) => entry.id).sort()).toEqual([team.id, (await byHand())!.id].sort());
 }, 180_000);

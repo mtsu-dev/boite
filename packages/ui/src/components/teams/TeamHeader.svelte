@@ -22,7 +22,7 @@
    */
   let { store, view, others = [], thread, team, onback }: {
     store: Store;
-    /** The page's machine, which holds the team and its bots. */
+    /** The page's machine, which holds the team. */
     view: AgentsView;
     others?: readonly { machine: Machine; view: AgentsView }[];
     thread: Thread;
@@ -46,7 +46,7 @@
     if (!team) return [];
     const guest = !store.owner;
     const off = (item: MenuItem): MenuItem => guest ? { ...item, disabled: true, title: labels.onComputer } : item;
-    // An archived team still takes out a member that left the machine: the core restores it only without one.
+    // An archived team still takes out a member whose bot is gone; restoring it no longer waits for that (`docs/teams.md`).
     if (team.archived) return [
       off({ id: 'edit', label: labels.edit, glyph: PenLine, ...(guest ? { hint: labels.onComputer } : {}) }),
       off({ id: 'restore', label: labels.restore, glyph: ArchiveRestore }),

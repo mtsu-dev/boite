@@ -39,8 +39,9 @@ export const strings = {
       nameAt: 'A team name does not start with @.',
       nameTaken: 'A team is already named {name}.',
       membersRequired: 'Pick at least one bot.',
+      localRequired: 'Pick a bot of this machine too: it holds the team.',
       /** Why a bot cannot be picked, in the small tooltip beside it. */
-      otherMachine: 'On {machine}: a team takes the bots of one machine for now.',
+      otherMachine: "On {machine}: a team takes the bots of this machine's group.",
       moving: 'Moving to another machine: it joins no team until it has arrived.',
       full: 'A team holds at most {max} bots.',
       archived: 'The team is archived: restore it to add a bot.',

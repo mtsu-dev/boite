@@ -290,12 +290,16 @@ a thread with `teamId` opens on the Bots page.
 
 New team opens a dialog (`components/teams/TeamDialog.svelte`, the checks
 and calls in `lib/team-draft.ts`): a name, an optional brief, and the members,
-picked among the bots of the page's machine, each a row with its picture. A
-bot of another machine, and a bot moving or waiting to move, is listed greyed
+picked among the bots of the page's machine and of the other machines of its
+group this app reaches, each a row with its picture and, on another machine,
+that machine's name. A bot of a machine outside the group, and a bot moving or
+waiting to move, is listed greyed
 with an "i" that says why, and a tap on it says the same under the list. The
 dialog asks for a name, refuses one that starts with `@`, says a taken name as
-it is typed, and asks for at least one bot, up to 12: the core's own checks,
-which still answer for themselves. Create, or Enter in the name, calls
+it is typed, and asks for at least one bot of this machine, up to 12 in all: the
+core's own checks, which still answer for themselves, so a machine that has the
+experiment off or does not answer shows its refusal in the dialog. Create, or
+Enter in the name, calls
 `teams.create` on the page's machine without a card, so `createdBy` is the
 owner, then opens the new team's chat. Escape, Cancel or the scrim close it,
 and its exit animates.
@@ -311,10 +315,12 @@ brief go through `teams.update`, then each bot taken out through
 out against the team `teams.list` returns at that moment; a refusal stops
 there, shows the core's reason in the dialog, and what went before it stays
 done, so Save again sends only what is still missing. A member this machine no
-longer lists stays in the dialog, greyed, so it can be taken out; an edit may
-leave a team with no member, a new team needs one. An archived team takes no
-new member, and restoring it waits until every member is a bot of this machine
-again: taking out the ones that left, even all of them, lets it come back.
+longer lists stays in the dialog, greyed, so it can be taken out; a member of
+another machine stays with that machine's name, even when this app does not
+reach that machine. An edit may leave a team with no member, a new team needs
+one. An archived team takes no new member. Restoring it does not wait on a
+member that moved, which follows its bot, and a bot that is gone leaves as the
+team comes back.
 Over the posts, the members; a member opens its bot's page. A member of another
 machine shows that machine's name beside its own and opens nothing, its page
 being on that machine. The posts are the
