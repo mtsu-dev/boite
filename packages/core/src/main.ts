@@ -12,7 +12,6 @@ import { connect } from './client.ts';
 import type { Core } from './core.ts';
 import { CORE_VERSION } from './version.ts';
 import { messageOf } from './errors.ts';
-import { DESKTOP_EXEC } from './desktop/launcher.ts';
 import { newToken } from './ids.ts';
 import { resolveDataDir } from './paths.ts';
 import { lockDataDir } from './data-lock.ts';
@@ -300,17 +299,9 @@ export function main(argv: string[]): void {
     void import('./speech-native-worker.ts').then(worker => worker.runSpeechWorker());
     return;
   }
-  // `boite desktop` on Windows: one program started on a hidden desktop (desktop/launcher.ts).
-  if (argv[0] === DESKTOP_EXEC) {
-    void (async () => {
-      const desktops = await processPlatform.hiddenDesktops?.();
-      if (!desktops) throw new Error('this platform has no hidden desktops');
-      process.exitCode = desktops.run(argv[1] ?? '', argv.slice(2));
-    })().catch(error => {
-      process.stderr.write(`boite-core desktop: ${messageOf(error)}
-`);
-      process.exitCode = 1;
-    });
+  // `boite desktop` on Windows: one program started on a hidden desktop (desktop/launcher.ts DESKTOP_EXEC).
+  if (argv[0] === '--desktop-exec') {
+    void import('./desktop/launcher.ts').then(launcher => launcher.runDesktopExec(argv.slice(1)));
     return;
   }
   withUtf8Locale(process.env, process.platform);

@@ -144,6 +144,8 @@ test('an app that keeps one copy per user gets a profile of its own, or is refus
 });
 
 test('the launcher onto a hidden desktop is the core itself, from its bundle or its sources', () => {
+  // main.ts matches this flag as a literal so the entry chunk does not load the launcher.
+  expect(DESKTOP_EXEC).toBe('--desktop-exec');
   expect(desktopExecCommand('WinSta0\\boite-1', ['charmap'], 'C:\\Boite\\boite-core.exe', true)).toEqual(['C:\\Boite\\boite-core.exe', DESKTOP_EXEC, 'WinSta0\\boite-1', 'charmap']);
   const [runtime, entry, ...rest] = desktopExecCommand('WinSta0\\boite-1', ['charmap', 'x'], 'bun', false);
   expect(runtime).toBe('bun');
