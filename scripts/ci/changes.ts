@@ -45,8 +45,9 @@ export function affectedChecks(files: string[]) {
       checks.web = checks.telemetry = true;
     } else if (/^(tests\/stress\/|bench\/agent-stress\.ts$|bench\/lib\/)/.test(file)) {
       checks.web = checks.stress = true;
-    } else if (/^(bench\/|scripts\/architecture\/)/.test(file)) {
-      // The web job type-checks these; the changes job tests architecture scripts.
+    } else if (/^(bench\/|scripts\/architecture\/|packages\/plugin-sdk\/|examples\/plugins\/)/.test(file)) {
+      // The web job type-checks these; the changes job tests architecture
+      // scripts and the plugin SDK. The core never imports the SDK.
       checks.web = true;
     } else {
       // Dependencies, shared builds and unknown inputs stay safe.

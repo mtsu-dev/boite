@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 
 // Every directory `bun test` runs files from. packages/ui runs under Vitest, whose `expect` awaits for real.
-export const BUN_TEST_ROOTS = ['packages/core', 'packages/contracts', 'tests', 'scripts', 'bench', 'apps/shell/scripts', 'telemetry'];
+export const BUN_TEST_ROOTS = ['packages/core', 'packages/contracts', 'tests', 'scripts', 'bench', 'apps/shell/scripts', 'telemetry', 'packages/plugin-sdk'];
 // The extensions Bun loads as test files or as modules they import.
 const SOURCE = /\.(?:[cm]?[jt]s|[jt]sx)$/;
 const SKIPPED = new Set(['node_modules', 'target', 'dist']);

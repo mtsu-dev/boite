@@ -101,7 +101,7 @@ jobs:
         # Drop the ignore once a patched deepmerge or plugin ships.
         run: bun audit --ignore=GHSA-gcqx-w48m-w2h4
       - run: bun scripts/check-docs.ts
-      - run: bun test scripts/ci scripts/migrate ./bench ./apps/shell/scripts ./apps/android-server
+      - run: bun test scripts/ci scripts/migrate ./bench ./apps/shell/scripts ./apps/android-server ./packages/plugin-sdk
       # Missing sentences are warnings here and in the nightly; release.yml refuses them.
       - run: bun scripts/ci/translations.ts
       - run: bun run check:copy
