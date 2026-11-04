@@ -18,7 +18,7 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import { readdir, rm, stat } from 'node:fs/promises';
 import { isAbsolute, join, resolve } from 'node:path';
-import { PLUGIN_MANIFEST_FILE } from '@boite/contracts';
+import { PLUGIN_MANIFEST_FILE, readPluginSource } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { invalidParams, messageOf, refused } from '../errors.ts';
 import { newId } from '../ids.ts';
@@ -52,6 +52,18 @@ export function normalizeSourceUrl(input: unknown, allowLocal = false): string {
     throw invalidParams(`plugin url must be ${expected}, with no query or fragment`, { field: 'url', expected, url: text });
   }
   return `${url.origin}${url.pathname.replace(/\/+$/, '')}`;
+}
+
+/**
+ * What the owner pasted, read as people share a repository (`readPluginSource`):
+ * a page, `owner/repo` or a clone URL, with the ref a page names unless `ref`
+ * names one. HEAD when neither does.
+ */
+export function readSource(url: unknown, ref: unknown, allowLocal = false): { url: string; ref: string; pagePath: boolean } {
+  if (allowLocal && typeof url === 'string' && isAbsolute(url.trim()) && existsSync(url.trim())) return { url: resolve(url.trim()), ref: checkRef(ref), pagePath: false };
+  const read = readPluginSource(url, ref);
+  if (!read.ok) throw invalidParams(read.message, { field: read.field, expected: read.expected, ...(typeof url === 'string' ? { url: url.slice(0, 200) } : {}) });
+  return { url: read.url, ref: read.ref ?? 'HEAD', pagePath: read.page !== undefined };
 }
 
 /** A branch, a tag or a commit: no leading dash, no `..`, nothing git would read as an option. */
@@ -89,15 +101,34 @@ function firstLine(text: string): string {
 }
 
 /**
- * Fetches `ref` of `url` and returns the commit it resolved to and the text of
- * the manifest at that commit, null when the commit has no such file.
+ * The branch or tag a page's `<ref>/<path>` names, `main` for
+ * `blob/main/README.md`: the longest leading segments the repository lists,
+ * so `feature/x` stays whole. A leading commit hash stands alone. Null when
+ * nothing matches; the caller then fetches the text as given.
+ */
+export function refOfPath(path: string, listed: string): string | null {
+  const names = new Set(listed.split('\n').map((line) => line.split('\t')[1]?.trim().replace(/^refs\/(?:heads|tags)\//, '')).filter((name) => name));
+  const parts = path.split('/');
+  for (let count = parts.length; count > 0; count -= 1) {
+    const candidate = parts.slice(0, count).join('/');
+    if (names.has(candidate)) return candidate;
+  }
+  return /^[0-9a-f]{7,64}$/.test(parts[0]!) ? parts[0]! : null;
+}
+
+/**
+ * Fetches `ref` of `url` and returns the ref fetched, the commit it resolved
+ * to and the text of the manifest at that commit, null when the commit has no
+ * such file. With `pagePath`, `ref` came from a file or folder page and may
+ * be `<ref>/<path>`: the repository's branches and tags decide where it ends.
+ * Without it, the ref is fetched exactly as given.
  */
 export async function fetchManifest(
   core: Core,
   url: string,
   ref: string,
-  options: { allowLocal?: boolean; signal?: AbortSignal } = {},
-): Promise<{ commit: string; text: string | null }> {
+  options: { allowLocal?: boolean; signal?: AbortSignal; pagePath?: boolean } = {},
+): Promise<{ ref: string; commit: string; text: string | null }> {
   const allowLocal = options.allowLocal === true;
   const root = resolve(core.dataDir, 'plugins');
   mkdirSync(root, { recursive: true });
@@ -166,6 +197,10 @@ export async function fetchManifest(
   try {
     const init = await git(['init', '--bare', '--quiet', dir]);
     if (init.code !== 0) throw refused(`git init failed in ${root}: ${firstLine(init.stderr) || `exit ${init.code}`}`, { dir });
+    if (options.pagePath === true && ref.includes('/')) {
+      const listed = await git(['ls-remote', '--heads', '--tags', '--refs', url]);
+      if (listed.code === 0) ref = refOfPath(ref, listed.stdout) ?? ref;
+    }
     const fetched = await git(['--git-dir', dir, 'fetch', '--depth', '1', '--no-tags', '--quiet', url, ref]);
     if (fetched.code !== 0) {
       throw refused(`git could not fetch ${ref} from ${url}: ${firstLine(fetched.stderr) || `exit ${fetched.code}`}`, { url, ref });
@@ -175,14 +210,14 @@ export async function fetchManifest(
     if (parsed.code !== 0 || !/^[0-9a-f]{40,64}$/.test(commit)) throw refused(`${ref} of ${url} does not name a commit`, { url, ref });
     const blob = `${commit}:${PLUGIN_MANIFEST_FILE}`;
     const sized = await git(['--git-dir', dir, 'cat-file', '-s', blob]);
-    if (sized.code !== 0) return { commit, text: null };
+    if (sized.code !== 0) return { ref, commit, text: null };
     const size = Number(sized.stdout.trim());
     if (!Number.isFinite(size) || size > MANIFEST_MAX_BYTES) {
       throw refused(`${PLUGIN_MANIFEST_FILE} at ${commit.slice(0, 7)} is ${size} bytes, past the ${MANIFEST_MAX_BYTES} a manifest may take`, { url, commit });
     }
     const read = await git(['--git-dir', dir, 'cat-file', 'blob', blob]);
     if (read.code !== 0) throw refused(`git could not read ${PLUGIN_MANIFEST_FILE} at ${commit.slice(0, 7)}: ${firstLine(read.stderr) || `exit ${read.code}`}`, { url, commit });
-    return { commit, text: read.stdout };
+    return { ref, commit, text: read.stdout };
   } finally {
     options.signal?.removeEventListener('abort', stop);
     // A helper git left behind (git-remote-https) goes with the job before the directory does.

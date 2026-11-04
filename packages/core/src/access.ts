@@ -55,7 +55,7 @@ import type { Connection } from './router.ts';
 export { AGENT_EVENTS, AGENT_METHODS, DEVICE_EVENTS, DEVICE_METHODS };
 
 export function mayReceiveEvent(name: RpcEventName, connection: Connection): boolean {
-  return mayHearEvent(name, connection.identity.principal);
+  return mayHearEvent(name, connection.identity.principal, connection.identity.permissions);
 }
 
 /** Throws unless the connection may call the method, naming the method. */

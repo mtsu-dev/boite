@@ -42,7 +42,8 @@ export function retiredHint(key: string): string {
 /** The card's title, in the dock's row and on the card. */
 export function settingHeading(setting: SettingAsk): string {
   const words = strings.settingRequest;
-  return setting.kind === 'open' ? words.headingOpen : setting.sensitive ? words.headingSensitive : words.heading;
+  if (setting.kind === 'open') return setting.plugin ? words.headingPlugin : words.headingOpen;
+  return setting.sensitive ? words.headingSensitive : words.heading;
 }
 
 export function settingLabel(key: RequestableKey): string {

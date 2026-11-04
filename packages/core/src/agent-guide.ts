@@ -59,7 +59,7 @@ export const TEAM_GUIDE = [
  * project-bound commands go and the bot section comes last, with `teams` its
  * team section.
  */
-export function agentGuide(asyncQuestions: boolean, logAccess = false, skills: readonly ListedSkill[] = [], bot = false, goalTrack = false, teams = false): string {
+export function agentGuide(asyncQuestions: boolean, logAccess = false, skills: readonly ListedSkill[] = [], bot = false, goalTrack = false, teams = false, pluginLines: readonly string[] = []): string {
   const report = skills.find(skill => skill.name === REPORT_ISSUE_SKILL.name);
   const others = skills.filter(skill => skill !== report);
   const pullRequests = 'Link each PR: `boite pr link <url>`, then `boite pr watch`: it wakes you on CI, reviews and conflicts, so do not poll.';
@@ -89,6 +89,8 @@ export function agentGuide(asyncQuestions: boolean, logAccess = false, skills: r
     ...(logAccess ? [`Boite itself failing (turn, window, phone)? \`boite logs problems\`${report ? `; skill ${report.name}: ${report.path}` : ''}`] : []),
     // Same shape as the brain's list: the body stays on disk until the agent reads it.
     ...(others.length ? ['Boite skills. Read the named SKILL.md before using one.', ...others.map(skill => `${skill.name}: ${skill.description}\nFile: ${skill.path}`)] : []),
+    // What installed plugins add (plugins/extensions.ts): their commands, skills and prompts.
+    ...pluginLines,
     ...(bot ? ['', BOT_GUIDE] : []),
     // Only while the user has Teams on.
     ...(bot && teams ? [TEAM_GUIDE] : []),

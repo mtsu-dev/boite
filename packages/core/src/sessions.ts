@@ -24,7 +24,7 @@
 
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { GRANT_QUERY_PARAM, GRANT_TTL_MS, PAIRING_ROLES } from '@boite/contracts';
-import type { PairedSession, PairingGrant, PairingRole, Principal, ThreadId } from '@boite/contracts';
+import type { PairedSession, PairingGrant, PairingRole, PluginPermission, Principal, ThreadId } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { invalidParams, refused, unauthorized } from './errors.ts';
 import { newId, newToken } from './ids.ts';
@@ -76,6 +76,10 @@ export interface Identity {
   sessionId: string | null;
   /** Set on an agent connection: the one thread its token was minted for. */
   threadId: ThreadId | null;
+  /** Set on a plugin connection: the plugin the token was minted for. */
+  pluginId?: string;
+  /** Set on a plugin connection: what its manifest declared, the whole of what it reaches. */
+  permissions?: readonly PluginPermission[];
 }
 
 /** Who a session key speaks as: an owner link's key is the owner, a device link's the guest. */

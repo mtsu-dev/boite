@@ -1,0 +1,17 @@
+{
+  "name": "@boite/example-plugin-hello",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsc -p tsconfig.json",
+    "pack": "boite-plugin-pack --entry src/main.ts --url https://example.com/boite-plugins/hello/0.1.0/hello.js"
+  },
+  "dependencies": {
+    "@boite/plugin-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.3",
+    "typescript": "^7.0.2"
+  }
+}

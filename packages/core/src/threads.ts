@@ -63,6 +63,7 @@ import { removeTranscripts, threadSessions, type NativeSession } from './threads
 import { ThreadCreation } from './threads/creation.ts';
 import { accountRemoved, followAgent } from './threads/account-fallback.ts';
 import { requireAgent } from './threads/agentless.ts';
+import { expandSlashPrompt } from './plugins/extensions.ts';
 
 type CreateParams = RpcParams<'threads.create'>;
 
@@ -665,7 +666,7 @@ export class ThreadStore {
     this.#core.sharedAccess.uploads(threadId, attachments);
 
     if (!operation && !activity && !startedBy) {
-      const expanded = this.#core.brain.expandPrompt(prompt, this.agentState.commands.get(threadId));
+      const expanded = expandSlashPrompt(this.#core, prompt, this.agentState.commands.get(threadId));
       const offset = expanded.length - prompt.length;
       if (expanded !== prompt) {
         previewReferences = previewReferences.map(reference => reference.mention ? {

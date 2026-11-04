@@ -12,6 +12,17 @@
         "@tauri-apps/cli": "2.12.3",
       },
     },
+    "examples/plugins/hello": {
+      "name": "@boite/example-plugin-hello",
+      "version": "0.1.0",
+      "dependencies": {
+        "@boite/plugin-sdk": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.4.3",
+        "typescript": "^7.0.2",
+      },
+    },
     "packages/contracts": {
       "name": "@boite/contracts",
       "version": "2.0.0-beta.1",
@@ -35,6 +46,20 @@
       "devDependencies": {
         "@types/bun": "^1.4.3",
         "@types/web-push": "^3.6.4",
+        "typescript": "^7.0.2",
+      },
+    },
+    "packages/plugin-sdk": {
+      "name": "@boite/plugin-sdk",
+      "version": "0.1.0",
+      "bin": {
+        "boite-plugin-pack": "./bin/pack.ts",
+      },
+      "dependencies": {
+        "@boite/contracts": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.4.3",
         "typescript": "^7.0.2",
       },
     },
@@ -108,6 +133,10 @@
     "@boite/contracts": ["@boite/contracts@workspace:packages/contracts"],
 
     "@boite/core": ["@boite/core@workspace:packages/core"],
+
+    "@boite/example-plugin-hello": ["@boite/example-plugin-hello@workspace:examples/plugins/hello"],
+
+    "@boite/plugin-sdk": ["@boite/plugin-sdk@workspace:packages/plugin-sdk"],
 
     "@boite/shell": ["@boite/shell@workspace:apps/shell"],
 

@@ -21,6 +21,7 @@ import { messageOf } from '../errors.ts';
 import { currentOs } from '../paths.ts';
 import type { SpawnedProcess } from '../procs.ts';
 import { CRASH_WINDOW_MS, RELAUNCH_DELAYS_MS, readRunChoice, writeRunChoice, type AppClock } from './apps.ts';
+import { pluginLaunch } from './launch.ts';
 
 const GATEWAY_FILE = 'gateway.json';
 /** Douane's own default port, taken when it is free. */
@@ -79,9 +80,6 @@ export function gatewayEnv(base: Record<string, string | undefined>): Record<str
 }
 
 /** A script runs with the Bun running the core: the tests' fake Douane, a checkout's development build. */
-function launchOf(executable: string): [string, string[]] {
-  return /\.(?:[cm]?[jt]s)$/i.test(executable) ? [process.execPath, [executable]] : [executable, []];
-}
 
 function configText(port: number): string {
   return [
@@ -314,8 +312,9 @@ export class PluginGateways {
     const threadId = `plugin:${id}:gateway`;
     let spawned: SpawnedProcess;
     try {
-      const [cmd, prefix] = launchOf(program.binary);
-      spawned = this.#host.procs.spawn(threadId, cmd, [...prefix, '--config', config], { cwd: this.dataDir(id), env: gatewayEnv(process.env), agentRoot: false });
+      const env = gatewayEnv(process.env);
+      const launch = pluginLaunch(program.binary, ['--config', config], env, this.#host.dataDir);
+      spawned = this.#host.procs.spawn(threadId, launch.cmd, launch.args, { cwd: this.dataDir(id), env: launch.env ?? env, agentRoot: false });
     } catch (error) {
       Object.assign(entry, { status: 'crashed', error: `${id} could not start: ${messageOf(error)}` });
       this.#host.log('warn', entry.error!, 'gateway.spawn-failed');
