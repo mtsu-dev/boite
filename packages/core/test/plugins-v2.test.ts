@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -171,7 +171,9 @@ describe('plugins v2 end to end', () => {
       expect(err).toBe('to stderr\n');
       expect(code).toBe(3);
       const report = JSON.parse(out);
-      expect(report).toMatchObject({ args: ['hello-threads', '--json', 'two words', '--fail'], cwd: work, caller: threadId, plugin: 'hello', agentToken: null, ownerToken: false, threads: 1 });
+      // macOS reports the temporary folder under /private/var, its real path.
+      expect(realpathSync(report.cwd)).toBe(realpathSync(work));
+      expect(report).toMatchObject({ args: ['hello-threads', '--json', 'two words', '--fail'], caller: threadId, plugin: 'hello', agentToken: null, ownerToken: false, threads: 1 });
       expect(report.todos).toBe('todos.list needs the plugin permission todos; the plugin declared threads.read');
       expect(report.data).toBe(join(harness.dataDir, 'plugin-data', 'hello'));
       expect(existsSync(report.data)).toBe(true);
