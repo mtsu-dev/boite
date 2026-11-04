@@ -354,9 +354,10 @@ any request to a direct contact. The contact reads a member's thread as
 `<thread>~<member prefix>` and the holder's own threads at their plain id.
 The decision comes back to the Bots host (`contact.hand { action: 'answer' }`),
 which passes it on to the asking member, a refusal the contact's core made
-itself (a model tier, a full queue) included. When the holder refuses, left,
-or joined the group again, an ask for a contact that moved to the Bots host
-since is sent from there; otherwise it is refused with the reason. A contact
+itself (a model tier, a full queue) included. An ask the holder has not
+taken when the contact moves to the Bots host is sent from there at once,
+whether the holder answers or not. When the holder refuses, left, or joined
+the group again, the ask is refused with the reason. A contact
 that moves to the Bots host while the holder still had to send an ask brings
 the holder's copy of it: the host's record takes what the copy knows, still
 to send or the contact's answer. An ask whose holder stays

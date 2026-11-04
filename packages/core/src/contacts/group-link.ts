@@ -301,6 +301,8 @@ export class ContactGroupLink {
 
   #adoptRequests(contact: StoredContact, moved: StoredRequest[]): void {
     const requests = this.#store.requests.list();
+    // An ask the holder had not taken yet goes from here now (`host-asks.ts`), not at the next retry.
+    if (requests.some(request => request.coreId === contact.coreId && request.pendingHolder)) queueMicrotask(() => this.#store.hostAsks.retry());
     const decided = this.#reconcile(requests, moved);
     // The Bots host whose bot asked through the member is this core, or the next host: `askedBy` meant only the member.
     const added = moved.filter(request => !requests.some(kept => kept.id === request.id)).map(request => {

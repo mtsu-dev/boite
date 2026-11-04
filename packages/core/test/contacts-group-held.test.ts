@@ -162,12 +162,8 @@ test('an ask the holder still has to send moves with the contact when it reaches
 test('an ask waiting for its holder is never sent to the contact once it was removed and linked again', async () => {
   const { a, x, c, aClient, cClient, aId, cId, ask, incoming } = await heldSetup(unreachableHost);
   // X's held-asks do not reach A for now.
-  const request = x.core.coordination.request.bind(x.core.coordination);
   let silent = true;
-  x.core.coordination.request = (async (peer: Parameters<typeof request>[0], method: Parameters<typeof request>[1], params: Parameters<typeof request>[2]) => {
-    if (silent && method === 'contact.route' && (params as { action?: unknown } | undefined)?.action === 'held-ask') throw new Error('offline');
-    return request(peer, method, params);
-  }) as typeof request;
+  silenceHeldAsks(x, () => silent);
   const asked = await ask('Words from the old link');
   await aClient.call('contacts.remove', { coreId: cId });
   await cClient.call('contacts.remove', { coreId: aId });
@@ -178,4 +174,32 @@ test('an ask waiting for its holder is never sent to the contact once it was rem
   await waitFor(() => requestOn(x, asked.id)?.status === 'refused', 10000);
   expect(incoming('Words from the old link')).toBeUndefined();
   expect(c.core.contacts.requests.list().filter(entry => entry.direction === 'in')).toHaveLength(0);
+}, 60000);
+
+/** X's held-asks get no answer while `silent()` holds: A is off, or on another network. */
+function silenceHeldAsks(x: TestCore, silent: () => boolean): void {
+  const request = x.core.coordination.request.bind(x.core.coordination);
+  x.core.coordination.request = (async (peer: Parameters<typeof request>[0], method: Parameters<typeof request>[1], params: Parameters<typeof request>[2]) => {
+    if (silent() && method === 'contact.route' && (params as { action?: unknown } | undefined)?.action === 'held-ask') throw new Error('offline');
+    return request(peer, method, params);
+  }) as typeof request;
+}
+
+test('an ask the holder never took is sent from the Bots host once the contact moved there, even with the holder gone silent', async () => {
+  let sweep!: (force?: boolean) => void;
+  const { a, x, cId, ask, incoming } = await heldSetup(({ a }) => {
+    const link = a.core.contacts.groupLink;
+    sweep = link.sweep.bind(link);
+    link.sweep = () => {};
+  });
+  silenceHeldAsks(x, () => true);
+  const asked = await ask('Never taken by the holder');
+  expect(requestOn(x, asked.id)?.pendingHolder).toBe(true);
+  a.core.contacts.groupLink.sweep = sweep;
+  sweep(true);
+  await waitFor(() => x.core.contacts.has(cId) && !a.core.contacts.has(cId), 20000);
+  // Within the contacts' 30 s retry: the move itself sends it.
+  await waitFor(() => incoming('Never taken by the holder') !== undefined, 10000);
+  expect(requestOn(x, asked.id)).toMatchObject({ status: 'pending' });
+  expect(requestOn(x, asked.id)!.holder).toBeUndefined();
 }, 60000);

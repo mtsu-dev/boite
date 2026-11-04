@@ -229,6 +229,8 @@ export class ContactHostAsks {
     if (!request?.pendingHolder || this.#busy.has(id)) return;
     this.#busy.add(id);
     try {
+      // The contact moved here before the holder took the ask: it goes from here, whether the holder answers or not.
+      if (this.#store.has(request.coreId)) { this.#rehome(id, ''); return; }
       const holder = this.#core.group.peers().find(peer => peer.coreId === request.holder);
       if (Date.now() - request.createdAt > GROUP_LETTER_TTL_MS) { this.#refuse(id, `Not delivered: ${holder?.name ?? 'the machine that holds the contact'} stayed unreachable for 7 days`); return; }
       if (!holder) { this.#rehome(id, `Not delivered: the machine that held ${request.contact} left the group`); return; }
