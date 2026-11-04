@@ -36,7 +36,8 @@ test('an answer draws its diagrams and formulas, keeps prices as text and shows 
     };
   })()`);
   expect(answer.prices).toBe(true);
-  expect(answer.error).toBe("This diagram could not be drawn: Parse error on line 3: Expecting 'NODE_STRING', got 'EOF'");
+  // Line 2 holds the arrow with nothing after it. Since Pele 1.10.1 an error at the end of the input names it, not a line 3 the code does not have.
+  expect(answer.error).toBe("This diagram could not be drawn: Parse error on line 2: Expecting 'NODE_STRING', got 'EOF'");
   expect(answer.code).toBe('flowchart LR\n  A --> ');
   expect(answer.unsafe).toBe(0);
   expect(answer.math).toBeGreaterThanOrEqual(2);
