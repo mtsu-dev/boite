@@ -18,7 +18,7 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import { readdir, rm, stat } from 'node:fs/promises';
 import { isAbsolute, join, resolve } from 'node:path';
-import { PLUGIN_MANIFEST_FILE } from '@boite/contracts';
+import { PLUGIN_MANIFEST_FILE, readPluginSource } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { invalidParams, messageOf, refused } from '../errors.ts';
 import { newId } from '../ids.ts';
@@ -52,6 +52,18 @@ export function normalizeSourceUrl(input: unknown, allowLocal = false): string {
     throw invalidParams(`plugin url must be ${expected}, with no query or fragment`, { field: 'url', expected, url: text });
   }
   return `${url.origin}${url.pathname.replace(/\/+$/, '')}`;
+}
+
+/**
+ * What the owner pasted, read as people share a repository (`readPluginSource`):
+ * a page, `owner/repo` or a clone URL, with the ref a page names unless `ref`
+ * names one. HEAD when neither does.
+ */
+export function readSource(url: unknown, ref: unknown, allowLocal = false): { url: string; ref: string } {
+  if (allowLocal && typeof url === 'string' && isAbsolute(url.trim()) && existsSync(url.trim())) return { url: resolve(url.trim()), ref: checkRef(ref) };
+  const read = readPluginSource(url, ref);
+  if (!read.ok) throw invalidParams(read.message, { field: read.field, expected: read.expected, ...(typeof url === 'string' ? { url: url.slice(0, 200) } : {}) });
+  return { url: read.url, ref: read.ref ?? 'HEAD' };
 }
 
 /** A branch, a tag or a commit: no leading dash, no `..`, nothing git would read as an option. */

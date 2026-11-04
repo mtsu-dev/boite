@@ -11,7 +11,7 @@ import { isAbsolute, join } from 'node:path';
 import { PLUGIN_MANIFEST_FILE } from '@boite/contracts';
 import type { PluginManifest, PluginPool, PluginSource, PluginState } from '@boite/contracts';
 import { invalidParams, messageOf, refused } from '../errors.ts';
-import { ManifestRefused, isRecord, parseManifest, parseManifestText, refusal } from './manifest.ts';
+import { ManifestRefused, authorityChange, isRecord, parseManifest, parseManifestText, refusal } from './manifest.ts';
 import { parseRecommendedEntry, type UpdateSource } from './updates.ts';
 import recommendedList from './recommended.json';
 
@@ -132,8 +132,13 @@ export function readDevFolder(path: unknown): { path: string; file: string; mani
   }
 }
 
-/** A dev plugin's manifest, read from its folder on every use. */
-export function devManifest(id: string, devPath: string): { manifest: PluginManifest; version: string } {
+/**
+ * A dev plugin's manifest, read from its folder on every use. Its code and
+ * text follow the folder; its access stays `approved`, what the owner's last
+ * plugins.dev loaded, and a folder that changes it answers `changed` instead,
+ * so whoever can write the folder cannot widen the plugin's token.
+ */
+export function devManifest(id: string, devPath: string, approved: PluginManifest): { manifest: PluginManifest; version: string } | { changed: string } {
   const file = join(devPath, PLUGIN_MANIFEST_FILE);
   let text: string;
   try { text = readFileSync(file, 'utf8'); } catch (error) {
@@ -141,5 +146,7 @@ export function devManifest(id: string, devPath: string): { manifest: PluginMani
   }
   const manifest = parseManifestText(text, file, true);
   if (manifest.id !== id) throw refusal(file, 'id', `${id}, the id it was added under; remove it and run boite plugin dev again to change it`, manifest.id);
+  const changed = authorityChange(approved, manifest);
+  if (changed !== null) return { changed: `${file} changed ${changed} since boite plugin dev loaded it. Run boite plugin dev ${devPath} again to load it.` };
   return { manifest, version: manifest.version };
 }

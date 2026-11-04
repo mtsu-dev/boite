@@ -66,6 +66,13 @@ export const PLUGIN_PERMISSIONS: Readonly<Record<PluginPermission, PluginPermiss
 // data in the manifest except agent commands, which run the executable.
 // ---------------------------------------------------------------------------
 
+/**
+ * The manifest's `executable`: one file name with no extension and no path,
+ * so neither the core's install nor the SDK's packer can write outside the
+ * plugin's folder.
+ */
+export const PLUGIN_EXECUTABLE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
+
 /** Names an agent command, a skill or a slash command may take: lowercase words joined by hyphens. */
 export const PLUGIN_NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 

@@ -21,7 +21,7 @@
 import { PLUGIN_MANIFEST_FILE } from '@boite/contracts';
 import type { PluginManifest, PluginProvides, PluginUpdates } from '@boite/contracts';
 import { messageOf } from '../errors.ts';
-import { ManifestRefused, artifactFor, isRecord, parseManifest, parseManifestText, platformKey, refusal } from './manifest.ts';
+import { ManifestRefused, artifactFor, authorityChange, isRecord, parseManifest, parseManifestText, platformKey, refusal } from './manifest.ts';
 import { checkRef, normalizeSourceUrl } from './source.ts';
 
 export const FIRST_CHECK_MS = 60_000;
@@ -104,6 +104,8 @@ export function judge(text: string | null, pinned: PluginManifest, newest: strin
       return { kind: 'ignored', reason: `${found.version} changes ${field} from "${pinned[field]}" to "${found[field]}"; that change comes with a Boite update.` };
     }
   }
+  const changed = authorityChange(pinned, found);
+  if (changed !== null) return { kind: 'ignored', reason: `${found.version} changes ${changed}; that change comes with a Boite update.` };
   if (features(found.provides) !== features(pinned.provides)) {
     return { kind: 'ignored', reason: `${found.version} asks for other features than the reviewed entry; that change comes with a Boite update.` };
   }

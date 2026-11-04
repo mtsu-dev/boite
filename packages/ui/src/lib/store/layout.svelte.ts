@@ -1,4 +1,4 @@
-import { parseGroupRelayUrl, type QuotaAlert, type ThreadId } from '@boite/contracts';
+import { PLUGIN_ADD_SECTION, parseGroupRelayUrl, type QuotaAlert, type ThreadId } from '@boite/contracts';
 import { appPage } from '../app-origin';
 import { servesThisPage } from '../endpoint';
 import {
@@ -68,6 +68,8 @@ export class Layout {
   search = $state('');
   /** The agent an outside link asked the Agents page to open, with a fresh key for repeated asks; the page takes it once. */
   agentsTarget = $state<{ agentId: string; request: number; pane?: AgentPane } | null>(null);
+  /** The repository a plugin card asked Settings > Plugins to read, with a fresh key for repeated asks; the page takes it once. */
+  pluginSource = $state<{ url: string; ref: string | null; request: number } | null>(null);
   /** The contact the Contacts page shows, by core id; null shows the page that adds one. */
   contact = $state<string | null>(null);
 
@@ -111,6 +113,12 @@ export class Layout {
       : { id: section, request: (this.settingsSection?.request ?? 0) + 1, ...(options.flash ? { flash: true } : {}) };
     this.page = 'settings';
     if (tab === 'resources') void this.ctx.store.refreshResources();
+  }
+
+  /** Settings > Plugins with `source` read, as a plugin card's Preview asks (`boite plugin add`). */
+  showPluginPreview(source: { url: string; ref: string | null }): void {
+    this.pluginSource = { url: source.url, ref: source.ref, request: (this.pluginSource?.request ?? 0) + 1 };
+    this.showSettings('plugins', PLUGIN_ADD_SECTION, { flash: true });
   }
 
   /**

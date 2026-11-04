@@ -12,7 +12,7 @@ import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import { DEVICE_EVENTS, PLUGIN_MANIFEST_FILE } from '@boite/contracts';
 import { connect } from '../src/client.ts';
 import { ManifestRefused, parseManifest, platformKey } from '../src/plugins/manifest.ts';
-import { CHECK_INTERVAL_MS, FIRST_CHECK_MS, PluginUpdateChecks, RETRY_FIRST_MS, parseRecommendedEntry, type UpdateHost } from '../src/plugins/updates.ts';
+import { CHECK_INTERVAL_MS, FIRST_CHECK_MS, PluginUpdateChecks, RETRY_FIRST_MS, judge, parseRecommendedEntry, type UpdateHost } from '../src/plugins/updates.ts';
 import { startTestCore, waitFor, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
 
@@ -175,6 +175,21 @@ describe('an update source', () => {
       expect(state.updates?.error).toBeNull();
       expect(state.availableVersion).toBe('1.0.0');
     }
+  });
+
+  test('a schema 2 release that changes its schema, permissions or service is never offered', () => {
+    const v2 = (version: string, permissions: string[], provides: Record<string, unknown> = {}) => ({
+      schema: 2, id: 'standup', name: 'Standup', version, description: 'Posts a standup.', homepage: 'https://plugins.example.invalid/standup',
+      runtime: 'bun', executable: 'standup', permissions,
+      artifacts: { any: { url: `https://plugins.example.invalid/standup-${version}.js`, sha256: 'a'.repeat(64) } },
+      provides: { commands: [{ name: 'standup', description: 'Posts it.' }], ...provides },
+    });
+    const pinned = parseManifest(v2('1.0.0', ['threads.read']), 'recommended.json[0]');
+    const verdict = (raw: Record<string, unknown>) => judge(JSON.stringify(raw), pinned, '1.0.0');
+    expect(verdict(v2('1.0.1', ['threads.read'], { prompt: 'New words.' })).kind).toBe('offer');
+    expect(verdict(v2('1.0.1', ['threads.read', 'todos']))).toEqual({ kind: 'ignored', reason: '1.0.1 changes its permissions from [threads.read] to [threads.read, todos]; that change comes with a Boite update.' });
+    expect(verdict(v2('1.0.1', ['threads.read'], { service: {} }))).toMatchObject({ kind: 'ignored', reason: expect.stringContaining('changes to run a service') });
+    expect(verdict(release('1.0.1', { id: 'standup', name: 'Standup', homepage: 'https://plugins.example.invalid/standup', executable: 'standup' }))).toMatchObject({ kind: 'ignored', reason: expect.stringContaining('changes its schema from 2 to 1') });
   });
 
   test('an artifact over http or without a good digest is refused, and a digest that lies fails the install', async () => {

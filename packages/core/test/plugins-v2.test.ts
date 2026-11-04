@@ -13,7 +13,7 @@ import { ManifestRefused, commandsOf, parseManifest } from '../src/plugins/manif
 import { expandSlashPrompt, pluginGuideLines } from '../src/plugins/extensions.ts';
 import { pluginLaunch } from '../src/plugins/launch.ts';
 import { connect } from '../src/client.ts';
-import { echoThread, removeDir, startTestCore, type TestCore } from './harness.ts';
+import { echoThread, removeDir, startTestCore, waitFor, type TestCore } from './harness.ts';
 import { rejection, thrown } from './settle.ts';
 import { messageOf } from '../src/errors.ts';
 
@@ -252,6 +252,42 @@ describe('plugins v2 end to end', () => {
     }
   }, 30_000);
 
+  test('a dev folder edited after plugins.dev keeps the access that load approved, until the owner loads it again', async () => {
+    harness = await startTestCore();
+    const dir2 = mkdtempSync(join(tmpdir(), 'boite-plugins-v2-'));
+    const asPlugin = { client: { name: 'plugin', version: '0' } };
+    try {
+      const owner = await harness.connect();
+      const dir = devPlugin(dir2);
+      await owner.call('plugins.dev', { path: dir });
+      const { threadId } = await echoThread(harness, owner);
+      const agent = await connect(harness.url, harness.core.agents.tokenFor(threadId));
+      const work = join(dir2, 'work'); mkdirSync(work);
+      const run = () => agent.call('plugins.command', { threadId, name: 'hello-threads', args: [], cwd: work });
+      expect(JSON.parse((await run()).stdout).todos).toContain('needs the plugin permission todos');
+      const approved = harness.core.plugins.tokens.tokenFor('hello', ['threads.read']);
+      const open = await connect(harness.url, approved, asPlugin);
+
+      // Someone who can write the folder, an agent say, widens the permissions: nothing runs with them.
+      const file = join(dir, 'boite-plugin.json');
+      const manifest = JSON.parse(readFileSync(file, 'utf8'));
+      writeFileSync(file, JSON.stringify({ ...manifest, permissions: ['threads.read', 'todos'] }));
+      expect(await thrown(run())).toThrow();
+      expect((await owner.call('plugins.list', {})).find((row) => row.id === 'hello')).toMatchObject({
+        status: 'error', error: expect.stringContaining('changed its permissions from [threads.read] to [threads.read, todos] since boite plugin dev loaded it'),
+      });
+      expect(await thrown(open.call('threads.list', {}))).toThrow('the client is closed');
+
+      // The owner's reload approves the new list.
+      await owner.call('plugins.dev', { path: dir });
+      expect(JSON.parse((await run()).stdout).todos).not.toContain('needs the plugin permission');
+      agent.close();
+    } finally {
+      await harness?.stop();
+      await removeDir(dir2);
+    }
+  }, 30_000);
+
   test('two loads naming one command: the second is refused, even after a refused reload, and a dropped gateway stops', async () => {
     harness = await startTestCore();
     const dir2 = mkdtempSync(join(tmpdir(), 'boite-plugins-v2-'));
@@ -327,6 +363,37 @@ console.log(JSON.stringify({ accounts: [{ email: [env.BOITE_PLUGIN_ID, env.BOITE
       for (let i = 0; i < 100 && harness.core.plugins.state('notes').status !== 'installed'; i += 1) await Bun.sleep(20);
       expect(harness.core.plugins.state('notes')).toMatchObject({ status: 'installed', version: '1.0.0', artifact: null, adds: { prompt: true } });
       expect(pluginGuideLines(harness.core.plugins.installedPlugins())).toEqual(['From the Notes plugin: Prefer short answers.']);
+    } finally {
+      await harness?.stop();
+    }
+  });
+
+  test('an agent\'s plugin add puts a preview card in its thread and fetches nothing', async () => {
+    harness = await startTestCore();
+    try {
+      const owner = await harness.connect();
+      const { threadId } = await echoThread(harness, owner);
+      await owner.call('turns.start', { threadId, prompt: 'hello' });
+      await waitFor(() => !['queued', 'running', 'waiting'].includes(harness!.core.threads.require(threadId).status));
+      const agent = { [AGENT_ENV.threadId]: threadId, [AGENT_ENV.coreUrl]: harness.url, [AGENT_ENV.token]: harness.core.agents.tokenFor(threadId) };
+      let out = ''; let err = '';
+      const io = { cwd: root, out: (text: string) => { out += text; }, err: (text: string) => { err += text; }, env: agent };
+      const inspected: unknown[] = [];
+      const inspect = harness.core.plugins.inspect.bind(harness.core.plugins);
+      harness.core.plugins.inspect = (params) => { inspected.push(params); return inspect(params); };
+      const code = await runCli(['plugin', 'add', 'https://github.com/example/standup/releases/tag/v1.2.0', '--why', 'Adds a standup command'], io);
+      expect({ code, err }).toEqual({ code: 0, err: '' });
+      expect(out).toContain('card: Preview opens Settings > Plugins with https://github.com/example/standup at v1.2.0 read');
+      const [card] = await owner.call('questions.list', { threadId });
+      expect(card).toMatchObject({ text: 'Adds a standup command', setting: { kind: 'open', page: 'plugins', plugin: { url: 'https://github.com/example/standup', ref: 'v1.2.0' } } });
+      expect(inspected).toEqual([]);
+
+      // No reason, or an http source: refused before any card.
+      expect(await runCli(['plugin', 'add', 'example/standup'], { ...io, err() {} })).toBe(2);
+      err = '';
+      expect(await runCli(['plugin', 'add', 'http://example.com/standup', '--why', 'x'], io)).not.toBe(0);
+      expect(err).toContain('plugin url must be an https URL');
+      expect((await owner.call('questions.list', { threadId })).length).toBe(1);
     } finally {
       await harness?.stop();
     }

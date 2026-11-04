@@ -107,8 +107,9 @@ and the slash command `/recap`. Start from a copy of it.
 
 4. To publish, upload `hello.js` at the URL `artifacts.any` names, for example
    as a release asset, and push the folder to a public git repository with the
-   manifest at its root. The owner adds the repository's URL in Settings >
-   Plugins ([Install and run](#install-and-run)).
+   manifest at its root. To share it, send its link or `owner/repo`: the
+   other owner pastes it in Settings > Plugins, or asks an agent to add it,
+   and installs after reading the preview ([Install and run](#install-and-run)).
 
 ## Schema 2
 
@@ -308,6 +309,11 @@ present they are ignored.
 
 - Commands, skills, the prompt and slash commands are read from the folder on
   each use, so an edit applies at once.
+- The schema, the permissions and whether it runs a service stay those of the
+  last `boite plugin dev`. An edit that changes one turns the row to an error
+  and closes the plugin's token, its sockets with it, until you run
+  `boite plugin dev <folder>` again: anything that can write the folder, an
+  agent working in it say, cannot give the plugin more than you loaded.
 - Run `boite plugin dev <folder>` again to read the manifest again and restart
   the plugin's service or desktop app.
 - `boite plugin dev --remove <id>` removes it.
@@ -724,8 +730,15 @@ tests' fake Douane starts.
 A recommended plugin installs from its row. A plugin from a URL takes two
 steps:
 
-1. The owner pastes the repository URL and, optionally, a branch, tag or commit
-   (the default branch otherwise), then clicks Preview. The core fetches
+1. The owner pastes the repository and, optionally, a branch, tag or commit
+   (the default branch otherwise), then clicks Preview. The repository is
+   read the way people share it: its https URL, any page of it (a tag's
+   release page, a branch's tree or the manifest's file page names that ref),
+   `owner/repo` for GitHub, or the `git@host:path` clone URL, which names the
+   same repository over https. A ref typed apart wins over the page's. Or
+   the owner tells an agent "add this plugin: <link>": the agent runs
+   `boite plugin add <link> --why <reason>`, and the card it puts in the
+   conversation opens this preview ([CLI](cli.md#commands)). The core fetches
    that one commit and reads the manifest (`plugins.inspect`). The page shows
    the name, version, source commit, download URL, SHA-256, the command lines
    and the pools, and for schema 2 the permissions and the commands, skills
@@ -867,8 +880,13 @@ a paired device receives `plugins.list is for the owner only`.
 
 Reading the repository:
 
-- The URL must be https, with a host, no user or password, no query and no
-  fragment.
+- The URL must be https, with a host and no user or password. A query and a
+  fragment are dropped before git runs, so a token pasted there never reaches
+  the install record. Other transports are refused, never rewritten, except
+  `git@host:path`, read as `https://host/path`.
+- An install from `<url>.git` and an update read from `<url>` are the same
+  repository: the host is compared in any case, `.git` and a trailing slash
+  ignored.
 - git runs through the core's process launcher, traced as `plugin:fetch:<n>`.
   It runs with `protocol.allow=never` and https as the one allowed transport,
   so `ext::`, `file://`, ssh and plain http are refused by git itself.
@@ -907,7 +925,10 @@ the methods and events of the permissions its manifest declares
 ([Permissions](#permissions)); the owner reads that list before installing.
 The token limits what the plugin does through the core, not what its
 executable does on the machine: it still runs as the core's user, like any
-program you install. A plugin with no executable runs nothing; its skills,
+program you install, and can read that user's files, Boite's data directory
+and the owner token in its `core.json` included. Permissions keep a plugin
+that follows its manifest within it; they do not contain a program written to
+get out, and the preview says so beside the list. A plugin with no executable runs nothing; its skills,
 prompt and slash commands are text agents read.
 
 A schema 1 desktop app holds the owner token. With it the app can do anything the owner
@@ -924,9 +945,9 @@ the SHA-256 then only proves the download is the one the manifest names. They
 cannot:
 
 - offer anything until the owner clicks Update;
-- change the id, name, homepage, executable or features: a plugin that wants
-  the owner token or an account pool it did not have needs a Boite pull
-  request;
+- change the id, name, homepage, executable, features, schema, permissions or
+  service: a plugin that wants the owner token, a permission or an account
+  pool it did not have needs a Boite pull request;
 - send an older version, an http download or a download without a digest;
 - point Boite at another repository, since the source sits in Boite's list.
 

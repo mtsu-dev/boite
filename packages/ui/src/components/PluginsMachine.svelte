@@ -1,11 +1,12 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { lockedBy } from '../lib/policy';
   import { errorText } from '../lib/errors';
   import InfoTip from './InfoTip.svelte';
   import PolicyLock from './PolicyLock.svelte';
   import { Download, ExternalLink, Play, Puzzle, RefreshCw, RotateCw, ShieldAlert, Square, TriangleAlert } from '@lucide/svelte';
   import type { PluginAdds, PluginAppState, PluginGatewayState, PluginManifest, PluginPermission, PluginPool, PluginPreview, PluginRejected, PluginState, PluginUpdates, RpcParams } from '@boite/contracts';
-  import { gatewayDashboardReachable } from '@boite/contracts';
+  import { PLUGIN_ADD_SECTION, gatewayDashboardReachable } from '@boite/contracts';
   import { besideCore } from '../lib/gateway-dashboard';
   import { openExternal } from '../lib/links';
   import GatewayMoveDialog from './GatewayMoveDialog.svelte';
@@ -121,8 +122,27 @@
     }
   }
 
-  async function inspect(event: SubmitEvent) {
+  /**
+   * A plugin card's Preview (`boite plugin add`): the repository it names,
+   * read once, as if the owner had pasted it. Installing stays their click.
+   */
+  $effect(() => {
+    const asked = store.pluginSource;
+    if (!asked || store.connection !== 'ready') return;
+    untrack(() => {
+      store.pluginSource = null;
+      url = asked.url;
+      ref = asked.ref ?? '';
+      void inspect();
+    });
+  });
+
+  function submit(event: SubmitEvent) {
     event.preventDefault();
+    void inspect();
+  }
+
+  async function inspect() {
     const client = store.client;
     if (!client || url.trim() === '' || inspecting) return;
     inspecting = true;
@@ -541,11 +561,12 @@
     </section>
   {/if}
 
-  <section aria-labelledby="plugins-add" data-testid="plugins-add">
+  <section id="settings-{PLUGIN_ADD_SECTION}" aria-labelledby="plugins-add" data-testid="plugins-add">
     <h2 id="plugins-add" class="section-label"><span class="ui-label">{t.addHeading}</span><InfoTip topic={t.addHeading} text={t.addHint} /><PolicyLock {store} keys={['plugins.install']} /></h2>
     <div class="card add">
-      <form onsubmit={inspect}>
-        <input class="url" data-testid="plugin-url" type="url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false"
+      <!-- Text, not url: owner/repo and a page copied without https are read by the core. -->
+      <form onsubmit={submit}>
+        <input class="url" data-testid="plugin-url" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false"
           aria-label={t.urlLabel} placeholder={t.urlPlaceholder} bind:value={url} disabled={installLocked} />
         <input class="ref" data-testid="plugin-ref" autocomplete="off" autocapitalize="off" spellcheck="false"
           aria-label={t.refLabel} title={t.refLabel} placeholder={t.refPlaceholder} bind:value={ref} disabled={installLocked} />
@@ -593,7 +614,7 @@
             {/if}
           </dl>
           {#if preview.rejected === null}
-            <p class="trust"><TriangleAlert size={15} strokeWidth={1.75} />{t.trust}</p>
+            <p class="trust" data-testid="plugin-trust"><TriangleAlert size={15} strokeWidth={1.75} />{preview.manifest?.schema === 2 && preview.manifest.executable === undefined ? t.trustText : t.trust}</p>
           {/if}
           <div class="act end">
             <button class="quiet small" data-testid="plugin-dismiss" onclick={() => { preview = null; }}><span class="ui-label">{preview.rejected ? strings.common.dismiss : strings.common.cancel}</span></button>

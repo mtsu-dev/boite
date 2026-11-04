@@ -44,6 +44,7 @@
   } = $props();
 
   const uid = $props.id();
+  const bare = (address: string) => address.replace(/^https:\/\//, '');
   let busy = $state(false);
   /** The same test Settings makes to draw the phone's own page (`SettingsShell.svelte`). */
   const narrow = new MediaQuery('(max-width: 720px)');
@@ -97,8 +98,12 @@
     if (!(await apply(wanted))) input.checked = now === true;
   }
 
+  /** A plugin card's repository, as the Plugins page will read it. */
+  const plugin = $derived(setting.kind === 'open' ? setting.plugin ?? null : null);
+
   function show(): void {
-    store.showSettings(setting.page, setting.section, { flash: true });
+    if (plugin) store.showPluginPreview(plugin);
+    else store.showSettings(setting.page, setting.section, { flash: true });
   }
 
   async function answerWith(optionId: 'refuse' | 'open'): Promise<void> {
@@ -113,11 +118,12 @@
     const outcome = given.optionIds[0];
     if (outcome === 'applied') return strings.settingRequest.applied;
     if (outcome === 'changed') return fill(strings.settingRequest.changed, { value: value(given.value) });
-    if (outcome === 'open') return strings.settingRequest.opened;
+    if (outcome === 'open') return plugin ? strings.settingRequest.previewed : strings.settingRequest.opened;
     return setting.kind === 'open' ? strings.settingRequest.dismissed : strings.settingRequest.refused;
   }
 
   function subject(given: QuestionAnswer | null): string {
+    if (plugin) return bare(plugin.url);
     if (!change) return place;
     const shown = given?.optionIds[0] === 'applied' ? change.value : given?.optionIds[0] === 'changed' ? given.value : change.previous;
     return `${label}: ${value(shown)}`;
@@ -157,6 +163,11 @@
           <span class="new" data-testid="setting-proposed">{value(change.value)}</span>
         </span>
       </div>
+    {:else if plugin}
+      <div class="delta" data-testid="setting-plugin">
+        <span class="name mono">{bare(plugin.url)}</span>
+        {#if plugin.ref}<span class="values mono">{fill(strings.settingRequest.pluginRef, { ref: plugin.ref })}</span>{/if}
+      </div>
     {/if}
     <p class="place ui-label" data-testid="setting-place">{place}</p>
     {#if retired}
@@ -174,7 +185,7 @@
     <div class="actions">
       {#if setting.kind === 'open'}
         {#if reachable}
-          <button type="button" class="primary" data-testid="setting-open" disabled={busy} onmousedown={keepFocus} onclick={() => answerWith('open')}><span class="ui-label">{strings.settingRequest.open}</span></button>
+          <button type="button" class="primary" data-testid="setting-open" disabled={busy} onmousedown={keepFocus} onclick={() => answerWith('open')}><span class="ui-label">{plugin ? strings.settingRequest.preview : strings.settingRequest.open}</span></button>
         {/if}
         <button type="button" class="ghost" data-testid="setting-refuse" disabled={busy} onmousedown={keepFocus} onclick={() => answerWith('refuse')}><span class="ui-label">{strings.settingRequest.dismiss}</span></button>
       {:else}
@@ -230,6 +241,7 @@
     font-size: var(--text-sm);
   }
   .name { min-width: 0; overflow-wrap: anywhere; }
+  .mono { font-family: var(--font-mono); }
   .toggle { flex-wrap: nowrap; }
   .values { display: inline-flex; align-items: center; gap: 8px; color: var(--color-subtle); min-width: 0; }
   .old { color: var(--color-muted-foreground); text-decoration: line-through; overflow-wrap: anywhere; }

@@ -24,7 +24,7 @@
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { chmod, rename, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { PLUGIN_MANIFEST_FILE } from '@boite/contracts';
+import { PLUGIN_MANIFEST_FILE, sameRepository } from '@boite/contracts';
 import type { PluginArtifact, PluginCommandResult, PluginManifest, PluginPool, PluginPreview, PluginRejected, PluginSource, PluginState, RpcParams } from '@boite/contracts';
 import type { Identity } from './sessions.ts';
 import type { Core } from './core.ts';
@@ -58,7 +58,7 @@ import { DOUANE_PLUGIN, PluginGateways } from './plugins/gateway.ts';
 import { prepareLocalProxyKey } from './subscription-proxy-auth.ts';
 import { recoverActivation, switchRelease, type Activation } from './plugins/activation.ts';
 import { PluginLanes } from './plugins/lanes.ts';
-import { checkRef, fetchManifest, normalizeSourceUrl } from './plugins/source.ts';
+import { fetchManifest, readSource } from './plugins/source.ts';
 import { PluginUpdateChecks, compareVersions, type UpdateSource } from './plugins/updates.ts';
 
 const DOWNLOAD_MAX_BYTES = 64 * 1024 * 1024;
@@ -291,7 +291,9 @@ export class PluginStore {
     let record: Omit<Installed, 'binary'>;
     try {
       record = readRecord(data, file, id, dir);
-      if (record.devPath !== null) record = { ...record, ...devManifest(id, record.devPath) };
+      const live = record.devPath === null ? null : devManifest(id, record.devPath, record.manifest);
+      if (live !== null && 'changed' in live) { this.tokens.revoke(id); return { kind: 'error', message: live.changed }; }
+      if (live !== null) record = { ...record, ...live };
     } catch (error) {
       if (error instanceof ManifestRefused) return { kind: 'rejected', rejected: error.rejected };
       throw error;
@@ -551,8 +553,7 @@ export class PluginStore {
    */
   async inspect(params: RpcParams<'plugins.inspect'>): Promise<PluginPreview> {
     if (this.#closing) throw refused('Boite is shutting down.');
-    const url = normalizeSourceUrl(params.url, this.allowLocalSources);
-    const ref = checkRef(params.ref);
+    const { url, ref } = readSource(params.url, params.ref, this.allowLocalSources);
     const fetching = fetchManifest(this.#core, url, ref, { allowLocal: this.allowLocalSources, signal: this.#shutdown.signal });
     this.#inspecting.add(fetching);
     let fetched: Awaited<typeof fetching>;
@@ -600,7 +601,7 @@ export class PluginStore {
     const pending = this.#pending.get(found);
     const disk = this.#onDisk(found);
     const taken = pending?.source.url ?? (disk.kind === 'installed' ? disk.installed.source?.url ?? null : null);
-    if (taken !== null && taken !== url) {
+    if (taken !== null && !sameRepository(taken, url)) {
       return refusal(PLUGIN_MANIFEST_FILE, 'id', `an id not already used by the plugin from ${taken}`, found).rejected;
     }
     if (taken === null && (disk.kind === 'rejected' || disk.kind === 'error')) {

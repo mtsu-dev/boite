@@ -678,6 +678,19 @@ export const SCENARIOS: Record<string, Scenario> = {
     const command = await refusedWith(env.call('plugins.command', { name: 'no-such-command', args: [], cwd: await env.newFolder() }), RpcErrorCode.InvalidParams, ['field', 'expected']);
     same(command.field, 'name', 'the refused command field');
   },
+  'a plugin card reads a shared repository page as the Plugins page does, once per thread': async (env) => {
+    const setup = await echo(env);
+    const { id: threadId } = await thread(env, setup);
+    await finishedTurn(env, threadId);
+    const asked = await env.call('settings.request', { threadId, reason: 'Adds the standup command', page: 'plugins', plugin: { url: 'github.com/example/standup/releases/tag/v1.2.0?x=1' } });
+    same(asked.setting, { kind: 'open', page: 'plugins', section: 'plugins-add', plugin: { url: 'https://github.com/example/standup', ref: 'v1.2.0' } }, 'the plugin card');
+    const again = await refusedWith(env.call('settings.request', { threadId, reason: 'Again', page: 'plugins', plugin: { url: 'https://github.com/example/standup.git' } }), RpcErrorCode.Refused, ['field']);
+    same(again.field, 'plugin.url', 'the repeated card field');
+    const plain = await refusedWith(env.call('settings.request', { threadId, reason: 'Plain http', page: 'plugins', plugin: { url: 'http://example.com/standup' } }), RpcErrorCode.Refused, ['field', 'expected']);
+    same(plain.field, 'plugin.url', 'the http card field');
+    const elsewhere = await refusedWith(env.call('settings.request', { threadId, reason: 'Wrong page', page: 'general', plugin: { url: 'example/standup' } }), RpcErrorCode.Refused, ['field']);
+    same(elsewhere.field, 'page', 'the wrong page field');
+  },
   'threads.listChanges resumes changed rows, removals and full lists with validated cursors': async (env) => {
     const setup = await echo(env);
     const pinned = await thread(env, setup, 'pinned');

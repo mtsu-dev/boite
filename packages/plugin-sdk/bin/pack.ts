@@ -12,7 +12,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { PLUGIN_MANIFEST_FILE as MANIFEST_FILE, PLUGIN_NAME_PATTERN as NAME, type PluginManifest } from '@boite/contracts';
+import { PLUGIN_EXECUTABLE_PATTERN, PLUGIN_MANIFEST_FILE as MANIFEST_FILE, PLUGIN_NAME_PATTERN as NAME, type PluginManifest } from '@boite/contracts';
 
 /** What the core refuses on a schema 2 manifest, checked here so the author hears it first. */
 export const LIMITS = {
@@ -43,7 +43,9 @@ export async function pack(options: PackOptions): Promise<PackResult> {
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as PluginManifest;
   if (manifest.schema !== 2) throw new Error(`${MANIFEST_FILE}: schema must be 2 to pack a bun plugin, found ${JSON.stringify(manifest.schema)}`);
   if (manifest.runtime !== 'bun') throw new Error(`${MANIFEST_FILE}: runtime must be "bun", found ${JSON.stringify(manifest.runtime)}`);
-  if (typeof manifest.executable !== 'string' || manifest.executable === '') throw new Error(`${MANIFEST_FILE}: executable must name the file to write, without .js`);
+  if (typeof manifest.executable !== 'string' || !PLUGIN_EXECUTABLE_PATTERN.test(manifest.executable)) {
+    throw new Error(`${MANIFEST_FILE}: executable must be a file name of letters, digits, _ and -, no path and no .js, found ${JSON.stringify(manifest.executable)}`);
+  }
 
   for (const skill of manifest.provides.skills ?? []) {
     const file = join(dir, 'skills', `${skill.name}.md`);

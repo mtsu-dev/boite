@@ -5,7 +5,8 @@
 
 import { afterEach, describe, expect, test } from 'bun:test';
 import { ManifestRefused, POOL_PROVIDERS, commandsOf, parseManifest, parseManifestText } from '../src/plugins/manifest.ts';
-import { checkRef, normalizeSourceUrl } from '../src/plugins/source.ts';
+import { checkRef, normalizeSourceUrl, readSource } from '../src/plugins/source.ts';
+import { sameRepository } from '@boite/contracts';
 import { recommendedPlugins, recommendedUpdates } from '../src/plugins.ts';
 import { startTestCore, type TestCore } from './harness.ts';
 
@@ -108,6 +109,13 @@ describe('the plugin manifest', () => {
     expect(refusalOf([good()]).rejected.field).toBe('(root)');
   });
 
+  test('refuses a file past its size, from a dev folder too: 256 KB, and 64 KB for schema 1', () => {
+    const padded = (bytes: number) => JSON.stringify(good()).replace('"schema"', `${' '.repeat(bytes)}"schema"`);
+    expect(() => parseManifestText(padded(256 * 1024), 'boite-plugin.json', true)).toThrow('(file) must be at most 262144 bytes');
+    expect(() => parseManifestText(padded(64 * 1024), 'boite-plugin.json')).toThrow('(file) must be at most 65536 bytes for schema 1');
+    expect(parseManifestText(padded(1024), 'boite-plugin.json').id).toBe('seat-pool');
+  });
+
   test('places the fields of a manifest wrapped in installed.json', () => {
     try {
       parseManifest({ ...good(), schema: 0 }, 'installed.json', 'manifest.');
@@ -171,6 +179,36 @@ describe('a plugin source', () => {
     expect(() => normalizeSourceUrl('https://github.com/owner/repo?x=1')).toThrow('no query or fragment');
     expect(() => normalizeSourceUrl(process.cwd())).toThrow('plugin url must be an https URL');
     expect(() => normalizeSourceUrl('')).toThrow('plugin url must be');
+  });
+
+  test('reads a repository the way people share it, and the ref its page names', () => {
+    const read = (url: string, ref?: string) => readSource(url, ref);
+    expect(read('owner/repo')).toEqual({ url: 'https://github.com/owner/repo', ref: 'HEAD' });
+    expect(read('github.com/owner/repo')).toEqual({ url: 'https://github.com/owner/repo', ref: 'HEAD' });
+    expect(read('git@github.com:owner/repo.git')).toEqual({ url: 'https://github.com/owner/repo.git', ref: 'HEAD' });
+    expect(read('https://github.com/owner/repo/tree/release/1.x')).toEqual({ url: 'https://github.com/owner/repo', ref: 'release/1.x' });
+    expect(read('https://github.com/owner/repo/releases/tag/v1.4.0')).toEqual({ url: 'https://github.com/owner/repo', ref: 'v1.4.0' });
+    expect(read('https://github.com/owner/repo/blob/main/boite-plugin.json')).toEqual({ url: 'https://github.com/owner/repo', ref: 'main' });
+    expect(read('https://github.com/owner/repo/issues?q=x#top')).toEqual({ url: 'https://github.com/owner/repo', ref: 'HEAD' });
+    expect(read('https://gitlab.com/group/sub/repo/-/tree/v2')).toEqual({ url: 'https://gitlab.com/group/sub/repo', ref: 'v2' });
+    expect(read('https://codeberg.org/owner/repo/src/tag/v3')).toEqual({ url: 'https://codeberg.org/owner/repo', ref: 'v3' });
+    // A ref typed apart wins over the page's.
+    expect(read('https://github.com/owner/repo/tree/main', 'v1.0.0')).toEqual({ url: 'https://github.com/owner/repo', ref: 'v1.0.0' });
+  });
+
+  test('refuses what git must never run, however it is pasted', () => {
+    for (const url of ['http://github.com/owner/repo', 'ssh://git@github.com/owner/repo', 'file:///C:/repo', 'ext::sh -c touch% /tmp/pwned', 'git://github.com/owner/repo', '-oProxyCommand=x/y', process.cwd(), '']) {
+      expect(() => readSource(url, undefined)).toThrow('plugin url must be');
+    }
+    expect(() => readSource('https://token@github.com/owner/repo', undefined)).toThrow('carrying credentials');
+    for (const page of ['https://github.com/owner/repo/tree/--upload-pack=x', 'https://github.com/owner/repo/tree/a..b', 'https://github.com/owner/repo/tree/%zz']) {
+      expect(() => readSource(page, undefined)).toThrow('plugin ref must be');
+    }
+  });
+
+  test('knows one repository under its two clone URLs', () => {
+    expect(sameRepository('https://GitHub.com/owner/repo.git', 'https://github.com/owner/repo/')).toBe(true);
+    expect(sameRepository('https://github.com/owner/repo', 'https://github.com/owner/other')).toBe(false);
   });
 
   test('takes a local path only when the store allows it, which only tests do', () => {

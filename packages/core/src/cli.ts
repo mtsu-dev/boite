@@ -35,7 +35,7 @@ import { contactsCommand } from './contacts/cli.ts';
 import type { RpcParams } from '@boite/contracts';
 import { contextRequest, parse, requiredText, Usage, type Parsed } from './cli-args.ts';
 import { PLUGIN_COMMAND_TIMEOUT_MS, isPluginCommandWord } from './cli-commands.ts';
-import { PLUGIN_HELP, pluginCommand, pluginDev } from './plugin-cli.ts';
+import { PLUGIN_HELP, pluginAction, pluginCommand } from './plugin-cli.ts';
 import { issueCommand, logsCommand } from './logs-cli.ts';
 import { CONTROL_HELP, controlCommand, isControlCommand, ownerThreadNew, ownerWithoutThread, spawnedLines, type Caller } from './control-cli.ts';
 
@@ -789,7 +789,7 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
         print([todoRow(todo)], todo);
       } else throw new Usage(`todo: unknown action ${action}`);
     },
-    plugin: () => pluginDev(client, io, rest, print),
+    plugin: () => pluginAction(client, io, threadId, rest, print),
     goal: async () => {
       const action = want(0, 'track');
       if (action !== 'track') throw new Usage(`goal: unknown action ${action}`);

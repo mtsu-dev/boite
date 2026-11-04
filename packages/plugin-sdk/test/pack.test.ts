@@ -48,6 +48,23 @@ describe('pack', () => {
     expect(await failure(pack({ entry: 'main.ts', dir, url: 'https://example.com/greet.js' }))).toContain('runtime must be "bun"');
   });
 
+  test('refuses an executable that names a path, so the bundle never lands outside the folder', async () => {
+    const dir = pluginFolder();
+    const outside = join(dir, '..', `${dir.split(/[\\/]/).pop()}-outside.js`);
+    writeFileSync(outside, 'sentinel');
+    try {
+      const path = join(dir, 'boite-plugin.json');
+      const manifest = JSON.parse(readFileSync(path, 'utf8'));
+      for (const executable of [`../${dir.split(/[\\/]/).pop()}-outside`, 'sub/greet', 'greet.js']) {
+        writeFileSync(path, JSON.stringify({ ...manifest, executable }));
+        expect(await failure(pack({ entry: 'main.ts', dir, url: 'https://example.com/greet.js' }))).toContain('executable must be a file name');
+      }
+      expect(readFileSync(outside, 'utf8')).toBe('sentinel');
+    } finally {
+      rmSync(outside, { force: true });
+    }
+  });
+
   test('names each limit a manifest breaks', () => {
     expect(manifestProblems(definePlugin({
       schema: 2, id: 'x', name: 'X', version: '1.0.0', description: 'x', homepage: 'https://example.com',

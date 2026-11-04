@@ -1,6 +1,7 @@
 import {
   PLUGIN_MANIFEST_FILE,
   RpcErrorCode,
+  readPluginSource,
   type PluginAppState,
   type PluginManifest,
   type PluginPool,
@@ -223,15 +224,13 @@ export class FakePlugins {
    * desktop app, anything else as a Pi pool plugin named after the repository.
    */
   async #inspectPlugin(params: RpcParams<'plugins.inspect'>): Promise<PluginPreview> {
-    const text = params.url.trim().replace(/\/+$/, '');
-    let url: URL | null = null;
-    try { url = new URL(text); } catch { url = null; }
-    if (url === null || url.protocol !== 'https:' || url.username !== '' || url.password !== '' || url.search !== '' || url.hash !== '') {
-      throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'plugin url must be an https URL of a git repository, such as https://github.com/owner/repo' });
-    }
+    const given = readPluginSource(params.url, params.ref);
+    if (!given.ok) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: given.message, data: { field: given.field, expected: given.expected } });
+    const text = given.url;
+    const url = new URL(text);
     // The core takes a moment to fetch; the page shows it reading.
     await new Promise((resolve) => setTimeout(resolve, this.host.delayMs() * 10));
-    const source = { url: `${url.origin}${url.pathname}`, ref: params.ref?.trim() || 'HEAD', commit: 'e7d1c9a35b2f4e6d8a0c1b3f5d7e9a2c4b6d8f0e' };
+    const source = { url: text, ref: given.ref ?? 'HEAD', commit: 'e7d1c9a35b2f4e6d8a0c1b3f5d7e9a2c4b6d8f0e' };
     const base: PluginPreview = { previewId: null, source, manifest: null, rejected: null, artifact: null, platform: 'win32-x64', commands: [], replaces: null, expiresAt: this.host.now() + 600_000 };
     if (text.includes('broken')) {
       return {
@@ -257,8 +256,13 @@ export class FakePlugins {
         provides: { desktopApp: {}, slashCommands: [{ name: 'waiting', description: 'Lists the threads that wait for you.', prompt: 'List the threads that wait for me.' }] },
       });
     }
+    if (text.includes('text-only')) {
+      // Skills, a prompt and slash commands: nothing to download, nothing that runs.
+      delete manifest.executable; delete manifest.artifacts;
+      Object.assign(manifest, { schema: 2, description: 'Review prompts.', provides: { slashCommands: [{ name: 'review', description: 'Reviews the diff.', prompt: 'Review the diff.' }] } });
+    }
     const artifact = manifest.artifacts?.['win32-x64'] ?? manifest.artifacts?.any ?? null;
-    const commands = manifest.schema === 2
+    const commands = manifest.executable === undefined ? [] : manifest.schema === 2
       ? [`bun ${slug}.js`, `environment: BOITE_CORE_URL=<this core> BOITE_TOKEN=<${slug}'s token: ${(manifest.permissions ?? []).join(', ')}> BOITE_PLUGIN_ID=${slug} BOITE_PLUGIN_DATA=<its data directory>`]
       : desktop ? appCommands(slug, manifest.id) : poolCommands(slug);
     const read: PluginPreview = { ...base, manifest, artifact, commands };

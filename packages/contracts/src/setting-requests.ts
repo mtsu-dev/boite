@@ -1,4 +1,5 @@
 import type { QuestionAnswer, QuestionOption, Settings, ThreadId } from './index.ts';
+import { readPluginSource, sameRepository, type PluginSourceInput } from './plugin-source.ts';
 
 /*
  * An agent helping the user set Boite up: it reads the settings, then asks for
@@ -222,7 +223,16 @@ export type SettingAsk =
       /** A card about another machine of the group: Apply writes it there (`MACHINE_SETTINGS`). */
       machine?: SettingMachine;
     }
-  | { kind: 'open'; page: SettingsPage; section: string | null };
+  | {
+      kind: 'open';
+      page: SettingsPage;
+      section: string | null;
+      /**
+       * A plugin to preview (`boite plugin add`): Preview opens Settings >
+       * Plugins with this repository read, where the owner installs it or not.
+       */
+      plugin?: PluginSourceInput;
+    };
 
 /**
  * How a settings card ended, the one option id its answer carries. Only
@@ -240,8 +250,11 @@ export const SETTING_REASON_MAX = 500;
  */
 export type SettingRequestParams = { threadId: ThreadId; reason: string } & (
   | { key: string; value: unknown; machine?: string; page?: never; section?: never }
-  | { page: string; section?: string | null; key?: never; value?: never; machine?: never }
+  | { page: string; section?: string | null; plugin?: { url: string; ref?: string | null }; key?: never; value?: never; machine?: never }
 );
+
+/** The card of Settings > Plugins that reads a repository. */
+export const PLUGIN_ADD_SECTION = 'plugins-add';
 
 /** What a missing key means, for the keys the core's defaults leave out. */
 const MISSING: Partial<Record<RequestableSetting, unknown>> = {
@@ -329,6 +342,7 @@ export function checkSettingRequest(params: SettingRequestParams, settings: Sett
   if (!hasKey) {
     const { page, section } = params;
     if (!isSettingsPage(page)) return { ok: false, message: `${String(page)} is not a Settings page`, data: { field: 'page', expected: SETTINGS_PAGES } };
+    if (params.plugin !== undefined) return pluginCard(params, reason, open);
     if (section !== undefined && section !== null && (typeof section !== 'string' || section.length > 64 || !SETTINGS_SECTION_PATTERN.test(section))) {
       return { ok: false, message: 'section must be a card anchor of lowercase words joined by dashes', data: { field: 'section', expected: 'such as limits or provider-claude' } };
     }
@@ -372,6 +386,27 @@ export function checkSettingRequest(params: SettingRequestParams, settings: Sett
     setting: { kind: 'change', key: settingKey, value: proposed, previous, ...place, ...(experiment !== null && client !== null ? { app: client.app } : {}), ...(machine === null ? {} : { machine: { ...machine } }) },
     // Applied is never an answer: the core says it when the value moves.
     options: [{ id: 'refuse', label: 'Refuse' }],
+  };
+}
+
+/**
+ * A card that opens a plugin's preview. The repository is read as the
+ * Plugins page reads it, so a URL the page would refuse never reaches a card,
+ * and one thread holds one card per repository.
+ */
+function pluginCard(params: Extract<SettingRequestParams, { page: string }>, reason: string, open: readonly SettingAsk[]): SettingRequestCheck {
+  if (params.page !== 'plugins') return { ok: false, message: 'a plugin card opens the plugins page', data: { field: 'page', expected: ['plugins'] } };
+  const given = params.plugin as unknown;
+  if (given === null || typeof given !== 'object' || Array.isArray(given)) return { ok: false, message: 'plugin must be { url, ref? }', data: { field: 'plugin', expected: '{ url, ref? }' } };
+  const { url, ref } = given as { url?: unknown; ref?: unknown };
+  const read = readPluginSource(url, ref);
+  if (!read.ok) return { ok: false, message: read.message, data: { field: `plugin.${read.field}`, expected: read.expected } };
+  if (open.some(card => card.kind === 'open' && card.plugin !== undefined && sameRepository(card.plugin.url, read.url))) {
+    return { ok: false, message: `a card about the plugin at ${read.url} is already open in this thread`, data: { field: 'plugin.url', url: read.url } };
+  }
+  return {
+    ok: true, reason, setting: { kind: 'open', page: 'plugins', section: PLUGIN_ADD_SECTION, plugin: { url: read.url, ref: read.ref } },
+    options: [{ id: 'open', label: 'Preview' }, { id: 'refuse', label: 'Dismiss' }],
   };
 }
 
@@ -421,6 +456,12 @@ export function settledExperiment(setting: SettingAsk, report: ClientPreferences
 /** What the agent reads once its card settles, under the quoted reason. */
 export function settingAnswerText(setting: SettingAsk, answer: QuestionAnswer): string {
   const outcome = answer.optionIds[0];
+  if (setting.kind === 'open' && setting.plugin !== undefined) {
+    const source = `${setting.plugin.url}${setting.plugin.ref === null ? '' : ` at ${setting.plugin.ref}`}`;
+    return outcome === 'open'
+      ? `opened: the user is reading the preview of ${source} in Settings > Plugins; installing it is their click there, and no message follows`
+      : `dismissed: the user did not preview ${source}`;
+  }
   if (setting.kind === 'open') {
     const where = setting.section === null ? setting.page : `${setting.page}#${setting.section}`;
     return outcome === 'open' ? `opened: the user opened Settings at ${where}` : `dismissed: the user did not open Settings at ${where}`;

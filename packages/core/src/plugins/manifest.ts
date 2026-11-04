@@ -6,7 +6,7 @@
  * what was expected, never skipped. docs/plugins.md is the authoring guide.
  */
 
-import { PLUGIN_ANY_PLATFORM, PLUGIN_MANIFEST_SCHEMAS, PLUGIN_NAME_PATTERN, PLUGIN_PERMISSION_NAMES, PLUGIN_PLATFORMS } from '@boite/contracts';
+import { PLUGIN_ANY_PLATFORM, PLUGIN_EXECUTABLE_PATTERN, PLUGIN_MANIFEST_SCHEMAS, PLUGIN_NAME_PATTERN, PLUGIN_PERMISSION_NAMES, PLUGIN_PLATFORMS } from '@boite/contracts';
 import type {
   PluginAdds, PluginArtifact, PluginCommand, PluginManifest, PluginPermission, PluginPlatform, PluginRejected, PluginSkill, PluginSlashCommand, ProviderId,
 } from '@boite/contracts';
@@ -17,6 +17,8 @@ import { RETIRED_PROVIDERS } from '../providers/retired.ts';
 export const POOL_PROVIDERS: readonly ProviderId[] = ['antigravity', 'claude', 'codex', 'grok', 'hermes', 'muse', 'opencode', 'opencode-v2', 'pi'];
 /** A schema 2 manifest carries its skills and prompts inline; anything past this is not one. */
 export const MANIFEST_MAX_BYTES = 256 * 1024;
+/** Schema 1 keeps the cap it had before skills and prompts could take room. */
+export const MANIFEST_V1_MAX_BYTES = 64 * 1024;
 
 const FIELDS_V1 = ['schema', 'id', 'name', 'version', 'description', 'homepage', 'executable', 'artifacts', 'provides'] as const;
 const FIELDS_V2 = [...FIELDS_V1, 'runtime', 'permissions'] as const;
@@ -42,7 +44,6 @@ export const PLUGIN_LIMITS = {
 } as const;
 const ID_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
 const VERSION_PATTERN = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
-const EXECUTABLE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const CONTROL = /[\u0000-\u001f\u007f]/;
 /** Control characters other than tab, line feed and carriage return: what a Markdown body may not hold. */
@@ -300,7 +301,7 @@ export function parseManifest(raw: unknown, file: string, prefix = '', dev = fal
     description: read.text(raw['description'], 'description', 300),
     homepage: read.https(raw['homepage'], 'homepage'),
   };
-  const executable = (expected: string): string => read.matching(raw['executable'], 'executable', EXECUTABLE_PATTERN, expected);
+  const executable = (expected: string): string => read.matching(raw['executable'], 'executable', PLUGIN_EXECUTABLE_PATTERN, expected);
   const native = 'a file name of letters, digits, _ and -, no extension (Boite adds .exe on Windows)';
   if (schema === 1) {
     return { schema: 1, ...head, executable: executable(native), ...(dev && raw['artifacts'] === undefined ? {} : { artifacts: read.artifacts(raw['artifacts'], 'native') }), provides: read.provides(raw['provides'], 1) };
@@ -325,13 +326,18 @@ export function parseManifest(raw: unknown, file: string, prefix = '', dev = fal
 
 /** The manifest from its JSON text, the parse failure refused like any field. */
 export function parseManifestText(text: string, file: string, dev = false): PluginManifest {
+  // The fetch path checks the blob's size before reading it; a dev folder's file is held to the same cap here.
+  const bytes = Buffer.byteLength(text, 'utf8');
+  if (bytes > MANIFEST_MAX_BYTES) throw new ManifestRefused(file, '(file)', `at most ${MANIFEST_MAX_BYTES} bytes`, `${bytes} bytes`);
   let raw: unknown;
   try {
     raw = JSON.parse(text);
   } catch (error) {
     throw new ManifestRefused(file, '(file)', 'valid JSON', error instanceof Error ? error.message : 'unreadable text');
   }
-  return parseManifest(raw, file, '', dev);
+  const manifest = parseManifest(raw, file, '', dev);
+  if (manifest.schema === 1 && bytes > MANIFEST_V1_MAX_BYTES) throw new ManifestRefused(file, '(file)', `at most ${MANIFEST_V1_MAX_BYTES} bytes for schema 1`, `${bytes} bytes`);
+  return manifest;
 }
 
 /** What an install downloads here: the platform's file, the one `bun` file, or null for a text-only plugin or a missing platform. */
@@ -359,6 +365,21 @@ export function permissionsOf(manifest: PluginManifest): PluginPermission[] {
 
 export function providesService(manifest: PluginManifest): boolean {
   return manifest.provides.service !== undefined;
+}
+
+/**
+ * What `found` changes in the access the owner approved with `approved`: the
+ * schema (schema 1 holds the owner token), the permissions or a service that
+ * runs by itself. Null when it keeps them. A dev folder reread and a
+ * recommended update both stop there until the owner loads it again.
+ */
+export function authorityChange(approved: PluginManifest, found: PluginManifest): string | null {
+  if (found.schema !== approved.schema) return `its schema from ${approved.schema} to ${found.schema}`;
+  const before = [...permissionsOf(approved)].sort().join(', ');
+  const after = [...permissionsOf(found)].sort().join(', ');
+  if (before !== after) return `its permissions from [${before}] to [${after}]`;
+  if (providesService(found) !== providesService(approved)) return providesService(found) ? 'to run a service' : 'to stop running a service';
+  return null;
 }
 
 /** What the plugin adds to agents and to the composer, by name. */

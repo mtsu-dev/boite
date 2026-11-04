@@ -12,8 +12,9 @@ Use the Bun version in `package.json` and install with
 A new feature that does not need a change to the core is built as a plugin:
 agent commands, skills, guide lines, slash commands and background services
 are all a plugin can add, with the permissions it declares
-([plugins](docs/plugins.md)). Publish it from your own repository; anyone can
-install it from its git URL.
+([plugins](docs/plugins.md)). Publish it from your own repository and share
+its link or `owner/repo`: anyone pastes it in Settings > Plugins, or asks their
+agent to add it, reads the preview and installs.
 
 Pull requests are for:
 
