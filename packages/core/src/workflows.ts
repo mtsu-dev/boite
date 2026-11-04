@@ -25,6 +25,7 @@ import { workflowUsage } from './workflows/usage.ts';
 import { SharedWorkflowCompute } from './workflows/shared-compute.ts';
 import { MachineWorkflowSteps } from './workflows/machine-steps.ts';
 import { stepPrompt } from './workflows/prompt.ts';
+import { sentBack } from './workflows/follow-up.ts';
 export { registerWorkflowMethods } from './workflows/register.ts';
 
 interface DataRow { data: string }
@@ -513,6 +514,7 @@ export class Workflows {
       if (pending.length) setTimeout(() => { for (const run of pending) run.status === 'running' ? this.#noticeFailures(run.id) : this.#deliver(run.id); }, 0).unref?.();
       return;
     }
+    if (sentBack(this.#core, turn.threadId, turn)) return this.#core.delegation.followUpFinished(turn);
     const end = childEnd(this.#core, turn);
     // A checkpoint is no answer: the step runs on until the turn its background work wakes ends.
     if (end.kind !== 'final') return;
