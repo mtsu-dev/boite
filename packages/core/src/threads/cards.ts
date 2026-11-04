@@ -455,6 +455,8 @@ export class ThreadCards {
   }
 
   askQuestion(thread: ThreadSummary, turn: Turn, ask: QuestionAsk): QuestionTicket {
+    // Nobody reads a council member's thread to answer it, so its turn does not wait for the round's deadline.
+    if (ask.async !== true && this.#core.council?.owns(thread.id)) return Object.assign(Promise.resolve(null), { questionId: newId('qst_') });
     const request: QuestionRequest = {
       id: newId('qst_'),
       threadId: thread.id,

@@ -22,18 +22,23 @@ boite delegate council table <id>
 
 | Flag | Default | Limits |
 | --- | --- | --- |
-| `--models` | `claude/claude-opus-5-5`, `codex/gpt-6.1-sol`, `antigravity/gemini-4-argon-high` | 2 to 6 members |
-| `--effort` | `xhigh` | A level a model does not offer is said in a warning, and that model runs without it |
+| `--models` | `claude/claude-opus-5-5`, `codex/gpt-6.1-sol`, `antigravity/gemini-4-argon` | 2 to 6 members |
+| `--effort` | `xhigh` | A model without that level runs at its strongest level below it, and a warning says so |
 | `--timeout` | 30 minutes a round | 1 to 120 |
 
 The request and the changes hold up to 12,000 characters. The command returns
-the council id at once; `delegate list` shows the council, `delegate wait`
-waits for it and `delegate stop <id>` stops it. `requestId` on `council.start`
-and `council.again` makes a retry return the same council or round.
+the council id at once; `delegate list` shows the council, `delegate wait` with
+no agent id also waits for a round under way and `delegate stop <id>` stops it.
+`requestId` on `council.start` and `council.again` makes a retry return the same
+council or round.
 
 A member whose provider is missing, or who cannot run, refuses the whole
 council with the reason. Boite never replaces a member, so three providers do
-not quietly turn into two of the same.
+not quietly turn into two of the same. A route that names a provider stays on it:
+`antigravity/x` never falls through to a gateway model spelled
+`codex/antigravity/x`. Before these checks Boite reads a fresh model list when a
+named route is missing from the one it holds, which an earlier version may have
+saved, and an ACP model's effort scale.
 
 A top-level thread starts a council. A subagent, a team chat, a salon, an
 archived thread and a thread whose subagents are paused are refused.
@@ -100,12 +105,20 @@ A member keeps to read-only by its provider's strongest means.
 
 | Provider | Read-only by |
 | --- | --- |
-| Claude, Codex, Muse, Grok, OpenCode v2 | The plan permission mode |
-| Antigravity, Hermes, OpenCode, echo | Boite refuses every permission it asks, and a warning says so |
+| Claude, Codex, Muse, Grok, OpenCode, OpenCode v2 | The plan permission mode |
+| Antigravity, Hermes, echo | Boite refuses every permission it asks, and a warning says so |
 | pi | Nothing: no plan mode and no approvals, and a warning says so |
 
 The members' prompt also tells each to change nothing, start no subagent and not
-write to the parent. On pi only that prompt holds it back.
+write to the parent. A question a member asks gets no answer, at once: nobody reads
+its thread to reply. On pi only that prompt holds it back. OpenCode's plan agent
+refuses edits and allows every command (`opencode debug agent plan`, 1.19.5,
+2026-11-04), so that prompt alone holds its commands back, and a warning says so.
+
+On Windows a read-only Codex session leaves the Microsoft Store's folders off its
+`PATH` when the `pwsh` it would find is the Store's: that PowerShell cannot start
+under Codex's sandbox (`CreateProcessAsUserW failed: 5`, codex-cli 0.166), and
+Codex falls back to Windows PowerShell.
 
 ## In the app
 
@@ -135,10 +148,12 @@ is migrated. `boite delegate debate` starts nothing and points to
 
 - Stopping the thread's subagents or archiving it stops a round under way and
   sends nothing back. A council between rounds stays; `council again` still
-  works unless the parent is archived.
+  works unless the parent is archived or its subagents are paused, which a Stop
+  with other children under way does.
 - A core that crashes stops its running rounds and tells the parent:
   `Boite restarted during the round, so it stopped.` A council in `waiting` stays.
-- A [restart handoff](restart-handoff.md) lets a round go on.
+- A [restart handoff](restart-handoff.md) lets a round go on: the next core asks
+  again any member the restart cut, even one whose turn did not stop in time.
 - A debate still running at this update stops and tells the parent:
   `Debates were replaced by the council at this update, so this one stopped. boite delegate council starts a review.`
 

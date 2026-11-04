@@ -196,6 +196,7 @@ export function councilMethods(ctx: FakeContext): CouncilMethods {
         const name = names[index]!;
         if (readOnly === 'approvals') warnings.push(`${name} has no read-only mode: Boite refuses every permission it asks.`);
         if (readOnly === 'none') warnings.push(`${name} has no read-only mode and asks no permission: it could change files.`);
+        if (r.providerId === 'opencode') warnings.push(`${name} runs in OpenCode's plan mode, which refuses edits and allows commands: only its instructions keep those read-only.`);
         return { id: `p${index + 1}`, name, handle: handles[index]!, providerId: r.providerId, model: r.model ?? '', effort: r.effort ?? null, threadId: null, readOnly, absent: [], pending: false, scores: [] };
       });
       const salon = salonOf(ctx, parent, id, request);
@@ -246,6 +247,7 @@ export function councilMethods(ctx: FakeContext): CouncilMethods {
       gate();
       const council = require(params?.councilId);
       own(council, params.threadId);
+      if (council.legacy) throw new Error('a debate from before the council has no scores, so no table');
       return { table: councilTable(council), council: structuredClone(council) };
     },
     'council.post': async (params) => {

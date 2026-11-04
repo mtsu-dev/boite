@@ -383,7 +383,7 @@ describe('providers', () => {
       hooks: true,
       checkpoint: false,
       images: false,
-      planMode: false,
+      planMode: true,
       resume: true,
     });
 

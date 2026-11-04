@@ -7,7 +7,7 @@ import { newId } from '../ids.ts';
 import { isAgentHeld } from '../agents/runtime.ts';
 import { assertDriverRunnable } from '../drivers/index.ts';
 import { childEnd } from '../delegation/completion.ts';
-import type { ChildRoute } from '../delegation/routes.ts';
+import { catalog, providersNamed, type ChildRoute } from '../delegation/routes.ts';
 import { withLoad } from '../threads/records.ts';
 import { modelsFor } from '../threads/selection.ts';
 import { clip, endedMessage, roundMessage, roundPrompt, scoreOf } from './prompt.ts';
@@ -34,6 +34,21 @@ const minutes = (count: number) => `${count} minute${count === 1 ? '' : 's'}`;
 function readOnlyOf(core: Core, providerId: string): CouncilReadOnly {
   const capabilities = core.providers.require(providerId).capabilities;
   return capabilities.planMode ? 'native' : capabilities.approvals ? 'approvals' : 'none';
+}
+
+/** What a member's read-only level leaves open, said before its first round. OpenCode's plan mode allows commands (`opencode debug agent plan`). */
+export function readOnlyWarning(name: string, providerId: string, readOnly: CouncilReadOnly): string | null {
+  if (readOnly === 'approvals') return `${name} has no read-only mode: Boite refuses every permission it asks.`;
+  if (readOnly === 'none') return `${name} has no read-only mode and asks no permission: it could change files.`;
+  return providerId === 'opencode' ? `${name} runs in OpenCode's plan mode, which refuses edits and allows commands: only its instructions keep those read-only.` : null;
+}
+
+const EFFORT_ORDER = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+/** The strongest of a model's levels that is not above the one asked. Null when none can be compared, as names like `fast` cannot. */
+function nearestEffort(levels: string[], asked: string): string | null {
+  const limit = EFFORT_ORDER.indexOf(asked);
+  return levels.filter(level => EFFORT_ORDER.includes(level) && EFFORT_ORDER.indexOf(level) <= limit)
+    .sort((a, b) => EFFORT_ORDER.indexOf(b) - EFFORT_ORDER.indexOf(a))[0] ?? null;
 }
 
 function text(value: unknown, field: string, max: number): string {
@@ -89,6 +104,8 @@ export class CouncilStore {
   minuteMs = 60_000;
   /** Closing, or the journal already shut: a crashed core closes it while timers and the startup tick may still fire. */
   get #gone(): boolean { return this.#closed || this.#core.journal.isClosed(); }
+  /** A turn from before this can only be the startup recovery closing what the last core left open, no member's failure. */
+  readonly #startedAt = Date.now();
 
   constructor(core: Core) {
     this.#core = core;
@@ -124,6 +141,15 @@ export class CouncilStore {
   }
   /** A member's thread. */
   owns(threadId: string): boolean { return this.#children.has(threadId); }
+  /** That thread is a member of a council this parent started, whose answers are the parent's to read. */
+  memberOf(parentId: string, threadId: string): boolean {
+    const councilId = this.#children.get(threadId);
+    return councilId !== undefined && this.#load(councilId)?.parentThreadId === parentId;
+  }
+  /** A round of this parent's is under way: its message has not come yet. Between rounds nothing runs. */
+  running(parentId: string): boolean {
+    return this.#core.journal.db.query("SELECT 1 FROM debates WHERE parent_thread_id = ? AND status = 'running' LIMIT 1").get(parentId) !== null;
+  }
   /** The council of that child is over: nothing will ask it again. Between rounds it is not: the same thread answers the next one. */
   overFor(threadId: string): boolean {
     const councilId = this.#children.get(threadId);
@@ -209,6 +235,7 @@ export class CouncilStore {
     this.gate();
     const council = this.#require(params?.councilId);
     this.#own(council, params.threadId, principal);
+    if (council.legacy) throw refused('a debate from before the council has no scores, so no table', { councilId: council.id });
     return { table: councilTable(council), council: this.#public(council) };
   }
 
@@ -220,7 +247,7 @@ export class CouncilStore {
   start(params: RpcParams<'council.start'>): Council {
     this.gate();
     const parent = this.#core.threads.require(text(params?.threadId, 'threadId', 128));
-    if (parent.parentThreadId) throw refused('a subagent cannot start a council; ask its parent', { threadId: parent.id });
+    if (parent.parentThreadId || this.#core.delegation.remote.parentOf(parent.id)) throw refused('a subagent cannot start a council; ask its parent', { threadId: parent.id });
     if (parent.teamId || parent.councilId) throw refused('a team chat or a council salon cannot start a council', { threadId: parent.id });
     if (parent.archived) throw refused('the thread is archived', { threadId: parent.id });
     const request = text(params.request, 'request', COUNCIL_LIMITS.requestChars);
@@ -246,17 +273,22 @@ export class CouncilStore {
     const route = (model: string, index: number): ChildRoute => {
       const what = named ? `models[${index}]` : `default member ${model}`;
       const unavailable = (why: string, details: Record<string, string>) => invalidParams(`${what}: ${why}. A council member is never replaced${named ? '' : '; name others with --models'}.`, { field: 'models', ...details });
+      // A route that names its provider stays on it: `antigravity/x` is not `codex/antigravity/x`, which a gateway may list.
+      const head = providersNamed(this.#core, model)?.[0];
       let resolved: ChildRoute;
       try {
+        if (head !== undefined && !catalog(this.#core, parent, true).choices.some(choice => choice.providerId === head)) throw new Error(`${head} is not installed or has no logged-in account`);
         resolved = this.#core.delegation.resolve(parent.id, { profileId: null, model });
       } catch (error) {
         throw unavailable(messageOf(error), { model });
       }
+      if (head !== undefined && resolved.providerId !== head) throw unavailable(`${head} does not offer it, only ${resolved.providerId}/${resolved.model} does`, { model });
       const provider = this.#core.providers.require(resolved.providerId);
-      // One level across models that name theirs differently: a level a model lacks is said, not refused.
+      // One level across models that name theirs differently: the strongest not above the one asked, and any other than that is said.
       const levels = modelsFor(provider, resolved.accountId).find(entry => entry.id === resolved.model)?.effort?.levels ?? [];
-      if (levels.some(level => level.id === effort)) resolved = { ...resolved, effort };
-      else if (levels.length > 0 || params.effort !== undefined && params.effort !== null) warnings.push(`${resolved.name} has no ${effort} effort, so it runs at ${resolved.effort ?? 'its default'}.`);
+      const level = levels.some(entry => entry.id === effort) ? effort : nearestEffort(levels.map(entry => entry.id), effort);
+      if (level !== null) resolved = { ...resolved, effort: level };
+      if (level !== effort && (levels.length > 0 || params.effort !== undefined && params.effort !== null)) warnings.push(`${resolved.name} has no ${effort} effort, so it runs at ${resolved.effort ?? 'its default'}.`);
       try {
         assertDriverRunnable(provider.protocol, this.#core.providers.summary(provider.id), this.#core.accounts.require(resolved.accountId), () => this.#core.providers.launcherScriptOnly(provider.id));
       } catch (error) {
@@ -275,8 +307,8 @@ export class CouncilStore {
     const members: CouncilMember[] = routes.map((r, index) => {
       const readOnly = readOnlyOf(this.#core, r.providerId);
       const name = names[index]!;
-      if (readOnly === 'approvals') warnings.push(`${name} has no read-only mode: Boite refuses every permission it asks.`);
-      if (readOnly === 'none') warnings.push(`${name} has no read-only mode and asks no permission: it could change files.`);
+      const warning = readOnlyWarning(name, r.providerId, readOnly);
+      if (warning !== null) warnings.push(warning);
       return { id: `p${index + 1}`, name, handle: handles[index]!, providerId: r.providerId, model: r.model ?? '', effort: r.effort ?? null, threadId: null, readOnly, absent: [], pending: false, scores: [] };
     });
     const short = request.replace(/\s+/g, ' ');
@@ -558,8 +590,8 @@ export class CouncilStore {
     if (this.#waiting.has(turn.threadId)) setTimeout(() => { if (!this.#gone) this.#wake(turn.threadId); }, 0).unref?.();
     const council = this.#load(councilId);
     if (!council) return;
-    // A restart handoff stopped it on purpose: the next core asks again (`resumeAfterRestart`).
-    if (turn.status === 'stopped' && this.#core.threads.handoff.active) return;
+    // A restart handoff stopped it on purpose, or left it open for this core's recovery to close: the member is asked again (`resumeAfterRestart`).
+    if (turn.queuedAt < this.#startedAt || (turn.status === 'stopped' && this.#core.threads.handoff.active)) return;
     const member = council.members.find(m => m.threadId === turn.threadId);
     const asked = member ? council.internal.turns[member.id] : null;
     if (!member?.pending || council.status !== 'running' || (asked !== turn.id && !(asked === STARTING && turn.queuedAt >= council.internal.roundStartedAt))) return;
@@ -595,8 +627,9 @@ export class CouncilStore {
    */
   #end(id: string, status: Exclude<CouncilStatus, 'running' | 'waiting'>, note: string | null, stopTurns: boolean, deliver = true): void {
     this.#disarm(id);
+    const before = this.#load(id);
+    if (!before || councilOver(before)) return;
     const council = this.#mutate(id, current => {
-      if (councilOver(current)) return false;
       current.status = status;
       if (note) current.note = note;
       current.roundDeadline = null;
@@ -605,7 +638,7 @@ export class CouncilStore {
       current.internal.turns = {};
       if (!deliver) current.delivered = true;
     });
-    if (!council || council.status !== status) return;
+    if (!council) return;
     if (note) this.#system(id, council.round, note);
     const children = (this.#core.journal.db.query('SELECT thread_id FROM debate_children WHERE debate_id = ?').all(id) as { thread_id: string }[]).map(row => row.thread_id);
     if (stopTurns) for (const threadId of children) this.#stopChild(threadId);

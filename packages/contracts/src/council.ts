@@ -28,7 +28,7 @@ export const COUNCIL_LIMITS = {
  * One flagship per provider. The catalogue does not say which model of a
  * provider is its flagship, so the default is written here; `--models` replaces it.
  */
-export const COUNCIL_DEFAULT_MODELS = ['claude/claude-opus-5-5', 'codex/gpt-6.1-sol', 'antigravity/gemini-4-argon-high'] as const;
+export const COUNCIL_DEFAULT_MODELS = ['claude/claude-opus-5-5', 'codex/gpt-6.1-sol', 'antigravity/gemini-4-argon'] as const;
 export const COUNCIL_DEFAULT_EFFORT = 'xhigh';
 
 /**

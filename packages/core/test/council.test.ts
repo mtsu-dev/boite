@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from 'bun:test';
+import { afterEach, expect, spyOn, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { AGENT_ENV, DEFAULT_DELEGATION_CONFIG, councilMention, councilTable, type Council, type ModelInfo, type ThreadSummary } from '@boite/contracts';
@@ -6,6 +6,7 @@ import type { CoreClient } from '../src/client.ts';
 import { runCli } from '../src/cli.ts';
 import { Core } from '../src/core.ts';
 import { scoreOf } from '../src/council/prompt.ts';
+import { readOnlyWarning } from '../src/council/store.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import type { TurnContext, TurnResult } from '../src/drivers/types.ts';
 import { subagentGuide } from '../src/delegation/guide.ts';
@@ -278,17 +279,24 @@ test('a member who cannot run refuses the whole council: nobody is replaced', as
   expect(d.runs).toEqual([]);
   for (const words of [['--models', 'twin/alpha'], ['--rounds', '3'], ['--timeout', '0']]) expect((await boite(h, threadId, ['delegate', 'council', REQUEST, ...words])).code).not.toBe(0);
   expect((await boite(h, threadId, ['delegate', 'council'])).err).toContain('needs a request');
+  // A route naming a provider stays on it, though a gateway lists a model of that spelling.
+  await twinProvider(h, owner, [{ id: 'gated/beta', name: 'Gated beta' }], 'gateway');
+  await twinProvider(h, owner, [{ id: 'other', name: 'Other' }], 'gated');
+  const swapped = await failure(() => start({ models: ['twin/alpha', 'gated/beta'] }));
+  expect(swapped.message).toContain('gated/beta');
+  expect(swapped.message).toContain('never replaced');
+  expect(councilRows(h)).toEqual({ n: 0 });
 });
 
 test('members stay read-only: the plan mode where there is one, every permission refused elsewhere, a warning for neither', async () => {
   const d = driver();
   const { h, owner, start } = await setup();
   await twinProvider(h, owner, [{ id: 'plan', name: 'Planner', effort: { default: 'low', levels: [{ id: 'low', label: 'Low' }, { id: 'xhigh', label: 'Extra high' }] } }], 'planner', { planMode: true });
-  await twinProvider(h, owner, [{ id: 'bare', name: 'Bare', effort: { default: 'low', levels: [{ id: 'low', label: 'Low' }] } }], 'bare', { planMode: false, approvals: false });
+  await twinProvider(h, owner, [{ id: 'bare', name: 'Bare', effort: { default: 'low', levels: [{ id: 'low', label: 'Low' }, { id: 'high', label: 'High' }] } }], 'bare', { planMode: false, approvals: false });
   const council = await start({ models: ['planner/plan', 'twin/alpha', 'bare/bare'] });
-  // xhigh where the model has it, its default said aloud where it has others, nothing to say where it has none.
-  expect(council.members.map(member => member.effort)).toEqual(['xhigh', null, 'low']);
-  expect(council.warnings).toContain('Bare has no xhigh effort, so it runs at low.');
+  // xhigh where the model has it, its strongest below that said aloud where it has others, nothing to say where it has none.
+  expect(council.members.map(member => member.effort)).toEqual(['xhigh', null, 'high']);
+  expect(council.warnings).toContain('Bare has no xhigh effort, so it runs at high.');
   expect(council.warnings.some(warning => warning.startsWith('Alpha has no xhigh'))).toBe(false);
   expect(council.members.map(member => member.readOnly)).toEqual(['native', 'approvals', 'none']);
   expect(council.members.map(member => h.core.threads.require(member.threadId!).permissionMode)).toEqual(['plan', 'default', 'default']);
@@ -297,6 +305,66 @@ test('members stay read-only: the plan mode where there is one, every permission
   const member = d.round(1).find(run => run.threadId === by(council, 'alpha').threadId)!;
   expect(await member.ctx.requestPermission('Bash', { command: 'rm -rf build' }, 'Remove the build')).toBe('deny');
   expect(h.core.threads.listPermissions(member.threadId)).toEqual([]);
+  // Nobody is there to answer one either, so it would hold the turn to the round's deadline.
+  expect(await member.ctx.askQuestion({ text: 'Which file?', options: [], allowText: true, multiple: false })).toBeNull();
+});
+
+test('a restart handoff asks again a member whose turn the last core left open, and calls it no failure', async () => {
+  const d = driver();
+  const { h, start } = await setup();
+  const council = await start();
+  await waitFor(() => d.round(1).length === 3);
+  await h.core.threads.handoff.begin(0);
+  const threadId = council.members[0]!.threadId!;
+  // Its stop did not settle before the core went down.
+  const cut = h.core.journal.listTurns(threadId).at(-1)!;
+  h.core.journal.putTurn({ ...cut, status: 'running', finishedAt: null });
+  await h.core.close();
+  const restarted = new Core({ dataDir: h.dataDir, token: h.token });
+  try {
+    const stored = () => JSON.parse((restarted.journal.db.query('SELECT data FROM debates WHERE id = ?').get(council.id) as { data: string }).data) as Council;
+    expect(restarted.journal.getTurn(cut.id)?.status).toBe('error');
+    expect(stored().members[0]).toMatchObject({ pending: true, absent: [] });
+    restarted.council.resumeAfterRestart();
+    await waitFor(() => d.round(1).filter(run => run.threadId === threadId).length === 2);
+    expect(stored().status).toBe('running');
+  } finally { await restarted.close(); }
+}, 20_000);
+
+test('OpenCode is warned about what its plan mode leaves open, and a plan mode that closes it is not', () => {
+  expect(readOnlyWarning('Oc', 'opencode', 'native')).toContain('allows commands');
+  expect(readOnlyWarning('Opus', 'claude', 'native')).toBeNull();
+});
+
+test('only a thread at the top starts a council: not a subagent here, nor one whose parent is on another machine', async () => {
+  driver();
+  const { h, threadId, start } = await setup();
+  const parentOf = spyOn(h.core.delegation.remote, 'parentOf').mockImplementation(id => (id === threadId ? {} as never : undefined));
+  restores.push(() => parentOf.mockRestore());
+  expect((await failure(() => start())).message).toContain('a subagent cannot start a council');
+  expect(councilRows(h)).toEqual({ n: 0 });
+});
+
+test('delegate wait holds through a round, and an answer cut from the message reads whole with the command it names', async () => {
+  const long = `${'A long finding. '.repeat(900)}The end of it.\nScore: 7/10`;
+  const d = driver(run => (run.prompt.includes('Boite council, round') ? (run.model === 'alpha' ? long : run.model === 'gamma' ? null : 'Fine.\nScore: 8/10') : 'Noted.'));
+  const { h, owner, threadId, start, read } = await setup();
+  const { id: councilId } = await start();
+  await waitFor(() => d.round(1).length === 3);
+  expect(await owner.call('delegation.wait', { threadId, timeoutMs: 0 })).toMatchObject({ state: 'waiting_for_children', timedOut: true });
+  const waited = owner.call('delegation.wait', { threadId });
+  d.round(1).find(run => run.model === 'gamma')!.finish('Fine.\nScore: 8/10');
+  expect((await waited).state).toBe('settled');
+  expect((await read(councilId)).council.status).toBe('waiting');
+
+  await waitFor(() => d.delivered().length === 1);
+  const message = d.delivered()[0]!.prompt;
+  expect(message).not.toContain('The end of it.');
+  const [, member, turn] = /Whole answer: boite delegate result (\S+) (\S+)/.exec(message)!;
+  expect((await boite(h, threadId, ['delegate', 'result', member!, turn!])).out).toContain('The end of it.');
+  // That reading is the parent's: another thread is no parent of this member.
+  const { threadId: stranger } = await echoThread(h, owner, 'Stranger');
+  expect((await failure(() => owner.call('delegation.result', { threadId: stranger, agentId: member!, turnId: turn! }))).message).toContain('direct delegated child');
 });
 
 test('a member past the round\'s time has no score, and the parent still gets the others; it is asked again next round', async () => {
@@ -409,6 +477,7 @@ test('the score line is read as written and never made up', () => {
     ['**Score: 8/10**', 8],
     ['**Score:** 7.5/10 overall', 7.5],
     ['> score : 9 / 10', 9],
+    ['`Score: 8/10`', 8],
     ['Score: 2/10 at first.\nThen fixes.\nScore: 6/10', 6],
     ['Score: none', null],
     ['Score: 8', null],
@@ -463,6 +532,7 @@ test('a debate stored before the council stays readable; one still running stops
   expect((await owner.call('council.stop', { councilId: 'dbt_old' })).status).toBe('done');
   expect(await failure(() => owner.call('council.again', { councilId: 'dbt_old', threadId, changes: 'More' }))).toHaveProperty('message', expect.stringContaining('is over'));
   expect(await failure(() => owner.call('council.post', { councilId: 'dbt_old', text: 'Hello' }))).toHaveProperty('message', expect.stringContaining('is over'));
+  expect(await failure(() => owner.call('council.table', { councilId: 'dbt_old' }))).toHaveProperty('message', expect.stringContaining('no table'));
   expect((await boite(h, threadId, ['delegate', 'list'])).out).toContain('dbt_old council done');
 
   // A debate running at the update: the handoff has nothing to resume it with.

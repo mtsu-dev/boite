@@ -17,7 +17,7 @@ export function clip(text: string, limit: number): string {
  * the core never makes one up.
  */
 export function scoreOf(text: string): number | null {
-  const last = [...text.matchAll(/^[\s>*_#-]*score[\s*_`]*[:：]\s*(.+)$/gim)].at(-1)?.[1];
+  const last = [...text.matchAll(/^[\s>*_#`-]*score[\s*_`]*[:：]\s*(.+)$/gim)].at(-1)?.[1];
   const found = last ? /^(\d+(?:[.,]\d+)?)\s*\/\s*10\b/.exec(last.replace(/[*_`]+/g, '').trim()) : null;
   if (!found) return null;
   const score = Number(found[1]!.replace(',', '.'));
