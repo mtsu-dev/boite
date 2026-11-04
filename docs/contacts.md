@@ -358,7 +358,9 @@ sequenceDiagram
      waits. Removing the contact on the member (`contacts.remove`) sends every
      other machine of the group `contact.hand { action: 'cancel' }` for that
      admission, again on each sweep for a week until each one answers
-     (`contacts:hand-cancels`). The cancel drops the hand still waiting
+     (`contacts:hand-cancels`). Each admission keeps its own cancel: a
+     contact removed, linked again and removed again before the Bots host
+     answered leaves both, and none is capped away. The cancel drops the hand still waiting
      there, and a dial already out keeps nothing (`commit` checks the hand
      it dialed for is still there). The Bots host remembers which member
      handed each contact it took, at which admission (`contacts:handed`): a
@@ -670,7 +672,8 @@ host still dials, or one it learns about from the member after a restart,
 that a cancel slower than the member's answer still removes the contact the
 Bots host took back on it, that such a resume never takes a seat the contact
 still holds, that a contact that followed the Bots host is recovered after the
-member that handed it left the group, that a bare 403 only delays the resume, that a refusal under the contact's
+member that handed it left the group, that a second removal after the
+contact was linked again keeps the first one's cancel, that a bare 403 only delays the resume, that a refusal under the contact's
 key ends it, and that a server that takes the upgrade without the Bots host's
 key loses the move to the Bots host. `contacts-funnel.test.ts` drives the Funnel mounts through
 the fake CLI (`test/fixtures/fake-tailscale.ts`) and checks their reachability

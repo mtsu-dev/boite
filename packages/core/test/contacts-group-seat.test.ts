@@ -307,6 +307,39 @@ test('a contact that followed the Bots host is recovered after the member that h
   expect(back.core.journal.getSetting('contacts:incoming')).toEqual([]);
 }, 60000);
 
+test('a contact removed, linked again and removed again while the Bots host is out of reach loses the first link there too', async () => {
+  const { a, x, c, aClient, xClient, cClient, xId, cId } = await setup(cores, true);
+  const xray = await project(x, xClient, 'xray');
+  await aClient.call('contacts.grant', { coreId: cId, projectId: xray.id, machine: xId });
+  unreachable(x);
+  x.core.contacts.groupLink.commit = () => { throw new Error('stopped before commit'); };
+  await botsHome(a, aClient, x, xId);
+  await waitFor(() => c.core.contacts.has(xId) && !x.core.contacts.has(cId) && a.core.contacts.groupLink.stuck(cId) !== undefined, 20000);
+  Reflect.deleteProperty(x.core.contacts.groupLink, 'commit');
+  x.core.contacts.groupLink.sweep();
+  await waitFor(() => x.core.contacts.has(cId), 10000);
+  const first = a.core.contacts.find(cId)!.addedAt;
+  // X misses every hand and cancel from A while A's owner removes C, links it again and removes it again.
+  const request = a.core.coordination.request.bind(a.core.coordination);
+  let out = true;
+  a.core.coordination.request = (peer, op, payload) => out && peer.coreId === xId && op === 'contact.hand'
+    ? Promise.reject(new Error('temporary outage'))
+    : request(peer, op, payload);
+  const cancels = () => (a.core.journal.getSetting('contacts:hand-cancels') as { admission: number }[] | undefined) ?? [];
+  await aClient.call('contacts.remove', { coreId: cId });
+  await aClient.call('contacts.join', { link: (await cClient.call('contacts.invite', {})).link });
+  await waitFor(() => a.core.contacts.linked(cId) && a.core.contacts.find(cId)?.capabilities?.groupLink === 1, 10000);
+  const second = a.core.contacts.find(cId)!.addedAt;
+  expect(second).not.toBe(first);
+  await aClient.call('contacts.remove', { coreId: cId });
+  expect(cancels().map(cancel => cancel.admission)).toEqual([first, second]);
+  out = false;
+  a.core.contacts.groupLink.sweep();
+  await waitFor(() => cancels().length === 0, 10000);
+  expect(x.core.contacts.has(cId)).toBe(false);
+  expect(x.core.journal.getSetting('contacts:handed')).toEqual([]);
+}, 60000);
+
 test('a server that takes the upgrade without the Bots host\'s key does not win the move over the Bots host', async () => {
   const { a, x, c, aClient, xId, cId } = await setup(cores);
   // Answers every upgrade at once and holds no key of X: a wrong or replaced public origin.

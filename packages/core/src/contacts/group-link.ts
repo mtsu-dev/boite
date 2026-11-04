@@ -129,7 +129,7 @@ export class ContactGroupLink {
   readonly #resumes = new Map<string, { tries: number; until: number }>();
   /** Guest seats a resume is asking their member about, or dialing. */
   readonly #resuming = new Set<string>();
-  /** Cancels in flight, by contact and machine. */
+  /** Cancels in flight, by contact, admission and machine. */
   readonly #cancelling = new Set<string>();
   /** The Contacts bot goes to the Bots host before the links do (`bot-home.ts`). */
   readonly #bot: ContactBotHome;
@@ -279,7 +279,9 @@ export class ContactGroupLink {
     const to = this.#core.group.peers().map(peer => peer.coreId);
     if (to.length === 0) return;
     const cancel: Cancel = { coreId: contact.coreId, admission: contact.addedAt, name: contact.name.slice(0, 100), at: Date.now(), to };
-    this.#core.journal.setSetting(CANCELS, [...this.#cancels().filter(entry => entry.coreId !== contact.coreId), cancel].slice(-256));
+    // One cancel per admission: removing a contact linked again keeps the earlier removal's cancel too.
+    // No cap drops one before it is delivered; a week, or every peer's answer, ends each.
+    this.#core.journal.setSetting(CANCELS, [...this.#cancels().filter(entry => entry.coreId !== contact.coreId || entry.admission !== contact.addedAt), cancel]);
     this.#sendCancels();
   }
 
@@ -299,7 +301,7 @@ export class ContactGroupLink {
     if (JSON.stringify(kept) !== JSON.stringify(this.#cancels())) this.#core.journal.setSetting(CANCELS, kept);
     for (const cancel of kept) {
       for (const id of cancel.to) {
-        const key = `${cancel.coreId} ${id}`;
+        const key = `${cancel.coreId} ${cancel.admission} ${id}`;
         if (this.#cancelling.has(key)) continue;
         this.#cancelling.add(key);
         const peer = members.get(id)!;
