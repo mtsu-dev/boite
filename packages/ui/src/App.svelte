@@ -410,10 +410,13 @@
   });
 
   // Every http(s) link the UI shows goes to the system browser, once, from here.
+  // The listener sits on the body, not the app root: the connect dialog, the
+  // onboarding and the other overlays render beside `.app`, and the sign-in
+  // link of the connect dialog did nothing in the shell when only `.app` listened.
   $effect(() => {
     const root = appRoot;
     if (!root) return;
-    const stopLinks = installExternalLinks(root);
+    const stopLinks = installExternalLinks(root.ownerDocument.body);
     const stopDrops = installDropNavigationGuard(root);
     return () => { stopLinks(); stopDrops(); };
   });

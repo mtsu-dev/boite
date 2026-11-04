@@ -1,6 +1,6 @@
 import { join, normalize } from 'node:path';
 import type { Os, ProviderDescriptor } from '@boite/contracts';
-import { agentsDirPath, appDataPath, browserNoopPath, homePath } from '../paths.ts';
+import { agentsDirPath, appDataPath, browserNoopCommand, homePath } from '../paths.ts';
 
 /** The OS keys a descriptor's `profiles` may carry, in the order they are read. */
 export const OS_KEYS: readonly Os[] = ['windows', 'linux', 'macos'];
@@ -23,7 +23,7 @@ export function substituteHome(value: string, agentsDir: string, dataDir: string
   if (out.includes('{home}')) out = out.split('{home}').join(homePath());
   if (out.includes('{appdata}')) out = out.split('{appdata}').join(appDataPath());
   if (out.includes('{agentsDir}')) out = out.split('{agentsDir}').join(agentsDir);
-  if (out.includes('{browserNoop}')) out = out.split('{browserNoop}').join(browserNoopPath(dataDir));
+  if (out.includes('{browserNoop}')) out = out.split('{browserNoop}').join(browserNoopCommand(dataDir));
   return out;
 }
 

@@ -2,6 +2,7 @@ import { expect, vi } from 'vitest';
 import { flushSync } from 'svelte';
 import { store } from '../lib/store.svelte';
 import { mountOnFake, query, test, waitFor } from '../test/app';
+import { openUrl } from '../test/opener';
 
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
 
@@ -89,6 +90,15 @@ test('a machine with no AI offers to connect one, and the composer keeps its tex
   query<HTMLButtonElement>('[data-testid=connect-install]').click();
   // The download chains into the sign-in, which hands over a page to open and a field for its code.
   await waitFor(() => document.querySelector('[data-testid=connect-login-url]') !== null, 20_000);
+  // The dialog renders beside the app root; its link still reaches the shell's system browser.
+  const link = query<HTMLAnchorElement>('[data-testid=connect-login-url]');
+  window.__TAURI_INTERNALS__ = { invoke: vi.fn() } as unknown as typeof window.__TAURI_INTERNALS__;
+  try {
+    const click = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
+    link.dispatchEvent(click);
+    expect(click.defaultPrevented).toBe(true);
+    await vi.waitFor(() => expect(openUrl).toHaveBeenCalledWith(link.getAttribute('href')));
+  } finally { delete window.__TAURI_INTERNALS__; }
   const code = query<HTMLInputElement>('[data-testid=connect-login-input]');
   code.value = 'fake-code';
   code.dispatchEvent(new Event('input', { bubbles: true }));
