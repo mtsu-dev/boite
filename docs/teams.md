@@ -7,21 +7,24 @@ wakes the bots it names, and a bot answers either in the group, which every
 member reads, or privately to one member or the owner.
 
 Teams sit behind the Teams switch in Settings > Experiments
-([experiments](experiments.md)). While it is off, every `teams.*` method and
-every `boite team` command refuses with the reason `experiment-off`. The core
-reads the desktop app's experiments.
+([experiments](experiments.md)). While it is off on a machine, the `teams.*`
+methods and `boite team` commands on the teams that machine holds refuse with
+the reason `experiment-off`, and no bot of that machine can enter a team. The
+core reads the desktop app's experiments;
+[across machines](#across-machines) says what each machine's switch decides.
 
 Contracts: `packages/contracts/src/teams.ts`; core:
-`packages/core/src/teams/` (store, journal tables, prompt, RPC) and
-`packages/core/src/team-cli.ts`.
+`packages/core/src/teams/` (store, journal tables, prompt, RPC, what goes
+between machines in `peers.ts`) and `packages/core/src/team-cli.ts`.
 
 ## Model
 
-- A member is keyed by the core it runs on and its bot id,
+- A member is keyed by the core it joined on and its bot id,
   `<coreId>/<botId>`, everywhere: members, post authors, recipients, cursors
   and delivery states. The owner is `owner`, which only the owner's RPC
-  writes. This version takes bots of this machine only (see
-  [Limits](#limits)), but the keys already read the same on every machine.
+  writes. The member's `coreId` says where the bot runs now, which differs
+  from its key once it [moved](#a-member-that-moves), and `machine` that
+  machine's name when it is not the one answering.
 - A team has a name (up to 60 characters, unique among live teams, case
   ignored), a brief of what it is for (up to 1,000 characters), 1 to 12
   members, each with the seq it joined at, a paused and an archived flag,
@@ -146,13 +149,108 @@ running turn, get no envelope: the prompt names each channel and the bot
 answers with `boite team say` or `boite team dm`. A turn without an envelope
 never posts to a team.
 
+## Across machines
+
+A team may take bots of any machine of the owner's group
+([groups](groups.md)), written `<machine>/<bot>`: the machine by name or core
+id, the bot by name or id. One bot per machine in one team is the usual shape.
+
+The machine that creates a team holds it for good: its posts, their order, the
+team chat and the owner's methods live there. Each other machine with a member
+keeps a mirror: the team's state and the posts that machine may read, without
+a chat thread. Everything between them is a sealed, group-only coordination
+request (`team.*`, [coordination](coordination.md)), on the addresses
+the group already keeps, so `network.groups` governs it
+([network flows](network.md)).
+
+**Delivery.** The holder sends each member's machine the team's state and new
+posts (`team.sync`), from a per-machine mark that moves only once a batch was
+taken. A private post goes only to its recipient's machine, not even back to
+its author's. On the mirror a post becomes the same team letter a local bot
+gets, through the same code, so its wake, budget, cap and cursor rules are the
+ones under [Delivery](#delivery). The letter's outcome comes back
+(`team.report`) and fills the holder's delivery state.
+
+**Replies.** From a bot's thread on a member's machine, `boite team say`, `dm`
+and `read` ask the holder (`team.post`, `team.read`), and `leave` draws its
+card there. A turn born of a letter posts its final answer through the same
+request. The agent token names only its own thread, as everywhere.
+
+**Who may speak.** The holder takes a post only as a member running on the
+machine asking, by that machine's group identity: the post's author is found in
+the team from that identity and the bot id, never from what the request says.
+A machine cannot post as another machine's bot, read for one, say one moved or
+remove one. A machine out of the group is answered as an unknown peer. Only the
+holder's `team.sync` changes a mirror.
+
+**A machine that is away.** Posts wait for it. Their delivery reads
+`unreachable` while it does not answer, and the holder retries after 5, 15 and
+60 seconds, then every 5 minutes, and at once when that machine speaks in the
+group again. Post and letter ids stay the same, so a machine that took a batch
+without the holder hearing takes it again and wakes nobody twice. A post that
+waited more than 7 days still arrives and stays readable, but wakes nobody; its
+delivery reads `expired`.
+
+**A holder that is away.** A bot's `say` or `dm` refuses with the reason
+`unreachable`, and says the holder did not answer, that nothing is lost and
+which `--request-id` to send again with; the same id posts once even if the
+first try got through. `read`, and a card's Apply, say the holder did not
+answer. A final answer waits in the member machine's durable outbox and posts
+once, under the id derived from its turn. Outbox rows older than 30 days are
+dropped at the next start.
+
+**The switch.** Methods are filtered on the machine holding the team:
+
+- While the holder's switch is off, `say`, `dm`, `read` and the owner's changes
+  refuse, with the holder's name when they came from another machine. Final
+  answers of turns under way, letters already flowing, reports and moves
+  continue, as for a local bot.
+- A machine's own switch decides whether its bots enter a team: while it is
+  off, naming one of its bots (`team.bot`) refuses with
+  `<machine>: teams need the Teams experiment…`, and the team is not created or
+  the bot not added.
+- A machine that turns its switch off after its bot joined keeps that member.
+  Its letters still arrive, and its bot's commands on a team held elsewhere
+  still go to the holder, whose switch decides. To take a bot out, remove it
+  from the team.
+
+**Versions.** Every machine of a team needs a version with this feature. An
+older machine answers that it does not know the operation, and the command says
+`Boite on <machine> is too old for teams across machines; update it first`.
+Posts owed to it wait until it is updated.
+
+### A member that moves
+
+A member can move to another machine of the group ([bots](bots.md)), of a live
+team or an archived one. Its key stays what it was, so posts, recipients, the
+fingerprints of retried posts and the card of a proposal keep meaning the same
+bot; its `coreId` and `machine` change, and the same `@name` still reaches it.
+Rewriting the key would rewrite every post it wrote.
+
+The machine it leaves tells the holder (`team.moved`, durable until it is
+heard). Only that machine is believed for its bot. The holder sends the new
+machine the team's state and the posts still waiting for the bot, which wake it
+there. Posts it already read on the old machine stay read through
+`boite team read`; a post that waited more than 7 days ends `expired`. If the
+bot lands on the holder, it is a local member again.
+
+Until the holder answers, the bot is on its new machine without its teams: its
+`boite team` commands name no team there, and it joins them when the holder
+returns. A bot on its way joins no team, because neither machine would answer
+for it. An archived team whose member left before teams followed moves comes
+back with the bot where its move went, or without a member nobody can find.
+
 ## The owner
 
 Owner methods: `teams.create`, `teams.update`, `teams.archive`,
 `teams.members.add`, `teams.members.remove`, `teams.pause`, `teams.post` and
-`teams.list` and `teams.read` without a thread. Members are named by bot id
-or name. `teams.create`, `teams.members.add` and `teams.members.remove` take
-the `card` of a bot's proposal, which applies it and settles the card.
+`teams.list` and `teams.read` without a thread. They see the teams this machine
+holds; a team held elsewhere is managed on that machine's app. Members are
+named by bot id, name or `<machine>/<bot>`. `teams.create`,
+`teams.members.add` and `teams.members.remove` take the `card` of a bot's
+proposal, which applies it and settles the card. A card a bot drew on a member's
+machine for a team held elsewhere is applied on that machine, which asks the
+holder (`team.owner`): it may add a bot, or take out only a bot of its own.
 
 The app draws a bot's card (`boite team propose`, `invite` or `leave`) in
 the dock above the bot's composer, with the core's only option, Refuse, and
@@ -182,11 +280,14 @@ a thread with `teamId` opens on the Bots page.
 The team chat (`components/teams/TeamChat.svelte`) replaces the conversation
 view of a thread with `teamId`. The header shows the team's pictures, its name
 and "Team chat · N bots and you", without rename, menu, terminal or panel.
-Over the posts, the members; a member opens its bot's page. The posts are the
+Over the posts, the members; a member opens its bot's page. A member of another
+machine shows that machine's name beside its own and opens nothing, its page
+being on that machine. The posts are the
 thread's messages, oldest first, paged like a thread's, so they arrive live and
 opening the chat marks it read. Each post shows:
 
-- its author: the bot's name, or You for the owner;
+- its author: the bot's name, or You for the owner, and the machine of a bot
+  of another machine;
 - its time; posts of one author a few minutes apart read as one;
 - "Private to …" and the recipient, on a private post;
 - the post it answers, which scrolls to that post;
@@ -197,7 +298,8 @@ The composer (`components/teams/TeamComposer.svelte`) posts with `teams.post`
 and says, before the post goes, whom it wakes, from the same rule the core
 applies (`routeTeamPost`): `@name`, which the mention menu writes at the caret,
 `@tous` or `@everyone`, or a reply's author. The audience menu makes the post
-private to one member, which wakes that member only. Reply on a post answers
+private to one member, which wakes that member only. Both menus show a member's
+machine when it is another one. Reply on a post answers
 it. A post keeps its id until it lands, so a retry after a lost answer returns
 the same post. A paused team still takes posts and says they wait; an archived
 team keeps its chat readable and takes none. With the experiment off, or a
@@ -217,8 +319,8 @@ boite team list
 boite team say <team> <text> [--reply <post-id>] [--request-id <id>]
 boite team dm <team> <member|owner> <text> [--request-id <id>]
 boite team read <team> [--before <seq>] [--limit <n>]
-boite team propose --name <name> --members <bot,bot> [--brief <text>]
-boite team invite <team> <bot>
+boite team propose --name <name> --members <bot,machine/bot> [--brief <text>]
+boite team invite <team> <bot|machine/bot>
 boite team leave <team>
 ```
 
@@ -226,12 +328,15 @@ boite team leave <team>
 the posts the bot may see, oldest first, and the command for the older page.
 `propose`, `invite` and `leave` draw a card in the bot's thread and return at
 once; the owner's choice arrives as a message, and without one nothing
-changed. A team is named by id or name. A member written `<machine>/<bot>` is
-refused: members on other machines come in a later version. For the same
-reason a member of a team that is not archived cannot move to another machine
-([bots](bots.md)), even with the experiment off; a bot on its way joins no
-team, and an archived team whose member moved comes back only once that member
-is removed.
+changed. A team is named by id or name. A bot of another machine of the group
+is written `<machine>/<bot>`, the machine by name or core id; quote the value
+when a name has a space (`--members "Firebat/Scout,Pc portable/Atlas"`). `list`
+shows a member of another machine as `name (machine)`.
+
+The commands work from any machine with a member of the team; the machine that
+created it answers them ([across machines](#across-machines)). When it does not
+answer, the refusal says so: send the same command with the same
+`--request-id` to post once.
 
 The bots' guide gains three lines while the experiment is on: answer
 `[quiet]` when nothing needs saying, group or private, and when to propose,
@@ -239,8 +344,19 @@ invite or leave.
 
 ## Limits
 
-- Members are bots of the machine that holds the team. Other machines of the
-  group come later, with the same member keys.
+- A team stays on the machine that created it, and that machine needs a bot of
+  its own in the team when it creates it: the team chat takes that bot's
+  settings.
+- A machine leaving the group leaves its members in its teams, with their
+  posts `unreachable`, until the owner removes them. A team whose holder left
+  the group refuses its commands on the members' machines, saying so.
+- The switch lives in memory: a core no app has spoken to since it started
+  (a headless machine, a restart) reads as off, so until an app connects it
+  lets no bot of its own enter a team and refuses what is asked of the teams it
+  holds.
+- A member of another machine has no page here: its row opens nothing.
+- `@name` wakes every member of that name, so two bots of one name on two
+  machines wake together.
 - No dispatcher: an owner post that names nobody, in a team of more than one
   bot, wakes nobody and says so.
 - Posts carry no attachments; long content goes by path.

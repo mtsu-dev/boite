@@ -866,10 +866,11 @@ With no signed-in account at all it refuses: "agents.move: <machine> has no
 signed-in account to run <bot>; sign in there first". It also refuses a bot id
 it already holds from another request, and a built-in bot whose kind it
 already has live. The source refuses a move to itself, to a machine outside
-the group, of an archived bot, of a member of a team that is not archived
-(`reason: 'team'`, the team names in `teams`; a team holds bots of one
-machine, [teams](teams.md)), and of a bot whose thread or a sub-thread has a
-turn running or queued (`reason: 'turn-in-flight'`).
+the group, of an archived bot, and of a bot whose thread or a sub-thread has a
+turn running or queued (`reason: 'turn-in-flight'`). A bot in a team moves with
+its membership: it stays the same member, the machine holding each team hears
+where it went, and posts still waiting for it wake it there
+([teams](teams.md#a-member-that-moves)).
 
 The target creates the bot and a new thread whose earlier turns are the
 carried excerpts; its first turn sends them to a fresh session, as a fork
@@ -927,7 +928,7 @@ the next try, even after a reload, sends the same id.
 ### After the bot's turn
 
 `agents.move.queue` (same params, owner only, `features.botMoveQueue`) runs the
-checks of a move now (member, archived, team) and keeps the move in
+checks of a move now (member, archived) and keeps the move in
 `AgentStatus.leaving` (`{agentId, machine, requestId, at}`), persisted as
 `agents:move-queued:<agentId>` so a restart keeps it. From then on the bot's
 routines, events and waking facts are held as during a move; the owner's
