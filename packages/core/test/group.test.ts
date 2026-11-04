@@ -206,6 +206,8 @@ test('the owner renames a group on either member, and the name survives synchron
   await waitFor(() => a.core.group.view('owner')?.settingsHome === undefined);
   expect(checkRoster(a.core.journal.getSetting('group'))).toMatchObject({ settingsHome: null, settingsHomeRev: 2 });
   a.core.group.settingsHome(id(b));
+  // The choice made on a reaches b before b answers with it.
+  await waitFor(() => b.core.group.view('owner')?.settingsHome === id(b));
   // The bots host is a role of its own, chosen and cleared the same way.
   expect(await owner.call('group.botsHome', { coreId: id(b) })).toMatchObject({ botsHome: id(b), settingsHome: id(b) });
   await waitFor(() => a.core.group.roleOf('botsHome') === id(b) && b.core.group.view('owner')?.botsHome === id(b));
