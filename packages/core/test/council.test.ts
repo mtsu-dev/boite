@@ -6,6 +6,7 @@ import type { CoreClient } from '../src/client.ts';
 import { runCli } from '../src/cli.ts';
 import { Core } from '../src/core.ts';
 import { scoreOf } from '../src/council/prompt.ts';
+import { prepareMembers } from '../src/council/rpc.ts';
 import { readOnlyWarning } from '../src/council/store.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import type { TurnContext, TurnResult } from '../src/drivers/types.ts';
@@ -285,7 +286,61 @@ test('a member who cannot run refuses the whole council: nobody is replaced', as
   const swapped = await failure(() => start({ models: ['twin/alpha', 'gated/beta'] }));
   expect(swapped.message).toContain('gated/beta');
   expect(swapped.message).toContain('never replaced');
+  // Nor is it another model of that provider the name is only a part of.
+  await twinProvider(h, owner, [{ id: 'delta-next', name: 'Delta next' }], 'gated');
+  const near = await failure(() => start({ models: ['twin/alpha', 'gated/delta'] }));
+  expect(near.message).toContain('gated does not offer it; the nearest is gated/delta-next');
+  expect(near.message).toContain('never replaced');
+  // A provider logged in whose list could not be read says that, not that nobody logged in.
+  await twinProvider(h, owner, [{ id: 'model', name: 'Model' }], 'unread');
+  Object.assign(h.core.providers.require('unread'), { protocol: 'acp', models: [] });
+  const unread = await failure(() => h.core.council.start({ threadId, request: REQUEST, models: ['twin/alpha', 'unread/model'] }));
+  expect(unread.message).toContain('unread: models not read yet');
   expect(councilRows(h)).toEqual({ n: 0 });
+});
+
+test('a read that hangs does not hold the start, and a council refused or retried reads nothing', async () => {
+  driver();
+  const { h, owner, threadId, start } = await setup();
+  const prepare = spyOn(h.core.delegation, 'prepareRoutes').mockResolvedValue(undefined);
+  await twinProvider(h, owner, [{ id: 'one', name: 'One' }], 'slow');
+  Object.assign(h.core.providers.require('slow'), { protocol: 'acp', models: [] });
+  let reads = 0;
+  await prepareMembers(h.core, () => { reads += 1; return new Promise(() => {}); }, threadId, ['twin/alpha', 'slow/one'], 20);
+  expect(reads).toBe(1);
+  prepare.mockClear();
+  expect((await failure(() => start({ models: ['twin/alpha'] }))).message).toContain('expected 2 to');
+  expect(prepare).not.toHaveBeenCalled();
+  const first = await start({ requestId: 'same' });
+  expect(prepare).toHaveBeenCalledTimes(1);
+  expect((await start({ requestId: 'same' })).id).toBe(first.id);
+  expect(prepare).toHaveBeenCalledTimes(1);
+});
+
+test('a member that ends its turn on background work has not answered: the turn that work wakes is its score', async () => {
+  const d = driver();
+  const { h, start } = await setup();
+  const council = await start({ models: ['twin/alpha', 'twin/beta'] });
+  const state = () => h.core.council.get({ councilId: council.id }).council;
+  await waitFor(() => d.round(1).length === 2);
+  const waiter = d.round(1).find(run => run.model === 'alpha')!;
+  waiter.ctx.background!([{ id: 'bg-1', kind: 'shell', description: 'read the logs', toolId: null, startedAt: Date.now() }]);
+  waiter.finish('Started reading the logs in the background.\n\nScore: 2/10');
+  d.round(1).find(run => run.model === 'beta')!.finish('Fine.\n\nScore: 8/10');
+  await waitFor(() => !by(state(), 'beta').pending);
+  // Its checkpoint is no answer: the round waits for it, and that 2 is not its score.
+  await waitFor(() => h.core.journal.listTurns(waiter.threadId).at(-1)?.status === 'done');
+  expect(state().status).toBe('running');
+  expect(by(state(), 'alpha').pending).toBe(true);
+  expect(by(state(), 'alpha').scores[0] ?? null).toBeNull();
+  // The work ends and wakes it.
+  waiter.ctx.backgroundFinished!('bg-1', 'completed');
+  const before = d.runs.length;
+  waiter.ctx.wake!('The logs are read.');
+  await waitFor(() => d.runs.length > before);
+  d.runs.at(-1)!.finish('The logs are clean.\n\nScore: 9/10');
+  await waitFor(() => state().status === 'waiting');
+  expect(by(state(), 'alpha').scores).toEqual([9]);
 });
 
 test('members stay read-only: the plan mode where there is one, every permission refused elsewhere, a warning for neither', async () => {
@@ -333,6 +388,7 @@ test('a restart handoff asks again a member whose turn the last core left open, 
 
 test('OpenCode is warned about what its plan mode leaves open, and a plan mode that closes it is not', () => {
   expect(readOnlyWarning('Oc', 'opencode', 'native')).toContain('allows commands');
+  expect(readOnlyWarning('Oc 2', 'opencode-v2', 'native')).toContain('allows commands');
   expect(readOnlyWarning('Opus', 'claude', 'native')).toBeNull();
 });
 

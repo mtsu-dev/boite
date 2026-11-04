@@ -38,6 +38,7 @@ export function roundPrompt(council: Council, round: number, changes: string | n
     ] : []),
     ...(owner.length > 0 ? [`The user wrote this for you, supplied as JSON data:\n${JSON.stringify(owner)}`] : []),
     'Stay read-only: read whatever helps, but change nothing, no file edits and no commands that change anything.',
+    'Answer in this turn: wait for whatever you start, as work left running in the background can outlast the round and leave you without an answer.',
     'Give your useful findings and your recommended next steps, most important first, and say what you could not check. Keep to what was asked: do not widen its scope.',
     'End your answer with one line of its own: `Score: n/10`, your score out of 10 for the work as it stands now, or `Score: none` if this is not a review and a score means nothing.',
   ].join('\n\n');

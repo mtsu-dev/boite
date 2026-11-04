@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { COUNCIL_AUTHOR, COUNCIL_DEFAULT_EFFORT, COUNCIL_DEFAULT_MODELS, COUNCIL_EXPERIMENT, COUNCIL_LEGACY_SUMMARY, COUNCIL_LIMITS, COUNCIL_OWNER, COUNCIL_SYSTEM, councilHandles, councilMention, councilNames, councilOver, councilTable, threadActive } from '@boite/contracts';
+import { COUNCIL_AUTHOR, COUNCIL_DEFAULT_EFFORT, COUNCIL_DEFAULT_MODELS, COUNCIL_EXPERIMENT, COUNCIL_LEGACY_SUMMARY, COUNCIL_LIMITS, COUNCIL_OWNER, COUNCIL_SYSTEM, councilHandles, councilMention, councilNames, councilNearestEffort, councilOver, councilTable, threadActive } from '@boite/contracts';
 import type { Council, CouncilMember, CouncilPost, CouncilReadOnly, CouncilStatus, Message, Principal, RpcParams, ThreadSummary, Turn } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { invalidParams, messageOf, notFound, refused } from '../errors.ts';
@@ -36,19 +36,15 @@ function readOnlyOf(core: Core, providerId: string): CouncilReadOnly {
   return capabilities.planMode ? 'native' : capabilities.approvals ? 'approvals' : 'none';
 }
 
-/** What a member's read-only level leaves open, said before its first round. OpenCode's plan mode allows commands (`opencode debug agent plan`). */
+/**
+ * What a member's read-only level leaves open, said before its first round.
+ * OpenCode's plan mode allows commands (`opencode debug agent plan`). OpenCode 2
+ * was not measured, so it is warned the same rather than vouched for.
+ */
 export function readOnlyWarning(name: string, providerId: string, readOnly: CouncilReadOnly): string | null {
   if (readOnly === 'approvals') return `${name} has no read-only mode: Boite refuses every permission it asks.`;
   if (readOnly === 'none') return `${name} has no read-only mode and asks no permission: it could change files.`;
-  return providerId === 'opencode' ? `${name} runs in OpenCode's plan mode, which refuses edits and allows commands: only its instructions keep those read-only.` : null;
-}
-
-const EFFORT_ORDER = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
-/** The strongest of a model's levels that is not above the one asked. Null when none can be compared, as names like `fast` cannot. */
-function nearestEffort(levels: string[], asked: string): string | null {
-  const limit = EFFORT_ORDER.indexOf(asked);
-  return levels.filter(level => EFFORT_ORDER.includes(level) && EFFORT_ORDER.indexOf(level) <= limit)
-    .sort((a, b) => EFFORT_ORDER.indexOf(b) - EFFORT_ORDER.indexOf(a))[0] ?? null;
+  return providerId === 'opencode' || providerId === 'opencode-v2' ? `${name} runs in OpenCode's plan mode, which refuses edits and allows commands: only its instructions keep those read-only.` : null;
 }
 
 function text(value: unknown, field: string, max: number): string {
@@ -240,11 +236,11 @@ export class CouncilStore {
   }
 
   /**
-   * Checks everything, creates the salon and every member's thread in one go,
-   * then asks round 1. Routes were read by the RPC (`prepareRoutes`) before this
-   * runs. A route that cannot run refuses the whole council: a member is never replaced.
+   * What refuses a council before any list is read, and the council a retry of
+   * this `requestId` already started (`known`). The RPC asks before it reads the
+   * members' lists; `start` asks again, as that wait can change the answer.
    */
-  start(params: RpcParams<'council.start'>): Council {
+  admit(params: RpcParams<'council.start'>) {
     this.gate();
     const parent = this.#core.threads.require(text(params?.threadId, 'threadId', 128));
     if (parent.parentThreadId || this.#core.delegation.remote.parentOf(parent.id)) throw refused('a subagent cannot start a council; ask its parent', { threadId: parent.id });
@@ -259,34 +255,46 @@ export class CouncilStore {
     const effort = params.effort === undefined || params.effort === null ? COUNCIL_DEFAULT_EFFORT : text(params.effort, 'effort', 32);
     const requestId = params.requestId === undefined ? null : text(params.requestId, 'requestId', 100);
     const fingerprint = hash([request, models, effort, timeoutMinutes]);
+    const asked = { parent, request, named, models, timeoutMinutes, effort, requestId, fingerprint };
     if (requestId !== null) {
-      const known = this.#core.journal.db.query('SELECT id, fingerprint FROM debates WHERE parent_thread_id = ? AND request_id = ?').get(parent.id, requestId) as { id: string; fingerprint: string } | null;
-      if (known) {
-        if (known.fingerprint !== fingerprint) throw refused('requestId already used for a different council', { field: 'requestId', expected: 'a fresh id' });
-        return this.#public(this.#load(known.id)!);
+      const row = this.#core.journal.db.query('SELECT id, fingerprint FROM debates WHERE parent_thread_id = ? AND request_id = ?').get(parent.id, requestId) as { id: string; fingerprint: string } | null;
+      if (row) {
+        if (row.fingerprint !== fingerprint) throw refused('requestId already used for a different council', { field: 'requestId', expected: 'a fresh id' });
+        return { ...asked, known: this.#public(this.#load(row.id)!) };
       }
     }
     const config = this.#core.delegation.config(parent.id);
     if (config.enabled && config.paused) throw refused('this conversation\'s subagents are paused; resume them before a council', { threadId: parent.id });
+    return { ...asked, known: null };
+  }
 
+  /**
+   * Checks everything, creates the salon and every member's thread in one go,
+   * then asks round 1. Routes were read by the RPC (`prepareRoutes`) before this
+   * runs. A route that cannot run refuses the whole council: a member is never replaced.
+   */
+  start(params: RpcParams<'council.start'>): Council {
+    const { parent, request, named, models, timeoutMinutes, effort, requestId, fingerprint, known } = this.admit(params);
+    if (known) return known;
     const warnings: string[] = [];
     const route = (model: string, index: number): ChildRoute => {
       const what = named ? `models[${index}]` : `default member ${model}`;
       const unavailable = (why: string, details: Record<string, string>) => invalidParams(`${what}: ${why}. A council member is never replaced${named ? '' : '; name others with --models'}.`, { field: 'models', ...details });
-      // A route that names its provider stays on it: `antigravity/x` is not `codex/antigravity/x`, which a gateway may list.
+      // A route that names its provider is that very model: `antigravity/x` is not `codex/antigravity/x`, which a gateway may list, and `twin/alpha` is not `twin/alpha-next`.
       const head = providersNamed(this.#core, model)?.[0];
       let resolved: ChildRoute;
       try {
-        if (head !== undefined && !catalog(this.#core, parent, true).choices.some(choice => choice.providerId === head)) throw new Error(`${head} is not installed or has no logged-in account`);
+        const listed = catalog(this.#core, parent, true);
+        if (head !== undefined && !listed.choices.some(choice => choice.providerId === head)) throw new Error(`${head}: ${listed.unavailable.find(entry => entry.providerId === head)?.reason ?? 'not installed'}`);
         resolved = this.#core.delegation.resolve(parent.id, { profileId: null, model });
       } catch (error) {
         throw unavailable(messageOf(error), { model });
       }
-      if (head !== undefined && resolved.providerId !== head) throw unavailable(`${head} does not offer it, only ${resolved.providerId}/${resolved.model} does`, { model });
+      if (head !== undefined && `${resolved.providerId}/${resolved.model}`.toLowerCase() !== model.toLowerCase()) throw unavailable(`${head} does not offer it; the nearest is ${resolved.providerId}/${resolved.model}`, { model });
       const provider = this.#core.providers.require(resolved.providerId);
       // One level across models that name theirs differently: the strongest not above the one asked, and any other than that is said.
       const levels = modelsFor(provider, resolved.accountId).find(entry => entry.id === resolved.model)?.effort?.levels ?? [];
-      const level = levels.some(entry => entry.id === effort) ? effort : nearestEffort(levels.map(entry => entry.id), effort);
+      const level = levels.some(entry => entry.id === effort) ? effort : councilNearestEffort(levels.map(entry => entry.id), effort);
       if (level !== null) resolved = { ...resolved, effort: level };
       if (level !== effort && (levels.length > 0 || params.effort !== undefined && params.effort !== null)) warnings.push(`${resolved.name} has no ${effort} effort, so it runs at ${resolved.effort ?? 'its default'}.`);
       try {
@@ -586,7 +594,8 @@ export class CouncilStore {
       if (this.#undelivered.has(turn.threadId)) setTimeout(() => { if (!this.#gone) this.#deliverAll(turn.threadId); }, 0).unref?.();
       return;
     }
-    if (childEnd(this.#core, turn).kind === 'maintenance') return;
+    const end = childEnd(this.#core, turn);
+    if (end.kind === 'maintenance') return;
     if (this.#waiting.has(turn.threadId)) setTimeout(() => { if (!this.#gone) this.#wake(turn.threadId); }, 0).unref?.();
     const council = this.#load(councilId);
     if (!council) return;
@@ -595,6 +604,8 @@ export class CouncilStore {
     const member = council.members.find(m => m.threadId === turn.threadId);
     const asked = member ? council.internal.turns[member.id] : null;
     if (!member?.pending || council.status !== 'running' || (asked !== turn.id && !(asked === STARTING && turn.queuedAt >= council.internal.roundStartedAt))) return;
+    // It ended to wait on its own background work: the turn that work wakes is its answer, and the round's time still runs.
+    if (end.kind === 'checkpoint') { this.#mutate(council.id, current => { current.internal.turns[member.id] = STARTING; }); return; }
     const answer = turn.status === 'done' ? this.#answer(turn) : '';
     if (!answer) return this.#absent(council.id, member.id, council.round, turn.status === 'done' ? 'its answer was empty' : turn.status === 'stopped' ? 'its turn was stopped' : `its turn failed${turn.error ? ` (${turn.error.slice(0, 200)})` : ''}`);
     const round = council.round;

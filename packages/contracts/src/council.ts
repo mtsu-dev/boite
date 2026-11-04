@@ -31,6 +31,14 @@ export const COUNCIL_LIMITS = {
 export const COUNCIL_DEFAULT_MODELS = ['claude/claude-opus-5-5', 'codex/gpt-6.1-sol', 'antigravity/gemini-4-argon'] as const;
 export const COUNCIL_DEFAULT_EFFORT = 'xhigh';
 
+const EFFORT_ORDER = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+/** The strongest of a model's levels that is not above the one asked. Null when none can be compared, as names like `fast` cannot. */
+export function councilNearestEffort(levels: readonly string[], asked: string): string | null {
+  const limit = EFFORT_ORDER.indexOf(asked);
+  return levels.filter(level => EFFORT_ORDER.includes(level) && EFFORT_ORDER.indexOf(level) <= limit)
+    .sort((a, b) => EFFORT_ORDER.indexOf(b) - EFFORT_ORDER.indexOf(a))[0] ?? null;
+}
+
 /**
  * The experiment's id, under the feature's first name. Every device stores it
  * and an app drops the ids it does not know, so a new id would turn the feature

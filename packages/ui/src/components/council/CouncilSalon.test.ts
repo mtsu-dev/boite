@@ -118,6 +118,19 @@ test('with the experiment off, the thread draws no card, not even an old debate\
   expect(document.querySelector('[data-testid=council-composer]')).toBeNull();
 });
 
+test('the in-memory core answers a council as the real one: the exact route, the nearest effort, no table for an old debate', async () => {
+  const { client } = await demo();
+  // Reading the models is what fills the catalog.
+  const threadId = (await client.call('threads.create', { projectId: 'p-boite', providerId: 'codex', accountId: 'a-codex', model: 'codex-demo', effort: 'high' })).id;
+  await client.call('delegation.models', { threadId });
+  const start = (models: string[]) => client.call('council.start', { threadId, request: 'Review the cache plan.', models });
+  await expect(start(['codex/codex-dem', 'echo/echo-1'])).rejects.toThrow('codex does not offer it; the nearest is codex/codex-demo');
+  const council = await start(['codex/codex-demo', 'echo/echo-1']);
+  expect(council.members[0]?.effort).toBe('high');
+  expect(council.warnings.some(warning => warning.endsWith('has no xhigh effort, so it runs at high.'))).toBe(true);
+  await expect(client.call('council.table', { councilId: 'dbt_demo_old' })).rejects.toThrow('a debate from before the council has no scores, so no table');
+});
+
 test('the app with the experiment on, before the core has it, still draws no salon', async () => {
   setExperiment(COUNCIL_EXPERIMENT, true);
   const client = new FakeClient({ delayMs: 0, councilDemo: true });

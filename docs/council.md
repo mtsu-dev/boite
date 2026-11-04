@@ -27,18 +27,21 @@ boite delegate council table <id>
 | `--timeout` | 30 minutes a round | 1 to 120 |
 
 The request and the changes hold up to 12,000 characters. The command returns
-the council id at once; `delegate list` shows the council, `delegate wait` with
+the council id as soon as the members' model lists are read, which takes up to a
+minute when none is saved yet; `delegate list` shows the council, `delegate wait` with
 no agent id also waits for a round under way and `delegate stop <id>` stops it.
 `requestId` on `council.start` and `council.again` makes a retry return the same
 council or round.
 
 A member whose provider is missing, or who cannot run, refuses the whole
 council with the reason. Boite never replaces a member, so three providers do
-not quietly turn into two of the same. A route that names a provider stays on it:
-`antigravity/x` never falls through to a gateway model spelled
-`codex/antigravity/x`. Before these checks Boite reads a fresh model list when a
-named route is missing from the one it holds, which an earlier version may have
-saved, and an ACP model's effort scale.
+not quietly turn into two of the same. A route that names a provider is that very
+model: `twin/alpha` never falls through to `twin/alpha-next`, nor `antigravity/x` to
+a gateway model spelled `codex/antigravity/x`. Before these checks Boite reads a
+fresh model list when a named route is missing from the one it holds, which an
+earlier version may have saved, and an ACP model's effort scale. A read still
+going after 30 seconds carries on for the next try, and the refusal says the
+models were not read yet.
 
 A top-level thread starts a council. A subagent, a team chat, a salon, an
 archived thread and a thread whose subagents are paused are refused.
@@ -55,8 +58,10 @@ the member shows `no score`; a score is never made up.
 
 A round ends when every member has answered, when its time is up or when the
 owner closes it. A member past the time is absent from that round, without a
-score, and is asked again in the next one. A round nobody answers still goes
-back to the parent. A closed round leaves the council in `waiting`.
+score, and is asked again in the next one. A turn that ends on the member's own
+background work is not its answer: the turn that work wakes is, within the same
+time. A round nobody answers still goes back to the parent. A closed round leaves
+the council in `waiting`.
 
 ## Answers and the table
 
@@ -114,6 +119,11 @@ write to the parent. A question a member asks gets no answer, at once: nobody re
 its thread to reply. On pi only that prompt holds it back. OpenCode's plan agent
 refuses edits and allows every command (`opencode debug agent plan`, 1.19.5,
 2026-11-04), so that prompt alone holds its commands back, and a warning says so.
+OpenCode 2 was not measured and gets the same warning.
+
+An ACP agent that lists no plan mode, or refuses it, fails the member's turn, so
+the member is absent from the round with the reason rather than running outside
+read-only.
 
 On Windows a read-only Codex session leaves the Microsoft Store's folders off its
 `PATH` when the `pwsh` it would find is the Store's: that PowerShell cannot start

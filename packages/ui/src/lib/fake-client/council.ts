@@ -17,6 +17,7 @@ import {
   councilHandles,
   councilMention,
   councilNames,
+  councilNearestEffort,
   councilOver,
   councilTable,
   RpcErrorCode,
@@ -31,6 +32,7 @@ import {
 import { RpcFailure } from '../client';
 import { delegationConfig, pickModel } from './delegation';
 import { toSummary } from './shared';
+import { modelChoices } from './thread-models';
 import type { FakeContext, FakeMethods } from './context';
 
 type CouncilMethods = Pick<FakeMethods, `council.${string}` & keyof FakeMethods>;
@@ -172,18 +174,20 @@ export function councilMethods(ctx: FakeContext): CouncilMethods {
       const config = delegationConfig(ctx, parent.id);
       if (config.enabled && config.paused) throw refused('this conversation\'s subagents are paused; resume them before a council', { threadId: parent.id });
       const warnings: string[] = [];
+      const choices = modelChoices(ctx, parent);
       const routes = models.map((model, index) => {
         const what = named ? `models[${index}]` : `default member ${model}`;
         try {
-          try {
-            return pickModel(ctx, parent, config, model, effort);
-          } catch (error) {
-            if (!(error instanceof Error) || !error.message.includes('reasoning effort')) throw error;
-            // A level a model lacks is said, not refused.
-            const route = pickModel(ctx, parent, config, model, undefined);
-            if (asked || route.effort) warnings.push(`${route.name} has no ${effort} effort, so it runs at ${route.effort ?? 'its default'}.`);
-            return route;
-          }
+          const route = pickModel(ctx, parent, config, model, undefined);
+          // A route that names its provider is that very model, not one it is a part of.
+          const head = model.slice(0, Math.max(0, model.indexOf('/')));
+          if (choices.some(choice => choice.providerId === head) && route.id.toLowerCase() !== model.toLowerCase()) throw new Error(`${head} does not offer it; the nearest is ${route.id}`);
+          const levels = choices.find(choice => `${choice.providerId}/${choice.model}` === route.id)?.efforts ?? [];
+          if (levels.includes(effort)) return { ...route, effort };
+          // A level a model lacks is said, not refused: its strongest below the one asked.
+          const level = councilNearestEffort(levels, effort) ?? route.effort;
+          if (asked || levels.length > 0) warnings.push(`${route.name} has no ${effort} effort, so it runs at ${level ?? 'its default'}.`);
+          return { ...route, effort: level };
         } catch (error) {
           throw invalid(`${what}: ${error instanceof Error ? error.message : String(error)}. A council member is never replaced${named ? '' : '; name others with --models'}.`, { field: 'models', model });
         }
@@ -247,7 +251,7 @@ export function councilMethods(ctx: FakeContext): CouncilMethods {
       gate();
       const council = require(params?.councilId);
       own(council, params.threadId);
-      if (council.legacy) throw new Error('a debate from before the council has no scores, so no table');
+      if (council.legacy) throw refused('a debate from before the council has no scores, so no table', { councilId: council.id });
       return { table: councilTable(council), council: structuredClone(council) };
     },
     'council.post': async (params) => {
