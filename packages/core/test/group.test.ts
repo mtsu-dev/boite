@@ -1089,6 +1089,10 @@ test('"you were removed" counts only signed inside a sealed answer, never from a
   // And a sealed request is never answered in the clear: a readable answer names its address and status, and what it said when it failed.
   expect(() => settle('http://b', key, nonce, 200, ok, sign(ok), { responseKey: sealed.responseKey, context })).toThrow('http://b answered HTTP 200 unsealed to a sealed request');
   expect(() => settle('http://b', key, nonce, 502, 'Bad Gateway\n', '', { responseKey: sealed.responseKey, context })).toThrow(/^http:\/\/b answered HTTP 502: Bad Gateway$/);
+  // An unsigned 403 to a sealed request is a relay or proxy refusing, not this core's own agent link: it names its address, status and reason, never the generic reconnect notice.
+  expect(() => settle('http://b', key, nonce, 403, 'Forbidden\n', '', { responseKey: sealed.responseKey, context })).toThrow(/^http:\/\/b answered HTTP 403: Forbidden$/);
+  // In the clear (no sealing) an unsigned 403 still means this core's own link was refused.
+  expect(() => settle('http://b', key, nonce, 403, 'Forbidden\n', '')).toThrow('destination refused this core; reconnect the agent link in Machines');
 });
 
 test('only a holder of the invitation spends the join allowance, and a pairing link never names a machine by a plain-HTTP name', async () => {

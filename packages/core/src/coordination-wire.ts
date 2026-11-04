@@ -76,7 +76,7 @@ export async function boundedBody(body: ReadableStream<Uint8Array> | null, max =
  * comes back readable was not made by the machine the request was sealed to.
  */
 export function settle(url: string | null, publicKey: string, nonce: string, status: number, raw: string, signature: string, sealing: Sealing | null = null): Answer {
-  if (!signature && status === 403) throw new Error('destination refused this core; reconnect the agent link in Machines');
+  if (sealing === null && !signature && status === 403) throw new Error('destination refused this core; reconnect the agent link in Machines');
   if (sealing !== null) {
     if (signature !== SEALED) throw new Error(unsealed(url, status, raw));
     ({ body: raw, signature } = unpack(openResponse(raw, sealing.responseKey, sealing.context)));
