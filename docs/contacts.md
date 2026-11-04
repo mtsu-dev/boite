@@ -425,8 +425,9 @@ request emits `collaboration.changed` for the asking thread and the bot's.
 A member that asked through the Bots host hears the forward from it
 (`contact.hand`, action `forwarded`, best effort since the answer follows
 anyway) and reads the request sent, under the host's name for the contact.
-Renaming a contact renames its requests and the relation an answer gave, so
-the `<contact>/<thread-id>` a row shows keeps resolving. A letter sent to a contact's thread,
+Renaming a contact renames its requests and its relations, which the
+directory builds addresses from, so the `<contact>/<thread-id>` a row shows
+keeps resolving, before the answer or after it. A letter sent to a contact's thread,
 through a member gateway included, is ordinary agent mail with the contact's
 chip (`AgentLetter.contact`).
 

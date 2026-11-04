@@ -118,6 +118,10 @@ test('an ask wakes the bot, which forwards it; an untrusted contact waits for th
   expect(answer.text).toContain(`${renamed.replace(/\s+/g, '-')}/${hostThread}`);
   // The address the answer and the request give resolves in the asking thread's directory.
   expect((await guest.core.coordination.directory(guestThread)).agents.some(agent => agent.coreId === hostId && agent.threadId === hostThread && agent.machine === renamed.replace(/\s+/g, '-'))).toBe(true);
+  // Renamed again after the answer: the request's address and the directory still name the contact one way.
+  await guestClient.call('contacts.update', { coreId: hostId, name: 'Docs office' });
+  expect(guest.core.coordination.get(guestThread).requests![0]).toMatchObject({ contact: 'Docs office', relation: { contact: 'Docs office' } });
+  expect((await guest.core.coordination.directory(guestThread)).agents.filter(agent => agent.coreId === hostId && agent.threadId === hostThread).map(agent => agent.machine)).toEqual(['Docs-office']);
 
   // No project is open either way, and the two threads still write to each other.
   expect(host.core.contacts.find(guestId)?.grants).toEqual([]);
