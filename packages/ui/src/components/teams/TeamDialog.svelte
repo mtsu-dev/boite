@@ -54,13 +54,17 @@
   /** Why a row cannot be picked now: its own reason, or a full team. A picked member can always be taken out. */
   function blocked(choice: TeamChoice): string | null {
     if (picked.includes(choice.key)) return null;
+    if (choice.gone) return words.goneOut;
     return choice.reason ?? (initial?.archived ? words.archived : full ? fill(words.full, { max: count(TEAM_LIMITS.members) }) : null);
   }
+  /** What the row's "i" says: why it cannot be picked, or, picked, what keeps it from staying (gone, moving), so the row to clear shows. */
+  const why = (choice: TeamChoice): string | null => blocked(choice) ?? choice.reason;
   const problem = $derived(draftProblem({ name, brief, members: picked }, teamsOf(view.store).teams, initial?.id ?? null));
   /** A taken name says so as it is typed; the rest waits for the first try. */
   const shown = $derived(failure ?? (problem && (tried || problem.field === 'taken') ? problem.text : null));
   const nameWrong = $derived(failure === null && !!problem && problem.field !== 'members' && (tried || problem.field === 'taken'));
-  const localBots = $derived(choices.filter(choice => choice.reason === null).length);
+  /** This machine's bots, moving ones included: those are listed greyed, so the list is not empty. */
+  const localBots = $derived((view.snapshot?.profiles ?? []).filter(profile => profile.status !== 'archived').length);
 
   function portal(node: HTMLElement) {
     document.body.append(node);
@@ -161,6 +165,7 @@
             {#each choices as choice (choice.key)}
               {@const on = picked.includes(choice.key)}
               {@const reason = blocked(choice)}
+              {@const tip = why(choice)}
               <li class="choice-row">
                 <button type="button" class="choice" class:on aria-pressed={on} aria-disabled={reason ? 'true' : undefined} title={reason ?? undefined}
                   onclick={() => toggle(choice)} data-testid="team-dialog-member" data-bot-id={choice.botId} data-key={choice.key}>
@@ -168,7 +173,7 @@
                   <span class="choice-name">{choice.name}</span>
                   <span class="mark" aria-hidden="true">{#if on}<Check size={14} strokeWidth={2.25} />{/if}</span>
                 </button>
-                {#if reason}<InfoTip topic={fill(words.why, { name: choice.name })} text={reason} testid="team-dialog-why" />{/if}
+                {#if tip}<InfoTip topic={fill(words.why, { name: choice.name })} text={tip} testid="team-dialog-why" />{/if}
               </li>
             {/each}
           </ul>

@@ -72,7 +72,7 @@
     const client = store.client;
     if (!current || !store.owner) return;
     if (id === 'edit') { editing = true; return; }
-    if (!client) return;
+    if (!client) { store.reportError(new Error(strings.connection.unavailable), 'minor'); return; }
     if (id === 'pause' || id === 'resume') void act(() => client.call('teams.pause', { teamId: current.id, paused: id === 'pause' }));
     else if (id === 'restore') void act(() => client.call('teams.archive', { teamId: current.id, archived: false }));
     else if (id === 'archive') void act(async () => {

@@ -22,6 +22,8 @@ export interface TeamChoice {
   avatar: string;
   /** Set when the bot cannot be picked: on another machine, moving, gone. A member that is gone can still be taken out. */
   reason: string | null;
+  /** A member this machine no longer lists: picked it stays, unpicked it leaves the team on save. */
+  gone?: true;
 }
 
 export interface TeamDraft { name: string; brief: string; members: readonly string[] }
@@ -35,7 +37,7 @@ export function teamChoices(view: AgentsView, others: readonly { machine: Machin
   }));
   // A member this machine no longer lists (archived, moved away) stays shown, so it can be taken out.
   const gone = (team?.members ?? []).filter(member => !local.some(choice => choice.botId === member.botId)).map((member): TeamChoice => ({
-    key: member.botId, botId: member.botId, name: member.name, avatar: '', reason: strings.teamChat.dialog.gone,
+    key: member.botId, botId: member.botId, name: member.name, avatar: '', reason: strings.teamChat.dialog.gone, gone: true,
   }));
   const away = others.flatMap(({ machine, view: owner }) => live(owner).map((profile: AgentProfile): TeamChoice => ({
     key: JSON.stringify([machine.id, profile.id]), botId: profile.id, name: profile.name, avatar: profile.avatar,

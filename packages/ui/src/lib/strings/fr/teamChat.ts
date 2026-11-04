@@ -41,6 +41,7 @@ export const fr: Translation = {
       full: 'Une équipe compte au plus {max} bots.',
       archived: "L'équipe est archivée : restaurez-la pour ajouter un bot.",
       gone: "N'est plus un bot de cette machine : désélectionnez-le pour le retirer.",
+      goneOut: "N'est plus un bot de cette machine : il quitte l'équipe à l'enregistrement.",
       vanished: "{team} n'est plus sur cette machine.",
       why: 'Pourquoi {name} ne peut pas rejoindre',
     },

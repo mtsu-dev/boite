@@ -6,6 +6,9 @@ import { Store } from '../../lib/store.svelte';
 import { workspace } from '../../lib/workspace.svelte';
 import AgentsPage from '../agents/AgentsPage.svelte';
 import ConfirmDialog from '../ConfirmDialog.svelte';
+import type { AgentsView } from '../../lib/agents.svelte';
+import { strings } from '../../lib/strings';
+import TeamDialog from './TeamDialog.svelte';
 
 const mounted: ReturnType<typeof mount>[] = [];
 const closers: (() => void)[] = [];
@@ -224,4 +227,51 @@ test('a paired phone keeps New team and the team menu greyed, and says that chan
   const rows = all('[data-testid=team-menu-menu] [data-row]');
   expect(rows.map(row => [row.getAttribute('data-value'), (row as HTMLButtonElement).disabled])).toEqual([['edit', true], ['pause', true], ['archive', true]]);
   expect(query('[data-testid=team-menu-menu]').textContent).toContain('Only the computer running Boite can create or change teams.');
+});
+
+test('a machine whose only bot is moving lists it greyed, without saying there is no bot', async () => {
+  const { store, bots } = await computer();
+  const bot = bots[0]!;
+  const view = { store, snapshot: { revision: 1, profiles: [bot], status: [{ agentId: bot.id, leaving: { agentId: bot.id, machine: 'srv', requestId: 'r1', at: 0 } }] } } as unknown as AgentsView;
+  mounted.push(mount(TeamDialog, { target: document.body, props: { view, onclose() {}, ondone() {} } }));
+  await settle();
+  expect(member(bot.id).getAttribute('aria-disabled')).toBe('true');
+  expect(member(bot.id).title).toBe('Moving to another machine: it joins no team until it has arrived.');
+  expect(document.querySelector('[data-testid=team-dialog-nobots]')).toBeNull();
+});
+
+test('a member that left the machine shows why while picked, and once unpicked that it leaves on save', async () => {
+  const { client, store, bots } = await computer();
+  const [huginn, jeux] = bots as [typeof bots[0], typeof bots[0]];
+  const team = await client.call('teams.create', { name: 'Skollheim', members: [huginn.id, jeux.id] });
+  const { id, revision, createdAt, updatedAt, ...value } = jeux;
+  void createdAt; void updatedAt;
+  await client.call('agents.profile.save', { id, expectedRevision: revision, value: { ...value, status: 'archived' } });
+  page(store);
+  await vi.waitFor(() => query(`[data-testid="agent-team-${team.id}"]`));
+  query<HTMLButtonElement>(`[data-testid="agent-team-${team.id}"]`).click();
+  await vi.waitFor(() => query('[data-testid=team-menu]'));
+  query<HTMLButtonElement>('[data-testid=team-menu]').click(); await settle();
+  query<HTMLButtonElement>('[data-testid=team-menu-menu] [data-value="edit"]').click(); await settle();
+  const gone = member(jeux.id);
+  expect(gone.getAttribute('aria-pressed')).toBe('true');
+  expect(gone.closest('li')?.querySelector('[data-testid=team-dialog-why]')).not.toBeNull();
+  expect(member(huginn.id).closest('li')?.querySelector('[data-testid=team-dialog-why]')).toBeNull();
+  gone.click(); flushSync();
+  expect(gone.getAttribute('aria-pressed')).toBe('false');
+  expect(gone.title).toBe('No longer a bot of this machine: it leaves the team when you save.');
+});
+
+test('pause from the team menu says the connection is gone instead of doing nothing', async () => {
+  const { client, store, bots } = await computer();
+  const team = await client.call('teams.create', { name: 'Skollheim', members: [bots[0]!.id] });
+  page(store);
+  await vi.waitFor(() => query(`[data-testid="agent-team-${team.id}"]`));
+  query<HTMLButtonElement>(`[data-testid="agent-team-${team.id}"]`).click();
+  await vi.waitFor(() => query('[data-testid=team-menu]'));
+  vi.spyOn(store, 'client', 'get').mockReturnValue(null);
+  const report = vi.spyOn(store, 'reportError');
+  query<HTMLButtonElement>('[data-testid=team-menu]').click(); await settle();
+  query<HTMLButtonElement>('[data-testid=team-menu-menu] [data-value="pause"]').click(); await settle();
+  expect(report).toHaveBeenCalledWith(new Error(strings.connection.unavailable), 'minor');
 });
