@@ -18,14 +18,13 @@ import type { Core } from '../core.ts';
 import { MAX_BODY, PeerGone, PeerRefusal, type TeamOperation } from '../coordination-wire.ts';
 import { invalidParams, messageOf, refused, unavailable, type RpcFailure } from '../errors.ts';
 import { foldMachine, memberNamed } from '../threads/group-spawn.ts';
+import { TeamMirror } from './mirror.ts';
 import type { TeamBot, TeamStore } from './store.ts';
 
 const RETRY_MS = [5_000, 15_000, 60_000, 300_000];
 const LAST_RETRY_MS = RETRY_MS[RETRY_MS.length - 1]!;
 const BATCH_BYTES = Math.floor(MAX_BODY * 3 / 8);
 const OUTBOX_DAYS = 30;
-/** How long a post waits to wake a bot on a machine that is away; older, it stays readable and wakes nobody. */
-export const TEAM_WAKE_MAX_MS = 7 * 24 * 3_600_000;
 
 /** A post on its way to a member's machine, and the members there it still wakes. */
 export interface TeamPeerPost { post: TeamPost; wake: TeamMemberKey[] }
@@ -132,6 +131,7 @@ const tooOld = (error: unknown): boolean => error instanceof PeerRefusal && erro
 export class TeamPeers {
   readonly #core: Core;
   readonly #store: TeamStore;
+  readonly #mirror: TeamMirror;
   readonly #timers = new Map<string, ReturnType<typeof setTimeout>>();
   readonly #attempts = new Map<string, number>();
   readonly #sending = new Set<string>();
@@ -141,6 +141,7 @@ export class TeamPeers {
   constructor(core: Core, store: TeamStore) {
     this.#core = core;
     this.#store = store;
+    this.#mirror = new TeamMirror(core, store);
   }
 
   get #db() { return this.#core.journal.db; }
@@ -228,17 +229,17 @@ export class TeamPeers {
       if (error instanceof PeerGone) {
         this.#db.query('DELETE FROM team_outbox WHERE core_id = ?').run(coreId);
         this.#attempts.delete(coreId);
-        this.#store.unreachable(coreId, `${peer.name} removed this machine from its group`);
+        this.#mirror.unreachable(coreId, `${peer.name} removed this machine from its group`);
         return;
       }
       if (error instanceof PeerRefusal) {
         // It answers and says no: trying sooner would only ask the same again. Hearing from it changes nothing, so no attempt is kept.
         this.#core.log('warn', `teams toward ${peer.name}: ${error.message}`);
-        this.#store.unreachable(coreId, `${peer.name} refused: ${error.message}`);
+        this.#mirror.unreachable(coreId, `${peer.name} refused: ${error.message}`);
         this.#schedule(coreId, LAST_RETRY_MS);
         return;
       }
-      this.#store.unreachable(coreId, `${peer.name} is unreachable`);
+      this.#mirror.unreachable(coreId, `${peer.name} is unreachable`);
       const attempt = this.#attempts.get(coreId) ?? 0;
       this.#attempts.set(coreId, attempt + 1);
       this.#schedule(coreId, RETRY_MS[Math.min(attempt, RETRY_MS.length - 1)]!);
@@ -278,7 +279,7 @@ export class TeamPeers {
     const team = this.#store.get(row.team_id);
     const forget = () => this.#db.query('DELETE FROM team_machines WHERE team_id = ? AND core_id = ?').run(row.team_id, row.core_id);
     if (team === null) { forget(); return; }
-    const { posts, upTo } = this.#store.batchFor(team, peer.coreId, row.sent_seq, BATCH_BYTES);
+    const { posts, upTo } = this.#mirror.batchFor(team, peer.coreId, row.sent_seq, BATCH_BYTES);
     // Nothing that machine may see changed: a private post between others does not even show as a request.
     if (posts.length > 0 || row.sent_version !== team.version) {
       await this.#core.coordination.request(peer, 'team.sync', { team, posts, upTo });
@@ -287,7 +288,7 @@ export class TeamPeers {
     // A member arriving meanwhile moved the mark down: it stays there.
     this.#db.query('UPDATE team_machines SET sent_seq = CASE WHEN sent_seq = ? THEN ? ELSE sent_seq END, sent_version = ? WHERE team_id = ? AND core_id = ?')
       .run(row.sent_seq, upTo, team.version, row.team_id, row.core_id);
-    this.#store.reached(team, peer.coreId, upTo);
+    this.#mirror.reached(team, peer.coreId, upTo);
     const now = this.#store.get(team.id);
     // Once it heard that no member of the team runs there, it forgot the team: nothing more goes.
     if (now === null || (team.version === now.version && !now.members.some(member => member.coreId === peer.coreId))) forget();
@@ -341,7 +342,7 @@ export class TeamPeers {
     if (team.host !== peer.coreId) throw refused(`team.host: ${peer.name} does not hold the team ${team.name}`, { field: 'team', reason: 'not-the-holder' });
     const known = this.#store.get(team.id);
     if (known !== null && known.host !== peer.coreId) throw refused(`team.id: ${peer.name} does not hold the team ${known.name}`, { field: 'team', reason: 'not-the-holder' });
-    this.#store.mirror(team, posts, upTo);
+    this.#mirror.take(team, posts, upTo);
     return OK;
   }
 
@@ -360,7 +361,7 @@ export class TeamPeers {
     if (team === null || team.host !== this.#self) return OK;
     const named = raw.names === undefined ? {} : fields(raw.names, 'names');
     const names = Object.fromEntries(Object.entries(named).filter((entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1].length > 0 && entry[1].length <= 200));
-    this.#store.reported(team, peer.coreId, reportsOf(raw.reports), names);
+    this.#mirror.reported(team, peer.coreId, reportsOf(raw.reports), names);
     return OK;
   }
 

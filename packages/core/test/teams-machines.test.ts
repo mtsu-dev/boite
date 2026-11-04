@@ -7,7 +7,7 @@ import { AGENT_ENV } from '@boite/contracts';
 import { runCli } from '../src/cli.ts';
 import type { CoreClient } from '../src/client.ts';
 import { PeerRefusal } from '../src/coordination-wire.ts';
-import { answerPostId } from '../src/teams/store.ts';
+import { answerPostId } from '../src/teams/snapshots.ts';
 import { makeAgent, scripted, settled, turnsOf, type Answer } from './agent-fixture.ts';
 import { removeDir, startTestCore, waitFor, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';

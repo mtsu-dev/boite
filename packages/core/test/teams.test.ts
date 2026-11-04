@@ -9,7 +9,7 @@ import { RESIDENT_LETTER_TTL_MS } from '../src/coordination.ts';
 import type { CoreClient } from '../src/client.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import type { TurnResult } from '../src/drivers/types.ts';
-import { answerPostId } from '../src/teams/store.ts';
+import { answerPostId } from '../src/teams/snapshots.ts';
 import { planTeamLetter, teamPostLine, teamPrompt } from '../src/teams/prompt.ts';
 import { costing, makeAgent, turnsOf } from './agent-fixture.ts';
 import { echoThread, holdAccountTurns, removeDir, startTestCore, waitFor, type TestCore } from './harness.ts';
@@ -426,7 +426,7 @@ test('a retried publication or post gives one post, and a reused id with other c
   expect((await failure(() => post('Something else', { id: 'p-1' }))).message).toContain('already used for a different post');
   await waitFor(() => posts(h, team).length === 2 && settledWakes(h, ada!.threadId));
   const [wake] = wakes(h, ada!.threadId);
-  const again = h.core.teams.publishAnswer(wake!);
+  const again = h.core.teams.snapshots.publishAnswer(wake!);
   expect(again?.id).toBe(answerPostId(wake!.id));
   expect(posts(h, team)).toHaveLength(2);
   expect(h.core.journal.listTurns(team.threadId)).toHaveLength(2);

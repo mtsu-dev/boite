@@ -99,7 +99,7 @@ export class TeamLetters {
   render(threadId: string, batch: AgentLetter[], mode: 'seen' | 'flight', reply = false): { prompt: string; texts: Map<string, string>; channel: TeamChannel | null } {
     const plain = batch.filter(letter => !letter.team);
     const team = batch.filter(letter => letter.team);
-    const rendering = this.#core.teams.render(threadId, team, mode, reply && plain.length === 0);
+    const rendering = this.#core.teams.snapshots.render(threadId, team, mode, reply && plain.length === 0);
     for (const { letter, seqs, owner } of rendering.leftovers) {
       const now = Date.now();
       this.#side.receive({ ...letter, id: randomUUID(), createdAt: now, expiresAt: now + RESIDENT_LETTER_TTL_MS, status: 'received', error: null, team: { teamId: letter.team!.teamId, triggers: seqs, owner } }, threadId);
