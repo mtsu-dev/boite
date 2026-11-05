@@ -1,5 +1,8 @@
 import { afterEach, expect, test } from 'bun:test';
-import type { MessagePart } from '@boite/contracts';
+import type { AccountId, MessagePart } from '@boite/contracts';
+import { createAcpDriver } from '../src/drivers/acp.ts';
+import type { AcpMemory } from '../src/drivers/acp/session.ts';
+import { setDriver } from '../src/drivers/index.ts';
 import { AcpTurn } from '../src/drivers/acp/turn.ts';
 import { drawUpdate } from '../src/drivers/acp/updates.ts';
 import type { TurnContext } from '../src/drivers/types.ts';
@@ -190,7 +193,7 @@ test('OpenCode 2 compacts at the limit of each thread type and takes a changed o
  * its own window, as a project's configuration can.
  */
 async function twoProjects(sameModel: boolean, body: (setup: {
-  owner: Awaited<ReturnType<TestCore['connect']>>; a: string; b: string; small: string;
+  owner: Awaited<ReturnType<TestCore['connect']>>; a: string; b: string; big: string; small: string; account: string;
   configs: () => Promise<unknown[]>; run: (threadId: string, prompt: string) => Promise<void>;
 }) => Promise<void>): Promise<void> {
   harness = await startTestCore();
@@ -219,7 +222,7 @@ async function twoProjects(sameModel: boolean, body: (setup: {
       await owner.call('turns.start', { threadId, prompt });
       expect(await finished).toMatchObject({ status: 'done', error: null });
     };
-    await body({ owner, a, b, small, configs, run });
+    await body({ owner, a, b, big, small, account: account.id, configs, run });
   } finally {
     for (const key of Object.keys(fixture)) delete process.env[key];
   }
@@ -252,3 +255,34 @@ test('OpenCode 2 takes the default model of the folder a conversation moved to',
     expect((await configs()).at(-1)).toEqual({ buffer: 300_000 });
   });
 }, 60_000);
+
+test('OpenCode 2 forgets what released conversations and a forgotten account resolved', async () => {
+  const memory: AcpMemory = { costPerProcess: new Set(), refusedLoads: new Set(), compactionWindows: new Map(), resolvedModels: new Map() };
+  const driver = createAcpDriver({ loadSdk: () => import('@agentclientprotocol/sdk/unstable') }, memory);
+  const restore = setDriver('acp', driver);
+  try {
+    await twoProjects(false, async ({ owner, big, account, configs, run }) => {
+      const released: string[] = [];
+      for (let turn = 0; turn < 10; turn++) {
+        const id = (await owner.call('threads.create', { projectId: big, accountId: account, providerId: 'opencode-v2' })).id;
+        await run(id, `[done] conversation ${turn}`);
+        await waitFor(() => !harness!.core.threads.isBusy(id));
+        driver.releaseThread!(id);
+        released.push(id);
+      }
+      // Only the folder's resolution stays.
+      expect(memory.resolvedModels.size).toBeLessThanOrEqual(1);
+      // A released conversation on "default" resumes on its folder's window.
+      await run(released[0]!, '[done] resumed');
+      expect((await configs()).at(-1)).toEqual({ buffer: 800_000 });
+      await waitFor(() => !harness!.core.threads.isBusy(released[0]!));
+      driver.releaseThread!(released[0]!);
+      driver.forgetProbes!({ accountId: account as AccountId });
+      expect(memory.resolvedModels.size).toBe(0);
+      expect(memory.compactionWindows.size).toBe(0);
+    });
+  } finally {
+    driver.shutdown?.();
+    restore();
+  }
+}, 120_000);

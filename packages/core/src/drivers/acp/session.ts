@@ -75,9 +75,25 @@ export interface AcpMemory {
    * per folder, since each OpenCode project may default to another model, with
    * the folder it resolved in. A thread first looks up its own, ignored once
    * the thread moved to another folder, then its folder's; neither known keeps
-   * the native ceiling.
+   * the native ceiling. A released thread drops its own entry.
    */
   resolvedModels: Map<string, { cwd: string; model: string }>;
+}
+
+/** A conversation archived, deleted or released resumes on its folder's resolution. */
+export function forgetThreadResolution(memory: AcpMemory, threadId: string): void {
+  const suffix = `\0thread\0${threadId}`;
+  for (const key of [...memory.resolvedModels.keys()]) if (key.endsWith(suffix)) memory.resolvedModels.delete(key);
+}
+
+/** A reloaded agent or a changed account: its windows and resolutions may no longer hold. */
+export function forgetCompaction(memory: AcpMemory, filter: ProbeFilter): void {
+  const matches = (key: string): boolean => {
+    const [providerId, accountId] = key.split('\0');
+    return (filter.providerId === undefined || filter.providerId === providerId) && (filter.accountId === undefined || filter.accountId === accountId);
+  };
+  for (const key of [...memory.compactionWindows.keys()]) if (matches(key)) memory.compactionWindows.delete(key);
+  for (const key of [...memory.resolvedModels.keys()]) if (matches(key)) memory.resolvedModels.delete(key);
 }
 
 function compactionModelKey(ctx: SessionContext, model: string): string {
@@ -194,6 +210,10 @@ export class AcpSession {
     if (this.#ctx === null) return;
     if (filter.providerId !== undefined && filter.providerId !== this.#ctx.provider.id) return;
     if (filter.accountId !== undefined && filter.accountId !== this.#ctx.account.id) return;
+    // The driver dropped the account's windows: an idle process says again what
+    // it runs, or its next turn would restart it on the native ceiling. A busy
+    // one says it as its turn ends.
+    if (!this.busy() && !this.#ended && !this.#closing) this.#noteCompactionWindow(this.#ctx);
     // A session still opening reads its options after the refresh asked: they
     // are the fresh catalog. The composer asks for one as the app opens, while
     // the draft's own process starts, and a catalog lost here costs the first

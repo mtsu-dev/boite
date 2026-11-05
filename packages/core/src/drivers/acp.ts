@@ -1,20 +1,22 @@
 import type { SessionConfigOption } from '@agentclientprotocol/sdk/unstable';
 import type { AccountId, ModelInfo, ProviderDescriptor, ProviderId, ThreadId } from '@boite/contracts';
 import { agentModelsOf, modelsFrom, plainObject } from './acp/models.ts';
-import { AcpSession, sessionKey, type AcpMemory } from './acp/session.ts';
+import { AcpSession, forgetCompaction, forgetThreadResolution, sessionKey, type AcpMemory } from './acp/session.ts';
 import { readModels, withModelEffort, type ProbeEntry } from './acp/probe.ts';
 import { isGrok, MINUTE_MS, type AcpDeps } from './acp/protocol.ts';
 import { AcpTurn } from './acp/turn.ts';
 import type { Driver, LiveTurnSettings, ProbeContext, ProbeFilter, ProbeResult, SessionContext, TurnContext, TurnHandle } from './types.ts';
 import { noteWarmSession } from './driver-log.ts';
 
-/** One ACP agent process per thread, kept between turns the way the Claude one is. */
-export function createAcpDriver(deps: AcpDeps): Driver {
+/**
+ * One ACP agent process per thread, kept between turns the way the Claude one is.
+ * `memory`: what outlives a process, given by a test that reads it.
+ */
+export function createAcpDriver(deps: AcpDeps, memory: AcpMemory = { costPerProcess: new Set<ProviderId>(), refusedLoads: new Set<string>(), compactionWindows: new Map<string, number>(), resolvedModels: new Map<string, { cwd: string; model: string }>() }): Driver {
   const sessions = new Map<ThreadId, AcpSession>();
   const viewed = new Set<ThreadId>();
   const probes = new Map<string, ProbeEntry>();
   let probeRevision = 0;
-  const memory: AcpMemory = { costPerProcess: new Set<ProviderId>(), refusedLoads: new Set<string>(), compactionWindows: new Map<string, number>(), resolvedModels: new Map<string, { cwd: string; model: string }>() };
 
   const keyOf = (providerId: ProviderId, accountId: AccountId): string => `${providerId}::${accountId}`;
 
@@ -184,6 +186,8 @@ export function createAcpDriver(deps: AcpDeps): Driver {
       // A refresh changes nothing about the agent: what a session still opening
       // answers may seed the next one.
       if (filter.refresh !== true) probeRevision += 1;
+      // Dropped before the sessions hear it: a live process notes again what it runs.
+      forgetCompaction(memory, filter);
       for (const session of sessions.values()) session.forgetCatalog(filter);
       // A reloaded or updated agent may count its cost differently.
       if (filter.accountId === undefined) {
@@ -217,6 +221,8 @@ export function createAcpDriver(deps: AcpDeps): Driver {
 
     releaseThread(threadId: ThreadId): void {
       viewed.delete(threadId);
+      // Archived, deleted or released: it resumes on its folder's resolution.
+      forgetThreadResolution(memory, threadId);
       const session = sessions.get(threadId);
       if (session === undefined || session.busy()) return;
       sessions.delete(threadId);
