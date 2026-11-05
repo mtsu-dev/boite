@@ -256,12 +256,24 @@ test('OpenCode 2 takes the default model of the folder a conversation moved to',
   });
 }, 60_000);
 
-test('OpenCode 2 forgets what released conversations and a forgotten account resolved', async () => {
+/** A driver of its own, whose caches the test reads. */
+async function withMemory(body: (driver: ReturnType<typeof createAcpDriver>, memory: AcpMemory) => Promise<void>): Promise<void> {
   const memory: AcpMemory = { costPerProcess: new Set(), refusedLoads: new Set(), compactionWindows: new Map(), resolvedModels: new Map() };
   const driver = createAcpDriver({ loadSdk: () => import('@agentclientprotocol/sdk/unstable') }, memory);
   const restore = setDriver('acp', driver);
-  try {
-    await twoProjects(false, async ({ owner, big, account, configs, run }) => {
+  try { await body(driver, memory); } finally {
+    driver.shutdown?.();
+    restore();
+  }
+}
+
+test('OpenCode 2 forgets what released conversations and a forgotten account resolved', async () => {
+  await withMemory(async (driver, memory) => {
+    await twoProjects(false, async ({ owner, a, big, account, configs, run }) => {
+      // No process outlives its turn: none notes its window again on `forgetProbes`.
+      await owner.call('settings.set', { warmProcessMinutes: 0 });
+      // A stays live in the folder, so the folder keeps its entries.
+      await run(a, '[done] A1');
       const released: string[] = [];
       for (let turn = 0; turn < 10; turn++) {
         const id = (await owner.call('threads.create', { projectId: big, accountId: account, providerId: 'opencode-v2' })).id;
@@ -270,8 +282,8 @@ test('OpenCode 2 forgets what released conversations and a forgotten account res
         driver.releaseThread!(id);
         released.push(id);
       }
-      // Only the folder's resolution stays.
-      expect(memory.resolvedModels.size).toBeLessThanOrEqual(1);
+      // Only A's own resolution and the folder's stay.
+      expect(memory.resolvedModels.size).toBe(2);
       // A released conversation on "default" resumes on its folder's window.
       await run(released[0]!, '[done] resumed');
       expect((await configs()).at(-1)).toEqual({ buffer: 800_000 });
@@ -281,8 +293,53 @@ test('OpenCode 2 forgets what released conversations and a forgotten account res
       expect(memory.resolvedModels.size).toBe(0);
       expect(memory.compactionWindows.size).toBe(0);
     });
-  } finally {
-    driver.shutdown?.();
-    restore();
-  }
+  });
 }, 120_000);
+
+test('OpenCode 2 forgets the folders of successive worktrees once their conversations are released', async () => {
+  await withMemory(async (driver, memory) => {
+    await twoProjects(false, async ({ owner, account, run }) => {
+      for (let n = 0; n < 10; n++) {
+        const path = join(harness!.dataDir, `worktree-${n}`);
+        mkdirSync(path, { recursive: true });
+        const projectId = (await owner.call('projects.add', { path, name: `worktree-${n}` })).id;
+        const id = (await owner.call('threads.create', { projectId, accountId: account, providerId: 'opencode-v2' })).id;
+        await run(id, `[done] worktree ${n}`);
+        await waitFor(() => !harness!.core.threads.isBusy(id));
+        driver.releaseThread!(id);
+      }
+      expect(memory.resolvedModels.size).toBe(0);
+      expect(memory.compactionWindows.size).toBe(0);
+    });
+  });
+}, 120_000);
+
+test('OpenCode 2 keeps the folder of a live conversation while another folder is released', async () => {
+  await withMemory(async (driver, memory) => {
+    await twoProjects(false, async ({ a, b, run }) => {
+      await run(a, '[done] A1');
+      await run(b, '[done] B1');
+      await waitFor(() => !harness!.core.threads.isBusy(b));
+      driver.releaseThread!(b);
+      // A's own resolution, its folder's and its window; nothing of B's folder.
+      expect([...memory.resolvedModels.values()].map(resolved => resolved.cwd.endsWith('big'))).toEqual([true, true]);
+      expect([...memory.compactionWindows.keys()].map(key => key.split('\0')[2]!.endsWith('big'))).toEqual([true]);
+    });
+  });
+}, 60_000);
+
+test('OpenCode 2 gets the buffer back in a released folder after the next idle turn', async () => {
+  await withMemory(async (driver) => {
+    await twoProjects(false, async ({ b, configs, run }) => {
+      await run(b, '[done] B1');
+      await run(b, '[done] B2');
+      await waitFor(() => !harness!.core.threads.isBusy(b));
+      driver.releaseThread!(b);
+      const before = (await configs()).length;
+      // OpenCode's own ceiling first, then the buffer once the window is known again.
+      await run(b, '[done] B3');
+      await run(b, '[done] B4');
+      expect((await configs()).slice(before)).toEqual([undefined, { buffer: 300_000 }]);
+    });
+  });
+}, 60_000);

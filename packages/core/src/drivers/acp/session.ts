@@ -96,6 +96,22 @@ export function forgetCompaction(memory: AcpMemory, filter: ProbeFilter): void {
   for (const key of [...memory.resolvedModels.keys()]) if (matches(key)) memory.resolvedModels.delete(key);
 }
 
+/** Where a conversation runs, for the folder entries its account keeps. */
+export interface CompactionPlace { providerId: string; accountId: string; cwd: string }
+
+/**
+ * The account's last live conversation in a folder left it: the folder's
+ * resolution, its windows and what other threads resolved there go. A
+ * conversation resuming there starts on OpenCode's own ceiling and gets its
+ * buffer once a process read the window again.
+ */
+export function forgetFolder(memory: AcpMemory, place: CompactionPlace): void {
+  const scope = `${place.providerId}\0${place.accountId}\0`;
+  const windows = `${scope}${place.cwd}\0`;
+  for (const key of [...memory.compactionWindows.keys()]) if (key.startsWith(windows)) memory.compactionWindows.delete(key);
+  for (const [key, resolved] of [...memory.resolvedModels]) if (key.startsWith(scope) && resolved.cwd === place.cwd) memory.resolvedModels.delete(key);
+}
+
 function compactionModelKey(ctx: SessionContext, model: string): string {
   return `${ctx.provider.id}\0${ctx.account.id}\0${ctx.thread.cwd}\0${model}`;
 }
