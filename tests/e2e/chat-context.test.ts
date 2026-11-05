@@ -22,12 +22,13 @@ async function capture(name: string) {
 test('silent work has no typing bubble, live text stays visible, and receipts follow actual activity', async () => {
   await update(`window.__answer = JSON.parse(JSON.stringify(thread.messages.at(-1)));`);
   await update(`thread.messages = thread.messages.filter(m => m.role === 'user'); const turn = thread.turns[0]; turn.status = 'running'; turn.startedAt = Date.now(); turn.finishedAt = null; thread.status = 'running';`);
-  await page.waitFor(`document.querySelector('[data-testid="turn-summary"][data-status="running"]')`);
+  // While the turn runs, the status strip above the composer carries its time; the turn's own line stays away until it has progress to add.
+  await page.waitFor(`document.querySelector('[data-testid="status-strip-working"]')`);
   expect(await page.evaluate(`document.querySelector('.author') === null`)).toBe(true);
   expect(await page.evaluate(`document.querySelectorAll('.receipts .received').length`)).toBe(1);
-  expect(await page.evaluate(`document.querySelector('[data-testid="turn-elapsed"]').textContent`)).toMatch(/^Working for \d+s$/);
+  expect(await page.evaluate(`document.querySelector('[data-testid="status-strip-elapsed"]').textContent`)).toMatch(/^\d+s$/);
+  expect(await page.evaluate(`document.querySelector('[data-testid="turn-summary"]') === null`)).toBe(true);
   expect(await page.evaluate(`document.querySelector('[data-testid="turn-finished-at"]') === null`)).toBe(true);
-  expect(await page.evaluate(`document.querySelector('[data-testid="turn-summary"]').getBoundingClientRect().left < document.querySelector('.bubble').getBoundingClientRect().left`)).toBe(true);
   expect(await page.evaluate(`document.querySelector('[data-testid="typing-indicator"]') === null`)).toBe(true);
   expect(await page.evaluate(`document.querySelector('.reply-pending') === null`)).toBe(true);
   await update(`thread.turns[0].status = 'queued'; thread.status = 'queued';`);
@@ -112,7 +113,10 @@ test('silent work has no typing bubble, live text stays visible, and receipts fo
   await update(`const turn = thread.turns[0]; turn.status = 'done'; turn.finishedAt = turn.startedAt + 3800; thread.status = 'idle'; thread.messages.at(-1).state = 'complete';`);
   await page.waitFor(`document.querySelector('[data-testid="turn-summary"]').dataset.status === 'done'`);
   expect(await page.evaluate(`document.querySelector('[data-testid="typing-indicator"]') === null`)).toBe(true);
-  expect(await page.evaluate(`document.querySelector('[data-testid="turn-elapsed"]').textContent`)).toBe('Worked for 3s');
+  // A finished answer's footer reads the bare stopwatch, its words in the tooltip, left of the user's bubble.
+  expect(await page.evaluate(`document.querySelector('[data-testid="turn-elapsed"]').textContent`)).toBe('3s');
+  expect(await page.evaluate(`document.querySelector('[data-testid="turn-elapsed"]').title`)).toBe('Worked for 3s');
+  expect(await page.evaluate(`document.querySelector('[data-testid="turn-summary"]').getBoundingClientRect().left < document.querySelector('.bubble').getBoundingClientRect().left`)).toBe(true);
   expect(await page.evaluate(`document.querySelector('[data-testid="turn-finished-at"]').textContent`)).toMatch(/^done \d{1,2}:\d{2}/);
   expect(await page.evaluate(`document.querySelector('[data-testid="turn-tokens"]').textContent`)).toContain('tokens');
   await capture('quiet-chat-done');
@@ -220,7 +224,8 @@ test('compaction stays distinct on desktop and phone, then yields to normal work
   expect(await page.evaluate(`document.querySelector('[data-testid="typing-indicator"], [data-testid="compaction-elapsed"], [data-testid="turn-provider-signal"]') === null`)).toBe(true);
   await update(`thread.progress.phase='working';`);
   await page.waitFor(`!document.querySelector('[data-testid="turn-summary"].compacting') && document.querySelector('[data-testid="typing-indicator"]')`);
-  expect(await page.evaluate(`document.querySelector('[data-testid="turn-elapsed"]').textContent`)).toMatch(/^Working for /);
+  expect(await page.evaluate(`document.querySelector('[data-testid="status-strip-elapsed"]').textContent`)).toMatch(/^2m \d{2}s$/);
+  expect(await page.evaluate(`document.querySelector('[data-testid="turn-elapsed"]') === null`)).toBe(true);
   expect(await page.evaluate(`document.querySelector('[data-testid="paragraph"] strong').textContent`)).toBe('finished');
   expect(await page.evaluate(`document.querySelector('[data-testid="paragraph-pending"]').textContent`)).toBe('An **unfinished paragraph');
   expect(await page.evaluate(`document.querySelector('[data-testid="paragraph-pending"] strong') === null`)).toBe(true);
@@ -268,6 +273,9 @@ test('running edits group by default and expose successful files and diffs on de
     await page.send('Emulation.setDeviceMetricsOverride', {width:390,height:844,deviceScaleFactor:1,mobile:true});
     await capture('running-edits-phone');
     expect(await page.evaluate(`(() => {const r=document.querySelector('[data-testid="turn-files"]').getBoundingClientRect(); return r.left>=0 && r.right<=innerWidth;})()`)).toBe(true);
+    // The header stays one line on a phone: the touch-sized diff button had wrapped onto a line of its own.
+    expect(await page.evaluate(`(() => {const files=document.querySelector('[data-testid="turn-files-toggle"]').getBoundingClientRect(), diff=document.querySelector('[data-testid="turn-diff-toggle"]').getBoundingClientRect(); return Math.abs((files.top+files.bottom)/2-(diff.top+diff.bottom)/2) < 1;})()`)).toBe(true);
+    expect(await page.evaluate(`document.querySelector('[data-testid="turn-diff-toggle"]').title`)).toBe('Show diff');
     await page.send('Emulation.setDeviceMetricsOverride', {width:1300,height:850,deviceScaleFactor:1,mobile:false});
 
     await page.click('[data-testid="tool-group-toggle"]');

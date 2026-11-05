@@ -85,7 +85,7 @@
     {/if}
     <span class="tools">
       {#if diffs.length > 0 || deferred.length > 0}
-        <button type="button" class="ghost small" data-testid="turn-diff-toggle" aria-expanded={showDiff} onclick={() => { if (!showDiff) { attempt += 1; loadError = null; } diffToggled = !showDiff; }}>
+        <button type="button" class="ghost small diff-toggle" data-testid="turn-diff-toggle" aria-expanded={showDiff} title={showDiff ? strings.chat.hideTurnDiff : strings.chat.showTurnDiff} onclick={() => { if (!showDiff) { attempt += 1; loadError = null; } diffToggled = !showDiff; }}>
           <FileDiff size={14} /><span class="ui-label">{showDiff ? strings.chat.hideTurnDiff : strings.chat.showTurnDiff}</span>
         </button>
       {/if}
@@ -326,5 +326,11 @@
   @media (pointer: coarse), (max-width: 720px) {
     .folder-row, .row, .open { min-height: var(--touch-target); }
     .reveal { opacity: 1; }
+  }
+  /* A phone's touch-sized buttons left no room for the words, and the diff
+     button wrapped onto a line of its own: there it is its glyph, named by its tooltip. */
+  @media (max-width: 720px) {
+    .diff-toggle { justify-content: center; min-width: var(--touch-target); padding: 0; }
+    .diff-toggle .ui-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   }
 </style>
