@@ -17,6 +17,7 @@ export const platform: ProcessPlatform = {
   firewall: { query: firewallQuery, allow: firewallAllow },
   // bun:ffi and the WinRT capture objects load with the first `boite window`, never at startup.
   windowCapture: async () => (await import('./window-capture.ts')).loadWindowCapture(),
+  hiddenDesktops: async () => (await import('./hidden-desktop.ts')).hiddenDesktops,
   retain(events, protections) {
     jobs.retainJobs(events);
     guard.retainGuard(protections);

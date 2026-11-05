@@ -560,6 +560,11 @@ settings, or a card the bot asks with `boite settings bot request projects
 +<machine>/<project>`); the profile keeps it as `<core-id>/<project-id>` and
 `boite settings bot projects` lists those projects as `<machine>/<name>`.
 
+The Projects field in the bot's settings groups its choices by machine.
+Other members of its host's group appear alongside local projects. A machine
+that is offline or has not enabled bots shows the reason; existing selections
+can still be removed while new selections are disabled.
+
 **That machine decides.** Its own `groupBots` setting, **Bots from the other
 machines** on the Machines page, off by default, is the permission that
 counts (`agents/group-host.ts`). It is separate from `groupThreads`: letting

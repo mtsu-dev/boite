@@ -152,7 +152,9 @@ Owner methods: `teams.create`, `teams.update`, `teams.archive`,
 `teams.members.add`, `teams.members.remove`, `teams.pause`, `teams.post` and
 `teams.list` and `teams.read` without a thread. Members are named by bot id
 or name. `teams.create`, `teams.members.add` and `teams.members.remove` take
-the `card` of a bot's proposal, which applies it and settles the card.
+the `card` of a bot's proposal, which applies it and settles the card;
+without one, they are the owner's own: the Bots page's New team and the team
+chat's menu call them ([In the app](#in-the-app)).
 
 The app draws a bot's card (`boite team propose`, `invite` or `leave`) in
 the dock above the bot's composer, with the core's only option, Refuse, and
@@ -169,7 +171,10 @@ and an update of the app.
 Teams needs Bots: its switch stays greyed while Bots is off, and turning Bots
 off turns Teams off too. With the experiment on, a Teams section heads the
 Bots page's list, above the bots, on the desktop and on the phone
-(`components/agents/AgentsRail.svelte`). Each team that is not archived is a
+(`components/agents/AgentsRail.svelte`). The heading stays while there is no
+team yet, with one line under it, "No team yet: put a few bots in one chat.",
+and beside it the New team button; a search shows the section only over the
+teams it finds. Each team that is not archived is a
 row in the style of a bot's: its members' pictures, its name, who is in it,
 the time of its last post and the unread mark of its chat, the team with the
 latest post first. The page's search filters the teams by name, as it filters
@@ -179,9 +184,33 @@ and its back arrow returns to the list. The chat is no thread row of the
 Conversations lists, because the core refuses an agent's composer there, and
 a thread with `teamId` opens on the Bots page.
 
+New team opens a dialog (`components/teams/TeamDialog.svelte`, the checks
+and calls in `lib/team-draft.ts`): a name, an optional brief, and the members,
+picked among the bots of the page's machine, each a row with its picture. A
+bot of another machine, and a bot moving or waiting to move, is listed greyed
+with an "i" that says why, and a tap on it says the same under the list. The
+dialog asks for a name, refuses one that starts with `@`, says a taken name as
+it is typed, and asks for at least one bot, up to 12: the core's own checks,
+which still answer for themselves. Create, or Enter in the name, calls
+`teams.create` on the page's machine without a card, so `createdBy` is the
+owner, then opens the new team's chat. Escape, Cancel or the scrim close it,
+and its exit animates.
+
 The team chat (`components/teams/TeamChat.svelte`) replaces the conversation
-view of a thread with `teamId`. The header shows the team's pictures, its name
-and "Team chat · N bots and you", without rename, menu, terminal or panel.
+view of a thread with `teamId`. The header (`components/teams/TeamHeader.svelte`)
+shows the team's pictures, its name and "Team chat · N bots and you", or
+Paused or Archived, without terminal or panel. Its menu holds Edit the team,
+Pause or Resume, and Archive, which asks first; an archived team's menu holds
+Edit the team and Restore. Edit opens the same dialog on the team: its name and
+brief go through `teams.update`, then each bot taken out through
+`teams.members.remove`, then each new one through `teams.members.add`, worked
+out against the team `teams.list` returns at that moment; a refusal stops
+there, shows the core's reason in the dialog, and what went before it stays
+done, so Save again sends only what is still missing. A member this machine no
+longer lists stays in the dialog, greyed, so it can be taken out; an edit may
+leave a team with no member, a new team needs one. An archived team takes no
+new member, and restoring it waits until every member is a bot of this machine
+again: taking out the ones that left, even all of them, lets it come back.
 Over the posts, the members; a member opens its bot's page. The posts are the
 thread's messages, oldest first, paged like a thread's, so they arrive live and
 opening the chat marks it read. Each post shows:
@@ -206,6 +235,10 @@ core that does not answer for the team, a note stands in the composer's place.
 A paired phone lists the teams and posts as the owner (`teams.list`,
 `teams.post` and the `teams.changed` event in `DEVICE_METHODS` and
 `DEVICE_EVENTS`); the core still gates both on the desktop's experiment.
+Creating, changing, pausing and archiving a team are not device methods: the
+phone shows New team greyed, whose tap says "Only the computer running Boite
+can create or change teams.", and the chat's menu with every item greyed and
+the same reason.
 
 ## Commands
 
@@ -253,6 +286,5 @@ invite or leave.
   recipient's own conversation (`collaboration.read`), which shows what that
   bot received, like a message the owner sends it directly. The team chat
   itself stays out of coordination.
-- The app has no team settings yet (name, brief, members, pause, archive) and
-  does not show where each post stands per recipient (`deliveries` of
-  `teams.read`); the contracts and the in-memory client carry the methods.
+- The app does not show where each post stands per recipient (`deliveries`
+  of `teams.read`); the contracts and the in-memory client carry it.
