@@ -223,7 +223,8 @@ password and the same isolated environment. Closing its stdin ends its lease.
 The native event stream draws tools, reasoning, permissions and usage; plain
 tool text stays output, while images and file diffs stay attached documents.
 Follow-ups use the native prompt inbox with `delivery: "steer"`, so queued
-messages and Send now join the running execution. OpenCode 2's ACP endpoint
+messages join the running execution at tool boundaries. Send now interrupts
+the active turn before starting its queued input. OpenCode 2's ACP endpoint
 rejects concurrent prompts. Events received during a follow-up submission wait
 until its acceptance is journalled, keeping the user message before its reply.
 Accepted inbox IDs remain tracked until delivery or cancellation, so a previous

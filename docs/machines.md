@@ -445,7 +445,8 @@ turn. Execution uses the captured selection without replacing the current
 picker. Permissions and blocking questions still hold delivery.
 
 Ordinary follow-ups typed during a running turn use the same server storage,
-but retain native steering at tool boundaries and Send now. Delivery receipts
+but retain native steering at tool boundaries. Send now interrupts the active
+turn before delivering them as a new turn. Delivery receipts
 prevent a stale cache from replaying consumed entries. A refused or ambiguous
 submission pauses the queue with its reason; unconfirmed delivery is never
 retried automatically. Taking an entry back into the box and sending it again

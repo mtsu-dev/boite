@@ -1,4 +1,5 @@
 /** OpenCode 2's native API, with an ACP fallback to reproduce the old refusal. */
+import { instructionsOf } from './history.ts';
 export {};
 if (!process.argv.includes('serve')) {
   await import('./acp-agent.ts');
@@ -30,6 +31,7 @@ if (!process.argv.includes('serve')) {
     if (url.pathname === '/api/session' || (url.pathname === `/api/session/${sessionID}` && request.method === 'GET')) return Response.json({ data: session() });
     if (url.pathname.endsWith('/prompt')) {
       const body = await request.json() as { text: string; delivery: string; files?: unknown[] };
+      const instructions = instructionsOf(body.text);
       if (body.delivery !== 'steer') return new Response('delivery must be steer', { status: 400 });
       const inbox = { id: `msg_fixture_${++inboxSequence}`, delivery: 'steer' };
       if (lateAdmission) {
@@ -54,9 +56,9 @@ if (!process.argv.includes('serve')) {
         event('permission.asked', { sessionID: 'ses_child', id: 'permission_child', action: 'shell', metadata: { command: 'git status' } });
         return Response.json({ data: inbox });
       }
-      if (body.text.includes('[slow]')) {
-        lateAdmission = body.text.includes('[late-admission]');
-        cancelAdmission = body.text.includes('[cancelled]');
+      if (instructions.includes('[slow]')) {
+        lateAdmission = instructions.includes('[late-admission]');
+        cancelAdmission = instructions.includes('[cancelled]');
         event('session.execution.started', {});
         const tool = async () => {
           const gate = process.env['OPENCODE_FIXTURE_TOOL_GATE'];

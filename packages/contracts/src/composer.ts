@@ -77,6 +77,7 @@ export interface ComposerRecord {
 
 export interface ComposerRpcMethods {
   'composer.list': { params: {}; result: ComposerRecord[] };
+  /** sendNow interrupts the active turn before delivering queued input as a new turn. Pending cards still hold delivery. */
   'composer.put': { params: Pick<ComposerRecord, 'section' | 'id' | 'value'> & { expectedRevision: number; sendNow?: true }; result: { accepted: boolean; record: ComposerRecord } };
   'composer.asset.put': { params: { attachment: Attachment; incognito?: true }; result: { assetId: string } };
   'composer.asset.get': { params: { assetId: string }; result: Attachment };

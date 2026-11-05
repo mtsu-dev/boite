@@ -4,7 +4,6 @@ import {
   type ComposerRecord, type ComposerValue, type RpcEventName, type RpcEvents,
 } from '@boite/contracts';
 import { RpcFailure } from '../client';
-import { secureId } from '../secure-id';
 import type { FakeContext, FakeMethods } from './context';
 import { refusal } from './shared';
 
@@ -28,6 +27,7 @@ export class FakeComposerState {
   private pending = false;
   private methods = new Map<FakeContext, () => FakeMethods>();
   private boundaries = new Map<string, string>();
+  private forced = new Map<string, string>();
 
   attach(ctx: FakeContext, methods: () => FakeMethods): void {
     this.clients.add(ctx);
@@ -49,6 +49,7 @@ export class FakeComposerState {
     const key = keyOf('inputs', id);
     this.records.delete(key); this.consumed.delete(key);
     this.boundaries.delete(id);
+    this.forced.delete(id);
   }
 
   write(section: ComposerRecord['section'], id: string, value: ComposerValue | null, owner?: FakeContext): ComposerRecord {
@@ -58,7 +59,7 @@ export class FakeComposerState {
     if (owner) this.owners.set(key, owner);
     this.records.set(key, record);
     // As the core, a boundary or a Send now lasts only while the queue holds something.
-    if (section === 'inputs' && !value?.input.queued.length) this.boundaries.delete(id);
+    if (section === 'inputs' && !value?.input.queued.length) { this.boundaries.delete(id); this.forced.delete(id); }
     for (const client of this.clients) if (this.visible(key, client)) client.emit('composer.updated', copy(record));
     return copy(record);
   }
@@ -76,8 +77,11 @@ export class FakeComposerState {
     if (['turn.finished', 'turn.toolCompleted', 'permission.resolved', 'question.answered', 'thread.updated'].includes(event)) this.schedule(ctx);
   }
 
-  /** Send now is a boundary of its own, as the core's: it waits out a request and goes at the next steering attempt. */
-  sendNow(id: string): void { this.boundaries.set(id, `manual-${secureId()}`); }
+  /** As the core, interrupt for this queued item once pending cards have settled. */
+  sendNow(id: string): void {
+    const head = this.records.get(keyOf('inputs', id))?.value?.input.queued[0];
+    if (head) this.forced.set(id, head.id);
+  }
 
   schedule(ctx: FakeContext): void {
     if (this.pending) return;
@@ -105,6 +109,14 @@ export class FakeComposerState {
     if (!thread || thread.archived || ['queued', 'waiting'].includes(thread.status)) return;
     if ([...ctx.pendingPermissions.values()].some(item => item.request.threadId === row.id) || [...ctx.pendingQuestions.values()].some(item => item.request.threadId === row.id && !item.request.async)) return;
     const running = thread.status === 'running';
+    const forced = this.forced.get(row.id) === head.id;
+    this.forced.delete(row.id);
+    if (running && forced) {
+      this.delivering.set(key, [head]);
+      try { await ctx.stopTurn(row.id); }
+      finally { this.delivering.delete(key); this.schedule(ctx); }
+      return;
+    }
     const boundary = this.boundaries.get(row.id);
     if (running && (head.request || isComposerActivity(head.text) || !boundary || head.afterBoundary === boundary)) return;
     const batch = composerBatch(value.input.queued, id => {
