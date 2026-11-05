@@ -98,6 +98,9 @@ it behind.
   `undoable: false`, and the deleted list never shows it.
 - A core that stops, or starts after a crash, erases every incognito
   conversation it still holds and the whole `incognito` folder.
+- Its turns leave the usage page with it. The usage that a project removal or
+  a purge keeps for the page ([usage](usage.md#usagehistory)) skips an
+  incognito conversation and the threads it started.
 - Forking or moving one is refused: either would keep a copy.
 
 What the agent's own CLI writes outside that folder, such as its session

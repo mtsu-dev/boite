@@ -13,8 +13,9 @@ import { createSharedAccess } from '../contacts/access-journal.ts';
 import { createSharedReview } from '../contacts/review-journal.ts';
 import { createTeamMachines, createTeams } from '../teams/journal.ts';
 import { createCouncil } from '../council/journal.ts';
+import { createRemovedTurnUsage } from './usage-sums.ts';
 
-export const SCHEMA_VERSION = 47;
+export const SCHEMA_VERSION = 48;
 
 /** Raised when the journal was written by a newer core than this one. */
 export class JournalTooNewError extends Error {
@@ -487,6 +488,11 @@ export function migrate(db: Database, file: string): { from: number; to: number 
     if (!hasColumn('threads', 'debate_id')) db.exec('ALTER TABLE threads ADD COLUMN debate_id TEXT');
     createCouncil(db);
     version = 47;
+  }
+  // The usage of the turns a project removal or a purge erased, without their content (`usage-sums.ts`).
+  if (version < 48) {
+    createRemovedTurnUsage(db);
+    version = 48;
   }
   createSharedProjects(db);
   createSharedBoard(db);

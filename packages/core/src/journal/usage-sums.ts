@@ -75,8 +75,44 @@ const TURN_ROUTE = `COALESCE(json_extract(t.execution, '$.providerId'), th.provi
   CASE WHEN t.execution IS NULL THEN th.model ELSE json_extract(t.execution, '$.model') END AS model`;
 
 /**
+ * `removed_turn_usage`: what `usageByBucket` counts of each finished turn a
+ * project removal or a purge of the deleted conversations erased, so the usage
+ * page keeps counting it. A row holds the exact time the turn finished, the
+ * provider and model it ran on, resolved as `TURN_ROUTE` reads them, and its
+ * `Usage` as stored, which holds token counts and a cost only (null when the
+ * turn reported none). Nothing names the turn, its thread or its project.
+ */
+export function createRemovedTurnUsage(db: Database): void {
+  db.exec(`CREATE TABLE IF NOT EXISTS removed_turn_usage (
+    finished_at INTEGER NOT NULL,
+    provider_id TEXT NOT NULL,
+    model TEXT,
+    usage TEXT
+  )`);
+  db.exec('CREATE INDEX IF NOT EXISTS removed_turn_usage_by_finished ON removed_turn_usage (finished_at)');
+}
+
+/**
+ * Copies the finished turns of `threadIds` into `removed_turn_usage`, in the
+ * transaction that erases them, so a turn is counted from one table or the
+ * other and never twice. An incognito conversation and the threads it started
+ * leave nothing (`docs/drafts.md`), even when a project removal takes them.
+ */
+export function keepRemovedTurnUsage(db: Database, threadIds: readonly string[]): void {
+  db.query(
+    `INSERT INTO removed_turn_usage (finished_at, provider_id, model, usage)
+     SELECT t.finished_at, ${TURN_ROUTE}, t.usage
+     FROM turns t LEFT JOIN threads th ON th.id = t.thread_id
+     WHERE t.thread_id IN (SELECT value FROM json_each(?)) AND t.finished_at IS NOT NULL
+       AND COALESCE(th.incognito, 0) = 0
+       AND NOT EXISTS (SELECT 1 FROM threads p WHERE p.id = th.parent_thread_id AND p.incognito = 1)`,
+  ).run(JSON.stringify(threadIds));
+}
+
+/**
  * Finished turns summed per bucket, provider and model: bucket `i` holds the
- * turns with `edges[i] <= finished_at < edges[i + 1]`. A turn saved before
+ * turns with `edges[i] <= finished_at < edges[i + 1]`, those still in `turns`
+ * and those a removal erased (`removed_turn_usage`). A turn saved before
  * execution snapshots counts under its thread's provider and model. Token
  * buckets are summed as each turn stored them (`Usage`), the turns an older
  * core recorded apart from the others.
@@ -86,10 +122,14 @@ export function usageByBucket(db: Database, edges: readonly number[]): UsageSumR
     .query(
       `WITH e AS (SELECT CAST(key AS INTEGER) AS i, value AS lo, LEAD(value) OVER (ORDER BY CAST(key AS INTEGER)) AS hi FROM json_each(?)),
        x AS (
-         SELECT e.i AS bucket, t.thread_id, t.usage, ${LEGACY},
+         SELECT e.i AS bucket, t.usage, ${LEGACY},
            ${TURN_ROUTE}
          FROM e JOIN turns t ON t.finished_at >= e.lo AND t.finished_at < e.hi
          LEFT JOIN threads th ON th.id = t.thread_id
+         WHERE e.hi IS NOT NULL
+         UNION ALL
+         SELECT e.i, t.usage, ${LEGACY}, t.provider_id, t.model
+         FROM e JOIN removed_turn_usage t ON t.finished_at >= e.lo AND t.finished_at < e.hi
          WHERE e.hi IS NOT NULL
        )
        SELECT bucket, provider_id, model, legacy, ${USAGE_SUMS}
@@ -100,7 +140,8 @@ export function usageByBucket(db: Database, edges: readonly number[]): UsageSumR
 
 /**
  * The same sums per thread, provider and model over `[from, to)`, with what a
- * list needs to name each thread.
+ * list needs to name each thread. The turns a removal erased name no thread
+ * and stay out.
  */
 export function usageByThread(db: Database, from: number, to: number): UsageThreadRow[] {
   return db
