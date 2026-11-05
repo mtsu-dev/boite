@@ -14,7 +14,7 @@ export function createAcpDriver(deps: AcpDeps): Driver {
   const viewed = new Set<ThreadId>();
   const probes = new Map<string, ProbeEntry>();
   let probeRevision = 0;
-  const memory: AcpMemory = { costPerProcess: new Set<ProviderId>(), refusedLoads: new Set<string>(), compactionWindows: new Map<string, number>() };
+  const memory: AcpMemory = { costPerProcess: new Set<ProviderId>(), refusedLoads: new Set<string>(), compactionWindows: new Map<string, number>(), resolvedModels: new Map<string, string>() };
 
   const keyOf = (providerId: ProviderId, accountId: AccountId): string => `${providerId}::${accountId}`;
 
@@ -231,6 +231,7 @@ export function createAcpDriver(deps: AcpDeps): Driver {
       memory.costPerProcess.clear();
       memory.refusedLoads.clear();
       memory.compactionWindows.clear();
+      memory.resolvedModels.clear();
       for (const session of open) session.close(null);
     },
   };

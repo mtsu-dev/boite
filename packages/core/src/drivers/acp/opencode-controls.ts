@@ -85,6 +85,12 @@ export class OpenCodeControls {
     return input > 0 && context > 0 ? Math.min(input, context) : input || context;
   }
 
+  /** The session's model as `provider/model`, empty until the session is read. */
+  currentModel(): string {
+    const provider = text(this.model['providerID']), id = text(this.model['id']);
+    return provider && id ? `${provider}/${id}` : '';
+  }
+
   #limit(): Record<string, unknown> {
     const model = this.models.find(model => model['providerID'] === this.model['providerID'] && model['id'] === this.model['id']);
     return object(model?.['limit']);

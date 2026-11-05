@@ -3,6 +3,7 @@ import type { MessagePart } from '@boite/contracts';
 import { AcpTurn } from '../src/drivers/acp/turn.ts';
 import { drawUpdate } from '../src/drivers/acp/updates.ts';
 import type { TurnContext } from '../src/drivers/types.ts';
+import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { startTestCore, waitFor, type TestCore } from './harness.ts';
 
@@ -179,5 +180,48 @@ test('OpenCode 2 compacts at the limit of each thread type and takes a changed o
   } finally {
     delete process.env['OPENCODE_FIXTURE_CONFIG_LOG'];
     delete process.env['OPENCODE_FIXTURE_WINDOW'];
+  }
+}, 60_000);
+
+test('OpenCode 2 keeps the window of each project default model apart', async () => {
+  harness = await startTestCore();
+  const owner = await harness.connect();
+  const log = join(harness.dataDir, 'opencode-configs.jsonl');
+  process.env['OPENCODE_FIXTURE_CONFIG_LOG'] = log;
+  process.env['OPENCODE_FIXTURE_WINDOW'] = '1000000';
+  process.env['OPENCODE_FIXTURE_SMALL_WINDOW'] = '500000';
+  try {
+    const profile = { executable: [{ kind: 'file' as const, value: process.execPath }], detect: {}, isolation: {}, launch: { args: [join(import.meta.dir, 'fixtures/opencode2-server.ts'), 'acp'] } };
+    Object.assign(harness.core.providers.require('opencode-v2'), { auth: { kind: 'none' }, env: {}, profiles: { windows: profile, linux: profile, macos: profile } });
+    await owner.call('providers.setEnabled', { providerId: 'opencode-v2', enabled: true });
+    await owner.call('settings.set', { warmProcessMinutes: 5, autoCompact: { tokens: 200_000, moments: [] } });
+    const account = await owner.call('accounts.add', { providerId: 'opencode-v2', label: 'Fixture' });
+    // One account, two projects whose OpenCode default models differ: the thread's model reads "default" in both.
+    const thread = async (name: string) => {
+      const path = join(harness!.dataDir, name);
+      mkdirSync(path, { recursive: true });
+      const project = await owner.call('projects.add', { path, name });
+      return (await owner.call('threads.create', { projectId: project.id, accountId: account.id, providerId: 'opencode-v2' })).id;
+    };
+    const a = await thread('big'), b = await thread('small');
+    const configs = async () => (await Bun.file(log).text()).trim().split('\n').map(line => (JSON.parse(line) as Record<string, unknown>)['compaction']);
+    const run = async (threadId: string, prompt: string) => {
+      await waitFor(() => !harness!.core.threads.isBusy(threadId));
+      const finished = owner.next('turn.finished', result => result.threadId === threadId, 20_000);
+      await owner.call('turns.start', { threadId, prompt });
+      expect(await finished).toMatchObject({ status: 'done', error: null });
+    };
+    await run(a, '[done] A1');
+    await run(a, '[done] A2');
+    // B's default model is not known yet: OpenCode keeps its own ceiling, then takes B's window.
+    await run(b, '[done] B1');
+    await run(b, '[done] B2');
+    // A turn of B never changes A's buffer: A's process stays.
+    await run(a, '[done] A3');
+    expect(await configs()).toEqual([undefined, { buffer: 800_000 }, undefined, { buffer: 300_000 }]);
+  } finally {
+    delete process.env['OPENCODE_FIXTURE_CONFIG_LOG'];
+    delete process.env['OPENCODE_FIXTURE_WINDOW'];
+    delete process.env['OPENCODE_FIXTURE_SMALL_WINDOW'];
   }
 }, 60_000);
