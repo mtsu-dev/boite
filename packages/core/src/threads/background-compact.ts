@@ -20,6 +20,15 @@ import { removeTranscripts } from './transcript-purge.ts';
  */
 export const BACKGROUND_COMPACT = { startRatio: 0.85, minTokens: 64_000, tailTokens: 30_000, tailShare: 0.25, maxFailures: 2, timeoutMs: 300_000 };
 
+/**
+ * Whether a context of `tokens` has entered the band below `limit` where a
+ * copy starts: `startRatio` of the limit and at least `minTokens`. The
+ * `turn-end` and `background` moments of a rule with a limit apply from there too.
+ */
+export function nearLimit(tokens: number, limit: number): boolean {
+  return tokens >= Math.max(BACKGROUND_COMPACT.minTokens, BACKGROUND_COMPACT.startRatio * limit);
+}
+
 /** The journal setting naming the turn a swapped-in summary ends at, until a turn carried what came after it. */
 export const COMPACTION_TAIL_PREFIX = 'compaction-tail:';
 
@@ -185,7 +194,7 @@ export class BackgroundCompaction {
   #start(thread: ThreadSummary, turn: Turn, limit: number): void {
     if (this.#closed || this.#core.stopping) return;
     const tokens = thread.context?.tokens ?? null;
-    if (tokens === null || tokens >= limit || tokens < Math.max(BACKGROUND_COMPACT.minTokens, BACKGROUND_COMPACT.startRatio * limit)) return;
+    if (tokens === null || tokens >= limit || !nearLimit(tokens, limit)) return;
     // Only a session the turn itself ran on.
     if (thread.archived || thread.incognito || thread.sessionId === null || (thread.sessionResumeAt ?? null) !== null) return;
     if ((this.#failures.get(thread.id) ?? 0) >= BACKGROUND_COMPACT.maxFailures || this.threads.compactRefusal(thread) !== null) return;
