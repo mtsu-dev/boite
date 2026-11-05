@@ -295,7 +295,7 @@ pauses only.
 | Driver | Inside a long turn | The copy |
 |---|---|---|
 | echo | Swaps to the copy at the step boundary that reaches the limit (`stepSwap`), after each `[tool]`. | Names the fork after the checkpoint entry. |
-| Claude | Native blocking compaction in the turn, copy at the pause. | Resumes at the checkpoint with `resumeSessionAt` and `forkSession`, then compacts. |
+| Claude | Swaps to the copy at the tool batch that reaches the limit (`stepSwap`): the `PostToolBatch` hook hands the core the last tool result entry, and on a swap returns `continue: false`, which ends the CLI's run before its next request. The same turn then reopens the CLI on the copy with the tail as its first message. When the CLI's own threshold (the same limit) passes first, its `PreCompact(auto)` hook blocks the native compaction and interrupts the CLI for the same swap, but only for a copy the core hands over; otherwise the native compaction runs. | Resumes at the checkpoint with `resumeSessionAt` and `forkSession`, then compacts: inside a turn, at the last tool result entry. |
 | Codex | Native blocking compaction in the turn, copy at the pause. | `forkSession` at the turn's checkpoint, then compacts the fork. |
 | OpenCode 1 | Native blocking compaction in the turn, copy at the pause. | No fork in ACP: the pause has no copy to take, and the compaction above runs there. |
 | OpenCode 2 | OpenCode's own background compaction, inside its loop. | No Boite copy: the setting turns on OpenCode's own `experimental.background_compaction` in `OPENCODE_CONFIG_CONTENT`, for the processes started afterwards. |

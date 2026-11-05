@@ -1,12 +1,12 @@
 import type { Options, SpawnOptions } from '@anthropic-ai/claude-agent-sdk';
-import { unavailable } from '../../errors.ts';
-import type { LazyServerEntry } from '../../mcp/lazy.ts';
+import { messageOf, unavailable } from '../../errors.ts';
+import { userStdioServers, type LazyServerEntry } from '../../mcp/lazy.ts';
 import type { SpawnedChild } from '../../procs.ts';
 import { profileFor, resolveExecutable } from '../../providers/resolve.ts';
 import type { SessionContext } from '../types.ts';
-import { compactFocus } from './compaction.ts';
 import type { ToolGate } from './permissions.ts';
 import { cliEnv, liveSetup, THINKING_DISPLAY_FLAG } from './query.ts';
+import { stepHooks, type StepHost } from './step.ts';
 
 /** Claude Code's own subagent and workflow tools; `Task` is the older name of `Agent`. */
 export const NATIVE_SUBAGENT_TOOLS = ['Agent', 'Task', 'Workflow'] as const;
@@ -17,6 +17,8 @@ export interface OptionsHost {
   gate: ToolGate;
   /** The summary focus of the context current when the CLI compacts. */
   compactionSummary: () => string | null;
+  /** The turn the CLI is on and the interrupt, for the step hooks. */
+  steps: StepHost;
   spawn: (options: SpawnOptions) => SpawnedChild;
 }
 
@@ -86,8 +88,28 @@ export function cliOptions(ctx: SessionContext, host: OptionsHost, lazyMcp: Reco
     hooks: {
       PreToolUse: [{ hooks: [host.gate.preToolUse] }],
       PostToolUse: [{ hooks: [host.gate.postToolUse] }],
-      PreCompact: [{ hooks: [compactFocus(host.compactionSummary)] }],
+      // The step boundary after each tool batch, and the native compaction's safety net.
+      ...stepHooks(host.steps, host.compactionSummary),
     },
     spawnClaudeCodeProcess: host.spawn,
   };
+}
+
+/**
+ * The user's stdio MCP servers, reached through the core so that each
+ * starts on its first call instead of with the CLI. None for a context mode
+ * that starts without MCP, and the servers as configured when the core
+ * cannot take them over.
+ */
+export function lazyServers(ctx: SessionContext): ReturnType<NonNullable<SessionContext['lazyMcp']>> {
+  if (ctx.protectedExecution) return null;
+  const mode = ctx.thread.contextMode ?? null;
+  if (ctx.lazyMcp === undefined || (mode !== null && !mode.mcp)) return null;
+  try {
+    const servers = userStdioServers(ctx.accountEnv.CLAUDE_CONFIG_DIR ?? process.env.CLAUDE_CONFIG_DIR, ctx.thread.cwd);
+    return ctx.lazyMcp(cliEnv(ctx), servers);
+  } catch (error) {
+    ctx.log('warn', `claude: MCP servers start with the CLI: ${messageOf(error)}`);
+    return null;
+  }
 }
