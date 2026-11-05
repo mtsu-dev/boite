@@ -128,6 +128,9 @@ retry after 30 s. Waiting for the WAL to catch up uses the same delay before
 any statistics or pruning work, without changing the batch size. Stopping
 retention or closing the journal prevents further ticks.
 Project removal explicitly clears thread-keyed tables; foreign keys are disabled.
+It and the purge of deleted conversations first keep each finished turn's time,
+provider, model and usage in `removed_turn_usage`, so
+[`usage.history`](usage.md#usagehistory) still counts them.
 A newer journal schema is refused before writing, with the file and both versions.
 
 `message.part` and `artifact.published` events are not written: the message row

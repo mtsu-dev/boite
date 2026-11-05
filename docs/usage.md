@@ -317,10 +317,24 @@ them in SQLite:
   If an older core returns rows or conversations from other providers for a
   filtered request, the page reports the unsupported filter and asks for an
   update instead of showing those totals as filtered usage.
+- Removing a project, or purging the deleted conversations
+  (`threadDeletionRetentionDays`), erases their turns but not what they spent.
+  In the transaction that erases them, the journal first copies each finished
+  turn into `removed_turn_usage`: the time it finished, the provider and model
+  resolved as above, and its stored `Usage`. Nothing there names the turn, its
+  conversation or its project. Buckets, the `providerId` filter and the count of
+  turns without usage read those rows like live turns, so the chart and totals
+  stay as they were. `threads` ranks only the turns still in the journal, so an
+  erased conversation leaves the ranking. A conversation in the deleted list
+  keeps its turns until the purge. An incognito conversation, and the threads
+  it started, keep nothing ([drafts](drafts.md#incognito)). Turns erased before
+  schema 48 are not recovered.
 
 The query reads the `turns_by_finished` index on `turns (finished_at)`, created
-on open when the journal lacks it. `EXPLAIN QUERY PLAN` shows
-`SEARCH t USING INDEX turns_by_finished (finished_at>? AND finished_at<?)`.
+on open when the journal lacks it, and `removed_turn_usage_by_finished` on the
+kept rows. `EXPLAIN QUERY PLAN` shows
+`SEARCH t USING INDEX turns_by_finished (finished_at>? AND finished_at<?)` and
+`SEARCH t USING INDEX removed_turn_usage_by_finished (finished_at>? AND finished_at<?)`.
 
 ### What each field means across providers
 
@@ -554,7 +568,10 @@ added on top, and the uninstalled mode (`?fake=1&uninstalled=1`) starts empty.
   public rates over an inflated reported cost, the hour cache write of a
   removed provider and of a mixed turn, the
   reported fallback, legacy turns, the top threads union, provider filtering,
-  refused parameters and one real echo turn. Turns an older core recorded are
+  refused parameters and one real echo turn. Removing a project and purging a
+  deleted conversation leave every bucket as it was, with and without a provider
+  filter, at edges a millisecond apart; the kept rows hold no title, prompt,
+  answer, path or id, and an incognito conversation keeps none. Turns an older core recorded are
   read through the provider's current protocol and counted as estimated, and
   `usage.get`, a session, a workflow and a delegation team sum an older and a
   newer Codex turn to the same buckets as the history.
