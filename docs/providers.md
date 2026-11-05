@@ -21,7 +21,10 @@ unchanged to Anthropic on a subscription: tool search, first-party model aliases
 and the one-hour prompt cache stay on (`_CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL`,
 `CLAUDE_CODE_PROMPT_CACHE_TTL=1h`), and fast mode skips the organization check
 that needs a native login (`CLAUDE_CODE_SKIP_FAST_MODE_ORG_CHECK`). Codex already
-sends its service tier and prompt cache key to a custom provider.
+sends its service tier and prompt cache key to a custom provider. Every Codex
+process starts under the gateway's provider, the setup process of a native fork
+included: Codex writes the provider into a thread's rollout and refuses to
+resume it under another ("This chat uses openai").
 
 While the proxy is enabled, Claude, Codex and both OpenCode versions show one account named
 after the gateway, Douane or CLIProxyAPI, with the API URL's origin, and so
