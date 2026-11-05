@@ -189,6 +189,18 @@ function cardOf<M>(source: InboxSource<M>, thread: ThreadSummary, state: ThreadS
 }
 
 /**
+ * Since when a thread of this store waits on the user, the `since` of its
+ * Inbox card; null when it does not need the user. A Recent or project row
+ * reads its age from it, so the row beside the home card says the same time
+ * ("now" on both, never "now" and "1m").
+ */
+export function waitingSince(store: Store, thread: ThreadSummary): number | null {
+  const [source] = storeSources([{ store }]);
+  const state = threadState(thread, store.subagents(thread.id) ?? 0);
+  return threadLiveKind(thread, state) === 'needs' ? cardOf(source!, thread, state).since : null;
+}
+
+/**
  * `12m`, `2h`, `3d`: how long a card has waited, in the words of a Recent row
  * (`shortAgo`), so one thread never reads `4h 00m` on the home and `4h` in the
  * sidebar beside it; the desktop and phone Inbox share it.

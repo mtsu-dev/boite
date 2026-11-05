@@ -11,6 +11,7 @@
   import ThreadState from './ThreadState.svelte';
   import StateRing from './StateRing.svelte';
   import { asksMidTurn, delegatedChip, threadState } from '../lib/thread-state';
+  import { waitingSince } from '../lib/inbox';
 
   /**
    * A thread row's first line, in the sidebar and in a phone's list: who runs
@@ -27,6 +28,7 @@
     wrap = false,
     picture = true,
     ring = false,
+    pin = true,
     facts
   }: {
     owner: Store;
@@ -43,6 +45,8 @@
     picture?: boolean;
     /** The sidebar's row: the state rings the picture, and the right end keeps only the time. */
     ring?: boolean;
+    /** Off under Recent's Pinned label, which already says it. */
+    pin?: boolean;
     /**
      * A two-line sidebar row: the title line keeps the ring and the title alone, and
      * a second line under it draws these facts (the project, the machine), then the
@@ -56,11 +60,13 @@
   let away = $derived(owner.connection !== 'ready');
   /** The sidebar's row: its delegated agents as a glyph and a number before the time, so the row keeps one line. */
   let agents = $derived(ring ? delegatedChip(subagents) : null);
+  /** A row that needs the user counts from the home card's `since`, so both read one age. */
+  let waited = $derived(now === undefined ? null : waitingSince(owner, thread));
 </script>
 
 {#snippet trail()}
   {#if agents}<span class="agents" class:asking={agents.asking} data-testid="thread-subagents" data-count={agents.shown} role="img" title={agents.label} aria-label={agents.label}><Network size={11} aria-hidden="true" /><span class="ui-label">{agents.shown}</span></span>{/if}
-  {#if now !== undefined}<ThreadState {thread} {now} {subagents} {away} compact={ring} />{/if}
+  {#if now !== undefined}<ThreadState {thread} {now} {subagents} {away} {waited} compact={ring} />{/if}
 {/snippet}
 
 <span class="headline" class:wrap class:ring class:stacked class:unread={thread.unread && !wrap}>
@@ -75,7 +81,7 @@
   {:else if picture}<ThreadPicture {owner} {thread} size={wrap ? 13 : 12} />{/if}
   <span class="title" class:ui-label={!wrap}>{thread.title}</span>
   {#if draft}<span class="draft" data-testid="thread-draft" title={strings.sidebar.unsentDraft} aria-label={strings.sidebar.unsentDraft}><PencilLine size={12} /></span>{/if}
-  {#if thread.pinned}<span class="pin" data-testid="thread-pinned"><Pin size={12} /></span>{/if}
+  {#if thread.pinned && pin}<span class="pin" data-testid="thread-pinned"><Pin size={12} /></span>{/if}
   {#if !stacked}{@render trail()}{/if}
 </span>
 {#if stacked}<span class="facts" class:ring><span class="known">{@render facts?.()}</span><span class="trail" data-testid="thread-trail">{@render trail()}</span></span>{/if}

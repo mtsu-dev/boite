@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
-  import { Clock, Info, Minimize2, ScanEye } from '@lucide/svelte';
+  import { Clock, Gauge, Info, Minimize2, ScanEye } from '@lucide/svelte';
   import type { Store } from '../lib/store.svelte';
   import { effectiveCompaction, threadActive, type ThreadCapabilities, type ThreadStats } from '@boite/contracts';
   import { fill, strings } from '../lib/strings';
@@ -100,22 +100,15 @@
     : strings.thread.cacheChipWarm(remaining(cacheNow.secondsLeft)));
   const lifetime = (seconds: number) => seconds % 3600 === 0 ? strings.thread.hours(seconds / 3600) : strings.thread.minutes(Math.round(seconds / 60));
   /**
-   * A model whose window is unknown has no share to draw: the meter says the
-   * count instead (`133K`, whole thousands), never an empty ring that reads as
-   * an unchecked radio.
+   * The meter is text, never a drawn gauge: a ring beside Stop passed for the
+   * working spinner. A measured share reads `62%`; a model whose window is
+   * unknown shows the count instead (`133K`, whole thousands).
    */
   const tokensShown = $derived(percent === null && context ? formatTokens(context.tokens >= 1000 ? Math.round(context.tokens / 1000) * 1000 : context.tokens) : null);
-  /** `Context 62%` once measured: the meter names its reading, so it never passes for the working arc. */
+  const reading = $derived(percent !== null ? fill(strings.thread.contextPercent, { percent: String(percent) }) : tokensShown);
+  /** `Context 62%` in the tooltip and the accessible name: the bare figure names its reading. */
   const meterLabel = $derived(percent !== null ? fill(strings.thread.contextMeter, { percent: String(percent) })
     : tokensShown !== null ? fill(strings.thread.contextMeterTokens, { count: tokensShown }) : strings.thread.contextDetails);
-  /**
-   * A known share is always drawn, in the accent, never shorter than 20
-   * degrees so a fresh thread still shows a mark on its track; the danger of a
-   * nearly full window stays on top.
-   */
-  const ring = $derived(percent === null ? 'off' : 'accent');
-  const ARC_MIN = Math.round((20 / 360) * 10_000) / 100;
-  const arc = $derived(percent === null ? 0 : Math.max(percent, ARC_MIN));
   function show() { clearTimeout(leave); popup.show(); }
   function hideLater() { clearTimeout(leave); leave = setTimeout(() => { if (!root?.contains(document.activeElement)) popup.hide(); }, 180); }
   onDestroy(() => clearTimeout(leave));
@@ -140,12 +133,12 @@
 
 <svelte:window onpointerdown={event => { if (event.target instanceof Node && !root?.contains(event.target)) popup.hide(); }} onkeydowncapture={closeOnEscape} />
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="context" bind:this={root} data-testid="context-meter" data-percent={percent ?? ''} data-level={contextLevel(percent)} data-ring={ring} onmouseenter={show} onmouseleave={hideLater} onfocusin={show} onfocusout={hideLater}>
+<div class="context" bind:this={root} data-testid="context-meter" data-percent={percent ?? ''} data-level={contextLevel(percent)} onmouseenter={show} onmouseleave={hideLater} onfocusin={show} onfocusout={hideLater}>
   <button type="button" class="trigger ghost" data-testid="context-trigger" title={meterLabel} aria-label={cacheLabel ? `${meterLabel}, ${cacheLabel}` : meterLabel} aria-expanded={popup.open} aria-haspopup="dialog" onclick={show}>
-    {#if tokensShown !== null}
-      <span class="tokens ui-label" data-testid="context-tokens" aria-hidden="true">{tokensShown}</span>
+    {#if reading !== null}
+      <span class="reading ui-label" data-testid="context-reading" aria-hidden="true">{reading}</span>
     {:else}
-      <svg viewBox="0 0 40 40" aria-hidden="true"><circle class="track" cx="20" cy="20" r="17" />{#if ring !== 'off'}<circle class="fill" cx="20" cy="20" r="17" pathLength="100" stroke-dasharray="{arc} 100" />{/if}</svg>
+      <Gauge size={14} strokeWidth={1.75} aria-hidden="true" />
     {/if}
     {#if cacheNow}
       <span class="cache-chip mono" data-testid="prompt-cache" data-state={cacheNow.kind} class:low={cacheNow.kind !== 'cold' && cacheNow.secondsLeft <= 300} aria-hidden="true">
@@ -205,16 +198,9 @@
   .context { position: relative; flex: none; color: var(--color-muted-foreground); }
   .trigger { display: flex; align-items: center; gap: 5px; padding: 4px; }
   @media (max-width: 720px) { .trigger { min-width: var(--touch-target); min-height: var(--touch-target); justify-content: center; } }
-  /* A small still gauge: a whole circle of track at a quarter of the ink, so
-     the arc reads as a fill level rather than a spinner. No motion; the arc
-     is the accent, danger once the window is nearly full. */
-  svg { width: 14px; height: 14px; transform: rotate(-90deg); }
-  circle { fill: none; stroke-width: 6; }
-  .track { stroke: currentColor; opacity: 0.25; }
-  .fill { stroke: var(--color-accent); }
-  .context[data-level='full'] .fill { stroke: var(--color-danger); }
-  /* The count in place of the gauge: 11 px, the muted ink, digits that keep their width. */
-  .tokens { font-size: 11px; line-height: 14px; font-variant-numeric: tabular-nums; color: var(--color-muted-foreground); }
+  /* The reading as text: 11 px, the muted ink, digits that keep their width; danger once the window is nearly full. */
+  .reading { font-size: 11px; line-height: 14px; font-variant-numeric: tabular-nums; color: var(--color-muted-foreground); }
+  .context[data-level='full'] .reading { color: var(--color-danger); }
   .cache-chip { display: flex; align-items: center; gap: 3px; margin-left: 4px; font-size: var(--text-xs); }
   .cache-chip[data-state='warm'] :global(svg) { color: var(--color-success); }
   .cache-chip[data-state='maybe'] :global(svg), .cache-chip.low :global(svg) { color: var(--color-foreground); }

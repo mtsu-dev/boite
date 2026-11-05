@@ -194,7 +194,13 @@ test('a working thread spins and counts whole minutes from its turn start: no se
   expect(state.textContent?.trim()).toBe('1m');
   unmount(running!, { outro: false });
   running = null;
-  expect(draw({ status: 'running', runningSince: NOW - 2 * 3_600_000 - 4 * 60_000 - 4_000 }).textContent?.trim()).toBe('2h 04m');
+  // Round 7: "1h 30m" sat in a column of "2h", "3h", "1d". A list shows one whole unit, floored; the title keeps the exact time.
+  const long = draw({ status: 'running', runningSince: NOW - 2 * 3_600_000 - 4 * 60_000 - 4_000 });
+  expect(long.textContent?.trim()).toBe('2h');
+  expect(long.getAttribute('title')).toBe('Working for 2h 04m');
+  unmount(running!, { outro: false });
+  running = null;
+  expect(draw({ status: 'running', runningSince: NOW - 26 * 3_600_000 }).textContent?.trim()).toBe('1d');
 });
 
 test('the other states are words in their own colour class, with no spinner', () => {

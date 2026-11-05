@@ -142,10 +142,10 @@ test('the popup counts every compaction and prompt of the thread, the mid-turn o
 });
 
 // Round 1 drew the meter as an accent arc beside Stop, where it passed for the working spinner;
-// round 3 still read the trackless arc as a loader, so a whole faint track holds the arc.
-// Round 6: an empty track read as an unchecked radio. A known share always draws, in the accent,
-// at least 20 degrees; an unknown one says the count instead of the ring.
-test('the meter is a still gauge on a visible track: the accent arc from 20 degrees, the count when the share is unknown', async ({ ready }) => {
+// rounds 3 to 6 kept a ring on a track, which still read as a loader on a failed thread.
+// Round 7: no drawn gauge at all. The reading is text, "62%", in the slot and style of the
+// unknown-window "133K", danger from 90 %, with the tooltip and accessible name kept.
+test('the meter reads as text, never a ring: the share, danger from 90 %, the count when the share is unknown', async ({ ready }) => {
   const { store } = await ready();
   await store.open('t-trace');
   store.openThread!.context = { tokens: 62_000, window: 100_000, at: 0 };
@@ -153,32 +153,29 @@ test('the meter is a still gauge on a visible track: the accent arc from 20 degr
   flushSync();
   const trigger = document.querySelector<HTMLButtonElement>('[data-testid="context-trigger"]')!;
   const meter = () => document.querySelector<HTMLElement>('[data-testid="context-meter"]')!;
-  const arc = () => trigger.querySelector('circle.fill');
+  const reading = () => trigger.querySelector<HTMLElement>('[data-testid="context-reading"]');
   expect(trigger.title).toBe('Context 62%');
   expect(trigger.getAttribute('aria-label')).toMatch(/^Context 62%/);
-  expect(trigger.querySelector('circle.track')).not.toBeNull();
-  expect(meter().dataset.ring).toBe('accent');
-  expect(arc()!.getAttribute('stroke-dasharray')).toBe('62 100');
-  for (const [tokens, dash] of [[0, '5.56'], [2_000, '5.56'], [6_000, '6'], [49_000, '49'], [95_000, '95']] as const) {
+  expect(reading()!.textContent).toBe('62%');
+  expect(reading()!.getAttribute('aria-hidden')).toBe('true');
+  for (const [tokens, text, level] of [[0, '0%', 'low'], [49_000, '49%', 'low'], [89_000, '89%', 'high'], [90_000, '90%', 'full'], [95_000, '95%', 'full']] as const) {
     store.openThread!.context = { tokens, window: 100_000, at: 0 };
     flushSync();
-    expect(meter().dataset.ring).toBe('accent');
-    expect(arc()!.getAttribute('stroke-dasharray')).toBe(`${dash} 100`);
-    expect(trigger.querySelector('circle.track')).not.toBeNull();
+    expect(reading()!.textContent).toBe(text);
+    expect(meter().dataset.level).toBe(level);
+    expect(trigger.querySelector('svg, circle')).toBeNull();
   }
-  // No window: the count, rounded to whole thousands, stands where the ring was.
+  // No window: the count, rounded to whole thousands, in the same slot.
   store.openThread!.context = { tokens: 133_200, window: null, at: 0 };
   flushSync();
   expect(trigger.querySelector('svg')).toBeNull();
-  expect(trigger.querySelector('[data-testid="context-tokens"]')!.textContent).toBe('133K');
+  expect(reading()!.textContent).toBe('133K');
   expect(trigger.getAttribute('aria-label')).toMatch(/^Context 133K tokens/);
   const { default: source } = await import('./ContextControl.svelte?raw');
   const css = source.slice(source.indexOf('<style>'));
-  expect(css.match(/\.track \{[^}]*\}/)?.[0]).toMatch(/opacity: 0\.25/);
-  expect(css.match(/\.fill \{[^}]*\}/)?.[0]).toMatch(/stroke: var\(--color-accent\)/);
-  expect(css.match(/\.fill \{[^}]*\}/)?.[0]).not.toMatch(/transition|animation/);
-  expect(css).toMatch(/data-level='full'\] \.fill \{ stroke: var\(--color-danger\)/);
-  expect(css.match(/\.tokens \{[^}]*\}/)?.[0]).toMatch(/font-size: 11px[^}]*color: var\(--color-muted-foreground\)/);
+  expect(css).not.toMatch(/circle|stroke-dasharray/);
+  expect(css.match(/\.reading \{[^}]*\}/)?.[0]).toMatch(/font-size: 11px[^}]*tabular-nums[^}]*color: var\(--color-muted-foreground\)/);
+  expect(css).toMatch(/data-level='full'\] \.reading \{ color: var\(--color-danger\)/);
 
   const { setLocaleSetting } = await import('../lib/i18n.svelte');
   await setLocaleSetting('fr');
@@ -186,5 +183,6 @@ test('the meter is a still gauge on a visible track: the accent arc from 20 degr
     store.openThread!.context = { tokens: 62_000, window: 100_000, at: 0 };
     flushSync();
     expect(trigger.getAttribute('aria-label')).toMatch(/^Contexte 62 %/);
+    expect(reading()!.textContent).toBe('62\u202f%');
   } finally { await setLocaleSetting('en'); }
 });

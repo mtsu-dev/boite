@@ -28,7 +28,7 @@
   let input = $state<HTMLInputElement | undefined>(undefined);
   let list = $state<HTMLDivElement | undefined>(undefined);
   let dialog = $state<HTMLDivElement | undefined>(undefined);
-  /** A row waits under the foot: the list's last 24 px fade out, so no row reads as cut by the rule. */
+  /** A row waits under the foot: the list's last 40 px fade out, so no row reads as cut by the rule. */
   let more = $state(false);
   /** What had the keyboard before the palette took it, where it goes back on close. */
   let previous: HTMLElement | null = null;
@@ -393,15 +393,18 @@
     min-height: 0;
     overflow: auto;
     padding: 6px;
+    /* Longer than a 34 px row, so the line the foot's rule crosses has faded out whole
+       instead of reading at half ink under it. */
+    --fade: 40px;
     /* A row the arrows reach stops above the fade, never inside it. */
-    scroll-padding-block: 6px 24px;
+    scroll-padding-block: 6px var(--fade);
   }
 
-  /* Rows run on under the foot: they fade out over 24 px instead of meeting its rule cut at mid-height.
-     Scrolled to the end, the last row is whole and the fade goes. */
+  /* Rows run on under the foot: they fade out instead of meeting its rule cut at mid-height, gone by the
+     list's 6 px end padding, so the line the rule crosses shows no ink. Scrolled to the end, the last row is whole and the fade goes. */
   .list[data-more] {
-    -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 24px), transparent);
-    mask-image: linear-gradient(to bottom, black calc(100% - 24px), transparent);
+    -webkit-mask-image: linear-gradient(to bottom, black calc(100% - var(--fade)), transparent calc(100% - 6px));
+    mask-image: linear-gradient(to bottom, black calc(100% - var(--fade)), transparent calc(100% - 6px));
   }
 
   .section + .section {

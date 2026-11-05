@@ -290,3 +290,42 @@ test("a project header's menu starts a thread there and leaves the list for its 
   expect(store.draft?.projectId).toBe('p-boite');
   expect(document.querySelector('.mobile-list')).toBeNull();
 });
+
+test("phone Recent lists the sidebar's rows: a bot's own thread lives under Bots, a pin under the Pinned label carries no glyph, a band's last row no hairline", async () => {
+  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
+    media, matches: true, onchange: null, addListener() {}, removeListener() {}
+  }));
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  workspace.machines = [{ id: 'local', label: 'Local', store }]; workspace.active = store;
+  workspace.view = 'recent';
+  const [pinned, asking, rest] = store.threads.filter(thread => !thread.archived && !thread.incognito && !thread.teamId && !thread.debateId && !thread.parentThreadId && !thread.agentSessionId && thread.projectId !== null);
+  const calm = { status: 'idle' as const, pinned: false, unread: false, openQuestions: 0, subagentQuestions: [] as NonNullable<ThreadSummary['subagentQuestions']>, backgroundWork: null };
+  const now = Date.now();
+  store.threads = [
+    ...store.threads.filter(thread => !thread.agentSessionId).map(thread => thread.id === pinned!.id ? { ...thread, ...calm, pinned: true, lastUserMessageAt: now }
+      : thread.id === asking!.id ? { ...thread, ...calm, status: 'waiting' as const, lastUserMessageAt: now - 1_000 }
+      : thread.id === rest!.id ? { ...thread, ...calm, lastUserMessageAt: now - 2_000 }
+      : { ...thread, ...calm, lastUserMessageAt: 1 }),
+    // Round 7: Nova and Iris, two bots, sat in the phone's Working and Earlier bands; the desktop lists them under Bots only.
+    { ...rest!, ...calm, id: 'bot-own', title: 'Nova', agentSessionId: 'agt_nova', projectId: null, status: 'running', runningSince: now - 60_000, lastUserMessageAt: now },
+    { ...rest!, ...calm, id: 'bot-in-project', title: 'Iris', agentSessionId: 'agt_iris', lastUserMessageAt: now }
+  ];
+  mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'threads' } });
+  await settle();
+  const rows = [...document.querySelectorAll<HTMLElement>('.mobile-list [data-testid=mobile-row]')].map(row => row.dataset['threadId']);
+  expect(rows).toContain(pinned!.id);
+  expect(rows).not.toContain('bot-own');
+  expect(rows).not.toContain('bot-in-project');
+  const bands = [...document.querySelectorAll<HTMLElement>('[data-testid=mobile-recent-band]')].map(band => band.dataset['band']);
+  expect(bands.slice(0, 2)).toEqual(['pinned', 'needs']);
+  const row = (id: string) => document.querySelector<HTMLElement>(`.mobile-list [data-testid=mobile-row][data-thread-id="${id}"]`)!;
+  // The label says it is pinned: the glyph would only cost the title its room.
+  expect(row(pinned!.id).querySelector('[data-testid=thread-pinned]')).toBeNull();
+  // The next band's divider is the only rule between two groups.
+  expect(row(pinned!.id).classList.contains('end')).toBe(true);
+  expect(row(asking!.id).classList.contains('end')).toBe(true);
+  // Projects has no Pinned label: the pin keeps its glyph there.
+  workspace.view = 'projects'; await settle();
+  expect(row(pinned!.id).querySelector('[data-testid=thread-pinned]')).not.toBeNull();
+});

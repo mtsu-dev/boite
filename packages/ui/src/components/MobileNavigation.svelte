@@ -136,9 +136,16 @@
   const workingSplit = $derived(split(inboxWorking));
   /** Only Inbox rows say what they wait on. */
   const waitOf = (row: object) => 'wait' in row ? row.wait as { reason: InboxReason; since: number } : undefined;
+  const recentGroups = $derived(selected ? [selected] : groups);
+  const rowKey = (row: { machine: Machine; thread: ThreadSummary }) => JSON.stringify([row.machine.id, row.thread.id]);
+  /**
+   * Recent lists what the sidebar's Recent lists (`threadsOf` of each listed project): a bot's own thread lives
+   * under Bots on both sizes, so the Working band and its tab count the same rows.
+   */
+  const recentIds = $derived(new Set(recentGroups.flatMap(({ machine, project }) => machine.store.threadsOf(project.id).map(thread => rowKey({ machine, thread })))));
   let rows = $derived(listScreen === 'activity' ? [...inboxNeeds, ...inboxWorking] : entries
     .filter(matches)
-    .filter(e => !e.thread.parentThreadId && !e.project?.archived && (workspace.view !== 'recent' || !selected || (e.machine.id === selected.machine.id && e.thread.projectId === selected.project.id)))
+    .filter(e => workspace.view === 'recent' ? recentIds.has(rowKey(e)) : !e.thread.parentThreadId && !e.project?.archived)
     .sort((a, b) => compareThreads(a.thread, b.thread)));
   let projects = $derived([...machines.flatMap(m => m.store.projects.filter(p => p.archived !== true).map(p => ({
     id: JSON.stringify([m.id, p.id]), label: projectName(p), hint: several ? m.label : '', projectTile: { project: p, store: m.store },
@@ -147,14 +154,14 @@
   const inRecent = $derived(listScreen === 'threads' && workspace.view === 'recent');
   /** The list header's picker, the sidebar's: the view, then, in Recent, one project or all of them. */
   const viewItems = $derived(viewMenuItems(groups, several));
-  const recentGroups = $derived(selected ? [selected] : groups);
   let workingOpen = $state(false);
   const groupWorking = $derived(inRecent && recentPreferences.groupWorking && !query);
   const working = $derived(groupWorking ? rows.filter(row => groupWorkingThread(row.machine.store, row.thread)) : []);
   const attention = $derived(groupWorking ? rows.filter(row => !groupWorkingThread(row.machine.store, row.thread)) : rows);
-  const rowKey = (row: { machine: Machine; thread: ThreadSummary }) => JSON.stringify([row.machine.id, row.thread.id]);
   /** Recent's bands, the sidebar's: a label where the rows pass from what needs the user to what works, then to the rest. */
   const phoneBands = $derived(inRecent && !query ? bandStarts(attention, row => row.thread, rowKey) : new Map<string, ThreadBand>());
+  /** The last row of each band: the next band's divider is the only rule under it. */
+  const bandEnds = $derived(new Set(phoneBands.size ? attention.filter((row, index) => { const next = attention[index + 1]; return !next || phoneBands.has(rowKey(next)); }).map(rowKey) : []));
   /** A row that changes band or lane slides there, as in the sidebar; the key reads ids and states only. */
   flipRows(() => scrollRoot, () => [...rows.map(row => `${rowKey(row)}:${row.thread.status}`), '|', ...working.map(rowKey), '|', ...phoneBands.keys()].join(), () => `${listKey}:${query}`);
 
@@ -294,9 +301,10 @@
     {#snippet laneCount(count: { threads: number; bots: number }, testid: string)}
       {#if count.threads}<span class="count" data-testid="{testid}-threads" data-count={count.threads} title={fill(strings.inbox.threadsCount, { count: String(count.threads) })}>{count.threads}</span>{/if}{#if count.bots}<span class="count bots" data-testid="{testid}-bots" data-count={count.bots} title={fill(strings.inbox.botsCount, { count: String(count.bots) })} aria-label={fill(strings.inbox.botsCount, { count: String(count.bots) })}><Bot size={11} aria-hidden="true" />{count.bots}</span>{/if}
     {/snippet}
-    {#snippet threadRow(row: typeof rows[number], grouped = false)}
+    {#snippet threadRow(row: typeof rows[number], grouped = false, banded = false)}
       <!-- The row is worker 1's PhoneThreadRow: ring, two-line title, facts line, long press and both swipes. -->
-      <PhoneThreadRow machine={row.machine} project={row.project} thread={row.thread} {now} {grouped} {several} wait={waitOf(row)} items={rowItems(row.machine.store, row.thread)}
+      <!-- Under Recent's labels the Pinned label says the pin, and a band's divider is the only rule under its last row. -->
+      <PhoneThreadRow machine={row.machine} project={row.project} thread={row.thread} {now} {grouped} {several} pin={!banded} end={banded && bandEnds.has(rowKey(row))} wait={waitOf(row)} items={rowItems(row.machine.store, row.thread)}
         onopen={() => { show('chat'); void workspace.select(row.machine.store, row.thread.id); }}
         onaction={(action) => rowAction(row.machine.store, row.thread, action, row.machine.id)} />
     {/snippet}
@@ -406,7 +414,7 @@
       {/if}
     {:else}
       <WindowList items={attention} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} estimate={77} measurements={measurements(listScreen)}>
-        {#snippet row(entry)}{@const band = phoneBands.get(rowKey(entry))}{#if band}<p class="band ui-label" class:first={entry === attention[0]} data-testid="mobile-recent-band" data-band={band}>{strings.sidebar.bands[band]}</p>{/if}{@render threadRow(entry)}{/snippet}
+        {#snippet row(entry)}{@const band = phoneBands.get(rowKey(entry))}{#if band}<p class="band ui-label" class:first={entry === attention[0]} data-testid="mobile-recent-band" data-band={band}>{strings.sidebar.bands[band]}</p>{/if}{@render threadRow(entry, false, phoneBands.size > 0)}{/snippet}
       </WindowList>
       {#if inRecent}
         <div class="recent-folds">
@@ -477,6 +485,8 @@
     .filters :global(.popover .item:has(> .hint)) { padding-block: 6px; }
     .band { margin: 8px 16px 2px; padding: 6px 0 0; border-top: 1px solid var(--color-border); color: var(--color-muted-foreground); font-size: 11px; font-weight: 500; line-height: 14px; }
     .band.first { margin-top: 2px; padding-top: 0; border-top: none; }
+    /* Recent's row hairlines stop where its band dividers stop, 16 px short of the card's end. */
+    .mobile-list.recent { --hairline-end: 16px; }
     .brand-icon { flex: none; border-radius: var(--radius-md); }
     .back { position: relative; flex: none; }
     .waiting-mark { position: absolute; top: 9px; right: 8px; width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--color-live); box-shadow: 0 0 0 2px var(--color-background); }

@@ -1,23 +1,27 @@
-/** The least of the tile at a sideways strip's end that may show, under its trailing fade. */
+/** The least of the tile at a sideways strip's end that may show before its trailing fade. */
 export const PEEK_MIN = 0.4;
+/** The most: past it the tile reads whole and the next one shows only inside the fade, a sliver. */
+export const PEEK_MAX = 0.8;
 /** What shows of it once the strip is resized for it. */
 export const PEEK_SHARE = 0.5;
 
 /**
  * How many pixels every tile of a sideways strip grows by so the tile at its
- * end shows by `PEEK_SHARE`, or 0 when it already shows by `PEEK_MIN` or more
- * (or every tile fits). `tiles` are the tiles' left edges and widths at their
- * natural size, `edge` the strip's visible right edge. A tile shown less is a
- * sliver: the last whole tile becomes the one half shown, the tiles before it
- * growing evenly, so none gets narrower than its name needs.
+ * end shows by `PEEK_SHARE`, or 0 when it already shows by `PEEK_MIN` to
+ * `PEEK_MAX` (or every tile fits). `tiles` are the tiles' left edges and widths
+ * at their natural size, `edge` where the strip's trailing fade starts. A tile
+ * shown less is a sliver: the last whole tile becomes the one half shown, the
+ * tiles before it growing evenly, so none gets narrower than its name needs. A
+ * tile shown more is all but whole: it becomes the one half shown.
  */
 export function peekGrow(edge: number, tiles: readonly { left: number; width: number }[]): number {
   const cut = tiles.findIndex((tile) => tile.left + tile.width > edge);
   if (cut < 0) return 0;
   const crossing = tiles[cut]!;
-  if (crossing.left < edge && (edge - crossing.left) / crossing.width >= PEEK_MIN) return 0;
-  // The sliver's whole neighbour peeks instead; `cut - 1` tiles before it each push it right by the growth.
-  const at = Math.max(0, cut - 1);
+  const share = (edge - crossing.left) / crossing.width;
+  if (share >= PEEK_MIN && share <= PEEK_MAX) return 0;
+  // A sliver's whole neighbour peeks instead, an all but whole tile itself; the tiles before it each push it right by the growth.
+  const at = share > PEEK_MAX ? cut : Math.max(0, cut - 1);
   const tile = tiles[at]!;
   return Math.max(0, (edge - tile.left - PEEK_SHARE * tile.width) / (at + PEEK_SHARE));
 }
@@ -42,10 +46,11 @@ export function wholeTiles(rail: HTMLElement, options: { cell: () => number; cue
     const tiles = [...rail.querySelectorAll<HTMLElement>(options.tiles)];
     const last = tiles.at(-1);
     if (!last) return;
-    const end = parseFloat(getComputedStyle(rail).paddingRight) || 0;
+    // The end padding is as wide as the trailing fade: what shows of a tile is what sits left of it.
+    const fade = rail.clientWidth - (parseFloat(getComputedStyle(rail).paddingRight) || 0);
     // The rail is positioned, so offsetLeft counts from its own edge; a strip that holds every tile is left alone.
-    if (last.offsetLeft + last.offsetWidth <= rail.clientWidth - end) return;
-    const grow = peekGrow(rail.clientWidth, tiles.map((tile) => ({ left: tile.offsetLeft, width: tile.offsetWidth })));
+    if (last.offsetLeft + last.offsetWidth <= fade) return;
+    const grow = peekGrow(fade, tiles.map((tile) => ({ left: tile.offsetLeft, width: tile.offsetWidth })));
     if (grow > 0) rail.style.setProperty('--tile-grow', `${grow.toFixed(2)}px`);
   }
   function fit() {

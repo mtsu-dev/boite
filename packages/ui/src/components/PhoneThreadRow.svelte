@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Archive, Check, CircleAlert, CirclePause, Ellipsis, FolderInput, KeyRound, LogIn, MessageCircleQuestion, Network, PencilLine, Pin, ShieldQuestion } from '@lucide/svelte';
-  import { waitedFor, type InboxReason } from '../lib/inbox';
+  import { waitedFor, waitingSince, type InboxReason } from '../lib/inbox';
   import type { Project, ThreadSummary } from '@boite/contracts';
   import type { Machine } from '../lib/workspace.svelte';
   import { namesMachine } from '../lib/row-machine';
@@ -31,7 +31,7 @@
    * archive it, each with the Undo toast.
    * `grouped`: under its project's header, which already names it.
    */
-  let { machine, project, thread, now, items, grouped = false, several = false, wait, onopen, onaction }: {
+  let { machine, project, thread, now, items, grouped = false, several = false, pin = true, end = false, wait, onopen, onaction }: {
     machine: Machine;
     /** A bot's thread belongs to no project. */
     project: Project | undefined;
@@ -40,6 +40,10 @@
     items: MenuItem[];
     grouped?: boolean;
     several?: boolean;
+    /** Off under Recent's Pinned label, which already says it. */
+    pin?: boolean;
+    /** The last row of a Recent band: the band's divider under it is the only rule, no hairline above it. */
+    end?: boolean;
     /** The Inbox tab: what the thread waits on and since when, the desktop Inbox card's reason, in place of the state's time. */
     wait?: { reason: InboxReason; since: number };
     onopen: () => void;
@@ -50,6 +54,8 @@
   let subagents = $derived(owner.subagents(thread.id));
   let kind = $derived(threadState(thread, subagents));
   let agents = $derived(delegatedChip(subagents));
+  /** A row that needs the user counts from the home card's `since`, so both read one age. */
+  let waited = $derived(wait ? null : waitingSince(owner, thread));
   let pending = $derived(pendingLine(thread));
   /** The grey second line; the time joins it, so the title keeps the whole first line. */
   /** The machine is named only when it is not this one, as the home's cards and the desktop rows do. */
@@ -69,10 +75,10 @@
 
 {#snippet time()}
   {#if wait}<time class="time waited" datetime={new Date(wait.since).toISOString()} title={fill(strings.inbox.waited, { time: waitedFor(now, wait.since) })}>{waitedFor(now, wait.since)}</time>
-  {:else}<span class="time"><ThreadState {thread} {now} {subagents} {away} compact /></span>{/if}
+  {:else}<span class="time"><ThreadState {thread} {now} {subagents} {away} {waited} compact /></span>{/if}
 {/snippet}
 
-<div class="phone-row" class:offline={away} data-thread-id={thread.id} data-machine-id={machine.id} data-testid="mobile-row">
+<div class="phone-row" class:offline={away} class:end data-thread-id={thread.id} data-machine-id={machine.id} data-testid="mobile-row">
   <!-- Under the row while it slides: done on the left, archive on the right, armed past the threshold. -->
   <div class="reveal" aria-hidden="true">
     <span class="side done"><Check size={20} /><span class="ui-label">{strings.sidebar.markDone}</span></span>
@@ -91,7 +97,7 @@
           <span class="title" class:unread={thread.unread}>{thread.title}</span>
         </button>
         {#if draft}<span class="mark draft" data-testid="thread-draft" title={strings.sidebar.unsentDraft} aria-label={strings.sidebar.unsentDraft}><PencilLine size={13} /></span>{/if}
-        {#if thread.pinned}<span class="mark pin"><Pin size={13} /></span>{/if}
+        {#if thread.pinned && pin}<span class="mark pin" data-testid="thread-pinned"><Pin size={13} /></span>{/if}
         {#if !second}{@render time()}{/if}
       </span>
       {#if second}
@@ -122,7 +128,9 @@
   }
   /* The hairline is drawn over the row's last pixel instead of under it, so a row is 56 or 64 px whole. */
   /* Inset to the title, as a grouped list draws its separators. */
-  .phone-row::after { content: ''; position: absolute; inset: auto 0 0 56px; z-index: 1; border-bottom: 1px solid var(--color-border); pointer-events: none; }
+  .phone-row::after { content: ''; position: absolute; inset: auto var(--hairline-end, 0px) 0 56px; z-index: 1; border-bottom: 1px solid var(--color-border); pointer-events: none; }
+  /* A band's divider follows: one rule between two groups, not two 8 px apart. */
+  .phone-row.end::after { display: none; }
   /* Inside a project's card the row sits on the card's surface, not the list's ground. */
   :global(.project-group) .phone-row { --row-ground: var(--color-cell); --ring-ground: var(--color-cell); }
   .reveal {

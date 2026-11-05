@@ -2103,6 +2103,17 @@ html[data-glass] #app {
   :root[data-panes='solid'] { --color-tile-hover: color-mix(in srgb, var(--color-surface-3) 92%, var(--color-foreground)); }
 }
 
+/* A phone in solid light has no frame around its screen, so its page took the card's own white
+   (#FDFDFE under #FFF cells): the filter band and the grouped lists vanished. The page sinks to
+   the desktop sidebar's grey, lightened about halfway to the cells (#F3F2F6), and every white
+   cell, band and bar stands on it, as they stand on the wallpaper in glass and on the dark ground. */
+@media (max-width: 720px) {
+  :root[data-panes='solid'][data-theme='light'] { --color-background: var(--color-surface); }
+  @supports (color: color-mix(in srgb, red 50%, transparent)) {
+    :root[data-panes='solid'][data-theme='light'] { --color-background: color-mix(in srgb, var(--color-frame) 55%, var(--color-surface-2)); }
+  }
+}
+
 html:not([data-glass]):not([data-theme='grain']):not([data-panes='solid']) body {
   background: var(--wallpaper), var(--wallpaper-base);
   background-attachment: fixed;

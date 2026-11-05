@@ -4,6 +4,8 @@ import { flushSync, mount, unmount } from 'svelte';
 import { FakeClient } from '../lib/fake-client';
 import { Store } from '../lib/store.svelte';
 import ThreadCard from './ThreadCard.svelte';
+import { inbox, storeSources, waitedFor } from '../lib/inbox';
+import { shortAgo } from '../lib/thread-state';
 
 let mounted: ReturnType<typeof mount> | undefined;
 let client: FakeClient;
@@ -339,4 +341,23 @@ test('a card unmounted with its rename open still writes the title typed so far'
   mounted = undefined;
   await settle();
   expect(rename.mock.calls).toEqual([[thread.id, 'Typed before it left']]);
+});
+
+test('a row that needs the user reads the age of its home card, and drops its pin glyph under the Pinned label', async () => {
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  const thread = store.threads.find(row => !row.parentThreadId && !row.agentSessionId && row.projectId)!;
+  const project = store.projects.find(row => row.id === thread.projectId)!;
+  const now = Date.now();
+  // Round 7: "Add CSV import" read "now" on the home card and "1m" in its row; "Export the journal" "50m" and "1h".
+  Object.assign(thread, { status: 'waiting', pinned: true, unread: false, subagentQuestions: [], lastUserMessageAt: now - 90 * 60_000, runningSince: now - 10_000 });
+  store.pendingQuestions = []; store.pendingPermissions = [];
+  vi.spyOn(client, 'call').mockResolvedValue(null as never);
+  mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'local', label: 'Local', store }, project, thread, now, showProject: false, pin: false } });
+  await settle();
+  const card = inbox(storeSources([{ store }])).needs.find(entry => entry.thread.id === thread.id)!;
+  const shown = document.querySelector('[data-testid=thread-row] [data-testid=thread-state-text]')?.textContent;
+  expect(shown).toBe(waitedFor(now, card.since));
+  expect(shown).not.toBe(shortAgo(thread.lastUserMessageAt!, now));
+  expect(document.querySelector('[data-testid=thread-pinned]')).toBeNull();
 });

@@ -153,7 +153,7 @@ test(
       percent = Math.min(100, Math.round(thread!.context!.tokens / thread!.context!.window! * 100));
     } finally { client.close(); }
     await page.waitFor(`document.querySelector('${testid('context-meter')}')?.dataset.percent === '${percent}'`);
-    expect((await page.text(testid('context-trigger'))).trim()).toBe('');
+    expect((await page.text(testid('context-trigger'))).trim()).toBe(`${percent}%`);
 
     await page.screenshot(SCREENSHOT);
     expect(existsSync(SCREENSHOT)).toBe(true);

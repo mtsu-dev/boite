@@ -341,3 +341,20 @@ test('an automatic goal says so in the goal bar and one click removes it', async
   await Promise.resolve();
   expect(call).toHaveBeenCalledWith('threads.activity.control', { threadId: 'thread', kind: 'goal', action: 'remove' });
 });
+
+// Round 7: under 480 px the open head hid "Codex asks", leaving a chevron and a link with no title on the left.
+test('the phone question head keeps who asks, then the chevron, then "Write instead" at the right end', async () => {
+  const store = render({ goal: null, loop: null, tasks: [] });
+  flushSync(() => { store.pendingQuestions = [{ ...question('first', 1), async: false }]; });
+  const row = document.querySelector<HTMLElement>('.question-row')!;
+  const toggle = row.querySelector<HTMLElement>('[data-testid=activity-question-toggle]')!;
+  expect(toggle.querySelector('.question-line')!.textContent).toMatch(/ asks$/);
+  expect(toggle.lastElementChild!.tagName.toLowerCase()).toBe('svg');
+  expect(toggle.compareDocumentPosition(row.querySelector('[data-testid=composer-reply]')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  const { default: source } = await import('./ThreadActivity.svelte?raw');
+  const css = source.slice(source.indexOf('<style>'));
+  const phone = css.slice(css.indexOf('@media (max-width: 480px)'));
+  const phoneBlock = phone.slice(0, phone.indexOf('\n  }\n'));
+  expect(phoneBlock).not.toMatch(/\.question-line[^{]*\{[^}]*display: none/);
+  expect(css).toMatch(/\[data-testid='composer-reply'\] \{[^}]*margin-left: auto/);
+});

@@ -38,12 +38,14 @@
     background: transparent;
   }
 
+  /* Its glyph sits over the rows' dot slot and its text starts on the model names' column:
+     7 px and the 1 px border match a row's 8 px inset, the 8 px gap the row's. */
   .search {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     height: var(--control-sm);
-    padding: 0 8px;
+    padding: 0 8px 0 7px;
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
     background: transparent;

@@ -361,7 +361,7 @@
         {/each}
       {/each}
       <WindowList items={attention} keyOf={recentKey} {scrollRoot} estimate={56} measurements={measurements('recent')}>
-        {#snippet row(entry)}{@const band = recentBands.get(recentKey(entry))}{#if band}<p class="band ui-label" class:first={entry === attention[0]} data-testid="recent-band" data-band={band}>{strings.sidebar.bands[band]}</p>{/if}<ThreadCard {...entry} {now} showProject={recentGroups.length > 1} showMachine={multi} showDone />{/snippet}
+        {#snippet row(entry)}{@const band = recentBands.get(recentKey(entry))}{#if band}<p class="band ui-label" class:first={entry === attention[0]} data-testid="recent-band" data-band={band}>{strings.sidebar.bands[band]}</p>{/if}<ThreadCard {...entry} {now} showProject={recentGroups.length > 1} showMachine={multi} showDone pin={recentBands.size === 0} />{/snippet}
       </WindowList>
       {#if groups.length > 0 && recent.length === 0 && !recentGroups.some(entry => entry.project.archivedThreads)}<p class="none">
           {strings.sidebar.noThreads}
@@ -559,7 +559,11 @@
     .head .project-actions { grid-column: 2; grid-row: 1; margin-left: 0; }
     .head :global(.counters) { grid-column: 1 / -1; grid-row: 2; justify-content: flex-end; margin-bottom: 4px; }
   }
-  .strip { margin: 0 8px; }
+  /* One left edge with "Recent" and the band labels: the first tab's word on x=16, its pill on x=10 with the
+     segmented control and the rings. The right margin gives back the 4 px the inset takes, so the four French
+     words still fit the 280 px column. */
+  .strip { margin: 0 4px 0 10px; }
+  .strip :global(.stage:first-child) { margin-left: 0; padding-left: 6px; }
   /* The `n more` row closing a busy project: quiet, aligned with the titles. */
   .more-row {
     width: 100%;

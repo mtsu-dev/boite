@@ -478,7 +478,7 @@
               {/each}
             {/each}
             {#if capped}
-              <button type="button" class="row fold small" data-row data-testid="picker-show-all" onclick={() => { expandedFor = shown?.id ?? null; focusInitial(searchBox, menu); }}><span class="ui-label">{fill(strings.composer.showAllModels, { count: String(filteredCurrent.length) })}</span></button>
+              <button type="button" class="row fold small" data-row data-testid="picker-show-all" onclick={() => { expandedFor = shown?.id ?? null; focusInitial(searchBox, menu); }}><span class="mark"></span><span class="ui-label">{fill(strings.composer.showAllModels, { count: String(filteredCurrent.length) })}</span></button>
             {/if}
           {:else}
             {#each filteredCurrent as model (model.id)}
@@ -498,6 +498,7 @@
               aria-expanded={legacyOpen}
               onclick={() => legacy.toggle()}
             >
+              <span class="mark"></span>
               <span class="name muted ui-label">{strings.composer.legacyModels}</span>
               <ChevronRight size={14} strokeWidth={2} />
             </button>
@@ -667,7 +668,8 @@
 
   .models > * { flex-shrink: 0; }
   .main-models { grid-area: 1 / 2 / 3 / 3; overflow: hidden; padding: 0; gap: 0; border-left: 1px solid var(--color-border); }
-  .main-models .head { flex-direction: column; align-items: stretch; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--color-border); }
+  /* Its title and account line start on the search field's edge, the list's one left edge with the rows' hover. */
+  .main-models .head { flex-direction: column; align-items: stretch; gap: 6px; padding: 10px 6px; border-bottom: 1px solid var(--color-border); }
   .model-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; padding: 6px; }
   .rail { grid-area: 1 / 1; }
   /* One provider: its model list is the whole popover, the refresh sits in the list's head. */
@@ -740,15 +742,24 @@
     background: color-mix(in srgb, var(--color-surface-3) 85%, var(--color-foreground));
   }
 
+  /* The dot's slot is as wide as the search field's glyph and sits under it (ModelSearch): the glyph,
+     the dot and every name start on one column each, "Legacy models" included through an empty slot. */
   .mark {
+    display: inline-grid;
+    place-items: center;
+    width: 13px;
+    flex: none;
+  }
+
+  .mark::before {
+    content: '';
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    flex: none;
     background: transparent;
   }
 
-  .row.current .mark {
+  .row.current .mark::before {
     background: var(--color-foreground);
   }
 

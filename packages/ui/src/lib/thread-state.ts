@@ -129,6 +129,30 @@ export function delegatedChip(subagents: { count: number; asking: number } | nul
 }
 
 const shortSets = new Map<string, { minute: Intl.NumberFormat; hour: Intl.NumberFormat; day: Intl.NumberFormat; calendar: Intl.DateTimeFormat }>();
+function shortSet() {
+  const tag = formatLocale();
+  let set = shortSets.get(tag);
+  if (!set) {
+    const unit = (name: string) => new Intl.NumberFormat(tag, { style: 'unit', unit: name, unitDisplay: 'narrow' });
+    set = { minute: unit('minute'), hour: unit('hour'), day: unit('day'), calendar: new Intl.DateTimeFormat(tag, { day: 'numeric', month: 'short' }) };
+    shortSets.set(tag, set);
+  }
+  return set;
+}
+
+/**
+ * A run time in a list column, in the one whole unit of the ages beside it,
+ * floored: `<1m`, `28m`, `1h` for 1h 30m, `2d`. The exact time stays in the
+ * row's title and the open thread's strip.
+ */
+export function shortSpan(ms: number): string {
+  const set = shortSet();
+  const minutes = Math.floor(Math.max(0, ms) / 60_000);
+  if (minutes < 1) return `<${set.minute.format(1)}`;
+  if (minutes < 60) return set.minute.format(minutes);
+  if (minutes < 1_440) return set.hour.format(Math.floor(minutes / 60));
+  return set.day.format(Math.floor(minutes / 1_440));
+}
 
 /**
  * A row's age in two or three characters ("5m", "3h", "2d", then "3 Sep"),
@@ -138,13 +162,7 @@ const shortSets = new Map<string, { minute: Intl.NumberFormat; hour: Intl.Number
 export function shortAgo(value: number, now = Date.now()): string {
   const delta = now - value;
   if (delta < 45_000) return strings.time.now;
-  const tag = formatLocale();
-  let set = shortSets.get(tag);
-  if (!set) {
-    const unit = (name: string) => new Intl.NumberFormat(tag, { style: 'unit', unit: name, unitDisplay: 'narrow' });
-    set = { minute: unit('minute'), hour: unit('hour'), day: unit('day'), calendar: new Intl.DateTimeFormat(tag, { day: 'numeric', month: 'short' }) };
-    shortSets.set(tag, set);
-  }
+  const set = shortSet();
   if (delta < 3_600_000) return set.minute.format(Math.round(delta / 60_000));
   if (delta < 86_400_000) return set.hour.format(Math.floor(delta / 3_600_000));
   if (delta < 7 * 86_400_000) return set.day.format(Math.floor(delta / 86_400_000));

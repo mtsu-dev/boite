@@ -8,11 +8,11 @@ vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
 test('the composer wears the context meter, a compaction is a divider, and a turn moves the meter', async ({ app: _app }) => {
   await waitFor(() => store.openThread?.id === 't-descriptors');
 
-  // 31k of 200k, just compacted: the ring reads 16 percent and the divider says what went.
+  // 31k of 200k, just compacted: the meter reads 16 percent and the divider says what went.
   await waitFor(() => document.querySelector('[data-testid=context-meter]') !== null);
   const meter = query('[data-testid=context-meter]');
   expect(meter.closest('[data-testid=composer]')).not.toBeNull();
-  expect(query('[data-testid=context-trigger]').textContent?.trim()).toBe('');
+  expect(query('[data-testid=context-trigger]').textContent?.trim()).toBe('16%');
   expect(meter.dataset.percent).toBe('16');
   expect(meter.dataset.level).toBe('low');
   query<HTMLButtonElement>('[data-testid=context-trigger]').click();

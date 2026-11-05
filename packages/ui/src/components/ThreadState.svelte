@@ -4,7 +4,7 @@
   import { backgroundLabel } from '../lib/background';
   import { ago, exactTime } from '../lib/format';
   import { fill, strings } from '../lib/strings';
-  import { shortAgo, threadState } from '../lib/thread-state';
+  import { shortAgo, shortSpan, threadState } from '../lib/thread-state';
   import type { WorkingChildren } from '../lib/thread-rows';
 
   /**
@@ -16,13 +16,15 @@
    * `compact`: the sidebar's row, whose ring draws the state: only the time,
    * or the elapsed time while it works, in the state's colour. The words stay
    * in its title and label, and the sub-agents chip moves to the row's second line.
+   * `waited`: since when it waits on the user (`waitingSince`, the home card's
+   * `since`); the compact row's time reads it instead of the last message.
    */
-  let { thread, now, subagents = null, away = false, compact = false }: { thread: Pick<ThreadSummary, 'status' | 'unread' | 'runningSince' | 'requestSince' | 'backgroundWork' | 'openQuestions' | 'lastUserMessageAt' | 'createdAt'> & Partial<Pick<ThreadSummary, 'backgroundWait' | 'pullRequestWatches'>>; now: number; subagents?: WorkingChildren | null; away?: boolean; compact?: boolean } = $props();
+  let { thread, now, subagents = null, away = false, compact = false, waited = null }: { thread: Pick<ThreadSummary, 'status' | 'unread' | 'runningSince' | 'requestSince' | 'backgroundWork' | 'openQuestions' | 'lastUserMessageAt' | 'createdAt'> & Partial<Pick<ThreadSummary, 'backgroundWait' | 'pullRequestWatches'>>; now: number; subagents?: WorkingChildren | null; away?: boolean; compact?: boolean; waited?: number | null } = $props();
 
   /**
-   * A list's run time in whole minutes, `28m` or `1h 02m`: thirteen rows at
-   * work never tick seconds in the corner of the eye. The seconds stay in the
-   * open thread's status strip.
+   * The exact run time in whole minutes, `28m` or `1h 02m`, for the title and
+   * label: thirteen rows at work never tick seconds in the corner of the eye.
+   * The seconds stay in the open thread's status strip.
    */
   function minutes(ms: number): string {
     const total = Math.floor(Math.max(0, ms) / 60_000);
@@ -57,6 +59,8 @@
     : live ? thread.backgroundWork?.since ?? (wait?.state === 'waiting' ? wait.since : null) : null);
   /** Counting time reads the list's own minute clock (`now`): no second clock runs for a row. */
   let spent = $derived(since === null ? null : minutes(now - since));
+  /** What a list column shows: one whole unit, floored, as the ages beside it (`1h`, never `1h 30m`); the exact time stays in the title. */
+  let shown = $derived(since === null ? null : shortSpan(now - since));
   let label = $derived.by(() => {
     if (kind === null) return null;
     if (kind === 'working') return spent === null ? strings.sidebar.state.working : fill(strings.sidebar.state.workingFor, { elapsed: spent });
@@ -96,10 +100,10 @@
 </script>
 
 {#if compact && kind !== null}
-  {@const text = stale ? null : spent}
+  {@const text = stale ? null : shown}
   {@const full = stale ? fill(strings.sidebar.state.unreachableWas, { state: strings.sidebar.state[kind] }) : label}
   <span class="when state compact {stale ? 'unreachable' : kind}" class:live={live && !stale} data-testid="thread-state" data-state={stale ? 'unreachable' : kind} title={full} aria-label={full}>
-    {#if stale}<CloudOff size={11} aria-hidden="true" />{/if}<span class="ui-label" data-testid="thread-state-text">{text ?? shortAgo(thread.lastUserMessageAt ?? thread.createdAt, now)}</span>
+    {#if stale}<CloudOff size={11} aria-hidden="true" />{/if}<span class="ui-label" data-testid="thread-state-text">{text ?? shortAgo(waited ?? thread.lastUserMessageAt ?? thread.createdAt, now)}</span>
   </span>
 {:else if stale && kind !== null}
   {@const was = fill(strings.sidebar.state.unreachableWas, { state: strings.sidebar.state[kind] })}
@@ -110,11 +114,11 @@
   <span class="when" class:compact title={exactTime(thread.lastUserMessageAt ?? thread.createdAt)}>{(compact ? shortAgo : ago)(thread.lastUserMessageAt ?? thread.createdAt, now)}</span>
 {:else}
   <span class="when state {kind}" data-testid="thread-state" data-state={kind} title={label} aria-label={label}>
-    {#if kind === 'working'}<LoaderCircle size={11} class="spinner" aria-hidden="true" /><span class="ui-label">{spent ?? strings.sidebar.state.working}</span>
-    {:else if kind === 'delegating'}<span class="ui-label" data-testid="thread-state-text">{spent ?? strings.sidebar.state.delegating}</span>
-    {:else if kind === 'monitoring'}<Radar size={11} class="pulse" aria-hidden="true" /><span class="ui-label">{spent ?? strings.sidebar.state.monitoring}</span>
-    {:else if kind === 'background'}<span class="dot pulse" aria-hidden="true"></span><span class="ui-label">{spent ?? strings.sidebar.state.background}</span>
-    {:else if kind === 'watching'}<GitPullRequest size={11} class="pulse" aria-hidden="true" /><span class="ui-label">{spent ?? strings.sidebar.state.watching}</span>
+    {#if kind === 'working'}<LoaderCircle size={11} class="spinner" aria-hidden="true" /><span class="ui-label">{shown ?? strings.sidebar.state.working}</span>
+    {:else if kind === 'delegating'}<span class="ui-label" data-testid="thread-state-text">{shown ?? strings.sidebar.state.delegating}</span>
+    {:else if kind === 'monitoring'}<Radar size={11} class="pulse" aria-hidden="true" /><span class="ui-label">{shown ?? strings.sidebar.state.monitoring}</span>
+    {:else if kind === 'background'}<span class="dot pulse" aria-hidden="true"></span><span class="ui-label">{shown ?? strings.sidebar.state.background}</span>
+    {:else if kind === 'watching'}<GitPullRequest size={11} class="pulse" aria-hidden="true" /><span class="ui-label">{shown ?? strings.sidebar.state.watching}</span>
     {:else if kind === 'interrupted'}<CircleAlert size={11} aria-hidden="true" /><span class="ui-label">{strings.sidebar.state.interrupted}</span>
     {:else}<span class="ui-label">{label}</span>{/if}
     {#if chip}<span class="agents" class:asking={chip.asking} class:pulse={kind === 'delegating'} data-testid="thread-subagents" data-count={chip.shown} role="img" title={chip.label} aria-label={chip.label}><Network size={10} aria-hidden="true" /><span class="ui-label">{chip.text}</span></span>{/if}

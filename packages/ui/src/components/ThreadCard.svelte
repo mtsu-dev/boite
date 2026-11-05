@@ -25,7 +25,8 @@
     hidden = false,
     showDone = false,
     showProject = true,
-    showMachine = true
+    showMachine = true,
+    pin = true
   }: {
     machine: Machine;
     project: Project;
@@ -39,6 +40,8 @@
     showProject?: boolean;
     /** Off while only one machine is connected, and under a project header, which already shows it. */
     showMachine?: boolean;
+    /** Off under Recent's Pinned label: the label says it, the title keeps the room. */
+    pin?: boolean;
   } = $props();
   let owner = $derived(machine.store);
   let open = $derived(workspace.active === owner && owner.openThread?.id === thread.id);
@@ -144,7 +147,7 @@
         <!-- The project's own logo says where the row belongs; the machine is named only when it is not this one, as the home's cards do. -->
         {#if showMachine && namesMachine(machine, owner.connection !== 'ready')}<span class="fact machine" class:offline={owner.connection !== 'ready'} data-testid="thread-machine" title={`${machine.label} · ${strings.connection[owner.connection]}`}><span class="ui-label">{machine.label}</span></span>{/if}
       {/snippet}
-      <ThreadHeadline {owner} {thread} {now} {open} ring facts={meta ? facts : undefined} machine={showMachine && !meta ? machine : undefined} />
+      <ThreadHeadline {owner} {thread} {now} {open} {pin} ring facts={meta ? facts : undefined} machine={showMachine && !meta ? machine : undefined} />
     </button>
     <!-- Pin on hover; a pinned row keeps its 12 px mark in the title line. -->
     <button type="button" class="ghost small icon pin-action" data-testid="thread-pin" aria-pressed={thread.pinned === true}

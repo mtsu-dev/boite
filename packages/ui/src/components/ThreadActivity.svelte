@@ -499,21 +499,21 @@
   .activity-row > :global(svg) { flex: none; color: var(--color-muted-foreground); }
   .activity-row button { flex: none; }
   /* A folded question's text gives way to the pager, not the pager to it. The toggle keeps its
-     chevron and room for the open heading ("Question"), and "Write a message instead" ellipsizes
+     chevron and room for the open heading ("Codex asks"), and "Write a message instead" ellipsizes
      before either: at 360 px in French it pushed "1 sur 2" and the next arrow out of the dock. */
   .activity-row .question-toggle { flex: 1 1 auto; min-width: calc(var(--control-sm) + 5.5em); }
-  /* On a phone the open heading only repeats the icon beside it ("Question"): the chevron stays,
-     and the room goes to "Write a message instead". */
+  /* On a phone the open heading still names who asks ("Codex asks"): the toggle hugs it and its
+     chevron, and "Write instead" sits at the right end as on desktop. */
   @media (max-width: 480px) {
-    .activity-row .question-toggle:has(.generic) { flex: 0 0 auto; min-width: 0; }
-    .question-line.generic { display: none; }
+    .activity-row .question-toggle:has(.generic) { flex: 0 1 auto; min-width: 0; }
+    .question-line.generic { flex: 0 1 auto; }
     /* "Écrire un message à la place" kept 118 of 193 px at 360: the phone says it short, the full words stay its name. */
     .question-row [data-testid='composer-reply'] .long { display: none; }
   }
   @media (min-width: 481px) {
     .question-row [data-testid='composer-reply'] .short { display: none; }
   }
-  .question-row [data-testid='composer-reply'] { display: inline-flex; flex: 0 1 auto; min-width: 0; }
+  .question-row [data-testid='composer-reply'] { display: inline-flex; flex: 0 1 auto; min-width: 0; margin-left: auto; }
   .question-row [data-testid='composer-reply'] > button { display: block; flex: 0 1 auto; min-width: 0; line-height: calc(var(--control-sm) - 2px); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .kind { flex: none; white-space: nowrap; font-weight: 600; color: var(--color-accent); }
   .kind .narrow { display: none; }
