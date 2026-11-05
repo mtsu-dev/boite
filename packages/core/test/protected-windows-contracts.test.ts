@@ -26,9 +26,9 @@ function contractPhases(caseId: string) {
       const waits: RunState = {pid, exit: 'pending', stdout: 'pending', stderr: 'pending'};
       runs.set(id, waits);
       phase('launched', id);
-      // Three samples before the existing 20 s deadline distinguish a busy compiler
-      // from a parent waiting for a compiler stage or inherited output pipes.
-      const timers = process.platform === 'win32' ? [5000, 10000, 15000].map(ms => setTimeout(() => {
+      // Samples before the deadline distinguish a busy compiler from a parent waiting
+      // for a compiler stage or inherited output pipes, and rising memory from a hang.
+      const timers = process.platform === 'win32' ? [5000, 10000, 15000, 30000, 45000].map(ms => setTimeout(() => {
         const load = procs.loadOf(id);
         const processes = procs.liveOf(id);
         console.error('[windows-contract-sample]', JSON.stringify({caseId, runId: id,
@@ -48,6 +48,13 @@ function contractPhases(caseId: string) {
     },
   };
 }
+
+/**
+ * A test's whole bound, most of it its one compile. Both tests take 3 to 4 s when
+ * green; on a loaded Windows runner cc1 sat near 0% CPU with its memory still rising
+ * at 15 s, past which the former 20 s killed it (Windows CI, 2026-11).
+ */
+const COMPILE_DEADLINE_MS = 60_000;
 
 test('diagnostic nonce parsing refuses overlong input without writing beyond its caller buffer', async () => {
   const phases = contractPhases('nonce');
@@ -108,7 +115,7 @@ int main(void) {
     journal.close(); rmSync(scratch, {recursive: true, force: true});
     phases.phase('cleanup-complete');
   }
-}, 20000);
+}, COMPILE_DEADLINE_MS);
 
 test('production Null scheduler grows, replays queued traps and validates native outputs', async () => {
   const phases = contractPhases('production-null');
@@ -140,4 +147,4 @@ test('production Null scheduler grows, replays queued traps and validates native
     journal.close(); rmSync(scratch, {recursive: true, force: true});
     phases.phase('cleanup-complete');
   }
-}, 20000);
+}, COMPILE_DEADLINE_MS);
