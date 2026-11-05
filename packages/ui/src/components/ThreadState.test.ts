@@ -201,7 +201,7 @@ test('the other states are words in their own colour class, with no spinner', ()
   for (const [thread, kind, word] of [
     [{ status: 'waiting' }, 'waiting', 'Needs you'],
     [{ status: 'error' }, 'error', 'Failed'],
-    [{ status: 'idle', unread: true }, 'done', 'Done'],
+    [{ status: 'idle', unread: true }, 'done', 'Finished'],
     [{ status: 'queued' }, 'queued', 'Queued']
   ] as const) {
     const state = draw(thread);

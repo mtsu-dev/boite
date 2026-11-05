@@ -1,26 +1,31 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import type { ThreadState } from '../lib/thread-state';
+  import { holdSpin, ringsStill } from '../lib/ring-budget.svelte';
 
   /**
    * A thread's state drawn around its picture, the same mark in every list:
    * an amber ring and dot when it needs the user, a turning accent arc while it
    * works, a dashed accent ring while work it left runs in the background, a
-   * dashed grey ring while it waits for a slot, a red ring and dot when it
-   * failed, a green dot when it finished something unread. At rest the
+   * dashed grey ring while it waits for a slot, a red ring and a "!" mark when
+   * it failed, a green dot when it finished something unread. At rest the
    * picture dims and wears nothing. Each state has its own shape, so it reads
-   * without colour too.
+   * without colour too: the failed mark carries a glyph, the waiting dot none.
+   * `asking`: a question came in while the turn still runs, so the arc keeps
+   * turning and a small amber dot says it needs the user too. Past
+   * `RING_SPIN_LIMIT` working rings on screen the arcs hold still.
    *
    * The ring is decoration: the state's words stay with the row's time
    * (`ThreadState`), which carries them in its title and label. `stale`: the
    * thread's machine is away, so its last known state is not shown as live.
    * `ground` is the colour behind the picture, cut around the dots.
    */
-  let { kind, size = 16, stale = false, ground = 'var(--color-frame)', children }: { kind: ThreadState | null; size?: number; stale?: boolean; ground?: string; children: Snippet } = $props();
+  let { kind, size = 16, stale = false, asking = false, ground = 'var(--color-frame)', children }: { kind: ThreadState | null; size?: number; stale?: boolean; asking?: boolean; ground?: string; children: Snippet } = $props();
 
   type Ring = 'waiting' | 'working' | 'background' | 'queued' | 'error' | 'done' | 'rest';
   let ring = $derived.by((): Ring => {
     if (stale || kind === null) return 'rest';
+    if (asking) return 'working';
     if (kind === 'waiting') return 'waiting';
     if (kind === 'error' || kind === 'interrupted') return 'error';
     if (kind === 'queued') return 'queued';
@@ -28,12 +33,16 @@
     if (kind === 'done') return 'done';
     return 'working';
   });
+  let asks = $derived(asking && ring === 'working');
+  $effect(() => { if (ring === 'working') return holdSpin(); });
+  let still = $derived(ring === 'working' && ringsStill());
 </script>
 
-<span class="ring {ring}" style:--ring-size="{size}px" style:--ring-ground={ground} data-testid="state-ring" data-ring={ring} aria-hidden="true">
+<span class="ring {ring}" class:asks class:still style:--ring-size="{size}px" style:--ring-ground={ground} data-testid="state-ring" data-ring={ring} data-asking={asks || undefined} data-still={still || undefined} aria-hidden="true">
   <span class="picture">{@render children()}</span>
   {#if ring === 'working'}<span class="arc"></span>{/if}
-  {#if ring === 'waiting' || ring === 'error' || ring === 'done'}<span class="dot"></span>{/if}
+  {#if ring === 'waiting' || ring === 'done' || asks}<span class="dot"></span>{/if}
+  {#if ring === 'error'}<span class="dot mark">!</span>{/if}
 </span>
 
 <style>
@@ -98,7 +107,16 @@
     box-shadow: 0 0 0 2px var(--ring-ground);
   }
   .waiting .dot { top: 0; right: 0; background: var(--color-live-fill); }
-  .error .dot { top: 0; right: 0; background: var(--color-danger); }
+  /* The failed mark is a touch larger and carries "!", so it never reads as the waiting dot in greyscale. */
+  .error .mark {
+    top: -1px; right: -1px; display: grid; place-items: center;
+    width: max(9px, calc(var(--ring-size) * 0.4)); height: max(9px, calc(var(--ring-size) * 0.4));
+    background: var(--color-danger); color: var(--color-accent-ink);
+    font-size: max(7px, calc(var(--ring-size) * 0.32)); font-weight: 800; line-height: 1;
+  }
+  /* Asked mid-turn: the arc keeps turning, a smaller amber dot sits on it. */
+  .asks .dot { top: 0; right: 0; width: max(5px, calc(var(--ring-size) * 0.26)); height: max(5px, calc(var(--ring-size) * 0.26)); background: var(--color-live-fill); }
+  .still .arc { animation: none; }
   .done .dot { right: 0; bottom: 0; background: var(--color-success); }
 
   /* An endless loop stops under reduced motion; the ring keeps its shape. */

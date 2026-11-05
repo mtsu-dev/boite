@@ -202,3 +202,16 @@ test('an open fold keeps its rows and skips the read when only the entry list is
   await settle();
   expect(reads()).toBe(2);
 });
+
+test('switching the list between Archived and Done reads the other kind even when both counts match', async () => {
+  await ready('first');
+  const props = $state<{ entries: ProjectEntry[]; now: number; header: boolean; open: boolean; kind: 'done' | 'archived' }>({ entries: entries(), now: Date.now(), header: false, open: true, kind: 'archived' });
+  mounted = mount(RecentDone, { target: document.body, props });
+  await settle();
+  const shown = () => [...document.querySelectorAll<HTMLElement>('[data-testid=done-thread]')].map(row => row.dataset.threadId);
+  expect(shown()).toEqual(['t-parser']);
+  props.kind = 'done'; await settle();
+  expect(shown()).toEqual(['t-trace']);
+  props.kind = 'archived'; await settle();
+  expect(shown()).toEqual(['t-parser']);
+});

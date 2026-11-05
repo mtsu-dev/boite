@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { connect } from "../../packages/core/src/client.ts";
 import { BrowserPage, freePort } from "./lib/cdp";
+import { toggleTerminal } from "./lib/views";
 import { pairingUrlOf, startCore } from "./lib/core";
 import { startUi } from "./lib/ui";
 
@@ -33,8 +34,8 @@ test("Ctrl+J opens a shell under the thread, typing reaches it, and OpenCode sig
     // Exercise normal motion independently of the host preference; reduced motion is checked below.
     await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
     await page.waitFor('document.querySelector("[data-testid=panel-toggle]")');
-    await page.evaluate(`document.querySelector('[data-testid="right-panel"]') ? null : document.querySelector('[data-testid="panel-toggle"]')?.click()`); // The terminal's button is in the panel's strip.
-    await page.waitFor('document.querySelector("[data-testid=terminal-toggle]")');
+    // The terminal drawer opens from the title bar's panel list.
+    await page.waitFor('document.querySelector("[data-testid=panel-list]")');
     await settled(page);
     await page.evaluate(`(() => {
       document.documentElement.style.setProperty('--dur-slide', '1s');
@@ -157,8 +158,7 @@ test("Ctrl+J opens a shell under the thread, typing reaches it, and OpenCode sig
     await page.evaluate('document.documentElement.dataset.motion = "reduced"');
     await page.click('[data-testid=terminal-hide]');
     await page.waitFor('!document.querySelector("[data-testid=terminal-drawer]")');
-    await page.evaluate(`document.querySelector('[data-testid="right-panel"]') ? null : document.querySelector('[data-testid="panel-toggle"]')?.click()`); // The terminal's button is in the panel's strip.
-    await page.click('[data-testid=terminal-toggle]');
+    await toggleTerminal(page);
     await page.waitFor('document.querySelector("[data-testid=terminal-drawer] .xterm-rows")?.textContent.includes("git status")');
     expect(await page.evaluate(`parseFloat(getComputedStyle(document.querySelector('[data-testid=terminal-drawer]')).transitionDuration)`)).toBeLessThan(.01);
     await page.evaluate('delete document.documentElement.dataset.motion');
@@ -211,8 +211,7 @@ test("switching Stores with colliding terminal ids restores the owning screen an
     // Both public fake machines retain the same thread id and keep their own shell.
     for (let owner = 0; owner < 2; owner++) {
       await page.evaluate(`globalThis.__boiteTest.workspace.select(globalThis.__terminalOwners[${owner}], 't-trace')`);
-      await page.evaluate(`document.querySelector('[data-testid="right-panel"]') ? null : document.querySelector('[data-testid="panel-toggle"]')?.click()`); // The terminal's button is in the panel's strip.
-      await page.click('[data-testid=terminal-toggle]');
+      await toggleTerminal(page);
       await page.waitFor('document.querySelector("[data-testid=terminal-drawer] .xterm-rows")?.textContent.includes("PS ")');
       await settled(page);
       await page.evaluate(`document.querySelector('[data-testid=terminal-drawer] .terminal-screen').dataset.owner = '${owner}'`);
@@ -256,11 +255,13 @@ test.skipIf(process.platform === "win32")("a real shell keeps its screen while h
     const account = (await client.call("accounts.list", {})).find((a) => a.providerId === "echo")!;
     const thread = await client.call("threads.create", { projectId: project.id, providerId: "echo", accountId: account.id, title: "Shell" });
     page = await BrowserPage.launch({ url: pairingUrlOf(core), windowSize: { width: 1440, height: 900 } });
-    const openShell = async () => {
+    // After a reload the drawer that was open comes back by itself, and Ctrl+J would put it away.
+    const openShell = async (restored = false) => {
       await page!.waitFor('document.querySelector("[data-testid=status-connection]")?.dataset.state === "ready"');
       await page!.click(`[data-thread-id="${thread.id}"]`);
       await page!.waitFor('document.querySelector("[data-testid=thread-header][data-status]")');
-      await chord(page!, "j", "KeyJ", 74);
+      if (restored) await page!.waitFor('document.querySelector("[data-testid=terminal-drawer]")');
+      else await chord(page!, "j", "KeyJ", 74);
       await page!.waitFor('document.activeElement?.classList.contains("xterm-helper-textarea")');
       await page!.waitFor(`(${screenText}).includes("$ ")`);
     };
@@ -295,7 +296,7 @@ test.skipIf(process.platform === "win32")("a real shell keeps its screen while h
     // A reload redraws the screen from the core's snapshot, with the question in it.
     // Answering it again typed `1;2c` into whatever was running, on every reopen.
     await page.reload();
-    await openShell();
+    await openShell(true);
     await page.waitFor(`${answers} === 1`);
     await new Promise((resolve) => setTimeout(resolve, 600));
     expect(await page.evaluate(answers)).toBe(1);

@@ -28,7 +28,7 @@
     onretry,
     onsendnow
   }: {
-    queued: { text: string; attachments: Attachment[]; previewReferences?: PreviewReference[]; request?: OutboxRequest }[];
+    queued: { id?: string; text: string; attachments: Attachment[]; previewReferences?: PreviewReference[]; request?: OutboxRequest }[];
     /** A prompt comes back only into an empty box, and never while one is going out. */
     disabled: boolean;
     /** A refusal held the queue: nothing goes until the user says so. */
@@ -56,10 +56,12 @@
   /** What the old caption under the bubbles said: now the chip's tooltip and the opened view's foot. */
   let caption = $derived(outbox && starts ? fill(strings.composer.outboxStarts, { machine }) : outbox ? strings.composer.outboxKept : paused ? strings.composer.queuedPaused : strings.composer.queued);
   let label = $derived(paused ? strings.composer.heldChip : strings.composer.queuedChip);
-  /** The entry opened, by identity: a send ahead of it shifts the indexes, not the object.
+  /** The entry opened, by its id, else by identity: a send ahead of it shifts the indexes, and
+      a sync from another window copies the entries, but neither changes which prompt it is.
       Raw, so the entry is kept as it is and not wrapped in a proxy that would equal no entry. */
   let opened = $state.raw<Entry | null>(null);
-  $effect(() => { if (opened && !queued.includes(opened)) opened = null; });
+  const same = (a: Entry, b: Entry) => a === b || (a.id !== undefined && a.id === b.id);
+  $effect(() => { if (opened && !queued.some(entry => same(entry, opened!))) opened = null; });
   const uid = $props.id();
 
   /** The chip's words: the text on one line, cut by the chip's own width. */
@@ -71,7 +73,7 @@
   if (event.key === 'Escape' && opened) { event.preventDefault(); event.stopPropagation(); opened = null; }
 }}>
   {#each queued as entry, at (entry)}
-    {@const open = opened === entry}
+    {@const open = opened !== null && same(opened, entry)}
     {@const failed = entry.request?.failed !== undefined}
     <div class="queued-item" class:failed class:open data-testid="composer-queued-item">
       {#if open}
@@ -224,6 +226,8 @@
     /* A finger's target grows past the 28 px pill; the pill keeps its height. */
     .queued-bubble, .queued-remove { position: relative; }
     .queued-bubble::after, .queued-remove::after { content: ''; position: absolute; inset: -8px 0; }
+    /* Under the last chip is the composer: growing into it would scroll the list by those 8 px. */
+    .queued-item:last-child .queued-bubble::after, .queued-item:last-child .queued-remove::after { bottom: 0; }
   }
   @media (prefers-reduced-motion: reduce) { .queued-item { animation: none; } }
 </style>

@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp';
 import { startDevUi } from './lib/ui';
+import { revealThreadRow } from './lib/views.ts';
 
 let server: { close(): Promise<void> };
 let page: BrowserPage;
@@ -11,7 +12,7 @@ beforeAll(async () => {
   const port = await freePort();
   server = await startDevUi(port);
   page = await BrowserPage.launch({ url: `http://127.0.0.1:${port}/?fake=1&open=recent`, windowSize: { width: 1280, height: 900 } });
-  await page.waitFor(`document.querySelector('[data-thread-id="t-trace"]')`);
+  await revealThreadRow(page, 't-trace');
   await page.click('[data-thread-id="t-trace"]');
   await page.waitFor('globalThis.__boiteTest.workspace.active.openThread?.id === "t-trace"');
 }, 90000);
@@ -57,12 +58,14 @@ test('memory stops stay between tools, fold together and link to a working switc
     const row = await page.evaluate<{ height: number; fits: boolean }>(`(() => { const e = document.querySelector('${id('memory-row')}'); return { height: e.getBoundingClientRect().height, fits: e.scrollWidth <= e.clientWidth }; })()`);
     expect(row.height).toBeLessThan(width < 720 ? 250 : 180);
     expect(row.fits).toBe(true);
-    expect(await page.evaluate(`document.querySelector('${id('memory-row')} details').open`)).toBe(false);
-    await page.click(`${id('memory-row')} summary`);
-    await page.waitFor(`document.querySelector('${id('memory-row')} details').open`);
+    // One line: the processes wait behind the notice's disclosure.
+    const disclose = `${id('memory-row')} ${id('notice-disclose')}`;
+    expect(await page.evaluate(`document.querySelector('${disclose}').getAttribute('aria-expanded')`)).toBe('false');
+    await page.click(disclose);
+    await page.waitFor(`document.querySelector('${disclose}').getAttribute('aria-expanded') === 'true' && !document.querySelector('${id('memory-row')} .details').hidden`);
     expect(await page.evaluate(`document.querySelectorAll('${id('memory-row')} .process').length`)).toBe(4);
     await capture(width < 720 ? 'phone-expanded' : 'desktop-expanded');
-    await page.click(`${id('memory-row')} summary`);
+    await page.click(disclose);
     await page.click(`${id('memory-row')} .configure`);
     await page.waitFor(`document.querySelector('${id('setting-memory-protection')}')`);
     await capture(width < 720 ? 'settings-phone' : 'settings-desktop');
@@ -144,14 +147,14 @@ test('a throttling notice shows its whole sentence beside the stalled tool on de
         anchor: { messageId: message.id, partIndex: 3 },
       }];
     })()`);
-    await page.waitFor(`document.querySelector('${row}')?.dataset.kind === 'throttled' && document.querySelector('${row} p')?.textContent.includes('${size}')`);
+    await page.waitFor(`document.querySelector('${row}')?.dataset.kind === 'throttled' && document.querySelector('${row} .summary')?.textContent.includes('${size}')`);
     // The page's texts come back here and are compared in this process, never spliced into page code.
     const shown = await page.evaluate<{ expected: string; row: string; timeline: string }>(`(async () => {
       const { strings } = await import('/src/lib/strings.ts');
       const { bytes } = await import('/src/lib/format.ts');
       return {
         expected: strings.resources.throttled(bytes(${limit})),
-        row: document.querySelector('${row} p').textContent,
+        row: document.querySelector('${row} .summary').textContent,
         timeline: document.querySelector('${id('timeline')}').textContent,
       };
     })()`);
@@ -163,16 +166,24 @@ test('a throttling notice shows its whole sentence beside the stalled tool on de
     expect(shown.timeline).not.toContain('6.0 GB');
     expect(shown.timeline).not.toContain('6,0 Go');
     expect(await page.evaluate(`document.querySelectorAll('${row}').length`)).toBe(1);
-    expect(await page.evaluate(`document.querySelectorAll('${row} .title, ${row} .process, ${row} .details, ${row} .size').length`)).toBe(0);
+    // No title and no process list: the sentence is the notice, and its disclosure holds nothing but the sentence the line cut.
+    expect(await page.evaluate(`document.querySelectorAll('${row} .title, ${row} .process, ${row} .size, ${row} .details > :not(.full)').length`)).toBe(0);
     for (const [width, height] of [[1280, 900], [390, 844]] as const) {
       await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width < 720 });
       await page.evaluate(`document.querySelector('${row}').scrollIntoView({ block: 'center' })`);
       // French is the longer sentence, so it is the one kept as the capture.
       if (locale === 'fr') await capture(width < 720 ? 'throttled-phone' : 'throttled-desktop');
+      // A line too short for the sentence ends it in an ellipsis; its disclosure then shows it whole.
+      const cut = await page.evaluate<boolean>(`!!document.querySelector('${row} ${id('notice-disclose')}')`);
+      if (cut) {
+        await page.click(`${row} ${id('notice-disclose')}`);
+        await page.waitFor(`!document.querySelector('${row} .details').hidden`);
+        expect(await page.text(`${row} .full`)).toBe(shown.expected);
+      }
       // Every line of the sentence lies inside the row and the row inside the screen: nothing is clipped.
       expect(await page.evaluate(`(() => {
         const row = document.querySelector('${row}');
-        const text = row.querySelector('p');
+        const text = row.querySelector('${cut ? '.full' : '.summary'}');
         const r = row.getBoundingClientRect();
         const range = document.createRange();
         range.selectNodeContents(text);
@@ -183,6 +194,7 @@ test('a throttling notice shows its whole sentence beside the stalled tool on de
           && row.scrollWidth <= row.clientWidth && text.scrollWidth <= text.clientWidth && text.scrollHeight <= text.clientHeight
           && button.right <= r.right && button.bottom <= r.bottom;
       })()`)).toBe(true);
+      if (cut) await page.click(`${row} ${id('notice-disclose')}`);
     }
   }
   expect(page.errors()).toEqual([]);

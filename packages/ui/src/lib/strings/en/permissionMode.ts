@@ -3,8 +3,9 @@ export const strings = {
   permissionMode: {
     default: 'Ask each time',
     acceptEdits: 'Auto-approve edits',
-    bypassPermissions: 'Smart auto',
-    yolo: 'Full access',
+    /** The two run-everything modes differ in one thing, said in the name: whether the hooks and guards still check each call. */
+    bypassPermissions: 'Run everything, guards on',
+    yolo: 'Full access, no guards',
     plan: 'Plan',
     dontAsk: 'Auto-deny'
   },

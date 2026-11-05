@@ -65,6 +65,20 @@ export async function waitFor(check: () => boolean, timeoutMs = 8_000): Promise<
   throw new Error(`gave up waiting, body was:\n${document.body.textContent ?? ''}`);
 }
 
+/**
+ * Waits for a thread's sidebar row, opening its project's folds one at a
+ * time: a project away from the open thread folds its rows at rest.
+ */
+export async function revealRow(threadId: string, timeoutMs = 8_000): Promise<HTMLElement> {
+  const row = () => document.querySelector<HTMLElement>(`[data-testid=thread-row][data-thread-id="${threadId}"]`);
+  await waitFor(() => {
+    if (row()) return true;
+    document.querySelector<HTMLButtonElement>('[data-testid=sidebar] :is([data-testid=project-more], [data-testid=project-more-needs])[aria-expanded=false]')?.click();
+    return false;
+  }, timeoutMs);
+  return row()!;
+}
+
 /** The model ids the right column of the picker is showing, in order. */
 export function shownModels(): (string | null)[] {
   return Array.from(document.querySelectorAll('[data-model]')).map((el) => el.getAttribute('data-model'));
@@ -235,8 +249,8 @@ export const OWNER_ONLY_IN_CHAT = ['[data-testid=add-project]'];
 
 /** Everything owner-only on the settings nav and its Machines page. */
 export const OWNER_ONLY_IN_SETTINGS = [
+  // Providers holds Accounts and Plugins, both the owner's: the entry goes with them.
   '[data-testid=settings-tab-accounts]',
-  '[data-testid=settings-tab-plugins]',
   '[data-testid=settings-tab-resources]',
   '[data-testid=group-add-device]'
 ];

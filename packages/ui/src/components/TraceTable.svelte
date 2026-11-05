@@ -61,7 +61,7 @@
   .headline { display: flex; align-items: center; gap: 7px; }
   .exe { flex: 1; min-width: 0; overflow-wrap: anywhere; font-weight: 500; font-size: var(--text-sm); }
   .status { flex: none; color: var(--color-muted-foreground); font-size: var(--text-xs); }
-  .live .status { color: var(--color-live); }
+  .live .status { color: var(--color-accent); }
   .status.failed { color: var(--color-danger); }
   .metrics { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 6px 0 0 21px; color: var(--color-muted-foreground); font-size: var(--text-xs); }
   .metrics b { margin-left: 4px; font-weight: 400; color: var(--color-foreground); font-variant-numeric: tabular-nums; }

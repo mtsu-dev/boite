@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp.ts';
 import { startUi } from './lib/ui.ts';
 import { mobileAction, newMobileThread as newThreadFromList, openMobilePanel, screensSettled } from './lib/mobile.ts';
+import { revealThreadRow } from './lib/views.ts';
 
 let server: { close(): Promise<void> };
 let page: BrowserPage;
@@ -103,8 +104,9 @@ test('phone navigates conversations, activity and settings without a sidebar', a
   expect(bar.list).toBeLessThanOrEqual(bar.top);
   expect(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`)).toBe(true);
   // Each row names its provider, and a worktree thread its branch after the project.
-  expect(await page.evaluate(`Array.from(document.querySelectorAll('[data-testid=mobile-list] .thread')).every(row => row.querySelector('[data-testid=thread-provider]'))`)).toBe(true);
-  expect(await page.evaluate<string>(`document.querySelector('[data-testid=mobile-thread-t-trace] .detail').textContent`)).toContain('boite/trace');
+  expect(await page.evaluate(`Array.from(document.querySelectorAll('[data-testid=mobile-list] [data-testid=mobile-row]')).every(row => row.querySelector('[data-testid=thread-provider]'))`)).toBe(true);
+  await revealThreadRow(page, 't-trace');
+  expect(await page.text('[data-testid=mobile-row][data-thread-id=t-trace] [data-testid=thread-branch]')).toContain('boite/trace');
   await capture('mobile-conversations.png');
   await page.click('[data-testid=mobile-list] .thread');
   await page.waitFor(`!document.querySelector('[data-testid=mobile-list]') && document.querySelector('[data-testid=chat]')`);
@@ -395,9 +397,9 @@ test('a phone pins and archives a thread without a right-click, from the header 
   const id = await page.evaluate<string>('__boiteTest.workspace.active.openThread.id');
   const trigger = await page.evaluate<{ width: number; height: number }>(`(() => { const r = document.querySelector('[data-testid=thread-menu-trigger]').getBoundingClientRect(); return { width: r.width, height: r.height }; })()`);
   expect(trigger.height).toBeGreaterThanOrEqual(44);
-  // The header is Back, this one menu and one panel button: the terminal and the browser live in the panel's strip.
+  // The header is Back, this one menu and one panel button: the terminal and the browser are in the panel's list.
   expect(trigger.width).toBeGreaterThanOrEqual(100);
-  expect(await page.evaluate(`document.querySelector('[data-testid=terminal-toggle]')?.offsetParent ?? null`)).toBeNull();
+  expect(await page.evaluate(`document.querySelector('[data-testid=panel-list]')?.offsetParent ?? null`)).toBeNull();
   expect(await page.evaluate(`(() => { const r = document.querySelector('[data-testid=panel-toggle]')?.getBoundingClientRect(); return !!r && r.width >= 44 && r.height >= 44; })()`)).toBe(true);
   expect(await page.evaluate(`document.querySelector('[data-testid=mobile-tabs]')`)).toBeNull();
   await page.click('[data-testid=thread-menu-trigger]');
@@ -588,7 +590,8 @@ test('a finger slides a row right to mark it done and left to archive it; a vert
     const [doneId, archiveId] = await page.evaluate<[string, string]>(`${resting}.slice(0, 2)`);
     const body = (id: string) => `document.querySelector('[data-testid=mobile-row][data-thread-id="${id}"] .body')`;
     const box = (id: string) => page.evaluate<{ left: number; right: number; y: number }>(`(() => { const r = ${body(id)}.getBoundingClientRect(); return { left: r.left, right: r.right, y: r.top + r.height / 2 }; })()`);
-    const archived = (id: string) => `!!__boiteTest.workspace.active.threads.find(t => t.id === '${id}')?.archived`;
+    // Put away, a thread leaves the live list: archived there, or already gone from it.
+    const archived = (id: string) => `(t => !t || !!t.archived)(__boiteTest.workspace.active.threads.find(t => t.id === '${id}'))`;
     let at = await box(doneId);
     // Mostly vertical: the list's scroll, the row stays where it is.
     await drag([at.left + 120, at.y], [at.left + 116, at.y - 70]);
@@ -605,9 +608,10 @@ test('a finger slides a row right to mark it done and left to archive it; a vert
     await drag([at.left + 30, at.y], [at.right - 30, at.y + 4]);
     await page.waitFor(archived(doneId));
     expect(await page.evaluate(`!!document.querySelector('[data-testid=mobile-list]')`)).toBe(true);
-    // Left, past the threshold: archived.
+    // Left, past the threshold: archived. The slide starts on the row, left of its ⋯, which is a button of its own.
     at = await box(archiveId);
-    await drag([at.right - 30, at.y], [at.left + 30, at.y + 4]);
+    const menuLeft = await page.evaluate<number>(`document.querySelector('[data-testid=mobile-row][data-thread-id="${archiveId}"] .menu-slot').getBoundingClientRect().left`);
+    await drag([Math.min(at.right - 30, menuLeft - 10), at.y], [at.left + 30, at.y + 4]);
     await page.waitFor(archived(archiveId));
     await Bun.sleep(300);
     await capture('mobile-row-swiped.png');

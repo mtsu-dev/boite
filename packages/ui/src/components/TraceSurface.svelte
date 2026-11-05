@@ -1,13 +1,21 @@
 <script lang="ts">
-  import { RefreshCw } from '@lucide/svelte';
+  import { ChevronDown, RefreshCw } from '@lucide/svelte';
   import { bytes, percent } from '../lib/format';
-  import { strings } from '../lib/strings';
+  import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import TraceTable from './TraceTable.svelte';
 
   let { store }: { store: Store } = $props();
 
   let load = $derived(store.openThread?.load ?? null);
+  let running = $derived(load?.processes ?? store.trace.filter((record) => record.exitedAt === null).length);
+  /** One line says what runs; the raw table, CPU included, waits behind "Show details". */
+  let details = $state(false);
+  let summary = $derived([
+    fill(strings.trace.processes, { count: String(store.trace.length) }),
+    fill(strings.trace.running, { count: String(running) }),
+    ...(load ? [fill(strings.trace.inMemory, { size: bytes(load.memoryBytes) })] : [])
+  ].join(' · '));
 
   // The surface reads the trace the moment it is the one showing, whichever
   // way it got there: the chat header, the launcher, a tab, a restored panel.
@@ -25,8 +33,12 @@
 
 <div class="trace-surface" data-testid="trace-panel">
   <div class="bar">
-    <span class="totals ui-label">{store.trace.length} {strings.trace.recorded} · {load?.processes ?? store.trace.filter(record => record.exitedAt === null).length} {strings.trace.active}</span>
+    <span class="totals ui-label" data-testid="trace-summary">{summary}</span>
     <span class="spacer"></span>
+    <button type="button" class="ghost small details" aria-expanded={details} data-testid="trace-details" onclick={() => (details = !details)}>
+      {details ? strings.trace.hideDetails : strings.trace.showDetails}
+      <span class="chevron" class:open={details}><ChevronDown size={13} strokeWidth={1.75} /></span>
+    </button>
     <button
       type="button"
       class="ghost small icon"
@@ -38,12 +50,14 @@
       <RefreshCw size={13} strokeWidth={1.75} />
     </button>
   </div>
-  {#if load}
-    <div class="load"><span>{strings.trace.cpu} <b>{percent(load.cpuPercent)}</b></span><span>{strings.trace.currentMemory} <b>{bytes(load.memoryBytes)}</b></span></div>
+  {#if details}
+    {#if load}
+      <div class="load"><span>{strings.trace.cpu} <b>{percent(load.cpuPercent)}</b></span><span>{strings.trace.currentMemory} <b>{bytes(load.memoryBytes)}</b></span></div>
+    {/if}
+    <div class="scroll">
+      <TraceTable records={store.trace} capability={store.core?.trace ?? null} />
+    </div>
   {/if}
-  <div class="scroll">
-    <TraceTable records={store.trace} capability={store.core?.trace ?? null} />
-  </div>
 </div>
 
 <style>
@@ -68,6 +82,10 @@
   }
 
   .totals, .load { font-size: var(--text-xs); color: var(--color-muted-foreground); }
+  .totals { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .details { flex: none; gap: 4px; }
+  .chevron { display: inline-flex; transition: transform var(--dur-2) var(--ease-out-quint); }
+  .chevron.open { transform: rotate(180deg); }
   .load { display: flex; flex-wrap: wrap; gap: 14px; padding: 0 12px 8px; }
   .load b { color: var(--color-foreground); font-weight: 500; margin-left: 4px; }
 

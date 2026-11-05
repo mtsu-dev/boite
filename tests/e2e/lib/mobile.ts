@@ -1,4 +1,5 @@
 import type { BrowserPage } from './cdp.ts';
+import { openSettingsPage } from './views.ts';
 
 /**
  * The phone's slides and sheets (`app.css`'s `screen-*` and `sheet-*` keyframes) have come
@@ -35,9 +36,10 @@ export async function openMobilePanel(page: BrowserPage): Promise<void> {
 
 /** Limits, once Settings is open: a desktop tab, or on a phone the second tab of the Usage screen. */
 export async function openLimitsTab(page: BrowserPage): Promise<void> {
-  await page.waitFor(`document.querySelector('[data-testid=mobile-settings-home], [data-testid=mobile-settings-detail], [data-testid=settings-tab-limits]')`);
-  if (await page.evaluate(`!!document.querySelector('[data-testid=settings-tab-limits]')`)) {
-    await page.click('[data-testid=settings-tab-limits]');
+  // The desktop nav's Advanced entry has no row on the phone's Settings home.
+  await page.waitFor(`document.querySelector('[data-testid=mobile-settings-home], [data-testid=mobile-settings-detail], [data-testid=settings-tab-advanced]')`);
+  if (await page.evaluate(`!!document.querySelector('[data-testid=settings-tab-advanced]')`)) {
+    await openSettingsPage(page, 'limits');
     return;
   }
   if (!await page.evaluate(`!!document.querySelector('[data-testid=mobile-usage-tab-limits]')`)) await page.click('[data-testid=settings-tab-usage]');

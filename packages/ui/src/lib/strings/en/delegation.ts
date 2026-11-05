@@ -30,8 +30,8 @@ export const strings = {
     backToTeam: 'Back to the subagents',
     stopAll: 'Stop all',
     send: 'Send to the subagent',
-    startedOne: 'Started 1 subagent',
-    startedMany: 'Started {count} subagents',
+    /** When delegated work began, on its line in the chat while it runs. */
+    startedAt: 'started {time}',
     completed: '{done}/{total} completed',
     failed: '{count} failed',
     stopped: '{count} stopped',

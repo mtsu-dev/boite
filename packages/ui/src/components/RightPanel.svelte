@@ -1,10 +1,9 @@
 <script lang="ts">
-  import { onMount, untrack } from 'svelte';
-  import { ArrowLeft, ArrowRightToLine, ChevronLeft, ChevronRight, Ellipsis, ListX, Maximize2, Minimize2, SquareKanban, SquareTerminal, SquareX, X, GripHorizontal, PanelsTopLeft } from '@lucide/svelte';
+  import { onMount, tick, untrack } from 'svelte';
+  import { ArrowRightToLine, ChevronLeft, ChevronRight, Ellipsis, ListX, Maximize2, Minimize2, SquareX, X, GripHorizontal, PanelsTopLeft } from '@lucide/svelte';
   import { PanelCounts, PRIMARY, stripItems } from '../lib/panel-strip.svelte';
-  import { work } from '../lib/work-prefs.svelte';
+  import { launcherItems, panelAvailable, pickLauncher } from '../lib/panel-launcher';
   import { floatingPanel, RESIZE_DIRECTIONS } from '../lib/floating-panel';
-  import { browserBridge } from '../lib/browser-bridge';
   import { StripScroll } from '../lib/strip-scroll.svelte';
   import { contextMenu } from '../lib/context-menu.svelte';
   import { longPress } from '../lib/long-press';
@@ -17,12 +16,12 @@
   import type { BoundPanel, Surface, SurfaceKind } from '../lib/right-panel.svelte';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
-  import { offeredCards, available as availableTo, kindName, label, tooltip, unavailable } from '../lib/surface-labels';
+  import { offeredCards, kindName, label, tooltip } from '../lib/surface-labels';
   import Menu from './Menu.svelte';
   import PanelResizeHandle from './PanelResizeHandle.svelte';
   import SurfaceIcon from './SurfaceIcon.svelte';
-  import { surfaceGlyph } from '../lib/surface-glyphs';
-  import PanelSurfaceView from './PanelSurfaceView.svelte';
+    import PanelSurfaceView from './PanelSurfaceView.svelte';
+  import PanelPhoneHeader from './PanelPhoneHeader.svelte';
 
   let {
     store,
@@ -39,7 +38,6 @@
     onexit: (event: AnimationEvent) => void;
   } = $props();
 
-  const inShell = window.__TAURI_INTERNALS__ !== undefined;
   const phone = $derived((innerWidth.current ?? window.innerWidth) <= 720);
   /**
    * The docked width: the one asked for, within the room the chat keeps once
@@ -97,8 +95,7 @@
 
   /** The user's own browser needs the shell's webview, or the iframe a test page paints. */
   function available(kind: SurfaceKind): boolean {
-    if (kind === 'browser' && !inShell) return browserBridge.paints;
-    return availableTo(kind, inShell, store.owner);
+    return panelAvailable(store, kind);
   }
 
   /** The strip's overflow, its hidden ends and the chevrons that scroll it (`lib/strip-scroll.svelte.ts`). */
@@ -201,29 +198,45 @@
   let strip = $derived(stripItems(surfaces, available));
   const counts = new PanelCounts(() => store);
 
-  /** The drawers under the chat open from the strip too: the title bar no longer carries them. */
-  let terminalTab = $derived(!!store.openThread && store.owner && !store.openThread.teamId && !store.openThread.debateId && work.shows('header.terminal'));
-  let boardTab = $derived(!!store.openThread && store.boardAvailable());
-
-  /** A persistent agent's own thread has a desk, offered first. */
-  const agentThread = $derived(!!store.openThread?.agentSessionId);
+  /** What More lists: the drawers under the chat, then the surfaces past the strip's five, then the way back to a kind put away. */
   let menuItems = $derived([
-    ...(agentThread ? [{ id: 'desk', label: kindName('desk'), glyph: surfaceGlyph('desk') }] : []),
-    ...offeredCards().filter((card) => !PRIMARY.includes(card.kind)).map((card) => ({
-      id: card.kind,
-      label: kindName(card.kind),
-      glyph: surfaceGlyph(card.kind),
-      disabled: !available(card.kind),
-      ...(available(card.kind) ? {} : { hint: unavailable() })
-    })),
-    // The way back to a kind this device put away.
+    ...launcherItems(store, (kind) => counts.of(kind), null, { primary: false }),
     separator('sep-customize'),
     { id: CUSTOMIZE, label: strings.controls.customize }
   ]);
 
+  /** A tab's accessible name: the surface, then what its count says ("Changes, 6 files"). */
+  function named(name: string, count: { label: string } | null): string {
+    return count ? `${name}, ${count.label}` : name;
+  }
+
+  /**
+   * Every tab keeps its name while the five fit; past that the ones behind
+   * the front tab give way to their icon and count, never to a cut word. A
+   * hidden copy of the full strip measures the room it needs.
+   */
+  let header = $state<HTMLElement | undefined>(undefined);
+  let measure = $state<HTMLDivElement | undefined>(undefined);
+  let spacer = $state<HTMLSpanElement | undefined>(undefined);
+  let compact = $state(false);
+  function fit(): void {
+    // jsdom lays nothing out: no room means no measure.
+    if (!measure || !tabs || !spacer || tabs.clientWidth + spacer.clientWidth === 0) return;
+    compact = measure.scrollWidth > tabs.clientWidth + spacer.clientWidth - 4;
+  }
+  $effect(() => {
+    void strip; void counts.of('changes'); void counts.atWork; void panel.activeSurfaceId; void strings.rightPanel.changes;
+    if (!header) return;
+    void tick().then(fit);
+    if (typeof ResizeObserver !== 'function') return;
+    const observer = new ResizeObserver(() => fit());
+    observer.observe(header);
+    return () => observer.disconnect();
+  });
+
   function pickNew(id: string): void {
     if (id === CUSTOMIZE) store.showSettings('appearance', CONTROLS_SECTION);
-    else launch(id as SurfaceKind);
+    else pickLauncher(store, id);
   }
 </script>
 
@@ -260,13 +273,16 @@
 >
   {#if !rightPanel.floating}<PanelResizeHandle {store} bind:dragging />{/if}
 
-  <header class="strip" data-panel-move data-testid="panel-titlebar">
+  <header class="strip" data-panel-move data-testid="panel-titlebar" bind:this={header}>
     {#if rightPanel.floating}
       <button type="button" class="ghost small icon move-handle" data-panel-move data-testid="panel-move"
         title={strings.browser.move} aria-label={strings.browser.move} disabled={rightPanel.maximized}>
         <GripHorizontal size={16} />
       </button>
     {/if}
+    {#if phone}
+      <PanelPhoneHeader {store} {panel} {counts} onback={shut} />
+    {:else}
     {#if scroller.overflowing}
       <button
         type="button"
@@ -282,6 +298,7 @@
 
     <div
       class="tabs"
+      class:compact
       class:hidden-start={scroller.overflowing && scroller.hiddenStart}
       class:hidden-end={scroller.overflowing && scroller.hiddenEnd}
       role="tablist"
@@ -303,10 +320,11 @@
           role="tab"
           tabindex="0"
           aria-selected={surface.id === panel.activeSurfaceId}
+          aria-label={named(label(surface), count)}
           data-surface-id={surface.id}
           data-kind={surface.kind}
           data-testid="panel-tab"
-          title={count ? `${tooltip(surface)}: ${count.label}` : tooltip(surface)}
+          title={named(tooltip(surface), count)}
           onclick={() => panel.activate(surface.id)}
           onkeydown={(event) => onTabKey(event, surface)}
           onmousedown={(event) => onTabPointerDown(event, surface)}
@@ -320,10 +338,7 @@
             data-testid="panel-tab-close"
             onclick={(event) => {
               event.stopPropagation();
-              // A finger sees no cross before it taps: on a phone a tab in the
-              // background opens, and only the tab in front closes.
-              if (phone && surface.id !== panel.activeSurfaceId) panel.activate(surface.id);
-              else void closeTabs(panel, 'close', surface.id);
+              void closeTabs(panel, 'close', surface.id);
             }}
           >
             <span class="glyph">
@@ -332,7 +347,7 @@
             <span class="cross"><X size={14} strokeWidth={2} /></span>
           </button>
           <span class="name ui-label">{label(surface)}</span>
-          {#if count}<span class="count" aria-label={count.label}>{count.value}</span>{/if}
+          {#if count}<span class="count" aria-hidden="true">{count.value}</span>{/if}
         </div>
         {:else}
         <!-- A surface not open yet keeps its place in the strip: one click opens it. -->
@@ -341,17 +356,29 @@
           class="tab kind"
           role="tab"
           aria-selected="false"
+          aria-label={named(kindName(item.kind), count)}
           data-kind={item.kind}
           data-testid="panel-kind"
-          title={count ? `${kindName(item.kind)}: ${count.label}` : kindName(item.kind)}
+          title={named(kindName(item.kind), count)}
           onclick={() => launch(item.kind)}
           oncontextmenu={(event) => controlMenu(event, store, `panel.${item.kind}` as ControlId)}
         >
           <span class="glyph"><SurfaceIcon kind={item.kind} size={14} /></span>
           <span class="name ui-label">{kindName(item.kind)}</span>
-          {#if count}<span class="count" aria-label={count.label}>{count.value}</span>{/if}
+          {#if count}<span class="count" aria-hidden="true">{count.value}</span>{/if}
         </button>
         {/if}
+      {/each}
+    </div>
+    <!-- The full strip, unseen: the room every name needs, which decides `compact`. -->
+    <div class="tabs measure" aria-hidden="true" bind:this={measure}>
+      {#each strip as item (item.key)}
+        {@const count = counts.of(item.kind)}
+        <span class="tab kind" class:active={item.surface !== undefined && item.surface.id === panel.activeSurfaceId}>
+          {#if item.surface && item.surface.id === panel.activeSurfaceId}<span class="closer"></span>{/if}
+          <span class="name ui-label">{item.surface ? label(item.surface) : kindName(item.kind)}</span>
+          {#if count}<span class="count">{count.value}</span>{/if}
+        </span>
       {/each}
     </div>
 
@@ -368,29 +395,7 @@
       </button>
     {/if}
 
-    <!-- The drawers under the chat: toggles beside the tabs, not tabs, and never scrolled out of reach. -->
-    {#if terminalTab && store.openThread}
-      {@const terminalKey = store.keyLabel('terminal')}
-      {@const on = store.terminalShown(store.openThread.id)}
-      <button type="button" class="tab kind drawer" class:active={on}
-        title={terminalKey ? `${strings.thread.terminalHint} (${terminalKey})` : strings.thread.terminalHint}
-        aria-label={strings.thread.terminalHint} aria-pressed={on} data-testid="terminal-toggle"
-        onclick={() => store.toggleTerminal()} oncontextmenu={(event) => controlMenu(event, store, 'header.terminal')}>
-        <span class="glyph"><SquareTerminal size={14} strokeWidth={1.75} /></span>
-        <span class="name ui-label">{strings.rightPanel.terminal}</span>
-      </button>
-    {/if}
-    {#if boardTab}
-      <button type="button" class="tab kind drawer" class:active={store.boardShown}
-        title={store.keyLabel('terminal') ? `${strings.board.open} (${store.keyLabel('terminal')})` : strings.board.open}
-        aria-label={strings.board.open} aria-pressed={store.boardShown} data-testid="board-toggle"
-        onclick={() => store.toggleBoard()}>
-        <span class="glyph"><SquareKanban size={14} strokeWidth={1.75} /></span>
-        <span class="name ui-label">{strings.rightPanel.board}</span>
-      </button>
-    {/if}
-
-    <!-- Every other surface, and the way back to a kind this device put away. -->
+    <!-- The drawers under the chat, every other surface, and the way back to a kind this device put away. -->
     <span class="more">
       <Menu
         items={menuItems}
@@ -405,7 +410,7 @@
       </Menu>
     </span>
 
-    <span class="spacer"></span>
+    <span class="spacer" bind:this={spacer}></span>
 
     {#if rightPanel.floating}
       <button type="button" class="ghost small icon" data-testid="panel-dock"
@@ -433,17 +438,14 @@
     <button
       type="button"
       class="ghost small icon panel-close"
-      title={phone ? strings.rightPanel.backToChat : strings.common.close}
-      aria-label={phone ? strings.rightPanel.backToChat : strings.common.close}
+      title={strings.common.close}
+      aria-label={strings.common.close}
       data-testid="panel-close"
       onclick={shut}
     >
-      {#if phone}
-        <ArrowLeft size={16} strokeWidth={1.75} /><span class="ui-label">{strings.rightPanel.chat}</span>
-      {:else}
-        <X size={14} strokeWidth={1.75} />
-      {/if}
+      <X size={14} strokeWidth={1.75} />
     </button>
+    {/if}
   </header>
 
   <div class="body">
@@ -679,15 +681,27 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* Under 620 px a surface not open shows its icon alone; under 400 px every
-     tab does, its name in the tooltip. */
-  @container strip (max-width: 619px) {
-    .tab.kind .name { display: none; }
+  /* While every name fits, a tab is its name and count; the front tab adds
+     its icon, the close target. Compact, the tabs behind it keep their icon
+     and count, their name in the tooltip and the accessible name. */
+  .tabs:not(.compact) .tab.kind .glyph,
+  .tabs:not(.compact) .tab:not(.active) .closer { display: none; }
+  .tabs:not(.compact) .tab:not(.active) { padding: 0 7px; }
+  .tabs.compact .tab:not(.active) .name { display: none; }
+  .tabs.compact .tab.kind { padding: 0 6px; gap: 0; }
+  .tabs.compact .tab:not(.active) .count { margin-left: 2px; }
+
+  .tabs.measure {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: max-content;
+    overflow: visible;
+    visibility: hidden;
+    pointer-events: none;
   }
-  @container strip (max-width: 399px) {
-    .tab:not(.active) .name, .tab.kind .name { display: none; }
-    .tab.kind { padding: 0 6px; }
-  }
+  .measure .closer { display: inline-flex; }
+
 
   .chev {
     flex: none;
@@ -772,7 +786,7 @@
   }
 
   @media (max-width: 720px) {
-    .strip button.small.icon.panel-close { order: -1; width: auto; padding: 0 8px; gap: 6px; }
+    .strip { gap: 4px; padding: 0 4px; }
 
     .panel,
     .panel.maximized {
@@ -798,25 +812,6 @@
       display: none;
     }
 
-    /* The tab's icon is its close button: a finger needs the whole height of the tab. */
-    .tab {
-      padding-left: 0;
-    }
-
-    .closer {
-      width: var(--touch-target);
-      height: var(--touch-target);
-    }
-
-    .tab.kind {
-      justify-content: center;
-      min-width: var(--touch-target);
-      height: var(--touch-target);
-    }
-
-    /* Only the tab in front offers its cross; the others keep their icon. */
-    .tab:not(.active) .glyph { display: inline-flex; }
-    .tab:not(.active) .cross { display: none; }
 
     /* The sheet already fills the screen. */
     .maximize {

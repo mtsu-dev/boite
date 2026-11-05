@@ -8,6 +8,7 @@ import { connect } from '../../packages/core/src/client.ts';
 import { claudeProjectFolder } from '../../packages/core/src/imports/claude.ts';
 import { claudeSessionFixture, FIXTURE_SESSION_ID } from '../../packages/core/test/fixtures/claude-session.ts';
 import { BrowserPage } from './lib/cdp.ts';
+import { openSettingsPage } from './lib/views.ts';
 import { mintPairing, pairingUrlOf, removeDirectory, startCore, type RunningCore } from './lib/core.ts';
 import { developmentMarkers, ensureProductionUi, UI_DIST } from './lib/prod-ui.ts';
 
@@ -84,6 +85,10 @@ test(
   'a fresh core opens on a draft in the drafts, connected to the core it was paired with',
   async () => {
     await page.waitFor(`document.querySelector('[data-testid=status-connection]')?.dataset.state === 'ready'`, 30_000);
+    // A fresh core with an AI connected and no folder greets with the first-run steps, the folder next;
+    // starting without one leaves the draft in the drafts, one click from a folder of its own.
+    await page.waitFor(`document.querySelector('${testid('first-run-folder')}')?.dataset.done === 'false'`);
+    await page.click(testid('first-run-skip'));
     await page.waitFor(`document.querySelector('${testid('draft-open-folder')}')`);
     expect(await page.evaluate<string>(`document.querySelector('${testid('draft-project')}').textContent`)).toContain('Drafts');
     await page.waitFor(`document.querySelector('${testid('sidebar')}')`);
@@ -218,7 +223,7 @@ test(
     await page.waitFor(`!document.querySelector('${testid('context-menu')}')`);
 
     await page.click(testid('nav-settings'));
-    await page.click(testid('settings-tab-experiments'));
+    await openSettingsPage(page, 'experiments');
     await page.click(testid('experiment-session-import'));
     await page.waitFor(`document.querySelector('${testid('experiment-session-import')}').checked`);
     await page.screenshot(EXPERIMENTS_SCREENSHOT);
@@ -516,6 +521,9 @@ test(
     );
     await page.evaluate(`document.querySelector('${testid('launch-trace')}')?.click()`);
     await page.waitFor(`document.querySelector('${testid('trace-panel')}')`);
+    // One line sums up what runs; the table of processes waits behind its details toggle.
+    await page.waitFor(`document.querySelector('${testid('trace-summary')}')?.textContent.length > 0`);
+    await page.click(testid('trace-details'));
     await page.waitFor(
       `document.querySelector('${testid('trace-row')}') || document.querySelector('${testid('trace-empty')}')`,
     );
@@ -590,7 +598,7 @@ test(
 
     writeFileSync(file, JSON.stringify({ 'new-thread': 'mod+shift+n', nope: 'mod+x' }));
     await page.click(testid('nav-settings'));
-    await page.click(testid('settings-tab-keyboard'));
+    await openSettingsPage(page, 'keyboard');
     // The core watched the write and announced it; the page redrew the row.
     await page.waitFor(`${keyOf('new-thread')} === 'Ctrl+Shift+N'`);
     expect(await page.evaluate<string>(keyOf('palette'))).toBe('Ctrl+K');
@@ -621,6 +629,8 @@ test(
     await page.waitFor(`document.querySelector('${testid('settings-search')}')`);
     // The core the UI talks to sits under Advanced, with the rest a developer reads.
     await page.click(testid('settings-tab-advanced'));
+    // Its address and version are details, folded under the card's toggle.
+    await page.click(testid('core-details-toggle'));
     await page.waitFor(`document.querySelector('${testid('settings-endpoint')}')`);
     expect(await page.evaluate<string>(textOf('settings-endpoint'))).toBe(`127.0.0.1:${core.port}`);
     expect(await page.evaluate<string>(textOf('settings-version'))).toBe(corePackage.version);

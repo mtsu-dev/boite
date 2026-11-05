@@ -447,7 +447,7 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: var(--color-live);
+    background: var(--color-accent);
     animation: running 1.2s var(--loop-ease-out-quint-36) infinite var(--loops);
   }
 

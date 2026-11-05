@@ -2,8 +2,9 @@
 
 Each thread has shells under the chat, opened in the thread's working
 directory. `Ctrl+J` (the `terminal` command, [keybindings.md](keybindings.md))
-shows and hides the drawer at any time. The terminal button in the thread header
-does the same unless Settings, Appearance, Buttons hides it. The top edge of the
+shows and hides the drawer at any time. The Terminal row of the list behind the
+title bar's panel button, and of the panel's More, does the same, with the panel
+shut or open, unless Settings, Appearance, Buttons hides it. The top edge of the
 drawer sets its height, which the browser keeps per device. The cross ends the
 shell that has the keyboard, a tab's cross every shell of the tab; hiding the
 drawer ends none. In a project's thread on a core that links cards to goals,

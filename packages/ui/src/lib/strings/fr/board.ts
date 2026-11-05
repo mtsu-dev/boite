@@ -9,6 +9,8 @@ export const fr: Translation = {
     open: 'Tableau du projet',
     hide: 'Masquer le tableau',
     columns: { todo: 'À faire', doing: 'En cours', review: 'En revue', done: 'Fini' },
+    /** The columns where four counts share one row. */
+    short: { todo: 'À faire', doing: 'En cours', review: 'Revue', done: 'Fini' },
     doingHint: 'Une carte posée ici lance une conversation /goal2 avec la carte pour objectif. Sa barre est la checklist de cet objectif.',
     add: 'Ajouter une carte',
     addPlaceholder: 'Ce qu\'il faut faire',

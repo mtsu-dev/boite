@@ -24,6 +24,19 @@ interface ThreadMenuOptions {
   phone?: boolean;
 }
 
+/** Mark done, and when it cannot run now, the one line that says why: never a greyed action without its reason. */
+function doneItem(store: Store, thread: ThreadSummary): MenuItem {
+  const allowed = canMarkDone(store, thread);
+  const why = strings.sidebar.doneBlocked;
+  const hint = allowed ? undefined
+    : store.connection !== 'ready' ? why.offline
+    : thread.status === 'waiting' ? why.waiting
+    : thread.status === 'running' || thread.status === 'queued' ? why.working
+    : thread.backgroundWork?.kinds.length ? why.background
+    : why.moving;
+  return { id: 'done', label: strings.sidebar.markDone, glyph: Check, disabled: !allowed, ...(hint ? { hint } : {}) };
+}
+
 /** The same action groups in row, title and phone menus, with Archive available on every thread that can be kept. */
 export function threadMenuItems(store: Store, thread: ThreadSummary, options: ThreadMenuOptions = {}): MenuItem[] {
   const retitling = store.retitling.includes(thread.id);
@@ -38,7 +51,7 @@ export function threadMenuItems(store: Store, thread: ThreadSummary, options: Th
       ...entrustItems(store, thread),
       ...(kept ? [
         separator('sep-archive'),
-        ...(options.showDone ? [{ id: 'done', label: strings.sidebar.markDone, glyph: Check, disabled: !canMarkDone(store, thread) }] : []),
+        ...(options.showDone ? [doneItem(store, thread)] : []),
         { id: 'archive', label: strings.sidebar.archive, glyph: Archive }
       ] : [])
     ];
@@ -50,7 +63,7 @@ export function threadMenuItems(store: Store, thread: ThreadSummary, options: Th
     ...(kept ? [
       { id: 'pin', label: thread.pinned ? strings.sidebar.unpin : strings.sidebar.pin, glyph: thread.pinned ? PinOff : Pin },
       separator('sep-archive'),
-      ...(options.showDone ? [{ id: 'done', label: strings.sidebar.markDone, glyph: Check, disabled: !canMarkDone(store, thread) }] : []),
+      ...(options.showDone ? [doneItem(store, thread)] : []),
       { id: 'archive', label: strings.sidebar.archive, glyph: Archive },
       separator('sep-organize')
     ] : []),

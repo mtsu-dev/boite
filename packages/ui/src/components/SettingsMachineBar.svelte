@@ -10,7 +10,8 @@
    * to one machine. One that follows its group's default machine says so, and
    * each setting changed on it anyway carries a star (`SyncMark.svelte`).
    */
-  let { machine, machines, onpick }: { machine: Machine; machines: Machine[]; onpick: (id: string) => void } = $props();
+  /** `note` sits beside the picker: what on the page applies to that machine and what to this device. */
+  let { machine, machines, note, onpick }: { machine: Machine; machines: Machine[]; note?: string; onpick: (id: string) => void } = $props();
   let items = $derived(machines.map((entry) => ({ id: entry.id, label: listedName(entry), active: entry === machine })));
   let home = $derived(workspace.settingsSync.sourceName(machine));
   let connected = $derived(workspace.settingsSync.source(machine) !== undefined);
@@ -20,10 +21,15 @@
 </script>
 
 <div class="machine-bar" data-testid="settings-machine-bar">
-  {#if machines.length > 1}
-    <Menu {items} label={strings.machines.pick} placement="bottom" testid="settings-machine" onpick={onpick}>
-      <MachineIcon icon={machine.icon} os={machine.store.core?.os} size={15} /><span class="name ui-label">{listedName(machine)}</span><ChevronDown size={13} />
-    </Menu>
+  {#if machines.length > 1 || note}
+    <div class="pick-row">
+      {#if machines.length > 1}
+        <Menu {items} label={strings.machines.pick} placement="bottom" testid="settings-machine" onpick={onpick}>
+          <MachineIcon icon={machine.icon} os={machine.store.core?.os} size={15} /><span class="name ui-label">{listedName(machine)}</span><ChevronDown size={13} />
+        </Menu>
+      {/if}
+      {#if note}<span class="note muted" data-testid="settings-scope">{note}</span>{/if}
+    </div>
   {/if}
   {#if home !== undefined}
     <p class="info" role="note" data-testid="settings-follows">
@@ -47,6 +53,8 @@
     max-width: var(--settings-width);
   }
   .machine-bar:empty { display: none; }
+  .pick-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+  .note { font-size: var(--text-sm); }
   .name {
     overflow: hidden;
     text-overflow: ellipsis;

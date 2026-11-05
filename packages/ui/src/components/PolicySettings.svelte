@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ShowDetails from './ShowDetails.svelte';
   import { Lock, TriangleAlert } from '@lucide/svelte';
   import type { PolicyKey } from '@boite/contracts';
   import type { Store } from '../lib/store.svelte';
@@ -79,7 +80,7 @@
         {/each}
       </div>
     {/if}
-    <p class="source"><span>{strings.policy.file}</span><code data-testid="policy-file">{policy.file}</code></p>
+    <ShowDetails testid="policy-details"><p class="source"><span>{strings.policy.file}</span><code data-testid="policy-file">{policy.file}</code></p></ShowDetails>
   </section>
 {/if}
 

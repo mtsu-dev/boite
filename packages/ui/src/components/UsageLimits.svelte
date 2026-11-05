@@ -8,7 +8,7 @@
   import type { AccountQuota, QuotaAlertPeriod } from '@boite/contracts';
   import { fill, strings } from '../lib/strings';
   import { creditBalance, exactTime, quotaResetTime, quotaWindowName, tenth, weekdayTime } from '../lib/format';
-  import { quotaAccountName, quotaTone, remainingPercent } from '../lib/quota-reader.svelte';
+  import { quotaCardTitle, quotaTone, remainingPercent } from '../lib/quota-reader.svelte';
   import { shownWindows } from '../lib/quota-display';
   import ProviderLogo from './ProviderLogo.svelte';
 
@@ -36,7 +36,7 @@
 
 <div class="limits" class:loading data-testid="usage-limits">
   {#each rows as row (row.accountId)}
-    {@const name = quotaAccountName(row)}
+    {@const name = quotaCardTitle(row)}
     {@const at = row.checkedAt}
     {@const observed = row.source === 'observation'}
     {@const pending = loading && !completed.includes(row.accountId)}

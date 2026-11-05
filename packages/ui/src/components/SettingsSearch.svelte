@@ -117,6 +117,7 @@
   /* Label over its trail: the nav is too narrow to set them side by side. */
   .result {
     display: grid;
+    justify-content: stretch;
     justify-items: start;
     gap: 1px;
     width: 100%;

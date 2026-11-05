@@ -68,6 +68,12 @@ export function quotaAccountName(row: AccountQuota): string {
   return row.label.trim() ? row.label : row.providerName;
 }
 
+/** A card's title: the provider, then the account's own name when it has one ("Claude · Default"). */
+export function quotaCardTitle(row: AccountQuota): string {
+  const name = quotaAccountName(row);
+  return row.gateway?.display === 'average' || name === row.providerName ? name : `${row.providerName} · ${name}`;
+}
+
 /** What a window has left, clamped and to the tenth: the one rounding every quota view shows. */
 export function remainingPercent(used: number): number {
   return Math.max(0, Math.min(100, Math.round((100 - used) * 10) / 10));

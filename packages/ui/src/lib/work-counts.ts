@@ -1,35 +1,42 @@
 import { threadBusy, type ThreadId, type ThreadSummary } from '@boite/contracts';
 import type { Store } from './store.svelte';
-import { agentDirectory } from './agent-directory.svelte';
-import { needsUser, threadState } from './thread-state';
-import { workingThread } from './recent.svelte';
+import { needsUser } from './thread-state';
+import { inbox, storeSources, type LiveTally, type Tally } from './inbox';
 
-/** How much is at work behind one side of the Threads and Agents switch, and whether any of it waits on the user. */
-export interface WorkCount {
+/**
+ * What one side of a badge shows: the needs-you count in the waiting colour
+ * when anything there needs the user, else the working count in the accent.
+ * A badge never adds the two: each number counts one thing.
+ */
+export interface Badge {
   count: number;
   waiting: boolean;
+  /** The words for its tooltip and accessible name come from the caller; this says what the number is. */
+  counts: 'needs' | 'working';
 }
 
-/** The threads at work behind the Threads side: `count` rows of the list, and `subagents` delegated agents under them, which are not rows. */
-export interface ThreadWork extends WorkCount {
+export function badgeOf(tally: Tally): Badge {
+  return tally.needs > 0 ? { count: tally.needs, waiting: true, counts: 'needs' } : { count: tally.working, waiting: false, counts: 'working' };
+}
+
+/** Every count the app shows, the project threads and the bots apart, with the delegated agents at work under the project threads. */
+export interface WorkTally extends LiveTally {
   subagents: number;
 }
 
 /**
- * The conversations the thread list draws that are at work: a turn under way,
- * queued, waiting on its delegated agents or on something it left running, or
- * asking the user, and apart from them every delegated agent under them at
- * work or asking, at any depth: seven sub-agents are seven agents running, but
- * the badge's number stays the rows the user can see ("ça m'annonce 8 threads
- * alors que j'en vois que 2").
- * Archived projects and archived threads are out of the list, so they are out
- * of the count, and so is a machine that is not connected: a laptop gone to
- * sleep mid-turn would otherwise count as at work for hours.
+ * The one selector behind every live count: the lifecycle strip, the Inbox
+ * headers and its tab badge, the switch on both sides, the phone tabs and
+ * Next. It is the Inbox's own pass (`inbox`), so the lists and the numbers
+ * never disagree. A machine that is not connected counts nothing: a laptop
+ * gone to sleep mid-turn would otherwise count as at work for hours.
+ * `subagents` counts the delegated agents at work or asking under the counted
+ * project threads, at any depth: seven sub-agents are seven agents running,
+ * but they are no rows, so they ride apart behind their own glyph.
  */
-export function workingThreads(stores: readonly Store[]): ThreadWork {
-  let count = 0;
+export function workTally(stores: readonly Store[]): WorkTally {
+  const { tally } = inbox(storeSources(stores.map(store => ({ store }))));
   let subagents = 0;
-  let waiting = false;
   for (const store of stores) {
     if (store.connection !== 'ready') continue;
     const children = new Map<ThreadId, ThreadSummary[]>();
@@ -44,52 +51,14 @@ export function workingThreads(stores: readonly Store[]): ThreadWork {
       for (const child of children.get(parent) ?? []) {
         if (seen.has(child.id)) continue;
         seen.add(child.id);
-        const asks = needsUser(child);
-        if (asks || threadBusy(child)) subagents++;
-        // A grandchild's question never reaches its grandparent's row state: the badge reads it here.
-        waiting ||= asks;
+        if (needsUser(child) || threadBusy(child)) subagents++;
         descend(child.id);
       }
     };
     for (const project of store.projects) {
       if (project.archived) continue;
-      for (const thread of store.threadsOf(project.id)) {
-        if (thread.archived) continue;
-        const asks = threadState(thread, store.subagents(thread.id)) === 'waiting';
-        if (asks || workingThread(store, thread)) count++;
-        waiting ||= asks;
-        descend(thread.id);
-      }
+      for (const thread of store.threadsOf(project.id)) descend(thread.id);
     }
   }
-  return { count, subagents, waiting };
-}
-
-/**
- * The agents at work: every persistent agent with a turn under way, a
- * question for the user or work left running, and every entrusted thread
- * mid-turn, one thread counted once. The agents snapshot only loads with the
- * Agents experiment on; without it nothing counts here.
- */
-export function agentsAtWork(stores: readonly Store[]): WorkCount {
-  let count = 0;
-  let waiting = false;
-  for (const store of stores) {
-    const seen = new Set<string>();
-    const add = (thread: ThreadSummary, asks: boolean) => {
-      if (seen.has(thread.id)) return;
-      seen.add(thread.id);
-      count++;
-      waiting ||= asks;
-    };
-    const directory = agentDirectory(store);
-    for (const { thread, waiting: asks } of directory.atWork) add(thread, asks || needsUser(thread));
-    const busy = (thread: ThreadSummary) => needsUser(thread) || workingThread(store, thread);
-    // An agent's own thread at rest can still ask the user (`boite ask`) or keep work in the background.
-    for (const thread of store.threads) {
-      if (!thread.archived && thread.agentSessionId && busy(thread) && directory.ownerOf(thread)) add(thread, needsUser(thread));
-    }
-    for (const { thread } of directory.entrusted) if (busy(thread)) add(thread, needsUser(thread));
-  }
-  return { count, waiting };
+  return { ...tally, subagents };
 }

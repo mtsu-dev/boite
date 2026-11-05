@@ -82,8 +82,9 @@
         {:else if state === 'queued'}
           <span class="agent-live-text">{labels.state.queued}</span>
         {:else if state === 'waiting'}
-          <!-- The ask itself is the question card right below: said once per screen. -->
-          <span class="agent-live-text">{labels.state.waiting}</span>
+          <!-- The row, the strip and the question card already say it waits on
+               you; the ring carries the state here and the line keeps the job. -->
+          <span class="agent-live-text" class:job={!!agent.domain}>{agent.domain || labels.state.waiting}</span>
         {:else if state === 'error'}
           <span class="agent-live-text">{labels.state.error}</span>
         {:else if state === 'paused' || state === 'archived'}

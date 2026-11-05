@@ -54,9 +54,12 @@ async function managed(ready: (options?: { delayMs: number; policy: ReturnType<t
   return store;
 }
 
-test('Settings lists the policy file once and every key it holds, with its value, in groups; a machine without one shows nothing', async ({ ready }) => {
+test('Settings lists every key the policy holds, with its value, in groups, and the file once behind Show details; a machine without one shows nothing', async ({ ready }) => {
   const store = await managed(ready);
   await show(PolicySettings, { store });
+  expect(byId('policy-file')).toBeNull();
+  byId<HTMLButtonElement>('policy-details-toggle')!.click();
+  flushSync();
   expect(byId('policy-file')?.textContent).toBe('/etc/boite/policy.json');
   expect(document.querySelectorAll('[data-testid="policy-file"]')).toHaveLength(1);
   expect(byId('policy-count')?.textContent).toBe(fill(strings.policy.lockedMany, { count: String(store.policy!.locked.length) }));

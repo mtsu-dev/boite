@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp.ts';
 import { startDevUi } from './lib/ui.ts';
+import { revealThreadRow } from './lib/views.ts';
 
 // `team=1` seeds a running workflow and its subagents on `t-trace`: the bar
 // that counts them stands between the timeline and the composer, where the
@@ -24,7 +25,7 @@ beforeAll(async () => {
   const port = await freePort();
   server = await startDevUi(port);
   page = await BrowserPage.launch({ url: `http://127.0.0.1:${port}/?fake=1&team=1` });
-  await page.waitFor(`document.querySelector('${id('thread-row')}[data-thread-id="t-trace"]')`);
+  await revealThreadRow(page, 't-trace');
   await size(false);
 }, 60_000);
 afterAll(async () => { await page?.close(); await server?.close(); }, 30_000);
@@ -44,7 +45,7 @@ test('the task band stacks above the subagent bar, folded and open, on desktop a
     const bar = document.querySelector('${id('active-subagents')}').getBoundingClientRect();
     const covering = document.elementFromPoint(bar.left + bar.width / 2, bar.top + bar.height / 2);
     const messages = document.querySelectorAll('[data-mid]');
-    return { gap: bar.top - band.bottom, barOnTop: !!covering?.closest('${id('agent-dock')}'), lastClear: messages[messages.length - 1].getBoundingClientRect().bottom <= band.top };
+    return { gap: bar.top - band.bottom, barOnTop: !!covering?.closest('${id('status-strip')}'), lastClear: messages[messages.length - 1].getBoundingClientRect().bottom <= band.top };
   })()`;
   for (const phone of [false, true]) {
     await size(phone);
@@ -76,7 +77,7 @@ test('the task band stacks above the subagent bar, folded and open, on desktop a
   const stack = await page.evaluate<{ order: boolean; barOnTop: boolean }>(`(() => {
     const [bar, queue, band, composer] = ['${id('active-subagents')}', '${id('composer-queued')}', '${id('thread-activity')}', '${id('composer')}'].map(selector => document.querySelector(selector).getBoundingClientRect());
     const covering = document.elementFromPoint(bar.left + bar.width / 2, bar.top + bar.height / 2);
-    return { order: bar.bottom <= queue.top && queue.bottom <= band.top && band.bottom <= composer.top, barOnTop: !!covering?.closest('${id('agent-dock')}') };
+    return { order: bar.bottom <= queue.top && queue.bottom <= band.top && band.bottom <= composer.top, barOnTop: !!covering?.closest('${id('status-strip')}') };
   })()`);
   await page.screenshot(join(import.meta.dir, '.artifacts', 'activity-agent-dock-queued-desktop.png'));
   expect(stack).toEqual({ order: true, barOnTop: true });

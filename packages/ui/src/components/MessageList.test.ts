@@ -85,7 +85,10 @@ test('the parent timeline retains one team row, updates completion counts and op
   running = mount(MessageList, { target: document.body, props: { store: owner, threadId: 't-trace', messages: owner.openThread!.messages } });
   flushSync();
   const row = document.querySelector<HTMLButtonElement>('[data-testid=delegation-activity]')!;
-  expect(row.textContent).toContain('Started 4 subagents');
+  // One line of history: the strip above the composer is the live view, so no ticking clock while it runs.
+  expect(row.textContent).toContain('4 subagents');
+  expect(row.textContent).toMatch(/started \d/);
+  expect(row.querySelector('[data-testid=agent-elapsed]')).toBeNull();
   // The one waiting on its own background work is not completed; the interrupted one says so.
   expect(row.textContent).toContain('1/4 completed');
   expect(row.textContent).toContain('1 interrupted');
@@ -104,7 +107,16 @@ test('the parent timeline retains one team row, updates completion counts and op
   flushSync();
   expect(document.querySelectorAll('[data-testid=delegation-activity]')).toHaveLength(1);
   expect(row.textContent).toContain('2/4 completed');
-  expect(row.querySelector('[data-testid=agent-elapsed]')?.textContent).toContain('1');
+  // One still waits on its own background work: the line still says when it started.
+  expect(row.textContent).toMatch(/started \d/);
+  // Once every one ended, the same line reads as a record with its duration.
+  for (const each of owner.delegation!.agents) {
+    Object.assign(each.thread, { status: 'idle', backgroundWait: null });
+    if (each.lastTurn) Object.assign(each.lastTurn, { status: 'done', finishedAt: each.lastTurn.finishedAt ?? each.thread.createdAt + 60_000 });
+  }
+  flushSync();
+  expect(row.querySelector('[data-testid=agent-elapsed]')?.textContent).toMatch(/\d/);
+  expect(row.textContent).not.toMatch(/started \d/);
   // A child transcript must not claim that it launched its siblings.
   await unmount(running); running = null;
   await owner.open('t-team-done');
@@ -183,7 +195,8 @@ test('a workflow the thread started is one card that opens its graph, and a step
     const run = owner.workflowsOf('t-trace')[0]!;
     expect(cards[0]!.textContent).toContain('Review the parser');
     expect(cards[0]!.textContent).toContain('1/5 steps');
-    expect(cards[0]!.querySelectorAll('.phases i')).toHaveLength(4);
+    // No progress bar: the strip carries the live state.
+    expect(cards[0]!.querySelector('.phases')).toBeNull();
     cards[0]!.click();
     flushSync();
     expect(owner.panel.active).toMatchObject({ kind: 'agents', runId: run.id });

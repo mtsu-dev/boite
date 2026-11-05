@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp';
 import { startUi } from './lib/ui';
+import { revealThreadRow } from './lib/views.ts';
 
 test('an answer keeps emphasis around links and nested inline Markdown on desktop and phone', async () => {
   const port = await freePort();
@@ -9,7 +10,7 @@ test('an answer keeps emphasis around links and nested inline Markdown on deskto
   let page: BrowserPage | undefined;
   try {
     page = await BrowserPage.launch({ url: `http://127.0.0.1:${port}/?fake=1&open=recent`, windowSize: { width: 1280, height: 1000 } });
-    await page.waitFor(`document.querySelector('[data-thread-id="t-trace"]')`);
+    await revealThreadRow(page, 't-trace');
     await page.click('[data-thread-id="t-trace"]');
     const text = [
       "Claude utilise **son propre catalogue : [Anthropic Directory](https://example.test/directory)**. C'est celui que tu vois dans leur appli.",

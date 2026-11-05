@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Archive, Check, ChevronRight } from '@lucide/svelte';
+  import { Archive, Check, ChevronRight, Network } from '@lucide/svelte';
   import { threadBusy } from '@boite/contracts';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
@@ -10,7 +10,6 @@
   import { canMarkDone, markDone } from '../lib/recent.svelte';
   import { archiveThread } from '../lib/archive';
   import { workspace } from '../lib/workspace.svelte';
-  import Elapsed from './Elapsed.svelte';
 
   /**
    * The open thread's one live line, right above the composer: at work and for
@@ -48,6 +47,13 @@
     : '');
   let doneAllowed = $derived(thread !== null && state?.kind === 'finished' && !thread.agentSessionId && canMarkDone(store, thread));
   let delegated = $derived(agents > 0 || runs.length > 0);
+  /** The counts in words, for the chip's name when it shrinks to a glyph and a number. */
+  let delegatedWords = $derived([
+    agents > 0 ? fill(agents === 1 ? strings.chat.strip.subagentOne : strings.chat.strip.subagentMany, { count: String(agents) }) : null,
+    runs.length > 0 ? fill(runs.length === 1 ? strings.workflow.activeOne : strings.workflow.activeMany, { count: String(runs.length) }) : null
+  ].filter(Boolean).join(' · '));
+  // One timer on the line: the state's own. The group's time shows only when no state does, else in its tooltip.
+  let delegatedTime = $derived(delegated && Number.isFinite(delegatedSince) ? elapsed(now - delegatedSince) : null);
   let shown = $derived(state !== null && (state.kind !== 'finished' || doneAllowed) || delegated || next !== null);
 
   /** A wait reads like a stopwatch for a day, then in days and hours. */
@@ -65,6 +71,7 @@
 
 {#if thread && shown}
   <div class="strip" data-testid="status-strip" data-state={state?.kind ?? 'idle'} role="status">
+    <!-- The state never shrinks: what gives way first is the counts, then Next, then a second line. -->
     {#if state?.kind === 'waiting'}
       <span class="lead waiting" data-testid="status-strip-waiting" title={fill(strings.chat.strip.waitingSince, { time: exactTime(state.since) })}>
         <span class="dot" aria-hidden="true"></span>
@@ -72,28 +79,49 @@
         <span class="sep" aria-hidden="true">·</span>
         <span class="time">{waited(now - state.since)}</span>
       </span>
-    {:else if state?.kind === 'working'}
+    {:else if state?.kind === 'working' || state?.kind === 'asking'}
       <span class="lead working" data-testid="status-strip-working">
         <span class="dot pulse" aria-hidden="true"></span>
         <span class="ui-label">{strings.chat.strip.working}</span>
         {#if state.since !== null}<span class="time" data-testid="status-strip-elapsed">{elapsed(now - state.since)}</span>{/if}
+        {#if state.kind === 'asking'}
+          <span class="sep" aria-hidden="true">·</span>
+          <span class="asking ui-label" data-testid="status-strip-asking" title={fill(strings.chat.strip.askingSince, { time: exactTime(state.asked) })}>{strings.chat.strip.asking}</span>
+        {/if}
       </span>
     {:else if state?.kind === 'finished' && doneAllowed}
       <span class="lead finished" data-testid="status-strip-finished" title={exactTime(state.at)}>
         <Check size={13} strokeWidth={2} aria-hidden="true" />
         <span class="ui-label">{finishedLabel}</span>
       </span>
-      <button type="button" class="act" data-testid="status-strip-done" onclick={() => void markDone(store, thread)}><Check size={13} strokeWidth={1.75} /><span class="ui-label">{strings.sidebar.markDone}</span></button>
-      <button type="button" class="act" data-testid="status-strip-archive" onclick={() => void archiveThread(store, thread.id)}><Archive size={13} strokeWidth={1.75} /><span class="ui-label">{strings.sidebar.archive}</span></button>
+    {/if}
+    {#if state?.kind === 'finished' && doneAllowed}
+      <!-- The two ways to put it away travel together: when the line is full they wrap to the second line as one. -->
+      <span class="finish">
+        <button type="button" class="act" data-testid="status-strip-done" onclick={() => void markDone(store, thread)}><Check size={13} strokeWidth={1.75} /><span class="ui-label">{strings.sidebar.markDone}</span></button>
+        <button type="button" class="act" data-testid="status-strip-archive" onclick={() => void archiveThread(store, thread.id)}><Archive size={13} strokeWidth={1.75} /><span class="ui-label">{strings.sidebar.archive}</span></button>
+      </span>
     {/if}
     {#if delegated}
       <!-- What it delegated reads as part of the work, and opens where it is followed. -->
-      <button type="button" class="act counts" class:working={state?.kind === 'working'} data-testid="active-subagents" title={strings.chat.strip.showAgents} onclick={openAgents}>
-        {#if state !== null}<span class="sep" aria-hidden="true">·</span>{/if}
-        {#if agents > 0}<span class="ui-label">{fill(agents === 1 ? strings.chat.strip.subagentOne : strings.chat.strip.subagentMany, { count: String(agents) })}</span>{/if}
-        {#if agents > 0 && runs.length > 0}<span class="sep" aria-hidden="true">·</span>{/if}
-        {#if runs.length > 0}<span class="ui-label">{fill(runs.length === 1 ? strings.workflow.activeOne : strings.workflow.activeMany, { count: String(runs.length) })}</span>{/if}
-        {#if state?.kind !== 'working' && Number.isFinite(delegatedSince)}<span class="sep" aria-hidden="true">·</span><Elapsed startedAt={delegatedSince} finishedAt={null} active />{/if}
+      <button
+        type="button"
+        class="act counts"
+        class:working={state?.kind === 'working' || state?.kind === 'asking'}
+        data-testid="active-subagents"
+        title={[strings.chat.strip.showAgents, state !== null && delegatedTime ? fill(strings.chat.strip.delegatedFor, { time: delegatedTime }) : null].filter(Boolean).join('\n')}
+        aria-label={delegatedWords}
+        onclick={openAgents}
+      >
+        <Network size={13} strokeWidth={1.75} aria-hidden="true" />
+        <span class="words" aria-hidden="true">
+          {#if agents > 0}<span class="ui-label">{fill(agents === 1 ? strings.chat.strip.subagentOne : strings.chat.strip.subagentMany, { count: String(agents) })}</span>{/if}
+          {#if agents > 0 && runs.length > 0}<span class="sep">·</span>{/if}
+          {#if runs.length > 0}<span class="ui-label">{fill(runs.length === 1 ? strings.workflow.activeOne : strings.workflow.activeMany, { count: String(runs.length) })}</span>{/if}
+        </span>
+        <!-- Under 420 px the words give way to the number; the name keeps them. -->
+        <span class="number" aria-hidden="true">{agents + runs.length}</span>
+        {#if state === null && delegatedTime}<span class="sep" aria-hidden="true">·</span><span class="time">{delegatedTime}</span>{/if}
       </button>
     {/if}
     {#if next}
@@ -105,21 +133,26 @@
         aria-label={fill(strings.chat.strip.nextTitle, { title: next.thread.title })}
         onclick={() => void workspace.select(next.store, next.thread.id)}
       >
-        <span class="ui-label">{fill(strings.chat.strip.next, { count: String(waiting.length) })}</span>
+        <span class="words ui-label">{fill(strings.chat.strip.next, { count: String(waiting.length) })}</span>
         <ChevronRight size={13} strokeWidth={2} aria-hidden="true" />
+        <span class="number" aria-hidden="true">{waiting.length}</span>
       </button>
     {/if}
   </div>
 {/if}
 
 <style>
-  /* One line at the composer's width, so it reads as the composer's own header. */
+  /* One 24 px line at the composer's width, so it reads as the composer's own
+     header; a second 24 px line only when the state, the counts and the
+     actions cannot share one. */
   .strip {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 10px;
+    column-gap: 10px;
+    row-gap: 0;
     width: min(calc(100% - 40px), var(--content));
-    height: 24px;
+    min-height: 24px;
     margin: 0 auto 4px;
     padding: 0 6px;
     box-sizing: border-box;
@@ -129,10 +162,11 @@
     white-space: nowrap;
     container: strip / inline-size;
   }
-  .lead { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; }
-  .lead .ui-label { overflow: hidden; text-overflow: ellipsis; }
+  .strip > * { height: 24px; }
+  /* The state is never cut: it keeps its whole width and everything else gives way. */
+  .lead { display: inline-flex; align-items: center; gap: 6px; flex: none; }
   .working { color: var(--color-accent); }
-  .waiting { color: var(--color-live); font-weight: 500; }
+  .waiting, .asking { color: var(--color-live); font-weight: 500; }
   .time { font-variant-numeric: tabular-nums; }
   .sep { opacity: .6; }
   .dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
@@ -146,6 +180,7 @@
     position: relative;
     display: inline-flex;
     align-items: center;
+    align-self: center;
     gap: 5px;
     flex: none;
     height: 22px;
@@ -159,17 +194,25 @@
     transition: background var(--dur-1), color var(--dur-1);
   }
   .act:hover, .act:focus-visible { background: var(--color-hover); color: var(--color-foreground); }
-  .counts { padding-left: 0; gap: 4px; }
+  .words { display: inline-flex; align-items: center; gap: 4px; }
+  .number { display: none; }
+  .counts { gap: 4px; }
   .counts.working { color: var(--color-accent); }
   .next { margin-left: auto; color: var(--color-live); font-weight: 500; padding-right: 2px; }
-  .lead + .act:not(.counts) { margin-left: 2px; }
+  .finish { display: inline-flex; align-items: center; gap: 2px; flex: none; }
 
   @media (max-width: 720px) {
-    .strip { width: calc(100% - 20px); gap: 6px; }
+    /* Above the composer's air under it, so the targets' lower half is theirs and not the composer's. */
+    .strip { position: relative; z-index: 1; width: calc(100% - 20px); column-gap: 6px; }
     /* A finger needs 44 px: the target grows past the line, the line does not. */
     .act::after { content: ''; position: absolute; inset: -11px -2px; }
   }
+  /* A phone's line: the counts become a glyph and a number, Next a chip with
+     its count, the finish actions go to a second line together. */
   @container strip (max-width: 420px) {
-    .lead.finished .ui-label { max-width: 14ch; }
+    .words { display: none; }
+    .number { display: inline; }
+    .counts, .next { height: 22px; padding: 0 7px; border-radius: 999px; background: var(--color-surface-2); }
+    .next { gap: 2px; padding-right: 8px; }
   }
 </style>

@@ -1,3 +1,4 @@
+import { lifecycleFilter } from './lib/lifecycle-filter.svelte';
 import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import App from './App.svelte';
@@ -13,6 +14,9 @@ import { confirm } from './lib/confirm.svelte';
 import { strings } from './lib/strings';
 import { clampPanel, rightPanel } from './lib/right-panel.svelte';
 import { contactsRail } from './lib/contacts-rail.svelte';
+
+// Settings cards scroll into view when a route names one; jsdom has no layout.
+Element.prototype.scrollIntoView ??= vi.fn();
 
 /**
  * The desktop behaviours the UX audit found broken, on the whole app over the
@@ -38,6 +42,7 @@ afterEach(() => {
   work.load();
   workspace.view = 'projects';
   undo.dismiss();
+  lifecycleFilter.clear();
 });
 
 test('a maximized panel stays with its thread: the Contacts page beside the list is not squeezed to nothing', async () => {
@@ -242,41 +247,45 @@ test('a thread row menu closed with Escape hands the keyboard back to its button
   expect(stop).not.toHaveBeenCalled();
 });
 
-test('an archived thread comes back from Settings > General', async () => {
+test('Settings > General leads to the Archived filter of the thread list', async () => {
   await mountOnFake();
   expect(await archiveThread(store, 't-trace')).toBe(true);
   await waitFor(() => !store.threads.some((t) => t.id === 't-trace' && !t.archived));
   store.showSettings('general');
   // The first Settings of the file loads its lazy chunk, which a loaded runner transforms slowly.
-  await waitFor(() => document.querySelector('[data-testid=archived-show]') !== null, 10_000);
-  query<HTMLButtonElement>('[data-testid=archived-show]').click();
-  await waitFor(() => document.querySelector('[data-testid=archived-restore]') !== null);
-  expect(query('[data-testid=archived-list]').textContent).toContain('Finish the trace tab');
-  query<HTMLButtonElement>('[data-testid=archived-restore]').click();
-  await waitFor(() => store.threads.find((t) => t.id === 't-trace')?.archived === false);
-  // The row stays, its button now Open, which lands in the thread.
-  await waitFor(() => document.querySelector('[data-testid=archived-open]') !== null);
-  query<HTMLButtonElement>('[data-testid=archived-open]').click();
-  await waitFor(() => store.page === 'chat' && store.openThread?.id === 't-trace');
+  await waitFor(() => document.querySelector('[data-testid=archived-show-list]') !== null, 10_000);
+  expect(query('[data-testid=archived-count]').textContent).toMatch(/\d+ archived threads/);
+  // No second list: one line, then the filter, where every row action lives.
+  expect(document.querySelector('[data-testid=archived-list]')).toBeNull();
+  query<HTMLButtonElement>('[data-testid=archived-show-list]').click();
+  await waitFor(() => store.page === 'chat');
+  expect(lifecycleFilter.current).toBe('archived');
+  lifecycleFilter.clear();
 });
 
-test('the palette and the project menu reach the archive, its list already read', async () => {
-  // A jump to a card scrolls it into view, which jsdom does not draw.
-  Element.prototype.scrollIntoView ??= vi.fn();
+test('the palette and the project menu reach the archive: the list filter and the Settings card that leads there', async () => {
   await mountOnFake();
   expect(await archiveThread(store, 't-trace')).toBe(true);
   await waitFor(() => !store.threads.some((t) => t.id === 't-trace' && !t.archived));
   runCommand(store, 'archived', false);
-  await waitFor(() => document.querySelector('[data-testid=archived-list]') !== null);
-  expect(document.querySelector('[data-testid=archived-show]')).toBeNull();
-  expect(query('[data-testid=archived-list]').textContent).toContain('Finish the trace tab');
+  await waitFor(() => lifecycleFilter.current === 'archived' && store.page === 'chat');
+  lifecycleFilter.clear();
 
-  store.showChat();
   await waitFor(() => document.querySelector('[data-testid=project-menu]') !== null);
   query<HTMLButtonElement>('[data-testid=project-menu]').click();
   await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=archived]') !== null);
   query<HTMLButtonElement>('[data-testid=context-menu] [data-value=archived]').click();
-  await waitFor(() => store.page === 'settings' && document.querySelector('[data-testid=archived-list]') !== null);
+  // The project menu goes straight to the list, as the palette does.
+  await waitFor(() => lifecycleFilter.current === 'archived' && store.page === 'chat');
+  lifecycleFilter.clear();
+
+  // Settings keeps a card that counts them and leads to the same list.
+  store.showSettings('general');
+  await waitFor(() => store.page === 'settings' && document.querySelector('[data-testid=archived-show-list]') !== null);
+  expect(query('[data-testid=archived-count]').textContent).toMatch(/\d+/);
+  query<HTMLButtonElement>('[data-testid=archived-show-list]').click();
+  await waitFor(() => lifecycleFilter.current === 'archived' && store.page === 'chat');
+  lifecycleFilter.clear();
 });
 
 test('Ctrl+Shift+T brings back the thread archived last on the machine, from this window or another, and opens it', async () => {
@@ -369,6 +378,9 @@ test('the sidebar floats a thread that waits on the user, in both views, and nam
   const rowsOf = () => rows().filter((id) => store.threads.find((t) => t.id === id)?.projectId === project.id);
   // The fake seeds threads that already wait on a question; start from a quiet project.
   for (const thread of store.threadsOf(project.id)) thread.status = 'idle';
+  // Away from the open thread its resting rows fold under `n more` (B1): open the fold, as the user would.
+  flushSync();
+  document.querySelector<HTMLButtonElement>(`section[data-testid=project][data-project-id="${project.id}"] [data-testid=project-more][aria-expanded=false]`)?.click();
   await waitFor(() => rowsOf().length >= 2);
   const last = rowsOf().at(-1)!;
   expect(rowsOf()[0]).not.toBe(last);
@@ -430,9 +442,9 @@ test('a thread left with words in its box carries a draft mark on its row, the o
   await workspace.select(store, other.id);
   await waitFor(() => rowOf(first).querySelector('[data-testid=thread-draft]') !== null);
   expect(rowOf(first).querySelector('[data-testid=thread-draft]')!.getAttribute('title')).toBe('Unsent draft');
-  // Only words count: a box emptied back to spaces is no draft.
+  // Only words count: a box emptied back to spaces is no draft (and a resting row away from the open thread folds again).
   store.composerStates[first]!.text = '   ';
-  await waitFor(() => rowOf(first).querySelector('[data-testid=thread-draft]') === null);
+  await waitFor(() => document.querySelector(`[data-testid=thread-row][data-thread-id="${first}"] [data-testid=thread-draft]`) === null);
 });
 
 test('a folded project keeps its count chips, and marks its unread news until it unfolds', async () => {
@@ -459,7 +471,7 @@ test('a folded project keeps its count chips, and marks its unread news until it
   // Finished and unread, a thread leaves the chips; the header marks the news instead.
   first!.status = 'idle'; first!.unread = true;
   await waitFor(() => head().querySelector('[data-testid=project-rollup]')?.getAttribute('data-state') === 'done');
-  expect(head().querySelector('[data-testid=project-rollup]')!.getAttribute('title')).toBe('1 thread: Done');
+  expect(head().querySelector('[data-testid=project-rollup]')!.getAttribute('title')).toBe('1 thread: Finished');
   store.toggleProject(project.id);
   await waitFor(() => head().querySelector('[data-testid=project-rollup]') === null);
   expect(card().querySelector('[data-testid=project-waiting-count]')).not.toBeNull();

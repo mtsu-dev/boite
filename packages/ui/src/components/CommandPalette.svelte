@@ -15,9 +15,10 @@
   import { workspace, type Machine } from '../lib/workspace.svelte';
   import MachineIcon from './MachineIcon.svelte';
   import ProjectTile from './ProjectTile.svelte';
-  import StatusMark from './StatusMark.svelte';
+  import StateRing from './StateRing.svelte';
+  import ThreadPicture from './ThreadPicture.svelte';
   import ThreadState from './ThreadState.svelte';
-  import { threadTone } from '../lib/thread-state';
+  import { asksMidTurn, threadState } from '../lib/thread-state';
 
   let { store }: { store: Store } = $props();
 
@@ -273,12 +274,13 @@
                 onclick={() => pick(item)}
               >
                 <span class="mark-slot">
-                  {#if place?.thread}<StatusMark {...threadTone(place.thread.status, place.thread.unread)} />
+                  {#if place?.thread}{@const subagents = place.machine.store.subagents(place.thread.id)}<StateRing kind={threadState(place.thread, subagents)} asking={asksMidTurn(place.thread, subagents)} stale={place.machine.store.connection !== 'ready'} ground="var(--color-surface-2)"><ThreadPicture owner={place.machine.store} thread={place.thread} size={16} logo={13} /></StateRing>
                   {:else if item.kind === 'project' && place?.project}<ProjectTile project={place.project} store={place.machine.store} size={16} />{/if}
                 </span>
                 <span class="label ui-label">{item.label}</span>
                 {#if place?.thread}
-                  <span class="state"><ThreadState thread={place.thread} {now} subagents={place.machine.store.subagents(place.thread.id)} away={place.machine.store.connection !== 'ready'} /></span>
+                  <!-- The ring says the state; the words stay in the time's title and label, as on a sidebar row. -->
+                  <span class="state"><ThreadState thread={place.thread} {now} subagents={place.machine.store.subagents(place.thread.id)} away={place.machine.store.connection !== 'ready'} compact /></span>
                 {:else if item.kind === 'project' && place}
                   <span class="meta ui-label">{#if several}<MachineIcon icon={place.machine.icon} os={place.machine.store.core?.os} size={12} />{place.machine.label}{' · '}{/if}{strings.palette.newThread}</span>
                 {:else if item.hint}
@@ -449,9 +451,10 @@
     transform: none;
   }
 
+  /* The ring's width: 16 px picture, its air and its line. */
   .mark-slot {
     display: inline-flex;
-    width: 16px;
+    width: 23px;
     justify-content: center;
     flex: none;
   }

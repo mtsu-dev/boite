@@ -4,6 +4,7 @@ import { basename, dirname, join } from 'node:path';
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { connect } from '../../packages/core/src/client.ts';
 import { BrowserPage, freePort } from './lib/cdp.ts';
+import { openSettingsPage } from './lib/views.ts';
 import { describeShell, TAURI_READY, waitForShellPage, type ShellUnderTest } from './lib/shell-diagnosis.ts';
 import { freshDataDir, killProcessTree, removeDirectory, startCore } from './lib/core.ts';
 
@@ -807,7 +808,7 @@ shellTest('a Whip crack moves the native window and restores its position', asyn
   if (!page) throw new Error('the shell page is missing');
   await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
   await page.click(testid('nav-settings'));
-  await page.click(testid('settings-tab-experiments'));
+  await openSettingsPage(page, 'experiments');
   await page.click(testid('experiment-whip'));
   await page.click(testid('settings-back'));
   await page.waitFor(`document.querySelector('[data-testid=whip-button]')`);
@@ -841,7 +842,7 @@ shellTest('a Whip crack moves the native window and restores its position', asyn
   await page.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
   await page.waitFor(`document.querySelector('[data-testid=whip-canvas]') === null`);
   await page.click(testid('nav-settings'));
-  await page.click(testid('settings-tab-experiments'));
+  await openSettingsPage(page, 'experiments');
   await page.click(testid('experiment-whip'));
   await page.click(testid('settings-back'));
   await page.send('Emulation.setEmulatedMedia', { features: [] });

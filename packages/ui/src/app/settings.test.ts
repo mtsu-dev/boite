@@ -1,5 +1,6 @@
 import { expect, vi } from 'vitest';
 import { store } from '../lib/store.svelte';
+import { strings } from '../lib/strings';
 import { press, query, test, type, waitFor } from '../test/app';
 
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
@@ -21,6 +22,13 @@ test('the theme setting stamps the light palette and remembers the choice', asyn
   await waitFor(() => document.documentElement.dataset.theme === undefined);
   expect(window.localStorage.getItem('boite.theme')).toBe('dark');
   expect(query('[data-testid=theme-dark]').getAttribute('aria-pressed')).toBe('true');
+
+  // The search finds the theme and the colours by the words their rows print.
+  await type(query<HTMLInputElement>('[data-testid=settings-search]'), 'theme');
+  await waitFor(() => document.querySelector('[data-testid=settings-search-result]') !== null);
+  const found = [...document.querySelectorAll('[data-testid=settings-search-result]')].map((row) => row.textContent?.trim());
+  expect(found).toContain(`${strings.settings.theme} ${strings.settings.tabs.appearance} · ${strings.settings.display}`);
+  await type(query<HTMLInputElement>('[data-testid=settings-search]'), '');
 
   // The store is one module-level singleton: leave the next test on the chat.
   query<HTMLButtonElement>('[data-testid=settings-back]').click();
@@ -44,10 +52,18 @@ test('the keybindings file moves a chord, takes one away, and the Keyboard page 
   expect(query<HTMLButtonElement>('[data-testid=nav-settings]').title).toBe('Settings (Ctrl+,)');
   const settings = new KeyboardEvent('keydown', { key: ',', ctrlKey: true, bubbles: true, cancelable: true });
   expect(document.body.dispatchEvent(settings)).toBe(false);
-  await waitFor(() => document.querySelector('[data-testid=settings-tab-keyboard]') !== null);
-
-  query<HTMLButtonElement>('[data-testid=settings-tab-keyboard]').click();
+  await waitFor(() => document.querySelector('[data-testid=settings-tab-appearance]') !== null);
+  // Eight entries in the nav; Appearance holds Keyboard and Voice as tabs at the top of its card.
+  expect([...document.querySelectorAll<HTMLElement>('nav [data-testid^=settings-tab-]')].map((tab) => tab.dataset.testid!.slice('settings-tab-'.length)))
+    .toEqual(['general', 'appearance', 'accounts', 'brain', 'usage', 'machines', 'resources', 'advanced']);
+  query<HTMLButtonElement>('[data-testid=settings-tab-appearance]').click();
+  await waitFor(() => document.querySelector('[data-testid=settings-page-keyboard]') !== null);
+  expect([...document.querySelectorAll<HTMLElement>('[data-testid=settings-page-tabs] [role=tab]')].map((tab) => tab.textContent?.trim()))
+    .toEqual(['Appearance', 'Keyboard', 'Voice']);
+  query<HTMLButtonElement>('[data-testid=settings-page-keyboard]').click();
   await waitFor(() => document.querySelector('[data-testid=keyboard-page]') !== null);
+  expect(query('[data-testid=settings-page-keyboard]').getAttribute('aria-selected')).toBe('true');
+  expect(query('[data-testid=settings-tab-appearance]').getAttribute('aria-current')).toBe('page');
   const keyOf = (id: string) =>
     query(`[data-testid=keybinding-row][data-command=${id}] [data-testid=keybinding-key]`).textContent?.trim();
   expect(keyOf('theme-light')).toBe('Ctrl+Shift+L');

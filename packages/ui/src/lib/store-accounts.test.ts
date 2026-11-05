@@ -211,14 +211,14 @@ test('a proxied provider shows one gateway account over its local ones, which co
   }
   expect(store.accountsOf('opencode')[0]).toMatchObject({ label: 'Douane', status: 'ok' });
   expect(store.gatewayOf('antigravity')).toBeNull();
-  expect(store.accounts.filter(account => account.providerId === 'claude').map(account => account.label)).toEqual(['Default login', 'Second seat']);
+  expect(store.accounts.filter(account => account.providerId === 'claude').map(account => account.label)).toEqual(['Personal', 'Work']);
   expect((await client.call('accounts.list', {})).some(account => account.label === 'Douane')).toBe(false);
 
   store.settings = await client.call('subscriptionProxy.configure', { subscriptionProxy: { ...douane, kind: 'cliproxyapi' } });
   expect(store.accountsOf('claude')[0]!.label).toBe('CLIProxyAPI');
   store.settings = await client.call('subscriptionProxy.configure', { subscriptionProxy: { ...douane, enabled: false } });
-  expect(store.accountsOf('claude').map(account => [account.label, account.status])).toEqual([['Default login', 'ok'], ['Second seat', 'unauthenticated']]);
-  expect(store.accountOf('a-claude-side')!.label).toBe('Second seat');
+  expect(store.accountsOf('claude').map(account => [account.label, account.status])).toEqual([['Personal', 'ok'], ['Work', 'unauthenticated']]);
+  expect(store.accountOf('a-claude-side')!.label).toBe('Work');
   expect(store.gatewayOf('opencode')).toBeNull();
   expect(store.accountsOf('opencode')[0]!.label).toBe('Default');
 });

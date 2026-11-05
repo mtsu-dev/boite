@@ -67,8 +67,9 @@
         </div></fieldset>
       {/if}
       {#if ordered.length > 0}<fieldset disabled={busy}><legend>{strings.composer.mode}</legend><div class="choices permissions">
-        {#each ordered as item (item)}<label class:selected={mode === item} title={modeHint(item)}><input type="radio" name="mobile-mode" value={item} checked={mode === item} onchange={() => onmode(item)} /><span class="ui-label">{modeLabel(item)}</span></label>{/each}
-      </div><p class="hint">{modeHint(mode)}</p></fieldset>{/if}
+        <!-- Each mode says what it lets through under its name: the two run-everything modes read apart. -->
+        {#each ordered as item (item)}<label class:selected={mode === item}><input type="radio" name="mobile-mode" value={item} checked={mode === item} onchange={() => onmode(item)} /><span class="mode-text"><span class="ui-label">{modeLabel(item)}</span><span class="mode-hint">{modeHint(item)}</span></span></label>{/each}
+      </div></fieldset>{/if}
       {#if worktree !== null}
         <button class="worktree" aria-pressed={worktree} data-testid="composer-options-worktree" onclick={onworktree}><GitBranch size={19} /><span class="ui-label">{strings.composer.worktree}</span><span class="switch" class:on={worktree}></span></button>
       {/if}
@@ -86,10 +87,13 @@
   fieldset { border: none; padding: 0; margin: 22px 0; min-width: 0; }
   fieldset:disabled { opacity: .6; }
   legend { padding: 0; margin-bottom: 10px; font-size: var(--text-sm); color: var(--color-muted-foreground); }
-  .hint { margin: 10px 0 0; font-size: var(--text-xs); line-height: 1.5; color: var(--color-muted-foreground); }
   .choices { display: flex; flex-wrap: wrap; gap: 6px; }
   .choices label { position: relative; flex: 1 0 auto; display: flex; justify-content: center; align-items: center; min-height: var(--touch-target); padding: 8px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); cursor: pointer; font-size: var(--text-sm); }
   .choices label.selected { background: var(--color-accent-soft); border-color: var(--color-accent); color: var(--color-accent); }
+  .choices.permissions { flex-direction: column; }
+  .choices.permissions label { justify-content: flex-start; text-align: left; }
+  .mode-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .mode-hint { font-size: var(--text-xs); line-height: 1.35; color: var(--color-muted-foreground); }
   .choices label:focus-within { outline: 2px solid var(--color-accent); outline-offset: 2px; }
   input { position: absolute; opacity: 0; width: 1px; height: 1px; }
   .worktree span:first-of-type { flex: 1; }

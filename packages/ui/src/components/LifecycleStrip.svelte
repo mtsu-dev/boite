@@ -114,9 +114,14 @@
     box-shadow: inset 0 0 0 1px var(--color-accent);
   }
   .stage.active .word { color: var(--color-foreground); }
+  /* A phone: 36 px tiles, the number over its word as on the desktop, the word at the tab bar's
+     10 px, so four tiles fit 360 px in French without a cut; the touch target reaches 4 px past
+     each edge to keep its 44 px. */
   @media (max-width: 720px) {
-    .lifecycle { gap: 6px; padding: 0 0 4px; }
-    .stage { min-height: var(--touch-target); padding: 6px 9px; }
-    .word { font-size: var(--text-xs); }
+    .lifecycle { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; padding: 0 0 4px; }
+    .stage { position: relative; gap: 0; height: 36px; min-height: 0; padding: 2px 8px; }
+    .stage::after { content: ''; position: absolute; inset: -4px 0; }
+    .number { font-size: var(--text-sm); line-height: 16px; }
+    .word { font-size: 10px; line-height: 12px; text-overflow: ellipsis; }
   }
 </style>

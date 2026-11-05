@@ -83,7 +83,7 @@
   .label:hover:not(:disabled), .label:focus-visible { background: none; }
   .label:hover:not(:disabled) .text, .label:focus-visible .text { color: var(--color-foreground); }
   .label :global(svg) { color: var(--color-subtle); }
-  .wake[data-kind='event'] .label :global(svg), .wake[data-kind='pull-request'] .label :global(svg) { color: var(--color-live); }
+  .wake[data-kind='event'] .label :global(svg), .wake[data-kind='pull-request'] .label :global(svg) { color: var(--color-accent); }
   .text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-muted-foreground); transition: color var(--dur-2) var(--ease-out-quint); }
   time { flex: none; color: var(--color-subtle); font-variant-numeric: tabular-nums; }
   .fold { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--dur-3) var(--ease-out-quint); }

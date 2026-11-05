@@ -2,7 +2,7 @@ import { mobileAction } from './lib/mobile.ts';
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp';
-import { showThreadView } from './lib/views.ts';
+import { revealThreadRow, showThreadView, unfoldThreadRows } from './lib/views.ts';
 import { startDevUi } from './lib/ui.ts';
 let server: { close(): Promise<void> };
 let page: BrowserPage;
@@ -11,6 +11,17 @@ async function capture(name: string) {
   await page.settleAnimations();
   await page.screenshot(join(import.meta.dir,'.artifacts',`${name}.png`));
 }
+// The open thread's title bar carries its PR badge too; the rows' badges are the sidebar's.
+const rowPr = `${id('sidebar')} ${id('thread-pr')}`;
+/** Both PR rows: the other machine's project folds under the open thread's, and its rows can arrive after a first unfold. */
+async function showPrRows() {
+  const both = `document.querySelectorAll('${rowPr}').length === 2`;
+  for (let round = 0; round < 10 && !await page.evaluate<boolean>(both); round++) {
+    await unfoldThreadRows(page);
+    await Bun.sleep(100);
+  }
+  await page.waitFor(both);
+}
 async function update(code: string) {
   await page.evaluate(`(async () => { const { workspace } = await import('/src/lib/workspace.svelte.ts'); const store = workspace.active; const thread = store.openThread; ${code} })()`);
 }
@@ -18,22 +29,27 @@ beforeAll(async () => {
   const port = await freePort();
   server = await startDevUi(port);
   page = await BrowserPage.launch({url:`http://127.0.0.1:${port}/?fake=1&open=recent&machines=1`,windowSize:{width:1300,height:850}});
-  await page.waitFor(`document.querySelector('[data-thread-id="t-trace"]')`);
+  await revealThreadRow(page, 't-trace');
   await page.click('[data-thread-id="t-trace"]');
 }, 90000);
 afterAll(async () => { await page?.close(); await server?.close(); }, 30_000);
 
 test('connecting another machine keeps thread rows at their single-machine height', async () => {
-  await page.waitFor(`document.querySelectorAll('${id('thread-pr')}').length === 2`);
+  await showPrRows();
   const height = () => page.evaluate<number>(`document.querySelector('[data-thread-id="t-descriptors"]').getBoundingClientRect().height`);
   await page.evaluate(`window.__machines = globalThis.__boiteTest.workspace.machines; globalThis.__boiteTest.workspace.machines = window.__machines.slice(0, 1)`);
   let single: number;
   try {
+    // A project folds its rows under "N more": every row counts here.
+    await unfoldThreadRows(page);
     await page.waitFor(`document.querySelectorAll('${id('thread-row')}').length === 4`);
     single = await height();
   } finally {
     await page.evaluate(`globalThis.__boiteTest.workspace.machines = window.__machines`);
   }
+  // The other machine's projects arrive folded too.
+  await page.waitFor(`document.querySelectorAll('${id('thread-row')}').length === 8 || document.querySelector('${id('project-more')}[aria-expanded=false], ${id('project-more-needs')}[aria-expanded=false]')`);
+  await unfoldThreadRows(page);
   await page.waitFor(`document.querySelectorAll('${id('thread-row')}').length === 8`);
   await capture('readability-thread-density');
   expect(await height()).toBeCloseTo(single, 1);
@@ -73,21 +89,24 @@ test('connecting another machine keeps thread rows at their single-machine heigh
   expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
   await page.click(`${id('mobile-list')} .thread`);
   await page.send('Emulation.setDeviceMetricsOverride', { width:1300, height:850, deviceScaleFactor:1, mobile:false });
+  await revealThreadRow(page, 't-trace');
   await page.click('[data-thread-id="t-trace"]');
 }, 30_000);
 
 test('thread metadata, message identity and expandable trace fit a narrow panel', async () => {
-  await page.waitFor(`document.querySelectorAll('${id('thread-pr')}').length === 2`);
+  await showPrRows();
   expect(await page.evaluate(`document.querySelector('${id('usage-pill')}') === null`)).toBe(true);
   expect(await page.evaluate(`Array.from(document.querySelectorAll('.metadata')).every(e => !e.textContent.includes('No PR') && !e.textContent.includes('My computer') && !e.textContent.includes('Builder'))`)).toBe(true);
-  expect(await page.evaluate(`Array.from(document.querySelectorAll('${id('thread-pr')}')).every(e => (e.closest('.thread').querySelector('.machine') || e.closest('${id('project')}')?.querySelector('${id('project-host')}')) && getComputedStyle(e).textDecorationLine.includes('underline'))`)).toBe(true);
+  expect(await page.evaluate(`Array.from(document.querySelectorAll('${rowPr}')).every(e => (e.closest('.thread').querySelector('.machine') || e.closest('${id('project')}')?.querySelector('${id('project-host')}')) && getComputedStyle(e).textDecorationLine.includes('underline'))`)).toBe(true);
   await page.evaluate(`window.__openedPr = null; window.open = (url) => { window.__openedPr = url; return null; }`);
-  const prUrl = await page.evaluate<string>(`document.querySelector('${id('thread-pr')}').href`);
-  await page.click(id('thread-pr'));
+  const prUrl = await page.evaluate<string>(`document.querySelector('${rowPr}').href`);
+  await page.click(rowPr);
   expect(await page.evaluate(`window.__openedPr`)).toBe(prUrl);
   await page.click(id('panel-toggle'));
   await page.waitFor(`document.querySelector('${id('launch-trace')}') || document.querySelector('${id('trace-panel')}')`);
   await page.evaluate(`document.querySelector('${id('launch-trace')}')?.click()`);
+  // The trace opens on its one-line summary; the process table waits behind Show details.
+  await page.click(id('trace-details'));
   await page.waitFor(`document.querySelectorAll('${id('trace-row')}').length === 3`);
   await page.click(`${id('trace-row')}[data-pid="21140"] summary`);
   await capture('readability-desktop');
@@ -122,7 +141,8 @@ test('live paragraphs stay visible and preserve completed nodes; reasoning steps
   expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
   await page.send('Emulation.setDeviceMetricsOverride',{width:1300,height:850,deviceScaleFactor:1,mobile:false});
   await update(`thread.messages.at(-1).parts.push({type:'text',text:'Last partial paragraph'});`);
-  await page.waitFor(`document.querySelector('${id('turn-summary')}').dataset.status === 'running'`);
+  // A running answer's time is the status strip's; the line under the message waits for the end.
+  await page.waitFor(`document.querySelector('${id('status-strip')}[data-state=working]')`);
   expect(await page.text(id('paragraph-pending'))).toBe('Last partial paragraph');
   await update(`thread.turns[0].status = 'stopped'; thread.turns[0].finishedAt = Date.now(); thread.messages.at(-1).state = 'complete'; thread.status = 'idle';`);
   await page.waitFor(`!document.querySelector('${id('paragraph-pending')}') && document.querySelectorAll('${id('paragraph')}').length === 3`);
@@ -239,7 +259,8 @@ test('tool activity folds unsuccessful calls and keeps their details accessible 
     expect(rows.every(height => height >= (width<720 ? 44 : 30))).toBe(true);
   }
   await update(`thread.messages.at(-1).parts.at(-1).status = 'done';`);
-  await page.waitFor(`document.querySelector('${id('turn-summary')}[data-status=running]')`);
+  // Between tools the turn still reads as working, in the status strip above the composer.
+  await page.waitFor(`document.querySelector('${id('status-strip')}[data-state=working]')`);
 }, 30_000);
 
 test('in forced colors a focused text field still shows where the keyboard is', async () => {
@@ -277,6 +298,7 @@ test('PR links appear during work without remounting and disappear after a move 
   await page.send('Emulation.setDeviceMetricsOverride', { width:1300, height:850, deviceScaleFactor:1, mobile:false });
   await page.navigate(`${origin}/?fake=1&open=recent`);
   await page.waitFor(`document.querySelectorAll('${id('thread-row')}').length === 4`);
+  await revealThreadRow(page, 't-trace');
   await page.click('[data-thread-id="t-trace"]');
   await page.waitFor(`document.querySelector('.thread:has([data-thread-id="t-trace"]) ${id('thread-pr')}')`);
   await update(`
@@ -336,7 +358,8 @@ test('PR links appear during work without remounting and disappear after a move 
     summary.status = 'idle';
   })()`);
   await update(`const drafts = await store.client.call('projects.drafts', {}); await store.move('t-trace', drafts.id);`);
-  await page.waitFor(`document.querySelector('[data-thread-id="t-trace"]') && !document.querySelector('.thread:has([data-thread-id="t-trace"]) ${id('thread-pr')}')`);
+  await revealThreadRow(page, 't-trace');
+  await page.waitFor(`!document.querySelector('.thread:has([data-thread-id="t-trace"]) ${id('thread-pr')}')`);
   expect(await page.evaluate(`globalThis.__boiteTest.workspace.active.threads.find(thread => thread.id === 't-trace').branch`)).toBeNull();
   expect(await page.evaluate(`globalThis.__boiteTest.workspace.active.client.call('threads.pullRequest', { threadId: 't-trace' })`)).toBeNull();
 }, 45_000);
@@ -344,7 +367,7 @@ test('PR links appear during work without remounting and disappear after a move 
 test('hidden reasoning and protocol text leave no extra gap before tools on desktop and phone', async () => {
   await page.send('Emulation.setDeviceMetricsOverride', {width:1300,height:850,deviceScaleFactor:1,mobile:false});
   await page.navigate(await page.evaluate<string>('location.origin + "/?fake=1&open=recent"'));
-  await page.waitFor(`document.querySelector('[data-thread-id="t-trace"]')`);
+  await revealThreadRow(page, 't-trace');
   await page.click('[data-thread-id="t-trace"]');
   await page.waitFor(`globalThis.__boiteTest.workspace.active.openThread?.id === 't-trace'`);
   await update(`

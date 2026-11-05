@@ -79,8 +79,10 @@ test('closed until asked, then the recents come first and the commands after the
   expect(sections.map((section) => section.querySelector('[data-testid=palette-project] .name')?.textContent ?? 'commands')).toEqual(['notes', 'boite', 'commands']);
   expect(of(sections[0]!)).toEqual(['thread:t-descriptors']);
   expect(of(sections[1]!).sort()).toEqual(['thread:t-bench', 'thread:t-scheduler', 'thread:t-trace']);
-  // A row says what its thread is doing, the way the sidebar does.
-  expect(document.querySelector('[data-palette-id="thread:t-bench"]')?.textContent).toContain('Needs you');
+  // A row says what its thread is doing the way the sidebar does: the ring draws it, the words stay in the time's label.
+  const bench = document.querySelector('[data-palette-id="thread:t-bench"]')!;
+  expect(bench.querySelector('[data-testid=state-ring]')?.getAttribute('data-ring')).toBe('waiting');
+  expect(bench.querySelector('[data-testid=thread-state]')?.getAttribute('aria-label')).toBe('Needs you');
   expect(document.body.textContent).toContain('Commands');
 });
 

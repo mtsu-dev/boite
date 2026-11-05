@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp.ts';
+import { openSettingsPage } from './lib/views.ts';
 import { startUi } from './lib/ui.ts';
 
 const artifacts = join(import.meta.dir, '.artifacts', 'plugins');
@@ -38,7 +39,7 @@ beforeAll(async () => {
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
   await page.waitFor(`document.querySelector('${id('nav-settings')}')`);
   await page.click(id('nav-settings'));
-  await page.click(id('settings-tab-plugins'));
+  await openSettingsPage(page, 'plugins');
   await page.waitFor(`document.querySelector('${row('pool-legacy')}')`);
 }, 60_000);
 afterAll(async () => { await page?.close(); await server?.close(); }, 30_000);
@@ -95,7 +96,7 @@ test('a pool switches its login, and the recommended plugin uninstalls back to R
   await page.waitFor(`document.querySelector('${id('confirm-ok')}')`); await page.click(id('confirm-ok'));
   await page.waitFor(`document.querySelector('${row('bots')}')?.closest('section')?.dataset.testid === 'plugins-recommended'`);
   await page.click(id('settings-tab-general'));
-  await page.click(id('settings-tab-plugins'));
+  await openSettingsPage(page, 'plugins');
   await page.waitFor(`document.querySelector('${row('bots')} h3')?.textContent.includes('v0.1.10')`);
   expect(await page.evaluate(`document.querySelector('${row('bots')}').dataset.status`)).toBe('not-installed');
   expect(await page.evaluate(`document.querySelector('${row('bots')} ${id('plugin-check-updates')}') !== null`)).toBe(true);
@@ -116,7 +117,8 @@ test('in a 390 pixel column the page wraps instead of scrolling sideways', async
     style.textContent = '.settings > nav { display: none !important; } .settings > section { flex: 0 0 390px !important; max-width: 390px; border: none !important; }';
     document.head.append(style);
   })()`);
-  const fits = `(() => { const el = document.querySelector('${id('plugins-page')}'); return el.getBoundingClientRect().width === 390 && el.scrollWidth <= el.clientWidth; })()`;
+  // Under the Accounts entry's page tabs the column keeps a stable scrollbar gutter on both edges: the page fills what is left.
+  const fits = `(() => { const el = document.querySelector('${id('plugins-page')}'), column = el.closest('section'); return column.getBoundingClientRect().width === 390 && el.getBoundingClientRect().width === column.clientWidth && el.scrollWidth <= el.clientWidth; })()`;
   await page.evaluate(`document.querySelector('${id('plugins-page')}').scrollTop = 0`);
   expect(await page.evaluate(fits)).toBe(true);
   await captureColumn('plugins-390.png');

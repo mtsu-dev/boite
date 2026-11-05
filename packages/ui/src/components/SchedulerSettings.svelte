@@ -73,7 +73,9 @@
             oninput={() => { dirty = true; typed(save).oninput(); }}
             onchange={() => void save.flush()}
           />
-          {#if !valid(field.key)}
+          {#if valid(field.key)}
+            <span class="meaning muted" data-testid="setting-meaning-{field.key}">{values[field.key] === 0 ? strings.settings.warmProcessOff : fill(strings.settings.warmProcessOn, { count: String(values[field.key]) })}</span>
+          {:else}
             <span class="field-error" id="{uid}-{field.key}-error" data-testid="setting-error-{field.key}">{fill(strings.settings.numberRange, { min: String(field.min), max: String(field.max) })}</span>
           {/if}
         </label>
@@ -90,6 +92,7 @@
   }
 
   .grid label { display: grid; gap: 6px; }
+  .meaning { font-size: var(--text-xs); }
   .name { display: inline-flex; align-items: center; font-size: var(--text-sm); color: var(--color-muted-foreground); }
 
   input[type='number'] {

@@ -411,8 +411,9 @@
     --mark: var(--color-success);
   }
 
+  /* Amber is the user's turn only: a changed file wears the accent. */
   .mark[data-status='modified'] {
-    --mark: var(--color-live);
+    --mark: var(--color-accent);
   }
 
   .mark[data-status='deleted'],

@@ -24,7 +24,7 @@ export const strings = {
     agents: 'Bots',
     /** The count beside Threads or Bots in that switch: what works now, and whether something there needs the user. */
     surfaceWorking: '{count} at work',
-    surfaceWaiting: '{count} at work, something needs you',
+    surfaceNeeds: '{count} need you',
     surfaceSubagentsOne: 'and 1 subagent',
     surfaceSubagentsMany: 'and {count} subagents',
     /** The two ways the display options can list threads. */
@@ -47,9 +47,13 @@ export const strings = {
     prMerged: '#{number} merged',
     prClosed: '#{number} closed',
     prOpen: '#{number} open',
-    reopenThread: 'Move to Recent',
-    reopenNamedThread: 'Move "{title}" to Recent',
-    doneNotice: 'This thread is done. Move it to Recent to continue.',
+    /** A thread marked done goes back among the live rows; an archived one is restored. Plain verbs, no list names. */
+    reopenThread: 'Reopen',
+    reopenNamedThread: 'Reopen "{title}"',
+    restoreThread: 'Restore',
+    restoreNamedThread: 'Restore "{title}"',
+    deleteNamedThread: 'Delete "{title}"',
+    doneNotice: 'This thread is done. Reopen it to continue.',
     /** Above the composer, or the done notice, of a thread whose worktree Boite removed. */
     contactHold: {
       title: 'Contact mail holds this thread',
@@ -94,6 +98,8 @@ export const strings = {
     autoArchiveMergedPr: 'Hide merged PR conversations',
     autoRemoveWorktrees: 'Remove settled worktrees',
     backToProjectMenu: 'Back',
+    /** On a done row's meta line: when the done retention deletes it (`10:31`, `Sat 10:31`). */
+    deletesOn: 'Deletes {date}',
     viewArchivedThreads: 'View archived threads',
     importSession: 'Import a Claude Code session',
     /** Out of the list, not out of Boite: its threads keep running and a new one brings it back. */
@@ -122,7 +128,8 @@ export const strings = {
       workingFor: 'Working for {elapsed}',
       waiting: 'Needs you',
       error: 'Failed',
-      done: 'Done',
+      /** An unread finished turn. "Done" is the user's own mark, the lifecycle's Done filter. */
+      done: 'Finished',
       queued: 'Queued',
       /** The turn ended, the agent waits on the agents it delegated to: their results wake it. */
       delegating: 'Sub-agents',
@@ -202,6 +209,19 @@ export const strings = {
     projectFailed: '{project}: {count} failed',
     /** The row closing a busy project: the resting threads it folds, opened in place. */
     moreRows: '{count} more',
+    /** The needs-you lane past its first three rows. */
+    moreNeeds: '{count} more need you',
+    moreNeedsLabel: '{project}: show {count} more threads that need you',
+    /** The chip at the list's bottom edge while the open thread's row is out of view. */
+    backToOpen: 'Open thread',
+    backToOpenLabel: 'Scroll to the open thread: {title}',
+    /** Why Mark done is greyed, under it in the row's menu. */
+    doneBlocked: { offline: 'The machine is offline', waiting: 'Answer it first', working: 'It is still working', background: 'Background work still runs', moving: 'It is moving to another project' },
+    /** The collapsed sidebar's 48 px rail: projects as tiles, then the bots. */
+    railLabel: 'Projects and bots',
+    railProject: 'Show {project}',
+    railNeedsOne: '{project}: 1 needs you',
+    railNeedsMany: '{project}: {count} need you',
     moreRowsLabel: '{project}: show {count} more threads',
     fewerRows: 'Show fewer',
     /** The second line's chip for a thread's delegated agents. */

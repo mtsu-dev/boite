@@ -7,7 +7,7 @@
   import QuotaWindow from './QuotaWindow.svelte';
   import { fill, strings } from '../lib/strings';
   import { creditBalance, exactTime, quotaResetTime, quotaWindowName, tenth } from '../lib/format';
-  import { quotaAccountName, quotaCredits, quotaTone, remainingPercent } from '../lib/quota-reader.svelte';
+  import { quotaCardTitle, quotaCredits, quotaTone, remainingPercent } from '../lib/quota-reader.svelte';
   import { shownWindows } from '../lib/quota-display';
 
   let { rows, loading = false, completed = [], connect, order = [], onreorder }: {
@@ -149,7 +149,7 @@
   {/if}
   <!-- The headline is the primary window, never the lowest one; credits still take over once any window runs dry. -->
   {#each ordered as row (row.accountId)}
-    {@const name = quotaAccountName(row)}
+    {@const name = quotaCardTitle(row)}
     {@const shown = shownWindows(row)}
     {@const windows = shown.primary ? [shown.primary, ...shown.others] : []}
     {@const used = shown.primary?.usedPercent ?? null}

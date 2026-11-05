@@ -1,16 +1,17 @@
 <script lang="ts">
-  import { Archive, Bot, Check, Ellipsis, FolderInput, GitBranch, PencilLine, Pin } from '@lucide/svelte';
+  import { Archive, Check, CirclePause, Ellipsis, FolderInput, GitBranch, KeyRound, LogIn, MessageCircleQuestion, Network, PencilLine, Pin, ShieldQuestion, TriangleAlert } from '@lucide/svelte';
+  import { waitedFor, type InboxReason } from '../lib/inbox';
   import type { Project, ThreadSummary } from '@boite/contracts';
   import type { Machine } from '../lib/workspace.svelte';
   import type { MenuItem } from '../lib/menu';
   import { hasUnsentDraft } from '../lib/composer-queue';
-  import { delegatedChip, threadState } from '../lib/thread-state';
+  import { asksMidTurn, delegatedChip, threadState } from '../lib/thread-state';
   import { pendingLine } from '../lib/thread-move.svelte';
   import { trackThreadPullRequest } from '../lib/thread-pull-request.svelte';
   import { longPress } from '../lib/long-press';
   import { swipeActions, type SwipeSide } from '../lib/swipe-actions';
   import { projectName } from '../lib/format';
-  import { strings } from '../lib/strings';
+  import { fill, strings } from '../lib/strings';
   import Menu from './Menu.svelte';
   import PullRequestBadge from './PullRequestBadge.svelte';
   import StateRing from './StateRing.svelte';
@@ -21,12 +22,12 @@
    * A thread in a phone's list: its picture in the state ring, the title on up
    * to two lines, then one line of facts (the project and the machine when the
    * list mixes them, the pull request, the branch, its agents) and the time.
-   * No menu button: a long press opens the row's sheet, whose trigger stays in
-   * the row for a screen reader and the keyboard. A finger slides the row right
+   * A 44 px `⋯` at the end of the facts line opens the row's sheet, as a long
+   * press does, for a finger, a screen reader and a keyboard alike. A finger slides the row right
    * to mark it done or left to archive it, each with the Undo toast.
    * `grouped`: under its project's header, which already names it.
    */
-  let { machine, project, thread, now, items, grouped = false, several = false, onopen, onaction }: {
+  let { machine, project, thread, now, items, grouped = false, several = false, wait, onopen, onaction }: {
     machine: Machine;
     /** A bot's thread belongs to no project. */
     project: Project | undefined;
@@ -35,6 +36,8 @@
     items: MenuItem[];
     grouped?: boolean;
     several?: boolean;
+    /** The Inbox tab: what the thread waits on and since when, the desktop Inbox card's reason, in place of the state's time. */
+    wait?: { reason: InboxReason; since: number };
     onopen: () => void;
     onaction: (action: string) => void;
   } = $props();
@@ -44,6 +47,7 @@
   let kind = $derived(threadState(thread, subagents));
   let agents = $derived(delegatedChip(subagents));
   let pending = $derived(pendingLine(thread));
+  const reasonIcons = { question: MessageCircleQuestion, permission: ShieldQuestion, secret: KeyRound, 'sign-in': LogIn, failed: TriangleAlert, interrupted: CirclePause } as const;
   let draft = $derived(hasUnsentDraft(owner.composerStates[thread.id]) && !(owner.openThread?.id === thread.id));
   const pr = trackThreadPullRequest(() => ({ owner, thread }));
   /** What a slide may do now: the menu's own items, so a thread at work is never marked done by a finger. */
@@ -64,7 +68,7 @@
   </div>
   <!-- The long press and the slide are a finger's shortcuts; the menu trigger below is the keyboard's. -->
   <div class="body" role="presentation" bind:this={body} use:swipeActions={{ allows: allowed, run: side => onaction(side === 'right' ? 'done' : 'archive') }} use:longPress oncontextmenu={openMenu}>
-    <StateRing {kind} stale={away} size={32} ground="var(--ring-ground, var(--color-background))">
+    <StateRing {kind} asking={asksMidTurn(thread, subagents)} stale={away} size={32} ground="var(--ring-ground, var(--color-background))">
       <span class="face"><ThreadPicture {owner} {thread} size={32} logo={18} /></span>
     </StateRing>
     <span class="lines">
@@ -74,17 +78,20 @@
         <span class="title" class:unread={thread.unread}>{thread.title}{#if draft}<span class="mark draft" data-testid="thread-draft" title={strings.sidebar.unsentDraft} aria-label={strings.sidebar.unsentDraft}><PencilLine size={13} /></span>{/if}{#if thread.pinned}<span class="mark pin"><Pin size={13} /></span>{/if}</span>
       </button>
       <span class="meta">
+        {#if wait}{@const Icon = reasonIcons[wait.reason]}<span class="fact why" class:failed={wait.reason === 'failed' || wait.reason === 'sign-in' || wait.reason === 'interrupted'} data-testid="thread-wait-reason" data-reason={wait.reason}><Icon size={12} aria-hidden="true" /><span class="ui-label" title={strings.inbox.reasons[wait.reason]}>{strings.inbox.reasonTags[wait.reason]}</span></span>{/if}
         {#if pending}<span class="fact pending" data-testid="thread-pending" title={pending}><FolderInput size={12} aria-hidden="true" /><span class="ui-label">{pending}</span></span>{/if}
         {#if !grouped && project}<span class="fact project" data-testid="thread-project">{projectName(project)}</span>{/if}
         {#if several && !grouped}<span class="fact machine">{machine.label}</span>{/if}
         {#if pr.value}<span class="fact pr"><PullRequestBadge pullRequest={pr.value} /></span>{/if}
-        {#if agents}<span class="fact agents" class:asking={agents.asking} data-testid="thread-subagents" data-count={agents.shown} role="img" title={agents.label} aria-label={agents.label}><Bot size={12} aria-hidden="true" /><span class="ui-label">{agents.text}</span></span>{/if}
-        {#if thread.branch}<span class="fact branch" data-testid="thread-branch" title={thread.branch}><GitBranch size={12} aria-hidden="true" /><span class="ui-label">{thread.branch}</span></span>{/if}
-        <span class="time"><ThreadState {thread} {now} {subagents} {away} compact /></span>
+        {#if agents}<span class="fact agents" class:asking={agents.asking} data-testid="thread-subagents" data-count={agents.shown} role="img" title={agents.label} aria-label={agents.label}><Network size={12} aria-hidden="true" /><span class="ui-label">{wait ? agents.shown : agents.text}</span></span>{/if}
+        <!-- An Inbox row spends its line on what it waits on and where; the branch is the thread's detail. -->
+        {#if thread.branch && !wait}<span class="fact branch" data-testid="thread-branch" title={thread.branch}><GitBranch size={12} aria-hidden="true" /><span class="ui-label">{thread.branch}</span></span>{/if}
+        {#if wait}<time class="time waited" datetime={new Date(wait.since).toISOString()} title={fill(strings.inbox.waited, { time: waitedFor(now, wait.since) })}>{waitedFor(now, wait.since)}</time>
+        {:else}<span class="time"><ThreadState {thread} {now} {subagents} {away} compact /></span>{/if}
       </span>
     </span>
   </div>
-  <!-- The row's actions without a visible button: a long press opens them, a screen reader and a keyboard reach them here. -->
+  <!-- The row's actions: the same sheet a long press opens, one visible target for every hand. -->
   <span class="menu-slot">
     <Menu {items} onpick={onaction} label={strings.sidebar.threadMenu} placement="bottom" variant="ghost" testid="mobile-thread-menu-{thread.id}"><Ellipsis size={18} /></Menu>
   </span>
@@ -94,9 +101,10 @@
   .phone-row {
     position: relative;
     overflow: hidden;
-    border-bottom: 1px solid var(--color-border);
     -webkit-touch-callout: none;
   }
+  /* The hairline is drawn over the row's last pixel instead of under it, so a row is 56 or 64 px whole. */
+  .phone-row::after { content: ''; position: absolute; inset: auto 0 0; z-index: 1; border-bottom: 1px solid var(--color-border); pointer-events: none; }
   /* Inside a project's card the row sits on the card's surface, not the list's ground. */
   :global(.project-group) .phone-row { --row-ground: var(--color-surface); --ring-ground: var(--color-surface); }
   .reveal {
@@ -124,10 +132,11 @@
   .body {
     position: relative;
     display: flex;
-    min-height: 64px;
-    gap: 12px;
+    /* 56 px with a one-line title, 64 with two; the right end keeps room for the menu target. */
+    min-height: 56px;
+    gap: 10px;
     align-items: center;
-    padding: 10px 12px 10px 8px;
+    padding: 3px 44px 3px 8px;
     user-select: none;
     touch-action: pan-y;
     transform: translateX(var(--swipe, 0px));
@@ -155,16 +164,16 @@
   .fact.pr { position: relative; z-index: 1; }
   .face { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--color-surface-2); }
   .phone-row.offline .lines, .phone-row.offline .face { opacity: 0.55; }
-  .lines { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 3px; }
+  .lines { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 2px; }
   .title {
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
     line-clamp: 2;
     overflow: hidden;
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 600;
-    line-height: 1.3;
+    line-height: 1.25;
     overflow-wrap: anywhere;
   }
   .mark { display: inline-flex; margin-left: 6px; vertical-align: -1px; }
@@ -176,32 +185,39 @@
     gap: 8px;
     min-width: 0;
     font-size: 13px;
+    line-height: 16px;
     color: var(--color-muted-foreground);
   }
   .fact { display: inline-flex; align-items: center; gap: 4px; min-width: 0; flex: 0 1 auto; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .fact .ui-label { overflow: hidden; text-overflow: ellipsis; }
   .fact.pr, .fact.agents { flex: none; }
-  /* The project names the row in a mixed list: the branch yields its room first. */
-  .fact.project { flex-shrink: 0; max-width: 55%; }
+  /* The branch yields its room first, then the machine, then the project; the time never does.
+     Shrink is weighted by width, so the steps are far apart: the machine is gone before the project loses a letter. */
+  .fact.branch { flex-shrink: 100000; }
+  .fact.machine { flex-shrink: 1000; }
+  .fact.project { flex-shrink: 1; }
+  .fact.project { max-width: 55%; }
   .pending { color: var(--color-accent); }
   .agents { color: var(--color-accent); }
   .agents.asking { color: var(--color-live); }
   .branch { font-family: var(--font-mono); font-size: 12px; }
+  /* The reason, one word, leads the line and never yields its room; the wait reads in the needs colour, a failure in danger. */
+  .fact.why { flex: none; color: var(--color-foreground); font-weight: 500; }
+  .fact.why > :global(svg) { color: var(--color-live); }
+  .fact.why.failed > :global(svg) { color: var(--color-danger); }
+  .waited { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--color-live); }
   .time { margin-left: auto; flex: none; padding-left: 4px; }
   .time :global(.when) { font-size: 13px; }
-  /* The trigger is real but out of sight; focusing it from the keyboard shows it over the row's end. */
+  /* At the end of the facts line, 44 px square; it steps aside while the row slides. */
   .menu-slot {
     position: absolute;
-    top: 0;
+    right: 0;
     bottom: 0;
-    right: 4px;
     display: flex;
-    align-items: center;
-    clip-path: inset(50%);
-    opacity: 0;
+    transition: opacity var(--dur-2) var(--ease-out-quint);
   }
-  .menu-slot:focus-within, .menu-slot:has(:global([aria-expanded='true'])) { clip-path: none; opacity: 1; }
-  .menu-slot :global(.trigger) { background: var(--row-ground, var(--color-background)); }
+  .menu-slot :global(.trigger) { width: 44px; height: 44px; justify-content: center; color: var(--color-muted-foreground); background: transparent; }
+  .phone-row:global([data-swipe]) .menu-slot { opacity: 0; pointer-events: none; }
   @media (prefers-reduced-motion: reduce) { .body { transition: none; } }
   :global(html[data-motion='reduced']) .body { transition: none; }
 </style>

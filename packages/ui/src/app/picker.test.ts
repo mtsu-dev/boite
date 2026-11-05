@@ -40,7 +40,7 @@ test('the picker rails the providers as logos and gives the shown one its accoun
     store.probedModels['claude::a-claude-side'] !== undefined && document.querySelector('[data-model="claude-opus-5-5"]') !== null);
   query<HTMLButtonElement>('[data-model="claude-opus-5-5"]').click();
   await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') === null);
-  expect(query('[data-testid=composer-picker]').textContent).toContain('Opus 5.5 · Second seat');
+  expect(query('[data-testid=composer-picker]').textContent).toContain('Opus 5.5 · Work');
 
   const input = query<HTMLTextAreaElement>('[data-testid=composer-input]');
   input.value = 'On the second seat';

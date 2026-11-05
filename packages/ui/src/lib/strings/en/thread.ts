@@ -14,6 +14,8 @@ export const strings = {
     retryLimitCancel: 'Do not resume',
     retryContinueTitle: 'Stopped before its answer',
     retryContinueBody: 'Resumes by itself in {time}, resume {attempt} of {attempts}.',
+    /** The composer's meter: its tooltip and its name. */
+    contextMeter: 'Context {percent}%',
     contextDetails: 'Context',
     contextInput: 'Input',
     contextCache: 'Cached input',

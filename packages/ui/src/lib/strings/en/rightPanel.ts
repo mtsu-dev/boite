@@ -29,7 +29,10 @@ export const strings = {
     terminal: 'Terminal',
     board: 'Board',
     more: 'More',
-    changesCount: '{count} changed files',
-    agentsCount: '{count} at work'
+    changesCount: '{count} files',
+    agentsCount: '{count} at work',
+    messages: 'Messages',
+    /** The list beside the title bar's panel button: every surface and drawer by name. */
+    launcherMenu: 'Open in the panel',
   }
 } as const;

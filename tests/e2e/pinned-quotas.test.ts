@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp.ts';
+import { openSettingsPage } from './lib/views.ts';
 import { startDevUi } from './lib/ui.ts';
 
 let server: { close(): Promise<void> };
@@ -63,7 +64,7 @@ async function fixture() {
 
 async function enableAndPin() {
   await page.click('[data-testid="nav-settings"]');
-  await page.click('[data-testid="settings-tab-experiments"]');
+  await openSettingsPage(page, 'experiments');
   await page.click(experiment);
   await page.waitFor(`document.querySelector('${experiment}')?.checked === true`);
   await page.evaluate('globalThis.__boiteTest.workspace.active.showChat()');
@@ -247,6 +248,9 @@ test('dock reserves rail space above the foot and leaves the final thread reacha
       && list.getBoundingClientRect().bottom <= q.getBoundingClientRect().top
       && q.getBoundingClientRect().bottom <= foot.getBoundingClientRect().top;
   })()`)).toBe(true);
+  // A project shows its first idle threads and folds the rest under "N more": unfold them so the list outgrows the rail.
+  await page.evaluate(`document.querySelectorAll('[data-testid=project-more][aria-expanded=false]').forEach(button => button.click())`);
+  await page.waitFor(`document.querySelectorAll('[data-project-list] [data-testid="thread-row"]').length > 20`);
   await page.evaluate(`document.querySelector('[data-project-list]').scrollTop = document.querySelector('[data-project-list]').scrollHeight`);
   await page.settleAnimations();
   expect(await page.evaluate(`(() => {
@@ -343,7 +347,7 @@ test('reload restores pin and placement, unpin persists, and switching off the e
   await page.click('[data-testid="limits-glance"] button[aria-label="Close"]');
   await page.waitFor(`document.querySelector('${card}')`);
   await page.click('[data-testid="nav-settings"]');
-  await page.click('[data-testid="settings-tab-experiments"]');
+  await openSettingsPage(page, 'experiments');
   await page.click(experiment);
   await page.evaluate('globalThis.__boiteTest.workspace.active.showChat()');
   await page.waitFor(`!document.querySelector('${card}')`);

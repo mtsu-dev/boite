@@ -185,7 +185,7 @@ test('renaming a tracked subscription updates cached cards immediately and cance
     input.form!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await vi.waitFor(() => expect(store.accountOf('a-codex')!.label).toBe('Personal'));
     await settle();
-    expect(document.querySelector('[data-testid="usage-limit-provider"][data-account-id="a-codex"] strong')!.textContent).toBe('Personal');
+    expect(document.querySelector('[data-testid="usage-limit-provider"][data-account-id="a-codex"] strong')!.textContent).toBe('Codex · Personal');
     expect(row().querySelector('.account')!.textContent).toBe('Personal');
     // No quota refresh is needed and the cache itself still has the older label.
     expect(read.mock.calls.filter(([method]) => method === 'quotas.list')).toHaveLength(1);

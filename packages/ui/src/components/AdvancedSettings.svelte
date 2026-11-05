@@ -7,6 +7,7 @@
   import CompactionSettings from './CompactionSettings.svelte';
   import SchedulerSettings from './SchedulerSettings.svelte';
   import PhoneSettings from './PhoneSettings.svelte';
+  import ShowDetails from './ShowDetails.svelte';
   import { strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
 
@@ -58,17 +59,22 @@
       <dl>
         <dt>{strings.settings.version}</dt>
         <dd class="mono" data-testid="settings-version">{store.core.version}</dd>
-        <dt>{strings.settings.protocol}</dt>
-        <dd class="mono">{store.core.protocolVersion}</dd>
-        <dt>{strings.settings.os}</dt>
-        <dd class="mono">{store.core.os}</dd>
-        <dt>{strings.settings.pid}</dt>
-        <dd class="mono">{store.core.pid}</dd>
-        <dt>{strings.settings.endpoint}</dt>
-        <dd class="mono" data-testid="settings-endpoint">{store.core.endpoint.host}:{store.core.endpoint.port}</dd>
-        <dt>{strings.settings.dataDir}</dt>
-        <dd class="mono">{store.core.dataDir}</dd>
       </dl>
+      <!-- The protocol, the process and the paths are for whoever debugs the core. -->
+      <ShowDetails testid="core-details">
+        <dl>
+          <dt>{strings.settings.protocol}</dt>
+          <dd class="mono">{store.core.protocolVersion}</dd>
+          <dt>{strings.settings.os}</dt>
+          <dd class="mono">{store.core.os}</dd>
+          <dt>{strings.settings.pid}</dt>
+          <dd class="mono">{store.core.pid}</dd>
+          <dt>{strings.settings.endpoint}</dt>
+          <dd class="mono" data-testid="settings-endpoint">{store.core.endpoint.host}:{store.core.endpoint.port}</dd>
+          <dt>{strings.settings.dataDir}</dt>
+          <dd class="mono">{store.core.dataDir}</dd>
+        </dl>
+      </ShowDetails>
     {:else}
       <p class="hint">{strings.settings.noCore}</p>
     {/if}

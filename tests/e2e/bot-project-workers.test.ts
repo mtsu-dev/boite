@@ -5,6 +5,7 @@ import { makeAgent, scripted } from '../../packages/core/test/agent-fixture.ts';
 import { startTestCore, type TestCore } from '../../packages/core/test/harness.ts';
 import { BrowserPage } from './lib/cdp.ts';
 import { ensureProductionUi } from './lib/prod-ui.ts';
+import { mobileAction } from './lib/mobile.ts';
 
 const real = findChromium().path ? test : test.skip;
 const ARTIFACTS = join(import.meta.dir, '.artifacts', 'bot-project-workers');
@@ -50,21 +51,22 @@ real('a bot project worker appears live in the project and opens as a conversati
   await page.waitFor(`document.querySelector(${JSON.stringify(row)})?.getBoundingClientRect().width > 0`);
   expect((await owner.call('threads.list', {})).find(thread => thread.id === worker.thread.id)?.parentIsBot).toBe(true);
   await owner.call('threads.archive', { threadId: worker.thread.id });
+  // Archived threads are a filter of the thread list; Settings' card leads there.
   await page.click('[data-testid="nav-settings"]');
   await page.click('[data-testid="settings-tab-general"]');
-  await page.click('[data-testid="archived-show"]');
-  const archivedBot = `[data-testid="archived-list"] [data-thread-id="${bot.threadId}"]`;
-  const archivedWorker = `[data-testid="archived-list"] [data-thread-id="${worker.thread.id}"]`;
-  await page.waitFor(`document.querySelector(${JSON.stringify(archivedBot)}) && document.querySelector(${JSON.stringify(archivedWorker)})`);
+  await page.click('[data-testid="archived-show-list"]');
+  const archivedWorker = `[data-testid="done-thread"][data-thread-id="${worker.thread.id}"]`;
+  await page.waitFor(`document.querySelector(${JSON.stringify(archivedWorker)})`);
   await owner.call('threads.update', { threadId: worker.thread.id, title: 'Verified project build' });
   await page.waitFor(`document.querySelector(${JSON.stringify(archivedWorker)})?.textContent.includes('Verified project build')`);
-  await page.evaluate(`document.querySelector('[data-testid="archived-threads"]').scrollIntoView({ block: 'center' })`);
-  await page.waitFor(`(() => { const box = document.querySelector('[data-testid="archived-threads"]').getBoundingClientRect(); return box.top >= 0 && box.bottom <= innerHeight; })()`);
+  await page.evaluate(`document.querySelector(${JSON.stringify(archivedWorker)}).scrollIntoView({ block: 'center' })`);
+  await page.waitFor(`(() => { const box = document.querySelector(${JSON.stringify(archivedWorker)}).getBoundingClientRect(); return box.top >= 0 && box.bottom <= innerHeight; })()`);
   await page.settleAnimations();
   await page.screenshot(join(ARTIFACTS, 'archive-desktop.png'));
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+  await mobileAction(page, 'mobile-settings');
   await page.click('[data-testid="mobile-settings-archived"]');
-  await page.waitFor(`document.querySelector(${JSON.stringify(archivedBot)}) && document.querySelector(${JSON.stringify(archivedWorker)})`);
+  await page.waitFor(`document.querySelector('[data-testid="mobile-lifecycle-archived"]')?.getAttribute('aria-pressed') === 'true' && document.querySelector(${JSON.stringify(archivedWorker)})`);
   await page.settleAnimations();
   await page.screenshot(join(ARTIFACTS, 'archive-phone.png'));
   expect(page.errors()).toEqual([]);

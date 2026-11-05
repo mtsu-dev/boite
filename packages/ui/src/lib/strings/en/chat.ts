@@ -26,6 +26,9 @@ export const strings = {
       next: 'Next needs you ({count})',
       nextTitle: 'Open "{title}", the thread that has waited longest for you',
       days: '{days}d {hours}h',
+      asking: 'question for you',
+      askingSince: 'A question has waited for you since {time}; the turn goes on',
+      delegatedFor: 'Delegated work running for {time}',
       waitingSince: 'Waiting since {time}'
     },
     compacting: 'Compacting conversation',
@@ -212,6 +215,8 @@ export const strings = {
     /** The composer is the free field of the question; the card points there. */
     questionWrite: 'Answer in writing',
     /** The timeline's line for a question waiting in the dock above the composer. */
+    /** A question's line in the history while its card waits above the composer. */
+    askedYou: 'Asked you',
     questionDocked: 'Waiting for your answer above the message box',
     questionOpen: 'Answer it',
     streaming: 'writing',

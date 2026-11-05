@@ -75,7 +75,7 @@
   }
 </script>
 
-<button type="button" class="tile" class:current={favoritesOpen} role="menuitem" data-row data-provider="favorites" title={strings.composer.favorites} aria-label={strings.composer.favorites} onclick={onfavorites}><Star size={24} /></button>
+<button type="button" class="tile" class:current={favoritesOpen} role="menuitem" data-row data-provider="favorites" title={strings.composer.favorites} aria-label={strings.composer.favorites} onclick={onfavorites}><Star size={20} /><span class="name">{strings.composer.favorites}</span></button>
 {#each tiles as tile (tile.provider.id)}
   <button
     type="button"
@@ -90,22 +90,26 @@
     aria-label={tile.provider.name}
     onclick={() => pickTile(tile)}
   >
-    <ProviderLogo providerId={tile.provider.id} size={28} />
+    <ProviderLogo providerId={tile.provider.id} size={22} />
+    <span class="name">{tile.provider.name}</span>
   </button>
 {/each}
 {#if onmore && listed.length < store.providers.length}
-  <button type="button" class="tile more" role="menuitem" data-row data-provider="more" data-testid="picker-more-providers" title={strings.settings.connectProvider} aria-label={strings.settings.connectProvider} onclick={onmore}><Plus size={20} /></button>
+  <button type="button" class="tile more" role="menuitem" data-row data-provider="more" data-testid="picker-more-providers" title={strings.settings.connectProvider} aria-label={strings.settings.connectProvider} onclick={onmore}><Plus size={20} /><span class="name">{strings.settings.providerRailAdd}</span></button>
 {/if}
 
 <style>
+  /* A logo and its name: a letter or a mark alone does not say which agent it is. */
   .tile {
     display: inline-flex;
+    flex-direction: column;
+    gap: 3px;
     align-items: center;
     justify-content: center;
     flex: none;
-    width: var(--control-lg);
-    height: var(--control-lg);
-    padding: 0;
+    width: 64px;
+    min-height: 52px;
+    padding: 4px 2px;
     border: none;
     border-radius: var(--radius-md);
     background: transparent;
@@ -128,6 +132,8 @@
   }
 
   .tile.more { color: var(--color-subtle); }
+  /* Two lines at most, broken at a space: "OpenCode Go" reads whole rather than "OpenCo". */
+  .name { display: -webkit-box; max-width: 100%; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; font-size: var(--text-xs); line-height: 1.2; text-align: center; overflow-wrap: anywhere; }
 
   /* Nothing runs on it: still pickable, so its column can say why. */
   .tile.dim {
@@ -137,10 +143,6 @@
   @media (max-width: 720px) {
     /* The rail is the finger's first stop on a phone, so its tiles take a
        full touch target like every other control. */
-    .tile { justify-content: center; padding: 0; }
-    .tile {
-      width: var(--touch-target);
-      height: var(--touch-target);
-    }
+    .tile { justify-content: center; width: 60px; min-height: var(--touch-target); }
   }
 </style>

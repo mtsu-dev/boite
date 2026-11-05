@@ -115,7 +115,7 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: var(--color-live);
+    background: var(--color-accent);
     animation: pulse 1.6s var(--loop-ease-in-out-48) infinite var(--loops);
   }
 

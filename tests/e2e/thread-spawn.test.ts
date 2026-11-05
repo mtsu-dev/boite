@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { connect, type CoreClient } from '../../packages/core/src/client.ts';
 import { BrowserPage } from './lib/cdp.ts';
 import { pairingUrlOf, startCore, type RunningCore } from './lib/core.ts';
+import { revealThreadRow } from './lib/views.ts';
 
 /* `boite thread new`: a thread's agent starts a real thread in another project, and its first answer comes back. */
 
@@ -28,7 +29,7 @@ beforeAll(async () => {
 afterAll(async () => { await page?.close(); owner?.close(); await core?.stop(); }, 30_000);
 
 test('the starting thread shows the thread it started and the answer that came back', async () => {
-  await page.waitFor(`!!document.querySelector('[data-testid="thread-row"][data-thread-id="${callerId}"]')`);
+  await revealThreadRow(page, callerId);
   await page.click(`[data-testid="thread-row"][data-thread-id="${callerId}"]`);
   await page.waitFor('document.querySelector("[data-testid=spawn-marker][data-direction=to]")?.textContent.includes("Blog post for 2.4")');
   // The real core says how the two threads relate: this one started the other.

@@ -5,7 +5,7 @@
   import ThreadHeader from './ThreadHeader.svelte';
   import BoiteMark from './BoiteMark.svelte';
   import type { Window as TauriWindow } from '@tauri-apps/api/window';
-  import { strings } from '../lib/strings';
+  import { fill, strings } from '../lib/strings';
   import { projectName } from '../lib/format';
   import type { Store } from '../lib/store.svelte';
   import { work } from '../lib/work-prefs.svelte';
@@ -160,14 +160,14 @@
     {#if store.page === 'settings'}<span class="mark" data-testid="titlebar-mark"><BoiteMark size={18} /></span>{/if}
     <span class="name ui-label">{store.page === 'agents' ? strings.agents.heading : store.page === 'home' ? strings.contacts.heading : heading}</span>
   {/if}
-  {#if ContactRequestNotice && contactsShown(store) && (inShell || !mobile.current) && !empty}<ContactRequestNotice {store} />{/if}
+  {#if ContactRequestNotice && contactsShown(store) && (inShell || !mobile.current) && !empty}<ContactRequestNotice {store} indicator={!contactsToggle} />{/if}
   {#if contactsToggle}
     <button type="button" class="ghost icon contacts-toggle" class:open={!contactsRail.folded}
-      aria-label={contactsRail.folded ? strings.contacts.rail.show : strings.contacts.rail.hide}
+      aria-label={contactsRail.waiting ? `${contactsRail.folded ? strings.contacts.rail.show : strings.contacts.rail.hide}, ${fill(strings.contacts.waiting, { count: String(contactsRail.waiting) })}` : contactsRail.folded ? strings.contacts.rail.show : strings.contacts.rail.hide}
       title={contactsRail.folded ? strings.contacts.rail.show : strings.contacts.rail.hide}
       aria-expanded={!contactsRail.folded} data-testid="contacts-toggle" onclick={() => contactsRail.toggle()}>
       <Users size={17} strokeWidth={1.75} />
-      {#if contactsRail.folded && contactsRail.waiting}<span class="contacts-waiting" data-testid="contacts-toggle-waiting"></span>{/if}
+      {#if contactsRail.waiting}<span class="contacts-waiting" data-testid="contacts-toggle-waiting">{contactsRail.waiting > 99 ? '99+' : contactsRail.waiting}</span>{/if}
     </button>
   {/if}
   {#if dev}
@@ -227,8 +227,8 @@
   .mark + .name { padding-left: 0; }
   .contacts-toggle { position: relative; flex: none; margin-left: auto; }
   .contacts-toggle.open { color: var(--color-foreground); }
-  /* Folded, the button alone says a contact asks something. */
-  .contacts-waiting { position: absolute; top: 5px; right: 5px; width: 7px; height: 7px; border-radius: 50%; background: var(--color-live); box-shadow: 0 0 0 2px var(--color-frame); }
+  /* One button for Contacts: the column and what its contacts wait on, counted. */
+  .contacts-waiting { position: absolute; top: -2px; right: -4px; min-width: 15px; padding: 1px 3px; border-radius: var(--radius-full); background: var(--color-live-fill); color: var(--color-accent-ink); font-size: var(--text-xs); font-weight: 600; line-height: 14px; text-align: center; font-variant-numeric: tabular-nums; }
   .project-heading {
     display: flex;
     align-items: center;

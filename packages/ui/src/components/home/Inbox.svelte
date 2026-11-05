@@ -2,11 +2,11 @@
   import { Bot, CirclePause, KeyRound, LogIn, MessageCircleQuestion, ShieldQuestion, TriangleAlert } from '@lucide/svelte';
   import { minuteClock, secondClock } from '../../lib/clock.svelte';
   import { elapsed, exactTime, projectName } from '../../lib/format';
-  import { INBOX_CARDS, inbox, storeSources, type InboxCard, type InboxReason, type InboxRow } from '../../lib/inbox';
+  import { INBOX_CARDS, inbox, storeSources, waitedFor, type InboxCard, type InboxReason, type InboxRow } from '../../lib/inbox';
   import { fill, strings } from '../../lib/strings';
   import type { Store } from '../../lib/store.svelte';
-  import type { ThreadSummary } from '@boite/contracts';
   import { threadState } from '../../lib/thread-state';
+  import { contactsShown } from '../../lib/contacts-rail.svelte';
   import { workspace, type Machine } from '../../lib/workspace.svelte';
   import ProjectTile from '../ProjectTile.svelte';
   import StateRing from '../StateRing.svelte';
@@ -24,10 +24,11 @@
   const machines = $derived(workspace.machinesOr(store));
   const several = $derived(machines.length > 1);
   const lists = $derived(inbox(storeSources(machines)));
-  /** A bot's own thread has no project and is no row of the sidebar. */
-  const fromBot = (thread: ThreadSummary) => !!thread.agentSessionId;
-  const botNeeds = $derived(lists.needs.filter(card => fromBot(card.thread)).length);
-  const threadNeeds = $derived(lists.needs.length - botNeeds);
+  /** The headers read the one count (`inbox().tally`), the strip's, the tabs' and the switch's: bots apart, offline machines never. */
+  const botNeeds = $derived(lists.tally.bots.needs);
+  const threadNeeds = $derived(lists.tally.threads.needs);
+  const botWorking = $derived(lists.tally.bots.working);
+  const threadWorking = $derived(lists.tally.threads.working);
   let allCards = $state(false);
   let allRows = $state(false);
   const WORKING_ROWS = 5;
@@ -37,20 +38,21 @@
 
   const icons: Record<InboxReason, typeof KeyRound> = { question: MessageCircleQuestion, permission: ShieldQuestion, secret: KeyRound, 'sign-in': LogIn, failed: TriangleAlert, interrupted: CirclePause };
 
-  /** `12m`, `2h 57m`, `3d`: how long a card has waited, coarse enough to read at a glance. */
-  function waited(since: number): string {
-    const minutes = Math.max(1, Math.floor((now - since) / 60_000));
-    if (minutes < 60) return fill(labels.minutes, { count: String(minutes) });
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return fill(labels.hours, { count: String(hours), minutes: String(minutes % 60).padStart(2, '0') });
-    return fill(labels.days, { count: String(Math.floor(hours / 24)) });
-  }
+  /** A contact's request sits in the page's column, first, instead of floating over the home: loaded only once contacts are on. */
+  let ContactRequestNotice = $state<typeof import('./ContactRequestNotice.svelte').default>();
+  $effect(() => {
+    if (!contactsShown(store) || ContactRequestNotice) return;
+    void import('./ContactRequestNotice.svelte').then(module => { ContactRequestNotice = module.default; }).catch(() => {});
+  });
+
+  const waited = (since: number) => waitedFor(now, since);
   function open(entry: { machine: Machine; thread: { id: string } }) {
     void workspace.select(entry.machine.store, entry.thread.id);
   }
 </script>
 
 <section class="inbox" data-testid="inbox" aria-label={labels.label}>
+  {#if ContactRequestNotice && contactsShown(store)}<ContactRequestNotice {store} flow />{/if}
   {#if lists.needs.length}
     <!-- The threads' number is the sidebar's Needs you; a bot's ask is counted apart, behind a robot, as the Threads switch does. -->
     <h2 class="lane"><span class="ui-label">{labels.needsYou}</span>{#if threadNeeds}<span class="count" data-testid="inbox-needs-count" title={fill(labels.threadsCount, { count: String(threadNeeds) })}>{threadNeeds}</span>{/if}{#if botNeeds}<span class="count bots" data-testid="inbox-needs-bots" title={fill(labels.botsCount, { count: String(botNeeds) })} aria-label={fill(labels.botsCount, { count: String(botNeeds) })}><Bot size={11} aria-hidden="true" />{botNeeds}</span>{/if}</h2>
@@ -68,8 +70,19 @@
     <p class="nothing" data-testid="inbox-empty">{labels.nothing}</p>
   {/if}
 
+  {#if lists.offline.length}
+    <!-- A machine gone quiet keeps its asks in view, muted and uncounted, so they are not forgotten when it comes back. -->
+    <h2 class="lane offline" title={labels.offlineHint}><span class="ui-label">{labels.offline}</span></h2>
+    <ul class="cards offline" data-testid="inbox-offline">
+      {#each lists.offline as card (`${card.machine.id}:${card.thread.id}`)}
+        {@render needsCard(card)}
+      {/each}
+    </ul>
+  {/if}
+
   {#if lists.working.length}
-    <h2 class="lane working"><span class="ui-label">{labels.workingNow}</span><span class="count">{lists.working.length}</span></h2>
+    <!-- The same split as Needs you: the threads' number is the strip's Working, a bot at work is counted apart. -->
+    <h2 class="lane working"><span class="ui-label">{labels.workingNow}</span>{#if threadWorking}<span class="count" data-testid="inbox-working-count" title={fill(labels.threadsCount, { count: String(threadWorking) })}>{threadWorking}</span>{/if}{#if botWorking}<span class="count bots" data-testid="inbox-working-bots" title={fill(labels.botsCount, { count: String(botWorking) })} aria-label={fill(labels.botsCount, { count: String(botWorking) })}><Bot size={11} aria-hidden="true" />{botWorking}</span>{/if}</h2>
     <ul class="rows">
       {#each rows as row (`${row.machine.id}:${row.thread.id}`)}
         {@render workingRow(row)}
@@ -96,7 +109,7 @@
       <span class="body">
         <span class="top">
           {#if card.project}<span class="chip"><ProjectTile project={card.project} store={card.machine.store} size={14} /><span class="ui-label">{projectName(card.project)}</span></span>
-          {:else if fromBot(card.thread)}<span class="chip bot" data-testid="inbox-card-bot"><Bot size={12} aria-hidden="true" /><span class="ui-label">{labels.bot}</span></span>{/if}
+          {:else if card.kind === 'bots'}<span class="chip bot" data-testid="inbox-card-bot"><Bot size={12} aria-hidden="true" /><span class="ui-label">{labels.bot}</span></span>{/if}
           {#if several}<span class="machine ui-label">{card.machine.label}</span>{/if}
           <time class="since" datetime={new Date(card.since).toISOString()} title={`${fill(labels.waited, { time })} · ${exactTime(card.since)}`}>{time}</time>
         </span>
@@ -132,7 +145,8 @@
   ul { margin: 0; padding: 0; list-style: none; }
   .lane { display: flex; align-items: center; gap: 8px; margin: 0 2px 8px; font-size: var(--text-xs); font-weight: 600; color: var(--color-muted-foreground); text-transform: none; }
   .lane .count { padding: 0 7px; border-radius: var(--radius-full); line-height: 18px; font-variant-numeric: tabular-nums; background: color-mix(in oklch, var(--color-live-fill) 18%, transparent); color: var(--color-live); }
-  .lane.working { margin-top: 18px; }
+  .lane.working, .lane.offline { margin-top: 18px; }
+  .cards.offline { opacity: 0.6; }
   .lane.working .count { background: var(--color-accent-soft); color: var(--color-accent); }
   /* Two cards a line where the column allows: four cards stay under the composer's fold. */
   .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px; }

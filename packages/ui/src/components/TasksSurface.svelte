@@ -53,6 +53,8 @@
 </script>
 
 <div class="tasks-surface" data-testid="tasks-panel">
+  <!-- An empty section does not render: no goal and no loop, no "Goal and loop". -->
+  {#if activity?.goal || activity?.loop}
   <section>
     <button
       type="button"
@@ -115,12 +117,10 @@
             </div>
           </div>
         {/if}
-        {#if !activity?.goal && !activity?.loop}
-          <p class="empty">{strings.tasks.noActivity}</p>
-        {/if}
       </div></div>
     </div>
   </section>
+  {/if}
 
   {#if verdicts.length > 0}
     <section data-testid="tasks-reviews">
@@ -387,7 +387,7 @@
   }
 
   [data-verdict='pass'] { --verdict: var(--color-success); }
-  [data-verdict='partial'] { --verdict: var(--color-live); }
+  [data-verdict='partial'] { --verdict: var(--color-foreground); }
   [data-verdict='fail'], [data-verdict='missing'] { --verdict: var(--color-danger); }
 
   .open-review {
@@ -443,7 +443,7 @@
   }
 
   .meta-text.paused {
-    color: var(--color-live);
+    color: var(--color-foreground);
   }
 
   .watch + .watch { border-top: 1px solid var(--color-border); }
@@ -611,7 +611,11 @@
     color: var(--color-success);
   }
 
-  .mark[data-status='in_progress'],
+  /* Work going on wears the accent; amber stays for a card waiting on the user. */
+  .mark[data-status='in_progress'] {
+    color: var(--color-accent);
+  }
+
   .mark[data-status='claimed'] {
     color: var(--color-live);
   }

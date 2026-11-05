@@ -41,7 +41,7 @@ test('commands are colored with aligned wrapping and four permission choices', a
     await page.type(id('composer-input'), '/goal Verify the composer');
     await page.click(id('composer-mode'));
     await page.waitFor(`document.querySelector('${id('composer-mode-menu')}')`);
-    expect(await page.evaluate(`Array.from(document.querySelectorAll('${id('composer-mode-menu')} .label')).map(el => el.textContent.trim())`)).toEqual(['Full access', 'Smart auto', 'Auto-approve edits', 'Ask each time']);
+    expect(await page.evaluate(`Array.from(document.querySelectorAll('${id('composer-mode-menu')} .label')).map(el => el.textContent.trim())`)).toEqual(['Full access, no guards', 'Run everything, guards on', 'Auto-approve edits', 'Ask each time']);
     expect(await page.evaluate(`(() => { const r=document.querySelector('${id('composer-mode-menu')}').getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth; })()`)).toBe(true);
     await capture(phone ? 'commands-permissions-phone' : 'commands-permissions-desktop');
     await page.evaluate(`document.querySelector('${id('composer-mode-menu')}').dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true}))`);
@@ -151,7 +151,8 @@ test('tasks stay folded until requested and never move the reading position', as
     {id:'capture-phone',text:'Capture the phone layout',status:'pending'}
   ]}; })`);
   await page.waitFor(`document.querySelector('${id('activity-tasks-toggle')}')`);
-  expect(await page.evaluate(`(() => { const panel = document.querySelector('${id('thread-activity')}').getBoundingClientRect(); const composer = document.querySelector('.composer').getBoundingClientRect(); return composer.top - panel.bottom; })()`)).toBeLessThanOrEqual(4);
+  // The band rests on the thread's status strip, which rests on the composer.
+  expect(await page.evaluate(`(() => { const panel = document.querySelector('${id('thread-activity')}').getBoundingClientRect(); const strip = document.querySelector('${id('status-strip')}'); const below = (strip && strip.offsetHeight > 0 ? strip : document.querySelector('.composer')).getBoundingClientRect(); return below.top - panel.bottom; })()`)).toBeLessThanOrEqual(4);
   await page.evaluate(`document.querySelector('${id('thread-activity')}').dispatchEvent(new PointerEvent('pointerenter'))`);
   expect(await page.evaluate(`document.querySelector('${id('activity-tasks-toggle')}').getAttribute('aria-expanded')`)).toBe('false');
   expect(await page.evaluate(`document.querySelector('${id('activity-tasks-toggle')}').textContent`)).toContain('Verify Escape sends queued prompts');

@@ -13,7 +13,7 @@ beforeEach(async () => {
 afterEach(async () => { setExperiment('contacts', false); if (app) await unmount(app); app = undefined; store.detach(); client.close(); vi.restoreAllMocks(); document.body.innerHTML = ''; localStorage.clear(); });
 const tab = (id: string) => document.querySelector<HTMLButtonElement>(`[data-testid="${id}"]`);
 
-test('the bar names its places in full and keeps New thread a round button over the lists, never a tab', async () => {
+test('the bar names its places in full and holds New thread in its centre slot, a round button inside the bar', async () => {
   const navigate = vi.fn(), onnew = vi.fn();
   app = mount(MobileTabs, { target: document.body, props: { store, screen: 'threads', waiting: 0, navigate, onnew } }); await settle();
   const names = () => Array.from(document.querySelectorAll('[data-testid=mobile-tabs] .tab')).map(button => button.textContent?.trim());
@@ -24,22 +24,27 @@ test('the bar names its places in full and keeps New thread a round button over 
     tab(id!)!.click(); await settle();
     expect(navigate).toHaveBeenLastCalledWith(destination);
   }
-  const fab = tab('mobile-new')!;
-  expect(fab.classList.contains('tab')).toBe(false);
-  expect(fab.getAttribute('aria-label')).toBe('New thread');
-  fab.click();
+  const create = tab('mobile-new')!;
+  expect(create.classList.contains('tab')).toBe(false);
+  expect(create.getAttribute('aria-label')).toBe('New thread');
+  // The centre of the bar, between Inbox and Settings: nothing floats over the rows.
+  const order = () => Array.from(document.querySelector('[data-testid=mobile-tabs]')!.children).map(child => child.querySelector('[data-testid]')?.getAttribute('data-testid') ?? child.getAttribute('data-testid'));
+  expect(order()).toEqual(['mobile-conversations', 'mobile-activity', 'mobile-new', 'mobile-settings']);
+  expect(create.closest('[data-testid=mobile-tabs]')).not.toBeNull();
+  create.click();
   expect(onnew).toHaveBeenCalledOnce();
   tab('mobile-settings')!.click(); await settle();
   expect(store.page).toBe('settings');
   expect(tab('mobile-settings')!.getAttribute('aria-current')).toBe('page');
   expect(tab('mobile-conversations')!.hasAttribute('aria-current')).toBe(false);
-  // A page is no list to start a conversation from.
-  expect(tab('mobile-new')).toBeNull();
+  // The slot belongs to the bar, so a page keeps it too.
+  expect(tab('mobile-new')).not.toBeNull();
 
   setExperiment('resident-agents', true);
   onTestFinished(() => setExperiment('resident-agents', false));
   await settle();
   expect(names()).toEqual(['Threads', 'Inbox', 'Bots', 'Settings']);
+  expect(order()).toEqual(['mobile-conversations', 'mobile-activity', 'mobile-new', 'mobile-agents', 'mobile-settings']);
 });
 
 test('the French bar keeps full names', async () => {
@@ -61,7 +66,7 @@ test('Activity carries the count of conversations waiting on the user, capped so
   expect(tab('mobile-activity')!.getAttribute('aria-label')).toContain('140');
 });
 
-test('Bots carries the count of bots at work, in the waiting colour once one asks the user', async () => {
+test('Bots carries the bots at work in the accent, and the ones that need the user instead, in the waiting colour', async () => {
   setExperiment('resident-agents', true);
   onTestFinished(() => setExperiment('resident-agents', false));
   const { agentDirectory } = await import('../lib/agent-directory.svelte');
@@ -76,5 +81,6 @@ test('Bots carries the count of bots at work, in the waiting colour once one ask
   expect(tab('mobile-agents-at-work')!.dataset.waiting).toBe('false');
   store.threads = store.threads.map(thread => thread.id === 't-trace' ? { ...thread, status: 'idle', openQuestions: 1 } : thread); await settle();
   expect(tab('mobile-agents-at-work')!.dataset.waiting).toBe('true');
-  expect(tab('mobile-agents')!.getAttribute('aria-label')).toBe('Bots, 1 at work, something needs you');
+  expect(tab('mobile-agents-at-work')!.classList.contains('working')).toBe(false);
+  expect(tab('mobile-agents')!.getAttribute('aria-label')).toBe('Bots, 1 need you');
 });

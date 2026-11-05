@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ShowDetails from './ShowDetails.svelte';
   import { lockedBy } from '../lib/policy';
   import { workspace } from '../lib/workspace.svelte';
   import { tick, untrack } from 'svelte';
@@ -268,15 +269,20 @@
             {/each}
           </dd>
         </div>
-        <div>
-          <dt>{s.files}</dt>
-          <dd>
-            {#if summary.logFiles.length === 0}{s.noFiles}{:else}
-              <ul class="files">{#each summary.logFiles as file (file.name)}<li><code>{file.name}</code> <span>{bytes(file.bytes)}</span></li>{/each}</ul>
-            {/if}
-          </dd>
-        </div>
       </dl>
+      <!-- The log files by name: what to attach by hand, not what to read first. -->
+      <ShowDetails testid="diagnostics-details">
+        <dl class="facts">
+          <div>
+            <dt>{s.files}</dt>
+            <dd>
+              {#if summary.logFiles.length === 0}{s.noFiles}{:else}
+                <ul class="files">{#each summary.logFiles as file (file.name)}<li><code>{file.name}</code> <span>{bytes(file.bytes)}</span></li>{/each}</ul>
+              {/if}
+            </dd>
+          </div>
+        </dl>
+      </ShowDetails>
     {:else if outdated}
       <p class="hint alert" role="alert" data-testid="diagnostics-outdated">{store.core?.hostname ? fill(s.outdated, { machine: store.core.hostname }) : s.outdatedHere}</p>
     {:else if !failure}

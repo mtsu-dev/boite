@@ -3,7 +3,7 @@ import { confirm } from '../lib/confirm.svelte';
 import { store } from '../lib/store.svelte';
 import { work } from '../lib/work-prefs.svelte';
 import { projectMenu } from '../lib/project-menu';
-import { query, test, type, waitFor } from '../test/app';
+import { query, revealRow, test, type, waitFor } from '../test/app';
 
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
 
@@ -42,7 +42,8 @@ test('project menus keep Mark done separate from Archive, which can stop pending
   row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 60 }));
   await waitFor(() => document.querySelector('[data-testid=context-menu]') !== null);
   const labels = Array.from(document.querySelectorAll('[data-testid=context-menu] [data-row]')).map((el) => el.textContent?.trim());
-  expect(labels).toEqual(['Open', 'Pin', 'Mark done', 'Archive', 'Rename', 'Regenerate title', 'Move to project', 'Copy path', 'Delete']);
+  // A greyed Mark done says why on its own line.
+  expect(labels).toEqual(['Open', 'Pin', 'Mark done Answer it first', 'Archive', 'Rename', 'Regenerate title', 'Move to project', 'Copy path', 'Delete']);
   expect(query('[data-testid=context-menu] [data-value=copy]').getAttribute('title')).toBe('C:\\src\\boite');
   // t-bench waits on a permission: its turn still runs, and a move would wait for it to end.
   expect(query<HTMLButtonElement>('[data-testid=context-menu] [data-value=move]').disabled).toBe(false);
@@ -54,8 +55,8 @@ test('project menus keep Mark done separate from Archive, which can stop pending
   expect(store.pendingPermissions.some(p => p.threadId === 't-bench')).toBe(false);
   expect(document.querySelector('[data-testid=confirm-dialog]')).toBeNull();
   query<HTMLButtonElement>('[data-testid=undo-action]').click();
-  await waitFor(() => document.querySelector('[data-thread-id="t-bench"]') !== null);
-  query<HTMLButtonElement>('[data-thread-id="t-bench"]').click();
+  // Back at rest in a project away from the open thread, the row may sit under its fold.
+  (await revealRow('t-bench')).click();
   await waitFor(() => store.openThread?.id === 't-bench');
   query('[data-testid=thread-title]').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 60 }));
   await waitFor(() => document.querySelector('[data-testid=context-menu]') !== null);

@@ -165,7 +165,7 @@
             {#if item.projectTile}<ProjectTile project={item.projectTile.project} store={item.projectTile.store} size={18} />{/if}
             {#if item.glyph}<span class="glyph" class:live={item.live} aria-hidden="true"><item.glyph size={16} strokeWidth={1.75} /></span>{/if}
             {#if item.status}<span class="status-dot" data-tone={item.status.tone} role="img" aria-label={item.status.label} title={item.status.label}></span>{/if}
-            <span class="ui-label">{item.label}</span>
+            <span class="ui-label">{item.label}</span>{#if item.count}<span class="count ui-label">{item.count}</span>{/if}
           </span>
           {#if item.hint}
             <span class="hint ui-label">{item.hint}</span>
@@ -351,6 +351,13 @@
 
   .label {
     font-weight: 500;
+  }
+
+  .count {
+    margin-left: 8px;
+    color: var(--color-muted-foreground);
+    font-size: var(--text-xs);
+    font-variant-numeric: tabular-nums;
   }
 
   .hint {

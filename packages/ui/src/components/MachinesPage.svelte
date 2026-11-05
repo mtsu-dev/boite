@@ -5,7 +5,7 @@
   import { GroupLinks } from '../lib/group-links.svelte';
   import InfoTip from './InfoTip.svelte';
   import PolicyLock from './PolicyLock.svelte';
-  import { ArrowUpRight, RefreshCw, Trash2, ScanLine } from '@lucide/svelte';
+  import { ArrowRight, ArrowUpRight, RefreshCw, Trash2, ScanLine } from '@lucide/svelte';
   import { listedName, machineHealth, machineName, workspace, machineIcons, type Machine } from '../lib/workspace.svelte';
   import { store as primary } from '../lib/store.svelte';
   import { confirm } from '../lib/confirm.svelte';
@@ -18,7 +18,8 @@
   import { machineUpdateState, type MachineUpdateState } from '../lib/machine-updates';
   import PairMachine from './PairMachine.svelte';
   import type { Store } from '../lib/store.svelte';
-  let { mobile = false, onopenthread }: { mobile?: boolean; onopenthread?: () => void } = $props();
+  /** `onopenphone` opens the phone app's settings where the page sits (the phone's own list); without it, Settings > Advanced. */
+  let { mobile = false, onopenthread, onopenphone }: { mobile?: boolean; onopenthread?: () => void; onopenphone?: () => void } = $props();
   const uid = $props.id();
   /**
    * The switches a machine of a group holds for itself: whether the agents of
@@ -253,9 +254,23 @@
 
   <!-- Chosen on the device itself, a phone included: it says where that device opens. -->
   <MainMachine />
+
+  <!-- How a phone reaches this machine lives with the core's settings; the machines are where one looks for it. -->
+  {#if workspace.active.owner}
+    <!-- Drawn as the main machine's card above it: the same row, title and hint. -->
+    <section class="card phone-access" data-testid="machines-phone-access">
+      <div class="switch-row">
+        <span class="text"><span class="ui-label">{strings.phone.heading}</span><span class="hint">{strings.machines.phoneAccess}</span></span>
+        <button type="button" class="ghost small" data-testid="machines-phone-open" onclick={() => onopenphone ? onopenphone() : workspace.active.showSettings('advanced', 'phone')}>
+          <span class="ui-label">{strings.machines.phoneAccessOpen}</span><ArrowRight size={14} strokeWidth={1.75} />
+        </button>
+      </div>
+    </section>
+  {/if}
 </div>
 
 <style>
+  .phone-access button { flex: none; gap: 6px; }
   .machines-page > :global(*) { max-width: var(--settings-width); }
   .connections-section { scroll-margin-top: 24px; }
   .connections-section > :global(.card) { margin-bottom: 20px; }

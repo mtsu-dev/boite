@@ -14,11 +14,13 @@
   import ResourcesPage from './ResourcesPage.svelte';
   import TaskManagerLoader from './TaskManagerLoader.svelte';
   import MachinesPage from './MachinesPage.svelte';
+  import SettingsSearch, { type SettingsEntry } from './SettingsSearch.svelte';
   import PhoneSettings from './PhoneSettings.svelte';
   import UsagePage from './UsagePage.svelte';
   import VoiceSettings from './VoiceSettings.svelte';
   import BrainPage from './BrainPage.svelte';
-  import ArchivedThreads from './ArchivedThreads.svelte';
+  import ArchivedLink from './ArchivedLink.svelte';
+  import { lifecycleFilter } from '../lib/lifecycle-filter.svelte';
   import WorktreesCard from './WorktreesCard.svelte';
   import WindowAllowlistCard from './WindowAllowlistCard.svelte';
   import WindowExclusionsCard from './WindowExclusionsCard.svelte';
@@ -39,7 +41,15 @@
    * `target` is the machine the settings bar picked, `store` this window's:
    * the pages of one machine show the target, under the bar.
    */
-  let { store, target = store, bar, onopenthread }: { store: Store; target?: Store; bar?: Snippet; onopenthread?: () => void } = $props();
+  /** `entries` and `onsearch` are the desktop nav's search, which the phone's home carries too. */
+  let { store, target = store, bar, onopenthread, onopenlist, entries = [], onsearch }: { store: Store; target?: Store; bar?: Snippet; onopenthread?: () => void; onopenlist?: () => void; entries?: SettingsEntry[]; onsearch?: (entry: SettingsEntry) => void } = $props();
+
+  /** Archived threads are a filter of the phone's list now: the row opens the list on it. */
+  function showArchived(): void {
+    if (lifecycleFilter.current !== 'archived') lifecycleFilter.toggle('archived');
+    store.showChat();
+    onopenlist?.();
+  }
   let ContactsButton = $state<typeof import('./home/ContactsButton.svelte').default>();
   $effect(() => {
     if (!contactsShown(store) || ContactsButton) return;
@@ -133,6 +143,8 @@
     <!-- A large Settings title, then its two groups: what this phone keeps and what the machine runs. -->
     <div class="home" data-testid="mobile-settings-home" bind:this={homeList} onscroll={titleInView}>
       <p class="large-title" aria-hidden="true">{strings.settings.heading}</p>
+      <!-- The desktop's search: a word lists the pages, cards and settings it finds in place of the rows. -->
+      {#snippet homeRows()}
       <PolicyBanner store={target} />
       <section aria-labelledby="phone-preferences">
         <h2 id="phone-preferences">{strings.mobile.settingsDevice}</h2>
@@ -180,7 +192,7 @@
               <AppWindow size={20} /><span class="ui-label">{strings.windows.settings.allowedHeading}</span><ChevronRight size={18} />
             </button>
           {/if}
-          <button class="ghost row" data-testid="mobile-settings-archived" onclick={() => store.showSettings('general', 'archived')}>
+          <button class="ghost row" data-testid="mobile-settings-archived" onclick={showArchived}>
             <ArchiveRestore size={20} /><span class="ui-label">{strings.settings.archived.heading}</span><ChevronRight size={18} />
           </button>
           <button class="ghost row" data-testid="mobile-settings-secrets" onclick={() => store.showSettings('general', 'secrets')}>
@@ -189,6 +201,8 @@
         </div>
       </section>
       <PolicySettings store={target} />
+      {/snippet}
+      {#if entries.length}<div class="search-slot"><SettingsSearch {entries} onopen={(entry) => onsearch?.(entry)}>{@render homeRows()}</SettingsSearch></div>{:else}{@render homeRows()}{/if}
     </div>
   {:else}
     {@const title = titleOf(shown)}
@@ -248,10 +262,10 @@
         <div class="page"><CompactionSettings store={target} /></div>
       {:else if shown === 'archived'}
         <div class="page archived-page">
-          <ArchivedThreads store={target} eager />
+          <ArchivedLink store={target} eager {onopenlist} />
         </div>
       {:else}
-        <MachinesPage mobile {onopenthread} />
+        <MachinesPage mobile {onopenthread} onopenphone={() => { store.showSettings(); phone = true; }} />
       {/if}
       {/key}
     </div>
@@ -276,7 +290,12 @@
   .settings-screen:is([data-slide], .arrived) > :is(.home, .detail) { animation: none; }
   .home { padding: 8px 16px 16px; }
   .large-title { margin: 6px 2px 14px; font-size: 28px; font-weight: 700; letter-spacing: -0.6px; line-height: 1.15; color: var(--color-foreground); }
-  .home > :global(.policy-banner) { margin-bottom: 20px; }
+  .home :global(.policy-banner) { margin-bottom: 20px; }
+  /* A full touch target for the field and each result. */
+  .search-slot :global(.search) { height: var(--touch-target); margin-bottom: 16px; }
+  .search-slot :global(.search input) { font-size: var(--text-base); }
+  .search-slot :global(.result) { min-height: var(--touch-target); }
+  .search-slot :global(.clear) { width: var(--touch-target); height: var(--touch-target); }
   /* The group's first row is the machine itself: its name over its connection. */
   .machine-link { min-height: 64px; }
   .machine-link strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }

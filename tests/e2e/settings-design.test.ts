@@ -112,8 +112,8 @@ test("the settings nav keeps every French label inside it, its search opens a se
       })()`)));
       expect({ width, spills }).toEqual({ width, spills: [] });
     }
-    // The groups are named, and the search finds a single setting by its own word and opens its page.
-    expect(await page.evaluate(`[...document.querySelectorAll('.settings nav h2')].map(h => h.textContent).join('|')`)).toBe("Application|Agents|Consommation et limites|Système");
+    // Eight entries, a grouped one keeping its pages as tabs; the search finds a single setting by its own word and opens its page.
+    expect(await page.evaluate(`[...document.querySelectorAll('.settings nav [data-testid^=settings-tab-]')].map(tab => tab.dataset.testid.slice('settings-tab-'.length)).join('|')`)).toBe("general|appearance|accounts|brain|usage|machines|resources|advanced");
     await page.evaluate(`(() => { const field = document.querySelector('[data-testid=settings-search]'); field.focus(); field.value = 'accent'; field.dispatchEvent(new Event('input', { bubbles: true })); })()`);
     await page.waitFor('document.querySelector("[data-testid=settings-search-result]") && !document.querySelector("[data-testid=settings-tab-general]")');
     await page.evaluate(`document.querySelector('[data-testid=settings-search]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))`);

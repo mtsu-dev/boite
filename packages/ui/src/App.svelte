@@ -7,6 +7,7 @@
   import { watchDevices } from './lib/device-watch';
   import { watchWindows } from './lib/window-watch';
   import { browserProfiles } from './lib/browser-profiles.svelte';
+  import ToastStack from './components/ToastStack.svelte';
   import UndoToast from './components/UndoToast.svelte';
   import NotificationCard from './components/NotificationCard.svelte';
   import ChatView from './components/ChatView.svelte';
@@ -573,7 +574,7 @@
       <!-- The notice gives way to Settings: the two cards side by side left
            Settings too narrow for its nav and its page. -->
       {#if store.page === 'settings'}
-        {#if SettingsShell}<SettingsShell {store} onopenthread={() => { mobileScreen = 'chat'; }} />{:else}<p class="empty">{settingsLoadError || strings.app.loading}</p>{/if}
+        {#if SettingsShell}<SettingsShell {store} onopenthread={() => { mobileScreen = 'chat'; }} onopenlist={() => { mobileScreen = 'threads'; }} />{:else}<p class="empty">{settingsLoadError || strings.app.loading}</p>{/if}
       {:else}
         <div class="notice framed">
           <h1>{strings.app.noEndpointTitle}</h1>
@@ -586,7 +587,7 @@
     {:else if store.page === 'agents' && experimentOn('resident-agents')}
       <AgentsLayout {store} panel={panelSlot} showPanel={panelSlot.shown && panelThread !== null} RightPanel={deferred.RightPanel} />
     {:else if store.page === 'settings'}
-      {#if SettingsShell}<SettingsShell {store} onopenthread={() => { mobileScreen = 'chat'; }} />{:else}<p class="empty">{settingsLoadError || strings.app.loading}</p>{/if}
+      {#if SettingsShell}<SettingsShell {store} onopenthread={() => { mobileScreen = 'chat'; }} onopenlist={() => { mobileScreen = 'threads'; }} />{:else}<p class="empty">{settingsLoadError || strings.app.loading}</p>{/if}
     {:else}
       <Sidebar {store} />
       {#if scrim.shown}
@@ -669,6 +670,7 @@
     </div>
   {/if}
 
+  <ToastStack>
   {#if toast.shown}
     <div
       class="toast"
@@ -687,6 +689,7 @@
     </div>
   {/if}
   <UndoToast onerror={(error) => (store.error = errorText(error))} />
+  </ToastStack>
   {#if store.booted && experimentOn('whip') && WhipOverlay}
     <WhipOverlay onerror={(error) => (store.error = errorText(error))} />
   {/if}
@@ -785,15 +788,9 @@
   }
 
   .toast {
-    position: absolute;
-    right: max(16px, env(safe-area-inset-right));
-    top: calc(16px + env(safe-area-inset-top, 0px));
-    z-index: 80;
-    width: min(380px, calc(100vw - 32px));
+    width: 100%;
     animation: rise var(--dur-3) var(--ease-out-quint);
   }
-
-  .shell .toast { top: calc(var(--titlebar) + 16px); }
 
   .toast.closing {
     animation: fade-out var(--dur-2) var(--ease-out-quint);

@@ -186,11 +186,15 @@
 
   // The effort has a chip of its own in the composer, so this one names the
   // model and the account only: one place says the level. A phone drops the account.
-  let label = $derived.by(() => {
-    if (!choice || !provider) return strings.composer.noProvider;
+  // A provider with no named model yet reads "Claude · Pick a model", so the
+  // chip says whose list it opens and what is left to choose.
+  let named = $derived.by(() => {
+    if (!choice || !provider) return null;
     const model = store.modelOf(choice);
-    return model && isNamedModel(model) ? model.name : strings.composer.picker;
+    return model && isNamedModel(model) ? model.name : null;
   });
+  let label = $derived(!choice || !provider ? strings.composer.noProvider : named ?? provider.name);
+  let unnamed = $derived(Boolean(choice && provider) && named === null);
   let accountLabel = $derived(provider && account && store.accountsOf(provider.id).length > 1 ? account.label : '');
 
   let currentModels = $derived(shownModels.filter((m) => !m.legacy));
@@ -338,7 +342,7 @@
     {:else}
       <Sparkles size={14} strokeWidth={1.75} />
     {/if}
-    <span class="label ui-label"><span class="model-name">{label}</span>{#if accountLabel}<span class="account-name">{` · ${accountLabel}`}</span>{/if}</span>
+    <span class="label ui-label"><span class="model-name">{label}</span>{#if unnamed}<span class="pick-model" data-testid="composer-pick-model">{` · ${strings.composer.pickModel}`}</span>{/if}{#if accountLabel}<span class="account-name">{` · ${accountLabel}`}</span>{/if}</span>
     <ChevronDown size={12} strokeWidth={2} />
   </button>
   {/if}
@@ -561,11 +565,13 @@
     white-space: nowrap;
   }
 
+  .trigger .pick-model { color: var(--color-muted-foreground); }
+
   .popover {
     position: fixed;
     z-index: 40;
     display: grid;
-    grid-template-columns: calc(var(--control-lg) + 20px) minmax(0, 1fr);
+    grid-template-columns: 76px minmax(0, 1fr);
     width: min(440px, calc(100vw - 32px));
     height: 360px;
     max-height: min(360px, 45dvh);

@@ -27,7 +27,7 @@ export function seedHooks(now = Date.now()): HooksStatus {
       provider({
         providerId: 'claude', name: 'Claude', reports: true,
         sources: [{ path: '~/.claude/settings.json', format: 'events', count: 13, error: null }],
-        accounts: [{ accountId: 'a-claude-side', label: 'Second seat', problems: [] }],
+        accounts: [{ accountId: 'a-claude-side', label: 'Work', problems: [] }],
         runs: 412, blocked: 2, failed: 1,
       }),
       provider({

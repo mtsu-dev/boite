@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp.ts';
 import { startUi } from './lib/ui.ts';
 import { mobileAction } from './lib/mobile.ts';
+import { revealThreadRow } from './lib/views.ts';
 
 let server: { close(): Promise<void> };
 let port: number;
@@ -47,6 +48,7 @@ for (const width of [1280, 390]) {
         const source = await client.call('threads.get', {threadId: 't-bench'});
         return (await client.call('threads.create', {projectId: source.projectId, providerId: source.providerId, accountId: source.accountId, model: source.model, title: 'Ready to finish'})).id;
       })()`);
+      await revealThreadRow(page, idleId);
       await page.click(width < 720 ? `[data-testid=mobile-thread-menu-${idleId}]` : `[data-testid=thread-row][data-thread-id="${idleId}"] ~ [data-testid=thread-menu]`);
       await page.waitFor(`document.querySelector('${menu} [data-value=done]')`);
       expect(await page.evaluate(`document.querySelector('${menu} [data-value=done]').disabled`)).toBe(false);

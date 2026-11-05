@@ -7,8 +7,6 @@ export const strings = {
     parent: 'Parent PID',
     cpuTime: 'CPU time',
     currentMemory: 'Memory now',
-    active: 'active',
-    recorded: 'recorded',
     exe: 'Executable',
     pid: 'PID',
     duration: 'Duration',
@@ -18,5 +16,10 @@ export const strings = {
     exit: 'Exit',
     live: 'live',
     empty: 'This thread has launched no process yet.',
+    processes: '{count} processes',
+    running: '{count} running',
+    inMemory: '{size} in memory',
+    showDetails: 'Show details',
+    hideDetails: 'Hide details',
   }
 } as const;

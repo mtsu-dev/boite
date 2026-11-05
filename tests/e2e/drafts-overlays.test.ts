@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { BrowserPage, freePort } from './lib/cdp';
+import { toggleTerminal } from './lib/views';
 import { removeDirectory } from './lib/cleanup';
 import { startUi } from './lib/ui';
 import { ATTACHMENTS_PER_TURN } from '../../packages/contracts/src/index.ts';
@@ -157,8 +158,7 @@ test('drafts survive reload and composer menus stay above the chrome', async () 
     await page.waitFor('window.panelAnimations.length > 1');
     expect(await page.evaluate('window.panelAnimations')).toEqual(['slide-left', 'slide-right-out']);
     await page.waitFor('!document.querySelector("[data-testid=right-panel]")');
-    await page.evaluate(`document.querySelector('[data-testid="right-panel"]') ? null : document.querySelector('[data-testid="panel-toggle"]')?.click()`); // The terminal's button is in the panel's strip.
-    await page.click('[data-testid=terminal-toggle]');
+    await toggleTerminal(page);
     await page.waitFor('document.querySelector("[data-testid=terminal-drawer]")');
     await page.settleAnimations();
     expect(await page.evaluate('getComputedStyle(document.querySelector("[data-testid=terminal-drawer]")).transitionProperty')).toBe('height');

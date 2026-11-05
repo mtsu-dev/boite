@@ -4,6 +4,6 @@ export const fr: Translation = {
 
   permissionModeCodex: {
     default: 'Ce dossier',
-    defaultLong: 'Modifie et lance des commandes dans ce dossier sans demander, demande pour aller au-delà'
+    defaultLong: 'Modifie et lance des commandes ici, demande pour aller au-delà'
   }
 };

@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp.ts';
 import { startDevUi } from './lib/ui.ts';
+import { revealThreadRow } from './lib/views.ts';
 
 let server: { close(): Promise<void> };
 let page: BrowserPage;
@@ -17,7 +18,7 @@ beforeAll(async () => {
   const port = await freePort();
   server = await startDevUi(port);
   page = await BrowserPage.launch({ url: `http://127.0.0.1:${port}/?fake=1&open=recent`, windowSize: { width: 1300, height: 850 } });
-  await page.waitFor(`document.querySelector('[data-thread-id="t-trace"]')`);
+  await revealThreadRow(page, 't-trace');
   await page.click('[data-thread-id="t-trace"]');
 }, 90000);
 afterAll(async () => { await page?.close(); await server?.close(); }, 30_000);

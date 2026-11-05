@@ -50,7 +50,9 @@ test('notification stays readable and can be dismissed', async () => {
   expect(await page.evaluate(`(() => {const p = document.querySelector('.notification-card p'); return p.scrollHeight <= p.clientHeight && getComputedStyle(p).whiteSpace === 'pre-wrap';})()`)).toBe(true);
   await page.send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
   await page.screenshot(join(import.meta.dir,'.artifacts/notification-phone.png'));
-  expect(await page.evaluate(`(() => {const r = document.querySelector('[data-testid="error-toast"]').getBoundingClientRect();return r.left >= 0 && r.right <= innerWidth && r.bottom < innerHeight / 2;})()`)).toBe(true);
+  // On the phone too the toast stands above the composer and the strip on it, inside the screen:
+  // it covers neither the thread's title nor what the user types. It follows the layout every 250 ms.
+  await page.waitFor(`(() => { const r = document.querySelector('[data-testid="error-toast"]').getBoundingClientRect(); const dock = [...document.querySelectorAll('[data-testid="composer"], [data-testid="status-strip"]')].map((e) => e.getBoundingClientRect()).filter((b) => b.height > 0); return r.left >= 0 && r.right <= innerWidth && r.top >= 0 && dock.length > 0 && dock.every((b) => r.bottom <= b.top); })()`);
   await page.evaluate(`document.documentElement.dataset.theme = 'light'`);
   await page.screenshot(join(import.meta.dir,'.artifacts/notification-light.png'));
   await page.click('[data-testid="error-toast"] button');

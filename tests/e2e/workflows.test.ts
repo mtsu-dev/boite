@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp.ts';
 import { startDevUi } from './lib/ui.ts';
+import { revealThreadRow } from './lib/views.ts';
 
 // The fake client seeds a paused-in-place run on `t-trace` with `team=1`:
 // scan done, review fanned out over three files with one done, fix and tests
@@ -19,7 +20,7 @@ beforeAll(async () => {
   const port = await freePort();
   server = await startDevUi(port);
   page = await BrowserPage.launch({ url: `http://127.0.0.1:${port}/?fake=1&team=1`, windowSize: { width: 1680, height: 1000 } });
-  await page.waitFor(`document.querySelector('${id('thread-row')}[data-thread-id="t-trace"]')`);
+  await revealThreadRow(page, 't-trace');
 }, 60_000);
 afterAll(async () => { await page?.close(); await server?.close(); }, 30_000);
 
@@ -29,7 +30,7 @@ test('the chat card opens the run top to bottom, an arrow per dependency, in the
   expect(await page.text(id('workflow-activity'))).toContain('1/5 steps');
   await page.waitFor(`document.querySelector('${id('active-subagents')}')?.textContent.includes('1 workflow')`);
   // The running subagent, and the one at rest on its own background work.
-  expect(await page.text(id('active-subagents'))).toContain('2 active subagents');
+  expect(await page.text(id('active-subagents'))).toContain('2 subagents');
   await capture('workflow-card.png');
   await page.click(id('workflow-activity'));
   await page.waitFor(`document.querySelector('${id('workflow-graph')}')?.dataset.layout === 'rows'`);
@@ -43,7 +44,7 @@ test('the chat card opens the run top to bottom, an arrow per dependency, in the
   await capture('workflow-rows.png');
   await page.evaluate(`localStorage.setItem('boite:right-panel-width', '900')`);
   await page.reload();
-  await page.waitFor(`document.querySelector('${id('thread-row')}[data-thread-id="t-trace"]')`);
+  await revealThreadRow(page, 't-trace');
   await page.click(`${id('thread-row')}[data-thread-id="t-trace"]`);
   await page.waitFor(`document.querySelector('${id('workflow-activity')}')`);
   await page.click(id('workflow-activity'));
@@ -59,6 +60,7 @@ test('the chat card opens the run top to bottom, an arrow per dependency, in the
 
 test('on a phone the same run keeps its rows and arrows without scrolling sideways', async () => {
   // Opened here too, so the test holds when it runs alone.
+  await revealThreadRow(page, 't-trace');
   await page.click(`${id('thread-row')}[data-thread-id="t-trace"]`);
   await page.waitFor(`document.querySelector('${id('workflow-activity')}')`);
   await page.click(id('workflow-activity'));

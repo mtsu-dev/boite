@@ -273,7 +273,7 @@ export function seedAccounts() {
     {
       id: 'a-claude-main',
       providerId: 'claude',
-      label: 'Default login',
+      label: 'Personal',
       isolationDir: null,
       status: 'ok',
       identity: 'you@example.com',
@@ -282,7 +282,7 @@ export function seedAccounts() {
     {
       id: 'a-claude-side',
       providerId: 'claude',
-      label: 'Second seat',
+      label: 'Work',
       isolationDir: `${DATA_DIR}\\accounts\\a-claude-side`,
       status: 'unauthenticated',
       identity: null,

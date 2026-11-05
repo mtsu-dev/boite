@@ -5,6 +5,7 @@ import { workspace } from '../lib/workspace.svelte';
 import { inbox, storeSources } from '../lib/inbox';
 import { undo } from '../lib/undo.svelte';
 import StatusStrip from './StatusStrip.svelte';
+import stripSource from './StatusStrip.svelte?raw';
 
 let view: ReturnType<typeof mount> | undefined;
 afterEach(() => {
@@ -69,4 +70,55 @@ test('Next needs you walks the Inbox: it counts the same threads and opens the o
   expect(select).toHaveBeenCalledWith(store, oldest.id);
   // It only opens: no send, archive or move goes to the core.
   expect(calls.mock.calls.map(([method]) => method).filter(method => !/\.(get|list)$/.test(method))).toEqual([]);
+});
+
+test('a question asked while the turn runs reads as work with a question, not as a wait', async ({ ready }) => {
+  const { store } = await ready();
+  await store.open('t-trace');
+  Object.assign(store.openThread!, { status: 'running', openQuestions: 1 });
+  view = mount(StatusStrip, { target: document.body, props: { store } });
+  flushSync();
+  expect(strip()?.dataset.state).toBe('asking');
+  expect(document.querySelector('[data-testid="status-strip-working"]')?.textContent?.replace(/\s+/g, ' ').trim()).toMatch(/^Working \d.* · question for you$/);
+  expect(document.querySelector('[data-testid="status-strip-waiting"]')).toBeNull();
+  // Once no turn runs, the same question is the user's move: a plain wait.
+  store.openThread!.status = 'idle';
+  flushSync();
+  expect(strip()?.dataset.state).toBe('waiting');
+});
+
+test('one timer on the line: with a state shown, the delegated group keeps its time in the tooltip', async ({ createStore }) => {
+  const { store, client } = createStore({ delayMs: 0, delegationDemo: true });
+  store.attach(client);
+  await store.connect();
+  await store.open('t-trace');
+  store.openThread!.status = 'running';
+  view = mount(StatusStrip, { target: document.body, props: { store } });
+  const counts = await vi.waitFor(() => {
+    const found = document.querySelector<HTMLButtonElement>('[data-testid="active-subagents"]');
+    expect(found).not.toBeNull();
+    return found!;
+  });
+  expect(counts.getAttribute('aria-label')).toMatch(/^\d+ subagents?( · \d+ workflows?)?$|^\d+ workflows?$/);
+  expect(counts.querySelector('.time')).toBeNull();
+  expect(counts.title).toMatch(/Delegated work running for \d/);
+  expect(strip()!.querySelectorAll('.time')).toHaveLength(1);
+});
+
+// jsdom lays nothing out, so the phone rule is read from the component's own
+// style: the round 1 strip cut its state to nothing because the lead shrank.
+test('the state label never shrinks, and under 420 px the counts and Next turn into chips that keep their names', () => {
+  const css = stripSource.slice(stripSource.indexOf('<style>'));
+  const rule = (selector: string, within = css) => within.match(new RegExp(`(^|\\n)\\s*${selector.replace('.', '\\.')} \\{([^}]*)\\}`))?.[2] ?? '';
+  expect(rule('.lead')).toMatch(/flex: none/);
+  expect(rule('.lead')).not.toMatch(/overflow|min-width: 0/);
+  expect(css).not.toMatch(/\.lead[^{]*\.ui-label[^{]*\{[^}]*text-overflow/);
+  expect(rule('.strip')).toMatch(/flex-wrap: wrap/);
+  const narrow = css.slice(css.indexOf('@container strip (max-width: 420px)'));
+  expect(narrow.length).toBeGreaterThan(0);
+  expect(rule('.words', narrow)).toMatch(/display: none/);
+  expect(rule('.number', narrow)).toMatch(/display: inline/);
+  // The names stay whole while the words hide.
+  expect(stripSource).toMatch(/data-testid="active-subagents"[\s\S]*?aria-label=\{delegatedWords\}/);
+  expect(stripSource).toMatch(/data-testid="status-strip-next"[\s\S]*?aria-label=\{fill\(strings\.chat\.strip\.nextTitle/);
 });

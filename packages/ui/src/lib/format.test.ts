@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { bytes, clockTime, dayClock, effortName, elapsed, formatTokens, levelName, longDay, millis, quotaResetTime, quotaWindowName, relativeTime } from './format';
+import { bytes, clockTime, dayAhead, dayClock, effortName, elapsed, formatTokens, levelName, longDay, millis, quotaResetTime, quotaWindowName, relativeTime } from './format';
 import { setLocaleSetting } from './i18n.svelte';
 
 test('elapsed reads like a stopwatch', () => {
@@ -34,6 +34,14 @@ test('clockTime gives the hour today, a weekday this week and a date beyond', ()
   expect(clockTime(monday, now)).not.toBe(clockTime(today, now));
   expect(clockTime(old, now)).toMatch(/10:31/);
   expect(clockTime(old, now).length).toBeGreaterThan(clockTime(today, now).length);
+});
+
+test('dayAhead names a coming moment by its hour today, its weekday this week and its date beyond, never a past weekday', () => {
+  const now = new Date(2026, 10, 4, 9, 0).getTime();
+  expect(dayAhead(new Date(2026, 10, 4, 22, 15).getTime(), now)).toMatch(/22:15|10:15/);
+  expect(dayAhead(new Date(2026, 10, 7, 9, 0).getTime(), now)).toBe('Sat');
+  // A month ahead is a date: a weekday would read as the coming one.
+  expect(dayAhead(new Date(2026, 11, 4, 9, 0).getTime(), now)).toBe('Dec 4');
 });
 
 test('durations, sizes, effort levels and quota windows follow the language the app speaks', async () => {

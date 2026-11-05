@@ -16,6 +16,7 @@ export const fr: Translation = {
     retryLimitCancel: 'Ne pas reprendre',
     retryContinueTitle: 'Arrêté avant sa réponse',
     retryContinueBody: 'Reprise automatique dans {time}, reprise {attempt} sur {attempts}.',
+    contextMeter: 'Contexte {percent} %',
     contextDetails: 'Contexte',
     contextInput: 'Entrée',
     contextCache: 'Entrée en cache',

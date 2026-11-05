@@ -298,7 +298,7 @@
     height: 11px;
     border-radius: 50%;
     border: 1.5px solid var(--color-edge);
-    border-top-color: var(--color-live);
+    border-top-color: var(--color-accent);
     animation: spin 0.9s steps(54) infinite var(--loops);
   }
 

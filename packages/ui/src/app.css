@@ -364,6 +364,11 @@
   --settings-padding: 24px;
 
   --dur-1: 90ms;
+  /* How far a disabled control fades; the light theme fades less so its label keeps 3:1. */
+  --disabled-opacity: 0.45;
+  /* The home's accent sky: a glow at the top centre and a fainter one lower (ChatView.svelte). */
+  --sky-top: 22%;
+  --sky-low: 10%;
   --dur-2: 150ms;
   --dur-3: 220ms;
   --dur-whip: 360ms;
@@ -768,8 +773,10 @@ html[data-chat-width='full'] {
   --ansi-bright-white: #a5a5a5;
   /* On white the bright amber read at 2.7:1: text takes a deep amber, the marks keep the bright one. */
   --color-live: #8a5a00;
-  --color-live-fill: #d18f05;
-  --color-success: #15803d;
+  /* Rings and dots are graphics: 3:1 on the card and the frame (3.7 and 3.1). */
+  --color-live-fill: #b47800;
+  /* Green text sits on the frame too (PR chips in the sidebar): 4.8 there, 5.8 on the card. */
+  --color-success: #13743a;
   --color-danger: #b91c1c;
   --color-danger-hover: #991b1b;
   /* A light page's accent is a step darker, so a white label reads on it and the accent reads as text. */
@@ -779,6 +786,13 @@ html[data-chat-width='full'] {
   --color-on-danger: #ffffff;
   --color-scrim: rgba(20, 20, 24, 0.35);
   --color-on-foreground: #fafafb;
+  --disabled-opacity: 0.66;
+  /* On white the same glow reads as a pale accent at about half the strength. */
+  --sky-top: 12%;
+  --sky-low: 6%;
+  /* A disabled primary in light turns neutral: a pale accent under white ink read as nothing. */
+  --color-disabled-fill: var(--color-surface-3);
+  --color-disabled-ink: var(--color-subtle);
   --series-1: #eb6834;
   --series-2: #2a78d6;
   --series-3: #18a070;
@@ -801,7 +815,6 @@ html[data-chat-width='full'] {
 /* Unsupported mixes must not invalidate a control's entire background at computed-value time. */
 @supports (color: color-mix(in oklab, white 50%, black)) {
   :root {
-    --color-composer-surface: color-mix(in oklab, var(--color-surface-2) 82%, transparent);
     --color-activity-surface: color-mix(in oklab, var(--color-surface) 94%, transparent);
     --color-composer-focus: color-mix(in oklch, var(--color-accent) 55%, transparent);
     /* Replaces the resting shadow on focus, slot for slot so it animates: a bloom under the box, the top
@@ -1051,13 +1064,20 @@ button.primary:active:not(:disabled),
 
 button:disabled {
   cursor: default;
-  opacity: 0.45;
+  opacity: var(--disabled-opacity);
 }
 
 button.primary {
   background: var(--control-glaze) var(--color-accent);
   border-color: var(--color-accent);
   color: var(--color-accent-ink);
+}
+
+[data-theme='light'] button.primary:disabled {
+  opacity: 1;
+  background: var(--color-disabled-fill);
+  border-color: var(--color-edge);
+  color: var(--color-disabled-ink);
 }
 
 button.primary:hover:not(:disabled) {

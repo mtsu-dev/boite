@@ -4,7 +4,7 @@
  * core's demo seeds (`team`, `agents`, `subagents`, `board`, `debates`).
  * Everything here is invented: projects, people (generic first names) and code.
  */
-import type { Message, MessagePart, PermissionRequest, Project, Thread, ThreadStatus, Turn } from '../../packages/contracts/src/index';
+import type { AgentProfile, AgentRuntimeConfig, Message, MessagePart, PermissionRequest, Project, Thread, ThreadStatus, Turn } from '../../packages/contracts/src/index';
 import type { FakeClientOptions, FakeContext } from '../../packages/ui/src/lib/fake-client/context';
 import { FAKE_CHANGES, FAKE_DIFFS } from '../../packages/ui/src/lib/fake-client/files';
 import { settlePermission } from '../../packages/ui/src/lib/fake-client/requests';
@@ -17,7 +17,7 @@ const ROOT = 'C:\\src';
 
 export function seedShowcase(ctx: FakeContext, options: FakeClientOptions): void {
   if (options.uninstalled) return;
-  if (options.coreId === 'fake-builder') return seedBuilder(ctx);
+  if (options.coreId === 'fake-builder') { seedBuilder(ctx); dropEcho(ctx); return; }
   const now = Date.now();
   const shift = now - 3 * HOUR - T0;
   rebase(ctx, shift);
@@ -30,7 +30,10 @@ export function seedShowcase(ctx: FakeContext, options: FakeClientOptions): void
   questionThread(ctx, now);
   permissionThread(ctx);
   extraThreads(ctx, now);
+  // `?dense=1`: a sidebar about twice as long, the load B1's density is measured on.
+  if (globalThis.location && new URLSearchParams(globalThis.location.search).get('dense') === '1') denseThreads(ctx, now);
   changes(ctx);
+  dropEcho(ctx);
 }
 
 // ---------------------------------------------------------------------------
@@ -129,6 +132,43 @@ function retitleDemos(ctx: FakeContext, now: number): void {
   }
   const parser = ctx.threads.get('t-parser');
   if (parser) { parser.archivedAt = now - 2 * DAY; parser.branch = 'orbit/rework-the-date-parser'; }
+}
+
+/** Where the showcase puts what the base seed ran on Echo. */
+const ECHO_TO = { providerId: 'claude', accountId: 'a-claude-main', model: 'claude-opus-5-5' } as const;
+
+/**
+ * The real core lists Echo only under `BOITE_ECHO=1`, so a user never sees it:
+ * the showcase drops it too, unless `?echo=1`. What the base seed ran on it
+ * (bots, team threads, past turns, logs) runs on Claude instead.
+ */
+function dropEcho(ctx: FakeContext): void {
+  if (globalThis.location && new URLSearchParams(globalThis.location.search).get('echo') === '1') return;
+  const route = <T extends { providerId: string; accountId: string; model?: string | null }>(entry: T): T =>
+    entry.providerId !== 'echo' ? entry : { ...entry, providerId: ECHO_TO.providerId, accountId: ECHO_TO.accountId, ...('model' in entry ? { model: entry.model === null ? null : ECHO_TO.model } : {}) };
+  for (const thread of ctx.threads.values()) {
+    if (thread.providerId === 'echo') Object.assign(thread, { ...ECHO_TO, effort: 'high' });
+    if (thread.promptCache?.accountId === 'a-echo') thread.promptCache = undefined;
+    for (const turn of thread.turns) {
+      if (turn.execution?.providerId === 'echo') Object.assign(turn.execution, { providerId: thread.providerId, accountId: thread.accountId, model: thread.model, effort: thread.effort });
+    }
+  }
+  // The agents' own maps: the seed edits them in place, as `rebase` does the threads.
+  const agents = ctx.agents as unknown as { profiles: Map<string, AgentProfile>; configs: Map<string, AgentRuntimeConfig> };
+  for (const profile of agents.profiles.values()) profile.selection = route(profile.selection);
+  for (const config of agents.configs.values()) {
+    config.defaultRoute = route(config.defaultRoute);
+    config.allowedRoutes = config.allowedRoutes.map(route);
+  }
+  for (const record of ctx.logs) {
+    if (record.providerId !== 'echo') continue;
+    record.providerId = ECHO_TO.providerId;
+    if (record.model) record.model = ECHO_TO.model;
+  }
+  ctx.hooks.providers = ctx.hooks.providers.filter(entry => entry.providerId !== 'echo');
+  for (const key of [...ctx.modelCatalogs.keys()]) if (key.startsWith('echo::')) ctx.modelCatalogs.delete(key);
+  ctx.accounts = ctx.accounts.filter(account => account.providerId !== 'echo');
+  ctx.providers = ctx.providers.filter(provider => provider.id !== 'echo');
 }
 
 // ---------------------------------------------------------------------------
@@ -459,6 +499,28 @@ function extraThreads(ctx: FakeContext, now: number): void {
     { id: 'seed-todo-3', projectId: 'p-boite', text: 'Fix focus order in the filters panel', status: 'done', threadId: 't-sc-a11y', createdAt: now - 2 * DAY, updatedAt: now - 26 * HOUR },
     { id: 'seed-todo-4', projectId: 'p-notes', text: 'Sort last week into the journal', status: 'open', threadId: null, createdAt: now - DAY, updatedAt: now - DAY },
   ];
+}
+
+/** About thirty more threads over every project, mostly at rest, a few at work or failed, for `?dense=1`. */
+const DENSE: [project: string, title: string, state: Spec['state']][] = [
+  ['p-boite', 'Cache the dashboard queries', 'idle'], ['p-boite', 'Drop the legacy chart theme', 'idle'], ['p-boite', 'Lazy-load the report builder', 'running'],
+  ['p-boite', 'Unify the date formats', 'idle'], ['p-boite', 'Audit the bundle size', 'done'], ['p-boite', 'Keyboard shortcuts for filters', 'idle'],
+  ['p-notes', 'Merge duplicate tags', 'idle'], ['p-notes', 'Search inside attachments', 'running'], ['p-notes', 'Weekly digest email', 'idle'],
+  ['p-notes', 'Encrypt the local backup', 'unread'], ['p-notes', 'Spellcheck the French entries', 'idle'],
+  ['p-atlas', 'Rotate the signing keys', 'idle'], ['p-atlas', 'Trace slow queries', 'running'], ['p-atlas', 'Retry webhooks with backoff', 'idle'],
+  ['p-atlas', 'Health check for the worker pool', 'error'], ['p-atlas', 'Split the billing service', 'idle'], ['p-atlas', 'Deprecate v1 tokens', 'done'],
+  ['p-courier', 'Dark mode for the driver app', 'idle'], ['p-courier', 'Route preview on the map', 'running'], ['p-courier', 'Signature capture at delivery', 'idle'],
+  ['p-courier', 'Reduce cold start time', 'idle'], ['p-courier', 'Localize the app in Portuguese', 'unread'],
+  ['p-lumen', 'Versioned docs sidebar', 'done'], ['p-lumen', 'Search with typo tolerance', 'idle'], ['p-lumen', 'Changelog page from releases', 'idle'],
+  ['p-garden', 'Seasons and weather', 'idle'], ['p-garden', 'Pixel shader for water', 'running'], ['p-garden', 'Save cloud sync', 'idle'],
+  ['p-sandbox', 'Benchmark three JSON parsers', 'idle'], ['p-sandbox', 'Try the new test runner', 'idle'], ['p-sandbox', 'Sketch a plugin API', 'idle'],
+];
+
+function denseThreads(ctx: FakeContext, now: number): void {
+  DENSE.forEach(([project, title, state], index) => {
+    const ago = state === 'running' ? (8 + index) * MINUTE : (2 + index * 3) * HOUR;
+    thread(ctx, now, { id: `t-dense-${index}`, project, title, ago, state, agent: index % AGENTS.length, prompt: title, answer: state === 'error' ? 'Stopped.' : 'Done.', ...(state === 'error' ? { error: 'The agent exited with code 1.' } : {}) });
+  });
 }
 
 // ---------------------------------------------------------------------------

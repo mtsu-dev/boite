@@ -162,7 +162,14 @@ export const strings = {
     coreUrl: 'Core URL',
     token: 'Token',
     connect: 'Connect',
-    warmProcessMinutes: 'Warm process minutes',
+    /** The model picker rail's last tile, which opens Settings to connect another provider. */
+    /** The Appearance entry's line beside the machine picker. */
+    scopeDevice: 'Appearance applies to this device. Keyboard and Voice apply to {machine}.',
+    scopeMachine: 'Applies to {machine}. Appearance applies to this device only.',
+    providerRailAdd: 'Add',
+    warmProcessMinutes: 'Keep an agent loaded (minutes)',
+    warmProcessOff: 'Off: the agent stops after each turn.',
+    warmProcessOn: 'The agent stays loaded {count} min after a turn.',
     listenOnLan: 'Reachable on the local network',
     listenOnLanHint: 'Lets a phone on the same network reach this computer, from the next start of Boite. A --host or --lan flag wins over it.',
     agentCpuCapPercent: 'CPU cap, %',
@@ -227,6 +234,9 @@ export const strings = {
       show: 'Show archived threads',
       empty: 'No archived thread on this machine.',
       restore: 'Restore',
+      inList: '{count} archived threads, in the thread list under Archived.',
+      none: 'No archived thread. Archived ones go under Archived in the thread list.',
+      openList: 'Show in the list',
     },
     deleted: {
       heading: 'Deleted conversations',

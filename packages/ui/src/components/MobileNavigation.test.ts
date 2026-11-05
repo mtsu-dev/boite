@@ -57,10 +57,12 @@ test('selecting a conversation beyond the first mobile window finishes loading i
   workspace.machines = [{ id: 'local', label: 'Local', store }]; workspace.active = store;
   mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'threads' } });
   await settle();
+  // The project folds past six rows (the desktop's lanes); opened, all thousand go through the window.
+  document.querySelector<HTMLButtonElement>('[data-testid=mobile-more]')!.click(); await settle();
   const selector = `[data-testid="mobile-thread-${summary.id}"]`;
   expect(document.querySelector(selector)).toBeNull();
   const root = document.querySelector<HTMLElement>('[data-testid=mobile-list]')!;
-  root.scrollTop = 76_600; root.dispatchEvent(new Event('scroll')); await settle();
+  root.scrollTop = 63_800; root.dispatchEvent(new Event('scroll')); await settle();
   expect(document.querySelectorAll('[data-testid^=mobile-thread-]').length).toBeLessThan(50);
   const row = document.querySelector<HTMLButtonElement>(selector)!;
   expect(row).not.toBeNull(); row.click(); await settle();
@@ -185,6 +187,11 @@ test('the Inbox tab lists what waits on the user, longest wait first, before the
   expect(order.filter((id, index) => order.indexOf(id) === index)).toEqual(['mobile-inbox-needs', older!.id, newer!.id, 'mobile-inbox-working', busy!.id]);
   expect(order).not.toContain(quiet!.id);
   expect(document.querySelector('[data-testid=mobile-inbox-needs] .count')!.textContent).toBe('2');
+  // C9: a waiting row says what it waits on in one word, its full reason in the title, and how long, in place of its state.
+  const why = list.querySelector<HTMLElement>(`[data-thread-id="${older!.id}"] [data-testid=thread-wait-reason]`)!;
+  expect([why.dataset['reason'], why.textContent?.trim(), why.querySelector('.ui-label')!.getAttribute('title')]).toEqual(['question', 'Question', 'Asks you']);
+  expect(list.querySelector(`[data-thread-id="${older!.id}"] time.waited`)).not.toBeNull();
+  expect(list.querySelector(`[data-thread-id="${busy!.id}"] [data-testid=thread-wait-reason]`)).toBeNull();
 
   // The list's name, large and hidden from readers, until it scrolls under the bar, whose title then fades in.
   const title = document.querySelector('[data-testid=mobile-title]')!;

@@ -161,7 +161,14 @@ export const fr: Translation = {
     coreUrl: 'URL du cœur',
     token: 'Jeton',
     connect: 'Connecter',
-    warmProcessMinutes: 'Minutes de processus gardé chaud',
+    /** The model picker rail's last tile, which opens Settings to connect another provider. */
+    /** The Appearance entry's line beside the machine picker. */
+    scopeDevice: 'L\'apparence s\'applique à cet appareil. Clavier et Voix s\'appliquent à {machine}.',
+    scopeMachine: 'S\'applique à {machine}. L\'apparence ne concerne que cet appareil.',
+    providerRailAdd: 'Ajouter',
+    warmProcessMinutes: 'Garder un agent chargé (minutes)',
+    warmProcessOff: 'Désactivé : l\'agent s\'arrête après chaque tour.',
+    warmProcessOn: 'L\'agent reste chargé {count} min après un tour.',
     listenOnLan: 'Accessible sur le réseau local',
     listenOnLanHint: 'Permet à un téléphone du même réseau d\'atteindre cet ordinateur, à partir du prochain démarrage de Boite. Une option --host ou --lan l\'emporte.',
     agentCpuCapPercent: 'Plafond CPU, %',
@@ -226,6 +233,9 @@ export const fr: Translation = {
       show: 'Afficher les conversations archivées',
       empty: 'Aucune conversation archivée sur cette machine.',
       restore: 'Restaurer',
+      inList: '{count} conversations archivées, dans la liste sous Archivées.',
+      none: 'Aucune conversation archivée. Les archivées vont sous Archivées dans la liste.',
+      openList: 'Voir dans la liste',
     },
     deleted: {
       heading: 'Conversations supprimées',

@@ -23,7 +23,7 @@ export const strings = {
     filterUnsupported: 'This machine did not filter usage by provider. Update Boite on it and retry.',
     noActivity: 'No turns',
     noUsage: 'Not reported',
-    coverage: 'Tokens {reported}/{turns} turns · Cost {priced}/{turns}',
+    coverage: 'Tokens: {reported} of {turns} turns · Price: {priced} of {turns}',
     partialCost: '{count} turns have no price and are left out of the estimate.',
     rates: 'Public API rates of {model}, per million tokens: input {input}, output {output}, cache read {cacheRead}, cache write {cacheWrite}.',
     cacheSplit: 'Cache: {read} read, {write} written.',

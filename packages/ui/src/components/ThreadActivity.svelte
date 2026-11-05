@@ -509,7 +509,7 @@
   /* The same box as the toggle's icon, so the task text starts under its line. */
   .task-mark { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 1.5em; flex: none; color: var(--color-muted-foreground); }
   .task-mark[data-status='completed'] { color: var(--color-success); }
-  .task-mark[data-status='in_progress'] { color: var(--color-live); }
+  .task-mark[data-status='in_progress'] { color: var(--color-accent); }
   .done { color: var(--color-muted-foreground); }
   /* The tracker is reading: the line breathes until it answers. */
   .current.busy { animation: pulse 1.8s var(--loop-ease-in-out-54) infinite var(--loops); }
@@ -525,7 +525,7 @@
   .verdict::before { content: ''; width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--verdict, var(--color-muted-foreground)); }
   .verdict:hover::before, .verdict:focus-visible::before { box-shadow: 0 0 0 3px color-mix(in srgb, var(--verdict, var(--color-muted-foreground)) 28%, transparent); }
   [data-verdict='pass'] { --verdict: var(--color-success); }
-  [data-verdict='partial'] { --verdict: var(--color-live); }
+  [data-verdict='partial'] { --verdict: var(--color-muted-foreground); }
   [data-verdict='fail'], [data-verdict='missing'] { --verdict: var(--color-danger); }
   [data-verdict='running'] { --verdict: var(--color-accent); }
   .verdict[data-verdict='running']::before { animation: pulse 1.8s var(--loop-ease-in-out-54) infinite var(--loops); }

@@ -52,7 +52,9 @@
 </button>
 
 <style>
-  .draft { width: 100%; height: auto; min-height: var(--row); justify-content: flex-start; gap: 8px; padding: 8px 10px; font-weight: 400; -webkit-touch-callout: none; }
+  /* A thread row's line (ThreadCard.svelte): 30 px, its glyph centred where the ring is and its title where theirs starts. */
+  .draft { width: 100%; height: auto; min-height: 30px; justify-content: flex-start; gap: 10.5px; padding: 3.5px 6px 3.5px 8.5px; font-weight: 400; -webkit-touch-callout: none; }
+  @media (max-width: 720px) { .draft { min-height: var(--row); padding: 8px 10px; gap: 8px; } }
   .draft.active { background: var(--color-active); }
   .draft :global(svg) { flex: none; color: var(--color-accent); }
   .draft[data-queued='waiting'] :global(svg) { color: var(--color-muted-foreground); }

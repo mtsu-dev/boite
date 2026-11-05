@@ -128,10 +128,11 @@
   h3 { display: flex; align-items: center; gap: 4px; font-size: var(--text-base); }
   .actions { display: flex; gap: 4px; }
   .actions button { display: inline-flex; align-items: center; gap: 6px; }
-  .presets { display: grid; grid-template-columns: repeat(auto-fill, 120px); gap: 14px 12px; margin-bottom: 14px; }
-  .preset { display: grid; gap: 7px; justify-items: start; width: 120px; height: auto; padding: 0; border: 0; background: transparent; box-shadow: none; text-align: left; color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 500; }
+  /* Seven palettes on one row: they shrink with the card rather than leave one alone on a second row. */
+  .presets { display: grid; grid-template-columns: repeat(7, minmax(0, 96px)); gap: 14px 10px; margin-bottom: 14px; }
+  .preset { display: grid; grid-template-columns: minmax(0, 1fr); justify-content: stretch; gap: 7px; justify-items: start; width: 100%; min-width: 0; height: auto; padding: 0; border: 0; background: transparent; box-shadow: none; text-align: left; color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 500; }
   .preset:hover, .preset:active:not(:disabled) { background: transparent; transform: none; }
-  .art { position: relative; display: block; width: 120px; height: 72px; border-radius: var(--radius-lg); box-shadow: inset 0 0 0 1px var(--color-edge); overflow: hidden; transition: box-shadow var(--dur-2); }
+  .art { position: relative; display: block; justify-self: stretch; width: 100%; aspect-ratio: 3 / 2; border-radius: var(--radius-lg); box-shadow: inset 0 0 0 1px var(--color-edge); overflow: hidden; transition: box-shadow var(--dur-2); }
   .preset:hover .art { box-shadow: inset 0 0 0 1px var(--color-muted-foreground); }
   .sheet { position: absolute; inset: 14px 0 0 14px; display: grid; align-content: start; gap: 6px; padding: 10px; border-radius: var(--radius-md) 0 0 0; }
   .line { display: block; width: 72%; height: 4px; border-radius: var(--radius-full); opacity: 0.85; }
@@ -161,9 +162,8 @@
   .contrast > span:first-child { color: var(--color-danger); }
   .contrast > span:first-child { display: flex; align-items: center; }
   @media (max-width: 720px) {
-    /* Two a row on a phone, each as wide as its column. */
-    .presets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .preset, .art { width: 100%; }
+    /* Four a row on a phone, each as wide as its column. */
+    .presets { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px 8px; }
     .editor, .editor.customizing { grid-template-columns: minmax(0, 1fr); gap: 16px; }
     .customize { min-height: var(--touch-target); }
     .role-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }

@@ -46,8 +46,8 @@ test('the work going on is listed longest running first; a sub-agent is left to 
     thread('team', { status: 'waiting', teamId: 'team-1' } as Partial<ThreadSummary>),
     thread('secret', { status: 'running', incognito: true })
   ])]);
-  // The parent carries its child's question; a child whose parent is elsewhere stands for itself.
-  expect(needs.map(card => [card.thread.id, card.detail])).toEqual([['parent', 'Keep the old key?'], ['orphan', null]]);
+  // The parent carries its child's question; a child whose parent is not listed is no sidebar row, so the Inbox leaves it out too.
+  expect(needs.map(card => [card.thread.id, card.detail])).toEqual([['parent', 'Keep the old key?']]);
   expect(working.map(row => [row.thread.id, row.since])).toEqual([['long', 100], ['recent', 900]]);
 });
 
@@ -66,4 +66,26 @@ test('the home folds the cards past the first four', () => {
   const { needs } = inbox([source('pc', Array.from({ length: 7 }, (_, index) => thread(`t${index}`, { status: 'waiting', runningSince: 10 - index })))]);
   expect(needs).toHaveLength(7);
   expect(needs.slice(0, INBOX_CARDS).map(card => card.thread.id)).toEqual(['t6', 't5', 't4', 't3']);
+});
+
+test('a machine that is not connected counts nothing; its asks wait apart, muted, and its work is left out', () => {
+  const lists = inbox([
+    source('pc', [thread('asks', { status: 'waiting' }), thread('runs', { status: 'running', runningSince: 5 })]),
+    source('laptop', [thread('stale-ask', { status: 'waiting' }), thread('stale-run', { status: 'running', runningSince: 1 })], { connected: false })
+  ]);
+  expect(lists.needs.map(card => card.thread.id)).toEqual(['asks']);
+  expect(lists.working.map(row => row.thread.id)).toEqual(['runs']);
+  expect(lists.offline.map(card => card.thread.id)).toEqual(['stale-ask']);
+  expect(lists.tally).toEqual({ threads: { needs: 1, working: 1 }, bots: { needs: 0, working: 0 } });
+});
+
+test('a bot\'s own thread is counted apart from the project threads, and a team or debate room is not counted', () => {
+  const lists = inbox([source('pc', [
+    thread('bot-asks', { projectId: null, agentSessionId: 'session-1', openQuestions: 1 } as Partial<ThreadSummary>),
+    thread('bot-runs', { projectId: null, agentSessionId: 'session-2', status: 'running' } as Partial<ThreadSummary>),
+    thread('room', { status: 'waiting', debateId: 'd-1' } as Partial<ThreadSummary>),
+    thread('asks', { status: 'waiting' })
+  ])]);
+  expect(lists.tally).toEqual({ threads: { needs: 1, working: 0 }, bots: { needs: 1, working: 1 } });
+  expect(lists.needs.map(card => [card.thread.id, card.kind])).toEqual(expect.arrayContaining([['bot-asks', 'bots'], ['asks', 'threads']]));
 });

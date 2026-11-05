@@ -24,6 +24,9 @@
   import CoordinationDialog from './CoordinationDialog.svelte';
   import ThreadPullRequest from './ThreadPullRequest.svelte';
   import { firstRunSteps } from '../lib/first-run.svelte';
+  import { launcherItems, pickLauncher } from '../lib/panel-launcher';
+  import { PanelCounts } from '../lib/panel-strip.svelte';
+  import { longPress } from '../lib/long-press';
   let { store }: { store: Store } = $props();
   let thread = $derived(store.openThread);
   const mobile = new MediaQuery('(max-width: 720px)');
@@ -88,6 +91,9 @@
     titleButton?.focus({ preventScroll: true });
   }
 
+  /** Every surface with its count, for the panel button's list (`lib/panel-launcher.ts`). */
+  const panelCounts = new PanelCounts(() => store);
+  let launcher = $derived(thread ? launcherItems(store, (kind) => panelCounts.of(kind), store.panelOpen ? store.panel.active?.kind ?? null : null) : []);
   let agentsOn = $derived(store.panelOpen && store.panel.active?.kind === 'agents');
   let tools = $derived.by((): MenuItem[] => {
     if (!thread) return [];
@@ -297,18 +303,30 @@
       {#if thread}
         <!-- The one way to the panel, on a phone too: its strip holds the browser,
              the terminal and the board. -->
-        <button
-          type="button"
-          class="ghost icon panel-toggle"
-          class:on={store.panelOpen}
-          title={`${strings.thread.panelHint}${store.keyHint('panel')}`}
-          aria-label={strings.thread.panelHint}
-          aria-pressed={store.panelOpen}
-          data-testid="panel-toggle"
-          onclick={() => store.togglePanel()}
-        >
-          <PanelRight size={16} strokeWidth={1.75} />
-        </button>
+        <!-- A click opens or shuts the panel; the chevron, a right click or a long
+             press lists every surface and drawer by name, so Terminal and Board
+             open with the panel shut. -->
+        <span class="panel-split">
+          <button
+            type="button"
+            class="ghost icon panel-toggle"
+            class:on={store.panelOpen}
+            title={`${strings.thread.panelHint}${store.keyHint('panel')}`}
+            aria-label={strings.thread.panelHint}
+            aria-pressed={store.panelOpen}
+            data-testid="panel-toggle"
+            onclick={() => store.togglePanel()}
+            oncontextmenu={(event) => contextMenu.open(event, launcher, (id) => pickLauncher(store, id))}
+            use:longPress
+          >
+            <PanelRight size={16} strokeWidth={1.75} />
+          </button>
+          <span class="panel-launch">
+            <Menu items={launcher} onpick={(id) => pickLauncher(store, id)} label={strings.rightPanel.launcherMenu} placement="bottom" align="end" variant="ghost" testid="panel-list">
+              <ChevronDown size={13} strokeWidth={1.75} />
+            </Menu>
+          </span>
+        </span>
       {/if}
 </div>
 
@@ -371,6 +389,9 @@
     font-size: var(--text-sm);
   }
   .panel-toggle { flex: none; }
+  /* The toggle and its list read as one control: the chevron hugs the button. */
+  .panel-split { display: inline-flex; align-items: center; flex: none; gap: 0; }
+  .panel-launch :global(.trigger.ghost) { width: 18px; height: var(--control); margin-left: -2px; }
 
   /* One neutral pill: the branch, its PR and the agent's face, no colour of its own. */
   .context-pill {
@@ -460,18 +481,21 @@
     .context-pill > :not(.avatar) { display: none; }
     .avatar { width: var(--touch-target); height: var(--touch-target); }
     .panel-toggle { width: var(--touch-target); height: var(--touch-target); }
+    /* A finger has the long press, and the panel's own header lists every surface. */
+    .panel-launch { display: none; }
     .rename { width: 100%; }
     /* The thread's title button gives way to its menu; a draft's label and a team's name have no menu and stay. */
     .title:not(.draft):not(.team) { display: none; }
     .title.draft, .title.team { max-width: none; }
     .draft-mark { margin: 0 4px 0 6px; }
-    .title-menu { display: flex; min-width: 0; flex: 0 1 auto; margin-left: -6px; }
+    /* The title takes every pixel the buttons leave: its own line, the place under it. */
+    .title-menu { display: flex; min-width: 0; flex: 1 1 auto; margin-left: -6px; }
     .title-menu :global(.menu) { min-width: 0; max-width: 100%; }
     .title-menu :global(.trigger) { min-width: 0; max-width: 100%; min-height: var(--touch-target); font-weight: 600; color: var(--color-foreground); }
     .title-lines { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; min-width: 0; line-height: 1.25; }
     /* Two lines stacked: a label's ascender room and its trim to the capitals would pull the second over the first. */
     .title-lines > .ui-label { margin-block: 0; padding-block: 0; text-box: normal; }
-    .title-text { display: block; max-width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .title-text { display: block; max-width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px; font-weight: 600; }
     /* The place gives way first: the PR number after it always shows. */
     .title-place:not(:has(.place-text:not(:empty), .place-pr:not(:empty))) { display: none; }
     .title-place { display: flex; max-width: 100%; min-width: 0; white-space: nowrap; font-size: var(--text-xs); font-weight: 400; color: var(--color-muted-foreground); }

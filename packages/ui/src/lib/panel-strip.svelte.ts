@@ -31,6 +31,23 @@ export function stripItems(surfaces: readonly Surface[], available: (kind: Surfa
  * changed files on Changes, the subagents and workflow runs at work on Agents.
  * Built during a component's setup.
  */
+/**
+ * One `git.status` per thread and turn, however many counters ask: the title
+ * bar's list and the panel's strip both count the changes.
+ */
+const asked = new Map<string, Promise<number | null>>();
+function changesOf(store: Store, key: string, id: Parameters<Store['gitStatus']>[0]): Promise<number | null> {
+  let answer = asked.get(key);
+  if (!answer) {
+    answer = store.gitStatus(id).then((status) => (status ? status.changes.length : null));
+    if (asked.size > 32) asked.clear();
+    asked.set(key, answer);
+    // A failed or empty answer is asked again on the next turn, never kept.
+    void answer.then((count) => { if (count === null) asked.delete(key); });
+  }
+  return answer;
+}
+
 export class PanelCounts {
   readonly #store: () => Store;
   #changes = $state<number | null>(null);
@@ -59,7 +76,7 @@ export class PanelCounts {
       const id = store().openThread?.id;
       if (!key || !id) { this.#changes = null; return; }
       let live = true;
-      void store().gitStatus(id).then((answer) => { if (live) this.#changes = answer ? answer.changes.length : null; });
+      void changesOf(store(), key, id).then((count) => { if (live) this.#changes = count; });
       return () => { live = false; };
     });
   }

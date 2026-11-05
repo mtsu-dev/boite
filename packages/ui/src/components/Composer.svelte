@@ -826,7 +826,7 @@
     padding: 0 20px;
   }
 
-  /* A translucent surface with a top reflection. Focus lights its edge and lays a bloom under it: app.css, beside its themes. */
+  /* A solid card with a fading top reflection, no backdrop blur (it costs every frame). Focus lights its edge and lays a bloom under it: app.css, beside its themes. */
   .composer {
     position: relative;
     display: flex;
@@ -835,8 +835,6 @@
     max-width: var(--content);
     margin: 0 auto;
     background: var(--composer-glaze) var(--color-composer-surface);
-    backdrop-filter: blur(16px) saturate(1.2);
-    -webkit-backdrop-filter: blur(16px) saturate(1.2);
     border: 1px solid var(--color-border);
     border-top-color: var(--color-edge);
     border-radius: var(--radius-xl);

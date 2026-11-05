@@ -198,7 +198,11 @@ test('Ctrl+J opens the drawer on the tab picked last, the terminal until then; a
   store.showBoard();
   await store.open('t-board-dark');
   expect([store.boardShown, store.terminalShown('t-board-dark')]).toEqual([true, false]);
+  // The board belongs to its project: a thread of another project keeps its own drawer.
+  await store.open('t-descriptors');
+  expect(store.boardShown).toBe(false);
   await store.open('t-trace');
+  expect(store.boardShown).toBe(true);
 
   // A core that does not link cards to goals has no board: Ctrl+J is the terminal again.
   store.core!.features!.projectBoard = false;

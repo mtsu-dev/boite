@@ -10,6 +10,7 @@
   import type TerminalView from './TerminalView.svelte';
   import DrawerTabs from './DrawerTabs.svelte';
   import ResizeHandle from './ResizeHandle.svelte';
+  import { DRAWER_MIN, DrawerHeight } from '../lib/drawer-height.svelte';
 
   /**
    * The thread's shells in the frame under the chat, in tabs, each one shell
@@ -24,15 +25,11 @@
     view?: typeof TerminalView; closing: boolean; attach: (node: HTMLElement) => { destroy: () => void };
     onexit: (event: TransitionEvent) => void } = $props();
 
-  const HEIGHT_KEY = 'boite:terminal-height';
-  const MIN_HEIGHT = 120;
-  const DEFAULT_HEIGHT = 280;
   const narrow = new MediaQuery('(max-width: 720px)');
 
   let drawer = $state<HTMLElement | undefined>(undefined);
-  let height = $state(readHeight());
-  let room = $state(window.innerHeight);
-  let visibleHeight = $derived(Math.min(height, Math.max(MIN_HEIGHT, Math.round(room * 0.7))));
+  /** 30 % of the chat until a drag picks a height, shared with the board's tab. */
+  const size = new DrawerHeight();
   /** Some handle of the drawer is being dragged. Each handle keeps its own state; this only stills the drawer's height transition. */
   let dragging = $state(false);
   let layout = $derived(store.terminalLayout(threadId));
@@ -47,18 +44,6 @@
   let screen = $derived(layout === null ? null : store.terminalScreen(layout.active));
   let liveCwd = $derived(screen?.cwd ?? cwd);
 
-  function readHeight(): number {
-    try {
-      const stored = Number(localStorage.getItem(HEIGHT_KEY));
-      return Number.isFinite(stored) && stored >= MIN_HEIGHT ? stored : DEFAULT_HEIGHT;
-    } catch {
-      return DEFAULT_HEIGHT;
-    }
-  }
-
-  function maxHeight(): number {
-    return Math.max(MIN_HEIGHT, Math.round(room * 0.7));
-  }
 
   function titled(label: string, command: Parameters<Store['keyLabel']>[0]): string {
     const key = store.keyLabel(command);
@@ -109,24 +94,10 @@
       if (focus === null || focus === document.body || drawer?.contains(focus)) store.focusShell(active);
     });
   });
-  onMount(() => {
-    const parent = drawer?.parentElement;
-    if (!parent) return;
-    room = parent.clientHeight;
-    const observer = new ResizeObserver(() => { room = parent.clientHeight; });
-    observer.observe(parent);
-    return () => observer.disconnect();
-  });
+  onMount(() => size.observe(drawer?.parentElement));
 
   let dragFrom = 0;
 
-  function setHeight(next: number): void {
-    height = Math.min(maxHeight(), Math.max(MIN_HEIGHT, Math.round(next)));
-  }
-
-  function saveHeight(): void {
-    try { localStorage.setItem(HEIGHT_KEY, String(height)); } catch { /* private mode keeps the height for this session */ }
-  }
 
   /** The two panes around the line `handle` sits on: where they start and how much room they share. */
   function pair(handle: HTMLElement, tab: TerminalTab): { from: number; span: number } | null {
@@ -153,7 +124,7 @@
 
 <section class="drawer" class:closing class:dragging inert={closing} use:attach
   ontransitionend={(event) => { if (event.propertyName === 'height') onexit(event); }}
-  style="--terminal-height: {visibleHeight}px" bind:this={drawer} data-testid="terminal-drawer">
+  style="--terminal-height: {size.visible}px" bind:this={drawer} data-testid="terminal-drawer">
   <!-- Outside the frame, which clips: the handle lies in the gap above it. -->
   <div class="edge">
     <ResizeHandle
@@ -161,14 +132,14 @@
       edge="top"
       label={strings.terminal.resize}
       testid="terminal-resize"
-      value={visibleHeight}
-      min={MIN_HEIGHT}
-      max={maxHeight()}
-      onstart={() => { dragFrom = visibleHeight; dragging = true; }}
-      onmove={(delta) => setHeight(dragFrom - delta)}
-      onend={() => { dragging = false; saveHeight(); }}
-      onstep={(delta) => { setHeight(visibleHeight - delta); saveHeight(); }}
-      onreset={() => { setHeight(DEFAULT_HEIGHT); saveHeight(); }}
+      value={size.visible}
+      min={DRAWER_MIN}
+      max={size.max}
+      onstart={() => { dragFrom = size.visible; dragging = true; }}
+      onmove={(delta) => size.set(dragFrom - delta)}
+      onend={() => { dragging = false; size.save(); }}
+      onstep={(delta) => { size.set(size.visible - delta); size.save(); }}
+      onreset={() => size.reset()}
     />
   </div>
   <div class="surface framed">

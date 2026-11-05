@@ -7,6 +7,8 @@ export interface MenuItem {
   id: string;
   label: string;
   hint?: string;
+  /** A count printed beside the label, as a tab prints it (the panel list's surfaces). */
+  count?: string;
   /** Said on hover rather than printed under the label. */
   title?: string;
   /** A lucide icon drawn before the label, in the live colour when `live`. */

@@ -23,6 +23,8 @@ interface Formatters {
   whole: Intl.NumberFormat;
   credits: Intl.NumberFormat;
   weekday: Intl.DateTimeFormat;
+  /** `Fri`, `ven.`: a day of the coming week with no clock. */
+  shortDay: Intl.DateTimeFormat;
   quotaDay: Intl.DateTimeFormat;
   quotaYear: Intl.DateTimeFormat;
   /** What `Date.toLocaleString(tag)` writes, built once rather than on every call. */
@@ -50,6 +52,7 @@ function formatters(): Formatters {
     whole: new Intl.NumberFormat(tag, { maximumFractionDigits: 0 }),
     credits: new Intl.NumberFormat(tag, { maximumSignificantDigits: 6 }),
     weekday: new Intl.DateTimeFormat(tag, { weekday: 'short', hour: '2-digit', minute: '2-digit' }),
+    shortDay: new Intl.DateTimeFormat(tag, { weekday: 'short' }),
     quotaDay: new Intl.DateTimeFormat(tag, { weekday: 'long' }),
     quotaYear: new Intl.DateTimeFormat(tag, { year: 'numeric', month: 'short', day: 'numeric' }),
     exact: new Intl.DateTimeFormat(tag, { year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' }),
@@ -166,6 +169,14 @@ export function clockTime(value: number, now = Date.now()): string {
   if (then.toDateString() === today.toDateString()) return set.dayClock.format(then);
   if (now - value < 6 * 86_400_000) return set.weekday.format(then);
   return `${set.calendar.format(then)} ${set.dayClock.format(then)}`;
+}
+
+/** A coming moment in one short word: the hour today, the weekday within the next six days, the date beyond. */
+export function dayAhead(value: number, now = Date.now()): string {
+  const set = formatters();
+  const then = new Date(value);
+  if (then.toDateString() === new Date(now).toDateString()) return set.dayClock.format(then);
+  return value - now < 6 * 86_400_000 ? set.shortDay.format(then) : set.calendar.format(then);
 }
 
 /** `12s`, `4m 41s`, `1h 02m`: a stopwatch, the way a turn's footer reads it. */

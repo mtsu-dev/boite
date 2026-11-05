@@ -29,23 +29,26 @@ test('inspect and stop a real delegated thread from the panel, which launches no
   expect(await page.evaluate('document.querySelectorAll("[data-testid=delegation-surface] :is(textarea, input, details, p:not([data-testid=delegation-empty]))").length')).toBe(0);
   expect(await page.text('[data-testid="delegation-empty"]')).not.toBe('');
   await owner.call('delegation.spawn', { threadId, profileId: 'review', task: 'Review parser boundaries [sleep:20000]', requestId: 'first-agent' });
-  await page.waitFor('document.querySelector("[data-testid=active-subagents]")?.textContent.includes("1 active subagent")');
+  await page.waitFor('document.querySelector("[data-testid=active-subagents]")?.textContent.includes("1 subagent")');
   await page.waitFor('document.querySelectorAll("[data-testid=delegation-member]").length === 1');
   const view = await owner.call('delegation.get', { threadId });
   expect(view.agents).toHaveLength(1);
   expect(view.agents[0]!.thread.parentThreadId).toBe(threadId);
   await page.click('[data-testid="panel-close"]');
   await page.waitFor('!document.querySelector("[data-testid=right-panel]")');
-  expect(await page.text('[data-testid="delegation-activity"]')).toContain('Started 1 subagent');
+  expect(await page.text('[data-testid="delegation-activity"]')).toContain('1 subagent');
   expect(await page.text('[data-testid="delegation-progress"]')).toContain('0/1 completed');
-  expect(await page.evaluate('!!document.querySelector("[data-testid=delegation-activity] [data-testid=agent-elapsed]")')).toBe(true);
+  // While it runs the line is history: when it started, no ticking clock (the status strip is the live view).
+  expect(await page.text('[data-testid="delegation-activity"]')).toMatch(/started \d/);
+  expect(await page.evaluate('!!document.querySelector("[data-testid=delegation-activity] [data-testid=agent-elapsed]")')).toBe(false);
   await page.click('[data-testid="delegation-activity"]');
   await page.waitFor('!!document.querySelector("[data-testid=delegation-member]")');
   expect(await page.evaluate('document.querySelector("[data-testid=delegation-member-route]").title')).toContain('Echo · Echo');
   expect(await page.evaluate('!!document.querySelector("[data-testid=delegation-active] [data-testid=delegation-member]")')).toBe(true);
   expect(await page.evaluate('document.querySelectorAll("[data-testid=delegation-surface] :is(textarea, input)").length')).toBe(0);
   await page.click('[data-testid="delegation-stop-all"]');
-  await page.waitFor('!document.querySelector("[data-testid=agent-dock]")');
+  // The status strip's count of delegated work goes with the last one running.
+  await page.waitFor('!document.querySelector("[data-testid=active-subagents]")');
   expect((await owner.call('delegation.get', { threadId })).config.paused).toBe(true);
   await page.waitFor('document.querySelector("[data-testid=delegation-progress]")?.textContent.includes("1 stopped")');
   expect(await page.text('[data-testid="delegation-progress"]')).toContain('1 stopped');
@@ -81,7 +84,7 @@ test('completed counts and frozen duration survive reopening the conversation', 
   await owner.call('delegation.configure', { threadId, config: { ...view.config, paused: false } });
   await owner.call('delegation.spawn', { threadId, profileId: 'review', task: 'Check the final result', requestId: 'completed-agent' });
   await page.waitFor('document.querySelector("[data-testid=delegation-progress]")?.textContent.includes("1/2 completed")');
-  await page.waitFor('!document.querySelector("[data-testid=agent-dock]")');
+  await page.waitFor('!document.querySelector("[data-testid=active-subagents]")');
   const elapsed = await page.text('[data-testid="delegation-activity"] [data-testid="agent-elapsed"]');
   await page.reload();
   await page.click(`[data-testid="thread-row"][data-thread-id="${threadId}"]`);
@@ -98,13 +101,15 @@ test('a newly started workflow appears above the composer without reopening the 
     name: 'Check the workflow indicator', steps: [{ id: 'review', profile: 'review', task: 'Review the workflow indicator [sleep:20000]' }]
   } });
   await page.waitFor('document.querySelector("[data-testid=active-subagents]")?.textContent.includes("1 workflow")');
-  expect(await page.text('[data-testid="active-subagents"]')).not.toContain('active subagent');
-  expect(await page.evaluate('document.querySelectorAll("[data-testid=agent-dock] button").length')).toBe(1);
+  // A workflow alone: the strip counts it and no subagent.
+  expect(await page.text('[data-testid="active-subagents"]')).not.toContain('subagent');
+  expect(await page.evaluate('document.querySelectorAll("[data-testid=status-strip] [data-testid=active-subagents]").length')).toBe(1);
   await page.waitFor('document.getAnimations().every(a => a.playState !== "running" || a.effect?.getTiming().iterations === Infinity)');
   await page.screenshot(join(import.meta.dir, '.artifacts/workflow-dock-desktop.png'));
+  // One run and no subagent: the count opens that run's graph.
   await page.click('[data-testid="active-subagents"]');
-  await page.waitFor(`document.querySelector('[data-testid=delegation-run][data-run-id="${run.id}"]')`);
-  expect(await page.text('[data-testid="delegation-run"]')).toContain('Check the workflow indicator');
+  await page.waitFor(`document.querySelector('[data-testid=workflow-run][data-run-id="${run.id}"]')`);
+  expect(await page.text('[data-testid="workflow-run"] h2')).toContain('Check the workflow indicator');
   await page.click('[data-testid="panel-close"]');
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   await page.waitFor('innerWidth === 390');
@@ -112,8 +117,8 @@ test('a newly started workflow appears above the composer without reopening the 
   await page.waitFor('document.getAnimations().every(a => a.playState !== "running" || a.effect?.getTiming().iterations === Infinity)');
   await page.screenshot(join(import.meta.dir, '.artifacts/workflow-dock-phone.png'));
   await page.click('[data-testid="active-subagents"]');
-  await page.waitFor(`document.querySelector('[data-testid=delegation-run][data-run-id="${run.id}"]')`);
+  await page.waitFor(`document.querySelector('[data-testid=workflow-run][data-run-id="${run.id}"]')`);
   await owner.call('workflows.control', { threadId, runId: run.id, action: 'stop' });
-  await page.waitFor('!document.querySelector("[data-testid=agent-dock]")');
+  await page.waitFor('!document.querySelector("[data-testid=active-subagents]")');
   expect(page.errors()).toEqual([]);
 }, 25_000);

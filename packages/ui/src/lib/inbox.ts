@@ -1,7 +1,9 @@
 import { requestExcerpt, type Account, type PermissionRequest, type Project, type QuestionRequest, type SecretRequest, type ThreadSummary } from '@boite/contracts';
-import { needsUser, threadState, type Delegated } from './thread-state';
-import { liveState } from './thread-lanes.svelte';
+import { needsUser, threadState, type Delegated, type ThreadState } from './thread-state';
+import { liveState, needsHand } from './thread-lanes.svelte';
+import { projectThread } from './thread-rows';
 import type { Store } from './store.svelte';
+import { fill, strings } from './strings';
 
 /**
  * What the home's Inbox and the phone's Inbox tab list: the threads that wait
@@ -22,6 +24,8 @@ export interface InboxSource<M> {
   accounts?: readonly Pick<Account, 'id' | 'status'>[];
   /** The thread's delegated agents at work or asking, as the sidebar reads them, so both count the same threads. */
   subagents?: (threadId: string) => Delegated;
+  /** False once the machine stopped answering: its threads are listed as offline and never counted. Defaults to true. */
+  connected?: boolean;
 }
 
 export interface InboxCard<M> {
@@ -33,6 +37,8 @@ export interface InboxCard<M> {
   detail: string | null;
   /** Since when it waits: the request's time, else the turn's. */
   since: number;
+  /** A project row of the thread list, or a bot's own thread. */
+  kind: CountKind;
 }
 
 export interface InboxRow<M> {
@@ -41,6 +47,34 @@ export interface InboxRow<M> {
   project: Project | undefined;
   /** When the work the row counts started. */
   since: number;
+  kind: CountKind;
+}
+
+/** Which count a thread belongs to: a row of a listed project, a bot's own thread, or neither. */
+export type CountKind = 'threads' | 'bots';
+
+/** How much needs the user and how much works, in one count. */
+export interface Tally { needs: number; working: number }
+
+/** Every live count of the app, from one pass: the project threads and the bots' threads apart. */
+export interface LiveTally { threads: Tally; bots: Tally }
+
+/**
+ * The one rule for what a count holds. A project thread is what the sidebar
+ * draws under a listed project (`threadsByProject`): not archived, not
+ * incognito, top level or entrusted by a bot, in a project that is not
+ * archived. A bot's own thread counts apart. A team or debate room is neither.
+ */
+export function countKind(thread: ThreadSummary, project: Project | undefined, parent: ThreadSummary | undefined): CountKind | null {
+  if (thread.archived || thread.incognito || thread.teamId || thread.debateId) return null;
+  if (thread.agentSessionId) return 'bots';
+  if (!projectThread(thread, parent)) return null;
+  return project && project.archived !== true ? 'threads' : null;
+}
+
+/** Where a state counts: needs you (`needsHand`), working (`liveState`), or nowhere. */
+export function liveKind(state: ThreadState | null): keyof Tally | null {
+  return needsHand(state) ? 'needs' : liveState(state) ? 'working' : null;
 }
 
 /** What each machine's store holds for the Inbox: the home, the phone's tab and the status strip's Next read the same lists. */
@@ -53,7 +87,8 @@ export function storeSources<M extends { store: Store }>(machines: readonly M[])
     permissions: machine.store.pendingPermissions ?? [],
     secrets: machine.store.pendingSecrets,
     accounts: machine.store.accounts,
-    subagents: (id: string) => machine.store.subagents(id)
+    subagents: (id: string) => machine.store.subagents(id),
+    connected: machine.store.connection === 'ready'
   }));
 }
 
@@ -65,40 +100,66 @@ export function listed(thread: ThreadSummary): boolean {
   return !thread.archived && !thread.incognito && !thread.teamId && !thread.debateId;
 }
 
-/**
- * The needs-you cards, longest wait first, then the working rows, longest
- * running first. A delegated agent's thread is left to its parent, which
- * carries its question (`subagentQuestions`) and its work.
- */
-export function inbox<M>(sources: readonly InboxSource<M>[]): { needs: InboxCard<M>[]; working: InboxRow<M>[] } {
-  const needs: InboxCard<M>[] = [];
-  const working: InboxRow<M>[] = [];
-  for (const source of sources) {
-    const projects = new Map(source.projects.map(project => [project.id, project]));
-    const ids = new Set(source.threads.map(thread => thread.id));
-    for (const thread of source.threads) {
-      if (!listed(thread)) continue;
-      if (thread.parentThreadId && ids.has(thread.parentThreadId)) continue;
-      const project = thread.projectId === null ? undefined : projects.get(thread.projectId);
-      const state = threadState(thread, source.subagents?.(thread.id) ?? 0);
-      const card = cardOf(source, thread, state);
-      if (card) needs.push({ machine: source.machine, thread, project, ...card });
-      else if (liveState(state)) {
-        working.push({ machine: source.machine, thread, project, since: thread.requestSince ?? thread.runningSince ?? thread.updatedAt });
-      }
-    }
-  }
-  needs.sort((a, b) => a.since - b.since || b.thread.updatedAt - a.thread.updatedAt);
-  working.sort((a, b) => a.since - b.since);
-  return { needs, working };
+export interface InboxLists<M> {
+  /** What waits on the user on a connected machine, longest wait first. */
+  needs: InboxCard<M>[];
+  /** What works on a connected machine, longest running first. */
+  working: InboxRow<M>[];
+  /** The last known needs of a machine that stopped answering: listed, muted, never counted. */
+  offline: InboxCard<M>[];
+  /** The counts every badge reads: `needs` and `working` split between project threads and bots. */
+  tally: LiveTally;
 }
 
 /**
- * The same threads the sidebar's Needs you counts (`needsHand`): a question,
- * a permission, a key, a child asking, a failed turn read or not, and work
- * that stopped short. Only the words are the Inbox's own.
+ * The needs-you cards, longest wait first, then the working rows, longest
+ * running first, under the count rule of `countKind` and `liveKind`, so the
+ * lifecycle strip, the switch, the tab badges and Next read the same numbers.
+ * A delegated agent's thread is left to its parent, which carries its
+ * question (`subagentQuestions`) and its work.
  */
-function cardOf<M>(source: InboxSource<M>, thread: ThreadSummary, state: ReturnType<typeof threadState>): Pick<InboxCard<M>, 'reason' | 'detail' | 'since'> | null {
+export function inbox<M>(sources: readonly InboxSource<M>[]): InboxLists<M> {
+  const needs: InboxCard<M>[] = [];
+  const working: InboxRow<M>[] = [];
+  const offline: InboxCard<M>[] = [];
+  const tally: LiveTally = { threads: { needs: 0, working: 0 }, bots: { needs: 0, working: 0 } };
+  for (const source of sources) {
+    const connected = source.connected !== false;
+    const projects = new Map(source.projects.map(project => [project.id, project]));
+    const byId = new Map(source.threads.map(thread => [thread.id, thread]));
+    for (const thread of source.threads) {
+      const project = thread.projectId === null ? undefined : projects.get(thread.projectId);
+      const kind = countKind(thread, project, thread.parentThreadId ? byId.get(thread.parentThreadId) : undefined);
+      if (!kind) continue;
+      const state = threadState(thread, source.subagents?.(thread.id) ?? 0);
+      // A child's question rides on its parent's row while the parent's turn runs: it still needs the user.
+      const live = thread.subagentQuestions?.length ? 'needs' : liveKind(state);
+      if (!live) continue;
+      if (live === 'needs') {
+        const card = { machine: source.machine, thread, project, kind, ...cardOf(source, thread, state) };
+        if (!connected) { offline.push(card); continue; }
+        needs.push(card);
+      } else {
+        // A machine away says nothing true about work: its last turn may have ended long ago.
+        if (!connected) continue;
+        working.push({ machine: source.machine, thread, project, kind, since: thread.requestSince ?? thread.runningSince ?? thread.updatedAt });
+      }
+      tally[kind][live] += 1;
+    }
+  }
+  const byWait = (a: InboxCard<M>, b: InboxCard<M>) => a.since - b.since || b.thread.updatedAt - a.thread.updatedAt;
+  needs.sort(byWait);
+  offline.sort(byWait);
+  working.sort((a, b) => a.since - b.since);
+  return { needs, working, offline, tally };
+}
+
+/**
+ * What a needs-you thread (`needsHand`) waits on: a question, a permission, a
+ * key, a child asking, a failed turn read or not, or work that stopped short.
+ * Only the words are the Inbox's own.
+ */
+function cardOf<M>(source: InboxSource<M>, thread: ThreadSummary, state: ThreadState | null): Pick<InboxCard<M>, 'reason' | 'detail' | 'since'> {
   const turn = thread.runningSince ?? thread.updatedAt;
   const question = source.questions.find(request => request.threadId === thread.id);
   if (question) return { reason: 'question', detail: requestExcerpt(question), since: question.createdAt };
@@ -114,6 +175,15 @@ function cardOf<M>(source: InboxSource<M>, thread: ThreadSummary, state: ReturnT
     const account = source.accounts?.find(entry => entry.id === thread.accountId);
     return { reason: account?.status === 'unauthenticated' ? 'sign-in' : 'failed', detail: null, since: thread.updatedAt };
   }
-  if (state === 'interrupted') return { reason: 'interrupted', detail: thread.backgroundWait?.for ?? null, since: thread.updatedAt };
-  return null;
+  return { reason: 'interrupted', detail: thread.backgroundWait?.for ?? null, since: thread.updatedAt };
+}
+
+/** `12m`, `2h 57m`, `3d`: how long a card has waited, coarse enough to read at a glance; the desktop and phone Inbox share it. */
+export function waitedFor(now: number, since: number): string {
+  const labels = strings.inbox;
+  const minutes = Math.max(1, Math.floor((now - since) / 60_000));
+  if (minutes < 60) return fill(labels.minutes, { count: String(minutes) });
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return fill(labels.hours, { count: String(hours), minutes: String(minutes % 60).padStart(2, '0') });
+  return fill(labels.days, { count: String(Math.floor(hours / 24)) });
 }

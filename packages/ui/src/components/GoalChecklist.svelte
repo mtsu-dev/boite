@@ -84,7 +84,7 @@
   /* Done reads as every other list of the panel: ticked, muted, struck. */
   [data-state='done'] .mark { color: var(--color-success); }
   [data-state='done'] .text { color: var(--color-muted-foreground); text-decoration: line-through; }
-  [data-state='next'] .mark { color: var(--color-live); }
+  [data-state='next'] .mark { color: var(--color-accent); }
   [data-state='next'] .text { font-weight: 500; }
   [data-state='held'] .mark, .note { color: var(--color-live); }
   [data-state='cancelled'] .text { color: var(--color-muted-foreground); }

@@ -3,7 +3,6 @@ export const strings = {
   /** The tasks surface: the thread's activity, the agent's tasks, the project's todos. */
   tasks: {
     goalSection: 'Goal and loop',
-    noActivity: 'No goal and no loop on this thread',
     nextRun: 'Next run {time}',
     iterations: '{count} iterations',
     agentSection: 'Agent tasks',

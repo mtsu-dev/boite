@@ -2,10 +2,15 @@ import { afterEach, expect, test } from 'vitest';
 import type { ThreadSummary } from '@boite/contracts';
 import { FakeClient } from './fake-client';
 import { Store } from './store.svelte';
-import { agentsAtWork, workingThreads } from './work-counts';
+import { badgeOf, workTally } from './work-counts';
 
 const stores: Store[] = [];
 afterEach(() => { for (const store of stores.splice(0)) { store.client?.close(); store.detach(); } });
+
+/** The switch's Threads side, as `SurfaceSwitch` draws it. */
+const workingThreads = (stores: Store[]) => { const tally = workTally(stores); const badge = badgeOf(tally.threads); return { count: badge.count, subagents: tally.subagents, waiting: badge.waiting }; };
+/** The switch's Bots side and the phone's Bots tab. */
+const agentsAtWork = (stores: Store[]) => { const badge = badgeOf(workTally(stores).bots); return { count: badge.count, waiting: badge.waiting }; };
 
 async function ready() {
   const store = new Store();
@@ -28,7 +33,8 @@ test('the switch counts the conversations at work on every machine, and says whe
   expect(workingThreads([first, second])).toEqual({ count: 1, subagents: 0, waiting: false });
   first.connection = 'ready';
   second.threads = second.threads.map(thread => thread.id === 't-bench' ? { ...thread, status: 'waiting' } : thread);
-  expect(workingThreads([first, second])).toEqual({ count: 3, subagents: 0, waiting: true });
+  // Once something needs the user the badge counts that, never the sum: one number counts one thing.
+  expect(workingThreads([first, second])).toEqual({ count: 1, subagents: 0, waiting: true });
   // A thread in an archived project is out of the list, so out of the count.
   second.projects = second.projects.map(project => project.id === second.threads.find(thread => thread.id === 't-bench')!.projectId ? { ...project, archived: true } : project);
   expect(workingThreads([first, second]).waiting).toBe(false);
@@ -45,15 +51,14 @@ test('the delegated agents under a listed thread count apart from the rows, at a
   ] as ThreadSummary[];
   // The parent's turn ended and it waits on its children: one row, three agents. The count is the rows the list draws.
   expect(workingThreads([store])).toEqual({ count: 1, subagents: 3, waiting: false });
-  // A child asking the user counts as at work and turns the badge to the waiting colour.
+  // A child asking the user counts among the agents, and its parent's row needs the user: the badge counts that row, in the waiting colour.
   store.threads = store.threads.map(thread => thread.id === 'c-3' ? { ...thread, openQuestions: 1 } : thread);
   expect(workingThreads([store])).toEqual({ count: 1, subagents: 4, waiting: true });
-  // A grandchild asking turns the badge too, though only its own parent's row reads Needs you.
   store.threads = store.threads.map(thread => thread.id === 'c-3' ? { ...thread, openQuestions: 0 } : thread.id === 'g-1' ? { ...thread, status: 'waiting' } : thread);
-  expect(workingThreads([store])).toEqual({ count: 1, subagents: 3, waiting: true });
+  expect(workingThreads([store])).toEqual({ count: 1, subagents: 3, waiting: false });
 });
 
-test('an entrusted thread mid-turn counts once among the agents at work', async () => {
+test('an entrusted project thread mid-turn is a project row: the Threads side counts it, the Bots side does not', async () => {
   const store = await ready();
   const { agentDirectory } = await import('./agent-directory.svelte');
   store.threads = store.threads.map(thread => ({ ...thread, status: thread.id === 't-scheduler' ? 'running' : 'idle', openQuestions: 0, backgroundWork: null }));
@@ -63,7 +68,8 @@ test('an entrusted thread mid-turn counts once among the agents at work', async 
   // Entrusted, and the agent's own work runs in that same thread: one thread, one count.
   agentDirectory(store).snapshot = { ...snapshot, entrusted: [{ threadId: 't-scheduler', agentId: 'agent-1', at: 0 }],
     work: [{ id: 'w-1', agentId: 'agent-1', status: 'running', runId: 'r-1' }], runs: [{ id: 'r-1', threadId: 't-scheduler', startedAt: 0 }] } as never;
-  expect(agentsAtWork([store])).toEqual({ count: 1, waiting: false });
+  expect(agentsAtWork([store])).toEqual({ count: 0, waiting: false });
+  expect(workingThreads([store]).count).toBe(1);
 });
 
 test('an agent whose own thread rests but asks the user counts, in the waiting colour', async () => {

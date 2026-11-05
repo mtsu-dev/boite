@@ -1,10 +1,10 @@
+import { lifecycleFilter } from '../lib/lifecycle-filter.svelte';
 import { afterEach, expect, test, vi } from 'vitest';
 import { mount, unmount } from 'svelte';
 import App from '../App.svelte';
 import { store } from '../lib/store.svelte';
 import { closeTour } from '../lib/onboarding.svelte';
 import { archiveThread } from '../lib/archive';
-import type { FakeClient } from '../lib/fake-client';
 import { workspace } from '../lib/workspace.svelte';
 
 /** The phone has no General page: the archive it can fill must be reachable from its own settings list. */
@@ -45,7 +45,7 @@ function phoneWidth() {
   }));
 }
 
-test('a thread archived on the phone comes back from its own settings list', async () => {
+test('the phone settings lead an archived thread to the list\'s Archived filter', async () => {
   phoneWidth();
   window.history.replaceState(null, '', '/?fake=1&open=recent');
   const target = document.createElement('div');
@@ -60,40 +60,23 @@ test('a thread archived on the phone comes back from its own settings list', asy
   running = mount(App, { target });
   await waitFor(() => store.booted && (store.openThread !== null || store.draft !== null));
 
-  const client = store.client as FakeClient;
   expect(await archiveThread(store, 't-trace')).toBe(true);
   await waitFor(() => !store.threads.some((t) => t.id === 't-trace' && !t.archived));
-  const account = (await client.call('accounts.list', {})).find(account => account.providerId === 'echo')!;
-  const merged = await client.call('threads.create', { projectId: 'p-boite', providerId: 'echo', accountId: account.id, title: 'Merged phone conversation', worktree: { branch: 'merged-phone-fixture' } });
-  client.setMergedPrFixture(merged.id, { repository: 'github.com/example/repo', branch: merged.branch!, tip: 'a'.repeat(40), clean: true, candidates: [{ repository: 'github.com/example/repo', branch: merged.branch!, sha: 'a'.repeat(40), number: 7, url: 'https://github.com/example/repo/pull/7', mergedAt: '2026-10-01T12:00:00Z' }] });
-  expect(await client.sweepMergedPrArchives()).toBe(1);
   store.showSettings('general');
   await waitFor(() => document.querySelector('[data-testid=mobile-settings-home]') !== null);
+  // The row opens the phone's list on its Archived filter, where each row restores.
   query<HTMLButtonElement>('[data-testid=mobile-settings-archived]').click();
-  // The page of its own reads the list at once: no second tap on Show.
-  await waitFor(() => document.querySelector('[data-testid=archived-restore]') !== null);
-  expect(query('[data-testid=archived-list]').textContent).toContain('Finish the trace tab');
-  const mergedReason = query(`[data-thread-id="${merged.id}"] [data-testid=archive-merged-reason]`);
-  expect(mergedReason.textContent).toContain('Archived after PR #7 merged');
-  expect(mergedReason.querySelector('a')?.getAttribute('href')).toBe('https://github.com/example/repo/pull/7');
-  expect(mergedReason.querySelector('time')?.getAttribute('datetime')).not.toBeNull();
-  query<HTMLButtonElement>('[data-thread-id=t-trace] [data-testid=archived-restore]').click();
-  await waitFor(() => store.threads.find((t) => t.id === 't-trace')?.archived === false);
+  await waitFor(() => store.page === 'chat' && document.querySelector('[data-testid=mobile-list]') !== null);
+  expect(lifecycleFilter.current).toBe('archived');
+  lifecycleFilter.clear();
 
-  query<HTMLButtonElement>('[data-testid=mobile-settings-back]').click();
-  await waitFor(() => document.querySelector('[data-testid=mobile-settings-home]') !== null);
-
-  // The desktop's jump to the card (palette, project menu) lands on the same page here.
+  // The desktop's jump to the card (palette, project menu) lands on the card's page here: one line to the same filter.
   // The jump scrolls the card into view, which jsdom does not draw.
   Element.prototype.scrollIntoView ??= vi.fn();
   store.showSettings('general', 'archived');
-  await waitFor(() => document.querySelector('[data-testid=archived-list], [data-testid=archived-empty]') !== null);
-  expect(document.querySelector('[data-testid=archived-show]')).toBeNull();
+  await waitFor(() => document.querySelector('[data-testid=archived-show-list]') !== null);
   expect(query('[data-testid=mobile-settings-detail]')).toBeTruthy();
-  expect(query(`[data-thread-id="${merged.id}"] [data-testid=archive-merged-reason]`).textContent).toContain('PR #7');
-  query<HTMLButtonElement>(`[data-thread-id="${merged.id}"] [data-testid=archived-restore]`).click();
-  await waitFor(() => store.threads.find(thread => thread.id === merged.id)?.archived === false);
-  expect(await client.sweepMergedPrArchives()).toBe(0);
+  expect(document.querySelector('[data-testid=archived-list]')).toBeNull();
 });
 
 test('the phone settings hold this phone\'s three screens and the machine\'s essentials, Usage and Limits on one screen', async () => {

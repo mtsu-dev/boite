@@ -256,7 +256,7 @@ test('a signed-in Claude seat is probed before its model and account are applied
   await waitFor(() => store.accountOf('a-claude-side')?.status === 'ok');
   await store.probeModels('claude', 'a-claude-main');
   const thread = await client.call('threads.create', {
-    projectId: 'p-boite', providerId: 'claude', accountId: 'a-claude-main', model: 'claude-sonnet-5-5', title: 'Second seat picker'
+    projectId: 'p-boite', providerId: 'claude', accountId: 'a-claude-main', model: 'claude-sonnet-5-5', title: 'Work seat picker'
   });
   await store.open(thread.id);
   await waitFor(() => store.openThread?.id === thread.id);
@@ -345,6 +345,20 @@ test('a thread whose provider is turned off says so beside the picker, and the c
   store.showChat();
   expect(await store.setProviderEnabled(provider.id, true)).toBe(true);
   await waitFor(() => chip() === null);
+});
+
+test('a provider with no named model names the provider and asks for a model, the trigger keeping its name', async () => {
+  const client = await mountAt('recent');
+  const [project] = await client.call('projects.list', {});
+  const thread = await client.call('threads.create', { projectId: project!.id, providerId: 'opencode', accountId: 'a-opencode', model: 'default', title: 'No model yet' });
+  await store.open(thread.id);
+  await waitFor(() => store.openThread?.id === thread.id);
+  const trigger = () => document.querySelector<HTMLButtonElement>('[data-testid=composer-picker]')!;
+  await waitFor(() => trigger()?.querySelector('[data-testid=composer-pick-model]') !== null);
+  expect(trigger().querySelector('.model-name')!.textContent).toBe(store.providerOf('opencode')!.name);
+  expect(trigger().querySelector('.pick-model')!.textContent).toBe(' · Pick a model');
+  expect(trigger().textContent).not.toContain('Provider and model');
+  expect(trigger().getAttribute('aria-label')).toBe('Provider and model');
 });
 
 test('a phone, which leaves provider administration to the desktop, offers no way to a Providers page it lacks', async () => {

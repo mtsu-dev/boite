@@ -29,7 +29,9 @@ export const fr: Translation = {
     terminal: 'Terminal',
     board: 'Tableau',
     more: 'Plus',
-    changesCount: '{count} fichiers modifiés',
-    agentsCount: '{count} au travail'
+    changesCount: '{count} fichiers',
+    agentsCount: '{count} au travail',
+    messages: 'Messages',
+    launcherMenu: 'Ouvrir dans le panneau',
   }
 };

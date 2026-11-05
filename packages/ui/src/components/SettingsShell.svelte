@@ -10,7 +10,7 @@
   import { COMMAND_GROUPS } from '../lib/keybindings';
   import { EXPERIMENT_IDS } from '../lib/experiments';
   import { experimentCopy } from '../lib/experiment-copy';
-  import { strings } from '../lib/strings';
+  import { fill, strings } from '../lib/strings';
   import type { SettingsTab, Store } from '../lib/store.svelte';
   import AccountsPage from './AccountsPage.svelte';
   import AdvancedSettings from './AdvancedSettings.svelte';
@@ -26,13 +26,14 @@
   import UsagePage from './UsagePage.svelte';
   import VoiceSettings from './VoiceSettings.svelte';
   import { providerGroups } from '../lib/provider-family';
-  import { isThisPC, workspace } from '../lib/workspace.svelte';
+  import { isThisPC, listedName, workspace } from '../lib/workspace.svelte';
   import SettingsMachineBar from './SettingsMachineBar.svelte';
   import { untrack } from 'svelte';
   import { revealSettingsCard } from '../lib/settings-flash';
-  import { desktopPage, desktopSettings, machinePage, ownerOnly } from '../lib/settings-tabs';
+  import { desktopPage, desktopSettings, machinePage, ownerOnly, phonePage } from '../lib/settings-tabs';
 
-  let { store, onopenthread }: { store: Store; onopenthread?: () => void } = $props();
+  /** `onopenlist` shows a phone's thread list, under the Archived filter Settings leads to. */
+  let { store, onopenthread, onopenlist }: { store: Store; onopenthread?: () => void; onopenlist?: () => void } = $props();
 
   /**
    * The pages that change one machine (`machinePage`) take it from the bar
@@ -166,6 +167,39 @@
   );
 
   let tabs = $derived(all.filter((tab) => store.owner || !ownerOnly(tab.id)));
+  let tileOf = $derived(new Map(tabs.map((entry) => [entry.id, entry])));
+
+  /**
+   * Eight entries in the nav: a grouped one holds several pages, shown as tabs
+   * at the top of its card. Every page keeps its own route, so a link, the
+   * search and a phone still open it by name.
+   */
+  type NavEntry = { id: SettingsTab; label: string; icon: SettingsTile['icon']; pages: SettingsTab[] };
+  let nav = $derived<NavEntry[]>(([
+    { id: 'general', label: strings.settings.tabs.general, icon: Settings2, pages: ['general'] },
+    { id: 'appearance', label: strings.settings.tabs.appearance, icon: Palette, pages: ['appearance', 'keyboard', 'voice'] },
+    { id: 'accounts', label: strings.settings.tabs.accounts, icon: Users, pages: ['accounts', 'plugins'] },
+    { id: 'brain', label: strings.brain.heading, icon: Brain, pages: ['brain'] },
+    { id: 'usage', label: strings.settings.homeGroups[2]!, icon: Coins, pages: ['usage', 'limits'] },
+    { id: 'machines', label: strings.settings.tabs.machines, icon: Monitor, pages: ['machines'] },
+    { id: 'resources', label: strings.settings.homeGroups[3]!, icon: ShieldCheck, pages: ['resources', 'task-manager'] },
+    { id: 'advanced', label: strings.settings.tabs.advanced, icon: SlidersHorizontal, pages: ['advanced', 'diagnostics', 'experiments'] }
+  ] satisfies NavEntry[]).map((entry) => ({ ...entry, pages: entry.pages.filter((page) => tileOf.has(page)) }))
+    .filter((entry) => entry.pages.length > 0)
+    .map((entry) => ({ ...entry, id: entry.pages[0]! })));
+  let current = $derived(nav.find((entry) => entry.pages.includes(tab)));
+  /** A grouped entry's pages, as tabs at the top of its card. */
+  let strip = $derived((current?.pages.length ?? 0) > 1);
+  /**
+   * The Appearance entry mixes this device's page with two of a machine's
+   * (Keyboard, Voice): one line beside the machine picker says which is which,
+   * once there is a second machine or this window is not the machine itself.
+   */
+  let scope = $derived.by((): string | undefined => {
+    if (current?.id !== 'appearance' || !chosen || (choices.length < 2 && store.localCore)) return undefined;
+    const machine = listedName(chosen);
+    return tab === 'appearance' ? fill(strings.settings.scopeDevice, { machine }) : fill(strings.settings.scopeMachine, { machine });
+  });
   /** Opened on no page in particular, Settings is there to be looked through: the keyboard goes to the search. */
   // Read once on purpose: moving to a page later must not pull the focus back.
   const searchFirst = untrack(() => store.settingsTab === 'home');
@@ -194,6 +228,8 @@
     ...(inShell ? [['general', 'app', strings.settings.launchAtLogin] as [SettingsTab, string, string]] : []),
     ['general', 'app', strings.onboarding.label],
     ['appearance', 'theme', strings.settings.accent],
+    ['appearance', 'theme', strings.settings.theme],
+    ['appearance', 'theme', strings.settings.colors.title],
     ['appearance', 'theme', strings.settings.material],
     ['appearance', 'theme', strings.settings.language],
     ['appearance', 'theme', strings.settings.groupChanges],
@@ -307,11 +343,11 @@
 </script>
 
 {#snippet machineBar()}
-  {#if chosen}<SettingsMachineBar machine={chosen} machines={choices} onpick={(id) => { picked = id; }} />{/if}
+  {#if chosen}<SettingsMachineBar machine={chosen} machines={choices} note={scope} onpick={(id) => { picked = id; }} />{/if}
 {/snippet}
 
 {#if !desktopSettings(narrow.current)}
-  <MobileSettings {store} {target} bar={bar ? machineBar : undefined} {onopenthread} />
+  <MobileSettings {store} {target} bar={bar ? machineBar : undefined} {onopenthread} {onopenlist} entries={entries.filter((entry) => phonePage(entry.tab, entry.section, store.owner) !== 'home')} onsearch={open} />
 {:else}
 <div class="settings" data-testid="settings">
   <nav aria-label={strings.settings.heading}>
@@ -320,27 +356,29 @@
       <span class="ui-label">{strings.settings.back}</span>
     </button>
     <SettingsSearch {entries} onopen={open} focus={searchFirst}>
-      {#each tabs as entry, index (entry.id)}
+      {#each nav as entry (entry.id)}
         {@const Icon = entry.icon}
-        {#if index === 0 || tabs[index - 1]?.group !== entry.group}<h2 class="group" class:first={index === 0}>{strings.settings.homeGroups[entry.group]}</h2>{/if}
+        {@const here = current?.id === entry.id}
+        {@const long = entry.pages.find((page) => toc[page])}
         <div class="category">
         <button
           type="button"
           class="ghost tab"
-          class:active={tab === entry.id}
+          class:active={here}
           data-testid="settings-tab-{entry.id}"
-          aria-current={tab === entry.id ? 'page' : undefined}
-          aria-expanded={toc[entry.id] ? tab === entry.id : undefined}
+          aria-current={here ? 'page' : undefined}
+          aria-expanded={long ? here && !!toc[tab] : undefined}
           onclick={() => { selectedSection = ''; store.showSettings(entry.id); }}
         >
           <Icon size={15} strokeWidth={1.75} />
           <span class="ui-label">{entry.label}</span>
-          {#if toc[entry.id]}<ChevronRight size={14} class={tab === entry.id ? 'fold-caret open' : 'fold-caret'} />{/if}
+          {#if long}<ChevronRight size={14} class={here && toc[tab] ? 'fold-caret open' : 'fold-caret'} />{/if}
         </button>
-        {#if toc[entry.id]}
-          <div class="subcategories disclosure-fold" class:open={tab === entry.id} inert={tab !== entry.id}>
+        {#if long}
+          {@const shown = here && toc[tab] ? tab : long}
+          <div class="subcategories disclosure-fold" class:open={here && !!toc[tab]} inert={!here || !toc[tab]}>
             <div>
-              {#each toc[entry.id] ?? [] as child (child.id)}
+              {#each toc[shown] ?? [] as child (child.id)}
                 <button class="ghost subsection" class:chosen={chosenSection === child.id} data-settings-section={child.id} title={child.label} onclick={() => jump(child.id)}><span class="ui-label">{child.label}</span></button>
               {/each}
             </div>
@@ -361,9 +399,20 @@
 
   <!-- The panel is keyed on the tab, so switching tabs fades the new page in
        rather than swapping it in one frame. -->
-  {#key tab}
-    <section class="framed" class:with-bar={bar || banner} onscrollcapture={spy}>
-      {#if bar && tab !== 'experiments'}{@render machineBar()}{/if}
+  {#key current?.id ?? tab}
+    <section class="framed" class:with-bar={bar || banner || strip} onscrollcapture={spy}>
+      {#if strip && current}
+        <div class="page-tabs" role="tablist" aria-label={current.label} data-testid="settings-page-tabs">
+          {#each current.pages as page (page)}
+            <button type="button" role="tab" class="ghost page-tab" class:active={page === tab} aria-selected={page === tab}
+              data-testid="settings-page-{page}" onclick={() => { selectedSection = ''; store.showSettings(page); }}>
+              <span class="ui-label">{tileOf.get(page)?.label ?? page}</span>
+            </button>
+          {/each}
+        </div>
+      {/if}
+      {#if bar && tab !== 'experiments'}{@render machineBar()}{:else if scope}<p class="scope-note muted" data-testid="settings-scope">{scope}</p>{/if}
+      {#key tab}
       {#key target}
       <PolicyBanner store={target} />
       {#if tab === 'brain'}
@@ -371,7 +420,7 @@
       {:else if tab === 'voice'}
         <VoiceSettings store={target} />
       {:else if tab === 'general'}
-        <GeneralSettings store={target} here={store} />
+        <GeneralSettings store={target} here={store} {onopenlist} />
       {:else if tab === 'machines'}
         <MachinesPage {onopenthread} />
       {:else if tab === 'advanced'}
@@ -398,6 +447,7 @@
         <ResourcesPage store={target} />
       {/if}
       {/key}
+      {/key}
     </section>
   {/key}
 </div>
@@ -420,8 +470,14 @@
     .framed > :global(.policy-banner) { margin: 16px 16px 0; }
   }
   .category { flex: none; }
-  .group { flex: none; margin: 14px 10px 4px; font-size: var(--text-xs); font-weight: 600; letter-spacing: 0.02em; color: var(--color-subtle); }
-  .group.first { margin-top: 4px; }
+  /* A grouped entry's pages: text tabs on one line, the page in view underlined. */
+  /* Both on the page's column: the tabs' text, inside their 12 px padding, and the note line up with its title. */
+  .scope-note { margin: 8px 0 0; padding-inline: max(clamp(20px, 4vw, 64px), calc((100% - var(--settings-width)) / 2)); font-size: var(--text-sm); }
+  .page-tabs { display: flex; gap: 4px; padding: 24px calc(max(clamp(20px, 4vw, 64px), calc((100% - var(--settings-width)) / 2)) - 12px) 0; overflow-x: auto; scrollbar-width: none; }
+  .page-tab { flex: none; position: relative; height: var(--row); padding: 0 12px; color: var(--color-muted-foreground); }
+  .page-tab.active { color: var(--color-foreground); }
+  .page-tab.active::after { content: ''; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2px; border-radius: 1px; background: var(--color-accent); }
+  .framed.with-bar > .page-tabs + :global(.machine-bar) { padding-top: 16px; }
   .tab span { flex: 1; text-align: left; }
   .tab :global(.fold-caret) { color: inherit; }
   /* Block rather than flex, and a label longer than the rail wraps onto a second
@@ -502,7 +558,8 @@
       border-bottom: 1px solid var(--color-border);
     }
 
-    .group { display: none; }
+    .page-tabs { padding: 12px 4px 0; }
+    .scope-note { padding-inline: 16px; }
     nav > :global(.search) { flex: 0 0 180px; margin: 0 6px 0 0; }
     .subcategories { display: none; }
     .mobile-subcategories { display: flex; gap: 4px; padding: 8px 14px; overflow-x: auto; flex: none; border-bottom: 1px solid var(--color-border); }

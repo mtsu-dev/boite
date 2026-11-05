@@ -9,6 +9,7 @@ import { separator, type MenuItem } from './menu';
 import { fill, strings } from './strings';
 import { projectName } from './format';
 import { undo } from './undo.svelte';
+import { lifecycleFilter } from './lifecycle-filter.svelte';
 
 /** Asks before a project leaves Boite, then removes it. Its folder, when there is one left, stays. */
 export async function confirmRemoveProject(owner: Store, project: Project): Promise<void> {
@@ -105,7 +106,11 @@ export function projectMenu(event: MouseEvent, owner: Store, project: Project, r
       }
       if (action === 'archived') {
         if (workspace.active !== owner) await workspace.select(owner);
-        owner.showSettings('general', 'archived');
+        // The Archived filter lists every project's archived threads under its header, with Restore and Delete.
+        owner.showChat();
+        owner.sidebarCollapsed = false;
+        if (window.matchMedia('(max-width: 720px)').matches) owner.sidebarOpen = true;
+        lifecycleFilter.show('archived');
       }
       if (action === 'archive-project') await archiveProjectWithUndo(owner, project);
       if (action === 'worktree-default') {

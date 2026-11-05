@@ -1,26 +1,31 @@
 <script lang="ts">
-  import { ArchiveRestore, Folder, GitMerge, GitPullRequest, GitPullRequestClosed } from '@lucide/svelte';
-  import type { ThreadSummary } from '@boite/contracts';
+  import { ArchiveRestore, Folder, GitBranch, GitMerge, GitPullRequest, GitPullRequestClosed, RotateCcw, Trash2 } from '@lucide/svelte';
+  import { DEFAULT_THREAD_DONE_RETENTION_DAYS, type ThreadSummary } from '@boite/contracts';
   import type { ProjectEntry } from '../lib/project-view.svelte';
   import { archivedTime } from '../lib/archive';
   import { contextMenu } from '../lib/context-menu.svelte';
   import { separator } from '../lib/menu';
   import { canDeleteThread } from '../lib/thread-removal';
   import { ThreadRestore } from '../lib/thread-restore.svelte';
-  import { agentLabel, ago, exactTime, projectName } from '../lib/format';
+  import { agentLabel, ago, dayAhead, exactTime, projectName } from '../lib/format';
   import { fill, strings } from '../lib/strings';
   import { workspace } from '../lib/workspace.svelte';
   import { longPress } from '../lib/long-press';
   import { archiveKindOf } from '../lib/project-threads.svelte';
   import MachineIcon from './MachineIcon.svelte';
-  import ProviderLogo from './ProviderLogo.svelte';
+  import StateRing from './StateRing.svelte';
+  import ThreadPicture from './ThreadPicture.svelte';
   import ThreadState from './ThreadState.svelte';
+  import { threadState } from '../lib/thread-state';
 
   /**
-   * A done or archived conversation, drawn like a thread row: the provider,
-   * the title, when it was put away, and under it the pull request it ended
-   * with, which opens on the forge. No menu button: a right click, or a long
-   * press on a phone, opens the row's menu. Restoring stays one hover away.
+   * A done or archived conversation, drawn in the thread row's grammar: the
+   * ring around its picture, the title, when it was put away, and under it
+   * the branch and the pull request it ended with, which opens on the forge.
+   * Reopen (done) or Restore (archived) and Delete stay one hover away, in
+   * plain words in their labels, as the Settings archived list offers them;
+   * Delete keeps its undo toast. A right click, or a long press on a phone,
+   * opens the same actions in the row's menu.
    */
   let { entry, now, showMachine = false, showProject = false, onopen }: {
     entry: ProjectEntry & { thread: ThreadSummary };
@@ -41,9 +46,18 @@
     ? { number: thread.archiveReason.number, url: thread.archiveReason.url, state: 'MERGED' as const }
     : thread.pullRequest ?? null);
   const prLabel = $derived(pr ? fill(pr.state === 'MERGED' ? strings.sidebar.prMerged : pr.state === 'CLOSED' ? strings.sidebar.prClosed : strings.sidebar.prOpen, { number: String(pr.number) }) : '');
-  const meta = $derived(showProject || pr !== null);
+  /** A done thread is deleted after the retention: when, on its meta line, as the Settings list said it. */
+  const expiry = $derived.by(() => {
+    const days = owner.settings?.threadDoneRetentionDays ?? DEFAULT_THREAD_DONE_RETENTION_DAYS;
+    return thread.doneAt != null && days > 0 ? thread.doneAt + days * 86_400_000 : null;
+  });
+  const meta = $derived(showProject || pr !== null || Boolean(thread.branch) || expiry !== null);
   /** Archived by hand, not finished: work left to pick up reads as plainly as an open row. */
   const pending = $derived(archiveKindOf(thread) === 'archived');
+  /** Done comes back with Reopen, archived with Restore: one verb per list. */
+  const back = $derived(pending ? { label: strings.sidebar.restoreThread, named: strings.sidebar.restoreNamedThread } : { label: strings.sidebar.reopenThread, named: strings.sidebar.reopenNamedThread });
+  const offline = $derived(owner.connection !== 'ready');
+  const deletable = $derived(canDeleteThread(thread));
 
   function restore(): void {
     void lock.restore(owner, thread.id);
@@ -65,11 +79,11 @@
       event,
       [
         { id: 'open', label: strings.common.open, disabled: deleting },
-        { id: 'restore', label: strings.sidebar.reopenThread, disabled: lock.busy || offline },
+        { id: 'restore', label: back.label, disabled: lock.busy || offline },
         ...(pr ? [{ id: 'pr', label: prLabel, title: pr.url }] : []),
         // On hover: a worktree path printed beside the label squeezes it into a column of letters.
         { id: 'copy', label: strings.sidebar.copyPath, title: thread.cwd },
-        ...(canDeleteThread(thread) ? [separator(), { id: 'delete', label: strings.common.delete, danger: true, disabled: lock.busy || offline }] : [])
+        ...(deletable ? [separator(), { id: 'delete', label: strings.common.delete, danger: true, disabled: lock.busy || offline }] : [])
       ],
       (action) => {
         if (action === 'open') select();
@@ -89,7 +103,7 @@
       {#if showMachine}
         <span class="machine" title={entry.machine.label} aria-label={entry.machine.label}><MachineIcon icon={entry.machine.icon} os={owner.core?.os} /></span>
       {/if}
-      <span class="provider" title={agent} aria-label={agent}><ProviderLogo providerId={thread.providerId} size={12} /></span>
+      <span class="provider" title={agent} aria-label={agent}><StateRing kind={threadState(thread)} stale={offline} ground="var(--ring-ground, var(--color-frame))"><ThreadPicture {owner} {thread} size={16} logo={13} /></StateRing></span>
       <span class="title ui-label">{thread.title}</span>
       <!-- The project shows below, outside the button: named here too, so two same-titled threads read apart. -->
       {#if showProject}<span class="visually-hidden">{projectName(entry.project)}</span>{/if}
@@ -101,14 +115,21 @@
       {#if showProject}<span class="project-name" title={entry.project.path}><Folder size={12} /><span class="ui-label">{projectName(entry.project)}</span></span>{/if}
       {#if pr}
         <a class="pr {pr.state.toLowerCase()}" data-testid="done-thread-pr" data-state={pr.state} href={pr.url} target="_blank" rel="noopener noreferrer" title={pr.url}>
-          {#if pr.state === 'MERGED'}<GitMerge size={12} />{:else if pr.state === 'CLOSED'}<GitPullRequestClosed size={12} />{:else}<GitPullRequest size={12} />{/if}<span class="ui-label">{prLabel}</span>
+          {#if pr.state === 'MERGED'}<GitMerge size={12} />{:else if pr.state === 'CLOSED'}<GitPullRequestClosed size={12} />{:else}<GitPullRequest size={12} />{/if}<span class="ui-label">#{pr.number}</span>
         </a>
       {/if}
+      {#if thread.branch}<span class="branch" data-testid="done-thread-branch" title={thread.branch}><GitBranch size={12} /><span class="ui-label">{thread.branch}</span></span>{/if}
+      {#if expiry !== null}<span class="expiry" data-testid="done-expires" title={fill(strings.settings.archived.deletesAt, { date: exactTime(expiry) })}><span class="ui-label">{fill(strings.sidebar.deletesOn, { date: dayAhead(expiry, now) })}</span></span>{/if}
     </div>
   {/if}
-  <button type="button" class="ghost small icon restore" data-testid="done-thread-restore" title={strings.sidebar.reopenThread}
-    aria-label={fill(strings.sidebar.reopenNamedThread, { title: thread.title })}
-    disabled={lock.busy || owner.connection !== 'ready'} onclick={restore}><ArchiveRestore size={14} /></button>
+  <span class="actions">
+    <button type="button" class="ghost small icon restore" data-testid="done-thread-restore" title={back.label}
+      aria-label={fill(back.named, { title: thread.title })}
+      disabled={lock.busy || offline} onclick={restore}>{#if pending}<ArchiveRestore size={14} />{:else}<RotateCcw size={14} />{/if}</button>
+    {#if deletable}<button type="button" class="ghost small icon remove" data-testid="done-thread-delete" title={strings.common.delete}
+      aria-label={fill(strings.sidebar.deleteNamedThread, { title: thread.title })}
+      disabled={lock.busy || offline} onclick={remove}><Trash2 size={14} /></button>{/if}
+  </span>
 </div>
 
 <style>
@@ -120,22 +141,22 @@
   }
   .done-thread:hover, .done-thread:focus-within { background: var(--color-hover); }
   .done-thread.open { background: var(--color-active); }
+  /* The thread row's measures: 30 px a line, 44 px with the branch and pull request under it. */
   .row {
     display: flex;
     flex-direction: column;
     align-items: stretch;
     width: 100%;
     height: auto;
-    min-height: var(--row);
-    padding: 8px 10px;
-    gap: 7px;
+    min-height: 30px;
+    padding: 3.5px 6px 3.5px 4px;
+    gap: 0;
     background: transparent;
   }
-  /* The pull request line sits over the row's bottom padding, so the whole card stays one target, as on a thread row. */
-  .meta .row { min-height: calc(var(--row) + 22px); padding: 9px 10px 28px; }
+  .meta .row { min-height: 44px; padding: 3.5px 6px 18px 4px; }
   .row:hover:not(:disabled) { background: transparent; }
   .row:active:not(:disabled) { transform: none; }
-  .headline { display: flex; align-items: center; min-width: 0; min-height: 1lh; gap: 8px; }
+  .headline { display: flex; align-items: center; min-width: 0; min-height: 1lh; gap: 6px; font-size: var(--text-sm); }
   .provider, .machine { display: inline-flex; align-items: center; flex: none; color: var(--color-muted-foreground); }
   /* Finished work reads a step quieter than the live rows above it, and wakes under the pointer. */
   .provider { opacity: .7; }
@@ -157,9 +178,9 @@
   .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .metadata {
     position: absolute;
-    left: 10px;
-    right: 10px;
-    bottom: 9px;
+    left: 33px;
+    right: 8px;
+    bottom: 4px;
     display: flex;
     align-items: center;
     gap: 9px;
@@ -169,6 +190,9 @@
     color: var(--color-muted-foreground);
   }
   .project-name { display: flex; flex: 1; align-items: center; gap: 4px; min-width: 0; }
+  /* The date gives way last: the branch truncates before it. */
+  .expiry { flex: none; margin-left: auto; color: var(--color-subtle); font-variant-numeric: tabular-nums; }
+  .branch + .expiry { margin-left: 0; }
   .project-name span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .metadata :global(svg) { flex: none; }
   .pr {
@@ -182,16 +206,20 @@
     border-radius: var(--radius-sm);
   }
   .pr.merged { color: var(--color-accent); }
+  .branch { display: flex; flex: 0 1 auto; align-items: center; gap: 4px; min-width: 0; margin-left: auto; font-family: var(--font-mono); font-size: 11px; }
+  .branch span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pr.closed { color: var(--color-danger); }
   .pr:hover span, .pr:focus-visible span { text-decoration: underline; text-underline-offset: 3px; }
   /* Restoring takes the time's place under the pointer, the way a thread row shows its menu. */
-  .restore { position: absolute; top: 5px; right: 5px; opacity: 0; background: var(--color-surface-2); color: var(--color-muted-foreground); }
-  .done-thread:hover .restore, .done-thread:focus-within .restore { opacity: 1; }
+  .actions { position: absolute; top: 2px; right: 3px; display: flex; gap: 1px; opacity: 0; }
+  .actions button { background: var(--color-surface-2); color: var(--color-muted-foreground); }
+  .actions .remove:hover:not(:disabled) { color: var(--color-danger); }
+  .done-thread:hover .actions, .done-thread:focus-within .actions { opacity: 1; }
   .done-thread:hover time, .done-thread:focus-within time,
   .done-thread:hover :global(.when), .done-thread:focus-within :global(.when) { opacity: 0; }
   /* No hover on a touch screen: the time stays, restoring is in the long-press menu. */
   @media (hover: none), (pointer: coarse) {
-    .restore { display: none; }
+    .actions { display: none; }
     .done-thread:hover time, .done-thread:focus-within time,
     .done-thread:hover :global(.when), .done-thread:focus-within :global(.when) { opacity: 1; }
   }

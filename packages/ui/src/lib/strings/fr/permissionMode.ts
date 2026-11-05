@@ -5,8 +5,8 @@ export const fr: Translation = {
   permissionMode: {
     default: 'Demander à chaque fois',
     acceptEdits: 'Modifs auto',
-    bypassPermissions: 'Auto malin',
-    yolo: 'Accès total',
+    bypassPermissions: 'Tout exécuter, garde-fous actifs',
+    yolo: 'Accès total, sans garde-fous',
     plan: 'Plan',
     dontAsk: 'Tout refuser'
   },

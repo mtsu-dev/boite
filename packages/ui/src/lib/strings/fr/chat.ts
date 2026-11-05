@@ -26,6 +26,9 @@ export const fr: Translation = {
       next: 'Suivant en attente ({count})',
       nextTitle: 'Ouvrir « {title} », la conversation qui vous attend depuis le plus longtemps',
       days: '{days} j {hours} h',
+      asking: 'une question pour vous',
+      askingSince: 'Une question vous attend depuis {time}, le tour continue',
+      delegatedFor: 'Travail délégué en cours depuis {time}',
       waitingSince: 'Vous attend depuis {time}'
     },
     compacting: 'Compaction en cours',
@@ -180,6 +183,7 @@ export const fr: Translation = {
     questionSkip: 'Passer',
     questionOpenPage: 'Ouvrir',
     questionWrite: 'Répondre par écrit',
+    askedYou: 'Vous a demandé',
     questionDocked: 'Attend votre réponse au-dessus du champ de message',
     questionOpen: 'Y répondre',
     streaming: 'écrit',

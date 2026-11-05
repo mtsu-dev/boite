@@ -201,7 +201,7 @@
         <button type="button" class="ghost board" title={`${fill(labels.board, { project: name })}: ${summary}`} aria-label={`${fill(labels.board, { project: name })}: ${summary}`}
           data-testid="contact-board-{grant.projectId}" onclick={() => void openBoard(home.store, grant.projectId)}>
           <SquareKanban size={14} strokeWidth={2} aria-hidden="true" />
-          {#each BOARD_COLUMNS as column (column)}<span class="tally" data-column={column} class:zero={counts[column] === 0}>{counts[column]}</span>{/each}
+          {#each BOARD_COLUMNS as column (column)}<span class="tally" data-column={column} class:zero={counts[column] === 0}><span class="tally-name">{strings.board.short[column]}</span> {counts[column]}</span>{/each}
         </button>
       {/if}
       <label class="read" title={labels.readTip}>
@@ -283,11 +283,11 @@
   .machine { display: inline-flex; align-items: center; gap: 4px; min-width: 0; margin-left: auto; color: var(--color-muted-foreground); font-size: var(--text-xs); }
   .machine :global(svg) { flex: none; }
   .initial { display: grid; flex: none; place-items: center; width: 18px; height: 18px; border-radius: var(--radius-sm); background: var(--color-accent-soft); color: var(--color-accent); font-size: var(--text-xs); font-weight: 700; }
-  /* The board's columns as four counts, each in its column's tone: to do, in progress, in review, done. */
-  .board { display: inline-flex; flex: none; align-items: center; gap: 6px; height: 28px; padding: 0 8px; border-radius: var(--radius-sm); color: var(--color-muted-foreground); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
-  .tally { min-width: 1ch; font-weight: 600; text-align: center; }
-  .tally[data-column='doing'] { color: var(--color-live); }
-  .tally[data-column='review'] { color: var(--color-accent); }
+  /* The board's columns as four named counts, each in its column's tone: to do, in progress, in review, done. */
+  .board { display: inline-flex; flex: none; align-items: center; gap: 10px; height: 28px; padding: 0 8px; border-radius: var(--radius-sm); color: var(--color-muted-foreground); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+  .tally { min-width: 1ch; font-weight: 600; text-align: center; white-space: nowrap; }
+  .tally-name { color: var(--color-muted-foreground); font-weight: 400; }
+  .tally[data-column='doing'] { color: var(--color-accent); }
   .tally[data-column='done'] { color: var(--color-success); }
   .tally.zero { color: var(--color-subtle); font-weight: 400; }
   .read { display: inline-flex; flex: none; align-items: center; gap: 6px; color: var(--color-muted-foreground); font-size: var(--text-sm); cursor: pointer; }

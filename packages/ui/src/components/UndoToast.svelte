@@ -4,7 +4,7 @@
   import { strings } from '../lib/strings';
   import { typing, undo } from '../lib/undo.svelte';
 
-  /** The toast that carries the last archive's way back, top centre. `onerror` hears a restore that failed. */
+  /** The toast that carries the last archive's way back, in App's toast column above the composer. `onerror` hears a restore that failed. */
   let { onerror }: { onerror: (error: unknown) => void } = $props();
 
   const toast = new Closing();
@@ -40,29 +40,20 @@
 {/if}
 
 <style>
-  /* Top centre, clear of the composer's controls and of the error toast on the right. */
+  /* In App's toast column, over the chat above the composer. */
   .undo-toast {
-    position: absolute;
-    left: 50%;
-    top: calc(16px + env(safe-area-inset-top, 0px));
-    z-index: 80;
     display: flex;
     align-items: center;
     gap: 8px;
-    max-width: calc(100vw - 32px);
+    max-width: 100%;
     padding: 6px 6px 6px 14px;
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
-    background: color-mix(in srgb, var(--color-surface-2) 96%, transparent);
-    backdrop-filter: blur(10px);
+    background: var(--color-surface-2);
     box-shadow: var(--shadow-e3);
     font-size: var(--text-sm);
-    /* `translate`, not `transform`: the rise animates the transform. */
-    translate: -50% 0;
     animation: rise var(--dur-3) var(--ease-out-quint);
   }
-
-  :global(.shell) .undo-toast { top: calc(var(--titlebar) + 16px); }
 
   .undo-toast.closing {
     animation: fade-out var(--dur-2) var(--ease-out-quint);

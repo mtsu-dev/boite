@@ -122,7 +122,8 @@
     modes.map((mode) => ({
       id: mode,
       label: modeLabel(mode, provider),
-      // One name per row: what the mode allows, and the name it had before, are said on hover.
+      // The name, what it lets through on the line under it, and on hover the name it had before.
+      hint: modeHint(mode, provider),
       title: modeTitle(mode),
       glyph: modeIcon(mode),
       active: displayedMode === mode
@@ -484,10 +485,17 @@
     color: var(--color-foreground);
   }
 
+  /* Each mode's description stays one line under its name: the menu grows to the longest, up to the window. */
+  .desktop-options :global([data-testid='composer-mode-menu']) { width: max-content; max-width: min(440px, calc(100vw - 24px)); }
+  .desktop-options :global([data-testid='composer-mode-menu'] .hint) { white-space: nowrap; }
+
   /* A composer the side panel narrowed keeps its tools on one row: the account
      goes first, then the effort, worktree and mode chips keep only their icons and
      tooltips. */
   @container composer (max-width: 600px) {
+    /* The model's name gives way first; the effort beside it stays whole. */
+    .chips { flex-wrap: nowrap; }
+    .desktop-options { flex: none; }
     .chips :global(.picker) { min-width: 0; }
     .chips :global(.picker > .trigger .account-name) { display: none; }
   }
@@ -502,12 +510,15 @@
     .desktop-options, .attach { display: none; }
     .chips { flex: 1; flex-wrap: nowrap; }
     .chips :global(.picker) { min-width: 0; max-width: 100%; }
-    .chips :global(.picker > .trigger) { max-width: 100%; height: var(--touch-target); padding: 0 6px; border: none; background: transparent; font-weight: 500; color: var(--color-muted-foreground); }
+    /* A whole outline or none: the control's top highlight alone, on a clear chip, drew half a box. */
+    .chips :global(.picker > .trigger) { max-width: 100%; height: var(--touch-target); padding: 0 8px; border: 1px solid var(--color-border); border-radius: var(--radius-md); box-shadow: none; background: transparent; font-weight: 500; color: var(--color-muted-foreground); }
     /* The model's name alone, and whole words of it: one line high, a name too long for the row
        wraps its last words onto a second line nobody sees, never half of one. */
     .chips :global(.picker > .trigger > .label) { min-width: 0; max-width: none; height: 1lh; padding-block: 0; margin-block: 0; text-box: normal; overflow: hidden; white-space: normal; overflow-wrap: normal; }
     .chips :global(.picker > .trigger .account-name) { display: none; }
     .chips :global(.picker > .trigger.connect) { padding: 0 12px; border-radius: var(--radius-md); background: var(--color-accent-soft); color: var(--color-accent); }
     .send, .stop { margin-left: 2px; }
+    /* The microphone draws its whole ring like Stop beside it, not the top highlight alone. */
+    .bar :global(.microphone), .dictation-stand-in button { box-shadow: none; border: 1px solid var(--color-border); }
   }
 </style>

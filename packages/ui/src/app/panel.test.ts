@@ -9,8 +9,9 @@ import { mountOnFake, query, test, type, waitFor } from '../test/app';
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
 
 test('a floating panel can dock after leaving or closing its browser tab and changing threads', async ({ app: _app }) => {
-  await waitFor(() => document.querySelector('[data-thread-id="t-trace"]') !== null);
-  query<HTMLButtonElement>('[data-thread-id="t-trace"]').click();
+  // The sidebar folds a project past three rows; these tests are about the panel.
+  await waitFor(() => store.threads.some((thread) => thread.id === 't-trace'));
+  await store.open('t-trace');
   await waitFor(() => store.openThread?.id === 't-trace');
   store.panel.open('browser', 'https://example.test');
   const browser = store.panel.active!.id;
@@ -39,18 +40,21 @@ test("a header button's right click hides it, and the Appearance page brings it 
   work.showPreset('developer');
   // With a team on the thread, since Team shows only where there is one.
   await mountOnFake('/?fake=1&team=1');
-  await waitFor(() => document.querySelector('[data-thread-id="t-trace"]') !== null);
-  query<HTMLButtonElement>('[data-thread-id="t-trace"]').click();
-  // The terminal's button stands in the panel's strip.
+  // The sidebar folds a project past three rows; these tests are about the panel.
+  await waitFor(() => store.threads.some((thread) => thread.id === 't-trace'));
+  await store.open('t-trace');
+  // A surface's button in the panel's strip.
   await waitFor(() => store.openThread?.id === 't-trace');
+  store.panel.closeAll();
   if (!store.panelOpen) store.togglePanel();
-  await waitFor(() => document.querySelector('[data-testid=terminal-toggle]') !== null);
+  const tasks = '[data-testid=panel-kind][data-kind=tasks]';
+  await waitFor(() => document.querySelector(tasks) !== null);
 
-  query('[data-testid=terminal-toggle]').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 30 }));
+  query(tasks).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 30 }));
   await waitFor(() => document.querySelector('[data-testid=context-menu]') !== null);
   query<HTMLButtonElement>('[data-testid=context-menu] [data-value=hide]').click();
-  await waitFor(() => document.querySelector('[data-testid=terminal-toggle]') === null);
-  expect(work.current.hidden).toEqual(['header.terminal']);
+  await waitFor(() => document.querySelector(tasks) === null);
+  expect(work.current.hidden).toEqual(['panel.tasks']);
 
   // The same menu, on another button, leads to the page that lists them all.
   await waitFor(() => document.querySelector('.context-control') !== null);
@@ -59,7 +63,7 @@ test("a header button's right click hides it, and the Appearance page brings it 
   query<HTMLButtonElement>('[data-testid=context-menu] [data-value=customize]').click();
   await waitFor(() => document.querySelector('[data-testid=settings-buttons]') !== null);
   expect(store.settingsTab).toBe('appearance');
-  const terminal = query<HTMLInputElement>('[data-testid="control-header.terminal"]');
+  const terminal = query<HTMLInputElement>('[data-testid="control-panel.tasks"]');
   expect(terminal.checked).toBe(false);
   // Neither preset is lit once the buttons are the device's own.
   expect(query('[data-testid=controls-preset-developer]').getAttribute('aria-pressed')).toBe('false');
@@ -72,8 +76,9 @@ test("a header button's right click hides it, and the Appearance page brings it 
 });
 
 test('the header button opens the panel on its launcher, which opens the changes surface', async ({ app: _app }) => {
-  await waitFor(() => document.querySelector('[data-thread-id="t-trace"]') !== null);
-  query<HTMLButtonElement>('[data-thread-id="t-trace"]').click();
+  // The sidebar folds a project past three rows; these tests are about the panel.
+  await waitFor(() => store.threads.some((thread) => thread.id === 't-trace'));
+  await store.open('t-trace');
   await waitFor(() => store.openThread?.id === 't-trace');
 
   // The panel's layout is a module singleton: this test starts on an empty strip.
@@ -119,11 +124,18 @@ test('the header button opens the panel on its launcher, which opens the changes
   await waitFor(() => !store.panelOpen);
   // The panel plays its exit before it unmounts, so the button is what answers here.
   expect(query('[data-testid=panel-toggle]').getAttribute('aria-pressed')).toBe('false');
+
+  // The list beside the button names every surface with its count on the label's line, as the strip does.
+  query<HTMLButtonElement>('[data-testid=panel-list]').click();
+  await waitFor(() => document.querySelector('[data-testid=panel-list-menu] [data-value=changes] .count') !== null);
+  expect(query('[data-testid=panel-list-menu] [data-value=changes] .label').textContent!.trim()).toBe('Changes7');
+  expect(document.querySelector('[data-testid=panel-list-menu] [data-value=changes] .hint')).toBeNull();
 });
 
 test('the tasks surface lists the project todos and adds, claims and drops one', async ({ app: _app }) => {
-  await waitFor(() => document.querySelector('[data-thread-id="t-trace"]') !== null);
-  query<HTMLButtonElement>('[data-thread-id="t-trace"]').click();
+  // The sidebar folds a project past three rows; these tests are about the panel.
+  await waitFor(() => store.threads.some((thread) => thread.id === 't-trace'));
+  await store.open('t-trace');
   await waitFor(() => store.openThread?.id === 't-trace');
 
   store.panel.closeAll();
@@ -172,8 +184,9 @@ test('the panel query switch also names a directory to open the tree on and a fi
 });
 
 test('what the agent asks for through panel.open opens on the thread it named', async ({ app: _app }) => {
-  await waitFor(() => document.querySelector('[data-thread-id="t-trace"]') !== null);
-  query<HTMLButtonElement>('[data-thread-id="t-trace"]').click();
+  // The sidebar folds a project past three rows; these tests are about the panel.
+  await waitFor(() => store.threads.some((thread) => thread.id === 't-trace'));
+  await store.open('t-trace');
   await waitFor(() => store.openThread?.id === 't-trace');
   store.panel.closeAll();
   expect(store.panelOpen).toBe(false);

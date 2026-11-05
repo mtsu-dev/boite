@@ -54,6 +54,8 @@ export const strings = {
     outboxRetry: 'Send again',
     outboxSettings: 'The model and effort it was written with could not be set again.',
     removeQueued: 'Remove this pending message',
+    /** The model chip's muted second half when the provider has no model set yet: never the picker's own name. */
+    pickModel: 'Pick a model',
     picker: 'Provider and model',
     models: 'Models',
     searchModels: 'Search models',

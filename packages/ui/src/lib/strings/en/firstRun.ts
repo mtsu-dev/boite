@@ -31,6 +31,9 @@ export const strings = {
     nothing: 'Nothing needs you',
     more: '{count} more',
     fewer: 'Show less',
+    /** Threads waiting on a machine that is not connected: listed apart, muted, never counted. */
+    offline: 'Offline',
+    offlineHint: 'Waiting on a machine that is not connected. Not counted until it is back.',
     reasons: {
       question: 'Asks you',
       permission: 'Wants your permission',
@@ -38,6 +41,15 @@ export const strings = {
       'sign-in': 'Needs you to sign in',
       failed: 'Turn failed',
       interrupted: 'Stopped before the end'
+    },
+    /** The same reasons in one word, for a phone row that also holds the place and the wait. */
+    reasonTags: {
+      question: 'Question',
+      permission: 'Permission',
+      secret: 'Key',
+      'sign-in': 'Sign-in',
+      failed: 'Failed',
+      interrupted: 'Stopped'
     },
     /** How long a card has waited and a row has worked, beside it and in full in its label. */
     waited: 'Waiting for {time}',

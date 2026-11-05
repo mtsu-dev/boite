@@ -308,3 +308,20 @@ test('an answer given with files lists them, and a files-only answer says how ma
   flushSync();
   expect(query('.answer-detail').textContent).toContain('Files given: IMG_0042.jpg, trace.txt');
 });
+
+test('an option already named Skip stands for the button, so the card shows one Skip', () => {
+  const mountWith = (labels: string[]) => {
+    if (running) unmount(running, { outro: false });
+    running = mount(QuestionCard, {
+      target: document.body,
+      props: { text: 'Sign in first?', options: labels.map((label) => ({ id: label, label })), allowText: false, multiple: false, answer: null, pending: true, submit: () => undefined, skip: () => undefined }
+    });
+    flushSync();
+  };
+  mountWith(['Signed in', 'Skip']);
+  expect(document.querySelector('[data-testid=question-skip]')).toBeNull();
+  expect(options().map((one) => one.textContent?.trim())).toContain('Skip');
+  document.body.innerHTML = '';
+  mountWith(['Signed in', 'Later']);
+  expect(document.querySelector('[data-testid=question-skip]')).not.toBeNull();
+});

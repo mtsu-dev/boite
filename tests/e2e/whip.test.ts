@@ -2,6 +2,7 @@ import { toMobileList } from './lib/mobile.ts';
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp.ts';
+import { openSettingsPage } from './lib/views.ts';
 import { startUi } from './lib/ui.ts';
 
 let server: { close(): Promise<void> };
@@ -162,7 +163,7 @@ afterAll(async () => { await server?.close(); }, 30_000);
 async function enableWhip() {
   expect(await page.evaluate(`document.querySelector('${button}') === null`)).toBe(true);
   await page.click('[data-testid=nav-settings]');
-  await page.click('[data-testid=settings-tab-experiments]');
+  await openSettingsPage(page, 'experiments');
   // Fail promptly if the experiment is absent, rather than waiting for a click timeout.
   expect(await page.evaluate(`!!document.querySelector('${toggle}')`)).toBe(true);
   await page.click(toggle);

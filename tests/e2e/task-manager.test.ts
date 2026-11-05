@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { echoThread, startTestCore, waitFor } from '../../packages/core/test/harness.ts';
 import { BrowserPage } from './lib/cdp.ts';
+import { openSettingsPage } from './lib/views.ts';
 import { pairingUrlOf } from './lib/core.ts';
 import { ensureProductionUi } from './lib/prod-ui.ts';
 import { mobileAction } from './lib/mobile.ts';
@@ -27,7 +28,7 @@ test('the real task manager reads owned processes on desktop and a paired phone'
     console.log(JSON.stringify({ scenario: 'Task manager', renderer }));
     await desktop.waitFor(`document.querySelector('[data-testid=status-connection]')?.dataset.state === 'ready'`);
     await desktop.click('[data-testid=nav-settings]');
-    await desktop.click('[data-testid=settings-tab-task-manager]');
+    await openSettingsPage(desktop, 'task-manager');
     const selector = `[data-testid=task-manager-agent][data-thread-id="${threadId}"]`;
     await desktop.waitFor(`document.querySelector('${selector}')`);
     if (process.platform === 'linux') {
@@ -53,7 +54,7 @@ test('the real task manager reads owned processes on desktop and a paired phone'
     await desktop.waitFor(`!document.querySelector('[data-testid=task-manager]') && document.querySelector('[data-testid=composer-input]')`);
     expect(await desktop.evaluate(`document.querySelector('[data-testid=thread-title]')?.textContent`)).toBe(history.title);
     await desktop.click('[data-testid=nav-settings]');
-    await desktop.click('[data-testid=settings-tab-task-manager]');
+    await openSettingsPage(desktop, 'task-manager');
     await desktop.waitFor(`document.querySelector('${selector}')`);
 
     const { url } = await owner.call('pairing.grant', {});

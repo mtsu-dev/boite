@@ -42,7 +42,7 @@ export function offeredCards(): { kind: SurfaceKind; key: string }[] {
 export function kindName(kind: SurfaceKind): string {
   if (kind === 'desk') return strings.agents.desk;
   if (kind === 'agents') return strings.delegation.heading;
-  if (kind === 'messages') return strings.agentMessages.heading;
+  if (kind === 'messages') return strings.rightPanel.messages;
   if (kind === 'browser' || kind === 'agent-browser') return strings.rightPanel.browser;
   if (kind === 'changes') return strings.rightPanel.changes;
   if (kind === 'files') return strings.rightPanel.files;

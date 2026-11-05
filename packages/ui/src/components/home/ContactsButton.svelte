@@ -5,6 +5,7 @@
   import type { Store } from '../../lib/store.svelte';
   import { fill, strings } from '../../lib/strings';
   import { workspace } from '../../lib/workspace.svelte';
+  import { showContactsButton } from '../../lib/contacts-button.svelte';
 
   /**
    * The phone's way to Contacts, now that the bottom bar keeps four places:
@@ -16,6 +17,8 @@
   const watched = watchContacts(() => workspace.machinesOr(store).filter(machine => contactsShown(machine.store)));
   const waiting = $derived(watched().reduce((total, { machine, view }) => machine.store.connection !== 'ready' ? total
     : total + (view.state?.requests ?? []).filter(request => request.direction === 'in' && request.status === 'pending').length + (view.state?.mail?.length ?? 0), 0));
+  // The header's button: the contact notice leaves its own out while this one shows.
+  $effect(() => variant === 'icon' ? showContactsButton() : undefined);
   const label = $derived(waiting ? `${strings.contacts.heading}, ${fill(strings.contacts.waiting, { count: String(waiting) })}` : strings.contacts.heading);
 </script>
 

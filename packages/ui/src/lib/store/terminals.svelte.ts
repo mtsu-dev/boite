@@ -38,8 +38,31 @@ export class Terminals {
   layouts = $state<Partial<Record<ThreadId, TerminalLayout>>>({});
   /** Accounts whose sign-in terminal is open on the Providers page. */
   loginTerminals = $state<string[]>([]);
-  /** The project board fills the drawer under the chat, in place of the terminal, in every thread until hidden. */
-  boardShown = $state(false);
+  /** The projects whose board fills the drawer under the chat, in place of the terminal, in each of their threads until hidden. */
+  private boardProjects = $state<ProjectId[]>([]);
+
+  /** The open thread's project shows its board: another project keeps its own drawer. */
+  get boardShown(): boolean {
+    const project = this.ctx.store.openThread?.projectId;
+    return !!project && this.boardProjects.includes(project);
+  }
+
+  set boardShown(shown: boolean) {
+    const project = this.ctx.store.openThread?.projectId;
+    if (!project || shown === this.boardProjects.includes(project)) return;
+    this.boardProjects = shown ? [...this.boardProjects, project] : this.boardProjects.filter((id) => id !== project);
+  }
+
+  private projectOfThread(threadId: ThreadId): ProjectId | null {
+    const s = this.ctx.store;
+    if (s.openThread?.id === threadId) return s.openThread.projectId;
+    return s.threads.find((thread) => thread.id === threadId)?.projectId ?? null;
+  }
+
+  private boardShownFor(threadId: ThreadId): boolean {
+    const project = this.projectOfThread(threadId);
+    return !!project && this.boardProjects.includes(project);
+  }
   /** The tab Ctrl+J opens the drawer on: the one picked last on this device. */
   drawerTab = $state<DrawerTab>(readDrawerTab());
 
@@ -160,13 +183,13 @@ export class Terminals {
 
   /**
    * The board in the drawer; the terminals it replaces keep their shells
-   * running. Every thread's drawer is put away, not only this one's, since the
-   * board follows the user into the next thread.
+   * running. The drawer of every thread of the project is put away, not only
+   * this one's, since the board follows the user into the project's next thread.
    */
   showBoard(): void {
     const open = this.ctx.store.openThread;
     if (!open || !this.boardAvailable()) return;
-    for (const threadId of this.terminalThreads) this.hideTerminal(threadId);
+    for (const threadId of this.terminalThreads) if (this.projectOfThread(threadId) === open.projectId) this.hideTerminal(threadId);
     this.boardShown = true;
     this.pickTab('board');
   }
@@ -212,7 +235,7 @@ export class Terminals {
 
   /** The drawer of a thread whose drawer was open when the page last showed it, unless the board holds the drawer. */
   restoreTerminal(threadId: ThreadId): void {
-    if (!this.ctx.store.owner || this.boardShown || this.terminalShown(threadId) || this.readStored(threadId)?.open !== true) return;
+    if (!this.ctx.store.owner || this.boardShownFor(threadId) || this.terminalShown(threadId) || this.readStored(threadId)?.open !== true) return;
     this.showTerminal(threadId);
   }
 

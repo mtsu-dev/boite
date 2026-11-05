@@ -4,6 +4,8 @@ export const fr: Translation = {
   machines: {
     heading: 'Machines', local: 'Ce PC', projects: 'Projets', recent: 'Récent',
     intro: 'Chaque machine exécute ses propres agents sur ses propres fichiers.',
+    phoneAccess: 'Les notifications, un téléphone sur le même réseau et une adresse HTTPS à vous.',
+    phoneAccessOpen: 'Accès téléphone',
     details: 'Détails', address: 'Adresse', updateFailed: 'Mise à jour échouée',
     label: 'Nom de la machine', icon: 'Icône de la machine', icons: { desktop: 'Ordinateur fixe', laptop: 'Portable', phone: 'Téléphone', tablet: 'Tablette', apple: 'Mac', server: 'Serveur', rack: 'Baie', nas: 'NAS', database: 'Base de données', cloud: 'Cloud', cpu: 'Processeur', router: 'Routeur', terminal: 'Terminal', bot: 'Bot', gamepad: 'Console', tv: 'Télé', house: 'Maison' }, link: "Lien d'une autre machine", add: 'Ajouter une machine', adding: 'Connexion', connect: 'Connecter',
     addHint: "Sur une machine de votre groupe, ouvrez Réglages, Machines, Ajouter un appareil, copiez le lien et collez-le ici.",

@@ -1,45 +1,83 @@
 <script lang="ts">
-  import { ChevronRight } from '@lucide/svelte';
+  import { ChevronRight, Network } from '@lucide/svelte';
   import type { Snippet } from 'svelte';
   import type { HTMLButtonAttributes } from 'svelte/elements';
+  import { clockTime } from '../lib/format';
+  import { fill, strings } from '../lib/strings';
   import Elapsed from './Elapsed.svelte';
 
   /**
-   * Work the agent started, as a card in the chat where it started: a mark,
-   * a heading, its progress and how long it has run. Clicking opens the panel
-   * that follows it; the button's own attributes pass through.
+   * Work the agent started, as one line in the chat where it started. The
+   * status strip above the composer is the only live view of it, so while it
+   * runs the line says what it is and when it started, with no bar, badge or
+   * ticking clock; once it ended it reads as a record with its duration.
+   * Clicking opens the surface that follows it; the button's own attributes
+   * pass through.
    */
-  let { live, heading, timing, mark, progress, extra, progressTestId, ...button }: Omit<HTMLButtonAttributes, 'children'> & {
+  let { live, heading, timing, progress, progressTestId, ...button }: Omit<HTMLButtonAttributes, 'children'> & {
     live: boolean;
     heading: string;
     /** No start yet means no clock. */
     timing: { startedAt: number | null; finishedAt: number | null; active: boolean };
-    mark: Snippet;
     progress: Snippet;
-    /** A line under the progress, such as the workflow's phases. */
-    extra?: Snippet;
-    /** Test hook on the progress line, beside the card's own data-testid. */
+    /** Test hook on the progress segment, beside the line's own data-testid. */
     progressTestId?: string;
   } = $props();
 </script>
 
 <button type="button" class="activity" class:live {...button}>
-  {@render mark()}
-  <span class="content">
+  <Network class="glyph" size={14} strokeWidth={1.75} aria-hidden="true" />
+  <span class="line">
     <span class="heading">{heading}</span>
     <span class="progress" data-testid={progressTestId}>{@render progress()}</span>
-    {@render extra?.()}
+    {#if timing.startedAt !== null}
+      {#if timing.active}
+        <span class="when started ui-label">· {fill(strings.delegation.startedAt, { time: clockTime(timing.startedAt) })}</span>
+      {:else if timing.finishedAt !== null}
+        <span class="when">· <Elapsed startedAt={timing.startedAt} finishedAt={timing.finishedAt} active={false} /></span>
+      {/if}
+    {/if}
   </span>
-  <span class="timing">{#if timing.startedAt !== null}<Elapsed startedAt={timing.startedAt} finishedAt={timing.finishedAt} active={timing.active} />{/if}</span>
-  <ChevronRight size={15} />
+  <ChevronRight class="chevron" size={14} aria-hidden="true" />
 </button>
 
 <style>
-  .activity { width: 100%; min-height: var(--row); height: auto; display: flex; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); box-shadow: var(--shadow-e1); text-align: left; color: var(--color-muted-foreground); font-weight: 400; }
+  /* One 28 px line, the weight of a turn footer: history, not a second live view. */
+  .activity {
+    width: 100%;
+    height: var(--control-sm);
+    min-height: var(--control-sm);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 8px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: none;
+    text-align: left;
+    color: var(--color-muted-foreground);
+    font-size: var(--text-xs);
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
+    container: activity / inline-size;
+    transition: background var(--dur-1), color var(--dur-1);
+  }
   .activity:hover, .activity:focus-visible { background: var(--color-hover); color: var(--color-foreground); }
-  .content { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-  .heading { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-foreground); font-size: var(--text-sm); font-weight: 500; }
-  .progress { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: var(--text-xs); }
-  .live .progress > :global(svg) { color: var(--color-live); }
-  .timing { flex: none; font-size: var(--text-xs); }
+  .activity :global(.glyph) { flex: none; color: var(--color-muted-foreground); }
+  .live :global(.glyph) { color: var(--color-accent); }
+  /* A line box taller than the button's: the clipped segments keep their descenders. */
+  .line { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; overflow: hidden; white-space: nowrap; line-height: 16px; }
+  .heading { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--color-foreground); font-weight: 500; }
+  /* The progress gives way first; a long workflow name still ellipsizes, never to nothing. */
+  .progress { display: inline-flex; flex: 0 1000 auto; min-width: 0; overflow: hidden; align-items: center; gap: 4px; }
+  .progress > :global(span) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .when { flex: none; display: inline-flex; gap: 4px; }
+  .activity :global(.chevron) { flex: none; }
+  /* A phone-wide line keeps what and how far; the start time is the strip's to tell. A record keeps its short duration. */
+  @container activity (max-width: 400px) { .started { display: none; } }
+  @media (max-width: 720px) {
+    /* A finger's target without a taller line. */
+    .activity { position: relative; }
+    .activity::after { content: ''; position: absolute; inset: -8px 0; }
+  }
 </style>

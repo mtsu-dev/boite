@@ -126,7 +126,7 @@ test('the lifecycle strip counts every listed project and filters the list to on
   expect(sidebar().querySelectorAll('[data-testid=thread-row]')).toHaveLength(0);
 });
 
-test('a busy project shows six rows and folds the others under one row, never what needs the user', async () => {
+test('a project away from the open thread shows what needs the user and folds its resting rows under one row', async () => {
   await mountOnFake();
   const busy = await project('busy');
   const made: ThreadSummary[] = [];
@@ -139,10 +139,10 @@ test('a busy project shows six rows and folds the others under one row, never wh
   await waitFor(() => card()?.querySelector('[data-testid=project-more]') != null);
   const shown = rowIds(card());
   expect(shown.slice(0, 2)).toEqual([made[8]!.id, made[7]!.id]);
-  // Six rows in all: the two that need the user leave four of the seven resting ones, three under `3 more`.
-  expect(shown).toHaveLength(6);
+  // The open thread lives elsewhere, so the seven resting rows all fold under `7 more` (B1: the headers fit the first screen).
+  expect(shown).toHaveLength(2);
   const more = card().querySelector<HTMLButtonElement>('[data-testid=project-more]')!;
-  expect([more.dataset['count'], more.textContent?.trim(), more.getAttribute('aria-expanded')]).toEqual(['3', '3 more', 'false']);
+  expect([more.dataset['count'], more.textContent?.trim(), more.getAttribute('aria-expanded')]).toEqual(['7', '7 more', 'false']);
   expect(shown).not.toContain(made[6]!.id);
 
   // It opens in place and is remembered for that project.
@@ -151,12 +151,54 @@ test('a busy project shows six rows and folds the others under one row, never wh
   expect(card().querySelector('[data-testid=project-more]')?.textContent?.trim()).toBe('Show fewer');
   expect(JSON.parse(window.localStorage.getItem(LANES_STORAGE_KEY) ?? '[]')).toHaveLength(1);
   card().querySelector<HTMLButtonElement>('[data-testid=project-more]')!.click();
-  await waitFor(() => rowIds(card()).length === 6);
+  await waitFor(() => rowIds(card()).length === 2);
 
-  // Work counts against the same budget: past it, the fold keeps the count of what works in it.
+  // Work folds too away from the open thread (B1, six headers on the first screen): the fold counts it.
   for (const t of made.slice(0, 5)) setThread(t.id, { status: 'running', runningSince: Date.now() - 60_000 });
   await waitFor(() => card().querySelector('[data-testid=project-more-working]') != null);
-  expect(rowIds(card())).toHaveLength(6);
-  expect(rowIds(card()).slice(0, 2)).toEqual([made[8]!.id, made[7]!.id]);
-  expect(card().querySelector<HTMLElement>('[data-testid=project-more-working]')!.dataset['count']).toBe('1');
+  expect(rowIds(card())).toEqual([made[8]!.id, made[7]!.id]);
+  expect(card().querySelector<HTMLElement>('[data-testid=project-more-working]')!.dataset['count']).toBe('5');
+
+  // A fold of one row would cost the row's own height: a project away with one thread shows it, never `1 more`.
+  const solo = await project('solo');
+  const only = await thread(solo.id, 'The only topic');
+  setThread(only.id, { status: 'idle', unread: false });
+  const soloCard = () => sidebar().querySelector<HTMLElement>(`section[data-testid=project][data-project-id="${solo.id}"]`);
+  await waitFor(() => soloCard() != null && rowIds(soloCard()!).includes(only.id));
+  expect(soloCard()!.querySelector('[data-testid=project-more]')).toBeNull();
+});
+
+test('at home no thread is open: the project the composer starts in shows its rows, the others fold', async () => {
+  await mountOnFake();
+  const here = await project('here');
+  const there = await project('there');
+  const mine = [await thread(here.id, 'Mine 1'), await thread(here.id, 'Mine 2'), await thread(here.id, 'Mine 3')];
+  const theirs = [await thread(there.id, 'Theirs 1'), await thread(there.id, 'Theirs 2')];
+  for (const t of [...mine, ...theirs]) setThread(t.id, { status: 'idle', unread: false });
+  store.startDraft(here.id);
+  await waitFor(() => store.openThread === null && store.draft?.projectId === here.id);
+  const card = (id: string) => sidebar().querySelector<HTMLElement>(`section[data-testid=project][data-project-id="${id}"]`);
+  await waitFor(() => card(here.id) != null && mine.every(t => rowIds(card(here.id)!).includes(t.id)));
+  expect(card(here.id)!.querySelector('[data-testid=project-more]')).toBeNull();
+  await waitFor(() => card(there.id)?.querySelector('[data-testid=project-more]') != null);
+  expect(rowIds(card(there.id)!)).toEqual([]);
+});
+
+test('a folded sidebar leaves a rail whose project tile carries the Needs you dot and unfolds the list on it', async () => {
+  await mountOnFake();
+  const p = await project('rail');
+  const t = await thread(p.id, 'Asks');
+  if (!store.sidebarCollapsed) store.toggleSidebar();
+  const tile = () => [...document.querySelectorAll<HTMLElement>('[data-testid=sidebar-rail] [data-testid=rail-project]')].find((tile) => JSON.parse(tile.dataset['projectKey']!)[1] === p.id) ?? null;
+  await waitFor(() => tile() !== null);
+  expect(tile()!.dataset['needs']).toBe('0');
+  setThread(t.id, { status: 'waiting' });
+  await waitFor(() => tile()!.dataset['needs'] === '1');
+  expect(tile()!.querySelector('.needs')).not.toBeNull();
+  // jsdom draws nothing to scroll to; the unfolded card is asked to come into view.
+  const reveal = vi.fn();
+  Element.prototype.scrollIntoView = reveal;
+  tile()!.click();
+  await waitFor(() => reveal.mock.contexts.some((card) => (card as HTMLElement).dataset['projectId'] === p.id));
+  await waitFor(() => !store.sidebarCollapsed && document.querySelector('[data-testid=sidebar-rail]') === null);
 });

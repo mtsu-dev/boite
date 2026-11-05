@@ -6,8 +6,9 @@ import { query, test, waitFor } from '../test/app';
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
 
 test('the trace panel shows the I/O a process moved, and none for a record that measured nothing', async ({ app: _app }) => {
-  await waitFor(() => document.querySelector('[data-thread-id="t-trace"]') !== null);
-  query<HTMLButtonElement>('[data-thread-id="t-trace"]').click();
+  // The sidebar folds a project past three rows; these tests are about the panel.
+  await waitFor(() => store.threads.some((thread) => thread.id === 't-trace'));
+  await store.open('t-trace');
   await waitFor(() => store.openThread?.id === 't-trace');
 
   const client = store.client!;
@@ -20,6 +21,10 @@ test('the trace panel shows the I/O a process moved, and none for a record that 
   });
   try {
     store.panel.open('trace');
+    // One summary line first; the raw table waits behind Show details.
+    await waitFor(() => document.querySelector('[data-testid=trace-summary]')?.textContent?.includes('3 processes') === true);
+    expect(document.querySelector('[data-testid=trace-row]')).toBeNull();
+    query<HTMLButtonElement>('[data-testid=trace-details]').click();
     await waitFor(() => document.querySelectorAll('[data-testid=trace-row]').length === 3);
     await new Promise(resolve => setTimeout(resolve, 0));
     expect(reads).toBe(1);
@@ -37,10 +42,13 @@ test('the trace panel shows the I/O a process moved, and none for a record that 
 });
 
 test('trace processes disclose the command, PID and measurements without narrow columns', async ({ app: _app }) => {
-  await waitFor(() => document.querySelector('[data-thread-id="t-trace"]') !== null);
-  query<HTMLButtonElement>('[data-thread-id="t-trace"]').click();
+  // The sidebar folds a project past three rows; these tests are about the panel.
+  await waitFor(() => store.threads.some((thread) => thread.id === 't-trace'));
+  await store.open('t-trace');
   await waitFor(() => store.openThread?.id === 't-trace');
   store.panel.open('trace');
+  await waitFor(() => document.querySelector('[data-testid=trace-details]') !== null);
+  query<HTMLButtonElement>('[data-testid=trace-details]').click();
   await waitFor(() => document.querySelectorAll('[data-testid=trace-row]').length === 3);
   const row = query<HTMLDetailsElement>('[data-testid=trace-row][data-pid="21140"]');
   expect(row.open).toBe(false);
@@ -53,8 +61,9 @@ test('trace processes disclose the command, PID and measurements without narrow 
 });
 
 test('hiding the trace card takes it off the launcher and leaves an open trace tab alone', async ({ app: _app }) => {
-  await waitFor(() => document.querySelector('[data-thread-id="t-trace"]') !== null);
-  query<HTMLButtonElement>('[data-thread-id="t-trace"]').click();
+  // The sidebar folds a project past three rows; these tests are about the panel.
+  await waitFor(() => store.threads.some((thread) => thread.id === 't-trace'));
+  await store.open('t-trace');
   await waitFor(() => store.openThread?.id === 't-trace');
   store.panel.closeAll();
   store.panel.open('trace');

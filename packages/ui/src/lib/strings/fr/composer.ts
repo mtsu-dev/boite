@@ -51,6 +51,7 @@ export const fr: Translation = {
     outboxRetry: 'Renvoyer',
     outboxSettings: "Le modèle et l'effort choisis à l'écriture n'ont pas pu être rétablis.",
     removeQueued: 'Retirer ce message en attente',
+    pickModel: 'Choisir un modèle',
     picker: 'Fournisseur et modèle',
     models: 'Modèles',
     searchModels: 'Rechercher un modèle',

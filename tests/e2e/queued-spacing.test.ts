@@ -2,6 +2,17 @@ import { expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp';
 import { startUi } from './lib/ui';
+import { revealThreadRow } from './lib/views.ts';
+
+// The thread's status strip stands between the last reply and the queue when it shows:
+// the reply's gap runs to the first of them, the queue's from the last thing above it.
+const GAPS = `(() => {
+  const last = [...document.querySelectorAll('[data-testid="message"]')].at(-1).getBoundingClientRect();
+  const queue = document.querySelector('[data-testid="composer-queued"]').getBoundingClientRect();
+  const strip = document.querySelector('[data-testid="status-strip"]');
+  const line = strip && strip.offsetHeight > 0 ? strip.getBoundingClientRect() : null;
+  return { reply: (line ?? queue).top - last.bottom, queue: queue.top - (line ?? last).bottom };
+})()`;
 
 test('queued prompts sit above the activity dock attached to the input', async () => {
   const port = await freePort();
@@ -9,6 +20,7 @@ test('queued prompts sit above the activity dock attached to the input', async (
   let page: BrowserPage | undefined;
   try {
     page = await BrowserPage.launch({ url: `http://127.0.0.1:${port}/?fake=1&open=recent&machines=1`, windowSize: { width: 1300, height: 850 } });
+    await revealThreadRow(page, 't-trace');
     await page.click('[data-thread-id="t-trace"]');
     await page.waitFor(`globalThis.__boiteTest.workspace.active.openThread?.id === 't-trace'`);
     await page.evaluate(`(() => {
@@ -24,13 +36,12 @@ test('queued prompts sit above the activity dock attached to the input', async (
       await page.send('Emulation.setDeviceMetricsOverride', { width, height: 850, deviceScaleFactor: 1, mobile: width === 390 });
       await page.evaluate(`Promise.all([document.fonts.ready, ...document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
       await page.evaluate(`(() => { const timeline = document.querySelector('[data-testid="timeline"]'); timeline.scrollTop = timeline.scrollHeight; })()`);
-      const gap = await page.evaluate<number>(`(() => {
-        const last = [...document.querySelectorAll('[data-testid="message"]')].at(-1);
-        return document.querySelector('[data-testid="composer-queued"]').getBoundingClientRect().top - last.getBoundingClientRect().bottom;
-      })()`);
+      const gaps = await page.evaluate<{ reply: number; queue: number }>(GAPS);
       await page.screenshot(join(import.meta.dir, '.artifacts', `queued-spacing-${process.env.BOITE_QUEUE_CAPTURE ?? 'after'}-${width}.png`));
-      expect(gap).toBeGreaterThanOrEqual(16);
-      expect(gap).toBeLessThanOrEqual(40);
+      expect(gaps.reply).toBeGreaterThanOrEqual(16);
+      expect(gaps.reply).toBeLessThanOrEqual(40);
+      expect(gaps.queue).toBeGreaterThanOrEqual(8);
+      expect(gaps.queue).toBeLessThanOrEqual(40);
       expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
     }
     // Going out, the queue has no Send now and its row keeps the chip's height,
@@ -58,9 +69,11 @@ test('queued prompts sit above the activity dock attached to the input', async (
       await page.waitFor(`(() => { const dock = document.querySelector('[data-testid="thread-activity"]'); return dock?.offsetHeight > 0 && parseFloat(document.querySelector('.queue-region').style.paddingBottom) === dock.offsetHeight; })()`);
       await page.evaluate(`(() => { const timeline = document.querySelector('[data-testid="timeline"]'); timeline.scrollTop = timeline.scrollHeight; })()`);
       await page.evaluate(`Promise.all(document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))`);
-      const gap = await page.evaluate<number>(`document.querySelector('[data-testid="composer-queued"]').getBoundingClientRect().top - [...document.querySelectorAll('[data-testid="message"]')].at(-1).getBoundingClientRect().bottom`);
-      expect(gap).toBeGreaterThanOrEqual(12);
-      expect(gap).toBeLessThanOrEqual(40);
+      const gaps = await page.evaluate<{ reply: number; queue: number }>(GAPS);
+      expect(gaps.reply).toBeGreaterThanOrEqual(12);
+      expect(gaps.reply).toBeLessThanOrEqual(40);
+      expect(gaps.queue).toBeGreaterThanOrEqual(8);
+      expect(gaps.queue).toBeLessThanOrEqual(40);
       await page.screenshot(join(import.meta.dir, '.artifacts', `queued-spacing-dock-${process.env.BOITE_QUEUE_CAPTURE ?? 'after'}-${width}.png`));
       const placement = await page.evaluate<{ gap: number; queueBottom: number; dockTop: number }>(`(() => {
         const dock = document.querySelector('[data-testid="thread-activity"]').getBoundingClientRect();

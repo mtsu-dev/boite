@@ -533,7 +533,7 @@
     height: 6px;
     flex: none;
     border-radius: 50%;
-    background: var(--color-live);
+    background: var(--color-accent);
   }
 
   .spacer {

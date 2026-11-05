@@ -7,9 +7,7 @@ import { SEEDED_THINKING, STREAMED_TOOL_INPUT, query, sendPrompt, test, type, wa
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
 
 test('a thinking part is folded, opens on its toggle, and a new turn shows it before the answer', async ({ app: _app }) => {
-  await waitFor(() => document.querySelector('[data-thread-id="t-trace"]') !== null);
-  query<HTMLButtonElement>('[data-thread-id="t-trace"]').click();
-  await waitFor(() => store.openThread?.id === 't-trace');
+  await store.open('t-trace');
   await waitFor(() => document.querySelector('[data-testid=thinking-part]') !== null);
 
   const toggle = query<HTMLButtonElement>('[data-testid=thinking-toggle]');
@@ -64,6 +62,10 @@ test('an async question waits in the dock above the composer, stacked, and the t
   // New arrivals leave the oldest up; the timeline holds a line per question, no card.
   expect(query('[data-testid=activity-question-index]').textContent).toBe('1 of 2');
   expect(document.querySelectorAll('[data-testid=question-docked]').length).toBe(2);
+  // The line names who asked and when; the question itself lives in the card and the tooltip.
+  const line = query('[data-testid=question-docked]');
+  expect(line.textContent?.replace(/\s+/g, ' ')).toMatch(/^ ?Asked you · \S.*\d/);
+  expect(line.getAttribute('title')).toContain(line.getAttribute('aria-label')?.split(': ').slice(1).join(': ') ?? '-');
   expect(document.querySelector('[data-testid=timeline] [data-testid=question-card]')).toBeNull();
   const visible = () => Array.from(document.querySelectorAll<HTMLElement>('[data-testid=activity-question]')).filter((el) => !el.hidden);
   expect(visible().length).toBe(1);

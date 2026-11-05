@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp';
 import { startDevUi } from './lib/ui';
+import { revealThreadRow } from './lib/views.ts';
 
 test('local launch links and file actions use the owning desktop, with browser and phone fallbacks', async () => {
   const port = await freePort();
@@ -9,7 +10,7 @@ test('local launch links and file actions use the owning desktop, with browser a
   let page: BrowserPage | undefined;
   try {
     page = await BrowserPage.launch({ url: `http://127.0.0.1:${port}/?fake=1&open=recent&machines=1`, windowSize: { width: 1300, height: 850 } });
-    await page.waitFor('document.querySelector("[data-thread-id=t-trace]")');
+    await revealThreadRow(page, 't-trace');
     await page.click('[data-thread-id=t-trace]');
     await page.evaluate(`(async () => {
       const { workspace } = await import('/src/lib/workspace.svelte.ts');

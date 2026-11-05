@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte';
-  import { Bot, Check, Ellipsis, Folder, FolderInput, GitBranch } from '@lucide/svelte';
+  import { Check, Ellipsis, Folder, FolderInput, GitBranch, Pin, PinOff } from '@lucide/svelte';
   import { type Project, type ThreadSummary } from '@boite/contracts';
   import type { Machine } from '../lib/workspace.svelte';
   import { workspace } from '../lib/workspace.svelte';
@@ -15,7 +15,6 @@
   import { projectName } from '../lib/format';
   import { canMarkDone, markDone } from '../lib/recent.svelte';
   import { ThreadRename, commitOnUnmount } from '../lib/thread-rename.svelte';
-  import { delegatedChip } from '../lib/thread-state';
   let {
     machine,
     project,
@@ -48,10 +47,8 @@
   const pullRequest = $derived(pr.value);
   // A move asked for while the turn runs, until the turn ends and applies it.
   let pending = $derived(pendingLine(thread));
-  /** The delegated agents at work under it: a fact for the second line, the ring already says the state. */
-  let agents = $derived(delegatedChip(owner.subagents(thread.id)));
-  /** A second line only for facts the title line cannot hold: the project in a mixed list, a pull request, a worktree branch, delegated agents, a move. */
-  let meta = $derived(showProject || pullRequest !== null || Boolean(thread.branch) || agents !== null || Boolean(pending));
+  /** A second line only for facts the title line cannot hold: the project in a mixed list, a pull request, a worktree branch, a move. Delegated agents ride the title line, a glyph and a number (`ThreadHeadline`). */
+  let meta = $derived(showProject || pullRequest !== null || Boolean(thread.branch) || Boolean(pending));
   let doneAllowed = $derived(canMarkDone(owner, thread));
 
   function rename() {
@@ -138,10 +135,13 @@
       {#if pullRequest}
         <PullRequestBadge {pullRequest} />
       {/if}
-      {#if agents}<span class="agents" class:asking={agents.asking} data-testid="thread-subagents" data-count={agents.shown} role="img" title={agents.label} aria-label={agents.label}><Bot size={11} aria-hidden="true" /><span class="ui-label">{agents.text}</span></span>{/if}
       {#if thread.branch}<span class="branch" data-testid="thread-branch" title={thread.branch}><GitBranch size={12} /><span class="ui-label">{thread.branch}</span></span>{/if}
     </div>
     {/if}
+    <!-- Pin on hover; a pinned row keeps its 12 px mark in the title line. -->
+    <button type="button" class="ghost small icon pin-action" data-testid="thread-pin" aria-pressed={thread.pinned === true}
+      aria-label={thread.pinned ? strings.sidebar.unpin : strings.sidebar.pin} title={thread.pinned ? strings.sidebar.unpin : strings.sidebar.pin}
+      onclick={() => void owner.pin(thread.id, !thread.pinned)}>{#if thread.pinned}<PinOff size={13} />{:else}<Pin size={13} />{/if}</button>
     {#if showDone && doneAllowed}<button type="button" class="ghost small icon done" data-testid="thread-done"
       aria-label={strings.sidebar.markDone} title={strings.sidebar.markDone} onclick={() => void markDone(owner, thread)}><Check size={14} /></button>{/if}
     <button
@@ -187,22 +187,22 @@
   .thread.offline .metadata {
     opacity: 0.55;
   }
-  /* One line is 32 px: the 23 px ring and a 4.5 px air above and below. */
+  /* One line is 30 px: the 23 px ring and 3.5 px of air above and below. */
   .row {
     display: flex;
     flex-direction: column;
     align-items: stretch;
     width: 100%;
     height: auto;
-    min-height: 32px;
-    padding: 4px 6px 4px 4px;
+    min-height: 30px;
+    padding: 3.5px 6px 3.5px 4px;
     gap: 0;
     background: transparent;
   }
-  /* The second line sits over the row's bottom padding, so the whole card stays one 48 px target. */
+  /* The second line sits over the row's bottom padding, so the whole card stays one 44 px target. */
   .meta .row {
-    min-height: 48px;
-    padding: 4px 6px 20px 4px;
+    min-height: 44px;
+    padding: 3.5px 6px 18px 4px;
   }
   .row:hover:not(:disabled) {
     background: transparent;
@@ -215,7 +215,7 @@
     align-items: center;
     gap: 8px;
     position: absolute;
-    bottom: 5px;
+    bottom: 4px;
     /* Under the title, past the ring: 4 px padding, the 23 px ring and its 6 px gap. */
     left: 33px;
     right: 8px;
@@ -247,8 +247,6 @@
     flex: 0 1 auto;
     max-width: 50%;
   }
-  .agents { flex: none; color: var(--color-accent); }
-  .agents.asking { color: var(--color-live); }
   /* The branch is a name in the repository: mono, and the first to give way. */
   .metadata .branch {
     flex: 0 1 auto;
@@ -256,16 +254,18 @@
     font-family: var(--font-mono);
     font-size: 11px;
   }
-  /* Centred on the title's line: the 32 px row less a 26 px button leaves 3 px over it. */
+  /* Centred on the title's line: the 30 px row less a 26 px button leaves 2 px over it. */
   .actions {
     position: absolute;
     right: 3px;
-    top: 3px;
+    top: 2px;
     opacity: 0;
     background: var(--color-surface-2);
   }
-  .done { position: absolute; right: 30px; top: 3px; opacity: 0; background: var(--color-surface-2); color: var(--color-muted-foreground); }
-  .thread:hover .done, .thread:focus-within .done { opacity: 1; }
+  .done { position: absolute; right: 30px; top: 2px; opacity: 0; background: var(--color-surface-2); color: var(--color-muted-foreground); }
+  .pin-action { position: absolute; right: 30px; top: 2px; opacity: 0; background: var(--color-surface-2); color: var(--color-muted-foreground); }
+  .thread:has(.done) .pin-action { right: 57px; }
+  .thread:hover .done, .thread:focus-within .done, .thread:hover .pin-action, .thread:focus-within .pin-action { opacity: 1; }
   .thread:hover .actions,
   .thread:focus-within .actions {
     opacity: 1;
@@ -275,11 +275,8 @@
   .thread:focus-within :global(.headline .when:not(.live)) {
     opacity: 0;
   }
-  .thread:hover :global(.headline .when.live),
-  .thread:focus-within :global(.headline .when.live) {
-    margin-right: 24px;
-  }
-  .thread:has(.done):hover :global(.headline .when.live), .thread:has(.done):focus-within :global(.headline .when.live) { margin-right: 51px; }
+  .thread:hover :global(.headline .when.live), .thread:focus-within :global(.headline .when.live) { margin-right: 51px; }
+  .thread:has(.done):hover :global(.headline .when.live), .thread:has(.done):focus-within :global(.headline .when.live) { margin-right: 78px; }
   .rename {
     width: 100%;
     height: var(--row);
@@ -287,6 +284,8 @@
   /* On touch the buttons stay drawn, so the time keeps clear of them. */
   @media (max-width: 720px), (hover: none) {
     .done { opacity: 1; }
+    /* Touch pins from the row's menu: three buttons would leave the title no room. */
+    .pin-action { display: none; }
     .actions {
       opacity: 1;
     }

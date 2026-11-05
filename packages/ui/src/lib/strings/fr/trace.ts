@@ -9,8 +9,6 @@ export const fr: Translation = {
     parent: 'PID parent',
     cpuTime: 'Temps CPU',
     currentMemory: 'Mémoire actuelle',
-    active: 'actifs',
-    recorded: 'enregistrés',
     exe: 'Exécutable',
     pid: 'PID',
     duration: 'Durée',
@@ -20,5 +18,10 @@ export const fr: Translation = {
     exit: 'Sortie',
     live: 'en cours',
     empty: "Cette conversation n'a lancé aucun processus.",
+    processes: '{count} processus',
+    running: '{count} en cours',
+    inMemory: '{size} en mémoire',
+    showDetails: 'Afficher les détails',
+    hideDetails: 'Masquer les détails',
   }
 };

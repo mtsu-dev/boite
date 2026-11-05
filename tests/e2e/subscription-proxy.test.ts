@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp.ts';
+import { openSettingsPage } from './lib/views.ts';
 import { startDevUi } from './lib/ui.ts';
 import { mobileAction, openLimitsTab } from './lib/mobile.ts';
 import { pairingUrlOf, startCore } from './lib/core.ts';
@@ -256,7 +257,7 @@ test('the Douane plugin: its row in Plugins and the proxy card pointing at it, a
   try {
     await local.waitFor('document.querySelector("[data-testid=nav-settings]")');
     await local.click('[data-testid="nav-settings"]');
-    await local.click('[data-testid="settings-tab-plugins"]');
+    await openSettingsPage(local, 'plugins');
     await local.evaluate(scrolled);
     await local.waitFor(stripRunning);
     expect(await local.text('[data-testid=plugin-gateway][data-plugin=douane] [data-testid=plugin-gateway-state]')).toContain('0.3.0 on 127.0.0.1:8787');
@@ -319,7 +320,7 @@ test('production desktop and phone embed the dashboard through the real core wit
     await browser.evaluate(`localStorage.setItem('boite.machine-profiles', ${JSON.stringify(JSON.stringify({ [profileKey]: { label: 'Test core' } }))})`);
     await browser.reload();
     await browser.click('[data-testid=nav-settings]');
-    await browser.click('[data-testid=settings-tab-limits]');
+    await openSettingsPage(browser, 'limits');
     await browser.waitFor(`document.querySelector('[data-testid=subscription-proxy-slot] > iframe')?.src === ${JSON.stringify(`${dashboard}/admin/#quotas`)}`);
     expect(await browser.evaluate('new URLSearchParams(location.search).get("fake")')).toBeNull();
     expect(await browser.text('[data-testid=subscription-proxy-browser-hint]')).toContain('Sign in');

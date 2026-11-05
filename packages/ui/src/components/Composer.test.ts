@@ -794,8 +794,8 @@ test('a thread of a machine that dropped still opens and queues its prompts unti
   const rpc = vi.spyOn(fake, 'call');
   fake.drop();
   await waitFor(() => store.connection !== 'ready');
-  // Its rows turn grey and still open.
-  await waitFor(() => document.querySelector('[data-thread-id="t-descriptors"]')?.closest('.thread')?.classList.contains('offline') === true);
+  // Its rows turn grey and still open: the open thread's row, which never folds away.
+  await waitFor(() => document.querySelector('[data-thread-id="t-trace"]')?.closest('.thread')?.classList.contains('offline') === true);
   await store.open(other.id);
   expect(store.openThread?.id).toBe(other.id);
   expect(store.error).toBeFalsy();
@@ -1794,10 +1794,12 @@ test('permission menu offers YOLO beside Auto and preserves legacy modes until p
   query('[data-testid=composer-mode]').click();
   await waitFor(() => document.querySelector('[data-testid=composer-mode-menu]') !== null);
   const menu = query('[data-testid=composer-mode-menu]');
-  expect(Array.from(menu.querySelectorAll('.label')).map(row => row.textContent?.trim())).toEqual(['Full access', 'Smart auto', 'Auto-approve edits', 'Ask each time']);
+  expect(Array.from(menu.querySelectorAll('.label')).map(row => row.textContent?.trim())).toEqual(['Full access, no guards', 'Run everything, guards on', 'Auto-approve edits', 'Ask each time']);
+  // Each row says what it lets through on a line of its own, so the two run-everything modes read apart.
+  expect(Array.from(menu.querySelectorAll('.hint')).map(row => row.textContent?.trim())).toEqual(['Approves every request; Claude and Codex hooks off', 'Runs anything on this computer; hooks still check', 'Edits without asking, asks before each command', 'Reads freely, asks before each edit or command']);
   // The old names stay in the tooltips, so a habit still finds them.
   expect(Array.from(menu.querySelectorAll<HTMLElement>('[data-value]')).map(row => row.title)).toEqual(expect.arrayContaining([expect.stringContaining('Formerly YOLO'), expect.stringContaining('Formerly Edit freely')]));
-  for (const [mode, label] of [['yolo', 'Full access'], ['bypassPermissions', 'Smart auto'], ['acceptEdits', 'Auto-approve edits'], ['default', 'Ask each time']]) {
+  for (const [mode, label] of [['yolo', 'Full access, no guards'], ['bypassPermissions', 'Run everything, guards on'], ['acceptEdits', 'Auto-approve edits'], ['default', 'Ask each time']]) {
     query(`[data-testid=composer-mode-menu] [data-value="${mode}"]`).click();
     await waitFor(() => store.openThread?.permissionMode === mode);
     expect(query('[data-testid=composer-mode]').textContent?.trim()).toBe(label);

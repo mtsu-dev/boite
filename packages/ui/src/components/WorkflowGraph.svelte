@@ -162,9 +162,9 @@
   .graph { position: relative; min-width: 0; padding: 14px 16px 18px; overflow: auto; }
   .edges { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
   .edge { fill: none; stroke: color-mix(in srgb, var(--color-muted-foreground) 55%, transparent); stroke-width: 1.5; }
-  .edge.live { stroke: color-mix(in srgb, var(--color-live) 70%, transparent); }
+  .edge.live { stroke: color-mix(in srgb, var(--color-accent) 70%, transparent); }
   .tip { fill: color-mix(in srgb, var(--color-muted-foreground) 55%, transparent); }
-  .tip.live { fill: color-mix(in srgb, var(--color-live) 70%, transparent); }
+  .tip.live { fill: color-mix(in srgb, var(--color-accent) 70%, transparent); }
   /* The label sits at the left of the gap an arrow crosses; an arrow leaves a card's center, at least half a card from that edge. */
   .rows { position: relative; display: flex; flex-direction: column; gap: 10px; }
   .phase { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
@@ -178,7 +178,7 @@
   .node:hover { background: color-mix(in srgb, var(--color-surface-2) 100%, var(--color-foreground) 4%); border-color: var(--color-edge); }
   .node:focus-visible { outline: none; border-color: var(--color-edge); background: color-mix(in srgb, var(--color-surface-2) 100%, var(--color-foreground) 4%); }
   .node.selected { border-color: var(--color-foreground); }
-  .node.running { border-color: color-mix(in srgb, var(--color-live) 45%, var(--color-border)); }
+  .node.running { border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border)); }
   .node.failed { border-color: color-mix(in srgb, var(--color-danger) 55%, var(--color-border)); }
   .node.waiting, .node.skipped { background: var(--color-surface); box-shadow: none; }
   .node.skipped { border-style: dashed; color: var(--color-muted-foreground); }
@@ -192,7 +192,7 @@
   .metrics { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
   .bar { display: flex; gap: 2px; height: 4px; }
   .bar i { flex: 1; min-width: 3px; border-radius: 2px; background: var(--color-surface-3); }
-  .bar i.running { background: var(--color-live); }
+  .bar i.running { background: var(--color-accent); }
   .bar i.done { background: var(--color-success); }
   .bar i.failed { background: var(--color-danger); }
   .bar i.stopped { background: var(--color-muted-foreground); }

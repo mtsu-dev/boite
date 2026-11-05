@@ -39,8 +39,11 @@
   import { compareThreads } from '../lib/thread-order';
   import { minuteClock } from '../lib/clock.svelte';
   import { contactsShown } from '../lib/contacts-rail.svelte';
+  import { moreRows, threadLanes } from '../lib/thread-lanes.svelte';
+  import { threadState } from '../lib/thread-state';
+  import { hasUnsentDraft } from '../lib/composer-queue';
   import { ScreenSlide } from '../lib/screen-slide.svelte';
-  import { inbox, storeSources } from '../lib/inbox';
+  import { inbox, storeSources, type InboxReason } from '../lib/inbox';
   import { firstRunSteps } from '../lib/first-run.svelte';
   import FirstRun from './home/FirstRun.svelte';
 
@@ -60,17 +63,19 @@
   $effect.pre(() => { if (screen !== 'chat') lastList = screen; });
   const leaving = $derived(slide.direction === 'push');
   const listScreen = $derived(leaving ? lastList : screen);
-  // The contacts under the projects, loaded with their experiment; a desktop window shows them in the column on the right.
-  let SidebarContacts = $state<typeof import('./home/SidebarContacts.svelte').default>();
+  // The contact request notice and the Bots header's Contacts button, loaded with their experiment; the Threads tab lists no contacts.
   let ContactRequestNotice = $state<typeof import('./home/ContactRequestNotice.svelte').default>();
   let ContactsButton = $state<typeof import('./home/ContactsButton.svelte').default>();
   $effect(() => {
-    if (!contactsShown(store) || SidebarContacts) return;
-    void import('./home/SidebarContacts.svelte').then(module => { SidebarContacts = module.default; }).catch(() => {});
+    if (!contactsShown(store) || ContactsButton) return;
     void import('./home/ContactRequestNotice.svelte').then(module => { ContactRequestNotice = module.default; }).catch(() => {});
     void import('./home/ContactsButton.svelte').then(module => { ContactsButton = module.default; }).catch(() => {});
   });
   let search = $state('');
+  /** The search waits under the large title, so the first rows start high; its button or a query shows it. */
+  let searchOpen = $state(false);
+  let searchField = $state<HTMLInputElement>();
+  async function openSearch() { searchOpen = true; await tick(); searchField?.focus(); }
   const query = $derived(search.trim().toLocaleLowerCase());
   const chatting = $derived(screen === 'chat' && !recover && store.page === 'chat');
   /** The bottom bar: on every list and page, the recovery screen too, not in a conversation nor in one a page opened. Only a phone's width draws it. */
@@ -82,26 +87,20 @@
   /** A list's large title scrolls away with it; past it, the bar's own title fades in, as a phone's lists do. */
   const listed = $derived(narrow.current && store.page === 'chat' && !recover && !chatting);
   let scrolled = $state(false);
-  let lastTop = 0;
   function scrolling() {
     if (!scrollRoot) return;
     const top = scrollRoot.scrollTop;
     scrollPositions.set(listKey, top);
     scrolled = top > 28;
-    // New thread steps aside while the list moves down, so it never sits on the row being read, and comes back on the way up or at the end.
-    const end = top + scrollRoot.clientHeight >= scrollRoot.scrollHeight - 8;
-    if (top < 120 || end || top < lastTop - 6) mobileChrome.fabTucked = false;
-    else if (top > lastTop + 6) mobileChrome.fabTucked = true;
-    if (Math.abs(top - lastTop) > 6 || end) lastTop = top;
   }
-  $effect(() => { void listKey; mobileChrome.fabTucked = false; lastTop = 0; });
   const scrollPositions = new Map<string, number>();
   const measuredRows = new Map<string, Map<string, number>>();
   function measurements(key: string): Map<string, number> {
     if (!measuredRows.has(key)) measuredRows.set(key, new Map());
     return measuredRows.get(key)!;
   }
-  const listKey = $derived(`${listScreen}:${workspace.view}:${projectView.filter}`);
+  /** Each filter keeps its own position: the lifecycle filter is part of the key, so Needs you, a thread and Back land where it was. */
+  const listKey = $derived(`${listScreen}:${workspace.view}:${projectView.filter}:${lifecycleFilter.current ?? 'all'}`);
   $effect(() => { if (narrow.current && scrollRoot) { const saved = scrollPositions.get(listKey) ?? 0; void tick().then(() => { if (scrollRoot) scrollRoot.scrollTop = saved; }); } });
   /** The clock the rows' times read: a minute's precision is all they show. */
   const now = $derived(minuteClock.now);
@@ -127,8 +126,10 @@
   /** What waits on the user besides the conversation on screen: Back carries its mark. */
   let elsewhere = $derived(waiting.filter(e => !(e.machine.store === store && e.thread.id === store.openThread?.id)).length);
   const matches = (e: { machine: Machine; thread: ThreadSummary; project: Project | undefined }) => !query || [e.thread.title, projectName(e.project), e.thread.branch, e.machine.label].some(value => value?.toLocaleLowerCase().includes(query));
-  const inboxNeeds = $derived(lists.needs.filter(matches).map(({ machine, thread, project }) => ({ machine, thread, project })));
+  const inboxNeeds = $derived(lists.needs.filter(matches).map(({ machine, thread, project, reason, since }) => ({ machine, thread, project, wait: { reason, since } })));
   const inboxWorking = $derived(lists.working.filter(matches).map(({ machine, thread, project }) => ({ machine, thread, project })));
+  /** Only Inbox rows say what they wait on. */
+  const waitOf = (row: object) => 'wait' in row ? row.wait as { reason: InboxReason; since: number } : undefined;
   let rows = $derived(listScreen === 'activity' ? [...inboxNeeds, ...inboxWorking] : entries
     .filter(matches)
     .filter(e => !e.thread.parentThreadId && !e.project?.archived && (workspace.view !== 'recent' || !selected || (e.machine.id === selected.machine.id && e.thread.projectId === selected.project.id)))
@@ -255,25 +256,28 @@
 </header>
 
 {#if tabbed || leaving}
-  <MobileTabs {store} screen={listScreen} waiting={waiting.length} navigate={show} onnew={() => void newThread()} newDisabled={draftOwner.connection !== 'ready'} inert={leaving} />
+  <MobileTabs {store} screen={listScreen} waiting={lists.tally.threads.needs} navigate={show} onnew={() => void newThread()} newDisabled={draftOwner.connection !== 'ready'} inert={leaving} />
 {/if}
 
-{#snippet contacts()}
-  {#if SidebarContacts && contactsShown(store)}<div class="contacts-slot"><SidebarContacts {store} {machines} /></div>{/if}
-{/snippet}
 
 {#if narrow.current && store.page === 'chat' && (screen !== 'chat' || recover || leaving)}
   <section class="mobile-list" class:recent={inRecent} class:tabbed={tabbed || leaving} inert={leaving} bind:this={scrollRoot} onscroll={scrolling} data-testid="mobile-list" aria-label={listScreen === 'activity' ? strings.mobile.activity : strings.mobile.threads}>
     {#if recover && narrow.current}
       <MobileConnect {store} onpaired={() => show('threads')} />
     {:else}
-    <!-- The list's name, large, until it scrolls under the bar; the bar's title says it from then on. -->
-    <p class="large-title" aria-hidden="true">{title}</p>
-    <!-- The list opens on its search, the display options at its end. -->
+    <!-- The list's name, large, until it scrolls under the bar; the bar's title says it from then on. The search and
+         the display options sit at its end, so the rows start under it. -->
+    <div class="title-row">
+      <p class="large-title" aria-hidden="true">{title}</p>
+      <button type="button" class="ghost icon" aria-label={strings.mobile.search} aria-expanded={searchOpen || !!search} data-testid="mobile-search-open" onclick={() => (searchOpen || search ? (searchOpen = false, search = '') : void openSearch())}><Search size={19} /></button>
+      {#if listScreen === 'threads' && groups.length}<span class="display"><DisplayOptions entries={groups} target={undefined} owner={store} prefix="mobile-" compact /></span>{/if}
+    </div>
+    {#if searchOpen || search || (inRecent && groups.length) || atWorkRows.length > 0}
     <div class="list-heading">
-      <div class="search"><Search size={17} /><input type="search" bind:value={search} aria-label={strings.mobile.search} placeholder={strings.mobile.search} data-testid="mobile-search" />{#if search}<button class="ghost icon" aria-label={strings.mobile.clearSearch} onclick={() => search = ''}><X size={16} /></button>{/if}
-        {#if listScreen === 'threads' && groups.length}<span class="display"><DisplayOptions entries={groups} target={undefined} owner={store} prefix="mobile-" compact /></span>{/if}
+      {#if searchOpen || search}
+      <div class="search"><Search size={17} /><input type="search" bind:this={searchField} bind:value={search} aria-label={strings.mobile.search} placeholder={strings.mobile.search} data-testid="mobile-search" />{#if search}<button class="ghost icon" aria-label={strings.mobile.clearSearch} onclick={() => search = ''}><X size={16} /></button>{/if}
       </div>
+      {/if}
       {#if (inRecent && groups.length) || atWorkRows.length > 0}
         <div class="filters">
           {#if inRecent && groups.length}
@@ -287,10 +291,11 @@
         </div>
       {/if}
     </div>
+    {/if}
     {#if listScreen === 'threads' && groups.length && !query}<div class="lifecycle-slot"><LifecycleStrip entries={groups} prefix="mobile-" /></div>{/if}
     {#snippet threadRow(row: typeof rows[number], grouped = false)}
       <!-- The row is worker 1's PhoneThreadRow: ring, two-line title, facts line, long press and both swipes. -->
-      <PhoneThreadRow machine={row.machine} project={row.project} thread={row.thread} {now} {grouped} {several} items={rowItems(row.machine.store, row.thread)}
+      <PhoneThreadRow machine={row.machine} project={row.project} thread={row.thread} {now} {grouped} {several} wait={waitOf(row)} items={rowItems(row.machine.store, row.thread)}
         onopen={() => { show('chat'); void workspace.select(row.machine.store, row.thread.id); }}
         onaction={(action) => rowAction(row.machine.store, row.thread, action, row.machine.id)} />
     {/snippet}
@@ -308,6 +313,13 @@
         {@const attentionRows = query || !recentPreferences.groupWorking ? groupRows : groupRows.filter(row => workingOpen ? !workingThread(row.machine.store, row.thread) : !groupWorkingThread(group.machine.store, row.thread))}
         {@const controls = `mobile-project-${encodeURIComponent(projectKey(group))}`}
         {@const drafts = group.machine.store.draftEntries.filter(entry => entry.projectId === group.project.id)}
+        {@const key = projectKey(group)}
+        {@const lanes = threadLanes(attentionRows, row => threadState(row.thread, row.machine.store.subagents(row.thread.id)), {
+          expanded: !!query || moreRows.isOpen(key), needsExpanded: !!query || moreRows.isOpen(`needs:${key}`),
+          keep: row => row.thread.pinned || hasUnsentDraft(row.machine.store.composerStates[row.thread.id])
+        })}
+        {@const needsOpen = moreRows.isOpen(`needs:${key}`)}
+        {@const moreOpen = moreRows.isOpen(key)}
         {#if !query || groupRows.length > 0 || doneOpen || archivedOpen}
         <section class="project-group" class:inactive={!activeProject(group)} data-testid="mobile-project-group" data-project-id={group.project.id} data-machine-id={group.machine.id}>
           <div class="project-heading">
@@ -324,9 +336,23 @@
               onclick={(event) => projectMenu(event, group.machine.store, group.project, undefined, () => show('chat'))}><Ellipsis size={18} /></button>
           </div>
           {#if !query}{#each drafts as draft (draft.id)}<DraftRow owner={group.machine.store} entry={draft} onopen={() => show('chat')} />{/each}{/if}
-          <WindowList items={attentionRows} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} estimate={77} measurements={measurements(projectKey(group))}>
+          <!-- The desktop's lanes: three asks, then `n more need you`; six more rows, then `n more`. A search shows every match. -->
+          <WindowList items={lanes.needs} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} estimate={64} measurements={measurements(key)}>
             {#snippet row(entry)}{@render threadRow(entry, true)}{/snippet}
           </WindowList>
+          {#if !query && lanes.needsFoldable > 0}
+            <button type="button" class="ghost more-row needs" data-testid="mobile-more-needs" data-count={lanes.needsHidden.length} aria-expanded={needsOpen}
+              aria-label={needsOpen ? strings.sidebar.fewerRows : fill(strings.sidebar.moreNeedsLabel, { project: projectName(group.project), count: String(lanes.needsHidden.length) })}
+              onclick={() => moreRows.toggle(`needs:${key}`)}><ChevronDown size={14} aria-hidden="true" class={needsOpen ? 'flip' : ''} /><span class="ui-label">{needsOpen ? strings.sidebar.fewerRows : fill(strings.sidebar.moreNeeds, { count: String(lanes.needsHidden.length) })}</span></button>
+          {/if}
+          <WindowList items={[...lanes.live, ...lanes.rest]} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} estimate={64} measurements={measurements(`${key}:rest`)}>
+            {#snippet row(entry)}{@render threadRow(entry, true)}{/snippet}
+          </WindowList>
+          {#if !query && lanes.foldable > 0}
+            <button type="button" class="ghost more-row" data-testid="mobile-more" data-count={lanes.hidden.length} aria-expanded={moreOpen}
+              aria-label={moreOpen ? strings.sidebar.fewerRows : fill(strings.sidebar.moreRowsLabel, { project: projectName(group.project), count: String(lanes.hidden.length) })}
+              onclick={() => moreRows.toggle(key)}><ChevronDown size={14} aria-hidden="true" class={moreOpen ? 'flip' : ''} /><span class="ui-label">{moreOpen ? strings.sidebar.fewerRows : fill(strings.sidebar.moreRows, { count: String(lanes.hidden.length) })}</span></button>
+          {/if}
           <div id="{controls}-working" hidden={!workingOpen || !!query || workingRows.length === 0} data-testid="project-working">
             {#if workingOpen && !query && workingRows.length > 0}
               <GroupLabel kind="working" count={workingRows.length} />
@@ -356,7 +382,6 @@
         {#if sections.later.length > 0}<ProjectCardsSection kind="later" count={sections.later.length}>{@render projectRows(sections.later, true)}</ProjectCardsSection>{/if}
         <ProjectShelf projects={sections.idle} multi={several} {now} {scrollRoot} onopen={() => show('chat')} />
         <ProjectShelf kind="archived" projects={shelved} multi={several} {now} {scrollRoot} onopen={() => show('chat')} />
-        {@render contacts()}
       {/if}
       <WindowList items={rows.filter(row => row.thread.projectId === null)} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} estimate={77} measurements={measurements('unassigned')}>
         {#snippet row(entry)}{@render threadRow(entry)}{/snippet}
@@ -393,7 +418,6 @@
           <RecentDone entries={recentGroups} {scrollRoot} {now} {query} onopen={() => show('chat')} />
           <RecentDone kind="archived" entries={recentGroups} {scrollRoot} {now} {query} onopen={() => show('chat')} />
         </div>
-        {#if !query}{@render contacts()}{/if}
       {/if}
     {/if}
     {#if listScreen === 'threads' && !entries.length && !query && firstRunSteps(store).active}
@@ -429,7 +453,8 @@
     .search input { flex: 1; min-width: 0; border: 0; background: transparent; min-height: 44px; font-size: 16px; padding: 8px 0; }
     .search:focus-within { border-color: var(--color-accent); }
     .search input:focus { outline: none; }
-    .filters { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .filters { display: flex; flex-wrap: wrap; gap: 8px; }
+    .search + .filters { margin-top: 8px; }
     .filters :global(.menu) { min-width: 0; max-width: 100%; }
     .at-work, .filters :global(.trigger) { display: inline-flex; gap: 6px; align-items: center; height: auto; min-height: var(--touch-target); max-width: 100%; padding: 0 12px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface-2); font-size: var(--text-sm); font-weight: 500; }
     .at-work { color: var(--color-accent); }
@@ -454,6 +479,16 @@
     .mobile-list { display: block; position: absolute; inset: 0; overflow-y: auto; overscroll-behavior: contain; background: var(--color-background); padding: 8px max(16px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
     /* The bottom bar owns the home indicator's inset; the last row clears the New thread button over it. */
     .mobile-list.tabbed { padding-bottom: 96px; }
+    .title-row { display: flex; align-items: center; gap: 2px; margin: 0 -10px 0 0; }
+    .title-row .large-title { flex: 1; min-width: 0; }
+    .title-row > .icon { flex: none; width: var(--touch-target); height: var(--touch-target); color: var(--color-muted-foreground); }
+    .title-row .display { border-left: 0; }
+    /* The strip and each project's header stay at the top while the rows scroll under them. */
+    .lifecycle-slot { position: sticky; top: 0; z-index: 3; margin: 0 -2px; padding: 4px 2px 2px; background: var(--color-background); }
+    .mobile-list:has(> .lifecycle-slot) { --sticky-top: 46px; }
+    .more-row { display: flex; align-items: center; gap: 6px; width: 100%; min-height: var(--touch-target); padding: 0 14px; font-size: var(--text-sm); color: var(--color-muted-foreground); border-bottom: 1px solid var(--color-border); border-radius: 0; justify-content: flex-start; }
+    .more-row.needs { color: var(--color-live); }
+    .more-row :global(.flip) { rotate: 180deg; }
     .large-title { margin: 6px 2px 2px; font-size: 28px; font-weight: 700; letter-spacing: -0.6px; line-height: 1.15; color: var(--color-foreground); }
     /* The bar's title waits under the large one, and fades in as it scrolls away. */
     .brand strong { transition: opacity var(--dur-2) var(--ease-out-quint), translate var(--dur-2) var(--ease-out-quint); }
@@ -465,15 +500,17 @@
     .lane.working .count { background: var(--color-accent-soft); color: var(--color-accent); }
     .first-run-slot { display: flex; padding: 12px 0 24px; }
     .first-run-slot :global(.first-run) { width: 100%; }
-    .list-heading { padding: 8px 0 14px; }
+    .list-heading { padding: 4px 0 8px; }
     p { font-size: var(--text-sm); }
     /* `clip`, not `hidden`: the heading stays stuck to the top of the list while its rows scroll under it. */
     .project-group { border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); margin-bottom: 12px; overflow: clip; }
-    .project-heading { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; padding: 8px 12px; gap: 8px; background: var(--color-surface-2); color: var(--color-muted-foreground); border-bottom: 1px solid var(--color-border); }
+    .project-heading { position: sticky; top: var(--sticky-top, 0px); z-index: 2; display: flex; align-items: center; min-height: 40px; box-sizing: border-box; padding: 0 12px; gap: 8px; background: var(--color-surface-2); color: var(--color-muted-foreground); border-bottom: 1px solid var(--color-border); }
     .project-heading h2 { margin: 0; flex: 1; min-width: 0; font-size: var(--text-sm); overflow-wrap: anywhere; }
     .project-heading span { display: block; font-size: var(--text-xs); font-weight: 400; color: var(--color-muted-foreground); }
     /* A whole touch target that eats the heading's padding rather than making it taller. */
     .project-heading .project-actions { flex: none; margin: -8px -8px -8px 0; color: var(--color-muted-foreground); }
+    /* The count chips keep their 44 px targets but lend 2 px top and bottom, so the heading stays 40 px. */
+    .project-heading :global(.counters) { margin-block: -3px; }
     .empty-state { display: flex; align-items: center; flex-direction: column; text-align: center; padding: 44px 16px; }
     .empty-icon { display: grid; place-items: center; width: 52px; height: 52px; border-radius: var(--radius-xl); border: 1px solid var(--color-edge); background: var(--color-surface-2); color: var(--color-muted-foreground); margin-bottom: 18px; }
     .empty-state h2 { font-size: var(--text-base); font-weight: 600; margin: 0 0 8px; }

@@ -2,6 +2,7 @@ import { mobileAction, toMobileList } from './lib/mobile.ts';
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp.ts';
+import { openSettingsPage } from './lib/views.ts';
 import { startDevUi } from './lib/ui.ts';
 // Vite belongs to the UI workspace, not the repository root.
 let server: { close(): Promise<void> };
@@ -33,7 +34,7 @@ test('model picker account tooltips keep emails private on desktop and phone', a
     await page.waitFor(`document.querySelector('[data-testid="composer-picker-menu"] [data-provider="claude"]')`);
     await page.click('[data-testid="composer-picker-menu"] [data-provider="claude"]');
     await page.waitFor(`document.querySelector('[data-instance="claude::a-claude-main"]')`);
-    expect(await page.evaluate(`document.querySelector('[data-instance="claude::a-claude-main"]').title`)).toBe('Default login');
+    expect(await page.evaluate(`document.querySelector('[data-instance="claude::a-claude-main"]').title`)).toBe('Personal');
     expect(await page.evaluate(`document.querySelector('[data-testid="composer-picker-menu"]').textContent.includes('you@example.com')`)).toBe(false);
     const point = await page.evaluate<{ x: number; y: number }>(`(() => { const r = document.querySelector('[data-instance="claude::a-claude-main"]').getBoundingClientRect(); return {x: r.x + r.width / 2, y: r.y + r.height / 2}; })()`);
     await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point });
@@ -116,7 +117,7 @@ test('installing a missing agent goes on to its sign-in without a second click o
 }, 30_000);
 
 test('Grain is visible above solid and acrylic surfaces and the settings fit a phone', async () => {
-  await page.click(id('settings-tab-experiments')); await page.click(id('experiment-theme-grain'));
+  await openSettingsPage(page, 'experiments'); await page.click(id('experiment-theme-grain'));
   await page.click(id('settings-tab-appearance')); await page.click(id('theme-grain'));
   await page.click(id('settings-back'));
   await page.waitFor(`document.documentElement.dataset.theme === 'grain'`);
@@ -139,7 +140,7 @@ test('the Limits page turns the monitoring of each account on and off', async ()
   await page.waitFor(`!document.querySelector('${id('mobile-settings-detail')}') && !history.state?.boiteOverlay`);
   await page.navigate(`${uiUrl}/?fake=1&open=recent`);
   await page.waitFor(`document.querySelector('${id('nav-settings')}')`);
-  await page.click(id('nav-settings')); await page.click(id('settings-tab-limits'));
+  await page.click(id('nav-settings')); await openSettingsPage(page, 'limits');
   await page.waitFor(`document.querySelector('${id('limits-tracked')} ${id('quota-monitor')}')`);
   const opencode = `${id('limits-tracked')} ${id('quota-monitor')}[data-account-id="a-opencode"]`;
   await page.waitFor(`document.querySelector('${opencode}')`);
@@ -181,7 +182,7 @@ test('the experiment adds the Threads and Agents switch on the desktop and Agent
   expect(await page.evaluate(`document.querySelector('${id('view-agents')}') === null && document.querySelector('${id('view-threads')}') === null`)).toBe(true);
   expect(await page.evaluate(`document.querySelector('${id('mobile-agents')}') === null`)).toBe(true);
   await capture('agents-launcher-disabled-desktop.png');
-  await page.click(id('nav-settings')); await page.click(id('settings-tab-experiments'));
+  await page.click(id('nav-settings')); await openSettingsPage(page, 'experiments');
   await page.click(id('experiment-resident-agents'));
   await page.click(id('settings-back'));
   await page.waitFor(`document.querySelector('${id('sidebar')} ${id('view-agents')}')`);

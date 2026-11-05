@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { PencilLine, Pin } from '@lucide/svelte';
+  import { Network, PencilLine, Pin } from '@lucide/svelte';
   import type { ThreadSummary } from '@boite/contracts';
   import type { Machine } from '../lib/workspace.svelte';
   import type { Store } from '../lib/store.svelte';
@@ -9,7 +9,7 @@
   import ThreadPicture from './ThreadPicture.svelte';
   import ThreadState from './ThreadState.svelte';
   import StateRing from './StateRing.svelte';
-  import { threadState } from '../lib/thread-state';
+  import { asksMidTurn, delegatedChip, threadState } from '../lib/thread-state';
 
   /**
    * A thread row's first line, in the sidebar and in a phone's list: who runs
@@ -45,6 +45,8 @@
   let draft = $derived(!open && hasUnsentDraft(owner.composerStates[thread.id]));
   let subagents = $derived(owner.subagents(thread.id));
   let away = $derived(owner.connection !== 'ready');
+  /** The sidebar's row: its delegated agents as a glyph and a number before the time, so the row keeps one line. */
+  let agents = $derived(ring ? delegatedChip(subagents) : null);
 </script>
 
 <span class="headline" class:wrap class:ring class:unread={thread.unread && !wrap}>
@@ -55,11 +57,12 @@
     </span>
   {/if}
   {#if picture && ring}
-    <StateRing kind={threadState(thread, subagents)} stale={away} ground="var(--ring-ground, var(--color-frame))"><ThreadPicture {owner} {thread} size={16} logo={13} /></StateRing>
+    <StateRing kind={threadState(thread, subagents)} asking={asksMidTurn(thread, subagents)} stale={away} ground="var(--ring-ground, var(--color-frame))"><ThreadPicture {owner} {thread} size={16} logo={13} /></StateRing>
   {:else if picture}<ThreadPicture {owner} {thread} size={wrap ? 13 : 12} />{/if}
   <span class="title" class:ui-label={!wrap}>{thread.title}</span>
   {#if draft}<span class="draft" data-testid="thread-draft" title={strings.sidebar.unsentDraft} aria-label={strings.sidebar.unsentDraft}><PencilLine size={12} /></span>{/if}
-  {#if thread.pinned}<span class="pin"><Pin size={12} /></span>{/if}
+  {#if thread.pinned}<span class="pin" data-testid="thread-pinned"><Pin size={12} /></span>{/if}
+  {#if agents}<span class="agents" class:asking={agents.asking} data-testid="thread-subagents" data-count={agents.shown} role="img" title={agents.label} aria-label={agents.label}><Network size={11} aria-hidden="true" /><span class="ui-label">{agents.shown}</span></span>{/if}
   {#if now !== undefined}<ThreadState {thread} {now} {subagents} {away} compact={ring} />{/if}
 </span>
 
@@ -84,8 +87,13 @@
   .unread .title {
     font-weight: 600;
   }
-  /* The ringed row: a tighter gap and 13 px give the title its 28 characters at 288 px, and unread reads at 500. */
+  /* The ringed row: a tighter gap and 13 px give the title its 30 characters at 288 px, and unread reads at 500. */
   .ring { gap: 6px; }
+  .ring .pin { color: var(--color-muted-foreground); }
+  .agents { display: inline-flex; align-items: center; gap: 2px; flex: none; font-size: var(--text-xs); font-variant-numeric: tabular-nums; color: var(--color-accent); }
+  .agents.asking { color: var(--color-live); }
+  /* The time sits in a narrow column of its own: tabular, right-aligned, so the titles end on one edge. */
+  .ring :global(.when) { min-width: 3.2ch; text-align: right; justify-content: flex-end; }
   .ring .title { font-size: var(--text-sm); }
   .ring.unread .title { font-weight: 500; }
   .machine,

@@ -47,3 +47,16 @@ test('a phone menu keeps pin, rename, the view\'s tools, archive and delete, and
     .filter(item => !item.separator).map(item => item.id);
   expect(ids).toEqual(['pin', 'rename', 'find', 'done', 'archive', 'delete']);
 });
+
+test('a greyed Mark done says why in one line, on the phone sheet and the row menu alike (C7)', () => {
+  const store = stub();
+  const done = (t: ThreadSummary, phone: boolean) => threadMenuItems(store, t, { open: false, showDone: true, prLoading: false, phone }).find(item => item.id === 'done')!;
+  for (const phone of [false, true]) {
+    expect(done(thread(), phone)).toMatchObject({ disabled: false });
+    expect(done(thread(), phone).hint).toBeUndefined();
+    expect(done(thread({ status: 'waiting' }), phone)).toMatchObject({ disabled: true, hint: 'Answer it first' });
+    expect(done(thread({ status: 'running' }), phone)).toMatchObject({ disabled: true, hint: 'It is still working' });
+  }
+  (store as { connection: string }).connection = 'closed';
+  expect(done(thread(), false)).toMatchObject({ disabled: true, hint: 'The machine is offline' });
+});

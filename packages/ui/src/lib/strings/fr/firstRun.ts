@@ -29,6 +29,8 @@ export const fr: Translation = {
     nothing: 'Rien ne vous attend',
     more: '{count} de plus',
     fewer: 'Afficher moins',
+    offline: 'Hors ligne',
+    offlineHint: 'En attente sur une machine déconnectée. Non compté tant qu’elle n’est pas revenue.',
     reasons: {
       question: 'Vous pose une question',
       permission: 'Demande votre permission',
@@ -36,6 +38,14 @@ export const fr: Translation = {
       'sign-in': 'Vous demande de vous connecter',
       failed: 'Le tour a échoué',
       interrupted: 'Arrêté avant la fin'
+    },
+    reasonTags: {
+      question: 'Question',
+      permission: 'Permission',
+      secret: 'Clé',
+      'sign-in': 'Connexion',
+      failed: 'Échec',
+      interrupted: 'Arrêté'
     },
     waited: 'Attend depuis {time}',
     working: 'Travaille depuis {time}',

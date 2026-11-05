@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp.ts';
+import { openSettingsPage, revealThreadRow } from './lib/views.ts';
 import { startUi } from './lib/ui.ts';
 
 // The agent's browser runs on the machine of the conversation and every client
@@ -34,7 +35,7 @@ beforeAll(async () => {
   server = await startUi(port);
   page = await BrowserPage.launch({ url: `http://127.0.0.1:${port}/?fake=1&open=recent`, windowSize: { width: 1280, height: 900 } });
   await size(1280, 900);
-  await page.waitFor(`document.querySelector('[data-thread-id="t-trace"]')`);
+  await revealThreadRow(page, 't-trace');
   await page.click('[data-thread-id="t-trace"]');
   await page.waitFor(`${store}.openThread?.id === 't-trace'`);
 }, 90_000);
@@ -137,7 +138,7 @@ test('a device the agent opens shows the same cover naming the machine, and Show
 
 test('with the live stream on in Experiments, Show plays the device as video on a canvas', async () => {
   await page.click('[data-testid=nav-settings]');
-  await page.click('[data-testid=settings-tab-experiments]');
+  await openSettingsPage(page, 'experiments');
   await page.waitFor(`document.querySelector('${id('device-stream-on')}')`);
   expect(await page.evaluate<boolean>(`document.querySelector('${id('device-stream-on')}').checked`)).toBe(false);
   await page.click(id('device-stream-on'));
@@ -163,6 +164,15 @@ test('with the live stream on in Experiments, Show plays the device as video on 
   await size(1280, 900);
 }, 60_000);
 
+async function openAgentBrowser() {
+  if (await page.evaluate(`!document.querySelector('[data-testid="right-panel"]')`)) await page.click(id('panel-toggle'));
+  await page.waitFor(`document.querySelector('${id('panel-picker')}')`);
+  await page.click(id('panel-picker'));
+  await page.waitFor(`document.querySelector('[data-testid="panel-picker-menu"] [data-value="agent-browser"]')`);
+  await page.click('[data-testid="panel-picker-menu"] [data-value="agent-browser"]');
+  await page.waitFor(`!document.querySelector('[data-testid="panel-picker-menu"]')`);
+}
+
 test('a phone chooses between chat and the agent browser without closing its pages or losing the draft', async () => {
   const origin = await page.evaluate<string>('location.origin');
   await size(390, 844);
@@ -179,15 +189,14 @@ test('a phone chooses between chat and the agent browser without closing its pag
   expect(await page.evaluate(`document.querySelector('[data-testid=right-panel]') === null`)).toBe(true);
   await capture('agent-browser-chat-phone.png');
 
-  // The phone's one panel button, then the strip's Browser tab.
-  if (await page.evaluate(`!document.querySelector('[data-testid="right-panel"]')`)) await page.click(id('panel-toggle'));
-  await page.waitFor(`document.querySelector('[data-testid="panel-tabs"] [data-kind="agent-browser"]')`);
-  if (await page.evaluate(`!document.querySelector('[data-testid="panel-tabs"] [data-kind="agent-browser"][aria-selected="true"]')`)) await page.click('[data-testid="panel-tabs"] [data-kind="agent-browser"]');
+  // The phone's one panel button, then its header's list of surfaces: the agent browser.
+  await openAgentBrowser();
   await page.waitFor(`document.querySelector('${id('agent-browser-cover')}')`);
   await page.click(id('agent-browser-show'));
   await page.waitFor(`document.querySelector('${id('remote-browser-frame')}')?.naturalWidth > 100`);
-  expect(await page.text(id('panel-close'))).toBe('Discussion');
-  expect(await page.evaluate(`(() => { const back = document.querySelector('${id('panel-close')}'), tabs = document.querySelector('${id('panel-tabs')}'); const b = back.getBoundingClientRect(), t = tabs.getBoundingClientRect(); return back.scrollWidth <= back.clientWidth && b.height >= 44 && b.left >= 0 && b.right <= t.left && t.right <= innerWidth; })()`)).toBe(true);
+  // The way back is the header's arrow, before the surface's name and inside the screen.
+  expect(await page.evaluate(`document.querySelector('${id('panel-close')}').getAttribute('aria-label')`)).toBe('Revenir à la discussion');
+  expect(await page.evaluate(`(() => { const back = document.querySelector('${id('panel-close')}'), picker = document.querySelector('${id('panel-picker')}'); const b = back.getBoundingClientRect(), t = picker.getBoundingClientRect(); return b.height >= 44 && b.width >= 44 && b.left >= 0 && b.right <= t.left && t.right <= innerWidth; })()`)).toBe(true);
   await capture('agent-browser-return-phone.png');
   await page.click(id('panel-close'));
   await page.waitFor(`!document.querySelector('${id('right-panel')}')`);
@@ -199,10 +208,8 @@ test('a phone chooses between chat and the agent browser without closing its pag
   await page.evaluate(`${store}.client.call('panel.open', { threadId: 't-trace', surface: { kind: 'browser', url: 'https://shop.example/cart' } })`);
   await page.settleAnimations();
   expect(await page.evaluate(`${store}.panelOpen`)).toBe(false);
-  // The phone's one panel button, then the strip's Browser tab.
-  if (await page.evaluate(`!document.querySelector('[data-testid="right-panel"]')`)) await page.click(id('panel-toggle'));
-  await page.waitFor(`document.querySelector('[data-testid="panel-tabs"] [data-kind="agent-browser"]')`);
-  if (await page.evaluate(`!document.querySelector('[data-testid="panel-tabs"] [data-kind="agent-browser"][aria-selected="true"]')`)) await page.click('[data-testid="panel-tabs"] [data-kind="agent-browser"]');
+  // The phone's one panel button, then its header's list of surfaces: the agent browser.
+  await openAgentBrowser();
   await page.waitFor(`document.querySelectorAll('${id('agent-browser-tab')}').length === 2 && document.querySelector('${id('remote-browser-address')}')?.value === 'https://shop.example/cart'`);
   await page.evaluate('history.back()');
   await page.waitFor(`!document.querySelector('${id('right-panel')}')`);

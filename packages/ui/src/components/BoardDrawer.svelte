@@ -8,6 +8,7 @@
   import DrawerTabs from './DrawerTabs.svelte';
   import ProjectBoard from './ProjectBoard.svelte';
   import ResizeHandle from './ResizeHandle.svelte';
+  import { DRAWER_MIN, DrawerHeight } from '../lib/drawer-height.svelte';
 
   /**
    * The project board in the drawer under the chat, where the terminal opens:
@@ -17,72 +18,37 @@
   let { store, threadId, closing, attach, onexit }: { store: Store; threadId: ThreadId; closing: boolean;
     attach: (node: HTMLElement) => { destroy: () => void }; onexit: (event: TransitionEvent) => void } = $props();
 
-  /** The terminal drawer's: both tabs are one drawer to the user. */
-  const HEIGHT_KEY = 'boite:terminal-height';
-  const MIN_HEIGHT = 120;
-  const DEFAULT_HEIGHT = 280;
-  const narrow = new MediaQuery('(max-width: 720px)');
-
   let drawer = $state<HTMLElement | undefined>(undefined);
-  let height = $state(readHeight());
-  let room = $state(window.innerHeight);
-  /** A phone's board starts at half the screen, the cards needing more than a shell's lines. */
-  let wanted = $derived(narrow.current ? Math.max(height, Math.round(room * 0.5)) : height);
-  let visibleHeight = $derived(Math.min(wanted, maxHeight()));
+  /** The terminal drawer's: both tabs are one drawer to the user. */
+  const size = new DrawerHeight();
+  const narrow = new MediaQuery('(max-width: 720px)');
   let dragging = $state(false);
   let hideLabel = $derived(store.keyLabel('terminal'));
   let project = $derived(store.projects.find((entry) => entry.id === store.openThread?.projectId)?.name ?? '');
 
-  function readHeight(): number {
-    try {
-      const stored = Number(localStorage.getItem(HEIGHT_KEY));
-      return Number.isFinite(stored) && stored >= MIN_HEIGHT ? stored : DEFAULT_HEIGHT;
-    } catch {
-      return DEFAULT_HEIGHT;
-    }
-  }
-
-  function maxHeight(): number {
-    return Math.max(MIN_HEIGHT, Math.round(room * 0.7));
-  }
-
-  onMount(() => {
-    const parent = drawer?.parentElement;
-    if (!parent) return;
-    room = parent.clientHeight;
-    const observer = new ResizeObserver(() => { room = parent.clientHeight; });
-    observer.observe(parent);
-    return () => observer.disconnect();
-  });
+  onMount(() => size.observe(drawer?.parentElement));
 
   let dragFrom = 0;
 
-  function setHeight(next: number): void {
-    height = Math.min(maxHeight(), Math.max(MIN_HEIGHT, Math.round(next)));
-  }
-
-  function saveHeight(): void {
-    try { localStorage.setItem(HEIGHT_KEY, String(height)); } catch { /* private mode keeps the height for this session */ }
-  }
 </script>
 
 <section class="drawer" class:closing class:dragging inert={closing} use:attach
   ontransitionend={(event) => { if (event.propertyName === 'height') onexit(event); }}
-  style="--drawer-height: {visibleHeight}px" bind:this={drawer} data-testid="board-drawer">
+  style="--drawer-height: {size.visible}px" bind:this={drawer} data-testid="board-drawer">
   <div class="edge">
     <ResizeHandle
       orientation="horizontal"
       edge="top"
       label={strings.terminal.resize}
       testid="board-resize"
-      value={visibleHeight}
-      min={MIN_HEIGHT}
-      max={maxHeight()}
-      onstart={() => { dragFrom = visibleHeight; dragging = true; }}
-      onmove={(delta) => setHeight(dragFrom - delta)}
-      onend={() => { dragging = false; saveHeight(); }}
-      onstep={(delta) => { setHeight(visibleHeight - delta); saveHeight(); }}
-      onreset={() => { setHeight(DEFAULT_HEIGHT); saveHeight(); }}
+      value={size.visible}
+      min={DRAWER_MIN}
+      max={size.max}
+      onstart={() => { dragFrom = size.visible; dragging = true; }}
+      onmove={(delta) => size.set(dragFrom - delta)}
+      onend={() => { dragging = false; size.save(); }}
+      onstep={(delta) => { size.set(size.visible - delta); size.save(); }}
+      onreset={() => size.reset()}
     />
   </div>
   <div class="surface framed">

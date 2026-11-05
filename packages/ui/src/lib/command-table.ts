@@ -5,6 +5,7 @@ import { lastAnswer } from './message-display';
 import { sidebarRows } from './sidebar-rows.svelte';
 import { workspace } from './workspace.svelte';
 import { projectView } from './project-view.svelte';
+import { lifecycleFilter } from './lifecycle-filter.svelte';
 import { openTour } from './onboarding.svelte';
 import { fill, strings } from './strings';
 import type { Store } from './store.svelte';
@@ -73,7 +74,8 @@ export const commandTable: readonly CommandDefinition[] = [
   } },
   { id: 'subagents', run: (store) => { store.showChat(); store.panel.toggleKind('agents'); } },
   { id: 'task-manager', run: (store) => { store.showSettings('task-manager'); } },
-  { id: 'archived', run: (store) => { store.showSettings('general', 'archived'); } },
+  // The sidebar's Archived filter carries Restore, Reopen and Delete, the Settings list's actions, in the list itself.
+  { id: 'archived', run: (store) => { store.showChat(); store.sidebarCollapsed = false; if (window.matchMedia('(max-width: 720px)').matches) store.sidebarOpen = true; lifecycleFilter.show('archived'); } },
   { id: 'tour', run: (store) => { store.showChat(); openTour(); } },
 ];
 const commandsById = new Map(commandTable.map(command => [command.id, command]));

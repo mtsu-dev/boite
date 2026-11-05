@@ -71,6 +71,9 @@
     if ((await submit(picked)) === false) sent = false;
   }
 
+  // An option the agent already called Skip says it once: the card's own Skip steps aside.
+  let skipShown = $derived(!!skip && !options.some((one) => ['skip', strings.chat.questionSkip.toLowerCase()].includes(one.label.trim().toLowerCase())));
+
   async function pass(): Promise<void> {
     if (!pending || sent || !skip) return;
     sent = true;
@@ -173,7 +176,7 @@
         {#if page && onopen}
           <button type="button" class="ghost" data-testid="question-open" title={page} onmousedown={keepFocus} onclick={onopen}><span class="ui-label">{strings.chat.questionOpenPage}</span></button>
         {/if}
-        {#if skip}
+        {#if skipShown}
           <button type="button" class="ghost" data-testid="question-skip" disabled={sent} onmousedown={keepFocus} onclick={pass}><span class="ui-label">{strings.chat.questionSkip}</span></button>
         {/if}
         {#if allowText && !replying && onwrite}
@@ -335,7 +338,7 @@
   }
 
   .option.picked {
-    border-color: var(--color-live);
+    border-color: var(--color-accent);
   }
 
   .option:disabled {
@@ -360,8 +363,8 @@
   }
 
   .option.picked .box {
-    border-color: var(--color-live);
-    background: var(--color-live);
+    border-color: var(--color-accent);
+    background: var(--color-accent);
   }
 
   .labels {

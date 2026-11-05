@@ -3,6 +3,7 @@ import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp';
 import { startUi } from './lib/ui';
+import { revealThreadRow } from './lib/views.ts';
 
 let server: { close(): Promise<void> };
 let page: BrowserPage;
@@ -13,7 +14,7 @@ beforeAll(async () => {
   const port = await freePort();
   server = await startUi(port);
   page = await BrowserPage.launch({ url: `http://127.0.0.1:${port}/?fake=1&open=recent`, windowSize: { width: 1000, height: 850 } });
-  await page.waitFor(`document.querySelector('[data-thread-id="t-trace"]')`);
+  await revealThreadRow(page, 't-trace');
   await page.click('[data-thread-id="t-trace"]');
   await page.evaluate(`(() => {
     const store = ${state};
@@ -80,8 +81,10 @@ test('changes panel and phone conversation list stay within the viewport with an
     await page.waitFor(`document.querySelector('[data-testid="mobile-list"] .thread')`);
     expect(await page.evaluate(`(() => {
       const list = document.querySelector('[data-testid="mobile-list"]');
-      const details = [...list.querySelectorAll('.detail')];
-      return document.documentElement.scrollWidth <= innerWidth && details.some(el => el.textContent.includes(${JSON.stringify(branch)}) && el.scrollWidth > el.clientWidth && getComputedStyle(el).textOverflow === 'ellipsis') && details.every(el => el.getBoundingClientRect().right <= innerWidth);
+      // A phone row's facts sit on one line; the branch is the fact that gives way first.
+      const details = [...list.querySelectorAll('.fact')];
+      const branches = [...list.querySelectorAll('[data-testid="thread-branch"] .ui-label')];
+      return document.documentElement.scrollWidth <= innerWidth && branches.some(el => el.textContent.includes(${JSON.stringify(branch)}) && el.scrollWidth > el.clientWidth && getComputedStyle(el).textOverflow === 'ellipsis') && details.every(el => el.getBoundingClientRect().right <= innerWidth);
     })()`)).toBe(true);
     await capture(`phone-${width}`);
     await page.click('[data-testid="mobile-list"] .thread');

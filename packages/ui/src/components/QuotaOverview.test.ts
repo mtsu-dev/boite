@@ -18,7 +18,7 @@ test('each subscription has its own name, limits, error and expansion beside the
   } });
   flushSync();
   const rows = [...document.querySelectorAll<HTMLElement>('[data-testid="quota-provider"]')];
-  expect(rows.map(row => row.querySelector('.name')!.textContent)).toEqual(['Personal', 'Work']);
+  expect(rows.map(row => row.querySelector('.name')!.textContent)).toEqual(['Codex · Personal', 'Codex · Work']);
   expect(rows.map(row => row.querySelector('.amount')!.textContent)).toEqual(['90% left', '10% left']);
   expect(rows.map(row => row.querySelector('[data-logo]')!.getAttribute('data-logo'))).toEqual(['codex', 'codex']);
   expect(rows[0]!.textContent).not.toContain('unavailable');
@@ -53,8 +53,8 @@ test('exhausted subscriptions put an available allowance first without claiming 
   for (const id of ['stale', 'empty', 'rounded']) expect(document.querySelector(`[data-account-id="${id}"] .paid`)).toBeNull();
 });
 
-test('profile labels stay visible even for Default; missing labels fall back to the provider', async () => {
-  for (const [label, name] of [['Default', 'Default'], ['Personal', 'Personal'], ['', 'Codex']]) {
+test('a card names the provider, then the profile even when it is Default; a missing label leaves the provider alone', async () => {
+  for (const [label, name] of [['Default', 'Codex · Default'], ['Personal', 'Codex · Personal'], ['', 'Codex']]) {
     component = mount(QuotaOverview, { target: document.body, props: { rows: [quota('only', label!, 10)], connect: () => {} } });
     flushSync();
     expect(document.querySelector('.name')!.textContent).toBe(name);

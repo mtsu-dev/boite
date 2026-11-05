@@ -4,7 +4,7 @@
   import GoalTrackerSetting from './GoalTrackerSetting.svelte';
   import ShellSettings from './ShellSettings.svelte';
   import TelemetrySettings from './TelemetrySettings.svelte';
-  import ArchivedThreads from './ArchivedThreads.svelte';
+  import ArchivedLink from './ArchivedLink.svelte';
   import WorktreesCard from './WorktreesCard.svelte';
   import WindowAllowlistCard from './WindowAllowlistCard.svelte';
   import WindowExclusionsCard from './WindowExclusionsCard.svelte';
@@ -24,7 +24,7 @@
    * how many at once live under Machines and Advanced.
    */
   /** `store` is the machine whose settings these are; `here`, this window's, holds its notifications and tour. */
-  let { store, here = store }: { store: Store; here?: Store } = $props();
+  let { store, here = store, onopenlist }: { store: Store; here?: Store; onopenlist?: () => void } = $props();
   const uid = $props.id();
   const inShell = window.__TAURI_INTERNALS__ !== undefined;
 
@@ -77,7 +77,7 @@
     {/if}
   </section>
 
-  <ArchivedThreads {store} />
+  <ArchivedLink {store} {onopenlist} />
   <WorktreesCard {store} />
   <WindowAllowlistCard {store} />
   <WindowExclusionsCard {store} />

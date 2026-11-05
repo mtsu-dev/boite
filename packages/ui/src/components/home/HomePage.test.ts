@@ -14,6 +14,8 @@ import { workspace } from '../../lib/workspace.svelte';
 import HomePage from './HomePage.svelte';
 import SidebarContacts from './SidebarContacts.svelte';
 import TitleBar from '../TitleBar.svelte';
+import ContactRequestNotice from './ContactRequestNotice.svelte';
+import ContactsButton from './ContactsButton.svelte';
 
 let components: ReturnType<typeof mount>[] = [];
 let opened: Store | undefined;
@@ -73,6 +75,21 @@ test('a contact request stays visible at the top in Settings and opens the machi
   await vi.waitFor(() => expect([remote.page, remote.contact]).toEqual(['home', 'core-chris']));
   await remote.client!.call('contacts.decide', { id: 'creq-pending', accept: true, projectId: remote.projects[0]!.id });
   await vi.waitFor(() => { flushSync(); expect(one('contact-request-notice')).toBeNull(); });
+});
+
+test("a header with the phone's Contacts button shows one count: the notice leaves its own button out while that one shows", async () => {
+  const store = await connect();
+  store.page = 'agents';
+  components.push(mount(ContactRequestNotice, { target: document.body, props: { store } }));
+  await vi.waitFor(() => { flushSync(); expect(one('contact-request-open')).not.toBeNull(); });
+  const button = mount(ContactsButton, { target: document.body, props: { store } });
+  await vi.waitFor(() => { flushSync(); expect(one('mobile-contacts-waiting')?.textContent).toBe('1'); });
+  expect(one('contact-request-open')).toBeNull();
+  // The card itself still floats: only the duplicate button went.
+  expect(one('contact-request-notice')).not.toBeNull();
+  await unmount(button);
+  flushSync();
+  expect(one('contact-request-open')).not.toBeNull();
 });
 
 test('a dismissed request keeps its header badge, which refreshes after a reconnect without an update', async () => {
@@ -216,9 +233,9 @@ test('a shared project shows its board as four counts that follow its cards; a c
   const store = await draw('core-chris');
   const tallies = () => [...one('contact-board-p-boite')?.querySelectorAll('[data-column]') ?? []].map(node => node.textContent);
   // To do, In progress, In review, Done: one card open, one claimed, one confirmed.
-  await vi.waitFor(() => { flushSync(); expect(tallies()).toEqual(['1', '0', '1', '1']); });
+  await vi.waitFor(() => { flushSync(); expect(tallies()).toEqual(['To do 1', 'Doing 0', 'Review 1', 'Done 1']); });
   await store.client!.call('todos.add', { threadId: 't-trace', text: 'Show Chris the board' });
-  await vi.waitFor(() => { flushSync(); expect(tallies()).toEqual(['2', '0', '1', '1']); });
+  await vi.waitFor(() => { flushSync(); expect(tallies()).toEqual(['To do 2', 'Doing 0', 'Review 1', 'Done 1']); });
 
   one<HTMLButtonElement>('contact-board-p-boite')!.click();
   await vi.waitFor(() => expect([store.page, store.openThread?.projectId, store.boardShown]).toEqual(['chat', 'p-boite', true]));
@@ -243,18 +260,18 @@ test('the counts read again after a reconnect that may have missed an update, an
   store.showHome('core-chris');
   components.push(mount(HomePage, { target: document.body, props: { store } }));
   const tallies = () => [...one('contact-board-p-boite')?.querySelectorAll('[data-column]') ?? []].map(node => node.textContent);
-  await vi.waitFor(() => { flushSync(); expect(tallies()).toEqual(['0', '0', '0', '0']); });
+  await vi.waitFor(() => { flushSync(); expect(tallies()).toEqual(['To do 0', 'Doing 0', 'Review 0', 'Done 0']); });
   expect(refuse).toBe(false);
 
   const reconnect = async () => { store.connection = 'connecting'; flushSync(); store.connection = 'ready'; flushSync(); };
   await reconnect();
-  await vi.waitFor(() => { flushSync(); expect(tallies()).toEqual(['1', '0', '1', '1']); });
+  await vi.waitFor(() => { flushSync(); expect(tallies()).toEqual(['To do 1', 'Doing 0', 'Review 1', 'Done 1']); });
 
   // What the core holds moved while the link was down, and no update came.
   store.todos = { ...store.todos, 'p-boite': [] };
-  await vi.waitFor(() => { flushSync(); expect(tallies()).toEqual(['0', '0', '0', '0']); });
+  await vi.waitFor(() => { flushSync(); expect(tallies()).toEqual(['To do 0', 'Doing 0', 'Review 0', 'Done 0']); });
   await reconnect();
-  await vi.waitFor(() => { flushSync(); expect(tallies()).toEqual(['1', '0', '1', '1']); });
+  await vi.waitFor(() => { flushSync(); expect(tallies()).toEqual(['To do 1', 'Doing 0', 'Review 1', 'Done 1']); });
 });
 
 test("a board asked for from a contact's page stays hidden when another page is picked while its conversation opens", async () => {

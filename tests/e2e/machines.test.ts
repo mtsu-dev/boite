@@ -2,7 +2,7 @@ import { mobileAction } from './lib/mobile.ts';
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { basename, join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp.ts';
-import { showThreadView } from './lib/views.ts';
+import { revealThreadRow, showThreadView, toggleTerminal, unfoldThreadRows } from './lib/views.ts';
 import { startUi } from './lib/ui.ts';
 import { startCore, type RunningCore } from './lib/core.ts';
 import { connect } from '../../packages/core/src/client.ts';
@@ -29,6 +29,8 @@ afterAll(async () => {
 }, 30_000);
 
 test('project and recent cards show both hosts, PRs and user-message ordering on desktop and phone', async () => {
+  // A project lists a few rows and folds the rest: every row counts here.
+  await unfoldThreadRows(page);
   await page.waitFor(`document.querySelectorAll('${id('thread-row')}').length === 8`);
   await page.waitFor(`document.querySelectorAll('${id('thread-pr')}').length === 2`);
   expect(await page.evaluate(`document.querySelector('[data-testid=machine-filter]') === null`)).toBe(true);
@@ -41,9 +43,11 @@ test('project and recent cards show both hosts, PRs and user-message ordering on
   await page.waitFor(`document.querySelectorAll('${id('thread-row')}').length === 4`);
   await page.click(id('machine-status'));
   await page.click('[data-testid=machine-status-menu] [data-value=all]');
+  await unfoldThreadRows(page);
   await page.waitFor(`document.querySelectorAll('${id('thread-row')}').length === 8`);
   await capture('projects-machines-desktop.png');
   await showThreadView(page, 'recent');
+  await unfoldThreadRows(page);
   const rows = await page.evaluate<string[]>(
     `Array.from(document.querySelectorAll('${id('thread-row')}')).map(e => e.dataset.threadId)`
   );
@@ -66,6 +70,7 @@ test('project and recent cards show both hosts, PRs and user-message ordering on
     mobile: true
   });
   await mobileAction(page, 'mobile-conversations');
+  await unfoldThreadRows(page);
   await page.waitFor(`document.querySelectorAll('[data-testid="mobile-list"] .thread').length === 8`);
   await capture('recent-machines-phone.png');
   expect(await page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')).toBe(true);
@@ -79,6 +84,7 @@ test('project and recent cards show both hosts, PRs and user-message ordering on
   await page.click('[data-testid="machine-card"]:nth-child(2) [data-testid="machine-icon-rack"]');
   await capture('machine-customization.png');
   await page.evaluate('location.reload()');
+  await unfoldThreadRows(page);
   await page.waitFor(`document.querySelectorAll('${id('thread-row')}').length === 8`);
   expect(await page.evaluate(`!!document.querySelector('[data-testid="sidebar"] .machine[aria-label="Build server"]')`)).toBe(true);
   expect(await page.evaluate(`document.querySelector('[data-testid="nav-machines"]') === null`)).toBe(true);
@@ -163,8 +169,7 @@ test('two real cores pair, route turns independently, reconnect and survive a re
     await page.waitFor(`document.querySelector('[data-thread-id="${tb.id}"]')`);
     await page.click(`[data-thread-id="${tb.id}"]`);
     await page.waitFor(`document.querySelector('${id('thread-title')}')?.textContent === 'Remote project'`);
-    await page.evaluate(`document.querySelector('[data-testid="right-panel"]') ? null : document.querySelector('[data-testid="panel-toggle"]')?.click()`); // The terminal's button is in the panel's strip.
-    await page.click(id('terminal-toggle'));
+    await toggleTerminal(page);
     // PowerShell expands Windows short paths such as RUNNER~1 in its prompt.
     try {
       await page.waitFor(`document.querySelector('[data-testid=terminal-drawer] .xterm-rows')?.textContent.includes(${JSON.stringify(basename(second.dataDir))})`);
@@ -322,7 +327,7 @@ test('one invitation groups two real cores: the page connects the second by itse
     await page.reload();
     await page.waitFor(machines(2));
     if (await page.evaluate(`globalThis.__boiteTest.workspace.active.page === 'settings'`)) await page.click(id('settings-back'));
-    await page.waitFor(`document.querySelector('[data-thread-id="${tb.id}"]')`);
+    await revealThreadRow(page, tb.id);
     expect(await b.call('sessions.list', {})).toHaveLength(1);
 
     // The address the second machine's key was saved for is retired, and somebody else listens there.

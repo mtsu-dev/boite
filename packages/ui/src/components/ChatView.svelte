@@ -207,7 +207,7 @@
     {#if thread?.worktreeRemoved}<WorktreeGoneNotice removal={thread.worktreeRemoved} archived={thread.archived} />{/if}
     {#if thread?.contactHold && !thread.archived}<ContactHoldNotice {store} threadId={thread.id} contacts={thread.contactHold.contacts} />{/if}
     <!-- Right on the composer, so the band of tasks rises by this line's height alone, whatever notice stands above. -->
-    {#if thread && !thread.archived && !locked}<div bind:offsetHeight={agentDockRoom}><StatusStrip {store} /></div>{/if}
+    {#if thread && !thread.archived && !locked}<div class="strip-room" bind:offsetHeight={agentDockRoom}><StatusStrip {store} /></div>{/if}
     {#if locked}<p class="locked" data-testid="chat-locked">{locked}</p>
     {:else if thread?.archived}<DoneThreadNotice {store} threadId={thread.id} />{:else if !thread && !sending && firstRunSteps(store).active}<FirstRun {store} />{:else}<Composer {store} centered={!thread && !sending} />{/if}
 
@@ -241,6 +241,10 @@
 {/if}
 
 <style>
+  /* The band of tasks rises by this room from the composer's top: the strip, its own margin and the
+     composer's 8 px of air above its card (Composer.svelte .composer-wrap), which this room overlaps
+     instead of adding to, so the band clears the line by its 4 px. No strip, no room. */
+  .strip-room:has(:global([data-testid='status-strip'])) { display: flow-root; padding-bottom: 8px; margin-bottom: -8px; }
   .salon-page { display: flex; flex-direction: column; width: 100%; max-width: var(--content); height: 100%; min-height: 0; margin: 0 auto; }
   .project-choice { display: inline-flex; max-width: 100%; border: 1px dashed var(--color-muted-foreground); border-radius: var(--radius-md); }
   .project-choice:hover, .project-choice:focus-within { border-color: var(--color-accent); }
@@ -318,8 +322,8 @@
 
   /* The home's accent sky: two still glows of the accent, the grain over them in its theme. */
   .chat.drafting {
-    --sky: radial-gradient(70% 55% at 50% 0%, color-mix(in oklch, var(--color-accent) 14%, transparent), transparent 72%),
-      radial-gradient(90% 60% at 50% 78%, color-mix(in oklch, var(--color-accent) 6%, transparent), transparent 70%);
+    --sky: radial-gradient(70% 55% at 50% 0%, color-mix(in oklch, var(--color-accent) var(--sky-top), transparent), transparent 72%),
+      radial-gradient(90% 60% at 50% 78%, color-mix(in oklch, var(--color-accent) var(--sky-low), transparent), transparent 70%);
     background: var(--sky);
   }
   :global(html[data-theme='grain']) .chat.drafting { background: var(--grain-tile), var(--sky); }

@@ -58,11 +58,12 @@
 
   /**
    * What the read depends on. A prompt in any thread rebuilds `entries` (the Recent groups re-sort, a project entry is a new
-   * object), which must not read every archived thread again: only the places, their archive counts and the connections do.
+   * object), which must not read every archived thread again: only the kind, the places, their archive counts and the
+   * connections do. The kind is part of it: Archived and Done can hold the same number of threads.
    */
-  const loadKey = $derived(JSON.stringify(entries.map(entry => [entry.machine.id, entry.project.id, archiveCount(entry.project, kind),
-    entry.machine.store.clientGeneration, entry.machine.store.connection])));
-  /** The places the rows on screen were read for: a read for the same places keeps them until its answer lands. */
+  const loadKey = $derived(JSON.stringify([kind, entries.map(entry => [entry.machine.id, entry.project.id, archiveCount(entry.project, kind),
+    entry.machine.store.clientGeneration, entry.machine.store.connection])]));
+  /** The kind and places the rows on screen were read for: a read for the same ones keeps them until its answer lands. */
   let loadedScope = '';
 
   $effect(() => {
@@ -80,7 +81,7 @@
   async function load(sources: (ProjectEntry & { client: unknown; generation: number; connection: string })[], current: number): Promise<void> {
     loading = true;
     failed = false;
-    const scope = JSON.stringify(sources.map(entry => placeOf(entry.machine.id, entry.project.id)));
+    const scope = JSON.stringify([kind, sources.map(entry => placeOf(entry.machine.id, entry.project.id))]);
     if (scope !== loadedScope) { loaded = []; loadedScope = scope; }
     const machines = [...new Map(sources.map(entry => [entry.machine.store, entry])).values()];
     const row = DoneThread ? Promise.resolve(true) : import('./DoneThread.svelte').then(module => { DoneThread = module.default; return true; }, () => false);

@@ -31,12 +31,12 @@ describe('permission modes', () => {
 
   it('says Codex writes in the folder on its default, and the open mode reaches the whole computer', () => {
     expect(modeLabel('default', provider('codex-appserver'))).toBe('This folder');
-    expect(modeHint('default', provider('codex-appserver'))).toContain('in this folder without asking');
+    expect(modeHint('default', provider('codex-appserver'))).toContain('in this folder, asks to go beyond');
     expect(modeLabel('default', provider('claude-sdk'))).toBe('Ask each time');
-    expect(modeLabel('bypassPermissions', provider('claude-sdk'))).toBe('Smart auto');
-    expect(modeHint('bypassPermissions', null)).toContain('anywhere on this computer');
-    expect(modeLabel('yolo', provider('claude-sdk'))).toBe('Full access');
-    expect(modeHint('yolo', null)).toContain('skips Claude and Codex hooks');
+    expect(modeLabel('bypassPermissions', provider('claude-sdk'))).toBe('Run everything, guards on');
+    expect(modeHint('bypassPermissions', null)).toContain('hooks still check');
+    expect(modeLabel('yolo', provider('claude-sdk'))).toBe('Full access, no guards');
+    expect(modeHint('yolo', null)).toContain('Claude and Codex hooks off');
   });
 
   it('remembers YOLO across reloads', () => {

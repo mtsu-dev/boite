@@ -69,6 +69,17 @@ export function threadState(thread: StateFields, delegated: Delegated = 0): Thre
   }
 }
 
+/**
+ * A question came in while the turn still runs: the thread needs the user
+ * (`threadState` says `waiting`) yet the agent is still at work, so its ring
+ * keeps turning with a small amber dot on it (`StateRing`'s `asking`).
+ */
+export function asksMidTurn(thread: Pick<ThreadSummary, 'status' | 'openQuestions'>, delegated: Delegated = 0): boolean {
+  if (thread.status !== 'running') return false;
+  const asking = typeof delegated === 'number' ? 0 : delegated?.asking ?? 0;
+  return (thread.openQuestions ?? 0) > 0 || asking > 0;
+}
+
 /** What a folded project says for the threads it hides, most urgent first: the user's turn, a failure, work, work waiting for a slot, then news. */
 const ROLLUP_ORDER: ThreadState[] = ['waiting', 'error', 'interrupted', 'working', 'delegating', 'monitoring', 'background', 'watching', 'queued', 'done'];
 

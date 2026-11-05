@@ -5,6 +5,7 @@ import { BrowserPage, freePort } from './lib/cdp.ts';
 import { startUi } from './lib/ui.ts';
 import { startCore, type RunningCore } from './lib/core.ts';
 import { connect } from '../../packages/core/src/client.ts';
+import { revealThreadRow } from './lib/views.ts';
 
 let server: { close(): Promise<void> };
 let page: BrowserPage;
@@ -96,11 +97,14 @@ test('a machine whose link goes silent reads offline within seconds, and a conve
     await page.navigate(`${url}/?core=${encodeURIComponent(first.url)}&token=${encodeURIComponent(first.token)}`);
     await page.waitFor(`document.querySelector('${id('confirm-ok')}')`);
     await page.click(id('confirm-ok'));
-    await page.waitFor(`document.querySelector('[data-thread-id="${ta.id}"]')`);
+    await revealThreadRow(page, ta.id);
     await page.evaluate(`globalThis.__boiteTest.workspace.add({ url: ${JSON.stringify(hole.url)}, token: ${JSON.stringify(second.token)} }, 'Server')`);
-    await page.waitFor(`document.querySelector('[data-thread-id="${tb.id}"]')`);
+    await revealThreadRow(page, tb.id);
+    // Two projects and no open thread fold each other's rows: find each row again before its click.
+    await revealThreadRow(page, ta.id);
     await page.click(`[data-thread-id="${ta.id}"]`);
     await page.waitFor(`document.querySelector('${id('thread-title')}')?.textContent === 'Desk project'`);
+    await revealThreadRow(page, tb.id);
     const server = `globalThis.__boiteTest.workspace.machines.find(machine => machine.id === ${JSON.stringify(hole.url)}).store`;
 
     // The link goes silent the moment before the user opens a conversation there.
@@ -123,6 +127,7 @@ test('a machine whose link goes silent reads offline within seconds, and a conve
     await capture('outage-offline-thread-desktop.png');
 
     // The other machine is untouched.
+    await revealThreadRow(page, ta.id);
     await page.click(`[data-thread-id="${ta.id}"]`);
     await page.waitFor(`document.querySelector('${id('thread-title')}')?.textContent === 'Desk project'`);
     await page.type(id('composer-input'), 'Local while the server is away');

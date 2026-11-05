@@ -40,6 +40,8 @@
 /* Hue says status only: what waits on the user in the live colour, a failure in danger; work reads in the foreground, the robot's ring breathing beside it. */
 .agent-live[data-state='working'] .agent-live-text { color: var(--color-foreground); }
 .agent-live[data-state='waiting'] .agent-live-text { color: var(--color-live); }
+/* A waiting bot's header keeps its job in plain text: its ring, its row and the strip carry the live colour. */
+.agent-live[data-state='waiting'] .agent-live-text.job { color: var(--color-muted-foreground); }
 .agent-live[data-state='error'] .agent-live-text { color: var(--color-danger); }
 .agent-head-actions { display: flex; align-items: center; gap: 2px; flex: none; }
 .agent-head-actions > button.active { background: var(--color-active); color: var(--color-foreground); }

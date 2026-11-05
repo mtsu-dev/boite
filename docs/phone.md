@@ -50,7 +50,9 @@ of its own: Bots on the computer brings the phone's Bots tab with it
 ([experiments](experiments.md)).
 Machine: the
 machine itself with its connection, which opens Machines, then Usage, Voice,
-Archived threads and Secrets. Owner connections also show Browser profiles
+Archived threads, which opens the thread list on its Archived filter, and
+Secrets. A search field above both groups finds pages, cards and settings by
+name, as the desktop's does. Owner connections also show Browser profiles
 and Allowed windows. Each opens a screen of its own; the back button or browser
 Back returns to the list. Theme and accent belong to the current device;
 Appearance also holds the chat's files and previews switch, and leaves the

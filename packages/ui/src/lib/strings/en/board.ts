@@ -8,6 +8,8 @@ export const strings = {
     open: 'Project board',
     hide: 'Hide the board',
     columns: { todo: 'To do', doing: 'In progress', review: 'In review', done: 'Done' },
+    /** The columns where four counts share one row. */
+    short: { todo: 'To do', doing: 'Doing', review: 'Review', done: 'Done' },
     /** The "i" after In progress. */
     doingHint: 'A card put here starts a /goal2 conversation with the card as its objective. Its bar is that goal\'s checklist.',
     add: 'Add a card',

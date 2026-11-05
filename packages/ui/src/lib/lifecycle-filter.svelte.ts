@@ -3,6 +3,8 @@ import type { ProjectEntry } from './project-view.svelte';
 import { archiveCount } from './project-threads.svelte';
 import { threadState } from './thread-state';
 import { liveState, needsHand } from './thread-lanes.svelte';
+import { inbox, storeSources } from './inbox';
+import type { Machine } from './workspace.svelte';
 
 /** The four lifecycle buttons over the thread list, in drawn order. */
 export const LIFECYCLES = ['waiting', 'working', 'done', 'archived'] as const;
@@ -19,6 +21,10 @@ class LifecycleFilter {
   clear(): void {
     this.current = null;
   }
+
+  show(kind: Lifecycle): void {
+    this.current = kind;
+  }
 }
 
 export const lifecycleFilter = new LifecycleFilter();
@@ -30,28 +36,31 @@ export const lifecycleFilter = new LifecycleFilter();
  * out of the store's open list and come from the project's counts.
  */
 export function inLifecycle(entry: ProjectEntry, thread: ThreadSummary, kind: 'waiting' | 'working'): boolean {
+  // The count rule's own population (`countKind`): a team or debate room under a project is not counted.
+  if (thread.teamId || thread.debateId) return false;
   const state = threadState(thread, entry.machine.store.subagents(thread.id));
   return kind === 'waiting' ? needsHand(state) : liveState(state);
 }
 
 /**
  * The counts over every listed project, on every machine the sidebar shows.
- * Live counts skip a machine that is not connected, as the switch's badge did:
- * its last known turn may have ended long ago. Done and archived are the
- * projects' own counts, the numbers their folds list.
+ * Needs you and Working are the project threads of the one count rule
+ * (`inbox`'s tally, which `workTally` serves to every badge), so the strip,
+ * the Inbox, the switch and the tabs never disagree; a machine that is not
+ * connected counts nothing. Done and archived are the projects' own counts,
+ * the numbers their folds list.
  */
 export function lifecycleCounts(entries: readonly ProjectEntry[]): Record<Lifecycle, number> {
   const counts: Record<Lifecycle, number> = { waiting: 0, working: 0, done: 0, archived: 0 };
+  const machines = new Set<Machine>();
   for (const entry of entries) {
     counts.done += archiveCount(entry.project, 'done');
     counts.archived += archiveCount(entry.project, 'archived');
-    const store = entry.machine.store;
-    if (store.connection !== 'ready') continue;
-    for (const thread of store.threadsOf(entry.project.id)) {
-      if (inLifecycle(entry, thread, 'waiting')) counts.waiting += 1;
-      else if (inLifecycle(entry, thread, 'working')) counts.working += 1;
-    }
+    machines.add(entry.machine);
   }
+  const { threads } = inbox(storeSources([...machines])).tally;
+  counts.waiting = threads.needs;
+  counts.working = threads.working;
   return counts;
 }
 

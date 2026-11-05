@@ -140,3 +140,19 @@ test('the popup counts every compaction and prompt of the thread, the mid-turn o
   expect(row('context-compactions')!.querySelector('dd')!.textContent).toBe('2');
   expect(row('context-prompts')!.textContent).toBe('Messages sent2');
 });
+
+// Round 1 drew the meter as an accent arc beside Stop, where it passed for the working spinner.
+test('the meter names its reading and never draws in the accent or moves', async ({ ready }) => {
+  const { store } = await ready();
+  await store.open('t-trace');
+  store.openThread!.context = { tokens: 62_000, window: 100_000, at: 0 };
+  view = mount(ContextControl, { target: document.body, props: { store } });
+  flushSync();
+  const trigger = document.querySelector<HTMLButtonElement>('[data-testid="context-trigger"]')!;
+  expect(trigger.title).toBe('Context 62%');
+  expect(trigger.getAttribute('aria-label')).toMatch(/^Context 62%/);
+  const { default: source } = await import('./ContextControl.svelte?raw');
+  const css = source.slice(source.indexOf('<style>'));
+  expect(css.match(/\.fill \{[^}]*\}/)?.[0]).not.toMatch(/accent|transition|animation/);
+  expect(css).toMatch(/data-level='full'\] \.fill \{ stroke: var\(--color-danger\)/);
+});

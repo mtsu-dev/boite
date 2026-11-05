@@ -7,6 +7,26 @@ import { rightPanel } from '../../lib/right-panel.svelte';
 import { strings } from '../../lib/strings';
 import AgentsPage from './AgentsPage.svelte';
 
+test('a bot waiting on its user keeps its job in the header: the row, the strip and the question card already say it waits', async ({ ready }) => {
+  setExperiment('resident-agents', true);
+  let page: ReturnType<typeof mount> | null = null;
+  try {
+    const { store } = await ready({ delayMs: 0, agentsDemo: true });
+    const view = AgentsView.of(store);
+    await view.refresh();
+    const iris = agentRows(view.snapshot).find(row => row.profile.name === 'Iris')!.profile;
+    store.showAgents(iris.id);
+    page = mount(AgentsPage, { target: document.body, props: { store } });
+    await vi.waitFor(() => { flushSync(); expect(document.querySelector<HTMLElement>('[data-testid="agent-live"]')?.dataset.state).toBe('waiting'); });
+    const live = document.querySelector('[data-testid="agent-live"]')!;
+    expect(live.textContent!.trim()).toBe(iris.domain);
+    expect(document.querySelector('[data-testid="agent-header"]')!.textContent).not.toContain(strings.agents.state.waiting);
+  } finally {
+    if (page) unmount(page);
+    setExperiment('resident-agents', false);
+  }
+});
+
 test('an agent named on the way in opens alone: the default agent of the visit gives way to it', async ({ ready }) => {
   setExperiment('resident-agents', true);
   let page: ReturnType<typeof mount> | null = null;

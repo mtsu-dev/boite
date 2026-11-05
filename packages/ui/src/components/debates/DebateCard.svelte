@@ -87,7 +87,7 @@
   .cast { color: var(--color-muted-foreground); font-size: var(--text-xs); }
   .spread { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
   .chip { padding: 1px 8px; border-radius: var(--radius-full); font-size: var(--text-xs); font-weight: 500; font-variant-numeric: tabular-nums; }
-  .chip.live { background: color-mix(in oklch, var(--color-live) 16%, transparent); color: var(--color-live); }
+  .chip.live { background: color-mix(in oklch, var(--color-accent) 16%, transparent); color: var(--color-accent); }
   .chip.success { background: color-mix(in oklch, var(--color-success) 14%, transparent); color: var(--color-success); }
   .chip.quiet { background: var(--color-surface-3); color: var(--color-muted-foreground); }
   .chip.danger { background: color-mix(in oklch, var(--color-danger) 14%, transparent); color: var(--color-danger); }

@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp.ts';
+import { openSettingsPage } from './lib/views.ts';
 import { startUi } from './lib/ui.ts';
 
 let server: { close(): Promise<void> };
@@ -66,11 +67,11 @@ async function openUsage() {
 async function openLimits() {
   // Settings may already be open from the previous test, and its entry then lives in the nav. Back from a
   // phone width, the desktop's settings nav draws a frame after the resize: wait for one way or the other.
-  await page.waitFor(`document.querySelector('[data-testid=settings-tab-limits], [data-testid=nav-settings]')`);
-  if (await page.evaluate<boolean>(`!document.querySelector('[data-testid=settings-tab-limits]')`)) {
+  await page.waitFor(`document.querySelector('[data-testid=settings-tab-advanced], [data-testid=nav-settings]')`);
+  if (await page.evaluate<boolean>(`!document.querySelector('[data-testid=settings-tab-advanced]')`)) {
     await page.click('[data-testid=nav-settings]');
   }
-  await page.click('[data-testid=settings-tab-limits]');
+  await openSettingsPage(page, 'limits');
   await page.waitFor(`document.querySelector('[data-testid=limits-page]')`);
 }
 
@@ -106,7 +107,7 @@ test('the desktop page charts each day by provider, reads a column on hover and 
   expect(await attribute('[data-testid=usage-chart]', 'aria-valuemax')).toBe('29');
   expect(await count('[data-testid=usage-providers] li')).toBeGreaterThanOrEqual(8);
   expect(await page.evaluate(`[...document.querySelectorAll('[data-testid=usage-providers] li')].map(li => li.dataset.provider)`)).toEqual(expect.arrayContaining(['claude', 'codex', 'opencode', 'grok', 'antigravity', 'pi', 'muse']));
-  expect(await page.text('[data-testid=usage-coverage]')).toContain('Cost');
+  expect(await page.text('[data-testid=usage-coverage]')).toContain('Price');
   expect(await count('[data-testid=usage-threads] li')).toBe(10);
   const cards = await page.evaluate<{ inset: number; gap: number; width: number }>(`(() => {
     const overview = document.querySelector('[data-testid=usage-overview]');
@@ -333,7 +334,8 @@ test('quotas expose banked resets, a confirmed budget and Codex credit balances 
   await capture('codex-credits-phone.png');
   await leavePhoneDetail();
   await viewport(1280, 800);
-  await page.waitFor(`document.querySelector('[data-testid=settings-tab-limits]')`);
+  // Back at a desktop width, the Settings nav draws again: Advanced has no row on the phone's home.
+  await page.waitFor(`document.querySelector('[data-testid=settings-tab-advanced]')`);
   await viewport(320, 560, true);
   await page.navigate(`${origin}/?fake=1&quotaExtras=1&view=quotas`);
   await page.waitFor(`document.querySelector('[data-testid=quota-popup] [data-testid=quota-credits]')`);

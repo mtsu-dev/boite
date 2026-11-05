@@ -3,6 +3,7 @@ import { flushSync, mount, unmount } from 'svelte';
 import { FakeClient } from '../lib/fake-client';
 import { Store } from '../lib/store.svelte';
 import ThreadHeader from './ThreadHeader.svelte';
+import headerSource from './ThreadHeader.svelte?raw';
 
 let mounted: ReturnType<typeof mount> | undefined;
 let client: FakeClient;
@@ -69,4 +70,11 @@ test('a header unmounted with its rename open, as a machine switch does, still w
   mounted = undefined;
   await settle();
   expect(rename.mock.calls).toEqual([['t-trace', 'Typed before the switch']]);
+});
+
+test('on a phone the title has its own 17 px line and the place sits under it, never beside it', () => {
+  const phone = headerSource.slice(headerSource.indexOf('@media (max-width: 720px)'));
+  expect(phone).toMatch(/\.title-menu \{[^}]*flex: 1 1 auto/);
+  expect(phone).toMatch(/\.title-text \{[^}]*font-size: 17px;[^}]*font-weight: 600/);
+  expect(phone).toMatch(/\.title-lines \{[^}]*flex-direction: column/);
 });

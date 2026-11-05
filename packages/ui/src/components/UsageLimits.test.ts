@@ -117,7 +117,7 @@ test('subscriptions from the same provider get separate cards with their chosen 
   } });
   flushSync();
   const cards = [...document.querySelectorAll('[data-testid="usage-limit-provider"]')];
-  expect(cards.map(card => card.querySelector('strong')!.textContent)).toEqual(['Work', 'Personal']);
+  expect(cards.map(card => card.querySelector('strong')!.textContent)).toEqual(['Claude · Work', 'Claude · Personal']);
   expect(cards.map(card => card.getAttribute('data-account-id'))).toEqual(['claude-default', 'personal']);
   expect(cards[0]!.querySelector('header small')).not.toBeNull();
   expect(cards[1]!.querySelector('header small')).toBeNull();

@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp.ts';
 import { mobileAction } from './lib/mobile.ts';
 import { startDevUi } from './lib/ui.ts';
+import { revealThreadRow } from './lib/views.ts';
 
 let server: { close(): Promise<void> };
 let page: BrowserPage;
@@ -16,6 +17,7 @@ beforeAll(async () => {
   const port = await freePort();
   server = await startDevUi(port);
   page = await BrowserPage.launch({ url: `http://127.0.0.1:${port}/?fake=1&team=1`, windowSize: { width: 1310, height: 820 } });
+  await revealThreadRow(page, 't-native');
   await page.click('[data-testid="thread-row"][data-thread-id="t-native"]');
   await page.click('[data-testid=thread-menu-trigger]');
   await page.click('[data-testid=thread-menu-trigger-menu] [data-value=agents]');

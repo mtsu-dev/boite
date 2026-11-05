@@ -272,7 +272,7 @@ soon as its HEAD moves.
 
 Each thread that stood there gets `worktreeRemoved` on its summary: the path,
 branch, whether the branch went, the reason (`pr-merged` or `clean`) and the
-pull request. The done notice and, after Move to Recent, the composer show it:
+pull request. The done notice and, after Reopen, the composer show it:
 the thread can be read but a turn is refused because the folder is gone. The
 field disappears once the thread moves to another folder.
 
@@ -298,9 +298,10 @@ PATH finds a `git.cmd` wrapper (`git/command.ts`).
 ## Thread lifecycle
 
 Manual archive stops the thread, pending questions and child work, hides it from
-the sidebar and offers Undo. Settings, the project menu and the palette open
-archived lists; restore keeps history without resuming work. Paired devices may
-archive and restore. Project archive only hides the project; its existing turns
+the sidebar and offers Undo. The project menu and the palette open the thread
+list on its Archived filter, and Settings, General links there. Each row
+restores or deletes, and a done one says when its delay deletes it. Restore
+keeps history without resuming work. Paired devices may archive and restore. Project archive only hides the project; its existing turns
 continue. New work in it restores the project. Drafts cannot be archived.
 `Project.archivedThreads` counts archived top-level threads and updates clients;
 `Project.doneThreads` is the share of them with a done date. The rest were
@@ -332,7 +333,7 @@ that cannot read their drafts still protect automatic expiry and merged-PR archi
 A paused workflow run holds expiry but not Mark done,
 which stops it as archiving does. Done reads archived summaries only on expansion,
 respecting the project and machine filters. A completed conversation opens for
-reading with a Move to Recent button in place of the composer. Reopening keeps
+reading with a Reopen button in place of the composer. Reopening keeps
 history without restarting work. Mark done records its own date; automatic archives
 after a merged PR do the same. Settings > General > Archived threads controls the
 delay before deletion, 3 days by default, or 0 to disable it. Restoring clears the

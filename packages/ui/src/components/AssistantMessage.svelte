@@ -5,7 +5,7 @@
   import type { Account, MemoryEvent, Message } from '@boite/contracts';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
-  import { count, formatTokens, providerName } from '../lib/format';
+  import { clockTime, count, formatTokens, providerName } from '../lib/format';
   import { isNamedModel } from '../lib/model-order';
   import { planOf } from '../lib/plan';
   import PlanCard from './PlanCard.svelte';
@@ -164,10 +164,12 @@
         <PlanCard {store} {threadId} plan={planOf(part.name, part.input) ?? ''} />
       {:else if part.type === 'question' && part.async === true && (part.answer ?? null) === null && store.pendingQuestions.some((q) => q.id === part.questionId)}
         <!-- Waiting in the dock above the composer: here only a line that brings it up. -->
-        <button type="button" class="ghost docked-question" data-testid="question-docked" title={strings.chat.questionOpen} onclick={() => showDockedQuestion(part.questionId)}>
+        <!-- The card above the composer says the question; its line here is a mark in the history, the text in its tooltip. -->
+        {@const asked = store.pendingQuestions.find((q) => q.id === part.questionId)?.createdAt ?? message.createdAt}
+        <button type="button" class="ghost docked-question" data-testid="question-docked" title={`${part.text}\n${strings.chat.questionDocked}`} aria-label={`${strings.chat.questionOpen}: ${part.text}`} onclick={() => showDockedQuestion(part.questionId)}>
           {#if part.setting}<Settings2 size={15} strokeWidth={1.75} />{:else if part.agentSetting}<Bot size={15} strokeWidth={1.75} />{:else if part.team}<Users size={15} strokeWidth={1.75} />{:else}<MessageCircleQuestionMark size={15} strokeWidth={1.75} />{/if}
-          <span class="docked-text ui-label">{part.text}</span>
-          <span class="docked-hint ui-label">{strings.chat.questionDocked}</span>
+          <span class="docked-text ui-label">{strings.chat.askedYou}</span>
+          <span class="docked-hint ui-label">· {clockTime(asked)}</span>
         </button>
       {:else if part.type === 'question' && part.agentSetting}
         <AgentSettingCard
