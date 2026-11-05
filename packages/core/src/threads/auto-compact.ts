@@ -139,7 +139,7 @@ export class AutoCompaction {
     if (reached) return { moment: 'tokens', delay: settled };
     // The agent compacts by itself once a turn crosses the limit, and a session
     // changes only between turns: a copy compacted in the background is taken at the first pause.
-    if (this.threads.backgroundCompact.ready(thread.id)) return { moment: 'copy', delay: settled };
+    if (this.threads.backgroundCompact.ready(thread)) return { moment: 'copy', delay: settled };
     const waiting = (this.threads.agentState.background.get(thread.id)?.length ?? 0) > 0;
     const moment: AutoCompactMoment = waiting ? 'background' : 'turn-end';
     const tokens = thread.context?.tokens ?? null;

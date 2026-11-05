@@ -22,9 +22,9 @@ import { nativeSkillFiles } from '../brain.ts';
 import { takesSystemGuide } from '../drivers/index.ts';
 import { effectiveCompaction, contextRulesBlock } from '@boite/contracts';
 import { prepareAttachments, FileReferences } from '../attachments.ts';
-import { continuationInput, tailInput } from '../continuation.ts';
+import { continuationInput, tailInput, type PartPlace } from '../continuation.ts';
 import type { Core } from '../core.ts';
-import type { EmitSink, PermissionTicket, ToolPatch, QuestionAsk, QuestionTicket, SessionContext, TurnContext } from '../drivers/types.ts';
+import type { EmitSink, PermissionTicket, ToolPatch, QuestionAsk, QuestionTicket, SessionContext, StepBoundary, StepDecision, TurnContext } from '../drivers/types.ts';
 import { newId } from '../ids.ts';
 import type { SpawnedChild, SpawnOptions } from '../procs.ts';
 import { LazyMcp } from '../mcp/lazy.ts';
@@ -311,6 +311,8 @@ export class TurnContexts {
         partProgress.set(`${messageId}:${partIndex}`, { phase, detail });
         progress(phase, detail);
         publishPart(messageId, partIndex, part);
+        // The agent compacted by itself: a copy made before is of a context that is gone.
+        if (part.type === 'compaction' && part.background !== true) this.#threads.backgroundCompact.compactedInTurn(threadId);
         if (boundary) this.#core.bus.emit('turn.toolCompleted', { threadId, turnId: turn.id, boundary: `${messageId}:${partIndex}` });
         if (segment && answer && segment !== answer.segments.at(-1)) closeIdle(segment);
       },
@@ -350,14 +352,15 @@ export class TurnContexts {
     // A session swapped in by a background compaction summarizes up to its fork:
     // the turns since then go with the next prompt the agent reads as such.
     const kind = turn.execution?.operation;
+    const fileReference = (part: Extract<MessagePart, { type: 'file' }>, place: PartPlace): string => {
+      this.#core.sharedAccess.uploads(threadId, [part]);
+      return this.#files.of(threadId, part, place);
+    };
     if (!fresh && resumePrompt === undefined && thread.sessionId !== null && kind !== 'compact' && kind !== 'keepalive' && kind !== 'background' && kind !== 'resume'
       && !nativeCommandPrompt(input.prompt)) {
       const tail = compactionTail(this.#core, thread);
       if (tail !== null) {
-        continued = tailInput(this.#core.journal, threadId, tail.after, turn.id, continued, (part, place) => {
-          this.#core.sharedAccess.uploads(threadId, [part]);
-          return this.#files.of(threadId, part, place);
-        });
+        continued = tailInput(this.#core.journal, threadId, { turnId: tail.after, afterPart: tail.afterPart ?? null }, turn.id, continued, fileReference);
         this.#threads.backgroundCompact.carried(threadId, turn.id);
       }
     }
@@ -414,6 +417,19 @@ export class TurnContexts {
       prompt: compose(preparedPrompt, thread.sessionId),
       systemGuide,
       continuation: freshStart(this.#core.dataDir, carry, compose, provider),
+      // At each step boundary, the core may move the thread to a session compacted in the background.
+      ...(bare || operation === 'background' ? {} : {
+        step: async (boundary: StepBoundary): Promise<StepDecision | null> => {
+          const decision = await this.#threads.backgroundCompact.step(threadId, turn, boundary, fileReference);
+          const current = this.#core.journal.getThread(threadId);
+          // What the thread runs on now: a later check of this context compares with the compacted session.
+          if (decision !== null && current !== null) {
+            thread = { ...thread, sessionId: current.sessionId, sessionResumeAt: null, sessionGeneration: current.sessionGeneration ?? 0 };
+            backgroundOwner.sessionGeneration = current.sessionGeneration ?? 0;
+          }
+          return decision;
+        },
+      }),
       // A keepalive takes nothing while it runs: a result or a note waits for the turn after it.
       coordination: () => bare ? null : this.#core.delegation.take(threadId, turn.id) ?? this.#core.coordination.take(threadId, turn.id)
         ?? this.#threads.deferred.takeForRunningTurn(threadId),

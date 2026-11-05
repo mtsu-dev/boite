@@ -244,30 +244,62 @@ card, the one that runs the thread (an agent asks with
 with the token limit above and does nothing without one. Like `deviceStream`,
 it stays on its machine: the group's settings do not carry it.
 
-When a finished turn leaves the context between 85% of the limit (and at least
-64 000 tokens) and the limit, the core forks the thread's native session at
-the end of that turn and runs `/compact` on the fork, outside the thread
-(`threads/background-compact.ts`). The thread stays free: the user and its
-agents keep working on the original session meanwhile.
+The copy is OpenCode 2's background compaction, ported
+(`threads/background-compact.ts`). Once the context passes 85% of the limit
+(and at least 64 000 tokens, `nearLimit`) while still below it, the core forks
+the thread's native session at that point and runs `/compact` on the fork,
+outside the thread. The thread stays free: the turn, the user and its agents
+keep working on the original session meanwhile. The fork point is a step
+boundary of a running turn or the end of a turn.
 
-| Driver | The copy |
-|---|---|
-| Claude | Resumes at the turn's checkpoint with `resumeSessionAt` and `forkSession`, then compacts. |
-| Codex | `forkSession` at the turn's checkpoint, then compacts the fork. |
-| echo | Names the fork after the turn. |
-| OpenCode 2 | No copy: the setting turns on OpenCode's own `experimental.background_compaction` in `OPENCODE_CONFIG_CONTENT`, for the processes started afterwards. |
-| OpenCode 1, Muse, pi, other ACP | None: the compaction above runs as before. |
+A step boundary is the moment a driver that declares `stepSwap`
+(`DriverCapabilities` in `drivers/types.ts`) calls `TurnContext.step` with the
+context it reads: after a step's tool results, before its next model request,
+with no tool in flight. Below the limit the call returns at once, a copy
+starting or running on. At the first boundary where the context reaches the
+limit, the core takes the copy inside the same turn, as OpenCode does at the
+start of a step:
 
-At the first pause after the copy finished, under the same conditions as the
-timer above and after the same 2 s, the thread takes the compacted session: a
-new session generation, no model call, its process released, and a divider
-marked `background: true` (`in the background`). It does not wait for the
-limit, because a session changes only between turns and the agents compact by
-themselves, blocking, as soon as a turn crosses it. The thread's next prompt
-carries what was said after the fork point in a `<recent-history>` block
-before the request (`tailInput` in `continuation.ts`); the
-`compaction-tail:<thread>` marker clears once a turn that carried it ends
-`done`.
+- a copy still running is waited for, 5 minutes at most, and checked again
+  when it returns;
+- the thread moves to the compacted session: a new session generation, the
+  `thread.compacted.background` journal entry, and a divider marked
+  `background: true` (`in the background`) among this turn's messages, the
+  answer going on in a new message after it. The process stays: the driver
+  goes on in the same turn;
+- the driver sends what happened since the fork point as the compacted
+  session's first message (`stepTail` in `continuation.ts`): user and
+  assistant text, each tool call with its input and its result, every tool
+  output cut at 1 250 characters, in a `<recent-history>` block that ends
+  with `Continue the current task.`. It is never sent again with the next
+  prompt;
+- `null` instead, whenever the copy failed, ran out of time or no longer
+  matches: the driver goes on, and its own blocking compaction handles the
+  limit.
+
+A thread's first turn names its session only once it ends: a copy started in
+that turn names it on the thread at once, so the copy and the turn's result
+agree on it. A turn that compacts natively, by itself (a compaction part not
+marked `background`), drops the copy, and a copy that finishes after that is
+thrown away. Compaction and keepalive turns have no step boundary.
+
+A driver without `stepSwap` takes a finished copy at the thread's first pause
+instead, under the same conditions as the timer above and after the same 2 s:
+a new session generation, no model call, its process released, and the same
+divider. The thread's next prompt then carries what was said after the fork
+point in a `<recent-history>` block before the request (`tailInput` in
+`continuation.ts`); the `compaction-tail:<thread>` marker clears once a turn
+that carried it ends `done`. The `autoCompact` moments govern these idle
+pauses only.
+
+| Driver | Inside a long turn | The copy |
+|---|---|---|
+| echo | Swaps to the copy at the step boundary that reaches the limit (`stepSwap`), after each `[tool]`. | Names the fork after the checkpoint entry. |
+| Claude | Native blocking compaction in the turn, copy at the pause. | Resumes at the checkpoint with `resumeSessionAt` and `forkSession`, then compacts. |
+| Codex | Native blocking compaction in the turn, copy at the pause. | `forkSession` at the turn's checkpoint, then compacts the fork. |
+| OpenCode 1 | Native blocking compaction in the turn, copy at the pause. | No fork in ACP: the pause has no copy to take, and the compaction above runs there. |
+| OpenCode 2 | OpenCode's own background compaction, inside its loop. | No Boite copy: the setting turns on OpenCode's own `experimental.background_compaction` in `OPENCODE_CONFIG_CONTENT`, for the processes started afterwards. |
+| Muse, pi, other ACP | Native blocking compaction in the turn. | None: the compaction above runs as before. |
 
 The copy is dropped, and the compaction above runs as usual, at the limit or
 at a selected `turn-end` or `background` moment near it, when:
@@ -277,17 +309,18 @@ at a selected `turn-end` or `background` moment near it, when:
   compacted by itself;
 - the thread grew by more than 30 000 tokens, or a quarter of the limit, since
   the copy started;
-- background work is running at the swap, since taking the new session closes
-  the process that runs it;
+- background work is running at the swap, a background shell or a running
+  subagent, since the new session would lose it;
 - the copy failed, named no new session or did not compact; after two failures
   in a row the thread stops trying until its next swap or a restart. A copy
   still running after 5 minutes is stopped;
 - the effective policy changed, including turning the setting off.
 
-A thread that reaches the limit while a matching copy still runs waits for it
-rather than compacting. Regular conversations, delegated children and resident
-bots use the policy for their own type. Incognito threads and a session
-waiting to resume at an entry take no copy; their token limit still applies.
+At a pause, a thread that reaches the limit while a matching copy still runs
+waits for it rather than compacting. Regular conversations, delegated children
+and resident bots use the policy for their own type. Incognito threads and a
+session waiting to resume at an entry take no copy; their token limit still
+applies.
 
 Limits of the experiment: copies are held in memory, so a restart forgets them
 (the tail marker is persisted). A copy runs outside the scheduler's account

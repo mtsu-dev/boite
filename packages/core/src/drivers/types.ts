@@ -87,6 +87,42 @@ export interface QuestionAsk {
  */
 export type QuestionTicket = Promise<QuestionAnswer | null> & { readonly questionId: RequestId };
 
+/** Where a running turn stands between two model requests (`TurnContext.step`). */
+export interface StepBoundary {
+  /**
+   * The session the driver runs on and the last complete entry of its chain,
+   * with no tool in flight: where a copy forks. Null when the driver has none
+   * yet; the core then starts no copy.
+   */
+  checkpoint: { sessionId: string; entry: string } | null;
+  /** The context the next request carries: the last measured prompt plus an estimate of what was added since. */
+  tokens: number;
+  /** The model's window when the driver knows it. */
+  window: number | null;
+}
+
+/** What the core tells a driver at a step boundary: go on in the same turn on another session. */
+export interface StepDecision {
+  swap: {
+    /** The compacted session the thread now names. */
+    sessionId: string;
+    /** The first message to send on it: what happened since the copy, as text, ending with a request to go on. */
+    tail: string;
+    /** The context the compacted session holds, when the copy reported it. */
+    postTokens: number | null;
+  };
+}
+
+/** What a driver can do beyond the `Driver` methods it defines. */
+export interface DriverCapabilities {
+  /**
+   * The driver calls `TurnContext.step` at each step boundary and applies a
+   * swap in the same turn. Without it, a background copy is taken only at a
+   * pause (`threads/auto-compact.ts`).
+   */
+  stepSwap?: boolean;
+}
+
 export interface TurnContext {
   /** Immutable additional restriction for externally supplied work, never a provider/account replacement. */
   protectedExecution?: import('./protected.ts').ProtectedDriverExecution;
@@ -101,6 +137,20 @@ export interface TurnContext {
    * questions, for a driver with no steer.
    */
   coordination?(): string | null;
+  /**
+   * A step boundary: the tool results of the last model request are in, the
+   * next request has not gone, and no tool runs. A driver that declares
+   * `DriverCapabilities.stepSwap` calls it there and awaits it. The core may
+   * start a background copy of the session from `boundary.checkpoint`, and
+   * once the context reaches the `autoCompact` limit it may answer a swap:
+   * the core has already moved the thread to `swap.sessionId` (a new session
+   * generation) and written the compaction divider in this turn, and the
+   * driver goes on in the same turn on that session, sending `swap.tail` as
+   * its first message. Null: go on as before, the agent's own blocking
+   * compaction handles the limit. It can wait for a copy still running, up
+   * to `BACKGROUND_COMPACT.timeoutMs`.
+   */
+  step?(boundary: StepBoundary): Promise<StepDecision | null>;
   /**
    * The images sent with the prompt, already checked by the core (format,
    * size, count, and the provider's `capabilities.images`). Empty for most
@@ -412,6 +462,7 @@ export interface ForkedSession {
 
 export interface Driver {
   protocol: Protocol;
+  capabilities?: DriverCapabilities;
   /** Exact inclusive completed turn boundary; no prompt or source mutation. */
   forkSession?(ctx: SessionContext, checkpoint: { sessionId: string; entry: string }): Promise<ForkedSession>;
   startTurn(ctx: TurnContext): TurnHandle;
