@@ -1,6 +1,7 @@
 import type { SDKAssistantMessage, SDKMessage, SDKResultMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { AgentTotals, MessageId, MessagePart, ToolDocument, ToolStatus, Usage } from '@boite/contracts';
-import type { PromptCacheLife, ToolPatch, TurnContext, TurnRefusal, TurnResult } from '../types.ts';
+import type { PromptCacheLife, StepBoundary, StepDecision, ToolPatch, TurnContext, TurnRefusal, TurnResult } from '../types.ts';
+import { sumUsage } from '../../usage.ts';
 import { isoTime } from './diagnostics.ts';
 import {
   agentTotalsOf,
@@ -25,6 +26,9 @@ import { hookEndPart } from './hooks.ts';
 import { PROMPT_EFFORT } from './query.ts';
 import type { ClaudeSession } from './session.ts';
 import { claudeProgress } from './progress.ts';
+
+/** The rough size of a token, for what a step adds to the context after the last measured request. */
+const CHARS_PER_TOKEN = 4;
 
 /** What the CLI answers a `resume` whose transcript is gone (CLI 2.1.282, probed offline). */
 const MISSING_SESSION = /^No conversation found with session ID: /;
@@ -108,6 +112,20 @@ export class ClaudeTurn {
    * rewind or fork resumes at (`resumeSessionAt`).
    */
   #lastEntry: string | null = null;
+  /** The last entry is a tool result: a step boundary, with no tool in flight. */
+  #lastIsResult = false;
+  /** The tool calls whose result entry the turn read on its current session. */
+  readonly #answered = new Set<string>();
+  #entryWaiters: (() => void)[] = [];
+  /** What the CLI wrote since the request `contextTokens` measured, in characters. */
+  #addedChars = 0;
+  /** The API message `contextTokens` was read from. */
+  #measuredFor = '';
+  #window: number | null = null;
+  /** A swap the core gave at a step boundary, until the session hands the turn over (`takeSwap`). */
+  #swap: StepDecision['swap'] | null = null;
+  /** What the turn used on the sessions it ran on before a swap. */
+  #usageBefore: Usage | null = null;
   #usage: Usage | null = null;
   #costBefore: number | null = 0;
   /** The CLI's running token totals before this turn, null when unknown. */
@@ -146,7 +164,11 @@ export class ClaudeTurn {
   /** The session holding it right now: a stranded turn moves to another one. */
   session: ClaudeSession | null = null;
 
-  constructor(readonly ctx: TurnContext) {
+  /** The core's context, or after a swap the same one on the compacted session with the tail as prompt. */
+  ctx: TurnContext;
+
+  constructor(ctx: TurnContext) {
+    this.ctx = ctx;
     this.#sessionId = ctx.sessionId;
     this.done = new Promise<TurnResult>((resolve) => {
       this.#resolve = resolve;
@@ -167,6 +189,66 @@ export class ClaudeTurn {
 
   noteSession(sessionId: string): void {
     this.#sessionId = sessionId;
+  }
+
+  /**
+   * The step boundary the turn stands at: its session and last entry, a
+   * tool result, and the context the next request carries (the last measured
+   * request plus what was written since). Null while a call of `toolIds` has
+   * no result yet, or with nothing measured.
+   */
+  boundary(toolIds: readonly string[] | null, floor: number): StepBoundary | null {
+    if (this.#sessionId === null || this.#lastEntry === null || !this.#lastIsResult || this.#contextTokens === null) return null;
+    if (toolIds !== null && toolIds.some(id => !this.#answered.has(id))) return null;
+    const tokens = Math.max(floor, this.#contextTokens + Math.ceil(this.#addedChars / CHARS_PER_TOKEN));
+    return { checkpoint: { sessionId: this.#sessionId, entry: this.#lastEntry }, tokens, window: this.#window };
+  }
+
+  /** Resolves at the next chain entry the turn reads, or after `ms`. */
+  nextEntry(ms: number): Promise<void> {
+    return new Promise((resolve) => {
+      const wake = (): void => { clearTimeout(timer); resolve(); };
+      // A wait that ends on its timer leaves the queue, so no later entry wakes it.
+      const timer = setTimeout(() => { this.#entryWaiters = this.#entryWaiters.filter(waiter => waiter !== wake); resolve(); }, Math.max(0, ms));
+      this.#entryWaiters.push(wake);
+    });
+  }
+
+  get swapping(): boolean {
+    return this.#swap !== null;
+  }
+
+  beginSwap(swap: StepDecision['swap']): void {
+    this.#swap = swap;
+  }
+
+  /**
+   * The turn goes on with the compacted session: the CLI that takes it over
+   * resumes `swap.sessionId` on the thread's next generation, and its first
+   * message is the tail. What the old session measured and used stays behind,
+   * its usage summed into the turn's.
+   */
+  takeSwap(): void {
+    const swap = this.#swap;
+    if (swap === null) return;
+    this.#swap = null;
+    const { prompt: _prompt, attachments: _attachments, continuation: _continuation, ...kept } = this.ctx;
+    this.ctx = {
+      ...kept, prompt: swap.tail, attachments: [], sessionId: swap.sessionId, resumeAt: null,
+      // A new generation has no finished turn yet (`sessionUsage`).
+      sessionBefore: { costUsd: 0, tokens: 0 },
+      thread: { ...kept.thread, sessionId: swap.sessionId, sessionResumeAt: null, sessionGeneration: (kept.thread.sessionGeneration ?? 0) + 1 },
+    };
+    this.#sessionId = swap.sessionId;
+    this.#lastEntry = null;
+    this.#lastIsResult = false;
+    this.#answered.clear();
+    this.#contextTokens = swap.postTokens;
+    this.#addedChars = 0;
+    this.#measuredFor = '';
+    this.#usageBefore = this.#usage;
+    this.#costBefore = 0;
+    this.#heldBefore = NOTHING_HELD;
   }
 
   markStopped(): void {
@@ -244,7 +326,11 @@ export class ClaudeTurn {
   #noteEntry(message: SDKMessage): void {
     const chained = message.type === 'assistant' || message.type === 'user' || (message.type === 'system' && message.subtype === 'compact_boundary');
     const uuid = (message as { uuid?: unknown }).uuid;
-    if (chained && typeof uuid === 'string' && uuid.length > 0) this.#lastEntry = uuid;
+    if (!chained || typeof uuid !== 'string' || uuid.length === 0) return;
+    this.#lastEntry = uuid;
+    this.#lastIsResult = message.type === 'user'
+      && contentBlocks((message.message as { content?: unknown } | undefined)?.content).some(block => block.type === 'tool_result');
+    for (const wake of this.#entryWaiters.splice(0)) wake();
   }
 
   /**
@@ -417,6 +503,11 @@ export class ClaudeTurn {
     }
     const carried = requestTokens(body?.usage);
     if (carried !== null) this.#contextTokens = carried;
+    if (carried !== null && apiId !== this.#measuredFor) {
+      this.#measuredFor = apiId;
+      this.#addedChars = 0;
+    }
+    this.#addedChars += JSON.stringify(body?.content ?? '').length;
     this.#cacheLife = cacheLifeOf(body?.usage) ?? this.#cacheLife;
     for (const block of contentBlocks(body?.content)) {
       if (block.type === 'text') {
@@ -450,13 +541,20 @@ export class ClaudeTurn {
     const body = message.message as { content?: unknown } | undefined;
     for (const block of contentBlocks(body?.content)) {
       if (block.type !== 'tool_result' || typeof block.tool_use_id !== 'string') continue;
-      this.finishTool(block.tool_use_id, resultText(block.content), block.is_error === true ? 'error' : 'done');
+      const output = resultText(block.content);
+      this.#answered.add(block.tool_use_id);
+      this.#addedChars += output.length;
+      this.finishTool(block.tool_use_id, output, block.is_error === true ? 'error' : 'done');
     }
   }
 
   #handleResult(message: SDKResultMessage): void {
-    this.#usage = mapUsage(message, this.#costBefore, this.#heldBefore);
+    const usage = mapUsage(message, this.#costBefore, this.#heldBefore);
+    this.#usage = this.#usageBefore === null ? usage : sumUsage(this.#usageBefore, usage);
     this.#agentTotals = agentTotalsOf(message, this.#restores);
+    this.#window = contextWindowOf(message, this.ctx.thread.model) ?? this.#window;
+    // The run a swap ended measured the old session: the core already reads the compacted one.
+    if (this.#swap !== null) return;
     if (this.#contextTokens !== null) {
       this.ctx.context({ tokens: this.#contextTokens, window: contextWindowOf(message, this.ctx.thread.model) });
     }

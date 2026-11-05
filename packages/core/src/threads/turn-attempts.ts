@@ -1,7 +1,7 @@
 import type { Account, MessageId, PermissionMode, ProviderDescriptor, ProviderId, RpcEvents, ThreadId, ThreadRetry, ThreadSummary, Turn, TurnId, Usage } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { assertDriverRunnable, releaseThread } from '../drivers/index.ts';
-import type { Driver, TurnContext, TurnHandle, TurnResult } from '../drivers/types.ts';
+import type { Driver, StepDecision, TurnContext, TurnHandle, TurnResult } from '../drivers/types.ts';
 import type { Resume } from '../providers/update-resume.ts';
 import type { ThreadStore } from '../threads.ts';
 import { sumUsage, totalTokens } from '../usage.ts';
@@ -236,6 +236,14 @@ export class TurnAttempts {
           sink.complete(messageId, messageState);
         },
       };
+      const step = context.step;
+      if (step !== undefined) {
+        context.step = async boundary => {
+          const decision = await step(boundary);
+          this.#followSession(state, decision);
+          return decision;
+        };
+      }
       if (continuing) {
         // The native session already holds the request and what the agent did with it.
         context.prompt = CAPACITY_CONTINUE_PROMPT;
@@ -438,6 +446,26 @@ export class TurnAttempts {
     }
   }
 
+  /**
+   * A step that moved the thread's session moves the attempt's snapshot with
+   * it, so the turn's result lands on the session it ends on: the copy it
+   * swapped in (`decision`), or the first session of the thread, named on the
+   * same generation for a copy to start from. Any other change (another
+   * account, model or generation) is not this turn's, and settles as before.
+   * The turn's own execution keeps the session it started on: its row is how
+   * it is owned.
+   */
+  #followSession(state: TurnAttemptState, decision: StepDecision | null): void {
+    const current = this.#core.journal.isClosed() ? null : this.#core.journal.getThread(state.threadId);
+    if (current === null || current.providerId !== state.thread.providerId || current.accountId !== state.thread.accountId) return;
+    const before = state.thread.sessionGeneration ?? 0;
+    const generation = current.sessionGeneration ?? 0;
+    const swapped = decision !== null && current.sessionId === decision.swap.sessionId && generation === before + 1;
+    const named = decision === null && state.thread.sessionId === null && current.sessionId !== null && generation === before;
+    if (!swapped && !named) return;
+    state.thread = { ...state.thread, sessionId: current.sessionId, sessionResumeAt: null, sessionGeneration: generation };
+  }
+
   /** Asks a running turn of this provider to pause at its next tool boundary. False when the thread runs no turn. */
   requestPause(threadId: ThreadId, providerId: ProviderId): boolean {
     // A pause already taken counts only for the provider it was taken for.
@@ -559,6 +587,8 @@ export class TurnAttempts {
     this.threads.cards.clearPermissionsOf(threadId, 'stop');
     this.threads.cards.clearQuestionsOf(threadId, false, 'stop');
     this.#stopRequested.add(threadId);
+    // A background copy still running stops with the turn, and a step parked on it goes on.
+    this.threads.backgroundCompact.turnStopped(threadId);
     handle.stop();
     this.#armStopDeadline(threadId, handle);
     return true;

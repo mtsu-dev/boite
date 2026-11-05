@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { DEFAULT_DELEGATION_CONFIG } from '@boite/contracts';
 import { makeAgent } from './agent-fixture.ts';
 import type { CoreClient } from '../src/client.ts';
@@ -7,7 +7,7 @@ import { AUTO_COMPACT } from '../src/threads/auto-compact.ts';
 import { BACKGROUND_COMPACT } from '../src/threads/background-compact.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import { echoDriver } from '../src/drivers/echo.ts';
-import type { TurnContext } from '../src/drivers/types.ts';
+import type { StepBoundary, TurnContext, TurnHandle } from '../src/drivers/types.ts';
 
 let h: TestCore;
 const saved = { compact: { ...AUTO_COMPACT }, background: { ...BACKGROUND_COMPACT } };
@@ -40,13 +40,348 @@ async function setUp(client: CoreClient): Promise<string> {
   return threadId;
 }
 
+/** The subagent policy of the in-turn tests: a limit of 1000, no idle moment, the copy on. */
+const SUBAGENT_POLICY = { autoCompact: { tokens: 1000, moments: [] }, backgroundCompaction: true };
+
+/** A delegated child of a fresh parent, its first and only turn running `task`. */
+async function child(client: CoreClient, task: string): Promise<{ parentId: string; childId: string }> {
+  const parentId = await setUp(client);
+  await client.call('settings.set', { autoCompact: null, backgroundCompaction: false, compactionByType: { subagent: SUBAGENT_POLICY } });
+  const { accountId, model } = h.core.threads.require(parentId);
+  await client.call('delegation.configure', { threadId: parentId, config: { ...DEFAULT_DELEGATION_CONFIG, enabled: true,
+    profiles: [{ id: 'worker', name: 'Worker', providerId: 'echo', accountId, model: model!, effort: null }] } });
+  const spawned = await client.call('delegation.spawn', { threadId: parentId, profileId: 'worker', task, requestId: `long-${Date.now()}` });
+  return { parentId, childId: spawned.thread.id };
+}
+
+/** One echo turn's worth of tool calls: each adds 25 tokens to the context the next request carries. */
+const TOOLS = (count: number) => '[tool]'.repeat(count);
+
+/** A copy held until `release`, whose `stop` only counts: a test chooses when it ends. */
+function heldCopy(): { run: (ctx: TurnContext) => TurnHandle; release: () => void; started: () => number; stops: () => number } {
+  const gate = Promise.withResolvers<void>();
+  let started = 0;
+  let stops = 0;
+  return {
+    run: ctx => { started += 1; return { done: gate.promise.then(() => echoDriver.startTurn(ctx).done), stop: () => { stops += 1; } }; },
+    release: () => gate.resolve(),
+    started: () => started,
+    stops: () => stops,
+  };
+}
+
+interface LongTurn {
+  /** How a copy runs; echo's own by default. */
+  copy?: (ctx: TurnContext) => TurnHandle;
+  /** Called before each step of the child's turn with what the agent reports there; returns what goes to the core. */
+  boundary?: (boundary: StepBoundary, threadId: string) => StepBoundary;
+}
+
+/** A delegated child runs `task` as its one long turn, every step recorded. */
+async function longTurn(client: CoreClient, task: string, options: LongTurn = {}) {
+  const steps: { tokens: number; swapped: boolean }[] = [];
+  const restore = setDriver('echo', { ...echoDriver, startTurn(ctx) {
+    if (isCopy(ctx)) return (options.copy ?? echoDriver.startTurn)(ctx);
+    const step = ctx.step;
+    if (step === undefined || h.core.journal.getThread(ctx.thread.id)?.parentThreadId == null) return echoDriver.startTurn(ctx);
+    // The fake agent reads the task alone: the delegation guide around it would start the context past the limit.
+    return echoDriver.startTurn({ ...ctx, prompt: task, step: async reported => {
+      const boundary = options.boundary?.(reported, ctx.thread.id) ?? reported;
+      const decision = await step(boundary);
+      steps.push({ tokens: boundary.tokens, swapped: decision !== null });
+      return decision;
+    } });
+  } });
+  try {
+    const done = client.next('turn.finished', t => t.threadId !== undefined && h.core.journal.getThread(t.threadId)?.parentThreadId != null);
+    const { childId } = await child(client, task);
+    const turn = await done;
+    const thread = await client.call('threads.get', { threadId: childId });
+    const background = thread.messages.filter(m => m.turnId === turn.id).flatMap(m => m.parts).filter(p => p.type === 'compaction' && p.background === true);
+    return { childId, turn, thread, steps, background };
+  } finally { restore(); }
+}
+
 describe('background compaction', () => {
+  test('a single long turn crosses the limit and takes its copy before the turn ends', async () => {
+    const swaps: { turnId: string | null; generation: number; tail: string; sessionId: string }[] = [];
+    const prompts: { threadId: string; prompt: string }[] = [];
+    const restore = setDriver('echo', { ...echoDriver, startTurn(ctx) {
+      if (isCopy(ctx) || ctx.step === undefined) return echoDriver.startTurn(ctx);
+      prompts.push({ threadId: ctx.thread.id, prompt: ctx.prompt });
+      const step = ctx.step;
+      // The fake agent reads the task alone: the delegation guide around it would start the context past the limit.
+      return echoDriver.startTurn({ ...ctx, prompt: TOOLS(40), step: async boundary => {
+        const decision = await step(boundary);
+        if (decision !== null) {
+          const thread = h.core.journal.getThread(ctx.thread.id)!;
+          swaps.push({ turnId: h.core.journal.runningTurn(ctx.thread.id)?.id ?? null, generation: thread.sessionGeneration ?? 0, tail: decision.swap.tail, sessionId: decision.swap.sessionId });
+        }
+        return decision;
+      } });
+    } });
+    const finished = spyOn(h.core.threads.spawns, 'finished');
+    const client = await h.connect();
+    try {
+      const done = client.next('turn.finished', t => t.threadId !== undefined && h.core.journal.getThread(t.threadId)?.parentThreadId != null);
+      const { childId } = await child(client, TOOLS(40));
+      const turn = await done;
+      expect(turn.threadId).toBe(childId);
+      // The context passed 850 tokens and then 1000 inside this one turn: the copy was taken while it ran.
+      expect(swaps).toHaveLength(1);
+      const swap = swaps[0]!;
+      expect(swap.turnId).toBe(turn.id);
+      expect(swap.generation).toBe(1);
+      const thread = await client.call('threads.get', { threadId: childId });
+      const source = `echo-${childId}`;
+      expect(swap.sessionId.startsWith(`${source}~`)).toBe(true);
+      expect(thread.sessionId).toBe(swap.sessionId);
+      expect(thread.sessionGeneration).toBe(1);
+      // The divider sits in this turn's own messages, and the turn went on after it on the compacted session.
+      const own = thread.messages.filter(m => m.turnId === turn.id);
+      const at = own.findIndex(m => m.parts.some(p => p.type === 'compaction'));
+      expect(own[at]!.parts.find(p => p.type === 'compaction')).toMatchObject({ type: 'compaction', trigger: 'auto', postTokens: 300, background: true });
+      expect(own.slice(at + 1).flatMap(m => m.parts).filter(p => p.type === 'tool').length).toBeGreaterThan(0);
+      // The compacted session's first message is what happened since the copy, tools included.
+      expect(swap.tail).toContain('<recent-history>');
+      expect(swap.tail).toContain('[Assistant tool call]: fake_tool');
+      expect(swap.tail.endsWith('Continue the current task.')).toBe(true);
+      expect(thread.context?.tokens).toBeLessThan(850);
+      expect(await compactions(client, childId)).toEqual([]);
+      expect(turn.status).toBe('done');
+      expect(finished.mock.calls.filter(([t]) => t.threadId === childId)).toHaveLength(1);
+      // Only one prompt opened the turn: the tail was not held back for the next one.
+      expect(prompts.filter(p => p.threadId === childId)).toHaveLength(1);
+      expect(h.core.journal.getSetting(`compaction-tail:${childId}`)).toBeUndefined();
+    } finally { finished.mockRestore(); restore(); client.close(); }
+  });
+
+  test('a copy still running when the context reaches the limit is awaited, then taken', async () => {
+    const copy = heldCopy();
+    const client = await h.connect();
+    try {
+      const run = await longTurn(client, TOOLS(40), {
+        copy: copy.run,
+        // The copy ends only once the step at the limit is waiting for it.
+        boundary: boundary => { if (boundary.tokens >= 1000) setTimeout(copy.release, 50); return boundary; },
+      });
+      expect(copy.started()).toBe(1);
+      // The first step at the limit (1015 tokens) waited and took it, rather than going on without it.
+      expect(run.steps.filter(step => step.swapped)).toEqual([{ tokens: 1015, swapped: true }]);
+      expect(run.background).toHaveLength(1);
+      expect(run.thread.sessionGeneration).toBe(1);
+      expect(run.turn.status).toBe('done');
+    } finally { copy.release(); client.close(); }
+  });
+
+  test('a copy that fails gives no swap, and the turn still finishes', async () => {
+    let copies = 0;
+    const client = await h.connect();
+    try {
+      const run = await longTurn(client, TOOLS(40), {
+        copy: ctx => { copies += 1; return { done: Promise.resolve({ status: 'error' as const, sessionId: ctx.sessionId, usage: null, error: 'copy refused' }), stop: () => undefined }; },
+      });
+      expect(copies).toBeGreaterThan(0);
+      // Two failures in a row and the thread stops trying.
+      expect(copies).toBeLessThanOrEqual(BACKGROUND_COMPACT.maxFailures);
+      expect(run.steps.some(step => step.swapped)).toBe(false);
+      expect(run.background).toEqual([]);
+      expect(run.turn.status).toBe('done');
+      expect(run.thread.sessionGeneration ?? 0).toBe(0);
+    } finally { client.close(); }
+  });
+
+  test('a copy of a context that shrank since is dropped', async () => {
+    const copy = heldCopy();
+    const client = await h.connect();
+    try {
+      let inTurn = -1;
+      // From 940 tokens on, the agent reports less than when the copy started at 865.
+      const run = await longTurn(client, TOOLS(40), { copy: copy.run, boundary: boundary => {
+        // The next step: the copy was already stopped, inside the turn.
+        if (boundary.tokens === 965) inTurn = copy.stops();
+        return boundary.tokens >= 940 ? { ...boundary, tokens: 600 } : boundary;
+      } });
+      expect(copy.started()).toBe(1);
+      expect(inTurn).toBe(1);
+      expect(copy.stops()).toBe(1);
+      copy.release();
+      await Bun.sleep(100);
+      expect(run.steps.some(step => step.swapped)).toBe(false);
+      expect(h.core.journal.getThread(run.childId)!.sessionGeneration ?? 0).toBe(0);
+    } finally { copy.release(); client.close(); }
+  });
+
+  test('a native compaction inside the turn drops the copy, and one that finishes later is thrown away', async () => {
+    const copy = heldCopy();
+    const client = await h.connect();
+    try {
+      // The copy starts at 857 tokens, then the agent compacts by itself at 882 and goes on from 300.
+      let inTurn = -1;
+      const run = await longTurn(client, `${TOOLS(23)}[compact]${TOOLS(10)}`, { copy: copy.run, boundary: boundary => {
+        // The first step after the compaction, before the core sees its smaller context: the part alone dropped the copy.
+        if (boundary.tokens === 325) inTurn = copy.stops();
+        return boundary;
+      } });
+      expect(copy.started()).toBe(1);
+      expect(inTurn).toBe(1);
+      expect(copy.stops()).toBe(1);
+      const parts = run.thread.messages.filter(m => m.turnId === run.turn.id).flatMap(m => m.parts).filter(p => p.type === 'compaction');
+      expect(parts.map(p => p.type === 'compaction' && p.background === true)).toEqual([false]);
+      // The dropped copy now finishes: its summary is never applied.
+      const sessionId = h.core.journal.getThread(run.childId)!.sessionId;
+      copy.release();
+      await Bun.sleep(100);
+      expect(run.steps.some(step => step.swapped)).toBe(false);
+      const thread = h.core.journal.getThread(run.childId)!;
+      expect(thread.sessionGeneration ?? 0).toBe(0);
+      expect(thread.sessionId).toBe(sessionId);
+    } finally { copy.release(); client.close(); }
+  });
+
+  test('background work in flight at the limit keeps the copy from being taken', async () => {
+    const client = await h.connect();
+    try {
+      const run = await longTurn(client, TOOLS(40), {
+        boundary: (boundary, threadId) => {
+          if (boundary.tokens === 990) h.core.threads.agentState.noteBackground(threadId, [{ id: 'bg1', kind: 'shell', description: 'watch', toolId: null, startedAt: Date.now() }]);
+          return boundary;
+        },
+      });
+      expect(run.steps.some(step => step.swapped)).toBe(false);
+      expect(run.background).toEqual([]);
+      expect(run.turn.status).toBe('done');
+      expect(run.thread.sessionGeneration ?? 0).toBe(0);
+    } finally { client.close(); }
+  });
+
+  test('background work at the limit drops a running copy at once rather than waiting for it', async () => {
+    const copy = heldCopy();
+    const client = await h.connect();
+    try {
+      let due = 0;
+      const after: { stops: number; waited: number }[] = [];
+      await longTurn(client, TOOLS(40), {
+        copy: copy.run,
+        boundary: (boundary, threadId) => {
+          if (boundary.tokens === 990) h.core.threads.agentState.noteBackground(threadId, [{ id: 'bg1', kind: 'shell', description: 'watch', toolId: null, startedAt: Date.now() }]);
+          // The copy would end 300 ms after the step at the limit.
+          if (boundary.tokens === 1015) { due = Date.now(); setTimeout(copy.release, 300); }
+          if (boundary.tokens === 1040) after.push({ stops: copy.stops(), waited: Date.now() - due });
+          return boundary;
+        },
+      });
+      expect(copy.started()).toBe(1);
+      // The step at 1015 went on without waiting, the copy stopped.
+      expect(after).toHaveLength(1);
+      expect(after[0]!.stops).toBe(1);
+      expect(after[0]!.waited).toBeLessThan(250);
+    } finally { copy.release(); client.close(); }
+  });
+
+  test('a turn whose boundaries name another session than the thread\'s drops the copy of the thread\'s', async () => {
+    const client = await h.connect();
+    try {
+      // From 915 on, the agent runs on a session it forked away to, which the thread does not name.
+      const run = await longTurn(client, TOOLS(40), { boundary: boundary =>
+        boundary.tokens >= 915 && boundary.checkpoint !== null ? { ...boundary, checkpoint: { ...boundary.checkpoint, sessionId: 'forked-elsewhere' } } : boundary });
+      expect(run.steps.some(step => step.tokens >= 1000)).toBe(true);
+      expect(run.steps.some(step => step.swapped)).toBe(false);
+      expect(run.background).toEqual([]);
+      expect(run.thread.sessionGeneration ?? 0).toBe(0);
+    } finally { client.close(); }
+  });
+
+  test('a copy past its time is dropped at its deadline, and the success it reports later is thrown away', async () => {
+    BACKGROUND_COMPACT.timeoutMs = 80;
+    const copy = heldCopy();
+    const client = await h.connect();
+    try {
+      // The copy reports a good compaction at 100 ms, after its 80 ms deadline.
+      const run = await longTurn(client, TOOLS(40), { copy: ctx => { setTimeout(copy.release, 100); return copy.run(ctx); } });
+      expect(copy.started()).toBe(1);
+      expect(copy.stops()).toBe(1);
+      expect(run.steps.some(step => step.swapped)).toBe(false);
+      await Bun.sleep(150);
+      const thread = await client.call('threads.get', { threadId: run.childId });
+      expect(thread.sessionGeneration ?? 0).toBe(0);
+      expect(thread.messages.flatMap(m => m.parts).filter(p => p.type === 'compaction' && p.background === true)).toEqual([]);
+    } finally { copy.release(); client.close(); }
+  });
+
+  test('a parent with a delegated child still at work crosses the limit and does not swap', async () => {
+    const client = await h.connect();
+    let restore = () => {};
+    let childId = '';
+    try {
+      const created = await child(client, '[sleep:2000]');
+      childId = created.childId;
+      await waitFor(() => h.core.journal.runningTurn(childId) !== null);
+      await client.call('settings.set', { autoCompact: { tokens: 1000, moments: [] }, backgroundCompaction: true, compactionByType: {} });
+      const steps: { tokens: number; swapped: boolean }[] = [];
+      let copies = 0;
+      restore = setDriver('echo', { ...echoDriver, startTurn(ctx) {
+        if (isCopy(ctx)) { copies += 1; return echoDriver.startTurn(ctx); }
+        const step = ctx.step;
+        if (ctx.thread.id !== created.parentId || step === undefined) return echoDriver.startTurn(ctx);
+        return echoDriver.startTurn({ ...ctx, prompt: TOOLS(40), step: async boundary => {
+          const decision = await step(boundary);
+          steps.push({ tokens: boundary.tokens, swapped: decision !== null });
+          return decision;
+        } });
+      } });
+      await turn(client, created.parentId, TOOLS(40));
+      // The copy was made, then refused at the limit while the child still ran.
+      expect(copies).toBe(1);
+      expect(steps.some(step => step.tokens >= 1000)).toBe(true);
+      expect(steps.some(step => step.swapped)).toBe(false);
+      expect(h.core.journal.runningTurn(childId)).not.toBeNull();
+      expect(h.core.journal.getThread(created.parentId)!.sessionGeneration ?? 0).toBe(0);
+    } finally { if (childId) h.core.threads.stopTurn(childId); restore(); client.close(); }
+  });
+
+  test('stopping a turn that waits on a running copy stops the copy and lets the turn finish stopped', async () => {
+    const copy = heldCopy();
+    const client = await h.connect();
+    try {
+      const run = await longTurn(client, TOOLS(40), {
+        copy: copy.run,
+        // Stop once the step at the limit is waiting for the copy.
+        boundary: (boundary, threadId) => { if (boundary.tokens >= 1000) setTimeout(() => h.core.threads.stopTurn(threadId), 20); return boundary; },
+      });
+      expect(run.turn.status).toBe('stopped');
+      expect(copy.stops()).toBe(1);
+      expect(run.steps.some(step => step.swapped)).toBe(false);
+    } finally { copy.release(); client.close(); }
+  });
+
+  test('stopping a turn between the start band and the limit stops its running copy once', async () => {
+    const copy = heldCopy();
+    const client = await h.connect();
+    try {
+      // The copy starts at 865; Stop arrives at 890, below the limit, with no step waiting.
+      const run = await longTurn(client, TOOLS(40), {
+        copy: copy.run,
+        boundary: (boundary, threadId) => { if (boundary.tokens === 890) setTimeout(() => h.core.threads.stopTurn(threadId), 0); return boundary; },
+      });
+      expect(run.turn.status).toBe('stopped');
+      expect(copy.started()).toBe(1);
+      expect(copy.stops()).toBe(1);
+      expect(run.steps.some(step => step.tokens >= 1000)).toBe(false);
+      copy.release();
+      await Bun.sleep(100);
+      // Its late summary is never applied.
+      expect(h.core.journal.getThread(run.childId)!.sessionGeneration ?? 0).toBe(0);
+    } finally { copy.release(); client.close(); }
+  });
+
   test('a copy compacts near the limit and the thread takes it at the next pause, then sends what came after', async () => {
     let release: () => void = () => undefined;
     const gate = new Promise<void>(resolve => { release = resolve; });
     const prompts: string[] = [];
-    const restore = setDriver('echo', { ...echoDriver, startTurn(ctx) {
-      if (!isCopy(ctx)) { prompts.push(ctx.prompt); return echoDriver.startTurn(ctx); }
+    // A driver that cannot swap inside a turn takes its copy at the pause.
+    const restore = setDriver('echo', { ...echoDriver, capabilities: {}, startTurn(ctx) {
+      if (!isCopy(ctx)) { prompts.push(ctx.prompt); return echoDriver.startTurn({ ...ctx, step: undefined }); }
       // The copy waits until the conversation went on without it.
       let stopped = false;
       const done = gate.then(() => stopped ? { status: 'stopped' as const, sessionId: ctx.sessionId, usage: null } : echoDriver.startTurn(ctx).done);

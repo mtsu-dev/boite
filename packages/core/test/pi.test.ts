@@ -1,4 +1,4 @@
-import { existsSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, test } from 'bun:test';
@@ -7,6 +7,7 @@ import type { MessagePart, RpcEvents, Settings } from '@boite/contracts';
 import type { CoreClient } from '../src/client.ts';
 import { getDriver } from '../src/drivers/index.ts';
 import { setPiStopDeadlineForTests } from '../src/drivers/pi/session.ts';
+import { BACKGROUND_COMPACT } from '../src/threads/background-compact.ts';
 import { startTestCore, waitFor } from './harness.ts';
 import type { TestCore } from './harness.ts';
 import { countLogLines, countProcesses, readScriptedLog, writeScriptedProvider } from './scripted-provider.ts';
@@ -87,6 +88,11 @@ function argvLines(): string[] {
   return fakeLog()
     .split('\n')
     .filter((line) => line.startsWith('argv '));
+}
+
+/** The `BOITE_COMPACTION` each agent process the fake started was given, in launch order. */
+function compactionLines(): { tokens: number; background: boolean; ratios: Record<string, number> }[] {
+  return fakeLog().split('\n').filter((line) => line.startsWith('compaction ')).map((line) => JSON.parse(line.slice('compaction '.length)));
 }
 
 /** How many times the fake was sent one command, so a cached probe is provable. */
@@ -858,6 +864,42 @@ describe('pi driver', () => {
     expect(parts).toContainEqual({ type: 'compaction', trigger: 'auto', preTokens: 180000, postTokens: 30000 });
     expect(thread.context?.tokens).toBe(4321);
     expect(thread.context?.window).toBe(200000);
+  });
+
+  test('with background compaction on, pi loads Boite\'s extension with the thread\'s setting, and a changed setting restarts it at the next turn', async () => {
+    const client = await startCore({ warmProcessMinutes: 5, autoCompact: { tokens: 100000, moments: [] }, backgroundCompaction: true });
+    const threadId = await piThread(client);
+    await runTurn(client, threadId, 'first');
+    await runTurn(client, threadId, 'second');
+    // One process for both turns, launched with the extension and the setting it reads.
+    expect(argvLines()).toHaveLength(1);
+    const extension = fakeLog().split('\n').find(line => line.startsWith('extension '))?.slice('extension '.length) ?? '';
+    expect(extension.endsWith('pi-compaction.mjs')).toBe(true);
+    expect(readFileSync(extension, 'utf8')).toContain("from '@earendil-works/pi-coding-agent'");
+    expect(compactionLines()).toEqual([{ tokens: 100000, background: true, ratios: { ...BACKGROUND_COMPACT } }]);
+
+    await client.call('settings.set', { autoCompact: { tokens: 200000, moments: [] } });
+    await runTurn(client, threadId, 'third');
+    expect(argvLines()).toHaveLength(2);
+    expect(compactionLines().map(setting => setting.tokens)).toEqual([100000, 200000]);
+
+    // Off: the next process runs without the extension.
+    await client.call('settings.set', { backgroundCompaction: false });
+    await runTurn(client, threadId, 'fourth');
+    expect(argvLines()).toHaveLength(3);
+    expect(compactionLines()).toHaveLength(2);
+    expect(fakeLog().split('\n').filter(line => line.startsWith('extension '))).toHaveLength(2);
+  });
+
+  test('the copy Boite\'s extension hands pi draws a background divider, at a turn end or at pi\'s threshold', async () => {
+    const client = await startCore();
+    const threadId = await piThread(client);
+    await runTurn(client, threadId, '[swapped] [taken] go on');
+    const parts = (await client.call('threads.get', { threadId })).messages.flatMap((message) => message.parts).filter(part => part.type === 'compaction');
+    expect(parts).toEqual([
+      { type: 'compaction', trigger: 'auto', preTokens: 100000, postTokens: null, background: true },
+      { type: 'compaction', trigger: 'auto', preTokens: 170000, postTokens: 40000, background: true },
+    ]);
   });
 
   test('a warm process takes a new effort and a new model over RPC instead of restarting', async () => {
