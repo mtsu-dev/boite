@@ -324,6 +324,8 @@ at a selected `turn-end` or `background` moment near it, when:
   in a row the thread stops trying until its next swap or a restart. A copy
   still running 5 minutes after it started counts as a failure: it is dropped
   and stopped then, and a result it gives later is thrown away;
+- the thread's turn is stopped while the copy still runs, at the limit or
+  below it; a finished copy stays for the next turn;
 - the effective policy changed, including turning the setting off.
 
 At a pause, a thread that reaches the limit while a matching copy still runs

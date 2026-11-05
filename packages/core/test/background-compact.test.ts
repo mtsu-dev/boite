@@ -318,6 +318,26 @@ describe('background compaction', () => {
     } finally { copy.release(); client.close(); }
   });
 
+  test('stopping a turn between the start band and the limit stops its running copy once', async () => {
+    const copy = heldCopy();
+    const client = await h.connect();
+    try {
+      // The copy starts at 865; Stop arrives at 890, below the limit, with no step waiting.
+      const run = await longTurn(client, TOOLS(40), {
+        copy: copy.run,
+        boundary: (boundary, threadId) => { if (boundary.tokens === 890) setTimeout(() => h.core.threads.stopTurn(threadId), 0); return boundary; },
+      });
+      expect(run.turn.status).toBe('stopped');
+      expect(copy.started()).toBe(1);
+      expect(copy.stops()).toBe(1);
+      expect(run.steps.some(step => step.tokens >= 1000)).toBe(false);
+      copy.release();
+      await Bun.sleep(100);
+      // Its late summary is never applied.
+      expect(h.core.journal.getThread(run.childId)!.sessionGeneration ?? 0).toBe(0);
+    } finally { copy.release(); client.close(); }
+  });
+
   test('a copy compacts near the limit and the thread takes it at the next pause, then sends what came after', async () => {
     let release: () => void = () => undefined;
     const gate = new Promise<void>(resolve => { release = resolve; });

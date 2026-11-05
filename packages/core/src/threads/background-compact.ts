@@ -119,8 +119,6 @@ export class BackgroundCompaction {
   readonly #carrying = new Map<ThreadId, TurnId>();
   /** The latest context a running turn's step boundaries reported: an agent may report the thread's own only once its turn ends. */
   readonly #boundaries = new Map<ThreadId, Boundary>();
-  /** Threads whose step at the limit waits for a running copy. */
-  readonly #waiting = new Set<ThreadId>();
   #closed = false;
 
   readonly #core: Core;
@@ -270,12 +268,12 @@ export class BackgroundCompaction {
   }
 
   /**
-   * The thread's running turn is being stopped: a step waiting for a running
-   * copy goes on at once, and that copy is stopped. A finished copy stays for
-   * the next turn.
+   * The thread's running turn is being stopped: a copy still running is
+   * stopped and dropped, at the limit or below it, and a step waiting for it
+   * goes on at once. A finished copy stays for the next turn.
    */
   turnStopped(threadId: ThreadId): void {
-    if (this.#waiting.has(threadId)) this.#drop(threadId, 'its turn was stopped');
+    if (this.#copies.get(threadId)?.ready === null) this.#drop(threadId, 'its turn was stopped');
   }
 
   close(): void {
@@ -350,8 +348,7 @@ export class BackgroundCompaction {
     let stale = limit === null ? 'the setting is off' : this.#stale(thread, copy, limit, live);
     if (stale !== null) { this.#drop(thread.id, stale); return null; }
     if (copy.ready === null) {
-      this.#waiting.add(thread.id);
-      try { await Promise.race([copy.settled, copy.gone.promise]); } finally { this.#waiting.delete(thread.id); }
+      await Promise.race([copy.settled, copy.gone.promise]);
       if (this.#closed || this.#core.journal.isClosed() || copy.dropped || this.#copies.get(thread.id) !== copy || copy.ready === null) return null;
       const current = this.#core.journal.getThread(thread.id);
       if (current === null || this.#core.journal.runningTurn(thread.id)?.id !== turn.id) return null;

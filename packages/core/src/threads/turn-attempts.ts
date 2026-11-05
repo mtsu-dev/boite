@@ -587,7 +587,7 @@ export class TurnAttempts {
     this.threads.cards.clearPermissionsOf(threadId, 'stop');
     this.threads.cards.clearQuestionsOf(threadId, false, 'stop');
     this.#stopRequested.add(threadId);
-    // A step waiting for a background copy is parked there the same way: the copy stops, the step goes on.
+    // A background copy still running stops with the turn, and a step parked on it goes on.
     this.threads.backgroundCompact.turnStopped(threadId);
     handle.stop();
     this.#armStopDeadline(threadId, handle);
