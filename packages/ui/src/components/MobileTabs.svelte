@@ -69,7 +69,8 @@
     .mobile-tabs {
       position: relative; grid-row: 3; grid-column: 1; z-index: 2; align-self: end;
       /* A capsule of frosted glass floating over the list's last rows. The tabs share what the centre
-         disc leaves; with 10 px labels, as iOS draws its own, "Conversations" fits at 360 px. */
+         disc leaves; with 10 px labels at weight 500, as iOS draws its own, "Conversations" fits its
+         68 px at 360 px. The current tab keeps that weight: 600 widened it past the slot. */
       display: flex; align-items: center;
       margin: 0 max(10px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
       padding: 5px 4px;
@@ -93,7 +94,7 @@
     .name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .tab[aria-current=page] { color: var(--color-accent); }
     .tab[aria-current=page] .glyph { background: var(--color-accent-soft); }
-    .tab[aria-current=page] .name { color: var(--color-foreground); font-weight: 600; }
+    .tab[aria-current=page] .name { color: var(--color-foreground); }
     .tab:active .glyph { background: var(--color-active); }
     /* New thread in the centre slot: a 48 px accent disc inside the bar, never over the rows. */
     .slot { display: grid; flex: 0 0 52px; place-items: center; min-height: 52px; }

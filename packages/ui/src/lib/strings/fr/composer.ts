@@ -79,6 +79,7 @@ export const fr: Translation = {
     compactNoSession: 'Envoyez un message avant de compacter',
     newBadge: 'nouveau',
     lockedHint: 'Une conversation garde son fournisseur et son compte',
+    seatReason: '{account} : {reason}',
     mode: 'Permissions',
     model: 'Modèle',
     unavailable: 'pas installé',

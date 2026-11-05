@@ -66,8 +66,9 @@
 <aside class="notice {tone}" class:inline class:open data-testid={testid} data-kind={kind} {role} aria-label={label ?? title}>
   <div class="line">
     <span class="mark" aria-hidden="true"><Icon size={15} strokeWidth={1.9} /></span>
-    {#if title}<strong class="title" title={titleTip}>{title}</strong>{/if}
-    {#if text}<span class="summary" bind:this={summary} role={timer ? 'timer' : undefined} aria-live={timer ? 'off' : undefined}>{text}</span>{:else}<span class="fill"></span>{/if}
+    <!-- `ui-label` trims each text to its cap height, so the icon centres on the words in every font. -->
+    {#if title}<strong class="title ui-label" title={titleTip}>{title}</strong>{/if}
+    {#if text}<span class="summary ui-label" bind:this={summary} role={timer ? 'timer' : undefined} aria-live={timer ? 'off' : undefined}>{text}</span>{:else}<span class="fill"></span>{/if}
     {#if actions}<span class="actions">{@render actions()}</span>{/if}
     {#if disclosable}
       <button type="button" class="disclose" aria-expanded={open} aria-controls={id} title={open ? strings.chat.noticeLess : strings.chat.noticeMore} aria-label={open ? strings.chat.noticeLess : strings.chat.noticeMore} data-testid="notice-disclose" onclick={() => (open = !open)}>

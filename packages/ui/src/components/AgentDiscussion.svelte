@@ -227,7 +227,8 @@
   .bubble { max-width: 100%; padding: 7px 11px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface-2); color: var(--color-foreground); transition: box-shadow var(--dur-3) var(--ease-out-quint); }
   .msg .bubble { border-bottom-left-radius: var(--radius-sm); }
   .msg:not(.first) .bubble { border-top-left-radius: var(--radius-sm); }
-  .msg.right .bubble { border-color: color-mix(in oklch, var(--color-accent) 55%, transparent); border-bottom-left-radius: var(--radius-lg); border-bottom-right-radius: var(--radius-sm); background: var(--color-accent-soft); }
+  /* What reaches this agent wears the user's own prompt: a neutral raised surface, no tint. */
+  .msg.right .bubble { border-color: transparent; border-bottom-left-radius: var(--radius-lg); border-bottom-right-radius: var(--radius-sm); background: var(--color-surface-3); }
   .msg.right:not(.first) .bubble { border-top-left-radius: var(--radius-lg); border-top-right-radius: var(--radius-sm); }
   .msg.resident .bubble { border-color: color-mix(in oklch, var(--color-resident) 45%, transparent); border-left: 2px solid var(--color-resident); background: var(--color-resident-soft); }
   .msg.resident .label { color: var(--color-resident); }

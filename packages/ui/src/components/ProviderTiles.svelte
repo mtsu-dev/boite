@@ -143,6 +143,9 @@
   @media (max-width: 720px) {
     /* The rail is the finger's first stop on a phone, so its tiles take a
        full touch target like every other control. */
-    .tile { justify-content: center; width: 60px; min-height: var(--touch-target); }
+    /* The rail scrolls sideways, so a tile grows to its name rather than cut it:
+       "OpenCode" read "OpenCod" in 56 px. A two-word name still breaks at its space. */
+    .tile { justify-content: center; width: auto; min-width: 60px; max-width: 92px; min-height: var(--touch-target); padding: 4px 6px; }
+    .name { overflow-wrap: normal; word-break: keep-all; }
   }
 </style>

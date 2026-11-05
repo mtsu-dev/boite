@@ -52,3 +52,30 @@ test('faces picked in another window move the selected buttons here', () => {
   expect(pressed('font-mono-jetbrains')).toBe('true');
   expect(pressed('font-mono-geist')).toBe('false');
 });
+
+// Round 3 at 360 px French: "Annuler" and "Réinitialiser" took a line each beside "Couleurs".
+test('Undo shows only with something to undo; Undo and Reset carry a glyph and their name, so a phone can show the glyph alone', async () => {
+  running = mount(AppearancePage, { target: document.body, props: { store: { owner: true } as Store } });
+  flushSync();
+  expect(document.querySelector('[data-testid=colors-undo]')).toBeNull();
+  const reset = document.querySelector<HTMLButtonElement>('[data-testid=colors-reset]')!;
+  expect(reset.getAttribute('aria-label')).toBe('Reset');
+  expect(reset.title).toBe('Reset');
+  expect(reset.querySelector('svg')).not.toBeNull();
+  // The presets read their colours from the stylesheet, which this rig lacks, so Undo is read in the source.
+  const { default: source } = await import('./ThemeColors.svelte?raw');
+  expect(source).toMatch(/\{#if canUndo\}<button [^>]*title=\{strings\.settings\.colors\.undo\} aria-label=\{strings\.settings\.colors\.undo\} data-testid="colors-undo"><Undo2 /);
+});
+
+test('a language set elsewhere moves the pressed Language button', async () => {
+  const { localeSetting, setLocaleSetting } = await import('../lib/i18n.svelte');
+  const before = localeSetting();
+  running = mount(AppearancePage, { target: document.body, props: { store: { owner: true } as unknown as Store } });
+  flushSync();
+  expect(pressed('locale-en') === 'true' || pressed('locale-system') === 'true').toBe(true);
+  // The first run, or a test rig, switches the language while this page is open.
+  await setLocaleSetting('fr'); flushSync();
+  expect(pressed('locale-fr')).toBe('true');
+  expect(pressed('locale-en')).toBe('false');
+  await setLocaleSetting(before); flushSync();
+});

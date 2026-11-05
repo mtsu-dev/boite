@@ -511,14 +511,22 @@
     .chips { flex: 1; flex-wrap: nowrap; }
     .chips :global(.picker) { min-width: 0; max-width: 100%; }
     /* A capsule of fill, as on the desktop: no outline, no top highlight. */
-    .chips :global(.picker > .trigger) { max-width: 100%; height: var(--touch-target); padding: 0 14px; border: 1px solid transparent; border-radius: var(--radius-full); box-shadow: none; background: var(--color-control-surface); font-weight: 500; color: var(--color-foreground); }
+    .chips :global(.picker > .trigger) { min-width: 0; max-width: 100%; height: var(--touch-target); padding: 0 12px; gap: 5px; border: 1px solid transparent; border-radius: var(--radius-full); box-shadow: none; background: var(--color-control-surface); font-weight: 500; color: var(--color-foreground); }
     /* The model's name alone, and whole words of it: one line high, a name too long for the row
        wraps its last words onto a second line nobody sees, never half of one. */
     .chips :global(.picker > .trigger > .label) { min-width: 0; max-width: none; height: 1lh; padding-block: 0; margin-block: 0; text-box: normal; overflow: hidden; white-space: normal; overflow-wrap: normal; }
+    .chips :global(.picker > .trigger > .label > span) { white-space: normal; text-box: normal; }
     .chips :global(.picker > .trigger .account-name) { display: none; }
     .chips :global(.picker > .trigger.connect) { padding: 0 12px; border-radius: var(--radius-full); background: var(--color-accent-soft); color: var(--color-accent); }
     .send, .stop { margin-left: 2px; }
     /* The microphone is a round fill like Stop beside it. */
     .bar :global(.microphone), .dictation-stand-in button { box-shadow: none; border-radius: var(--radius-full); }
+  }
+  /* The chip has 162 px beside Stop at 390 px and 132 px at 360, where
+     ModelPicker drops the chevron so "Sonnet 5.5" reads whole after its logo.
+     "Choisir un modèle" is 112 px at 13 px: it fits after the logo at 390 and
+     alone, the logo dropped too, at 360. */
+  @media (max-width: 380px) {
+    .chips :global(.picker > .trigger.asking) { padding: 0 8px; }
   }
 </style>

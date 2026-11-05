@@ -5,7 +5,8 @@
   import { entrust } from '../lib/thread-entrust';
   import { tick } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
-  import { ChevronDown, FolderInput, GitBranch, GitPullRequest, MessagesSquare, Network, PanelRight, Search, SquareKanban, UsersRound, VenetianMask } from '@lucide/svelte';
+  import { Bot, ChevronDown, Folder, FolderInput, GitBranch, GitPullRequest, MessagesSquare, Monitor, Network, PanelRight, Search, SquareKanban, UsersRound, VenetianMask } from '@lucide/svelte';
+  import { copyText } from '../lib/contacts.svelte';
   import { focusOnMount } from '../lib/actions';
   import { contextMenu } from '../lib/context-menu.svelte';
   import { pendingLine } from '../lib/thread-move.svelte';
@@ -31,16 +32,40 @@
   let thread = $derived(store.openThread);
   const mobile = new MediaQuery('(max-width: 720px)');
   /**
-   * Under a phone's title: where the conversation lives (its machine once there
-   * are two) and its branch; the PR number follows from ThreadPullRequest.
+   * Under a phone's title: the project, the machine only when it is not the
+   * one this app is connected to, and the branch; the PR number follows from
+   * ThreadPullRequest. The branch gives way first, the project last.
    */
-  let place = $derived.by(() => {
+  let placeProject = $derived.by(() => {
     if (!thread) return '';
     const project = thread.projectId ? store.projects.find(p => p.id === thread!.projectId) : undefined;
-    const machines = workspace.machinesOr(store);
-    const branch = thread.branch && work.shows('header.branch') ? thread.branch : null;
-    return [project ? projectName(project) : null, machines.length > 1 ? machines.find(m => m.store === store)?.label : null, branch].filter(Boolean).join(' · ');
+    const machine = store !== workspace.primary && workspace.machinesOr(store).length > 1 ? workspace.machinesOr(store).find(m => m.store === store)?.label : null;
+    return [project ? projectName(project) : null, machine].filter(Boolean).join(' · ');
   });
+  let placeBranch = $derived(thread?.branch && work.shows('header.branch') ? thread.branch : '');
+  let place = $derived([placeProject, placeBranch].filter(Boolean).join(' · '));
+  /** The subtitle cuts the branch; the phone's title menu reads each value whole and copies it in one tap. */
+  let pullRequest = $state<NonNullable<typeof thread>['pullRequest']>(null);
+  let copiedPlace = $state<string | null>(null);
+  let copiedTimer: ReturnType<typeof setTimeout> | undefined;
+  let placeValues = $derived.by((): { id: string; kind: string; value: string; label: string; glyph: MenuItem['glyph'] }[] => {
+    if (!thread) return [];
+    const project = thread.projectId ? store.projects.find(p => p.id === thread!.projectId) : undefined;
+    const machine = workspace.machinesOr(store).find(m => m.store === store)?.label;
+    return [
+      ...(project ? [{ id: 'copy-project', kind: strings.thread.placeProject, value: projectName(project), label: projectName(project), glyph: Folder }] : []),
+      ...(machine ? [{ id: 'copy-machine', kind: strings.thread.placeMachine, value: machine, label: machine, glyph: Monitor }] : []),
+      ...(placeBranch ? [{ id: 'copy-branch', kind: strings.thread.placeBranch, value: placeBranch, label: placeBranch, glyph: GitBranch }] : []),
+      ...(pullRequest ? [{ id: 'copy-pr', kind: strings.thread.placePullRequest, value: pullRequest.url, label: pullRequest.url.replace(/^https?:\/\//, ''), glyph: GitPullRequest }] : [])
+    ];
+  });
+  async function copyPlace(id: string) {
+    const entry = placeValues.find(value => value.id === id);
+    if (!entry || !(await copyText(entry.value))) return;
+    copiedPlace = id;
+    clearTimeout(copiedTimer);
+    copiedTimer = setTimeout(() => { copiedPlace = null; }, 1600);
+  }
   /** The rename in progress, bound to the thread it began on rather than to whatever is open later. */
   let rename = $state<ThreadRename | null>(null);
   commitOnUnmount(() => rename);
@@ -117,8 +142,14 @@
   let phoneItems = $derived.by((): MenuItem[] => {
     if (!thread) return [];
     return [
+      ...placeValues.map((entry): MenuItem => ({ id: entry.id, label: entry.label, hint: copiedPlace === entry.id ? strings.chat.copied : entry.kind, glyph: entry.glyph, copy: true, title: fill(strings.thread.copyPlace, { kind: entry.kind.toLowerCase() }) })),
+      ...(placeValues.length ? [separator('sep-place')] : []),
       { id: 'panel', label: strings.thread.panelMenu, glyph: PanelRight, active: store.panelOpen },
       ...(store.boardAvailable() ? [{ id: 'board', label: strings.board.open, glyph: SquareKanban, active: store.boardShown }] : []),
+      // The bot's face sits in the subtitle, inside this menu's trigger: its actions are here.
+      ...(carrier ? [{ id: 'agent-open', label: fill(strings.agents.openAgent, { name: carrier.agent.name }), glyph: Bot },
+        ...(store.owner ? [{ id: 'agent-back', label: strings.agents.takeBack }] : [])]
+        : resident ? [{ id: 'agent-open', label: fill(strings.agents.openAgent, { name: resident.name }), glyph: Bot }] : []),
       separator('sep-panel'),
       ...threadMenuItems(store, thread, { phone: true, tools: [
         { id: 'find', label: strings.palette.find, glyph: Search },
@@ -130,9 +161,12 @@
   function titleAction(action: string) {
     const open = store.openThread;
     if (!open) return;
-    if (action === 'coordination') coordinationThreadId = open.id;
+    if (action.startsWith('copy-')) void copyPlace(action);
+    else if (action === 'coordination') coordinationThreadId = open.id;
     else if (action === 'panel') store.togglePanel();
     else if (action === 'board') store.toggleBoard();
+    else if (action === 'agent-open') { if (carrier) store.showAgents(carrier.agent.id); else if (resident) openResident(store, resident.id); }
+    else if (action === 'agent-back') void entrust(store, open.id, null);
     else if (action === 'agents') store.panel.toggleKind('agents');
     else if (action === 'find') {
       store.findOpen = true;
@@ -205,7 +239,7 @@
           <!-- A small chevron exposes thread actions; on phones it also holds the title. -->
           <span class="title-menu">
             <Menu items={mobile.current ? phoneItems : desktopItems} onpick={titleAction} label={strings.sidebar.threadMenu} placement="bottom" variant="text" testid="thread-menu-trigger">
-              <span class="title-lines"><span class="title-text ui-label">{thread.title}</span>{#if place || mobile.current}<span class="title-place ui-label" data-testid="thread-place"><span class="place-text">{place}</span>{#if mobile.current}<span class="place-pr"><ThreadPullRequest owner={store} {thread} text separated={!!place} /></span>{/if}</span>{/if}</span><ChevronDown size={14} />
+              <span class="title-lines"><span class="title-text ui-label">{thread.title}</span>{#if place || mobile.current}<span class="title-place ui-label" data-testid="thread-place">{#if mobile.current && (carrier ?? resident)}{@const bot = carrier?.agent ?? resident!}<span class="place-bot" data-testid="thread-place-bot" title={carrier ? fill(strings.agents.entrustedTo, { name: bot.name }) : fill(strings.resident.lookedAfterBy, { name: bot.name })}><AgentAvatar kind="profile" id={bot.id} name={bot.name} avatar={bot.avatar} size={16} /></span>{/if}{#if mobile.current}<span class="place-project">{placeProject}</span>{#if placeBranch}<span class="place-branch">{placeProject ? ` · ${placeBranch}` : placeBranch}</span>{/if}<span class="place-pr"><ThreadPullRequest owner={store} {thread} text separated={!!place} bind:current={pullRequest} /></span>{:else}<span class="place-text">{place}</span>{/if}</span>{/if}</span><ChevronDown size={14} />
             </Menu>
           </span>
         {/if}
@@ -476,10 +510,10 @@
     .trace { padding: 0; min-width: var(--touch-target); justify-content: center; }
     .trace .label, .incognito .label, .context-chip :global(.label) { display: none; }
     .context-chip :global(.chip) { min-width: var(--touch-target); justify-content: center; }
-    /* The avatar alone, a finger's square around it; the rest is under the title. */
-    .context-pill { padding: 0; height: auto; background: none; box-shadow: none; max-width: none; flex: none; }
-    .context-pill > :not(.avatar) { display: none; }
-    .avatar { width: var(--touch-target); height: var(--touch-target); }
+    /* The row keeps back, the title and the panel button: the bot's face moved
+       into the subtitle and its actions into the title's menu; the branch and the
+       PR are under the title. */
+    .context-pill { display: none; }
     .panel-toggle { width: var(--touch-target); height: var(--touch-target); }
     /* A finger has the long press, and the panel's own header lists every surface. */
     .panel-launch { display: none; }
@@ -496,9 +530,15 @@
     /* Two lines stacked: a label's ascender room and its trim to the capitals would pull the second over the first. */
     .title-lines > .ui-label { margin-block: 0; padding-block: 0; text-box: normal; }
     .title-text { display: block; max-width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px; font-weight: 600; }
-    /* The place gives way first: the PR number after it always shows. */
-    .title-place:not(:has(.place-text:not(:empty), .place-pr:not(:empty))) { display: none; }
-    .title-place { display: flex; max-width: 100%; min-width: 0; white-space: nowrap; font-size: var(--text-xs); font-weight: 400; color: var(--color-muted-foreground); }
+    /* The place gives way first: the PR number after it always shows. Nothing to say, no line. */
+    .title-place:not(:has(.place-text:not(:empty), .place-project:not(:empty), .place-branch, .place-bot, .place-pr:not(:empty))) { display: none; }
+    .title-place { display: flex; align-items: center; max-width: 100%; min-width: 0; white-space: nowrap; font-size: var(--text-xs); font-weight: 400; color: var(--color-muted-foreground); }
+    .place-bot { display: inline-grid; flex: none; margin-right: 5px; }
+    /* The branch is cut before the project, which keeps its name as long as it can. */
+    /* `pre` keeps the space before the branch's dot, which a flex item would drop. */
+    .place-project, .place-branch { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: pre; }
+    .place-project { flex: 0 1 auto; }
+    .place-branch { flex: 0 1000 auto; }
     .title-menu :global(.trigger svg) { flex: none; color: var(--color-muted-foreground); }
     .crumb { min-height: var(--touch-target); }
     .crumb-sep { margin: 0; }

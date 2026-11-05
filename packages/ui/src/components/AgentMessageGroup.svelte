@@ -91,9 +91,9 @@
   }
   .discussion:hover { background: var(--color-surface-3); border-color: var(--color-edge); color: var(--color-foreground); }
   .discussion:active { transform: scale(0.99); }
-  /* What reached this agent: the user's side, in the accent, its corner toward the right. */
-  .discussion.in { align-self: flex-end; border-color: color-mix(in oklch, var(--color-accent) 55%, transparent); border-bottom-left-radius: var(--radius-lg); border-bottom-right-radius: var(--radius-sm); background: var(--color-accent-soft); }
-  .discussion.in:hover { background: color-mix(in oklch, var(--color-accent) 18%, var(--color-surface-2)); border-color: var(--color-accent); }
+  /* What reached this agent: the user's side, in the user's own prompt surface, its corner toward the right. */
+  .discussion.in { align-self: flex-end; border-color: transparent; border-bottom-left-radius: var(--radius-lg); border-bottom-right-radius: var(--radius-sm); background: var(--color-surface-3); }
+  .discussion.in:hover { background: color-mix(in oklch, var(--color-foreground) 6%, var(--color-surface-3)); border-color: var(--color-edge); }
   .discussion.resident { border-left: 2px solid var(--color-resident); }
   .kicker { flex: none; max-width: 40%; min-width: 0; display: inline-flex; align-items: center; align-self: center; gap: 5px; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; }
   .kicker :global(svg) { flex: none; }

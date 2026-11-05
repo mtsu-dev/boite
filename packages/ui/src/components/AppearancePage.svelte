@@ -136,10 +136,13 @@
     ] satisfies { id: Glass; label: string }[]).filter((option) => offered.includes(option.id))
   );
 
-  let locale = $state<LocaleSetting>(untrack(() => localeSetting()));
+  // The pick shows at once while its language loads, then the stored setting speaks again, so a
+  // language changed elsewhere (first run, another window) never leaves the old one pressed here.
+  let picking = $state<LocaleSetting | null>(null);
+  const locale = $derived(picking ?? localeSetting());
   function pickLocale(next: LocaleSetting) {
-    locale = next;
-    setLocaleSetting(next);
+    picking = next;
+    void setLocaleSetting(next).finally(() => { if (picking === next) picking = null; });
   }
 
   let glass = $state<Glass>(untrack(() => readGlass()));
@@ -212,7 +215,7 @@
         {/each}
       </div>
     </div>
-    <label class="switch-row" for="{uid}-glass">
+    <label class="switch-row glass-row" for="{uid}-glass">
       <span class="text ui-label-box"><span class="ui-label" id="{uid}-glass-name">{strings.features.glass.title}</span><InfoTip topic={strings.features.glass.title} text={strings.features.glass.hint} /></span>
       <input id="{uid}-glass" aria-labelledby="{uid}-glass-name" type="checkbox" role="switch" checked={featureOn('glass')} data-testid="setting-glass"
         onchange={event => setFeature('glass', event.currentTarget.checked)} />
@@ -455,6 +458,9 @@
     .monos button { flex: 1 1 auto; min-width: auto; padding: 0 6px; font-size: var(--text-xs); }
     .card-head .segmented { flex: 1 1 100%; }
   }
+  /* The colours block below brings its own top air and its rule: the glass row
+     keeps none under it, or a phone showed about 70 px of blank between them. */
+  :global(.settings .page) .glass-row { min-height: 50px; padding-bottom: 0; }
   /* The options in one track, the chosen one filled like a primary button. */
   .segmented {
     display: inline-flex;

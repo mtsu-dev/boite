@@ -141,18 +141,41 @@ test('the popup counts every compaction and prompt of the thread, the mid-turn o
   expect(row('context-prompts')!.textContent).toBe('Messages sent2');
 });
 
-// Round 1 drew the meter as an accent arc beside Stop, where it passed for the working spinner.
-test('the meter names its reading and never draws in the accent or moves', async ({ ready }) => {
+// Round 1 drew the meter as an accent arc beside Stop, where it passed for the working spinner;
+// round 3 still read the trackless arc as a loader. A whole faint track holds the arc from half full.
+test('the meter is a still gauge on a visible track: no arc below half, muted, then the accent from 80 percent', async ({ ready }) => {
   const { store } = await ready();
   await store.open('t-trace');
   store.openThread!.context = { tokens: 62_000, window: 100_000, at: 0 };
   view = mount(ContextControl, { target: document.body, props: { store } });
   flushSync();
   const trigger = document.querySelector<HTMLButtonElement>('[data-testid="context-trigger"]')!;
+  const meter = () => document.querySelector<HTMLElement>('[data-testid="context-meter"]')!;
+  const arc = () => trigger.querySelector('circle.fill');
   expect(trigger.title).toBe('Context 62%');
   expect(trigger.getAttribute('aria-label')).toMatch(/^Context 62%/);
+  expect(trigger.querySelector('circle.track')).not.toBeNull();
+  expect(meter().dataset.ring).toBe('muted');
+  expect(arc()!.getAttribute('stroke-dasharray')).toBe('62 100');
+  for (const [tokens, ring] of [[40_000, 'off'], [49_000, 'off'], [50_000, 'muted'], [80_000, 'accent'], [95_000, 'accent']] as const) {
+    store.openThread!.context = { tokens, window: 100_000, at: 0 };
+    flushSync();
+    expect(meter().dataset.ring).toBe(ring);
+    expect(!!arc()).toBe(ring !== 'off');
+    expect(trigger.querySelector('circle.track')).not.toBeNull();
+  }
   const { default: source } = await import('./ContextControl.svelte?raw');
   const css = source.slice(source.indexOf('<style>'));
+  expect(css.match(/\.track \{[^}]*\}/)?.[0]).toMatch(/opacity: 0\.25/);
   expect(css.match(/\.fill \{[^}]*\}/)?.[0]).not.toMatch(/accent|transition|animation/);
+  expect(css).toMatch(/data-ring='accent'\] \.fill \{ stroke: var\(--color-accent\)/);
   expect(css).toMatch(/data-level='full'\] \.fill \{ stroke: var\(--color-danger\)/);
+
+  const { setLocaleSetting } = await import('../lib/i18n.svelte');
+  await setLocaleSetting('fr');
+  try {
+    store.openThread!.context = { tokens: 62_000, window: 100_000, at: 0 };
+    flushSync();
+    expect(trigger.getAttribute('aria-label')).toMatch(/^Contexte 62 %/);
+  } finally { await setLocaleSetting('en'); }
 });

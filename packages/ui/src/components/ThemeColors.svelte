@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
-  import { Check, RotateCcw, SlidersHorizontal } from '@lucide/svelte';
+  import { Check, RotateCcw, SlidersHorizontal, Undo2 } from '@lucide/svelte';
   import { ACCENT_PRESETS, readAccent, setAccent } from '../lib/accent';
   import { accentHex, contrast, editPalette, paletteTokens, improvePaletteContrast, type ColorRole, type Palette } from '../lib/color-math';
   import { setTheme } from '../lib/theme';
@@ -70,8 +70,10 @@
   <div class="heading">
     <h3><span class="ui-label">{strings.settings.colors.title}</span><InfoTip topic={strings.settings.colors.title} text={strings.settings.colors.hint} /></h3>
     <div class="actions">
-      <button type="button" class="small ghost" disabled={!canUndo} onclick={undoEdit} data-testid="colors-undo"><span class="ui-label">{strings.settings.colors.undo}</span></button>
-      <button type="button" class="small ghost" disabled={!custom} onclick={reset} data-testid="colors-reset"><RotateCcw size={13} /><span class="ui-label">{strings.settings.colors.reset}</span></button>
+      <!-- Undo shows only while there is something to undo. Under 400 px both keep their glyph alone,
+           named by tooltip and accessible name, on the title's row. -->
+      {#if canUndo}<button type="button" class="small ghost" onclick={undoEdit} title={strings.settings.colors.undo} aria-label={strings.settings.colors.undo} data-testid="colors-undo"><Undo2 size={13} /><span class="ui-label">{strings.settings.colors.undo}</span></button>{/if}
+      <button type="button" class="small ghost" disabled={!custom} onclick={reset} title={strings.settings.colors.reset} aria-label={strings.settings.colors.reset} data-testid="colors-reset"><RotateCcw size={13} /><span class="ui-label">{strings.settings.colors.reset}</span></button>
     </div>
   </div>
   <div class="presets" role="group" aria-label={strings.settings.colors.palette}>
@@ -164,6 +166,8 @@
   @media (max-width: 720px) {
     /* Four a row on a phone, each as wide as its column. */
     .presets { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px 8px; }
+    /* A column is about 70 px: a step smaller, and a two-word name may take a second line, never an ellipsis. */
+    .name { font-size: var(--text-xs); line-height: 1.25; white-space: normal; text-overflow: clip; overflow-wrap: normal; }
     .editor, .editor.customizing { grid-template-columns: minmax(0, 1fr); gap: 16px; }
     .customize { min-height: var(--touch-target); }
     .role-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -171,5 +175,15 @@
     .swatches { grid-column: 1 / -1; gap: 16px; padding: 12px 8px; }
     .swatch { width: var(--touch-target); height: var(--touch-target); }
     .actions button { min-height: var(--touch-target); }
+  }
+  @media (max-width: 400px) {
+    .heading { flex-wrap: nowrap; }
+    .actions { flex: none; }
+    .actions button { justify-content: center; width: 28px; height: 28px; min-height: 28px; padding: 0; }
+    .actions .ui-label { display: none; }
+  }
+  /* At 360 px four columns left about 66 px a name: three let "Catppuccin" and "Tokyo Night" read whole. */
+  @media (max-width: 380px) {
+    .presets { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   }
 </style>

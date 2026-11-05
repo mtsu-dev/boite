@@ -64,6 +64,23 @@ test('account chips never reveal the login email in their tooltip', () => {
   expect(chips.map(chip => chip.textContent?.trim())).toEqual(['Work', 'Personal']);
 });
 
+test('a seat that cannot be taken says why in a line a phone shows, not only in its tooltip', async () => {
+  const seats: Account[] = [
+    { id: 'personal', providerId: 'claude', label: 'Personal', identity: null, isolationDir: '/accounts/personal', status: 'ok', createdAt: 0 },
+    { id: 'work', providerId: 'claude', label: 'Work', identity: null, isolationDir: '/accounts/work', status: 'unauthenticated', createdAt: 0 }
+  ] as Account[];
+  const shown = { id: 'claude', name: 'Claude', available: true } as never;
+  running = mount(AccountSeats, { target: document.body, props: { shown, seats, shownAccountId: 'personal', choice: null, locked: false, onpick: () => {} } });
+  flushSync();
+  const work = document.querySelector<HTMLButtonElement>('[data-instance="claude::work"]')!;
+  expect(work.disabled).toBe(true);
+  expect(work.title).toBe('Work, not signed in');
+  expect(document.querySelector('[data-testid=seat-reasons]')!.textContent).toBe('Work: not signed in');
+  const { default: source } = await import('./AccountSeats.svelte?raw');
+  expect(source).toMatch(/\.reasons \{ display: none; \}/);
+  expect(source.slice(source.indexOf('@media (max-width: 720px)'))).toMatch(/\.reasons \{ display: block;/);
+});
+
 test('a column of hundreds of models draws its first rows until asked for all', async () => {
   await mountAt('recent');
 
@@ -359,6 +376,50 @@ test('a provider with no named model names the provider and asks for a model, th
   expect(trigger().querySelector('.pick-model')!.textContent).toBe(' · Pick a model');
   expect(trigger().textContent).not.toContain('Provider and model');
   expect(trigger().getAttribute('aria-label')).toBe('Provider and model');
+});
+
+// Round 3's phone chip read "Claude · Pick a" at 390 px: the second line of whole words hid the rest.
+test('a phone asks for a model in one whole phrase: the logo naming the provider until 380 px, no chevron', async () => {
+  const restore = phoneWidth();
+  try {
+    const client = await mountAt('recent');
+    // OpenCode's list may name its default once read: this thread keeps no named model however late that lands.
+    const real = store.modelOf.bind(store);
+    vi.spyOn(store, 'modelOf').mockImplementation((choice) => choice?.providerId === 'opencode' ? { id: 'default', name: 'Default' } as ModelInfo : real(choice));
+    const [project] = await client.call('projects.list', {});
+    const thread = await client.call('threads.create', { projectId: project!.id, providerId: 'opencode', accountId: 'a-opencode', model: 'default', title: 'No model yet' });
+    await store.open(thread.id);
+    const trigger = () => document.querySelector<HTMLButtonElement>('[data-testid=composer-picker]')!;
+    await waitFor(() => trigger()?.querySelector('[data-testid=composer-pick-model]') !== null);
+    expect(trigger().querySelector('.label')!.textContent).toBe('Pick a model');
+    expect(trigger().querySelector('.model-name')).toBeNull();
+    expect(trigger().classList.contains('asking')).toBe(true);
+    expect([...trigger().querySelectorAll('svg')].every(svg => svg.classList.contains('logo'))).toBe(true);
+    const { default: picker } = await import('./ModelPicker.svelte?raw');
+    expect(picker).toMatch(/@media \(max-width: 380px\) \{\s*\.trigger\.asking > :global\(\.logo\)/);
+    const { setLocaleSetting } = await import('../lib/i18n.svelte');
+    await setLocaleSetting('fr');
+    try {
+      await waitFor(() => trigger()?.querySelector('.label')?.textContent === 'Choisir un modèle');
+    } finally { await setLocaleSetting('en'); }
+  } finally {
+    restore();
+  }
+});
+
+test('a narrow chip gives up the account first, then the provider, and never shrinks "Pick a model"', async () => {
+  const { default: picker } = await import('./ModelPicker.svelte?raw');
+  const shrink = (selector: string) => {
+    const rule = picker.match(new RegExp(`\\.trigger ${selector.replace(/\./g, '\\.')} \\{([^}]*)\\}`))?.[1] ?? '';
+    const flex = rule.match(/flex: (none|\d+ (\d+) auto)/);
+    const weight = rule.match(/flex-shrink: (\d+)/)?.[1];
+    return weight ? Number(weight) : flex?.[1] === 'none' ? 0 : Number(flex?.[2]);
+  };
+  expect(shrink('.account-name')).toBeGreaterThan(shrink('.model-name.provider-name'));
+  expect(shrink('.model-name.provider-name')).toBeGreaterThan(shrink('.model-name'));
+  expect(shrink('.pick-model')).toBe(0);
+  // Each part keeps the space after its dot.
+  expect(picker).toMatch(/\.trigger \.label > span \{[^}]*white-space: pre;/);
 });
 
 test('a phone, which leaves provider administration to the desktop, offers no way to a Providers page it lacks', async () => {

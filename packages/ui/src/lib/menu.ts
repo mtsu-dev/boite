@@ -27,6 +27,8 @@ export interface MenuItem {
   danger?: boolean;
   disabled?: boolean;
   separator?: boolean;
+  /** A value to copy: it reads whole on as many lines as it needs, a copy glyph closes the row and the menu stays open to say it was copied. */
+  copy?: boolean;
   /** Opens another list in the same menu: ArrowRight picks it, as Enter does. */
   submenu?: boolean;
   /** Goes back to the list a submenu came from: ArrowLeft picks it from anywhere in that submenu. */

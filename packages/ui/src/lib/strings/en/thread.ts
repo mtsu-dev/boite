@@ -53,6 +53,12 @@ export const strings = {
     panel: 'Panel',
     panelHint: 'Browser, files and tools beside this conversation',
     panelMenu: 'Browser, files and tools',
+    /** A phone's title menu reads where the thread works in full, one tap copies each value. */
+    placeProject: 'Project',
+    placeMachine: 'Machine',
+    placeBranch: 'Branch',
+    placePullRequest: 'Pull request',
+    copyPlace: 'Copy the {kind}',
     terminalHint: "Terminal in this thread's folder",
     cwd: 'Working directory',
     model: 'Model',

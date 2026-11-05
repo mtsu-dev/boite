@@ -8,10 +8,12 @@
    * The thread's pull request: its badge, a link, in the title bar's pill; as
    * `text`, its number alone after a phone title's subtitle, which sits inside
    * the title's menu button and may not hold a link. `separated` puts the
-   * subtitle's dot before it.
+   * subtitle's dot before it. `current` hands the pull request to the
+   * phone's title menu, which reads its address in full.
    */
-  let { owner, thread, text = false, separated = false }: { owner: Store; thread: ThreadSummary; text?: boolean; separated?: boolean } = $props();
+  let { owner, thread, text = false, separated = false, current = $bindable(null) }: { owner: Store; thread: ThreadSummary; text?: boolean; separated?: boolean; current?: ThreadSummary['pullRequest'] } = $props();
   const pr = trackThreadPullRequest(() => ({ owner, thread }));
+  $effect(() => { current = pr.value ?? null; });
   const label = $derived(pr.value ? fill(pr.value.state === 'MERGED' ? strings.sidebar.prMerged : pr.value.state === 'CLOSED' ? strings.sidebar.prClosed : strings.sidebar.prOpen, { number: String(pr.value.number) }) : '');
 </script>
 

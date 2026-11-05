@@ -4,6 +4,9 @@ import { FakeClient } from '../lib/fake-client';
 import { Store } from '../lib/store.svelte';
 import ThreadHeader from './ThreadHeader.svelte';
 import headerSource from './ThreadHeader.svelte?raw';
+import { store as primary } from '../lib/store.svelte';
+import { workspace } from '../lib/workspace.svelte';
+import { phoneWidth } from '../test/phone-width';
 
 let mounted: ReturnType<typeof mount> | undefined;
 let client: FakeClient;
@@ -77,4 +80,70 @@ test('on a phone the title has its own 17 px line and the place sits under it, n
   expect(phone).toMatch(/\.title-menu \{[^}]*flex: 1 1 auto/);
   expect(phone).toMatch(/\.title-text \{[^}]*font-size: 17px;[^}]*font-weight: 600/);
   expect(phone).toMatch(/\.title-lines \{[^}]*flex-direction: column/);
+});
+
+// Round 3's phone subtitle read "orbit · This PC · or... · #128": the connected machine took the branch's room.
+test('a phone subtitle reads project · branch, naming the machine only when it is not the connected one', async () => {
+  const restore = phoneWidth();
+  const other = new FakeClient({ delayMs: 0 });
+  client = new FakeClient({ delayMs: 0 });
+  const remote = new Store();
+  try {
+    primary.attach(client); await primary.connect();
+    remote.attach(other); await remote.connect();
+    workspace.machines = [{ id: 'local', label: 'This PC', store: primary }, { id: 'home', label: 'Workstation', store: remote }];
+    const place = () => document.querySelector('[data-testid=thread-place]')!.textContent;
+    for (const [owner, machine] of [[primary, null], [remote, 'Workstation']] as const) {
+      await owner.open('t-trace');
+      owner.openThread!.branch = 'feature/import';
+      mounted = mount(ThreadHeader, { target: document.body, props: { store: owner } });
+      await settle();
+      const project = document.querySelector('[data-testid=thread-place] .place-project')!.textContent!;
+      expect(project).toBe(machine ? `${project.split(' · ')[0]} · ${machine}` : project.split(' · ')[0]);
+      expect(place()).not.toContain('This PC');
+      expect(document.querySelector('[data-testid=thread-place] .place-branch')!.textContent).toBe(' · feature/import');
+      await unmount(mounted); mounted = undefined;
+    }
+  } finally {
+    restore(); workspace.machines = []; primary.detach(); remote.detach(); other.close();
+  }
+});
+
+test('a phone title menu reads the project, machine and full branch, and copies each in one tap', async () => {
+  const restore = phoneWidth();
+  const writeText = vi.fn(async () => {});
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+  client = new FakeClient({ delayMs: 0 });
+  try {
+    primary.attach(client); await primary.connect();
+    workspace.machines = [{ id: 'local', label: 'This PC', store: primary }];
+    await primary.open('t-trace');
+    const branch = 'atlas/a-branch-name-far-too-long-for-the-subtitle-of-a-phone';
+    primary.openThread!.branch = branch;
+    mounted = mount(ThreadHeader, { target: document.body, props: { store: primary } });
+    await settle();
+    document.querySelector<HTMLButtonElement>('[data-testid=thread-menu-trigger]')!.click();
+    await settle();
+    const row = (id: string) => document.querySelector<HTMLButtonElement>(`[data-testid=thread-menu-trigger-menu] [data-value=${id}]`);
+    expect(row('copy-project')).not.toBeNull();
+    // The connected machine, which the subtitle leaves out, reads here.
+    expect(row('copy-machine')!.querySelector('.label')!.textContent!.trim()).toBe('This PC');
+    expect(row('copy-branch')!.querySelector('.label')!.textContent!.trim()).toBe(branch);
+    expect(row('copy-branch')!.querySelector('.hint')!.textContent).toBe('Branch');
+    row('copy-branch')!.click();
+    await settle();
+    expect(writeText).toHaveBeenCalledWith(branch);
+    // The menu stays open to say so.
+    expect(row('copy-branch')!.querySelector('.hint')!.textContent).toBe('Copied');
+  } finally {
+    restore(); workspace.machines = []; primary.detach();
+    delete (navigator as { clipboard?: unknown }).clipboard;
+  }
+});
+
+test('on a phone the branch gives way before the project, and the header row holds no bot avatar', () => {
+  const phone = headerSource.slice(headerSource.indexOf('@media (max-width: 720px)'));
+  expect(phone).toMatch(/\.place-project \{ flex: 0 1 auto; \}/);
+  expect(phone).toMatch(/\.place-branch \{ flex: 0 1000 auto; \}/);
+  expect(phone).toMatch(/\.context-pill \{ display: none; \}/);
 });

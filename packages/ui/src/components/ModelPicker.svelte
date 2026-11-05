@@ -187,7 +187,8 @@
   // The effort has a chip of its own in the composer, so this one names the
   // model and the account only: one place says the level. A phone drops the account.
   // A provider with no named model yet reads "Claude · Pick a model", so the
-  // chip says whose list it opens and what is left to choose.
+  // chip says whose list it opens and what is left to choose; a phone, short
+  // of room, keeps the logo and "Pick a model".
   let named = $derived.by(() => {
     if (!choice || !provider) return null;
     const model = store.modelOf(choice);
@@ -328,6 +329,7 @@
   <button
     type="button"
     class="chip trigger"
+    class:asking={unnamed && phoneWidth.current}
     aria-haspopup="menu"
     aria-expanded={popover.open}
     aria-label={strings.composer.picker}
@@ -342,8 +344,16 @@
     {:else}
       <Sparkles size={14} strokeWidth={1.75} />
     {/if}
-    <span class="label ui-label"><span class="model-name">{label}</span>{#if unnamed}<span class="pick-model" data-testid="composer-pick-model">{` · ${strings.composer.pickModel}`}</span>{/if}{#if accountLabel}<span class="account-name">{` · ${accountLabel}`}</span>{/if}</span>
-    <ChevronDown size={12} strokeWidth={2} />
+    <!-- A phone's chip has room for one phrase: with no model yet it asks for one, whole, after the provider's logo
+         and without the chevron; under 380 px the logo goes too, and the placeholder above still names the provider.
+         Under 380 px every chip drops its chevron, so a model's name keeps its version.
+         Elsewhere a narrow chip gives up the account first, then the provider's name; the model's name shrinks last. -->
+    {#if unnamed && phoneWidth.current}
+      <span class="label ui-label"><span class="pick-model alone" data-testid="composer-pick-model">{strings.composer.pickModel}</span></span>
+    {:else}
+      <span class="label ui-label"><span class="model-name" class:provider-name={unnamed}>{label}</span>{#if unnamed}<span class="pick-model" data-testid="composer-pick-model">{` · ${strings.composer.pickModel}`}</span>{/if}{#if accountLabel}<span class="account-name">{` · ${accountLabel}`}</span>{/if}</span>
+    {/if}
+    {#if !(unnamed && phoneWidth.current)}<ChevronDown size={12} strokeWidth={2} class="chevron" />{/if}
   </button>
   {/if}
 
@@ -559,13 +569,36 @@
     color: var(--color-foreground);
   }
 
+  /* Each part ellipsizes on its own and the shrink weights set who goes first:
+     the account, then the provider's name, then the model's name. "Pick a
+     model" never shrinks. `pre` keeps the space after each dot, which a flex
+     item would otherwise drop, and each part trims to the cap height as the
+     one-line label did. */
   .trigger .label {
+    display: flex;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .trigger .label > span {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
+    white-space: pre;
+    text-box: trim-both cap alphabetic;
+    /* As `.ui-label`: the clip keeps half an em around the trimmed box for accents and descenders. */
+    padding-block: 0.5em;
+    margin-block: -0.5em;
   }
+  .trigger .model-name { flex: 0 1 auto; }
+  .trigger .model-name.provider-name { flex-shrink: 100; }
+  .trigger .account-name { flex: 0 1000 auto; }
 
-  .trigger .pick-model { color: var(--color-muted-foreground); }
+  .trigger .pick-model { flex: none; color: var(--color-muted-foreground); }
+  .trigger .pick-model.alone { flex: 0 1 auto; color: var(--color-foreground); }
+  @media (max-width: 380px) {
+    .trigger.asking > :global(.logo), .trigger.asking > :global(.initial) { display: none; }
+    .trigger > :global(.chevron) { display: none; }
+  }
 
   .popover {
     position: fixed;
@@ -774,6 +807,10 @@
       justify-content: flex-start;
       border-right: none;
       border-bottom: 1px solid var(--color-border);
+      /* Tiles as wide as their names may run past the end: it fades, and the
+         padding lets the last tile scroll clear of the fade. */
+      padding-right: 20px;
+      mask-image: linear-gradient(to right, black calc(100% - 20px), transparent);
     }
 
     /* The rail is the finger's first stop on a phone, so its tiles (ProviderTiles)

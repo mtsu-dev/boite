@@ -84,6 +84,8 @@ export const strings = {
     compactNoSession: 'Send a message before compacting',
     newBadge: 'new',
     lockedHint: 'A thread keeps its provider and account',
+    /** Under a phone's account seats: why one cannot be taken. */
+    seatReason: '{account}: {reason}',
     mode: 'Permissions',
     model: 'Model',
     unavailable: 'not installed',

@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Account, ProviderSummary } from '@boite/contracts';
-  import { strings } from '../lib/strings';
+  import { fill, strings } from '../lib/strings';
   import type { Choice } from '../lib/store.svelte';
 
   /**
@@ -50,6 +50,18 @@
     return seatHeld(seat) || !(shown?.available ?? false) || (seat.status === 'unauthenticated' && seat.id !== shownAccountId);
   }
 
+  /**
+   * Why the greyed seats cannot be taken, as the line a phone prints under the
+   * control: a phone shows no tooltip, and a disabled button takes no tap.
+   */
+  let offReasons = $derived.by((): string[] => {
+    if (seats.some(seatHeld)) return [strings.composer.lockedHint];
+    return seats.flatMap(seat => {
+      const reason = seatOff(seat) ? seatReason(seat) : null;
+      return reason ? [fill(strings.composer.seatReason, { account: seat.label, reason })] : [];
+    });
+  });
+
   function pickSeat(seat: Account) {
     if (!shown || seatOff(seat)) return;
     if (choice?.providerId === shown.id && choice.accountId === seat.id) return;
@@ -74,6 +86,7 @@
       </button>
     {/each}
   </div>
+  {#if offReasons.length}<p class="reasons" data-testid="seat-reasons">{offReasons.join(' · ')}</p>{/if}
 {/if}
 
 <style>
@@ -125,7 +138,11 @@
     box-shadow: var(--shadow-thumb);
   }
 
+  /* The desktop names the reason in each seat's tooltip. */
+  .reasons { display: none; }
+
   @media (max-width: 720px) {
     .seat { height: var(--touch-target); min-height: var(--touch-target); }
+    .reasons { display: block; margin: 0; font-size: var(--text-xs); line-height: 1.35; color: var(--color-muted-foreground); }
   }
 </style>

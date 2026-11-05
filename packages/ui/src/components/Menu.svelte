@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick, type Snippet } from 'svelte';
-  import { Check, Settings } from '@lucide/svelte';
+  import { Check, Copy, Settings } from '@lucide/svelte';
   import { Closing } from '../lib/closing.svelte';
   import { floating } from '../lib/floating';
   import type { MenuItem } from '../lib/menu';
@@ -55,7 +55,7 @@
 
   function pick(item: MenuItem) {
     if (disabled || item.disabled) return;
-    if (!switches || item.checked === undefined) popover.hide();
+    if ((!switches || item.checked === undefined) && !item.copy) popover.hide();
     onpick(item.id);
   }
 
@@ -152,6 +152,7 @@
           class:hide-mark={item.hideActiveMark}
           class:checkable={item.checked !== undefined}
           class:radio={item.radio}
+          class:copy={item.copy}
           role={item.checked === undefined ? 'menuitem' : item.radio ? 'menuitemradio' : 'menuitemcheckbox'}
           aria-checked={item.checked}
           disabled={item.disabled}
@@ -172,7 +173,8 @@
           {/if}
           {#if switches && item.checked !== undefined && !item.radio}
             <span class="switch" class:on={item.checked} aria-hidden="true"></span>
-          {:else if item.checked}<span class="check"><Check size={14} aria-hidden="true" /></span>{/if}
+          {:else if item.checked}<span class="check"><Check size={14} aria-hidden="true" /></span>
+          {:else if item.copy}<span class="copy-mark" aria-hidden="true"><Copy size={14} strokeWidth={1.75} /></span>{/if}
         </button>
         {/if}
       {/each}
@@ -189,6 +191,12 @@
   .item.checkable { display: grid; grid-template-columns: minmax(0, 1fr) 14px; column-gap: 8px; }
   .checkable .hint { grid-column: 1; grid-row: 2; }
   .check { display: flex; grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+  /* A copy row: glyph and value on the first line, the kind under it, the copy mark at the end. A branch has no spaces, so it breaks anywhere. */
+  .item.copy { display: grid; grid-template-columns: minmax(0, 1fr) 14px; column-gap: 10px; row-gap: 4px; }
+  .copy .label { align-items: flex-start; font-weight: 400; overflow-wrap: anywhere; }
+  .copy .label .ui-label { min-width: 0; }
+  .copy .hint { grid-column: 1; grid-row: 2; padding-left: 24px; font-size: var(--text-xs); }
+  .copy-mark { display: flex; grid-column: 2; grid-row: 1 / span 2; align-self: center; color: var(--color-muted-foreground); }
   .heading { padding: 8px 10px 10px; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 500; }
   .popover.switches { width: min(300px, calc(100vw - 24px)); padding: 6px; border-radius: var(--radius-lg); }
   .switches .item.checkable { grid-template-columns: minmax(0, 1fr) 36px; min-height: 56px; padding: 9px 10px; column-gap: 12px; }
