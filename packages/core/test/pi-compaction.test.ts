@@ -50,17 +50,17 @@ async function extension(ratios: Partial<typeof BACKGROUND_COMPACT> = {}) {
   };
   const emit = (name: string, event: Record<string, unknown>) => handlers.get(name)?.(event, ctx);
   /** One pi turn: its assistant entry and its tool result, then `turn_end` with the context it leaves. */
-  const turn = async (id: string, tokens: number, entries: unknown[] = []): Promise<unknown> => {
+  const turn = async (id: string, tokens: number, entries: unknown[] = [], extra: Record<string, unknown> = {}): Promise<unknown> => {
     session.entries.push({ id, type: 'message', message: { role: 'assistant', content: [{ type: 'toolCall', name: 'read', arguments: { path: 'src/a.ts' } }] } });
     session.entries.push({ id: `${id}-result`, type: 'message', message: { role: 'toolResult', content: [{ type: 'text', text: 'ok' }] } });
     session.tokens = tokens;
-    const result = await emit('turn_end', { type: 'turn_end', messageEntryId: id, entries });
+    const result = await emit('turn_end', { type: 'turn_end', messageEntryId: id, entries, outcome: 'completed', ...extra });
     // A copy reads its credentials before it calls `compact`.
     await Bun.sleep(0);
     return result;
   };
   session.entries.push({ id: 'u1', type: 'message', message: { role: 'user', content: 'Refactor the parser' } });
-  return { session, copies, emit, turn };
+  return { session, copies, ctx, emit, turn };
 }
 
 const swap = (before: unknown[] = []) => ({ entries: [...before, { type: 'compaction', summary: 'earlier work', firstKeptEntryId: 'a2', details: { ...SUMMARY.details, boiteBackground: true }, usage: SUMMARY.usage }] });
@@ -156,4 +156,63 @@ test('a copy still running after the timeout is stopped, and the limit goes on w
   expect(await pi.turn('a3', LIMIT)).toBeUndefined();
   expect(Date.now() - started).toBeLessThan(2_000);
   expect(pi.copies[0]!.signal.aborted).toBe(true);
+});
+
+/** A pi operation's abort signal that counts the listeners still on it. */
+function operation() {
+  const controller = new AbortController();
+  const listeners = new Set<unknown>();
+  const signal = controller.signal;
+  const add = signal.addEventListener.bind(signal), remove = signal.removeEventListener.bind(signal);
+  signal.addEventListener = ((...args: Parameters<typeof add>) => {
+    if (args[0] === 'abort') listeners.add(args[1]);
+    add(...args);
+  }) as typeof signal.addEventListener;
+  signal.removeEventListener = ((...args: Parameters<typeof remove>) => {
+    if (args[0] === 'abort') listeners.delete(args[1]);
+    remove(...args);
+  }) as typeof signal.removeEventListener;
+  return { signal, stop: () => controller.abort(), listeners };
+}
+
+test('a Stop in a warm session cancels the copy in flight, appends nothing and leaves no listener', async () => {
+  const pi = await extension();
+  const run = operation();
+  pi.ctx['signal'] = run.signal;
+  await pi.turn('a1', 70_000);
+  await pi.turn('a2', 90_000);
+  expect(pi.copies).toHaveLength(1);
+  const copy = pi.copies[0]!;
+  expect(copy.signal.aborted).toBe(false);
+  // Stop: pi aborts the operation, ends the turn aborted and settles; the process stays warm.
+  run.stop();
+  expect(await pi.turn('a3', LIMIT, [], { outcome: 'aborted' })).toBeUndefined();
+  await pi.emit('agent_settled', { type: 'agent_settled', aborted: true });
+  expect(copy.signal.aborted).toBe(true);
+  expect(run.listeners.size).toBe(0);
+  // The summary the provider still sends is thrown away: the next run at the limit appends nothing.
+  copy.resolve(SUMMARY);
+  await Bun.sleep(0);
+  const next = operation();
+  pi.ctx['signal'] = next.signal;
+  expect(await pi.turn('a4', LIMIT)).toBeUndefined();
+  expect(pi.copies).toHaveLength(1);
+});
+
+test('a copy that settles leaves no listener on the operation, and an aborted turn end is no boundary', async () => {
+  const pi = await extension();
+  const run = operation();
+  pi.ctx['signal'] = run.signal;
+  await pi.turn('a1', 70_000);
+  await pi.turn('a2', 90_000);
+  expect(run.listeners.size).toBe(1);
+  pi.copies[0]!.resolve(SUMMARY);
+  await Bun.sleep(0);
+  expect(run.listeners.size).toBe(0);
+  // A turn end of an aborted run neither takes the ready copy nor starts one.
+  expect(await pi.turn('a3', LIMIT, [], { outcome: 'aborted' })).toBeUndefined();
+  const next = operation();
+  pi.ctx['signal'] = next.signal;
+  expect(await pi.turn('a4', LIMIT)).toBeUndefined();
+  expect(pi.copies).toHaveLength(1);
 });

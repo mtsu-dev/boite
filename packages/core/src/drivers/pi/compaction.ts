@@ -75,7 +75,8 @@ export default function boiteCompaction(pi) {
  * first `turn_end` that reaches the limit the copy is awaited and appended as
  * a compaction entry that keeps the entries from the anchor on, so tool calls
  * and their results stay whole. pi's own threshold compaction takes a ready
- * copy instead of summarizing; an overflow is left to pi.
+ * copy instead of summarizing; an overflow is left to pi. A Stop, the
+ * operation's abort or an aborted settlement, cancels the copy.
  */
 const RUN_SOURCE = `export const MARKER = '${BACKGROUND_MARKER}';
 
@@ -92,8 +93,21 @@ export function install(pi, setting, deps) {
     if (gone === null) return;
     copy = null;
     clearTimeout(gone.timer);
+    gone.unlink();
     gone.controller.abort();
     gone.settle();
+  }
+  // A Stop aborts the operation that runs: the copy goes with it. The listener
+  // follows the current operation and leaves once the copy settles.
+  function link(entry, signal) {
+    if (signal === entry.signal) return;
+    entry.unlink();
+    entry.signal = signal;
+    if (signal === undefined) return;
+    const stop = () => { if (copy === entry) drop(); };
+    signal.addEventListener('abort', stop, { once: true });
+    entry.unlink = () => { signal.removeEventListener('abort', stop); entry.unlink = () => {}; entry.signal = undefined; };
+    if (signal.aborted) stop();
   }
   function fail(entry) {
     if (copy !== entry) return;
@@ -104,15 +118,17 @@ export function install(pi, setting, deps) {
     const model = ctx.model;
     const preparation = model ? prepareUpTo(ctx.sessionManager.buildSessionProjection(), anchor, tokens, deps.settings) : undefined;
     if (preparation === undefined) return;
-    const entry = { anchor, tokens, controller: new AbortController(), result: null, timer: null, settle: () => {} };
+    const entry = { anchor, tokens, controller: new AbortController(), result: null, timer: null, settle: () => {}, signal: undefined, unlink: () => {} };
     entry.done = new Promise((resolve) => { entry.settle = resolve; });
     copy = entry;
     // A copy still running after the timeout is stopped, and counts as failed.
     entry.timer = setTimeout(() => fail(entry), ratios.timeoutMs);
     entry.timer.unref?.();
+    link(entry, ctx.signal);
     summarize(ctx, model, preparation, entry.controller.signal).then((result) => {
       if (copy !== entry) return;
       clearTimeout(entry.timer);
+      entry.unlink();
       entry.result = result;
       entry.settle();
     }, () => fail(entry));
@@ -141,7 +157,13 @@ export function install(pi, setting, deps) {
 
   pi.on('turn_end', async (event, ctx) => {
     const tokens = ctx.getContextUsage()?.tokens;
+    // The end of an aborted turn is no boundary, and its copy is dropped.
+    if (event.outcome === 'aborted' || ctx.signal?.aborted) {
+      drop();
+      return undefined;
+    }
     if (typeof tokens !== 'number') return undefined;
+    if (copy !== null && copy.result === null) link(copy, ctx.signal);
     if (tokens >= limit) {
       if (copy !== null) await copy.done;
       const taken = take(ctx, tokens);
@@ -165,6 +187,7 @@ export function install(pi, setting, deps) {
   // Any compaction starts a new context: a copy of the one before is of nothing.
   pi.on('session_compact', () => { drop(); failures = 0; });
   pi.on('session_shutdown', () => { drop(); });
+  pi.on('agent_settled', (event) => { if (event.aborted) drop(); });
 }
 
 // What pi's prepareCompaction makes, cut at the anchor: the messages since the
