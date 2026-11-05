@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { compactFocus, openWithCompaction } from '../src/drivers/claude/compaction.ts';
 import { STEP_HOOK_TIMEOUT_S } from '../src/drivers/claude/step.ts';
+import { ClaudeTurn } from '../src/drivers/claude/turn.ts';
+import type { TurnContext } from '../src/drivers/types.ts';
 
 const COMPACT_FOCUS = 'Keep requests, corrections, decisions, identifiers and the next step.';
 
@@ -510,3 +512,29 @@ test.skipIf(process.env['BOITE_TEST_CLAUDE_CONTROLS'] !== '1')('the installed CL
     await server.stop(true);
   }
 }, 30_000);
+
+test('a boundary wait that timed out leaves no waiter for the next entry to wake', async () => {
+  const turn = new ClaudeTurn({ log: () => undefined } as unknown as TurnContext);
+  const timers: unknown[] = [];
+  const cleared: unknown[] = [];
+  let polling = false;
+  const realSet = globalThis.setTimeout;
+  const realClear = globalThis.clearTimeout;
+  globalThis.setTimeout = ((...args: Parameters<typeof setTimeout>) => { const timer = realSet(...args); if (polling) timers.push(timer); return timer; }) as typeof setTimeout;
+  globalThis.clearTimeout = ((timer: Parameters<typeof clearTimeout>[0]) => { cleared.push(timer); realClear(timer); }) as typeof clearTimeout;
+  try {
+    for (let poll = 0; poll < 3; poll += 1) {
+      polling = true;
+      const wait = turn.nextEntry(0);
+      polling = false;
+      await wait;
+    }
+    turn.handle(sdk({ type: 'user', uuid: 'entry-late', session_id: 'sess', parent_tool_use_id: null, message: { role: 'user', content: [] } }));
+  } finally {
+    globalThis.setTimeout = realSet;
+    globalThis.clearTimeout = realClear;
+  }
+  expect(timers).toHaveLength(3);
+  // A wait that ended on its timer is gone: the entry that came after wakes nothing of it.
+  expect(cleared.filter(timer => timers.includes(timer))).toEqual([]);
+});

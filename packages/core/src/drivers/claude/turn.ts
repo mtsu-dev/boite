@@ -207,8 +207,10 @@ export class ClaudeTurn {
   /** Resolves at the next chain entry the turn reads, or after `ms`. */
   nextEntry(ms: number): Promise<void> {
     return new Promise((resolve) => {
-      const timer = setTimeout(resolve, Math.max(0, ms));
-      this.#entryWaiters.push(() => { clearTimeout(timer); resolve(); });
+      const wake = (): void => { clearTimeout(timer); resolve(); };
+      // A wait that ends on its timer leaves the queue, so no later entry wakes it.
+      const timer = setTimeout(() => { this.#entryWaiters = this.#entryWaiters.filter(waiter => waiter !== wake); resolve(); }, Math.max(0, ms));
+      this.#entryWaiters.push(wake);
     });
   }
 
