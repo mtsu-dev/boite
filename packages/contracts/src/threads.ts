@@ -229,11 +229,12 @@ export interface ThreadSummary {
    */
   runningSince?: Timestamp | null;
   /**
-   * When the user's current request started: the start of the last turn the
-   * user opened, kept through the turns Boite opened after it to carry on
-   * (`continuesRequest`). What a row counts from while the agent works or
-   * monitors, so a pause to watch CI does not reset it. Null when no turn runs
-   * and nothing runs in the background; missing on older cores.
+   * When the current request started: the start of the last turn that opened
+   * one, the user's or another agent's on a thread at rest, kept through the
+   * turns Boite opened after it to carry on (`continuesRequest`). What a row
+   * counts from while the agent works or monitors, so a pause to watch CI does
+   * not reset it. Null when no turn runs and nothing runs in the background;
+   * missing on older cores.
    */
   requestSince?: Timestamp | null;
   /** In memory only, cleared at turn end/restart. Missing on older cores. */

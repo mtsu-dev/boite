@@ -33,7 +33,9 @@ export type TurnOrigin =
   | Keyed & { kind: 'resume'; reason: ResumeReason }
   /** `owner`: a team letter with the owner's post among its triggers, a wake no bot pause or budget holds (`docs/teams.md`). */
   | Keyed & { kind: 'coordination'; owner?: true }
-  | Keyed & { kind: 'delegation' | 'goal-check' | 'background' | 'pull-request' | 'routine' | 'event' };
+  /** `followUp`: whoever delegated this thread's work writes to it again, as opposed to its own agents reporting or Boite running a step. */
+  | Keyed & { kind: 'delegation'; followUp?: true }
+  | Keyed & { kind: 'goal-check' | 'background' | 'pull-request' | 'routine' | 'event' };
 
 export interface StartTurnOptions {
   /** Refuses the start when the thread's agent selection changed since the client read it. */
@@ -62,6 +64,11 @@ export function originOperation(origin: TurnOrigin): TurnOperation | undefined {
 /** Boite speaks instead of the user: an automatic compaction and every cache ping. */
 export function originAutomatic(origin: TurnOrigin): boolean {
   return (origin.kind === 'compact' && origin.automatic) || origin.kind === 'keepalive';
+}
+
+/** Another agent writes to this thread of its own accord: it opens a request when it finds the thread at rest (`threadAtRest`). */
+export function originAgentWrites(origin: TurnOrigin): boolean {
+  return origin.kind === 'coordination' || (origin.kind === 'delegation' && origin.followUp === true);
 }
 
 /**

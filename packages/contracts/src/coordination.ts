@@ -86,6 +86,12 @@ export interface AgentLetter {
    */
   checkpoint?: boolean;
   /**
+   * Boite itself sends a delegated agent back to the task an update cut short:
+   * its turn carries the request on, where a parent's own message to an agent at
+   * rest opens one (`TurnExecution.opensRequest`). Missing otherwise and on older cores.
+   */
+  carriesOn?: true;
+  /**
    * A team letter (`docs/teams.md`): the posts of one team that woke this
    * bot, by seq. Later posts join it while it waits; `owner` when one of them
    * is the owner's, so its wake is the owner's message and no bot budget
