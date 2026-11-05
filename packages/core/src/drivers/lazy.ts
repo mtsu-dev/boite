@@ -1,5 +1,5 @@
 import type { AccountId, ModelInfo, Protocol, ProviderDescriptor, ProviderId, ThreadId } from '@boite/contracts';
-import type { Driver, ProbeContext, ProbeFilter, TurnHandle, TurnResult } from './types.ts';
+import type { Driver, DriverCapabilities, ProbeContext, ProbeFilter, TurnHandle, TurnResult } from './types.ts';
 
 interface PendingLoad {
   threadId?: ThreadId;
@@ -11,7 +11,7 @@ interface PendingLoad {
 export function lazyDriver(
   protocol: Protocol,
   load: () => Promise<Driver>,
-  options: { titles?: boolean; prepare?: boolean; sideQuestion?: boolean; forkSession?: boolean } = {},
+  options: { titles?: boolean; prepare?: boolean; sideQuestion?: boolean; forkSession?: boolean; capabilities?: DriverCapabilities } = {},
 ): Driver {
   let loaded: Driver | null = null;
   let loading: Promise<Driver> | null = null;
@@ -69,6 +69,7 @@ export function lazyDriver(
   return {
     protocol,
     // Capability checks run before the first module import.
+    ...(options.capabilities ? { capabilities: options.capabilities } : {}),
     ...(options.forkSession ? {
       forkSession: (ctx, checkpoint) => defer({ threadId: ctx.thread.id }, driver => {
         if (!driver.forkSession) throw new Error(`${protocol} has no native fork implementation`);
