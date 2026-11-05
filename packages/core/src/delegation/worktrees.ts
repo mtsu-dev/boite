@@ -70,6 +70,7 @@ export class ChildWorktrees {
     if (!record) return null;
     const settling = this.#settling.get(threadId);
     if (!settling && (record.state === 'active' || record.state === 'kept') && existsSync(record.path)) {
+      this.#markReused(threadId, record.path);
       if (record.state === 'kept') this.#mark(threadId, { ...record, state: 'active' });
       return null;
     }
@@ -77,6 +78,13 @@ export class ChildWorktrees {
       if (settling) await settling;
       await this.#make(threadId, assertActive);
     })();
+  }
+
+  /** A checkout kept from an earlier turn, perhaps by an older core, gets its project's .boite marker. */
+  #markReused(threadId: ThreadId, path: string): void {
+    const projectId = this.#core.journal.getThread(threadId)?.projectId;
+    const project = projectId ? this.#core.journal.getProject(projectId) : undefined;
+    if (project) this.#core.worktrees.markReused(project, path);
   }
 
   #mark(threadId: ThreadId, worktree: DelegationWorktree): void {
@@ -95,7 +103,10 @@ export class ChildWorktrees {
     if ((!parent && !elsewhere) || thread.projectId === null) throw refused(`the subagent's worktree ${record.path} has no parent conversation to branch from`);
     const project = this.#core.projects.require(thread.projectId);
     try {
-      if ((record.state === 'active' || record.state === 'kept') && existsSync(record.path)) return this.#mark(threadId, { ...record, state: 'active' });
+      if ((record.state === 'active' || record.state === 'kept') && existsSync(record.path)) {
+        this.#core.worktrees.markReused(project, record.path);
+        return this.#mark(threadId, { ...record, state: 'active' });
+      }
       if (record.state === 'active' || record.state === 'kept') {
         // The folder went but the branch may hold work: check it out again as it is.
         await this.#core.worktrees.ensure(threadId, project, record.branch, record.path);
