@@ -14,9 +14,10 @@
    * caller's progress says how far: a count on the newest turn, the start
    * under an older one, the outcome once it ended.
    * Clicking opens the surface that follows it; the button's own attributes
-   * pass through.
+   * pass through. A progress that is only a start time goes under the name on
+   * a phone-wide line (`stack`), so the name keeps the whole first line.
    */
-  let { live, heading, timing, progress, progressTestId, ...button }: Omit<HTMLButtonAttributes, 'children'> & {
+  let { live, heading, timing, progress, progressTestId, stack = false, ...button }: Omit<HTMLButtonAttributes, 'children'> & {
     live: boolean;
     heading: string;
     /** No start yet means no clock. */
@@ -24,10 +25,12 @@
     progress: Snippet;
     /** Test hook on the progress segment, beside the line's own data-testid. */
     progressTestId?: string;
+    /** The progress is a start time alone: under the name when the line is phone-wide. */
+    stack?: boolean;
   } = $props();
 </script>
 
-<button type="button" class="activity" class:live {...button}>
+<button type="button" class="activity" class:live class:stack {...button}>
   <Network class="glyph" size={14} strokeWidth={1.75} aria-hidden="true" />
   <span class="line">
     <span class="heading">{heading}</span>
@@ -79,7 +82,15 @@
   .when { flex: none; display: inline-flex; gap: 4px; }
   .activity :global(.chevron) { flex: none; }
   /* A phone-wide line keeps what and how far; the start time is the strip's to tell. A record keeps its short duration. */
-  @container activity (max-width: 400px) { .started { display: none; } }
+  @container activity (max-width: 400px) {
+    .started { display: none; }
+    /* "Workflow · Review the parser · started 12:21 PM" needs 168 px for its name at 390 px:
+       the name takes the first line whole and the start time reads under it, without its dot. */
+    .stack { height: auto; padding-block: 4px; }
+    .stack .line { flex-wrap: wrap; }
+    .stack .heading { flex-basis: 100%; min-width: 0; }
+    .stack .progress :global(.sep) { display: none; }
+  }
   @media (max-width: 720px) {
     /* A finger's target without a taller line. */
     .activity { position: relative; }

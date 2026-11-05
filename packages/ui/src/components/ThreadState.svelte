@@ -113,15 +113,16 @@
 {/if}
 
 <style>
+  /* `--when-color`: a row whose ground darkens (selected, hovered, a second line) gives its time the meta tier. */
   .when {
     flex: none;
     font-size: var(--text-xs);
-    color: var(--color-subtle);
+    color: var(--when-color, var(--color-subtle));
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
   /* The ring says the state: a row's time stays grey at the row's weight, whatever the state. */
-  .state.compact, .state.compact.unreachable { color: var(--color-subtle); font-weight: 400; }
+  .state.compact, .state.compact.unreachable { color: var(--when-color, var(--color-subtle)); font-weight: 400; }
   .state {
     display: inline-flex;
     align-items: center;

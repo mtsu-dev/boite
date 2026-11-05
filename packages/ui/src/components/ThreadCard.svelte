@@ -172,6 +172,10 @@
   .thread.open {
     background: var(--color-active);
   }
+  /* On the hovered or open row's darker ground the time takes the meta tier, 5:1 where subtle gave 4.3. */
+  .thread:is(.open, :hover, :focus-within) {
+    --when-color: var(--color-meta);
+  }
   /* The row left behind while its card travels: an empty slot, so the list does not jump. */
   .thread.dragging {
     background: color-mix(in srgb, var(--color-accent) 6%, transparent);

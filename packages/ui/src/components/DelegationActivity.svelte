@@ -18,10 +18,10 @@
   const ended = (count: number, one: string, many: string) => count === 1 ? one : fill(many, { count: String(count) });
 </script>
 
-<ActivityCard live={team.active} heading={agents.length === 1 ? strings.chat.strip.subagentOne : fill(strings.chat.strip.subagentMany, { count: String(agents.length) })} timing={team.active && past ? { ...team, startedAt: null } : team} onclick={() => store.showTeam()} data-testid="delegation-activity" data-past={past || undefined} progressTestId="delegation-progress" title={strings.delegation.showTeam}>
+<ActivityCard live={team.active} heading={agents.length === 1 ? strings.chat.strip.subagentOne : fill(strings.chat.strip.subagentMany, { count: String(agents.length) })} timing={team.active && past ? { ...team, startedAt: null } : team} onclick={() => store.showTeam()} data-testid="delegation-activity" data-past={past || undefined} progressTestId="delegation-progress" stack={team.active && past} title={strings.delegation.showTeam}>
   {#snippet progress()}
     {#if team.active && past}
-      {#if team.startedAt !== null}<span class="ui-label" data-testid="activity-started">· {fill(strings.delegation.startedAt, { time: clockTime(team.startedAt) })}</span>{/if}
+      {#if team.startedAt !== null}<span class="ui-label" data-testid="activity-started"><span class="sep">·</span> {fill(strings.delegation.startedAt, { time: clockTime(team.startedAt) })}</span>{/if}
     {:else if team.active}
       <span class="ui-label">· {fill(strings.delegation.completed, { done: String(team.completed), total: String(agents.length) })}</span>
       {#if team.failed}<span class="failed ui-label">· {fill(strings.delegation.failed, { count: String(team.failed) })}</span>{/if}

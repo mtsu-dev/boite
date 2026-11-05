@@ -2,7 +2,7 @@ import { mobileOverlay } from './mobile-history';
 import { strings } from './strings';
 import type { MenuFit } from './menu-fit';
 /** Position desktop popovers at their anchor and phone menus above the keyboard. */
-export function floating(node: HTMLElement, options: { anchor: () => HTMLElement | null; side?: 'right'; placement?: 'top' | 'bottom'; align?: 'start' | 'end'; sheet?: boolean; matchWidth?: boolean; cap?: number; fit?: (anchor: DOMRect, height: number, topInset: number, cap: number) => MenuFit; dismiss?: () => void }) {
+export function floating(node: HTMLElement, options: { anchor: () => HTMLElement | null; side?: 'right'; placement?: 'top' | 'bottom'; align?: 'start' | 'end'; sheet?: boolean; matchWidth?: boolean; cap?: number | ((viewportHeight: number) => number); fit?: (anchor: DOMRect, height: number, topInset: number, cap: number) => MenuFit; dismiss?: () => void }) {
   let backdrop: HTMLButtonElement | null = null;
   let backdropMotion: MutationObserver | null = null;
   let closeHistory = () => {};
@@ -75,7 +75,9 @@ export function floating(node: HTMLElement, options: { anchor: () => HTMLElement
     }
     let top: number;
     let left: number;
-    if (options.matchWidth) node.style.width = `${Math.min(options.cap ?? 420, box.width, width - margin * 2)}px`;
+    /* A cap can follow the window's height: a menu that holds a column of tiles grows with a taller window. */
+    const ownCap = typeof options.cap === 'function' ? options.cap(height) : options.cap;
+    if (options.matchWidth) node.style.width = `${Math.min(ownCap ?? 420, box.width, width - margin * 2)}px`;
     if (options.side === 'right') {
       node.style.maxHeight = `${height - margin * 2}px`;
       left = box.right + gap;
@@ -85,7 +87,7 @@ export function floating(node: HTMLElement, options: { anchor: () => HTMLElement
       const below = height - box.bottom - gap - margin;
       const ceiling = Math.max(margin, document.querySelector('.titlebar')?.getBoundingClientRect().bottom ?? 0);
       const above = box.top - gap - ceiling;
-      const cap = options.cap ?? Math.min(360, height * .45);
+      const cap = ownCap ?? Math.min(360, height * .45);
       const ideal = Math.min(node.scrollHeight, cap);
       const fit = options.fit?.(box, height, document.querySelector('.titlebar')?.getBoundingClientRect().bottom ?? 0, cap);
       const up = fit ? !fit.below : options.placement === 'top' ? above >= ideal || above > below : below < ideal && above > below;

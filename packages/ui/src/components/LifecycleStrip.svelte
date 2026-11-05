@@ -8,10 +8,11 @@
   /**
    * The four lifecycle filters over the thread list: needs you, working, done,
    * archived, counted across every listed project and machine. The live two
-   * show their number; done and archived say theirs in the tooltip, and give
-   * their word up for a glyph when the four words outgrow the column: a hidden
-   * copy of the full row measures them, in the language and the counts drawn,
-   * so a 360 px phone or a longer French word never cuts a live word.
+   * show their number; done and archived say theirs in the tooltip. When the
+   * four words outgrow the column (a hidden copy of the full row measures them,
+   * in the language and the counts drawn), a phone draws the four as equal
+   * flexible tabs at 12 px, words kept; the desktop sidebar gives done and
+   * archived up for a glyph, so a longer French word never cuts a live word.
    * One filters the list to its state; the same button or Escape clears it.
    * Escape clears only while focus is in the list's column, so from the
    * composer the key still stops a turn.
@@ -120,14 +121,16 @@
   }
   .glyph { display: none; }
   /*
-   * Four words need about 245 to 268 px on a desktop and 340 on a phone; the sidebar
-   * opens at 280 and a small phone leaves 328. Done and archived, history, give
-   * way to their glyph, so the live two never cut their word; the hidden word
-   * still names the button to a screen reader.
+   * Four words need about 245 to 268 px in the sidebar, which opens at 280. In a narrower
+   * column done and archived, history, give way to their glyph, so the live two never cut
+   * their word; the hidden word still names the button to a screen reader. A phone keeps
+   * the words (below).
    */
-  .compact .history { position: relative; padding: 0 6px; }
-  .compact .history .glyph { display: inline-flex; }
-  .compact .history .word { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  @media (min-width: 721px) {
+    .compact .history { position: relative; padding: 0 6px; }
+    .compact .history .glyph { display: inline-flex; }
+    .compact .history .word { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  }
   .number {
     flex: none;
     font-weight: 600;
@@ -140,17 +143,17 @@
     background: var(--color-accent-soft);
     color: var(--color-accent);
   }
-  /* A phone: the same words at the touch size, the target reaching past the 30 px pill. */
+  /* A phone: the same words at the touch size, the 44 px target reaching 6 px past the 32 px pill. */
   @media (max-width: 720px) {
     .lifecycle { gap: 4px; padding: 0 0 4px; }
     .stage { position: relative; height: 32px; padding: 0 11px; font-size: var(--text-sm); }
     .stage::after { content: ''; position: absolute; inset: -6px 0; }
     /*
-     * A glyph is about 28 px wide: its target reaches 44 px without widening the row. The two
-     * glyphs share the 4 px gap between them, so Done reaches into Working's side and Archived
-     * past the strip's free end; Working keeps more than 44 px of its own.
+     * The four words need about 340 px at 13 px and a 360 px phone leaves 328: four flexible
+     * tabs at 12 px with 6 px of side padding take about 270, so every word stays, the counts
+     * too; each tab is wider than its word, so no target falls under 44 px.
      */
-    .compact .history:has(+ .history)::after { inset: -6px -2px -6px min(-2px, calc(100% + 2px - 44px)); }
-    .compact .history + .history::after { inset: -6px min(-2px, calc(100% + 2px - 44px)) -6px -2px; }
+    .compact > .stage { flex: 1 1 auto; justify-content: center; padding: 0 6px; font-size: var(--text-xs); }
+    .compact > .stage:first-child { margin-left: 0; }
   }
 </style>

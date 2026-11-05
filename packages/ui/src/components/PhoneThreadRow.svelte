@@ -21,7 +21,8 @@
    * its picture in the state ring, the title and the time. A second grey line
    * comes only for what the user must know from the list: what it waits on in
    * the Inbox, a move to come, the project and machine when the list mixes
-   * them, a subagent asking. The branch and the pull request are the thread's
+   * them, a subagent asking. With that line the time moves to its right end,
+   * as on the desktop, and the title has the first line to itself. The branch and the pull request are the thread's
    * own header. A long press opens the row's sheet; the same sheet's trigger
    * stays in the row for a keyboard and a screen reader, drawn only while it
    * has the focus. A finger slides the row right to mark it done or left to
@@ -48,6 +49,8 @@
   let kind = $derived(threadState(thread, subagents));
   let agents = $derived(delegatedChip(subagents));
   let pending = $derived(pendingLine(thread));
+  /** The grey second line; the time joins it, so the title keeps the whole first line. */
+  let second = $derived(Boolean(wait || pending || (!grouped && project) || (several && !grouped) || agents?.asking));
   const reasonIcons = { question: MessageCircleQuestion, permission: ShieldQuestion, secret: KeyRound, 'sign-in': LogIn, failed: TriangleAlert, interrupted: CirclePause } as const;
   let draft = $derived(hasUnsentDraft(owner.composerStates[thread.id]) && !(owner.openThread?.id === thread.id));
   /** What a slide may do now: the menu's own items, so a thread at work is never marked done by a finger. */
@@ -59,6 +62,11 @@
     body?.parentElement?.querySelector<HTMLButtonElement>('[aria-haspopup=menu]')?.click();
   }
 </script>
+
+{#snippet time()}
+  {#if wait}<time class="time waited" datetime={new Date(wait.since).toISOString()} title={fill(strings.inbox.waited, { time: waitedFor(now, wait.since) })}>{waitedFor(now, wait.since)}</time>
+  {:else}<span class="time"><ThreadState {thread} {now} {subagents} {away} compact /></span>{/if}
+{/snippet}
 
 <div class="phone-row" class:offline={away} data-thread-id={thread.id} data-machine-id={machine.id} data-testid="mobile-row">
   <!-- Under the row while it slides: done on the left, archive on the right, armed past the threshold. -->
@@ -80,10 +88,9 @@
         </button>
         {#if draft}<span class="mark draft" data-testid="thread-draft" title={strings.sidebar.unsentDraft} aria-label={strings.sidebar.unsentDraft}><PencilLine size={13} /></span>{/if}
         {#if thread.pinned}<span class="mark pin"><Pin size={13} /></span>{/if}
-        {#if wait}<time class="time waited" datetime={new Date(wait.since).toISOString()} title={fill(strings.inbox.waited, { time: waitedFor(now, wait.since) })}>{waitedFor(now, wait.since)}</time>
-        {:else}<span class="time"><ThreadState {thread} {now} {subagents} {away} compact /></span>{/if}
+        {#if !second}{@render time()}{/if}
       </span>
-      {#if wait || pending || (!grouped && project) || (several && !grouped) || agents?.asking}
+      {#if second}
         <span class="meta">
           {#if wait}{@const Icon = reasonIcons[wait.reason]}<span class="fact why" class:failed={wait.reason === 'failed' || wait.reason === 'sign-in' || wait.reason === 'interrupted'} data-testid="thread-wait-reason" data-reason={wait.reason}><Icon size={12} aria-hidden="true" /><span class="ui-label" title={strings.inbox.reasons[wait.reason]}>{strings.inbox.reasonTags[wait.reason]}</span></span>{/if}
           {#if pending}<span class="fact pending" data-testid="thread-pending" title={pending}><FolderInput size={12} aria-hidden="true" /><span class="ui-label">{pending}</span></span>{/if}
@@ -91,6 +98,7 @@
           {#if several && !grouped}<span class="fact machine">{machine.label}</span>{/if}
           <!-- Agents at work are the ring's to say; one asking is said here, it needs the user. -->
           {#if agents?.asking}<span class="fact agents asking" data-testid="thread-subagents" data-count={agents.shown} role="img" title={agents.label} aria-label={agents.label}><Network size={12} aria-hidden="true" /><span class="ui-label">{wait ? agents.shown : agents.text}</span></span>{/if}
+          {@render time()}
         </span>
       {/if}
     </span>
@@ -211,6 +219,10 @@
   .waited { font-variant-numeric: tabular-nums; color: var(--color-subtle); font-size: 13px; }
   .time { margin-left: auto; flex: none; padding-left: 4px; }
   .time :global(.when) { font-size: 13px; }
+  /* On the second line the time is 12 px at the line's right end, in the meta tier beside the muted facts. */
+  .meta { --when-color: var(--color-meta); }
+  .meta .time :global(.when), .meta .waited { font-size: var(--text-xs); }
+  .meta .waited { color: var(--color-meta); }
   /* The sheet's anchor at the row's right end, 44 px square, drawn only while the keyboard is on it. */
   .menu-slot {
     position: absolute;

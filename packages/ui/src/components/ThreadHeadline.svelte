@@ -126,6 +126,8 @@
     padding-left: 25px;
     font-size: var(--text-xs);
     color: var(--color-muted-foreground);
+    /* The time beside the project: subtle would fall under 4.5:1 once the row is selected or a menu's shadow falls on it. */
+    --when-color: var(--color-meta);
   }
   .known { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
   .trail { display: flex; align-items: center; gap: 6px; flex: none; }

@@ -9,6 +9,7 @@
   import ProviderLogo from './ProviderLogo.svelte';
   import ProviderTiles from './ProviderTiles.svelte';
   import { floating } from '../lib/floating';
+  import { wholeTiles } from '../lib/whole-tiles';
   import { focusInitial } from '../lib/focus';
   import { Closing } from '../lib/closing.svelte';
   import { fill, strings } from '../lib/strings';
@@ -140,6 +141,9 @@
   let probing = $derived(shown ? store.isProbing(shown.id, shownAccountId) : false);
   /** No answer yet for this instance: the descriptor's list would be replaced once it lands. */
   let pending = $derived(shown ? store.modelsPending(shown.id, shownAccountId) : false);
+
+  /** The rail's menu is 416 px at 900 px and keeps the same share of a lower window; one provider keeps the default cap. */
+  const menuCap = (height: number) => single ? Math.min(360, height * .45) : Math.min(416, height * .47);
 
   async function refreshModels() {
     if (favoritesOpen) {
@@ -367,16 +371,17 @@
       aria-label={strings.composer.picker}
         data-testid="composer-picker-menu"
       bind:this={menu}
-      use:floating={{ anchor: () => root?.closest<HTMLElement>("[data-testid=composer]") ?? root ?? null, dismiss: () => popover.hide() }}
+      use:floating={{ anchor: () => root?.closest<HTMLElement>("[data-testid=composer]") ?? root ?? null, cap: menuCap, dismiss: () => popover.hide() }}
       use:popover.attach
       onanimationend={popover.end}
       {onkeydown}
     >
       <button class="refresh" type="button" data-testid="picker-refresh" aria-label={strings.composer.refreshModels} title={strings.composer.refreshModels} disabled={disabled || probing || pickPending || needsInstall} onclick={() => void refreshModels()}><RefreshCw size={14} class={probing || pickPending ? 'spin' : ''} /></button>
       {#if !single}
-        <div class="column rail">
+        <div class="column rail" use:wholeTiles={{ cell: () => (menu ? parseFloat(getComputedStyle(menu).gridTemplateRows) : 0), cue: 20, tiles: '[data-row]', wideOnly: '(min-width: 721px)' }}>
           <ProviderTiles {store} {choice} {locked} current={shown?.id ?? null} {favoritesOpen} onfavorites={() => { favoritesOpen = true; modelQuery = ''; }} onpick={pickTile} onmore={providersReachable ? openInstall : undefined} />
         </div>
+        <div class="rail-cue" aria-hidden="true"><ChevronDown size={14} /></div>
       {/if}
 
       <div class="column models main-models">
@@ -605,11 +610,13 @@
     z-index: 40;
     display: grid;
     /* The rail is wide enough for "Muse Code" on one line, and the fixed refresh
-       keeps its own 48 px row: the providers scroll above it, never under it. */
+       keeps its own 48 px row: the providers scroll above it, never under it.
+       416 px holds six tiles whole above that row; a lower window caps it (menuCap)
+       and the rail scrolls, showing whole tiles only (wholeTiles). */
     grid-template-columns: 88px minmax(0, 1fr);
     width: min(452px, calc(100vw - 32px));
-    height: 360px;
-    max-height: min(360px, 45dvh);
+    height: 416px;
+    max-height: min(416px, 47dvh);
     grid-template-rows: minmax(0, 1fr) 48px;
     background: var(--color-float);
     -webkit-backdrop-filter: var(--float-blur);
@@ -641,11 +648,21 @@
   .rail {
     align-items: center;
     gap: 2px;
-    padding: 4px 4px 20px;
+    padding: 4px;
     background: var(--color-surface);
-    /* A tile the rail cuts fades into the refresh's row; the last one scrolls clear of the fade. */
-    mask-image: linear-gradient(to bottom, black calc(100% - 20px), transparent);
+    /* Its height stops at the last whole tile (wholeTiles) and a scroll rests on a tile's top,
+       so no logo shows without its name. */
+    position: relative;
+    z-index: 1;
+    scroll-snap-type: y mandatory;
+    scroll-padding-block: 4px;
   }
+  .rail > :global([data-row]) { scroll-snap-align: start; }
+  /* Under a shortened rail: the same surface, and a chevron while a tile waits below. */
+  .rail-cue { grid-area: 1 / 1; z-index: 0; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 6px; background: var(--color-surface); color: var(--color-muted-foreground); pointer-events: none; }
+  .rail-cue :global(svg) { opacity: 0; transition: opacity var(--dur-1); }
+  /* data-more comes from wholeTiles, outside the template: global, or the compiler drops the rule. */
+  .rail:global([data-more]) ~ .rail-cue :global(svg) { opacity: 1; }
 
   .models > * { flex-shrink: 0; }
   .main-models { grid-area: 1 / 2 / 3 / 3; overflow: hidden; padding: 0; gap: 0; border-left: 1px solid var(--color-border); }
@@ -816,6 +833,8 @@
       padding-right: 20px;
       mask-image: linear-gradient(to right, black calc(100% - 20px), transparent);
     }
+    .rail { scroll-snap-type: none; }
+    .rail-cue { display: none; }
 
     /* The rail is the finger's first stop on a phone, so its tiles (ProviderTiles)
        and the refresh button take a full touch target like every other control. */

@@ -53,6 +53,17 @@ describe.each([
     for (const ground of ['--color-background', '--color-surface-2']) expect(ratio(token(scope, status), token(scope, ground)), `${status} on ${ground}`).toBeGreaterThanOrEqual(4.5);
   });
 
+  /* A row's time on the selected row's ground: subtle fell to 4.3:1 there in the captures, the meta tier keeps 5:1. */
+  test('--color-meta clears 5:1 on a selected row', () => {
+    const active = /--color-active:\s*rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)/.exec(scope);
+    if (!active) throw new Error('no rgba --color-active');
+    const [r, g, b, a] = active.slice(1).map(Number) as [number, number, number, number];
+    const over = (hex: string) => '#' + [r, g, b].map((c, i) => Math.round(c * a + parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16) * (1 - a)).toString(16).padStart(2, '0')).join('');
+    for (const ground of ['--color-frame', '--color-surface-2']) expect(ratio(token(scope, '--color-meta'), over(token(scope, ground))), `--color-meta on ${ground} + --color-active`).toBeGreaterThanOrEqual(5);
+    // Still a shade under the muted line it sits on.
+    expect(ratio(token(scope, '--color-meta'), token(scope, '--color-frame'))).toBeLessThan(ratio(token(scope, '--color-muted-foreground'), token(scope, '--color-frame')));
+  });
+
   test('muted stays a visible step above subtle', () => {
     expect(ratio(token(scope, '--color-muted-foreground'), token(scope, '--color-subtle'))).toBeGreaterThanOrEqual(1.25);
   });

@@ -24,10 +24,10 @@
   }
 </script>
 
-<ActivityCard live={run.status === 'running'} heading={`${strings.workflow.card} · ${run.name}`} timing={{ startedAt: going && past ? null : run.createdAt, finishedAt: run.finishedAt, active: going }} onclick={open} data-testid="workflow-activity" data-run-id={run.id} data-status={run.status} data-past={past || undefined} title={strings.workflow.show}>
+<ActivityCard live={run.status === 'running'} heading={`${strings.workflow.card} · ${run.name}`} timing={{ startedAt: going && past ? null : run.createdAt, finishedAt: run.finishedAt, active: going }} onclick={open} data-testid="workflow-activity" data-run-id={run.id} data-status={run.status} data-past={past || undefined} stack={going && past} title={strings.workflow.show}>
   {#snippet progress()}
     {#if going && past}
-      <span class="ui-label" data-testid="activity-started">· {fill(strings.delegation.startedAt, { time: clockTime(run.createdAt) })}</span>
+      <span class="ui-label" data-testid="activity-started"><span class="sep">·</span> {fill(strings.delegation.startedAt, { time: clockTime(run.createdAt) })}</span>
     {:else if going}
       <span class="ui-label">· {fill(strings.workflow.steps, { done: String(steps.done), total: String(steps.total) })}</span>
     {:else}

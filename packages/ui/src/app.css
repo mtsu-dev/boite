@@ -183,6 +183,9 @@
   /* Both text tiers clear 4.5:1 on every surface in both themes: subtle carries paths and timestamps (lib/contrast.test.ts). */
   --color-muted-foreground: #aeaeb9;
   --color-subtle: #9a9aa6;
+  /* A list row's time: subtle falls to 4.3:1 on a selected row's violet and under an open menu's shadow,
+     this keeps 5:1 there and stays a shade under the muted line it sits on (lib/contrast.test.ts). */
+  --color-meta: #a8a8b4;
   --color-selection: rgba(228, 228, 231, 0.18);
   /* Light violet by default; the user's hue replaces it (lib/accent.ts). */
   --accent-hue: 290;
@@ -763,6 +766,7 @@ html[data-chat-width='full'] {
   --color-foreground: #1c1c21;
   --color-muted-foreground: #484851;
   --color-subtle: #5f5f67;
+  --color-meta: #4d4d55;
   --color-selection: rgba(28, 28, 33, 0.14);
   --color-terminal-background: var(--color-surface-2);
   --ansi-black: #000000;
