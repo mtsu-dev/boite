@@ -398,12 +398,17 @@ not a newly opened PID. Each action emits a thread-correlated diagnostic.
 
 Git Bash (MSYS2) forks a copy of the shell to exec each command, and the copy
 exits as soon as the command runs, so a script's Windows parent is gone while
-its shell still runs. Each traced process keeps a reference to the parent the
-registry held at its start. An exited `sh`, `bash`, `dash` or `zsh` that
+its shell still runs. Each traced process keeps a reference to its parent's
+last entry at its start, even an exited one: a start can wait for its command
+line while the fork exits, and the job reports a parent's waiting start before
+its child's. An exited `sh`, `bash`, `dash` or `zsh` that
 exited with 0, whose own parent has its image and still runs, is such a fork:
 the process hangs from that live shell and stays while it runs, so `sh wait.sh`
 in a background task lives as long as its shell. Of 74,975 forks in a real
 trace, all exited with 0. No timing is read, since exit events can arrive late.
+A fork can also exit before the core handles its start, and Windows no longer
+gives the full path of an exited process: an exited child of a live shell with
+no image name and exit code 0 counts as a fork too.
 One exited fork is passed over, never two: the `sleep` of a nested bash that
 exited or was stopped has the fork and that bash dead above it, and goes. Once
 the task's shell exits, the script is an orphan again and its own forked

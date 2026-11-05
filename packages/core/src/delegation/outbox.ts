@@ -10,6 +10,12 @@ const RETRY_MS = [5_000, 15_000, 60_000, 300_000];
 /** A sealed request grows by its encryption and base64: a batch keeps well under the body a member accepts. */
 const BATCH_BYTES = Math.floor(MAX_BODY * 3 / 8);
 
+/** The clock's time at each call, and always above the call before, even when the clock goes back. */
+export function risingClock(): () => number {
+  let last = 0;
+  return () => (last = Math.max(Date.now(), last + 1));
+}
+
 /** The oldest entries that fit one request; the rest go with the next. */
 function batchOf<T>(entries: T[]): T[] {
   const batch: T[] = [];

@@ -145,7 +145,8 @@ describe.skipIf(!native)('native protected extensions', () => {
     expect(api.requests).toHaveLength(before);
     expect(core.procs.liveCount(control)).toBe(0);
     driver.shutdown?.();
-    await waitFor(() => workspaces.every(path => !existsSync(path))).catch(error => {
+    // Removal waits out whatever still holds the folder, then deletes thousands of files on a slow disk.
+    await waitFor(() => workspaces.every(path => !existsSync(path)), 30_000).catch(error => {
       try {
         console.error(JSON.stringify({stage: 'execution.adapter.cleanup-timeout', protocol, helper: process.env.BOITE_WINDOWS_SANDBOX_PATH,
           processes, cleanup: logs.filter(line => line.startsWith('execution.bridge.cleanup:')),
