@@ -165,6 +165,8 @@ export function install(pi, setting, deps) {
     if (typeof tokens !== 'number') return undefined;
     if (copy !== null && copy.result === null) link(copy, ctx.signal);
     if (tokens >= limit) {
+      // A copy the context already outgrew is of no use: stopped, not awaited.
+      if (copy !== null && tokens - copy.tokens > tail) drop();
       if (copy !== null) await copy.done;
       const taken = take(ctx, tokens);
       if (taken === null) return undefined;

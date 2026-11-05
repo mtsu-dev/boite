@@ -216,3 +216,18 @@ test('a copy that settles leaves no listener on the operation, and an aborted tu
   expect(await pi.turn('a4', LIMIT)).toBeUndefined();
   expect(pi.copies).toHaveLength(1);
 });
+
+test('at the limit a running copy already past the tail limit is dropped, not awaited', async () => {
+  const pi = await extension();
+  await pi.turn('a1', 70_000);
+  await pi.turn('a2', 86_000);
+  expect(pi.copies).toHaveLength(1);
+  let answer: unknown = 'pending';
+  // 26 000 tokens since the copy started, past the 25 000 of a 100 000 limit.
+  const at = Promise.resolve(pi.turn('a3', 112_000)).then(value => { answer = value; });
+  await Bun.sleep(20);
+  expect(answer).toBeUndefined();
+  expect(pi.copies[0]!.signal.aborted).toBe(true);
+  pi.copies[0]!.resolve(SUMMARY);
+  await at;
+});
