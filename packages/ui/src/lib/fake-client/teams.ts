@@ -159,7 +159,11 @@ export function teamMethods(ctx: FakeContext): TeamMethods {
     const wanted = typeof ref === 'string' ? ref.trim() : '';
     if (!wanted) throw invalid('team: expected a team name or id');
     const mine = pool.filter(team => member === TEAM_OWNER || team.members.some(entry => entry.key === member));
-    const found = mine.find(team => team.id === wanted) ?? mine.find(team => !team.archived && team.name.toLowerCase() === wanted.toLowerCase());
+    const byId = mine.find(team => team.id === wanted);
+    // Two machines may each hold a team of that name, with the same bot in both.
+    const sameName = mine.filter(team => !team.archived && team.name.toLowerCase() === wanted.toLowerCase());
+    if (!byId && sameName.length > 1) throw refused(`team: ${sameName.length} of your teams are named ${JSON.stringify(wanted)}; name one by id: ${sameName.map(team => team.id).join(', ')}`, { field: 'team' });
+    const found = byId ?? sameName[0];
     if (!found) throw refused(`team: no team ${JSON.stringify(wanted)}`, { field: 'team' });
     return found;
   };
