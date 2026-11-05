@@ -35,7 +35,7 @@ import type { ProviderProbe } from '../providers/probe.ts';
 import { GROUP_THREADS_OFF, machineArg, memberModels, memberNamed, peerRefusal } from '../threads/group-spawn.ts';
 import { modelsFor } from '../threads/selection.ts';
 import { catalog, checkModelAllowed, chooseModel, discover, loggedInAccount } from './routes.ts';
-import { Outbox } from './outbox.ts';
+import { Outbox, risingClock } from './outbox.ts';
 import { restartContinues } from './restart.ts';
 import { resultPageOf, resultPageParams } from './results.ts';
 import { checkStart, readableState, type ChildState, type ParentLink, type RemoteChild, type Report, type Start, type Started, type Stop, type WireRoute } from './remote-wire.ts';
@@ -92,10 +92,13 @@ export class RemoteDelegation {
   /** Told of each parent here whose children elsewhere reported: workflow steps settle from it. */
   readonly #watchers = new Set<(rootId: string) => void>();
   #closed = false;
-  /** The number of the last stop or letter asked from here: the clock's, and always above the one before. */
-  #lastStop = 0;
-  /** The time of the last report sent from here: see `#reportAt`. */
-  #lastReport = 0;
+  /** The number of a stop or letter asked from here. */
+  readonly #stopSeq = risingClock();
+  /**
+   * The time of a report sent from here: the parent ignores one older than what
+   * it holds, so a clock set back would silence this child, final result included.
+   */
+  readonly #reportAt = risingClock();
   readonly #boot: ReturnType<typeof setTimeout>;
 
   readonly #core: Core;
@@ -376,9 +379,9 @@ export class RemoteDelegation {
     // A stop asked before this instruction and not taken yet goes with it: it ends the turn it meant, never the one the instruction opens.
     const stop = this.#stops.entries(record.coreId).find(entry => entry.key === `child:${childId}`);
     // Numbered among the stops: one asked after it cancels it there, even when taken first.
-    this.#lastStop = Math.max(Date.now(), this.#lastStop + 1);
+    const seq = this.#stopSeq();
     let answer: unknown;
-    try { answer = await this.#core.coordination.request(peer, 'delegation.letter', { parentId: root.id, childId, requestId, text: body, origin, seq: this.#lastStop, ...(stop ? { stop: stop.seq } : {}) }); }
+    try { answer = await this.#core.coordination.request(peer, 'delegation.letter', { parentId: root.id, childId, requestId, text: body, origin, seq, ...(stop ? { stop: stop.seq } : {}) }); }
     catch (error) {
       if (error instanceof PeerRefusal) throw peerRefusal(this.#core, peer, error, 'steer subagents for another machine');
       throw unavailable(`${peer.name} did not answer: ${messageOf(error)}; the same --request-id sends it once`, { field: 'machine' });
@@ -470,8 +473,7 @@ export class RemoteDelegation {
   }
 
   #stopThere(coreId: string, parentId: string, childId: string, retire: boolean): void {
-    this.#lastStop = Math.max(Date.now(), this.#lastStop + 1);
-    this.#stops.push(coreId, { key: `child:${childId}`, seq: this.#lastStop, parentId, childId, ...(retire ? { retire: true as const } : {}) });
+    this.#stops.push(coreId, { key: `child:${childId}`, seq: this.#stopSeq(), parentId, childId, ...(retire ? { retire: true as const } : {}) });
   }
 
   /**
@@ -625,16 +627,6 @@ export class RemoteDelegation {
       this.#core.journal.deleteSetting(`${PARENT}${childId}`);
       this.#reports.push(link.coreId, { key: `state:${childId}`, parentId: link.parentId, childId, requestId: link.requestId, at: this.#reportAt(), removed: true });
     }
-  }
-
-  /**
-   * The clock's time, and always above the report before: the parent ignores a
-   * report older than the one it holds, so a clock set back would silence this
-   * child, final result included, and its step would never settle.
-   */
-  #reportAt(): number {
-    this.#lastReport = Math.max(Date.now(), this.#lastReport + 1);
-    return this.#lastReport;
   }
 
   #snapshot(childId: string): ChildState {
