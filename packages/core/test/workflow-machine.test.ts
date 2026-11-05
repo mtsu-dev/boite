@@ -396,6 +396,9 @@ for (const ending of ['completed', 'error', 'refused'] as const) test(`a remote 
     } catch (diagnosticError) { console.error('Background final wake diagnostics failed', diagnosticError); }
     throw error;
   }
+  // The wake's report arrives dated by the advanced clock: the final one, sent
+  // once the clock is back, still has to count.
+  await waitFor(() => (desk.core.delegation.remote.record(threadId, step().machine!.requestId)?.at ?? 0) > now());
   clock.mockRestore();
   expect(step()).toMatchObject({ status: 'running', result: null });
   expect(runs.get(childId)!.ctx.prompt).toContain('give your final result now');

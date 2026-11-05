@@ -248,6 +248,26 @@ export const MODE_POLICY: Record<PermissionMode, { approvalPolicy: AskForApprova
   dontAsk: { approvalPolicy: 'never', sandbox: 'danger-full-access' },
 };
 
+/**
+ * The environment of a read-only session. Codex runs its commands in the first
+ * `pwsh` on the PATH, and a PowerShell from the Microsoft Store cannot start
+ * under the Windows sandbox's restricted token (`CreateProcessAsUserW failed: 5`,
+ * codex-cli 0.166, 2026-11-04), so the session could not even read a file.
+ * Without the Store's folders on its PATH, Codex falls back to Windows
+ * PowerShell, which starts. The mode is part of the session key, so no session
+ * with another mode shares this process.
+ */
+export function readOnlyEnv<Env extends Record<string, string | undefined>>(env: Env, platform: string = process.platform, shellOn: (path: string) => string | null = path => Bun.which('pwsh', { PATH: path })): Env {
+  if (platform !== 'win32') return env;
+  const key = Object.keys(env).find(name => name.toUpperCase() === 'PATH');
+  const path = key === undefined ? undefined : env[key];
+  if (key === undefined || !path) return env;
+  const inStore = (place: string) => /[\\/]WindowsApps([\\/]|$)/i.test(place);
+  const shell = shellOn(path);
+  if (shell === null || !inStore(shell)) return env;
+  return { ...env, [key]: path.split(';').filter(folder => !inStore(folder)).join(';') };
+}
+
 /** What `thread/start` and `thread/resume` answer beside the thread. */
 export interface CodexThreadOpened {
   thread: { id: string };

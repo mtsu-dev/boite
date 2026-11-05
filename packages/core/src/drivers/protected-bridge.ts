@@ -1,8 +1,8 @@
 import {randomBytes} from 'node:crypto';
 import {mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync, symlinkSync, readFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
-import {rm} from 'node:fs/promises';
 import {join} from 'node:path';
+import {removeDir} from '../fs-retry.ts';
 import type {SessionContext, TurnContext} from './types.ts';
 import {PROTECTED_TOOL, PROTECTED_COMMIT, PROTECTED_DESCRIPTION, PROTECTED_SCHEMA, PROTECTED_COMMIT_DESCRIPTION, protectedTool, protectedCommit} from './protected.ts';
 
@@ -67,8 +67,8 @@ export function protectedBridge(ctx: SessionContext, head: ProtectedHead) {
       closed = true; server.stop(true);
       // Windows retains a native process's cwd until exit. Revoke the channel
       // now, then remove its files after the captured control process releases it.
-      if (released) void released.catch(() => {}).then(() => rm(directory, {recursive: true, force: true, maxRetries: 10, retryDelay: 50}))
-        .catch(error => ctx.log('error', `execution.bridge.cleanup: ${error instanceof Error ? error.message : String(error)}`));
+      // A helper it started, or a scanner, can hold the folder a few seconds more.
+      if (released) void released.catch(() => {}).then(() => removeDir(directory, message => ctx.log('error', `execution.bridge.cleanup: ${message}`), 100));
       else rmSync(directory, {recursive: true, force: true});
     },
   };

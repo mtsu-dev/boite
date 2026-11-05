@@ -81,22 +81,27 @@ of a client's experiments.
 
 Teams of bots ([teams](teams.md)). Teams needs Bots: its switch stays greyed
 while Bots is off, and turning Bots off turns Teams off too. The switch gates
-every `teams.*` method and `boite team` command on the core, which reads the
-desktop app's experiments, and the team lines of the bots' guide. Letters
+the `teams.*` methods and `boite team` commands on the teams a machine holds,
+on the core, which reads the desktop app's experiments, and the team lines of
+the bots' guide. A machine with its switch off lets no bot of its own enter a
+team; a bot already in a team another machine holds stays in it, and that
+machine's switch decides ([teams](teams.md#across-machines)). Letters
 already in a bot's inbox still go out once it is off. In the app it shows the
 Teams section above the bots on the Bots page, on the desktop and on the
 phone, and the team chats there ([teams](teams.md#in-the-app)); a phone
 follows the desktop's switch.
 
-## AI debates
+## Council
 
-Debates between AIs ([debates](debates.md)). The switch gates every
-`debates.*` method and `boite delegate debate` on the core, which reads the
-desktop app's experiments and refuses them with `experiment-off`, and the
-debate line of the subagent guide. In the app it draws the debate card in the
-thread that started one and the salon, in the right panel on a desktop and
-full screen on a phone; a phone follows the desktop's switch. Turning it off
-does not stop a debate under way: its summary still comes back.
+Several AIs review one request ([council](council.md)). The id is still
+`debates`, the name it had before the council, so a switch that was on stays on.
+It gates every `council.*` method and `boite delegate council` on the core,
+which reads the desktop app's experiments and refuses them with
+`experiment-off`, and the council line of the subagent guide and the
+`boite-council` skill. In the app it draws the card in the thread that started
+a council and the salon, in the right panel on a desktop and full screen on a
+phone; a phone follows the desktop's switch. Turning it off does not stop a
+round under way: its answers still come back.
 
 ## Contacts
 

@@ -97,6 +97,7 @@ them, so an agent's edit is undone by the next session.
 |---|---|
 | `boite-prove-it` | Check a change in proportion to its size, then put the proof in the answer: the deciding line, an attached capture or clip, or a `boite view` page. |
 | `boite-visual` | Pick the drawing from the reader's question, draw it with `boite view`, and send a standalone HTML file with `boite attach` when the user wants one to keep. |
+| `boite-council` | Ask several AIs to review a request alone and read-only, read their scores, fix and ask again, then put the table where the work ends ([council](council.md)). Listed only while the Council experiment is on. |
 | `boite-report-issue` | Read the app's anonymized logs, explain what failed, then draft a GitHub issue the user publishes ([trace](trace.md#structured-diagnostics)). Listed with the `boite logs problems` line only while agents may read diagnostics (`agentLogAccess`, on unless the owner turns it off). |
 
 Boite writes these texts itself rather than adapting another project's skills.

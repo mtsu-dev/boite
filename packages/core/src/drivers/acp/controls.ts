@@ -337,7 +337,8 @@ export class SessionControls {
    * change and an agent that switched on its own is put back. Nothing goes out
    * when the agent already reports that mode. A mode is a preference: an agent
    * that lists none, offers no match or refuses the call is one warning in the
-   * core log, never a reason to fail the turn.
+   * core log, never a reason to fail the turn. A protected turn or a council
+   * member, whose read-only rests on the mode, fails instead of running without it.
    */
   async applyMode(ctx: SessionContext): Promise<boolean> {
     // Grok's mode went on the command line at spawn and it advertises no
@@ -353,7 +354,7 @@ export class SessionControls {
 
     const modeId = matchMode(wanted, this.#modes);
     if (modeId === null) {
-      if (ctx.protectedExecution) throw new Error(`execution.acp.permissionMode: native agent offers no exact mode for ${wanted}`);
+      if (ctx.protectedExecution || ctx.modeRequired) throw new Error(`execution.acp.permissionMode: native agent offers no exact mode for ${wanted}`);
       if (this.#modeWarned) return false;
       this.#modeWarned = true;
       const offered = this.#modes.length === 0 ? 'none' : this.#modes.map((mode) => mode.id).join(', ');
@@ -367,7 +368,7 @@ export class SessionControls {
       this.#currentModeId = modeId;
       return true;
     } catch (error) {
-      if (ctx.protectedExecution) throw new Error(`execution.acp.permissionMode: native agent refused ${modeId}: ${messageOf(error)}`);
+      if (ctx.protectedExecution || ctx.modeRequired) throw new Error(`execution.acp.permissionMode: native agent refused ${modeId}: ${messageOf(error)}`);
       ctx.log('warn', `acp: the agent refused the session mode ${modeId}: ${messageOf(error)}`);
       return false;
     }
@@ -386,7 +387,7 @@ export class SessionControls {
     const values = selectValues(option);
     const modeId = matchMode(wanted, values.map((id) => ({ id, name: id })));
     if (modeId === null) {
-      if (ctx.protectedExecution) throw new Error(`execution.acp.permissionMode: native agent offers no exact mode for ${wanted}`);
+      if (ctx.protectedExecution || ctx.modeRequired) throw new Error(`execution.acp.permissionMode: native agent offers no exact mode for ${wanted}`);
       if (this.#modeWarned) return false;
       this.#modeWarned = true;
       ctx.log('warn', `acp: no session mode matches the permission mode ${wanted}; the agent offers ${values.length === 0 ? 'none' : values.join(', ')}`);
@@ -396,7 +397,7 @@ export class SessionControls {
     try {
       const answer = await agent.request('session/set_config_option', { sessionId, configId: option.id, value: modeId });
       const listed = (answer as { configOptions?: SessionConfigOption[] | null }).configOptions ?? null;
-      if (ctx.protectedExecution) {
+      if (ctx.protectedExecution || ctx.modeRequired) {
         const confirmed = categoryOption(listed ?? [], 'mode');
         if (confirmed?.type !== 'select' || String(confirmed.currentValue) !== modeId) throw new Error(`execution.acp.permissionMode: native agent did not confirm ${modeId}`);
       }
@@ -406,7 +407,7 @@ export class SessionControls {
       }
       return true;
     } catch (error) {
-      if (ctx.protectedExecution) throw new Error(`execution.acp.permissionMode: native agent refused ${modeId}: ${messageOf(error)}`);
+      if (ctx.protectedExecution || ctx.modeRequired) throw new Error(`execution.acp.permissionMode: native agent refused ${modeId}: ${messageOf(error)}`);
       ctx.log('warn', `acp: the agent refused the session mode ${modeId}: ${messageOf(error)}`);
       return false;
     }

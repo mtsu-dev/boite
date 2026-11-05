@@ -128,6 +128,17 @@ export function defaultModel(provider: ProviderDescriptor): string | null {
   return provider.models[0]?.id ?? null;
 }
 
+/**
+ * The model a bot takes when its route names none: the descriptor's default,
+ * else the account's listed default or first model. Claude's descriptor lists
+ * none, so until its agent has listed them (`modelsFor`) there is no default
+ * and the caller reads them first (`BuiltinBots`).
+ */
+export function botDefaultModel(provider: ProviderDescriptor, accountId: AccountId): string | null {
+  const listed = modelsFor(provider, accountId);
+  return defaultModel(provider) ?? listed.find(model => model.default === true)?.id ?? listed[0]?.id ?? null;
+}
+
 export function checkSpeed(provider: ProviderDescriptor, accountId: string, model: string | null, speed: string | null): string | null {
   if (speed === null) return null;
   const options = modelsFor(provider, accountId).find(entry => entry.id === model)?.speeds ?? [];

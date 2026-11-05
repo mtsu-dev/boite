@@ -3,6 +3,7 @@ import type { AutoCompact, AutoCompactMoment, ThreadId, ThreadSummary, Turn } fr
 import type { Core } from '../core.ts';
 import { messageOf } from '../errors.ts';
 import type { ThreadStore } from '../threads.ts';
+import { nearLimit } from './background-compact.ts';
 
 /**
  * `settleMs`: how long a finished turn is left alone before the core compacts,
@@ -127,6 +128,8 @@ export class AutoCompaction {
    * The first chosen moment that applies to the thread as it stands, and how
    * long from now it comes: the settle delay counted from the end of the last
    * turn for the token limit, or the cache's last minute. Null when none applies.
+   * With a token limit, `turn-end` and `background` wait for the context to
+   * near it (`nearLimit`), where a background copy would start.
    */
   private due(thread: ThreadSummary, rule: AutoCompact): { moment: AutoCompactMoment | 'tokens' | 'copy'; delay: number } | null {
     const reached = rule.tokens !== null && (thread.context?.tokens ?? -1) >= rule.tokens;
@@ -136,10 +139,12 @@ export class AutoCompaction {
     if (reached) return { moment: 'tokens', delay: settled };
     // The agent compacts by itself once a turn crosses the limit, and a session
     // changes only between turns: a copy compacted in the background is taken at the first pause.
-    if (this.threads.backgroundCompact.ready(thread.id)) return { moment: 'copy', delay: settled };
+    if (this.threads.backgroundCompact.ready(thread)) return { moment: 'copy', delay: settled };
     const waiting = (this.threads.agentState.background.get(thread.id)?.length ?? 0) > 0;
     const moment: AutoCompactMoment = waiting ? 'background' : 'turn-end';
-    if (rule.tokens === null && rule.moments.includes(moment)) return { moment, delay: settled };
+    const tokens = thread.context?.tokens ?? null;
+    const near = rule.tokens === null || (tokens !== null && nearLimit(tokens, rule.tokens));
+    if (near && rule.moments.includes(moment)) return { moment, delay: settled };
     const cache = thread.promptCache ?? null;
     if (!rule.moments.includes('cache-expiry') || cache === null) return null;
     // Another model or account starts cold: there is no cached reading left to save.
@@ -163,11 +168,17 @@ export class AutoCompaction {
     if (this.#refusal(thread) !== null || this.#expected(threadId)) return;
     // The setting or the background work may have changed since the timer was
     // armed: the moment is worked out again, and one that lies ahead waits for its own time.
-    const due = this.due(thread, rule);
+    let due = this.due(thread, rule);
     if (due === null) return;
     if (due.delay > 0) { this.#arm(threadId, due.delay); return; }
     // A copy compacted in the background replaces the turn, or one still running is waited for.
-    if (this.threads.backgroundCompact.due(thread) !== null || due.moment === 'copy') return;
+    if (this.threads.backgroundCompact.due(thread) !== null) return;
+    // A ready copy dropped just now, for background work or a failed swap, leaves the thread to its own moments.
+    if (due.moment === 'copy') {
+      due = this.due(thread, rule);
+      if (due === null || due.moment === 'copy') return;
+      if (due.delay > 0) { this.#arm(threadId, due.delay); return; }
+    }
     try {
       this.threads.compact(threadId, undefined, true);
     } catch (error) {

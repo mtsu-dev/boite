@@ -54,7 +54,7 @@ export function resumeCut(core: Core, cut: ReadonlyMap<ThreadId, string>, name: 
       if (row !== null) core.threads.noteSystem(threadId, row.id, told(name, work), `Background work ended by the ${name} update`, 'turn.cutByUpdate');
       if (thread.parentThreadId) {
         // A team its owner paused stays paused: the parent's notice says how to go on.
-        if (!core.delegation.config(thread.parentThreadId).paused) core.delegation.resume(thread.parentThreadId, threadId, 'agent');
+        if (!core.delegation.config(thread.parentThreadId).paused) core.delegation.resume(thread.parentThreadId, threadId, 'agent', true);
       } else core.threads.autoContinue.resumeCut(threadId, told(name, work));
     } catch (error) {
       core.log('warn', `resuming ${threadId} after the ${name} update: ${error instanceof Error ? error.message : String(error)}`);

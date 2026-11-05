@@ -7,15 +7,14 @@ import { hookReport } from './hooks.ts';
 import { authenticationFailureOf, authenticationSuspectOf, backgroundKind, commandsOf, isApiRetry, isAuthenticationFailure, subagentOf } from './mapping.ts';
 import { RunningTotals } from './totals.ts';
 import { toolGate } from './permissions.ts';
-import { cliEnv, liveSetup, PROMPT_EFFORT, PromptQueue, STDERR_MAX } from './query.ts';
+import { liveSetup, PROMPT_EFFORT, PromptQueue, STDERR_MAX } from './query.ts';
 import type { ClaudeDeps, LiveSetup } from './query.ts';
 import type { ClaudeTurn } from './turn.ts';
 import { SessionRetention } from '../session-retention.ts';
 import { noteClaudeMessage } from './diagnostics.ts';
-import { userStdioServers } from '../../mcp/lazy.ts';
 import {protectedClaudeOptions} from './protected.ts';
 import { openWithCompaction } from './compaction.ts';
-import { cliOptions, type OptionsHost } from './options.ts';
+import { cliOptions, lazyServers, type OptionsHost } from './options.ts';
 
 /** How long `stop()` lets the CLI end its turn before the abort signal takes it. */
 const STOP_GRACE_MS = 3_000;
@@ -133,6 +132,7 @@ export class ClaudeSession {
   readonly #optionsHost: OptionsHost = {
     abortController: this.#abortController, gate: this.#gate,
     compactionSummary: () => this.#ctx.compactionSummary?.() ?? null, spawn: options => this.#spawnCli(options),
+    steps: { head: () => this.#head(), interrupt: () => this.#interrupt() },
   };
 
   #warmMs: number;
@@ -476,9 +476,28 @@ export class ClaudeSession {
       turn.settle();
       return;
     }
-    const running = this.#query;
-    if (running !== null) void running.interrupt().catch(() => undefined);
+    this.#interrupt();
     this.close(null, STOP_GRACE_MS);
+  }
+
+  /** Ends the CLI's current run where it is. A stop then closes the session; a swap hands the turn over instead. */
+  #interrupt(): void {
+    void this.#query?.interrupt().catch(() => undefined);
+  }
+
+  /**
+   * The core swapped in a session compacted in the background at a step
+   * boundary (`step.ts`), and the CLI ended its run before the next request:
+   * the turn is not over. This CLI holds the old session, so it ends, and the
+   * turn, with any queued behind it, goes on a CLI that resumes the copy with
+   * the tail as its first message (`ClaudeTurn.takeSwap`).
+   */
+  #handOver(turn: ClaudeTurn): void {
+    const moved = this.#waiting.splice(0);
+    turn.takeSwap();
+    turn.ctx.log('info', 'claude: the turn goes on with the session compacted in the background');
+    this.close(null);
+    this.#hooks.stranded(moved);
   }
 
   /** Archive, shutdown, a changed setup: end the CLI and settle whatever is left. */
@@ -505,7 +524,7 @@ export class ClaudeSession {
   // -- the query ------------------------------------------------------------
 
   async #run(first?: ClaudeTurn): Promise<void> {
-    const lazy = this.#lazyServers(this.#ctx);
+    const lazy = lazyServers(this.#ctx);
     try {
       const options = cliOptions(this.#ctx, this.#optionsHost, lazy?.entries ?? null);
       if (this.#ctx.protectedExecution) {
@@ -546,25 +565,6 @@ export class ClaudeSession {
     }
   }
 
-  /**
-   * The user's stdio MCP servers, reached through the core so that each
-   * starts on its first call instead of with the CLI. None for a context mode
-   * that starts without MCP, and the servers as configured when the core
-   * cannot take them over.
-   */
-  #lazyServers(ctx: SessionContext): ReturnType<NonNullable<SessionContext['lazyMcp']>> {
-    if (ctx.protectedExecution) return null;
-    const mode = ctx.thread.contextMode ?? null;
-    if (ctx.lazyMcp === undefined || (mode !== null && !mode.mcp)) return null;
-    try {
-      const servers = userStdioServers(ctx.accountEnv.CLAUDE_CONFIG_DIR ?? process.env.CLAUDE_CONFIG_DIR, ctx.thread.cwd);
-      return ctx.lazyMcp(cliEnv(ctx), servers);
-    } catch (error) {
-      ctx.log('warn', `claude: MCP servers start with the CLI: ${messageOf(error)}`);
-      return null;
-    }
-  }
-
   /** `replayed` is an adopted message handed to the turn that opened for it: already diagnosed when it came. */
   #receive(message: SDKMessage, replayed = false): void {
     if (authenticationSuspectOf(message)) this.#authSuspect = true;
@@ -600,7 +600,7 @@ export class ClaudeSession {
   /** What `#receive` does with a frame that belongs to a turn, or opens one. */
   #deliver(message: SDKMessage, replayed: boolean): void {
     // A stop makes the CLI write an error result for the interrupt: that is the stop, not a failure.
-    if (!replayed && !(message.type === 'result' && (this.#closing || this.#head()?.isStopped === true))) noteClaudeMessage(this.#head()?.ctx ?? this.#ctx, message, this.#spawnedAt);
+    if (!replayed && !(message.type === 'result' && (this.#closing || this.#head()?.isStopped === true || this.#head()?.swapping === true))) noteClaudeMessage(this.#head()?.ctx ?? this.#ctx, message, this.#spawnedAt);
     if (message.type === 'system' && message.subtype === 'init') { this.#spawnedAt = null; this.#totals.started(message.claude_code_version); }
     if (message.type === 'system' && message.subtype === 'init') {
       for (const report of this.#fastReports.splice(0)) report(message.fast_mode_state);
@@ -639,6 +639,7 @@ export class ClaudeSession {
     // One result per user message: that is the end of this turn, not of the CLI.
     if (message.type === 'result') {
       this.#totals.counted(message);
+      if (turn.swapping && !turn.isStopped && !this.#closing) { this.#handOver(turn); return; }
       // A CLI that could not resume holds no session worth keeping warm: the
       // retry the core sends next must get a query of its own, with no resume.
       if (turn.sessionLost || this.#loginRejected) this.close(null);

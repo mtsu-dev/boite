@@ -18,14 +18,12 @@ export function isOpenCode(providerId: ProviderId): boolean {
 }
 
 /**
- * A process environment of `providerId` with OpenCode 2's own background
- * compaction switched on in its inline configuration (`OPENCODE_CONFIG_CONTENT`)
- * when the `backgroundCompaction` experiment is (`enabled`). Everything else
- * the configuration carries is kept; one that is not a JSON object is left
- * unchanged, since OpenCode refuses it either way. Other providers pass through.
+ * `env` with OpenCode 2's inline configuration (`OPENCODE_CONFIG_CONTENT`)
+ * passed through `edit`. Everything else the configuration carries is kept;
+ * one that is not a JSON object is left unchanged, since OpenCode refuses it
+ * either way.
  */
-export function openCodeBackgroundCompaction(providerId: ProviderId, enabled: boolean, env: Record<string, string>): Record<string, string> {
-  if (!enabled || providerId !== OPENCODE_V2) return env;
+function editInlineConfig(env: Record<string, string>, edit: (config: Record<string, unknown>) => Record<string, unknown>): Record<string, string> {
   let config: unknown;
   try {
     config = JSON.parse(env['OPENCODE_CONFIG_CONTENT'] ?? '{}');
@@ -33,10 +31,44 @@ export function openCodeBackgroundCompaction(providerId: ProviderId, enabled: bo
     return env;
   }
   if (config === null || typeof config !== 'object' || Array.isArray(config)) return env;
-  const base = config as Record<string, unknown>;
-  const declared = base['experimental'];
-  const experimental = declared !== null && typeof declared === 'object' && !Array.isArray(declared) ? declared as Record<string, unknown> : {};
-  return { ...env, OPENCODE_CONFIG_CONTENT: JSON.stringify({ ...base, experimental: { ...experimental, background_compaction: true } }) };
+  return { ...env, OPENCODE_CONFIG_CONTENT: JSON.stringify(edit(config as Record<string, unknown>)) };
+}
+
+function section(config: Record<string, unknown>, key: string): Record<string, unknown> {
+  const declared = config[key];
+  return declared !== null && typeof declared === 'object' && !Array.isArray(declared) ? declared as Record<string, unknown> : {};
+}
+
+/**
+ * A process environment of `providerId` with OpenCode 2's own background
+ * compaction switched on or off (`enabled`, the thread type's
+ * `backgroundCompaction`) in its inline configuration. Off is written too, so
+ * a profile that turned it on does not outrank the owner. Other providers pass
+ * through.
+ */
+export function openCodeBackgroundCompaction(providerId: ProviderId, enabled: boolean, env: Record<string, string>): Record<string, string> {
+  if (providerId !== OPENCODE_V2) return env;
+  return editInlineConfig(env, config => ({ ...config, experimental: { ...section(config, 'experimental'), background_compaction: enabled } }));
+}
+
+/**
+ * The `compaction.buffer` that puts OpenCode 2's automatic compaction at the
+ * owner's limit (`tokens`) for a model of `window` input tokens: OpenCode
+ * compacts above `window - buffer` (`calculateCeiling` in its
+ * `session/compaction.ts`). Null keeps OpenCode's own ceiling, `window` less
+ * the larger of 15% and 16 000 tokens: no limit, an unknown window, or a limit
+ * at or above the window, which no request reaches.
+ */
+export function openCodeCompactionBuffer(window: number, tokens: number | null): number | null {
+  const size = Number.isFinite(window) ? Math.floor(window) : 0;
+  if (tokens === null || size <= 0 || tokens >= size) return null;
+  return size - tokens;
+}
+
+/** `env` with `buffer` as OpenCode 2's `compaction.buffer`; null leaves it as it is. */
+export function withOpenCodeCompactionBuffer(env: Record<string, string>, buffer: number | null): Record<string, string> {
+  if (buffer === null) return env;
+  return editInlineConfig(env, config => ({ ...config, compaction: { ...section(config, 'compaction'), buffer } }));
 }
 
 /**

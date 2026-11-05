@@ -1,6 +1,6 @@
 import { archiveState } from '../merged-pr-archive-state.ts';
 import { worktreeRemovalOf } from '../worktree-cleanup-state.ts';
-import { backgroundWait, pullRequestWatchWaits } from '@boite/contracts';
+import { backgroundWait, pullRequestWatchWaits, threadActive } from '@boite/contracts';
 import type { BackgroundTask, BackgroundWait, MessageId, MessagePart, MoveNotice, RpcParams, ThreadId, ThreadSummary } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { notFound } from '../errors.ts';
@@ -79,6 +79,42 @@ export function withLoad(core: Core, thread: ThreadSummary): ThreadSummary {
     pullRequestWatches: watches,
     wake: core.wakes?.of(thread.id) ?? null,
   };
+}
+
+/** The thread's delegated agents with a turn still under way, or at rest waiting on their own background work. */
+export function activeChildren(core: Core, threadId: ThreadId): number {
+  const rows = core.journal.db
+    .query('SELECT id, status FROM threads WHERE parent_thread_id = ?')
+    .all(threadId) as { id: string; status: string }[];
+  return rows.filter(row => {
+    // A persistent agent's memory pass is Boite's own housekeeping: the answer it follows is already the news.
+    if (core.workforce?.memory.owns(row.id)) return false;
+    if (row.status === 'queued' || row.status === 'running' || row.status === 'waiting') return true;
+    return waitsOnBackground(core, row.id);
+  }).length;
+}
+
+/** Whether the thread's own background work still runs, or just ended with its wake on the way. */
+function waitsOnBackground(core: Core, threadId: ThreadId): boolean {
+  const live = core.threads.agentState.background.get(threadId) ?? [];
+  if (live.length > 0) return true;
+  const thread = core.journal.getThread(threadId);
+  return thread !== null && backgroundWaitOf(core, thread, live)?.state === 'waiting';
+}
+
+/**
+ * Whether nothing of the thread's last request still goes on: no turn under way,
+ * no background work, no pull request whose checks it waits on, no delegated
+ * agent at work here or on another machine, no workflow running. Another agent's
+ * message that finds it so starts a request of its own (`opensRequest`).
+ */
+export function threadAtRest(core: Core, thread: ThreadSummary): boolean {
+  return !threadActive(thread.status)
+    && !waitsOnBackground(core, thread.id)
+    && !core.pullRequestWatches.of(thread.id).some(pullRequestWatchWaits)
+    && activeChildren(core, thread.id) === 0
+    && !core.delegation.remote.busy(thread.id)
+    && !core.workflows.active(thread.id);
 }
 
 /**

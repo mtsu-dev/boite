@@ -858,7 +858,7 @@ test('Enter in the emptied composer holds pending input behind an approval', asy
   expect(rpc.mock.calls.filter(([method]) => method === 'turns.stop')).toHaveLength(0);
 });
 
-test('a prompt queued while a turn runs on the agent\'s default model steers that turn, though the chips show the model it resolves to', async () => {
+test('Send now interrupts a turn on the default model, though the chips show the model it resolves to', async () => {
   await mountOnFake(40);
   await store.open('t-trace');
   await store.client!.call('threads.update', { threadId: 't-trace', model: null });
@@ -871,11 +871,12 @@ test('a prompt queued while a turn runs on the agent\'s default model steers tha
   query<HTMLButtonElement>('[data-testid=composer-send-now]').click();
   await waitFor(() => store.composerStates['t-trace']?.queued.length === 0);
   const thread = await store.client!.call('threads.get', { threadId: 't-trace' });
-  expect(thread.messages.find(message => message.role === 'user' && message.parts.some(part => part.type === 'text' && part.text === 'Focus on this detail'))?.turnId).toBe(turn.id);
+  expect(thread.turns.find(row => row.id === turn.id)?.status).toBe('stopped');
+  expect(thread.messages.find(message => message.role === 'user' && message.parts.some(part => part.type === 'text' && part.text === 'Focus on this detail'))?.turnId).not.toBe(turn.id);
   await waitFor(() => !store.busy);
 });
 
-test('Send now submits a follow-up without interrupting the live agent', async () => {
+test('Send now stops the old turn and starts the follow-up through the core', async () => {
   const core = new TestComposerCore();
   await mountOnFake(40, undefined, core);
   await store.open('t-trace');
@@ -889,7 +890,9 @@ test('Send now submits a follow-up without interrupting the live agent', async (
   query<HTMLButtonElement>('[data-testid=composer-send-now]').click();
   await waitFor(() => store.composerStates['t-trace']?.queued.length === 0 && !store.composerStates['t-trace']?.sending);
   expect(store.openThread?.status).toBe('running');
-  expect(core.steer).toHaveBeenCalledTimes(1);
+  expect(core.steer).not.toHaveBeenCalled();
+  expect(core.start).toHaveBeenCalledTimes(1);
+  expect(store.openThread?.turns.at(-2)?.status).toBe('stopped');
   expect(rpc.mock.calls.filter(([method]) => method === 'turns.steer')).toHaveLength(0);
   expect(rpc.mock.calls.filter(([method]) => method === 'turns.stop')).toHaveLength(0);
   await waitFor(() => !store.busy);

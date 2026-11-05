@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import type { Message, MessagePart, Turn } from '@boite/contracts';
-import { AgentTimeline, FOLD_PREFIX, TurnFolds, foldText, memoryTurn, quietReason, toggleTurn } from './agent-turns';
+import { AgentTimeline, FOLD_PREFIX, TurnFolds, foldText, memoryTurn, quietReason, toggleTurn, wakeFolds } from './agent-turns';
 
 const turn = (id: string, extra: Partial<Turn> = {}): Turn => ({ id, threadId: 't', status: 'done', queuedAt: 0, startedAt: 0, finishedAt: 180_000, usage: null, error: null, ...extra });
 const message = (id: string, turnId: string, role: Message['role'], parts: MessagePart[], createdAt = 0): Message => ({ id, threadId: 't', turnId, role, state: 'complete', createdAt, parts });
@@ -109,6 +109,12 @@ test('a memory pass marks the last answer the user saw before it, never a quiet 
 });
 
 const exec = (operation: NonNullable<Turn['execution']>['operation'], automatic = false) => ({ operation, ...(automatic ? { automatic: true } : {}) }) as Turn['execution'];
+
+test('another agent\'s letter folds as a wake, the request it opens on a thread at rest included', () => {
+  expect(wakeFolds(turn('carries-on', { execution: exec('coordination') }))).toBe(true);
+  expect(wakeFolds(turn('opens', { execution: { operation: 'coordination', opensRequest: true } as Turn['execution'] }))).toBe(true);
+  expect(wakeFolds(turn('user'))).toBe(false);
+});
 
 test('an automatic compaction that went through leaves the timeline for a mark on the line of the turn before it', () => {
   const agentTimeline = new AgentTimeline();

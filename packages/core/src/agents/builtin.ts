@@ -12,6 +12,8 @@ import { AGENT_BUILTINS, type Account, type AgentBuiltin, type AgentProfile, typ
 import type { Core } from '../core.ts';
 import { refused } from '../errors.ts';
 import { loggedInAccount } from '../delegation/routes.ts';
+import type { ProviderProbe } from '../providers/probe.ts';
+import { botDefaultModel, PROBED_PROTOCOLS } from '../threads/selection.ts';
 import { rewriteBrainFile } from './brain-files.ts';
 import { BRAIN_FILES } from './resident.ts';
 import type { AgentStore } from './store.ts';
@@ -70,10 +72,26 @@ export class BuiltinBots {
   readonly #core: Core;
   readonly #store: AgentStore;
   readonly #hooks: BuiltinHooks;
+  #probe: ProviderProbe | null = null;
   constructor(core: Core, store: AgentStore, hooks: BuiltinHooks) {
     this.#core = core;
     this.#store = store;
     this.#hooks = hooks;
+  }
+
+  /** Wired by `modules.ts` once the probe exists, as for threads and subagents. */
+  useProbe(probe: ProviderProbe): void { this.#probe = probe; }
+
+  /**
+   * Before a route with no model is saved: an agent that lists its own models
+   * and has not read them since the core started (Claude's descriptor lists
+   * none) reads them, so the save finds the account's default model.
+   */
+  async #readModels(selection: AgentSelection): Promise<void> {
+    if (selection.model != null || this.#probe === null) return;
+    const provider = this.#core.providers.get(selection.providerId);
+    if (provider === undefined || !PROBED_PROTOCOLS.includes(provider.protocol) || botDefaultModel(provider, selection.accountId) !== null) return;
+    await this.#probe({ providerId: provider.id, accountId: selection.accountId });
   }
 
   /** The live built-in bot of that kind: not archived. */
@@ -103,11 +121,20 @@ export class BuiltinBots {
    * archived by an older core comes back. `name` and `selection` count on
    * creation only.
    */
-  ensure(params: RpcParams<'agents.builtin.ensure'>): AgentProfile {
+  async ensure(params: RpcParams<'agents.builtin.ensure'>): Promise<AgentProfile> {
     object(params, 'params');
     const kind = oneOf(params.kind, 'kind', AGENT_BUILTINS);
     const name = params.name === undefined ? undefined : text(params.name, 'name', 100);
     if (params.selection !== undefined) object(params.selection, 'selection');
+    // Only a new bot takes this route, chosen once so the save runs on the account the read listed; one made before keeps its own.
+    if (this.#store.records.list('profile').some(agent => agent.builtin === kind)) return this.#ensure(kind, name, null);
+    const selection = params.selection ?? this.#defaultSelection(kind);
+    await this.#readModels(selection);
+    return this.#ensure(kind, name, selection);
+  }
+
+  /** `selection` is the new bot's route, null when one existed before the wait for its models. */
+  #ensure(kind: AgentBuiltin, name: string | undefined, selection: AgentSelection | null): AgentProfile {
     const existing = this.#store.records.list('profile').find(agent => agent.builtin === kind);
     if (existing !== undefined) {
       if (existing.status !== 'archived') {
@@ -119,7 +146,7 @@ export class BuiltinBots {
     }
     const shipped = BUILTIN_TEXT[kind];
     return this.#store.saveProfile({
-      value: { name: name ?? shipped.name, domain: shipped.domain, instructions: shipped.instructions, avatar: shipped.avatar, status: 'active', projectIds: [], selection: params.selection ?? this.#defaultSelection(kind) },
+      value: { name: name ?? shipped.name, domain: shipped.domain, instructions: shipped.instructions, avatar: shipped.avatar, status: 'active', projectIds: [], selection: selection ?? this.#defaultSelection(kind) },
     }, kind);
   }
 
@@ -131,14 +158,27 @@ export class BuiltinBots {
    * introduction; the old thread is archived, with whatever ran on it. Facts
    * still waiting for the bot stay: a request in flight is not lost.
    */
-  reset(params: RpcParams<'agents.builtin.reset'>): AgentProfile {
+  async reset(params: RpcParams<'agents.builtin.reset'>): Promise<AgentProfile> {
     object(params, 'params');
-    const agent = this.#store.records.get('profile', text(params.agentId, 'agentId', 160));
-    if (agent.builtin === undefined) throw refused(`agents.builtin.reset: ${agent.name} is no built-in bot; edit or archive it in its settings`, { field: 'agentId', expected: 'a built-in bot' });
-    const shipped = BUILTIN_TEXT[agent.builtin];
-    const name = params.name === undefined ? shipped.name : text(params.name, 'name', 100);
+    const { builtin } = this.#builtin(params.agentId);
+    const name = params.name === undefined ? undefined : text(params.name, 'name', 100);
     if (params.selection !== undefined) object(params.selection, 'selection');
-    const selection = params.selection ?? this.#defaultSelection(agent.builtin, 'reset');
+    const selection = params.selection ?? this.#defaultSelection(builtin, 'reset');
+    await this.#readModels(selection);
+    return this.#reset(params.agentId, name, selection);
+  }
+
+  /** The built-in bot `agentId` names, read again after the wait for its models. */
+  #builtin(agentId: string): AgentProfile & { builtin: AgentBuiltin } {
+    const agent = this.#store.records.get('profile', text(agentId, 'agentId', 160));
+    if (agent.builtin === undefined) throw refused(`agents.builtin.reset: ${agent.name} is no built-in bot; edit or archive it in its settings`, { field: 'agentId', expected: 'a built-in bot' });
+    return agent as AgentProfile & { builtin: AgentBuiltin };
+  }
+
+  #reset(agentId: string, named: string | undefined, selection: AgentSelection): AgentProfile {
+    const agent = this.#builtin(agentId);
+    const shipped = BUILTIN_TEXT[agent.builtin];
+    const name = named ?? shipped.name;
     const { id, revision, createdAt: _createdAt, updatedAt: _updatedAt, ...value } = agent;
     // Boite's text first, through the records: the save below refuses any other domain or instructions.
     const current = agent.domain === shipped.domain && agent.instructions === shipped.instructions

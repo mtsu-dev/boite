@@ -24,6 +24,12 @@ const DRIVEN = `Object.defineProperty(Navigator.prototype, 'webdriver', { get: (
 const SEEN_TOUR = `try { if (localStorage.getItem(${JSON.stringify(ONBOARDING_STORAGE_KEY)}) === null) localStorage.setItem(${JSON.stringify(ONBOARDING_STORAGE_KEY)}, ${JSON.stringify(JSON.stringify({ version: ONBOARDING_VERSION, at: 0 }))}); } catch {}`;
 
 const CONNECT_TIMEOUT_MS = 30_000;
+/**
+ * How long a shell launched by someone else may take to show its first page:
+ * on a loaded Windows runner a WebView2 opened its port after 28.2 s and left
+ * about:blank after 30.5 s, its core up within a second (2026-11-05).
+ */
+const ATTACH_TIMEOUT_MS = 90_000;
 /** How long a killed browser may take to exit: 30.6 s was measured on a loaded machine. */
 const EXIT_TIMEOUT_MS = 30_000;
 const CALL_TIMEOUT_MS = 20_000;
@@ -511,7 +517,7 @@ export class BrowserPage {
   static async attach(port: number, urlIncludes = '', diagnose?: (failure: string) => string | Promise<string>): Promise<BrowserPage> {
     let page: BrowserPage | undefined;
     try {
-      const target = await waitForPageTarget(port, urlIncludes);
+      const target = await waitForPageTarget(port, urlIncludes, undefined, false, undefined, ATTACH_TIMEOUT_MS);
       page = new BrowserPage(await openSocket(target), target, null, null);
       page.#debugPort = port;
       return await page.#prepareAttached();
@@ -1032,9 +1038,9 @@ In flight: ${JSON.stringify(this.#inFlight())}`);
   }
 }
 
-async function waitForPageTarget(port: number, urlIncludes = '', proc?: Subprocess, allowBlank = false, collectLate?: (deadline: number) => void): Promise<TargetInfo> {
+async function waitForPageTarget(port: number, urlIncludes = '', proc?: Subprocess, allowBlank = false, collectLate?: (deadline: number) => void, timeoutMs = CONNECT_TIMEOUT_MS): Promise<TargetInfo> {
   const started = Date.now();
-  const deadline = started + CONNECT_TIMEOUT_MS;
+  const deadline = started + timeoutMs;
   let last = 'the debugging port never answered';
   // Every distinct answer and when it came: the last one alone cannot say
   // whether the port never opened, opened late or listed a page that never
@@ -1043,7 +1049,7 @@ async function waitForPageTarget(port: number, urlIncludes = '', proc?: Subproce
   for (;;) {
     if (proc && proc.exitCode !== null) throw new Error(`the browser exited before opening CDP with code ${proc.exitCode}`);
     const elapsed = Date.now() - started;
-    if (elapsed >= CONNECT_TIMEOUT_MS - PROBE_TIMEOUT_MS && elapsed < CONNECT_TIMEOUT_MS) collectLate?.(deadline);
+    if (elapsed >= timeoutMs - PROBE_TIMEOUT_MS && elapsed < timeoutMs) collectLate?.(deadline);
     try {
       const response = await fetch(`http://127.0.0.1:${port}/json/list`, { signal: AbortSignal.timeout(1_000) });
       const targets = (await response.json()) as TargetInfo[];

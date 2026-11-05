@@ -93,8 +93,8 @@ export class ContactBotHome {
     if (contactsBot(this.#core) === null && this.#core.group.peers().some(peer => peer.coreId === coming)) return;
     this.#core.journal.deleteSetting(COMING);
     if (contactsBot(this.#core) !== null) return;
-    try { this.#core.workforce.builtins.ensure({ kind: 'contacts' }); }
-    catch (error) { this.#core.log('warn', `contacts: no Contacts bot could start here (${messageOf(error)})`, { source: 'contacts' }); }
+    void this.#core.workforce.builtins.ensure({ kind: 'contacts' })
+      .catch(error => this.#core.log('warn', `contacts: no Contacts bot could start here (${messageOf(error)})`, { source: 'contacts' }));
   }
 
   close(): Promise<unknown> { this.#closed = true; return this.#job ?? Promise.resolve(); }

@@ -79,6 +79,14 @@ export class OpenCodeConnection {
     this.#pending = null;
   }
 
+  /**
+   * The session's actual model, `provider/model`, and the window OpenCode
+   * compacts it against: an empty model and 0 until the session is read.
+   */
+  compactionModel(): { model: string; window: number } {
+    return { model: this.#controls.currentModel(), window: this.#controls.compactionWindow() };
+  }
+
   async steer(prompt: ContentBlock[], onAccepted?: () => void): Promise<boolean> {
     if (!this.#pending || this.#inputCommitted || !this.#current() || this.#current()?.isStopped) return false;
     await this.#submit(prompt, onAccepted);

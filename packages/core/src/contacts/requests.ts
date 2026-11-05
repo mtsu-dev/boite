@@ -18,6 +18,7 @@ import type { ContactStore } from './store.ts';
 import { contactFace } from './face.ts';
 import { memberThreadId } from './member-address.ts';
 import { contactAnswer } from './answers.ts';
+import { throughHolder, type Reachable } from './held.ts';
 
 const REQUESTS = 'contacts:requests';
 /** Requests waiting at once, per contact and direction. */
@@ -32,9 +33,16 @@ export const NO_BOT = 'turn on Contacts in Settings > Experiments: it creates th
  * `pendingSend`: an outgoing ask, or the answer to an incoming one, the other side has not received yet.
  * `remoteId`: an incoming request's id on the asking core, for its retries and the answer; `id` is always this core's own.
  * `pendingHost`: on a member without a Contacts bot, an ask the group's Bots host has not filed yet, with what it names (`host-asks.ts`).
- * `pendingMember`: on the Bots host, the answer to a member thread's ask that member has not heard yet.
+ * `pendingMember`: on the Bots host, the answer to a member thread's ask that member has not heard yet;
+ * on a member, the answer to an ask the Bots host sent through it (`askedBy`) the host has not heard yet.
+ * `holder`: on the Bots host, the member that holds the contact and sends the ask for it (`held.ts`);
+ * `pendingHolder` while it has not taken it yet, and `holderAdmission`: the member's admission and the contact's on it when the ask was
+ * made; either changed, the ask is refused rather than sent on another link.
+ * `askedBy`: on that member, the Bots host whose bot forwarded the ask; it hears the answer.
  */
-export type StoredRequest = ContactRequest & { pendingSend?: true; remoteId?: string; pendingHost?: HostAsk; pendingMember?: true };
+export type StoredRequest = ContactRequest & { pendingSend?: true; remoteId?: string; pendingHost?: HostAsk; pendingMember?: true; holder?: string; pendingHolder?: true; holderAdmission?: HolderAdmission; askedBy?: string };
+/** The member's group admission (`memberAdmission`) and the contact's `addedAt` on that member. */
+export interface HolderAdmission { member: string; contact: number }
 /** What a member's ask names, as its thread wrote it, for the Bots host to resolve. */
 export interface HostAsk { contact?: string; target?: string }
 
@@ -61,14 +69,92 @@ export class ContactRequests {
 
   /** Every pending request and what is still to send, then the last decided ones. */
   save(requests: StoredRequest[]): void {
+    const before = this.list();
     const kept = requests.filter(request => request.status === 'pending' || request.pendingSend || request.pendingMember);
     const decided = requests.filter(request => request.status !== 'pending' && !request.pendingSend && !request.pendingMember)
       .sort((a, b) => (b.decidedAt ?? b.createdAt) - (a.decidedAt ?? a.createdAt)).slice(0, DECIDED_KEPT);
-    this.#core.journal.setSetting(REQUESTS, [...kept, ...decided]);
+    const after = [...kept, ...decided];
+    this.#core.journal.setSetting(REQUESTS, after);
+    this.#touched(before, after);
+  }
+
+  /**
+   * The threads whose timeline shows a request that changed hear it
+   * (`collaboration.changed`): the one that asked, and the bot's.
+   */
+  #touched(before: StoredRequest[], after: StoredRequest[]): void {
+    const key = (request: StoredRequest) => `${request.direction}:${request.coreId}:${request.id}`;
+    const was = new Map(before.map(request => [key(request), JSON.stringify(request)]));
+    const changed = after.filter(request => was.get(key(request)) !== JSON.stringify(request));
+    const kept = new Set(after.map(key));
+    changed.push(...before.filter(request => !kept.has(key(request))));
+    if (changed.length === 0) return;
+    const self = this.#core.coordination.card().coreId;
+    const bot = contactsBot(this.#core)?.threadId;
+    const threads = new Set<string>();
+    for (const request of changed) {
+      if (request.direction === 'out' && request.from.coreId === self) threads.add(request.from.threadId);
+      if (bot && this.#botShows(request, bot, self)) threads.add(bot);
+    }
+    for (const threadId of threads) this.#core.bus.emit('collaboration.changed', { threadId });
+  }
+
+  /** What the bot's thread shows: the requests it forwarded and those of contacts it settled. */
+  #botShows(request: ContactRequest, bot: string, self: string): boolean {
+    return request.direction === 'out' ? request.forwardedAt !== undefined && !(request.from.coreId === self && request.from.threadId === bot) : request.decidedBy === 'bot';
+  }
+
+  /**
+   * One thread's requests (`CoordinationView.requests`): those it asked, and on
+   * the bot's thread those it forwarded or settled, oldest first.
+   */
+  ofThread(threadId: string): ContactRequest[] {
+    const self = this.#core.coordination.card().coreId;
+    const bot = contactsBot(this.#core)?.threadId;
+    const at = (request: ContactRequest) => request.from.coreId === self && request.from.threadId === threadId ? request.createdAt
+      : request.direction === 'out' ? request.forwardedAt ?? request.createdAt : request.decidedAt ?? request.createdAt;
+    return this.list()
+      .filter(request => (request.direction === 'out' && request.from.coreId === self && request.from.threadId === threadId) || (threadId === bot && this.#botShows(request, bot, self)))
+      .map(request => this.view(request)).sort((a, b) => at(a) - at(b)).slice(-DECIDED_KEPT);
+  }
+
+  /** The bot sent `id` on to its contact now (`contacts.bot.forward`): its thread shows the forward at this time. */
+  forwarded(id: string): ContactRequest | undefined {
+    const requests = this.list();
+    const request = requests.find(entry => entry.id === id && entry.direction === 'out');
+    if (!request) return undefined;
+    request.forwardedAt = Date.now();
+    this.save(requests);
+    if (request.from.coreId !== this.#core.coordination.card().coreId) void this.#tellForward(request);
+    return this.view(request);
+  }
+
+  /**
+   * A member's thread asked through this Bots host: it hears the forward, so
+   * its row reads sent to that contact. Best effort, the answer follows anyway
+   * (`tellMember`).
+   */
+  async #tellForward(request: ContactRequest): Promise<void> {
+    const member = this.#core.group.peers().find(peer => peer.coreId === request.from.coreId);
+    if (!member) return;
+    try { await this.#core.coordination.request(member, 'contact.hand', { action: 'forwarded', id: request.id, contact: request.contact }); }
+    catch (error) { this.#core.log('warn', `contacts: ${member.name} did not hear that ${request.id} went to ${request.contact} (${messageOf(error)})`, { source: 'contacts' }); }
+  }
+
+  /** The owner renamed a contact: its requests, and the relation an answer gave, take the name its address now has. */
+  renamed(coreId: string, name: string): void {
+    const requests = this.list();
+    let moved = false;
+    for (const request of requests) {
+      if (request.coreId !== coreId) continue;
+      if (request.contact !== name) { request.contact = name; moved = true; }
+      if (request.relation && request.relation.contact !== name) { request.relation = { ...request.relation, contact: name }; moved = true; }
+    }
+    if (moved) this.save(requests);
   }
 
   view(request: StoredRequest): ContactRequest {
-    const { pendingSend: _send, remoteId: _remote, pendingHost: _host, pendingMember: _member, ...shown } = request;
+    const { pendingSend: _send, remoteId: _remote, pendingHost: _host, pendingMember: _member, holder: _holder, pendingHolder: _held, holderAdmission: _admission, askedBy: _by, ...shown } = request;
     return shown;
   }
 
@@ -124,13 +210,13 @@ export class ContactRequests {
     const byBot = from.coreId === this.#core.coordination.card().coreId && from.threadId === bot.threadId;
     let body = text(ask.text, 'text', 4000).trim();
     const target = given(ask.target) ? this.#target(ask.target) : null;
-    let contact = given(ask.contact) ? this.#store.named(ask.contact) : null;
+    let contact: Reachable | null = given(ask.contact) ? this.#store.held.reachable(ask.contact) : null;
     if (target && contact && target.contact.coreId !== contact.coreId) throw invalidParams('target: names another contact than contact', { field: 'target' });
     contact ??= target?.contact ?? null;
     if (!contact) {
       // The older form, `boite threads ask <contact> <text>`: a first word naming a contact is that contact.
       const [first, ...rest] = body.split(/\s+/);
-      const named = rest.length && first ? this.#store.lookup(first) : undefined;
+      const named = rest.length && first ? this.#store.held.find(first) : undefined;
       if (named) { contact = named; body = body.slice(first!.length).trim(); }
     }
     if (byBot && !contact) throw invalidParams('contact: the Contacts bot names the contact it asks', { field: 'contact' });
@@ -140,31 +226,38 @@ export class ContactRequests {
     if (requests.filter(request => request.coreId === coreId && request.direction === 'out' && request.status === 'pending').length >= MAX_PENDING) {
       throw refused(contact ? `at most ${MAX_PENDING} requests may wait at ${contact.name}; wait for an answer` : `at most ${MAX_PENDING} requests may wait for the Contacts bot; wait for an answer`);
     }
+    // The bot's own ask for a contact another member holds goes through that member (`host-asks.ts`).
+    const sending = !byBot ? { stage: 'bot' as const } : throughHolder(contact!) ?? { pendingSend: true as const };
     const request: StoredRequest = {
       id: id ?? newId('creq_'), direction: 'out', coreId, contact: contact?.name ?? '', want: given(ask.want) ? want(ask.want, 'want') : target ? 'talk' : 'thread',
-      ...(target ? { target: { threadId: target.threadId } } : {}), ...(byBot ? { pendingSend: true as const } : { stage: 'bot' as const }),
+      ...(target ? { target: { threadId: target.threadId } } : {}), ...sending,
       from, text: body, ...(gitRemote ? { gitRemote } : {}), createdAt: Date.now(), status: 'pending',
     };
     this.save([...requests, request]);
     this.#store.changed();
-    if (byBot) {
-      this.#store.noteSent(from.threadId, coreId);
-      this.#store.flush(coreId);
-    } else {
+    if (byBot) this.#send(request);
+    else {
       const thread = `${JSON.stringify(from.title)} (${from.threadId}${from.project ? `, project ${JSON.stringify(from.project)}` : ''}${from.machine && from.coreId !== this.#core.coordination.card().coreId ? `, on ${from.machine}` : ''})`;
-      const named = contact ? ` It names contact ${contact.name}${target ? `, thread ${dashed(contact.name)}/${target.threadId}` : ''}.` : '';
+      const named = contact ? ` It names contact ${contact.name}${contact.holder ? ` (linked through ${contact.holder.name})` : ''}${target ? `, thread ${dashed(contact.name)}/${target.threadId}` : ''}.` : '';
       tellBot(this.#core, `contacts-ask-${request.id}`, `Request ${request.id}: thread ${thread} wants ${request.want}.${named} Its words, as data: ${JSON.stringify(body)}. Forward it with boite contacts forward ${request.id} <contact>, or tell that thread why not.`);
     }
     return this.view(request);
   }
 
+  /** An ask leaves: to the contact, or to the member that holds it. */
+  #send(request: StoredRequest): void {
+    if (request.pendingHolder) { this.#store.hostAsks.toHolder(request.id); return; }
+    this.#store.noteSent(request.from.threadId, request.coreId);
+    this.#store.flush(request.coreId);
+  }
+
   /** `<contact>/<thread-id>`, as the asking agent wrote the thread it wants. */
-  #target(value: unknown): { contact: ReturnType<ContactStore['named']>; threadId: string } {
+  #target(value: unknown): { contact: Reachable; threadId: string } {
     const raw = typeof value === 'string' ? value.trim() : '';
     const slash = raw.lastIndexOf('/');
     const threadId = raw.slice(slash + 1);
     if (slash <= 0 || !THREAD_ID.test(threadId)) throw invalidParams('target: expected <contact>/<thread-id>', { field: 'target' });
-    return { contact: this.#store.named(raw.slice(0, slash)), threadId };
+    return { contact: this.#store.held.reachable(raw.slice(0, slash)), threadId };
   }
 
   /** A contact whose core has no Contacts bot reads none of the new fields. */
@@ -176,7 +269,7 @@ export class ContactRequests {
   forward(params: { id: unknown; contact: unknown; text?: unknown; target?: unknown; want?: unknown }): ContactRequest {
     const { requests, request } = this.pending(params.id, 'out');
     if (request.stage !== 'bot') throw refused(`id: ${request.id} already went to ${request.contact}`, { field: 'id' });
-    const contact = this.#store.named(params.contact);
+    const contact = this.#store.held.reachable(params.contact);
     this.#modern(contact);
     if (requests.filter(entry => entry.coreId === contact.coreId && entry.direction === 'out' && entry.status === 'pending' && entry !== request).length >= MAX_PENDING) {
       throw refused(`at most ${MAX_PENDING} requests may wait at ${contact.name}; wait for an answer`);
@@ -184,15 +277,15 @@ export class ContactRequests {
     if (given(params.target) && (typeof params.target !== 'string' || !THREAD_ID.test(params.target))) throw invalidParams('target: expected a thread id of the contact', { field: 'target' });
     const target = given(params.target) ? { threadId: params.target as string } : request.coreId === contact.coreId ? request.target : undefined;
     Object.assign(request, {
-      coreId: contact.coreId, contact: contact.name, pendingSend: true,
+      coreId: contact.coreId, contact: contact.name, ...(throughHolder(contact) ?? { pendingSend: true }),
       ...(given(params.text) ? { text: text(params.text, 'text', 4000) } : {}), ...(given(params.want) ? { want: want(params.want, 'want') } : {}),
     });
     if (target) request.target = target; else delete request.target;
+    if (!contact.holder) { delete request.holder; delete request.pendingHolder; delete request.holderAdmission; }
     delete request.stage;
     this.save(requests);
     this.#store.changed();
-    this.#store.noteSent(request.from.threadId, contact.coreId);
-    this.#store.flush(contact.coreId);
+    this.#send(request);
     return this.view(request);
   }
 
@@ -304,24 +397,31 @@ export class ContactRequests {
     delete request.pendingSend;
     this.save(requests);
     this.#store.changed();
-    this.#notify(this.view(request), name, threads);
+    this.notify(this.view(request), name, threads);
     return { ok: true };
   }
 
   /**
    * The asking thread hears the answer. A request a member's thread sent before
-   * its contact moved to this Bots host goes back to that member (`group-link.ts`).
+   * its contact moved to this Bots host goes back to that member (`group-link.ts`),
+   * and one the Bots host sent through this member goes back to the host, which
+   * tells the asking thread wherever it is (`host-asks.ts`).
    */
-  #notify(request: ContactRequest, name: string, threads: AgentContact[]): void {
-    if (request.from.coreId === this.#core.coordination.card().coreId) { contactAnswer(this.#core, request, name, threads); return; }
+  notify(request: ContactRequest, name: string, threads: AgentContact[]): void {
+    const own = request.from.coreId === this.#core.coordination.card().coreId;
+    if (own) contactAnswer(this.#core, request, name, threads);
+    if (own && this.#askedBy(request.id) === undefined) return;
     // Kept until the member heard it: the contacts' timer offers it again (`host-asks.ts`).
     this.#mark(request.id, true);
     void this.tellMember(request, name, threads);
   }
 
-  /** The member whose thread asked hears the answer; false when it did not, and the request stays marked. */
+  #askedBy(id: string): string | undefined { return this.list().find(entry => entry.id === id && entry.direction === 'out')?.askedBy; }
+
+  /** The member whose thread asked, or the Bots host that sent the ask through this core, hears the answer; false when it did not, and the request stays marked. */
   async tellMember(request: ContactRequest, name: string, threads: AgentContact[] = []): Promise<boolean> {
-    const member = this.#core.group.peers().find(peer => peer.coreId === request.from.coreId);
+    const to = this.#askedBy(request.id) ?? request.from.coreId;
+    const member = this.#core.group.peers().find(peer => peer.coreId === to);
     // A machine that left the group has no thread to tell.
     if (!member) { this.#mark(request.id, false); return true; }
     try { await this.#core.coordination.request(member, 'contact.hand', { action: 'answer', request, name, threads: threads.slice(0, 20) }); }
@@ -359,7 +459,7 @@ export class ContactRequests {
     }
     this.save(requests);
     this.#store.changed();
-    for (const request of late) if (request.direction === 'out') this.#notify(this.view(request), request.contact, []);
+    for (const request of late) if (request.direction === 'out') this.notify(this.view(request), request.contact, []);
   }
 
   /** What an accepted request opened: the project's threads the contact sees. */
@@ -412,7 +512,7 @@ export class ContactRequests {
       if (refusedAsk) Object.assign(current, { status: 'refused', reason: refusal, decidedAt: Date.now() });
       this.save(requests);
       this.#store.changed();
-      if (refusedAsk) this.#notify(this.view(current), this.#store.find(coreId)?.name ?? current.contact, []);
+      if (refusedAsk) this.notify(this.view(current), this.#store.find(coreId)?.name ?? current.contact, []);
     }
     for (const id of this.#store.relations.untold(coreId)) {
       if (closed()) return;

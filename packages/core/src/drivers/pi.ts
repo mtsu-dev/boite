@@ -1,5 +1,6 @@
 import type { AccountId, ModelInfo, ProviderId, ThreadId } from '@boite/contracts';
 import { ModelProbes } from './model-probes.ts';
+import { compactionSetting } from './pi/compaction.ts';
 import { sessionKey } from './pi/mapping.ts';
 import { readModels } from './pi/models.ts';
 import { PiSession } from './pi/session.ts';
@@ -19,19 +20,21 @@ export function createPiDriver(): Driver {
     const threadId = ctx.thread.id;
     const warmMs = Math.max(0, ctx.warmProcessMinutes) * MINUTE_MS;
     const key = sessionKey(ctx);
+    const compaction = compactionSetting(ctx);
 
     let session = sessions.get(threadId) ?? null;
-    const usable = session?.usable(key, warmMs) === true;
+    const usable = session?.usable(key, warmMs, compaction) === true;
     noteWarmSession(ctx, 'pi', { kept: session !== null, usable, sameSetup: session?.key === key, setupChange: 'the thread changed model, effort, account or folder' });
     if (session !== null && !usable) {
       sessions.delete(threadId);
-      session.close(session.key === key ? null : 'the thread changed model, effort, account or folder', ctx);
+      session.close(session.key !== key ? 'the thread changed model, effort, account or folder'
+        : session.compaction !== compaction ? 'the background compaction setting changed' : null, ctx);
       session = null;
     }
     if (session === null) {
       session = new PiSession(key, warmMs, (ended) => {
         if (sessions.get(threadId) === ended) sessions.delete(threadId);
-      });
+      }, compaction);
       sessions.set(threadId, session);
     }
     const running = session;

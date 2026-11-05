@@ -119,7 +119,7 @@ export class Composer {
       s.pendingQuestions.some(request => request.threadId === threadId && !request.async);
   }
 
-  /** Skip the automatic tool-boundary wait, retaining pending approvals and questions. */
+  /** Interrupt the current turn for queued input, retaining pending approvals and questions. */
   async sendQueuedNow(threadId: string): Promise<void> {
     const s = this.ctx.store;
     const state = this.composerStates[threadId];

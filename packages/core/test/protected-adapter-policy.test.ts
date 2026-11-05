@@ -128,6 +128,8 @@ test('protected ACP rejects absent, refused and falsely acknowledged native mode
   expect(await thrown(controls.applyMode(ctx))).toThrow('native agent refused');
   refused = false;
   expect(await thrown(controls.applyMode(ctx))).toThrow('did not confirm plan');
+  // A council member's read-only rests on the same answer.
+  expect(await thrown(controls.applyMode({...ctx, protectedExecution: undefined, modeRequired: true}))).toThrow('did not confirm plan');
 });
 
 test('protected ACP confirms the selected model before fresh and warm prompts', async () => {

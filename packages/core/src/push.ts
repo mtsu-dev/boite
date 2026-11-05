@@ -6,7 +6,7 @@ import type { Core } from './core.ts';
 import { invalidParams, refused } from './errors.ts';
 import type { AttentionReport } from './threads/focus.ts';
 import { deviceElsewhere, ownDevice } from './group/devices.ts';
-import { backgroundWaitOf } from './threads/records.ts';
+import { activeChildren } from './threads/records.ts';
 
 /** A device's destination; without `kinds`, written before devices chose, it receives every kind. */
 type Subscription = RpcParams<'push.subscribe'>;
@@ -137,7 +137,7 @@ export class PushStore {
         const turn = payload as RpcEvents['turn.finished'];
         if (this.#closed || this.#core.journal.isClosed() || (turn.status !== 'done' && turn.status !== 'error') || !this.reachable()) return;
         const thread = this.#core.journal.getThread(turn.threadId);
-        if (thread === null || !notifiesOnFinish(thread, turn, this.#activeChildren(thread.id))) return;
+        if (thread === null || !notifiesOnFinish(thread, turn, activeChildren(this.#core, thread.id))) return;
         // The reply is the news; an error's own message is often a stack or a
         // provider's JSON, so the phone says only that the turn failed.
         const reply = turn.status === 'done' ? this.#lastReply(turn.threadId, turn.id) : null;
@@ -164,22 +164,6 @@ export class PushStore {
       if (text) return text;
     }
     return null;
-  }
-
-  /** The parent's delegated agents with a turn still under way, or at rest waiting on their own background work. */
-  #activeChildren(threadId: string): number {
-    const rows = this.#core.journal.db
-      .query('SELECT id, status FROM threads WHERE parent_thread_id = ?')
-      .all(threadId) as { id: string; status: string }[];
-    return rows.filter(row => {
-      // A persistent agent's memory pass is Boite's own housekeeping: the answer it follows is already the news.
-      if (this.#core.workforce?.memory.owns(row.id)) return false;
-      if (row.status === 'queued' || row.status === 'running' || row.status === 'waiting') return true;
-      const live = this.#core.threads.agentState.background.get(row.id) ?? [];
-      if (live.length > 0) return true;
-      const thread = this.#core.journal.getThread(row.id);
-      return thread !== null && backgroundWaitOf(this.#core, thread, live)?.state === 'waiting';
-    }).length;
   }
 
   /**

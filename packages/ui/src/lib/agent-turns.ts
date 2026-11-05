@@ -209,10 +209,12 @@ const NO_COMPACTIONS: ReadonlyMap<string, CompactionPart[]> = new Map();
 /**
  * A turn Boite opened to carry on the user's request in an ordinary thread:
  * a pull request it watches changed, a delegated agent or background work
- * wrote back. Once settled its steps fold like a bot's, its answer stays.
+ * wrote back. Another agent's message to a thread at rest opens a request of
+ * its own but is a wake all the same. Once settled its steps fold like a bot's,
+ * its answer stays.
  */
 export function wakeFolds(turn: Turn): boolean {
-  return continuesRequest(turn) && turn.execution?.operation !== 'compact';
+  return (continuesRequest(turn) || turn.execution?.opensRequest === true) && turn.execution?.operation !== 'compact';
 }
 
 /** A compaction Boite ran by itself that went through: housekeeping, said on the line of the turn before it. */

@@ -1,3 +1,9 @@
+/**
+ * The `exe` of a process nothing could name: Windows stops answering for an image's
+ * full path once the process exits, and a Git Bash fork can be gone within 10 ms.
+ */
+export const UNNAMED_PROCESS = 'unknown';
+
 /** Which native process a PID names, so a reused PID is not taken for the one recorded earlier. */
 export interface ProcessIdentity {
   startedAt: number | null;

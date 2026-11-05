@@ -191,8 +191,8 @@ export interface ThreadSummary {
   agentSessionId?: string;
   /** A team's chat (`docs/teams.md`): it runs no agent, a turn there is one post, and no agent reaches it as a coordination contact. */
   teamId?: string;
-  /** A debate's salon (`docs/debates.md`): it runs no agent and holds no message; the posts are read with debates.get. */
-  debateId?: string;
+  /** A council's salon (`docs/council.md`): it runs no agent and holds no message; the posts are read with council.get. */
+  councilId?: string;
   /**
    * An incognito conversation of the drafts. It works in a folder of the
    * core's data directory rather than the drafts folder, lists stay quiet
@@ -229,11 +229,12 @@ export interface ThreadSummary {
    */
   runningSince?: Timestamp | null;
   /**
-   * When the user's current request started: the start of the last turn the
-   * user opened, kept through the turns Boite opened after it to carry on
-   * (`continuesRequest`). What a row counts from while the agent works or
-   * monitors, so a pause to watch CI does not reset it. Null when no turn runs
-   * and nothing runs in the background; missing on older cores.
+   * When the current request started: the start of the last turn that opened
+   * one, the user's or another agent's on a thread at rest, kept through the
+   * turns Boite opened after it to carry on (`continuesRequest`). What a row
+   * counts from while the agent works or monitors, so a pause to watch CI does
+   * not reset it. Null when no turn runs and nothing runs in the background;
+   * missing on older cores.
    */
   requestSince?: Timestamp | null;
   /** In memory only, cleared at turn end/restart. Missing on older cores. */

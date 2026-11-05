@@ -2,40 +2,61 @@ import type { SessionConfigOption } from '@agentclientprotocol/sdk/unstable';
 import type { AccountId, ModelInfo, ProviderDescriptor, ProviderId, ThreadId } from '@boite/contracts';
 import { agentModelsOf, modelsFrom, plainObject } from './acp/models.ts';
 import { AcpSession, sessionKey, type AcpMemory } from './acp/session.ts';
+import { forgetCompaction, forgetFolder, forgetThreadResolution, type CompactionPlace } from './acp/opencode-compaction.ts';
 import { readModels, withModelEffort, type ProbeEntry } from './acp/probe.ts';
 import { isGrok, MINUTE_MS, type AcpDeps } from './acp/protocol.ts';
 import { AcpTurn } from './acp/turn.ts';
 import type { Driver, LiveTurnSettings, ProbeContext, ProbeFilter, ProbeResult, SessionContext, TurnContext, TurnHandle } from './types.ts';
 import { noteWarmSession } from './driver-log.ts';
 
-/** One ACP agent process per thread, kept between turns the way the Claude one is. */
-export function createAcpDriver(deps: AcpDeps): Driver {
+/**
+ * One ACP agent process per thread, kept between turns the way the Claude one is.
+ * `memory`: what outlives a process, given by a test that reads it.
+ */
+export function createAcpDriver(deps: AcpDeps, memory: AcpMemory = { costPerProcess: new Set<ProviderId>(), refusedLoads: new Set<string>(), compactionWindows: new Map<string, number>(), resolvedModels: new Map<string, { cwd: string; model: string }>() }): Driver {
   const sessions = new Map<ThreadId, AcpSession>();
   const viewed = new Set<ThreadId>();
   const probes = new Map<string, ProbeEntry>();
   let probeRevision = 0;
-  const memory: AcpMemory = { costPerProcess: new Set<ProviderId>(), refusedLoads: new Set<string>() };
+  // Where each live conversation runs, until it is released: a folder left by
+  // the account's last one drops what it resolved and its windows.
+  const places = new Map<ThreadId, CompactionPlace>();
+  const samePlace = (one: CompactionPlace, other: CompactionPlace): boolean => one.providerId === other.providerId && one.accountId === other.accountId && one.cwd === other.cwd;
+  const leave = (place: CompactionPlace): void => {
+    for (const other of places.values()) if (samePlace(other, place)) return;
+    forgetFolder(memory, place);
+  };
+  // Released, archived or deleted: it resumes on its folder's resolution, if a live one keeps it.
+  const forgetThread = (threadId: ThreadId): void => {
+    const place = places.get(threadId);
+    places.delete(threadId);
+    forgetThreadResolution(memory, threadId);
+    if (place !== undefined) leave(place);
+  };
 
   const keyOf = (providerId: ProviderId, accountId: AccountId): string => `${providerId}::${accountId}`;
 
-  function acquire(ctx: SessionContext): AcpSession {
+  /** `forTurn`: a turn is about to run, the only time an idle process is replaced for its compaction limit. */
+  function acquire(ctx: SessionContext, forTurn = false): AcpSession {
     const threadId = ctx.thread.id;
     const warmMs = Math.max(0, ctx.warmProcessMinutes) * MINUTE_MS;
     const key = sessionKey(ctx);
+    const place: CompactionPlace = { providerId: ctx.provider.id, accountId: ctx.account.id, cwd: ctx.thread.cwd };
+    const before = places.get(threadId);
+    places.set(threadId, place);
+    // A conversation that moved may have been the old folder's last one.
+    if (before !== undefined && !samePlace(before, place)) leave(before);
 
     let session = sessions.get(threadId) ?? null;
-    const usable = session?.usable(key, warmMs) === true;
-    noteWarmSession(ctx, `${ctx.provider.id} ACP`, { kept: session !== null, usable, sameSetup: session?.key === key, setupChange: isGrok(ctx.provider) ? 'the thread changed mode, account or folder' : 'the thread changed account or folder' });
+    const compaction = forTurn && session?.compactionMoved(ctx) === true;
+    const usable = session?.usable(key, warmMs) === true && !compaction;
+    const changed = isGrok(ctx.provider) ? 'the thread changed mode, account or folder' : 'the thread changed account or folder';
+    const sameSetup = session?.key === key;
+    noteWarmSession(ctx, `${ctx.provider.id} ACP`, { kept: session !== null, usable, sameSetup: sameSetup && !compaction, setupChange: sameSetup ? 'the compaction limit changed' : changed });
     if (session !== null && !usable) {
       sessions.delete(threadId);
-      session.close(
-        session.key === key
-          ? null
-          : isGrok(ctx.provider)
-            ? 'the thread changed mode, account or folder'
-            : 'the thread changed account or folder',
-        ctx,
-      );
+      if (sameSetup && compaction) ctx.log('info', 'acp session: OpenCode 2 restarts with the compaction limit of the thread');
+      session.close(sameSetup ? null : changed, ctx);
       session = null;
     }
     const probeKey = keyOf(ctx.provider.id, ctx.account.id);
@@ -48,6 +69,11 @@ export function createAcpDriver(deps: AcpDeps): Driver {
         memory,
         (ended) => {
           if (sessions.get(threadId) === ended) sessions.delete(threadId);
+          // Released during its turn: the turn's end noted the folder again.
+          if (!places.has(threadId)) {
+            forgetThreadResolution(memory, threadId);
+            leave(place);
+          }
         },
         (options, ownModel) => {
           // Kept beside the probe, never as its result: the picker and the
@@ -77,7 +103,7 @@ export function createAcpDriver(deps: AcpDeps): Driver {
   }
 
   return {
-    prepare: (ctx, options) => acquire(ctx).prepare(ctx, options?.forTurn),
+    prepare: (ctx, options) => acquire(ctx, options?.forTurn === true).prepare(ctx, options?.forTurn),
     setViewed(threadId, active) {
       if (active) viewed.add(threadId);
       else viewed.delete(threadId);
@@ -186,6 +212,8 @@ export function createAcpDriver(deps: AcpDeps): Driver {
       // A refresh changes nothing about the agent: what a session still opening
       // answers may seed the next one.
       if (filter.refresh !== true) probeRevision += 1;
+      // Dropped before the sessions hear it: a live process notes again what it runs.
+      forgetCompaction(memory, filter);
       for (const session of sessions.values()) session.forgetCatalog(filter);
       // A reloaded or updated agent may count its cost differently.
       if (filter.accountId === undefined) {
@@ -202,7 +230,7 @@ export function createAcpDriver(deps: AcpDeps): Driver {
     startTurn(ctx: TurnContext): TurnHandle {
       const turn = new AcpTurn(ctx);
       const warmMs = Math.max(0, ctx.warmProcessMinutes) * MINUTE_MS;
-      const running = acquire(ctx);
+      const running = acquire(ctx, true);
       running.attach(turn, warmMs);
       return {
         done: turn.done,
@@ -219,6 +247,7 @@ export function createAcpDriver(deps: AcpDeps): Driver {
 
     releaseThread(threadId: ThreadId): void {
       viewed.delete(threadId);
+      forgetThread(threadId);
       const session = sessions.get(threadId);
       if (session === undefined || session.busy()) return;
       sessions.delete(threadId);
@@ -229,9 +258,12 @@ export function createAcpDriver(deps: AcpDeps): Driver {
       const open = [...sessions.values()];
       sessions.clear();
       viewed.clear();
+      places.clear();
       probes.clear();
       memory.costPerProcess.clear();
       memory.refusedLoads.clear();
+      memory.compactionWindows.clear();
+      memory.resolvedModels.clear();
       for (const session of open) session.close(null);
     },
   };
