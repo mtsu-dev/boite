@@ -148,6 +148,19 @@ export interface PaletteSection {
   items: PaletteItem[];
 }
 
+/** The one heading the recents sit under while nothing is typed. */
+export const RECENT_SECTION = 'recent';
+
+/**
+ * The recents as the palette draws them with nothing typed: one "Recent"
+ * section in the order given, the Recent sidebar's. Project headings would
+ * re-sort them (a project stands where its best row ranked and drags its idle
+ * rows up with it), so each row names its project after its title instead.
+ */
+export function asRecents(items: readonly PaletteItem[]): PaletteItem[] {
+  return items.map((item) => ({ ...item, section: RECENT_SECTION }));
+}
+
 /**
  * Ranked rows cut into the headings the palette draws: a project's threads
  * together, then the projects, then the commands. A section stands where its

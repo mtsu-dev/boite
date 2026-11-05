@@ -1,6 +1,10 @@
 import { afterEach, expect, test } from 'vitest';
 import { createRawSnippet, flushSync, mount, tick, unmount } from 'svelte';
 import Menu from './Menu.svelte';
+import { heading, separator } from '../lib/menu';
+import { viewMenuItems } from '../lib/view-menu';
+import { workspace } from '../lib/workspace.svelte';
+import type { ProjectEntry } from '../lib/project-view.svelte';
 
 let running: Record<string, unknown> | null = null;
 const realGetAnimations = Element.prototype.getAnimations;
@@ -181,4 +185,37 @@ test('a second open during the close cancels it, and the late animationend is ig
   await settle();
   expect(document.querySelector('[data-testid=mode-menu]')).not.toBeNull();
   expect(query<HTMLElement>('[data-testid=mode-menu]').classList.contains('closing')).toBe(false);
+});
+
+test('the view picker heads its two choices, View and Show, with labels the keyboard passes over', async () => {
+  // Round 11: two checks ("Recent", "All projects") under no label read as one choice made twice.
+  const entry = { machine: { id: 'here', label: 'This PC', store: { core: null, connection: 'ready' } }, project: { id: 'p-orbit', name: 'orbit', path: '/work/orbit' } } as unknown as ProjectEntry;
+  const before = workspace.view;
+  workspace.view = 'recent';
+  try {
+    const listed = viewMenuItems([entry], false);
+    expect(listed.filter(item => item.heading).map(item => item.label)).toEqual(['View', 'Show']);
+    expect(listed[0]?.heading).toBe(true);
+    expect(listed.findIndex(item => item.label === 'Show')).toBe(listed.findIndex(item => item.id === 'all') - 1);
+  } finally { workspace.view = before; }
+
+  running = mount(Menu, {
+    target: document.body,
+    props: {
+      items: [heading('h-view', 'View'), ...ITEMS.slice(0, 2), separator(), heading('h-show', 'Show'), ITEMS[2]!],
+      onpick: () => {}, label: 'View and project', testid: 'mode',
+      children: createRawSnippet(() => ({ render: () => '<span>Recent</span>' }))
+    }
+  });
+  flushSync();
+  const trigger = query<HTMLButtonElement>('[data-testid=mode]');
+  trigger.focus();
+  press('ArrowDown');
+  await settle();
+  expect([...document.querySelectorAll('[data-testid=menu-heading]')].map(node => node.textContent)).toEqual(['View', 'Show']);
+  expect(document.activeElement).toBe(items()[0]);
+  press('End');
+  await settle();
+  expect(document.activeElement?.getAttribute('data-value')).toBe('plan');
+  expect(items()).toHaveLength(3);
 });

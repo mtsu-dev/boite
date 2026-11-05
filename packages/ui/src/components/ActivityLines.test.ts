@@ -57,7 +57,7 @@ test('an ended run reads as its record, under any turn', () => {
   expect(document.querySelector('[data-testid=workflow-activity] [data-testid=agent-elapsed]')).not.toBeNull();
 });
 
-test('a launch line: live count on the newest turn, start time under an older one, how each ended once none runs', async () => {
+test('a launch line: live count on every turn while one runs, the older turn\'s start in its title, how each ended once none runs', async () => {
   const going = [agent('a', 'done'), agent('b', 'running'), agent('c', 'interrupted')];
   mounted = mount(DelegationActivity, { target: document.body, props: { store, agents: going } });
   flushSync();
@@ -66,8 +66,10 @@ test('a launch line: live count on the newest turn, start time under an older on
 
   mounted = mount(DelegationActivity, { target: document.body, props: { store, agents: going, past: true } });
   flushSync();
-  expect(text('delegation-progress')).toMatch(/started 0?3:12/);
-  expect(text('delegation-progress')).not.toMatch(/completed|interrupted/);
+  // The progress words tie "3 subagents" to the strip's count; the start leaves the line for its title.
+  expect(text('delegation-progress')).toBe('· 1/3 completed · 1 interrupted');
+  expect(text('delegation-activity')).not.toContain('started');
+  expect(document.querySelector('[data-testid=delegation-activity]')?.getAttribute('title')).toMatch(/started 0?3:12/);
   await unmount(mounted, { outro: false });
 
   const ended = [agent('a', 'done'), agent('b', 'done'), agent('c', 'interrupted')];

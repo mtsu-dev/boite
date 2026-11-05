@@ -12,7 +12,7 @@
   import StateRing from './StateRing.svelte';
   import { asksMidTurn, delegatedChip, threadState } from '../lib/thread-state';
   import { rowSubagents } from '../lib/delegated-work';
-  import { waitingSince } from '../lib/inbox';
+  import { threadLiveKind, waitingSince } from '../lib/inbox';
 
   /**
    * A thread row's first line, in the sidebar and in a phone's list: who runs
@@ -60,6 +60,14 @@
   /** The open thread's row counts what its strip and panel tab count (`rowSubagents`). */
   let subagents = $derived(rowSubagents(owner, thread.id));
   let away = $derived(owner.connection !== 'ready');
+  let kind = $derived(threadState(thread, subagents));
+  /**
+   * Nothing live on it and not pinned, Recent's Earlier band: the provider's mark
+   * takes the muted tier, so the brand's hues stay on the rows that need a look.
+   */
+  let quiet = $derived(!thread.pinned && threadLiveKind(thread, kind) === null);
+  /** A failure says so in words on the second line, so the red mark is not the only cue beside a row that asks. */
+  let failed = $derived(away ? null : kind === 'error' ? strings.sidebar.state.error : kind === 'interrupted' ? strings.sidebar.state.interrupted : null);
   /** The sidebar's row: its delegated agents as a glyph and a number before the time, so the row keeps one line. */
   let agents = $derived(ring ? delegatedChip(subagents) : null);
   /** A row that needs the user counts from the home card's `since`, so both read one age. */
@@ -71,7 +79,7 @@
   {#if now !== undefined}<ThreadState {thread} {now} {subagents} {away} {waited} compact={ring} />{/if}
 {/snippet}
 
-<span class="headline" class:wrap class:ring class:stacked class:unread={thread.unread && !wrap}>
+<span class="headline" class:wrap class:ring class:stacked class:quiet class:unread={thread.unread && !wrap}>
   {#if machine}
     <span class="machine" class:offline={owner.connection !== 'ready'}
       title={`${machine.label} · ${strings.connection[owner.connection]}`} aria-label={machine.label}>
@@ -79,14 +87,14 @@
     </span>
   {/if}
   {#if picture && ring}
-    <StateRing kind={threadState(thread, subagents)} asking={asksMidTurn(thread, subagents)} stale={away} ground="var(--ring-ground, var(--color-frame))"><ThreadPicture {owner} {thread} size={16} logo={13} /></StateRing>
-  {:else if picture}<ThreadPicture {owner} {thread} size={wrap ? 13 : 12} />{/if}
+    <StateRing {kind} asking={asksMidTurn(thread, subagents)} stale={away} ground="var(--ring-ground, var(--color-frame))"><ThreadPicture {owner} {thread} size={16} logo={13} mono={quiet} /></StateRing>
+  {:else if picture}<ThreadPicture {owner} {thread} size={wrap ? 13 : 12} mono={quiet} />{/if}
   <span class="title" class:ui-label={!wrap}>{thread.title}</span>
   {#if draft}<span class="draft" data-testid="thread-draft" title={strings.sidebar.unsentDraft} aria-label={strings.sidebar.unsentDraft}><PencilLine size={12} /></span>{/if}
   {#if thread.pinned && pin}<span class="pin" data-testid="thread-pinned"><Pin size={12} /></span>{/if}
   {#if !stacked}{@render trail()}{/if}
 </span>
-{#if stacked}<span class="facts" class:ring><span class="known">{@render facts?.()}</span><span class="trail" data-testid="thread-trail">{@render trail()}</span></span>{/if}
+{#if stacked}<span class="facts" class:ring><span class="known">{@render facts?.()}{#if failed}<span class="failed" data-testid="thread-failed"><span aria-hidden="true">·</span><span class="ui-label">{failed}</span></span>{/if}</span><span class="trail" data-testid="thread-trail">{@render trail()}</span></span>{/if}
 
 <style>
   .headline {
@@ -109,35 +117,40 @@
   .unread .title {
     font-weight: 600;
   }
-  /* The ringed row: a 21 px ring (1 px of air inside it), a 5 px gap and 13 px give the title
-     about 210 px, over 30 characters, at the 280 px default width; unread reads at 500. */
+  /* The ringed row: every row's mark sits in one 22 px slot (1.5 px of air inside the ring),
+     ring drawn or not, the 13 px mark centred in it; a 5 px gap and 13 px give the title
+     about 235 px at the 304 px default width; unread reads at 500. */
   .ring { gap: 5px; }
-  .ring > :global([data-testid='state-ring']) { --ring-air: 1px; }
+  .ring > :global([data-testid='state-ring']) { --ring-air: 1.5px; }
   .ring .pin { color: var(--color-muted-foreground); }
+  /* A quiet row's mark is the muted tier at full strength: the ring's resting dim would take it under 4.5:1. */
+  .quiet > :global([data-testid='state-ring'].ring .picture) { opacity: 1; }
+  .quiet :global([data-testid='thread-provider']) { color: var(--color-muted-foreground); }
   .agents { display: inline-flex; align-items: center; gap: 2px; flex: none; font-size: var(--text-xs); font-variant-numeric: tabular-nums; color: var(--color-accent); }
   .agents.asking { color: var(--color-live); }
   /* The time sits in a narrow column of its own: tabular, right-aligned, so the titles end on one edge. */
   .ring :global(.when) { min-width: 3.2ch; text-align: right; justify-content: flex-end; }
   .ring .title { font-size: var(--text-sm); }
   .ring.unread .title { font-weight: 500; }
-  /* Two lines: a 20 px ring (half a pixel of air) and the title at 14 px own the first line,
-     about 237 px of title at the 280 px default width. */
-  .stacked > :global([data-testid='state-ring']) { --ring-air: 0.5px; }
+  /* Two lines: the 22 px slot and the title at 14 px own the first line,
+     about 259 px of title at the 304 px default width. */
   .ring.stacked .title { font-size: var(--text-base); }
-  /* The second line starts under the title, past the 20 px ring and its 5 px gap; the time ends on the title's right edge. */
+  /* The second line starts under the title, past the 22 px slot and its 5 px gap; the time ends on the title's right edge. */
   .facts {
     display: flex;
     align-items: center;
     gap: 8px;
     min-width: 0;
     height: 16px;
-    padding-left: 25px;
+    padding-left: 27px;
     font-size: var(--text-xs);
     color: var(--color-muted-foreground);
     /* The time beside the project: subtle would fall under 4.5:1 once the row is selected or a menu's shadow falls on it. */
     --when-color: var(--color-meta);
   }
   .known { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+  /* After the project, in the line's muted tier; it never yields its room to the project's name. */
+  .failed { display: inline-flex; align-items: center; gap: 8px; flex: none; }
   .trail { display: flex; align-items: center; gap: 6px; flex: none; }
   .machine,
   .draft,

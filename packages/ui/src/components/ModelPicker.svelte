@@ -850,13 +850,15 @@
       /* The sheet's own glass, not a band of the desktop rail's surface across it. */
       background: transparent;
       /* Tiles as wide as their names may run past the end: a 24 px fade says
-         more waits there, the padding lets the last tile scroll clear of it,
-         and a swipe rests on a tile's left edge rather than halfway through one. */
+         more waits there while it does (wholeTiles' data-more-end), the padding
+         lets the last tile scroll clear of it, and a swipe rests on a tile's left
+         edge, so the tile at the end peeks by half (peekGrow) rather than a sliver. */
       padding-right: 24px;
-      mask-image: linear-gradient(to right, black calc(100% - 24px), transparent);
       scroll-snap-type: x mandatory;
       scroll-padding-inline: 4px;
     }
+    /* data-more-end comes from wholeTiles, outside the template: global, or the compiler drops the rule. */
+    .rail:global([data-more-end]) { mask-image: linear-gradient(to right, black calc(100% - 24px), transparent); }
     .rail-cue { display: none; }
 
     /* The rail is the finger's first stop on a phone, so its tiles (ProviderTiles)
@@ -865,7 +867,10 @@
        provider it reloads, as on a one-provider menu, and gives the strip its 56 px back. */
     .rail { grid-area: 1 / 1 / 2 / 3; }
     .main-models { grid-area: 2 / 1 / 3 / 3; border-left: none; }
-    .main-models .head { padding-right: calc(var(--touch-target) + 8px); }
+    /* The sheet's text keeps the list cards' 16 px edge from the glass, the search field and the rows' hover 12 px; the head still leaves the refresh its room. */
+    .main-models .head { padding-inline: 16px calc(var(--touch-target) + 8px); }
+    .model-list { padding-inline: 12px; }
+    .popover .main-models :global(.search-bar) { padding-inline: 12px; }
     .refresh { grid-area: 2 / 2; align-self: start; justify-self: end; justify-content: center; width: var(--touch-target); margin: 0 4px; padding: 0; border: none; background: transparent; }
     .refresh {
       width: var(--touch-target);
@@ -873,7 +878,7 @@
     }
     .popover.single { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
     .single .main-models { grid-area: 1 / 1 / 2 / 2; }
-    .single .main-models .head { padding-right: calc(var(--touch-target) + 8px); }
+    .single .main-models .head { padding-inline: 16px calc(var(--touch-target) + 8px); }
     .single .refresh { top: 0; right: 0; }
   }
 </style>

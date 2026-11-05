@@ -9,13 +9,13 @@ export const strings = {
     state: 'Protection status',
     states: { ok: 'Enough memory', critical: 'Memory limit crossed' },
     killTitle: 'Memory limit reached',
-    /** The notice's one line: the limit a stop crossed, its reason behind the disclosure. */
-    killLimit: (limit: string) => `Memory limit reached: ${limit}`,
-    killCount: (count: number, limit: string) => `Memory limit reached: ${limit}, ${count} stopped`,
-    /** The notice's line, short enough for a 360 px phone: `Memory limit · 9.5 GB`. */
-    killLine: 'Memory limit',
-    /** The figure beside the title on the line, whole: `9.5 GB`, `9.5 GB, 3 stopped`. */
-    killFigure: (count: number, limit: string) => count > 1 ? `${limit}, ${count} stopped` : limit,
+    /** The notice's one line read whole: what happened and the limit, its reason behind the disclosure. */
+    killLimit: (limit: string) => `Stopped at the memory limit: ${limit}`,
+    killCount: (count: number, limit: string) => `${count} stopped at the memory limit: ${limit}`,
+    /** The notice's line: what happened, not only the limit, which stands whole beside it: `Stopped at the memory limit · 9.5 GB`. */
+    killLine: (count: number) => count > 1 ? `${count} stopped at the memory limit` : 'Stopped at the memory limit',
+    /** The same on a phone-narrow line, short enough to read whole at 360 px: `Stopped at limit · 9.5 GB`. */
+    killLineShort: (count: number) => count > 1 ? `${count} stopped at limit` : 'Stopped at limit',
     stoppedProcesses: (count: number) => `Show ${count} stopped processes`,
     memorySettings: 'Memory settings',
     protectionOff: 'Memory protection is off',

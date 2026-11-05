@@ -32,6 +32,8 @@ export const strings = {
       nextMoreOne: '1 more needs you',
       nextMoreMany: '{count} more need you',
       nextTitle: 'Open "{title}", the thread that has waited longest for you',
+      /** The jump's description for assistive tech; its name stays the visible words. */
+      nextHint: 'Opens {title}, waiting longest',
       days: '{days}d {hours}h',
       asking: 'question for you',
       askingSince: 'A question has waited for you since {time}; the turn goes on',

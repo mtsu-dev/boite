@@ -7,7 +7,7 @@
   import { appCommands, runCommand } from '../lib/commands.svelte';
   import { focusComposer, focusedElement, restoreFocus } from '../lib/focus';
   import { projectName } from '../lib/format';
-  import { PALETTE_LIMIT, RECENT_THREADS, rankItems, sectionRows, type PaletteItem } from '../lib/palette';
+  import { PALETTE_LIMIT, RECENT_SECTION, RECENT_THREADS, asRecents, rankItems, sectionRows, type PaletteItem } from '../lib/palette';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import { MediaQuery } from 'svelte/reactivity';
@@ -101,7 +101,7 @@
         const bot = onBotsPage(thread);
         const section = bot ? `bots:${machine.id}` : `in:${machine.id}:${thread.projectId}`;
         const parent = thread.parentThreadId ? machine.store.threads.find(t => t.id === thread.parentThreadId)?.title ?? '' : undefined;
-        places.set(id, parent === undefined ? { machine, project, thread } : { machine, project, thread, parent });
+        places.set(id, { machine, project, thread, ...(bot ? { bots: true as const } : {}), ...(parent === undefined ? {} : { parent }) });
         if (!places.has(section)) places.set(section, bot ? { machine, project: null, thread: null, bots: true } : { machine, project, thread: null });
         entries.push({ at: thread.lastUserMessageAt ?? thread.createdAt, child: parent !== undefined, thread, key: storeOrder(machine.store, thread), item: {
           id,
@@ -142,7 +142,8 @@
     // Keep the exit animation's rows without subscribing a closed search to live updates.
     if (!store.paletteOpen) return snapshot.rows;
     const typed = query.trim().length > 0;
-    const threads = typed ? threadData.items : threadData.recents.slice(0, RECENT_THREADS);
+    // Nothing typed: the recents under one heading, in Recent's order; a query brings the project headings back.
+    const threads = typed ? threadData.items : asRecents(threadData.recents.slice(0, RECENT_THREADS));
     const projects = typed ? projectData.items : [];
     return snapshot.rows = rankItems(query, [...threads, ...projects, ...commandItems], PALETTE_LIMIT);
   });
@@ -339,8 +340,11 @@
         {#each sections as section, at (section.id)}
           {@const first = offset(at)}
           {@const heading = section.kind === 'thread' ? placeOf(section.id) : null}
+          {@const recent = section.id === RECENT_SECTION}
           <div class="section" data-testid="palette-section" data-section={section.id}>
-            {#if heading}
+            {#if recent}
+              <div class="section-label" data-testid="palette-recent">{strings.sidebar.recentView}</div>
+            {:else if heading}
               {#if heading.bots}
                 <div class="section-label project-label" data-testid="palette-bots">
                   <span class="glyph" data-testid="palette-bots-glyph"><Bot size={14} /></span>
@@ -379,6 +383,14 @@
                   {:else if item.kind === 'project' && place?.project}<ProjectTile project={place.project} store={place.machine.store} size={16} />{/if}
                 </span>
                 <span class="label ui-label">{item.label}</span>
+                {#if recent && place?.thread}
+                  <!-- One heading for every recent: the row names its project where a heading would have. -->
+                  <span class="where ui-label" data-testid="palette-where">
+                    {#if place.bots}<Bot size={12} aria-hidden="true" data-testid="palette-where-bots" />{strings.sidebar.agents}
+                    {:else}{#if place.project}<ProjectTile project={place.project} store={place.machine.store} size={12} />{/if}<span class="where-name">{place.project ? projectName(place.project) : strings.drafts.name}</span>{/if}
+                    {#if several}<span class="where-machine"><MachineIcon icon={place.machine.icon} os={place.machine.store.core?.os} size={12} />{place.machine.label}</span>{/if}
+                  </span>
+                {/if}
                 {#if place?.parent !== undefined}<span class="parent ui-label" data-testid="palette-parent"><Network size={12} aria-hidden="true" /><span class="parent-title">{fill(strings.palette.inParent, { title: place.parent })}</span></span>{/if}
                 {#if place?.thread}
                   <!-- The ring says the state; the words stay in the time's title and label, as on a sidebar row. -->
@@ -630,6 +642,35 @@
   }
 
   .parent :global(svg) { flex: none; }
+
+  /* A recent's project, after its title in the muted tier: like the parent, it gives way to the title. */
+  .where {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 45%;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: var(--text-sm);
+    color: var(--color-muted-foreground);
+    white-space: nowrap;
+  }
+
+  .where > :global(*) { flex: none; }
+
+  .where .where-name {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .where-machine {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 4px;
+  }
 
   .parent-title {
     min-width: 0;

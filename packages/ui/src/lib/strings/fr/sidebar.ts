@@ -26,6 +26,8 @@ export const fr: Translation = {
     projectsView: 'Projets',
     recentView: 'Récent',
     viewPicker: 'Affichage et projet',
+    viewHeading: 'Vue',
+    scopeHeading: 'Afficher',
     bands: { pinned: 'Épinglées', needs: 'À vous', working: 'En cours', earlier: 'Plus tôt' },
     displayOrder: 'Ordre des projets',
     displayGroup: 'Regrouper',

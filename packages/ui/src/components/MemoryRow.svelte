@@ -22,7 +22,8 @@
   const sentence = $derived(event.kind !== 'killed' ? '' : events.length > 1
     ? strings.resources.killCount(events.length, limit)
     : strings.resources.killLimit(limit));
-  const figure = $derived(killed ? strings.resources.killFigure(events.length, limit) : '');
+  /** The line names what happened (how many stopped), the figure the limit they crossed. */
+  const figure = $derived(limit);
 </script>
 
 {#snippet stoppedList()}
@@ -36,7 +37,7 @@
 
 <!-- A memory stop is a notice in the flow, one line high: the limit it crossed, then why and the processes behind its disclosure. -->
 <NoticeBanner icon={TriangleAlert} tone="warning" testid="memory-row" kind={event.kind} inline
-  title={killed ? strings.resources.killLine : ''} {figure} label={killed ? sentence : text} text={killed ? '' : text} details={killed ? stoppedList : undefined}>
+  title={killed ? strings.resources.killLine(events.length) : ''} titleShort={killed ? strings.resources.killLineShort(events.length) : undefined} {figure} label={killed ? sentence : text} text={killed ? '' : text} details={killed ? stoppedList : undefined}>
   {#snippet actions()}
     {#if onconfigure}<button type="button" class="small ghost configure" onclick={onconfigure} title={strings.resources.memorySettings}><Settings2 size={14} aria-hidden="true" /><span class="ui-label">{strings.resources.memorySettings}</span></button>{/if}
   {/snippet}

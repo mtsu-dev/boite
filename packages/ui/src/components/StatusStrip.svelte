@@ -21,6 +21,9 @@
    * answer, where the turn's files and PR sit under it.
    */
   let { store, away = false, onlastanswer }: { store: Store; away?: boolean; onlastanswer?: () => void } = $props();
+  const uid = $props.id();
+  /** The jump's description, outside the button so its name stays the visible words. */
+  const nextHintId = `${uid}-next-hint`;
 
   let thread = $derived(store.openThread);
   let state = $derived(thread ? stripState(thread, { permissions: store.pendingPermissions, questions: store.pendingQuestions }) : null);
@@ -142,13 +145,15 @@
         class="act next"
         data-testid="status-strip-next"
         title={fill(strings.chat.strip.nextTitle, { title: next.thread.title })}
-        aria-label={fill(strings.chat.strip.nextTitle, { title: next.thread.title })}
+        aria-describedby={nextHintId}
         onclick={() => void workspace.select(next.store, next.thread.id)}
       >
-        <!-- One label at every width, never a bare number: it says what it opens, then how many wait. -->
-        <span class="jump ui-label" aria-hidden="true">{jumpLabel}</span>
+        <!-- One label at every width, never a bare number: it says what it opens, then how many wait.
+             Those words are the button's name (WCAG 2.5.3), so a voice user says what they see; the thread goes in the description. -->
+        <span class="jump ui-label">{jumpLabel}</span>
         <ChevronRight size={13} strokeWidth={2} aria-hidden="true" />
       </button>
+      <span id={nextHintId} class="visually-hidden" data-testid="status-strip-next-hint">{fill(strings.chat.strip.nextHint, { title: next.thread.title })}</span>
     {/if}
   </div>
 {/if}
@@ -183,6 +188,8 @@
   .waiting .time, .waiting .sep { color: var(--color-muted-foreground); font-weight: 400; }
   .asking { color: var(--color-live); font-weight: 500; }
   .time { font-variant-numeric: tabular-nums; }
+
+  .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .sep { opacity: .6; }
   .dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
   .waiting .dot { background: var(--color-live-fill); }

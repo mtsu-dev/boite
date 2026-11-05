@@ -32,13 +32,20 @@ export function peekGrow(edge: number, tiles: readonly { left: number; width: nu
  * `data-more` says a tile waits below. A tile cut in half reads as a logo
  * without its name, so none is shown cut. Under `wideOnly`'s width the rail
  * is a phone's sideways strip: when its end would cut a tile to a sliver or
- * fall between two, every tile grows by `--tile-grow` so one shows by half.
+ * fall between two, every tile grows by `--tile-grow` so one shows by half,
+ * and `data-more-end` says a tile waits past its end.
  */
 export function wholeTiles(rail: HTMLElement, options: { cell: () => number; cue: number; tiles: string; wideOnly: string }) {
   const wide = window.matchMedia(options.wideOnly);
   function more() {
+    if (!wide.matches) return end();
     if (rail.scrollTop + rail.clientHeight < rail.scrollHeight - 1) rail.dataset.more = 'true';
     else delete rail.dataset.more;
+  }
+  /** The phone strip: `data-more-end` while a tile waits past its end, so its fade shows only then. */
+  function end() {
+    if (rail.scrollLeft + rail.clientWidth < rail.scrollWidth - 1) rail.dataset.moreEnd = 'true';
+    else delete rail.dataset.moreEnd;
   }
   /** The phone strip: natural widths unless its end cuts a tile to a sliver or hides the next one whole. */
   function peek() {
@@ -58,8 +65,10 @@ export function wholeTiles(rail: HTMLElement, options: { cell: () => number; cue
       rail.style.height = '';
       delete rail.dataset.more;
       peek();
+      end();
       return;
     }
+    delete rail.dataset.moreEnd;
     rail.style.removeProperty('--tile-grow');
     const room = options.cell();
     const pad = parseFloat(getComputedStyle(rail).paddingBottom) || 0;

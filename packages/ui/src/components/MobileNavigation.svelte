@@ -85,6 +85,23 @@
   /** What the header names: the page, or the list on screen. */
   const title = $derived(store.page === 'settings' ? strings.settings.heading : store.page === 'agents' ? strings.agents.heading : store.page === 'home' ? strings.contacts.heading
     : recover ? 'Boite' : screen === 'activity' ? strings.mobile.activity : strings.mobile.threads);
+  /**
+   * A conversation scrolled under the header: the header takes the opaque surface, so the lines under it never read
+   * half-buried through it. The timeline is the app's, beside this header in its grid; its scroll does not bubble, so
+   * the grid listens in the capture phase. Each thread opens on its own scroll, read again when it changes.
+   */
+  let covered = $state(false);
+  $effect(() => {
+    const root = header?.parentElement;
+    void store.openThread?.id;
+    if (!root || !chatting || !narrow.current) { covered = false; return; }
+    const read = (target: EventTarget | null) => { if (target instanceof HTMLElement && target.matches('[data-testid=timeline]')) covered = target.scrollTop > 0; };
+    const onscroll = (event: Event) => read(event.target);
+    root.addEventListener('scroll', onscroll, { capture: true, passive: true });
+    read(root.querySelector('[data-testid=timeline]'));
+    void tick().then(() => read(root.querySelector('[data-testid=timeline]')));
+    return () => root.removeEventListener('scroll', onscroll, { capture: true });
+  });
   let scrollRoot = $state<HTMLElement>();
   /** A list's large title scrolls away with it; past it, the bar's own title fades in, as a phone's lists do. */
   const listed = $derived(narrow.current && store.page === 'chat' && !recover && !chatting);
@@ -240,7 +257,7 @@
   const laterLists = ['archived'] as const;
 </script>
 
-<header class="mobile-header" class:chatting class:settings={store.page !== 'chat'} data-testid="mobile-header" data-slide={slide.direction} bind:this={header}>
+<header class="mobile-header" class:chatting class:covered={chatting && covered} class:settings={store.page !== 'chat'} data-testid="mobile-header" data-slide={slide.direction} bind:this={header}>
   {#if chatting}
     <!-- The only way out of a conversation on a phone: it carries the mark of a thread that waits on the user elsewhere. -->
     <button class="ghost icon back" data-testid="mobile-back" aria-label={elsewhere ? `${strings.mobile.threads}, ${fill(strings.mobile.waitingElsewhere, { count: String(elsewhere) })}` : strings.mobile.threads} onclick={() => show('threads')}><ArrowLeft size={20} />{#if elsewhere}<span class="waiting-mark" data-testid="mobile-back-waiting"></span>{/if}</button>
@@ -280,19 +297,10 @@
     {#if recover && narrow.current}
       <MobileConnect {store} onpaired={() => show('threads')} />
     {:else}
-    <!-- The list's name, large, until it scrolls under the bar; the bar's title says it from then on. The search and
-         the display options sit at its end, so the rows start under it. -->
+    <!-- The list's name, until it scrolls under the bar; the bar's title says it from then on. The view pill sits
+         beside it, the search and the display options at its end: one row, so the rows start under it. -->
     <div class="title-row">
       <p class="large-title" aria-hidden="true">{title}</p>
-      <button type="button" class="ghost icon" aria-label={strings.mobile.search} aria-expanded={searchOpen || !!search} data-testid="mobile-search-open" onclick={() => (searchOpen || search ? (searchOpen = false, search = '') : void openSearch())}><Search size={19} /></button>
-      {#if listScreen === 'threads' && groups.length}<span class="display"><DisplayOptions entries={groups} target={undefined} owner={store} prefix="mobile-" compact /></span>{/if}
-    </div>
-    {#if searchOpen || search || (listScreen === 'threads' && groups.length)}
-    <div class="list-heading">
-      {#if searchOpen || search}
-      <div class="search"><Search size={17} /><input type="search" bind:this={searchField} bind:value={search} aria-label={strings.mobile.search} placeholder={strings.mobile.search} data-testid="mobile-search" />{#if search}<button class="ghost icon" aria-label={strings.mobile.clearSearch} onclick={() => search = ''}><X size={16} /></button>{/if}
-      </div>
-      {/if}
       {#if listScreen === 'threads' && groups.length}
         <!-- The view and, in Recent, the project it lists: the sidebar's picker. The lifecycle tabs under it count the work. -->
         <div class="filters">
@@ -301,6 +309,13 @@
           </Menu>
         </div>
       {/if}
+      <button type="button" class="ghost icon" aria-label={strings.mobile.search} aria-expanded={searchOpen || !!search} data-testid="mobile-search-open" onclick={() => (searchOpen || search ? (searchOpen = false, search = '') : void openSearch())}><Search size={19} /></button>
+      {#if listScreen === 'threads' && groups.length}<span class="display"><DisplayOptions entries={groups} target={undefined} owner={store} prefix="mobile-" compact /></span>{/if}
+    </div>
+    {#if searchOpen || search}
+    <div class="list-heading">
+      <div class="search"><Search size={17} /><input type="search" bind:this={searchField} bind:value={search} aria-label={strings.mobile.search} placeholder={strings.mobile.search} data-testid="mobile-search" />{#if search}<button class="ghost icon" aria-label={strings.mobile.clearSearch} onclick={() => search = ''}><X size={16} /></button>{/if}
+      </div>
     </div>
     {/if}
     {#if listScreen === 'threads' && groups.length && !query}<div class="lifecycle-slot"><LifecycleStrip entries={groups} prefix="mobile-" /></div>{/if}
@@ -458,7 +473,9 @@
 
     .mobile-header { display: flex; align-items: center; gap: 10px; min-height: 60px; padding: 8px max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left)); background: transparent; border-bottom: 1px solid transparent; padding-top: max(8px, env(safe-area-inset-top)); }
     /* Over a conversation a hairline keeps the title off the messages; over the list the wallpaper runs on. */
-    .mobile-header.chatting { border-bottom-color: var(--color-border); }
+    .mobile-header.chatting { border-bottom-color: var(--color-border); transition: background-color var(--dur-2) var(--ease-out-quint); }
+    /* Lines scrolled up under it: the opaque surface, glass or solid, so no bubble reads half-buried behind a see-through bar. */
+    .mobile-header.chatting.covered { background: var(--color-surface); }
     .chat-heading { flex: 1; min-width: 0; height: 44px; }
     .mobile-header.chatting { gap: 6px; padding-left: max(8px, env(safe-area-inset-left)); padding-right: max(8px, env(safe-area-inset-right)); }
     .chat-heading :global(.thread-header) { gap: 2px; }
@@ -472,8 +489,8 @@
     .search input { flex: 1; min-width: 0; border: 0; background: transparent; min-height: 44px; font-size: 16px; padding: 8px 0; }
     .search:focus-within { border-color: var(--color-accent); }
     .search input:focus { outline: none; }
-    .filters { display: flex; flex-wrap: wrap; gap: 8px; }
-    .search + .filters { margin-top: 8px; }
+    /* Beside the title, the pill takes what the icons leave and shortens its project first. */
+    .filters { display: flex; flex: 0 1 auto; min-width: 0; margin-left: 4px; }
     .filters :global(.menu) { min-width: 0; max-width: 100%; }
     /* The pill sizes to its words: the ghost variant's square would cut them. */
     .filters :global(.trigger.ghost) { width: auto; padding: 0 14px; }
@@ -514,9 +531,12 @@
     /* Rows thin out at the screen's bottom edge, under the floating tab bar, as the sidebar's do, never cut flat. A mask,
        not a scroll-driven animation: tests and closing elements wait on every running animation. */
     .mobile-list { mask-image: linear-gradient(to top, transparent 0, black 24px); }
-    .title-row { display: flex; align-items: center; gap: 2px; margin: 0 -10px 0 0; }
-    .title-row .large-title { flex: 1; min-width: 0; }
-    .title-row > .icon { flex: none; width: var(--touch-target); height: var(--touch-target); color: var(--color-muted-foreground); }
+    /* Under the tab bar the gap the capsule floats over (MobileTabs' bottom margin) stays empty; rows thin out behind the capsule. */
+    .mobile-list.tabbed { --bar-gap: max(8px, env(safe-area-inset-bottom)); mask-image: linear-gradient(to top, transparent 0 var(--bar-gap), black calc(var(--bar-gap) + 24px)); }
+    /* One row: the title, the view pill beside it, the search and the display options at its end. */
+    .title-row { display: flex; align-items: center; gap: 2px; min-height: var(--touch-target); margin: 0 -10px 8px 0; }
+    .title-row .large-title { flex: none; min-width: 0; }
+    .title-row > .icon { flex: none; width: var(--touch-target); height: var(--touch-target); margin-left: auto; color: var(--color-muted-foreground); }
     .title-row .display { border-left: 0; }
     /* The strip and each project's header stay at the top while the rows scroll under them. The strip sits in
        the cards' column, on their 16 px gutter with their radius, and 8 px above the first one: wider and
@@ -528,7 +548,7 @@
     /* The desktop fold's chip: how many threads at work hide in the fold ("14 more ↻2"). */
     .more-live { display: inline-flex; align-items: center; gap: 3px; height: 20px; padding: 0 7px 0 6px; border-radius: var(--radius-full); color: var(--color-accent); background: var(--color-accent-soft); font-weight: 600; font-variant-numeric: tabular-nums; }
     .more-row :global(.flip) { rotate: 180deg; }
-    .large-title { margin: 6px 2px 2px; font-size: 28px; font-weight: 700; letter-spacing: -0.6px; line-height: 1.15; color: var(--color-foreground); }
+    .large-title { margin: 0 2px; font-size: 20px; font-weight: 700; letter-spacing: -0.4px; line-height: 1.15; color: var(--color-foreground); }
     /* The bar's title waits under the large one, and fades in as it scrolls away. */
     .brand strong { transition: opacity var(--dur-2) var(--ease-out-quint), translate var(--dur-2) var(--ease-out-quint); }
     .brand strong.folded { opacity: 0; translate: 0 4px; }
@@ -540,7 +560,7 @@
     .lane.working .count { background: var(--color-control-surface); color: var(--color-muted-foreground); }
     .first-run-slot { display: flex; padding: 12px 0 24px; }
     .first-run-slot :global(.first-run) { width: 100%; }
-    .list-heading { padding: 4px 0 8px; }
+    .list-heading { padding: 0 0 8px; }
     .contact-flow { padding-top: 4px; }
     p { font-size: var(--text-sm); }
     /* `clip`, not `hidden`: the heading stays stuck to the top of the list while its rows scroll under it. */

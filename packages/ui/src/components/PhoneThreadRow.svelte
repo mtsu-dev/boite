@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Archive, Check, CircleAlert, CirclePause, Ellipsis, FolderInput, KeyRound, LogIn, MessageCircleQuestion, Network, PencilLine, Pin, ShieldQuestion } from '@lucide/svelte';
-  import { waitedFor, waitingSince, type InboxReason } from '../lib/inbox';
+  import { threadLiveKind, waitedFor, waitingSince, type InboxReason } from '../lib/inbox';
   import type { Project, ThreadSummary } from '@boite/contracts';
   import type { Machine } from '../lib/workspace.svelte';
   import { namesMachine } from '../lib/row-machine';
@@ -58,13 +58,17 @@
   let subagents = $derived(rowSubagents(owner, thread.id));
   let kind = $derived(threadState(thread, subagents));
   let agents = $derived(delegatedChip(subagents));
+  /** Nothing live on it and not pinned, Recent's Earlier band: the provider's mark takes the muted tier, as on the desktop. */
+  let quiet = $derived(!thread.pinned && threadLiveKind(thread, kind) === null);
+  /** A failure says so in words after the project, so the red mark is not the only cue; the Inbox tab already words its reason. */
+  let failed = $derived(wait || away ? null : kind === 'error' ? strings.sidebar.state.error : kind === 'interrupted' ? strings.sidebar.state.interrupted : null);
   /** A row that needs the user counts from the home card's `since`, so both read one age. */
   let waited = $derived(wait ? null : waitingSince(owner, thread));
   let pending = $derived(pendingLine(thread));
   /** The grey second line; the time joins it, so the title keeps the whole first line. */
   /** The machine is named only when it is not this one, as the home's cards and the desktop rows do. */
   let elsewhere = $derived(several && !grouped && namesMachine(machine, away));
-  let second = $derived(Boolean(wait || pending || (!grouped && project) || elsewhere || agents?.asking));
+  let second = $derived(Boolean(wait || pending || (!grouped && project) || elsewhere || failed || agents?.asking));
   const reasonIcons = { question: MessageCircleQuestion, permission: ShieldQuestion, secret: KeyRound, 'sign-in': LogIn, failed: CircleAlert, interrupted: CirclePause } as const;
   let draft = $derived(hasUnsentDraft(owner.composerStates[thread.id]) && !(owner.openThread?.id === thread.id));
   /** What a slide may do now: the menu's own items, so a thread at work is never marked done by a finger. */
@@ -82,7 +86,7 @@
   {:else}<span class="time"><ThreadState {thread} {now} {subagents} {away} {waited} compact /></span>{/if}
 {/snippet}
 
-<div class="phone-row" class:offline={away} class:start class:end data-thread-id={thread.id} data-machine-id={machine.id} data-testid="mobile-row">
+<div class="phone-row" class:offline={away} class:quiet class:start class:end data-thread-id={thread.id} data-machine-id={machine.id} data-testid="mobile-row">
   <!-- Under the row while it slides: done on the left, archive on the right, armed past the threshold. -->
   <div class="reveal" aria-hidden="true">
     <span class="side done"><Check size={20} /><span class="ui-label">{strings.sidebar.markDone}</span></span>
@@ -91,7 +95,7 @@
   <!-- The long press and the slide are a finger's shortcuts; the menu trigger below is the keyboard's. -->
   <div class="body" role="presentation" bind:this={body} use:swipeActions={{ allows: allowed, run: side => onaction(side === 'right' ? 'done' : 'archive') }} use:longPress oncontextmenu={openMenu}>
     <StateRing {kind} asking={asksMidTurn(thread, subagents)} stale={away} size={32} ground="var(--ring-ground, var(--color-background))">
-      <span class="face"><ThreadPicture {owner} {thread} size={32} logo={18} /></span>
+      <span class="face"><ThreadPicture {owner} {thread} size={32} logo={18} mono={quiet} /></span>
     </StateRing>
     <span class="lines">
       <!-- The title is the row's button; its overlay stretches over the whole row, so a tap anywhere opens it
@@ -110,6 +114,7 @@
           {#if pending}<span class="fact pending" data-testid="thread-pending" title={pending}><FolderInput size={12} aria-hidden="true" /><span class="ui-label">{pending}</span></span>{/if}
           {#if !grouped && project}<span class="fact project" data-testid="thread-project"><ProjectTile {project} store={owner} size={12} /><span class="ui-label">{projectName(project)}</span></span>{/if}
           {#if elsewhere}<span class="fact machine" data-testid="thread-machine">{machine.label}</span>{/if}
+          {#if failed}<span class="fact failed" data-testid="thread-failed"><span aria-hidden="true">·</span><span class="ui-label">{failed}</span></span>{/if}
           <!-- Agents at work are the ring's to say; one asking is said here, it needs the user. -->
           {#if agents?.asking}<span class="fact agents asking" data-testid="thread-subagents" data-count={agents.shown} role="img" title={agents.label} aria-label={agents.label}><Network size={12} aria-hidden="true" /><span class="ui-label">{wait ? agents.shown : agents.text}</span></span>{/if}
           {@render time()}
@@ -194,6 +199,9 @@
   .thread:focus-visible { outline: none; }
   .thread:focus-visible::after { outline: 2px solid var(--color-accent); outline-offset: -2px; }
   .face { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--color-surface-2); }
+  /* A quiet row's mark: the muted tier at full strength, the ring's resting dim would take it under 4.5:1. */
+  .quiet .face { color: var(--color-muted-foreground); }
+  .quiet :global([data-testid='state-ring'].ring .picture) { opacity: 1; }
   .phone-row.offline .lines, .phone-row.offline .face { opacity: 0.55; }
   .lines { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 2px; }
   .head { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
@@ -224,6 +232,8 @@
   .fact { display: inline-flex; align-items: center; gap: 4px; min-width: 0; flex: 0 1 auto; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; padding-block: 0.5em; margin-block: -0.5em; }
   .fact .ui-label { overflow: hidden; text-overflow: ellipsis; }
   .fact.agents { flex: none; }
+  /* The failure's word keeps its room; the project's name yields first. */
+  .fact.failed { flex: none; gap: 8px; }
   /* The machine yields its room before the project loses a letter: shrink is weighted by width, so the steps are far apart. */
   .fact.machine { flex-shrink: 1000; }
   .fact.project { flex-shrink: 1; }

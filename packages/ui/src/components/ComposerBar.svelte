@@ -354,8 +354,9 @@
       </button>
     {/if}
 
+    <!-- The mode opens a menu as its neighbours do, so it wears their filled pill: three peers, one set. -->
     {#if modes.length > 0}
-      <Menu items={modeItems} onpick={pickMode} label={strings.composer.mode} testid="composer-mode" align="end" variant="ghost">
+      <Menu items={modeItems} onpick={pickMode} label={strings.composer.mode} testid="composer-mode" align="end">
         {@const ModeIcon = modeIcon(displayedMode)}
         <span class="mode-icon"><ModeIcon size={14} strokeWidth={1.75} /></span>
         <span class="ui-label" title={modeTitle(displayedMode)}>{modeLabel(displayedMode, provider)}</span>

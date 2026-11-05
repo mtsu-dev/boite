@@ -143,6 +143,8 @@
       {#each items as item (item.id)}
         {#if item.separator}
           <div class="separator" role="separator"></div>
+        {:else if item.heading}
+          <div class="heading section ui-label" role="presentation" data-testid="menu-heading">{item.label}</div>
         {:else}
         <button
           type="button"
@@ -201,6 +203,8 @@
   .copy .hint { grid-column: 1; grid-row: 2; padding-left: 24px; font-size: var(--text-xs); }
   .copy-mark { display: flex; grid-column: 2; grid-row: 1 / span 2; align-self: center; color: var(--color-muted-foreground); }
   .heading { padding: 8px 10px 10px; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 500; }
+  /* A label over one group of rows: the same muted tier, tighter, so it heads the rows under it. */
+  .heading.section { padding: 6px 10px 2px; }
   .popover.switches { width: min(300px, calc(100vw - 24px)); padding: 6px; border-radius: var(--radius-lg); }
   .switches .item.checkable { grid-template-columns: minmax(0, 1fr) 36px; min-height: 56px; padding: 9px 10px; column-gap: 12px; }
   .switches .item.radio .check { justify-self: center; }

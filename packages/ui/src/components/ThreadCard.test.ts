@@ -361,3 +361,37 @@ test('a row that needs the user reads the age of its home card, and drops its pi
   expect(shown).not.toBe(shortAgo(thread.lastUserMessageAt!, now));
   expect(document.querySelector('[data-testid=thread-pinned]')).toBeNull();
 });
+
+test('a failed row says Failed after its project, and only a row nothing is live on draws its mark in the muted tier', async () => {
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  const thread = store.threads.find(row => !row.parentThreadId && !row.agentSessionId && row.projectId)!;
+  const project = store.projects.find(row => row.id === thread.projectId)!;
+  vi.spyOn(client, 'call').mockResolvedValue(null as never);
+  const draw = async (fields: Partial<ThreadSummary>) => {
+    if (mounted) await unmount(mounted);
+    Object.assign(thread, { subagentQuestions: [], backgroundWork: undefined, backgroundWait: undefined, pullRequestWatches: undefined, ...fields });
+    mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'http://localhost:3773', label: 'This PC', store }, project, thread, now: Date.now(), showProject: true } });
+    await settle();
+    const facts = document.querySelector<HTMLElement>('[data-testid=thread-row] .facts')!;
+    return {
+      word: facts.querySelector('[data-testid=thread-failed] .ui-label')?.textContent ?? null,
+      afterProject: facts.querySelector('[data-testid=thread-project] ~ [data-testid=thread-failed]') !== null,
+      mono: document.querySelector('[data-testid=thread-provider] [data-mono]') !== null,
+      slot: document.querySelector<HTMLElement>('[data-testid=state-ring]')!.style.getPropertyValue('--ring-size')
+    };
+  };
+  // Round 11: "Crash when the camera opens" (failed) and "Retry failed syncs" (asks) differed by the badge's colour alone.
+  const failed = await draw({ status: 'error', pinned: false });
+  expect(failed.word).toBe('Failed');
+  expect(failed.afterProject).toBe(true);
+  expect((await draw({ status: 'waiting', pinned: false })).word).toBeNull();
+  // Live and pinned rows keep the brand's colour; a row at rest in Earlier draws its mark in one muted colour, in the same slot.
+  expect(failed.mono).toBe(false);
+  expect((await draw({ status: 'running', pinned: false })).mono).toBe(false);
+  expect((await draw({ status: 'idle', pinned: true })).mono).toBe(false);
+  const quiet = await draw({ status: 'idle', pinned: false });
+  expect(quiet.mono).toBe(true);
+  expect(quiet.word).toBeNull();
+  expect(quiet.slot).toBe(failed.slot);
+});

@@ -8,11 +8,19 @@
    */
   let {
     providerId,
-    size = 18
+    size = 18,
+    mono = false
   }: {
     providerId: string;
     size?: number;
+    /**
+     * The mark's shape in `currentColor` alone: a list's quiet rows draw it in
+     * the muted tier, so only live rows keep the brand's hue. A mark on a tile
+     * keeps its cut-out; a raster mark becomes its alpha in that colour.
+     */
+    mono?: boolean;
   } = $props();
+  const uid = $props.id();
 
   let logo = $derived(providerLogoOf(providerId));
   let initial = $derived((providerId.trim()[0] ?? '?').toUpperCase());
@@ -27,8 +35,23 @@
     aria-hidden="true"
     focusable="false"
     data-logo={providerId}
+    data-mono={mono || undefined}
   >
-    {#if logo.kind === 'image'}
+    {#if mono}
+      {@const [, , width, height] = logo.viewBox.split(' ').map(Number)}
+      <!-- The shape as a mask over one rect: a raster mark by its alpha, a tile with its paths cut out, bare paths as they are. -->
+      <mask id="{uid}-mono" style:mask-type={logo.kind === 'image' ? 'alpha' : 'luminance'}>
+        {#if logo.kind === 'image'}
+          <image href={logo.href} width={logo.width} height={logo.height} />
+        {:else}
+          {#if logo.tile}<rect width={logo.tile.width} height={logo.tile.height} rx={logo.tile.rx} fill="white" />{/if}
+          {#each logo.paths as path, index (index)}
+            <path d={path.d} fill={logo.tile ? 'black' : 'white'} fill-rule={path.evenOdd ? 'evenodd' : undefined} />
+          {/each}
+        {/if}
+      </mask>
+      <rect class="mono" {width} {height} fill="currentColor" mask="url(#{uid}-mono)" />
+    {:else if logo.kind === 'image'}
       <image href={logo.href} width={logo.width} height={logo.height} />
     {:else}
       {#if logo.tile}
@@ -56,6 +79,7 @@
     class="initial"
     aria-hidden="true"
     data-initial={providerId}
+    data-mono={mono || undefined}
     style="width: {size}px; height: {size}px; font-size: {Math.round(size * 0.72)}px"
   >
     <span class="ui-label">{initial}</span>

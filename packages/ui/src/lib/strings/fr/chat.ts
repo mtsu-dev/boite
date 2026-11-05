@@ -29,6 +29,8 @@ export const fr: Translation = {
       nextMoreOne: '1 autre vous attend',
       nextMoreMany: '{count} autres vous attendent',
       nextTitle: 'Ouvrir « {title} », la conversation qui vous attend depuis le plus longtemps',
+      /** The jump's description for assistive tech; its name stays the visible words. */
+      nextHint: 'Ouvre « {title} », celle qui attend depuis le plus longtemps',
       days: '{days} j {hours} h',
       asking: 'une question pour vous',
       askingSince: 'Une question vous attend depuis {time}, le tour continue',

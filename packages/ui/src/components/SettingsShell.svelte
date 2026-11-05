@@ -467,7 +467,25 @@
   .framed.with-bar > :global(.machine-bar) { padding: 24px clamp(20px, 4vw, 64px) 0; }
   .framed.with-bar > :global(.page) { height: auto; overflow: visible; padding-top: 20px; }
   .framed > :global(.policy-banner) { margin: 24px clamp(20px, 4vw, 64px) 0; }
+  /* The scroll ends 24 px under the last card, whichever element scrolls: the panel with the bar, the page without it. */
+  .framed > :global(.page) { padding-bottom: 24px; }
   @media (min-width: 721px) {
+    /* The sidebar's bottom edge fade (`RailFrame`'s 10 px): a row the window cuts reads as more to scroll to, not
+       as a broken card. Not a mask on the panel, which would fade its border and clip its shadow: a strip of the
+       panel's own ground, faded in, held at the bottom edge while the content scrolls under it. At the end of the
+       scroll it covers only the padding. */
+    .framed { --fade: 10px; }
+    .framed::after {
+      content: '';
+      position: sticky;
+      bottom: 0;
+      display: block;
+      height: var(--fade);
+      margin-top: calc(-1 * var(--fade));
+      pointer-events: none;
+      background: inherit;
+      mask-image: linear-gradient(to bottom, transparent, black);
+    }
     .framed.with-bar > :global(.machine-bar) { padding-inline: max(clamp(20px, 4vw, 64px), calc((100% - var(--settings-width)) / 2)); max-width: none; }
     .framed > :global(.policy-banner) { margin-inline: max(clamp(20px, 4vw, 64px), calc((100% - var(--settings-width)) / 2)); }
   }

@@ -10,8 +10,11 @@
    * Who runs a thread: the agent it belongs or was entrusted to, else the
    * provider's logo, whose tooltip names the provider and the model.
    */
-  /** `logo`: the provider logo's own size, smaller than an avatar's where a ring frames them both. */
-  let { owner, thread, size = 12, logo }: { owner: Store; thread: ThreadSummary; size?: number; logo?: number } = $props();
+  /**
+   * `logo`: the provider logo's own size, smaller than an avatar's where a ring frames them both.
+   * `mono`: the logo in the row's muted colour, for a row nothing is live on; an agent's picture stays its own.
+   */
+  let { owner, thread, size = 12, logo, mono = false }: { owner: Store; thread: ThreadSummary; size?: number; logo?: number; mono?: boolean } = $props();
   let agent = $derived(agentLabel(owner, thread));
   /** A persistent agent's thread, a sub-thread and an entrusted thread wear that agent's picture where the logo goes. */
   let runner = $derived(thread.agentSessionId || thread.parentThreadId ? agentDirectory(owner).ownerOf(thread) : agentDirectory(owner).entrustmentOf(thread.id)?.agent ?? null);
@@ -23,7 +26,7 @@
   </span>
 {:else}
   <span class="picture" data-testid="thread-provider" role="img" title={agent} aria-label={agent}>
-    <ProviderLogo providerId={thread.providerId} size={logo ?? size} />
+    <ProviderLogo providerId={thread.providerId} size={logo ?? size} {mono} />
   </span>
 {/if}
 

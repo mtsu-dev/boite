@@ -76,13 +76,16 @@ test('closed until asked, then the recents come first and the commands after the
   expect(ids.some((id) => id.startsWith('project:'))).toBe(false);
   expect(ids.at(-1)).toBe('archive');
   expect(selectedId()).toBe(ids[0]);
-  // Each project's threads sit together under its name, the commands after them;
-  // boite leads because its t-bench needs the user, as in the Recent sidebar.
+  // Every recent sits under one "Recent" heading, the commands after them; no project heading.
   const sections = Array.from(document.querySelectorAll<HTMLElement>('[data-testid=palette-section]'));
   const of = (section: HTMLElement) => Array.from(section.querySelectorAll('[data-testid=palette-row]')).map((row) => row.getAttribute('data-palette-id'));
-  expect(sections.map((section) => section.querySelector('[data-testid=palette-project] .name')?.textContent ?? 'commands')).toEqual(['boite', 'notes', 'commands']);
-  expect(of(sections[0]!).sort()).toEqual(['thread:t-bench', 'thread:t-scheduler', 'thread:t-trace']);
-  expect(of(sections[1]!)).toEqual(['thread:t-descriptors']);
+  expect(sections.map((section) => section.querySelector('.section-label')?.textContent)).toEqual(['Recent', 'Commands']);
+  expect(document.querySelectorAll('[data-testid=palette-recent]')).toHaveLength(1);
+  expect(document.querySelector('[data-testid=palette-project]')).toBeNull();
+  expect(of(sections[0]!).sort()).toEqual(['thread:t-bench', 'thread:t-descriptors', 'thread:t-scheduler', 'thread:t-trace']);
+  // Each row names its project after its title, where a heading would have.
+  expect(document.querySelector('[data-palette-id="thread:t-descriptors"] [data-testid=palette-where] .where-name')?.textContent).toBe('notes');
+  expect(document.querySelector('[data-palette-id="thread:t-bench"] [data-testid=palette-where] .where-name')?.textContent).toBe('boite');
   // A row says what its thread is doing the way the sidebar does: the ring draws it, the words stay in the time's label.
   const bench = document.querySelector('[data-palette-id="thread:t-bench"]')!;
   expect(bench.querySelector('[data-testid=state-ring]')?.getAttribute('data-ring')).toBe('waiting');
@@ -129,19 +132,19 @@ test('an overflowing list ends on a whole row, never on a heading, and the arrow
   store.paletteOpen = true;
   flushSync();
   await tick();
-  // notes: heading 6-36, row 36-70; boite: heading 74-104, rows 104-138, 138-172, 172-206; commands: heading 210-240, rows from 240.
+  // Recent: heading 6-36, rows 36-70, 70-104, 104-138, 138-172; commands: heading 176-206, rows 206-240, 240-274.
   layOut(260);
   window.dispatchEvent(new Event('resize'));
   flushSync();
   const list = document.querySelector<HTMLElement>('[data-testid=palette-list]')!;
-  // 260 px would show the "Commands" heading and 14 px of its first row: the list stops under the last boite row, plus its 6 px padding.
-  expect(list.style.maxHeight).toBe('212px');
+  // 260 px would show 14 px of the second command row: the list stops under the first one, plus its 6 px padding.
+  expect(list.style.maxHeight).toBe('246px');
   expect(list.hasAttribute('data-more')).toBe(false);
 
   // Down past the cut: the row's bottom lands on the list's, above its padding.
-  for (let i = 0; i < 4; i++) key('ArrowDown');
-  expect(selectedId()).toBe(rows()[4]);
-  expect(list.scrollTop).toBe(240 + 34 + 6 - 212);
+  for (let i = 0; i < 5; i++) key('ArrowDown');
+  expect(selectedId()).toBe(rows()[5]);
+  expect(list.scrollTop).toBe(240 + 34 + 6 - 246);
   // Back up to the first row: its heading comes with it.
   key('Home');
   expect(list.scrollTop).toBe(0);
@@ -162,14 +165,14 @@ test('a cut list counts the rows left under it at the right of the foot, and dro
   window.dispatchEvent(new Event('resize'));
   flushSync();
   const more = () => document.querySelector('[data-testid=palette-more]')?.textContent?.trim() ?? null;
-  // Four thread rows show whole; every command row waits under the cut.
-  expect(more()).toBe(`${total - 4} more ↓`);
+  // Four thread rows and the first command show whole; the other commands wait under the cut.
+  expect(more()).toBe(`${total - 5} more ↓`);
   key('End');
   await tick();
   expect(more()).toBeNull();
   key('Home');
   await tick();
-  expect(more()).toBe(`${total - 4} more ↓`);
+  expect(more()).toBe(`${total - 5} more ↓`);
   // A list that fits says nothing.
   layOut(2000);
   window.dispatchEvent(new Event('resize'));
@@ -177,7 +180,7 @@ test('a cut list counts the rows left under it at the right of the foot, and dro
   expect(more()).toBeNull();
 });
 
-test('a bot\'s own thread sits under Bots with the tab\'s glyph, not under a project or Conversations', async () => {
+test('a bot\'s own thread names Bots with the tab\'s glyph, in its recent row and under a query\'s heading', async () => {
   setExperiment('resident-agents', true);
   onTestFinished(() => setExperiment('resident-agents', false));
   store.threads = store.threads.map(thread => thread.id === 't-bench' ? { ...thread, agentSessionId: 'agt_session_nova' } : thread);
@@ -185,6 +188,10 @@ test('a bot\'s own thread sits under Bots with the tab\'s glyph, not under a pro
   store.paletteOpen = true;
   flushSync();
   await tick();
+  const where = document.querySelector('[data-palette-id="thread:t-bench"] [data-testid=palette-where]');
+  expect(where?.textContent?.trim()).toBe('Bots');
+  expect(where?.querySelector('[data-testid=palette-where-bots]')).not.toBeNull();
+  await type(store.threads.find(thread => thread.id === 't-bench')!.title);
   const section = document.querySelector('[data-palette-id="thread:t-bench"]')!.closest<HTMLElement>('[data-testid=palette-section]')!;
   const heading = section.querySelector('[data-testid=palette-bots]');
   expect(heading?.querySelector('.name')?.textContent).toBe('Bots');
@@ -214,6 +221,20 @@ test('a subagent stays out of the recents, and a query finds it named by its par
   // The parent's title is something a query lands on.
   await type(parent.title);
   expect(rows()).toContain('thread:t-bench');
+});
+
+test('with nothing typed, the rows read in Recent\'s order under one heading, whatever their projects', async () => {
+  // Recent's order puts notes' t-descriptors between boite's threads; a boite heading
+  // would stand where t-bench ranked and drag t-trace up above it.
+  const order = ['thread:t-bench', 'thread:t-scheduler', 'thread:t-descriptors', 'thread:t-trace'];
+  vi.spyOn(palette, 'asRecents');
+  store.paletteOpen = true;
+  flushSync();
+  await tick();
+  const given = vi.mocked(palette.asRecents).mock.calls.at(-1)![0].map(item => item.id);
+  expect(given).toEqual(order);
+  expect(rows().filter(id => id.startsWith('thread:'))).toEqual(order);
+  expect(document.querySelectorAll('[data-testid=palette-section]')[0]?.querySelector('[data-testid=palette-recent]')).not.toBeNull();
 });
 
 test('with nothing typed, a thread that needs the user outranks newer idle ones, as in the Recent sidebar', async () => {

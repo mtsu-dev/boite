@@ -107,6 +107,14 @@ test('Next needs you walks the Inbox: it counts the same threads and opens the o
   expect([...next.querySelectorAll('.ui-label')].map(node => node.textContent)).toEqual([`Needs you · ${others.length}`]);
   expect(next.querySelector('.lucide-chevron-right')).not.toBeNull();
   expect(next.querySelector('.number')).toBeNull();
+  // Label in Name (WCAG 2.5.3): the accessible name is the visible words, the thread is its description.
+  expect(next.hasAttribute('aria-label')).toBe(false);
+  expect(next.querySelector('[aria-hidden=true].ui-label')).toBeNull();
+  expect(next.textContent?.trim()).toBe(`Needs you · ${others.length}`);
+  expect(next.title).toContain(oldest.title);
+  const hint = document.getElementById(next.getAttribute('aria-describedby') ?? '');
+  expect(hint?.textContent).toBe(`Opens ${oldest.title}, waiting longest`);
+  expect(next.contains(hint)).toBe(false);
   next.click();
   expect(select).toHaveBeenCalledWith(store, oldest.id);
   // It only opens: no send, archive or move goes to the core.
@@ -163,5 +171,5 @@ test('the state label never shrinks, and under 420 px the counts and Next turn i
   expect(rule('.number', narrow)).toMatch(/display: inline/);
   // The names stay whole while the words hide.
   expect(stripSource).toMatch(/data-testid="active-subagents"[\s\S]*?aria-label=\{delegatedWords\}/);
-  expect(stripSource).toMatch(/data-testid="status-strip-next"[\s\S]*?aria-label=\{fill\(strings\.chat\.strip\.nextTitle/);
+  expect(stripSource).toMatch(/data-testid="status-strip-next"[\s\S]*?aria-describedby=\{nextHintId\}/);
 });

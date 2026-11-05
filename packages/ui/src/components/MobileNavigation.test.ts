@@ -28,6 +28,20 @@ test('the phone list fades its rows out at the bottom edge, under the floating t
   expect(masks).toEqual(['linear-gradient(to top, transparent 0, black 24px)']);
 });
 
+test('under the tab bar the fade starts above the gap the capsule floats over, so no row shows sliced in that gap', async () => {
+  const { default: source } = await import('./MobileNavigation.svelte?raw');
+  const { default: tabs } = await import('./MobileTabs.svelte?raw');
+  const strip = (text: string) => text.slice(text.indexOf('<style')).replace(/\/\*[\s\S]*?\*\//g, '');
+  const tabbed = [...strip(source).matchAll(/\.mobile-list\.tabbed\s*\{([^{}]*)\}/g)].map(([, body = '']) => body).join(';');
+  const gap = /--bar-gap:\s*([^;]+);/.exec(tabbed)?.[1]?.trim();
+  // The capsule's bottom margin is the gap: the fade must keep it clear, then thin rows out over 24 px above it.
+  const bar = /\.mobile-tabs\s*\{([^{}]*)\}/g;
+  const margin = [...strip(tabs).matchAll(bar)].map(([, body = '']) => /margin:\s*([^;]+);/.exec(body)?.[1]).find(Boolean)!;
+  expect(margin).toContain(gap);
+  expect(gap).toBe('max(8px, env(safe-area-inset-bottom))');
+  expect(/mask-image:\s*([^;]+);/.exec(tabbed)?.[1]?.trim()).toBe('linear-gradient(to top, transparent 0 var(--bar-gap), black calc(var(--bar-gap) + 24px))');
+});
+
 test('a phone row is one line: its linked PR and branch wait in the conversation header', async () => {
   vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
     media, matches: true, onchange: null, addListener() {}, removeListener() {}
@@ -210,6 +224,58 @@ test('the Inbox tab lists what waits on the user in Recent\'s order, newest wait
   expect(title.classList.contains('folded')).toBe(true);
   list.scrollTop = 120; list.dispatchEvent(new Event('scroll')); await settle();
   expect(title.classList.contains('folded')).toBe(false);
+});
+
+test('the Threads list puts its 20 px title and its view pill on one row, so its first thread starts a row higher', async () => {
+  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
+    media, matches: true, onchange: null, addListener() {}, removeListener() {}
+  }));
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  workspace.machines = [{ id: 'local', label: 'Local', store }]; workspace.active = store;
+  mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'threads' } });
+  await settle();
+  const list = document.querySelector<HTMLElement>('[data-testid=mobile-list]')!;
+  // Muse r11: machine bar, a 32 px title, the view pill and the filter took a quarter of the screen before the first row.
+  const row = list.querySelector<HTMLElement>('.title-row')!;
+  expect(row.querySelector('.large-title')!.textContent).toBe('Threads');
+  expect(row.querySelector('[data-testid=mobile-project-filter]')).not.toBeNull();
+  expect(row.querySelector('[data-testid=mobile-search-open]')).not.toBeNull();
+  expect(list.querySelector('.list-heading')).toBeNull();
+  // The search opens under that row, the pill staying beside the title.
+  list.querySelector<HTMLButtonElement>('[data-testid=mobile-search-open]')!.click(); await settle();
+  expect(list.querySelector('.list-heading [data-testid=mobile-search]')).not.toBeNull();
+  expect(row.querySelector('[data-testid=mobile-project-filter]')).not.toBeNull();
+  const { default: source } = await import('./MobileNavigation.svelte?raw');
+  const style = source.slice(source.indexOf('<style')).replace(/\/\*[\s\S]*?\*\//g, '');
+  expect([...style.matchAll(/\.large-title\s*\{([^{}]*)\}/g)].map(([, body = '']) => /font-size:\s*([^;]+);/.exec(body)?.[1]).filter(Boolean)).toEqual(['20px']);
+});
+
+test('a conversation scrolled under the phone header turns the header opaque, and back once it rests at its top', async () => {
+  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
+    media, matches: true, onchange: null, addListener() {}, removeListener() {}
+  }));
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  const thread = store.threads.find(t => !t.parentThreadId && !t.archived && t.projectId !== null)!;
+  await store.open(thread.id);
+  workspace.machines = [{ id: 'local', label: 'Local', store }]; workspace.active = store;
+  // The conversation's scroller is the app's, beside the header in the same grid.
+  const timeline = document.createElement('div');
+  timeline.dataset.testid = 'timeline';
+  document.body.append(timeline);
+  mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'chat' } });
+  await settle();
+  const header = document.querySelector<HTMLElement>('[data-testid=mobile-header]')!;
+  expect(header.classList.contains('chatting')).toBe(true);
+  // Muse r11: a bubble scrolled under the translucent header read only by its last word.
+  expect(header.classList.contains('covered')).toBe(false);
+  timeline.scrollTop = 200; timeline.dispatchEvent(new Event('scroll')); await settle();
+  expect(header.classList.contains('covered')).toBe(true);
+  timeline.scrollTop = 0; timeline.dispatchEvent(new Event('scroll')); await settle();
+  expect(header.classList.contains('covered')).toBe(false);
+  const { default: source } = await import('./MobileNavigation.svelte?raw');
+  expect(source).toMatch(/\.mobile-header\.chatting\.covered \{[^}]*background: var\(--color-surface\)/);
 });
 
 test('Contacts left the bar: the Bots page header carries it for the owner, a paired device gets no way in', async () => {

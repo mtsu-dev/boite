@@ -87,3 +87,19 @@ test('a provider nobody drew falls back to its initial', () => {
   const initial = document.querySelector('[data-initial=echo]');
   expect(initial?.textContent?.trim()).toBe('E');
 });
+
+test('a mono mark paints one shape in currentColor: bare paths, a tile with its mark cut out, a raster by its alpha', () => {
+  for (const id of ['claude', 'pi', 'antigravity']) {
+    running = mount(ProviderLogo, { target: document.body, props: { providerId: id, size: 13, mono: true } });
+    flushSync();
+    const svg = document.querySelector('svg[data-mono]')!;
+    const painted = [...svg.querySelectorAll('rect, path, image')].filter(node => !node.closest('mask'));
+    expect(painted.map(node => node.getAttribute('fill')), id).toEqual(['currentColor']);
+    expect(painted[0]!.getAttribute('mask'), id).toMatch(/^url\(#.+-mono\)$/);
+    const mask = svg.querySelector('mask')!;
+    expect(mask.id, id).toBe(painted[0]!.getAttribute('mask')!.slice(5, -1));
+    if (id === 'pi') expect([...mask.querySelectorAll('path')].every(path => path.getAttribute('fill') === 'black')).toBe(true);
+    if (id === 'antigravity') expect(mask.style.getPropertyValue('mask-type')).toBe('alpha');
+    unmount(running, { outro: false }); running = null; document.body.innerHTML = '';
+  }
+});

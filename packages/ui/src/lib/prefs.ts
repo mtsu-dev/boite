@@ -20,7 +20,13 @@ export interface LayoutPrefs {
 export const PREFS_STORAGE_KEY = 'boite.composer';
 export const LAYOUT_STORAGE_KEY = 'boite.layout';
 
-export const SIDEBAR_DEFAULT = 280;
+/** 304 px gives a two-line row's title about 260 px, some 35 characters, before the ellipsis. */
+export const SIDEBAR_DEFAULT = 304;
+/**
+ * The default before it grew. A layout stored it whenever the sidebar was folded
+ * or reset, never dragged there, so it reads as the default and follows it.
+ */
+const SIDEBAR_FORMER_DEFAULT = 280;
 export const SIDEBAR_MIN = 208;
 export const SIDEBAR_MAX = 440;
 
@@ -77,15 +83,16 @@ export function writePrefs(prefs: ComposerPrefs): void {
 export function readLayout(): LayoutPrefs {
   return read(LAYOUT_STORAGE_KEY, defaultLayout, (parsed) => ({
     sidebarWidth:
-      typeof parsed.sidebarWidth === 'number' && Number.isFinite(parsed.sidebarWidth)
+      typeof parsed.sidebarWidth === 'number' && Number.isFinite(parsed.sidebarWidth) && parsed.sidebarWidth !== SIDEBAR_FORMER_DEFAULT
         ? clampSidebar(parsed.sidebarWidth)
         : SIDEBAR_DEFAULT,
     sidebarCollapsed: parsed.sidebarCollapsed === true
   }));
 }
 
+/** The default width is not stored: a sidebar never dragged follows the default when it changes. */
 export function writeLayout(layout: LayoutPrefs): void {
-  write(LAYOUT_STORAGE_KEY, layout);
+  write(LAYOUT_STORAGE_KEY, layout.sidebarWidth === SIDEBAR_DEFAULT ? { sidebarCollapsed: layout.sidebarCollapsed } : layout);
 }
 
 /**

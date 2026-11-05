@@ -569,7 +569,11 @@ test('a first run shows the reasoning, mode and worktree chips at their defaults
   await waitFor(() => effortChip() !== null);
   // The built-in entry shows the scale at once; the account's catalog adds the fast mode.
   await waitFor(() => store.modelOf(store.defaultChoice())?.speeds !== undefined);
-  query('[data-testid=composer-mode]');
+  // The mode opens a menu as the model and effort chips do: it wears their filled pill, not bare text (round 11).
+  const mode = query('[data-testid=composer-mode]');
+  expect(mode.classList.contains('chip')).toBe(true);
+  expect(mode.classList.contains('ghost')).toBe(false);
+  expect(effortChip()!.classList.contains('chip')).toBe(true);
   // Attach and the separate copy wait in +, the copy off: no chip says it is on.
   expect(plusRows()).toEqual({ attach: null, worktree: false });
   expect(document.querySelector('[data-testid=composer-worktree]')).toBeNull();

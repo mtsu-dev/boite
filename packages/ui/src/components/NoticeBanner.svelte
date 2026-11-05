@@ -20,6 +20,7 @@
     icon: Icon,
     tone = 'neutral',
     title,
+    titleShort,
     titleTip,
     figure = '',
     text = '',
@@ -36,6 +37,8 @@
     /** `warning` is amber (the user's turn to act), `danger` red (something failed). */
     tone?: 'neutral' | 'warning' | 'danger';
     title: string;
+    /** The title where the line is phone-narrow, so it reads whole beside its figure instead of ending in an ellipsis. */
+    titleShort?: string;
     titleTip?: string;
     /** The number the title is about, kept whole beside it: `9.5 GB`. */
     figure?: string;
@@ -82,7 +85,7 @@
   <div class="line">
     <span class="mark" aria-hidden="true"><Icon size={15} strokeWidth={1.9} /></span>
     <!-- `ui-label` trims each text to its cap height, so the icon centres on the words in every font. -->
-    {#if title}<strong class="title ui-label" title={titleTip}>{title}</strong>{/if}
+    {#if title}<strong class="title ui-label" title={titleTip}>{#if titleShort}<span class="long">{title}</span><span class="short">{titleShort}</span>{:else}{title}{/if}</strong>{/if}
     {#if figure}<strong class="figure ui-label">{figure}</strong>{/if}
     {#if text}<span class="summary ui-label" bind:this={summary} role={timer ? 'timer' : undefined} aria-live={timer ? 'off' : undefined}>{text}</span>{:else}<span class="fill"></span>{/if}
     {#if actions}<span class="actions">{@render actions()}</span>{/if}
@@ -113,6 +116,13 @@
     font-size: var(--text-sm);
   }
   .notice.inline { width: 100%; max-width: 640px; margin: 0; }
+  /* The line's own width picks the title: a phone's 360 px column takes the short one, whole. */
+  .notice { container: notice / inline-size; }
+  .title .short { display: none; }
+  @container notice (max-width: 400px) {
+    .title .long { display: none; }
+    .title .short { display: inline; }
+  }
   .line { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 4px 4px 4px 12px; box-sizing: border-box; }
   .mark { display: flex; flex: none; color: var(--color-muted-foreground); }
   .warning .mark { color: var(--color-live); }

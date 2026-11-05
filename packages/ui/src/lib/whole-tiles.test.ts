@@ -89,3 +89,28 @@ test('on 360 and 390 px phones the end tile shows by 40% to 80% before the 24 px
     rail.remove();
   }
 });
+
+test('a phone strip says a tile waits past its end only while one does, so its fade never dims the last tile scrolled whole', () => {
+  // Muse r11: at 390 Grok read cut with no cue, at 360 it was gone; the fade marks the end that can still scroll.
+  const rail = strip(353, [65, 60, 73, 60, 60, 60, 77]);
+  let scrollLeft = 0;
+  Object.defineProperty(rail, 'scrollWidth', { value: 540 });
+  Object.defineProperty(rail, 'scrollLeft', { get: () => scrollLeft, set: (value: number) => { scrollLeft = value; } });
+  const action = wholeTiles(rail, { cell: () => 0, cue: 20, tiles: '[data-row]', wideOnly: '(min-width: 721px)' });
+  expect(rail.dataset.moreEnd).toBe('true');
+  scrollLeft = 540 - 353;
+  rail.dispatchEvent(new Event('scroll'));
+  expect(rail.dataset.moreEnd).toBeUndefined();
+  scrollLeft = 60;
+  rail.dispatchEvent(new Event('scroll'));
+  expect(rail.dataset.moreEnd).toBe('true');
+  action.destroy();
+  rail.remove();
+  // A strip that holds every tile has nothing past its end.
+  const whole = strip(353, [60, 60, 60]);
+  Object.defineProperty(whole, 'scrollWidth', { value: 353 });
+  const fits = wholeTiles(whole, { cell: () => 0, cue: 20, tiles: '[data-row]', wideOnly: '(min-width: 721px)' });
+  expect(whole.dataset.moreEnd).toBeUndefined();
+  fits.destroy();
+  whole.remove();
+});

@@ -228,8 +228,10 @@
   .machine { flex: 0 1 auto; max-width: 25%; }
   .machine::after { content: '·'; margin-left: 6px; color: var(--color-subtle); }
   .reason { flex: none; }
-  .detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-subtle); }
-  .more { align-self: flex-start; margin-top: 6px; color: var(--color-muted-foreground); }
+  /* The detail takes only the room left: at a narrow window it is cut first, never the project or the machine. */
+  .detail { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-subtle); }
+  /* The ghost button's padding taken back, as the fold does: the lane label, "See all" and the fold share one left edge. */
+  .more { align-self: flex-start; margin-top: 6px; margin-left: -6px; color: var(--color-muted-foreground); }
   .nothing { margin: 4px 0 0; text-align: center; font-size: var(--text-sm); color: var(--color-muted-foreground); }
 
   .rows { display: flex; flex-direction: column; }

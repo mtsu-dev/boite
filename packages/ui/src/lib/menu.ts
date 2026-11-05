@@ -27,6 +27,8 @@ export interface MenuItem {
   danger?: boolean;
   disabled?: boolean;
   separator?: boolean;
+  /** A small muted label over the rows that follow, naming the choice they make; not a row the keyboard stops on. */
+  heading?: boolean;
   /** A value to copy: it reads whole on as many lines as it needs, a copy glyph closes the row and the menu stays open to say it was copied. */
   copy?: boolean;
   /** Opens another list in the same menu: ArrowRight picks it, as Enter does. */
@@ -37,4 +39,8 @@ export interface MenuItem {
 
 export function separator(id = 'sep'): MenuItem {
   return { id, label: '', separator: true };
+}
+
+export function heading(id: string, label: string): MenuItem {
+  return { id, label, heading: true };
 }

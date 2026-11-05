@@ -408,6 +408,20 @@ test('a phone asks for a model in one whole phrase: the logo naming the provider
   }
 });
 
+test('the phone sheet puts its text on the list cards\' 16 px edge and fades its provider strip only while a tab waits past it', async () => {
+  const { default: picker } = await import('./ModelPicker.svelte?raw');
+  const phone = picker.slice(picker.lastIndexOf('@media (max-width: 720px)')).replace(/\/\*[\s\S]*?\*\//g, '');
+  const rule = (selector: string) => [...phone.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(([, sel = '']) => sel.trim() === selector).map(([, , body = '']) => body).join(';');
+  // Round 11: "Claude", its account line and the search field started 10 px from the glass, the desktop popover's 4 + 6 px.
+  expect(rule('.main-models .head')).toMatch(/padding-inline: 16px /);
+  expect(rule('.model-list')).toMatch(/padding-inline: 12px/);
+  expect(rule('.popover .main-models :global(.search-bar)')).toMatch(/padding-inline: 12px/);
+  // The fade is the cue that the strip scrolls on: never on a strip scrolled to its last tab.
+  expect(rule('.rail')).not.toMatch(/mask-image/);
+  expect(rule('.rail:global([data-more-end])')).toMatch(/mask-image: linear-gradient\(to right, black calc\(100% - 24px\), transparent\)/);
+  expect(rule('.rail')).toMatch(/scroll-snap-type: x mandatory/);
+});
+
 test('a narrow chip gives up the account first, then the provider, and never shrinks "Pick a model"', async () => {
   const { default: picker } = await import('./ModelPicker.svelte?raw');
   const shrink = (selector: string) => {

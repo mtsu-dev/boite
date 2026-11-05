@@ -201,7 +201,7 @@
   .thread.offline .row {
     opacity: 0.55;
   }
-  /* One line is 28 px: the 21 px ring and 3.5 px of air above and below, no border,
+  /* One line is 28 px: the 22 px slot and 3 px of air above and below, no border,
      so eight project headers and their rows fit a 900 px screen. */
   .row {
     display: flex;
@@ -210,7 +210,7 @@
     width: 100%;
     height: auto;
     min-height: 28px;
-    padding: 3.5px 4px 3.5px 3px;
+    padding: 3px 4px 3px 3px;
     border-width: 0;
     gap: 0;
     background: transparent;
@@ -283,7 +283,7 @@
   /* On touch the buttons stay drawn, so the time keeps clear of them. */
   @media (max-width: 720px), (hover: none) {
     /* A finger keeps the 32 px row it had. */
-    .row { min-height: 32px; padding-block: 5.5px; }
+    .row { min-height: 32px; padding-block: 5px; }
     .done, .pin-action, .actions { top: 3px; }
     .done { opacity: 1; }
     /* Touch pins from the row's menu: three buttons would leave the title no room. */

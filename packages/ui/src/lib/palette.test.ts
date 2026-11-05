@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { rankItems, scoreFields, scoreMatch, sectionRows, type PaletteItem } from './palette';
+import { asRecents, rankItems, scoreFields, scoreMatch, sectionRows, type PaletteItem } from './palette';
 
 describe('scoreMatch', () => {
   test('a prefix beats a word start, which beats a substring, which beats scattered letters', () => {
@@ -93,6 +93,18 @@ describe('sectionRows', () => {
       ['boite', ['a', 'c']],
       ['command', ['cmd']],
       ['notes', ['b']]
+    ]);
+  });
+
+  test('the recents make one section in the order given, whatever their projects', () => {
+    const recents = asRecents([
+      { id: 'a', kind: 'thread', label: 'A', section: 'boite' },
+      { id: 'b', kind: 'thread', label: 'B', section: 'notes' },
+      { id: 'c', kind: 'thread', label: 'C', section: 'boite' }
+    ]);
+    expect(sectionRows([...recents, { id: 'cmd', kind: 'command', label: 'Command' }]).map((section) => [section.id, section.items.map((item) => item.id)])).toEqual([
+      ['recent', ['a', 'b', 'c']],
+      ['command', ['cmd']]
     ]);
   });
 });
