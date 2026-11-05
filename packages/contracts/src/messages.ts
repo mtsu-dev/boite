@@ -204,6 +204,13 @@ export type MessagePart =
       team?: TeamAsk;
       /** A page to open: see `QuestionRequest.open`. */
       open?: { url: string };
+      /**
+       * One of several questions the agent asked in one call and that come
+       * one at a time (`AskUserQuestion`, Codex `requestUserInput`): its place
+       * from 1 and how many the call holds, so the card says more follow.
+       * Absent on a lone question.
+       */
+      series?: { index: number; total: number };
     }
   /**
    * A secret card (`boite secret ask`): the name, the reason and how it ended,

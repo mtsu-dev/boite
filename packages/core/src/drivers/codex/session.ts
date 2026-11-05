@@ -830,15 +830,21 @@ export class CodexSession {
     const turn = this.#current;
     const answers: Record<string, string> = {};
     if (turn === null || !Array.isArray(raw)) return answers;
-    for (const entry of raw as CodexQuestion[]) {
+    const entries = raw as CodexQuestion[];
+    const idOf = (entry: CodexQuestion | undefined) => typeof entry?.id === 'string' ? entry.id : '';
+    // Asked one at a time: each card says its place among those that will be asked.
+    const total = entries.filter((entry) => idOf(entry).length > 0).length;
+    let place = 0;
+    for (const entry of entries) {
       if (turn.settled || turn.isStopped) break;
-      const id = typeof entry?.id === 'string' ? entry.id : '';
+      const id = idOf(entry);
       if (id.length === 0) {
         ctx.log('warn', 'codex: a question with no id was skipped');
         continue;
       }
+      place++;
       const options = optionsOf(entry.options);
-      const answer = await this.#askOne(turn, {
+      const answer = await this.#askOne(turn, total > 1 ? { index: place, total } : undefined, {
         text: questionTextOf(entry),
         options,
         // A question the server marks `isOther`, or one with no options at all,
@@ -867,13 +873,14 @@ export class CodexSession {
   }
 
   /** One question card, drawn and then folded with what the user picked. */
-  async #askOne(turn: CodexTurn, ask: QuestionAsk): Promise<QuestionAnswer | null> {
+  async #askOne(turn: CodexTurn, series: { index: number; total: number } | undefined, ask: QuestionAsk): Promise<QuestionAnswer | null> {
     const ticket = turn.ctx.askQuestion(ask);
     const index = turn.takeIndex();
-    turn.part(index, { type: 'question', questionId: ticket.questionId, ...ask, answer: null });
+    const numbered = series ? { series } : {};
+    turn.part(index, { type: 'question', questionId: ticket.questionId, ...ask, ...numbered, answer: null });
     const answer = await Promise.race([ticket, turn.stopped.then(() => null)]);
     if (answer === null) return null;
-    turn.part(index, { type: 'question', questionId: ticket.questionId, ...ask, answer });
+    turn.part(index, { type: 'question', questionId: ticket.questionId, ...ask, ...numbered, answer });
     return answer;
   }
 

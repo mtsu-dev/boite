@@ -123,13 +123,15 @@ export function toolGate(host: GateHost): ToolGate {
 }
 
 /**
- * `AskUserQuestion`: each question becomes a card, asked in order, and the
+ * `AskUserQuestion`: each question becomes a card, asked in order and
+ * numbered when there are several, and the
  * answers go back in the tool's own input (`answers`, keyed by the question
  * text, labels joined by a comma), which is what the CLI hands the model.
  */
 async function askUser(turn: ClaudeTurn, input: Record<string, unknown>): Promise<PermissionResult> {
   const answers: Record<string, string> = {};
-  for (const question of askedQuestions(input['questions'])) {
+  const questions = askedQuestions(input['questions']);
+  for (const [at, question] of questions.entries()) {
     const options = question.options.map((option, at) => ({
       id: String(at + 1),
       label: option.label,
@@ -138,10 +140,12 @@ async function askUser(turn: ClaudeTurn, input: Record<string, unknown>): Promis
     const ask = { text: question.question, options, allowText: true, multiple: question.multiSelect };
     const ticket = turn.ctx.askQuestion(ask);
     const index = turn.takeIndex();
-    turn.part(index, { type: 'question', questionId: ticket.questionId, ...ask, answer: null });
+    // Asked one at a time: the card says how many the call holds.
+    const series = questions.length > 1 ? { series: { index: at + 1, total: questions.length } } : {};
+    turn.part(index, { type: 'question', questionId: ticket.questionId, ...ask, ...series, answer: null });
     const answer: QuestionAnswer | null = await Promise.race([ticket, turn.stopped.then(() => null)]);
     if (answer === null) return { behavior: 'deny', message: DENIED };
-    turn.part(index, { type: 'question', questionId: ticket.questionId, ...ask, answer });
+    turn.part(index, { type: 'question', questionId: ticket.questionId, ...ask, ...series, answer });
     const labels = answer.optionIds.map(id => options.find(option => option.id === id)?.label ?? id);
     const text = answerText(answer);
     answers[question.question] = [...labels, ...(text ? [text] : [])].join(', ');

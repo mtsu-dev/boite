@@ -333,6 +333,8 @@ describe('claude driver: questions and background work', () => {
     // Cards, never a permission to use the tool.
     expect(parts.filter((part) => part.type === 'permission')).toEqual([]);
     expect(parts.filter((part) => part.type === 'question').map((part) => part.type === 'question' ? part.answer?.optionIds : null)).toEqual([['2'], ['1', '3']]);
+    // Each card knows its place in the call, so the first one says another follows.
+    expect(parts.filter((part) => part.type === 'question').map((part) => part.type === 'question' ? part.series : null)).toEqual([{ index: 1, total: 2 }, { index: 2, total: 2 }]);
   });
 
   test('a screenshot given with an AskUserQuestion answer reaches Claude as a path it can Read', async () => {

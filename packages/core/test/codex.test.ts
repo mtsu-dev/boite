@@ -1388,6 +1388,8 @@ describe('codex driver', () => {
       questionId: question.id,
       answer: { optionIds: ['blue'] },
     });
+    // A lone question is not numbered.
+    expect(parts.find((part) => part.type === 'question')).not.toHaveProperty('series');
     // What the fake server received: the label of what the user picked.
     const text = parts.find((part) => part.type === 'text');
     expect(text?.type === 'text' ? text.text : '').toBe('input answered Blue');
