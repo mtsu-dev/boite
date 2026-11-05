@@ -772,6 +772,26 @@ test('scrolled up, the way to the bottom shows with nothing new below, and takes
   expect(jumpButton()).toBeNull();
 });
 
+test('the list fades under its top and bottom edges, and drops the bottom fade at the end so the latest message shows whole', async () => {
+  const messages = thread(200);
+  stubLayout(messages.length * ESTIMATE);
+  running = mount(MessageList, { target: document.body, props: { store, threadId: 't-long', messages } });
+  await settle();
+  const timeline = document.querySelector<HTMLElement>('[data-testid=timeline]')!;
+  timeline.scrollTop = messages.length * ESTIMATE - VIEW_HEIGHT;
+  timeline.dispatchEvent(new Event('scroll'));
+  await settle();
+  expect(timeline.classList.contains('ended')).toBe(true);
+  timeline.scrollTop = 4_000;
+  timeline.dispatchEvent(new Event('scroll'));
+  await settle();
+  expect(timeline.classList.contains('ended')).toBe(false);
+  timeline.scrollTop = messages.length * ESTIMATE - VIEW_HEIGHT;
+  timeline.dispatchEvent(new Event('scroll'));
+  await settle();
+  expect(timeline.classList.contains('ended')).toBe(true);
+});
+
 test('a viewport clamp keeps the list pinned but a reader scroll during growth releases it', async () => {
   const messages = thread(20);
   stubLayout(messages.length * ESTIMATE);

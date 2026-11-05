@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, expect, onTestFinished, test, vi } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
 import CommandPalette from './CommandPalette.svelte';
 import { FakeClient } from '../lib/fake-client';
@@ -6,6 +6,7 @@ import { Store } from '../lib/store.svelte';
 import * as palette from '../lib/palette';
 import { waitingSince } from '../lib/inbox';
 import { shortAgo } from '../lib/thread-state';
+import { setExperiment } from '../lib/experiments';
 
 let running: Record<string, unknown> | null = null;
 let store: Store;
@@ -149,6 +150,45 @@ test('an overflowing list ends on a whole row, never on a heading, and the arrow
   window.dispatchEvent(new Event('resize'));
   flushSync();
   expect(list.style.maxHeight).toBe('');
+});
+
+test('a cut list counts the rows left under it at the right of the foot, and drops the count at the end', async () => {
+  store.paletteOpen = true;
+  flushSync();
+  await tick();
+  const total = rows().length;
+  layOut(260);
+  window.dispatchEvent(new Event('resize'));
+  flushSync();
+  const more = () => document.querySelector('[data-testid=palette-more]')?.textContent?.trim() ?? null;
+  // Four thread rows show whole; every command row waits under the cut.
+  expect(more()).toBe(`${total - 4} more ↓`);
+  key('End');
+  await tick();
+  expect(more()).toBeNull();
+  key('Home');
+  await tick();
+  expect(more()).toBe(`${total - 4} more ↓`);
+  // A list that fits says nothing.
+  layOut(2000);
+  window.dispatchEvent(new Event('resize'));
+  flushSync();
+  expect(more()).toBeNull();
+});
+
+test('a bot\'s own thread sits under Bots with the tab\'s glyph, not under a project or Conversations', async () => {
+  setExperiment('resident-agents', true);
+  onTestFinished(() => setExperiment('resident-agents', false));
+  store.threads = store.threads.map(thread => thread.id === 't-bench' ? { ...thread, agentSessionId: 'agt_session_nova' } : thread);
+  flushSync();
+  store.paletteOpen = true;
+  flushSync();
+  await tick();
+  const section = document.querySelector('[data-palette-id="thread:t-bench"]')!.closest<HTMLElement>('[data-testid=palette-section]')!;
+  const heading = section.querySelector('[data-testid=palette-bots]');
+  expect(heading?.querySelector('.name')?.textContent).toBe('Bots');
+  expect(heading?.querySelector('[data-testid=palette-bots-glyph]')).not.toBeNull();
+  expect(section.querySelector('[data-testid=palette-project]')).toBeNull();
 });
 
 test('a waiting thread reads the age of its home card, as its sidebar row does', async () => {

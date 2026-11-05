@@ -2,9 +2,9 @@ import type { ThreadSummary } from '@boite/contracts';
 import type { ProjectEntry } from './project-view.svelte';
 import { archiveCount } from './project-threads.svelte';
 import { threadState } from './thread-state';
-import { inbox, storeSources, threadLiveKind } from './inbox';
+import { inbox, storeSources, threadLiveKind, waitingSince, type OrderStore } from './inbox';
 import type { Machine } from './workspace.svelte';
-import { compareThreads } from './thread-order';
+import { compareThreads, type OrderKey } from './thread-order';
 
 /** The four lifecycle buttons over the thread list, in drawn order. */
 export const LIFECYCLES = ['waiting', 'working', 'done', 'archived'] as const;
@@ -84,6 +84,12 @@ export function filterLive(kind: Lifecycle): 'needs' | 'working' | undefined {
   return kind === 'waiting' ? 'needs' : kind === 'working' ? 'working' : undefined;
 }
 
+/** A live filter row's sort key: its filter's classification and, under Needs you, the age the row shows. */
+export function filterOrder(store: OrderStore, thread: ThreadSummary, kind: Lifecycle): OrderKey | undefined {
+  const live = filterLive(kind);
+  return live && { live, waited: live === 'needs' ? waitingSince(store, thread) : null };
+}
+
 /**
  * The Recent view under a live filter: the same flat rows as unfiltered, in the
  * same order, only those of the filter's lifecycle. Grouping by project
@@ -92,5 +98,7 @@ export function filterLive(kind: Lifecycle): 'needs' | 'working' | undefined {
 export function lifecycleRows(entries: readonly ProjectEntry[], kind: 'waiting' | 'working'): (ProjectEntry & { thread: ThreadSummary })[] {
   return lifecycleProjects(entries, kind)
     .flatMap(({ entry, threads }) => threads.map(thread => ({ ...entry, thread })))
-    .sort((a, b) => compareThreads(a.thread, b.thread, filterLive(kind), filterLive(kind)));
+    .map(row => ({ row, key: filterOrder(row.machine.store, row.thread, kind) }))
+    .sort((a, b) => compareThreads(a.row.thread, b.row.thread, a.key, b.key))
+    .map(({ row }) => row);
 }

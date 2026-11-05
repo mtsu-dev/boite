@@ -1,6 +1,6 @@
 import { requestExcerpt, type Account, type PermissionRequest, type Project, type QuestionRequest, type SecretRequest, type ThreadSummary } from '@boite/contracts';
 import { needsUser, shortAgo, threadState, type Delegated, type ThreadState } from './thread-state';
-import { compareThreads, type LiveKind } from './thread-order';
+import { compareThreads, type LiveKind, type OrderKey } from './thread-order';
 import { liveState, needsHand } from './thread-lanes.svelte';
 import { projectThread } from './thread-rows';
 import type { Store } from './store.svelte';
@@ -95,6 +95,23 @@ export function storeLiveKind(store: Pick<Store, 'subagents'>, thread: ThreadSum
   return threadLiveKind(thread, threadState(thread, store.subagents(thread.id)));
 }
 
+/** What a store holds that says where a thread counts and since when it waits. */
+export type OrderStore = Pick<Store, 'subagents' | 'pendingQuestions' | 'pendingPermissions' | 'pendingSecrets' | 'accounts'>;
+
+/**
+ * A thread's sort key from its store (`compareThreads`): where it counts, and
+ * for a row that needs the user the age its row shows (`waitingSince`), so
+ * Recent, the phone, the Projects cards and the home queue order one Needs you
+ * band alike.
+ */
+export function storeOrder(store: OrderStore, thread: ThreadSummary): OrderKey {
+  const state = threadState(thread, store.subagents(thread.id) ?? 0);
+  const live = threadLiveKind(thread, state);
+  if (live !== 'needs') return { live, waited: null };
+  const source = { questions: store.pendingQuestions ?? [], permissions: store.pendingPermissions ?? [], secrets: store.pendingSecrets, accounts: store.accounts };
+  return { live, waited: cardOf(source, thread, state).since };
+}
+
 /** What each machine's store holds for the Inbox: the home, the phone's tab and the status strip's Next read the same lists. */
 export function storeSources<M extends { store: Store }>(machines: readonly M[]): InboxSource<M>[] {
   return machines.map(machine => ({
@@ -119,7 +136,7 @@ export function listed(thread: ThreadSummary): boolean {
 }
 
 export interface InboxLists<M> {
-  /** What waits on the user on a connected machine, in Recent's order: pins, then the last message, newest first. */
+  /** What waits on the user on a connected machine, in Recent's order: pins, then the newest wait first. */
   needs: InboxCard<M>[];
   /** What works on a connected machine, longest running first. */
   working: InboxRow<M>[];
@@ -131,7 +148,7 @@ export interface InboxLists<M> {
 
 /**
  * The needs-you cards in the order of Recent's Needs you band
- * (`compareThreads`: pins, then the last message, newest first), so the home's
+ * (`compareThreads`: pins, then the newest wait first), so the home's
  * `See all` continues the list the sidebar shows beside it; then the working
  * rows, longest running first, under the count rule of `countKind` and `liveKind`, so the
  * lifecycle strip, the switch, the tab badges and Next read the same numbers.
@@ -166,7 +183,7 @@ export function inbox<M>(sources: readonly InboxSource<M>[]): InboxLists<M> {
       tally[kind][live] += 1;
     }
   }
-  const byRecent = (a: InboxCard<M>, b: InboxCard<M>) => compareThreads(a.thread, b.thread, 'needs', 'needs') || a.since - b.since;
+  const byRecent = (a: InboxCard<M>, b: InboxCard<M>) => compareThreads(a.thread, b.thread, { live: 'needs', waited: a.since }, { live: 'needs', waited: b.since });
   needs.sort(byRecent);
   offline.sort(byRecent);
   working.sort((a, b) => a.since - b.since);
@@ -178,7 +195,7 @@ export function inbox<M>(sources: readonly InboxSource<M>[]): InboxLists<M> {
  * key, a child asking, a failed turn read or not, or work that stopped short.
  * Only the words are the Inbox's own.
  */
-function cardOf<M>(source: InboxSource<M>, thread: ThreadSummary, state: ThreadState | null): Pick<InboxCard<M>, 'reason' | 'detail' | 'since'> {
+function cardOf(source: Pick<InboxSource<unknown>, 'questions' | 'permissions' | 'secrets' | 'accounts'>, thread: ThreadSummary, state: ThreadState | null): Pick<InboxCard<unknown>, 'reason' | 'detail' | 'since'> {
   const turn = thread.runningSince ?? thread.updatedAt;
   const question = source.questions.find(request => request.threadId === thread.id);
   if (question) return { reason: 'question', detail: requestExcerpt(question), since: question.createdAt };
@@ -203,10 +220,8 @@ function cardOf<M>(source: InboxSource<M>, thread: ThreadSummary, state: ThreadS
  * reads its age from it, so the row beside the home card says the same time
  * ("now" on both, never "now" and "1m").
  */
-export function waitingSince(store: Store, thread: ThreadSummary): number | null {
-  const [source] = storeSources([{ store }]);
-  const state = threadState(thread, store.subagents(thread.id) ?? 0);
-  return threadLiveKind(thread, state) === 'needs' ? cardOf(source!, thread, state).since : null;
+export function waitingSince(store: OrderStore, thread: ThreadSummary): number | null {
+  return storeOrder(store, thread).waited ?? null;
 }
 
 /**

@@ -510,6 +510,7 @@
 
   /* One line a project: its tile, its name, its folder, then the machine and the mark. */
   .row {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 10px;
@@ -525,10 +526,21 @@
     cursor: pointer;
   }
 
-  /* The row Enter takes, as in the command palette: the accent's wash and a bar on its edge. */
+  /* The row Enter takes, as in the command palette: the accent's wash and a straight bar on its edge,
+     its own stroke so the row's radius never bends it into a crescent. */
   .row.highlight {
     background: var(--color-accent-soft);
-    box-shadow: inset 2px 0 0 var(--color-accent);
+  }
+
+  .row.highlight::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 7px;
+    bottom: 7px;
+    width: 2px;
+    border-radius: 1px;
+    background: var(--color-accent);
   }
 
   .row:active {

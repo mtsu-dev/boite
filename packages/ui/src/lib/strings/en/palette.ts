@@ -11,6 +11,8 @@ export const strings = {
     empty: 'Nothing matches.',
     hint: 'Enter to open, Esc to close',
     hintEmpty: 'Esc to close',
+    /** The foot's count of rows a cut list holds under its visible end. */
+    more: '{count} more ↓',
     newThread: 'New thread',
     addProject: 'Add a project',
     importSession: 'Import a Claude Code session',

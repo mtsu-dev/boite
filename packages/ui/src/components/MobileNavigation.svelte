@@ -3,7 +3,7 @@
   import WindowList from './WindowList.svelte';
   import MobileTabs from './MobileTabs.svelte';
   import ThreadHeader from './ThreadHeader.svelte';
-  import { Activity, ArrowLeft, ArrowUpDown, Bot, ChevronDown, Ellipsis, FolderOpen, FolderPlus, MessageSquare, Plus, Search, X } from '@lucide/svelte';
+  import { Activity, ArrowLeft, ArrowUpDown, Bot, ChevronDown, Ellipsis, FolderOpen, FolderPlus, LoaderCircle, MessageSquare, Plus, Search, X } from '@lucide/svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import MobileConnect from './MobileConnect.svelte';
   import type { Store } from '../lib/store.svelte';
@@ -45,7 +45,7 @@
   import { threadState } from '../lib/thread-state';
   import { hasUnsentDraft } from '../lib/composer-queue';
   import { ScreenSlide } from '../lib/screen-slide.svelte';
-  import { inbox, storeLiveKind, storeSources, type InboxReason } from '../lib/inbox';
+  import { inbox, storeLiveKind, storeOrder, storeSources, type InboxReason } from '../lib/inbox';
   import { firstRunSteps } from '../lib/first-run.svelte';
   import FirstRun from './home/FirstRun.svelte';
 
@@ -148,7 +148,9 @@
   let rows = $derived(listScreen === 'activity' ? [...inboxNeeds, ...inboxWorking] : entries
     .filter(matches)
     .filter(e => workspace.view === 'recent' ? recentIds.has(rowKey(e)) : !e.thread.parentThreadId && !e.project?.archived)
-    .sort((a, b) => compareThreads(a.thread, b.thread, liveOf(a), liveOf(b))));
+    .map(row => ({ row, key: storeOrder(row.machine.store, row.thread) }))
+    .sort((a, b) => compareThreads(a.row.thread, b.row.thread, a.key, b.key))
+    .map(({ row }) => row));
   let projects = $derived([...machines.flatMap(m => m.store.projects.filter(p => p.archived !== true).map(p => ({
     id: JSON.stringify([m.id, p.id]), label: projectName(p), hint: several ? m.label : '', projectTile: { project: p, store: m.store },
     active: m.store === store && p.id === project?.id
@@ -162,8 +164,10 @@
   const attention = $derived(groupWorking ? rows.filter(row => !groupWorkingThread(row.machine.store, row.thread)) : rows);
   /** Recent's bands, the sidebar's: a label where the rows pass from what needs the user to what works, then to the rest. */
   const phoneBands = $derived(inRecent && !query ? bandStarts(attention, row => row.thread, rowKey, liveOf) : new Map<string, ThreadBand>());
-  /** The last row of each band: its card ends there, so no hairline under it. */
-  const bandEnds = $derived(new Set(phoneBands.size ? attention.filter((row, index) => { const next = attention[index + 1]; return !next || phoneBands.has(rowKey(next)); }).map(rowKey) : []));
+  /** The first row of each band, and of Recent's list when it draws no label: its card's top corners round there. */
+  const bandHeads = $derived(new Set(inRecent && attention.length ? [rowKey(attention[0]!), ...phoneBands.keys()] : []));
+  /** The last row of each band: its card ends there, so no hairline under it and its bottom corners round. */
+  const bandEnds = $derived(new Set(bandHeads.size ? attention.filter((row, index) => { const next = attention[index + 1]; return !next || bandHeads.has(rowKey(next)); }).map(rowKey) : []));
   /** A row that changes band or lane slides there, as in the sidebar; the key reads ids and states only. */
   flipRows(() => scrollRoot, () => [...rows.map(row => `${rowKey(row)}:${row.thread.status}`), '|', ...working.map(rowKey), '|', ...phoneBands.keys()].join(), () => `${listKey}:${query}`);
 
@@ -303,10 +307,10 @@
     {#snippet laneCount(count: { threads: number; bots: number }, testid: string)}
       {#if count.threads}<span class="count" data-testid="{testid}-threads" data-count={count.threads} title={fill(strings.inbox.threadsCount, { count: String(count.threads) })}>{count.threads}</span>{/if}{#if count.bots}<span class="count bots" data-testid="{testid}-bots" data-count={count.bots} title={fill(strings.inbox.botsCount, { count: String(count.bots) })} aria-label={fill(strings.inbox.botsCount, { count: String(count.bots) })}><Bot size={11} aria-hidden="true" />{count.bots}</span>{/if}
     {/snippet}
-    {#snippet threadRow(row: typeof rows[number], grouped = false, banded = false)}
+    {#snippet threadRow(row: typeof rows[number], grouped = false, banded = false, carded = false)}
       <!-- The row is worker 1's PhoneThreadRow: ring, two-line title, facts line, long press and both swipes. -->
-      <!-- Under Recent's labels the Pinned label says the pin, and a band's last row ends its card with no hairline. -->
-      <PhoneThreadRow machine={row.machine} project={row.project} thread={row.thread} {now} {grouped} {several} pin={!banded} end={banded && bandEnds.has(rowKey(row))} wait={waitOf(row)} items={rowItems(row.machine.store, row.thread)}
+      <!-- Under Recent's labels the Pinned label says the pin; a band's first and last rows round its card, the last with no hairline. -->
+      <PhoneThreadRow machine={row.machine} project={row.project} thread={row.thread} {now} {grouped} {several} pin={!banded} start={carded && bandHeads.has(rowKey(row))} end={carded && bandEnds.has(rowKey(row))} wait={waitOf(row)} items={rowItems(row.machine.store, row.thread)}
         onopen={() => { show('chat'); void workspace.select(row.machine.store, row.thread.id); }}
         onaction={(action) => rowAction(row.machine.store, row.thread, action, row.machine.id)} />
     {/snippet}
@@ -362,7 +366,8 @@
           {#if !query && lanes.foldable > 0}
             <button type="button" class="ghost more-row" data-testid="mobile-more" data-count={lanes.hidden.length} aria-expanded={moreOpen}
               aria-label={moreOpen ? strings.sidebar.fewerRows : fill(strings.sidebar.moreRowsLabel, { project: projectName(group.project), count: String(lanes.hidden.length) })}
-              onclick={() => moreRows.toggle(key)}><ChevronDown size={14} aria-hidden="true" class={moreOpen ? 'flip' : ''} /><span class="ui-label">{moreOpen ? strings.sidebar.fewerRows : fill(strings.sidebar.moreRows, { count: String(lanes.hidden.length) })}</span></button>
+              onclick={() => moreRows.toggle(key)}><ChevronDown size={14} aria-hidden="true" class={moreOpen ? 'flip' : ''} /><span class="ui-label">{moreOpen ? strings.sidebar.fewerRows : fill(strings.sidebar.moreRows, { count: String(lanes.hidden.length) })}</span>{#if !moreOpen && lanes.hiddenLive > 0}{@const busy = fill(strings.sidebar.projectWorkingThreads, { project: projectName(group.project), count: String(lanes.hiddenLive) })}<span
+                class="more-live" data-testid="project-more-working" data-count={lanes.hiddenLive} role="img" title={busy} aria-label={busy}><LoaderCircle size={12} aria-hidden="true" /><span class="ui-label">{lanes.hiddenLive}</span></span>{/if}</button>
           {/if}
           <div id="{controls}-working" hidden={!workingOpen || !!query || workingRows.length === 0} data-testid="project-working">
             {#if workingOpen && !query && workingRows.length > 0}
@@ -416,7 +421,7 @@
       {/if}
     {:else}
       <WindowList items={attention} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} estimate={77} measurements={measurements(listScreen)}>
-        {#snippet row(entry)}{@const band = phoneBands.get(rowKey(entry))}{#if band}<p class="band ui-label" class:first={entry === attention[0]} role="heading" aria-level="3" data-testid="mobile-recent-band" data-band={band}>{strings.sidebar.bands[band]}</p>{/if}{@render threadRow(entry, false, phoneBands.size > 0)}{/snippet}
+        {#snippet row(entry)}{@const band = phoneBands.get(rowKey(entry))}{#if band}<p class="band ui-label" class:first={entry === attention[0]} role="heading" aria-level="3" data-testid="mobile-recent-band" data-band={band}>{strings.sidebar.bands[band]}</p>{/if}{@render threadRow(entry, false, phoneBands.size > 0, inRecent)}{/snippet}
       </WindowList>
       {#if inRecent}
         <div class="recent-folds">
@@ -517,6 +522,8 @@
     .mobile-list:has(> .lifecycle-slot) { --sticky-top: 46px; }
     .more-row { display: flex; align-items: center; gap: 6px; width: 100%; min-height: var(--touch-target); padding: 0 14px; font-size: var(--text-sm); color: var(--color-muted-foreground); border-bottom: 1px solid var(--color-border); border-radius: 0; justify-content: flex-start; }
     .more-row.needs { color: var(--color-live); }
+    /* The desktop fold's chip: how many threads at work hide in the fold ("14 more ↻2"). */
+    .more-live { display: inline-flex; align-items: center; gap: 3px; height: 20px; padding: 0 7px 0 6px; border-radius: var(--radius-full); color: var(--color-accent); background: var(--color-accent-soft); font-weight: 600; font-variant-numeric: tabular-nums; }
     .more-row :global(.flip) { rotate: 180deg; }
     .large-title { margin: 6px 2px 2px; font-size: 28px; font-weight: 700; letter-spacing: -0.6px; line-height: 1.15; color: var(--color-foreground); }
     /* The bar's title waits under the large one, and fades in as it scrolls away. */

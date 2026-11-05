@@ -228,7 +228,7 @@ export const strings = {
     moreRowsLabel: '{project}: show {count} more threads',
     fewerRows: 'Show fewer',
     /** The second line's chip for a thread's delegated agents. */
-    agentsOne: '1 agent',
-    agentsMany: '{count} agents'
+    agentsOne: '1 subagent',
+    agentsMany: '{count} subagents'
   }
 } as const;

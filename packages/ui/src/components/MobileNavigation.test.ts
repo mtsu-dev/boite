@@ -5,6 +5,7 @@ import { setExperiment } from '../lib/experiments';
 import { FakeClient } from '../lib/fake-client';
 import { Store } from '../lib/store.svelte';
 import { workspace } from '../lib/workspace.svelte';
+import { moreRows } from '../lib/thread-lanes.svelte';
 import MobileNavigation from './MobileNavigation.svelte';
 
 let mounted: ReturnType<typeof mount> | undefined;
@@ -166,7 +167,7 @@ test('a parent on another machine shows its working sub-agents, counted, and the
   }
 });
 
-test('the Inbox tab lists what waits on the user in Recent\'s order, newest message first, before the work going on, under a large title the bar takes over on scroll', async () => {
+test('the Inbox tab lists what waits on the user in Recent\'s order, newest wait first, before the work going on, under a large title the bar takes over on scroll', async () => {
   vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
     media, matches: true, onchange: null, addListener() {}, removeListener() {}
   }));
@@ -325,7 +326,39 @@ test("phone Recent lists the sidebar's rows: a bot's own thread lives under Bots
   // The next band's divider is the only rule between two groups.
   expect(row(pinned!.id).classList.contains('end')).toBe(true);
   expect(row(asking!.id).classList.contains('end')).toBe(true);
+  // Round 9: each band reads as one rounded group, as a project card does; the bands' blocks had square corners.
+  expect(row(pinned!.id).classList.contains('start')).toBe(true);
+  expect(row(asking!.id).classList.contains('start')).toBe(true);
+  expect(row(rest!.id).classList.contains('start')).toBe(true);
   // Projects has no Pinned label: the pin keeps its glyph there.
   workspace.view = 'projects'; await settle();
   expect(row(pinned!.id).querySelector('[data-testid=thread-pinned]')).not.toBeNull();
+});
+
+test("a project card's fold says how many threads at work it hides, as the desktop's does", async () => {
+  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
+    media, matches: true, onchange: null, addListener() {}, removeListener() {}
+  }));
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  workspace.machines = [{ id: 'local', label: 'Local', store }]; workspace.active = store;
+  workspace.view = 'projects';
+  // Another test left this project's fold open.
+  moreRows.open = [];
+  const model = store.threads.find(thread => !thread.archived && !thread.incognito && !thread.teamId && !thread.debateId && !thread.parentThreadId && !thread.agentSessionId && thread.projectId !== null)!;
+  const calm = { pinned: false, unread: false, openQuestions: 0, subagentQuestions: [] as NonNullable<ThreadSummary['subagentQuestions']>, backgroundWork: null, archived: false };
+  const now = Date.now();
+  // Eight at work and two at rest: six fit the budget, so two at work fold with the two at rest.
+  store.threads = Array.from({ length: 10 }, (_, index) => ({ ...model, ...calm, id: `t${index}`, title: `t${index}`,
+    status: index < 8 ? 'running' as const : 'idle' as const, runningSince: index < 8 ? now - index * 1_000 : null, lastUserMessageAt: now - index * 1_000 }));
+  mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'threads' } });
+  await settle();
+  const more = document.querySelector<HTMLElement>('[data-testid=mobile-more]')!;
+  expect(more.dataset['count']).toBe('4');
+  // Round 9: the phone read "14 more" where the desktop reads "14 more ↻2".
+  const chip = more.querySelector<HTMLElement>('[data-testid=project-more-working]')!;
+  expect(chip).not.toBeNull();
+  expect([chip.dataset['count'], chip.textContent?.trim()]).toEqual(['2', '2']);
+  more.click(); await settle();
+  expect(document.querySelector('[data-testid=mobile-more] [data-testid=project-more-working]')).toBeNull();
 });

@@ -69,7 +69,8 @@ test('the home folds the cards past the first three', () => {
   expect(INBOX_CARDS).toBe(3);
   const { needs } = inbox([source('pc', Array.from({ length: 7 }, (_, index) => thread(`t${index}`, { status: 'waiting', runningSince: 10 - index })))]);
   expect(needs).toHaveLength(7);
-  expect(needs.slice(0, INBOX_CARDS).map(card => card.thread.id)).toEqual(['t6', 't5', 't4']);
+  // Recent's Needs you order: the newest wait first, the age each card shows.
+  expect(needs.slice(0, INBOX_CARDS).map(card => card.thread.id)).toEqual(['t0', 't1', 't2']);
 });
 
 test('a machine that is not connected counts nothing; its asks wait apart, muted, and its work is left out', () => {

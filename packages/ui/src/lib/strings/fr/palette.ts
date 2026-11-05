@@ -13,6 +13,8 @@ export const fr: Translation = {
     empty: 'Rien ne correspond.',
     hint: 'Entrée pour ouvrir, Échap pour fermer',
     hintEmpty: 'Échap pour fermer',
+    /** The foot's count of rows a cut list holds under its visible end. */
+    more: '{count} de plus ↓',
     newThread: 'Nouvelle conversation',
     addProject: 'Ajouter un projet',
     importSession: 'Importer une session Claude Code',

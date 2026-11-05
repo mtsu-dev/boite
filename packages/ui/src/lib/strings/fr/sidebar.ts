@@ -187,7 +187,7 @@ export const fr: Translation = {
     railNeedsMany: '{project} : {count} vous attendent',
     moreRowsLabel: '{project} : afficher {count} conversations de plus',
     fewerRows: 'Afficher moins',
-    agentsOne: '1 agent',
-    agentsMany: '{count} agents'
+    agentsOne: '1 sous-agent',
+    agentsMany: '{count} sous-agents'
   }
 };

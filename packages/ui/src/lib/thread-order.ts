@@ -39,12 +39,30 @@ export function lastActivity(thread: Pick<ThreadSummary, 'lastUserMessageAt' | '
 }
 
 /**
- * The sidebar's order, in both views: pinned threads, then live ones, then the
- * last message. A list that reads a store passes each thread's count
- * classification (`threadLiveKind`); `sort(compareThreads)` reads the status.
+ * A row's place read from its store (`inbox`'s `storeOrder`): where it counts,
+ * and since when it waits on the user, the age its row shows.
  */
-export function compareThreads(a: OrderFields, b: OrderFields, liveA: LiveKind = statusLive(a), liveB: LiveKind = statusLive(b)): number {
-  return Number(b.pinned) - Number(a.pinned) || rank(a, liveA) - rank(b, liveB) || lastActivity(b) - lastActivity(a);
+export interface OrderKey { live: LiveKind; waited?: number | null }
+
+function orderKey(thread: OrderFields, key: LiveKind | OrderKey | undefined): OrderKey {
+  return key === undefined ? { live: statusLive(thread) } : typeof key === 'object' && key !== null ? key : { live: key };
+}
+
+/**
+ * The sidebar's order, in both views: pinned threads, then live ones, then the
+ * last message. Two rows that need the user compare the age they show, the
+ * newest wait first, so the band's ages read in order; a wait's start is fixed
+ * once it begins, so rows do not jitter. A list that reads a store passes each
+ * thread's key (`storeOrder`) or count classification (`threadLiveKind`);
+ * `sort(compareThreads)` reads the status.
+ */
+export function compareThreads(a: OrderFields, b: OrderFields, keyA?: LiveKind | OrderKey, keyB?: LiveKind | OrderKey): number {
+  const ka = orderKey(a, keyA);
+  const kb = orderKey(b, keyB);
+  const ranked = Number(b.pinned) - Number(a.pinned) || rank(a, ka.live) - rank(b, kb.live);
+  if (ranked) return ranked;
+  const waited = ka.live === 'needs' && ka.waited != null && kb.waited != null ? kb.waited - ka.waited : 0;
+  return waited || lastActivity(b) - lastActivity(a);
 }
 
 /**

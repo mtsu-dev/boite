@@ -9,12 +9,12 @@
   import { fill, strings } from '../lib/strings';
   import { projectName } from '../lib/format';
   import { bandStarts, compareThreads } from '../lib/thread-order';
-  import { storeLiveKind } from '../lib/inbox';
+  import { storeOrder } from '../lib/inbox';
   import { flipRows } from '../lib/flip-rows.svelte';
   import { projectRollup, threadState } from '../lib/thread-state';
   import { hasUnsentDraft } from '../lib/composer-queue';
   import { holdLanes, laneHold, moreRows, threadLanes, type LaneHold, type Lanes } from '../lib/thread-lanes.svelte';
-  import { lifecycleFilter, lifecycleProjects, lifecycleRows } from '../lib/lifecycle-filter.svelte';
+  import { filterOrder, lifecycleFilter, lifecycleProjects, lifecycleRows } from '../lib/lifecycle-filter.svelte';
   import LifecycleStrip from './LifecycleStrip.svelte';
   import { groupWorkingThread, recentPreferences } from '../lib/recent.svelte';
   import { dropKey as threadDropKey, takesDrop, threadDrag } from '../lib/thread-move.svelte';
@@ -106,9 +106,9 @@
       .flatMap(({ machine, project }) =>
         machine.store
           .threadsOf(project.id)
-          .map((thread) => ({ machine, project, thread, live: storeLiveKind(machine.store, thread) }))
+          .map((thread) => ({ machine, project, thread, order: storeOrder(machine.store, thread) }))
       )
-      .sort((a, b) => compareThreads(a.thread, b.thread, a.live, b.live))
+      .sort((a, b) => compareThreads(a.thread, b.thread, a.order, b.order))
   );
   let workingOpen = $state(false);
   let doneRows = $state.raw<{ store: Store; threadId: ThreadId }[]>([]);
@@ -131,7 +131,7 @@
   let attention = $derived(recentPreferences.groupWorking ? recent.filter(({ machine, thread }) => !groupWorkingThread(machine.store, thread)) : recent);
   const recentKey = (entry: { machine: Machine; thread: ThreadSummary }) => JSON.stringify([entry.machine.id, entry.thread.id]);
   /** Recent's first row of each band (needs you, working, earlier) carries the band's label. */
-  let recentBands = $derived(bandStarts(attention, entry => entry.thread, recentKey, entry => entry.live));
+  let recentBands = $derived(bandStarts(attention, entry => entry.thread, recentKey, entry => entry.order.live));
   const listsFor = projectListMap();
   /** Each listed project's sorted rows, shared by its section and by Alt+digit. */
   let projectLists = $derived(listsFor(activeGroups));
@@ -251,7 +251,7 @@
     scrollRoot?.querySelector<HTMLElement>(`section[data-testid=project][data-project-key="${CSS.escape(projectKey(entry))}"]`)?.scrollIntoView({ block: 'start' });
   }
   /** The filter over the Projects view: its projects and their rows, the headers kept. */
-  let filtered = $derived(lifecycleFilter.current === null || workspace.view === 'recent' ? null : lifecycleProjects(groups, lifecycleFilter.current).map(({ entry, threads }) => ({ entry, threads: threads.slice().sort(compareThreads) })));
+  let filtered = $derived(lifecycleFilter.current === null || workspace.view === 'recent' ? null : lifecycleProjects(groups, lifecycleFilter.current).map(({ entry, threads }) => ({ entry, threads: threads.slice().sort((a, b) => compareThreads(a, b, filterOrder(entry.machine.store, a, lifecycleFilter.current!), filterOrder(entry.machine.store, b, lifecycleFilter.current!))) })));
   let filteredDoneRows = $state.raw<Record<string, { store: Store; threadId: ThreadId }[]>>({});
   /** The filter over the Recent view: the same flat rows in the same order, never project cards. */
   let recentFilter = $derived(workspace.view === 'recent' ? lifecycleFilter.current : null);

@@ -1,7 +1,9 @@
 import { expect, test } from 'vitest';
 import type { Project, ThreadSummary } from '@boite/contracts';
 import { bandStarts, compareThreads } from './thread-order';
-import { inbox, storeLiveKind } from './inbox';
+import { inbox, storeLiveKind, storeOrder, type OrderStore } from './inbox';
+import { projectThreadLists } from './project-threads.svelte';
+import type { ProjectEntry } from './project-view.svelte';
 
 const base = { pinned: false, status: 'idle' as const, lastUserMessageAt: null, createdAt: 0 };
 
@@ -70,4 +72,35 @@ test('Recent sorts and bands by the count, so the Needs you band holds every row
   expect(band('running', 'quiet')).toBe(tally.threads.working);
   // A list with no store reads the child's question on the row too.
   expect([threads[0]!, threads[1]!].sort(compareThreads).map(t => t.id)).toEqual(['child-asks', 'running']);
+});
+
+test('two Needs you rows read the age they show, newest wait first, in Recent, the home queue and the Projects card alike', () => {
+  const project = { id: 'p', name: 'orbit', path: '/orbit' } as Project;
+  const hour = 3_600_000;
+  const now = 10 * hour;
+  const row = (id: string, patch: Partial<ThreadSummary>): ThreadSummary => ({
+    id, title: id, projectId: 'p', status: 'idle', pinned: false, openQuestions: 0, unread: false, archived: false, updatedAt: now, runningSince: null, createdAt: 0, lastUserMessageAt: null, ...patch
+  } as ThreadSummary);
+  const threads = [
+    // Round 9: the band read 3m, 2h, 50m, 2h: rows sorted by the last message while they show how long they waited.
+    row('benchmark', { status: 'waiting', runningSince: now - 2 * hour, lastUserMessageAt: now - 3 * hour }),
+    row('export', { status: 'waiting', runningSince: now - 50 * 60_000, lastUserMessageAt: now - 9 * hour }),
+    row('pick', { status: 'idle', openQuestions: 1, lastUserMessageAt: now - hour }),
+    row('migrate', { status: 'waiting', runningSince: now - 3 * 60_000, lastUserMessageAt: now - 8 * hour }),
+    row('quiet', { lastUserMessageAt: now })
+  ];
+  const store: OrderStore = {
+    subagents: () => null,
+    // An idle thread with an open question needs the user since the question's time.
+    pendingQuestions: [{ id: 'q', threadId: 'pick', createdAt: now - 2 * hour - 60_000, questions: [] }] as unknown as OrderStore['pendingQuestions'],
+    pendingPermissions: [], pendingSecrets: [], accounts: []
+  };
+  const recent = threads.map(thread => ({ thread, key: storeOrder(store, thread) }))
+    .sort((a, b) => compareThreads(a.thread, b.thread, a.key, b.key)).map(r => r.thread.id);
+  expect(recent).toEqual(['migrate', 'export', 'benchmark', 'pick', 'quiet']);
+  const { needs } = inbox([{ machine: 'pc', threads, projects: [project], questions: store.pendingQuestions, permissions: [], subagents: () => 0 }]);
+  expect(needs.map(card => card.thread.id)).toEqual(recent.slice(0, 4));
+  // Round 9: the Projects card sorted on the status alone and dropped the asking idle row to the end of its needs lane.
+  const entry = { machine: { id: 'pc', label: 'pc', store: store as never }, project } as ProjectEntry;
+  expect(projectThreadLists(entry, threads, false).attention.map(t => t.id)).toEqual(recent);
 });

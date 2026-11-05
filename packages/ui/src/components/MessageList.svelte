@@ -520,7 +520,7 @@
         const anchor = anchors.current;
         onMeasured(batch);
         // A row growing below moves no scroll position: the gap a later notch down is measured against grows with it.
-        void tick().then(() => { restoreAnchor(anchor); if (box.scrollTop === scrollTop) scrolledGap = box.scrollHeight - box.scrollTop - box.clientHeight; });
+        void tick().then(() => { restoreAnchor(anchor); if (box.scrollTop === scrollTop) { scrolledGap = box.scrollHeight - box.scrollTop - box.clientHeight; ended = scrolledGap <= 1; } });
       });
     });
     boxes = observer;
@@ -537,6 +537,8 @@
   function atBottom(box: HTMLDivElement): boolean { return box.scrollHeight - box.scrollTop - box.clientHeight < 80; }
 
   let scrolledHeight = 0, scrolledGap = 0;
+  /** Scrolled to the very end: the bottom fade goes, so the latest message and its edge show whole. */
+  let ended = $state(true);
   function onscroll() {
     const box = viewport;
     if (!box) return;
@@ -545,6 +547,7 @@
     scrolledHeight = height;
     // The browser keeping the text in place as a row above grows moves the list down, never nearer its bottom.
     const distance = height - box.scrollTop - box.clientHeight, closer = distance < scrolledGap - 1; scrolledGap = distance;
+    ended = distance <= 1;
     // Pulled up by a finger or the scrollbar thumb, the list leaves the bottom as the wheel does.
     if (hold.held && box.scrollTop < scrollTop - 1) leftBottom = true;
     const relaid = edge.relaid(box), moved = edge.moved(box);
@@ -727,7 +730,7 @@
     hasOlder={store.messagesBefore !== null} loading={store.loadingOlder} loadOlder={() => { if (viewport) { releaseNavigation(); viewport.scrollTop = rows[0]?.gap ? Math.max(0, (totals(rows)[1] ?? 0) - viewport.clientHeight) : 0; pinned = false; loadAbove(viewport); } }} />{/if}
   <!-- Input releases restored and navigation anchors; programmatic corrections keep them. A tap on a phone shows a message's buttons. -->
   <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
-  <div class="timeline" bind:this={viewport} use:watchWheel={onwheel} use:selectionClicks onclick={reveal.tap} {onscroll} ontouchstart={press} onpointerdown={press} onpointerover={(event) => { pointed = pointedTurn(event); }} onpointerleave={() => { pointed = null; }} onkeydown={releaseNavigation} style:padding-top="{20 + promptLead}px" style:overflow-anchor={timeline.at(-1)?.state === 'streaming' ? 'none' : undefined} data-testid="timeline" data-media-gallery data-scroll-root>
+  <div class="timeline" bind:this={viewport} use:watchWheel={onwheel} use:selectionClicks onclick={reveal.tap} {onscroll} ontouchstart={press} onpointerdown={press} onpointerover={(event) => { pointed = pointedTurn(event); }} onpointerleave={() => { pointed = null; }} onkeydown={releaseNavigation} style:padding-top="{20 + promptLead}px" style:overflow-anchor={timeline.at(-1)?.state === 'streaming' ? 'none' : undefined} class:ended data-testid="timeline" data-media-gallery data-scroll-root>
     <div class="column" bind:this={column}>
       <!-- paging: the one line the top of the list shows while a page is in flight. -->
       {#if store.loadingOlder}<p class="loading-older" data-testid="loading-older">{strings.chat.loadingOlder}</p>{/if}
@@ -791,7 +794,15 @@
     /* Balance the outline rail on both sides; keep room below for the activity overlay. */
     padding: 20px var(--outline-room) calc(var(--dock-room, 0px) + 20px);
     overscroll-behavior: contain;
+    /* The sidebar's edge fade (RailFrame): rows thin out under the header and
+       over the status strip instead of being sliced flat. At rest both sit in
+       the padding, so they cover no text; at the very end the bottom one goes. */
+    --fade-top: 12px;
+    --fade-bottom: 24px;
+    mask-image: linear-gradient(to bottom, transparent, black var(--fade-top), black calc(100% - var(--fade-bottom)), transparent);
   }
+
+  .timeline.ended { --fade-bottom: 0px; }
 
   .column {
     display: flex;

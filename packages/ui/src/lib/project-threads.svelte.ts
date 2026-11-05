@@ -2,6 +2,7 @@ import type { Project, ThreadSummary } from '@boite/contracts';
 import { projectKey, type ProjectEntry } from './project-view.svelte';
 import { groupWorkingThread, recentPreferences, workingThread } from './recent.svelte';
 import { compareThreads } from './thread-order';
+import { storeOrder } from './inbox';
 
 export type ProjectThreadKind = 'working' | 'done' | 'archived';
 /** The two kinds of row in the fold under the project list: projects with no open conversation, and projects put out of the list. */
@@ -97,11 +98,17 @@ export function projectSections(entries: readonly ProjectEntry[], groupIdle: boo
   return sections;
 }
 
-/** Protected working rows stay visible while folded and appear only once when unfolded. */
+/**
+ * Protected working rows stay visible while folded and appear only once when
+ * unfolded. The rows sort by their store's key (`storeOrder`), as Recent and
+ * the phone do, so a card shows the same Needs you rows in the same order.
+ */
 export function projectThreadLists(entry: ProjectEntry, threads: ThreadSummary[], workingOpen: boolean): {
   working: ThreadSummary[]; attention: ThreadSummary[];
 } {
-  const sorted = threads.slice().sort(compareThreads);
+  const store = entry.machine.store;
+  const keys = new Map(threads.map(thread => [thread.id, storeOrder(store, thread)]));
+  const sorted = threads.slice().sort((a, b) => compareThreads(a, b, keys.get(a.id), keys.get(b.id)));
   return {
     working: sorted.filter(thread => workingThread(entry.machine.store, thread)),
     attention: recentPreferences.groupWorking

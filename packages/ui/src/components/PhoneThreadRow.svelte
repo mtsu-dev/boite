@@ -32,7 +32,7 @@
    * archive it, each with the Undo toast.
    * `grouped`: under its project's header, which already names it.
    */
-  let { machine, project, thread, now, items, grouped = false, several = false, pin = true, end = false, wait, onopen, onaction }: {
+  let { machine, project, thread, now, items, grouped = false, several = false, pin = true, start = false, end = false, wait, onopen, onaction }: {
     machine: Machine;
     /** A bot's thread belongs to no project. */
     project: Project | undefined;
@@ -43,7 +43,9 @@
     several?: boolean;
     /** Off under Recent's Pinned label, which already says it. */
     pin?: boolean;
-    /** The last row of a Recent band: its card ends under it, so it draws no hairline. */
+    /** The first row of a Recent band: its card's top corners are rounded, as a project card's are. */
+    start?: boolean;
+    /** The last row of a Recent band: its card ends under it, so it draws no hairline and its bottom corners are rounded. */
     end?: boolean;
     /** The Inbox tab: what the thread waits on and since when, the desktop Inbox card's reason, in place of the state's time. */
     wait?: { reason: InboxReason; since: number };
@@ -80,7 +82,7 @@
   {:else}<span class="time"><ThreadState {thread} {now} {subagents} {away} {waited} compact /></span>{/if}
 {/snippet}
 
-<div class="phone-row" class:offline={away} class:end data-thread-id={thread.id} data-machine-id={machine.id} data-testid="mobile-row">
+<div class="phone-row" class:offline={away} class:start class:end data-thread-id={thread.id} data-machine-id={machine.id} data-testid="mobile-row">
   <!-- Under the row while it slides: done on the left, archive on the right, armed past the threshold. -->
   <div class="reveal" aria-hidden="true">
     <span class="side done"><Check size={20} /><span class="ui-label">{strings.sidebar.markDone}</span></span>
@@ -133,6 +135,9 @@
   .phone-row::after { content: ''; position: absolute; inset: auto var(--hairline-end, 0px) 0 56px; z-index: 1; border-bottom: 1px solid var(--color-border); pointer-events: none; }
   /* A band's card ends here: the gap to the next band parts them, no rule. */
   .phone-row.end::after { display: none; }
+  /* Each band reads as one rounded group, like the Projects view's cards: the row's own clip rounds its ground. */
+  .phone-row.start { border-top-left-radius: var(--radius-lg); border-top-right-radius: var(--radius-lg); }
+  .phone-row.end { border-bottom-left-radius: var(--radius-lg); border-bottom-right-radius: var(--radius-lg); }
   /* Inside a project's card the row sits on the card's surface, not the list's ground. */
   :global(.project-group) .phone-row { --row-ground: var(--color-cell); --ring-ground: var(--color-cell); }
   .reveal {

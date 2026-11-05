@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick, untrack } from 'svelte';
-  import { CornerDownLeft, Search } from '@lucide/svelte';
+  import { Bot, CornerDownLeft, Search } from '@lucide/svelte';
   import type { Project, ProjectId, ThreadSummary } from '@boite/contracts';
   import { Closing } from '../lib/closing.svelte';
   import { minuteClock } from '../lib/clock.svelte';
@@ -8,7 +8,7 @@
   import { focusComposer, focusedElement, restoreFocus } from '../lib/focus';
   import { projectName } from '../lib/format';
   import { PALETTE_LIMIT, RECENT_THREADS, rankItems, sectionRows, type PaletteItem } from '../lib/palette';
-  import { strings } from '../lib/strings';
+  import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import { desktopSettings } from '../lib/settings-tabs';
@@ -20,6 +20,7 @@
   import ThreadState from './ThreadState.svelte';
   import { asksMidTurn, threadState } from '../lib/thread-state';
   import { waitingSince } from '../lib/inbox';
+  import { onBotsPage } from '../lib/experiments.svelte';
 
   let { store }: { store: Store } = $props();
 
@@ -70,6 +71,8 @@
     machine: Machine;
     project: Project | null;
     thread: ThreadSummary | null;
+    /** A bot's own threads: they live on the Bots page, so they gather under its name, never a project's. */
+    bots?: true;
   }
 
   let machines = $derived(workspace.machinesOr(store));
@@ -85,9 +88,10 @@
         if (thread.archived || thread.incognito) continue;
         const project = machine.store.projects.find(p => p.id === thread.projectId) ?? null;
         const id = `thread:${machine.store.threadKey(thread.id)}`;
-        const section = `in:${machine.id}:${thread.projectId}`;
+        const bot = onBotsPage(thread);
+        const section = bot ? `bots:${machine.id}` : `in:${machine.id}:${thread.projectId}`;
         places.set(id, { machine, project, thread });
-        if (!places.has(section)) places.set(section, { machine, project, thread: null });
+        if (!places.has(section)) places.set(section, bot ? { machine, project: null, thread: null, bots: true } : { machine, project, thread: null });
         entries.push({ at: thread.lastUserMessageAt ?? thread.createdAt, item: {
           id,
           kind: 'thread',
@@ -152,6 +156,17 @@
     });
   });
 
+  /** Rows under the list's visible end, which the foot counts; 0 once the list ends there. */
+  let below = $state(0);
+
+  /** Counts the rows that do not show whole under the scrolled list. */
+  function countBelow() {
+    const target = list;
+    if (!target) { below = 0; return; }
+    const end = target.scrollTop + target.clientHeight - padOf(target) + 1;
+    below = [...target.querySelectorAll<HTMLElement>('[data-testid=palette-row]')].filter(row => row.offsetTop + row.offsetHeight > end).length;
+  }
+
   /** The list's padding, kept under its last whole row and over a revealed one. */
   function padOf(target: HTMLElement): number {
     return parseFloat(getComputedStyle(target).paddingBottom) || 0;
@@ -168,12 +183,13 @@
     if (!target) return;
     target.style.maxHeight = '';
     const room = target.clientHeight;
-    if (target.scrollHeight <= room + 1) return;
+    if (target.scrollHeight <= room + 1) { below = 0; return; }
     const pad = padOf(target);
     // Layout values, measured from the list (it is positioned): the opening scale does not skew them.
     const bottoms = [...target.querySelectorAll<HTMLElement>('[data-testid=palette-row]')].map(row => row.offsetTop + row.offsetHeight);
     const whole = bottoms.filter(bottom => bottom + pad <= room).at(-1) ?? bottoms[0];
     if (whole !== undefined) target.style.maxHeight = `${whole + pad}px`;
+    countBelow();
   }
 
   // The room depends on the window and the rows on the query: either changes where the last whole row ends.
@@ -197,6 +213,7 @@
     const bottom = row.offsetTop + row.offsetHeight + pad;
     if (top < target.scrollTop) target.scrollTop = Math.max(0, top);
     else if (bottom > target.scrollTop + target.clientHeight) target.scrollTop = bottom - target.clientHeight;
+    countBelow();
   }
 
   function close() {
@@ -305,17 +322,25 @@
         />
         <span class="kbd ui-label-box"><span class="ui-label">Esc</span></span>
       </label>
-      <div class="list" id={listId} role="listbox" aria-label={strings.palette.placeholder} bind:this={list} data-testid="palette-list">
+      <div class="list" id={listId} role="listbox" aria-label={strings.palette.placeholder} bind:this={list} data-testid="palette-list" onscroll={countBelow}>
         {#each sections as section, at (section.id)}
           {@const first = offset(at)}
           {@const heading = section.kind === 'thread' ? placeOf(section.id) : null}
           <div class="section" data-testid="palette-section" data-section={section.id}>
             {#if heading}
+              {#if heading.bots}
+                <div class="section-label project-label" data-testid="palette-bots">
+                  <span class="glyph" data-testid="palette-bots-glyph"><Bot size={14} /></span>
+                  <span class="name ui-label">{strings.sidebar.agents}</span>
+                  {#if several}<span class="machine ui-label"><MachineIcon icon={heading.machine.icon} os={heading.machine.store.core?.os} size={12} />{heading.machine.label}</span>{/if}
+                </div>
+              {:else}
               <div class="section-label project-label" data-testid="palette-project">
                 {#if heading.project}<ProjectTile project={heading.project} store={heading.machine.store} size={16} />{/if}
                 <span class="name ui-label">{heading.project ? projectName(heading.project) : strings.drafts.name}</span>
                 {#if several}<span class="machine ui-label"><MachineIcon icon={heading.machine.icon} os={heading.machine.store.core?.os} size={12} />{heading.machine.label}</span>{/if}
               </div>
+              {/if}
             {:else}
               <div class="section-label">{section.kind === 'project' ? strings.palette.projects : strings.palette.commands}</div>
             {/if}
@@ -359,7 +384,11 @@
         {/if}
       </div>
       <!-- With nothing to open, Enter does nothing: the foot names only the way out. -->
-      <div class="foot subtle">{rows.length === 0 ? strings.palette.hintEmpty : strings.palette.hint}</div>
+      <!-- A cut list counts what waits under it, opposite the hint, until it is scrolled to its end. -->
+      <div class="foot subtle">
+        <span>{rows.length === 0 ? strings.palette.hintEmpty : strings.palette.hint}</span>
+        {#if below > 0}<span class="more" aria-hidden="true" data-testid="palette-more">{fill(strings.palette.more, { count: String(below) })}</span>{/if}
+      </div>
     </div>
   </div>
 {/if}
@@ -481,6 +510,7 @@
   }
 
   .row {
+    position: relative;
     width: 100%;
     display: flex;
     align-items: center;
@@ -499,10 +529,35 @@
     background: transparent;
   }
 
-  /* The row Enter takes: the accent's wash, a bar on its edge and the Enter glyph, readable in both themes. */
+  /* The row Enter takes: the accent's wash, a bar on its edge and the Enter glyph, readable in both themes.
+     The bar is its own straight stroke: an inset shadow bent with the row's radius into a crescent. */
   .row.selected {
     background: var(--color-accent-soft);
-    box-shadow: inset 2px 0 0 var(--color-accent);
+  }
+
+  .row.selected::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 7px;
+    bottom: 7px;
+    width: 2px;
+    border-radius: 1px;
+    background: var(--color-accent);
+  }
+
+  .foot .more {
+    margin-left: auto;
+    flex: none;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .glyph {
+    display: inline-flex;
+    width: 16px;
+    justify-content: center;
+    flex: none;
+    color: var(--color-muted-foreground);
   }
 
   .enter {
@@ -562,6 +617,9 @@
   }
 
   .foot {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
     padding: 6px 14px 8px;
     border-top: 1px solid var(--color-border);
     font-size: var(--text-xs);
