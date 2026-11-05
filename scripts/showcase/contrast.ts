@@ -47,6 +47,16 @@ export async function auditContrast(page: any): Promise<ContrastFinding[]> {
       for (let node = el; node; node = node.parentElement) value *= parseFloat(getComputedStyle(node).opacity || '1');
       return value;
     };
+    // Whether an ancestor between `el` and `hit` clips its overflow and leaves the point outside its box.
+    const clippedOut = (el: Element, hit: Element, x: number, y: number): boolean => {
+      for (let node = el.parentElement; node && node !== hit; node = node.parentElement) {
+        const { overflowX, overflowY } = getComputedStyle(node);
+        if (overflowX === 'visible' && overflowY === 'visible') continue;
+        const r = node.getBoundingClientRect();
+        if (x < r.left || x > r.right || y < r.top || y > r.bottom) return true;
+      }
+      return false;
+    };
     const out: Run[] = [];
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
@@ -74,6 +84,8 @@ export async function auditContrast(page: any): Promise<ContrastFinding[]> {
         // Scrolled out of its list or covered by a menu: what is at its centre is something else.
         const hit = document.elementFromPoint((left + right) / 2, (top + bottom) / 2);
         if (!hit || !(hit === el || el.contains(hit) || hit.contains(el))) continue;
+        // The hit can be an ancestor around a scroller (a dialog under its list): a run its scroller clips is not drawn.
+        if (hit !== el && !el.contains(hit) && clippedOut(el, hit, (left + right) / 2, (top + bottom) / 2)) continue;
         out.push({ text: text.slice(0, 48), rgb: [r, g, b], alpha: a * alpha, large, rect: [left, top, right, bottom] });
       }
     }
