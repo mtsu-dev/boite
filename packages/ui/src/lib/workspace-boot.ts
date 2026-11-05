@@ -137,7 +137,8 @@ export async function bootWorkspace(workspace: Workspace, thread: string | null,
   // Ends the wait at once when the machine answered, or when no other could be shown.
   lifecycle.standIn();
   if (import.meta.env.DEV && new URLSearchParams(window.location.search).get('fake') === '1') {
-    if (new URLSearchParams(window.location.search).get('machines') === '1') {
+    // `&machines=<n>`: n fake machines beside this one, Builder first.
+    if (Number(new URLSearchParams(window.location.search).get('machines')) >= 1) {
       await lifecycle.addFakeMachine();
     }
     return;

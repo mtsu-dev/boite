@@ -140,7 +140,8 @@ class Page {
   }
 }
 
-const SCROLLER = `(() => { let best = null; for (const el of document.querySelectorAll('*')) { const s = getComputedStyle(el); if ((s.overflowY === 'auto' || s.overflowY === 'scroll') && el.scrollHeight > el.clientHeight + 200 && (!best || el.scrollHeight > best.scrollHeight)) best = el; } return best; })()`;
+// A scenario that scrolls another list than the conversation names it in `window.__scPick`.
+const SCROLLER = `(() => { if (window.__scPick) return document.querySelector(window.__scPick); let best = null; for (const el of document.querySelectorAll('*')) { const s = getComputedStyle(el); if ((s.overflowY === 'auto' || s.overflowY === 'scroll') && el.scrollHeight > el.clientHeight + 200 && (!best || el.scrollHeight > best.scrollHeight)) best = el; } return best; })()`;
 /**
  * The fake agent reasons over the whole prompt, then echoes it back sixteen
  * characters a delta, and a streaming answer shows whole paragraphs: short
@@ -295,6 +296,10 @@ async function main(): Promise<void> {
     const manyThreads = async (count = 1000): Promise<void> => {
       await page.evaluate(`(() => { const s = globalThis.__bench.store; const base = JSON.parse(JSON.stringify(s.threads.find(t => t.projectId) ?? s.threads[0])); const now = Date.now(); s.threads = [...s.threads, ...Array.from({ length: ${count} }, (_, i) => ({ ...base, id: 't-bench-' + i, title: 'Bench thread number ' + i + ' with a title long enough', status: 'idle', unread: i % 7 === 0, archived: false, updatedAt: new Date(now - i * 60000).toISOString(), createdAt: new Date(now - i * 60000).toISOString() }))]; })()`);
       await Bun.sleep(1500);
+      // A build that folds a project's idle rows under "n more" unfolds the largest fold, so the thousand rows are the list the wheel scrolls.
+      await page.evaluate(`(() => { const more = [...document.querySelectorAll('[data-testid=sidebar] [data-testid=project-more][aria-expanded=false]')].sort((a, b) => Number(b.dataset.count) - Number(a.dataset.count))[0]; more?.click(); window.__scPick = '[data-testid=sidebar] [data-project-list]'; })()`);
+      await page.waitFor(`(() => { const list = document.querySelector('[data-testid=sidebar] [data-project-list]'); return list && list.scrollHeight > list.clientHeight + 2000; })()`);
+      await Bun.sleep(600);
     };
     // A wheel down the thread list, over the sidebar at the left of the window.
     const sidebarWheel = (distance = -9000, speed = 2400): void => {

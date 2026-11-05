@@ -27,7 +27,8 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { ONBOARDING_STORAGE_KEY, ONBOARDING_VERSION } from '../../packages/ui/src/lib/onboarding';
 import { SETTINGS_TABS } from '../../packages/ui/src/lib/settings-tabs';
-import { auditClipping, formatClipping } from './clipping';
+import { auditClipping, auditTruncation, formatClipping, formatTruncation } from './clipping';
+import { auditTouch, formatTouch } from './touch';
 import { auditContrast, formatContrast } from './contrast';
 import { assertHardware, launchBrowser, startServer, waitForMemory } from './server';
 
@@ -48,6 +49,10 @@ interface Step {
   spoils?: boolean;
   /** The screen needs a long list (a scroll, a third row): it takes the stress seed whatever `--seed` says. */
   stress?: boolean;
+  /** The screen opens a project card's own control, which the Recent list does not draw. */
+  projects?: boolean;
+  /** The step writes text at the moment it runs (a toast): a one-language run plays it in that language. */
+  speaks?: boolean;
   run(page: any): Promise<void>;
 }
 
@@ -185,6 +190,19 @@ async function scrollTimeline(page: any, to: 'top' | 'bottom'): Promise<void> {
   }
 }
 
+/** A new thread draft on another provider, its first model picked through the picker as a user does. */
+async function pickProvider(page: any, providerId: string): Promise<void> {
+  await store(page, 's.startDraft("p-boite", { fresh: true });');
+  await page.waitForTimeout(400);
+  await page.getByTestId('composer-picker').first().click();
+  const menu = page.getByTestId('composer-picker-menu');
+  await menu.waitFor({ timeout: 5000 });
+  await menu.locator(`[data-provider="${providerId}"]`).click();
+  await menu.locator('button.row.model:not([disabled])').first().click();
+  await menu.waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {});
+  await page.waitForTimeout(300);
+}
+
 /** Opens a thread. A phone left on its list stays there, so the row is tapped then. */
 async function openThread(page: any, id: string): Promise<void> {
   await store(page, 'await s.open(arg);', id);
@@ -279,6 +297,44 @@ const steps: Step[] = [
     },
   },
   {
+    name: 'questions-several', caption: 'Two questions waiting on one thread: the dock takes them one at a time and says how many are left.', devices: both,
+    async run(page) {
+      await openThread(page, QUESTION);
+      await store(page, `
+        const thread = s.threads.find((t) => t.id === arg);
+        s.pendingQuestions = [...s.pendingQuestions, { id: 'q-showcase-second', threadId: arg, turnId: thread?.activeTurnId ?? 'turn-showcase', text: 'Should the retry wait grow after each failure?', options: [{ id: 'grow', label: 'Double it each time' }, { id: 'flat', label: 'Keep 30 s' }], allowText: true, multiple: false, createdAt: Date.now() - 60_000 }];
+      `, QUESTION);
+      await scrollTimeline(page, 'bottom');
+    },
+  },
+  {
+    name: 'draft-kept', caption: 'A two-line draft typed, then the model menu, the effort menu and the changes panel opened and closed: the draft is still there (the log compares it).', devices: both,
+    async run(page) {
+      await openThread(page, FAILED);
+      const input = page.getByTestId('composer-input');
+      await input.click();
+      const draft = 'Also try it on the Pixel 8\nthen on a tablet in landscape';
+      await input.fill(draft);
+      const phone = await page.evaluate(() => innerWidth < 600);
+      for (const [trigger, menu] of [['composer-picker', 'composer-picker-menu'], ['composer-effort', 'composer-effort-menu']]) {
+        const button = page.getByTestId(trigger).first();
+        if (!await button.isVisible().catch(() => false)) continue;
+        await button.click();
+        await page.getByTestId(menu).waitFor({ timeout: 5000 });
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(300);
+      }
+      await panel(page, 's.panel.openChanges(arg);', 'src/lib/api/contacts.ts');
+      await page.getByTestId('diff-view').first().waitFor({ timeout: 10000 });
+      if (phone) await page.goBack();
+      else await store(page, 's.panel.hide();');
+      await page.waitForTimeout(700);
+      const kept = await page.getByTestId('composer-input').inputValue().catch(() => '(no composer)');
+      console.log(`  draft-kept: ${JSON.stringify(draft)} before, ${JSON.stringify(kept)} after: ${kept === draft ? 'kept' : 'LOST'}`);
+      if (kept !== draft) throw new Error('draft-kept: the draft changed');
+    },
+  },
+  {
     name: 'next', caption: 'Next needs you clicked from a waiting thread: the next one opens, its count one lower.', devices: both,
     async run(page) {
       await openThread(page, QUESTION);
@@ -324,12 +380,44 @@ const steps: Step[] = [
     async run(page) { await page.getByTestId('composer-picker').first().click(); await page.getByTestId('composer-picker-menu').waitFor(); },
   },
   {
+    name: 'menu-thread', caption: 'The phone title menu: project, machine, branch and PR whole, one tap copies each.', devices: phone,
+    async run(page) { await page.getByTestId('thread-menu-trigger').first().click(); await page.getByTestId('thread-menu-trigger-menu').waitFor(); },
+  },
+  {
     name: 'menu-effort', caption: 'The composer effort menu open.', devices: desktop,
     async run(page) { await page.getByTestId('composer-effort').first().click(); await page.getByTestId('composer-effort-menu').waitFor(); },
   },
   {
     name: 'menu-permissions', caption: 'The composer permission mode menu open.', devices: desktop,
     async run(page) {
+      await page.getByTestId('composer-mode').first().click();
+      await page.getByTestId('composer-mode-menu').waitFor({ timeout: 5000 });
+    },
+  },
+  {
+    name: 'provider-pi', caption: 'A new thread on pi, which asks no approvals: the composer drops the permission chip and keeps the rest.', devices: desktop,
+    async run(page) { await pickProvider(page, 'pi'); },
+  },
+  {
+    name: 'provider-acp', caption: 'A new thread on OpenCode, an ACP agent: a model it reported when probed, and the effort levels that model offers.', devices: desktop,
+    async run(page) {
+      await pickProvider(page, 'opencode');
+      await page.getByTestId('composer-effort').first().click();
+      await page.getByTestId('composer-effort-menu').waitFor({ timeout: 5000 });
+    },
+  },
+  {
+    name: 'provider-muse', caption: 'A new thread on Muse Code: its effort slider has five stops, Extra high and Max past High.', devices: desktop,
+    async run(page) {
+      await pickProvider(page, 'muse');
+      await page.getByTestId('composer-effort').first().click();
+      await page.getByTestId('composer-effort-menu').waitFor({ timeout: 5000 });
+    },
+  },
+  {
+    name: 'provider-codex', caption: 'A new thread on Codex: three permission modes instead of four, the default named This folder, since Codex already auto-approves edits there.', devices: desktop,
+    async run(page) {
+      await pickProvider(page, 'codex');
       await page.getByTestId('composer-mode').first().click();
       await page.getByTestId('composer-mode-menu').waitFor({ timeout: 5000 });
     },
@@ -445,7 +533,7 @@ const steps: Step[] = [
     },
   },
   {
-    name: 'project-menu', caption: 'A project actions menu.', devices: desktop,
+    name: 'project-menu', caption: 'A project actions menu.', devices: desktop, projects: true,
     async run(page) {
       const button = page.getByRole('button', { name: 'Project actions' }).first();
       await button.hover({ force: true });
@@ -527,7 +615,7 @@ const steps: Step[] = [
     async run(page) { await store(page, 'if (!s.sidebarCollapsed) s.toggleSidebar();'); await page.waitForTimeout(500); },
   },
   {
-    name: 'toast', caption: 'The undo toast after archiving a thread.', devices: both,
+    name: 'toast', caption: 'The undo toast after archiving a thread.', devices: both, speaks: true,
     async run(page) {
       await page.evaluate(async (id: string) => {
         // The app's own module, served by the dev server: the same instance the sidebar uses.
@@ -542,6 +630,29 @@ const steps: Step[] = [
     name: `settings-${tab}`, caption: `Settings, the ${tab} page.`, devices: desktop,
     async run(page) { await store(page, 's.showSettings(arg);', tab); await page.waitForTimeout(700); },
   })),
+  {
+    name: 'settings-field-error', caption: 'Settings, General: a value out of range in the done retention field, its error under it and Save held.', devices: desktop,
+    async run(page) {
+      await store(page, 's.showSettings("general");');
+      await page.waitForTimeout(700);
+      const field = page.getByTestId('done-retention-days');
+      await field.scrollIntoViewIfNeeded();
+      await field.fill('5000');
+      await page.waitForTimeout(400);
+    },
+  },
+  {
+    name: 'settings-field-saved', caption: 'Settings, General: a new done retention saved, the field marked as stored.', devices: desktop, spoils: true,
+    async run(page) {
+      await store(page, 's.showSettings("general");');
+      await page.waitForTimeout(700);
+      const field = page.getByTestId('done-retention-days');
+      await field.scrollIntoViewIfNeeded();
+      await field.fill('45');
+      await page.getByTestId('done-retention-save').click();
+      await page.waitForTimeout(900);
+    },
+  },
   {
     name: 'settings-grouped', caption: 'A grouped Settings entry: Usage and limits, its pages as tabs at the top of the card.', devices: desktop,
     async run(page) { await store(page, 's.showSettings("limits");'); await page.waitForTimeout(700); },
@@ -613,7 +724,7 @@ const steps: Step[] = [
     },
   },
   {
-    name: 'dense', caption: 'The sidebar on about sixty threads (`?dense=1`): the lanes fold, the headers fit the first screen.', devices: both, query: `${QUERY}&dense=1`, stress: true,
+    name: 'dense', caption: 'The sidebar on about sixty threads over nine projects on three machines (`?dense=1&machines=2`): the lanes fold, the headers fit the first screen.', devices: both, query: `${QUERY.replace('machines=1', 'machines=2')}&dense=1`, stress: true,
     async run(page) {
       await dismissBanners(page);
       if (await page.evaluate(() => innerWidth < 600)) { await phoneList(page); return; }
@@ -642,7 +753,7 @@ const steps: Step[] = [
   },
   {
     name: 'phone-swipe-undo', caption: 'A row slid left: archived, with the Undo toast.', devices: phone,
-    spoils: true,
+    spoils: true, speaks: true,
     async run(page) {
       await phoneList(page);
       const ok = await page.evaluate(async () => {
@@ -669,26 +780,62 @@ const steps: Step[] = [
     },
   },
   {
-    name: 'filter-return', caption: 'Needs you, a thread opened from it, then back: the filter and the scroll are kept.', devices: both,
-    // A third row to open and a list long enough to scroll: two asks give neither.
-    query: QUERY, stress: true,
+    name: 'filter-return', caption: 'The full list scrolled, a filter scrolled to its own place, a thread opened from it, then back to the full list and the filter: each list is where it was left. The desktop shot is a half-height window, where the filters scroll.', devices: both,
+    // Long lists on both sides of the switch: the dense seed's 60 threads.
+    query: `${QUERY.replace('machines=1', 'machines=2')}&dense=1`, stress: true,
     async run(page) {
       await prepare(page);
       const phone = await page.evaluate(() => innerWidth < 600);
       if (phone) await phoneList(page);
-      else await store(page, 's.startDraft("p-boite", { fresh: true });');
-      await page.locator('[data-testid$="lifecycle-waiting"]:visible').first().click();
-      await page.waitForTimeout(400);
+      else {
+        // One-line desktop rows fit every filter of the seed in a full-height window: a half-height one (a laptop split) makes them scroll.
+        await page.setViewportSize({ width: 1440, height: 520 });
+        await store(page, 's.startDraft("p-boite", { fresh: true });');
+        await page.waitForTimeout(400);
+      }
       const list = phone ? '[data-testid=mobile-list]' : '[data-testid=sidebar] .scroll';
-      // A list shorter than its box cannot scroll: the log says what was set before the round trip.
-      const set = await page.evaluate((list: string) => { const box = document.querySelector<HTMLElement>(list)!; box.scrollTop = 120; return box.scrollTop; }, list);
+      const rows = phone ? '[data-testid^=mobile-thread-]' : '[data-testid=thread-row]';
+      const scroll = (top: number) => page.evaluate(({ list, top }: { list: string; top: number }) => {
+        const box = document.querySelector<HTMLElement>(list)!;
+        box.scrollTop = Math.min(top, Math.max(0, box.scrollHeight - box.clientHeight - 40));
+        return { top: box.scrollTop, height: box.scrollHeight, box: box.clientHeight };
+      }, { list, top });
+      const read = () => page.evaluate((list: string) => document.querySelector<HTMLElement>(list)?.scrollTop ?? -1, list);
+      const filter = (kind: string) => page.locator(`[data-testid$="lifecycle-${kind}"]:visible`).first().click().then(() => page.waitForTimeout(500));
+      // The full list first, away from its top.
+      const full = await scroll(phone ? 260 : 220);
       await page.waitForTimeout(300);
-      const rows = phone ? '[data-testid=mobile-list] [data-testid^=mobile-thread-]' : '[data-testid=sidebar] [data-testid=thread-row]';
-      await page.locator(rows).nth(2).click();
+      // Then the first filter long enough to scroll on its own, set to a place of its own.
+      let kind = '';
+      const sizes: string[] = [];
+      for (const candidate of ['waiting', 'done', 'working', 'archived']) {
+        await filter(candidate);
+        const size = await page.evaluate((list: string) => { const box = document.querySelector<HTMLElement>(list)!; return { height: box.scrollHeight, box: box.clientHeight, more: document.querySelectorAll(`${list} [data-testid$=more], ${list} .more`).length }; }, list);
+        sizes.push(`${candidate} ${size.height}/${size.box} (${size.more} folds)`);
+        if (size.height > size.box + 100) { kind = candidate; break; }
+        await filter(candidate);
+      }
+      if (!kind) throw new Error(`no filter of the dense seed is long enough to scroll: ${sizes.join(', ')}`);
+      const own = await scroll(Math.round(full.top / 2) + 30);
+      await page.waitForTimeout(300);
+      // Open a row that is already in view, by a pointer click, so nothing scrolls it into view first.
+      const point = await page.evaluate(({ list, rows }: { list: string; rows: string }) => {
+        const box = document.querySelector<HTMLElement>(list)!.getBoundingClientRect();
+        const row = [...document.querySelectorAll<HTMLElement>(`${list} ${rows}`)].map(el => el.getBoundingClientRect()).filter(r => r.top > box.top + 40 && r.bottom < box.bottom - 40)[1];
+        return row ? { x: row.left + Math.min(80, row.width / 2), y: row.top + row.height / 2 } : null;
+      }, { list, rows });
+      if (!point) throw new Error('no row in view to open');
+      await page.mouse.click(point.x, point.y);
       await page.waitForTimeout(700);
       if (phone) { await page.getByTestId('mobile-back').click(); await page.waitForTimeout(700); }
-      const kept = await page.evaluate((list: string) => document.querySelector<HTMLElement>(list)?.scrollTop ?? -1, list);
-      console.log(`  filter-return: scroll ${set} px before, ${kept} px after the round trip`);
+      const back = await read();
+      await filter(kind);
+      const fullBack = await read();
+      await filter(kind);
+      const ownBack = await read();
+      const kept = back === own.top && fullBack === full.top && ownBack === own.top;
+      console.log(`  filter-return: full list ${full.top} px of ${full.height} (box ${full.box}), ${kind} ${own.top} px of ${own.height}; after the thread ${kind} ${back}, full list ${fullBack}, ${kind} again ${ownBack}: ${kept ? 'kept' : 'LOST'}`);
+      if (!kept) throw new Error('filter-return: a list lost its place');
     },
   },
 ];
@@ -698,6 +845,7 @@ const CLEANUP: Record<string, (page: any) => Promise<void>> = {
   'phone-swipe-undo': async (page) => { await page.getByTestId('undo-action').click().catch(() => {}); await page.waitForTimeout(300); },
   toast: async (page) => { await page.getByTestId('undo-action').click().catch(() => {}); await page.waitForTimeout(300); },
   'working-question': async (page) => { await store(page, "s.pendingQuestions = s.pendingQuestions.filter((q) => q.id !== 'q-showcase-working');"); },
+  'filter-return': async (page) => { if (await page.evaluate(() => innerWidth > 600)) await page.setViewportSize((VIEWPORTS.desktop as { viewport: { width: number; height: number } }).viewport); },
   'phone-keyboard': async (page) => {
     await page.getByTestId('composer-input').fill('').catch(() => {});
     await page.evaluate(() => { (document.activeElement as HTMLElement | null)?.blur?.(); delete document.documentElement.dataset.keyboard; });
@@ -772,6 +920,18 @@ async function snapshot(page: any, path: string): Promise<void> {
     writeFileSync(`${path}.clip.txt`, formatClipping(clipped));
     console.log(`  clipped: ${clipped.length} labels, first ${JSON.stringify(clipped[0].text)} by ${clipped[0].box}`);
   }
+  // And text cut sideways: a control's name under an ellipsis is a defect, a long title is not.
+  const cut = await auditTruncation(page).catch((error: Error) => [{ text: `(audit failed: ${error.message.split('\n')[0]})`, shown: 0, needed: 0, label: true }]);
+  writeFileSync(`${path}.trunc.txt`, formatTruncation(cut));
+  const labels = cut.filter(one => one.label);
+  if (labels.length) console.log(`  truncated: ${labels.length} labels, first ${JSON.stringify(labels[0].text)} ${labels[0].shown} of ${labels[0].needed}px`);
+  // A phone screen also gets its touch targets measured where a finger lands (`touch.ts`).
+  if (await page.evaluate(() => matchMedia('(pointer: coarse)').matches)) {
+    const small = await auditTouch(page).catch((error: Error) => [{ name: `(audit failed: ${error.message.split('\n')[0]})`, width: 0, height: 0 }]);
+    writeFileSync(`${path}.touch.txt`, formatTouch(small));
+    const under = small.filter(one => Math.min(one.width, one.height) < 24);
+    if (under.length) console.log(`  touch: ${under.length} targets under 24 px, first ${JSON.stringify(under[0].name)} ${under[0].width}x${under[0].height}`);
+  }
   if (contrast) {
     const findings = await auditContrast(page);
     writeFileSync(`${path}.contrast.txt`, formatContrast(findings));
@@ -790,7 +950,7 @@ try {
   browser = await launchBrowser('/usr/bin/google-chrome');
   for (const device of devices) {
     for (const theme of themes) {
-      const wanted = steps.filter(step => step.devices.includes(device) && (!only || only.includes(step.name)));
+      const wanted = steps.filter(step => step.devices.includes(device) && !(recent && step.projects) && (!only || only.includes(step.name)));
       if (wanted.length === 0) continue;
       console.log(`${device} ${theme}: ${wanted.length} screens`);
       let shared: { context: any; page: any } | null = null;
@@ -821,10 +981,19 @@ try {
             }
             await page.waitForTimeout(300);
           }
-          await step.run(page);
+          // Steps find controls by their English names, so most run in English and the screen switches language
+          // after; a step that writes text as it runs plays in the one language a single-language run asks for.
+          const played = step.speaks && langs.length === 1 && langs[0] !== 'en' ? langs[0] : 'en';
+          if (played !== 'en') await speak(page, played);
+          try {
+            await step.run(page);
+          } catch (error) {
+            if (played !== 'en') await speak(page, 'en');
+            throw error;
+          }
           for (const lang of langs) {
             const name = lang === 'en' ? file : `${devicePrefix(device)}-${themePrefix(theme)}-${lang}-${step.name}`;
-            if (lang !== 'en') await speak(page, lang);
+            if (lang !== played) await speak(page, lang);
             try {
               await snapshot(page, join(out, name));
             } finally {

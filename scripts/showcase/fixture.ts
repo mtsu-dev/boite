@@ -21,6 +21,7 @@ const flag = (name: string): boolean => Boolean(globalThis.location) && new URLS
 export function seedShowcase(ctx: FakeContext, options: FakeClientOptions): void {
   if (options.uninstalled) return;
   if (options.coreId === 'fake-builder') { seedBuilder(ctx); dropEcho(ctx); return; }
+  if (options.coreId === 'fake-lab') { seedLab(ctx); dropEcho(ctx); return; }
   const now = Date.now();
   const shift = now - 3 * HOUR - T0;
   rebase(ctx, shift);
@@ -633,6 +634,24 @@ function seedBuilder(ctx: FakeContext): void {
     { id: 't-rf-trailer', project: 'p-render', title: 'Render the launch trailer frames', ago: 8 * MINUTE, state: 'running', agent: 1, prompt: 'Render frames 1 to 2400 of the trailer at 1440p.', answer: 'Frames 1 to 1312 are done. About 40 minutes left.', steps: [{ name: 'Bash', input: { command: 'render --scene trailer --frames 1-2400 --out /data/trailer', description: 'Render the trailer' }, output: null, status: 'running' }] },
     { id: 't-rf-cache', project: 'p-render', title: 'Clean the shader cache volume', ago: 5 * HOUR, state: 'done', agent: 2, prompt: 'The cache volume is at 91%. Clean what is safe to remove.', answer: 'Removed 212 GB of shader caches older than 30 days. The volume is at 54%.' },
     { id: 't-rf-driver', project: 'p-render', title: 'Write the GPU driver upgrade notes', ago: 2 * DAY, state: 'idle', agent: 0, prompt: 'Write down how to upgrade the GPU driver without losing the render queue.', answer: 'The notes are in `docs/driver-upgrade.md`: drain, snapshot, upgrade, verify with the test scene.' },
+  ];
+  for (const spec of specs) thread(ctx, now, spec);
+}
+
+/** The third machine, mounted by `&machines=2` for the density checks of a group of three: one project, a run at work, one done, one at rest. */
+function seedLab(ctx: FakeContext): void {
+  const now = Date.now();
+  ctx.projects = [{ id: 'p-lab', name: 'device-lab', path: '/srv/device-lab', createdAt: now - 30 * DAY, repository: true, icon: { kind: 'tech', id: 'python' } }];
+  ctx.projectImages.clear();
+  ctx.threads.clear();
+  ctx.pendingPermissions.clear();
+  ctx.pendingQuestions.clear();
+  ctx.processes = []; ctx.todos = []; ctx.worktrees = []; ctx.importable = []; ctx.usage.clear();
+  ctx.scheduler = { ...ctx.scheduler, running: [], queued: [] };
+  const specs: Spec[] = [
+    { id: 't-lab-matrix', project: 'p-lab', title: 'Run the test matrix on the Pixel and iPad', ago: 14 * MINUTE, state: 'running', agent: 0, prompt: 'Run the app test matrix on every phone and tablet on the rack.', answer: 'Pixel 8 and Pixel 6a pass. The iPad run is on test 41 of 88.', steps: [{ name: 'Bash', input: { command: 'lab run --matrix all', description: 'Run the matrix' }, output: null, status: 'running' }] },
+    { id: 't-lab-flaky', project: 'p-lab', title: 'Find why the camera test flakes', ago: 3 * HOUR, state: 'done', agent: 1, prompt: 'The camera permission test fails one run in five. Find out why.', answer: 'The test taps before the permission sheet finishes its animation. It now waits for the sheet; 50 runs pass.' },
+    { id: 't-lab-usb', project: 'p-lab', title: 'Label the USB hubs on the rack', ago: 3 * DAY, state: 'idle', agent: 2, prompt: 'Write which hub port each device uses.', answer: 'The map is in `docs/rack.md`.' },
   ];
   for (const spec of specs) thread(ctx, now, spec);
 }
