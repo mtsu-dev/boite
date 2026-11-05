@@ -134,7 +134,7 @@ export const strings = {
     material: 'Window material',
     workspace: 'Workspace',
     startIn: 'The app opens on',
-    startDrafts: 'Drafts',
+    startDrafts: 'Conversations',
     startProject: 'The last project',
     panelStart: 'The side panel opens on',
     panelLauncher: 'Its menu',

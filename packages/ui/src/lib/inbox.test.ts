@@ -1,32 +1,36 @@
 import { expect, test } from 'vitest';
 import type { PermissionRequest, Project, QuestionRequest, ThreadSummary } from '@boite/contracts';
-import { INBOX_CARDS, inbox, type InboxSource } from './inbox';
+import { INBOX_CARDS, inbox, waitedFor, type InboxSource } from './inbox';
+import { shortAgo } from './thread-state';
 
 const project = { id: 'p', name: 'orbit', path: '/orbit' } as Project;
 const thread = (id: string, patch: Partial<ThreadSummary> = {}): ThreadSummary => ({
-  id, title: id, projectId: 'p', status: 'idle', openQuestions: 0, unread: false, archived: false, updatedAt: 0, runningSince: null, ...patch
+  id, title: id, projectId: 'p', status: 'idle', pinned: false, openQuestions: 0, unread: false, archived: false, updatedAt: 0, runningSince: null, ...patch
 } as ThreadSummary);
 const source = (machine: string, threads: ThreadSummary[], extra: Partial<InboxSource<string>> = {}): InboxSource<string> => ({
   machine, threads, projects: [project], questions: [], permissions: [], ...extra
 });
 
-test('the cards come from every machine, longest wait first, each saying what it waits on', () => {
+test('the cards come from every machine in the order of Recent\'s Needs you band, each saying what it waits on', () => {
   const question = { id: 'q', threadId: 'asks', createdAt: 300, text: 'Which icon set?' } as unknown as QuestionRequest;
   const permission = { id: 'r', threadId: 'wants', createdAt: 100, toolName: 'Bash', input: { command: 'bun run bench' } } as unknown as PermissionRequest;
   const { needs, working } = inbox([
-    source('pc', [thread('asks', { status: 'waiting' }), thread('wants', { status: 'waiting' }), thread('quiet')], { questions: [question], permissions: [permission] }),
+    source('pc', [thread('asks', { status: 'waiting', lastUserMessageAt: 290 }), thread('wants', { status: 'waiting', lastUserMessageAt: 90 }), thread('quiet')], { questions: [question], permissions: [permission] }),
     source('server', [
-      thread('failed', { status: 'error', unread: true, updatedAt: 200, accountId: 'a' }),
-      thread('signed-out', { status: 'error', unread: true, updatedAt: 400, accountId: 'b' }),
-      thread('read-error', { status: 'error', unread: false, updatedAt: 50 })
+      thread('failed', { status: 'error', unread: true, updatedAt: 200, lastUserMessageAt: 190, accountId: 'a' }),
+      thread('signed-out', { status: 'error', unread: true, updatedAt: 400, lastUserMessageAt: 390, accountId: 'b' }),
+      thread('read-error', { status: 'error', unread: false, updatedAt: 50, lastUserMessageAt: 40 }),
+      thread('pinned', { status: 'error', pinned: true, updatedAt: 10, lastUserMessageAt: 5 })
     ], { accounts: [{ id: 'a', status: 'ok' }, { id: 'b', status: 'unauthenticated' }] })
   ]);
+  // Round 6: the home listed these oldest first while the sidebar's band beside it listed them newest first.
   expect(needs.map(card => [card.machine, card.thread.id, card.reason, card.since])).toEqual([
-    ['server', 'read-error', 'failed', 50],
-    ['pc', 'wants', 'permission', 100],
-    ['server', 'failed', 'failed', 200],
+    ['server', 'pinned', 'failed', 10],
+    ['server', 'signed-out', 'sign-in', 400],
     ['pc', 'asks', 'question', 300],
-    ['server', 'signed-out', 'sign-in', 400]
+    ['server', 'failed', 'failed', 200],
+    ['pc', 'wants', 'permission', 100],
+    ['server', 'read-error', 'failed', 50]
   ]);
   expect(needs.find(card => card.thread.id === 'asks')!.detail).toContain('Which icon set?');
   expect(needs[1]!.project).toBe(project);
@@ -88,4 +92,11 @@ test('a bot\'s own thread is counted apart from the project threads, and a team 
   ])]);
   expect(lists.tally).toEqual({ threads: { needs: 1, working: 0 }, bots: { needs: 1, working: 1 } });
   expect(lists.needs.map(card => [card.thread.id, card.kind])).toEqual(expect.arrayContaining([['bot-asks', 'bots'], ['asks', 'threads']]));
+});
+
+test('a card says how long it waited in the words of its Recent row', () => {
+  const now = 10 * 86_400_000;
+  // Round 6: the home read `4h 00m` and `2h 57m` beside rows reading `4h` and `2h`.
+  for (const ago of [27 * 60_000, 4 * 3_600_000, 2 * 3_600_000 + 57 * 60_000, 3 * 86_400_000]) expect(waitedFor(now, now - ago)).toBe(shortAgo(now - ago, now));
+  expect(waitedFor(now, now - 4 * 3_600_000)).not.toMatch(/\d+m$/);
 });

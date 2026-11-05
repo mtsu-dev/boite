@@ -15,7 +15,7 @@
   /**
    * The home's answer to "what needs me now", under the new-thread composer:
    * a card per thread waiting on the user, from every project and machine,
-   * the longest wait first, then the threads at work. A card or a row opens
+   * in the order of Recent's Needs you band beside it, then the threads at work. A card or a row opens
    * its thread, where the question or permission waits above the composer.
    * Nothing waiting says so quietly, on the sky.
    * Calm by default: three cards in one column, `See all` for the rest, and

@@ -148,6 +148,9 @@
     /* The rail scrolls sideways, so a tile grows to its name rather than cut it:
        "OpenCode" read "OpenCod" in 56 px. A two-word name still breaks at its space. */
     .tile { justify-content: center; width: auto; min-width: 60px; max-width: 92px; min-height: var(--touch-target); padding: 4px 6px; }
+    /* When the strip's end would cut a tile to a sliver or hide the next one whole, every tile
+       grows by the strip's --tile-grow (wholeTiles' peekGrow) until one shows by half under the fade. */
+    .tile { min-width: calc(60px + var(--tile-grow, 0px)); max-width: calc(92px + var(--tile-grow, 0px)); padding-inline: calc(6px + var(--tile-grow, 0px) / 2); }
     .name { overflow-wrap: normal; word-break: keep-all; }
     /* The strip scrolls sideways, so it clips vertically too: a 16 px line and 2 px under it
        keep the descenders of "OpenCode" and "pi" whole. */

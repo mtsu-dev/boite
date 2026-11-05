@@ -50,7 +50,7 @@ export type Waiting = { store: Store; thread: ThreadSummary };
 
 /**
  * Every other thread, on every machine the user sees, that waits on the user,
- * in the Inbox's order (the longest wait first) and by the Inbox's rule, so
+ * in the Inbox's order (Recent's Needs you order) and by the Inbox's rule, so
  * the walk and the home count the same threads. The one on screen is out:
  * the link walks the user to work still open elsewhere.
  */

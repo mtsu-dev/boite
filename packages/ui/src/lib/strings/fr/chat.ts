@@ -178,7 +178,7 @@ export const fr: Translation = {
     denied: 'Refusé',
     permissionAllowedBy: 'Autorisé par vous',
     permissionDeniedBy: 'Refusé par vous',
-    questionHeading: 'Vous demande',
+    questionHeading: '{agent} demande',
     questionSeries: '{index} sur {total}',
     questionSeriesTitle: 'L\'agent a posé {total} questions d\'un coup : la suivante vient une fois celle-ci répondue ou passée',
     questionAsyncHeading: 'Question',

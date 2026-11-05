@@ -235,7 +235,7 @@
   .bar { display: flex; align-items: center; gap: 6px; padding: 4px 8px 8px 10px; }
   .send { margin-left: auto; width: var(--control); height: var(--control); border-radius: var(--radius-full); flex: none; }
   .send:not(:disabled):active { transform: scale(.92); }
-  .send :global(.spinner) { animation: spin 1s linear infinite var(--loops); }
+  .send :global(.spinner) { animation: spin var(--dur-spin) linear infinite var(--loops); }
   .replying { display: flex; align-items: center; gap: 8px; margin: 8px 8px 0; padding: 4px 4px 4px 10px; border-left: 2px solid var(--color-accent); border-radius: var(--radius-md); background: var(--color-hover); font-size: var(--text-sm); }
   .replying .ui-label { flex: none; font-weight: 600; }
   .excerpt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-muted-foreground); }

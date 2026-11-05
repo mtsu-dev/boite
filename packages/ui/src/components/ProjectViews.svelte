@@ -58,4 +58,15 @@
   .scope .machine { flex: 0 1 auto; max-width: 40%; font-size: var(--text-xs); }
   .picker :global(svg) { flex: none; }
   .picker :global(.trigger > svg:last-child) { color: var(--color-muted-foreground); }
+  /* The open menu: the views lead in the label weight, the scope under them reads at rest; a remote
+     project's machine sits under its name in the small muted tier, 2 px below it, and a row with that
+     line keeps 6 px above and below so the next name and the menu's bottom edge stay clear of it. */
+  .picker :global(.popover .item:not([data-value^='view:']) .label) { font-weight: 400; }
+  .picker :global(.popover .item.checkable) { align-content: center; }
+  .picker :global(.popover .item.checkable:has(> .hint)) { row-gap: 2px; }
+  /* The menu drops from the trigger 10 px from the rail's edge, over the tab row: 4 px further out (floating.ts sets
+     its margin inline) and a tighter corner on the trigger's side, so its round corner leaves no letter of the first tab showing. */
+  .picker :global(.popover) { translate: -4px 0; border-top-left-radius: var(--radius-sm); }
+  .picker :global(.popover .item .hint) { font-size: var(--text-xs); }
+  .picker :global(.popover .item:has(> .hint)) { padding-block: 6px; }
 </style>

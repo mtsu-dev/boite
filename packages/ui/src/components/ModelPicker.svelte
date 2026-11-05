@@ -843,8 +843,12 @@
 
     /* The rail is the finger's first stop on a phone, so its tiles (ProviderTiles)
        and the refresh button take a full touch target like every other control. */
+    /* The strip runs the sheet's whole width: the refresh sits in the list's head, beside the
+       provider it reloads, as on a one-provider menu, and gives the strip its 56 px back. */
+    .rail { grid-area: 1 / 1 / 2 / 3; }
     .main-models { grid-area: 2 / 1 / 3 / 3; border-left: none; }
-    .refresh { grid-area: 1 / 2; align-self: center; justify-self: end; justify-content: center; width: var(--touch-target); margin: 6px; padding: 0; border: none; }
+    .main-models .head { padding-right: calc(var(--touch-target) + 8px); }
+    .refresh { grid-area: 2 / 2; align-self: start; justify-self: end; justify-content: center; width: var(--touch-target); margin: 0 4px; padding: 0; border: none; background: transparent; }
     .refresh {
       width: var(--touch-target);
       height: var(--touch-target);

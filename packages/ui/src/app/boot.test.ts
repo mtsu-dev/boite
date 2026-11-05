@@ -160,7 +160,7 @@ test('first run opens a draft in the drafts, and the first send makes them', asy
   document.querySelector<HTMLButtonElement>('[data-testid=first-run-skip]')?.click();
   await waitFor(() => store.draft !== null && document.querySelector('[data-testid=composer-input]') !== null);
   expect(store.draft?.projectId).toBeNull();
-  expect(query('[data-testid=draft-project]').textContent).toContain('Drafts');
+  expect(query('[data-testid=draft-project]').textContent).toContain('Conversations');
   // A draft in the drafts has no repository to branch.
   expect(document.querySelector('[data-testid=composer-worktree]')).toBeNull();
   expect('worktree' in plusRows()).toBe(false);

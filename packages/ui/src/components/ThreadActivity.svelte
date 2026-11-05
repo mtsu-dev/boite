@@ -17,6 +17,8 @@
   import AgentSettingCard from './AgentSettingCardLoader.svelte';
   import GoalChecklist from './GoalChecklistLoader.svelte';
   import SubagentQuestions from './SubagentQuestions.svelte';
+  import { AgentsView, agentOfThread } from '../lib/agents.svelte';
+  import { providerName } from '../lib/format';
 
   let { store, reserveInComposer = false, onroom }: {
     store: Store;
@@ -42,6 +44,12 @@
    * and secret requests still provide a way into their owner.
    */
   let children = $derived(new Map(store.openThread ? store.threads.filter((row) => row.parentThreadId === store.openThread?.id && !row.archived).map((row) => [row.id, row] as const) : []));
+  /** Who asks, named on the dock's row as the home's banner names it: a bot by its name, else the thread's agent. */
+  let asker = $derived.by(() => {
+    const thread = store.openThread;
+    if (!thread) return strings.windows.consent.anAgent;
+    return (thread.agentSessionId ? agentOfThread(AgentsView.of(store).snapshot, thread.id)?.name : null) ?? providerName(store, thread.providerId);
+  });
   let childQuestions = $derived(store.openThread ? store.subagentQuestions(store.openThread.id) : []);
   type DockRequest = QuestionRequest & { secret?: SecretRequest };
   let asked: DockRequest[] = $derived.by(() => {
@@ -231,7 +239,7 @@
           <button type="button" class="ghost objective question-toggle" aria-expanded={questionOpen}
             title={questionOpen ? strings.activity.questionFold : strings.activity.questionUnfold} data-testid="activity-question-toggle"
             onclick={() => (questionOpen = !questionOpen)}>
-            <span class="question-line ui-label" class:generic={questionOpen && !shown.secret && !shown.setting && !shown.agentSetting && !shown.team}>{shown.secret ? shown.secret.name : questionOpen ? (shown.setting ? settingHeading(shown.setting) : shown.agentSetting ? fill(strings.agentSettingRequest.heading, { name: shown.agentSetting.agentName }) : shown.team ? teamHeading(shown.team) : shown.async === true ? strings.chat.questionAsyncHeading : strings.chat.questionHeading) : shown.text}</span>
+            <span class="question-line ui-label" class:generic={questionOpen && !shown.secret && !shown.setting && !shown.agentSetting && !shown.team}>{shown.secret ? shown.secret.name : questionOpen ? (shown.setting ? settingHeading(shown.setting) : shown.agentSetting ? fill(strings.agentSettingRequest.heading, { name: shown.agentSetting.agentName }) : shown.team ? teamHeading(shown.team) : shown.async === true ? strings.chat.questionAsyncHeading : fill(strings.chat.questionHeading, { agent: asker })) : shown.text}</span>
             <ChevronDown size={16} class={questionOpen ? 'turned' : ''} />
           </button>
           {#if shown.secret}

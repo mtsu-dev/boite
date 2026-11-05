@@ -55,8 +55,5 @@ export const strings = {
     waited: 'Waiting for {time}',
     working: 'Working for {time}',
     open: 'Open {title}',
-    minutes: '{count}m',
-    hours: '{count}h {minutes}m',
-    days: '{count}d',
   }
 } as const;

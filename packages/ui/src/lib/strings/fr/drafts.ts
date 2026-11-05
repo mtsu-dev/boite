@@ -3,7 +3,7 @@ import type { Translation } from '../../i18n.svelte';
 export const fr: Translation = {
 
   drafts: {
-    name: 'Brouillons',
+    name: 'Conversations',
     hint: 'Un dossier par conversation, dans Documents/Boite',
     openFolder: 'Travailler dans un de mes dossiers',
     pickFolder: 'Ouvrir un dossier',

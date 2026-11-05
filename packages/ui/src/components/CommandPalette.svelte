@@ -28,6 +28,8 @@
   let input = $state<HTMLInputElement | undefined>(undefined);
   let list = $state<HTMLDivElement | undefined>(undefined);
   let dialog = $state<HTMLDivElement | undefined>(undefined);
+  /** A row waits under the foot: the list's last 24 px fade out, so no row reads as cut by the rule. */
+  let more = $state(false);
   /** What had the keyboard before the palette took it, where it goes back on close. */
   let previous: HTMLElement | null = null;
 
@@ -143,6 +145,22 @@
     if (row && typeof row.scrollIntoView === 'function') row.scrollIntoView({ block: 'nearest' });
   });
 
+  function measure() {
+    more = list !== undefined && list.scrollTop + list.clientHeight < list.scrollHeight - 1;
+  }
+
+  // The list's height depends on the window and its rows on the query: either can put a row under the foot.
+  $effect(() => {
+    void rows;
+    const target = list;
+    if (!target) return;
+    void tick().then(measure);
+    if (typeof ResizeObserver !== 'function') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(target);
+    return () => observer.disconnect();
+  });
+
   function close() {
     store.paletteOpen = false;
     restoreFocus(previous);
@@ -243,7 +261,7 @@
         />
         <span class="kbd ui-label-box"><span class="ui-label">Esc</span></span>
       </label>
-      <div class="list" role="listbox" bind:this={list} data-testid="palette-list">
+      <div class="list" role="listbox" bind:this={list} data-testid="palette-list" data-more={more || undefined} onscroll={measure}>
         {#each sections as section, at (section.id)}
           {@const first = offset(at)}
           {@const heading = section.kind === 'thread' ? placeOf(section.id) : null}
@@ -375,14 +393,30 @@
     min-height: 0;
     overflow: auto;
     padding: 6px;
+    /* A row the arrows reach stops above the fade, never inside it. */
+    scroll-padding-block: 6px 24px;
+  }
+
+  /* Rows run on under the foot: they fade out over 24 px instead of meeting its rule cut at mid-height.
+     Scrolled to the end, the last row is whole and the fade goes. */
+  .list[data-more] {
+    -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 24px), transparent);
+    mask-image: linear-gradient(to bottom, black calc(100% - 24px), transparent);
   }
 
   .section + .section {
     margin-top: 4px;
   }
 
+  /* Every group heads its rows the same way, "Projects" and "Commands" as a project's name:
+     semibold sentence case, never the app's uppercase tracked label. */
   .section-label {
     padding: 8px 10px 4px;
+    text-transform: none;
+    letter-spacing: normal;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--color-foreground);
   }
 
   /* A project heading reads like the sidebar's: tile, name, then its machine. */
@@ -391,11 +425,6 @@
     align-items: center;
     gap: 8px;
     min-width: 0;
-    text-transform: none;
-    letter-spacing: normal;
-    font-size: var(--text-sm);
-    font-weight: 600;
-    color: var(--color-foreground);
   }
 
   .project-label .name {

@@ -198,7 +198,7 @@
 
   /* A file still being read: the tile is there at once, a spinner where its picture or its size will be. */
   .tile-loading { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--color-muted-foreground); background: var(--color-surface-3); }
-  .attachment :global(.spinner) { flex: none; animation: spin 1s linear infinite var(--loops); }
+  .attachment :global(.spinner) { flex: none; animation: spin var(--dur-spin) linear infinite var(--loops); }
   @media (prefers-reduced-motion: reduce) { .attachment :global(.spinner) { animation: none; } }
 
   .attachment.document { display: flex; align-items: center; gap: 8px; padding: 0 24px 0 10px; color: var(--color-muted-foreground); }

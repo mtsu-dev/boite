@@ -98,7 +98,9 @@ export function floating(node: HTMLElement, options: { anchor: () => HTMLElement
       node.style.transformOrigin = up ? 'bottom left' : 'top left';
     }
     node.style.top = `${Math.max(margin, top)}px`;
-    node.style.left = `${Math.max(margin, Math.min(left, width - node.offsetWidth - margin))}px`;
+    /* A menu opened from a trigger inside the margin starts on the trigger's edge, not 2 px right of it:
+       the sidebar's view picker sits at 10 px, and the tab row under it showed past a menu clamped to 12. */
+    node.style.left = `${Math.max(Math.min(margin, Math.max(0, box.left)), Math.min(left, width - node.offsetWidth - margin))}px`;
   }
   const observer = new ResizeObserver(place);
   observer.observe(node);

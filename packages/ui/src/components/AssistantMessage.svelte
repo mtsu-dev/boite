@@ -227,6 +227,7 @@
           page={part.open?.url}
           onopen={() => openQuestionPage(store, message.threadId, part.questionId)}
           series={part.series}
+          asker={agentName ?? (execution ? providerName(store, execution.providerId) : undefined)}
         />{/snippet}</Deferred>
       {:else if part.type === 'secret_request'}
         <Deferred part={parts.SecretCard}>{#snippet children(SecretCard)}<SecretCard {store} threadId={message.threadId} {part} />{/snippet}</Deferred>

@@ -37,6 +37,7 @@
   import { activeProject, archiveCount, projectSections, projectThreadView } from '../lib/project-threads.svelte';
   import { workingThread } from '../lib/recent.svelte';
   import { bandStarts, compareThreads, type ThreadBand } from '../lib/thread-order';
+  import { flipRows } from '../lib/flip-rows.svelte';
   import { pickView, viewMenuItems } from '../lib/view-menu';
   import { minuteClock } from '../lib/clock.svelte';
   import { contactsShown } from '../lib/contacts-rail.svelte';
@@ -121,7 +122,7 @@
     // A team's chat is listed with the bots (`agents/AgentsRail.svelte`), not among the threads.
     return machine.store.threads.filter(t => !t.archived && !t.incognito && !t.teamId && !t.debateId).map(thread => ({ machine, thread, project: thread.projectId === null ? undefined : byId.get(thread.projectId) }));
   }));
-  /** The Inbox tab: what waits on the user, longest wait first, then the work going on (`lib/inbox.ts`, the desktop home's Inbox too). */
+  /** The Inbox tab: what waits on the user, in Recent's order, then the work going on (`lib/inbox.ts`, the desktop home's Inbox too). */
   let lists = $derived(inbox(storeSources(machines)));
   let waiting = $derived(lists.needs);
   /** What waits on the user besides the conversation on screen: Back carries its mark. */
@@ -154,6 +155,8 @@
   const rowKey = (row: { machine: Machine; thread: ThreadSummary }) => JSON.stringify([row.machine.id, row.thread.id]);
   /** Recent's bands, the sidebar's: a label where the rows pass from what needs the user to what works, then to the rest. */
   const phoneBands = $derived(inRecent && !query ? bandStarts(attention, row => row.thread, rowKey) : new Map<string, ThreadBand>());
+  /** A row that changes band or lane slides there, as in the sidebar; the key reads ids and states only. */
+  flipRows(() => scrollRoot, () => [...rows.map(row => `${rowKey(row)}:${row.thread.status}`), '|', ...working.map(rowKey), '|', ...phoneBands.keys()].join(), () => `${listKey}:${query}`);
 
   /** The list a conversation was opened from: Back returns to it. The landing conversation has none, so Back leaves. */
   let from = $state<'threads' | 'activity' | null>(null);
@@ -466,6 +469,12 @@
     /* The view's name never yields its room; the project after it shortens first. */
     .filters .view-name { flex: none; overflow: visible; }
     .filters .filter-machine { color: var(--color-muted-foreground); font-weight: 400; }
+    /* Its menu reads as the sidebar's (ProjectViews.svelte): the scope at rest, a remote machine small and muted under its project. */
+    .filters :global(.popover .item:not([data-value^='view:']) .label) { font-weight: 400; }
+    .filters :global(.popover .item.checkable) { align-content: center; }
+    .filters :global(.popover .item.checkable:has(> .hint)) { row-gap: 2px; }
+    .filters :global(.popover .item .hint) { font-size: var(--text-xs); }
+    .filters :global(.popover .item:has(> .hint)) { padding-block: 6px; }
     .band { margin: 8px 16px 2px; padding: 6px 0 0; border-top: 1px solid var(--color-border); color: var(--color-muted-foreground); font-size: 11px; font-weight: 500; line-height: 14px; }
     .band.first { margin-top: 2px; padding-top: 0; border-top: none; }
     .brand-icon { flex: none; border-radius: var(--radius-md); }
@@ -488,8 +497,10 @@
     .title-row .large-title { flex: 1; min-width: 0; }
     .title-row > .icon { flex: none; width: var(--touch-target); height: var(--touch-target); color: var(--color-muted-foreground); }
     .title-row .display { border-left: 0; }
-    /* The strip and each project's header stay at the top while the rows scroll under them. */
-    .lifecycle-slot { position: sticky; top: 0; z-index: 3; margin: 0 -8px; padding: 4px 8px 2px; border-radius: 0 0 var(--radius-lg) var(--radius-lg); background: var(--color-float); -webkit-backdrop-filter: var(--float-blur); backdrop-filter: var(--float-blur); }
+    /* The strip and each project's header stay at the top while the rows scroll under them. The strip sits in
+       the cards' column, on their 16 px gutter with their radius, and 8 px above the first one: wider and
+       rounded only at the bottom, it read as a ledge the cards hung from. */
+    .lifecycle-slot { position: sticky; top: 0; z-index: 3; margin: 0 0 8px; padding: 4px 4px 2px; border-radius: var(--radius-lg); background: var(--color-float); -webkit-backdrop-filter: var(--float-blur); backdrop-filter: var(--float-blur); }
     .mobile-list:has(> .lifecycle-slot) { --sticky-top: 46px; }
     .more-row { display: flex; align-items: center; gap: 6px; width: 100%; min-height: var(--touch-target); padding: 0 14px; font-size: var(--text-sm); color: var(--color-muted-foreground); border-bottom: 1px solid var(--color-border); border-radius: 0; justify-content: flex-start; }
     .more-row.needs { color: var(--color-live); }

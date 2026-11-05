@@ -166,7 +166,7 @@ test('a parent on another machine shows its working sub-agents, counted, and the
   }
 });
 
-test('the Inbox tab lists what waits on the user, longest wait first, before the work going on, under a large title the bar takes over on scroll', async () => {
+test('the Inbox tab lists what waits on the user in Recent\'s order, newest message first, before the work going on, under a large title the bar takes over on scroll', async () => {
   vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
     media, matches: true, onchange: null, addListener() {}, removeListener() {}
   }));
@@ -174,10 +174,10 @@ test('the Inbox tab lists what waits on the user, longest wait first, before the
   store = new Store(); store.attach(client); await store.connect();
   workspace.machines = [{ id: 'local', label: 'Local', store }]; workspace.active = store;
   const [older, newer, busy, quiet] = store.threads.filter(thread => !thread.archived && !thread.incognito && !thread.teamId && !thread.debateId && !thread.parentThreadId);
-  const rest = { status: 'idle' as const, openQuestions: 0, subagentQuestions: [] as NonNullable<ThreadSummary['subagentQuestions']>, unread: false };
+  const rest = { status: 'idle' as const, pinned: false, openQuestions: 0, subagentQuestions: [] as NonNullable<ThreadSummary['subagentQuestions']>, unread: false };
   store.pendingQuestions = []; store.pendingPermissions = [];
-  store.threads = store.threads.map(thread => thread.id === older!.id ? { ...thread, ...rest, status: 'waiting', runningSince: 1_000 }
-    : thread.id === newer!.id ? { ...thread, ...rest, status: 'waiting', runningSince: 5_000 }
+  store.threads = store.threads.map(thread => thread.id === older!.id ? { ...thread, ...rest, status: 'waiting', runningSince: 1_000, lastUserMessageAt: 1_000 }
+    : thread.id === newer!.id ? { ...thread, ...rest, status: 'waiting', runningSince: 5_000, lastUserMessageAt: 5_000 }
     : thread.id === busy!.id ? { ...thread, ...rest, status: 'running', runningSince: 2_000 }
     : { ...thread, ...rest });
   mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'activity' } });
@@ -185,7 +185,7 @@ test('the Inbox tab lists what waits on the user, longest wait first, before the
   const list = document.querySelector<HTMLElement>('[data-testid=mobile-list]')!;
   const order = Array.from(list.querySelectorAll<HTMLElement>('[data-testid=mobile-inbox-needs], [data-testid=mobile-inbox-working], [data-thread-id]'))
     .map(node => node.dataset.threadId ?? node.dataset.testid);
-  expect(order.filter((id, index) => order.indexOf(id) === index)).toEqual(['mobile-inbox-needs', older!.id, newer!.id, 'mobile-inbox-working', busy!.id]);
+  expect(order.filter((id, index) => order.indexOf(id) === index)).toEqual(['mobile-inbox-needs', newer!.id, older!.id, 'mobile-inbox-working', busy!.id]);
   expect(order).not.toContain(quiet!.id);
   expect(document.querySelector('[data-testid=mobile-inbox-needs] .count')!.textContent).toBe('2');
   // C9: a waiting row says what it waits on in one word, its full reason in the title, and how long, in place of its state.

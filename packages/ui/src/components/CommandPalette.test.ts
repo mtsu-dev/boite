@@ -86,6 +86,23 @@ test('closed until asked, then the recents come first and the commands after the
   expect(document.body.textContent).toContain('Commands');
 });
 
+test('rows running on under the foot fade out until the list is scrolled to its end', async () => {
+  // jsdom lays nothing out: the list is 400 px tall over 600 px of rows, as a short window draws it.
+  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(400);
+  vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(600);
+  store.paletteOpen = true;
+  flushSync();
+  await tick();
+  await tick();
+
+  const list = document.querySelector<HTMLElement>('[data-testid=palette-list]')!;
+  expect(list.hasAttribute('data-more')).toBe(true);
+  list.scrollTop = 200;
+  list.dispatchEvent(new Event('scroll'));
+  flushSync();
+  expect(list.hasAttribute('data-more')).toBe(false);
+});
+
 test('a query finds a project by its name and folder, and Enter starts a thread there with the keyboard in the composer', async () => {
   const composer = document.createElement('textarea');
   composer.dataset['testid'] = 'composer-input';

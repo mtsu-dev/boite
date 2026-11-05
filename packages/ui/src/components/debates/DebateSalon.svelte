@@ -425,7 +425,7 @@
   }
   textarea::placeholder { color: var(--color-subtle); }
   .send { flex: none; gap: 6px; }
-  .send :global(.spinner) { animation: spin 1s linear infinite var(--loops); }
+  .send :global(.spinner) { animation: spin var(--dur-spin) linear infinite var(--loops); }
   .note { margin: 0; color: var(--color-muted-foreground); font-size: var(--text-xs); }
   .note.error { color: var(--color-danger); }
   .closed { margin: 0; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); color: var(--color-muted-foreground); font-size: var(--text-sm); text-align: center; }

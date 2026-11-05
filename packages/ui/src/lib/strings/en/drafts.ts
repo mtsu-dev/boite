@@ -1,7 +1,8 @@
 export const strings = {
 
   drafts: {
-    name: 'Drafts',
+    /** The project-less space: live conversations, not unsent text, which alone is called a draft. */
+    name: 'Conversations',
     hint: 'A folder of its own for each conversation, in Documents/Boite',
     openFolder: 'Work in a folder of mine',
     pickFolder: 'Open a folder',

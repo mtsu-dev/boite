@@ -226,7 +226,7 @@
   .note.error { color: var(--color-danger); }
   .cancel { margin-left: auto; }
   .failure { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; color: var(--color-danger); font-size: var(--text-sm); overflow-wrap: anywhere; }
-  .actions :global(.spinning) { animation: spin 1s linear infinite var(--loops); }
+  .actions :global(.spinning) { animation: spin var(--dur-spin) linear infinite var(--loops); }
   :global(html[data-motion='reduced']) .actions :global(.spinning) { animation: none; }
   @media (prefers-reduced-motion: reduce) { .actions :global(.spinning) { animation: none; } }
   @media (max-width: 720px) {

@@ -288,12 +288,14 @@
 <div class="bar" class:answering class:direct={!!target} bind:this={bar}>
   {#if target && !target.selection}
   <div class="chips">{#if target.chips}{@render target.chips()}{/if}</div>
-  {:else if bot !== null && !answering}
-  <!-- A bot's box: the phone's options keep the attachment, nothing else to pick here. -->
+  {:else if bot !== null || answering}
+  <!-- A bot's box, or an answer: + keeps the attachment on the left as in every composer, nothing else to pick here. -->
   {#key `${key}:${store.draft?.projectId ?? ''}`}
+  {#if !answering || canAttach}
   <ComposerOptions busy={picking} levels={[]} effort={null} agentDefault={false} speeds={[]} speed={null} modes={[]} modeLabel={(mode) => modeLabel(mode, provider)} modeHint={(mode) => modeHint(mode, provider)} mode={displayedMode} worktree={null} {canAttach} onattach={() => picker?.click()} oneffort={pickEffort} onspeed={(speed) => void pick(speedOptions.pick(speed))} onmode={pickMode} onworktree={() => {}} />
+  {/if}
   {/key}
-  {#if slotted && moreItems.length > 0}
+  {#if (slotted || answering) && moreItems.length > 0}
   <div class="more">
     <Menu items={moreItems} onpick={pickMore} label={strings.composer.more} testid="composer-plus" variant="ghost" switches={worktreeShown}>
       <Plus size={16} strokeWidth={1.75} />
@@ -367,7 +369,7 @@
     <div class="context-control" oncontextmenu={(event) => controlMenu(event, store, 'header.context')}><ContextControl {store} /></div>
   {/if}
     {#if canAttach}
-      {#if !slotted}
+      {#if !slotted && !answering}
       <button
         type="button"
         class="icon attach"
@@ -535,17 +537,27 @@
   }
 
   .send:not(:disabled):active { transform: scale(.92); }
-  .send :global(.spinner) { animation: spin 1s linear infinite var(--loops); }
+  .send :global(.spinner) { animation: spin var(--dur-spin) linear infinite var(--loops); }
   @media (prefers-reduced-motion: reduce) { .send :global(.spinner) { animation: none; } }
-  /* No chips to fill the row: the tools sit beside the send button on the right. */
-  .answering { justify-content: flex-end; }
+  /* An answer: + on the left, the empty chips' room, then the tools and Send with its words. */
   .answering .stop, .answering .send { margin-left: 0; }
-  .answering .send { width: auto; padding-inline: 12px; border-radius: var(--radius-md); }
-  .answering .attach, .direct .attach { display: inline-flex; }
+  .answering .send { width: auto; padding-inline: 12px; }
+  .direct .attach { display: inline-flex; }
 
-  .stop {
-    color: var(--color-foreground);
+  /* One action set in every composer: the microphone and stop are the same
+     ghost circle, 32 px (36 on a phone); Send alone is filled. A recording
+     microphone keeps its tint, it is then the Finish button. */
+  .bar .stop, .bar .mic :global(.dictation button.microphone), .bar .mic .dictation-stand-in button {
+    width: 32px; height: 32px; min-width: 32px; min-height: 32px; padding: 0; border-radius: var(--radius-full);
   }
+  /* `:not(.ghost)` outweighs app.css's raised-control shadow on a filled icon button. */
+  .bar button.stop:not(.ghost), .bar .mic :global(.dictation button.microphone:not(.listening):not(.ghost)), .bar .mic .dictation-stand-in button:not(.ghost) {
+    border-color: transparent; background: transparent; box-shadow: none; color: var(--color-foreground);
+  }
+  .bar .stop:hover:not(:disabled), .bar .mic :global(.dictation button.microphone:not(.listening):hover:not(:disabled)) {
+    background: var(--color-hover);
+  }
+  .bar .mic .dictation-stand-in.failed button { color: var(--color-danger); }
 
   /* Each mode's description stays one line under its name: the menu grows to the longest, up to the window. */
   .desktop-options :global([data-testid='composer-mode-menu']) { width: max-content; max-width: min(440px, calc(100vw - 24px)); }
@@ -581,8 +593,7 @@
     .chips :global(.picker > .trigger .account-name) { display: none; }
     .chips :global(.picker > .trigger.connect) { padding: 0 12px; border-radius: var(--radius-full); background: var(--color-accent-soft); color: var(--color-accent); }
     .send, .stop { margin-left: 2px; }
-    /* The microphone is a round fill like Stop beside it. */
-    .bar :global(.microphone), .dictation-stand-in button { box-shadow: none; border-radius: var(--radius-full); }
+    .bar .stop, .bar .mic :global(.dictation button.microphone), .bar .mic .dictation-stand-in button { width: 36px; height: 36px; min-width: 36px; min-height: 36px; }
   }
   /* The chip has 162 px beside Stop at 390 px and 132 px at 360, where
      ModelPicker drops the chevron so "Sonnet 5.5" reads whole after its logo.

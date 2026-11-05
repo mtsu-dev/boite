@@ -1,9 +1,9 @@
 import { requestExcerpt, type Account, type PermissionRequest, type Project, type QuestionRequest, type SecretRequest, type ThreadSummary } from '@boite/contracts';
-import { needsUser, threadState, type Delegated, type ThreadState } from './thread-state';
+import { needsUser, shortAgo, threadState, type Delegated, type ThreadState } from './thread-state';
+import { compareThreads } from './thread-order';
 import { liveState, needsHand } from './thread-lanes.svelte';
 import { projectThread } from './thread-rows';
 import type { Store } from './store.svelte';
-import { fill, strings } from './strings';
 
 /**
  * What the home's Inbox and the phone's Inbox tab list: the threads that wait
@@ -110,7 +110,7 @@ export function listed(thread: ThreadSummary): boolean {
 }
 
 export interface InboxLists<M> {
-  /** What waits on the user on a connected machine, longest wait first. */
+  /** What waits on the user on a connected machine, in Recent's order: pins, then the last message, newest first. */
   needs: InboxCard<M>[];
   /** What works on a connected machine, longest running first. */
   working: InboxRow<M>[];
@@ -121,8 +121,10 @@ export interface InboxLists<M> {
 }
 
 /**
- * The needs-you cards, longest wait first, then the working rows, longest
- * running first, under the count rule of `countKind` and `liveKind`, so the
+ * The needs-you cards in the order of Recent's Needs you band
+ * (`compareThreads`: pins, then the last message, newest first), so the home's
+ * `See all` continues the list the sidebar shows beside it; then the working
+ * rows, longest running first, under the count rule of `countKind` and `liveKind`, so the
  * lifecycle strip, the switch, the tab badges and Next read the same numbers.
  * A delegated agent's thread is left to its parent, which carries its
  * question (`subagentQuestions`) and its work.
@@ -155,9 +157,9 @@ export function inbox<M>(sources: readonly InboxSource<M>[]): InboxLists<M> {
       tally[kind][live] += 1;
     }
   }
-  const byWait = (a: InboxCard<M>, b: InboxCard<M>) => a.since - b.since || b.thread.updatedAt - a.thread.updatedAt;
-  needs.sort(byWait);
-  offline.sort(byWait);
+  const byRecent = (a: InboxCard<M>, b: InboxCard<M>) => compareThreads(a.thread, b.thread) || a.since - b.since;
+  needs.sort(byRecent);
+  offline.sort(byRecent);
   working.sort((a, b) => a.since - b.since);
   return { needs, working, offline, tally };
 }
@@ -186,12 +188,11 @@ function cardOf<M>(source: InboxSource<M>, thread: ThreadSummary, state: ThreadS
   return { reason: 'interrupted', detail: thread.backgroundWait?.for ?? null, since: thread.updatedAt };
 }
 
-/** `12m`, `2h 57m`, `3d`: how long a card has waited, coarse enough to read at a glance; the desktop and phone Inbox share it. */
+/**
+ * `12m`, `2h`, `3d`: how long a card has waited, in the words of a Recent row
+ * (`shortAgo`), so one thread never reads `4h 00m` on the home and `4h` in the
+ * sidebar beside it; the desktop and phone Inbox share it.
+ */
 export function waitedFor(now: number, since: number): string {
-  const labels = strings.inbox;
-  const minutes = Math.max(1, Math.floor((now - since) / 60_000));
-  if (minutes < 60) return fill(labels.minutes, { count: String(minutes) });
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return fill(labels.hours, { count: String(hours), minutes: String(minutes % 60).padStart(2, '0') });
-  return fill(labels.days, { count: String(Math.floor(hours / 24)) });
+  return shortAgo(since, now);
 }

@@ -263,3 +263,32 @@ test.each([
   expect(text('turn-elapsed')).toBe(elapsed);
   if (status !== 'done') expect(text('compaction-result')).toBe(label);
 });
+
+// Round 6 (Opus): under a running tool the phone showed "Running tool: k6 run ..." over "No new
+// activity for ...", two raw lines that repeated the tool row above them.
+test('the progress that only repeats the running tool row is marked, and a phone drops it', async () => {
+  const now = Date.now();
+  running = mount(TurnSummary, { target: document.body, props: {
+    turn: turn({ status: 'running', startedAt: now - 120_000, finishedAt: null, usage: null }),
+    progress: { turnId: 'turn-1', phase: 'tool', detail: 'k6 run load/public-api.js', at: now - 75_000 },
+    activeTool: true,
+  } });
+  flushSync();
+  expect(document.querySelector('[data-testid=turn-progress]')!.closest('.metric')!.classList.contains('echo')).toBe(true);
+  expect(document.querySelector('[data-testid=turn-last-activity]')!.closest('.metric')!.classList.contains('echo')).toBe(false);
+  const { default: source } = await import('./TurnSummary.svelte?raw');
+  const phone = source.slice(source.lastIndexOf('@media (max-width: 720px)'));
+  expect(phone).toMatch(/\.summary \.echo \{ display: none; \}/);
+  expect(phone).toMatch(/line-height: 16px/);
+});
+
+test('a retry is not an echo of the tool row: the phone keeps it', () => {
+  const now = Date.now();
+  running = mount(TurnSummary, { target: document.body, props: {
+    turn: turn({ status: 'running', startedAt: now - 120_000, finishedAt: null, usage: null }),
+    progress: { turnId: 'turn-1', phase: 'retrying', detail: '2/5', at: now - 75_000 },
+    activeTool: true,
+  } });
+  flushSync();
+  expect(document.querySelector('[data-testid=turn-progress]')!.closest('.metric')!.classList.contains('echo')).toBe(false);
+});

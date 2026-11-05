@@ -99,10 +99,12 @@
    * in the background.
    */
   const live = $derived(running && !compacting);
+  /** The progress only repeats the tool row above it ("Running tool: k6 run"): a phone keeps the quiet time alone. */
+  const echoesTool = $derived(activeTool && observed?.phase === 'tool');
 </script>
 
-{#snippet metric(id: string, text: string | null, title?: string, quiet = false, onHover = false)}
-  <span class="metric" class:on-hover={onHover}><span class="dot ui-label" aria-hidden="true">·</span><span class="ui-label" class:quiet data-testid={id} {title}>{text}</span></span>
+{#snippet metric(id: string, text: string | null, title?: string, quiet = false, onHover = false, echo = false)}
+  <span class="metric" class:on-hover={onHover} class:echo><span class="dot ui-label" aria-hidden="true">·</span><span class="ui-label" class:quiet data-testid={id} {title}>{text}</span></span>
 {/snippet}
 {#if turn.status !== 'queued' && !(live && !showProgress && !still)}
   <div class="summary" class:compacting class:settled class:pointed class:marked class:paused={hidden || waiting} data-testid="turn-summary" data-status={turn.status} role="status" aria-label={label} title={label}>
@@ -124,7 +126,7 @@
     {/if}
     {#if observed}
       {#if showProgress}
-        {@render metric('turn-progress', observed.detail ? fill(strings.chat.progressDetail, { label: activityLabel ?? '', detail: observed.detail }) : activityLabel, observed.detail ?? undefined)}
+        {@render metric('turn-progress', observed.detail ? fill(strings.chat.progressDetail, { label: activityLabel ?? '', detail: observed.detail }) : activityLabel, observed.detail ?? undefined, false, false, echoesTool)}
       {/if}
       {#if quiet >= 60_000}
         {@render metric('turn-last-activity', fill(strings.chat.noActivity, { time: elapsed(quiet) }), undefined, true)}
@@ -221,4 +223,11 @@
   @media (prefers-reduced-motion: reduce) { .summary :global(.spinner), .pulse { animation: none; } }
   :global(html[data-motion='reduced']) .summary :global(.spinner),
   :global(html[data-motion='reduced']) .summary .pulse { animation: none; }
+  /* A phone's running line: no echo of the tool row, one 16 px line whose text
+     starts 13 px in, the left edge of the tool row's 15 px glyph (measured on the
+     390 px capture: text and icon both at x 43.5). */
+  @media (max-width: 720px) {
+    .summary[data-status='running'] { line-height: 16px; margin-left: calc(13px - var(--lead)); }
+    .summary .echo { display: none; }
+  }
 </style>

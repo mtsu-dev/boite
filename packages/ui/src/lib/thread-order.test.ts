@@ -23,9 +23,10 @@ test('pinned first, then waiting and failed together by last message, running, q
   expect(rows.sort(compareThreads).map((t) => t.id)).toEqual(['pinned', 'failed', 'waiting', 'running', 'queued', 'new-idle', 'old-idle']);
 });
 
-test('Recent labels the first row of each band after the pins, and a list of one band draws no label', () => {
+test('Recent labels the first row of each band, the pins included, and a list of one band draws no label', () => {
   const rows = [
     { ...base, id: 'pinned', pinned: true, status: 'running' as const },
+    { ...base, id: 'pinned-waiting', pinned: true, status: 'waiting' as const },
     { ...base, id: 'failed', status: 'error' as const },
     { ...base, id: 'waiting', status: 'waiting' as const },
     { ...base, id: 'running', status: 'running' as const },
@@ -33,6 +34,8 @@ test('Recent labels the first row of each band after the pins, and a list of one
     { ...base, id: 'idle' }
   ];
   const starts = bandStarts(rows, (row) => row, (row) => row.id);
-  expect([...starts]).toEqual([['failed', 'needs'], ['running', 'working'], ['idle', 'earlier']]);
+  // Round 6: the pinned group floated over Needs you with no label, a pinned waiting thread outside its band.
+  expect([...starts]).toEqual([['pinned', 'pinned'], ['failed', 'needs'], ['running', 'working'], ['idle', 'earlier']]);
+  expect([...bandStarts([{ ...base, id: 'p', pinned: true }, { ...base, id: 'i' }], (row) => row, (row) => row.id)]).toEqual([['p', 'pinned'], ['i', 'earlier']]);
   expect(bandStarts([{ ...base, id: 'a' }, { ...base, id: 'b' }], (row) => row, (row) => row.id).size).toBe(0);
 });

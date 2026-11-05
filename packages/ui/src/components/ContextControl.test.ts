@@ -142,8 +142,10 @@ test('the popup counts every compaction and prompt of the thread, the mid-turn o
 });
 
 // Round 1 drew the meter as an accent arc beside Stop, where it passed for the working spinner;
-// round 3 still read the trackless arc as a loader. A whole faint track holds the arc from half full.
-test('the meter is a still gauge on a visible track: no arc below half, muted, then the accent from 80 percent', async ({ ready }) => {
+// round 3 still read the trackless arc as a loader, so a whole faint track holds the arc.
+// Round 6: an empty track read as an unchecked radio. A known share always draws, in the accent,
+// at least 20 degrees; an unknown one says the count instead of the ring.
+test('the meter is a still gauge on a visible track: the accent arc from 20 degrees, the count when the share is unknown', async ({ ready }) => {
   const { store } = await ready();
   await store.open('t-trace');
   store.openThread!.context = { tokens: 62_000, window: 100_000, at: 0 };
@@ -155,21 +157,28 @@ test('the meter is a still gauge on a visible track: no arc below half, muted, t
   expect(trigger.title).toBe('Context 62%');
   expect(trigger.getAttribute('aria-label')).toMatch(/^Context 62%/);
   expect(trigger.querySelector('circle.track')).not.toBeNull();
-  expect(meter().dataset.ring).toBe('muted');
+  expect(meter().dataset.ring).toBe('accent');
   expect(arc()!.getAttribute('stroke-dasharray')).toBe('62 100');
-  for (const [tokens, ring] of [[40_000, 'off'], [49_000, 'off'], [50_000, 'muted'], [80_000, 'accent'], [95_000, 'accent']] as const) {
+  for (const [tokens, dash] of [[0, '5.56'], [2_000, '5.56'], [6_000, '6'], [49_000, '49'], [95_000, '95']] as const) {
     store.openThread!.context = { tokens, window: 100_000, at: 0 };
     flushSync();
-    expect(meter().dataset.ring).toBe(ring);
-    expect(!!arc()).toBe(ring !== 'off');
+    expect(meter().dataset.ring).toBe('accent');
+    expect(arc()!.getAttribute('stroke-dasharray')).toBe(`${dash} 100`);
     expect(trigger.querySelector('circle.track')).not.toBeNull();
   }
+  // No window: the count, rounded to whole thousands, stands where the ring was.
+  store.openThread!.context = { tokens: 133_200, window: null, at: 0 };
+  flushSync();
+  expect(trigger.querySelector('svg')).toBeNull();
+  expect(trigger.querySelector('[data-testid="context-tokens"]')!.textContent).toBe('133K');
+  expect(trigger.getAttribute('aria-label')).toMatch(/^Context 133K tokens/);
   const { default: source } = await import('./ContextControl.svelte?raw');
   const css = source.slice(source.indexOf('<style>'));
   expect(css.match(/\.track \{[^}]*\}/)?.[0]).toMatch(/opacity: 0\.25/);
-  expect(css.match(/\.fill \{[^}]*\}/)?.[0]).not.toMatch(/accent|transition|animation/);
-  expect(css).toMatch(/data-ring='accent'\] \.fill \{ stroke: var\(--color-accent\)/);
+  expect(css.match(/\.fill \{[^}]*\}/)?.[0]).toMatch(/stroke: var\(--color-accent\)/);
+  expect(css.match(/\.fill \{[^}]*\}/)?.[0]).not.toMatch(/transition|animation/);
   expect(css).toMatch(/data-level='full'\] \.fill \{ stroke: var\(--color-danger\)/);
+  expect(css.match(/\.tokens \{[^}]*\}/)?.[0]).toMatch(/font-size: 11px[^}]*color: var\(--color-muted-foreground\)/);
 
   const { setLocaleSetting } = await import('../lib/i18n.svelte');
   await setLocaleSetting('fr');

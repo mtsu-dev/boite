@@ -153,6 +153,7 @@
           class:checkable={item.checked !== undefined}
           class:radio={item.radio}
           class:copy={item.copy}
+          class:lead={!!(item.projectTile || item.glyph)}
           role={item.checked === undefined ? 'menuitem' : item.radio ? 'menuitemradio' : 'menuitemcheckbox'}
           aria-checked={item.checked}
           disabled={item.disabled}
@@ -190,6 +191,8 @@
   .item.danger .glyph { color: inherit; }
   .item.checkable { display: grid; grid-template-columns: minmax(0, 1fr) 14px; column-gap: 8px; }
   .checkable .hint { grid-column: 1; grid-row: 2; }
+  /* A row that leads with a tile or a glyph puts its hint under its label, not under the mark: 16 px glyph + 2 + 6 gap, or an 18 px tile + 6. */
+  .popover:not(.switches) .item.lead:not(.copy) .hint { padding-left: 24px; }
   .check { display: flex; grid-column: 2; grid-row: 1 / span 2; align-self: center; }
   /* A copy row: glyph and value on the first line, the kind under it, the copy mark at the end. A branch has no spaces, so it breaks anywhere. */
   .item.copy { display: grid; grid-template-columns: minmax(0, 1fr) 14px; column-gap: 10px; row-gap: 4px; }

@@ -1293,6 +1293,14 @@ test('a waiting question takes the composer as its free answer, with the card pi
   expect(query('[data-testid=composer-stop]').getAttribute('aria-label')).toBe('Stop the agent');
   expect(query('[data-testid=composer-stop]').title).toBe('Stop the agent');
   expect(query('[data-testid=composer-stop]').nextElementSibling).toBe(query('[data-testid=composer-send]'));
+  // Round 6: the answer's box attached with a paperclip on the right, the main box with + on the left.
+  // One action set: + first, Send last, and no second attach glyph.
+  const bar = query('[data-testid=composer-send]').parentElement!;
+  const plus = query('[data-testid=composer-plus]');
+  expect(bar.contains(plus)).toBe(true);
+  expect(plus.compareDocumentPosition(query('[data-testid=composer-stop]')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(document.querySelector('[data-testid=composer-attach]')).toBeNull();
+  expect(bar.lastElementChild).toBe(query('[data-testid=composer-send]'));
   // One submit: the composer's send. The card keeps its choices and Skip, no Answer button and no hint.
   expect(pendingCard().querySelector('[data-testid=question-reply-hint]')).toBeNull();
   expect(pendingCard().querySelector('[data-testid=question-submit]')).toBeNull();

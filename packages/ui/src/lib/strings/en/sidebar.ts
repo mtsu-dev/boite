@@ -33,7 +33,7 @@ export const strings = {
     /** The menu at the head of the thread list: the view, then in Recent the project it lists. */
     viewPicker: 'View and project',
     /** The labels over the bands of the Recent list, in its order. */
-    bands: { needs: 'Needs you', working: 'Working', earlier: 'Earlier' },
+    bands: { pinned: 'Pinned', needs: 'Needs you', working: 'Working', earlier: 'Earlier' },
     /** The display options panel: its sections, and the short names its rows use under them. */
     displayOrder: 'Project order',
     displayGroup: 'Group',

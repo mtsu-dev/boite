@@ -50,8 +50,5 @@ export const fr: Translation = {
     waited: 'Attend depuis {time}',
     working: 'Travaille depuis {time}',
     open: 'Ouvrir {title}',
-    minutes: '{count} min',
-    hours: '{count} h {minutes}',
-    days: '{count} j',
   }
 };

@@ -16,6 +16,8 @@ export const strings = {
     retryContinueBody: 'Resumes by itself in {time}, resume {attempt} of {attempts}.',
     /** The composer's meter: its tooltip and its name. */
     contextMeter: 'Context {percent}%',
+    /** The meter of a model whose window is unknown: the count it can say instead of a share. */
+    contextMeterTokens: 'Context {count} tokens',
     contextDetails: 'Context',
     contextInput: 'Input',
     contextCache: 'Cached input',

@@ -133,7 +133,7 @@ export const fr: Translation = {
     material: 'Matériau de la fenêtre',
     workspace: 'Espace de travail',
     startIn: "L'appli s'ouvre sur",
-    startDrafts: 'Brouillons',
+    startDrafts: 'Conversations',
     startProject: 'Le dernier projet',
     panelStart: "Le panneau latéral s'ouvre sur",
     panelLauncher: 'Son menu',

@@ -212,7 +212,8 @@ export const strings = {
     /** The shield on a call's line once the user answered the agent's ask for it. */
     permissionAllowedBy: 'Allowed by you',
     permissionDeniedBy: 'Denied by you',
-    questionHeading: 'Asks you',
+    /** The card's head names who asks, as the home's banner does ("Chris asks"). */
+    questionHeading: '{agent} asks',
     questionSeries: '{index} of {total}',
     questionSeriesTitle: 'The agent asked {total} questions at once: the next one comes once this one is answered or skipped',
     questionAsyncHeading: 'Question',

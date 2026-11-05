@@ -21,7 +21,8 @@
     onwrite,
     page,
     onopen,
-    series
+    series,
+    asker = ''
   }: {
     text: string;
     options: QuestionOption[];
@@ -51,6 +52,8 @@
     onopen?: () => unknown;
     /** One of several the agent asked in one call, which come one at a time: the head says which and how many. */
     series?: { index: number; total: number };
+    /** Who asks, by name (the agent or the provider): the head reads "Claude asks". */
+    asker?: string;
   } = $props();
 
   let sent = $state(false);
@@ -59,6 +62,27 @@
   $effect(() => { if (open) built = true; });
 
   const ready = $derived(picked.length > 0 || drafted);
+
+  /** The question's paragraph names the options' group for a screen reader. */
+  const promptId = $props.id();
+  let group = $state<HTMLDivElement>();
+  /** One tab stop for the radios: the picked one, else the first; arrows move between them. */
+  const stop = $derived(Math.max(0, options.findIndex((one) => one.id === picked[0])));
+
+  /**
+   * A radio group as the platform draws one: the four arrows move focus and
+   * the pick together and wrap at the ends, Space picks without clearing. The
+   * pick is not the answer: Answer, or the composer's Send, still sends it.
+   */
+  function radioKey(event: KeyboardEvent, index: number): void {
+    if (multiple || !pending || sent) return;
+    const step = event.key === 'ArrowDown' || event.key === 'ArrowRight' ? 1 : event.key === 'ArrowUp' || event.key === 'ArrowLeft' ? -1 : 0;
+    if (step === 0 && event.key !== ' ' && event.key !== 'Enter') return;
+    event.preventDefault();
+    const next = (index + step + options.length) % options.length;
+    picked = [options[next]!.id];
+    if (step !== 0) group?.querySelectorAll<HTMLElement>('[role=radio]')[next]?.focus();
+  }
 
   function toggle(id: string): void {
     if (multiple) {
@@ -136,32 +160,34 @@
   {#if !docked}
     <div class="head">
       <span class="glyph"><MessageCircleQuestionMark size={15} strokeWidth={1.75} /></span>
-      <span class="muted ui-label">{async ? strings.chat.questionAsyncHeading : strings.chat.questionHeading}</span>
+      <span class="muted ui-label">{async ? strings.chat.questionAsyncHeading : fill(strings.chat.questionHeading, { agent: asker || strings.windows.consent.anAgent })}</span>
       {#if series && series.total > 1}
         <span class="series ui-label" data-testid="question-series" title={fill(strings.chat.questionSeriesTitle, { total: String(series.total) })}>{fill(strings.chat.questionSeries, { index: String(series.index), total: String(series.total) })}</span>
       {/if}
     </div>
   {/if}
 
-  <p class="prompt" data-testid="question-text">{text}</p>
+  <p class="prompt" id={promptId} data-testid="question-text">{text}</p>
   {#if async && answer === null && pending && !docked}
     <p class="muted description" data-testid="question-async-hint">{strings.chat.questionAsyncHint}</p>
   {/if}
 
     {#if options.length > 0}
-      <div class="options" role={multiple ? 'group' : 'radiogroup'}>
-        {#each options as option (option.id)}
+      <div class="options" role={multiple ? 'group' : 'radiogroup'} aria-labelledby={promptId} bind:this={group}>
+        {#each options as option, index (option.id)}
           <button
             type="button"
             class="option"
             class:picked={picked.includes(option.id)}
             role={multiple ? 'checkbox' : 'radio'}
             aria-checked={picked.includes(option.id)}
+            tabindex={multiple ? undefined : index === stop ? 0 : -1}
             data-testid="question-option"
             data-option={option.id}
             disabled={!pending || sent}
             onmousedown={keepFocus}
             onclick={() => toggle(option.id)}
+            onkeydown={(event) => radioKey(event, index)}
           >
             <span class="box" class:round={!multiple} aria-hidden="true">
               {#if multiple && picked.includes(option.id)}

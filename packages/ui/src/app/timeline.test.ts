@@ -117,7 +117,7 @@ test('a question the agent stopped for waits on the composer, one answer area, a
   expect(document.querySelectorAll('[data-testid=question-docked]').length).toBe(1);
   const dock = query('[data-testid=activity-question]');
   expect(query('[data-testid=thread-activity]').closest('[data-testid=composer]')).not.toBeNull();
-  expect(query('[data-testid=activity-question-toggle]').textContent).toContain('Asks you');
+  expect(query('[data-testid=activity-question-toggle]').textContent).toMatch(/\S asks/);
   // The dock's row names the reply once the composer is quiet; the composer does not repeat it on an Answering line.
   await waitFor(() => document.querySelectorAll('[data-testid=composer-reply]').length === 1);
   expect(query('[data-testid=composer-reply]').closest('[data-testid=thread-activity]')).not.toBeNull();

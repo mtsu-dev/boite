@@ -9,6 +9,7 @@
   import { fill, strings } from '../lib/strings';
   import { projectName } from '../lib/format';
   import { bandStarts, compareThreads } from '../lib/thread-order';
+  import { flipRows } from '../lib/flip-rows.svelte';
   import { projectRollup, threadState } from '../lib/thread-state';
   import { hasUnsentDraft } from '../lib/composer-queue';
   import { holdLanes, laneHold, moreRows, threadLanes, type LaneHold, type Lanes } from '../lib/thread-lanes.svelte';
@@ -254,6 +255,12 @@
   /** The filter over the Recent view: the same flat rows in the same order, never project cards. */
   let recentFilter = $derived(workspace.view === 'recent' ? lifecycleFilter.current : null);
   let recentFiltered = $derived(recentFilter === 'waiting' || recentFilter === 'working' ? lifecycleRows(groups, recentFilter) : []);
+  /** A row that changes band or lane slides there instead of jumping (round 6); the key reads ids and states only, so a clock tick reads no layout. */
+  flipRows(() => scrollRoot, () => workspace.view === 'recent'
+    ? [...(recentFilter ? recentFiltered : attention).map(recentKey), '|', ...working.map(recentKey), '|', ...recentBands.keys()].join()
+    : activeGroups.filter(entry => !entry.machine.store.isCollapsed(entry.project.id))
+      .map(entry => { const { lists } = projectLists.get(projectKey(entry))!; return [...lists.attention, ...lists.working].map(thread => `${thread.id}:${thread.status}`).join(); })
+      .join('|') + String(holding), () => `${workspace.view}:${lifecycleFilter.current}`);
   /** No listed project holds a thread of the Recent filter's lifecycle. */
   let recentFilterEmpty = $derived(recentFilter !== null && lifecycleProjects(groups, recentFilter).length === 0);
   let recentFilterDoneRows = $state.raw<{ store: Store; threadId: ThreadId }[]>([]);

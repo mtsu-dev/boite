@@ -90,7 +90,7 @@ test(
     await page.waitFor(`document.querySelector('${testid('first-run-folder')}')?.dataset.done === 'false'`);
     await page.click(testid('first-run-skip'));
     await page.waitFor(`document.querySelector('${testid('draft-open-folder')}')`);
-    expect(await page.evaluate<string>(`document.querySelector('${testid('draft-project')}').textContent`)).toContain('Drafts');
+    expect(await page.evaluate<string>(`document.querySelector('${testid('draft-project')}').textContent`)).toContain('Conversations');
     await page.waitFor(`document.querySelector('${testid('sidebar')}')`);
   },
   TIMEOUT,

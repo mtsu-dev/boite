@@ -344,3 +344,44 @@ test('one of several questions asked in one call says which and how many, so the
   flushSync();
   expect(document.querySelector('[data-testid=question-series]')).toBeNull();
 });
+
+// Round 6 (Sol): the radiogroup had no name, every radio sat in the tab order and arrows did nothing.
+test('the options are one named group with one tab stop, and arrows move the pick with wrap', () => {
+  const three = [...OPTIONS, { id: 'none', label: 'None' }];
+  const sent: string[][] = [];
+  running = mount(QuestionCard, { target: document.body, props: { text: 'Which shape?', options: three, allowText: true, multiple: false, answer: null, pending: true, submit: (ids: string[]) => sent.push(ids) } });
+  flushSync();
+  const group = query<HTMLElement>('[role=radiogroup]');
+  const name = document.getElementById(group.getAttribute('aria-labelledby') ?? '');
+  expect(name?.textContent).toBe('Which shape?');
+  const stops = () => options().map((one) => one.tabIndex);
+  // Nothing picked: the first option is the one stop.
+  expect(stops()).toEqual([0, -1, -1]);
+  const key = (target: HTMLElement, key: string) => { target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })); flushSync(); };
+  options()[0]!.focus();
+  key(options()[0]!, 'ArrowDown');
+  expect(document.activeElement).toBe(options()[1]);
+  expect(options()[1]!.getAttribute('aria-checked')).toBe('true');
+  expect(stops()).toEqual([-1, 0, -1]);
+  key(options()[1]!, 'ArrowRight');
+  key(options()[2]!, 'ArrowDown');
+  // Past the last it wraps to the first, and up from the first to the last.
+  expect(document.activeElement).toBe(options()[0]);
+  key(options()[0]!, 'ArrowUp');
+  expect(document.activeElement).toBe(options()[2]);
+  expect(options()[2]!.getAttribute('aria-checked')).toBe('true');
+  key(options()[2]!, 'ArrowLeft');
+  expect(options()[1]!.getAttribute('aria-checked')).toBe('true');
+  // Space picks and never clears a radio; nothing is sent until Answer.
+  key(options()[1]!, ' ');
+  expect(options()[1]!.getAttribute('aria-checked')).toBe('true');
+  expect(sent).toEqual([]);
+});
+
+test('several choices form a group named by the question, each box its own tab stop', () => {
+  running = mount(QuestionCard, { target: document.body, props: { text: 'Which ones?', options: OPTIONS, allowText: true, multiple: true, answer: null, pending: true, submit: () => true } });
+  flushSync();
+  const group = query<HTMLElement>('[role=group].options');
+  expect(document.getElementById(group.getAttribute('aria-labelledby') ?? '')?.textContent).toBe('Which ones?');
+  expect(options().map((one) => one.tabIndex)).toEqual([0, 0]);
+});
