@@ -227,7 +227,8 @@ test('projects sink after losing recent threads and the sidebar follows a select
     await page.evaluate(`globalThis.__boiteTest.workspace.view = 'projects'`);
     await page.evaluate(`(async () => {
       const s = ${state}; s.collapsedProjects = s.projects.map(p => p.id);
-      for (let i = 0; i < 24; i++) {
+      // 32 projects: the redesign's 28 px headers (Sidebar.svelte) made 24 too short to scroll 400 px.
+      for (let i = 0; i < 32; i++) {
         const p = await s.client.call('projects.add', {path:'/workspace/navigation/project-' + i});
         await s.client.call('threads.create', {projectId:p.id, title:'Conversation ' + i, providerId:'echo', accountId:'a-echo', model:'echo-1', permissionMode:'default'});
         s.collapsedProjects.push(p.id);
@@ -238,7 +239,7 @@ test('projects sink after losing recent threads and the sidebar follows a select
       await globalThis.__boiteTest.workspace.select(s, target.id);
       s.threads.find(t => t.id === target.id).lastUserMessageAt = base;
     })()`);
-    await page.waitFor(`document.querySelectorAll('${id('project')}').length === 26`);
+    await page.waitFor(`document.querySelectorAll('${id('project')}').length === 34`);
     await page.evaluate(`document.querySelector('${id('sidebar')} .scroll').scrollTop = 500`);
     await page.waitFor(`document.querySelector('${id('sidebar')} .scroll').scrollTop >= 400`);
     await capture(page, 'project-promotion-before.png');

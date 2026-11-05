@@ -106,10 +106,15 @@ test('copy path stays readable with a long working directory in conversation men
 
 test('projects follow user activity, then keep a dragged custom order after reload', async () => {
   await showThreadView(page, 'projects');
-  // The menu ends every header at the same place, whatever counters sit before it.
-  const menuEdges = await page.evaluate<number[]>(`Array.from(document.querySelectorAll('${id('project-menu')}')).map(e => Math.round(e.getBoundingClientRect().right))`);
-  expect(menuEdges.length).toBeGreaterThan(1);
-  expect(new Set(menuEdges).size).toBe(1);
+  // Since the redesign the menu lies over the end of the header's name (Sidebar.svelte), so the
+  // counters close every header: each header ends at the same place, and each menu ends with its name.
+  const edges = await page.evaluate<{ head: number; menu: number; toggle: number }[]>(`Array.from(document.querySelectorAll('${id('project-menu')}')).map(e => {
+    const head = e.closest('.head');
+    return { head: Math.round(head.lastElementChild.getBoundingClientRect().right), menu: Math.round(e.getBoundingClientRect().right), toggle: Math.round(head.querySelector('${id('project-row')}').getBoundingClientRect().right) };
+  })`);
+  expect(edges.length).toBeGreaterThan(1);
+  expect(new Set(edges.map(edge => edge.head)).size).toBe(1);
+  for (const edge of edges) expect(Math.abs(edge.menu - edge.toggle)).toBeLessThanOrEqual(1);
   await page.evaluate(`(() => { const s = globalThis.__boiteTest.workspace.machines[1].store; s.threads = s.threads.map(t => t.projectId === 'p-notes' ? {...t, lastUserMessageAt: Date.now() + 1000} : t); })()`);
   const keys = () => page.evaluate<string[]>(`Array.from(document.querySelectorAll('${id('project')}')).map(e => JSON.stringify([e.dataset.machineId, e.dataset.projectId]))`);
   await page.waitFor(`document.querySelector('${id('project')}')?.dataset.projectId === 'p-notes'`);

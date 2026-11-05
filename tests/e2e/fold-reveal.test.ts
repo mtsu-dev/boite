@@ -23,9 +23,14 @@ for (const width of [1280, 390]) {
       const toggle = `${root} ${id('project-shelf-toggle')}`;
       await page.waitFor(`document.querySelector('${toggle}')`);
       const scroller = `(() => { let e = document.querySelector('${toggle}'); while (e && !['auto','scroll'].includes(getComputedStyle(e).overflowY)) e = e.parentElement; return e; })()`;
-      // A short list, anchored at its end: the fold opens below the visible edge.
-      await page.evaluate(`(() => { const s = ${scroller}; s.style.maxHeight = '300px'; s.scrollTop = s.scrollHeight; })()`);
-      await page.waitFor(`(() => { const s = ${scroller}; return s.scrollHeight > s.clientHeight && s.scrollTop + s.clientHeight >= s.scrollHeight - 1; })()`);
+      // A short list, anchored at its end: the fold opens below the visible edge. One-line rows can make
+      // the whole list shorter than 300 px, so the box is cut 60 px above the fold's header when needed.
+      // The added projects settle into the fold after a moment: the cut is measured again until it holds.
+      await page.waitFor(`(() => {
+        const s = ${scroller}, end = document.querySelector('${toggle}').getBoundingClientRect().bottom - s.getBoundingClientRect().top + s.scrollTop;
+        s.style.maxHeight = Math.min(300, Math.round(end) - 60) + 'px'; s.scrollTop = s.scrollHeight;
+        return s.scrollHeight > s.clientHeight && s.scrollTop + s.clientHeight >= s.scrollHeight - 1;
+      })()`);
       const before = await page.evaluate<number>(`${scroller}.scrollTop`);
       await page.click(toggle);
       await page.waitFor(`document.querySelectorAll('${root} ${id('idle-project')}').length > 0`);

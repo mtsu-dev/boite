@@ -52,7 +52,8 @@ test('inspect and stop a real delegated thread from the panel, which launches no
   expect((await owner.call('delegation.get', { threadId })).config.paused).toBe(true);
   await page.waitFor('document.querySelector("[data-testid=delegation-progress]")?.textContent.includes("1 stopped")');
   expect(await page.text('[data-testid="delegation-progress"]')).toContain('1 stopped');
-  expect(await page.text('[data-testid="delegation-progress"]')).toContain('0/1 completed');
+  // Ended, the line is a record of how each one ended: no live count left.
+  expect(await page.text('[data-testid="delegation-progress"]')).not.toContain('0/1');
   expect(page.errors()).toEqual([]);
   await page.waitFor('document.getAnimations().every(animation => animation.playState !== "running" || animation.effect?.getTiming().iterations === Infinity)');
   await page.screenshot(join(import.meta.dir, '.artifacts/delegation-desktop.png'));
@@ -83,13 +84,13 @@ test('completed counts and frozen duration survive reopening the conversation', 
   const view = await owner.call('delegation.get', { threadId });
   await owner.call('delegation.configure', { threadId, config: { ...view.config, paused: false } });
   await owner.call('delegation.spawn', { threadId, profileId: 'review', task: 'Check the final result', requestId: 'completed-agent' });
-  await page.waitFor('document.querySelector("[data-testid=delegation-progress]")?.textContent.includes("1/2 completed")');
+  await page.waitFor('document.querySelector("[data-testid=delegation-progress]")?.textContent.includes("1 completed")');
   await page.waitFor('!document.querySelector("[data-testid=active-subagents]")');
   const elapsed = await page.text('[data-testid="delegation-activity"] [data-testid="agent-elapsed"]');
   await page.reload();
   await page.click(`[data-testid="thread-row"][data-thread-id="${threadId}"]`);
   await page.waitFor('!!document.querySelector("[data-testid=delegation-activity]")');
-  expect(await page.text('[data-testid="delegation-progress"]')).toContain('1/2 completed');
+  expect(await page.text('[data-testid="delegation-progress"]')).toContain('1 completed');
   expect(await page.text('[data-testid="delegation-progress"]')).toContain('1 stopped');
   expect(await page.text('[data-testid="delegation-activity"] [data-testid="agent-elapsed"]')).toBe(elapsed);
   expect(page.errors()).toEqual([]);

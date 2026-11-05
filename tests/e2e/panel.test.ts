@@ -18,6 +18,16 @@ async function onStore(code: string) {
   await page.evaluate(`import('/src/lib/store.svelte.ts').then(async ({ store }) => { ${code} })`);
 }
 
+/**
+ * A phone shows one surface at a time with no strip (PanelPhoneHeader.svelte): another one is
+ * picked from the list behind the header's name, an open tab as `surface:<id>`, a kind by its name.
+ */
+async function phonePick(value: string) {
+  await page.click(id('panel-picker'));
+  await page.click(`${id('panel-picker-menu')} [data-value="${value}"]`);
+  await page.waitFor(`!document.querySelector('${id('panel-picker-menu')}')`);
+}
+
 async function phone(on: boolean) {
   await page.send('Emulation.setDeviceMetricsOverride', on
     ? { width: 390, height: 844, deviceScaleFactor: 1, mobile: true }
@@ -144,14 +154,18 @@ test('the panel opens on its launcher, and the workbench surfaces fit both width
   await page.waitFor(`document.querySelector('${id('diff-view')}')`);
   expect(await page.evaluate(`document.querySelector('${id('changes-row')}[data-path="src/components/RightPanel.svelte"]').getAttribute('aria-selected')`)).toBe('true');
   await capture('changes-desktop.png');
-  // Both signs must color the complete line, including highlighted tokens.
+  // Both signs mark the complete line, a tint of their status colour and a 3 px bar at its start,
+  // while the code keeps its own syntax colours (DiffView.svelte).
   await page.click(`${id('changes-row')}[data-path="src/lib/store.svelte.ts"]`);
   await page.waitFor(`document.querySelector('${id('diff-view')}')?.dataset.path === 'src/lib/store.svelte.ts' && document.querySelector('.row.add .hljs-keyword')`);
   expect(await page.evaluate(`(() => {
-    const add = document.querySelector('.row.add .text');
-    const remove = document.querySelector('.row.remove .text');
-    return !!remove && getComputedStyle(add).color !== getComputedStyle(remove).color
-      && getComputedStyle(add.querySelector('span')).color === getComputedStyle(add).color;
+    const add = document.querySelector('.row.add .hljs-keyword').closest('.row');
+    const remove = document.querySelector('.row.remove');
+    if (!remove) return false;
+    const added = getComputedStyle(add), removed = getComputedStyle(remove);
+    const bar = (style) => /3px 0px 0px 0px/.test(style.boxShadow) && style.boxShadow.includes('inset');
+    return added.backgroundColor !== removed.backgroundColor && bar(added) && bar(removed) && added.boxShadow !== removed.boxShadow
+      && getComputedStyle(add.querySelector('.hljs-keyword')).color !== getComputedStyle(add.querySelector('.text')).color;
   })()`)).toBe(true);
   await capture('changes-colors-desktop.png');
   expect(await page.evaluate(`(() => { const panel = document.querySelector('${id('changes-panel')}'); return panel.scrollWidth <= panel.clientWidth; })()`)).toBe(true);
@@ -207,7 +221,7 @@ test('the panel opens on its launcher, and the workbench surfaces fit both width
   expect(await page.evaluate(`Array.from(document.querySelectorAll('${id('todo-row')} button')).every(button => getComputedStyle(button).opacity === '1' && button.getBoundingClientRect().height >= 44)`)).toBe(true);
   expect(await page.evaluate(`Array.from(document.querySelectorAll('${id('todo-row')} .text')).every(text => getComputedStyle(text).whiteSpace !== 'nowrap')`)).toBe(true);
 
-  await page.click(`${id('panel-tab')}[data-kind=changes]`);
+  await phonePick('changes');
   await page.waitFor(`document.querySelector('${id('changes-panel')}')`);
   await capture('changes-phone.png');
   expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
@@ -297,7 +311,7 @@ test('the tree opens on a directory, the editor lands on a line, and a picture z
   await page.waitFor(`document.querySelector('${id('file-download')}')?.getAttribute('download') === 'handbook.pdf'`);
 
   await phone(true);
-  await page.click(`${id('panel-tab')}[data-surface-id="file:src/lib/store.svelte.ts"]`);
+  await phonePick('surface:file:src/lib/store.svelte.ts');
   await page.waitFor(`document.querySelector('${id('file-text')}')`);
   await capture('file-text-phone.png');
   expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
@@ -318,7 +332,9 @@ test('an unsaved edit survives a tab switch and its tab asks before closing, at 
   const closer = `${id('panel-tab')}[data-surface-id="file:README.md"] ${id('panel-tab-close')}`;
   for (const width of ['desktop', 'phone'] as const) {
     await phone(width === 'phone');
-    await page.click(closer);
+    // A phone's header closes the one surface it shows, the file in front.
+    if (width === 'phone') await page.waitFor(`document.querySelector('${id('panel-picker-name')}')?.textContent === 'README.md'`);
+    await page.click(width === 'phone' ? `${id('right-panel')} ${id('panel-tab-close')}` : closer);
     await page.waitFor(`document.querySelector('${id('confirm-dialog')}')`);
     await capture(`file-discard-${width}.png`);
     expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
@@ -326,7 +342,8 @@ test('an unsaved edit survives a tab switch and its tab asks before closing, at 
     await page.waitFor(`!document.querySelector('${id('confirm-dialog')}')`);
   }
   expect(await page.evaluate(`document.querySelector('${id('file-text')}').value.includes('An edit nobody saved.')`)).toBe(true);
-  await page.click(closer);
+  // The loop ends on the phone, where the header's close is the tab's.
+  await page.click(`${id('right-panel')} ${id('panel-tab-close')}`);
   await page.waitFor(`document.querySelector('${id('confirm-dialog')}')`);
   await page.click(id('confirm-ok'));
   await page.waitFor(`!document.querySelector('${id('panel-tab')}[data-surface-id="file:README.md"]')`);

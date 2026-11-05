@@ -159,7 +159,12 @@ for (const phone of [true, false]) {
       await page.waitFor(`${STORE}?.connection === 'ready'`, 30_000);
       const open = async (id: string): Promise<void> => {
         if (phone) await mobileAction(page, 'mobile-conversations');
-        await page.click(phone ? `[data-testid=mobile-thread-${id}]` : `[data-thread-id="${id}"]`);
+        const row = phone ? `[data-testid=mobile-thread-${id}]` : `[data-thread-id="${id}"]`;
+        const more = phone ? '[data-testid=mobile-more][aria-expanded=false]' : '[data-testid=project-more][aria-expanded=false]';
+        // A project lists six rows, then `n more` (thread-lanes.svelte.ts): an older thread is reached through it.
+        await page.waitFor(`document.querySelector('${row}') || document.querySelector('${more}')`);
+        if (!(await page.evaluate<boolean>(`!!document.querySelector('${row}')`))) await page.click(more);
+        await page.click(row);
         // The short thread holds no message; the long one is open once its rows are drawn.
         await page.waitFor(`${STORE}.openThread?.id === '${id}' && ${STORE}.loadingThreadId === null${id === long ? " && !!document.querySelector('[data-testid=timeline] [data-mid]')" : ''}`, 60_000);
       };

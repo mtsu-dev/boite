@@ -34,7 +34,8 @@ test('main colours can be edited, survive reload and keep separate light and dar
   await page.click(id('palette-tokyo-night'));
   await page.click(id('palette-default'));
   expect(await page.evaluate(`document.querySelector('${id('palette-default')}').getAttribute('aria-pressed')`)).toBe('true');
-  expect(await page.evaluate(`getComputedStyle(document.documentElement).getPropertyValue('--color-background').trim()`)).toBe('#101013');
+  // The default dark background is #0e0e12 since the redesign's violet frame tokens (app.css).
+  expect(await page.evaluate(`getComputedStyle(document.documentElement).getPropertyValue('--color-background').trim()`)).toBe('#0e0e12');
   await page.click(id('palette-tokyo-night'));
   await page.click(id('colors-customize'));
   await page.click(id('color-accent'));
@@ -64,7 +65,7 @@ test('main colours can be edited, survive reload and keep separate light and dar
   await page.click(id('colors-undo'));
   await page.waitFor(`document.querySelector('${id('colors-contrast-fix')}')`);
   await page.click(id('colors-reset'));
-  expect(await page.evaluate(`getComputedStyle(document.documentElement).getPropertyValue('--color-background').trim()`)).toBe('#101013');
+  expect(await page.evaluate(`getComputedStyle(document.documentElement).getPropertyValue('--color-background').trim()`)).toBe('#0e0e12');
 }, 30_000);
 
 test('OLED selects dark appearance, restores pure black on reload and preserves the light palette', async () => {

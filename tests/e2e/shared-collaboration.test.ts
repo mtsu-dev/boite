@@ -76,7 +76,17 @@ for (const width of [1440, 390]) test(`shared project messages, board ownership 
     await page.click(id('board-card-text'));
     await page.waitFor(`document.querySelector('${id('goal-checklist-item')}')`);
     await page.waitFor(`document.querySelector('[data-column=review] ${id('board-card')}')`);
-    if (width === 390) await page.click('[data-testid=board-page]:nth-child(3)');
+    if (width === 390) {
+      // The drawer opens at 30 % of the chat since the redesign (drawer-height.svelte.ts), lower
+      // than a card on a phone: the user raises it by its edge, up to 70 %, and the card then fits.
+      const edge = await page.evaluate<{ x: number; y: number }>(`(() => { const r = document.querySelector('${id('board-resize')}').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+      await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...edge, button: 'left', buttons: 1, clickCount: 1 });
+      await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: edge.x, y: edge.y - 200, button: 'left', buttons: 1 });
+      await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: edge.x, y: edge.y - 400, button: 'left', buttons: 1 });
+      await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: edge.x, y: edge.y - 400, button: 'left', buttons: 0, clickCount: 1 });
+      await page.waitFor(`document.querySelector('${id('board-drawer')}').getBoundingClientRect().height > 300`);
+      await page.click('[data-testid=board-page]:nth-child(3)');
+    }
     await page.waitFor(`(() => {const box = document.querySelector('${id('board-card')}').getBoundingClientRect();return box.left >= 0 && box.right <= innerWidth && box.bottom <= innerHeight;})()`);
     if (width === 390) expect(await page.evaluate(`document.querySelector('${id('board-card')}').draggable`)).toBe(false);
     await capture(page, `shared-board-${width}.png`);

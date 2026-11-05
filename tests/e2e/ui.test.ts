@@ -550,10 +550,17 @@ test(
     }
 
     await page.click(testid('new-thread'));
-    await page.waitFor(`document.querySelector('${testid('composer-worktree')}')`);
-    expect(await page.evaluate<string>(`document.querySelector('${testid('composer-worktree')}').getAttribute('aria-pressed')`)).toBe('false');
-    await page.click(testid('composer-worktree'));
-    await page.waitFor(`document.querySelector('${testid('composer-worktree')}').getAttribute('aria-pressed') === 'true'`);
+    // The switch waits in +, off; turned on, the row says so and a chip shows beside the model.
+    await page.waitFor(`document.querySelector('${testid('composer-plus')}')`);
+    await page.click(testid('composer-plus'));
+    const row = `${testid('composer-plus-menu')} [data-value="worktree"]`;
+    await page.waitFor(`document.querySelector('${row}')`);
+    expect(await page.evaluate<string>(`document.querySelector('${row}').getAttribute('aria-checked')`)).toBe('false');
+    expect(await page.evaluate<boolean>(`!!document.querySelector('${testid('composer-worktree')}')`)).toBe(false);
+    await page.click(row);
+    await page.waitFor(`document.querySelector('${row}').getAttribute('aria-checked') === 'true' && document.querySelector('${testid('composer-worktree')}')?.getAttribute('aria-pressed') === 'true'`);
+    await page.evaluate(`document.querySelector('${testid('composer-plus-menu')}').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))`);
+    await page.waitFor(`!document.querySelector('${testid('composer-plus-menu')}')`);
     await page.waitFor(`document.querySelector('[data-testid=composer-picker] .label')?.textContent.trim() === 'Echo'`);
     await page.type(testid('composer-input'), 'worktree thread');
     await clickWhenEnabled(testid('composer-send'));
@@ -603,6 +610,9 @@ test(
     await page.waitFor(`${keyOf('new-thread')} === 'Ctrl+Shift+N'`);
     expect(await page.evaluate<string>(keyOf('palette'))).toBe('Ctrl+K');
     expect(await page.evaluate<string>(textOf('keybindings-path'))).toBe(file);
+    // The raw refusal sits in the warning card's fold.
+    await page.click(testid('keybinding-details-toggle'));
+    await page.waitFor(`document.querySelector('${testid('keybinding-error')}')`);
     expect(await page.evaluate<string>(textOf('keybinding-error'))).toContain('"nope" is not a command Boite has');
     await page.screenshot(KEYBOARD_SCREENSHOT);
 

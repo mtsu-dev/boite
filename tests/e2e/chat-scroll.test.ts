@@ -169,7 +169,9 @@ for (const phone of [false, true]) {
       })()`);
       await page.waitFor(`${offset} < 2 && document.querySelector('[data-testid=prompt-room]')`);
       // Keep the prompt inset and answer reserve in sync when the viewport changes.
-      await page.send('Emulation.setDeviceMetricsOverride', { width: phone ? 390 : 1280, height: phone ? 480 : 1300, deviceScaleFactor: 1, mobile: phone });
+      // The phone shrinks to 520 px: the status strip above its composer while the answer runs takes 24 px of the
+      // timeline, and at 480 px a fresh prompt and its first answer line no longer leave any room to reserve.
+      await page.send('Emulation.setDeviceMetricsOverride', { width: phone ? 390 : 1280, height: phone ? 520 : 1300, deviceScaleFactor: 1, mobile: phone });
       await page.waitFor(`${offset} < 2 && document.querySelector('[data-testid=prompt-room]')`);
       await page.screenshot(join(artifacts, `prompt-resized-${name}-${history}.png`));
       await page.send('Emulation.setDeviceMetricsOverride', { width: phone ? 390 : 1280, height: 844, deviceScaleFactor: 1, mobile: phone });
@@ -203,7 +205,9 @@ for (const phone of [false, true]) {
     }, 30_000);
   }
 
-  test(`the return button stays centered throughout its entrance on ${name}`, async () => {
+  // The button sits at the right (JumpToLatest.svelte): in the gutter beside the column on a wide
+  // window, 12 px from the edge on a phone. Its entrance must not slide it sideways.
+  test(`the return button keeps its place at the right throughout its entrance on ${name}`, async () => {
     await page.send('Emulation.setDeviceMetricsOverride', { width: phone ? 390 : 1280, height: 844, deviceScaleFactor: 1, mobile: phone });
     await page.navigate(url);
     await page.waitFor(`document.querySelector('${timeline}')`);
@@ -213,6 +217,7 @@ for (const phone of [false, true]) {
     const offsets = await page.evaluate<number[]>(`(() => {
       const button = document.querySelector('${jump}');
       const parent = button.parentElement.getBoundingClientRect();
+      const column = document.querySelector('${timeline} .column').getBoundingClientRect();
       // Restart the real CSS entrance even if it finished during the CDP round trip.
       button.style.animation = 'none';
       void button.offsetWidth;
@@ -223,12 +228,15 @@ for (const phone of [false, true]) {
       return [0, 0.5, 1].map(progress => {
         animations.forEach(a => a.currentTime = Number(a.effect.getTiming().duration) * progress);
         const r = button.getBoundingClientRect();
-        return Math.abs(r.left + r.width / 2 - parent.left - parent.width / 2);
+        // Desktop: the gap between the column's right edge and the button, never covering text. Phone: the inset from the edge.
+        return ${phone} ? parent.right - r.right : r.left - column.right;
       });
     })()`);
     await page.evaluate(`document.querySelector('${jump}').getAnimations().forEach(a => a.currentTime = Number(a.effect.getTiming().duration) / 2)`);
     await page.screenshot(join(artifacts, `jump-entrance-${name}.png`));
-    expect(Math.max(...offsets)).toBeLessThan(1);
+    expect(Math.max(...offsets) - Math.min(...offsets)).toBeLessThan(1);
+    if (phone) expect(Math.abs(offsets[2]! - 12)).toBeLessThan(1);
+    else expect(offsets[2]).toBeGreaterThanOrEqual(12);
     await page.evaluate(`document.querySelector('${jump}').getAnimations().forEach(a => a.finish())`);
     await settled();
     await page.click(jump);
@@ -258,7 +266,12 @@ for (const phone of [false, true]) {
     })()`);
     expect(position.clear).toBe(true);
     expect(position.reachable).toBe(true);
-    if (phone) expect(await page.evaluate(`document.querySelector('${jump}').getBoundingClientRect().height`)).toBeGreaterThanOrEqual(44);
+    // The round button is 32 px; on a phone its ::after hit area reaches 44 px, so a finger near its edge still lands on it.
+    if (phone) expect(await page.evaluate(`(() => {
+      const button = document.querySelector('${jump}');
+      const r = button.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2, reach = 21.5;
+      return [[x - reach, y], [x + reach, y], [x, y - reach], [x, y + reach]].every(([px, py]) => button.contains(document.elementFromPoint(px, py)));
+    })()`)).toBe(true);
     await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', button: 'left', clickCount: 1, x: position.x, y: position.y });
     await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', button: 'left', clickCount: 1, x: position.x, y: position.y });
     await page.waitFor(`!document.querySelector('${jump}')`);

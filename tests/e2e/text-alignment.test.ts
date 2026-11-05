@@ -95,7 +95,9 @@ test('text and icons share a vertical centre across reading fonts, menus and pho
   }
   await page.click('[data-testid="composer-mode"]');
   await page.waitFor(`document.querySelector('[data-testid="composer-mode"]')?.getAttribute('aria-expanded') === 'true'`);
-  for (const result of await labelOffsets(page, [['.menu .item', '.menu .item .label > span:last-child']])) expect(Math.abs(result.offset)).toBeLessThanOrEqual(0.8);
+  // Each mode now reads what it lets through on a second line (ComposerBar.svelte), so the name is
+  // measured on its own line, against the glyph beside it.
+  for (const result of await labelOffsets(page, [['.menu .item .label .glyph', '.menu .item .label > span:last-child']])) expect(Math.abs(result.offset)).toBeLessThanOrEqual(0.8);
   await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', windowsVirtualKeyCode: 27 });
   await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', windowsVirtualKeyCode: 27 });
   await page.evaluate(`__boiteTest.workspace.active.showSettings('general')`);
@@ -116,7 +118,14 @@ test('text and icons share a vertical centre across reading fonts, menus and pho
   for (const result of await labelOffsets(page, [pairs[1]!])) expect(Math.abs(result.offset)).toBeLessThanOrEqual(0.8);
   await page.click('[data-testid="composer-options"]');
   await page.waitFor(`document.querySelector('[data-testid="composer-options-sheet"]')`);
-  for (const result of await labelOffsets(page, [['.choices.permissions label', '.choices.permissions label > span']])) expect(Math.abs(result.offset)).toBeLessThanOrEqual(0.8);
+  // Each mode reads its hint under its name since the redesign (ComposerOptions.svelte): the name
+  // centres its capitals in its own box, and the two lines together centre in the row.
+  for (const result of await labelOffsets(page, [['.choices.permissions label .mode-text > .ui-label', '.choices.permissions label .mode-text > .ui-label']])) expect(Math.abs(result.offset)).toBeLessThanOrEqual(0.8);
+  expect(await page.evaluate<number>(`Math.max(...Array.from(document.querySelectorAll('.choices.permissions label')).map(label => {
+    const row = label.getBoundingClientRect(), text = label.querySelector('.mode-text').getBoundingClientRect(), style = getComputedStyle(label);
+    const top = row.top + parseFloat(style.borderTopWidth) + parseFloat(style.paddingTop), bottom = row.bottom - parseFloat(style.borderBottomWidth) - parseFloat(style.paddingBottom);
+    return Math.abs((text.top + text.bottom) / 2 - (top + bottom) / 2);
+  }))`)).toBeLessThanOrEqual(0.8);
   expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
   expect(page.errors()).toEqual([]);
 }, 30_000);

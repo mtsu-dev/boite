@@ -43,7 +43,8 @@ test('an agent entrusted with a project shows on its header and on its threads, 
   await capture('resident-agent-desktop.png');
 
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-  await page.waitFor(`document.querySelector('${chip}')?.getBoundingClientRect().width > 0`);
+  // A phone draws the face in the subtitle, under the title; the title's menu opens the agent.
+  await page.waitFor(`document.querySelector('[data-testid="thread-place-bot"]')?.getBoundingClientRect().width > 0`);
   await capture('resident-agent-header-phone.png');
   expect(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`)).toBe(true);
   await page.evaluate(`window.__boiteTest.workspace.active.sidebarOpen = true`);

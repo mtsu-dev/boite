@@ -351,12 +351,16 @@ test('composer and buttons keep solid fallback fills without color-mix', async (
         root.dataset.theme = mode === 'glass' ? 'dark' : mode;
         if (mode === 'glass') root.dataset.glass = 'acrylic'; else delete root.dataset.glass;
         await Promise.all(document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})));
-        result.push(['composer', 'composer-picker'].map(name => {
+        // Since the redesign a control is a light fill over the surface it sits on (app.css,
+        // --color-control-surface): the picker must still show a fill, and over the composer it
+        // paints must read solid.
+        const fill = (name) => getComputedStyle(document.querySelector('[data-testid="' + name + '"]')).backgroundColor;
+        const paint = (...fills) => {
           context.clearRect(0, 0, 1, 1);
-          context.fillStyle = getComputedStyle(document.querySelector('[data-testid="' + name + '"]')).backgroundColor;
-          context.fillRect(0, 0, 1, 1);
+          for (const color of fills) { context.fillStyle = color; context.fillRect(0, 0, 1, 1); }
           return context.getImageData(0, 0, 1, 1).data[3];
-        }));
+        };
+        result.push([paint(fill('composer')), paint(fill('composer'), fill('composer-picker')), paint(fill('composer-picker')) > 0 ? 1 : 0]);
       }
       return result;
     } finally {
@@ -365,5 +369,5 @@ test('composer and buttons keep solid fallback fills without color-mix', async (
       if (glass === undefined) delete root.dataset.glass; else root.dataset.glass = glass;
     }
   })()`);
-  expect(opacity).toEqual([[255, 255], [255, 255], [255, 255], [255, 255]]);
+  expect(opacity).toEqual([[255, 255, 1], [255, 255, 1], [255, 255, 1], [255, 255, 1]]);
 }, 30_000);

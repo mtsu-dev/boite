@@ -67,7 +67,21 @@ afterAll(async () => { await page?.close(); await server?.close(); }, 30_000);
 test('the draft sentence follows worktree, permissions, model and effort on desktop and phone', async () => {
   await page.click(id('new-thread'));
   await page.waitFor(`document.querySelector('${id('draft-sentence')}')?.textContent.includes('Opus 5.5')`);
-  await page.click(id('composer-worktree'));
+  // The separate copy is a switch in +, reached from the keyboard alone: ArrowDown
+  // opens it on attach, ArrowDown again lands on the switch, Enter turns it on,
+  // Escape closes the menu and gives the focus back to +.
+  const key = async (name: string, code: number) => {
+    for (const type of ['rawKeyDown', 'keyUp']) await page.send('Input.dispatchKeyEvent', { type, key: name, code: name, windowsVirtualKeyCode: code });
+  };
+  await page.evaluate(`document.querySelector('${id('composer-plus')}').focus()`);
+  await key('ArrowDown', 40);
+  await page.waitFor(`document.activeElement?.dataset.value === 'attach'`);
+  await key('ArrowDown', 40);
+  await page.waitFor(`document.activeElement?.dataset.value === 'worktree'`);
+  await key('Enter', 13);
+  await page.waitFor(`document.querySelector('${id('composer-worktree')}')?.getAttribute('aria-pressed') === 'true' && document.querySelector('${id('composer-plus-menu')} [data-value="worktree"]')?.getAttribute('aria-checked') === 'true'`);
+  await key('Escape', 27);
+  await page.waitFor(`!document.querySelector('${id('composer-plus-menu')}') && document.activeElement?.dataset.testid === 'composer-plus'`);
   await page.click(id('composer-mode'));
   await page.click(`${id('composer-mode-menu')} [data-value="bypassPermissions"]`);
   await page.click(id('composer-picker'));
@@ -84,7 +98,7 @@ test('the draft sentence follows worktree, permissions, model and effort on desk
   await page.evaluate(`document.querySelector('${id('composer-effort-menu')}').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))`);
   await page.waitFor(`!document.querySelector('${id('composer-effort-menu')}')`);
   const sentence = await page.evaluate<string>(`document.querySelector('${id('draft-sentence')}').textContent`);
-  expect(sentence).toContain('in a worktree');
+  expect(sentence).toContain('on a separate copy');
   expect(sentence).toContain('with all permissions');
   expect(sentence).toContain('Opus 5.5');
   expect(sentence).toContain('High effort');
@@ -92,7 +106,7 @@ test('the draft sentence follows worktree, permissions, model and effort on desk
   await size(true);
   await capture('composer-draft-phone');
   await page.click(id('composer-worktree'));
-  expect(await page.evaluate(`document.querySelector('${id('draft-sentence')}').textContent`)).not.toContain('in a worktree');
+  expect(await page.evaluate(`document.querySelector('${id('draft-sentence')}').textContent`)).not.toContain('on a separate copy');
   await size(false);
 }, 30_000);
 

@@ -7,6 +7,9 @@ let server: { close(): Promise<void> };
 let url: string;
 const store = 'globalThis.__boiteTest.workspace.active';
 const summary = '[data-testid="turn-summary"][data-status="done"]';
+// A settled turn's time and finish always read, muted; its tokens and its buttons wait for the pointer.
+const tokens = `${summary} .metric:has([data-testid="turn-tokens"])`;
+const copy = `${summary} [data-testid="message-copy"]`;
 const stamp = '[data-testid="message-time"]';
 const ticks = '[data-testid="message-receipts"].settled [data-testid="receipt-responded"]';
 const opacity = (selector: string) => `getComputedStyle([...document.querySelectorAll('${selector}')].at(-1)).opacity`;
@@ -45,21 +48,25 @@ for (const [name, width, height, touch] of [['desktop', 1280, 900, false], ['pho
       await settle(page);
       await capture('rest');
       const shown = touch ? '1' : '0';
-      expect(await page.evaluate<string>(opacity(summary))).toBe(shown);
+      expect(await page.evaluate<string>(opacity(summary))).toBe('1');
+      expect(await page.evaluate<string>(opacity(tokens))).toBe(shown);
+      expect(await page.evaluate<string>(opacity(copy))).toBe(shown);
       expect(await page.evaluate<string>(opacity(stamp))).toBe(shown);
       expect(await page.evaluate<string>(opacity(ticks))).toBe(shown);
       if (touch) return;
       await hover(page, summary);
       await settle(page);
       await capture('hover-answer');
-      expect(await page.evaluate<string>(opacity(summary))).toBe('1');
+      expect(await page.evaluate<string>(opacity(tokens))).toBe('1');
+      expect(await page.evaluate<string>(opacity(copy))).toBe('1');
       await hover(page, stamp);
       await settle(page);
       await capture('hover-prompt');
       expect(await page.evaluate<string>(opacity(stamp))).toBe('1');
       expect(await page.evaluate<string>(opacity(ticks))).toBe('1');
-      // A prompt shows its own time, not the summary its turn closes on.
-      expect(await page.evaluate<string>(opacity(summary))).toBe('0');
+      // A prompt shows its own time, not the tokens and buttons of the summary its turn closes on.
+      expect(await page.evaluate<string>(opacity(tokens))).toBe('0');
+      expect(await page.evaluate<string>(opacity(copy))).toBe('0');
       // A Claude turn is many messages: pointing at an earlier one shows the summary the last one closes on.
       await page.evaluate(`(() => {
         const thread = ${store}.openThread, at = thread.messages.findLastIndex(message => message.role === 'assistant'), last = thread.messages[at];
@@ -69,8 +76,8 @@ for (const [name, width, height, touch] of [['desktop', 1280, 900, false], ['pho
       await hover(page, 'article.message.assistant:not(:has([data-testid="turn-summary"])) [data-kind="text"]');
       await settle(page);
       await capture('hover-earlier-answer');
-      expect(await page.evaluate<string>(opacity(summary))).toBe('1');
-      expect(await page.evaluate<string>(opacity(`${summary} [data-testid="message-copy"]`))).toBe('1');
+      expect(await page.evaluate<string>(opacity(tokens))).toBe('1');
+      expect(await page.evaluate<string>(opacity(copy))).toBe('1');
     } finally {
       await page.close();
     }

@@ -257,11 +257,12 @@ test('the accent persists, the effort track glows brighter as it rises, and a sp
   await page.click('[data-testid=nav-settings]');
   await page.click('[data-testid=settings-tab-appearance]');
   await page.click('[data-testid=colors-customize]');
-  await page.click('[data-testid=accent-300]');
+  // The default accent is 290 since the redesign (accent.ts): 260, a preset that is not the default, proves the pick persists.
+  await page.click('[data-testid=accent-260]');
   await capture('appearance-accent.png');
   await page.navigate(url);
   await page.waitFor(`document.querySelector('[data-testid=composer-picker]')`);
-  expect(await page.evaluate(`document.documentElement.style.getPropertyValue('--accent-hue')`)).toBe('300');
+  expect(await page.evaluate(`document.documentElement.style.getPropertyValue('--accent-hue')`)).toBe('260');
   await page.click('[data-testid=composer-picker]');
   await page.click('[data-provider=claude]');
   await page.click('[data-model=claude-opus-5-5]');
@@ -309,7 +310,8 @@ test('the accent persists, the effort track glows brighter as it rises, and a sp
   await page.click('[data-testid=settings-tab-appearance]');
   await capture('appearance-accent-phone.png');
   await page.click('[data-testid=colors-customize]');
-  await page.click('[data-testid=accent-260]');
+  // Back to the default accent.
+  await page.click('[data-testid=accent-290]');
   const overlay = await page.evaluate<string>('history.state?.boiteOverlay');
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
   // The wide layout unmounts the phone panel, which pops its history entry. A navigation sent before
@@ -402,6 +404,11 @@ test('the draft keeps a compact composer separate from the fixed favorites menu'
   const layout = await page.evaluate<any>(`(() => { const c=document.querySelector('[data-testid=composer]').getBoundingClientRect(); const m=document.querySelector('[data-testid=composer-picker-menu]').getBoundingClientRect(); return {composerHeight:c.height,composerTop:c.top,composerBottom:c.bottom,menuTop:m.top,menuHeight:m.height}; })()`);
   expect(layout.composerHeight).toBe(before.height);
   expect(layout.composerTop).toBe(before.top);
-  expect(layout.menuTop + layout.menuHeight).toBeLessThan(layout.composerTop);
+  // With cards in the Inbox the home lifts the draft composer to the top third (ChatView.svelte), leaving
+  // less than the menu's 360 px above it: the menu then opens below. Either way it never covers the composer
+  // and stays whole on screen.
+  expect(layout.menuTop + layout.menuHeight < layout.composerTop || layout.menuTop > layout.composerBottom).toBe(true);
+  expect(layout.menuTop).toBeGreaterThanOrEqual(0);
+  expect(layout.menuTop + layout.menuHeight).toBeLessThanOrEqual(900);
   expect(layout.menuHeight).toBe(360);
 }, 30_000);

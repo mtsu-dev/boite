@@ -70,7 +70,8 @@ test('an active turn hides the old cache clock until its new result arrives', as
     await page.waitFor(`!document.querySelector('${CHIP}')`);
     if (status === 'running') await page.screenshot(join(import.meta.dir, '.artifacts', 'prompt-cache-running-desktop.png'));
     expect(await page.evaluate<boolean>(`!!document.querySelector('${CHIP}')`)).toBe(false);
-    expect(await page.evaluate<string>(`document.querySelector('[data-testid="context-trigger"]').getAttribute('aria-label')`)).toBe('Context');
+    // The meter names its reading since the redesign (`Context 16%`, ContextControl.svelte); the label carries no cache part.
+    expect(await page.evaluate<string>(`document.querySelector('[data-testid="context-trigger"]').getAttribute('aria-label')`)).toMatch(/^Context \d+%$/);
     await page.click('[data-testid="context-trigger"]');
     expect(await page.evaluate<boolean>(`!!document.querySelector('[data-testid="prompt-cache-detail"]')`)).toBe(false);
   }

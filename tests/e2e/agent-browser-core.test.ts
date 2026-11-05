@@ -37,6 +37,14 @@ async function tapFrame(page: BrowserPage, touch: boolean) {
     await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   } else for (const type of ['mousePressed', 'mouseReleased'] as const) await page.send('Input.dispatchMouseEvent', { type, ...box, button: 'left', clickCount: 1 });
 }
+/** Opens the panel on a phone and picks the agent's browser from the list its header's name opens. */
+async function openPhoneBrowser(page: BrowserPage) {
+  if (await page.evaluate(`!document.querySelector('${id('right-panel')}')`)) await page.click(id('panel-toggle'));
+  await page.click(id('panel-picker'));
+  // The list offers the agent's browser, which is then the one surface in front.
+  await page.click(`${id('panel-picker-menu')} [data-value="agent-browser"]`);
+  await page.waitFor(`document.querySelector('${id('right-panel')} ${id('agent-browser-cover')}, ${id('right-panel')} ${id('remote-browser-frame')}')`);
+}
 // A lone viewer fits the viewport. With two viewers, the page may keep the
 // other's dimensions, but its decoded frame must fit without distortion.
 const frameShown = (fit = true) => `(() => {
@@ -88,10 +96,9 @@ real('the core runs the agent browser; desktop and phone show it covered, then l
         // its own deferred fit, so neither can overwrite the later preset.
         await pages[0]!.waitFor(`document.querySelectorAll('${id('agent-browser-tab')}').length === 2`);
         await pages[0]!.waitFor(frameShown(), 20_000);
-        // The phone's one panel button, then the strip's Browser tab.
-        if (await page.evaluate(`!document.querySelector('[data-testid="right-panel"]')`)) await page.click(id('panel-toggle'));
-        await page.waitFor(`document.querySelector('[data-testid="panel-tabs"] [data-kind="agent-browser"]')`);
-        if (await page.evaluate(`!document.querySelector('[data-testid="panel-tabs"] [data-kind="agent-browser"][aria-selected="true"]')`)) await page.click('[data-testid="panel-tabs"] [data-kind="agent-browser"]');
+        // The phone's one panel button, then Browser in the list behind the panel's name: a phone
+        // shows one surface at a time, with no strip of tabs (PanelPhoneHeader.svelte).
+        await openPhoneBrowser(page);
       }
       await page.waitFor(`document.querySelector('${id('agent-browser-cover-text')}')?.getBoundingClientRect().width > 0`, 20_000);
       expect(await page.text(id('agent-browser-cover-text'))).toMatch(/^This agent controls a browser on .+/);
@@ -140,10 +147,8 @@ real('the core runs the agent browser; desktop and phone show it covered, then l
         // its own. A tap between those two resizes targets an obsolete frame.
         await pages[0]!.waitFor(`document.querySelectorAll('${id('agent-browser-tab')}').length === 3`);
         await pages[0]!.waitFor(frameShown(), 20_000);
-        // The phone's one panel button, then the strip's Browser tab.
-        if (await page.evaluate(`!document.querySelector('[data-testid="right-panel"]')`)) await page.click(id('panel-toggle'));
-        await page.waitFor(`document.querySelector('[data-testid="panel-tabs"] [data-kind="agent-browser"]')`);
-        if (await page.evaluate(`!document.querySelector('[data-testid="panel-tabs"] [data-kind="agent-browser"][aria-selected="true"]')`)) await page.click('[data-testid="panel-tabs"] [data-kind="agent-browser"]');
+        // The phone's one panel button, then Browser in the list behind the panel's name.
+        await openPhoneBrowser(page);
         await page.waitFor(`document.querySelectorAll('${id('agent-browser-tab')}').length === 3`);
         await page.waitFor(frameShown(), 20_000);
         const nextBefore = await button();

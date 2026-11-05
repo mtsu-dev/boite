@@ -406,8 +406,10 @@ test('a phone pins and archives a thread without a right-click, from the header 
   expect(await page.evaluate(`document.querySelector('[data-testid=mobile-tabs]')`)).toBeNull();
   await page.click('[data-testid=thread-menu-trigger]');
   await page.waitFor(`document.querySelector('[data-testid=thread-menu-trigger-menu]')`);
-  // Subagents shows only on a thread that has some; the desktop's other rows stay there.
-  expect(await page.evaluate(`[...document.querySelectorAll('[data-testid=thread-menu-trigger-menu] [data-value]')].map(row => row.dataset.value)`)).toEqual(['panel', 'board', 'pin', 'rename', 'find', 'archive', 'delete']);
+  // Where the thread works reads whole first, one copy row per value; Subagents shows only on a thread that has some; the desktop's other rows stay there.
+  const rows = await page.evaluate<string[]>(`[...document.querySelectorAll('[data-testid=thread-menu-trigger-menu] [data-value]')].map(row => row.dataset.value)`);
+  expect(rows.slice(0, rows.findIndex(row => !row.startsWith('copy-')))).toContain('copy-project');
+  expect(rows.filter(row => !row.startsWith('copy-'))).toEqual(['panel', 'board', 'pin', 'rename', 'find', 'archive', 'delete']);
   await capture('mobile-thread-menu.png');
   await page.click('[data-testid=thread-menu-trigger-menu] [data-value=panel]');
   await page.waitFor(`document.querySelector('[data-testid=right-panel]')`);

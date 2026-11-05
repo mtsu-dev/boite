@@ -36,7 +36,8 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
           await document.fonts.ready;
         })()`);
         for (const result of await labelOffsets(page, [
-          ['[data-testid="thread-recovery"] > svg', '[data-testid="thread-recovery"] .title .ui-label'],
+          // The held turn is a NoticeBanner line: its icon sits in `.mark`, its title is the bold `.title`.
+          ['[data-testid="thread-recovery"] .mark svg', '[data-testid="thread-recovery"] .title'],
           ['[data-testid="thread-recovery"] button', '[data-testid="thread-recovery"] button .ui-label'],
         ])) expect(Math.abs(result.offset), `${font}: recovery text`).toBeLessThanOrEqual(0.8);
       }
