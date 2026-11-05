@@ -219,6 +219,18 @@ describe('a thread in its own worktree', () => {
     expect(readFileSync(ignore, 'utf8')).toBe('*\n');
   });
 
+  test('a conversation resuming in its existing worktree gets its .boite marker back on the next turn', async () => {
+    const project = await repoProject();
+    const ignore = join(project.path, '.boite', '.gitignore');
+    const thread = await client.call('threads.create', {
+      projectId: project.id, providerId: 'echo', accountId: await echoAccount(), title: 'Resume', worktree: {},
+    });
+    unlinkSync(ignore);
+    const turn = await client.call('turns.start', { threadId: thread.id, prompt: 'hello' });
+    await waitFor(() => harness.core.journal.getTurn(turn.id)?.status === 'done');
+    expect(readFileSync(ignore, 'utf8')).toBe('*\n');
+  });
+
   test('workspace recovery reattaches a surviving legacy long branch after its directory was removed', async () => {
     const project = await repoProject();
     const row = harness.core.projects.require(project.id);
