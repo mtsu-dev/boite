@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import type { SessionNotification } from '@agentclientprotocol/sdk/unstable';
 import type { MessagePart, PermissionMode, RpcEvents, Settings } from '@boite/contracts';
 import type { CoreClient } from '../src/client.ts';
@@ -82,6 +82,7 @@ afterEach(async () => {
   harness = null;
   delete process.env['ACP_FAKE_LOG'];
   delete process.env['ACP_FAKE_NO_MODES'];
+  delete process.env['ACP_FAKE_REFUSE_MODES'];
   delete process.env['ACP_FAKE_MODE_OPTION'];
   delete process.env['ACP_FAKE_LATE_MODEL'];
   delete process.env['ACP_FAKE_REFUSE_SMART'];
@@ -1517,6 +1518,25 @@ describe('acp driver', () => {
         (line) => line === 'warn acp: no session mode matches the permission mode default; the agent offers none',
       ),
     );
+  });
+
+  test('a council member whose agent lists no plan mode, or refuses it, fails before any prompt instead of running outside read-only', async () => {
+    const client = await startCore();
+    spyOn(harness!.core.council, 'owns').mockReturnValue(true);
+    process.env['ACP_FAKE_NO_MODES'] = '1';
+    const unlisted = await finishTurn(client, await acpThread(client, undefined, 'plan'), 'first');
+    expect(unlisted.status).toBe('error');
+    expect(unlisted.error).toContain('native agent offers no exact mode for plan');
+    delete process.env['ACP_FAKE_NO_MODES'];
+    process.env['ACP_FAKE_REFUSE_MODES'] = '1';
+    const refused = await finishTurn(client, await acpThread(client, undefined, 'plan'), 'first');
+    expect(refused.status).toBe('error');
+    expect(refused.error).toContain('native agent refused plan');
+    expect(fakeLog()).not.toContain('session/prompt');
+    // Outside plan, where Boite refuses its permissions instead, the turn runs.
+    delete process.env['ACP_FAKE_REFUSE_MODES'];
+    process.env['ACP_FAKE_NO_MODES'] = '1';
+    expect((await finishTurn(client, await acpThread(client), 'first')).status).toBe('done');
   });
 
   /** One `initialize` per agent process, which is what the probe cache saves. */

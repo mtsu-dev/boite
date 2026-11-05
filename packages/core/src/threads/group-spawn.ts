@@ -43,12 +43,13 @@ export interface GroupStart {
 const CATALOG_READ_MS = 3000;
 
 export const PERMISSION_MODES: readonly PermissionMode[] = ['default', 'acceptEdits', 'bypassPermissions', 'yolo', 'plan', 'dontAsk'];
-const fold = (name: string): string => name.trim().replace(/\s+/g, '-').toLowerCase();
+/** A machine's name as `--machine` compares it: spaces and dashes alike, any case. */
+export const foldMachine = (name: string): string => name.trim().replace(/\s+/g, '-').toLowerCase();
 
 /** What `--machine` takes for `peer`: its name, or a core id prefix when another machine of the group goes by the same one. */
 export function machineArg(core: Core, peer: CoordinationPeer): string {
   const others = core.group.view('owner')?.cores.filter(entry => entry.coreId !== peer.coreId) ?? [];
-  return others.some(entry => fold(entry.name) === fold(peer.name)) ? peer.coreId.slice(0, 8) : peer.name.replace(/\s+/g, '-');
+  return others.some(entry => foldMachine(entry.name) === foldMachine(peer.name)) ? peer.coreId.slice(0, 8) : peer.name.replace(/\s+/g, '-');
 }
 
 /**
@@ -60,9 +61,9 @@ export function memberNamed(core: Core, query: string, method: string): Coordina
   const group = core.group.view('owner');
   if (group === null) throw refused(`${method}.machine: this machine is in no group; --machine names another machine of its group`, { field: 'machine' });
   const peers = core.group.peers();
-  const found = peers.filter(peer => peer.coreId === wanted || fold(peer.name) === fold(wanted) || (/^[0-9a-f]{6,}$/.test(wanted) && peer.coreId.startsWith(wanted)));
+  const found = peers.filter(peer => peer.coreId === wanted || foldMachine(peer.name) === foldMachine(wanted) || (/^[0-9a-f]{6,}$/.test(wanted) && peer.coreId.startsWith(wanted)));
   const self = group.cores.find(entry => entry.coreId === group.self);
-  if (self !== undefined && (self.coreId === wanted || (fold(self.name) === fold(wanted) && found.length === 0))) {
+  if (self !== undefined && (self.coreId === wanted || (foldMachine(self.name) === foldMachine(wanted) && found.length === 0))) {
     throw refused(`${method}.machine: ${self.name} is this machine; leave --machine out`, { field: 'machine' });
   }
   if (found.length === 1) return found[0]!;

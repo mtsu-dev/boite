@@ -147,8 +147,8 @@ export interface FakeClientOptions {
   watchDemo?: boolean;
   /** Window captures, consent cards in each state and a watched Unity window on the trace thread, on `?fake=1&windows=1`. */
   windowsDemo?: boolean;
-  /** A thread that started a finished debate and one under way, with their salons, on `?fake=1&debates=1`. */
-  debatesDemo?: boolean;
+  /** A thread that started a finished council, one under way and an older debate, with their salons, on `?fake=1&council=1`. */
+  councilDemo?: boolean;
   /** Who this client is. `'session'` makes it a paired phone, refused like one. */
   principal?: Principal;
   /** The thread an agent's token names; with none, every agent call fails closed, as on the core. */

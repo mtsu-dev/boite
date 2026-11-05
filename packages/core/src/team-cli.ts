@@ -8,14 +8,17 @@ import { Usage } from './cli-args.ts';
 
 export const TEAM_HELP = `boite team: talk with the other bots of your teams. Group posts every member reads; private posts only you, the recipient and the owner.
   boite team list                                     your teams and their members
-  boite team say <team> <text> [--reply <post-id>]    post in the group; @name or @tous picks who it wakes
-  boite team dm <team> <member|owner> <text>          a private post to one member, or to the owner
+  boite team say <team> <text> [--reply <post-id>] [--request-id <id>]
+                                                      post in the group; @name or @tous picks who it wakes
+  boite team dm <team> <member|owner> <text> [--request-id <id>]
+                                                      a private post to one member, or to the owner
   boite team read <team> [--before <seq>] [--limit <n>]
                                                       the posts you may read, oldest first
-  boite team propose --name <name> --members <bot,bot> [--brief <text>]
+  boite team propose --name <name> --members <bot,machine/bot> [--brief <text>]
                                                       a card asking the owner to create a team
-  boite team invite <team> <bot>                      a card asking the owner to add a bot
+  boite team invite <team> <bot|machine/bot>          a card asking the owner to add a bot
   boite team leave <team>                             a card asking the owner to let you leave
+A bot of another machine of your group is written <machine>/<bot>. A team stays on the machine that created it; when that machine does not answer, the same command with the same --request-id posts once.
 Your final answer to a team letter is posted for you; answer [quiet] to post nothing.`;
 
 export interface TeamCliResult { lines: string[]; value: unknown }
@@ -77,7 +80,7 @@ export async function teamCommand(args: string[], client: CoreClient, threadId: 
     case 'list': {
       if (rest.length > 0) throw new Usage('boite team list takes no arguments');
       const { teams } = await client.call('teams.list', { threadId });
-      const lines = teams.map(team => `${team.name}${team.paused ? ' (paused)' : ''}: ${team.members.map(member => member.name).join(', ')}${team.brief ? `; ${team.brief}` : ''}`);
+      const lines = teams.map(team => `${team.name}${team.paused ? ' (paused)' : ''}: ${team.members.map(member => (member.machine ? `${member.name} (${member.machine})` : member.name)).join(', ')}${team.brief ? `; ${team.brief}` : ''}`);
       return { lines: lines.length ? lines : ['no team yet; boite team propose asks the owner for one'], value: { teams } };
     }
     case 'say': {

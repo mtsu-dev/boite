@@ -57,7 +57,9 @@ export class TeamLetters {
     }
     const thread = this.#core.threads.require(threadId);
     const machine = this.#core.info().hostname ?? 'Boite';
-    const from: AgentContact = { ...this.#side.self(team.threadId), title: `Team ${team.name}`.slice(0, 200), machine, resources: '', status: 'idle', mode: 'brief' };
+    // Local on any machine, `from` included, as the letter's rules read it; only its words say where the team is held.
+    const holder = team.host === this.#side.self('').coreId ? machine : this.#core.teams.machineName(team.host);
+    const from: AgentContact = { ...this.#side.self(team.threadId), title: `Team ${team.name}`.slice(0, 200), machine: holder, resources: '', status: 'idle', mode: 'brief' };
     this.#side.accept({
       id: randomUUID(), from, to: this.#side.self(threadId), toTitle: thread.title.slice(0, 200), toProject: projectName(this.#core, threadId), toMachine: machine,
       text: `Posts of the team ${team.name}`, replyTo: null, createdAt: now, expiresAt: now + RESIDENT_LETTER_TTL_MS, status: 'received', error: null,
@@ -97,7 +99,7 @@ export class TeamLetters {
   render(threadId: string, batch: AgentLetter[], mode: 'seen' | 'flight', reply = false): { prompt: string; texts: Map<string, string>; channel: TeamChannel | null } {
     const plain = batch.filter(letter => !letter.team);
     const team = batch.filter(letter => letter.team);
-    const rendering = this.#core.teams.render(threadId, team, mode, reply && plain.length === 0);
+    const rendering = this.#core.teams.snapshots.render(threadId, team, mode, reply && plain.length === 0);
     for (const { letter, seqs, owner } of rendering.leftovers) {
       const now = Date.now();
       this.#side.receive({ ...letter, id: randomUUID(), createdAt: now, expiresAt: now + RESIDENT_LETTER_TTL_MS, status: 'received', error: null, team: { teamId: letter.team!.teamId, triggers: seqs, owner } }, threadId);

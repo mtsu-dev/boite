@@ -279,7 +279,9 @@ async function lateCancel(followed: boolean): Promise<void> {
     cancel.release();
     await waitFor(() => cancel.delivered() > 0, 10000);
     expect(x.core.contacts.has(cId)).toBe(false);
-    expect(x.core.contacts.groupLink.resuming()).toBe(false);
+    expect(x.core.journal.getSetting('contacts:incoming')).toEqual([]);
+    // Removing C here sends X's own cancel of it to A: the sweeps stop once A acknowledges it.
+    await waitFor(() => !x.core.contacts.groupLink.resuming(), 10000);
   } finally { pending.release(); cancel.release(); }
 }
 

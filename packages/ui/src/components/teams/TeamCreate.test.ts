@@ -36,8 +36,8 @@ function query<T extends Element>(selector: string): T {
 const all = (selector: string) => [...document.querySelectorAll<HTMLElement>(selector)];
 const text = (selector: string) => document.querySelector(selector)?.textContent?.trim() ?? null;
 
-async function machine(names: string[]) {
-  const client = new FakeClient({ delayMs: 0 });
+async function machine(names: string[], at: { coreId?: string; coreName?: string; publicUrl?: string } = {}) {
+  const client = new FakeClient({ delayMs: 0, ...at });
   const store = new Store();
   store.attach(client);
   closers.push(() => { store.detach(); client.close(); });
@@ -143,7 +143,7 @@ test('a taken name says so as it is typed, and Escape closes the dialog without 
   expect((await client.call('teams.list', {})).teams).toHaveLength(1);
 });
 
-test("another machine's bots are listed greyed with why, and cannot be picked", async () => {
+test("the bots of a machine outside the group are listed greyed with why, and cannot be picked", async () => {
   const local = await computer();
   const remote = await machine(['Tour']);
   workspace.machines = [{ id: 'local', label: 'Local', store: local.store }, { id: 'srv', label: 'Server', store: remote.store }];
@@ -152,12 +152,76 @@ test("another machine's bots are listed greyed with why, and cannot be picked", 
   await openDialog();
   const away = query<HTMLButtonElement>(`[data-testid=team-dialog-member][data-key='${JSON.stringify(['srv', remote.bots[0]!.id])}']`);
   expect(away.getAttribute('aria-disabled')).toBe('true');
-  expect(away.title).toBe('On Server: a team takes the bots of one machine for now.');
+  expect(away.title).toBe("On Server: a team takes the bots of this machine's group.");
   expect(away.closest('li')?.querySelector('[data-testid=team-dialog-why]')).not.toBeNull();
   away.click(); flushSync();
   expect(away.getAttribute('aria-pressed')).toBe('false');
   // A tap says why on a screen with no hover.
-  expect(text('[data-testid=team-dialog-told]')).toBe('On Server: a team takes the bots of one machine for now.');
+  expect(text('[data-testid=team-dialog-told]')).toBe("On Server: a team takes the bots of this machine's group.");
+});
+
+test("a bot of another machine of the group joins from the dialog under its machine's name, and an edit keeps it one row until it is taken out", async () => {
+  setExperiment('teams', true);
+  setExperiment('resident-agents', true);
+  const local = await machine(['Huginn'], { coreId: 'desk', coreName: 'Desk', publicUrl: 'https://desk.test' });
+  // Its second bot: no bot of this machine has that id, so nothing here can pass for it.
+  const remote = await machine(['Ratatosk', 'Munin'], { coreId: 'firebat', coreName: 'Firebat', publicUrl: 'https://firebat.test' });
+  await local.client.call('group.create', { name: 'Home' });
+  await remote.client.call('group.join', { invite: (await local.client.call('group.invite', {})).invite });
+  await vi.waitFor(() => { expect(local.store.group?.cores).toHaveLength(2); expect(remote.store.group?.self).toBe('firebat'); });
+  const here = { id: 'local', label: 'Desk', store: local.store };
+  workspace.machines = [here, { id: 'srv', label: 'Firebat', store: remote.store }]; workspace.active = local.store;
+  const huginn = local.bots[0]!, munin = remote.bots[1]!;
+  const key = `firebat/${munin.id}`;
+  const far = () => query<HTMLButtonElement>(`[data-testid=team-dialog-member][data-key="${key}"]`);
+  const place = (row: HTMLElement) => row.querySelector('[data-testid=team-dialog-machine]')?.textContent ?? null;
+  const keys = async () => (await local.client.call('teams.list', { archived: true })).teams[0]!.members.map(entry => entry.key);
+  const submit = () => query<HTMLButtonElement>('[data-testid=team-dialog-submit]');
+  page(local.store);
+  await vi.waitFor(() => query(`[data-testid="agent-entry-${huginn.id}"]`));
+  const dialog = await openDialog();
+  await vi.waitFor(() => far());
+  expect(far().getAttribute('aria-disabled')).not.toBe('true');
+  expect(place(far())).toBe('Firebat');
+  expect(place(member(huginn.id))).toBeNull();
+
+  // The team stays on this machine, which needs a bot of its own in it.
+  type('[data-testid=team-dialog-name]', 'Maison');
+  far().click(); flushSync();
+  expect(far().getAttribute('aria-pressed')).toBe('true');
+  submit().click(); await settle();
+  expect(text('[data-testid=team-dialog-problem]')).toBe('Pick a bot of this machine too: it holds the team.');
+  expect((await local.client.call('teams.list', {})).teams).toEqual([]);
+  member(huginn.id).click(); flushSync();
+  expect(document.querySelector('[data-testid=team-dialog-problem]')).toBeNull();
+  submit().click();
+  await vi.waitFor(async () => expect(await keys()).toEqual([key, `desk/${huginn.id}`]));
+  await vi.waitFor(() => query('[data-testid=team-menu]'));
+  dialog.dispatchEvent(new Event('animationend', { bubbles: true }));
+  await vi.waitFor(() => expect(document.querySelector('[data-testid=team-dialog]')).toBeNull());
+
+  // A member of another machine does not hold back a restore.
+  const [team] = (await local.client.call('teams.list', {})).teams;
+  await local.client.call('teams.archive', { teamId: team!.id, archived: true });
+  expect((await local.client.call('teams.archive', { teamId: team!.id, archived: false })).members).toHaveLength(2);
+
+  // Edited, it is the same bot and still a member: not gone, not listed a second time.
+  query<HTMLButtonElement>('[data-testid=team-menu]').click(); await settle();
+  query<HTMLButtonElement>('[data-testid=team-menu-menu] [data-value="edit"]').click(); await settle();
+  expect(far().getAttribute('aria-pressed')).toBe('true');
+  expect(far().closest('li')?.querySelector('[data-testid=team-dialog-why]')).toBeNull();
+  expect(all(`[data-testid=team-dialog-member][data-key="${key}"]`)).toHaveLength(1);
+
+  // A machine this app no longer reaches keeps its member, under the name the team knows.
+  workspace.machines = [here];
+  await settle();
+  expect(far().getAttribute('aria-pressed')).toBe('true');
+  expect(place(far())).toBe('Firebat');
+
+  far().click(); flushSync();
+  submit().click();
+  await vi.waitFor(async () => expect(await keys()).toEqual([`desk/${huginn.id}`]));
+  expect(local.store.error).toBeFalsy();
 });
 
 test('the team header menu edits the name, brief and members, pauses and resumes, and archives after a confirm', async () => {

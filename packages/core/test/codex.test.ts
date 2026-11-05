@@ -11,6 +11,7 @@ import { readCodexQuota } from '../src/drivers/codex.ts';
 import { codexQuotaDetails } from '../src/quota-details.ts';
 import { consumeCodexReset } from '../src/drivers/codex/models.ts';
 import { CodexRateLimits } from '../src/drivers/codex/rate-limits.ts';
+import { readOnlyEnv } from '../src/drivers/codex/protocol.ts';
 import type { CodexRpc } from '../src/drivers/codex/rpc.ts';
 import { nativeScopeOf } from '../src/platform/scoped.ts';
 import { memoryLimitOfJob, cpuRateOfGlobalJob } from '../src/platform/windows/jobs.ts';
@@ -2395,4 +2396,13 @@ describe('native Codex rewind', () => {
     } finally { turns.mockRestore(); messages.mockRestore(); }
   });
 
+});
+
+test('a read-only session on Windows leaves the Store off its PATH only when the Store holds its pwsh', () => {
+  const store = 'C:\\Users\\Me\\AppData\\Local\\Microsoft\\WindowsApps';
+  const env = { Path: `C:\\Windows\\system32;${store};${store}\\Microsoft.PowerShell_8wekyb3d8bbwe;C:\\Tools`, HOME: 'home' };
+  expect(readOnlyEnv(env, 'win32', () => `${store}\\pwsh.exe`)).toEqual({ Path: 'C:\\Windows\\system32;C:\\Tools', HOME: 'home' });
+  expect(readOnlyEnv(env, 'win32', () => 'C:\\Program Files\\PowerShell\\7\\pwsh.exe')).toBe(env);
+  expect(readOnlyEnv(env, 'win32', () => null)).toBe(env);
+  expect(readOnlyEnv(env, 'linux', () => `${store}\\pwsh.exe`)).toBe(env);
 });

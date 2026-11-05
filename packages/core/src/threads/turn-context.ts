@@ -1,4 +1,5 @@
-import { builtinSkills } from '../builtin-skills.ts';
+import { COUNCIL_EXPERIMENT } from '@boite/contracts';
+import { builtinSkills, COUNCIL_SKILL } from '../builtin-skills.ts';
 import type {
   Account,
   AgentCommand,
@@ -77,12 +78,14 @@ export class TurnContexts {
     const settings = this.#core.settings.get();
     const logAccess = settings.agentLogAccess !== false;
     // Without log access the guide still lists the built-in skills; only report-issue needs the logs.
-    const skills = builtinSkills(this.#core.dataDir, message => { try { this.#core.logs.warn(message, { source: 'skills', event: 'skills.write-failed' }); } catch { /* The guide is built without that skill. */ } });
+    const written = builtinSkills(this.#core.dataDir, message => { try { this.#core.logs.warn(message, { source: 'skills', event: 'skills.write-failed' }); } catch { /* The guide is built without that skill. */ } });
     // Echo treats "question" as a test directive, including in injected help.
     // A persistent agent's thread has no checkout of its own: no pull request to watch, no project to add.
     // `boite goal track` needs the Automatic goals experiment and a top-level thread of the user's.
     const experiments = this.#core.clients.desktopExperiments() ?? this.#core.clients.current()?.experiments ?? [];
     const goalTrack = !thread.parentThreadId && !thread.agentSessionId && experiments.includes('auto-goal');
+    // The council skill names a command the core refuses while its experiment is off.
+    const skills = written.filter(skill => skill.name !== COUNCIL_SKILL.name || experiments.includes(COUNCIL_EXPERIMENT));
     const plugins = pluginGuideLines(this.#core.plugins.installedPlugins(), message => { try { this.#core.logs.warn(message, { source: 'plugins', event: 'plugins.skill-write-failed' }); } catch { /* The guide is built without that skill. */ } });
     return agentGuide(provider.protocol !== 'echo' && settings.asyncQuestions !== false, logAccess, skills, !!thread.agentSessionId, goalTrack, experiments.includes('teams'), plugins);
   }
@@ -102,6 +105,7 @@ export class TurnContexts {
     return {
       thread, provider, account,
       protectedExecution: this.#core.sharedAccess.execution.context(threadId),
+      modeRequired: thread.permissionMode === 'plan' && this.#core.council?.owns(threadId) === true,
       sessionId: thread.sessionId,
       resumeAt: thread.sessionResumeAt ?? null,
       sessionBefore: this.#sessionBefore(thread, ''),
@@ -412,6 +416,7 @@ export class TurnContexts {
     return {
       thread,
       protectedExecution,
+      modeRequired: thread.permissionMode === 'plan' && this.#core.council?.owns(thread.id) === true,
       account,
       provider,
       turn,

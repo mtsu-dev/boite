@@ -50,7 +50,7 @@ export const BOT_GUIDE = [
 export const TEAM_GUIDE = [
   '- Teams (`boite team help`): a team letter brings the posts meant for you; your final answer is posted where the letter says, so write it as your reply, and answer `[quiet]` when nothing needs saying.',
   '- Post in the group whatever the team should know: `boite team say <team> <text>`, where `@name` or `@tous` picks who wakes. Go private only for what concerns one member or the owner: `boite team dm <team> <member|owner> <text>`.',
-  '- When the same bots keep working on one goal, propose a team: `boite team propose --name <name> --members <bot,bot>`; `boite team invite|leave` asks the owner for a change.',
+  '- When the same bots keep working on one goal, propose a team: `boite team propose --name <name> --members <bot,bot>`, a bot of another machine of your group written `<machine>/<bot>`; `boite team invite|leave` asks the owner for a change.',
 ].join('\n');
 
 /**

@@ -16,7 +16,7 @@ const GLYPHS: Partial<Record<SurfaceKind, Glyph>> = {
   device: Smartphone,
   window: AppWindow,
   tasks: ListChecks,
-  debate: MessagesSquare
+  council: MessagesSquare
 };
 
 export function surfaceGlyph(kind: SurfaceKind): Glyph {

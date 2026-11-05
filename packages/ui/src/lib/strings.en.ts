@@ -99,7 +99,7 @@ import { strings as windows } from './strings/en/windows';
 import { strings as policy } from './strings/en/policy';
 import { strings as teamRequest } from './strings/en/teamRequest';
 import { strings as teamChat } from './strings/en/teamChat';
-import { strings as debates } from './strings/en/debates';
+import { strings as council } from './strings/en/council';
 
 export const strings = {
   ...subscriptionProxy,
@@ -107,7 +107,7 @@ export const strings = {
   ...agentSettingRequest,
   ...teamRequest,
   ...teamChat,
-  ...debates,
+  ...council,
   ...remoteBrowser,
   ...agentBrowser,
   ...devicePanel,

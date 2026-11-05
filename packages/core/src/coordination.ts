@@ -268,8 +268,8 @@ export class Coordination {
   #contact(threadId: string, resident = false): AgentContact {
     const thread = this.#core.threads.require(threadId);
     const config = this.config(threadId);
-    // A team chat or a debate's salon is no contact: its posts reach only its members, through the team or the debate.
-    if (thread.archived || thread.teamId || thread.debateId || (config.mode === 'off' && !resident)) throw refused('recipient is unavailable or coordination is disabled');
+    // A team chat or a council's salon is no contact: its posts reach only its members, through the team or the council.
+    if (thread.archived || thread.teamId || thread.councilId || (config.mode === 'off' && !resident)) throw refused('recipient is unavailable or coordination is disabled');
     const project = thread.projectId === null ? null : this.#core.journal.getProject(thread.projectId);
     return {
       ...this.#self(threadId), title: thread.title.slice(0, 200), machine: this.#core.info().hostname ?? 'Boite', resources: config.resources, status: thread.status, mode: config.mode,
@@ -297,7 +297,7 @@ export class Coordination {
   /** Reachable threads, the most recently active first: an old thread never hides a live one. */
   private localDirectory(projectId?: string): AgentContact[] {
     return this.#core.journal.listThreads(projectId)
-      .filter(t => !t.archived && !t.teamId && !t.debateId && this.config(t.id).mode !== 'off' && (projectId !== undefined || this.config(t.id).remote))
+      .filter(t => !t.archived && !t.teamId && !t.councilId && this.config(t.id).mode !== 'off' && (projectId !== undefined || this.config(t.id).remote))
       .sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 100).map(t => this.#contact(t.id));
   }
   /** What this thread may reach on its own core: its project, and every remote-enabled thread when it is one too. */
@@ -502,7 +502,7 @@ export class Coordination {
       // Each endpoint retains its own send or receipt time when acknowledgement metadata arrives.
       this.#core.journal.db.query("UPDATE coordination_letters SET status = ?, data = json_set(?, '$.createdAt', created_at) WHERE id = ?").run(status, JSON.stringify(next), letter.id);
       // A team letter's snapshot is marked seen or released with its state (`teams/store.ts`).
-      if (next.team && letter.to.coreId === this.#self('').coreId) this.#core.teams.letterChanged(next);
+      if (next.team && letter.to.coreId === this.#self('').coreId) this.#core.teams.snapshots.letterChanged(next);
     });
     for (const endpoint of [letter.from, letter.to]) if (endpoint.coreId === this.#coreId) this.#changed(endpoint.threadId);
     // Mail held for the owner came or went: the owner's list of it changed.
@@ -621,7 +621,7 @@ export class Coordination {
     const thread = this.#core.journal.getThread(letter.to.threadId);
     if (!thread || thread.archived) return false;
     // A team letter follows its team, not the thread's communication settings.
-    if (letter.team) return this.#core.teams.mayReceive(letter);
+    if (letter.team) return this.#core.teams.snapshots.mayReceive(letter);
     const resident = this.#core.workforce.projects.mayReceive(letter, letter.from.coreId === this.#self('').coreId);
     if (resident !== null) return resident;
     const recipient = this.config(letter.to.threadId);
@@ -721,7 +721,7 @@ export class Coordination {
           const owner = batch.some(letter => letter.team?.owner);
           const turn = this.#core.threads.startTurn(threadId, prompt, owner ? { kind: 'coordination', owner: true } : { kind: 'coordination' });
           // The wake's reply envelope: where its final answer goes, fixed now, whatever a steer brings later.
-          if (channel) this.#core.teams.envelope(turn.id, threadId, channel);
+          if (channel) this.#core.teams.snapshots.envelope(turn.id, threadId, channel);
           return true;
         })(), refusal => { held = refusal; return local(); });
         // No turn of an idle thread ends to retry its refused contact mail: the refusal pauses coordination until the owner's trust or message.

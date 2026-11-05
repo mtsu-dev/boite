@@ -116,6 +116,7 @@ export class GroupBots {
 
   /** The owner entrusted or took back projects of other machines, or archived the bot: those machines hear it now. */
   profileChanged(previous: AgentProfile | null, saved: AgentProfile): void {
+    if (previous !== null && previous.name !== saved.name) this.#core.teams.botRenamed(saved.id);
     const machines = new Set<string>();
     for (const id of [...(previous?.projectIds ?? []), ...(saved.projectIds ?? [])]) { const grant = remoteGrant(id); if (grant) machines.add(grant.coreId); }
     if (previous !== null && previous.status !== saved.status) for (const coreId of this.#machines()) machines.add(coreId);

@@ -24,7 +24,7 @@ export interface RouteRequest {
   speed?: string;
 }
 
-const PROBE_TIMEOUT_MS = 30_000;
+export const PROBE_TIMEOUT_MS = 30_000;
 
 /** What a model list is read for: a thread here, or the agent of another machine asking for one. */
 export type Asker = Pick<ThreadSummary, 'providerId' | 'accountId' | 'model'>;
