@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ArrowUp, GitBranch, LoaderCircle, Mic, MicOff, Paperclip, Plus, Square } from '@lucide/svelte';
+  import { ArrowUp, ChevronDown, GitBranch, LoaderCircle, Mic, MicOff, Paperclip, Plus, Square } from '@lucide/svelte';
   import { tick } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import { effectiveCompaction, type PermissionMode, type ProviderSummary } from '@boite/contracts';
@@ -334,7 +334,7 @@
 
     <div class="desktop-options">
     {#if effortLevels.length > 0 || speeds.length > 0}
-      <EffortSlider levels={effortLevels} active={activeEffort} onpick={pickEffort} ondefault={agentDefault ? () => pickEffort(null) : undefined} {speeds} speed={speedOptions.speed} onspeed={(speed) => void pick(speedOptions.pick(speed))} />
+      <EffortSlider chevron levels={effortLevels} active={activeEffort} onpick={pickEffort} ondefault={agentDefault ? () => pickEffort(null) : undefined} {speeds} speed={speedOptions.speed} onspeed={(speed) => void pick(speedOptions.pick(speed))} />
     {/if}
 
     <!-- A thread keeps its directory, so the switch exists on a draft alone. It is
@@ -354,12 +354,13 @@
       </button>
     {/if}
 
-    <!-- The mode opens a menu as its neighbours do, so it wears their filled pill: three peers, one set. -->
+    <!-- The mode opens a menu as its neighbours do, so it wears their filled pill and the model's chevron: three peers, one set. -->
     {#if modes.length > 0}
       <Menu items={modeItems} onpick={pickMode} label={strings.composer.mode} testid="composer-mode" align="end">
         {@const ModeIcon = modeIcon(displayedMode)}
         <span class="mode-icon"><ModeIcon size={14} strokeWidth={1.75} /></span>
         <span class="ui-label" title={modeTitle(displayedMode)}>{modeLabel(displayedMode, provider)}</span>
+        <ChevronDown size={12} strokeWidth={2} class="chevron" />
       </Menu>
     {/if}
     </div>
@@ -602,5 +603,7 @@
      alone, the logo dropped too, at 360. */
   @media (max-width: 380px) {
     .chips :global(.picker > .trigger.asking) { padding: 0 8px; }
+    /* Every chip drops its chevron here, as the model's does. */
+    .chips :global(.trigger > .chevron) { display: none; }
   }
 </style>

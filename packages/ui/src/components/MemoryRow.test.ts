@@ -22,7 +22,7 @@ test.each([['en', 'thread-quota'], ['en', 'budget'], ['en', 'machine'], ['fr', '
   // The line names what happened, not only the limit: a bare "Memory limit" read as a setting.
   expect(strings.resources.killLine(1)).toBe(locale === 'fr' ? 'Arrêt à la limite mémoire' : 'Stopped at the memory limit');
   // A phone-narrow line has its own short title, so it reads whole at 360 px.
-  expect(row.querySelector('.line .title .short')?.textContent).toBe(locale === 'fr' ? 'Arrêt à la limite' : 'Stopped at limit');
+  expect(row.querySelector('.line .title .short')?.textContent).toBe(locale === 'fr' ? 'Mémoire saturée' : 'Memory limit hit');
   // The figure is its own unbreakable piece: a narrow line cuts the words before it, never sends it alone below.
   expect(row.querySelector('.line .figure')?.textContent).toBe(kept);
   expect(row.querySelector('.line .title')?.textContent).not.toContain(kept);

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import { Bot, ChevronRight, CircleAlert, CirclePause, KeyRound, LogIn, MessageCircleQuestion, ShieldQuestion } from '@lucide/svelte';
   import { minuteClock, secondClock } from '../../lib/clock.svelte';
   import { elapsed, exactTime, projectName } from '../../lib/format';
@@ -8,6 +9,8 @@
   import { threadState } from '../../lib/thread-state';
   import { contactsShown } from '../../lib/contacts-rail.svelte';
   import { workspace, type Machine } from '../../lib/workspace.svelte';
+  import { namesMachine } from '../../lib/row-machine';
+  import MachineIcon from '../MachineIcon.svelte';
   import ProjectTile from '../ProjectTile.svelte';
   import StateRing from '../StateRing.svelte';
   import ThreadPicture from '../ThreadPicture.svelte';
@@ -19,13 +22,16 @@
    * its thread, where the question or permission waits above the composer.
    * Nothing waiting says so quietly, on the sky.
    * Calm by default: three cards in one column, `See all` for the rest, and
-   * the work folded under one quiet line the user opens when they want it
-   * (remembered on this device).
+   * the work under one quiet line: open while its rows fit in the column left
+   * under the asks, folded when they would scroll it, and once the user folds
+   * or opens it, as they left it (remembered on this device).
    */
   let { store }: { store: Store } = $props();
   const labels = $derived(strings.inbox);
   const machines = $derived(workspace.machinesOr(store));
   const several = $derived(machines.length > 1);
+  /** A card names its machine as the Recent rows do (`namesMachine`): never this PC unless it stopped answering. */
+  const named = (machine: Machine) => several && namesMachine(machine, machine.store.connection !== 'ready');
   const lists = $derived(inbox(storeSources(machines)));
   /** The headers read the one count (`inbox().tally`), the strip's, the tabs' and the switch's: bots apart, offline machines never. */
   const botNeeds = $derived(lists.tally.bots.needs);
@@ -35,15 +41,64 @@
   let allCards = $state(false);
   let allRows = $state(false);
   const WORKING_KEY = 'boite.inbox.working';
-  let workingOpen = $state(readWorkingOpen());
-  function readWorkingOpen(): boolean {
-    try { return localStorage.getItem(WORKING_KEY) === 'open'; } catch { return false; }
+  /** The user's own fold, once they used the chevron; until then the room decides (`fits`). */
+  let chosen = $state<'open' | 'closed' | null>(readWorkingFold());
+  /** Whether the working rows fit whole in the column under the asks, measured by `measure`. */
+  let fits = $state(false);
+  const workingOpen = $derived(chosen === null ? fits : chosen === 'open');
+  function readWorkingFold(): 'open' | 'closed' | null {
+    try { const saved = localStorage.getItem(WORKING_KEY); return saved === 'open' || saved === 'closed' ? saved : null; } catch { return null; }
   }
   function toggleWorking() {
-    workingOpen = !workingOpen;
-    try { localStorage.setItem(WORKING_KEY, workingOpen ? 'open' : 'closed'); } catch { /* Storage off: the fold lasts this page. */ }
+    chosen = workingOpen ? 'closed' : 'open';
+    try { localStorage.setItem(WORKING_KEY, chosen); } catch { /* Storage off: the fold lasts this page. */ }
   }
   const WORKING_ROWS = 5;
+  /** A working row's height (`.row`'s min-height), and the `See all` line under five. */
+  const WORKING_ROW_HEIGHT = 34;
+  const MORE_HEIGHT = 34;
+
+  let section = $state<HTMLElement | undefined>(undefined);
+  let workingRows = $state<HTMLElement | undefined>(undefined);
+  let workingMore = $state<HTMLElement | undefined>(undefined);
+
+  /**
+   * Opens the work by default when its rows fit in the column's height under
+   * what is already drawn (the asks, the offline cards), so the home does not
+   * leave that room empty over a folded line; folded when they would make the
+   * column scroll. The column's height is the home's layout, not the list's,
+   * so opening the rows never changes the answer.
+   */
+  function measure() {
+    const target = section;
+    const column = target?.parentElement;
+    if (!target || !column || chosen !== null) return;
+    const shown = (workingRows?.offsetHeight ?? 0) + (workingMore ? workingMore.offsetHeight + 6 : 0);
+    const without = target.scrollHeight - shown;
+    const count = Math.min(lists.working.length, WORKING_ROWS);
+    const need = count * WORKING_ROW_HEIGHT + (lists.working.length > WORKING_ROWS ? MORE_HEIGHT : 0);
+    // What the column draws over the list (a folder button, a note) is not the list's room.
+    const top = target.offsetParent === column ? target.offsetTop : target.offsetTop - column.offsetTop;
+    fits = count > 0 && without + need <= column.clientHeight - Math.max(0, top);
+  }
+
+  // Again when the lists change, when the column is resized and when what sits over the work
+  // changes (a contact's request loads after the lists, its cards after it).
+  $effect(() => {
+    void lists;
+    void tick().then(measure);
+  });
+  $effect(() => {
+    const target = section;
+    const column = target?.parentElement;
+    if (!target || !column) return;
+    const resized = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => measure());
+    resized?.observe(column);
+    resized?.observe(target);
+    const changed = typeof MutationObserver === 'undefined' ? null : new MutationObserver(() => measure());
+    changed?.observe(target, { childList: true, subtree: true });
+    return () => { resized?.disconnect(); changed?.disconnect(); };
+  });
   /**
    * One number, one set: the header's count and `See all (n)` both count the
    * threads, as the sidebar's Needs you does. A bot's ask sits behind the
@@ -73,7 +128,7 @@
   }
 </script>
 
-<section class="inbox" data-testid="inbox" aria-label={labels.label}>
+<section class="inbox" data-testid="inbox" aria-label={labels.label} bind:this={section}>
   {#if ContactRequestNotice && contactsShown(store)}<ContactRequestNotice {store} flow />{/if}
   {#if lists.needs.length}
     <!-- The threads' number is the sidebar's Needs you; a bot's ask is counted apart, behind a robot, as the Threads switch does. -->
@@ -120,14 +175,14 @@
       </button>
     </h2>
     {#if workingOpen}
-    <ul class="rows" id="inbox-working-rows">
+    <ul class="rows" id="inbox-working-rows" bind:this={workingRows}>
       {#each rows as row (`${row.machine.id}:${row.thread.id}`)}
         {@render workingRow(row)}
       {/each}
     </ul>
     {/if}
     {#if workingOpen && lists.working.length > WORKING_ROWS}
-      <button type="button" class="ghost small more" data-testid="inbox-working-more" aria-expanded={allRows} onclick={() => { allRows = !allRows; }}>
+      <button type="button" class="ghost small more" data-testid="inbox-working-more" bind:this={workingMore} aria-expanded={allRows} onclick={() => { allRows = !allRows; }}>
         <span class="ui-label">{allRows ? labels.fewer : fill(labels.more, { count: String(lists.working.length) })}</span>
       </button>
     {/if}
@@ -153,7 +208,7 @@
         <span class="why">
           {#if card.project}<span class="where"><ProjectTile project={card.project} store={card.machine.store} size={14} /><span class="ui-label">{projectName(card.project)}</span></span>
           {:else if card.kind === 'bots'}<span class="where bot" data-testid="inbox-card-bot"><Bot size={13} aria-hidden="true" /><span class="ui-label">{labels.bot}</span></span>{/if}
-          {#if several}<span class="machine ui-label">{card.machine.label}</span>{/if}
+          {#if named(card.machine)}<span class="machine ui-label" data-testid="inbox-card-machine"><MachineIcon icon={card.machine.icon} os={card.machine.store.core?.os} size={12} /><span class="machine-name">{card.machine.label}</span></span>{/if}
           <Icon size={13} class={card.reason === 'failed' ? 'failed-mark' : undefined} /><span class="reason">{reason}</span>{#if card.detail}<span class="detail">{card.detail}</span>{/if}
         </span>
       </span>
@@ -170,7 +225,7 @@
         <ThreadPicture owner={row.machine.store} thread={row.thread} size={16} />
       </StateRing>
       <span class="title">{row.thread.title}</span>
-      <span class="where ui-label">{[projectName(row.project) || null, several ? row.machine.label : null].filter(Boolean).join(' · ')}</span>
+      <span class="where ui-label">{[projectName(row.project) || null, named(row.machine) ? row.machine.label : null].filter(Boolean).join(' · ')}</span>
       <span class="elapsed">{time}</span>
     </button>
   </li>
@@ -225,8 +280,10 @@
   .lane button.count.bots:disabled { opacity: 1; cursor: default; }
   .bot-cards { margin-bottom: 6px; }
   .where .ui-label, .machine { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .machine { flex: 0 1 auto; max-width: 25%; }
-  .machine::after { content: '·'; margin-left: 6px; color: var(--color-subtle); }
+  .machine { display: inline-flex; flex: 0 1 auto; align-items: center; gap: 4px; min-width: 0; max-width: 25%; }
+  .machine > :global(svg) { flex: none; }
+  .machine-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .machine::after { content: '·'; margin-left: 2px; color: var(--color-subtle); }
   .reason { flex: none; }
   /* The detail takes only the room left: at a narrow window it is cut first, never the project or the machine. */
   .detail { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-subtle); }

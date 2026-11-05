@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { asRecents, rankItems, scoreFields, scoreMatch, sectionRows, type PaletteItem } from './palette';
+import { asRecents, bandBreaks, rankItems, scoreFields, scoreMatch, sectionRows, type PaletteItem } from './palette';
 
 describe('scoreMatch', () => {
   test('a prefix beats a word start, which beats a substring, which beats scattered letters', () => {
@@ -106,5 +106,18 @@ describe('sectionRows', () => {
       ['recent', ['a', 'b', 'c']],
       ['command', ['cmd']]
     ]);
+  });
+
+  test('the recents keep their bands, and a rule opens each band after the first, never inside one', () => {
+    const recents = asRecents([
+      { id: 'pin', kind: 'thread', label: 'Pinned', band: 'pinned' },
+      { id: 'ask', kind: 'thread', label: 'Asks', band: 'needs' },
+      { id: 'ask2', kind: 'thread', label: 'Asks too', band: 'needs' },
+      { id: 'run', kind: 'thread', label: 'Runs', band: 'working' },
+      { id: 'old', kind: 'thread', label: 'Old', band: 'earlier' }
+    ]);
+    expect(recents.map((item) => item.band)).toEqual(['pinned', 'needs', 'needs', 'working', 'earlier']);
+    expect([...bandBreaks([...recents, { id: 'cmd', kind: 'command', label: 'Command' }])]).toEqual(['ask', 'run', 'old']);
+    expect(bandBreaks(recents.filter((item) => item.band === 'needs')).size).toBe(0);
   });
 });

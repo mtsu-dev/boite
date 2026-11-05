@@ -10,8 +10,8 @@ import { namesMachine } from './row-machine';
  * The thread list's view picker, on the desktop's sidebar and a phone's list
  * header alike: Projects or Recent, then, in Recent, the project it lists
  * (all of them or one). The display options panel keeps only how the rows
- * group. Each choice sits under its own small label (View, Show), so its
- * check reads as one answer of two. A project's id is its `projectKey`, as `projectView.pick` reads it.
+ * group. Each choice sits under its own small label (View, Project), which
+ * `Menu` draws as a named group, so its check reads as one answer of two. A project's id is its `projectKey`, as `projectView.pick` reads it.
  * Every row leads with a mark, All projects its layers, so the labels start
  * on one column; a project names its machine only when the rows would, never
  * This PC.

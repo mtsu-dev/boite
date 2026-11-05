@@ -45,6 +45,16 @@ test('a model whose agent keeps its own level reads Default, with no level lit, 
   expect(onpick).toHaveBeenCalledWith('off');
 });
 
+test('the composer\'s effort chip wears the model chip\'s chevron; elsewhere the chip stays bare', async () => {
+  mounted = mount(EffortSlider, { target: document.body, props: { levels: LEVELS, active: 'high', onpick: () => {}, chevron: true } });
+  flushSync();
+  expect(query('[data-testid=composer-effort]').querySelector('svg.chevron')).not.toBeNull();
+  await unmount(mounted);
+  mounted = mount(EffortSlider, { target: document.body, props: { levels: LEVELS, active: 'high', onpick: () => {} } });
+  flushSync();
+  expect(query('[data-testid=composer-effort]').querySelector('svg.chevron')).toBeNull();
+});
+
 test('a known level lights its dots and names itself', () => {
   open('low', vi.fn());
   expect(query('[data-testid=composer-effort]').textContent?.trim()).toBe('Low');

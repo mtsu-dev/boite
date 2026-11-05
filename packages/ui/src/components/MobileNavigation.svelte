@@ -476,7 +476,8 @@
     .mobile-header.chatting { border-bottom-color: var(--color-border); transition: background-color var(--dur-2) var(--ease-out-quint); }
     /* Lines scrolled up under it: the opaque surface, glass or solid, so no bubble reads half-buried behind a see-through bar. */
     .mobile-header.chatting.covered { background: var(--color-surface); }
-    .chat-heading { flex: 1; min-width: 0; height: 44px; }
+    /* At least a finger high; a thread title on two lines makes it taller (ThreadHeader). */
+    .chat-heading { flex: 1; min-width: 0; min-height: 44px; }
     .mobile-header.chatting { gap: 6px; padding-left: max(8px, env(safe-area-inset-left)); padding-right: max(8px, env(safe-area-inset-right)); }
     .chat-heading :global(.thread-header) { gap: 2px; }
     .chat-heading :global(.launcher span) { display: none; }

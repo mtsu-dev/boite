@@ -177,19 +177,24 @@
     min-height: 0;
     overflow: auto;
     /* No rule above or below the rows: they fade out under the head and the
-       foot. The fade is exactly the padding, so at rest it covers nothing; a
+       foot. The fade fits in the end padding, so at rest it covers nothing; a
        mask, not a scroll-driven animation, because tests and closing elements
        wait on every running animation and that one would never end. */
     --fade: 10px;
     /* Shorter on top: the head's tools sit right above, and a deeper fade
        there opened a wider gap under them than between them and the switch. */
     --fade-top: 6px;
-    padding: var(--fade-top) 6px var(--fade);
+    --end-room: var(--fade);
+    padding: var(--fade-top) 6px var(--end-room);
     display: flex;
     flex-direction: column;
     mask-image: linear-gradient(to bottom, transparent, black var(--fade-top), black calc(100% - var(--fade)), transparent);
   }
   .scroll > :global(*) { flex-shrink: 0; }
+  /* The thread list's last row runs under the foot: at 10 px a row there was cut flat through its
+     subline. A 24 px fade, the phone list's, thins it out instead, and 32 px of end room let the
+     last row stop clear of the fade once scrolled to the end. */
+  .sidebar .scroll { --fade: 24px; --end-room: 32px; }
   .foot {
     display: flex;
     /* The machine button alone on the left, the others together on the

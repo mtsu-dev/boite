@@ -4,6 +4,8 @@
  * test and the component only draws.
  */
 
+import type { ThreadBand } from './thread-order';
+
 export type PaletteKind = 'thread' | 'project' | 'command';
 
 export interface PaletteItem {
@@ -18,6 +20,8 @@ export interface PaletteItem {
   description?: string;
   /** The heading a row sits under: a thread's project on its machine. Rows without one group by kind. */
   section?: string;
+  /** A recent thread's band in the Recent sidebar (pinned, needs you, working, earlier): the list rules where it changes. */
+  band?: ThreadBand;
 }
 
 /** A text a query word may land on, and what landing there costs against the label. */
@@ -156,9 +160,27 @@ export const RECENT_SECTION = 'recent';
  * section in the order given, the Recent sidebar's. Project headings would
  * re-sort them (a project stands where its best row ranked and drags its idle
  * rows up with it), so each row names its project after its title instead.
+ * Each keeps the band it has in that sidebar (`band`), so the list can rule
+ * where one ends (`bandBreaks`): without them its ages read unsorted.
  */
 export function asRecents(items: readonly PaletteItem[]): PaletteItem[] {
   return items.map((item) => ({ ...item, section: RECENT_SECTION }));
+}
+
+/**
+ * The ids of the rows that open a new band after the first, where the list
+ * draws the sidebar's band rule. Rows without a band (a query's, a command)
+ * never break, and one band throughout draws no rule.
+ */
+export function bandBreaks(items: readonly PaletteItem[]): Set<string> {
+  const breaks = new Set<string>();
+  let current: ThreadBand | undefined;
+  for (const item of items) {
+    if (!item.band) { current = undefined; continue; }
+    if (current && item.band !== current) breaks.add(item.id);
+    current = item.band;
+  }
+  return breaks;
 }
 
 /**

@@ -14,8 +14,8 @@ export const strings = {
     killCount: (count: number, limit: string) => `${count} stopped at the memory limit: ${limit}`,
     /** The notice's line: what happened, not only the limit, which stands whole beside it: `Stopped at the memory limit · 9.5 GB`. */
     killLine: (count: number) => count > 1 ? `${count} stopped at the memory limit` : 'Stopped at the memory limit',
-    /** The same on a phone-narrow line, short enough to read whole at 360 px: `Stopped at limit · 9.5 GB`. */
-    killLineShort: (count: number) => count > 1 ? `${count} stopped at limit` : 'Stopped at limit',
+    /** The same on a phone-narrow line, short enough to read whole at 360 px, the noun kept: `Memory limit hit · 9.5 GB`. */
+    killLineShort: (count: number) => count > 1 ? `${count} hit memory limit` : 'Memory limit hit',
     stoppedProcesses: (count: number) => `Show ${count} stopped processes`,
     memorySettings: 'Memory settings',
     protectionOff: 'Memory protection is off',

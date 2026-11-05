@@ -46,7 +46,7 @@
     picture?: boolean;
     /** The sidebar's row: the state rings the picture, and the right end keeps only the time. */
     ring?: boolean;
-    /** Off under Recent's Pinned label, which already says it. */
+    /** Off under Recent's band labels, the Pinned one already saying it. */
     pin?: boolean;
     /**
      * A two-line sidebar row: the title line keeps the ring and the title alone, and
@@ -66,6 +66,14 @@
    * takes the muted tier, so the brand's hues stay on the rows that need a look.
    */
   let quiet = $derived(!thread.pinned && threadLiveKind(thread, kind) === null);
+  /**
+   * Recent's Needs you band (`pin` off: the list draws its band labels, `bandStarts`):
+   * the rows to read before opening one, so a long title takes a second line
+   * before its ellipsis. Every other band keeps one line.
+   */
+  let clamp = $derived(!wrap && !pin && !thread.pinned && threadLiveKind(thread, kind) === 'needs');
+  /** A two-line row's pin sits on the second line, before the time, so it never takes the title's room. */
+  let pinned = $derived(thread.pinned && pin);
   /** A failure says so in words on the second line, so the red mark is not the only cue beside a row that asks. */
   let failed = $derived(away ? null : kind === 'error' ? strings.sidebar.state.error : kind === 'interrupted' ? strings.sidebar.state.interrupted : null);
   /** The sidebar's row: its delegated agents as a glyph and a number before the time, so the row keeps one line. */
@@ -74,12 +82,13 @@
   let waited = $derived(now === undefined ? null : waitingSince(owner, thread));
 </script>
 
+{#snippet pinMark()}<span class="pin" data-testid="thread-pinned"><Pin size={12} /></span>{/snippet}
 {#snippet trail()}
   {#if agents}<span class="agents" class:asking={agents.asking} data-testid="thread-subagents" data-count={agents.shown} role="img" title={agents.label} aria-label={agents.label}><Network size={11} aria-hidden="true" /><span class="ui-label">{agents.shown}</span></span>{/if}
   {#if now !== undefined}<ThreadState {thread} {now} {subagents} {away} {waited} compact={ring} />{/if}
 {/snippet}
 
-<span class="headline" class:wrap class:ring class:stacked class:quiet class:unread={thread.unread && !wrap}>
+<span class="headline" class:wrap class:ring class:stacked class:quiet class:clamp class:unread={thread.unread && !wrap} data-lines={clamp ? 2 : undefined}>
   {#if machine}
     <span class="machine" class:offline={owner.connection !== 'ready'}
       title={`${machine.label} · ${strings.connection[owner.connection]}`} aria-label={machine.label}>
@@ -89,12 +98,12 @@
   {#if picture && ring}
     <StateRing {kind} asking={asksMidTurn(thread, subagents)} stale={away} ground="var(--ring-ground, var(--color-frame))"><ThreadPicture {owner} {thread} size={16} logo={13} mono={quiet} /></StateRing>
   {:else if picture}<ThreadPicture {owner} {thread} size={wrap ? 13 : 12} mono={quiet} />{/if}
-  <span class="title" class:ui-label={!wrap}>{thread.title}</span>
+  <span class="title" class:ui-label={!wrap && !clamp}>{thread.title}</span>
   {#if draft}<span class="draft" data-testid="thread-draft" title={strings.sidebar.unsentDraft} aria-label={strings.sidebar.unsentDraft}><PencilLine size={12} /></span>{/if}
-  {#if thread.pinned && pin}<span class="pin" data-testid="thread-pinned"><Pin size={12} /></span>{/if}
+  {#if pinned && !stacked}{@render pinMark()}{/if}
   {#if !stacked}{@render trail()}{/if}
 </span>
-{#if stacked}<span class="facts" class:ring><span class="known">{@render facts?.()}{#if failed}<span class="failed" data-testid="thread-failed"><span aria-hidden="true">·</span><span class="ui-label">{failed}</span></span>{/if}</span><span class="trail" data-testid="thread-trail">{@render trail()}</span></span>{/if}
+{#if stacked}<span class="facts" class:ring><span class="known">{@render facts?.()}{#if failed}<span class="failed" data-testid="thread-failed"><span aria-hidden="true">·</span><span class="ui-label">{failed}</span></span>{/if}</span><span class="trail" data-testid="thread-trail">{#if pinned}{@render pinMark()}{/if}{@render trail()}</span></span>{/if}
 
 <style>
   .headline {
@@ -117,12 +126,27 @@
   .unread .title {
     font-weight: 600;
   }
+  /* Needs you: up to two 18 px lines, then the ellipsis. The ring, the marks and a one-line row's
+     time stay on the first line's centre, 11 px down the 22 px slot; the line box replaces the
+     trimmed label, whose ink padding would show the top of a third line under the clamp. */
+  .clamp { align-items: flex-start; }
+  .clamp .title {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 18px;
+    margin-top: 2px;
+  }
+  .clamp > :global(:not(.title, [data-testid='state-ring'])) { display: inline-flex; align-items: center; min-height: 22px; }
   /* The ringed row: every row's mark sits in one 22 px slot (1.5 px of air inside the ring),
      ring drawn or not, the 13 px mark centred in it; a 5 px gap and 13 px give the title
      about 235 px at the 304 px default width; unread reads at 500. */
   .ring { gap: 5px; }
   .ring > :global([data-testid='state-ring']) { --ring-air: 1.5px; }
-  .ring .pin { color: var(--color-muted-foreground); }
+  .ring .pin, .facts .pin { color: var(--color-muted-foreground); }
   /* A quiet row's mark is the muted tier at full strength: the ring's resting dim would take it under 4.5:1. */
   .quiet > :global([data-testid='state-ring'].ring .picture) { opacity: 1; }
   .quiet :global([data-testid='thread-provider']) { color: var(--color-muted-foreground); }

@@ -34,6 +34,27 @@
   } = $props();
 
   const popover = new Closing();
+  /** Names a heading for the group it labels: one set of ids per menu. */
+  const uid = $props.id();
+
+  /**
+   * The rows cut where a heading starts a set: a heading's rows run to the
+   * next rule or heading, and are drawn as one named group, so two radio sets
+   * in one menu each read with their name and their one checked row. Rows
+   * before any heading stay loose.
+   */
+  interface Block { id: string; heading?: MenuItem; items: MenuItem[] }
+  let blocks = $derived.by(() => {
+    const out: Block[] = [];
+    let open: Block | null = null;
+    for (const item of items) {
+      if (item.heading) { open = { id: item.id, heading: item, items: [] }; out.push(open); continue; }
+      if (item.separator) open = null;
+      if (!open) { const last = out.at(-1); if (last && !last.heading) last.items.push(item); else out.push({ id: `loose:${item.id}`, items: [item] }); continue; }
+      open.items.push(item);
+    }
+    return out;
+  });
   let root = $state<HTMLDivElement | undefined>(undefined);
   let trigger = $state<HTMLButtonElement | undefined>(undefined);
 
@@ -140,52 +161,63 @@
       data-testid={testid ? `${testid}-menu` : undefined}
     >
       {#if switches}<div class="heading ui-label" aria-hidden="true">{label}</div>{/if}
-      {#each items as item (item.id)}
-        {#if item.separator}
-          <div class="separator" role="separator"></div>
-        {:else if item.heading}
-          <div class="heading section ui-label" role="presentation" data-testid="menu-heading">{item.label}</div>
+      {#each blocks as block (block.id)}
+        {#if block.heading}
+          <!-- A heading names the rows under it, up to the next rule: a screen reader hears each set by its name. -->
+          <div class="group" role="group" aria-labelledby={`${uid}-${block.heading.id}`} data-testid="menu-group">
+            <div class="heading section ui-label" role="presentation" id={`${uid}-${block.heading.id}`} data-testid="menu-heading">{block.heading.label}</div>
+            {#each block.items as item (item.id)}{@render entry(item)}{/each}
+          </div>
         {:else}
-        <button
-          type="button"
-          class="item"
-          class:active={item.active}
-          class:danger={item.danger}
-          class:hide-mark={item.hideActiveMark}
-          class:checkable={item.checked !== undefined}
-          class:radio={item.radio}
-          class:copy={item.copy}
-          class:lead={!!(item.projectTile || item.glyph)}
-          role={item.checked === undefined ? 'menuitem' : item.radio ? 'menuitemradio' : 'menuitemcheckbox'}
-          aria-checked={item.checked}
-          disabled={item.disabled}
-          data-row
-          data-value={item.id}
-          title={item.title}
-          onclick={() => pick(item)}
-        >
-          <span class="label">
-            {#if item.icon === 'settings'}<Settings size={14} strokeWidth={1.75} />{/if}
-            {#if item.projectTile}<ProjectTile project={item.projectTile.project} store={item.projectTile.store} size={18} />{/if}
-            {#if item.glyph}<span class="glyph" class:live={item.live} aria-hidden="true"><item.glyph size={16} strokeWidth={1.75} /></span>{/if}
-            {#if item.status}<span class="status-dot" data-tone={item.status.tone} role="img" aria-label={item.status.label} title={item.status.label}></span>{/if}
-            <span class="ui-label">{item.label}</span>{#if item.count}<span class="count ui-label">{item.count}</span>{/if}
-          </span>
-          {#if item.hint}
-            <span class="hint ui-label">{item.hint}</span>
-          {/if}
-          {#if switches && item.checked !== undefined && !item.radio}
-            <span class="switch" class:on={item.checked} aria-hidden="true"></span>
-          {:else if item.checked}<span class="check"><Check size={14} aria-hidden="true" /></span>
-          {:else if item.copy}<span class="copy-mark" aria-hidden="true"><Copy size={14} strokeWidth={1.75} /></span>{/if}
-        </button>
+          {#each block.items as item (item.id)}{@render entry(item)}{/each}
         {/if}
       {/each}
     </div>
   {/if}
 </div>
 
+{#snippet entry(item: MenuItem)}
+  {#if item.separator}
+    <div class="separator" role="separator"></div>
+  {:else}
+    <button
+      type="button"
+      class="item"
+      class:active={item.active}
+      class:danger={item.danger}
+      class:hide-mark={item.hideActiveMark}
+      class:checkable={item.checked !== undefined}
+      class:radio={item.radio}
+      class:copy={item.copy}
+      class:lead={!!(item.projectTile || item.glyph)}
+      role={item.checked === undefined ? 'menuitem' : item.radio ? 'menuitemradio' : 'menuitemcheckbox'}
+      aria-checked={item.checked}
+      disabled={item.disabled}
+      data-row
+      data-value={item.id}
+      title={item.title}
+      onclick={() => pick(item)}
+    >
+      <span class="label">
+        {#if item.icon === 'settings'}<Settings size={14} strokeWidth={1.75} />{/if}
+        {#if item.projectTile}<ProjectTile project={item.projectTile.project} store={item.projectTile.store} size={18} />{/if}
+        {#if item.glyph}<span class="glyph" class:live={item.live} aria-hidden="true"><item.glyph size={16} strokeWidth={1.75} /></span>{/if}
+        {#if item.status}<span class="status-dot" data-tone={item.status.tone} role="img" aria-label={item.status.label} title={item.status.label}></span>{/if}
+        <span class="ui-label">{item.label}</span>{#if item.count}<span class="count ui-label">{item.count}</span>{/if}
+      </span>
+      {#if item.hint}
+        <span class="hint ui-label">{item.hint}</span>
+      {/if}
+      {#if switches && item.checked !== undefined && !item.radio}
+        <span class="switch" class:on={item.checked} aria-hidden="true"></span>
+      {:else if item.checked}<span class="check"><Check size={14} aria-hidden="true" /></span>
+      {:else if item.copy}<span class="copy-mark" aria-hidden="true"><Copy size={14} strokeWidth={1.75} /></span>{/if}
+    </button>
+  {/if}
+{/snippet}
+
 <style>
+  .group { display: flex; flex-direction: column; gap: 1px; }
   .separator { height: 1px; background: var(--color-border); margin: 4px 6px; }
   .label { display: flex; align-items: center; gap: 6px; }
   .glyph { display: inline-flex; flex: 0 0 16px; color: var(--color-muted-foreground); margin-right: 2px; }

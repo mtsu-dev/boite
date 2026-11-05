@@ -48,9 +48,13 @@ test('a row across projects keeps its first line for the title: time and machine
   const facts = document.querySelector<HTMLElement>('[data-testid=thread-row] .facts')!;
   expect(facts.querySelector('[data-testid=thread-trail] .when')).not.toBeNull();
   expect(facts.querySelector('[data-testid=thread-project] > .ui-label')?.textContent).toBe(project.name);
-  // The project reads by its logo, not a folder glyph; another machine is named in plain muted text.
+  // The project reads by its logo, not a folder glyph. Round 11 read "render-farm  Builder" as one name: another
+  // machine now follows a dot hidden from the accessible name, as "· Failed" does, then its glyph and its name.
   expect(facts.querySelector('[data-testid=thread-project] .tile')).not.toBeNull();
-  expect(facts.querySelector('[data-testid=thread-machine]')?.textContent).toBe('Lab');
+  const named = facts.querySelector('[data-testid=thread-project] ~ [data-testid=thread-machine]')!;
+  expect(named.querySelector(':scope > [aria-hidden=true]')?.textContent).toBe('·');
+  expect(named.querySelector(':scope > svg')).not.toBeNull();
+  expect(named.querySelector(':scope > .ui-label')?.textContent).toBe('Lab');
   // This PC is never named on its own rows.
   await unmount(mounted);
   mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'http://localhost:3773', label: 'This PC', store }, project, thread, now: Date.now(), showProject: true, showMachine: true } });
@@ -394,4 +398,31 @@ test('a failed row says Failed after its project, and only a row nothing is live
   expect(quiet.mono).toBe(true);
   expect(quiet.word).toBeNull();
   expect(quiet.slot).toBe(failed.slot);
+});
+
+test('a Needs you title may take two lines, every other band keeps one, and a two-line row carries its pin on the second line', async () => {
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  const thread = store.threads.find(row => !row.parentThreadId && !row.agentSessionId && row.projectId)!;
+  const project = store.projects.find(row => row.id === thread.projectId)!;
+  store.pendingQuestions = []; store.pendingPermissions = [];
+  vi.spyOn(client, 'call').mockResolvedValue(null as never);
+  const draw = async (fields: Partial<ThreadSummary>, pin: boolean) => {
+    if (mounted) await unmount(mounted);
+    Object.assign(thread, { subagentQuestions: [], backgroundWork: undefined, backgroundWait: undefined, pullRequestWatches: undefined, ...fields });
+    mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'http://localhost:3773', label: 'This PC', store }, project, thread, now: Date.now(), showProject: true, pin } });
+    await settle();
+    const headline = document.querySelector<HTMLElement>('[data-testid=thread-row] .headline')!;
+    return { lines: headline.dataset.lines ?? '1', pinInTitle: headline.querySelector('[data-testid=thread-pinned]') !== null, pinBeside: document.querySelector('[data-testid=thread-trail] [data-testid=thread-pinned]') !== null };
+  };
+  // Round 11: "Retry failed syncs when the networ…" and "Crash when the camera opens on A…" cut mid-word in Needs you.
+  expect((await draw({ status: 'waiting', pinned: false }, false)).lines).toBe('2');
+  expect((await draw({ status: 'error', pinned: false }, false)).lines).toBe('2');
+  // Working, Earlier and Pinned stay one line; so does a row outside the banded list.
+  expect((await draw({ status: 'running', pinned: false }, false)).lines).toBe('1');
+  expect((await draw({ status: 'idle', pinned: false }, false)).lines).toBe('1');
+  expect((await draw({ status: 'waiting', pinned: true }, false)).lines).toBe('1');
+  expect((await draw({ status: 'waiting', pinned: false }, true)).lines).toBe('1');
+  // The filtered view drew the pin in the title line, cutting "Add CSV import to the contacts p…" further.
+  expect(await draw({ status: 'waiting', pinned: true }, true)).toEqual({ lines: '1', pinInTitle: false, pinBeside: true });
 });

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Brain, Zap } from '@lucide/svelte';
+  import { Brain, ChevronDown, Zap } from '@lucide/svelte';
   import type { EffortLevel } from '@boite/contracts';
   import { onDestroy } from 'svelte';
   import { Closing } from '../lib/closing.svelte';
@@ -25,7 +25,8 @@
     speeds = [],
     speed = null,
     onspeed = () => {},
-    ondefault
+    ondefault,
+    chevron = false
   }: {
     levels: EffortLevel[];
     /**
@@ -43,6 +44,8 @@
      * shows a Default switch that hands the level back to the agent.
      */
     ondefault?: () => void;
+    /** The composer's chip: it wears the model chip's chevron beside its peers. */
+    chevron?: boolean;
   } = $props();
 
   const popover = new Closing();
@@ -201,6 +204,8 @@
     <span class="ui-label" class:accented-cap={accentedCap}>{label}</span>
     <!-- A fast mode switched on stays in sight with the popover closed. -->
     {#if levels.length > 0 && selectedSpeed}<span class="fast-mark" data-testid="effort-fast-mark" title={levelName(selectedSpeed)}><Zap size={12} fill="currentColor" /></span>{/if}
+    <!-- In the composer it opens a popover as the model's chip does, so it wears the same chevron; under 380 px every chip drops it. -->
+    {#if chevron}<ChevronDown size={12} strokeWidth={2} class="chevron" />{/if}
   </button>
 
   {#if popover.shown}
@@ -284,6 +289,7 @@
 }
 .trigger:hover, .trigger[aria-expanded='true'] { background: var(--control-glaze) var(--color-control-hover); color: var(--color-foreground); }
 .fast-mark { display: inline-flex; margin-left: -2px; color: var(--color-accent); }
+@media (max-width: 380px) { .trigger > :global(.chevron) { display: none; } }
 .popover { position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 40; width: 280px; padding: 10px 12px 12px; background: var(--color-float); -webkit-backdrop-filter: var(--float-blur); backdrop-filter: var(--float-blur); border: 1px solid transparent; border-radius: var(--radius-lg); box-shadow: var(--shadow-float); animation: pop var(--dur-2) var(--ease-out-quint); transform-origin: bottom left; }
 .popover.closing { animation-name: pop-out; pointer-events: none; }
 /* Three columns: the fast switch on the left, the level in the middle whatever the switch's width. */

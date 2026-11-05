@@ -42,3 +42,30 @@ test('a phone row says Failed after its project, and only a row nothing is live 
   expect((await draw({ status: 'idle', pinned: true })).mono).toBe(false);
   expect(await draw({ status: 'idle', pinned: false })).toEqual({ word: null, afterProject: false, mono: true });
 });
+
+test('a phone row names another machine as "· glyph name", gives a Needs you title two lines, and puts a pin on its second line', async () => {
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  const thread = store.threads.find(row => !row.parentThreadId && !row.agentSessionId && row.projectId)!;
+  const project = store.projects.find(row => row.id === thread.projectId)!;
+  store.pendingQuestions = []; store.pendingPermissions = [];
+  vi.spyOn(client, 'call').mockResolvedValue(null as never);
+  const draw = async (fields: Partial<ThreadSummary>, pin: boolean) => {
+    if (mounted) await unmount(mounted);
+    Object.assign(thread, { subagentQuestions: [], backgroundWork: undefined, backgroundWait: undefined, pullRequestWatches: undefined, ...fields });
+    mounted = mount(PhoneThreadRow, { target: document.body, props: { machine: { id: 'farm', label: 'Builder', store }, project, thread, now: Date.now(), items: [], several: true, pin, onopen: () => {}, onaction: () => {} } });
+    await settle();
+    const head = document.querySelector<HTMLElement>('[data-testid=mobile-row] .head')!;
+    return { lines: head.dataset.lines ?? '1', pinInTitle: head.querySelector('[data-testid=thread-pinned]') !== null, pinBeside: document.querySelector('.meta [data-testid=thread-pinned]') !== null };
+  };
+  // Round 11 read "render-farm  Builder" as one name: the machine follows a hidden dot, then its glyph.
+  expect((await draw({ status: 'waiting', pinned: false }, false)).lines).toBe('2');
+  const named = document.querySelector('[data-testid=thread-project] ~ [data-testid=thread-machine]')!;
+  expect(named.querySelector(':scope > [aria-hidden=true]')?.textContent).toBe('·');
+  expect(named.querySelector(':scope > svg')).not.toBeNull();
+  expect(named.querySelector(':scope > .ui-label')?.textContent).toBe('Builder');
+  expect((await draw({ status: 'idle', pinned: false }, false)).lines).toBe('1');
+  expect((await draw({ status: 'running', pinned: false }, false)).lines).toBe('1');
+  expect((await draw({ status: 'waiting', pinned: false }, true)).lines).toBe('1');
+  expect(await draw({ status: 'waiting', pinned: true }, true)).toEqual({ lines: '1', pinInTitle: false, pinBeside: true });
+});

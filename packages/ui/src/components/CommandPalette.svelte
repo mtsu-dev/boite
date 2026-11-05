@@ -7,7 +7,8 @@
   import { appCommands, runCommand } from '../lib/commands.svelte';
   import { focusComposer, focusedElement, restoreFocus } from '../lib/focus';
   import { projectName } from '../lib/format';
-  import { PALETTE_LIMIT, RECENT_SECTION, RECENT_THREADS, asRecents, rankItems, sectionRows, type PaletteItem } from '../lib/palette';
+  import { PALETTE_LIMIT, RECENT_SECTION, RECENT_THREADS, asRecents, bandBreaks, rankItems, sectionRows, type PaletteItem } from '../lib/palette';
+  import { namesMachine } from '../lib/row-machine';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import { MediaQuery } from 'svelte/reactivity';
@@ -19,7 +20,7 @@
   import ThreadPicture from './ThreadPicture.svelte';
   import ThreadState from './ThreadState.svelte';
   import { asksMidTurn, threadState } from '../lib/thread-state';
-  import { storeOrder, waitingSince } from '../lib/inbox';
+  import { storeOrder, threadLiveKind, waitingSince } from '../lib/inbox';
   import { compareThreads, type OrderKey } from '../lib/thread-order';
   import { onBotsPage } from '../lib/experiments.svelte';
 
@@ -79,8 +80,32 @@
   }
 
   let machines = $derived(workspace.machinesOr(store));
-  /** One machine names no machine. */
+  /** One machine names no machine: a query may then land on its name, but a row draws one only by `named`. */
   let several = $derived(workspace.machines.length > 1);
+
+  /** A row and a heading name their machine as the Recent rows do (`namesMachine`): never this PC unless it stopped answering. */
+  function named(machine: Machine): boolean {
+    return several && namesMachine(machine, machine.store.connection !== 'ready');
+  }
+
+  /**
+   * What a recent says after its project when it needs the user, in the words
+   * of a Recent row's subline: Failed or Interrupted, and Needs you for one
+   * that asks, which the sidebar says with its band heading and the palette has none.
+   */
+  function needsWord(place: Place): string | null {
+    const owner = place.machine.store;
+    if (!place.thread || owner.connection !== 'ready') return null;
+    const kind = threadState(place.thread, owner.subagents(place.thread.id));
+    if (kind === 'error') return strings.sidebar.state.error;
+    if (kind === 'interrupted') return strings.sidebar.state.interrupted;
+    return threadLiveKind(place.thread, kind) === 'needs' ? strings.sidebar.state.waiting : null;
+  }
+
+  /** Nothing live on it and not pinned, Recent's Earlier band: its provider's mark takes the muted tier, as on its Recent row (`ThreadHeadline`). */
+  function quiet(thread: ThreadSummary, owner: Store): boolean {
+    return !thread.pinned && threadLiveKind(thread, threadState(thread, owner.subagents(thread.id))) === null;
+  }
 
   /**
    * Every live thread, most recent first; the list cuts it to the recents until
@@ -103,14 +128,17 @@
         const parent = thread.parentThreadId ? machine.store.threads.find(t => t.id === thread.parentThreadId)?.title ?? '' : undefined;
         places.set(id, { machine, project, thread, ...(bot ? { bots: true as const } : {}), ...(parent === undefined ? {} : { parent }) });
         if (!places.has(section)) places.set(section, bot ? { machine, project: null, thread: null, bots: true } : { machine, project, thread: null });
-        entries.push({ at: thread.lastUserMessageAt ?? thread.createdAt, child: parent !== undefined, thread, key: storeOrder(machine.store, thread), item: {
+        const key = storeOrder(machine.store, thread);
+        entries.push({ at: thread.lastUserMessageAt ?? thread.createdAt, child: parent !== undefined, thread, key, item: {
           id,
           kind: 'thread',
           label: thread.title,
           // What a query may also land on: the parent, the project and the machine; only the parent is drawn.
           hint: [parent ?? '', project ? projectName(project) : '', several ? machine.label : ''].filter(Boolean).join(' '),
           keywords: thread.status,
-          section
+          section,
+          // Its band in the Recent sidebar, read from the same key its order is: the recents rule where it changes.
+          band: thread.pinned ? 'pinned' : key.live ?? 'earlier'
         } });
       }
     }
@@ -148,6 +176,8 @@
     return snapshot.rows = rankItems(query, [...threads, ...projects, ...commandItems], PALETTE_LIMIT);
   });
   let sections = $derived(sectionRows(ranked));
+  /** The recents that open a band after the first: the sidebar's rule goes over them. A query's rows are ranked, not banded. */
+  let breaks = $derived(query.trim() ? new Set<string>() : bandBreaks(ranked));
   /** The rows in the order they are drawn: what the arrows walk. */
   let rows = $derived(sections.flatMap(section => section.items));
 
@@ -349,13 +379,13 @@
                 <div class="section-label project-label" data-testid="palette-bots">
                   <span class="glyph" data-testid="palette-bots-glyph"><Bot size={14} /></span>
                   <span class="name ui-label">{strings.sidebar.agents}</span>
-                  {#if several}<span class="machine ui-label"><MachineIcon icon={heading.machine.icon} os={heading.machine.store.core?.os} size={12} />{heading.machine.label}</span>{/if}
+                  {#if named(heading.machine)}<span class="machine ui-label"><MachineIcon icon={heading.machine.icon} os={heading.machine.store.core?.os} size={12} />{heading.machine.label}</span>{/if}
                 </div>
               {:else}
               <div class="section-label project-label" data-testid="palette-project">
                 {#if heading.project}<ProjectTile project={heading.project} store={heading.machine.store} size={16} />{/if}
                 <span class="name ui-label">{heading.project ? projectName(heading.project) : strings.drafts.name}</span>
-                {#if several}<span class="machine ui-label"><MachineIcon icon={heading.machine.icon} os={heading.machine.store.core?.os} size={12} />{heading.machine.label}</span>{/if}
+                {#if named(heading.machine)}<span class="machine ui-label"><MachineIcon icon={heading.machine.icon} os={heading.machine.store.core?.os} size={12} />{heading.machine.label}</span>{/if}
               </div>
               {/if}
             {:else}
@@ -364,6 +394,9 @@
             {#each section.items as item, n (item.id)}
               {@const index = first + n}
               {@const place = placeOf(item.id)}
+              {@const mono = !!place?.thread && quiet(place.thread, place.machine.store)}
+              {@const word = recent && place?.thread ? needsWord(place) : null}
+              {#if breaks.has(item.id)}<div class="band-rule" aria-hidden="true" data-testid="palette-band-rule" data-band={item.band}></div>{/if}
               <button
                 type="button"
                 class="row"
@@ -378,17 +411,19 @@
                 onmousemove={() => (selected = index)}
                 onclick={() => pick(item)}
               >
-                <span class="mark-slot">
-                  {#if place?.thread}{@const subagents = place.machine.store.subagents(place.thread.id)}<StateRing kind={threadState(place.thread, subagents)} asking={asksMidTurn(place.thread, subagents)} stale={place.machine.store.connection !== 'ready'} ground="var(--color-surface-2)"><ThreadPicture owner={place.machine.store} thread={place.thread} size={16} logo={13} /></StateRing>
+                <span class="mark-slot" class:quiet={mono}>
+                  {#if place?.thread}{@const subagents = place.machine.store.subagents(place.thread.id)}<StateRing kind={threadState(place.thread, subagents)} asking={asksMidTurn(place.thread, subagents)} stale={place.machine.store.connection !== 'ready'} ground="var(--color-surface-2)"><ThreadPicture owner={place.machine.store} thread={place.thread} size={16} logo={13} {mono} /></StateRing>
                   {:else if item.kind === 'project' && place?.project}<ProjectTile project={place.project} store={place.machine.store} size={16} />{/if}
                 </span>
                 <span class="label ui-label">{item.label}</span>
                 {#if recent && place?.thread}
-                  <!-- One heading for every recent: the row names its project where a heading would have. -->
+                  <!-- One heading for every recent: the row names its project where a heading would have,
+                       then, as a Recent row's subline does, its machine when it is not this PC and what it needs in words. -->
                   <span class="where ui-label" data-testid="palette-where">
                     {#if place.bots}<Bot size={12} aria-hidden="true" data-testid="palette-where-bots" />{strings.sidebar.agents}
                     {:else}{#if place.project}<ProjectTile project={place.project} store={place.machine.store} size={12} />{/if}<span class="where-name">{place.project ? projectName(place.project) : strings.drafts.name}</span>{/if}
-                    {#if several}<span class="where-machine"><MachineIcon icon={place.machine.icon} os={place.machine.store.core?.os} size={12} />{place.machine.label}</span>{/if}
+                    {#if named(place.machine)}<span class="where-machine" data-testid="palette-where-machine"><span aria-hidden="true">·</span><MachineIcon icon={place.machine.icon} os={place.machine.store.core?.os} size={12} />{place.machine.label}</span>{/if}
+                    {#if word}<span class="where-needs" data-testid="palette-where-needs"><span aria-hidden="true">·</span>{word}</span>{/if}
                   </span>
                 {/if}
                 {#if place?.parent !== undefined}<span class="parent ui-label" data-testid="palette-parent"><Network size={12} aria-hidden="true" /><span class="parent-title">{fill(strings.palette.inParent, { title: place.parent })}</span></span>{/if}
@@ -396,7 +431,7 @@
                   <!-- The ring says the state; the words stay in the time's title and label, as on a sidebar row. -->
                   <span class="state"><ThreadState thread={place.thread} {now} subagents={place.machine.store.subagents(place.thread.id)} away={place.machine.store.connection !== 'ready'} waited={waitingSince(place.machine.store, place.thread)} compact /></span>
                 {:else if item.kind === 'project' && place}
-                  <span class="meta ui-label">{#if several}<MachineIcon icon={place.machine.icon} os={place.machine.store.core?.os} size={12} />{place.machine.label}{' · '}{/if}{strings.palette.newThread}</span>
+                  <span class="meta ui-label">{#if named(place.machine)}<MachineIcon icon={place.machine.icon} os={place.machine.store.core?.os} size={12} />{place.machine.label}{' · '}{/if}{strings.palette.newThread}</span>
                 {:else if item.hint}
                   <span class="kbd ui-label-box"><span class="ui-label">{item.hint}</span></span>
                 {/if}
@@ -665,12 +700,24 @@
     text-overflow: ellipsis;
   }
 
-  .where-machine {
+  /* After the project, each behind the subline's dot: the machine, then what the row needs. */
+  .where-machine,
+  .where-needs {
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    margin-left: 4px;
   }
+
+  /* The sidebar's band rule where the recents change band: its 1 px line, 4 px of air each side. */
+  .band-rule {
+    height: 1px;
+    margin: 4px 10px;
+    background: var(--color-border);
+  }
+
+  /* A quiet recent's mark at full strength in the muted tier, as on its Recent row: the ring's resting dim would take it under 4.5:1. */
+  .mark-slot.quiet > :global([data-testid='state-ring'].ring .picture) { opacity: 1; }
+  .mark-slot.quiet :global([data-testid='thread-provider']) { color: var(--color-muted-foreground); }
 
   .parent-title {
     min-width: 0;

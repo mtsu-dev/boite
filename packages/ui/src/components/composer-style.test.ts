@@ -29,6 +29,14 @@ test('a narrowed composer cuts the model name before the effort', () => {
   expect(narrow).toMatch(/\.desktop-options \{ flex: none; \}/);
 });
 
+test('the effort and mode chips wear the model chip\'s 12 px chevron, and every chip drops it under 380 px', () => {
+  const mode = barSource.slice(barSource.indexOf('testid="composer-mode"'), barSource.indexOf('</Menu>', barSource.indexOf('testid="composer-mode"')));
+  expect(mode).toMatch(/<ChevronDown size=\{12\} strokeWidth=\{2\} class="chevron" \/>/);
+  expect(barSource).toMatch(/<EffortSlider chevron /);
+  const narrow = barSource.slice(barSource.lastIndexOf('@media (max-width: 380px)'));
+  expect(narrow).toMatch(/\.chips :global\(\.trigger > \.chevron\) \{ display: none; \}/);
+});
+
 /** WCAG relative luminance of a #rrggbb colour. */
 function luminance(hex: string): number {
   const [r, g, b] = [1, 3, 5].map((at) => {

@@ -550,7 +550,7 @@
   <ThreadPreparation {store} visible={documentVisible && (inShell || mobileScreen === 'chat')} />
 {/if}
 
-<div class="app" class:shell={inShell} class:ready={booted} class:phone-chat={!inShell && !mobileRecovery && store.page === 'chat' && mobileScreen === 'chat'} class:off-chat={!inShell && store.page !== 'chat'} class:tabbed={!inShell && mobileTabs} class:quitting bind:this={appRoot}>
+<div class="app" class:shell={inShell} class:ready={booted} class:phone-chat={!inShell && !mobileRecovery && store.page === 'chat' && mobileScreen === 'chat'} class:off-chat={!inShell && store.page !== 'chat'} class:on-settings={store.page === 'settings'} class:tabbed={!inShell && mobileTabs} class:quitting bind:this={appRoot}>
   {#if !inShell && booted}
     {#if mobileNavigation.current}
       {@const MobileNavigation = mobileNavigation.current}
@@ -871,8 +871,9 @@
     .app:not(.shell) { position: fixed; left: 0; right: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; grid-template-columns: minmax(0, 1fr); height: var(--app-height, 100dvh); top: var(--app-top, 0px); overflow: hidden; }
     .app:not(.shell) :global(.titlebar) { display: none; grid-row: 2; grid-column: 1; }
     .app:not(.shell) .body { grid-row: 2; grid-column: 1; }
-    /* The header owns the top safe area; pages keep clear of the home indicator, unless the bottom bar (tabbed) does. */
+    /* The header owns the top safe area; pages keep clear of the home indicator, unless the bottom bar (tabbed) does: Settings run under it, as Threads do. */
     .app.off-chat:not(.tabbed) .body { padding-bottom: env(safe-area-inset-bottom, 0px); box-sizing: border-box; }
+    .app.off-chat.tabbed.on-settings .body { grid-row: 2 / 4; }
     /* Skips layout and paint of the chat streaming behind the list; its DOM, state and scroll stay as they were.
        Skipped content does not advance its animations, so the switch waits for the exits the cover started
        (a menu closing) to end, and lifts at once on return. */

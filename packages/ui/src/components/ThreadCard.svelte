@@ -40,7 +40,7 @@
     showProject?: boolean;
     /** Off while only one machine is connected, and under a project header, which already shows it. */
     showMachine?: boolean;
-    /** Off under Recent's Pinned label: the label says it, the title keeps the room. */
+    /** Off under Recent's band labels: the Pinned one says it, the title keeps the room, and a Needs you title may take two lines (`ThreadHeadline`). */
     pin?: boolean;
   } = $props();
   let owner = $derived(machine.store);
@@ -144,12 +144,13 @@
       {#snippet facts()}
         {#if pending}<span class="fact pending" data-testid="thread-pending" title={pending}><FolderInput size={12} /><span class="ui-label">{pending}</span></span>{/if}
         {#if showProject}<span class="fact project-name" data-testid="thread-project" title={project.path}><ProjectTile {project} store={owner} size={12} /><span class="ui-label">{projectName(project)}</span></span>{/if}
-        <!-- The project's own logo says where the row belongs; the machine is named only when it is not this one, as the home's cards do. -->
-        {#if showMachine && namesMachine(machine, owner.connection !== 'ready')}<span class="fact machine" class:offline={owner.connection !== 'ready'} data-testid="thread-machine" title={`${machine.label} · ${strings.connection[owner.connection]}`}><span class="ui-label">{machine.label}</span></span>{/if}
+        <!-- The project's own logo says where the row belongs. The machine is named only when it is not this one (`namesMachine`),
+             after the project in the form "· Failed" takes: a dot kept from the accessible name, then its glyph and its name. -->
+        {#if showMachine && namesMachine(machine, owner.connection !== 'ready')}<span class="fact machine" class:offline={owner.connection !== 'ready'} data-testid="thread-machine" title={`${machine.label} · ${strings.connection[owner.connection]}`}><span class="dot" aria-hidden="true">·</span><MachineIcon icon={machine.icon} os={owner.core?.os} size={12} /><span class="ui-label">{machine.label}</span></span>{/if}
       {/snippet}
       <ThreadHeadline {owner} {thread} {now} {open} {pin} ring facts={meta ? facts : undefined} machine={showMachine && !meta ? machine : undefined} />
     </button>
-    <!-- Pin on hover; a pinned row keeps its 12 px mark in the title line. -->
+    <!-- Pin on hover; a pinned row keeps its 12 px mark beside the time, on the second line when it has one. -->
     <button type="button" class="ghost small icon pin-action" data-testid="thread-pin" aria-pressed={thread.pinned === true}
       aria-label={thread.pinned ? strings.sidebar.unpin : strings.sidebar.pin} title={thread.pinned ? strings.sidebar.unpin : strings.sidebar.pin}
       onclick={() => void owner.pin(thread.id, !thread.pinned)}>{#if thread.pinned}<PinOff size={13} />{:else}<Pin size={13} />{/if}</button>
@@ -247,6 +248,8 @@
   /* A move waiting for the turn's end: the accent, like the marker the move leaves in the chat. */
   .pending { color: var(--color-accent); }
   .machine.offline { color: var(--color-danger); }
+  /* The dot stands 8 px from the glyph, as "· Failed" stands from its word. */
+  .machine .dot { flex: none; margin-right: 4px; }
   /* A 12 px tile: its letter a size down so it stays inside. */
   .project-name :global(.tile.letter) { font-size: 9px; font-weight: 600; }
   /* Centred on the title's line: the 28 px row less a 26 px button leaves 1 px over it. */

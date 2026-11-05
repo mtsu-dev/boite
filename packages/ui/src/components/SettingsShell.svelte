@@ -470,11 +470,11 @@
   /* The scroll ends 24 px under the last card, whichever element scrolls: the panel with the bar, the page without it. */
   .framed > :global(.page) { padding-bottom: 24px; }
   @media (min-width: 721px) {
-    /* The sidebar's bottom edge fade (`RailFrame`'s 10 px): a row the window cuts reads as more to scroll to, not
-       as a broken card. Not a mask on the panel, which would fade its border and clip its shadow: a strip of the
-       panel's own ground, faded in, held at the bottom edge while the content scrolls under it. At the end of the
-       scroll it covers only the padding. */
-    .framed { --fade: 10px; }
+    /* A bottom edge fade as tall as the phone list's (24 px): a row the window cuts fades out over more than its
+       13 px line, so it reads as more to scroll to, not as a broken card. Not a mask on the panel, which would fade
+       its border and clip its shadow: a strip of the panel's own ground, faded in, held at the bottom edge while the
+       content scrolls under it. At the end of the scroll it covers only the page's 24 px end padding. */
+    .framed { --fade: 24px; }
     .framed::after {
       content: '';
       position: sticky;

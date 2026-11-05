@@ -14,7 +14,7 @@ export const fr: Translation = {
     killLimit: (limit: string) => `Arrêt à la limite mémoire : ${limit}`,
     killCount: (count: number, limit: string) => `${count} arrêts à la limite mémoire : ${limit}`,
     killLine: (count: number) => count > 1 ? `${count} arrêts à la limite mémoire` : 'Arrêt à la limite mémoire',
-    killLineShort: (count: number) => count > 1 ? `${count} arrêts à la limite` : 'Arrêt à la limite',
+    killLineShort: (count: number) => count > 1 ? `${count} arrêts mémoire` : 'Mémoire saturée',
     stoppedProcesses: (count: number) => `Voir les ${count} processus arrêtés`,
     memorySettings: 'Réglages mémoire',
     protectionOff: 'Protection mémoire désactivée',

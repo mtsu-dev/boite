@@ -7,6 +7,7 @@ import * as palette from '../lib/palette';
 import { waitingSince } from '../lib/inbox';
 import { shortAgo } from '../lib/thread-state';
 import { setExperiment } from '../lib/experiments';
+import { workspace } from '../lib/workspace.svelte';
 
 let running: Record<string, unknown> | null = null;
 let store: Store;
@@ -189,7 +190,8 @@ test('a bot\'s own thread names Bots with the tab\'s glyph, in its recent row an
   flushSync();
   await tick();
   const where = document.querySelector('[data-palette-id="thread:t-bench"] [data-testid=palette-where]');
-  expect(where?.textContent?.trim()).toBe('Bots');
+  // Bots in the project's place; t-bench asks, so its word follows.
+  expect(where?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Bots ·Needs you');
   expect(where?.querySelector('[data-testid=palette-where-bots]')).not.toBeNull();
   await type(store.threads.find(thread => thread.id === 't-bench')!.title);
   const section = document.querySelector('[data-palette-id="thread:t-bench"]')!.closest<HTMLElement>('[data-testid=palette-section]')!;
@@ -235,6 +237,60 @@ test('with nothing typed, the rows read in Recent\'s order under one heading, wh
   expect(given).toEqual(order);
   expect(rows().filter(id => id.startsWith('thread:'))).toEqual(order);
   expect(document.querySelectorAll('[data-testid=palette-section]')[0]?.querySelector('[data-testid=palette-recent]')).not.toBeNull();
+});
+
+test('with nothing typed, a rule opens each Recent band, a row that needs the user says so in words, and an idle mark is muted', async () => {
+  // Round 12: the ages read now, 2h, 3m under one heading with nothing marking where Needs you ended,
+  // Failed and asks told apart by colour alone, and an idle row kept its brand hue.
+  store.threads = store.threads.map(thread => ({ ...thread, pinned: false, openQuestions: 0, subagentQuestions: [],
+    status: thread.id === 't-bench' ? 'error' : thread.id === 't-scheduler' ? 'running' : 'idle' }));
+  store.pendingQuestions = []; store.pendingPermissions = [];
+  flushSync();
+  store.paletteOpen = true;
+  flushSync();
+  await tick();
+  expect(rows().filter(id => id.startsWith('thread:')).slice(0, 2)).toEqual(['thread:t-bench', 'thread:t-scheduler']);
+  const rules = [...document.querySelectorAll<HTMLElement>('[data-testid=palette-band-rule]')];
+  expect(rules.map(rule => [rule.dataset['band'], rule.nextElementSibling?.getAttribute('data-palette-id')])).toEqual([['working', 'thread:t-scheduler'], ['earlier', rows().filter(id => id.startsWith('thread:'))[2]]]);
+  expect(rules.every(rule => rule.getAttribute('aria-hidden') === 'true')).toBe(true);
+  const needs = (id: string) => document.querySelector(`[data-palette-id="thread:${id}"] [data-testid=palette-where-needs]`)?.textContent ?? null;
+  expect(needs('t-bench')).toBe('·Failed');
+  expect(needs('t-scheduler')).toBeNull();
+  expect(needs('t-descriptors')).toBeNull();
+  // Nothing live on it: its mark takes the muted tier, the live rows keep their hue.
+  expect(document.querySelector('[data-palette-id="thread:t-descriptors"] [data-mono]')).not.toBeNull();
+  expect(document.querySelector('[data-palette-id="thread:t-scheduler"] [data-mono]')).toBeNull();
+  // A query ranks its rows: no band rule then.
+  await type('t');
+  expect(document.querySelector('[data-testid=palette-band-rule]')).toBeNull();
+});
+
+test('a thread that asks reads Needs you after its project, since the palette draws no band heading', async () => {
+  store.threads = store.threads.map(thread => thread.id === 't-bench' ? { ...thread, status: 'waiting', openQuestions: 1 } : thread);
+  flushSync();
+  store.paletteOpen = true;
+  flushSync();
+  await tick();
+  expect(document.querySelector('[data-palette-id="thread:t-bench"] [data-testid=palette-where-needs]')?.textContent).toBe('·Needs you');
+});
+
+test('a recent names its machine as the Recent rows do: never this PC, the other one behind a dot and its glyph', async () => {
+  const builder = new Store();
+  const other = new FakeClient({ delayMs: 0 });
+  builder.machineId = 'builder';
+  builder.attach(other);
+  await builder.connect();
+  store.machineId = 'here';
+  workspace.machines = [{ id: 'here', label: 'This PC', store }, { id: 'builder', label: 'Builder', store: builder }];
+  onTestFinished(() => { workspace.machines = []; builder.detach(); other.close(); });
+  store.paletteOpen = true;
+  flushSync();
+  await tick();
+  const machines = [...document.querySelectorAll('[data-testid=palette-where-machine]')].map(node => node.textContent);
+  expect(machines.length).toBeGreaterThan(0);
+  expect(machines.every(text => text === '·Builder')).toBe(true);
+  expect(document.querySelector('[data-testid=palette-list]')?.textContent).not.toContain('This PC');
+  expect(document.querySelector('[data-testid=palette-where-machine] svg')).not.toBeNull();
 });
 
 test('with nothing typed, a thread that needs the user outranks newer idle ones, as in the Recent sidebar', async () => {

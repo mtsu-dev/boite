@@ -289,6 +289,12 @@
   .home, .detail { animation: fade var(--dur-2) var(--ease-out-quint); min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
   .settings-screen:is([data-slide], .arrived) > :is(.home, .detail) { animation: none; }
   .home { padding: 8px 16px 16px; }
+  /* Under the floating tab bar (App.svelte spans the page over its row), as the Threads list: the last row clears the
+     bar, and rows thin out behind the capsule over the gap it floats on, never cut flat at its top edge. A detail's
+     page is often its own scroller (app.css `.page`), so the end room goes on the detail's last child too: it ends
+     under the bar whichever of the two scrolls. */
+  :global(.app.tabbed) :is(.home, .detail) { --bar-gap: max(8px, env(safe-area-inset-bottom)); mask-image: linear-gradient(to top, transparent 0 var(--bar-gap), black calc(var(--bar-gap) + 24px)); }
+  :global(.app.tabbed) :is(.home, .detail > :global(:last-child)) { padding-bottom: 96px; }
   .large-title { margin: 6px 2px 14px; font-size: 28px; font-weight: 700; letter-spacing: -0.6px; line-height: 1.15; color: var(--color-foreground); }
   .home :global(.policy-banner) { margin-bottom: 20px; }
   /* A full touch target for the field and each result. */

@@ -14,6 +14,7 @@
   import { projectName } from '../lib/format';
   import { fill, strings } from '../lib/strings';
   import Menu from './Menu.svelte';
+  import MachineIcon from './MachineIcon.svelte';
   import ProjectTile from './ProjectTile.svelte';
   import StateRing from './StateRing.svelte';
   import ThreadPicture from './ThreadPicture.svelte';
@@ -41,7 +42,7 @@
     items: MenuItem[];
     grouped?: boolean;
     several?: boolean;
-    /** Off under Recent's Pinned label, which already says it. */
+    /** Off under Recent's band labels, the Pinned one already saying it. */
     pin?: boolean;
     /** The first row of a Recent band: its card's top corners are rounded, as a project card's are. */
     start?: boolean;
@@ -65,10 +66,17 @@
   /** A row that needs the user counts from the home card's `since`, so both read one age. */
   let waited = $derived(wait ? null : waitingSince(owner, thread));
   let pending = $derived(pendingLine(thread));
-  /** The grey second line; the time joins it, so the title keeps the whole first line. */
-  /** The machine is named only when it is not this one, as the home's cards and the desktop rows do. */
+  /** The machine is named only when it is not this one (`namesMachine`), as "· Failed" is, after the project, with its glyph. */
   let elsewhere = $derived(several && !grouped && namesMachine(machine, away));
+  /** The grey second line; the time joins it, so the title keeps the whole first line. */
   let second = $derived(Boolean(wait || pending || (!grouped && project) || elsewhere || failed || agents?.asking));
+  /**
+   * Recent's Needs you band (`pin` off: the list draws its band labels): a long title takes a
+   * second line before its ellipsis, as on the desktop; every other band keeps one line.
+   */
+  let clamp = $derived(!pin && !thread.pinned && threadLiveKind(thread, kind) === 'needs');
+  /** A pinned row with a second line carries its pin there, before the time, so it never takes the title's room. */
+  let pinned = $derived(thread.pinned && pin);
   const reasonIcons = { question: MessageCircleQuestion, permission: ShieldQuestion, secret: KeyRound, 'sign-in': LogIn, failed: CircleAlert, interrupted: CirclePause } as const;
   let draft = $derived(hasUnsentDraft(owner.composerStates[thread.id]) && !(owner.openThread?.id === thread.id));
   /** What a slide may do now: the menu's own items, so a thread at work is never marked done by a finger. */
@@ -81,6 +89,7 @@
   }
 </script>
 
+{#snippet pinMark()}<span class="mark pin" data-testid="thread-pinned"><Pin size={13} /></span>{/snippet}
 {#snippet time()}
   {#if wait}<time class="time waited" datetime={new Date(wait.since).toISOString()} title={fill(strings.inbox.waited, { time: waitedFor(now, wait.since) })}>{waitedFor(now, wait.since)}</time>
   {:else}<span class="time"><ThreadState {thread} {now} {subagents} {away} {waited} compact /></span>{/if}
@@ -100,12 +109,12 @@
     <span class="lines">
       <!-- The title is the row's button; its overlay stretches over the whole row, so a tap anywhere opens it
            while the pull request's link above the overlay stays its own target, never a link inside a button. -->
-      <span class="head">
+      <span class="head" class:clamp data-lines={clamp ? 2 : undefined}>
         <button class="ghost thread" data-testid="mobile-thread-{thread.id}" onclick={onopen}>
           <span class="title" class:unread={thread.unread}>{thread.title}</span>
         </button>
         {#if draft}<span class="mark draft" data-testid="thread-draft" title={strings.sidebar.unsentDraft} aria-label={strings.sidebar.unsentDraft}><PencilLine size={13} /></span>{/if}
-        {#if thread.pinned && pin}<span class="mark pin" data-testid="thread-pinned"><Pin size={13} /></span>{/if}
+        {#if pinned && !second}{@render pinMark()}{/if}
         {#if !second}{@render time()}{/if}
       </span>
       {#if second}
@@ -113,10 +122,11 @@
           {#if wait}{@const Icon = reasonIcons[wait.reason]}<span class="fact why" class:failed={wait.reason === 'failed' || wait.reason === 'sign-in' || wait.reason === 'interrupted'} data-testid="thread-wait-reason" data-reason={wait.reason}><Icon size={12} aria-hidden="true" /><span class="ui-label" title={strings.inbox.reasons[wait.reason]}>{strings.inbox.reasonTags[wait.reason]}</span></span>{/if}
           {#if pending}<span class="fact pending" data-testid="thread-pending" title={pending}><FolderInput size={12} aria-hidden="true" /><span class="ui-label">{pending}</span></span>{/if}
           {#if !grouped && project}<span class="fact project" data-testid="thread-project"><ProjectTile {project} store={owner} size={12} /><span class="ui-label">{projectName(project)}</span></span>{/if}
-          {#if elsewhere}<span class="fact machine" data-testid="thread-machine">{machine.label}</span>{/if}
+          {#if elsewhere}<span class="fact machine" data-testid="thread-machine"><span class="dot" aria-hidden="true">·</span><MachineIcon icon={machine.icon} os={owner.core?.os} size={12} /><span class="ui-label">{machine.label}</span></span>{/if}
           {#if failed}<span class="fact failed" data-testid="thread-failed"><span aria-hidden="true">·</span><span class="ui-label">{failed}</span></span>{/if}
           <!-- Agents at work are the ring's to say; one asking is said here, it needs the user. -->
           {#if agents?.asking}<span class="fact agents asking" data-testid="thread-subagents" data-count={agents.shown} role="img" title={agents.label} aria-label={agents.label}><Network size={12} aria-hidden="true" /><span class="ui-label">{wait ? agents.shown : agents.text}</span></span>{/if}
+          {#if pinned}{@render pinMark()}{/if}
           {@render time()}
         </span>
       {/if}
@@ -216,6 +226,19 @@
     line-height: 1.3;
   }
   .title.unread { font-weight: 650; }
+  /* Needs you: up to two lines, then the ellipsis; the marks stay on the first line's centre. */
+  .clamp .title {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .clamp .mark { align-self: flex-start; margin-top: 3px; }
+  /* On the second line the pin stands right before the time, at the line's end. */
+  .meta .mark.pin { margin-left: auto; }
+  .meta .mark.pin + .time { margin-left: 0; padding-left: 0; }
   .mark { display: inline-flex; flex: none; align-self: center; }
   .mark.draft { color: var(--color-accent); }
   .mark.pin { color: var(--color-muted-foreground); }
@@ -236,6 +259,9 @@
   .fact.failed { flex: none; gap: 8px; }
   /* The machine yields its room before the project loses a letter: shrink is weighted by width, so the steps are far apart. */
   .fact.machine { flex-shrink: 1000; }
+  /* The dot stands 8 px from the glyph, as "· Failed" stands from its word. */
+  .fact.machine .dot { flex: none; margin-right: 4px; }
+  .fact.machine > :global(svg) { flex: none; }
   .fact.project { flex-shrink: 1; }
   .fact.project { max-width: 55%; }
   .fact.project :global(.tile.letter) { font-size: 9px; font-weight: 600; }

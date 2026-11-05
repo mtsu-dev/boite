@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest';
-import { flushSync, mount, unmount } from 'svelte';
+import { flushSync, mount, tick, unmount } from 'svelte';
 import { RpcErrorCode } from '@boite/contracts';
 import { confirm } from '../../lib/confirm.svelte';
 import { setExperiment } from '../../lib/experiments';
@@ -16,6 +16,7 @@ import SidebarContacts from './SidebarContacts.svelte';
 import TitleBar from '../TitleBar.svelte';
 import ContactRequestNotice from './ContactRequestNotice.svelte';
 import ContactsButton from './ContactsButton.svelte';
+import Inbox from './Inbox.svelte';
 
 let components: ReturnType<typeof mount>[] = [];
 let opened: Store | undefined;
@@ -32,6 +33,7 @@ afterEach(async () => {
   document.body.innerHTML = '';
   setExperiment('contacts', false);
   localStorage.clear();
+  vi.restoreAllMocks();
 });
 
 async function connect(): Promise<Store> {
@@ -595,4 +597,64 @@ test('the Operator card links the bot, lists the threads in touch with an End th
   setExperiment('resident-agents', true);
   one<HTMLButtonElement>('home-bot-open')!.click();
   expect(store.page).toBe('agents');
+});
+
+/**
+ * The home's Inbox in a column `room` px tall, its asks and lane lines `used`
+ * px: jsdom lays nothing out, so the two heights the fold reads are given.
+ */
+async function drawInbox(room: number, used: number | { px: number }): Promise<Store> {
+  const height = typeof used === 'number' ? { px: used } : used;
+  const store = new Store();
+  store.attach(new FakeClient({ delayMs: 0 }));
+  await store.connect();
+  opened = store;
+  store.threads = store.threads.map((thread, index) => ({ ...thread, status: index < 2 ? 'running' : 'idle', runningSince: Date.now() - 60_000 }));
+  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function (this: HTMLElement) { return this.dataset['testid'] === 'home-column' ? room : 0; });
+  vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function (this: HTMLElement) { return this.dataset['testid'] === 'inbox' ? height.px : 0; });
+  const column = document.createElement('div');
+  column.dataset['testid'] = 'home-column';
+  document.body.append(column);
+  components.push(mount(Inbox, { target: column, props: { store } }));
+  await vi.waitFor(() => { flushSync(); expect(one('inbox-working-toggle')).not.toBeNull(); });
+  await tick();
+  flushSync();
+  return store;
+}
+
+test("the work opens by default when its rows fit in the column under the asks, folds when they would scroll it, and the chevron's choice is kept", async () => {
+  // Round 12: under a one-line "Working now 2" the home's column stayed empty for 400 px with the two running threads folded away.
+  await drawInbox(600, 200);
+  expect(one('inbox-working-toggle')!.getAttribute('aria-expanded')).toBe('true');
+  expect(document.querySelectorAll('[data-testid=inbox-working]')).toHaveLength(2);
+  // The chevron still folds it, and the fold is kept over the room.
+  one<HTMLButtonElement>('inbox-working-toggle')!.click();
+  flushSync();
+  expect(document.querySelectorAll('[data-testid=inbox-working]')).toHaveLength(0);
+  expect(localStorage.getItem('boite.inbox.working')).toBe('closed');
+  vi.restoreAllMocks();
+  for (const component of components) await unmount(component);
+  components = [];
+  document.body.innerHTML = '';
+  opened?.detach();
+  await drawInbox(600, 200);
+  expect(one('inbox-working-toggle')!.getAttribute('aria-expanded')).toBe('false');
+});
+
+test('the work stays folded when its rows would not fit under the asks', async () => {
+  // Two rows need 68 px; 40 px are left.
+  await drawInbox(240, 200);
+  expect(one('inbox-working-toggle')!.getAttribute('aria-expanded')).toBe('false');
+  expect(document.querySelectorAll('[data-testid=inbox-working]')).toHaveLength(0);
+  vi.restoreAllMocks();
+});
+
+test('the work folds again when something that loads later over it (a contact\'s request) takes its room', async () => {
+  // The first capture of round 12 opened the work before the request's card loaded, and the rows ran under the column's end.
+  const used = { px: 200 };
+  await drawInbox(600, used);
+  expect(one('inbox-working-toggle')!.getAttribute('aria-expanded')).toBe('true');
+  used.px = 560;
+  one('inbox')!.prepend(document.createElement('div'));
+  await vi.waitFor(() => { flushSync(); expect(one('inbox-working-toggle')!.getAttribute('aria-expanded')).toBe('false'); });
 });
