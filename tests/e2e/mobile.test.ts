@@ -98,15 +98,17 @@ test('phone navigates conversations, activity and settings without a sidebar', a
   const header = await page.evaluate<{ top: number; height: number }>(`(() => { const r = document.querySelector('[data-testid=mobile-header]').getBoundingClientRect(); return {top:r.top,height:r.height}; })()`);
   expect(header.top).toBeGreaterThanOrEqual(0);
   expect(header.height).toBeGreaterThanOrEqual(44);
-  // The list stands between its header and the bottom bar, which keeps clear of the home indicator.
-  const bar = await page.evaluate<{ top: number; bottom: number; list: number }>(`(() => { const r = document.querySelector('[data-testid=mobile-tabs]').getBoundingClientRect(); return { top: r.top, bottom: r.bottom, list: document.querySelector('[data-testid=mobile-list]').getBoundingClientRect().bottom }; })()`);
-  expect(bar.bottom).toBe(844);
-  expect(bar.list).toBeLessThanOrEqual(bar.top);
+  // The bottom bar floats 8 px above the screen's edge, clear of the home indicator. The list runs under it to the
+  // edge, and its bottom padding lets the last row scroll clear of the bar.
+  const bar = await page.evaluate<{ top: number; bottom: number; list: number; padding: number }>(`(() => { const r = document.querySelector('[data-testid=mobile-tabs]').getBoundingClientRect(); const list = document.querySelector('[data-testid=mobile-list]'); return { top: r.top, bottom: r.bottom, list: list.getBoundingClientRect().bottom, padding: parseFloat(getComputedStyle(list).paddingBottom) }; })()`);
+  expect(bar.bottom).toBe(844 - 8);
+  expect(bar.list).toBe(844);
+  expect(bar.padding).toBeGreaterThanOrEqual(844 - bar.top);
   expect(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`)).toBe(true);
-  // Each row names its provider, and a worktree thread its branch after the project.
+  // Each row names its provider; the branch is the thread header's, so a worktree thread's row stays one line.
   expect(await page.evaluate(`Array.from(document.querySelectorAll('[data-testid=mobile-list] [data-testid=mobile-row]')).every(row => row.querySelector('[data-testid=thread-provider]'))`)).toBe(true);
   await revealThreadRow(page, 't-trace');
-  expect(await page.text('[data-testid=mobile-row][data-thread-id=t-trace] [data-testid=thread-branch]')).toContain('boite/trace');
+  expect(await page.evaluate(`!document.querySelector('[data-testid=mobile-row][data-thread-id=t-trace] [data-testid=thread-branch]')`)).toBe(true);
   await capture('mobile-conversations.png');
   await page.click('[data-testid=mobile-list] .thread');
   await page.waitFor(`!document.querySelector('[data-testid=mobile-list]') && document.querySelector('[data-testid=chat]')`);

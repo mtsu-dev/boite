@@ -32,7 +32,9 @@ test('project and recent cards show both hosts, PRs and user-message ordering on
   // A project lists a few rows and folds the rest: every row counts here.
   await unfoldThreadRows(page);
   await page.waitFor(`document.querySelectorAll('${id('thread-row')}').length === 8`);
-  await page.waitFor(`document.querySelectorAll('${id('thread-pr')}').length === 2`);
+  // A row is one line: its PR is the last line of its tooltip, never a badge in the row.
+  await page.waitFor(`Array.from(document.querySelectorAll('${id('thread-row')}')).filter(row => /\\n#\\d+ (open|merged|closed)$/.test(row.title)).length === 2`);
+  expect(await page.evaluate(`document.querySelector('${id('sidebar')} ${id('thread-pr')}') === null`)).toBe(true);
   expect(await page.evaluate(`document.querySelector('[data-testid=machine-filter]') === null`)).toBe(true);
   await page.click(id('machine-status'));
   await page.waitFor(`document.querySelector('[data-testid=machine-status-menu]')`);
@@ -56,7 +58,7 @@ test('project and recent cards show both hosts, PRs and user-message ordering on
   await page.evaluate(`document.querySelector(${JSON.stringify(remoteThread)}).dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`);
   await page.type(id('thread-rename'), 'Changed title, same user message');
   await page.evaluate(`document.querySelector('${id('thread-rename')}').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))`);
-  await page.waitFor(`document.querySelector(${JSON.stringify(remoteThread)})?.title === 'Changed title, same user message'`);
+  await page.waitFor(`document.querySelector(${JSON.stringify(remoteThread)})?.title.split('\\n')[0] === 'Changed title, same user message'`);
   expect(
     await page.evaluate<string[]>(
       `Array.from(document.querySelectorAll('${id('thread-row')}')).map(e => e.dataset.threadId)`

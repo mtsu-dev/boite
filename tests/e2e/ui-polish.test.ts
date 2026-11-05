@@ -104,11 +104,12 @@ test('a composer the side panel narrows keeps its send button on the row of the 
   await size(1440, 900);
   await onStore(`store.panel.closeAll(); store.panel.hide();`);
   await page.waitFor(`document.querySelector('${id('composer')}').getBoundingClientRect().width > 600`);
+  // Send is 2 px taller than a chip and sits on the row's bottom edge, as in the narrow case.
   const wide = await page.evaluate<{ picker: number; send: number; label: string }>(`(() => {
-    const top = (selector) => document.querySelector(selector).getBoundingClientRect().top;
+    const bottom = (selector) => document.querySelector(selector).getBoundingClientRect().bottom;
     return {
-      picker: top('${id('composer-picker')}'),
-      send: top('${id('composer-send')}'),
+      picker: bottom('${id('composer-picker')}'),
+      send: bottom('${id('composer-send')}'),
       label: getComputedStyle(document.querySelector('${id('composer-effort')} .ui-label')).display,
     };
   })()`);
@@ -118,19 +119,24 @@ test('a composer the side panel narrows keeps its send button on the row of the 
 
 test('a panel tab centres its icon on its label, and the strip fades the end that hides a tab', async () => {
   await size(1180, 800);
-  await onStore(`store.panel.closeAll(); for (const kind of ['agents', 'messages', 'files', 'changes', 'tasks']) store.panel.open(kind);`);
-  await page.waitFor(`document.querySelectorAll('${id('panel-tab')}').length === 5`);
+  // A compact strip draws inactive tabs as their icon alone: eight of them fill it at this width.
+  await onStore(`store.panel.closeAll(); for (const kind of ['agents', 'messages', 'files', 'changes', 'tasks', 'device', 'desk', 'window']) store.panel.open(kind);`);
+  await page.waitFor(`document.querySelectorAll('${id('panel-tab')}').length === 8`);
   await page.settleAnimations();
   // One more on a strip that already overflows, the way the "+" menu adds them.
   await onStore(`store.panel.open('trace');`);
-  await page.waitFor(`document.querySelectorAll('${id('panel-tab')}').length === 6`);
-  const offsets = await page.evaluate<number[]>(`[...document.querySelectorAll('${id('panel-tab')}')].map((tab) => {
+  await page.waitFor(`document.querySelectorAll('${id('panel-tab')}').length === 9`);
+  // A crowded strip names only its active tab; the others are their icon, centred on the tab.
+  const offsets = await page.evaluate<{ named: boolean; active: boolean; offset: number }[]>(`[...document.querySelectorAll('${id('panel-tab')}')].map((tab) => {
     const icon = tab.querySelector('.glyph svg').getBoundingClientRect();
     const name = tab.querySelector('.name').getBoundingClientRect();
-    return (icon.top + icon.bottom) / 2 - (name.top + name.bottom) / 2;
+    const named = name.height > 0;
+    const line = named ? name : tab.getBoundingClientRect();
+    return { named, active: tab.classList.contains('active'), offset: (icon.top + icon.bottom) / 2 - (line.top + line.bottom) / 2 };
   })`);
+  expect(offsets.find(tab => tab.active)?.named).toBe(true);
   // An inline span set the icon on the text's baseline, 2.5 px above the label's centre.
-  for (const offset of offsets) expect(Math.abs(offset)).toBeLessThanOrEqual(1);
+  for (const { offset } of offsets) expect(Math.abs(offset)).toBeLessThanOrEqual(1);
   // The tab just opened is the active one, and once the strip's smooth scroll
   // ends no fade lies over it: it stood 6 px short of the end, under the fade.
   await page.waitFor(`(() => {

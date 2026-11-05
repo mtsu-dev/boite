@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp.ts';
 import { startUi } from './lib/ui.ts';
+import { mobileAction } from './lib/mobile.ts';
 
 let server: { close(): Promise<void> };
 let port: number;
@@ -39,27 +40,37 @@ test('the contacts column\'s rows hold their text: the empty row\'s wrapped tip 
   } finally { await page.close(); }
 }, 30_000);
 
-test('contact requests appear above desktop and phone pages and open the request to answer', async () => {
+test('contact requests are a count in the bar and a card at the head of the desktop and phone Inbox, which opens the request to answer', async () => {
   const page = await BrowserPage.launch({ url: 'about:blank', windowSize: { width: 1440, height: 900 } });
+  const notice = id('contact-request-notice');
   try {
     await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('boite.experiments', JSON.stringify(['contacts']));` });
     await page.navigate(`http://127.0.0.1:${port}/?fake=1&open=recent`);
-    await page.waitFor(`document.querySelector('${id('contact-request-notice')}')`);
+    // In a thread nothing floats over the page: the bar's Contacts button counts the request.
+    await page.waitFor(`document.querySelector('${id('titlebar')} ${id('contacts-toggle-waiting')}')?.textContent === '1'`);
+    expect(await page.evaluate(`document.querySelector('${notice}') === null`)).toBe(true);
+    // The desktop home Inbox, a fresh draft's page, heads with the card.
+    await page.evaluate(`(() => { const store = globalThis.__boiteTest.workspace.active; store.startDraft(store.openThread.projectId, { fresh: true }); })()`);
+    await page.waitFor(`document.querySelector('${id('inbox')} ${notice}')`);
     await page.evaluate(`globalThis.__boiteTest.setTheme('dark')`);
     await page.settleAnimations();
-    expect(await page.evaluate(`document.querySelector('${id('contact-request-notice')}').getBoundingClientRect().width > 0`)).toBe(true);
+    expect(await page.evaluate(`document.querySelector('${id('inbox')} ${notice}').getBoundingClientRect().width > 0`)).toBe(true);
+    expect(await page.evaluate(`document.querySelector('${id('inbox')}').firstElementChild.matches('${notice}')`)).toBe(true);
     await page.screenshot(join(import.meta.dir, '.artifacts/contact-request-desktop.png'));
 
+    // A phone: the list header counts it and the Inbox tab heads with the card, where it is answered from.
     await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
     await page.waitFor(`document.querySelector('${id('mobile-header')} ${id('contact-request-open')}')`);
+    await mobileAction(page, 'mobile-activity');
+    await page.waitFor(`document.querySelector('${id('mobile-list')} ${notice}')`);
     await page.settleAnimations();
-    expect(await page.evaluate(`document.querySelector('${id('contact-request-notice')}').getBoundingClientRect().width > 0`)).toBe(true);
+    expect(await page.evaluate(`document.querySelector('${id('mobile-list')} ${notice}').getBoundingClientRect().width > 0`)).toBe(true);
     expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
     await page.screenshot(join(import.meta.dir, '.artifacts/contact-request-phone.png'));
-    await page.click(id('contact-request-review'));
+    await page.click(`${id('mobile-list')} ${id('contact-request-review')}`);
     await page.waitFor(`document.querySelector('${id('contact-requests')} ${id('contact-request-creq-pending')}')`);
     await page.evaluate(`globalThis.__boiteTest.workspace.active.client.call('contacts.decide', { id: 'creq-pending', accept: false, reason: 'The shared work is finished.' })`);
-    await page.waitFor(`!document.querySelector('${id('contact-request-open')}')`);
+    await page.waitFor(`!document.querySelector('${id('contact-request-open')}') && !document.querySelector('${notice}')`);
     expect(page.errors()).toEqual([]);
   } finally { await page.close(); }
 }, 30_000);

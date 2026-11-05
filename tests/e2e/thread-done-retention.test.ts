@@ -54,16 +54,18 @@ for (const width of [1280, 390]) {
       await page.waitFor(`globalThis.__boiteTest.workspace.active.settings.threadDoneRetentionDays === 7`);
       const doneAt = await page.evaluate<number>(`globalThis.__boiteTest.workspace.active.client.call('threads.get', {threadId: ${JSON.stringify(threadId)}}).then(t => t.doneAt)`);
       await openDone();
-      // The row reads the day and hour; its title carries the exact deletion time.
+      // A done row is one line: the exact deletion time is the last line of its tooltip.
       const exact = `new Intl.DateTimeFormat(document.documentElement.lang || undefined, { year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' }).format(${doneAt + 7 * 86_400_000})`;
-      await page.waitFor(`document.querySelector('${row} [data-testid=done-expires]')`);
-      expect(await page.evaluate(`document.querySelector('${row} [data-testid=done-expires]').title.includes(${exact})`)).toBe(true);
+      const lastLine = `document.querySelector('${row} [data-testid=done-thread-open]').title.split('\\n').at(-1)`;
+      await page.waitFor(`${lastLine}.startsWith('Deletion: ') && ${lastLine}.includes(${exact})`);
+      expect(await page.evaluate(`!document.querySelector('${row} [data-testid=done-expires]')`)).toBe(true);
       await openRetention();
       await page.choose('[data-testid=done-retention-days]', '0');
       await page.click('[data-testid=done-retention-save]');
       await page.waitFor(`globalThis.__boiteTest.workspace.active.settings.threadDoneRetentionDays === 0`);
       await openDone();
-      expect(await page.evaluate(`!document.querySelector('${row} [data-testid=done-expires]')`)).toBe(true);
+      // Kept for good: no deletion line in the tooltip.
+      expect(await page.evaluate(`!document.querySelector('${row} [data-testid=done-thread-open]').title.includes('Deletion:')`)).toBe(true);
       await page.click(`${row} [data-testid=done-thread-restore]`);
       await page.waitFor(`!document.querySelector('${row}')`);
       expect(await page.evaluate(`globalThis.__boiteTest.workspace.active.client.call('threads.get', {threadId: ${JSON.stringify(threadId)}}).then(t => t.doneAt)`)).toBeNull();

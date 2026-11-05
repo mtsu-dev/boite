@@ -41,7 +41,7 @@ function fits(selector: string) {
   })()`);
 }
 
-test('existing long branches truncate without pushing header controls or sidebar metadata out of view', async () => {
+test('existing long branches truncate without pushing header controls out of view or stretching a sidebar row', async () => {
   expect(await fits('[data-testid="panel-toggle"]')).toBe(true);
   expect(await page.evaluate(`(() => {
     const badge = document.querySelector('.thread-header [data-testid="thread-branch"]');
@@ -50,11 +50,15 @@ test('existing long branches truncate without pushing header controls or sidebar
   })()`)).toBe(true);
   await page.evaluate(`${state}.setSidebarWidth(208)`);
   await page.waitFor(`document.querySelector('[data-testid="sidebar"]').getBoundingClientRect().width <= 210`);
+  // A row is one line at any width: the branch is not drawn, its headline does not overflow, and its tooltip holds the branch.
   expect(await page.evaluate(`(() => {
     const row = document.querySelector('.thread:has([data-thread-id="t-trace"])');
-    const meta = row.querySelector('.metadata');
-    const text = meta.querySelector('.branch span');
-    return meta.scrollWidth <= meta.clientWidth && text.scrollWidth > text.clientWidth && row.querySelector('[data-testid="thread-pr"]').getBoundingClientRect().width > 0;
+    const button = row.querySelector('[data-testid="thread-row"]');
+    const headline = row.querySelector('.headline');
+    return !row.querySelector('.metadata, [data-testid="thread-branch"], [data-testid="thread-pr"]')
+      && !!headline && headline.scrollWidth <= headline.clientWidth
+      && row.getBoundingClientRect().right <= document.querySelector('[data-testid="sidebar"]').getBoundingClientRect().right
+      && button.title.split('\\n')[1] === ${JSON.stringify(branch)};
   })()`)).toBe(true);
   await capture('desktop');
   expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
@@ -79,12 +83,12 @@ test('changes panel and phone conversation list stay within the viewport with an
     expect(await fits('[data-testid="thread-menu-trigger"]')).toBe(true);
     await mobileAction(page, 'mobile-conversations');
     await page.waitFor(`document.querySelector('[data-testid="mobile-list"] .thread')`);
+    // A phone row draws no branch: the list stays inside the viewport and no row names the branch.
     expect(await page.evaluate(`(() => {
       const list = document.querySelector('[data-testid="mobile-list"]');
-      // A phone row's facts sit on one line; the branch is the fact that gives way first.
-      const details = [...list.querySelectorAll('.fact')];
-      const branches = [...list.querySelectorAll('[data-testid="thread-branch"] .ui-label')];
-      return document.documentElement.scrollWidth <= innerWidth && branches.some(el => el.textContent.includes(${JSON.stringify(branch)}) && el.scrollWidth > el.clientWidth && getComputedStyle(el).textOverflow === 'ellipsis') && details.every(el => el.getBoundingClientRect().right <= innerWidth);
+      const rows = [...list.querySelectorAll('[data-testid="mobile-row"]')];
+      return document.documentElement.scrollWidth <= innerWidth && rows.length > 0
+        && rows.every(row => row.getBoundingClientRect().right <= innerWidth && !row.textContent.includes('very-long-existing-branch') && !row.querySelector('[data-testid="thread-branch"]'));
     })()`)).toBe(true);
     await capture(`phone-${width}`);
     await page.click('[data-testid="mobile-list"] .thread');

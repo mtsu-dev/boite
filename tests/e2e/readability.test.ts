@@ -11,11 +11,16 @@ async function capture(name: string) {
   await page.settleAnimations();
   await page.screenshot(join(import.meta.dir,'.artifacts',`${name}.png`));
 }
-// The open thread's title bar carries its PR badge too; the rows' badges are the sidebar's.
-const rowPr = `${id('sidebar')} ${id('thread-pr')}`;
+/**
+ * A row is one line: its PR is the last line of its tooltip (`#181 open`), never drawn in the row.
+ * The open thread's title bar carries the PR's badge, a link.
+ */
+const rowPrLine = `/\\n#\\d+ (open|merged|closed)$/`;
+const prRows = `Array.from(document.querySelectorAll('${id('sidebar')} ${id('thread-row')}')).filter(row => ${rowPrLine}.test(row.title))`;
+const headerPr = `.thread-header ${id('thread-pr')}`;
 /** Both PR rows: the other machine's project folds under the open thread's, and its rows can arrive after a first unfold. */
 async function showPrRows() {
-  const both = `document.querySelectorAll('${rowPr}').length === 2`;
+  const both = `${prRows}.length === 2`;
   for (let round = 0; round < 10 && !await page.evaluate<boolean>(both); round++) {
     await unfoldThreadRows(page);
     await Bun.sleep(100);
@@ -97,10 +102,17 @@ test('thread metadata, message identity and expandable trace fit a narrow panel'
   await showPrRows();
   expect(await page.evaluate(`document.querySelector('${id('usage-pill')}') === null`)).toBe(true);
   expect(await page.evaluate(`Array.from(document.querySelectorAll('.metadata')).every(e => !e.textContent.includes('No PR') && !e.textContent.includes('My computer') && !e.textContent.includes('Builder'))`)).toBe(true);
-  expect(await page.evaluate(`Array.from(document.querySelectorAll('${rowPr}')).every(e => (e.closest('.thread').querySelector('.machine') || e.closest('${id('project')}')?.querySelector('${id('project-host')}')) && getComputedStyle(e).textDecorationLine.includes('underline'))`)).toBe(true);
+  // The rows that carry a PR say which machine they belong to, by their own mark or their project's header, and draw no badge.
+  expect(await page.evaluate(`${prRows}.every(row => row.closest('.thread').querySelector('.machine') || row.closest('${id('project')}')?.querySelector('${id('project-host')}'))`)).toBe(true);
+  expect(await page.evaluate(`document.querySelector('${id('sidebar')} ${id('thread-pr')}') === null`)).toBe(true);
+  // The open thread's header badge names the open row's PR and opens it.
+  const openRowPr = await page.evaluate<string>(`document.querySelector('${id('sidebar')} .thread.open ${id('thread-row')}').title.split('\\n').at(-1)`);
+  await page.waitFor(`document.querySelector('${headerPr}')`);
+  expect(await page.evaluate<string>(`document.querySelector('${headerPr}').getAttribute('aria-label')`)).toBe(openRowPr);
+  expect(await page.evaluate(`getComputedStyle(document.querySelector('${headerPr}')).textDecorationLine.includes('underline')`)).toBe(true);
   await page.evaluate(`window.__openedPr = null; window.open = (url) => { window.__openedPr = url; return null; }`);
-  const prUrl = await page.evaluate<string>(`document.querySelector('${rowPr}').href`);
-  await page.click(rowPr);
+  const prUrl = await page.evaluate<string>(`document.querySelector('${headerPr}').href`);
+  await page.click(headerPr);
   expect(await page.evaluate(`window.__openedPr`)).toBe(prUrl);
   await page.click(id('panel-toggle'));
   await page.waitFor(`document.querySelector('${id('launch-trace')}') || document.querySelector('${id('trace-panel')}')`);
@@ -300,28 +312,32 @@ test('PR links appear during work without remounting and disappear after a move 
   await page.waitFor(`document.querySelectorAll('${id('thread-row')}').length === 4`);
   await revealThreadRow(page, 't-trace');
   await page.click('[data-thread-id="t-trace"]');
-  await page.waitFor(`document.querySelector('.thread:has([data-thread-id="t-trace"]) ${id('thread-pr')}')`);
+  const traceRow = `document.querySelector('${id('sidebar')} [data-thread-id="t-trace"]')`;
+  await page.waitFor(`${rowPrLine}.test(${traceRow}?.title)`);
   await update(`
     for (const title of ['First shared-folder conversation', 'Second shared-folder conversation']) {
       await store.client.call('threads.create', { projectId: thread.projectId, providerId: thread.providerId, accountId: thread.accountId, model: thread.model, title });
     }
   `);
   await page.waitFor(`Array.from(document.querySelectorAll('${id('thread-row')}')).filter(row => row.textContent.includes('shared-folder conversation')).length === 2`);
-  const sharedRowsHaveNoPr = `Array.from(document.querySelectorAll('${id('thread-row')}')).filter(row => row.textContent.includes('shared-folder conversation')).every(row => !row.closest('.thread').querySelector('${id('thread-pr')}'))`;
-  const prBeforeBranch = (scope: string) => page.evaluate(`(() => {
-    const links = Array.from(document.querySelectorAll('${scope} ${id('thread-pr')}'));
-    return links.length > 0 && links.every(pr => {
-      const branch = pr.nextElementSibling;
-      return branch?.matches('${id('thread-branch')}') && pr.getBoundingClientRect().right < branch.getBoundingClientRect().left;
-    });
+  const sharedRowsHaveNoPr = `Array.from(document.querySelectorAll('${id('thread-row')}')).filter(row => row.textContent.includes('shared-folder conversation')).every(row => !${rowPrLine}.test(row.title))`;
+  // One line per row: no badge and no branch drawn in a sidebar row, and the tooltip lists the title, the branch, then the PR.
+  const rowsStayOneLine = () => page.evaluate<boolean>(`document.querySelector('${id('sidebar')} ${id('thread-pr')}, ${id('sidebar')} ${id('thread-branch')}') === null`);
+  const traceTooltip = () => page.evaluate<boolean>(`(() => {
+    const summary = globalThis.__boiteTest.workspace.active.threads.find(thread => thread.id === 't-trace');
+    const lines = ${traceRow}.title.split('\\n');
+    return lines.length === 3 && lines[0] === summary.title && lines[1] === summary.branch && ${rowPrLine}.test('\\n' + lines[2]);
   })()`);
   expect(await page.evaluate(sharedRowsHaveNoPr)).toBe(true);
-  expect(await prBeforeBranch(id('sidebar'))).toBe(true);
+  expect(await rowsStayOneLine()).toBe(true);
+  expect(await traceTooltip()).toBe(true);
   await capture('pr-links-desktop');
   await showThreadView(page, 'recent');
   await page.waitFor(`document.querySelector('${id('sidebar')} ${id('thread-project')}')`);
-  expect(await prBeforeBranch(id('sidebar'))).toBe(true);
+  expect(await rowsStayOneLine()).toBe(true);
+  expect(await traceTooltip()).toBe(true);
   await capture('pr-links-recent');
+  // The summary and the open thread both take the new branch, as a core's thread update does for both.
   await page.evaluate(`(() => {
     const store = globalThis.__boiteTest.workspace.active, client = store.client;
     window.__prOriginal = client.call.bind(client);
@@ -331,38 +347,48 @@ test('PR links appear during work without remounting and disappear after a move 
       ? Promise.resolve(window.__publishedPr) : window.__prOriginal(method, params);
     const summary = store.threads.find(thread => thread.id === 't-trace');
     summary.branch = 'boite/publish-live-pr'; summary.status = 'running';
+    store.openThread.branch = 'boite/publish-live-pr'; store.openThread.status = 'running';
   })()`);
-  const livePr = `.thread:has([data-thread-id="t-trace"]) ${id('thread-pr')}`;
-  await page.waitFor(`!document.querySelector('${livePr}') && document.querySelector('[data-thread-id="t-trace"][data-status="running"]')`);
+  await page.waitFor(`!${rowPrLine}.test(${traceRow}.title) && !document.querySelector('${headerPr}') && document.querySelector('[data-thread-id="t-trace"][data-status="running"]')`);
   await page.evaluate(`window.__publishedPr = { number:185, url:'https://github.com/example/repo/pull/185', state:'OPEN' }`);
-  await page.waitFor(`document.querySelector('${livePr}')?.textContent.includes('#185')`, 25_000);
+  await page.waitFor(`${traceRow}.title.endsWith('\\n#185 open')`, 25_000);
   expect(await page.evaluate(`document.querySelector('[data-thread-id="t-trace"]') === window.__prRow`)).toBe(true);
   expect(await page.evaluate(`document.querySelector('[data-thread-id="t-trace"]').dataset.status`)).toBe('running');
-  expect(await prBeforeBranch(id('sidebar'))).toBe(true);
+  expect(await traceTooltip()).toBe(true);
+  expect(await rowsStayOneLine()).toBe(true);
+  await page.waitFor(`document.querySelector('${headerPr}')?.textContent.includes('#185')`, 25_000);
+  expect(await page.evaluate(`document.querySelector('${headerPr}').getAttribute('href')`)).toBe('https://github.com/example/repo/pull/185');
   await capture('pr-live-desktop');
   await showThreadView(page, 'projects');
   await page.send('Emulation.setDeviceMetricsOverride', { width:390, height:844, deviceScaleFactor:1, mobile:true });
   await mobileAction(page, 'mobile-conversations');
   await page.waitFor(`Array.from(document.querySelectorAll('${id('mobile-list')} .thread')).filter(row => row.textContent.includes('shared-folder conversation')).length === 2`);
-  const phonePr = `${id('mobile-list')} [data-thread-id="t-trace"] ${id('thread-pr')}`;
-  await page.waitFor(`document.querySelector('${phonePr}')?.textContent.includes('#185')`);
-  expect(await page.evaluate(`document.querySelector('${phonePr}').getAttribute('href')`)).toBe('https://github.com/example/repo/pull/185');
-  expect(await page.evaluate(`Array.from(document.querySelectorAll('${id('mobile-list')} .thread')).filter(row => row.textContent.includes('shared-folder conversation')).every(row => !row.closest('[data-testid=mobile-row]').querySelector('${id('thread-pr')}'))`)).toBe(true);
+  // A phone row is one line too: no badge, no branch, no second line under the title.
+  const phoneRow = `${id('mobile-list')} ${id('mobile-row')}[data-thread-id="t-trace"]`;
+  expect(await page.evaluate(`document.querySelector('${id('mobile-list')} ${id('thread-pr')}, ${id('mobile-list')} ${id('thread-branch')}') === null`)).toBe(true);
+  expect(await page.evaluate(`document.querySelector('${phoneRow}') !== null && document.querySelector('${phoneRow} .meta') === null`)).toBe(true);
   expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
   await capture('pr-links-phone');
+  // The phone conversation's header names the PR after its subtitle.
+  await page.click(`${id('mobile-list')} ${id('mobile-thread-t-trace')}`);
+  await page.waitFor(`document.querySelector('${id('thread-pr-text')}')?.textContent.includes('#185')`);
+  expect(await page.evaluate(`document.querySelector('${id('thread-pr-text')}').dataset.state`)).toBe('OPEN');
+  expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
+  await capture('pr-links-phone-header');
   await page.send('Emulation.setDeviceMetricsOverride', { width:1300, height:850, deviceScaleFactor:1, mobile:false });
   await page.evaluate(`(() => {
     const store = globalThis.__boiteTest.workspace.active;
     store.client.call = window.__prOriginal;
     const summary = store.threads.find(thread => thread.id === 't-trace');
     summary.status = 'idle';
+    store.openThread.status = 'idle';
   })()`);
   await update(`const drafts = await store.client.call('projects.drafts', {}); await store.move('t-trace', drafts.id);`);
   await revealThreadRow(page, 't-trace');
-  await page.waitFor(`!document.querySelector('.thread:has([data-thread-id="t-trace"]) ${id('thread-pr')}')`);
+  await page.waitFor(`!${rowPrLine}.test(${traceRow}?.title ?? '') && !document.querySelector('${headerPr}')`);
   expect(await page.evaluate(`globalThis.__boiteTest.workspace.active.threads.find(thread => thread.id === 't-trace').branch`)).toBeNull();
   expect(await page.evaluate(`globalThis.__boiteTest.workspace.active.client.call('threads.pullRequest', { threadId: 't-trace' })`)).toBeNull();
-}, 45_000);
+}, 60_000);
 
 test('hidden reasoning and protocol text leave no extra gap before tools on desktop and phone', async () => {
   await page.send('Emulation.setDeviceMetricsOverride', {width:1300,height:850,deviceScaleFactor:1,mobile:false});

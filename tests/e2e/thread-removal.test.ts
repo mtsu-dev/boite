@@ -52,13 +52,13 @@ for (const width of [1280, 390]) {
       // Only wait for the archive rows whose layout this capture verifies.
       await page.evaluate(`Promise.all([document.fonts.ready, ...Array.from(document.querySelectorAll('${rows}')).flatMap(row => row.getAnimations({subtree:true})).filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))])`);
       await page.screenshot(join(import.meta.dir, '.artifacts', `thread-archives-readable-${width}.png`));
-      // A long title truncates before the time, inside the screen, and the row's button carries it whole.
+      // A long title truncates before the time, inside the screen, and the first line of the row's tooltip carries it whole.
       expect(await page.evaluate(`Array.from(document.querySelectorAll('${rows}')).every(row => {
         const title = row.querySelector('.title');
         const time = row.querySelector('time');
         const box = row.getBoundingClientRect();
         return title.getBoundingClientRect().right <= time.getBoundingClientRect().left && box.right <= innerWidth
-          && row.querySelector('[data-testid=done-thread-open]').title === title.textContent;
+          && row.querySelector('[data-testid=done-thread-open]').title.split('\\n')[0] === title.textContent;
       })`)).toBe(true);
       expect(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`)).toBe(true);
       if (width >= 720) {

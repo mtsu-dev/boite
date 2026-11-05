@@ -127,6 +127,8 @@ test('working grouping persists on the device, retains attention and works on th
   await phoneGroup('working');
   await page.waitFor(`document.querySelector(${JSON.stringify(phoneRow(main))})`);
   await page.click(phoneToggle('working'));
+  // The list's search field opens from the button at the end of its large title.
+  await page.click(id('mobile-search-open'));
   await page.type(id('mobile-search'), 'Finish the trace');
   await page.waitFor(`document.querySelector(${JSON.stringify(phoneRow(main))})`);
   // The phone groups from the display options at the end of its search field.
@@ -153,7 +155,22 @@ test('a merged PR arrives in Done and project filtering and restoration follow t
   await page.waitFor(`!document.querySelector(${JSON.stringify(desktopRow(main, threadId))})`);
   await page.click(id('recent-done-toggle'));
   await page.waitFor(`document.querySelector(${JSON.stringify(inGroup('done', main, threadId))})`);
-  expect(await page.evaluate(`document.querySelector(${JSON.stringify(inGroup('done', main, threadId))}).querySelector('${id('done-thread-pr')}').getAttribute('href')`)).toBe('https://github.com/example/repo/pull/407');
+  // A done row is one line: its merged PR is a line of its tooltip and an item of its menu, which opens the PR.
+  const doneInGroup = JSON.stringify(inGroup('done', main, threadId));
+  expect(await page.evaluate(`document.querySelector(${doneInGroup}).querySelector('${id('done-thread-pr')}') === null`)).toBe(true);
+  await page.evaluate(`window.__openedPr = null; window.open = (url) => { window.__openedPr = url; return null; }`);
+  await page.evaluate(`document.querySelector(${doneInGroup}).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 100, clientY: 180 }))`);
+  const prItem = `${id('context-menu')} [data-value=pr]`;
+  await page.waitFor(`document.querySelector('${prItem}')`);
+  // The menu item and the tooltip line are the same words, in the language the page speaks.
+  const prLabel = await page.evaluate<string>(`document.querySelector('${prItem}').textContent.trim()`);
+  expect(prLabel).toStartWith('#407 ');
+  // The merge that archived it is the PR the row names.
+  expect(await page.evaluate(`globalThis.__boiteTest.workspace.machines[0].store.client.call('threads.get', { threadId: ${JSON.stringify(threadId)} }).then(t => t.archiveReason?.type + ' ' + t.archiveReason?.number)`)).toBe('pr-merged 407');
+  expect(await page.evaluate<string[]>(`document.querySelector(${doneInGroup}).querySelector('${id('done-thread-open')}').title.split('\\n')`)).toContain(prLabel);
+  expect(await page.evaluate(`document.querySelector('${prItem}').title`)).toBe('https://github.com/example/repo/pull/407');
+  await page.click(prItem);
+  expect(await page.evaluate(`window.__openedPr`)).toBe('https://github.com/example/repo/pull/407');
   await capture('recent-done-desktop.png');
   await page.click(id('project-filter'));
   await page.evaluate(`Array.from(document.querySelectorAll('${id('project-filter-menu')} [data-value]')).find(e => e.dataset.value === ${JSON.stringify(JSON.stringify(['http://builder.test', 'p-boite']))}).click()`);

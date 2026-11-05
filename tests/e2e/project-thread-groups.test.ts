@@ -204,6 +204,8 @@ for (const width of [1280, 390]) {
       await page.waitFor(`!document.querySelector('${row(first, 't-scheduler')}')`);
 
       if (width < 720) {
+        // The list's search field opens from the button at the end of its large title.
+        await page.click(id('mobile-search-open'));
         await page.type(id('mobile-search'), 'scheduler');
         await page.waitFor(`document.querySelector('${row(first, 't-scheduler')}')`);
         expect(await page.evaluate(`document.querySelector('${row(first, 't-bench')}') === null`)).toBe(true);

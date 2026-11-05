@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp.ts';
 import { mobileAction } from './lib/mobile.ts';
 import { startUi } from './lib/ui.ts';
-import { showThreadView } from './lib/views.ts';
+import { showThreadView, unfoldThreadRows } from './lib/views.ts';
 
 let server: { close(): Promise<void> };
 let port: number;
@@ -34,7 +34,13 @@ for (const width of [1280, 390]) {
       })()`);
       const root = `[data-testid="${width < 720 ? 'mobile-list' : 'sidebar'}"]`;
       const project = `${root} [data-project-id="p-boite"]`;
-      await page.waitFor(`document.querySelector('${root} [data-thread-id="${threadId}"] [data-testid="thread-state"][data-state="working"]')`);
+      // A project that does not hold the open thread counts its work on its "n more" row: unfold it to see the row at work.
+      const working = `document.querySelector('${root} [data-thread-id="${threadId}"] [data-testid="thread-state"][data-state="working"]')`;
+      for (let round = 0; round < 20 && !await page.evaluate<boolean>(`!!${working}`); round++) {
+        await unfoldThreadRows(page);
+        await Bun.sleep(100);
+      }
+      await page.waitFor(working);
       await page.evaluate(`(async () => {
         const store = globalThis.__boiteTest.workspace.active;
         const thread = await store.client.call('threads.get', {threadId:${JSON.stringify(threadId)}});
@@ -47,7 +53,9 @@ for (const width of [1280, 390]) {
       await page.click(toggle);
       const done = `${root} [data-testid="done-thread"][data-thread-id="${threadId}"]`;
       await page.waitFor(`document.querySelector('${done} [data-testid="thread-state"][data-state="working"]')`);
-      expect(await page.evaluate(`document.querySelector('${done} [data-testid="done-thread-pr"]')?.dataset.state`)).toBe('MERGED');
+      // A done row is one line: the merge it ended with is a line of its tooltip, not a badge in the row.
+      expect(await page.evaluate(`document.querySelector('${done} [data-testid="done-thread-pr"]') === null`)).toBe(true);
+      expect(await page.evaluate<string[]>(`document.querySelector('${done} [data-testid="done-thread-open"]').title.split('\\n')`)).toContain('#407 merged');
       await page.settleAnimations();
       await page.screenshot(join(import.meta.dir, '.artifacts', `merged-pr-running-done-${width}.png`));
       await page.evaluate(`document.querySelector('${done} [data-testid="done-thread-open"]').focus()`);
@@ -68,10 +76,11 @@ for (const width of [1280, 390]) {
         await page.send('Input.dispatchMouseEvent', {type:'mouseMoved', x:width - 1, y:1});
       } else {
         await page.send('Emulation.setTouchEmulationEnabled', {enabled:true, maxTouchPoints:1});
-        await page.waitFor(`matchMedia('(hover: none)').matches && matchMedia('(pointer: coarse)').matches && getComputedStyle(document.querySelector('${done} [data-testid="thread-state"]')).opacity === '1' && getComputedStyle(document.querySelector('${done} [data-testid="done-thread-restore"]')).display === 'none'`);
+        await page.waitFor(`matchMedia('(hover: none)').matches && matchMedia('(pointer: coarse)').matches && getComputedStyle(document.querySelector('${done} [data-testid="thread-state"]')).opacity === '1' && document.querySelector('${done} [data-testid="done-thread-restore"]').getClientRects().length === 0`);
         expect(await page.evaluate(`matchMedia('(hover: none)').matches && matchMedia('(pointer: coarse)').matches`)).toBe(true);
         expect(await page.evaluate(`getComputedStyle(document.querySelector('${done} [data-testid="thread-state"]')).opacity`)).toBe('1');
-        expect(await page.evaluate(`getComputedStyle(document.querySelector('${done} [data-testid="done-thread-restore"]')).display`)).toBe('none');
+        // The restore button sits in the row's actions, which a touch screen does not draw at all.
+        expect(await page.evaluate(`document.querySelector('${done} [data-testid="done-thread-restore"]').getClientRects().length`)).toBe(0);
         await page.screenshot(join(import.meta.dir, '.artifacts', `merged-pr-running-touch-${width}.png`));
       }
       await page.evaluate('document.activeElement.blur()');
