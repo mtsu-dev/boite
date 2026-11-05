@@ -36,7 +36,7 @@ import {
   MODE_POLICY,
   LIVE_TURN_SETTINGS,
   NO_NATIVE_SUBAGENTS,
-  PERMISSIONS_TOOL_NAME,
+  PERMISSIONS_TOOL_NAME, readOnlyEnv,
   STDERR_MAX,
 } from './protocol.ts';
 import { CodexRpc } from './rpc.ts';
@@ -426,7 +426,7 @@ export class CodexSession {
     const child = ctx.spawnChild(executable, args, {
       startup: true,
       cwd: ctx.thread.cwd,
-      env: { ...process.env, ...ctx.accountEnv },
+      env: ctx.thread.permissionMode === 'plan' ? readOnlyEnv({ ...process.env, ...ctx.accountEnv }) : { ...process.env, ...ctx.accountEnv },
     });
     this.#child = child;
     const rpc = new CodexRpc(child, {

@@ -19,6 +19,7 @@
  * `ACP_FAKE_HANG_SMART=1` never answers a switch to `fake-smart`.
  * `ACP_FAKE_NO_MODES=1` makes it answer no `modes` at all, which is the agent
  * the mode mapping has to survive without sending anything.
+ * `ACP_FAKE_REFUSE_MODES=1` lists its modes and refuses every `session/set_mode`.
  *
  * `ACP_FAKE_ARGV=1` logs `argv <json>` with the arguments after the script at
  * `initialize`, so a test sees what reached the program, one entry each.
@@ -368,7 +369,7 @@ const app = agent({ name: 'acp-fake' })
   .onRequest('session/set_mode', ({ params }) => {
     // A mode nobody listed is refused, so a wrong mapping fails loudly instead
     // of passing as a call that went out.
-    if (!MODES.some((mode) => mode.id === params.modeId)) {
+    if (process.env['ACP_FAKE_REFUSE_MODES'] === '1' || !MODES.some((mode) => mode.id === params.modeId)) {
       log(`set_mode:refused ${params.modeId}`);
       throw RequestError.invalidParams({ modeId: params.modeId }, `unknown mode ${params.modeId}`);
     }

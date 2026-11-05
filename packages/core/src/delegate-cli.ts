@@ -3,10 +3,10 @@
  * few lines a model reads back cheaply: one row per child or run, its state,
  * its model and reasoning, its time, then the one next step that makes sense.
  */
-import { threadActive, CONVERSATION_PROFILE_ID, debateOver, speedName } from '@boite/contracts';
-import type { Debate, DelegatedAgent, DelegationModelChoice, DelegationView, PauseOrigin, RpcParams, WorkflowRun } from '@boite/contracts';
+import { threadActive, CONVERSATION_PROFILE_ID, speedName } from '@boite/contracts';
+import type { Council, DelegatedAgent, DelegationModelChoice, DelegationView, PauseOrigin, RpcParams, WorkflowRun } from '@boite/contracts';
 import type { CoreClient } from './client.ts';
-import { debateCommand, debateRow } from './debates/cli.ts';
+import { COUNCIL_USAGE, councilCommand, councilRow } from './council/cli.ts';
 import { INTERRUPTION_TEXT } from './delegation/interruption.ts';
 import { needLine, worktreeLine } from './delegation/messages.ts';
 import { requiredText, Usage } from './cli-args.ts';
@@ -30,7 +30,7 @@ export interface DelegateOptions {
   context?: Record<string, unknown>;
 }
 
-export const DELEGATE_ACTIONS = 'models, spawn, debate, list, send, stop, resume, wait, result or profiles';
+export const DELEGATE_ACTIONS = 'models, spawn, council, list, send, stop, resume, wait, result or profiles';
 const PROFILE_ID = /^[a-zA-Z0-9_-]{1,64}$/;
 
 /** `42s`, `3m05s`, `1h02m`. */
@@ -148,26 +148,28 @@ export async function delegateCommand(client: CoreClient, threadId: string, rest
     }
     case 'list':
     case 'status': {
-      const [view, runs, debates] = await Promise.all([
+      const [view, runs, councils] = await Promise.all([
         client.call('delegation.get', { threadId }),
         client.call('workflows.list', { threadId }).catch(() => [] as WorkflowRun[]),
-        // Refused while the AI debates experiment is off: then there are none to list.
-        client.call('debates.list', { threadId }).then(result => result.debates, () => [] as Debate[]),
+        // Refused while the Council experiment is off: then there are none to list.
+        client.call('council.list', { threadId }).then(result => result.councils, () => [] as Council[]),
       ]);
       const now = Date.now();
-      const busyTeam = view.agents.some(busy) || runs.some(r => r.status === 'running') || debates.some(d => !debateOver(d));
+      const busyTeam = view.agents.some(busy) || runs.some(r => r.status === 'running') || councils.some(c => c.status === 'running');
       print([
         teamLine(view, runs),
         ...view.agents.flatMap(agent => agentRow(agent, now)),
         ...runs.map(run => runRow(run, now)),
-        ...debates.map(debate => debateRow(debate, now)),
-        ...(!view.agents.length && !runs.length && !debates.length ? ['No subagent yet: boite delegate spawn "<brief>" starts one.']
+        ...councils.map(council => councilRow(council, now)),
+        ...(!view.agents.length && !runs.length && !councils.length ? ['No subagent yet: boite delegate spawn "<brief>" starts one.']
           : busyTeam ? ['Results arrive as messages: keep working or end your turn, do not poll.'] : []),
-      ], { ...view, workflows: runs, debates });
+      ], { ...view, workflows: runs, councils });
       return;
     }
     case 'debate':
-      await debateCommand(client, threadId, rest.slice(1), print);
+      throw new Usage('boite delegate debate was replaced by boite delegate council: ' + COUNCIL_USAGE);
+    case 'council':
+      await councilCommand(client, threadId, rest.slice(1), print);
       return;
     case 'spawn': {
       let profileId = options.profile;
@@ -226,9 +228,10 @@ export async function delegateCommand(client: CoreClient, threadId: string, rest
       return;
     }
     case 'stop': {
-      if (rest[1]?.startsWith('dbt_')) {
-        const debate = await client.call('debates.stop', { debateId: rest[1], threadId });
-        print([`debate: ${debate.id}`, `status: ${debate.status}`], debate);
+      // `dbt_`: a debate stored before the council.
+      if (rest[1]?.startsWith('cnl_') || rest[1]?.startsWith('dbt_')) {
+        const council = await client.call('council.stop', { councilId: rest[1], threadId });
+        print([`council: ${council.id}`, `status: ${council.status}`], council);
         return;
       }
       const result = await client.call('delegation.stop', { threadId, ...(rest[1] ? { agentId: rest[1] } : {}) });

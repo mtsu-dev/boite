@@ -175,8 +175,8 @@
         {:else if thread.teamId}
           <!-- A team's chat takes its team's name and no thread action: the core refuses them on a chat that runs no agent. -->
           <span class="title team" data-testid="thread-title" title={thread.title}><UsersRound size={15} strokeWidth={1.75} /><span class="ui-label">{thread.title}</span></span>
-        {:else if thread.debateId}
-          <!-- A debate's salon runs no agent either: its title is the debate's, and it has no thread action. -->
+        {:else if thread.councilId}
+          <!-- A council's salon runs no agent either: its title is the council's, and it has no thread action. -->
           <span class="title team" data-testid="thread-title" title={thread.title}><MessagesSquare size={15} strokeWidth={1.75} /><span class="ui-label">{thread.title}</span></span>
         {:else}
           <button
@@ -278,7 +278,7 @@
         </span>
       {/if}
       <!-- The shell is the owner's: a phone reaches it by this button, not by Ctrl+J. -->
-      {#if thread && store.owner && !thread.teamId && !thread.debateId}
+      {#if thread && store.owner && !thread.teamId && !thread.councilId}
         {@const terminalKey = store.keyLabel('terminal')}
         {#if work.shows('header.terminal')}
         <button
@@ -315,7 +315,7 @@
            its to follow, and the panel's menu offers only what available() allows.
            A team's chat has no title menu: a phone keeps this button, its one way to the panel. -->
       {#if thread}
-        {#if mobile.current && !thread.teamId && !thread.debateId}
+        {#if mobile.current && !thread.teamId && !thread.councilId}
           <button type="button" class="ghost phone-browser" data-testid="phone-browser-toggle"
             aria-label={strings.rightPanel.browser} aria-pressed={store.panelOpen && store.panel.active?.kind === 'agent-browser'}
             onclick={() => store.panel.open('agent-browser')}>
@@ -325,7 +325,7 @@
         <button
           type="button"
           class="ghost icon"
-          class:in-title-menu={!thread.teamId && !thread.debateId}
+          class:in-title-menu={!thread.teamId && !thread.councilId}
           class:on={store.panelOpen}
           title={`${strings.thread.panelHint}${store.keyHint('panel')}`}
           aria-label={strings.thread.panelHint}

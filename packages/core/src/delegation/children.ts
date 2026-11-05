@@ -47,7 +47,7 @@ export interface ChildRequest {
   record: (id: string) => void;
   context?: unknown;
   worktree: boolean;
-  /** Null keeps the provider's default context: a debater reads the checkout with its usual tools, in a read-only permission mode. */
+  /** Null keeps the provider's default context: a council member reads the checkout with its usual tools, in a read-only permission mode. */
   fixed?: { contextMode: ThreadContextMode | null; permissionMode: PermissionMode };
   project?: string;
 }

@@ -1,13 +1,13 @@
 <script lang="ts">
   /**
-   * A debater's round face in a debate's card and salon (`docs/debates.md`):
+   * A member's round face in a council's card and salon (`docs/council.md`):
    * the first letter of the model's name on its series colour, the same
-   * colour for the same debater everywhere. `me` is the owner, `mod` the AI
-   * that writes the summary and did not debate.
+   * colour for the same member everywhere. `me` is the owner, `mod` a post
+   * no member wrote: the parent thread's changes, or an old debate's summary.
    */
   let { kind = 'ai', series = 0, label, size = 28 }: {
     kind?: 'ai' | 'me' | 'mod';
-    /** The debater's place in the debate, from 0: it picks the colour. */
+    /** The member's place in the council, from 0: it picks the colour. */
     series?: number;
     /** The letter or two drawn inside. */
     label: string;

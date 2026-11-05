@@ -1,13 +1,15 @@
 import type { Database } from 'bun:sqlite';
 
 /**
- * Debates between AIs (`docs/debates.md`).
+ * The council (`docs/council.md`). The tables keep the name of the debates they
+ * were made for: a debate stored then stays readable next to a council, and a
+ * rename would have an older core refuse this journal for nothing.
  *
- * - `debates`: the debate as JSON (`Debate` without its ids and times), its version, its parent and its salon.
- * - `debate_posts`: every post of the salon in order; `id` is the writer's for the owner's, so a retry posts once.
- * - `debate_children`: the delegated threads a debate runs, `participant` or `summary`, so a thread maps back to its debate in one read.
+ * - `debates`: the council as JSON (`Council` and what the core keeps beside it), its version, its parent and its salon.
+ * - `debate_posts`: every post of the salon in order; `id` is the writer's for the owner's, so a retry posts once. `vote` only a stored debate has.
+ * - `debate_children`: the delegated threads a council runs, so a thread maps back to its council in one read. `role` is `participant`, or `summary` in a stored debate.
  */
-export function createDebates(db: Database): void {
+export function createCouncil(db: Database): void {
   db.exec(`CREATE TABLE IF NOT EXISTS debates (
     id TEXT PRIMARY KEY,
     parent_thread_id TEXT NOT NULL,

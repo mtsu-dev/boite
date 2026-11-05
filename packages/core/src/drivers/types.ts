@@ -90,6 +90,8 @@ export type QuestionTicket = Promise<QuestionAnswer | null> & { readonly questio
 export interface TurnContext {
   /** Immutable additional restriction for externally supplied work, never a provider/account replacement. */
   protectedExecution?: import('./protected.ts').ProtectedDriverExecution;
+  /** The turn may not run outside the plan mode it asks: a council member's read-only rests on it. */
+  modeRequired?: boolean;
   thread: ThreadSummary;
   account: Account;
   provider: ProviderDescriptor;
@@ -244,7 +246,7 @@ export interface TurnContext {
 export type SessionContext = Pick<TurnContext,
   'thread' | 'account' | 'provider' | 'sessionId' | 'resumeAt' | 'sessionBefore' |
   'accountEnv' | 'systemGuide' | 'warmProcessMinutes' | 'toolSummaries' | 'shortAnswers' | 'autoCompactTokens' | 'compactionSummary' | 'log' | 'diagnostic' | 'authenticationFailed' | 'commands' | 'context' | 'hook' |
-  'background' | 'backgroundFinished' | 'wake' | 'loopWake' | 'spawnChild' | 'finishStartup' | 'killTree' | 'quota' | 'lazyMcp' | 'protectedExecution'>;
+  'background' | 'backgroundFinished' | 'wake' | 'loopWake' | 'spawnChild' | 'finishStartup' | 'killTree' | 'quota' | 'lazyMcp' | 'protectedExecution' | 'modeRequired'>;
 
 export type DiagnosticLevel = 'debug' | 'info' | 'warn' | 'error';
 /** Scalars only: never a prompt, a tool input or output, a command line or a token. */
