@@ -7,6 +7,8 @@ import type { CoreClient } from '../src/client.ts';
 import { BUILTIN_TEXT } from '../src/agents/builtin.ts';
 import { INTRO_PROMPT } from '../src/agents/store.ts';
 import { parse } from '../src/cli-args.ts';
+import { getDriver, setDriver } from '../src/drivers/index.ts';
+import { ModelProbes } from '../src/drivers/model-probes.ts';
 import { agentValue, echoAccount, makeAgent, scripted, settled, turnsOf } from './agent-fixture.ts';
 import { quietAgent, removeDir, startTestCore, waitFor, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
@@ -45,6 +47,27 @@ async function ensured(h: TestCore, client: CoreClient, name?: string): Promise<
 const shipped = BUILTIN_TEXT.contacts;
 const valueOf = ({ id: _id, revision: _revision, createdAt: _createdAt, updatedAt: _updatedAt, ...value }: AgentProfile) => value;
 const save = (client: CoreClient, agent: AgentProfile, over: Partial<AgentProfile>) => client.call('agents.profile.save', { id: agent.id, expectedRevision: agent.revision, value: { ...valueOf(agent), ...over } });
+
+test('ensure on an agent that lists its own models, as Claude does, reads them first and takes the first one', async () => {
+  const { h, client } = await start();
+  // Claude's descriptor lists no model: before this, the Contacts switch refused with "choose a default model" until the picker had read them.
+  const descriptor = h.core.providers.require('echo');
+  const before = { protocol: descriptor.protocol, models: descriptor.models };
+  descriptor.protocol = 'acp';
+  descriptor.models = [];
+  let probes = 0;
+  const cache = new ModelProbes(async () => { probes++; return [{ id: 'listed', name: 'Listed' }, { id: 'second', name: 'Second' }]; });
+  const reset = setDriver('acp', { ...getDriver('echo'), protocol: 'acp', probe: ctx => cache.probe(ctx), probedModels: (p, a) => cache.models(p, a), forgetProbes: f => cache.forget(f) });
+  try {
+    const { bot } = await ensured(h, client);
+    expect(bot.selection.model).toBe('listed');
+    expect(probes).toBe(1);
+    // The reset takes the route again, from the list already read.
+    const again = await client.call('agents.builtin.reset', { agentId: bot.id });
+    expect(again.selection.model).toBe('listed');
+    expect(probes).toBe(1);
+  } finally { reset(); Object.assign(descriptor, before); }
+});
 
 test('every boite contacts command in the Operator\'s instructions is one the CLI reads', () => {
   const commands = [...shipped.instructions.matchAll(/`boite contacts ([^`]+)`/g)].map(match => match[1]!.replace(/\[|\]/g, '').split(/\s+/));
