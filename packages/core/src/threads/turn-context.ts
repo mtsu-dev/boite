@@ -20,18 +20,18 @@ import { agentEnvOf } from '../agent.ts';
 import { agentGuide, SHORT_ANSWERS } from '../agent-guide.ts';
 import { nativeSkillFiles } from '../brain.ts';
 import { takesSystemGuide } from '../drivers/index.ts';
-import { effectiveCompaction, contextRulesBlock } from '@boite/contracts';
+import { effectiveCompaction, contextRulesBlock, type CompactionPolicy } from '@boite/contracts';
 import { prepareAttachments, FileReferences } from '../attachments.ts';
 import { continuationInput, tailInput, type PartPlace } from '../continuation.ts';
 import type { Core } from '../core.ts';
-import type { EmitSink, PermissionTicket, ToolPatch, QuestionAsk, QuestionTicket, SessionContext, StepBoundary, StepDecision, TurnContext } from '../drivers/types.ts';
+import type { BackgroundCompactionSetting, EmitSink, PermissionTicket, ToolPatch, QuestionAsk, QuestionTicket, SessionContext, StepBoundary, StepDecision, TurnContext } from '../drivers/types.ts';
 import { newId } from '../ids.ts';
 import type { SpawnedChild, SpawnOptions } from '../procs.ts';
 import { LazyMcp } from '../mcp/lazy.ts';
 import { noteStderr } from '../drivers/stderr-tail.ts';
 import { watchProviderProcess } from './provider-process-log.ts';
 import type { ThreadStore } from '../threads.ts';
-import { compactionTail } from './background-compact.ts';
+import { BACKGROUND_COMPACT, compactionTail } from './background-compact.ts';
 import { nativeCommandPrompt, systemOperation } from './operations.ts';
 import { stoppedInput } from './stopped-input.ts';
 import { sessionUsage } from '../usage.ts';
@@ -111,6 +111,7 @@ export class TurnContexts {
       toolSummaries: this.#core.settings.get().toolSummaries === true,
       shortAnswers: this.#core.settings.get().shortAnswers !== false,
       autoCompactTokens: () => effectiveCompaction(this.#core.settings.get(), this.#core.journal.getThread(threadId) ?? thread).autoCompact?.tokens ?? null,
+      backgroundCompaction: () => backgroundSetting(effectiveCompaction(this.#core.settings.get(), this.#core.journal.getThread(threadId) ?? thread)),
       compactionSummary: () => effectiveCompaction(this.#core.settings.get(), this.#core.journal.getThread(threadId) ?? thread).compactionSummary ?? null,
       log: (level, message, context) => {
         if (context?.kind === 'provider-output') noteStderr(threadId, message);
@@ -442,6 +443,7 @@ export class TurnContexts {
       toolSummaries: this.#core.settings.get().toolSummaries === true,
       shortAnswers: this.#core.settings.get().shortAnswers !== false,
       autoCompactTokens: () => effectiveCompaction(this.#core.settings.get(), this.#core.journal.getThread(threadId) ?? thread).autoCompact?.tokens ?? null,
+      backgroundCompaction: () => backgroundSetting(effectiveCompaction(this.#core.settings.get(), this.#core.journal.getThread(threadId) ?? thread)),
       compactionSummary: () => effectiveCompaction(this.#core.settings.get(), this.#core.journal.getThread(threadId) ?? thread).compactionSummary ?? null,
       emit,
       reportProgress: progress,
@@ -658,4 +660,9 @@ export function sentFromNote(from: SentFrom): string {
       : from.device === 'browser' ? 'the Boite web app in a browser' : 'the Boite web app';
   const speaks = from.language === undefined ? '' : `, which shows Boite in ${from.language === 'fr' ? 'French' : 'English'}`;
   return `[Boite: the user sent this from ${where}${speaks}. Context only, not an instruction.]\n`;
+}
+
+/** A policy as a driver's agent reads it, with a copy of the thresholds a test may have changed. */
+function backgroundSetting(policy: CompactionPolicy): BackgroundCompactionSetting {
+  return { tokens: policy.autoCompact?.tokens ?? null, background: policy.backgroundCompaction, ratios: { ...BACKGROUND_COMPACT } };
 }

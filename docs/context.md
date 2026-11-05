@@ -149,7 +149,8 @@ not substitute a per-model threshold.
 |---|---|
 | Claude | Measures the native output and compaction reserves locally, opens with a calibrated window and verifies the exact threshold before sending the prompt. An unsupported or clamped window keeps native policy and the between-turn fallback. |
 | Codex | Sends the owner's count as `model_auto_compact_token_limit` on thread start and resume; Codex performs compaction in its own loop. |
-| Muse, pi, ACP | Keep their native in-turn policy; Boite checks its limit between turns because these protocols expose no exact token-limit setter. |
+| Muse, ACP | Keep their native in-turn policy; Boite checks its limit between turns because these protocols expose no exact token-limit setter. |
+| pi | Keeps its native in-turn policy and Boite checks its limit between turns, since RPC exposes no exact token-limit setter. With background compaction on, Boite's extension also holds the limit at each `turn_end` inside the run (below). |
 | echo | Checks between turns only. |
 
 Changing the limit during a running Claude or Codex turn applies before the
@@ -299,7 +300,8 @@ pauses only.
 | Codex | Native blocking compaction in the turn, copy at the pause. | `forkSession` at the turn's checkpoint, then compacts the fork. |
 | OpenCode 1 | Native blocking compaction in the turn, copy at the pause. | No fork in ACP: the pause has no copy to take, and the compaction above runs there. |
 | OpenCode 2 | OpenCode's own background compaction, inside its loop. | No Boite copy: the setting turns on OpenCode's own `experimental.background_compaction` in `OPENCODE_CONFIG_CONTENT`, for the processes started afterwards. |
-| Muse, pi, other ACP | Native blocking compaction in the turn. | None: the compaction above runs as before. |
+| pi | With the setting on, Boite's extension (`drivers/pi/compaction.ts`, written as `pi-compaction.mjs` and loaded with `--extension`, so also under `--no-extensions`) compacts inside pi's run. At each `turn_end` from 85% of the limit (at least 64 000 tokens), with no copy running, it starts pi's `compact` on everything before that turn's assistant entry, the anchor, with the credentials of `ctx.modelRegistry.getApiKeyAndHeaders`, and does not wait. At the `turn_end` that reaches the limit it waits for the copy, 5 minutes at most, and appends its compaction entry `{summary, firstKeptEntryId: anchor}`, keeping the entries from the anchor whole. pi's own `threshold` compaction (`session_before_compact`) takes a ready copy instead of summarizing; an `overflow` is left to pi. The divider pi draws for the copy is marked `background: true`; any other compaction drops the copy. | No Boite copy, pi has no `forkSession`. The extension reads `BOITE_COMPACTION`, `{tokens, background, ratios}` from the effective policy and `BACKGROUND_COMPACT`; a changed value restarts pi at the thread's next idle turn. It drops a copy when the context grew past the tail limit or lost its anchor, and stops after two failures until the next compaction. |
+| Muse, other ACP | Native blocking compaction in the turn. | None: the compaction above runs as before. |
 
 The copy is dropped, and the compaction above runs as usual, at the limit or
 at a selected `turn-end` or `background` moment near it, when:

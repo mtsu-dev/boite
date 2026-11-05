@@ -123,6 +123,17 @@ export interface DriverCapabilities {
   stepSwap?: boolean;
 }
 
+/**
+ * The background compaction policy of a thread, for a driver whose agent
+ * makes the copy inside its own process (pi): the `autoCompact` limit, the
+ * experiment switch and the core's `BACKGROUND_COMPACT` thresholds.
+ */
+export interface BackgroundCompactionSetting {
+  tokens: number | null;
+  background: boolean;
+  ratios: { startRatio: number; minTokens: number; tailTokens: number; tailShare: number; maxFailures: number; timeoutMs: number };
+}
+
 export interface TurnContext {
   /** Immutable additional restriction for externally supplied work, never a provider/account replacement. */
   protectedExecution?: import('./protected.ts').ProtectedDriverExecution;
@@ -200,6 +211,8 @@ export interface TurnContext {
   shortAnswers?: boolean;
   /** The owner's current independent token limit, read without a provider request. Null keeps native defaults. */
   autoCompactTokens?(): number | null;
+  /** The thread's background compaction policy as it stands now, read without a provider request. */
+  backgroundCompaction?(): BackgroundCompactionSetting;
   /** Live common or target summary guidance; null keeps the native prompt. */
   compactionSummary?(): string | null;
   emit: EmitSink;
@@ -293,7 +306,7 @@ export interface TurnContext {
 /** Native session setup without a prompt, a turn or a message sink. */
 export type SessionContext = Pick<TurnContext,
   'thread' | 'account' | 'provider' | 'sessionId' | 'resumeAt' | 'sessionBefore' |
-  'accountEnv' | 'systemGuide' | 'warmProcessMinutes' | 'toolSummaries' | 'shortAnswers' | 'autoCompactTokens' | 'compactionSummary' | 'log' | 'diagnostic' | 'authenticationFailed' | 'commands' | 'context' | 'hook' |
+  'accountEnv' | 'systemGuide' | 'warmProcessMinutes' | 'toolSummaries' | 'shortAnswers' | 'autoCompactTokens' | 'backgroundCompaction' | 'compactionSummary' | 'log' | 'diagnostic' | 'authenticationFailed' | 'commands' | 'context' | 'hook' |
   'background' | 'backgroundFinished' | 'wake' | 'loopWake' | 'spawnChild' | 'finishStartup' | 'killTree' | 'quota' | 'lazyMcp' | 'protectedExecution'>;
 
 export type DiagnosticLevel = 'debug' | 'info' | 'warn' | 'error';
