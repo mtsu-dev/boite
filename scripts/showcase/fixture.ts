@@ -15,6 +15,9 @@ const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 const ROOT = 'C:\\src';
 
+/** A page query flag set to 1. The rig's server runs the seed in the page, so the flags are the page's. */
+const flag = (name: string): boolean => Boolean(globalThis.location) && new URLSearchParams(globalThis.location.search).get(name) === '1';
+
 export function seedShowcase(ctx: FakeContext, options: FakeClientOptions): void {
   if (options.uninstalled) return;
   if (options.coreId === 'fake-builder') { seedBuilder(ctx); dropEcho(ctx); return; }
@@ -31,7 +34,9 @@ export function seedShowcase(ctx: FakeContext, options: FakeClientOptions): void
   permissionThread(ctx);
   extraThreads(ctx, now);
   // `?dense=1`: a sidebar about twice as long, the load B1's density is measured on.
-  if (globalThis.location && new URLSearchParams(globalThis.location.search).get('dense') === '1') denseThreads(ctx, now);
+  if (flag('dense')) denseThreads(ctx, now);
+  // `?calm=1`: the workspace of one person on a normal day, after every demo seed added its threads.
+  if (flag('calm')) calm(ctx, now);
   changes(ctx);
   dropEcho(ctx);
 }
@@ -521,6 +526,94 @@ function denseThreads(ctx: FakeContext, now: number): void {
     const ago = state === 'running' ? (8 + index) * MINUTE : (2 + index * 3) * HOUR;
     thread(ctx, now, { id: `t-dense-${index}`, project, title, ago, state, agent: index % AGENTS.length, prompt: title, answer: state === 'error' ? 'Stopped.' : 'Done.', ...(state === 'error' ? { error: 'The agent exited with code 1.' } : {}) });
   });
+}
+
+// ---------------------------------------------------------------------------
+// `?calm=1`: a believable workspace, where the default seed is a stress load
+// ---------------------------------------------------------------------------
+
+/** The projects a calm workspace keeps on this machine. */
+const CALM_PROJECTS = new Set(['p-boite', 'p-atlas', 'p-courier']);
+/** The rows those projects keep in view, with their children; every other row of theirs is archived. */
+const CALM_ROWS = new Set([
+  't-trace', 't-scheduler', 't-debate', 't-board-dark', 't-sc-a11y',
+  't-sc-ratelimit', 't-sc-paginate', 't-sc-openapi',
+  't-sc-offline', 't-sc-push', 't-sc-camera',
+]);
+/** The one desk thread of Nova left in view: the agents demo numbers its ids, so it is found by title. */
+const CALM_DESK = 'Fix login redirect loop';
+/** The two asks left: the flagship's push and the sync policy question. Every other ask is answered. */
+const CALM_ASKS = new Set(['req-showcase-push', 'qst-seed-1']);
+/** What may still run: the flagship with the children it started, and one more row at work. */
+const CALM_RUNNING = new Set(['t-trace', 't-scheduler', 't-sc-ratelimit']);
+
+function calm(ctx: FakeContext, now: number): void {
+  // Other projects leave with everything that names them or one of their threads.
+  const dropped = new Set(ctx.projects.filter(p => !CALM_PROJECTS.has(p.id)).map(p => p.id));
+  const gone = new Set([...ctx.threads.values()].filter(t => t.projectId !== null && dropped.has(t.projectId)).map(t => t.id));
+  ctx.projects = ctx.projects.filter(p => !dropped.has(p.id));
+  // Only ids of this machine's dropped projects: a contact's or another machine's project keeps its rows.
+  const dangles = (entry: unknown): boolean => {
+    if (entry === null || typeof entry !== 'object') return false;
+    const { projectId, threadId } = entry as { projectId?: unknown; threadId?: unknown };
+    return (typeof projectId === 'string' && dropped.has(projectId)) || (typeof threadId === 'string' && gone.has(threadId));
+  };
+  // Every list and map of the fake core (todos, worktrees, processes, usage, logos), in place: other modules hold the same references.
+  for (const value of Object.values(ctx as unknown as Record<string, unknown>)) {
+    if (Array.isArray(value)) { const kept = value.filter(entry => !dangles(entry)); value.splice(0, value.length, ...kept); }
+    else if (value instanceof Map) for (const id of [...gone, ...dropped]) value.delete(id);
+  }
+  ctx.scheduler = { ...ctx.scheduler, running: ctx.scheduler.running.filter(e => !dangles(e)), queued: ctx.scheduler.queued.filter(e => !dangles(e)) };
+
+  // The asks other than the two kept ones read as answered, as if the user had seen them earlier.
+  const settle = (threadId: string, match: (part: MessagePart) => boolean, answer: (part: MessagePart) => void) => {
+    for (const message of ctx.threads.get(threadId)?.messages ?? []) for (const part of message.parts) if (match(part)) answer(part);
+  };
+  for (const [id, pending] of [...ctx.pendingPermissions]) {
+    if (CALM_ASKS.has(id)) continue;
+    ctx.pendingPermissions.delete(id);
+    settle(pending.request.threadId, part => part.type === 'permission' && part.requestId === id, part => { if (part.type === 'permission') part.decision = 'allow'; });
+  }
+  for (const [id, pending] of [...ctx.pendingQuestions]) {
+    if (CALM_ASKS.has(id)) continue;
+    ctx.pendingQuestions.delete(id);
+    const first = pending.request.options[0]?.id;
+    settle(pending.request.threadId, part => part.type === 'question' && part.questionId === id, part => { if (part.type === 'question') part.answer = first ? { optionIds: [first] } : { optionIds: [], text: 'Done.' }; });
+  }
+
+  const root = (thread: Thread): Thread => {
+    let top = thread;
+    for (let depth = 0; top.parentThreadId && depth < 8; depth++) top = ctx.threads.get(top.parentThreadId) ?? top;
+    return top;
+  };
+  const rested = new Set<string>();
+  for (const thread of ctx.threads.values()) {
+    thread.openQuestions = [...ctx.pendingQuestions.values()].filter(q => q.request.threadId === thread.id && q.request.async === true).length;
+    if (thread.subagentQuestions?.length) thread.subagentQuestions = [];
+    // Bots keep their own state: the Bots page shows one at work.
+    if (thread.projectId === null) continue;
+    const top = root(thread);
+    const shown = CALM_ROWS.has(top.id) || (top.id.startsWith('t-agents-desk-') && top.title === CALM_DESK);
+    if (!shown && !thread.archived) Object.assign(thread, { archived: true, archivedAt: Math.min(now, thread.updatedAt + HOUR) });
+    if ((thread.status === 'running' || thread.status === 'waiting') && !CALM_RUNNING.has(top.id)) { rest(thread); rested.add(thread.id); }
+  }
+  for (const record of ctx.processes) if (rested.has(record.threadId) && record.exitedAt === null) Object.assign(record, { exitedAt: now, exitCode: 0 });
+  ctx.scheduler = { ...ctx.scheduler, running: ctx.scheduler.running.filter(e => !rested.has(e.threadId)), queued: ctx.scheduler.queued.filter(e => !rested.has(e.threadId)) };
+}
+
+/** A thread at work or waiting, brought to rest: its turn finished, its tools and messages complete. */
+function rest(thread: Thread): void {
+  Object.assign(thread, { status: 'idle', runningSince: null, requestSince: null, progress: null, load: null });
+  for (const turn of thread.turns) {
+    if (turn.status !== 'running' && turn.status !== 'queued') continue;
+    turn.status = 'done';
+    turn.startedAt ??= turn.queuedAt;
+    turn.finishedAt = (turn.startedAt ?? turn.queuedAt) + 12 * MINUTE;
+  }
+  for (const message of thread.messages) {
+    if (message.state === 'streaming') message.state = 'complete';
+    for (const part of message.parts) if (part.type === 'tool' && part.status === 'running') Object.assign(part, { status: 'done', finishedAt: (part.startedAt ?? 0) + 4_000 });
+  }
 }
 
 // ---------------------------------------------------------------------------

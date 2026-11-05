@@ -32,7 +32,8 @@ export async function startServer(): Promise<Rig> {
   const { createServer } = await import(requireUi.resolve('vite'));
   const server = await createServer({
     root: ui, plugins: [fixtureBridge, showcaseSeed],
-    server: { host: '127.0.0.1', port: 0 }, logLevel: 'warn', clearScreen: false,
+    // No watcher and no hot reload: an edit made while a run goes on would reload the page mid-step.
+    server: { host: '127.0.0.1', port: 0, watch: null, hmr: false }, logLevel: 'warn', clearScreen: false,
   });
   await server.listen();
   return { base: server.resolvedUrls!.local[0]!.replace(/\/$/, ''), close: () => server.close() };

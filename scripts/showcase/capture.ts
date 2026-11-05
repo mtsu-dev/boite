@@ -2,7 +2,7 @@
  * Captures every screen of the app full of the showcase seed, for design
  * reviews: `bun scripts/showcase/capture.ts --out <dir> [--only <name,...>]
  * [--theme dark|light|both] [--device desktop|phone|both] [--lang en|fr|both]
- * [--narrow]`.
+ * [--narrow] [--contrast] [--solid] [--view projects|recent] [--seed calm|stress]`.
  *
  * Each screen is a named step that navigates through the test bridge's store
  * (`__boiteTest.workspace.active`) or aria labels, waits for fonts and
@@ -10,13 +10,25 @@
  * outline as `.txt`. Steps always run in English, since they find controls by
  * their English names; `--lang fr` switches the app to French just before each
  * snapshot (`<device>-<theme>-fr-<name>.png`) and back after. `--narrow` takes
- * the phone at 360x800 (`phone360-...`). A failing step prints `FAIL` and the run goes on; the exit
+ * the phone at 360x800 (`phone360-...`). `--contrast` also writes
+ * `<file>.contrast.txt`: every text run under WCAG AA on the pixels behind it
+ * (`contrast.ts`). Every screen gets `<file>.clip.txt` when a box cuts the
+ * descenders off a label (`clipping.ts`). `--solid` switches the glass off (`<device>-<theme>-solid-...`).
+ * `--view recent` opens the sidebar on its Recent list, one list across
+ * projects, instead of project cards (`<device>-<theme>-recent-...`).
+ * `--seed` picks the data: `calm` (the default, `?calm=1`) is one person's
+ * normal day, three projects, two asks and one failed thread; `stress` is
+ * the full seed, eight projects and about eight asks, for tests. A step marked
+ * `stress` keeps the full seed under `calm`. File names do not change.
+ * A failing step prints `FAIL` and the run goes on; the exit
  * code is 1 when any failed. `index.md` and `index.html` list what was taken.
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { ONBOARDING_STORAGE_KEY, ONBOARDING_VERSION } from '../../packages/ui/src/lib/onboarding';
 import { SETTINGS_TABS } from '../../packages/ui/src/lib/settings-tabs';
+import { auditClipping, formatClipping } from './clipping';
+import { auditContrast, formatContrast } from './contrast';
 import { assertHardware, launchBrowser, startServer, waitForMemory } from './server';
 
 type Device = 'desktop' | 'phone';
@@ -34,6 +46,8 @@ interface Step {
    * does, and Undo brings the thread back without its pending permission.
    */
   spoils?: boolean;
+  /** The screen needs a long list (a scroll, a third row): it takes the stress seed whatever `--seed` says. */
+  stress?: boolean;
   run(page: any): Promise<void>;
 }
 
@@ -62,11 +76,24 @@ const langArg = option('lang') ?? 'en';
 if (!['en', 'fr', 'both'].includes(langArg)) throw new Error(`--lang: expected en, fr or both, got ${langArg}`);
 const langs = langArg === 'both' ? ['en', 'fr'] : [langArg];
 const narrow = args.includes('--narrow');
+const contrast = args.includes('--contrast');
+const solid = args.includes('--solid');
+const view = option('view') ?? 'projects';
+if (!['projects', 'recent'].includes(view)) throw new Error(`--view: expected projects or recent, got ${view}`);
+const recent = view === 'recent';
+const seed = option('seed') ?? 'calm';
+if (!['calm', 'stress'].includes(seed)) throw new Error(`--seed: expected calm or stress, got ${seed}`);
 
 const QUERY = 'fake=1&team=1&agents=1&subagents=1&board=1&debates=1&machines=1';
 const FLAGSHIP = 't-trace';
 const QUESTION = 't-scheduler';
 const WORKING = 't-sc-ratelimit';
+/** Threads both seeds keep: a failed one with a plain composer, an idle one with an open PR, one to archive. */
+const FAILED = 't-sc-camera';
+const FINISHED = 't-sc-push';
+const ARCHIVABLE = 't-sc-paginate';
+/** A page query with the seed's flag: `calm=1` unless the run or the step wants the stress seed. */
+const seeded = (query: string, step?: Step) => seed === 'calm' && !step?.stress ? `${query}&calm=1` : query;
 const EXPERIMENTS = ['resident-agents', 'contacts', 'teams', 'debates', 'pinned-quotas', 'prompt-cache'];
 const VIEWPORTS: Record<Device, object> = {
   desktop: { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 },
@@ -75,6 +102,7 @@ const VIEWPORTS: Record<Device, object> = {
     : { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
 };
 const devicePrefix = (device: Device) => device === 'phone' && narrow ? 'phone360' : device;
+const themePrefix = (theme: Theme) => `${theme}${solid ? '-solid' : ''}${recent ? '-recent' : ''}`;
 
 /** Swaps the app's language in place through its own module, the one the dev server already loaded. */
 async function speak(page: any, lang: string): Promise<void> {
@@ -271,11 +299,11 @@ const steps: Step[] = [
   {
     name: 'phone-keyboard', caption: 'The phone with the keyboard open: the composer and the strip in the 508 px left above it.', devices: phone,
     async run(page) {
-      await openThread(page, 't-sc-export');
+      await openThread(page, FAILED);
       await page.setViewportSize({ width: page.viewportSize().width, height: 508 });
       const input = page.getByTestId('composer-input');
       await input.click();
-      await input.fill('Also export the tags column');
+      await input.fill('Also try it on the Pixel 8');
       await page.waitForTimeout(400);
       // A desktop browser has no keyboard to shrink its visual viewport: say it is open, as viewport.ts does on a phone.
       await page.evaluate(() => { document.documentElement.dataset.keyboard = 'open'; });
@@ -285,10 +313,10 @@ const steps: Step[] = [
   {
     name: 'composer', caption: 'The composer focused with a draft, keyboard space included.', devices: phone,
     async run(page) {
-      await openThread(page, 't-sc-export');
+      await openThread(page, FAILED);
       const input = page.getByTestId('composer-input');
       await input.click();
-      await input.fill('Also export the tags column, comma separated');
+      await input.fill('Also try it on the Pixel 8, then on a tablet');
     },
   },
   {
@@ -384,7 +412,7 @@ const steps: Step[] = [
   },
   {
     name: 'thread-finished', caption: 'A finished thread: the status strip with Mark done and Archive, the title bar context pill.', devices: both,
-    async run(page) { await openThread(page, 't-sc-saves'); await scrollTimeline(page, 'bottom'); },
+    async run(page) { await openThread(page, FINISHED); await scrollTimeline(page, 'bottom'); },
   },
   {
     name: 'notice', caption: 'A merged thread whose worktree was removed: the one-line notice banner above the composer.', devices: both,
@@ -506,7 +534,7 @@ const steps: Step[] = [
         const archive = '/src/lib/archive.ts';
         const { archiveThread } = await import(/* @vite-ignore */ archive);
         await archiveThread((globalThis as any).__boiteTest.workspace.active, id);
-      }, 't-sc-links');
+      }, ARCHIVABLE);
       await page.getByTestId('undo-toast').waitFor({ timeout: 5000 });
     },
   },
@@ -543,7 +571,7 @@ const steps: Step[] = [
     async run(page) { await dismissBanners(page); await page.waitForTimeout(400); },
   },
   {
-    name: 'inbox', caption: 'The home Inbox: threads that need you, then the ones at work (desktop); the phone Inbox tab.', devices: both,
+    name: 'inbox', caption: 'The home Inbox: threads that need you, then the ones at work unfolded (desktop); the phone Inbox tab.', devices: both,
     async run(page) {
       if (await page.evaluate(() => innerWidth < 600)) {
         await phoneList(page);
@@ -552,6 +580,13 @@ const steps: Step[] = [
       } else {
         await store(page, 's.startDraft("p-boite", { fresh: true });');
         await page.getByTestId('inbox').waitFor({ timeout: 5000 });
+        // The home shows the contact requests (the `home` screen); this one is the lists, with the work unfolded.
+        const dismiss = page.getByTestId('contact-request-dismiss');
+        for (let round = 0; round < 4 && await dismiss.count(); round++) { await dismiss.dispatchEvent('click'); await page.waitForTimeout(350); }
+        const fold = page.getByTestId('inbox-working-toggle');
+        if (await fold.count() && await fold.getAttribute('aria-expanded') === 'false') await fold.dispatchEvent('click');
+        // Scrolled to its end: the rows at work in view, the asks fading under the composer.
+        await page.getByTestId('inbox').evaluate(el => { el.scrollTop = el.scrollHeight; });
         await page.waitForTimeout(400);
       }
     },
@@ -578,7 +613,7 @@ const steps: Step[] = [
     },
   },
   {
-    name: 'dense', caption: 'The sidebar on about sixty threads (`?dense=1`): the lanes fold, the headers fit the first screen.', devices: both, query: `${QUERY}&dense=1`,
+    name: 'dense', caption: 'The sidebar on about sixty threads (`?dense=1`): the lanes fold, the headers fit the first screen.', devices: both, query: `${QUERY}&dense=1`, stress: true,
     async run(page) {
       await dismissBanners(page);
       if (await page.evaluate(() => innerWidth < 600)) { await phoneList(page); return; }
@@ -635,7 +670,10 @@ const steps: Step[] = [
   },
   {
     name: 'filter-return', caption: 'Needs you, a thread opened from it, then back: the filter and the scroll are kept.', devices: both,
+    // A third row to open and a list long enough to scroll: two asks give neither.
+    query: QUERY, stress: true,
     async run(page) {
+      await prepare(page);
       const phone = await page.evaluate(() => innerWidth < 600);
       if (phone) await phoneList(page);
       else await store(page, 's.startDraft("p-boite", { fresh: true });');
@@ -671,14 +709,16 @@ interface Shot { file: string; caption: string; device: Device; theme: Theme }
 
 async function newPage(browser: any, base: string, device: Device, theme: Theme, query: string): Promise<{ context: any; page: any }> {
   const context = await browser.newContext({ ...VIEWPORTS[device], locale: 'en-US', colorScheme: theme, reducedMotion: 'no-preference' });
-  await context.addInitScript(({ key, version, theme, experiments }: any) => {
+  await context.addInitScript(({ key, version, theme, experiments, solid, recent }: any) => {
     localStorage.setItem('boite.theme', theme);
+    if (solid) localStorage.setItem('boite.features', JSON.stringify({ glass: false }));
+    if (recent) localStorage.setItem('boite.thread-view', 'recent');
     localStorage.setItem('boite.locale', 'en');
     localStorage.setItem('boite:right-panel-width', '560');
     localStorage.setItem('boite.experiments', JSON.stringify(experiments));
     localStorage.setItem('boite.experiments.follow', 'off');
     localStorage.setItem(key, JSON.stringify({ version, at: 0 }));
-  }, { key: ONBOARDING_STORAGE_KEY, version: ONBOARDING_VERSION, theme, experiments: EXPERIMENTS });
+  }, { key: ONBOARDING_STORAGE_KEY, version: ONBOARDING_VERSION, theme, experiments: EXPERIMENTS, solid, recent });
   const page = await context.newPage();
   page.on('pageerror', (error: Error) => console.log(`  pageerror ${error.message.split('\n')[0]}`));
   await page.goto(`${base}/?${query}`, { waitUntil: 'load', timeout: 120000 });
@@ -699,9 +739,13 @@ async function dismissBanners(page: any): Promise<void> {
 
 /** The shared page once the second machine and the seed are in. */
 async function prepare(page: any): Promise<void> {
-  await page.waitForFunction(() => (globalThis as any).__boiteTest.workspace.active.threads.length > 30, null, { timeout: 30000 });
+  // The showcase rows are in (both seeds keep the working one) and so is the second machine.
+  await page.waitForFunction((working: string) => {
+    const workspace = (globalThis as any).__boiteTest?.workspace;
+    return workspace?.active.threads.some((t: any) => t.id === working) && workspace.machines.length > 1 && workspace.machines.every((m: any) => m.store.threads.length > 0);
+  }, WORKING, { timeout: 30000 });
   await store(page, `
-    if (!s.isCollapsed('p-garden')) s.toggleProject('p-garden');
+    if (s.projects.some((p) => p.id === 'p-garden') && !s.isCollapsed('p-garden')) s.toggleProject('p-garden');
   `);
   await dismissBanners(page);
   // The queued message: typed while the flagship's turn waits on its permission.
@@ -722,6 +766,17 @@ async function snapshot(page: any, path: string): Promise<void> {
   await page.screenshot({ path: `${path}.png`, animations: 'disabled', caret: 'hide' });
   const outline = await page.locator('body').ariaSnapshot({ timeout: 10000 }).catch((error: Error) => `(no outline: ${error.message.split('\n')[0]})`);
   writeFileSync(`${path}.txt`, outline.split('\n').filter((line: string) => line.trim()).join('\n') + '\n');
+  // Cheap enough for every screen: labels whose descenders a box cuts off (`clipping.ts`).
+  const clipped = await auditClipping(page).catch((error: Error) => [{ text: `(audit failed: ${error.message.split('\n')[0]})`, cut: 0, box: '' }]);
+  if (clipped.length) {
+    writeFileSync(`${path}.clip.txt`, formatClipping(clipped));
+    console.log(`  clipped: ${clipped.length} labels, first ${JSON.stringify(clipped[0].text)} by ${clipped[0].box}`);
+  }
+  if (contrast) {
+    const findings = await auditContrast(page);
+    writeFileSync(`${path}.contrast.txt`, formatContrast(findings));
+    if (findings.length) console.log(`  contrast: ${findings.length} runs under AA, worst ${findings[0].ratio} (${JSON.stringify(findings[0].text)})`);
+  }
 }
 
 const shots: Shot[] = [];
@@ -741,19 +796,19 @@ try {
       let shared: { context: any; page: any } | null = null;
       const sharedPage = async () => {
         if (!shared) {
-          shared = await newPage(browser, rig.base, device, theme, QUERY);
+          shared = await newPage(browser, rig.base, device, theme, seeded(QUERY));
           console.log(`  renderer ${await assertHardware(shared.page)}`);
           await prepare(shared.page);
         }
         return shared.page;
       };
       for (const step of wanted) {
-        const file = `${devicePrefix(device)}-${theme}-${step.name}`;
+        const file = `${devicePrefix(device)}-${themePrefix(theme)}-${step.name}`;
         let own: { context: any; page: any } | null = null;
         try {
           let page: any;
           if (step.query) {
-            own = await newPage(browser, rig.base, device, theme, step.query);
+            own = await newPage(browser, rig.base, device, theme, seeded(step.query, step));
             page = own.page;
           } else {
             page = await sharedPage();
@@ -768,7 +823,7 @@ try {
           }
           await step.run(page);
           for (const lang of langs) {
-            const name = lang === 'en' ? file : `${devicePrefix(device)}-${theme}-${lang}-${step.name}`;
+            const name = lang === 'en' ? file : `${devicePrefix(device)}-${themePrefix(theme)}-${lang}-${step.name}`;
             if (lang !== 'en') await speak(page, lang);
             try {
               await snapshot(page, join(out, name));
@@ -803,7 +858,7 @@ for (const shot of shots) {
   const key = `${shot.device} ${shot.theme}`;
   groups.set(key, [...(groups.get(key) ?? []), shot]);
 }
-const md = ['# Showcase captures', '', `Command: \`bun scripts/showcase/capture.ts --out ${outArg}${only ? ` --only ${only.join(',')}` : ''}\``, ''];
+const md = ['# Showcase captures', '', `Command: \`bun scripts/showcase/capture.ts --out ${outArg}${only ? ` --only ${only.join(',')}` : ''}${solid ? ' --solid' : ''}${recent ? ' --view recent' : ''} --seed ${seed}\``, ''];
 for (const [key, list] of groups) {
   md.push(`## ${key}`, '');
   for (const shot of list) md.push(`- \`${shot.file}\`: ${shot.caption}`);

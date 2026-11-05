@@ -11,7 +11,7 @@
  *        [--software] [--css "<rules>"] [--profile <dir>] [--shots <dir>] [--wait <seconds>]
  *
  * It composites on the machine's GPU through ANGLE on Direct3D 11, as WebView2
- * does, and stops if Chrome finds only a software renderer; `--software` uses
+ * does (on OpenGL ES off Windows), and stops if Chrome finds only a software renderer; `--software` uses
  * none. Headless Chrome follows no monitor: a smooth loop drew 150 to 340
  * frames a second here, what a fast monitor asks for. The figures hold
  * whatever else the machine runs.
@@ -166,7 +166,7 @@ async function main(): Promise<void> {
   const profile = mkdtempSync(join(tmpdir(), 'boite-ui-at-rest-profile-'));
   const chrome = Bun.spawn({
     cmd: [findBrowser(), '--headless=new',
-      ...(SOFTWARE ? ['--disable-gpu', '--disable-software-rasterizer', '--disable-3d-apis'] : ['--enable-gpu', '--use-gl=angle', '--use-angle=d3d11', '--disable-software-rasterizer']),
+      ...(SOFTWARE ? ['--disable-gpu', '--disable-software-rasterizer', '--disable-3d-apis'] : ['--enable-gpu', '--use-gl=angle', `--use-angle=${process.platform === 'win32' ? 'd3d11' : 'gl-egl'}`, '--disable-software-rasterizer']),
       '--mute-audio', '--no-first-run', '--no-default-browser-check', '--disable-background-networking', '--lang=en-US',
       '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1', '--remote-allow-origins=*',
       '--window-size=1280,890', `--user-data-dir=${profile}`, `--remote-debugging-port=${debugPort}`, 'about:blank'],
