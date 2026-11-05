@@ -2,6 +2,7 @@ import { expect, test } from 'vitest';
 import type { PermissionRequest, Project, QuestionRequest, ThreadSummary } from '@boite/contracts';
 import { INBOX_CARDS, inbox, waitedFor, type InboxSource } from './inbox';
 import { shortAgo } from './thread-state';
+import { compareThreads } from './thread-order';
 
 const project = { id: 'p', name: 'orbit', path: '/orbit' } as Project;
 const thread = (id: string, patch: Partial<ThreadSummary> = {}): ThreadSummary => ({
@@ -39,7 +40,7 @@ test('the cards come from every machine in the order of Recent\'s Needs you band
   expect(working).toEqual([]);
 });
 
-test('the work going on is listed longest running first; a sub-agent is left to its parent, and hidden rooms to their lists', () => {
+test('the work going on is listed in the order of Recent\'s Working band; a sub-agent is left to its parent, and hidden rooms to their lists', () => {
   const { needs, working } = inbox([source('pc', [
     thread('recent', { status: 'running', runningSince: 900 }),
     thread('long', { status: 'queued', requestSince: 100, runningSince: 800 }),
@@ -52,7 +53,22 @@ test('the work going on is listed longest running first; a sub-agent is left to 
   ])]);
   // The parent carries its child's question; a child whose parent is not listed is no sidebar row, so the Inbox leaves it out too.
   expect(needs.map(card => [card.thread.id, card.detail])).toEqual([['parent', 'Keep the old key?']]);
-  expect(working.map(row => [row.thread.id, row.since])).toEqual([['long', 100], ['recent', 900]]);
+  // Recent's comparator: its own turn before a queued one.
+  expect(working.map(row => [row.thread.id, row.since])).toEqual([['recent', 900], ['long', 100]]);
+});
+
+test('the home lists the work in the order of Recent\'s Working band and the palette, never by run start', () => {
+  // Round 14: the home read "Add rate limiting" (started first) above "Render", the reverse of the Working band beside it.
+  const threads = [
+    thread('rate-limit', { status: 'running', runningSince: 100, lastUserMessageAt: 100, createdAt: 10 }),
+    thread('render', { status: 'running', runningSince: 600, lastUserMessageAt: 590, createdAt: 20 }),
+    thread('nova', { status: 'running', runningSince: 300, lastUserMessageAt: 900, createdAt: 30 }),
+    thread('queued', { status: 'queued', requestSince: 50, lastUserMessageAt: 950, createdAt: 40 })
+  ];
+  const { working } = inbox([source('pc', threads)]);
+  const recent = [...threads].sort((a, b) => compareThreads(a, b, 'working', 'working')).map(entry => entry.id);
+  expect(working.map(row => row.thread.id)).toEqual(recent);
+  expect(recent).toEqual(['nova', 'render', 'rate-limit', 'queued']);
 });
 
 test('the Inbox counts the threads the sidebar counts: work that stopped short waits on the user, delegated work is at work', () => {

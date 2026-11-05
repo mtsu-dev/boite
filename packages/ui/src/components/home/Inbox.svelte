@@ -5,14 +5,14 @@
   import { Bot, ChevronRight, CircleAlert, CirclePause, KeyRound, LogIn, MessageCircleQuestion, ShieldQuestion } from '@lucide/svelte';
   import { minuteClock, secondClock } from '../../lib/clock.svelte';
   import { elapsed, exactTime, projectName } from '../../lib/format';
-  import { INBOX_CARDS, inbox, storeSources, waitedFor, type InboxCard, type InboxReason, type InboxRow } from '../../lib/inbox';
+  import { inbox, storeSources, waitedFor, type InboxCard, type InboxReason, type InboxRow } from '../../lib/inbox';
   import { fill, strings } from '../../lib/strings';
   import type { Store } from '../../lib/store.svelte';
   import { threadState } from '../../lib/thread-state';
   import { contactsShown } from '../../lib/contacts-rail.svelte';
   import { workspace, type Machine } from '../../lib/workspace.svelte';
   import { namesMachine } from '../../lib/row-machine';
-  import { WORKING_ROWS, opensByItself, workingFit } from '../../lib/inbox-fit';
+  import { NEEDS_CARDS, WORKING_ROWS, homeFit, type HomeFit } from '../../lib/inbox-fit';
   import { glides } from '../../lib/motion';
   import MachineIcon from '../MachineIcon.svelte';
   import MachineSuffix from '../MachineSuffix.svelte';
@@ -26,16 +26,17 @@
    * in the order of Recent's Needs you band beside it, then the threads at work. A card or a row opens
    * its thread, where the question or permission waits above the composer.
    * Nothing waiting says so quietly, on the sky.
-   * Calm by default: three cards in one column, `See all` for the rest, and
-   * the work under one quiet line: open when its rows fit in the room the
-   * home has, folded when they would scroll it, and once the user folds or
-   * opens it, as they left it (remembered on this device).
+   * Calm by default: three cards in one column, up to six when the home has
+   * the room, `See all` for the rest, and the work under one quiet line: open
+   * when its drawn rows fit in the room the cards left, folded when they would
+   * scroll it, and once the user folds or opens it, as they left it
+   * (remembered on this device).
    */
   let { store, spare = () => 0, onroom }: {
     store: Store;
     /** The free room above the home's sentence that the block can still rise into (ChatView). */
     spare?: () => number;
-    /** The height the column must take for the open rows, or null: the home lifts its block by the difference. */
+    /** The height the column must take for the cards and rows it draws, or null: the home lifts its block by the difference. */
     onroom?: (height: number | null) => void;
   } = $props();
   const labels = $derived(strings.inbox);
@@ -54,8 +55,10 @@
   const WORKING_KEY = 'boite.inbox.working';
   /** The user's own fold, once they used the chevron; until then the room decides (`fits`). */
   let chosen = $state<'open' | 'closed' | null>(readWorkingFold());
-  /** Whether the working rows fit whole in the room the home has, read by `decide`. */
+  /** Whether the working rows fit whole in the room the cards left, read by `decide`. */
   let fits = $state(false);
+  /** How many Needs you cards the room holds before `See all`, read by `decide`: three to six. */
+  let fitCards = $state(NEEDS_CARDS);
   const workingOpen = $derived(chosen === null ? fits : chosen === 'open');
   function readWorkingFold(): 'open' | 'closed' | null {
     try { const saved = localStorage.getItem(WORKING_KEY); return saved === 'open' || saved === 'closed' ? saved : null; } catch { return null; }
@@ -63,42 +66,56 @@
   function toggleWorking() {
     chosen = workingOpen ? 'closed' : 'open';
     try { localStorage.setItem(WORKING_KEY, chosen); } catch { /* Storage off: the fold lasts this page. */ }
-    onroom?.(chosen === 'open' ? room() : null);
+    // The cards above the chevron stay as they are: only the work's room changes.
+    onroom?.(room(fitCards)?.height ?? null);
   }
 
   let section = $state<HTMLElement | undefined>(undefined);
   let working = $state<HTMLElement | undefined>(undefined);
   let noticeSlot = $state<HTMLElement | undefined>(undefined);
+  let cardList = $state<HTMLElement | undefined>(undefined);
+  /** The gap `.cards` draws between two cards. */
+  const CARD_GAP = 6;
 
-  /** The height the open rows need from the column, null when they would make it scroll (`workingFit`). */
-  function room(): number | null {
+  /** How many cards and whether the rows fit in the column without making it scroll (`homeFit`); `keep` holds the cards as drawn. */
+  function room(keep?: number): HomeFit | null {
     const target = section;
     const column = target?.parentElement;
     if (!target || !column) return null;
     // What the column draws over the list (a folder button, a note) is not the list's room.
     const top = target.offsetParent === column ? target.offsetTop : target.offsetTop - column.offsetTop;
-    return workingFit({ count: lists.working.length, drawn: target.scrollHeight - (working?.offsetHeight ?? 0), column: column.clientHeight, top, spare: spare() });
+    const card = cardList?.firstElementChild as HTMLElement | null | undefined;
+    const pitch = card?.offsetHeight ? card.offsetHeight + CARD_GAP : 0;
+    return homeFit({
+      count: lists.working.length, asks: threadCards.length, shown: cards.length, pitch,
+      drawn: target.scrollHeight - (working?.offsetHeight ?? 0), column: column.clientHeight, top, spare: spare(),
+      fold: chosen, cards: keep
+    });
   }
 
   /**
-   * Opens the work by default when its rows fit whole in the room the home's
+   * Lets the Needs you cards and then the work take the room the home's
    * column has (under the composer, and above the sentence the block can rise
-   * into), so the home does not leave that room empty over a folded line;
-   * folded when they would make the column scroll. Read once the lane shows,
+   * into), so the home does not leave that room empty over a folded line or
+   * three cards; folded when the rows would make the column scroll. Read once the lists show,
    * then again only when the column is resized or a contact's request over the
    * lists loads or leaves: a thread that starts or ends never opens or folds
    * the rows under the pointer. The user's own fold always wins.
    */
   let decided = false;
+  /** Whether the room decides anything: work to open, or more asks than the three cards. */
+  const roomMatters = () => lists.working.length > 0 || threadCards.length > NEEDS_CARDS;
   function decide() {
-    if (!section?.parentElement || lists.working.length === 0) return;
+    if (!section?.parentElement || !roomMatters()) return;
     decided = true;
-    const height = room();
-    if (chosen === null) fits = opensByItself(lists.working.length, height);
-    onroom?.(workingOpen ? height : null);
+    const fit = room();
+    if (!fit) return;
+    fitCards = fit.cards;
+    if (chosen === null) fits = fit.open;
+    onroom?.(fit.height);
   }
   $effect(() => {
-    if (lists.working.length === 0 || decided) return;
+    if (!roomMatters() || decided) return;
     void tick().then(() => { if (!decided) decide(); });
   });
   $effect(() => {
@@ -128,7 +145,7 @@
   const botCards = $derived(lists.needs.filter(card => card.kind === 'bots'));
   let botsOpen = $state(false);
   const botsShown = $derived(botCards.length > 0 && (botsOpen || threadCards.length === 0));
-  const cards = $derived(allCards ? threadCards : threadCards.slice(0, INBOX_CARDS));
+  const cards = $derived(allCards ? threadCards : threadCards.slice(0, fitCards));
   const rows = $derived(allRows ? lists.working : lists.working.slice(0, WORKING_ROWS));
   const now = $derived(minuteClock.now);
 
@@ -161,12 +178,12 @@
         {/each}
       </ul>
     {/if}
-    <ul class="cards">
+    <ul class="cards" bind:this={cardList}>
       {#each cards as card (`${card.machine.id}:${card.thread.id}`)}
         {@render needsCard(card)}
       {/each}
     </ul>
-    {#if threadCards.length > INBOX_CARDS}
+    {#if threadCards.length > fitCards}
       <button type="button" class="ghost small more" data-testid="inbox-more" data-count={threadCards.length} aria-expanded={allCards} onclick={() => { allCards = !allCards; }}>
         <span class="ui-label">{allCards ? labels.fewer : fill(labels.more, { count: String(threadCards.length) })}</span>
       </button>

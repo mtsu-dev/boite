@@ -356,7 +356,8 @@
 
     <!-- The mode opens a menu as its neighbours do, so it wears their filled pill and the model's chevron: three peers, one set. -->
     {#if modes.length > 0}
-      <Menu items={modeItems} onpick={pickMode} label={strings.composer.mode} testid="composer-mode" align="end">
+      <!-- Its name and title are the mode's own words, so a narrowed composer that shows only the icon still says which mode it is. -->
+      <Menu items={modeItems} onpick={pickMode} label={modeLabel(displayedMode, provider)} testid="composer-mode" align="end">
         {@const ModeIcon = modeIcon(displayedMode)}
         <span class="mode-icon"><ModeIcon size={14} strokeWidth={1.75} /></span>
         <span class="ui-label" title={modeTitle(displayedMode)}>{modeLabel(displayedMode, provider)}</span>
@@ -565,25 +566,29 @@
   .desktop-options :global([data-testid='composer-mode-menu']) { width: max-content; max-width: min(440px, calc(100vw - 24px)); }
   .desktop-options :global([data-testid='composer-mode-menu'] .hint) { white-space: nowrap; }
 
-  /* A composer the side panel narrowed keeps its tools on one row: the account
-     goes first, then the effort, worktree and mode chips keep only their icons and
-     tooltips. */
+  /* A composer the side panel narrowed keeps its tools on one row and gives
+     way in one order: the mode keeps only its icon and chevron (its label stays
+     its name and title, Menu's label), then the model's account and name
+     ellipsize, then (480 px) the effort and worktree labels go, then (400 px)
+     the icon-only chips' chevrons. */
   @container composer (max-width: 600px) {
-    /* The model's name gives way first; the effort beside it stays whole. */
     .chips { flex-wrap: nowrap; }
     .desktop-options { flex: none; }
+    /* A cut "Ask f…" reads as nothing: the mode's words go whole, never in part. */
+    .desktop-options :global([data-testid='composer-mode'] > .ui-label) { display: none; }
+    /* The model gives way alone: the button shrinks with its box, its account
+       first, so a long name ends in "…" inside its own pill and never under the effort beside it. */
     .chips :global(.picker) { min-width: 0; }
-    /* The button shrinks with its box, its label ellipsized, so a long name ends
-       in "…" inside its own pill and never under the effort beside it. */
     .chips :global(.picker > .trigger) { min-width: 0; max-width: 100%; }
-    .chips :global(.picker > .trigger .account-name) { display: none; }
-    /* The three chevrons give their room back, as under 380 px. */
-    .chips :global(.trigger > .chevron) { display: none; }
   }
   @container composer (max-width: 480px) {
     .bar { gap: 6px; }
     .desktop-options :global(.trigger > .ui-label), .desktop-options .worktree > .ui-label { display: none; }
     .desktop-options :global(.trigger), .desktop-options .worktree { padding: 0 9px; }
+  }
+  /* Last, the icon-only chips drop their chevrons; the phone's model chip keeps its own (380 px rule). */
+  @container composer (max-width: 400px) {
+    .desktop-options :global(.trigger > .chevron) { display: none; }
   }
 
   @media (max-width: 720px) {

@@ -127,8 +127,8 @@ export function storeSources<M extends { store: Store }>(machines: readonly M[])
   }));
 }
 
-/** The cards the home shows before folding the rest under `See all`: three keep the home a glance, not a list. */
-export const INBOX_CARDS = 3;
+/** The cards the home always shows before `See all`: three keep the home a glance, not a list; the room adds up to three more (`inbox-fit`). */
+export { NEEDS_CARDS as INBOX_CARDS } from './inbox-fit';
 
 /** The threads a list of the user's work shows: no archive, no incognito, no team or debate room. */
 export function listed(thread: ThreadSummary): boolean {
@@ -138,7 +138,7 @@ export function listed(thread: ThreadSummary): boolean {
 export interface InboxLists<M> {
   /** What waits on the user on a connected machine, in Recent's order: pins, then the newest wait first. */
   needs: InboxCard<M>[];
-  /** What works on a connected machine, longest running first. */
+  /** What works on a connected machine, in the order of Recent's Working band. */
   working: InboxRow<M>[];
   /** The last known needs of a machine that stopped answering: listed, muted, never counted. */
   offline: InboxCard<M>[];
@@ -150,7 +150,7 @@ export interface InboxLists<M> {
  * The needs-you cards in the order of Recent's Needs you band
  * (`compareThreads`: pins, then the newest wait first), so the home's
  * `See all` continues the list the sidebar shows beside it; then the working
- * rows, longest running first, under the count rule of `countKind` and `liveKind`, so the
+ * rows in the order of Recent's Working band, under the count rule of `countKind` and `liveKind`, so the
  * lifecycle strip, the switch, the tab badges and Next read the same numbers.
  * A delegated agent's thread is left to its parent, which carries its
  * question (`subagentQuestions`) and its work.
@@ -186,7 +186,8 @@ export function inbox<M>(sources: readonly InboxSource<M>[]): InboxLists<M> {
   const byRecent = (a: InboxCard<M>, b: InboxCard<M>) => compareThreads(a.thread, b.thread, { live: 'needs', waited: a.since }, { live: 'needs', waited: b.since });
   needs.sort(byRecent);
   offline.sort(byRecent);
-  working.sort((a, b) => a.since - b.since);
+  // Recent's Working band and the palette list the same threads in this order; the row's timer is its run time.
+  working.sort((a, b) => compareThreads(a.thread, b.thread, 'working', 'working'));
   return { needs, working, offline, tally };
 }
 

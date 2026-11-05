@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, onTestFinished, test, vi } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
 import CommandPalette from './CommandPalette.svelte';
+import paletteSource from './CommandPalette.svelte?raw';
 import { FakeClient } from '../lib/fake-client';
 import { Store } from '../lib/store.svelte';
 import * as palette from '../lib/palette';
@@ -263,6 +264,17 @@ test('with nothing typed, a rule opens each Recent band, a row that needs the us
   // Round 13: "Crash when the camera opens on Andr…" was cut where its sidebar row wraps: a row that needs the user takes two lines.
   const lines = (id: string) => document.querySelector<HTMLElement>(`[data-palette-id="thread:${id}"]`)?.dataset['lines'] ?? '1';
   expect([lines('t-bench'), lines('t-scheduler'), lines('t-descriptors')]).toEqual(['2', '1', '1']);
+  // Round 14: the project and the age stood beside the first line ("Crash when the camera … courier-mobile · Failed 4h"):
+  // a wrapped title now ends its last line with them, its first line running the row's width.
+  const bench = document.querySelector<HTMLElement>('[data-palette-id="thread:t-bench"]')!;
+  const cluster = bench.querySelector<HTMLElement>('[data-last-line=line] > [data-last-line=cluster]');
+  expect(cluster?.querySelector('[data-testid=palette-where]')).not.toBeNull();
+  expect(cluster?.querySelector('[data-testid=thread-state]')).not.toBeNull();
+  expect(bench.querySelector('[data-last-line=title] > [data-last-line=room]:last-child')).not.toBeNull();
+  expect(paletteSource).toMatch(/\.row\.clamp \.cluster \{\s*position: absolute;\s*right: 0;\s*bottom: calc/);
+  // A one-line row keeps its parts in the row's flow.
+  expect(document.querySelector('[data-palette-id="thread:t-descriptors"] [data-last-line=room]')).toBeNull();
+  expect(paletteSource).toMatch(/\.line, \.cluster \{ display: contents; \}/);
   // A query ranks its rows: no band rule then, and the failed row still takes its two lines.
   await type('t');
   expect(document.querySelector('[data-testid=palette-band-rule]')).toBeNull();

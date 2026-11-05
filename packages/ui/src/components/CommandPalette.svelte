@@ -7,6 +7,7 @@
   import { appCommands, runCommand } from '../lib/commands.svelte';
   import { focusComposer, focusedElement, restoreFocus } from '../lib/focus';
   import { projectName } from '../lib/format';
+  import { lastLine } from '../lib/last-line';
   import { PALETTE_LIMIT, RECENT_SECTION, RECENT_THREADS, asRecents, bandBreaks, rankItems, sectionRows, type PaletteItem } from '../lib/palette';
   import { namesMachine } from '../lib/row-machine';
   import { fill, strings } from '../lib/strings';
@@ -396,7 +397,7 @@
               {@const place = placeOf(item.id)}
               {@const mono = !!place?.thread && quiet(place.thread, place.machine.store)}
               {@const word = recent && place?.thread ? needsWord(place) : null}
-              <!-- A thread that needs the user takes two lines for a long title, as its sidebar row does; the right cluster stays on the first. -->
+              <!-- A thread that needs the user takes two lines for a long title, as its sidebar row does; the right cluster then ends its last line (`lastLine`). -->
               {@const clamp = place?.thread ? (word ?? needsWord(place)) !== null : false}
               {#if breaks.has(item.id)}<div class="band-rule" aria-hidden="true" data-testid="palette-band-rule" data-band={item.band}></div>{/if}
               <button
@@ -419,7 +420,9 @@
                   {#if place?.thread}{@const subagents = place.machine.store.subagents(place.thread.id)}<StateRing kind={threadState(place.thread, subagents)} asking={asksMidTurn(place.thread, subagents)} stale={place.machine.store.connection !== 'ready'} ground="var(--color-surface-2)"><ThreadPicture owner={place.machine.store} thread={place.thread} size={16} logo={13} {mono} /></StateRing>
                   {:else if item.kind === 'project' && place?.project}<ProjectTile project={place.project} store={place.machine.store} size={16} />{/if}
                 </span>
-                <span class="label" class:ui-label={!clamp}>{item.label}</span>
+                <span class="line" use:lastLine={clamp ? item.label : null}>
+                <span class="label" class:ui-label={!clamp} data-last-line="title">{item.label}{#if clamp}<span class="room" data-last-line="room" aria-hidden="true"></span>{/if}</span>
+                <span class="cluster" data-last-line="cluster">
                 {#if recent && place?.thread}
                   <!-- One heading for every recent: the row names its project where a heading would have,
                        then, as a Recent row's subline does, its machine when it is not this PC and what it needs in words. -->
@@ -440,6 +443,8 @@
                   <span class="kbd ui-label-box"><span class="ui-label">{item.hint}</span></span>
                 {/if}
                 <span class="enter" aria-hidden="true"><CornerDownLeft size={13} strokeWidth={2} /></span>
+                </span>
+                </span>
               </button>
             {/each}
           </div>
@@ -602,23 +607,48 @@
     min-height: var(--row);
     align-items: flex-start;
   }
-  /* A trimmed label's -0.5em margin would lift its slot above the title's first line. */
-  .row.clamp > :not(.label) {
+  .row.clamp > .mark-slot {
     height: var(--row);
-    margin-block: 0;
-    padding-block: 0;
     align-items: center;
   }
-  .row.clamp > .label {
+  /* The title and the right cluster are the row's own items, until a title may wrap. */
+  .line, .cluster { display: contents; }
+  /* There the title runs the row's width and the cluster ends its last line, 18 px tall on its
+     centre: the title's last word carries an empty room the cluster's width plus the gap
+     (`lastLine`); past the title's two lines, every line keeps that room. */
+  .row.clamp .line {
+    display: block;
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    padding-block: calc((var(--row) - 18px) / 2);
+  }
+  .row.clamp .cluster {
+    position: absolute;
+    right: 0;
+    bottom: calc((var(--row) - 18px) / 2);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 18px;
+    max-width: 100%;
+  }
+  /* A trimmed label's -0.5em margin would lift its slot off the line's centre. */
+  .row.clamp .cluster > * { margin-block: 0; padding-block: 0; align-items: center; }
+  .row.clamp .where { max-width: none; }
+  .row.clamp .room { padding-left: calc(var(--room, 0px) + 10px); }
+  .row.clamp .line:global([data-fit='narrow']) .label { padding-right: calc(var(--room, 0px) + 10px); }
+  .row.clamp .line:global([data-fit='narrow']) .room { display: none; }
+  .row.clamp .label {
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
     line-clamp: 2;
     white-space: normal;
     overflow-wrap: anywhere;
-    text-wrap: pretty;
+    /* Balanced: with the whole first line free, `pretty` let one word end the title alone. */
+    text-wrap: balance;
     line-height: 18px;
-    margin-block: calc((var(--row) - 18px) / 2);
   }
 
   /* The row Enter takes: the accent's wash, a bar on its edge and the Enter glyph, readable in both themes.

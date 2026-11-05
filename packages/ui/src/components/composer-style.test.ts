@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest';
 import composerSource from './Composer.svelte?raw';
 import barSource from './ComposerBar.svelte?raw';
+import pickerSource from './ModelPicker.svelte?raw';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -23,21 +24,43 @@ test('the phone model chip is a whole capsule of fill, not the control highlight
   expect(rule).toMatch(/box-shadow: none/);
 });
 
-test('a narrowed composer cuts the model name before the effort', () => {
-  const narrow = barSource.slice(barSource.indexOf('@container composer (max-width: 600px)'));
+/** The rules of one `@container composer` step, up to the next one. */
+function containerStep(width: number): string {
+  const start = barSource.indexOf(`@container composer (max-width: ${width}px)`);
+  const next = barSource.indexOf('@container composer', start + 1);
+  return barSource.slice(start, next < 0 ? barSource.indexOf('@media (max-width: 720px)', start) : next);
+}
+
+test('a narrowed composer shows the mode as icon and chevron, keeps the model whole with its account, and drops chevrons last', () => {
+  const narrow = containerStep(600);
   expect(narrow).toMatch(/\.chips \{ flex-wrap: nowrap; \}/);
   expect(narrow).toMatch(/\.desktop-options \{ flex: none; \}/);
-});
-
-test('a narrowed composer clips the model chip to its own box, so no chip paints over the next', () => {
-  const start = barSource.indexOf('@container composer (max-width: 600px)');
-  const narrow = barSource.slice(start, barSource.indexOf('@container composer (max-width: 480px)'));
-  // A picker that shrinks while its button keeps its width lets the effort pill cover the model's end.
+  // Round 14: a mode label cut to "Ask f…" read as nothing; it goes whole, and its words stay the trigger's name and title.
+  expect(narrow).toMatch(/\.desktop-options :global\(\[data-testid='composer-mode'\] > \.ui-label\) \{ display: none; \}/);
+  expect(narrow).not.toMatch(/text-overflow: ellipsis/);
+  expect(barSource).toMatch(/<Menu items=\{modeItems\} onpick=\{pickMode\} label=\{modeLabel\(displayedMode, provider\)\}/);
+  // The model's button shrinks with its box, so a long name ends in "…" inside its own pill.
   const trigger = narrow.match(/\.chips :global\(\.picker > \.trigger\) \{([^}]*)\}/)?.[1] ?? '';
   expect(trigger).toMatch(/min-width: 0/);
   expect(trigger).toMatch(/max-width: 100%/);
-  // The three chevrons give their room back, as under 380 px.
-  expect(narrow).toMatch(/\.chips :global\(\.trigger > \.chevron\) \{ display: none; \}/);
+  // Round 13 hid the chevrons and the account here: both keep their room now.
+  expect(narrow).not.toMatch(/\.chevron\) \{ display: none; \}/);
+  expect(narrow).not.toMatch(/\.account-name\) \{ display: none; \}/);
+  // The chevrons go only in the narrowest step, on the icon-only chips.
+  expect(containerStep(480)).not.toMatch(/\.chevron\) \{ display: none; \}/);
+  expect(containerStep(400)).toMatch(/\.desktop-options :global\(\.trigger > \.chevron\) \{ display: none; \}/);
+});
+
+test('the phone provider strip shows a right chevron in its fade while a provider waits past its end', () => {
+  const phone = pickerSource.slice(pickerSource.indexOf('@media (max-width: 720px)'));
+  expect(phone).not.toMatch(/\.rail-cue \{ display: none; \}/);
+  expect(phone).toMatch(/\.rail:global\(\[data-more-end\]\) ~ \.rail-cue :global\(svg\) \{ opacity: 1; \}/);
+  const cue = phone.match(/\n {4}\.rail-cue \{([^}]*)\}/)?.[1] ?? '';
+  expect(cue).toMatch(/width: 24px/);
+  expect(cue).toMatch(/justify-self: end/);
+  expect(cue).toMatch(/color: var\(--color-muted-foreground\)/);
+  // The desktop rail's down chevron, turned to point along the strip, at 16 px.
+  expect(phone).toMatch(/\.rail-cue :global\(svg\) \{[^}]*width: 16px; height: 16px;[^}]*rotate: -90deg/);
 });
 
 test('the effort and mode chips wear the model chip\'s 12 px chevron, and every chip drops it under 380 px', () => {

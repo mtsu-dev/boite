@@ -13,6 +13,7 @@
   import { asksMidTurn, delegatedChip, threadState } from '../lib/thread-state';
   import { rowSubagents } from '../lib/delegated-work';
   import { threadLiveKind, waitingSince } from '../lib/inbox';
+  import { lastLine } from '../lib/last-line';
 
   /**
    * A thread row's first line, in the sidebar and in a phone's list: who runs
@@ -72,6 +73,12 @@
    * so a long title takes a second line before its ellipsis. Every other row keeps one line.
    */
   let clamp = $derived(!wrap && threadLiveKind(thread, kind) === 'needs');
+  /**
+   * Such a title with no second line under it: the right cluster (draft, pin, subagents,
+   * time) ends the title's last line, as a two-line row's ends its subline (`lastLine`), so
+   * a wrapped title has its first line to itself and the ages of a group share one line.
+   */
+  let low = $derived(clamp && !stacked);
   /** A two-line row's pin sits on the second line, before the time, so it never takes the title's room. */
   let pinned = $derived(thread.pinned && pin);
   /** A failure says so in words on the second line, so the red mark is not the only cue beside a row that asks. */
@@ -88,7 +95,7 @@
   {#if now !== undefined}<ThreadState {thread} {now} {subagents} {away} {waited} compact={ring} />{/if}
 {/snippet}
 
-<span class="headline" class:wrap class:ring class:stacked class:quiet class:clamp class:unread={thread.unread && !wrap} data-lines={clamp ? 2 : undefined}>
+<span class="headline" class:wrap class:ring class:stacked class:quiet class:clamp class:low class:unread={thread.unread && !wrap} data-lines={clamp ? 2 : undefined}>
   {#if machine}
     <span class="machine" class:offline={owner.connection !== 'ready'}
       title={`${machine.label} · ${strings.connection[owner.connection]}`} aria-label={machine.label}>
@@ -98,10 +105,14 @@
   {#if picture && ring}
     <StateRing {kind} asking={asksMidTurn(thread, subagents)} stale={away} ground="var(--ring-ground, var(--color-frame))"><ThreadPicture {owner} {thread} size={16} logo={13} mono={quiet} /></StateRing>
   {:else if picture}<ThreadPicture {owner} {thread} size={wrap ? 13 : 12} mono={quiet} />{/if}
-  <span class="title" class:ui-label={!wrap && !clamp}>{thread.title}</span>
-  {#if draft}<span class="draft" data-testid="thread-draft" title={strings.sidebar.unsentDraft} aria-label={strings.sidebar.unsentDraft}><PencilLine size={12} /></span>{/if}
-  {#if pinned && !stacked}{@render pinMark()}{/if}
-  {#if !stacked}{@render trail()}{/if}
+  <span class="line" use:lastLine={low ? thread.title : null}>
+    <span class="title" class:ui-label={!wrap && !clamp} data-last-line="title">{thread.title}{#if low}<span class="room" data-last-line="room" aria-hidden="true"></span>{/if}</span>
+    <span class="cluster" data-last-line="cluster">
+      {#if draft}<span class="draft" data-testid="thread-draft" title={strings.sidebar.unsentDraft} aria-label={strings.sidebar.unsentDraft}><PencilLine size={12} /></span>{/if}
+      {#if pinned && !stacked}{@render pinMark()}{/if}
+      {#if !stacked}{@render trail()}{/if}
+    </span>
+  </span>
 </span>
 {#if stacked}<span class="facts" class:ring><span class="known">{@render facts?.()}{#if failed}<span class="failed" data-testid="thread-failed"><span aria-hidden="true">·</span><span class="ui-label">{failed}</span></span>{/if}</span><span class="trail" data-testid="thread-trail">{#if pinned}{@render pinMark()}{/if}{@render trail()}</span></span>{/if}
 
@@ -126,9 +137,12 @@
   .unread .title {
     font-weight: 600;
   }
-  /* Needs you: up to two 18 px lines, then the ellipsis. The ring, the marks and a one-line row's
-     time stay on the first line's centre, 11 px down the 22 px slot; the line box replaces the
-     trimmed label, whose ink padding would show the top of a third line under the clamp. */
+  /* A row's title and its right cluster are the headline's own items: the boxes holding them
+     take no layout of their own until the title may wrap (`.low`). */
+  .line, .cluster { display: contents; }
+  /* Needs you: up to two 18 px lines, then the ellipsis. The ring and the machine stay on the
+     first line's centre, 11 px down the 22 px slot; the line box replaces the trimmed label,
+     whose ink padding would show the top of a third line under the clamp. */
   .clamp { align-items: flex-start; }
   .clamp .title {
     display: -webkit-box;
@@ -142,7 +156,20 @@
     line-height: 18px;
     margin-top: 2px;
   }
-  .clamp > :global(:not(.title, [data-testid='state-ring'])) { display: inline-flex; align-items: center; min-height: 22px; }
+  .clamp > :global(:not(.line, .title, [data-testid='state-ring'])) { display: inline-flex; align-items: center; min-height: 22px; }
+  /* With no subline the cluster ends the title's last line, 18 px tall on its centre: the title
+     runs the line's whole width and its last word carries an empty room the cluster's width
+     plus the row's gap (`lastLine`), or, past its two lines, every line keeps that room. */
+  .low { --room-gap: 8px; }
+  .low.ring { --room-gap: 5px; }
+  .low .line { display: block; position: relative; flex: 1; min-width: 0; padding-top: 2px; }
+  /* Balanced: with the whole first line free, `pretty` let "drops" end the title alone. */
+  .low .title { margin-top: 0; text-wrap: balance; }
+  .low .room { padding-left: calc(var(--room, 0px) + var(--room-gap)); }
+  .low .cluster { position: absolute; right: 0; bottom: 0; display: flex; align-items: center; gap: var(--room-gap); height: 18px; }
+  .low .cluster > :global(*) { display: inline-flex; align-items: center; flex: none; }
+  .low .line:global([data-fit='narrow']) .title { padding-right: calc(var(--room, 0px) + var(--room-gap)); }
+  .low .line:global([data-fit='narrow']) .room { display: none; }
   /* The ringed row: every row's mark sits in one 22 px slot (1.5 px of air inside the ring),
      ring drawn or not, the 13 px mark centred in it; a 5 px gap and 13 px give the title
      about 235 px at the 304 px default width; unread reads at 500. */

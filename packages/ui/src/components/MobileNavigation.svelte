@@ -570,7 +570,8 @@
     .project-heading { position: sticky; top: var(--sticky-top, 0px); z-index: 2; display: flex; align-items: center; min-height: 40px; box-sizing: border-box; padding: 0 12px; gap: 8px; background: var(--color-cell); color: var(--color-muted-foreground); border-bottom: 1px solid var(--color-border); }
     .project-heading h2 { margin: 0; flex: 1; min-width: 0; font-size: var(--text-sm); overflow-wrap: anywhere; }
     /* A machine other than this PC follows the name on its line, as the Recent rows name it: "render-farm · ☰ Builder". */
-    .project-heading h2 :global(.machine-suffix) { margin-left: 4px; vertical-align: -1px; }
+    /* 8 px before the dot, as the Recent subline: the dot sits centred between the name and the glyph. */
+    .project-heading h2 :global(.machine-suffix) { margin-left: 8px; vertical-align: -1px; }
     /* A whole touch target that eats the heading's padding rather than making it taller. */
     .project-heading .project-actions { flex: none; margin: -8px -8px -8px 0; color: var(--color-muted-foreground); }
     /* The count chips keep their 44 px targets but lend 2 px top and bottom, so the heading stays 40 px. */

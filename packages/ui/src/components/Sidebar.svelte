@@ -664,8 +664,8 @@
     gap: 5px;
   }
   /* The name, then the machine when it is not this PC, as the Recent rows read: "render-farm · ☰ Builder".
-     The machine gives way first, so the name keeps its room. */
-  .title { display: flex; flex: 1; align-items: center; gap: 4px; min-width: 0; }
+     The machine gives way first, so the name keeps its room; 8 px before the dot, as the Recent subline, centres it before the glyph. */
+  .title { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; }
   .title > :global(.machine-suffix) { flex-shrink: 1000; }
   .name {
     flex: 0 1 auto;

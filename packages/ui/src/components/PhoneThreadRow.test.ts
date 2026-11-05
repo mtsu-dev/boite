@@ -102,3 +102,37 @@ test('under a project header a pinned row keeps one line with its pin before the
   expect(narrow).toMatch(/\.grouped \.title \{[^}]*-webkit-line-clamp: 2[^}]*text-wrap: pretty/);
   expect(rowSource).toMatch(/\.meta > \.fact\.failed:first-child > \[aria-hidden='true'\] \{ display: none; \}/);
 });
+
+test('a wrapped title with no grey line ends its last line with the time, and a subagent chip says how many need the user', async () => {
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  const thread = store.threads.find(row => !row.parentThreadId && !row.agentSessionId && row.projectId)!;
+  const project = store.projects.find(row => row.id === thread.projectId)!;
+  store.pendingQuestions = []; store.pendingPermissions = [];
+  vi.spyOn(client, 'call').mockResolvedValue(null as never);
+  const draw = async (fields: Partial<ThreadSummary>, grouped = true) => {
+    if (mounted) await unmount(mounted);
+    Object.assign(thread, { subagentQuestions: [], backgroundWork: undefined, backgroundWait: undefined, pullRequestWatches: undefined, ...fields });
+    mounted = mount(PhoneThreadRow, { target: document.body, props: { machine: { id: 'http://localhost:3773', label: 'This PC', store }, project, thread, now: Date.now(), items: [], grouped, onopen: () => {}, onaction: () => {} } });
+    await settle();
+    const head = document.querySelector<HTMLElement>('[data-testid=mobile-row] .head')!;
+    return {
+      low: head.classList.contains('low') && head.dataset.lastLine === 'line',
+      timeEndsLine: head.querySelector('[data-last-line=cluster] .time') !== null,
+      room: head.querySelector('[data-last-line=title] > [data-last-line=room]:last-child') !== null
+    };
+  };
+  // Round 14: at 360 "Pick the cache for the / sync engine" put its age on the first line, two ages 31 px apart in a 52 px pitch.
+  expect(await draw({ status: 'waiting', pinned: false })).toEqual({ low: true, timeEndsLine: true, room: true });
+  expect(await draw({ status: 'idle', pinned: false })).toEqual({ low: true, timeEndsLine: true, room: true });
+  expect(rowSource).toMatch(/\.head\.low > \* \{ grid-area: 1 \/ 1; \}/);
+  expect(rowSource).toMatch(/\.low \.cluster \{ justify-self: end; align-self: end;/);
+  // A row with a grey line keeps the time there.
+  expect(await draw({ status: 'error', pinned: false })).toEqual({ low: false, timeEndsLine: false, room: false });
+  expect(document.querySelector('.meta .time')).not.toBeNull();
+
+  // Round 14: the amber chip read "2 subagents", a headcount, while it is drawn only because they ask.
+  vi.spyOn(store, 'subagents').mockReturnValue({ count: 3, asking: 2, runs: 0 } as never);
+  await draw({ status: 'running', pinned: false, subagentQuestions: [{ threadId: 'a', title: 'A' }, { threadId: 'b', title: 'B' }] });
+  expect(document.querySelector('[data-testid=thread-subagents] .ui-label')?.textContent).toBe('2 subagents need you');
+});

@@ -858,8 +858,13 @@
       scroll-padding-inline: 4px;
     }
     /* data-more-end comes from wholeTiles, outside the template: global, or the compiler drops the rule. */
-    .rail:global([data-more-end]) { mask-image: linear-gradient(to right, black calc(100% - 24px), transparent); }
-    .rail-cue { display: none; }
+    /* The fade clears 14 px before the end, so the chevron in its middle never sits on a peeking logo. */
+    .rail:global([data-more-end]) { mask-image: linear-gradient(to right, black calc(100% - 24px), transparent calc(100% - 14px)); }
+    /* A centred logo leaves the peeking box half empty: the rail's chevron, turned along the strip,
+       sits in the fade's middle while a provider waits past the end, and fades out at the end. */
+    .rail-cue { grid-area: 1 / 1 / 2 / 3; justify-self: end; z-index: 2; width: 24px; align-items: center; padding: 4px 0 6px; background: transparent; color: var(--color-muted-foreground); }
+    .rail-cue :global(svg) { width: 16px; height: 16px; rotate: -90deg; }
+    .rail:global([data-more-end]) ~ .rail-cue :global(svg) { opacity: 1; }
 
     /* The rail is the finger's first stop on a phone, so its tiles (ProviderTiles)
        and the refresh button take a full touch target like every other control. */

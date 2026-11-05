@@ -620,13 +620,18 @@ const resized = async () => { for (const call of [...observers]) call(); await t
  * px, `spare` px free over the sentence: jsdom lays nothing out, so the
  * heights the fold reads are given.
  */
-async function drawInbox(room: number, used: number | { px: number }, spare = 0, onroom?: (height: number | null) => void): Promise<Store> {
+async function drawInbox(room: number, used: number | { px: number }, spare = 0, onroom?: (height: number | null) => void, dense = false): Promise<Store> {
   const height = typeof used === 'number' ? { px: used } : used;
   const store = new Store();
   store.attach(new FakeClient({ delayMs: 0 }));
   await store.connect();
   opened = store;
-  store.threads = store.threads.map((thread, index) => ({ ...thread, status: index < 2 ? 'running' : 'idle', runningSince: Date.now() - 60_000 }));
+  if (dense) {
+    // The dense home: nine asking and thirteen at work, all in one listed project.
+    const base = store.threads.find(thread => !thread.parentThreadId && !thread.agentSessionId && store.projects.some(project => project.id === thread.projectId && !project.archived))!;
+    store.threads = Array.from({ length: 22 }, (_, index) => ({ ...base, id: `dense-${index}`, title: `dense ${index}`, archived: false, pinned: false, subagentQuestions: undefined,
+      status: index < 9 ? 'waiting' as const : 'running' as const, runningSince: Date.now() - 60_000, lastUserMessageAt: Date.now() - index * 1000 }));
+  } else store.threads = store.threads.map((thread, index) => ({ ...thread, status: index < 2 ? 'running' : 'idle', runningSince: Date.now() - 60_000 }));
   vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function (this: HTMLElement) { return this.dataset['testid'] === 'home-column' ? room : 0; });
   vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function (this: HTMLElement) { return this.dataset['testid'] === 'inbox' ? height.px : 0; });
   const column = document.createElement('div');
@@ -678,6 +683,29 @@ test('the work opens into the free room over the sentence, and asks the home to 
   one<HTMLButtonElement>('inbox-working-toggle')!.click();
   flushSync();
   expect(asked.at(-1)).toBeNull();
+  vi.restoreAllMocks();
+});
+
+test('on the dense home Needs you takes the room first, up to six cards, then the long lane opens at five rows and its More line when they fit', async () => {
+  // Round 14: thirteen at work stayed folded and Needs you stopped at 3 of 9 over about 300 empty px.
+  const asked: (number | null)[] = [];
+  // 300 px drawn with three cards; 721 px of room: three more cards (198 px) and 204 px of work fit.
+  await drawInbox(600, 300, 121, height => asked.push(height), true);
+  expect(document.querySelectorAll('[data-testid=inbox-card]')).toHaveLength(6);
+  expect(one('inbox-more')!.dataset['count']).toBe('9');
+  expect(expanded()).toBe('true');
+  expect(document.querySelectorAll('[data-testid=inbox-working]')).toHaveLength(5);
+  expect(one('inbox-working-more')).not.toBeNull();
+  expect(asked.at(-1)).toBe(702);
+  for (const component of components) await unmount(component);
+  components = [];
+  document.body.innerHTML = '';
+  opened?.detach();
+  vi.restoreAllMocks();
+  // 610 px: the cards take their three more first, and the 112 px left are too few for the work.
+  await drawInbox(489, 300, 121, undefined, true);
+  expect(document.querySelectorAll('[data-testid=inbox-card]')).toHaveLength(6);
+  expect(expanded()).toBe('false');
   vi.restoreAllMocks();
 });
 

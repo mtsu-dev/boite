@@ -12,6 +12,7 @@
   import { longPress } from '../lib/long-press';
   import { swipeActions, type SwipeSide } from '../lib/swipe-actions';
   import { projectName } from '../lib/format';
+  import { lastLine } from '../lib/last-line';
   import { fill, strings } from '../lib/strings';
   import Menu from './Menu.svelte';
   import MachineIcon from './MachineIcon.svelte';
@@ -78,6 +79,14 @@
    * the desktop. Every other row keeps one line, except under a project's header at 360 px.
    */
   let clamp = $derived(threadLiveKind(thread, kind) === 'needs');
+  /**
+   * A title that may wrap with no grey line under it: the draft, the pin and the time end its
+   * last line (`lastLine`), as they end the grey line when there is one, so a wrapped title
+   * has its first line to itself and the ages of a project's rows share one line.
+   */
+  let low = $derived(!second && (clamp || grouped));
+  /** The chip is drawn only while subagents ask: it says they need the user, with how many ask. */
+  let asking = $derived((subagents?.asking ?? 0) === 1 ? strings.sidebar.state.subagentsAskingOne : fill(strings.sidebar.state.subagentsAskingMany, { count: String(subagents?.asking ?? 0) }));
   const reasonIcons = { question: MessageCircleQuestion, permission: ShieldQuestion, secret: KeyRound, 'sign-in': LogIn, failed: CircleAlert, interrupted: CirclePause } as const;
   let draft = $derived(hasUnsentDraft(owner.composerStates[thread.id]) && !(owner.openThread?.id === thread.id));
   /** What a slide may do now: the menu's own items, so a thread at work is never marked done by a finger. */
@@ -110,13 +119,15 @@
     <span class="lines">
       <!-- The title is the row's button; its overlay stretches over the whole row, so a tap anywhere opens it
            while the pull request's link above the overlay stays its own target, never a link inside a button. -->
-      <span class="head" class:clamp data-lines={clamp ? 2 : undefined}>
+      <span class="head" class:clamp class:low data-lines={clamp ? 2 : undefined} use:lastLine={low ? thread.title : null}>
         <button class="ghost thread" data-testid="mobile-thread-{thread.id}" onclick={onopen}>
-          <span class="title" class:unread={thread.unread}>{thread.title}</span>
+          <span class="title" class:unread={thread.unread} data-last-line="title">{thread.title}{#if low}<span class="room" data-last-line="room" aria-hidden="true"></span>{/if}</span>
         </button>
-        {#if draft}<span class="mark draft" data-testid="thread-draft" title={strings.sidebar.unsentDraft} aria-label={strings.sidebar.unsentDraft}><PencilLine size={13} /></span>{/if}
-        {#if pinned && !second}{@render pinMark()}{/if}
-        {#if !second}{@render time()}{/if}
+        <span class="cluster" data-last-line="cluster">
+          {#if draft}<span class="mark draft" data-testid="thread-draft" title={strings.sidebar.unsentDraft} aria-label={strings.sidebar.unsentDraft}><PencilLine size={13} /></span>{/if}
+          {#if pinned && !second}{@render pinMark()}{/if}
+          {#if !second}{@render time()}{/if}
+        </span>
       </span>
       {#if second}
         <span class="meta">
@@ -126,7 +137,7 @@
           {#if elsewhere}<span class="fact machine" data-testid="thread-machine"><span class="dot" aria-hidden="true">·</span><MachineIcon icon={machine.icon} os={owner.core?.os} size={12} /><span class="ui-label">{machine.label}</span></span>{/if}
           {#if failed}<span class="fact failed" data-testid="thread-failed"><span aria-hidden="true">·</span><span class="ui-label">{failed}</span></span>{/if}
           <!-- Agents at work are the ring's to say; one asking is said here, it needs the user. -->
-          {#if agents?.asking}<span class="fact agents asking" data-testid="thread-subagents" data-count={agents.shown} role="img" title={agents.label} aria-label={agents.label}><Network size={12} aria-hidden="true" /><span class="ui-label">{wait ? agents.shown : agents.text}</span></span>{/if}
+          {#if agents?.asking}<span class="fact agents asking" data-testid="thread-subagents" data-count={agents.shown} role="img" title={agents.label} aria-label={agents.label}><Network size={12} aria-hidden="true" /><span class="ui-label">{wait ? agents.shown : asking}</span></span>{/if}
           {#if pinned}{@render pinMark()}{/if}
           {@render time()}
         </span>
@@ -217,6 +228,23 @@
   .lines { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 2px; }
   .head { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
   .head .thread { flex: 0 1 auto; width: auto; min-width: 0; }
+  /* The marks and the time are the head's own items until the title may wrap (`.low`). */
+  .cluster { display: contents; }
+  /* There the title runs the row's width and the cluster ends its last line, on that line's
+     baseline: a strut in the title's type sets it. Both share one grid cell, never a positioned
+     box, so the title's overlay still spans the whole row. The title's last word carries an empty
+     room the cluster's width plus the gap (`lastLine`); past its lines, every line keeps that room. */
+  .head.low { display: grid; grid-template-columns: minmax(0, 1fr); --room-gap: 6px; }
+  .head.low > * { grid-area: 1 / 1; }
+  .head.low .thread { width: 100%; }
+  /* Balanced: with the whole first line free, `pretty` let one word end the title alone. */
+  .head.low .title { text-wrap: balance; }
+  .low .room { padding-left: calc(var(--room, 0px) + var(--room-gap)); }
+  .low .cluster { justify-self: end; align-self: end; display: flex; align-items: baseline; gap: var(--room-gap); }
+  .low .cluster::before { content: '\200b'; width: 0; margin-right: calc(-1 * var(--room-gap)); font-size: 15px; line-height: 1.3; }
+  .low .cluster .time { margin-left: 0; }
+  .head.low:global([data-fit='narrow']) .title { padding-right: calc(var(--room, 0px) + var(--room-gap)); }
+  .head.low:global([data-fit='narrow']) .room { display: none; }
   .title {
     display: block;
     overflow: hidden;
@@ -238,7 +266,7 @@
     overflow-wrap: anywhere;
     text-wrap: pretty;
   }
-  .clamp .mark { align-self: flex-start; margin-top: 3px; }
+  .clamp:not(.low) .mark { align-self: flex-start; margin-top: 3px; }
   /* At 360 px a project's row leaves the title about 200 px: one line cut it to "…the co…", so every
      title there takes up to two lines. */
   @media (max-width: 360px) {
@@ -251,7 +279,7 @@
       overflow-wrap: anywhere;
       text-wrap: pretty;
     }
-    .grouped .head .mark { align-self: flex-start; margin-top: 3px; }
+    .grouped .head:not(.low) .mark { align-self: flex-start; margin-top: 3px; }
   }
   /* On the second line the pin stands right before the time, at the line's end. */
   .meta .mark.pin { margin-left: auto; }

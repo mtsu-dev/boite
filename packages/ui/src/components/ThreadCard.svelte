@@ -281,12 +281,11 @@
     opacity: 1;
   }
   /* Delegated agents at work show on the open row and under the pointer; one that asks always shows, it needs the user. */
-  .thread:not(.open):not(:hover):not(:focus-within) :global(:is(.headline, .facts) > * > .agents:not(.asking)),
-  .thread:not(.open):not(:hover):not(:focus-within) :global(.headline > .agents:not(.asking)) { display: none; }
+  .thread:not(.open):not(:hover):not(:focus-within) :global(:is(.headline, .facts) .agents:not(.asking)) { display: none; }
   /* The buttons take the time's place on hover: a resting time hides, a counting one steps left and stays. */
-  /* On a two-line row the time sits on the second line, clear of the buttons: it stays. */
-  .thread:not(.meta):hover :global(.headline .when:not(.live)),
-  .thread:not(.meta):focus-within :global(.headline .when:not(.live)) {
+  /* On a two-line row the time sits on the second line, clear of the buttons: it stays, a wrapped title's (`lastLine`) too. */
+  .thread:not(.meta):hover :global(.headline .line:not([data-drawn='2']) .when:not(.live)),
+  .thread:not(.meta):focus-within :global(.headline .line:not([data-drawn='2']) .when:not(.live)) {
     opacity: 0;
   }
   .thread:not(.meta):hover :global(.headline .when.live), .thread:not(.meta):focus-within :global(.headline .when.live) { margin-right: 51px; }
@@ -311,6 +310,12 @@
       margin-right: 24px;
     }
     .thread:not(.meta):has(.done) :global(.headline .when) { margin-right: 51px; }
+    /* A title that wraps runs its first line under the buttons: its line keeps clear of them, the time ending its last line. */
+    .thread:not(.meta) :global(.headline.low .line) { padding-right: 24px; }
+    .thread:not(.meta):has(.done) :global(.headline.low .line) { padding-right: 51px; }
+    .thread:not(.meta) :global(.headline.low .cluster) { right: 24px; }
+    .thread:not(.meta):has(.done) :global(.headline.low .cluster) { right: 51px; }
+    .thread:not(.meta) :global(.headline.low .when), .thread:not(.meta):has(.done) :global(.headline.low .when) { margin-right: 0; }
     /* A two-line row keeps its title clear of the drawn buttons instead; the time stays under them. */
     .meta .row :global(.headline) { padding-right: 24px; }
     .meta:has(.done) .row :global(.headline) { padding-right: 51px; }

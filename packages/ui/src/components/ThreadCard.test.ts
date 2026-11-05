@@ -4,6 +4,7 @@ import { flushSync, mount, unmount } from 'svelte';
 import { FakeClient } from '../lib/fake-client';
 import { Store } from '../lib/store.svelte';
 import ThreadCard from './ThreadCard.svelte';
+import headlineSource from './ThreadHeadline.svelte?raw';
 import { inbox, storeSources, waitedFor } from '../lib/inbox';
 import { shortAgo } from '../lib/thread-state';
 
@@ -65,7 +66,7 @@ test('a row across projects keeps its first line for the title: time and machine
   mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'lab', label: 'Lab', store }, project, thread, now: Date.now(), showProject: false, showMachine: false } });
   await settle();
   expect(document.querySelector('[data-testid=thread-trail]')).toBeNull();
-  expect(document.querySelector('[data-testid=thread-row] .headline > .when, [data-testid=thread-row] .headline > [data-testid=thread-state]')).not.toBeNull();
+  expect(document.querySelector('[data-testid=thread-row] .headline [data-last-line=cluster] > .when, [data-testid=thread-row] .headline [data-last-line=cluster] > [data-testid=thread-state]')).not.toBeNull();
 });
 
 test('cards keep discovering after a merge, pause while hidden, and retain the last answer on errors', async () => {
@@ -463,4 +464,37 @@ test('under a project header, a failed row words it under the title, and a pinne
   expect(await draw({ status: 'waiting', pinned: false })).toEqual({ lines: '2', subline: false, word: null, pinInTitle: false, pinBeside: false, timeInTitle: true });
   // A row with nothing to add keeps its one 28 px line.
   expect(await draw({ status: 'idle', pinned: false })).toEqual({ lines: '1', subline: false, word: null, pinInTitle: false, pinBeside: false, timeInTitle: true });
+});
+
+test('a wrapped title with no subline ends its last line with the pin and the time, and a one-line row keeps them in its flow', async () => {
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  const thread = store.threads.find(row => !row.parentThreadId && !row.agentSessionId && row.projectId)!;
+  const project = store.projects.find(row => row.id === thread.projectId)!;
+  store.pendingQuestions = []; store.pendingPermissions = [];
+  vi.spyOn(client, 'call').mockResolvedValue(null as never);
+  const draw = async (fields: Partial<ThreadSummary>) => {
+    if (mounted) await unmount(mounted);
+    Object.assign(thread, { subagentQuestions: [], backgroundWork: undefined, backgroundWait: undefined, pullRequestWatches: undefined, ...fields });
+    mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'http://localhost:3773', label: 'This PC', store }, project, thread, now: Date.now(), showProject: false, showMachine: false } });
+    await settle();
+    const headline = document.querySelector<HTMLElement>('[data-testid=thread-row] .headline')!;
+    const cluster = headline.querySelector<HTMLElement>('[data-last-line=cluster]')!;
+    return {
+      low: headline.classList.contains('low'),
+      timeEndsLine: cluster.querySelector('.when') !== null && cluster.parentElement?.dataset.lastLine === 'line',
+      pinEndsLine: cluster.querySelector('[data-testid=thread-pinned]') !== null,
+      room: headline.querySelector('[data-last-line=title] > [data-last-line=room]:last-child') !== null
+    };
+  };
+  // Round 14: "Retry failed syncs when the 2h / network drops": the age sat on the title's first line.
+  expect(await draw({ status: 'waiting', pinned: true })).toEqual({ low: true, timeEndsLine: true, pinEndsLine: true, room: true });
+  // Drawn at the line's bottom right, the title running the line's whole width above it.
+  expect(headlineSource).toMatch(/\.low \.line \{[^}]*display: block;[^}]*position: relative;/);
+  expect(headlineSource).toMatch(/\.low \.cluster \{ position: absolute; right: 0; bottom: 0;/);
+  expect(headlineSource).toMatch(/\.low \.room \{ padding-left: calc\(var\(--room, 0px\) \+ var\(--room-gap\)\); \}/);
+  // A one-line row and a row with a subline are unchanged: no room, the cluster in the title's flow or on the subline.
+  expect(await draw({ status: 'idle', pinned: true })).toEqual({ low: false, timeEndsLine: true, pinEndsLine: true, room: false });
+  expect(headlineSource).toMatch(/\.line, \.cluster \{ display: contents; \}/);
+  expect((await draw({ status: 'error', pinned: false })).low).toBe(false);
 });
