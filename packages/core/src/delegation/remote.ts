@@ -35,7 +35,7 @@ import type { ProviderProbe } from '../providers/probe.ts';
 import { GROUP_THREADS_OFF, machineArg, memberModels, memberNamed, peerRefusal } from '../threads/group-spawn.ts';
 import { modelsFor } from '../threads/selection.ts';
 import { catalog, checkModelAllowed, chooseModel, discover, loggedInAccount } from './routes.ts';
-import { Outbox } from './outbox.ts';
+import { Outbox, risingClock } from './outbox.ts';
 import { restartContinues } from './restart.ts';
 import { resultPageOf, resultPageParams } from './results.ts';
 import { checkStart, readableState, type ChildState, type ParentLink, type RemoteChild, type Report, type Start, type Started, type Stop, type WireRoute } from './remote-wire.ts';
@@ -92,8 +92,13 @@ export class RemoteDelegation {
   /** Told of each parent here whose children elsewhere reported: workflow steps settle from it. */
   readonly #watchers = new Set<(rootId: string) => void>();
   #closed = false;
-  /** The number of the last stop or letter asked from here: the clock's, and always above the one before. */
-  #lastStop = 0;
+  /** The number of a stop or letter asked from here. */
+  readonly #stopSeq = risingClock();
+  /**
+   * The time of a report sent from here: the parent ignores one older than what
+   * it holds, so a clock set back would silence this child, final result included.
+   */
+  readonly #reportAt = risingClock();
   readonly #boot: ReturnType<typeof setTimeout>;
 
   readonly #core: Core;
@@ -374,9 +379,9 @@ export class RemoteDelegation {
     // A stop asked before this instruction and not taken yet goes with it: it ends the turn it meant, never the one the instruction opens.
     const stop = this.#stops.entries(record.coreId).find(entry => entry.key === `child:${childId}`);
     // Numbered among the stops: one asked after it cancels it there, even when taken first.
-    this.#lastStop = Math.max(Date.now(), this.#lastStop + 1);
+    const seq = this.#stopSeq();
     let answer: unknown;
-    try { answer = await this.#core.coordination.request(peer, 'delegation.letter', { parentId: root.id, childId, requestId, text: body, origin, seq: this.#lastStop, ...(stop ? { stop: stop.seq } : {}) }); }
+    try { answer = await this.#core.coordination.request(peer, 'delegation.letter', { parentId: root.id, childId, requestId, text: body, origin, seq, ...(stop ? { stop: stop.seq } : {}) }); }
     catch (error) {
       if (error instanceof PeerRefusal) throw peerRefusal(this.#core, peer, error, 'steer subagents for another machine');
       throw unavailable(`${peer.name} did not answer: ${messageOf(error)}; the same --request-id sends it once`, { field: 'machine' });
@@ -468,8 +473,7 @@ export class RemoteDelegation {
   }
 
   #stopThere(coreId: string, parentId: string, childId: string, retire: boolean): void {
-    this.#lastStop = Math.max(Date.now(), this.#lastStop + 1);
-    this.#stops.push(coreId, { key: `child:${childId}`, seq: this.#lastStop, parentId, childId, ...(retire ? { retire: true as const } : {}) });
+    this.#stops.push(coreId, { key: `child:${childId}`, seq: this.#stopSeq(), parentId, childId, ...(retire ? { retire: true as const } : {}) });
   }
 
   /**
@@ -597,14 +601,14 @@ export class RemoteDelegation {
   state(childId: string): void {
     const link = this.#parents.get(childId);
     if (!link || this.#closed || this.#core.journal.isClosed() || !this.#core.journal.getThread(childId)) return;
-    this.#reports.push(link.coreId, { key: `state:${childId}`, parentId: link.parentId, childId, requestId: link.requestId, at: Date.now(), state: this.#snapshot(childId) });
+    this.#reports.push(link.coreId, { key: `state:${childId}`, parentId: link.parentId, childId, requestId: link.requestId, at: this.#reportAt(), state: this.#snapshot(childId) });
   }
 
   /** A result, a question or a message for the parent, with where the child stands. */
   letter(childId: string, letter: NonNullable<Report['letter']>): void {
     const link = this.#parents.get(childId);
     if (!link || this.#closed || this.#core.journal.isClosed()) return;
-    this.#reports.push(link.coreId, { key: `letter:${childId}:${letter.requestId}`, parentId: link.parentId, childId, requestId: link.requestId, at: Date.now(), state: this.#snapshot(childId), letter });
+    this.#reports.push(link.coreId, { key: `letter:${childId}:${letter.requestId}`, parentId: link.parentId, childId, requestId: link.requestId, at: this.#reportAt(), state: this.#snapshot(childId), letter });
   }
 
   /** A question letter not sent yet whose card closed: the parent is not told at all. */
@@ -621,7 +625,7 @@ export class RemoteDelegation {
     this.#stopGenerations.delete(childId);
     if (!this.#core.journal.isClosed()) {
       this.#core.journal.deleteSetting(`${PARENT}${childId}`);
-      this.#reports.push(link.coreId, { key: `state:${childId}`, parentId: link.parentId, childId, requestId: link.requestId, at: Date.now(), removed: true });
+      this.#reports.push(link.coreId, { key: `state:${childId}`, parentId: link.parentId, childId, requestId: link.requestId, at: this.#reportAt(), removed: true });
     }
   }
 
@@ -694,7 +698,7 @@ export class RemoteDelegation {
     for (const [childId, link] of this.#parents) {
       if (link.coreId !== peer.coreId || link.parentId !== start.parent.threadId || link.requestId !== start.requestId) continue;
       if (link.fingerprint !== start.fingerprint) throw refused('delegation.start.requestId was already used for different content', { field: 'requestId' });
-      return { childId, at: Date.now(), state: this.#snapshot(childId) };
+      return { childId, at: this.#reportAt(), state: this.#snapshot(childId) };
     }
     if (this.#core.settings.get().groupThreads !== true) throw refused(GROUP_THREADS_OFF);
     const key = JSON.stringify([peer.coreId, start.parent.threadId, start.requestId]);
@@ -722,7 +726,7 @@ export class RemoteDelegation {
     const planned = start.worktree ? this.#core.delegation.worktrees.plan({ projectId: target.id }, id) : null;
     const link: ParentLink = {
       coreId: peer.coreId, machine: peer.name, parentId: start.parent.threadId, title: start.parent.title, projectId: start.parent.projectId, project: start.parent.project,
-      requestId: start.requestId, fingerprint: start.fingerprint, at: Date.now(),
+      requestId: start.requestId, fingerprint: start.fingerprint, at: this.#reportAt(),
     };
     // The thread, its worktree and its parent commit together: a child that ends at once still finds where to report.
     this.#core.journal.db.transaction(() => {
@@ -749,12 +753,12 @@ export class RemoteDelegation {
       this.#core.logs.warn(`Subagent ${id} of ${start.parent.threadId} on ${peer.name} was created but its first turn could not start: ${messageOf(error)}`, { source: 'delegation', event: 'delegation.spawn-failed', threadId: id, data: { parent: start.parent.threadId, machine: peer.coreId } });
       this.#core.journal.putThread({ ...this.#core.threads.require(id), status: 'error' });
       this.state(id);
-      return { childId: id, at: Date.now(), state: this.#snapshot(id) };
+      return { childId: id, at: this.#reportAt(), state: this.#snapshot(id) };
     }
     this.#core.logs.info(`Subagent ${id} started here for ${start.parent.threadId} on ${peer.name} with ${route.providerId} ${route.model ?? 'default model'}${route.effort ? ` at ${route.effort}` : ''}`, {
       source: 'delegation', event: 'delegation.spawned', threadId: id, data: { parent: start.parent.threadId, machine: peer.coreId, providerId: route.providerId, model: route.model, effort: route.effort, worktree: planned !== null, at },
     });
-    return { childId: id, at: Date.now(), state: this.#snapshot(id) };
+    return { childId: id, at: this.#reportAt(), state: this.#snapshot(id) };
   }
 
   /** Without `project`, the child works in the project of this machine named like its parent's. */

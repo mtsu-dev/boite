@@ -490,15 +490,20 @@ foreground turn and later open a background-completion turn.
 
 A turn Boite opens by itself (background completion, delegation or
 coordination mail, a watched pull request's update, restart resume, automatic
-compaction) carries on the user's last request (`continuesRequest`). A chat
-summary's `Worked for` adds the request's earlier turns to its own
-(`requestWork`): their durations, plus the gap before a background or delegation
-turn, while the agent waited on work it started. A gap before a pull-request,
-coordination, resume or compaction turn counts nothing, so a review that wakes
-the agent the next morning does not count the night. A sidebar row counts from
-the request's first turn (`ThreadSummary.requestSince`) while the agent works or
-monitors. A shell left running keeps its own start, and a compaction its own
-duration.
+compaction) carries on the user's last request (`continuesRequest`). The
+exception is another agent writing to a thread at rest: a coordination letter,
+or a parent's follow-up to its delegated agent, that finds no turn under way, no
+background work, no pull request whose checks it waits on, and no delegated agent
+or workflow at work. That turn opens a request of its own
+(`TurnExecution.opensRequest`, set at admission), so a bot writing to a thread
+last used yesterday does not count from yesterday. A chat summary's `Worked for`
+adds the request's earlier turns to its own (`requestWork`): their durations,
+plus the gap before a background or delegation turn, while the agent waited on
+work it started. A gap before a pull-request, coordination, resume or compaction
+turn counts nothing, so a review that wakes the agent the next morning does not
+count the night. A sidebar row counts from the request's first turn
+(`ThreadSummary.requestSince`) while the agent works or monitors. A shell left
+running keeps its own start, and a compaction its own duration.
 
 Native task observations persist with the provider, session generation and
 originating turn. `threads.get` carries the newest 100; the chat lists

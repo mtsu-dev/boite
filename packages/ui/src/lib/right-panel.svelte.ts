@@ -22,10 +22,10 @@ import { FileDocuments, type FileDocument, type FileSaved, type FileWrite } from
  * `agent-browser` watches the headless browser the conversation's agent drives
  * on the machine that runs it, from any client. `desk` is a persistent
  * agent's desk, beside its own thread: what it does now, its work, routines,
- * memory and day. `debate` is the salon of a debate the thread started
- * (`docs/debates.md`), opened from its card.
+ * memory and day. `council` is the salon of a council the thread started
+ * (`docs/council.md`), opened from its card.
  */
-export type SurfaceKind = 'desk' | 'agents' | 'messages' | 'trace' | 'browser' | 'agent-browser' | 'changes' | 'files' | 'file' | 'tasks' | 'device' | 'window' | 'debate';
+export type SurfaceKind = 'desk' | 'agents' | 'messages' | 'trace' | 'browser' | 'agent-browser' | 'changes' | 'files' | 'file' | 'tasks' | 'device' | 'window' | 'council';
 
 /** Every kind a stored layout may name, and what `parse` checks a blob against. */
 export const SURFACE_KINDS: readonly SurfaceKind[] = [
@@ -41,14 +41,14 @@ export const SURFACE_KINDS: readonly SurfaceKind[] = [
   'tasks',
   'device',
   'window',
-  'debate'
+  'council'
 ];
 
 /**
  * The kinds that get one tab and no more: asking for them again brings the tab
  * that exists forward. A browser page and a file are the two that multiply.
  */
-const SINGLETON_KINDS: readonly SurfaceKind[] = ['desk', 'agents', 'messages', 'trace', 'agent-browser', 'changes', 'files', 'tasks', 'device', 'window', 'debate'];
+const SINGLETON_KINDS: readonly SurfaceKind[] = ['desk', 'agents', 'messages', 'trace', 'agent-browser', 'changes', 'files', 'tasks', 'device', 'window', 'council'];
 
 export interface Surface {
   id: string;
@@ -77,8 +77,8 @@ export interface Surface {
   peer?: string;
   /** The letter a timeline row opens the discussion on. */
   letterId?: string;
-  /** The debate the salon tab shows. */
-  debateId?: string;
+  /** The council the salon tab shows. */
+  councilId?: string;
 }
 
 /** What the tab menu, the close button and the close key ask for. */
@@ -142,17 +142,20 @@ function parse(raw: string): Record<string, PanelState> {
     const surfaces: Surface[] = [];
     for (const surface of raws) {
       if (typeof surface !== 'object' || surface === null) continue;
-      const { title, url, profile, zoom, path, line, runId, peer, letterId, debateId } = surface as Surface;
+      const { title, url, profile, zoom, path, line, runId, peer, letterId } = surface as Surface;
       // A layout stored while workflows had a tab of their own: that tab is the subagents tab now.
       const merged = (surface as { kind?: unknown }).kind === 'workflow';
-      const kind = merged ? 'agents' : (surface as Surface).kind;
-      const id = merged ? AGENTS_SURFACE_ID : (surface as Surface).id;
+      // A layout stored while the salon was a debate's: the same tab, on the same id.
+      const renamed = (surface as { kind?: unknown }).kind === 'debate';
+      const kind = merged ? 'agents' : renamed ? 'council' : (surface as Surface).kind;
+      const id = merged ? AGENTS_SURFACE_ID : renamed ? 'council' : (surface as Surface).id;
+      const councilId = renamed ? (surface as { debateId?: unknown }).debateId : (surface as { councilId?: unknown }).councilId;
       if (typeof id !== 'string') continue;
       if (!SURFACE_KINDS.includes(kind)) continue;
       // A file tab with no path has nothing to read, so it is not a tab.
       if (kind === 'file' && typeof path !== 'string') continue;
-      // Nor is a salon tab that names no debate.
-      if (kind === 'debate' && typeof debateId !== 'string') continue;
+      // Nor is a salon tab that names no council.
+      if (kind === 'council' && typeof councilId !== 'string') continue;
       if (surfaces.some((kept) => kept.id === id)) continue;
       // A zoom that is not one of the ladder's rungs is dropped, not clamped:
       // the ladder is the whole vocabulary here.
@@ -170,11 +173,11 @@ function parse(raw: string): Record<string, PanelState> {
         // A letter only means something inside its discussion: a tab stored before discussions comes back on the list.
         ...(typeof peer === 'string' ? { peer } : {}),
         ...(typeof peer === 'string' && typeof letterId === 'string' ? { letterId } : {}),
-        ...(kind === 'debate' && typeof debateId === 'string' ? { debateId } : {})
+        ...(kind === 'council' && typeof councilId === 'string' ? { councilId } : {})
       });
     }
     const stored = (value as PanelState).activeSurfaceId;
-    const active = stored === 'workflow' ? AGENTS_SURFACE_ID : stored;
+    const active = stored === 'workflow' ? AGENTS_SURFACE_ID : stored === 'debate' ? 'council' : stored;
     out[threadId] = {
       // An open panel with no tab shows its launcher, which is a layout too.
       isOpen: (value as PanelState).isOpen === true,
@@ -495,10 +498,10 @@ export class BoundPanel {
     return this.state.surfaces.find((surface) => surface.id === opened.id) ?? opened;
   }
 
-  /** The salon of one debate: one tab, moved to the debate asked for. */
-  openDebate(debateId: string): Surface {
-    const opened = this.open('debate');
-    this.update(opened.id, { debateId });
+  /** The salon of one council: one tab, moved to the council asked for. */
+  openCouncil(councilId: string): Surface {
+    const opened = this.open('council');
+    this.update(opened.id, { councilId });
     return this.state.surfaces.find((surface) => surface.id === opened.id) ?? opened;
   }
 

@@ -19,7 +19,7 @@
 import { appendFileSync } from 'node:fs';
 import { instructionsOf } from './history.ts';
 
-const DIRECTIVE = /\[(agents|tool|thought|usage|slow|crash|ask|select|input|editor|retry|giveup|deaf|noclear|notify|timeout|compacted)\]/g;
+const DIRECTIVE = /\[(agents|tool|thought|usage|slow|crash|ask|select|input|editor|retry|giveup|deaf|noclear|notify|timeout|compacted|swapped|taken)\]/g;
 const CHUNKS = 3;
 
 /**
@@ -27,7 +27,10 @@ const CHUNKS = 3;
  * `deaf` never settles and ignores `abort`, like a pi stuck in a tool that
  * ignores the signal. `noclear` makes `clear_queue` fail. `notify` sends the
  * fire-and-forget UI methods, `timeout` a confirm that pi gives up on after
- * 50 ms, `compacted` an automatic compaction inside the run.
+ * 50 ms, `compacted` an automatic compaction inside the run. `swapped` is the
+ * compaction entry Boite's extension appends at a `turn_end`, after an entry
+ * of another extension, and `taken` pi's threshold compaction handing over the
+ * extension's copy.
  */
 type Directive =
   | 'agents'
@@ -46,7 +49,9 @@ type Directive =
   | 'noclear'
   | 'notify'
   | 'timeout'
-  | 'compacted';
+  | 'compacted'
+  | 'swapped'
+  | 'taken';
 
 let toolCounter = 0;
 let dialogCounter = 0;
@@ -97,6 +102,9 @@ const sessionId = flag('--session-id');
 const sessionDir = flag('--session-dir');
 const model = flag('--model');
 log(`argv sessionId=${sessionId} sessionDir=${sessionDir} model=${model}`);
+// What Boite's background compaction gave this process: the extension and its setting.
+if (process.argv.includes('--extension')) log(`extension ${flag('--extension')}`);
+if (process.env['BOITE_COMPACTION'] !== undefined) log(`compaction ${process.env['BOITE_COMPACTION']}`);
 
 // ---------------------------------------------------------------------------
 // The transport
@@ -407,6 +415,16 @@ async function runPrompt(text: string): Promise<void> {
           aborted: false,
           willRetry: false,
         });
+        break;
+      case 'swapped':
+        send({ type: 'entry_appended', entry: { type: 'custom', id: 'c-1', customType: 'other', data: {} } });
+        send({ type: 'entry_appended', entry: { type: 'compaction', id: 'k-1', summary: 'earlier work', firstKeptEntryId: 'm-3', tokensBefore: 100000,
+          details: { readFiles: [], modifiedFiles: [], boiteBackground: true }, usage: usageBlock(), fromHook: true } });
+        break;
+      case 'taken':
+        send({ type: 'compaction_start', reason: 'threshold' });
+        send({ type: 'compaction_end', reason: 'threshold', aborted: false, willRetry: false,
+          result: { summary: 'earlier work', firstKeptEntryId: 'm-3', tokensBefore: 170000, estimatedTokensAfter: 40000, usage: usageBlock(), details: { boiteBackground: true } } });
         break;
       case 'retry':
       case 'giveup':

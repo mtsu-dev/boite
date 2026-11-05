@@ -1,3 +1,5 @@
+import { UNNAMED_PROCESS } from '../../process-identity.ts';
+
 /**
  * What the core reads from one process handle: name, parent, command line, exit
  * code, CPU time, memory and I/O, and whether those name a console host. Plain
@@ -248,7 +250,7 @@ export function consoleHost(exe: string | null, commandLine: string | null): boo
  */
 export function startedAs(api: ProcessReads, handle: number, exe: string | null, commandLine: string | null): string | null {
   const name = exe ?? imageNameOf(api, handle);
-  return consoleHost(name, commandLine) ? null : name ?? 'unknown';
+  return consoleHost(name, commandLine) ? null : name ?? UNNAMED_PROCESS;
 }
 
 function baseName(path: string): string {

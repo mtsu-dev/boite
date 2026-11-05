@@ -185,6 +185,52 @@ describe('a thread in its own worktree', () => {
     expect(git(placed.path, 'branch', '--show-current').trim()).toBe(placed.branch);
   });
 
+  test("the project's .boite folder carries a .gitignore of its own, and one already there is kept", async () => {
+    const project = await repoProject();
+    const row = harness.core.projects.require(project.id);
+    const ignore = join(project.path, '.boite', '.gitignore');
+    await harness.core.worktrees.add('thr_ignore', row, 'boite/first');
+    expect(readFileSync(ignore, 'utf8')).toBe('*\n');
+    expect(git(project.path, 'status', '--porcelain')).toBe('');
+    writeFileSync(ignore, '# kept\n*\n');
+    await harness.core.worktrees.add('thr_ignore', row, 'boite/second');
+    expect(readFileSync(ignore, 'utf8')).toBe('# kept\n*\n');
+  });
+
+  test('a .boite linked to a folder outside the project still holds worktrees, and its target gets no .gitignore', async () => {
+    const project = await repoProject();
+    const row = harness.core.projects.require(project.id);
+    const target = join(harness.dataDir, 'elsewhere');
+    mkdirSync(target);
+    symlinkSync(target, join(project.path, '.boite'), 'junction');
+    const placed = await harness.core.worktrees.add('thr_linked', row, 'boite/linked');
+    expect(existsSync(join(placed.path, '.git'))).toBe(true);
+    expect(existsSync(join(target, '.gitignore'))).toBe(false);
+  });
+
+  test('an existing checkout whose .boite has no .gitignore gets one when ensure reuses it', async () => {
+    const project = await repoProject();
+    const row = harness.core.projects.require(project.id);
+    const ignore = join(project.path, '.boite', '.gitignore');
+    const placed = await harness.core.worktrees.ensure('thr_reused', row, 'boite/reused');
+    unlinkSync(ignore);
+    const reused = await harness.core.worktrees.ensure('thr_reused', row, 'boite/reused', placed.path);
+    expect(reused.path).toBe(placed.path);
+    expect(readFileSync(ignore, 'utf8')).toBe('*\n');
+  });
+
+  test('a conversation resuming in its existing worktree gets its .boite marker back on the next turn', async () => {
+    const project = await repoProject();
+    const ignore = join(project.path, '.boite', '.gitignore');
+    const thread = await client.call('threads.create', {
+      projectId: project.id, providerId: 'echo', accountId: await echoAccount(), title: 'Resume', worktree: {},
+    });
+    unlinkSync(ignore);
+    const turn = await client.call('turns.start', { threadId: thread.id, prompt: 'hello' });
+    await waitFor(() => harness.core.journal.getTurn(turn.id)?.status === 'done');
+    expect(readFileSync(ignore, 'utf8')).toBe('*\n');
+  });
+
   test('workspace recovery reattaches a surviving legacy long branch after its directory was removed', async () => {
     const project = await repoProject();
     const row = harness.core.projects.require(project.id);

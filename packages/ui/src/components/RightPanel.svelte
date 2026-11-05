@@ -33,7 +33,7 @@
   import TasksSurface from './TasksSurface.svelte';
   import TraceSurface from './TraceSurface.svelte';
   import AgentDesk from './agents/AgentDesk.svelte';
-  import DebateSalon from './debates/DebateSalon.svelte';
+  import CouncilSalon from './council/CouncilSalon.svelte';
 
   let {
     store,
@@ -498,9 +498,9 @@
       {/if}
     {:else if active?.kind === 'tasks'}
       <TasksSurface {store} />
-    {:else if active?.kind === 'debate' && active.debateId}
+    {:else if active?.kind === 'council' && active.councilId}
       <!-- One salon per debate: the tab moved to another debate starts its reading afresh. -->
-      {#key active.debateId}<DebateSalon {store} debateId={active.debateId} threadId={panel.threadId ?? undefined} />{/key}
+      {#key active.councilId}<CouncilSalon {store} councilId={active.councilId} threadId={panel.threadId ?? undefined} />{/key}
     {:else}
       <SurfaceLauncher
         {available}

@@ -42,12 +42,16 @@ const dashed = (name: string): string => name.replace(/\s+/g, '-');
 const host = (core: Core): string => contactFace(core);
 
 export function botView(core: Core): ContactsBotView {
-  const contacts = core.contacts.list().map(contact => ({
+  const contacts: ContactsBotView['contacts'] = core.contacts.list().map(contact => ({
     name: contact.name, coreId: contact.coreId, trusted: contact.trusted, link: core.contacts.linkOf(contact.coreId),
     offers: contact.offers.map(offer => offer.name),
     granted: contact.grants.map(grant => grant.name ?? core.journal.getProject(grant.projectId)?.name ?? grant.projectId),
     bot: contact.bot !== undefined,
   }));
+  // The contacts other members hold: the bot forwards to them all the same, through the member (`held.ts`).
+  for (const entry of core.contacts.held.list()) {
+    contacts.push({ name: entry.name, coreId: entry.coreId, trusted: entry.trusted, link: entry.link, offers: entry.offers, granted: [], bot: entry.bot, heldBy: entry.member.name, ...(entry.reason ? { heldReason: entry.reason } : {}) });
+  }
   const projects = core.journal.listProjects().filter(project => !project.archived).map(project => {
     const gitRemote = gitRemoteOf(project.path);
     return { id: project.id, name: project.name, ...(gitRemote ? { gitRemote } : {}) };
@@ -100,7 +104,9 @@ export class ContactsBotMethods {
 
   forward(params: RpcParams<'contacts.bot.forward'>): ContactRequest {
     requireBot(this.#core, params.threadId, 'contacts.bot.forward');
-    return this.#core.contacts.requests.forward(params);
+    const request = this.#core.contacts.requests.forward(params);
+    // Stamped here, after the forward itself: the bot's thread shows it at this time.
+    return this.#core.contacts.requests.forwarded(request.id) ?? request;
   }
 
   /** The contact's asking thread and one thread here may now write to each other. */

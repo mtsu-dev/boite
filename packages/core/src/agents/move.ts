@@ -156,6 +156,16 @@ export class BotMoves {
   /** Whether this request was sent and not finished: the target may hold the bot, and only the same request finishes it here. */
   unfinished(requestId: string): boolean { return this.#core.journal.getSetting(`${MOVING_OUT}${requestId}`) !== undefined; }
 
+  /** The machine a finished move took this bot to, from its receipt: an archived team restored later follows it. */
+  movedTo(agentId: string): string | null {
+    const rows = this.#core.journal.db.query('SELECT key FROM settings WHERE key LIKE ?').all(`${MOVED_OUT}%`) as { key: string }[];
+    for (const { key } of rows) {
+      const done = this.#core.journal.getSetting(key) as AgentMoveResult | undefined;
+      if (done?.agentId === agentId) return done.machine;
+    }
+    return null;
+  }
+
   // -- the machine it leaves --------------------------------------------------
 
   /** `agents.move`: the owner sends a bot to another machine of the group. */
@@ -191,9 +201,6 @@ export class BotMoves {
   #movable(agent: AgentProfile): void {
     if (agent.status === 'archived') throw refused(`agents.move: ${agent.name} is archived; restore it before moving it`, { field: 'agentId', expected: 'an active or paused bot' });
     if (this.#moving.has(agent.id)) throw refused(`agents.move: ${agent.name} is already moving to another machine`, { field: 'agentId', reason: 'moving' });
-    // A team holds members of one machine (docs/teams.md): moving one would leave its posts with nobody to read them.
-    const teams = this.#core.teams.namesOf(agent.id);
-    if (teams.length > 0) throw refused(`agents.move: ${agent.name} belongs to the team${teams.length > 1 ? 's' : ''} ${teams.map(name => JSON.stringify(name)).join(', ')}; remove it from ${teams.length > 1 ? 'them' : 'it'} first, a team holds bots of one machine`, { field: 'agentId', reason: 'team', teams });
   }
 
   // -- a move that waits for the bot's turn to end ------------------------------
@@ -427,6 +434,8 @@ export class BotMoves {
 
   /** The target holds the bot: this machine keeps its thread, archived with a line, and nothing else of it. */
   #leave(agent: AgentProfile, thread: ThreadSummary | null, peer: CoordinationPeer): void {
+    // Its teams follow it, while its thread here still reads its letters.
+    this.#core.teams.memberMoved(agent.id, peer.coreId);
     if (thread !== null) {
       this.#core.agentRuntime.line(agent.id, `Moved to ${peer.name}`);
       if (!thread.archived) this.#core.threads.archive(thread.id, true);

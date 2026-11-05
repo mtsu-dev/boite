@@ -29,7 +29,8 @@ export function directChildren(core: Core, threadId: ThreadId, agentId?: ThreadI
 }
 
 export function delegatedResultPage(core: Core, params: RpcParams<'delegation.result'>): DelegationResultPage {
-  directChildren(core, params.threadId, params.agentId);
+  // A council member is no delegated agent, and a round's message names this command for the answer it cut.
+  if (!core.council.memberOf(params.threadId, params.agentId)) directChildren(core, params.threadId, params.agentId);
   return resultPageOf(core, params.agentId, params.turnId, params.offset, params.limit);
 }
 
@@ -123,7 +124,7 @@ export class DelegationWaits {
           directChildren(this.#core, params.threadId, params.agentId);
           const agents = this.#agents(params.threadId).filter(agent => params.agentId === undefined || agent.thread.id === params.agentId);
           // A child that ended its turn to wait on its background work has not answered yet.
-          const waiting = agents.some(agent => (agent.machine !== undefined && this.#core.delegation.remote.child(params.threadId, agent.thread.id)?.state?.restarting === true) || (agent.lastTurn !== null && ['queued', 'running'].includes(agent.lastTurn.status)) || agent.thread.backgroundWait?.state === 'waiting' || this.#settling(agent.thread.id));
+          const waiting = (params.agentId === undefined && this.#core.council.running(params.threadId)) || agents.some(agent => (agent.machine !== undefined && this.#core.delegation.remote.child(params.threadId, agent.thread.id)?.state?.restarting === true) || (agent.lastTurn !== null && ['queued', 'running'].includes(agent.lastTurn.status)) || agent.thread.backgroundWait?.state === 'waiting' || this.#settling(agent.thread.id));
           // A child stopped on a question or an approval waits on someone: its running turn would hold the wait to its timeout.
           const asks = agents.some(agent => agent.needsInput?.some(need => need.kind === 'permission' || need.blocking));
           if (waiting && !asks && !timedOut) return;
@@ -133,7 +134,7 @@ export class DelegationWaits {
       };
       this.#pending.add(cancel);
       off = this.#core.bus.onCommitted(name => {
-        if (name === 'turn.finished' || name === 'delegation.changed' || name === 'thread.removed') inspect();
+        if (name === 'turn.finished' || name === 'delegation.changed' || name === 'thread.removed' || name === 'council.changed') inspect();
       });
       timer = setTimeout(() => inspect(true), timeout);
       timer.unref?.();

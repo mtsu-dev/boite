@@ -249,6 +249,39 @@ describe('orphan sweep', () => {
     expect(procs.sweepOrphans(THREAD, Date.now() + GRACE_MS).sort()).toEqual([103, 104, 141, 143]);
   });
 
+  test('a command reported after its Git Bash fork exited stays while its shell runs', () => {
+    const sink = job.sink();
+    const exit = { exitCode: 0, cpuMs: null, peakMemoryBytes: null, ioBytes: null };
+    const bash = 'C:\\Program Files\\Git\\usr\\bin\\bash.exe';
+    const born = Date.now() - 1000;
+    sink.started(THREAD, 170, { exe: bash, commandLine: null, parentPid: 100, startedAt: born });
+    sink.started(THREAD, 171, { exe: bash, commandLine: null, parentPid: 170, startedAt: born + 10 });
+    // The sleep's start waited for its command line while the fork that ran it exited.
+    sink.exited(THREAD, 171, exit);
+    sink.started(THREAD, 172, { exe: 'C:\\Program Files\\Git\\usr\\bin\\sleep.exe', commandLine: null, parentPid: 171, startedAt: born + 20 });
+    // Born after that exit, this one names the same pid but no fork of that shell.
+    const later = Date.now() + 1000;
+    sink.started(THREAD, 173, { exe: 'C:\\tools\\node.exe', commandLine: null, parentPid: 171, startedAt: later });
+    expect(procs.sweepOrphans(THREAD, later + GRACE_MS).sort()).toEqual([103, 104, 173]);
+    sink.exited(THREAD, 170, exit);
+    expect(procs.sweepOrphans(THREAD, later + GRACE_MS)).toEqual([172]);
+  });
+
+  test('a fork gone before its name read leaves its command to a live shell, and only to a shell', () => {
+    const sink = job.sink();
+    const exit = { exitCode: 0, cpuMs: null, peakMemoryBytes: null, ioBytes: null };
+    const born = Date.now() - 1000;
+    sink.started(THREAD, 180, { exe: 'C:\\Program Files\\Git\\usr\\bin\\bash.exe', commandLine: null, parentPid: 100, startedAt: born });
+    sink.started(THREAD, 181, { exe: 'unknown', commandLine: null, parentPid: 180, startedAt: born + 10 });
+    sink.started(THREAD, 182, { exe: 'C:\\Program Files\\Git\\usr\\bin\\sleep.exe', commandLine: null, parentPid: 181, startedAt: born + 20 });
+    sink.exited(THREAD, 181, exit);
+    sink.started(THREAD, 190, { exe: 'C:\\tools\\node.exe', commandLine: null, parentPid: 100, startedAt: born });
+    sink.started(THREAD, 191, { exe: 'unknown', commandLine: null, parentPid: 190, startedAt: born + 10 });
+    sink.started(THREAD, 192, { exe: 'C:\\tools\\tool.exe', commandLine: null, parentPid: 191, startedAt: born + 20 });
+    sink.exited(THREAD, 191, exit);
+    expect(procs.sweepOrphans(THREAD, Date.now() + GRACE_MS).sort()).toEqual([103, 104, 192]);
+  });
+
   test('an exited parent of the same image that is no shell fork leaves an orphan', () => {
     const sink = job.sink();
     const node = 'C:\\tools\\node.exe';

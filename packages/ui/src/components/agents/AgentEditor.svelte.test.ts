@@ -7,6 +7,8 @@ import { confirm } from '../../lib/confirm.svelte';
 import { FakeClient } from '../../lib/fake-client';
 import { Store } from '../../lib/store.svelte';
 import { TYPING_MS } from '../../lib/autosave.svelte';
+import { workspace } from '../../lib/workspace.svelte';
+import { strings } from '../../lib/strings';
 import AgentEditor from './AgentEditor.svelte';
 import AgentRuntimeSettings from './AgentRuntimeSettings.svelte';
 
@@ -107,6 +109,86 @@ test('an agent is entrusted projects of its machine from its main options, the d
   await settle();
   expect(call).toHaveBeenCalledOnce();
   expect(call).toHaveBeenCalledWith('agents.profile.save', expect.objectContaining({ value: expect.objectContaining({ projectIds: ['p-game'] }) }));
+});
+
+test('projects of other group machines can be selected independently and revoked while unavailable', async () => {
+  const opened: { store: Store; client: FakeClient }[] = [];
+  for (const id of ['host', 'remote', 'unrelated']) {
+    const client = new FakeClient({ delayMs: 0, coreId: `core-${id}`, coreName: id, publicUrl: `https://${id}.test` });
+    const store = new Store();
+    store.attach(client);
+    await store.connect();
+    opened.push({ store, client });
+  }
+  cleanup = async () => {
+    workspace.machines = [];
+    for (const { store, client } of opened) { store.detach(); client.close(); }
+  };
+  const [host, remote] = opened;
+  await host!.store.createGroup('Home');
+  const { invite } = await host!.client.call('group.invite', {});
+  await remote!.store.joinGroup(invite);
+  await vi.waitFor(() => expect(host!.store.group?.cores).toHaveLength(2));
+  await remote!.store.saveSettings({ groupBots: true });
+  workspace.machines = opened.map(({ store }, i) => ({ id: String(i), label: ['Host', 'Remote', 'Unrelated'][i]!, store }));
+  const local = host!.store.projects.find(p => p.kind !== 'drafts')!;
+  const remoteId = `core-remote/${local.id}`;
+  expect(remote!.store.projects.some(p => p.id === local.id)).toBe(true);
+  const { call, view } = viewOf(profile, host!.store);
+  mounted = mount(AgentEditor, { target: document.body, props: { view, record: profile, embedded: true, ondone() {}, oncancel() {} } });
+  await settle();
+  const field = document.querySelector('[data-testid="agent-projects"]')!;
+  const check = (id: string) => field.querySelector<HTMLInputElement>(`[data-testid="agent-project-${id}"]`);
+  // Equal project ids on two cores remain separate grants.
+  expect(check(remoteId)).not.toBeNull();
+  expect(field.textContent).toContain('Remote');
+  expect(field.textContent).not.toContain('Unrelated');
+  expect(field.querySelector('input[data-testid*="drafts"]')).toBeNull();
+  check(local.id)!.click(); check(remoteId)!.click();
+  await settle();
+  expect(call).toHaveBeenLastCalledWith('agents.profile.save', expect.objectContaining({ value: expect.objectContaining({ projectIds: [local.id, remoteId] }) }));
+  // Permission belongs to the target. Its checked grants can still be taken back.
+  await remote!.store.saveSettings({ groupBots: false });
+  await settle();
+  expect(field.textContent).toContain(strings.machines.groupBots);
+  expect(check(remoteId)!.disabled).toBe(false);
+  check(remoteId)!.click(); await settle();
+  expect(check(remoteId)!.disabled).toBe(true);
+  expect(call).toHaveBeenLastCalledWith('agents.profile.save', expect.objectContaining({ value: expect.objectContaining({ projectIds: [local.id] }) }));
+  await remote!.store.saveSettings({ groupBots: true });
+  await settle();
+  check(remoteId)!.click(); await settle();
+  remote!.store.connection = 'closed';
+  await settle();
+  expect(field.textContent).toContain(strings.agents.machineOffline);
+  expect(check(remoteId)!.checked).toBe(true);
+  check(remoteId)!.click(); await settle();
+  expect(check(remoteId)!.disabled).toBe(true);
+
+  // A stale second connection must not mask the live one to the same core.
+  remote!.store.connection = 'ready';
+  const stale = new Store();
+  stale.group = remote!.store.group;
+  stale.projects = remote!.store.projects;
+  workspace.machines = [{ id: 'stale', label: 'Remote offline', store: stale }, ...workspace.machines];
+  await settle();
+  expect.soft(check(remoteId)!.disabled).toBe(false);
+  workspace.machines = workspace.machines.filter(m => m.store !== stale);
+  // The owner of the bot may entrust projects visible through a paired connection.
+  remote!.store.principal = 'session';
+  await settle();
+  expect.soft(check(remoteId)!.disabled).toBe(false);
+  remote!.store.principal = 'owner';
+  await settle();
+  check(remoteId)!.click(); await settle();
+  // Leaving the group revokes access, but the saved grant can still be removed.
+  host!.store.group = null;
+  await settle();
+  expect.soft(check(remoteId)).not.toBeNull();
+  expect(field.textContent).toContain(strings.agents.projectsOutsideGroup);
+  expect(field.querySelectorAll('[data-testid="agent-project-machine-core-remote"] input')).toHaveLength(1);
+  check(remoteId)?.click(); await settle();
+  expect(call).toHaveBeenLastCalledWith('agents.profile.save', expect.objectContaining({ value: expect.objectContaining({ projectIds: [local.id] }) }));
 });
 
 const idle = async () => { await settle(); await new Promise(resolve => setTimeout(resolve, 10)); await settle(); };

@@ -1,4 +1,4 @@
-import { appendFileSync, closeSync, existsSync, fstatSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, renameSync, rmSync, statSync, unlinkSync } from 'node:fs';
+import { appendFileSync, closeSync, existsSync, fstatSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { BRANCH_NAME_MAX, type Project, type ThreadId, type WorktreeStorage } from '@boite/contracts';
 import { CheckoutReservations } from './checkouts.ts';
@@ -32,13 +32,42 @@ export function slugOf(title: string): string {
   return slug.length > 0 ? slug : 'thread';
 }
 
+/** The folder Boite keeps inside a project, worktrees included. */
+const PROJECT_FOLDER = '.boite';
+
+/**
+ * Creates a project's `.boite` folder with a `.gitignore` of `*`, so tools that
+ * read .gitignore files but not .git/info/exclude skip it too. A `.gitignore`
+ * already there is kept as it is. A `.boite` that is a link (a junction on
+ * Windows) or resolves outside the project is the user's own arrangement: its
+ * target, which may hold anything, gets no marker.
+ */
+function ensureProjectFolder(projectPath: string): void {
+  const folder = join(projectPath, PROJECT_FOLDER);
+  if (lstatSync(folder, { throwIfNoEntry: false })?.isSymbolicLink()) return;
+  mkdirSync(folder, { recursive: true });
+  // Checked again once the folder exists: another process may have linked it meanwhile.
+  if (lstatSync(folder).isSymbolicLink()) return;
+  const inside = relative(realpathSync(projectPath), realpathSync(folder));
+  if (!inside || isAbsolute(inside) || inside === '..' || inside.startsWith(`..${sep}`)) return;
+  try { writeFileSync(join(folder, '.gitignore'), '*\n', { flag: 'wx' }); } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+  }
+}
+
+/** Whether `path` is the project's `.boite` folder or lies in it. */
+function inProjectFolder(projectPath: string, path: string): boolean {
+  const local = relative(projectPath, path).split(sep).join('/');
+  return local === PROJECT_FOLDER || local.startsWith(`${PROJECT_FOLDER}/`);
+}
+
 /** The shared folder separates projects by their stable id, including namesakes. */
 export function worktreeRoot(projectPath: string, storage?: WorktreeStorage, projectId?: string): string {
   if (storage?.mode === 'shared') {
     if (!projectId) throw refused('a shared worktree folder requires a project id');
     return join(storage.directory, `${slugOf(basename(projectPath))}-${projectId.replace(/[^a-z0-9_-]/gi, '-')}`);
   }
-  return join(projectPath, '.boite', 'worktrees');
+  return join(projectPath, PROJECT_FOLDER, 'worktrees');
 }
 
 /**
@@ -137,7 +166,10 @@ export class Worktrees {
         // Git may report a long Windows path while the journal carries its 8.3 alias.
         const registered = statSync(location, { bigint: true });
         const expected = statSync(path, { bigint: true });
-        if (registered.ino !== 0n && registered.dev === expected.dev && registered.ino === expected.ino) return { path, branch };
+        if (registered.ino !== 0n && registered.dev === expected.dev && registered.ino === expected.ino) {
+          this.markReused(project, path);
+          return { path, branch };
+        }
       }
       if (location && name === `refs/heads/${branch}` && existsSync(location)) throw refused(`branch ${branch} is already checked out at ${location}; expected ${path}`);
     }
@@ -175,6 +207,7 @@ export class Worktrees {
       throw refused(`cannot resume ${branch}: expected a branch reserved by ${threadId}`, { branch, path });
     }
     if (!existsSync(path)) await this.ensure(threadId, project, branch, path, { assertActive, beforeMutation: () => {} });
+    else this.markReused(project, path);
     assertActive();
     if (await this.#checkoutBranch(threadId, project.path, path) !== branch) {
       throw refused(`cannot resume ${branch}: ${path} is not its registered checkout`, { branch, path });
@@ -421,12 +454,29 @@ export class Worktrees {
     throw refused(`cannot tell whether branch ${branch} exists in ${cwd}: ${result.stderr.trim().split('\n')[0] || `exit ${result.code}`}`, { cwd, branch });
   }
 
+  /**
+   * A checkout made before the marker existed is marked when it is used again.
+   * Only a checkout in the project's own `.boite` folder: a shared worktree
+   * folder, possibly in the user's Boite data, is left alone. A failure is
+   * logged, since the checkout itself still works.
+   */
+  markReused(project: Project, path: string): void {
+    if (!inProjectFolder(project.path, path)) return;
+    try { ensureProjectFolder(project.path); } catch (error) {
+      this.#core.log('warn', `cannot create ${join(project.path, PROJECT_FOLDER, '.gitignore')}: ${messageOf(error)}`);
+    }
+  }
+
   /** Local exclusions keep nested checkouts out of status without editing .gitignore. */
   async #exclude(threadId: ThreadId, project: Project, path: string, preparation?: WorktreePreparation): Promise<void> {
     const local = relative(project.path, dirname(path));
     if (!local || isAbsolute(local) || local === '..' || local.startsWith(`..${sep}`)) return;
     const folder = local.split(sep).join('/');
-    const pattern = folder.startsWith('.boite/') ? '/.boite/' : `/${folder.replace(/[\\[\]*?!# ]/g, '\\$&')}/`;
+    const boite = inProjectFolder(project.path, dirname(path));
+    if (boite) {
+      try { ensureProjectFolder(project.path); } catch (error) { throw refused(`cannot create ${join(project.path, PROJECT_FOLDER, '.gitignore')}: ${messageOf(error)}`); }
+    }
+    const pattern = boite ? `/${PROJECT_FOLDER}/` : `/${folder.replace(/[\\[\]*?!# ]/g, '\\$&')}/`;
     preparation?.assertActive();
     const result = await this.git(threadId, project.path, ['rev-parse', '--git-path', 'info/exclude'], preparation?.timeoutMs);
     preparation?.assertActive();

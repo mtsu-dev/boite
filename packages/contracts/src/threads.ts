@@ -191,8 +191,8 @@ export interface ThreadSummary {
   agentSessionId?: string;
   /** A team's chat (`docs/teams.md`): it runs no agent, a turn there is one post, and no agent reaches it as a coordination contact. */
   teamId?: string;
-  /** A debate's salon (`docs/debates.md`): it runs no agent and holds no message; the posts are read with debates.get. */
-  debateId?: string;
+  /** A council's salon (`docs/council.md`): it runs no agent and holds no message; the posts are read with council.get. */
+  councilId?: string;
   /**
    * An incognito conversation of the drafts. It works in a folder of the
    * core's data directory rather than the drafts folder, lists stay quiet
@@ -229,11 +229,12 @@ export interface ThreadSummary {
    */
   runningSince?: Timestamp | null;
   /**
-   * When the user's current request started: the start of the last turn the
-   * user opened, kept through the turns Boite opened after it to carry on
-   * (`continuesRequest`). What a row counts from while the agent works or
-   * monitors, so a pause to watch CI does not reset it. Null when no turn runs
-   * and nothing runs in the background; missing on older cores.
+   * When the current request started: the start of the last turn that opened
+   * one, the user's or another agent's on a thread at rest, kept through the
+   * turns Boite opened after it to carry on (`continuesRequest`). What a row
+   * counts from while the agent works or monitors, so a pause to watch CI does
+   * not reset it. Null when no turn runs and nothing runs in the background;
+   * missing on older cores.
    */
   requestSince?: Timestamp | null;
   /** In memory only, cleared at turn end/restart. Missing on older cores. */
@@ -314,8 +315,30 @@ export interface ThreadSummary {
    * missing on older cores.
    */
   retry?: ThreadRetry | null;
+  /**
+   * The wake the agent asked for with its ScheduleWakeup tool, which the core
+   * keeps across restarts and opens as a turn when it is due (`ThreadWake`).
+   * Null when none is pending; missing on older cores.
+   */
+  wake?: ThreadWake | null;
   createdAt: Timestamp;
   updatedAt: Timestamp;
+}
+
+/**
+ * A wake the agent scheduled for itself (Claude's ScheduleWakeup). The core
+ * opens a turn with `prompt` once `at` passed and the thread is free; a newer
+ * call replaces it, `stop: true`, Stop, a pause or an archive cancels it.
+ */
+export interface ThreadWake {
+  /** When the agent asked to be woken. */
+  at: Timestamp;
+  /** The prompt the wake opens with. */
+  prompt: string;
+  /** The agent's one-line reason for the delay, null when it gave none. */
+  reason: string | null;
+  /** The turn that scheduled it. */
+  turnId: TurnId;
 }
 
 /**

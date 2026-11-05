@@ -3,14 +3,21 @@ import { randomUUID, verify } from 'node:crypto';
 import type { Core } from '../core.ts';
 import { refused, RpcFailure } from '../errors.ts';
 import type { ContactStore } from './store.ts';
-import { TextSocket } from '../ws-client.ts';
+import { TextSocket, UpgradeError } from '../ws-client.ts';
 import { checkTailnetName } from './invite.ts';
 
-/** What the server keeps on a contact's link socket. */
-export interface ContactSocketData { contact: { coreId: string; routeId: string } }
+/** What the server keeps on a contact's link socket; `proof`: the host's signature over the hello, its first frame. */
+export interface ContactSocketData { contact: { coreId: string; routeId: string; proof?: string } }
 
 export const CONTACT_LINK_ROUTE = '/coordination/contact/link';
 export const HELLO_INPUT = 'boite-contact-hello\n';
+/** What the dialed core signs back for a dial that asks it to prove its key (`x-boite-probe: 1`). */
+export const PROOF_INPUT = 'boite-contact-proof\n';
+/** What a core signs over the hello of a probe from a core it neither knows nor gave a seat (`x-boite-refusal`). */
+export const REFUSAL_INPUT = 'boite-contact-refusal\n';
+
+/** The dialed core refused this hello with its own key: it does not know the dialer, as opposed to a policy, a proxy or an outage. */
+export class ContactRefused extends Error {}
 /** How long the upgrade to a host may take before the link counts as failed. */
 const LINK_DIAL_MS = 8000;
 
@@ -21,12 +28,63 @@ export async function dialContact(core: Core, url: string, headers: Record<strin
   return TextSocket.connect(`${url.replace(/^http/, 'ws')}${CONTACT_LINK_ROUTE}`, LINK_DIAL_MS, { headers });
 }
 
+/** A JSON frame or hello, or `null` when it does not parse. */
+function proofFrame(text: string): Record<string, unknown> | null {
+  try { const value: unknown = JSON.parse(text); return value && typeof value === 'object' ? value as Record<string, unknown> : null; } catch { return null; }
+}
+
+/**
+ * A dial that only counts once the core holding `publicKey` answered: its
+ * first frame signs this dial's hello back. An origin that merely takes the
+ * upgrade never sends it, and is closed after `ms`.
+ */
+export async function dialProven(core: Core, url: string, headers: Record<string, string>, publicKey: string, ms: number): Promise<TextSocket> {
+  const hello = Buffer.from(headers['x-boite-hello'] ?? '', 'base64url');
+  let socket: TextSocket;
+  try { socket = await dialContact(core, url, { ...headers, 'x-boite-probe': '1' }); }
+  catch (error) {
+    const signature = error instanceof UpgradeError && /^HTTP\/1\.1 403\b/.test(error.head ?? '') ? /^x-boite-refusal:\s*(\S+)/im.exec(error.head!)?.[1] : undefined;
+    if (signature && verify(null, Buffer.concat([Buffer.from(REFUSAL_INPUT), hello]), publicKey, Buffer.from(signature, 'base64'))) throw new ContactRefused(`${url} refused this core's hello with the contact's key`);
+    throw error;
+  }
+  const signed = Buffer.concat([Buffer.from(PROOF_INPUT), hello]);
+  return new Promise<TextSocket>((resolve, reject) => {
+    const fail = (reason: string) => { clearTimeout(timer); socket.close(1008, 'no proof'); reject(new Error(`${url} ${reason}`)); };
+    const timer = setTimeout(() => fail(`sent no proof of its key in ${ms} ms`), ms);
+    socket.onClose(() => fail('closed before proving its key'));
+    socket.onMessage(text => {
+      const frame = proofFrame(text);
+      if (frame?.t !== 'proof' || typeof frame.signature !== 'string' || !verify(null, signed, publicKey, Buffer.from(frame.signature, 'base64'))) { fail('answered without the expected key\'s proof'); return; }
+      clearTimeout(timer);
+      resolve(socket);
+    });
+  });
+}
+
+/**
+ * A probe from a core this one does not know is refused under this core's
+ * key, over that probe's own hello: the dialer may then drop a seat this core
+ * never took, which a bare 403 (contacts off, a proxy) does not prove.
+ */
+function unknown(core: Core, request: Request, guest: string, stranger: boolean): Response {
+  const body = 'not a contact that dials this core';
+  const raw = request.headers.get('x-boite-hello') ?? '';
+  if (!stranger || request.headers.get('x-boite-probe') !== '1' || raw.length > 4096) return new Response(body, { status: 403 });
+  const parsed = proofFrame(Buffer.from(raw, 'base64url').toString('utf8')) as { v?: unknown; from?: unknown; to?: unknown } | null;
+  if (parsed?.v !== 1 || !guest || parsed.from !== guest || parsed.to !== core.coordination.card().coreId) return new Response(body, { status: 403 });
+  const signature = core.coordination.signature(Buffer.concat([Buffer.from(REFUSAL_INPUT), Buffer.from(raw, 'base64url')])).toString('base64');
+  return new Response(body, { status: 403, headers: { 'x-boite-refusal': signature } });
+}
+
 export function contactHello(core: Core, store: ContactStore, request: Request): ContactSocketData['contact'] | Response {
     if (store.isClosed || core.policy.networkOff('contacts') || request.headers.has('origin')) return new Response('forbidden', { status: 403 });
     const guest = request.headers.get('x-boite-peer') ?? '';
-    // A contact another machine of the group handed to this one is checked against the handed record, then kept (`group-link.ts`).
-    const contact = store.find(guest) ?? store.groupLink.incoming(guest);
-    if (!contact || contact.role !== 'host') return new Response('not a contact that dials this core', { status: 403 });
+    // A contact another machine of the group handed to this one is checked against the handed record, then kept, and a
+    // Bots host a move gave this core's guest seat against the key that signed the move (`group-link.ts`).
+    // A Bots host's resume (`x-boite-resume`) only finds a contact this core follows already, never a seat it still holds.
+    const resume = request.headers.get('x-boite-resume') === '1';
+    const contact = store.find(guest) ?? (resume ? undefined : store.groupLink.incoming(guest) ?? store.groupLink.seat(guest));
+    if (!contact || contact.role !== 'host') return unknown(core, request, guest, contact === undefined);
     try {
       const hello = Buffer.from(request.headers.get('x-boite-hello') ?? '', 'base64url').toString('utf8');
       const signature = request.headers.get('x-boite-signature') ?? '';
@@ -38,5 +96,9 @@ export function contactHello(core: Core, store: ContactStore, request: Request):
       return new Response(error instanceof RpcFailure ? error.message : 'invalid hello', { status: 403 });
     }
     if (!store.has(guest)) store.groupLink.commit(guest);
-    return { coreId: guest, routeId: `contact:${randomUUID()}` };
+    if (!store.has(guest)) store.groupLink.seated(guest);
+    // A move's probe asks this core to prove it holds its key: the hello signed back, sent once the socket opens (`attach`).
+    const probe = request.headers.get('x-boite-probe') === '1';
+    const proof = probe ? core.coordination.signature(Buffer.concat([Buffer.from(PROOF_INPUT), Buffer.from(request.headers.get('x-boite-hello') ?? '', 'base64url')])).toString('base64') : undefined;
+    return { coreId: guest, routeId: `contact:${randomUUID()}`, ...(proof ? { proof } : {}) };
 }

@@ -1,5 +1,5 @@
 import type { ProcessRecord } from '@boite/contracts';
-import type { ProcessIdentity } from './process-identity.ts';
+import { UNNAMED_PROCESS, type ProcessIdentity } from './process-identity.ts';
 
 interface Traced {
   record: ProcessRecord;
@@ -27,7 +27,8 @@ interface Traced {
  *
  * The limit: a real subshell that exits with 0 while its own subshell runs
  * (`( trap 'exit 0' TERM; ( read ) & wait ) &` stopped by TERM) looks the
- * same from Windows, and its child stays while the bash above it runs. The
+ * same from Windows, and so does a shell's nameless child that exits with 0:
+ * what runs under them stays while the bash above runs. The
  * first sweep after that bash exits takes it, and a thread's stop kills its
  * whole job anyway.
  */
@@ -71,12 +72,19 @@ export function orphansOf<T extends Traced>(byPid: ReadonlyMap<number, T>, now: 
   return stopping;
 }
 
-/** The live entry a starting process names as its parent, unless that pid now names a younger process. */
-export function parentAtStart<T extends Traced>(byPid: ReadonlyMap<number, T>, child: Traced): T | null {
+/**
+ * The last entry of the pid a starting process names as its parent, running or
+ * exited: a start can wait for its command line while its parent exits, and a
+ * Git Bash fork exits as soon as its command runs. Null when that pid now names
+ * a younger process, or one that exited before this one was born.
+ */
+export function parentAtStart<T extends Traced>(known: ReadonlyMap<number, { entry: T }>, child: Traced): T | null {
   const parentPid = child.record.parentPid;
   if (parentPid === null) return null;
-  const parent = byPid.get(parentPid);
-  return parent !== undefined && !bornAfter(parent, child) ? parent : null;
+  const parent = known.get(parentPid)?.entry;
+  if (parent === undefined || bornAfter(parent, child)) return null;
+  const { exitedAt } = parent.record;
+  return exitedAt !== null && exitedAt < nativeBirth(child) ? null : parent;
 }
 
 /**
@@ -100,11 +108,13 @@ const FORKING_SHELL = /(?:^|[\\/])(?:ba|da|z)?sh\.exe$/i;
 /**
  * `fork` is a copy of `shell` that exec'd a command and exited. In 74,975 such
  * forks of a real trace, all exited with 0; no timing is read, since exit
- * events can arrive late.
+ * events can arrive late. A fork gone before its start was handled has no image
+ * left to compare, and is taken for its shell's copy.
  */
 function shellFork(fork: Traced, shell: Traced): boolean {
-  const exe = fork.record.exe;
-  return FORKING_SHELL.test(exe) && exe.toLowerCase() === shell.record.exe.toLowerCase() && fork.record.exitCode === 0;
+  const exe = shell.record.exe;
+  const copy = fork.record.exe === UNNAMED_PROCESS || fork.record.exe.toLowerCase() === exe.toLowerCase();
+  return FORKING_SHELL.test(exe) && copy && fork.record.exitCode === 0;
 }
 
 function nativeBirth(entry: Traced): number {

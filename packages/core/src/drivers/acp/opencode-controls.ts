@@ -65,8 +65,34 @@ export class OpenCodeControls {
   }
 
   contextWindow(): number {
-    const model = this.models.find(model => model['providerID'] === this.model['providerID'] && model['id'] === this.model['id']);
-    const size = object(model?.['limit'])['context'];
+    const size = this.#limit()['context'];
     return typeof size === 'number' ? size : 0;
+  }
+
+  /**
+   * The window OpenCode measures its compaction ceiling against, 0 when
+   * unknown: the smaller of the input limit and the context window when the
+   * model lists both, else whichever it lists (`inputWindow` in OpenCode's
+   * `session/compaction.ts`).
+   */
+  compactionWindow(): number {
+    const limit = this.#limit();
+    const size = (key: string): number => {
+      const value = limit[key];
+      return typeof value === 'number' && value > 0 ? value : 0;
+    };
+    const input = size('input'), context = size('context');
+    return input > 0 && context > 0 ? Math.min(input, context) : input || context;
+  }
+
+  /** The session's model as `provider/model`, empty until the session is read. */
+  currentModel(): string {
+    const provider = text(this.model['providerID']), id = text(this.model['id']);
+    return provider && id ? `${provider}/${id}` : '';
+  }
+
+  #limit(): Record<string, unknown> {
+    const model = this.models.find(model => model['providerID'] === this.model['providerID'] && model['id'] === this.model['id']);
+    return object(model?.['limit']);
   }
 }

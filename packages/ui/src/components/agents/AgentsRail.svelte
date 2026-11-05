@@ -34,9 +34,13 @@
    * card under their own heading (`docs/teams.md`): one row per team, its
    * members' pictures, its name, who is in it, the time of its last post and
    * the dot of a chat not read. A row opens the team's chat in the card beside.
+   * The heading stays while there is no team yet, with its New team button and
+   * one line saying what a team is; a search shows it only over the teams it
+   * finds. A paired phone keeps the button greyed: a tap says that creating a
+   * team stays on the computer.
    */
   type MachineAgents = { machine: Machine; view: AgentsView };
-  let { view, lists, filter, active, activeTeam = null, onopen, onteam, oncreate, onengine, engine = false }: {
+  let { view, lists, filter, active, activeTeam = null, onopen, onteam, oncreate, onnewteam, onengine, engine = false }: {
     /** The page's machine: the one a new agent and the engine settings belong to. */
     view: AgentsView;
     /** Each listed machine's agents, the page's own first. */
@@ -51,6 +55,8 @@
     onopen: (machine: Machine, agentId: string, pane?: AgentPane) => void;
     onteam: (machine: Machine, team: Team) => void;
     oncreate: () => void;
+    /** Opens the dialog that creates a team on the page's machine. */
+    onnewteam?: () => void;
     onengine: () => void;
     /** The engine settings are what the card shows. */
     engine?: boolean;
@@ -77,6 +83,15 @@
   const teams = $derived(watched()
     .filter(({ team }) => !needle || team.name.toLowerCase().includes(needle))
     .sort((a, b) => lastPost(b) - lastPost(a) || a.team.name.localeCompare(b.team.name)));
+  const teamsOn = $derived(experimentOn('teams'));
+  /** The Teams section: always while Teams is on, and under a search only over the teams it found. */
+  const teamsShown = $derived(teamsOn && (needle ? teams.length > 0 : true));
+  /** A paired phone tapped the greyed New team: the reason shows under the heading. */
+  let guestNote = $state(false);
+  function newTeam() {
+    if (!view.store.owner) { guestNote = !guestNote; return; }
+    onnewteam?.();
+  }
   function lastPost({ team, chat }: TeamRow): number {
     return chat?.updatedAt ?? team.updatedAt;
   }
@@ -186,18 +201,29 @@
     {/if}
   {/snippet}
 
-  {#if teams.length}
-    <h2 class="agents-section section-label" id="{uid}-teams">{strings.teamChat.heading}</h2>
-    <section class="agents-card" aria-labelledby="{uid}-teams" data-testid="agents-teams">
-      {#each teams as row (`${row.machine.id}:${row.team.id}`)}
-        {@const names = listNames(row.team.members.map(member => member.name))}
-        <AgentRow title={row.team.name} open={row.machine.store === view.store && activeTeam === row.team.threadId} marked={!!row.chat?.unread}
-          away={row.machine.store.connection !== 'ready'} at={lastPost(row)} {now} detail={names} tone={row.team.paused ? 'asleep' : 'idle'}
-          machine={multi ? row.machine : undefined} testid="agent-team-{row.team.id}" onclick={() => onteam(row.machine, row.team)}>
-          {#snippet picture()}<AgentAvatar kind="team" id={row.team.id} name={row.team.name} members={pictures(row)} size={34} />{/snippet}
-        </AgentRow>
-      {/each}
-    </section>
+  {#if teamsShown}
+    <div class="agents-section agents-section-head">
+      <h2 class="section-label" id="{uid}-teams">{strings.teamChat.heading}</h2>
+      {#if onnewteam}
+        <button type="button" class="ghost icon small" aria-disabled={view.store.owner ? undefined : 'true'} title={view.store.owner ? strings.teamChat.newTeam : strings.teamChat.onComputer}
+          aria-label={strings.teamChat.newTeam} aria-describedby={guestNote ? `${uid}-teams-guest` : undefined} onclick={newTeam} data-testid="agents-new-team"><Plus size={15} /></button>
+      {/if}
+    </div>
+    {#if guestNote && !view.store.owner}<p class="agents-teams-note" id="{uid}-teams-guest" role="status" data-testid="agents-teams-guest">{strings.teamChat.onComputer}</p>{/if}
+    {#if teams.length}
+      <section class="agents-card" aria-labelledby="{uid}-teams" data-testid="agents-teams">
+        {#each teams as row (`${row.machine.id}:${row.team.id}`)}
+          {@const names = listNames(row.team.members.map(member => member.name))}
+          <AgentRow title={row.team.name} open={row.machine.store === view.store && activeTeam === row.team.threadId} marked={!!row.chat?.unread}
+            away={row.machine.store.connection !== 'ready'} at={lastPost(row)} {now} detail={names} tone={row.team.paused ? 'asleep' : 'idle'}
+            machine={multi ? row.machine : undefined} testid="agent-team-{row.team.id}" onclick={() => onteam(row.machine, row.team)}>
+            {#snippet picture()}<AgentAvatar kind="team" id={row.team.id} name={row.team.name} members={pictures(row)} size={34} />{/snippet}
+          </AgentRow>
+        {/each}
+      </section>
+    {:else}
+      <p class="agents-teams-note" data-testid="agents-teams-empty">{strings.teamChat.noTeams}</p>
+    {/if}
     {#if rows.length}<h2 class="agents-section section-label" data-testid="agents-bots-heading">{labels.heading}</h2>{/if}
   {/if}
   {#if rows.length}

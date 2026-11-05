@@ -40,8 +40,8 @@ import { ThreadSpawns } from './threads/spawn.ts';
 import { checkAttachmentArray, checkAttachments, checkTurnRequest, titleOf } from './threads/inputs.ts';
 import { RestartHandoff } from './threads/handoff.ts';
 import { SYSTEM_LABEL, nativeCommandPrompt, systemOperation } from './threads/operations.ts';
-import { USER_ORIGIN, autonomousSource, originAutomatic, originOperation, type StartTurnOptions, type TurnInput, type TurnOrigin } from './threads/turn-origin.ts';
-import { saveThread, withLoad } from './threads/records.ts';
+import { USER_ORIGIN, autonomousSource, originAgentWrites, originAutomatic, originOperation, type StartTurnOptions, type TurnInput, type TurnOrigin } from './threads/turn-origin.ts';
+import { saveThread, threadAtRest, withLoad } from './threads/records.ts';
 import { isBusy, markQueued } from './threads/lifecycle.ts';
 import { admissionRefusal } from './threads/admission.ts';
 import { ThreadRecovery } from './threads/recovery.ts';
@@ -696,8 +696,8 @@ export class ThreadStore {
         ...(thread.sessionId !== null && thread.sessionResumeAt ? { sessionResumeAt: thread.sessionResumeAt } : executionChoice ? { sessionResumeAt: null } : {}),
         sessionGeneration: thread.sessionGeneration ?? 0, selectionVersion: thread.selectionVersion ?? 0,
         ...(executionChoice ? { frozenSelection: true as const } : {}),
-        ...(operation ? { operation } : {}),
-        ...(automatic ? { automatic: true as const } : {}),
+        ...(operation ? { operation } : {}), ...(automatic ? { automatic: true as const } : {}),
+        ...(originAgentWrites(origin) && threadAtRest(this.#core, thread) ? { opensRequest: true as const } : {}),
       },
     };
     const message: Message = {
@@ -776,15 +776,15 @@ export class ThreadStore {
     this.require(threadId);
     this.handoff.forget(threadId);
     this.cacheKeepalive.forget(threadId);
-    // Stop on a thread waiting for a usage limit to reset means: do not resume it.
-    const plannedResume = this.resumes.cancel(threadId, 'the thread was stopped');
+    // Stop on a thread waiting for a usage limit to reset, or for the wake its agent scheduled, means: do not resume it.
+    const planned = [this.resumes.cancel(threadId, 'the thread was stopped'), this.#core.wakes.cancel(threadId, 'the thread was stopped')].includes(true);
     this.#core.coordination.pause(threadId);
     // Runs first: once they are stopped, a team with no child has nothing left to pause.
     const childrenStopped = this.#core.workflows.stopRoot(threadId, 'Stopped with its thread') + this.#core.delegation.stop(threadId);
     if (this.#core.scheduler.stop(threadId) || childrenStopped > 0) return true;
     // No turn left, but the agent still runs work in the background: Stop ends
     // the agent process, and that work with it.
-    if ((this.agentState.background.get(threadId)?.length ?? 0) === 0) return plannedResume;
+    if ((this.agentState.background.get(threadId)?.length ?? 0) === 0) return planned;
     this.releaseAgent(threadId);
     this.agentState.noteBackground(threadId, []);
     return true;

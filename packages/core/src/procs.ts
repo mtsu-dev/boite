@@ -64,8 +64,8 @@ export class ProcRegistry {
   readonly #startups = new Map<ThreadId, { pid: number; timer: ReturnType<typeof setTimeout> }>();
   private readonly exitTimers = new Map<number, ReturnType<typeof setTimeout>>();
   readonly #live = new Map<ThreadId, Map<number, Entry>>();
-  /** Captured incarnations of each pid, retained to reject delayed native events. */
-  private readonly known = new Map<ThreadId, Map<number, KnownProcess>>();
+  /** Captured incarnations of each pid, retained to reject delayed native events, and its last entry for a child reported late. */
+  private readonly known = new Map<ThreadId, Map<number, KnownProcess & { entry: Entry }>>();
   readonly #shown = new Set<ThreadId>(); // spawned with `showWindow`: no guard
   /** Forgetting a thread whose last process exited, once a late job event can no longer arrive. */
   private readonly forgetTimers = new Map<ThreadId, ReturnType<typeof setTimeout>>();
@@ -488,7 +488,6 @@ export class ProcRegistry {
     const entry: Entry = { record, identity, ...control };
     processEventDiagnostic('registry.start-accepted', {threadId, pid: record.pid, startedAt: identity.startedAt,
       incarnation: identity.incarnation, root: entry.root});
-    entry.parent = parentAtStart(byPid, entry);
     byPid.set(record.pid, entry);
     // Both spawn paths and the job's own grandchild events land here, so this is
     // the one place the guard learns a pid whose windows it has to push back.
@@ -499,9 +498,10 @@ export class ProcRegistry {
       seen = new Map();
       this.known.set(threadId, seen);
     }
+    entry.parent = parentAtStart(seen, entry);
     const incarnations = seen.get(record.pid)?.incarnations ?? new Set<string>();
     if (identity.incarnation !== null) incarnations.add(identity.incarnation);
-    seen.set(record.pid, { identity, incarnations, recordedAt: record.startedAt });
+    seen.set(record.pid, { identity, incarnations, recordedAt: record.startedAt, entry });
 
     // The trace row only: a copy in the event log would be read by nothing.
     traceWrite(this.#bus, threadId, () => this.#journal.putProcess(record));

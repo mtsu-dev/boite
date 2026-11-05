@@ -91,6 +91,8 @@ const CONTEXT_FLOOR = 100;
 /** What `[compact]` claims it held before compacting and keeps after. */
 const COMPACT_PRE_TOKENS = 1_800;
 const COMPACT_POST_TOKENS = 300;
+/** What a finished `[tool]` adds to the context the next request carries: its call and its result. */
+const TOOL_CONTEXT_TOKENS = 25;
 
 /**
  * A directive in brackets, plus the bare word `question`: the fake agent asks
@@ -203,6 +205,8 @@ export function echoTitle(prompt: string): string | null {
 export const echoDriver: Driver = {
   sideQuestion: async ctx => `Side answer: ${ctx.question}`,
   protocol: 'echo',
+  // A step boundary follows each `[tool]`, where the core may swap in a copy compacted in the background.
+  capabilities: { stepSwap: true },
   startTurn(ctx: TurnContext): TurnHandle {
     const state: RunState = { stopped: false, ended: false, input: [], waiters: new Set() };
     const done = run(ctx, state);
@@ -240,7 +244,7 @@ export const echoDriver: Driver = {
 
 async function run(ctx: TurnContext, state: RunState): Promise<TurnResult> {
   // Resuming at an entry forks, as Claude does: the copy is named after the cut.
-  const sessionId = ctx.sessionId !== null && ctx.resumeAt ? `${ctx.sessionId}~${ctx.resumeAt}` : ctx.sessionId ?? `echo-${ctx.thread.id}`;
+  let sessionId = ctx.sessionId !== null && ctx.resumeAt ? `${ctx.sessionId}~${ctx.resumeAt}` : ctx.sessionId ?? `echo-${ctx.thread.id}`;
   const messageId: MessageId = ctx.emit.startMessage('assistant');
   let nextIndex = 0;
   let textIndex: number | null = null;
@@ -374,6 +378,17 @@ async function run(ctx: TurnContext, state: RunState): Promise<TurnResult> {
           output: 'ok',
           status: 'done',
         });
+        contextTokens += TOOL_CONTEXT_TOKENS;
+        // The step's tool result is in; the next model request would go out now.
+        if (ctx.step && !state.stopped) {
+          ctx.context({ tokens: contextTokens, window: CONTEXT_WINDOW });
+          const decision = await Promise.race([ctx.step({ checkpoint: { sessionId, entry: toolId }, tokens: contextTokens, window: CONTEXT_WINDOW }), untilStopped(state)]);
+          // The compacted session goes on from here: the summary, then the tail as its first message.
+          if (decision) {
+            sessionId = decision.swap.sessionId;
+            contextTokens = decision.swap.postTokens ?? COMPACT_POST_TOKENS;
+          }
+        }
         break;
       }
       case 'tool-stream': {

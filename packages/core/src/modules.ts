@@ -33,7 +33,7 @@ import { registerSharedComputeMethods } from './contacts/compute.ts';
 import { registerResidentMethods } from './agents/projects.ts';
 import { registerGroupMethods } from './group/rpc.ts';
 import { registerTeams } from './teams/rpc.ts';
-import { registerDebates } from './debates/rpc.ts';
+import { registerCouncil } from './council/rpc.ts';
 import { registerTerminalMethods } from './terminals.ts';
 import { registerWorkflowMethods } from './workflows.ts';
 import { registerWorktreeMethods } from './worktree-sweep.ts';
@@ -110,6 +110,7 @@ export function registerModules(core: Core): void {
   core.activity.useProbe(probe);
   core.threads.spawns.useProbe(probe);
   core.delegation.remote.useProbe(probe);
+  core.workforce.builtins.useProbe(probe);
   // A child on another machine of the group is read and steered there.
   core.router.register('delegation.result', params => (core.delegation.remote.child(params.threadId, params.agentId) ? core.delegation.remote.read(params) : core.delegation.resultPage(params)));
   core.router.register('delegation.wait', (params, ctx) => core.delegation.wait(params, ctx.connection));
@@ -134,7 +135,7 @@ export function registerModules(core: Core): void {
   core.router.register('delegation.stop', (params, ctx) => ({ stopped: core.delegation.stop(params.threadId, params.agentId, ctx.connection.identity.principal === 'agent' ? 'agent' : 'stop') }));
   core.router.register('delegation.resume', (params, ctx) => core.delegation.resume(params.threadId, params.agentId, ctx.connection.identity.principal));
   registerWorkflowMethods(core, probe);
-  registerDebates(core, probe);
+  registerCouncil(core, probe);
   registerUpdateMethods(core);
   registerAccountMethods(core);
   registerThreadMethods(core, probe);

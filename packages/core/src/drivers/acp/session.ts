@@ -30,6 +30,8 @@ import { errorCodeOf, noteReady } from '../driver-log.ts';
 import { SessionRetention } from '../session-retention.ts';
 import { releaseChild } from '../session-close.ts';
 import { OpenCodeConnection } from './opencode-connection.ts';
+import { OPENCODE_V2, withOpenCodeCompactionBuffer } from '../../providers/opencode.ts';
+import { noteCompactionModel, wantedCompactionBuffer, type CompactionCaches } from './opencode-compaction.ts';
 import {protectedAcp} from './protected.ts';
 
 /** A glog line at info severity: `I0921 09:51:32.917720 10292 main.py:80] ...`. */
@@ -50,9 +52,9 @@ function launchArgs(profile: OsProfile | undefined, prefix: string[], provider: 
 
 /**
  * What the driver learns about agents across their processes, for the life of
- * the core.
+ * the core, OpenCode 2's compaction windows included.
  */
-export interface AcpMemory {
+export interface AcpMemory extends CompactionCaches {
   /**
    * Providers seen to count a loaded session's cost from zero in each new
    * process, against the protocol's "cumulative session cost": their cold
@@ -106,6 +108,8 @@ export class AcpSession {
    */
   #reportedCost: number | null = null;
   #imagesSupported = false;
+  /** The `compaction.buffer` this OpenCode 2 process was started with, null for none; undefined before a spawn. */
+  #compactionBuffer: number | null | undefined = undefined;
   /** The model, the effort and the mode, as last sent and as the agent last reported them. */
   readonly #controls = new SessionControls(() => ({ agent: this.#agent, sessionId: this.#sessionId }));
   #lastStderr = '';
@@ -166,6 +170,10 @@ export class AcpSession {
     if (this.#ctx === null) return;
     if (filter.providerId !== undefined && filter.providerId !== this.#ctx.provider.id) return;
     if (filter.accountId !== undefined && filter.accountId !== this.#ctx.account.id) return;
+    // The driver dropped the account's windows: an idle process says again what
+    // it runs, or its next turn would restart it on the native ceiling. A busy
+    // one says it as its turn ends.
+    if (!this.busy() && !this.#ended && !this.#closing) this.#noteCompactionWindow(this.#ctx);
     // A session still opening reads its options after the refresh asked: they
     // are the fresh catalog. The composer asks for one as the app opens, while
     // the draft's own process starts, and a catalog lost here costs the first
@@ -239,6 +247,25 @@ export class AcpSession {
 
   busy(): boolean {
     return this.#running > 0;
+  }
+
+  /**
+   * An idle OpenCode 2 process started with another compaction buffer than
+   * the thread's limit now asks for: the window became known after its
+   * launch, or the limit changed. The driver replaces it before the next
+   * turn, never during one, the way the Claude driver reopens a query whose
+   * native compaction settings changed.
+   */
+  compactionMoved(ctx: SessionContext): boolean {
+    if (ctx.provider.id !== OPENCODE_V2 || this.#compactionBuffer === undefined || this.busy() || this.#ended || this.#closing) return false;
+    return wantedCompactionBuffer(this.#memory, ctx) !== this.#compactionBuffer;
+  }
+
+  /** The model the process says the session runs and its window, for the next process on it. */
+  #noteCompactionWindow(ctx: SessionContext): void {
+    if (!(this.#connection instanceof OpenCodeConnection)) return;
+    const { model, window } = this.#connection.compactionModel();
+    noteCompactionModel(this.#memory, ctx, model, window);
   }
 
   attach(turn: AcpTurn, warmMs: number): void {
@@ -461,6 +488,8 @@ export class AcpSession {
       return;
     }
     this.#current = null;
+    // The turn may have moved the thread to another model.
+    this.#noteCompactionWindow(turn.ctx);
     turn.finish(response);
     // A resumed session whose first total came in below what the session
     // already cost: this agent counts each process from zero.
@@ -522,6 +551,7 @@ export class AcpSession {
         this.#protection?.assertMcpReady();
         await this.#applyControls(ctx);
         if (this.#ended) throw new Error('the acp session was closed while it started');
+        this.#noteCompactionWindow(ctx);
       }, () => ({
         text: this.#loaded ? ', loaded the saved session' : this.#replaces !== null ? ', a new one replacing a session it cannot load' : '',
         data: { loaded: this.#loaded, canLoad: this.#canLoad, replaced: this.#replaces !== null, images: this.#imagesSupported },
@@ -550,10 +580,14 @@ export class AcpSession {
     // Preserve executable wrappers and fixture prefixes, replace only the ACP
     // subcommand. The native server's stdin is its ownership lease.
     const nativeArgs = [...launch.prefix, ...(profile?.launch?.args ?? ['acp']).filter(arg => arg !== 'acp'), 'serve', '--stdio', '--port', '0'];
+    // OpenCode 2 compacts at the thread's limit once a process has read the
+    // model's window; until then it keeps its own ceiling.
+    const buffer = native ? wantedCompactionBuffer(this.#memory, ctx) : null;
+    const accountEnv = withOpenCodeCompactionBuffer(ctx.accountEnv, buffer);
     try {
       child = ctx.spawnChild(launch.executable, native ? nativeArgs : args, {
         cwd: this.#protection?.cwd ?? ctx.thread.cwd,
-        env: { ...agentEnv(ctx.provider, temp === null ? ctx.accountEnv : { ...ctx.accountEnv, ...temp.env }), ...this.#protection?.env, ...(password === null ? {} : { OPENCODE_PASSWORD: password }) },
+        env: { ...agentEnv(ctx.provider, temp === null ? accountEnv : { ...accountEnv, ...temp.env }), ...this.#protection?.env, ...(password === null ? {} : { OPENCODE_PASSWORD: password }) },
       });
     } catch (error) {
       void temp?.dispose();
@@ -567,6 +601,7 @@ export class AcpSession {
     }
     this.#child = child;
     this.#killTree = ctx.killTree ?? null;
+    if (native) this.#compactionBuffer = buffer;
     this.#watch(child, ctx);
 
     const stream = native ? null : sdk.ndJsonStream(

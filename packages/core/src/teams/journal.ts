@@ -1,8 +1,8 @@
 import type { Database } from 'bun:sqlite';
 
 /**
- * Teams of bots (`docs/teams.md`). Member keys are `<coreId>/<botId>`, so
- * every row already fits members on other machines.
+ * Teams of bots (`docs/teams.md`). Member keys are `<coreId>/<botId>`. A team's
+ * row and the posts its machine may have also stand on each member's machine.
  *
  * - `teams`: the team as JSON (`Team` without its live seq), its version and its chat thread.
  * - `team_posts`: every post in the host's order; `id` is the writer's, `fingerprint` refuses a reused id with other content.
@@ -76,4 +76,29 @@ export function createTeams(db: Database): void {
   )`);
   db.exec('CREATE INDEX IF NOT EXISTS team_replies_pending ON team_replies(turn_id) WHERE published = 0');
   db.exec("CREATE INDEX IF NOT EXISTS team_deliveries_waiting ON team_deliveries(at) WHERE state = 'waiting'");
+}
+
+/**
+ * What goes between the machines of a team (`peers.ts`). Created at every open,
+ * like the contacts' shared tables, so an older core can still read the file.
+ *
+ * - `team_machines`: on the machine holding a team, the seq and version each member's machine took.
+ * - `team_outbox`: what this machine still has to tell another, oldest first: reports, moves and final answers.
+ */
+export function createTeamMachines(db: Database): void {
+  db.exec(`CREATE TABLE IF NOT EXISTS team_machines (
+    team_id TEXT NOT NULL,
+    core_id TEXT NOT NULL,
+    sent_seq INTEGER NOT NULL,
+    sent_version INTEGER NOT NULL,
+    PRIMARY KEY (team_id, core_id)
+  )`);
+  db.exec(`CREATE TABLE IF NOT EXISTS team_outbox (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    core_id TEXT NOT NULL,
+    operation TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    at INTEGER NOT NULL
+  )`);
+  db.exec('CREATE INDEX IF NOT EXISTS team_outbox_core ON team_outbox(core_id, id)');
 }
