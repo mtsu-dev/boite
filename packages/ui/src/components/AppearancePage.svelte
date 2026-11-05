@@ -26,8 +26,10 @@
    * `phone`: what a phone reads and looks like. The column width, the terminal,
    * the workspace and the header's buttons are the desktop's; the chat's files
    * and previews switch, on the desktop's General page, joins the display here.
+   * `titled`: false under a tab strip whose selected tab already says
+   * "Appearance", so the name is not read three times before the first card.
    */
-  let { store, phone = false }: { store: Store; phone?: boolean } = $props();
+  let { store, phone = false, titled = true }: { store: Store; phone?: boolean; titled?: boolean } = $props();
   const uid = $props.id();
 
   // The owner's buttons (the terminal, Add a project) are not a paired device's to hide.
@@ -180,9 +182,11 @@
 </script>
 
 <div class="page" data-testid="appearance-page">
-  <header>
-    <h1>{strings.settings.tabs.appearance}</h1>
-  </header>
+  {#if titled}
+    <header>
+      <h1>{strings.settings.tabs.appearance}</h1>
+    </header>
+  {/if}
 
   <section class="card" id="settings-theme">
     <h2>{strings.settings.display}</h2>

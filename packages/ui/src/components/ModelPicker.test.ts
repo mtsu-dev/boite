@@ -64,7 +64,7 @@ test('account chips never reveal the login email in their tooltip', () => {
   expect(chips.map(chip => chip.textContent?.trim())).toEqual(['Work', 'Personal']);
 });
 
-test('a seat that cannot be taken says why in a line a phone shows, not only in its tooltip', async () => {
+test('a seat that cannot be taken says why in a line under the control, not only in its tooltip', async () => {
   const seats: Account[] = [
     { id: 'personal', providerId: 'claude', label: 'Personal', identity: null, isolationDir: '/accounts/personal', status: 'ok', createdAt: 0 },
     { id: 'work', providerId: 'claude', label: 'Work', identity: null, isolationDir: '/accounts/work', status: 'unauthenticated', createdAt: 0 }
@@ -77,8 +77,9 @@ test('a seat that cannot be taken says why in a line a phone shows, not only in 
   expect(work.title).toBe('Work, not signed in');
   expect(document.querySelector('[data-testid=seat-reasons]')!.textContent).toBe('Work: not signed in');
   const { default: source } = await import('./AccountSeats.svelte?raw');
-  expect(source).toMatch(/\.reasons \{ display: none; \}/);
-  expect(source.slice(source.indexOf('@media (max-width: 720px)'))).toMatch(/\.reasons \{ display: block;/);
+  // Desktop prints it too: the greyed Work segment gave no reason without a hover.
+  expect(source).not.toMatch(/\.reasons \{ display: none;/);
+  expect(source).toMatch(/\.reasons \{ display: block;[^}]*font-size: var\(--text-xs\)/);
 });
 
 test('a column of hundreds of models draws its first rows until asked for all', async () => {

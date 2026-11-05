@@ -3,8 +3,8 @@
   import { strings } from '../lib/strings';
 
   /**
-   * The search field over the model column, kept in place while the rows
-   * scroll under it. `input` is bound so the picker's arrows can come back to it.
+   * The search field over the model column, outside its scroller so it stays
+   * in place while the rows scroll. `input` is bound so the picker's arrows can come back to it.
    */
   let {
     value = $bindable(''),
@@ -30,15 +30,12 @@
 </div>
 
 <style>
-  /* The sidebar's search box, kept in place while hundreds of rows scroll under it. */
+  /* The sidebar's search box, above the model list (ModelPicker) rather than
+     inside it, so rows never scroll under it and it paints nothing: the menu or
+     sheet shows through, glass or solid, with no strip of another colour. */
   .search-bar {
-    position: sticky;
-    /* The column pads by 6, so the bar starts 6 higher and paints that strip itself. */
-    top: -6px;
-    z-index: 1;
-    margin: 0 -6px 4px;
-    padding: 6px 6px 4px;
-    background: var(--color-surface-2);
+    padding: 6px 6px 0;
+    background: transparent;
   }
 
   .search {

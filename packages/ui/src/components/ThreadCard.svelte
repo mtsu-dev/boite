@@ -1,9 +1,10 @@
 <script lang="ts">
   import { tick } from 'svelte';
-  import { Check, Ellipsis, Folder, FolderInput, Pin, PinOff } from '@lucide/svelte';
+  import { Check, Ellipsis, FolderInput, Pin, PinOff } from '@lucide/svelte';
   import { type Project, type ThreadSummary } from '@boite/contracts';
   import type { Machine } from '../lib/workspace.svelte';
   import { workspace } from '../lib/workspace.svelte';
+  import { namesMachine } from '../lib/row-machine';
   import { contextMenu } from '../lib/context-menu.svelte';
   import { canMove, moveBlocked, pendingLine, startThreadDrag, threadDrag } from '../lib/thread-move.svelte';
   import { pickThreadAction, threadMenuItems } from '../lib/thread-menu';
@@ -11,6 +12,7 @@
   import { fill, strings } from '../lib/strings';
   import ThreadHeadline from './ThreadHeadline.svelte';
   import MachineIcon from './MachineIcon.svelte';
+  import ProjectTile from './ProjectTile.svelte';
   import { trackThreadPullRequest } from '../lib/thread-pull-request.svelte';
   import { projectName } from '../lib/format';
   import { canMarkDone, markDone } from '../lib/recent.svelte';
@@ -138,8 +140,9 @@
     >
       {#snippet facts()}
         {#if pending}<span class="fact pending" data-testid="thread-pending" title={pending}><FolderInput size={12} /><span class="ui-label">{pending}</span></span>{/if}
-        {#if showProject}<span class="fact project-name" data-testid="thread-project" title={project.path}><Folder size={12} /><span class="ui-label">{projectName(project)}</span></span>{/if}
-        {#if showMachine}<span class="fact machine" class:offline={owner.connection !== 'ready'} data-testid="thread-machine" title={`${machine.label} · ${strings.connection[owner.connection]}`} aria-label={machine.label}><MachineIcon icon={machine.icon} os={owner.core?.os} size={12} /></span>{/if}
+        {#if showProject}<span class="fact project-name" data-testid="thread-project" title={project.path}><ProjectTile {project} store={owner} size={12} /><span class="ui-label">{projectName(project)}</span></span>{/if}
+        <!-- The project's own logo says where the row belongs; the machine is named only when it is not this one, as the home's cards do. -->
+        {#if showMachine && namesMachine(machine, owner.connection !== 'ready')}<span class="fact machine" class:offline={owner.connection !== 'ready'} data-testid="thread-machine" title={`${machine.label} · ${strings.connection[owner.connection]}`}><span class="ui-label">{machine.label}</span></span>{/if}
       {/snippet}
       <ThreadHeadline {owner} {thread} {now} {open} ring facts={meta ? facts : undefined} machine={showMachine && !meta ? machine : undefined} />
     </button>
@@ -241,6 +244,8 @@
   /* A move waiting for the turn's end: the accent, like the marker the move leaves in the chat. */
   .pending { color: var(--color-accent); }
   .machine.offline { color: var(--color-danger); }
+  /* A 12 px tile: its letter a size down so it stays inside. */
+  .project-name :global(.tile.letter) { font-size: 9px; font-weight: 600; }
   /* Centred on the title's line: the 28 px row less a 26 px button leaves 1 px over it. */
   .actions {
     position: absolute;

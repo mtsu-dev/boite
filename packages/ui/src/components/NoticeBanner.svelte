@@ -11,7 +11,8 @@
    * line cut, open below behind a disclosure, so the notice never grows into a
    * card on its own. When the line leaves the summary only a few letters (a
    * phone), the summary leaves the line to the title and reads in the details:
-   * never two cut fragments side by side.
+   * never two cut fragments side by side. A title alone takes the line and
+   * wraps to a second one rather than ending in an ellipsis.
    */
   let {
     icon: Icon,
@@ -72,7 +73,7 @@
   let disclosable = $derived(!!details || cut);
 </script>
 
-<aside class="notice {tone}" class:inline class:open class:tight data-testid={testid} data-kind={kind} {role} aria-label={label ?? title}>
+<aside class="notice {tone}" class:inline class:open class:tight class:alone={!text} data-testid={testid} data-kind={kind} {role} aria-label={label ?? title}>
   <div class="line">
     <span class="mark" aria-hidden="true"><Icon size={15} strokeWidth={1.9} /></span>
     <!-- `ui-label` trims each text to its cap height, so the icon centres on the words in every font. -->
@@ -106,13 +107,16 @@
     font-size: var(--text-sm);
   }
   .notice.inline { width: 100%; max-width: 640px; margin: 0; }
-  .line { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 0 4px 0 12px; }
+  .line { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 4px 4px 4px 12px; box-sizing: border-box; }
   .mark { display: flex; flex: none; color: var(--color-muted-foreground); }
   .warning .mark { color: var(--color-live); }
   .danger .mark { color: var(--color-danger); }
   .title { flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: var(--color-foreground); }
   .summary { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-muted-foreground); font-variant-numeric: tabular-nums; }
   .fill { flex: 1; }
+  /* Nothing beside it: the title is the whole line and wraps rather than cut. */
+  .alone .title { flex: 1; min-width: 0; max-width: none; white-space: normal; overflow-wrap: break-word; line-height: 1.35; }
+  .alone .fill { display: none; }
   /* The title takes the line; the summary waits in the details. */
   .tight .title { flex: 0 1 auto; min-width: 0; max-width: none; }
   .tight .summary { visibility: hidden; }

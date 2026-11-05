@@ -11,7 +11,11 @@
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
 
-  let { store }: { store: Store } = $props();
+  /**
+   * `titled`: false under Settings' tab strip, whose Keyboard tab names the page
+   * and carries the intro's "i" (SettingsShell); Reset all moves beside the search.
+   */
+  let { store, titled = true }: { store: Store; titled?: boolean } = $props();
 
   const mac = isMac();
   let filter = $state('');
@@ -167,20 +171,27 @@
 
 <svelte:window onkeydowncapture={onkeydown} onkeyupcapture={onkeyup} onpointerdowncapture={onoutside} onfocusincapture={onoutside} onblur={stop} />
 
-<div class="page" data-testid="keyboard-page">
-  <header class="top">
-    <div>
-      <h1 class="ui-label-box"><span class="ui-label">{strings.settings.tabs.keyboard}</span><InfoTip topic={strings.settings.tabs.keyboard} text={strings.keyboard.intro} /></h1>
-    </div>
-    {#if anyCustom}
-      <button class="quiet small" data-testid="keybindings-reset-all" disabled={busy} onclick={() => void resetAll()}><RotateCcw size={14} /><span class="ui-label">{strings.keyboard.resetAll}</span></button>
-    {/if}
-  </header>
+{#snippet resetAllButton()}
+  <button class="quiet small" data-testid="keybindings-reset-all" disabled={busy} onclick={() => void resetAll()}><RotateCcw size={14} /><span class="ui-label">{strings.keyboard.resetAll}</span></button>
+{/snippet}
 
-  <label class="search">
-    <Search size={15} />
-    <input bind:value={filter} placeholder={strings.keyboard.search} aria-label={strings.keyboard.search} spellcheck="false" data-testid="keybindings-filter" />
-  </label>
+<div class="page" data-testid="keyboard-page">
+  {#if titled}
+    <header class="top">
+      <div>
+        <h1 class="ui-label-box"><span class="ui-label">{strings.settings.tabs.keyboard}</span><InfoTip topic={strings.settings.tabs.keyboard} text={strings.keyboard.intro} /></h1>
+      </div>
+      {#if anyCustom}{@render resetAllButton()}{/if}
+    </header>
+  {/if}
+
+  <div class="search-row">
+    <label class="search">
+      <Search size={15} />
+      <input bind:value={filter} placeholder={strings.keyboard.search} aria-label={strings.keyboard.search} spellcheck="false" data-testid="keybindings-filter" />
+    </label>
+    {#if !titled && anyCustom}{@render resetAllButton()}{/if}
+  </div>
 
   {#if store.keybindings && store.keybindings.errors.length > 0}
     <!-- A warning, not an error: every other entry of the file applied. The raw lines wait in the fold. -->
@@ -308,8 +319,11 @@
   }
 
   /* The page is a flex column: without flex: none a long list squeezes the field. */
+  .search-row { flex: none; display: flex; align-items: center; gap: 8px; }
+  .search-row > :global(button) { flex: none; }
   .search {
-    flex: none;
+    flex: 1;
+    min-width: 0;
     display: flex;
     align-items: center;
     gap: 8px;

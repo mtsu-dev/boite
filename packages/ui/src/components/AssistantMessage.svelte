@@ -75,7 +75,12 @@
   const ping = $derived(execution?.operation === 'keepalive' ? store.openThread?.turns.find((turn) => turn.id === message.turnId) : undefined);
   const compacting = $derived(execution?.operation === 'compact' ||
     store.openThread?.progress?.turnId === message.turnId && store.openThread.progress.phase === 'compacting');
-  const caretAt = $derived(message.state === 'streaming' ? lastTextIndex(message) : -1);
+  /**
+   * The text still being written: the last part of a streaming message. A text
+   * with any part after it has ended, so its Markdown (inline code included)
+   * renders now instead of staying plain until the whole message ends.
+   */
+  const caretAt = $derived(message.state === 'streaming' && lastTextIndex(message) === message.parts.length - 1 ? message.parts.length - 1 : -1);
   /**
    * The agent's last step in this message. A short text before it is
    * narration between calls ("Now the tests"), drawn muted without a bubble:

@@ -9,18 +9,14 @@ import AssistantMessage from './AssistantMessage.svelte';
 let mounted: ReturnType<typeof mount> | undefined;
 afterEach(async () => { if (mounted) await unmount(mounted); mounted = undefined; document.body.innerHTML = ''; });
 
-test('live paragraphs update without rebuilding completed prose when tools and reasoning arrive', async () => {
+test('live paragraphs update without rebuilding completed prose, and a step after the text ends it', async () => {
   const client = new FakeClient({ delayMs: 0 });
   const store = new Store(); store.attach(client);
   try {
     await store.connect(); await store.open('t-trace');
     const message = store.openThread!.messages.at(-1)!;
     message.state = 'streaming';
-    message.parts = [
-      { type: 'text', text: 'A complete paragraph.\n\nStill writing' },
-      { type: 'tool', toolId: 'read', name: 'Read', input: {}, output: null, status: 'running' },
-      { type: 'thinking', text: 'Checking files' }
-    ];
+    message.parts = [{ type: 'text', text: 'A complete paragraph.\n\nStill writing' }];
     mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: message.threadId, message, signedOut: null, showModel: false } });
     flushSync();
     expect(document.querySelectorAll('[data-testid=paragraph]')).toHaveLength(1);
@@ -30,10 +26,33 @@ test('live paragraphs update without rebuilding completed prose when tools and r
     message.parts[0].text += ' this paragraph';
     flushSync();
     expect(document.querySelector('[data-testid=paragraph-pending]')?.textContent).toBe('Still writing this paragraph');
-    message.parts[0].text += '.\n\n';
+    message.parts.push(
+      { type: 'tool', toolId: 'read', name: 'Read', input: {}, output: null, status: 'running' },
+      { type: 'thinking', text: 'Checking files' }
+    );
     flushSync();
+    expect(document.querySelector('[data-testid=paragraph-pending]')).toBeNull();
     expect(document.querySelectorAll('[data-testid=paragraph]')).toHaveLength(2);
     expect(document.querySelector('[data-testid=paragraph]')).toBe(first);
+  } finally { store.detach(); client.close(); }
+});
+
+test('narration before a step renders its inline code while the message still streams', async () => {
+  const client = new FakeClient({ delayMs: 0 });
+  const store = new Store(); store.attach(client);
+  try {
+    await store.connect(); await store.open('t-trace');
+    const message = store.openThread!.messages.at(-1)!;
+    message.state = 'streaming';
+    message.parts = [
+      { type: 'text', text: 'Sync calls go through `src/lib/sync/queue.ts`.' },
+      { type: 'tool', toolId: 'read', name: 'Read', input: {}, output: null, status: 'running' }
+    ];
+    mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: message.threadId, message, signedOut: null, showModel: false } });
+    flushSync();
+    const narration = document.querySelector('[data-testid=narration]')!;
+    expect(narration.querySelector('code')?.textContent).toBe('src/lib/sync/queue.ts');
+    expect(narration.textContent).not.toContain('`');
   } finally { store.detach(); client.close(); }
 });
 

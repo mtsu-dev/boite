@@ -213,7 +213,7 @@
   .group-head small { color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 400; }
   .gateway-empty { max-width: var(--settings-width); margin-bottom: 12px; }
   .refresh { flex: none; margin-left: auto; width: var(--control); height: var(--control); padding: 0; }
-  .refresh :global(.spinning) { animation: spin 900ms linear infinite var(--loops); }
+  .refresh :global(.spinning) { animation: spin var(--dur-spin) linear infinite var(--loops); }
   .muted { margin: 0; color: var(--color-muted-foreground); font-size: var(--text-sm); }
   .resume { max-width: var(--settings-width); margin-top: 12px; padding: 6px var(--settings-padding); }
   .tracked { display: grid; gap: 2px; max-width: var(--settings-width); margin-top: 12px; padding: var(--settings-padding); }

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Bot, ChevronRight, CirclePause, KeyRound, LogIn, MessageCircleQuestion, ShieldQuestion, TriangleAlert } from '@lucide/svelte';
+  import { Bot, ChevronRight, CircleAlert, CirclePause, KeyRound, LogIn, MessageCircleQuestion, ShieldQuestion } from '@lucide/svelte';
   import { minuteClock, secondClock } from '../../lib/clock.svelte';
   import { elapsed, exactTime, projectName } from '../../lib/format';
   import { INBOX_CARDS, inbox, storeSources, waitedFor, type InboxCard, type InboxReason, type InboxRow } from '../../lib/inbox';
@@ -58,7 +58,7 @@
   const rows = $derived(allRows ? lists.working : lists.working.slice(0, WORKING_ROWS));
   const now = $derived(minuteClock.now);
 
-  const icons: Record<InboxReason, typeof KeyRound> = { question: MessageCircleQuestion, permission: ShieldQuestion, secret: KeyRound, 'sign-in': LogIn, failed: TriangleAlert, interrupted: CirclePause };
+  const icons: Record<InboxReason, typeof KeyRound> = { question: MessageCircleQuestion, permission: ShieldQuestion, secret: KeyRound, 'sign-in': LogIn, failed: CircleAlert, interrupted: CirclePause };
 
   /** A contact's request sits in the page's column, first, instead of floating over the home: loaded only once contacts are on. */
   let ContactRequestNotice = $state<typeof import('./ContactRequestNotice.svelte').default>();
@@ -154,7 +154,7 @@
           {#if card.project}<span class="where"><ProjectTile project={card.project} store={card.machine.store} size={14} /><span class="ui-label">{projectName(card.project)}</span></span>
           {:else if card.kind === 'bots'}<span class="where bot" data-testid="inbox-card-bot"><Bot size={13} aria-hidden="true" /><span class="ui-label">{labels.bot}</span></span>{/if}
           {#if several}<span class="machine ui-label">{card.machine.label}</span>{/if}
-          <Icon size={13} /><span class="reason">{reason}</span>{#if card.detail}<span class="detail">{card.detail}</span>{/if}
+          <Icon size={13} class={card.reason === 'failed' ? 'failed-mark' : undefined} /><span class="reason">{reason}</span>{#if card.detail}<span class="detail">{card.detail}</span>{/if}
         </span>
       </span>
     </button>
@@ -215,6 +215,8 @@
   .since { flex: none; font-size: var(--text-xs); font-variant-numeric: tabular-nums; color: var(--color-subtle); }
   .why { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--text-sm); color: var(--color-muted-foreground); }
   .why > :global(svg) { flex: none; }
+  /* A failure reads in one word and one glyph, the alert circle in the danger red, as on the tool lines. */
+  .why > :global(svg.failed-mark) { color: var(--color-danger); }
   .where { display: inline-flex; flex: 0 1 auto; align-items: center; gap: 5px; min-width: 0; max-width: 45%; }
   .where::after { content: '·'; margin-left: 1px; color: var(--color-subtle); }
   .lane .count.bots { display: inline-flex; align-items: center; gap: 3px; height: 18px; padding-left: 6px; border: 0; font: inherit; font-variant-numeric: tabular-nums; }

@@ -28,7 +28,7 @@ test('recent view filters one owning project and creates its draft', async () =>
   expect(await page.evaluate(`!!document.querySelector('${id('project-filter')}')`)).toBe(true);
   await page.click(id('project-filter'));
   await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowDown', code: 'ArrowDown', windowsVirtualKeyCode: 40 });
-  expect(await page.evaluate(`document.activeElement?.getAttribute('role')`)).toBe('menuitem');
+  expect(await page.evaluate(`document.activeElement?.getAttribute('role')`)).toBe('menuitemradio');
   await page.evaluate(`Array.from(document.querySelectorAll('${id('project-filter-menu')} [data-value]')).find(e => e.dataset.value === JSON.stringify(['http://builder.test', 'p-notes'])).click()`);
   await page.waitFor(`document.querySelectorAll('${id('thread-row')}').length === 1`);
   expect(await page.evaluate(`document.querySelector('${id('thread-row')}').dataset.machineId`)).toBe('http://builder.test');
@@ -40,7 +40,7 @@ test('recent view filters one owning project and creates its draft', async () =>
   await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'n', code: 'KeyN', modifiers: 2, windowsVirtualKeyCode: 78 });
   await page.waitFor(`globalThis.__boiteTest.workspace.active.machineId === 'http://builder.test' && globalThis.__boiteTest.workspace.active.draft?.projectId === 'p-notes'`);
   await page.evaluate(`globalThis.__boiteTest.workspace.active.archiveProject('p-notes', true)`);
-  await page.waitFor(`document.querySelector('${id('project-filter')}')?.textContent.includes('All projects') && document.querySelectorAll('${id('thread-row')}').length === 7`);
+  await page.waitFor(`!document.querySelector('${id('project-filter')} .scope') && document.querySelectorAll('${id('thread-row')}').length === 7`);
   await page.evaluate(`globalThis.__boiteTest.workspace.active.archiveProject('p-notes', false)`);
   await page.click(id('project-filter'));
   await page.click(`${id('project-filter-menu')} [data-value=all]`);

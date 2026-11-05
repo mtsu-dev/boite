@@ -108,6 +108,8 @@
     justify-content: center;
     flex: none;
     width: 80px;
+    /* As tall as its logo and name: the button's fixed height squeezed the name and cut its descenders. */
+    height: auto;
     min-height: 52px;
     padding: 4px;
     border: none;
@@ -133,7 +135,7 @@
 
   .tile.more { color: var(--color-subtle); }
   /* Two lines at most, broken at a space: "OpenCode Go" reads whole rather than "OpenCo". */
-  .name { display: -webkit-box; max-width: 100%; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; font-size: var(--text-xs); line-height: 1.2; text-align: center; overflow-wrap: anywhere; }
+  .name { flex: none; display: -webkit-box; max-width: 100%; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; font-size: var(--text-xs); line-height: 1.2; text-align: center; overflow-wrap: anywhere; }
 
   /* Nothing runs on it: still pickable, so its column can say why. */
   .tile.dim {
@@ -147,5 +149,8 @@
        "OpenCode" read "OpenCod" in 56 px. A two-word name still breaks at its space. */
     .tile { justify-content: center; width: auto; min-width: 60px; max-width: 92px; min-height: var(--touch-target); padding: 4px 6px; }
     .name { overflow-wrap: normal; word-break: keep-all; }
+    /* The strip scrolls sideways, so it clips vertically too: a 16 px line and 2 px under it
+       keep the descenders of "OpenCode" and "pi" whole. */
+    .name { line-height: 16px; padding-bottom: 2px; }
   }
 </style>

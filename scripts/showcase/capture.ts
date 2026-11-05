@@ -643,6 +643,15 @@ const steps: Step[] = [
     name: 'display-options', caption: 'The sidebar display options popover.', devices: desktop,
     async run(page) { await page.getByRole('button', { name: 'Display options' }).first().click(); await page.waitForTimeout(400); },
   },
+  {
+    name: 'view-picker', caption: 'The view picker left of the sliders: Projects or Recent, then, in Recent, the project it lists.', devices: both,
+    async run(page) {
+      const phone = await page.evaluate(() => innerWidth < 600);
+      if (phone) await phoneList(page);
+      await page.getByTestId(`${phone ? 'mobile-' : ''}project-filter`).first().click();
+      await page.waitForTimeout(400);
+    },
+  },
   ...(['waiting', 'archived'] as const).map((kind): Step => ({
     name: kind === 'waiting' ? 'filter-needs-you' : 'filter-archived',
     caption: `The lifecycle strip filtered to ${kind === 'waiting' ? 'Needs you' : 'Archived'}: matching threads under their project headers.`, devices: both,

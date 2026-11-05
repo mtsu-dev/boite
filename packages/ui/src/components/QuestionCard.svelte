@@ -165,7 +165,7 @@
           >
             <span class="box" class:round={!multiple} aria-hidden="true">
               {#if multiple && picked.includes(option.id)}
-                <Check size={10} strokeWidth={3} />
+                <Check size={12} strokeWidth={3} />
               {/if}
             </span>
             <span class="labels">
@@ -334,7 +334,8 @@
     white-space: normal;
     text-align: left;
     padding: 6px 8px;
-    border: 1px solid var(--color-border);
+    /* An option must be seen to be picked: its edge keeps 3:1 on the card. */
+    border: 1px solid var(--color-edge-strong);
     border-radius: var(--radius-sm);
     background: var(--color-surface-2);
     color: inherit;
@@ -349,13 +350,13 @@
   /* The option lifts a pixel under the pointer and fills under the keyboard;
      neither one commits the pick, which is what the click is for. */
   .option:hover:not(:disabled) {
-    border-color: var(--color-edge);
+    border-color: var(--color-muted-foreground);
     transform: translateY(-1px);
   }
 
+  /* The keyboard keeps the global ring: the strong edge alone no longer tells focus from rest. */
   .option:focus-visible {
-    outline: none;
-    border-color: var(--color-edge);
+    border-color: var(--color-muted-foreground);
     background: var(--color-surface-2);
   }
 
@@ -372,16 +373,18 @@
     cursor: default;
   }
 
+  /* A 16 px mark on a 1.5 px ring in the muted ink (4.5:1); picked, it fills with the accent. */
   .box {
+    box-sizing: border-box;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 12px;
-    height: 12px;
-    margin-top: 3px;
+    width: 16px;
+    height: 16px;
+    margin-top: 1px;
     flex: none;
-    border: 1px solid var(--color-edge);
-    border-radius: calc(var(--radius-sm) / 3);
+    border: 1.5px solid var(--color-muted-foreground);
+    border-radius: calc(var(--radius-sm) / 2);
     color: var(--color-accent-ink);
   }
 
@@ -392,6 +395,15 @@
   .option.picked .box {
     border-color: var(--color-accent);
     background: var(--color-accent);
+  }
+
+  /* The picked radio's 6 px dot, in the ink that reads on the accent. */
+  .option.picked .box.round::after {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--color-accent-ink);
   }
 
   .labels {

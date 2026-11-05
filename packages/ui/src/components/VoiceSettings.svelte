@@ -9,7 +9,11 @@
   import { RpcFailure } from '../lib/client';
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
-  let { store, readOnly = false }: { store: Store; readOnly?: boolean } = $props();
+  /**
+   * `titled`: false under Settings' tab strip, whose Voice tab names the page and
+   * carries the description's "i" (SettingsShell). The lock and the saved mark stay.
+   */
+  let { store, readOnly = false, titled = true }: { store: Store; readOnly?: boolean; titled?: boolean } = $props();
   /** The admin policy's dictation: `local` keeps the cloud engines off, `off` every engine and download. */
   const dictation = $derived(lockedBy(store.policy, 'dictation') ? store.policy?.values.dictation ?? null : null);
   const off = $derived(dictation === 'off');
@@ -176,8 +180,12 @@
 {/snippet}
 
 <div class="page" data-testid="voice-settings">
-  <header>
-    <h1 class="ui-label-box"><span class="ui-label">{strings.speech.heading}</span><InfoTip topic={strings.speech.heading} text={strings.speech.description} /><PolicyLock {store} keys={['dictation']} /></h1>
+  <header class:untitled={!titled}>
+    {#if titled}
+      <h1 class="ui-label-box"><span class="ui-label">{strings.speech.heading}</span><InfoTip topic={strings.speech.heading} text={strings.speech.description} /><PolicyLock {store} keys={['dictation']} /></h1>
+    {:else}
+      <PolicyLock {store} keys={['dictation']} />
+    {/if}
     {#if saved}<span class="saved" role="status"><Check size={14} /><span class="ui-label">{strings.speech.saved}</span></span>{/if}
   </header>
 
@@ -324,6 +332,10 @@
 
 <style>
   header h1 { display: flex; align-items: center; gap: 6px; }
+  /* No title: the row takes no height, and the lock and the saved mark sit in
+     the gap above the first card, at its right, so a save does not move the page. */
+  :global(.settings) .page > header.untitled { height: 0; margin: 0; align-items: flex-end; justify-content: flex-end; gap: 8px; }
+  header.untitled > :global(*) { margin-bottom: 4px; }
   .saved { display: inline-flex; gap: 6px; align-items: center; font-size: var(--text-sm); white-space: nowrap; color: var(--color-success); }
 
   /* The one line that answers "can I dictate now", with the single action that gets there. */

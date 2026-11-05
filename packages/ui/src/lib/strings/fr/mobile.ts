@@ -3,7 +3,6 @@ import type { Translation } from '../../i18n.svelte';
 export const fr: Translation = {
   mobile: {
     clearSearch: 'Effacer la recherche',
-    atWork: '{count} en cours', atWorkFilter: 'Afficher seulement les conversations en cours',
     draftTitle: 'Que voulez-vous faire ?', draftHint: 'Lancez une tâche, posez une question ou reprenez votre travail.',
     pairTitle: 'Votre Boite, sur votre téléphone',
     pairBody: 'Sur l’une de vos machines, ouvrez Réglages, Machines, Ajouter un appareil, puis scannez son QR code ici.',

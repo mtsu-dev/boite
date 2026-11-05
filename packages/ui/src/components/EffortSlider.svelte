@@ -323,10 +323,10 @@
 }
 /* The words seem to arrive at speed: a short slide from the right with a trail behind them. */
 .bolt { display: inline-flex; }
-.level.dash { animation: dash 420ms var(--ease-out-quint) both; }
-.level.dash.strong { animation: dash-strong 560ms var(--ease-out-quint) both; }
-.bolt.dash { animation: bolt 360ms var(--ease-out-quint) both; }
-.bolt.dash.strong { animation: bolt-strong 480ms var(--ease-out-quint) both; }
+.level.dash { animation: dash var(--dur-whip) var(--ease-out-quint) both; }
+.level.dash.strong { animation: dash-strong calc(var(--dur-whip) + var(--dur-3)) var(--ease-out-quint) both; }
+.bolt.dash { animation: bolt var(--dur-whip) var(--ease-out-quint) both; }
+.bolt.dash.strong { animation: bolt-strong calc(var(--dur-whip) + var(--dur-2)) var(--ease-out-quint) both; }
 @keyframes dash {
   0% { transform: translateX(10px) skewX(-8deg); text-shadow: 6px 0 2px color-mix(in oklch, var(--color-accent) 45%, transparent), 13px 0 4px color-mix(in oklch, var(--color-accent) 20%, transparent); }
   100% { transform: none; text-shadow: 0 0 0 transparent, 0 0 0 transparent; }

@@ -173,6 +173,11 @@
   --color-surface-3: #24232b;
   --color-border: rgba(255, 255, 255, 0.07);
   --color-edge: rgba(255, 255, 255, 0.14);
+  /* The edge of a control that must be seen to be used (an option, a radio): 3:1 on the card and its tiles. */
+  --color-edge-strong: rgba(255, 255, 255, 0.36);
+  /* A disabled primary: the tile's fill under muted ink, faded like any disabled button, the same recipe in both themes. */
+  --color-disabled-fill: var(--color-surface-2);
+  --color-disabled-ink: var(--color-muted-foreground);
   /* A segmented control: a sunk glass track and a lifted thumb, never a solid foreground pill. */
   --color-segment-track: rgb(255 255 255 / 0.05);
   --color-segment-thumb: rgb(255 255 255 / 0.13);
@@ -381,6 +386,10 @@
   --dur-3: 220ms;
   --dur-whip: 360ms;
   --dur-typing: 1100ms;
+  /* Endless turns (r5a): a refresh spinner's lap, and the working ring's 270 degree arc. Reduced motion stops
+     both outright rather than speeding them up, so they stay out of the 0.01ms override below. */
+  --dur-spin: 900ms;
+  --dur-ring-spin: 1.2s;
   --dur-typing-step: 140ms;
   /* A pane that makes its room beside the chat (terminal, right panel,
      sidebar). It starts gently and decelerates the whole way, so the chat
@@ -756,6 +765,7 @@ html[data-chat-width='full'] {
   --color-surface-3: #ecebf1;
   --color-border: rgba(0, 0, 0, 0.08);
   --color-edge: rgba(0, 0, 0, 0.16);
+  --color-edge-strong: rgba(0, 0, 0, 0.46);
   /* Light grounds are white glass: a grey track the white thumb stands on. */
   --color-segment-track: rgb(118 118 128 / 0.12);
   --color-segment-thumb: #ffffff;
@@ -806,9 +816,6 @@ html[data-chat-width='full'] {
   /* On white the same glow reads as a pale accent at about half the strength. */
   --sky-top: 12%;
   --sky-low: 6%;
-  /* A disabled primary in light turns neutral: a pale accent under white ink read as nothing. */
-  --color-disabled-fill: var(--color-surface-3);
-  --color-disabled-ink: var(--color-subtle);
   --series-1: #eb6834;
   --series-2: #2a78d6;
   --series-3: #18a070;
@@ -1092,8 +1099,8 @@ button.primary {
   color: var(--color-accent-ink);
 }
 
-[data-theme='light'] button.primary:disabled {
-  opacity: 1;
+/* A disabled primary turns neutral in every theme: an accent fill faded to half read as enabled in dark. */
+button.primary:disabled {
   background: var(--color-disabled-fill);
   border-color: var(--color-edge);
   color: var(--color-disabled-ink);

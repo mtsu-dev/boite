@@ -51,7 +51,7 @@
   }
 
   /**
-   * Why the greyed seats cannot be taken, as the line a phone prints under the
+   * Why the greyed seats cannot be taken, as the line printed under the
    * control: a phone shows no tooltip, and a disabled button takes no tap.
    */
   let offReasons = $derived.by((): string[] => {
@@ -138,11 +138,11 @@
     box-shadow: var(--shadow-thumb);
   }
 
-  /* The desktop names the reason in each seat's tooltip. */
-  .reasons { display: none; }
+  /* Desktop and phone print the reason under the control: a greyed seat with
+     only a tooltip reads as broken. The tooltip still carries it on desktop. */
+  .reasons { display: block; margin: 0; font-size: var(--text-xs); line-height: 1.35; color: var(--color-muted-foreground); }
 
   @media (max-width: 720px) {
     .seat { height: var(--touch-target); min-height: var(--touch-target); }
-    .reasons { display: block; margin: 0; font-size: var(--text-xs); line-height: 1.35; color: var(--color-muted-foreground); }
   }
 </style>

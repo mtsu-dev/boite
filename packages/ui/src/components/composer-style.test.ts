@@ -48,13 +48,24 @@ function lightToken(name: string): string {
   return value.trim();
 }
 
+function darkToken(name: string): string {
+  const dark = appCss.slice(appCss.indexOf(':root {'), appCss.indexOf("[data-theme='light'] {"));
+  const value = dark.match(new RegExp(`--${name}: ([^;]+);`))?.[1];
+  if (!value) throw new Error(`no --${name} in the dark theme`);
+  return value.trim();
+}
+
+test('a disabled primary is one neutral recipe in both themes, never a faded accent', () => {
+  // Dark faded the accent fill to half under dark ink and read as enabled: one rule, no theme of its own.
+  expect(appCss).toMatch(/\nbutton\.primary:disabled \{[^}]*background: var\(--color-disabled-fill\)[^}]*color: var\(--color-disabled-ink\)/);
+  expect(appCss).not.toMatch(/\[data-theme='light'\] button\.primary:disabled/);
+  expect(darkToken('color-disabled-fill')).toBe('var(--color-surface-2)');
+  expect(darkToken('color-disabled-ink')).toBe('var(--color-muted-foreground)');
+  expect(() => lightToken('color-disabled-fill')).toThrow();
+});
+
 test('a disabled control keeps 3:1 against its surface in light', () => {
-  // The neutral disabled primary: its label against its own fill.
-  expect(lightToken('color-disabled-fill')).toBe('var(--color-surface-3)');
-  expect(lightToken('color-disabled-ink')).toBe('var(--color-subtle)');
-  expect(ratio(lightToken('color-subtle'), lightToken('color-surface-3'))).toBeGreaterThanOrEqual(3);
-  expect(appCss).toMatch(/\[data-theme='light'\] button\.primary:disabled \{[^}]*background: var\(--color-disabled-fill\)/);
-  // Any other disabled button fades its muted label over the card and the column.
+  // A disabled button, the primary included, fades its muted label over the card and the column.
   const opacity = Number(lightToken('disabled-opacity'));
   const muted = lightToken('color-muted-foreground');
   for (const surface of [lightToken('color-surface'), lightToken('color-surface-2')]) {

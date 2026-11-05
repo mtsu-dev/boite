@@ -1,8 +1,6 @@
 export const strings = {
   mobile: {
     clearSearch: 'Clear search',
-    /** Recent's filter: the conversations whose agent or sub-agents are still at work. */
-    atWork: '{count} at work', atWorkFilter: 'Show only the conversations at work',
     draftTitle: 'What would you like to do?', draftHint: 'Start a task, ask a question, or pick up your work.',
     pairTitle: 'Your Boite, on your phone',
     pairBody: 'On any of your machines, open Settings, Machines, Add a device, then scan its QR code here.',

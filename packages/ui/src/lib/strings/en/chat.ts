@@ -26,8 +26,7 @@ export const strings = {
       subagentOne: '1 subagent',
       subagentMany: '{count} subagents',
       showAgents: 'Show the subagents and workflows',
-      next: 'Next needs you ({count})',
-      /** The same chip on a phone's narrow line: what it opens, then how many wait. */
+      /** The jump to the next waiting thread, the same words on a desktop and a phone: what it opens, then how many wait. */
       nextShort: 'Needs you · {count}',
       nextTitle: 'Open "{title}", the thread that has waited longest for you',
       days: '{days}d {hours}h',
@@ -112,13 +111,15 @@ export const strings = {
     diffRemoved: '-{count}',
     noOutput: 'No output',
     toolExitCode: 'Exit code {code}',
+    /** A failed call that left no exit code: the word the home cards use. */
+    toolFailed: 'Failed',
     toolCommandFailed: 'No diagnostic was reported. See the full output below.',
     /** Under an expanded tool input that opened cut to six lines. */
     showAll: 'Show all',
     toolStatus: {
       running: 'running',
       done: 'done',
-      error: 'error',
+      error: 'failed',
       denied: 'denied'
     },
     thinking: 'Thinking',

@@ -36,7 +36,7 @@ export const fr: Translation = {
       permission: 'Demande votre permission',
       secret: 'A besoin d\'une clé',
       'sign-in': 'Vous demande de vous connecter',
-      failed: 'Le tour a échoué',
+      failed: 'Échec',
       interrupted: 'Arrêté avant la fin'
     },
     reasonTags: {

@@ -39,7 +39,7 @@ export const strings = {
       permission: 'Wants your permission',
       secret: 'Needs a key',
       'sign-in': 'Needs you to sign in',
-      failed: 'Turn failed',
+      failed: 'Failed',
       interrupted: 'Stopped before the end'
     },
     /** The same reasons in one word, for a phone row that also holds the place and the wait. */

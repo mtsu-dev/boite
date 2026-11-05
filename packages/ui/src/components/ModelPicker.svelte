@@ -433,6 +433,8 @@
           <span class="provider-name ui-label">{shown ? shown.name : strings.composer.models}</span>
           <AccountSeats {shown} {seats} {shownAccountId} {choice} {locked} busy={disabled || pickPending} onpick={pickSeat} />
         </div>
+        <!-- Above the scroller rather than stuck inside it: no row slides under it, so it needs no paint of its own over the glass. -->
+        {#if !needsInstall && !pending}<ModelSearch bind:value={modelQuery} bind:input={searchBox} />{/if}
         {#key `${shown?.id}:${shownAccountId}`}
         <div class="model-list">
         {#if locked && seats.length > 1}
@@ -463,7 +465,6 @@
             {#each [0, 1, 2] as index (index)}<span class="skeleton"></span>{/each}
           </div>
         {:else}
-          <ModelSearch bind:value={modelQuery} bind:input={searchBox} />
           {#if grouped}
             {#if pinnedModel}
               {@render modelRow(pinnedModel)}
@@ -828,12 +829,16 @@
       justify-content: flex-start;
       border-right: none;
       border-bottom: 1px solid var(--color-border);
-      /* Tiles as wide as their names may run past the end: it fades, and the
-         padding lets the last tile scroll clear of the fade. */
-      padding-right: 20px;
-      mask-image: linear-gradient(to right, black calc(100% - 20px), transparent);
+      /* The sheet's own glass, not a band of the desktop rail's surface across it. */
+      background: transparent;
+      /* Tiles as wide as their names may run past the end: a 24 px fade says
+         more waits there, the padding lets the last tile scroll clear of it,
+         and a swipe rests on a tile's left edge rather than halfway through one. */
+      padding-right: 24px;
+      mask-image: linear-gradient(to right, black calc(100% - 24px), transparent);
+      scroll-snap-type: x mandatory;
+      scroll-padding-inline: 4px;
     }
-    .rail { scroll-snap-type: none; }
     .rail-cue { display: none; }
 
     /* The rail is the finger's first stop on a phone, so its tiles (ProviderTiles)

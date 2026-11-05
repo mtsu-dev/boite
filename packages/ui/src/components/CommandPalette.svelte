@@ -324,7 +324,8 @@
     max-height: min(70vh, 520px);
     display: flex;
     flex-direction: column;
-    background: var(--color-sheet);
+    /* A menu's surface and shadow: the sheet colour sat under the dark card and only its edge left the scrim. */
+    background: var(--color-float);
     -webkit-backdrop-filter: var(--float-blur);
     backdrop-filter: var(--float-blur);
     border: 1px solid transparent;
@@ -479,6 +480,9 @@
     font-size: var(--text-sm);
     color: var(--color-muted-foreground);
   }
+
+  /* On the menu surface the selected row's tint darkens the ground: its time takes the meta tier, as on a sidebar row. */
+  .state { --when-color: var(--color-meta); }
 
   .kbd {
     flex: none;

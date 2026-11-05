@@ -25,7 +25,6 @@ export const fr: Translation = {
       subagentOne: '1 sous-agent',
       subagentMany: '{count} sous-agents',
       showAgents: 'Afficher les sous-agents et workflows',
-      next: 'Suivant en attente ({count})',
       nextShort: 'En attente · {count}',
       nextTitle: 'Ouvrir « {title} », la conversation qui vous attend depuis le plus longtemps',
       days: '{days} j {hours} h',
@@ -97,12 +96,13 @@ export const fr: Translation = {
     diffRemoved: '-{count}',
     noOutput: 'Aucune sortie',
     toolExitCode: 'Code de sortie {code}',
+    toolFailed: 'Échec',
     toolCommandFailed: 'Aucun diagnostic signalé. Consultez la sortie complète ci-dessous.',
     showAll: 'Tout afficher',
     toolStatus: {
       running: 'en cours',
       done: 'terminé',
-      error: 'erreur',
+      error: 'échec',
       denied: 'refusé'
     },
     thinking: 'Réflexion',

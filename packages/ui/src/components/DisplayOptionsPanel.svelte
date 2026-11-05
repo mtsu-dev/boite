@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick, type Component } from 'svelte';
-  import { ArrowDownWideNarrow, Folder, FolderMinus, Folders, GitMerge, GripVertical, List, LoaderCircle } from '@lucide/svelte';
+  import { ArrowDownWideNarrow, FolderMinus, Folders, GitMerge, GripVertical, LoaderCircle } from '@lucide/svelte';
   import type { Closing } from '../lib/closing.svelte';
   import { floating } from '../lib/floating';
   import { workspace } from '../lib/workspace.svelte';
@@ -15,10 +15,11 @@
 
   /**
    * The display options panel (DisplayOptions.svelte loads it on its own, out
-   * of the entry chunk): the view (by project or by recency) and, by project,
-   * the order, as two segmented choices; then what folds away, as switches;
+   * of the entry chunk): by project, the order, as a segmented choice; then
+   * what folds away, as switches;
    * then the open project's own setting under its name. The details of a
-   * switch sit behind its "i". `target` is the project the last section speaks
+   * switch sit behind its "i". The view and the project it lists are the
+   * view picker's (lib/view-menu.ts), left of the sliders. `target` is the project the last section speaks
    * for, owned by `owner`, which may be another machine's Store.
    */
   let { popover, anchor, onclose, entries, target, owner, prefix = '', compact = false }: {
@@ -29,7 +30,7 @@
     target: Project | undefined;
     owner: Store;
     prefix?: string;
-    /** A phone's panel: the view and the groups only. */
+    /** A phone's panel: the groups only. */
     compact?: boolean;
   } = $props();
 
@@ -100,13 +101,6 @@
   use:floating={{ anchor, placement: 'bottom', align: 'end', dismiss: () => onclose() }}
   onanimationend={popover.end}
 >
-  <section>
-    <h3 class="ui-label" id="{uid}-view">{strings.sidebar.displayView}</h3>
-    <div class="segmented" role="radiogroup" aria-labelledby="{uid}-view">
-      {@render segment('view:projects', strings.sidebar.projectsView, projects, Folder, () => workspace.setView('projects'))}
-      {@render segment('view:recent', strings.sidebar.recentView, !projects, List, () => workspace.setView('recent'))}
-    </div>
-  </section>
   {#if projects && entries.length && !compact}
     <section>
       <h3 class="ui-label" id="{uid}-order">{strings.sidebar.displayOrder}</h3>

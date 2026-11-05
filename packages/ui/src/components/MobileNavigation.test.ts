@@ -97,7 +97,7 @@ test('the logo goes back to the conversations, as Back does in a conversation', 
   expect(document.querySelector('[data-testid=mobile-back]')).not.toBeNull();
 });
 
-test('a parent on another machine shows its working sub-agents, counted, and Recent filters what is at work', async () => {
+test('a parent on another machine shows its working sub-agents, counted, and the list heading picks the view while the lifecycle tabs count the work', async () => {
   vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
     media, matches: true, onchange: null, addListener() {}, removeListener() {}
   }));
@@ -133,33 +133,33 @@ test('a parent on another machine shows its working sub-agents, counted, and Rec
     const rows = () => [...document.querySelectorAll<HTMLElement>('.mobile-list [data-testid=mobile-row]')].map(row => row.dataset['threadId']);
     const everything = rows().length;
     expect(everything).toBeGreaterThan(1);
-    const chip = () => document.querySelector<HTMLButtonElement>('[data-testid=mobile-at-work]');
-    expect(chip()?.textContent).toBe('1 at work');
-    expect(chip()?.getAttribute('aria-pressed')).toBe('false');
-    chip()!.click(); await settle();
-    expect(chip()?.getAttribute('aria-pressed')).toBe('true');
-    expect(rows()).toEqual([parent.id]);
-
-    // Opening the parent and coming Back finds the list still filtered.
-    document.querySelector<HTMLButtonElement>(`[data-testid="mobile-thread-${parent.id}"]`)!.click(); await settle();
+    // The lifecycle tabs count the work under the heading: no "at work" chip beside them (round 5).
+    expect(document.querySelector('[data-testid=mobile-lifecycle]')).not.toBeNull();
+    expect(document.querySelector('[data-testid=mobile-at-work]')).toBeNull();
+    // Opening the parent reads it. Both fake cores carry a thread of that id: open the remote one.
+    document.querySelector<HTMLButtonElement>(`[data-machine-id="${remote.machineId}"][data-thread-id="${parent.id}"] [data-testid="mobile-thread-${parent.id}"]`)!.click(); await settle();
     expect(document.querySelector('.mobile-list')).toBeNull();
+    await vi.waitFor(() => expect(remote.threads.find(t => t.id === parent.id)?.unread).toBe(false));
     document.querySelector<HTMLButtonElement>('[data-testid=mobile-back]')!.click(); await settle();
-    expect(chip()?.getAttribute('aria-pressed')).toBe('true');
-    expect(rows()).toEqual([parent.id]);
-
-    // The Projects list reads the same store: the same radar there. Back in Recent, the filter holds.
-    workspace.view = 'projects'; await settle();
+    // The heading's picker names the view and switches it, as the sidebar's does; Recent adds the project scope under it.
+    const viewName = () => document.querySelector('[data-testid=mobile-view-name]')?.textContent;
+    expect(viewName()).toBe('Recent');
+    document.querySelector<HTMLButtonElement>('[data-testid=mobile-project-filter]')!.click(); await settle();
+    const menu = document.querySelector('[data-testid=mobile-project-filter-menu]')!;
+    expect(menu.querySelector('[data-value="view:recent"]')?.getAttribute('aria-checked')).toBe('true');
+    expect(menu.querySelector('[data-value=all]')).not.toBeNull();
+    menu.querySelector<HTMLButtonElement>('[data-value="view:projects"]')!.click(); await settle();
+    expect(workspace.view).toBe('projects');
+    expect(viewName()).toBe('Projects');
+    // The Projects list reads the same store: the same radar there.
     expect(state()?.dataset['state']).toBe('delegating');
     workspace.view = 'recent'; await settle();
-    expect(chip()?.getAttribute('aria-pressed')).toBe('true');
-    expect(rows()).toEqual([parent.id]);
 
-    // The last sub-agent ends: the radar, the chip and its filter go. The parent was read when opened, so nothing replaces the radar.
+    // The last sub-agent ends: the radar goes. The parent was read when opened, so nothing replaces it.
     for (const row of remote.threads) if (row.parentThreadId === parent.id) { row.status = 'idle'; row.runningSince = null; }
     await settle();
     expect(document.querySelector(`[data-thread-id="${parent.id}"]`)).not.toBeNull();
     expect(state()).toBeNull();
-    expect(chip()).toBeNull();
     expect(rows().length).toBe(everything);
   } finally {
     remote.detach(); remoteClient.close();

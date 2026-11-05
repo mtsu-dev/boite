@@ -3,7 +3,7 @@
   import WindowList from './WindowList.svelte';
   import MobileTabs from './MobileTabs.svelte';
   import ThreadHeader from './ThreadHeader.svelte';
-  import { Activity, ArrowLeft, ArrowUpDown, Bot, ChevronDown, Ellipsis, Folder, FolderOpen, FolderPlus, MessageSquare, Plus, Search, Radar, X } from '@lucide/svelte';
+  import { Activity, ArrowLeft, ArrowUpDown, Bot, ChevronDown, Ellipsis, FolderOpen, FolderPlus, MessageSquare, Plus, Search, X } from '@lucide/svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import MobileConnect from './MobileConnect.svelte';
   import type { Store } from '../lib/store.svelte';
@@ -36,7 +36,8 @@
   import { projectKey, projectView, type ProjectEntry } from '../lib/project-view.svelte';
   import { activeProject, archiveCount, projectSections, projectThreadView } from '../lib/project-threads.svelte';
   import { workingThread } from '../lib/recent.svelte';
-  import { compareThreads } from '../lib/thread-order';
+  import { bandStarts, compareThreads, type ThreadBand } from '../lib/thread-order';
+  import { pickView, viewMenuItems } from '../lib/view-menu';
   import { minuteClock } from '../lib/clock.svelte';
   import { contactsShown } from '../lib/contacts-rail.svelte';
   import { moreRows, threadLanes } from '../lib/thread-lanes.svelte';
@@ -143,25 +144,16 @@
     active: m.store === store && p.id === project?.id
   }))), ...(store.owner ? [separator('add-sep'), { id: 'add-project', label: strings.sidebar.addProject, hint: '', active: false, glyph: FolderPlus }] : [])]);
   const inRecent = $derived(listScreen === 'threads' && workspace.view === 'recent');
-  /** Recent shows one project or all of them: the filter's choices. */
-  const filterItems = $derived([
-    { id: 'all', label: strings.sidebar.allProjects, active: !selected },
-    ...groups.map(entry => ({ id: projectKey(entry), label: projectName(entry.project), hint: several ? entry.machine.label : '', active: projectKey(entry) === projectView.filter, projectTile: { project: entry.project, store: entry.machine.store } }))
-  ]);
+  /** The list header's picker, the sidebar's: the view, then, in Recent, one project or all of them. */
+  const viewItems = $derived(viewMenuItems(groups, several));
   const recentGroups = $derived(selected ? [selected] : groups);
   let workingOpen = $state(false);
   const groupWorking = $derived(inRecent && recentPreferences.groupWorking && !query);
-  /** Recent's rows whose agent, sub-agents or background work are still going: the "at work" filter. */
-  const atWorkRows = $derived(inRecent && !query ? rows.filter(row => workingThread(row.machine.store, row.thread)) : []);
-  /** The chip's number is the project threads at work, the strip's Working; a bot at work counts apart. */
-  const atWorkBots = $derived(atWorkRows.filter(row => row.thread.agentSessionId).length);
-  let atWorkOnly = $state(false);
-  const atWorkShown = $derived(atWorkOnly && atWorkRows.length > 0);
-  // The chip goes with the last of that work: the filter does not come back by itself with the next turn.
-  // Only the Recent list watches it: opening a conversation, searching or visiting Projects keeps the filter.
-  $effect(() => { if (atWorkOnly && inRecent && !query && atWorkRows.length === 0) atWorkOnly = false; });
-  const working = $derived(groupWorking && !atWorkShown ? rows.filter(row => groupWorkingThread(row.machine.store, row.thread)) : []);
-  const attention = $derived(atWorkShown ? atWorkRows : groupWorking ? rows.filter(row => !groupWorkingThread(row.machine.store, row.thread)) : rows);
+  const working = $derived(groupWorking ? rows.filter(row => groupWorkingThread(row.machine.store, row.thread)) : []);
+  const attention = $derived(groupWorking ? rows.filter(row => !groupWorkingThread(row.machine.store, row.thread)) : rows);
+  const rowKey = (row: { machine: Machine; thread: ThreadSummary }) => JSON.stringify([row.machine.id, row.thread.id]);
+  /** Recent's bands, the sidebar's: a label where the rows pass from what needs the user to what works, then to the rest. */
+  const phoneBands = $derived(inRecent && !query ? bandStarts(attention, row => row.thread, rowKey) : new Map<string, ThreadBand>());
 
   /** The list a conversation was opened from: Back returns to it. The landing conversation has none, so Back leaves. */
   let from = $state<'threads' | 'activity' | null>(null);
@@ -279,22 +271,18 @@
       <button type="button" class="ghost icon" aria-label={strings.mobile.search} aria-expanded={searchOpen || !!search} data-testid="mobile-search-open" onclick={() => (searchOpen || search ? (searchOpen = false, search = '') : void openSearch())}><Search size={19} /></button>
       {#if listScreen === 'threads' && groups.length}<span class="display"><DisplayOptions entries={groups} target={undefined} owner={store} prefix="mobile-" compact /></span>{/if}
     </div>
-    {#if searchOpen || search || (inRecent && groups.length) || atWorkRows.length > 0}
+    {#if searchOpen || search || (listScreen === 'threads' && groups.length)}
     <div class="list-heading">
       {#if searchOpen || search}
       <div class="search"><Search size={17} /><input type="search" bind:this={searchField} bind:value={search} aria-label={strings.mobile.search} placeholder={strings.mobile.search} data-testid="mobile-search" />{#if search}<button class="ghost icon" aria-label={strings.mobile.clearSearch} onclick={() => search = ''}><X size={16} /></button>{/if}
       </div>
       {/if}
-      {#if (inRecent && groups.length) || atWorkRows.length > 0}
+      {#if listScreen === 'threads' && groups.length}
+        <!-- The view and, in Recent, the project it lists: the sidebar's picker. The lifecycle tabs under it count the work. -->
         <div class="filters">
-          {#if inRecent && groups.length}
-            <Menu items={filterItems} onpick={key => projectView.pick(key)} label={strings.sidebar.filterProject} placement="bottom" variant="ghost" testid="mobile-project-filter">
-              {#if selected}<ProjectTile project={selected.project} store={selected.machine.store} size={16} />{:else}<Folder size={14} />{/if}<span class="ui-label">{selected ? projectName(selected.project) : strings.sidebar.allProjects}</span>{#if selected && several}<span class="filter-machine ui-label">{selected.machine.label}</span>{/if}<ChevronDown size={13} />
-            </Menu>
-          {/if}
-          {#if atWorkRows.length > 0}
-            <button class="ghost at-work" class:on={atWorkShown} aria-pressed={atWorkShown} title={strings.mobile.atWorkFilter} data-testid="mobile-at-work" onclick={() => atWorkOnly = !atWorkShown}><Radar size={14} aria-hidden="true" />{#if atWorkRows.length > atWorkBots}<span class="ui-label" data-testid="mobile-at-work-threads" data-count={atWorkRows.length - atWorkBots}>{fill(strings.mobile.atWork, { count: String(atWorkRows.length - atWorkBots) })}</span>{/if}{#if atWorkBots}<span class="count bots" data-testid="mobile-at-work-bots" title={fill(strings.inbox.botsCount, { count: String(atWorkBots) })} aria-label={fill(strings.inbox.botsCount, { count: String(atWorkBots) })}><Bot size={11} aria-hidden="true" />{atWorkBots}</span>{/if}</button>
-          {/if}
+          <Menu items={viewItems} onpick={pickView} label={strings.sidebar.viewPicker} placement="bottom" variant="ghost" testid="mobile-project-filter">
+            <span class="view-name ui-label" data-testid="mobile-view-name">{inRecent ? strings.sidebar.recentView : strings.sidebar.projectsView}</span>{#if inRecent && selected}<ProjectTile project={selected.project} store={selected.machine.store} size={16} /><span class="ui-label">{projectName(selected.project)}</span>{#if several}<span class="filter-machine ui-label">{selected.machine.label}</span>{/if}{/if}<ChevronDown size={13} />
+          </Menu>
         </div>
       {/if}
     </div>
@@ -414,10 +402,10 @@
         </WindowList>
       {/if}
     {:else}
-      <WindowList items={attention} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} estimate={77} measurements={measurements(atWorkShown ? 'at-work' : listScreen)}>
-        {#snippet row(entry)}{@render threadRow(entry)}{/snippet}
+      <WindowList items={attention} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} estimate={77} measurements={measurements(listScreen)}>
+        {#snippet row(entry)}{@const band = phoneBands.get(rowKey(entry))}{#if band}<p class="band ui-label" class:first={entry === attention[0]} data-testid="mobile-recent-band" data-band={band}>{strings.sidebar.bands[band]}</p>{/if}{@render threadRow(entry)}{/snippet}
       </WindowList>
-      {#if inRecent && !atWorkShown}
+      {#if inRecent}
         <div class="recent-folds">
           {#if working.length > 0}
             <RecentGroup kind="working" count={working.length} bind:open={workingOpen}>
@@ -469,14 +457,17 @@
     .filters { display: flex; flex-wrap: wrap; gap: 8px; }
     .search + .filters { margin-top: 8px; }
     .filters :global(.menu) { min-width: 0; max-width: 100%; }
-    .at-work, .filters :global(.trigger) { display: inline-flex; gap: 6px; align-items: center; height: auto; min-height: var(--touch-target); max-width: 100%; padding: 0 14px; border: 1px solid transparent; border-radius: var(--radius-full); background: var(--color-control-surface); font-size: var(--text-sm); font-weight: 500; }
-    .at-work { color: var(--color-accent); }
-    .at-work .count.bots { display: inline-flex; align-items: center; gap: 3px; font-size: var(--text-xs); font-variant-numeric: tabular-nums; color: var(--color-muted-foreground); }
+    /* The pill sizes to its words: the ghost variant's square would cut them. */
+    .filters :global(.trigger.ghost) { width: auto; padding: 0 14px; }
+    .filters :global(.trigger) { display: inline-flex; gap: 6px; align-items: center; height: auto; min-height: var(--touch-target); max-width: 100%; padding: 0 14px; border: 1px solid transparent; border-radius: var(--radius-full); background: var(--color-control-surface); font-size: var(--text-sm); font-weight: 500; }
     .filters :global(.trigger) { color: var(--color-foreground); }
     .filters :global(.trigger svg) { flex: none; color: var(--color-muted-foreground); }
     .filters :global(.trigger .ui-label) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* The view's name never yields its room; the project after it shortens first. */
+    .filters .view-name { flex: none; overflow: visible; }
     .filters .filter-machine { color: var(--color-muted-foreground); font-weight: 400; }
-    .at-work.on { border-color: transparent; background: var(--color-accent-soft); }
+    .band { margin: 8px 16px 2px; padding: 6px 0 0; border-top: 1px solid var(--color-border); color: var(--color-muted-foreground); font-size: 11px; font-weight: 500; line-height: 14px; }
+    .band.first { margin-top: 2px; padding-top: 0; border-top: none; }
     .brand-icon { flex: none; border-radius: var(--radius-md); }
     .back { position: relative; flex: none; }
     .waiting-mark { position: absolute; top: 9px; right: 8px; width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--color-live); box-shadow: 0 0 0 2px var(--color-background); }

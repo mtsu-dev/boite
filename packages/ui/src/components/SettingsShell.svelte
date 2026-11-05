@@ -15,6 +15,7 @@
   import AccountsPage from './AccountsPage.svelte';
   import AdvancedSettings from './AdvancedSettings.svelte';
   import AppearancePage from './AppearancePage.svelte';
+  import InfoTip from './InfoTip.svelte';
   import ExperimentsPage from './ExperimentsPage.svelte';
   import DiagnosticsPage from './DiagnosticsPage.svelte';
   import GeneralSettings from './GeneralSettings.svelte';
@@ -190,10 +191,12 @@
   let current = $derived(nav.find((entry) => entry.pages.includes(tab)));
   /** A grouped entry's pages, as tabs at the top of its card. */
   let strip = $derived((current?.pages.length ?? 0) > 1);
+  /** What a page said in its title's "i" before the strip took its title. */
+  let tabTips = $derived<Partial<Record<SettingsTab, string>>>({ keyboard: strings.keyboard.intro, voice: strings.speech.description });
   /**
    * The Appearance entry mixes this device's page with two of a machine's
-   * (Keyboard, Voice): one line beside the machine picker says which is which,
-   * once there is a second machine or this window is not the machine itself.
+   * (Keyboard, Voice): one short line per tab says where it is saved, once
+   * there is a second machine or this window is not the machine itself.
    */
   let scope = $derived.by((): string | undefined => {
     if (current?.id !== 'appearance' || !chosen || (choices.length < 2 && store.localCore)) return undefined;
@@ -402,13 +405,17 @@
   {#key current?.id ?? tab}
     <section class="framed" class:with-bar={bar || banner || strip} onscrollcapture={spy}>
       {#if strip && current}
-        <div class="page-tabs" role="tablist" aria-label={current.label} data-testid="settings-page-tabs">
-          {#each current.pages as page (page)}
-            <button type="button" role="tab" class="ghost page-tab" class:active={page === tab} aria-selected={page === tab}
-              data-testid="settings-page-{page}" onclick={() => { selectedSection = ''; store.showSettings(page); }}>
-              <span class="ui-label">{tileOf.get(page)?.label ?? page}</span>
-            </button>
-          {/each}
+        <div class="page-tabs">
+          <div class="tab-row" role="tablist" aria-label={current.label} data-testid="settings-page-tabs">
+            {#each current.pages as page (page)}
+              <button type="button" role="tab" class="ghost page-tab" class:active={page === tab} aria-selected={page === tab}
+                data-testid="settings-page-{page}" onclick={() => { selectedSection = ''; store.showSettings(page); }}>
+                <span class="ui-label">{tileOf.get(page)?.label ?? page}</span>
+              </button>
+            {/each}
+          </div>
+          <!-- The page drops its title under the strip (titled), so its "i" moves here, after the tabs. -->
+          {#if tabTips[tab]}<InfoTip topic={tileOf.get(tab)?.label ?? tab} text={tabTips[tab]!} testid="settings-tab-tip" />{/if}
         </div>
       {/if}
       {#if bar && tab !== 'experiments'}{@render machineBar()}{:else if scope}<p class="scope-note muted" data-testid="settings-scope">{scope}</p>{/if}
@@ -418,7 +425,7 @@
       {#if tab === 'brain'}
         <BrainPage store={target} />
       {:else if tab === 'voice'}
-        <VoiceSettings store={target} />
+        <VoiceSettings store={target} titled={!strip} />
       {:else if tab === 'general'}
         <GeneralSettings store={target} here={store} {onopenlist} />
       {:else if tab === 'machines'}
@@ -426,9 +433,9 @@
       {:else if tab === 'advanced'}
         <AdvancedSettings store={target} />
       {:else if tab === 'appearance'}
-        <AppearancePage {store} />
+        <AppearancePage {store} titled={!strip} />
       {:else if tab === 'keyboard'}
-        <KeyboardPage store={target} />
+        <KeyboardPage store={target} titled={!strip} />
       {:else if tab === 'accounts'}
         <AccountsPage store={target} />
       {:else if tab === 'usage'}
@@ -473,7 +480,8 @@
   /* A grouped entry's pages: text tabs on one line, the page in view underlined. */
   /* Both on the page's column: the tabs' text, inside their 12 px padding, and the note line up with its title. */
   .scope-note { margin: 8px 0 0; padding-inline: max(clamp(20px, 4vw, 64px), calc((100% - var(--settings-width)) / 2)); font-size: var(--text-sm); }
-  .page-tabs { display: flex; gap: 4px; padding: 24px calc(max(clamp(20px, 4vw, 64px), calc((100% - var(--settings-width)) / 2)) - 12px) 0; overflow-x: auto; scrollbar-width: none; }
+  .tab-row { display: flex; gap: 4px; }
+  .page-tabs { display: flex; align-items: center; gap: 4px; padding: 24px calc(max(clamp(20px, 4vw, 64px), calc((100% - var(--settings-width)) / 2)) - 12px) 0; overflow-x: auto; scrollbar-width: none; }
   .page-tab { flex: none; position: relative; height: var(--row); padding: 0 12px; color: var(--color-muted-foreground); }
   .page-tab.active { color: var(--color-foreground); }
   .page-tab.active::after { content: ''; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2px; border-radius: 1px; background: var(--color-accent); }

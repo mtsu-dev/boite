@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { Archive, Check, CirclePause, Ellipsis, FolderInput, KeyRound, LogIn, MessageCircleQuestion, Network, PencilLine, Pin, ShieldQuestion, TriangleAlert } from '@lucide/svelte';
+  import { Archive, Check, CircleAlert, CirclePause, Ellipsis, FolderInput, KeyRound, LogIn, MessageCircleQuestion, Network, PencilLine, Pin, ShieldQuestion } from '@lucide/svelte';
   import { waitedFor, type InboxReason } from '../lib/inbox';
   import type { Project, ThreadSummary } from '@boite/contracts';
   import type { Machine } from '../lib/workspace.svelte';
+  import { namesMachine } from '../lib/row-machine';
   import type { MenuItem } from '../lib/menu';
   import { hasUnsentDraft } from '../lib/composer-queue';
   import { asksMidTurn, delegatedChip, threadState } from '../lib/thread-state';
@@ -12,6 +13,7 @@
   import { projectName } from '../lib/format';
   import { fill, strings } from '../lib/strings';
   import Menu from './Menu.svelte';
+  import ProjectTile from './ProjectTile.svelte';
   import StateRing from './StateRing.svelte';
   import ThreadPicture from './ThreadPicture.svelte';
   import ThreadState from './ThreadState.svelte';
@@ -50,8 +52,10 @@
   let agents = $derived(delegatedChip(subagents));
   let pending = $derived(pendingLine(thread));
   /** The grey second line; the time joins it, so the title keeps the whole first line. */
-  let second = $derived(Boolean(wait || pending || (!grouped && project) || (several && !grouped) || agents?.asking));
-  const reasonIcons = { question: MessageCircleQuestion, permission: ShieldQuestion, secret: KeyRound, 'sign-in': LogIn, failed: TriangleAlert, interrupted: CirclePause } as const;
+  /** The machine is named only when it is not this one, as the home's cards and the desktop rows do. */
+  let elsewhere = $derived(several && !grouped && namesMachine(machine, away));
+  let second = $derived(Boolean(wait || pending || (!grouped && project) || elsewhere || agents?.asking));
+  const reasonIcons = { question: MessageCircleQuestion, permission: ShieldQuestion, secret: KeyRound, 'sign-in': LogIn, failed: CircleAlert, interrupted: CirclePause } as const;
   let draft = $derived(hasUnsentDraft(owner.composerStates[thread.id]) && !(owner.openThread?.id === thread.id));
   /** What a slide may do now: the menu's own items, so a thread at work is never marked done by a finger. */
   const allowed = (side: SwipeSide) => items.some(item => item.id === (side === 'right' ? 'done' : 'archive') && !item.disabled);
@@ -94,8 +98,8 @@
         <span class="meta">
           {#if wait}{@const Icon = reasonIcons[wait.reason]}<span class="fact why" class:failed={wait.reason === 'failed' || wait.reason === 'sign-in' || wait.reason === 'interrupted'} data-testid="thread-wait-reason" data-reason={wait.reason}><Icon size={12} aria-hidden="true" /><span class="ui-label" title={strings.inbox.reasons[wait.reason]}>{strings.inbox.reasonTags[wait.reason]}</span></span>{/if}
           {#if pending}<span class="fact pending" data-testid="thread-pending" title={pending}><FolderInput size={12} aria-hidden="true" /><span class="ui-label">{pending}</span></span>{/if}
-          {#if !grouped && project}<span class="fact project" data-testid="thread-project">{projectName(project)}</span>{/if}
-          {#if several && !grouped}<span class="fact machine">{machine.label}</span>{/if}
+          {#if !grouped && project}<span class="fact project" data-testid="thread-project"><ProjectTile {project} store={owner} size={12} /><span class="ui-label">{projectName(project)}</span></span>{/if}
+          {#if elsewhere}<span class="fact machine" data-testid="thread-machine">{machine.label}</span>{/if}
           <!-- Agents at work are the ring's to say; one asking is said here, it needs the user. -->
           {#if agents?.asking}<span class="fact agents asking" data-testid="thread-subagents" data-count={agents.shown} role="img" title={agents.label} aria-label={agents.label}><Network size={12} aria-hidden="true" /><span class="ui-label">{wait ? agents.shown : agents.text}</span></span>{/if}
           {@render time()}
@@ -209,6 +213,7 @@
   .fact.machine { flex-shrink: 1000; }
   .fact.project { flex-shrink: 1; }
   .fact.project { max-width: 55%; }
+  .fact.project :global(.tile.letter) { font-size: 9px; font-weight: 600; }
   .pending { color: var(--color-accent); }
   .agents.asking { color: var(--color-live); }
   /* The reason, one word, leads the line and never yields its room; the wait reads in the needs colour, a failure in danger. */

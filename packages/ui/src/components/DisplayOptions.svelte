@@ -13,7 +13,7 @@
    * press still opens it at once. It stays open while the user adjusts it; a
    * press outside or Escape puts it away.
    */
-  /** `compact`: the phone's choices only, the view and the groups; the order and a project's own switches stay on the desktop. */
+  /** `compact`: the phone's choices only, the groups; the order and a project's own switches stay on the desktop. */
   let { entries, target, owner, prefix = '', compact = false }: { entries: ProjectEntry[]; target: Project | undefined; owner: Store; prefix?: string; compact?: boolean } = $props();
 
   const popover = new Closing();

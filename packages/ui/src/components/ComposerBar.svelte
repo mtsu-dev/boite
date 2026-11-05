@@ -28,8 +28,9 @@
   /**
    * The row under the composer's box: + (attach, the separate copy, and
    * dictation once the box has text), the model, effort and mode chips (all
-   * folded into Options on a phone), then stop and one slot that holds the
-   * microphone while the box is empty and Send once it has something to send.
+   * folded into Options on a phone), then one slot that holds the microphone
+   * while the box is empty and Send once it has something to send, with stop
+   * right before Send.
    * A pick on a thread is saved at once, after the switch warnings; on a
    * draft the whole choice is remembered. `choice`, `picking` and `dictating`
    * are the composer's, bound here. An agent's box (`target`) keeps stop,
@@ -365,11 +366,6 @@
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="context-control" oncontextmenu={(event) => controlMenu(event, store, 'header.context')}><ContextControl {store} /></div>
   {/if}
-  {#if stopShown}
-    <button type="button" class="icon stop" data-testid="composer-stop" title={strings.composer.stop} aria-label={strings.composer.stop} onmousedown={keepFocus} onclick={() => { if (target) target.stop?.(); else void store.stop(); }}>
-      <Square size={12} strokeWidth={2.5} />
-    </button>
-  {/if}
     {#if canAttach}
       {#if !slotted}
       <button
@@ -411,7 +407,12 @@
   {/key}
   </span>
   {/if}
-  <!-- While it works, Stop holds the end alone; Send joins it once the box has something to send. -->
+  <!-- Stop sits beside Send, never among the tools: alone at the end while it works, Send joins it once the box has something to send. -->
+  {#if stopShown}
+    <button type="button" class="icon stop" data-testid="composer-stop" title={strings.composer.stop} aria-label={strings.composer.stop} onmousedown={keepFocus} onclick={() => { if (target) target.stop?.(); else void store.stop(); }}>
+      <Square size={12} strokeWidth={2.5} />
+    </button>
+  {/if}
   {#if !stopShown || canSend || waiting || answering}
   <button
     type="button"

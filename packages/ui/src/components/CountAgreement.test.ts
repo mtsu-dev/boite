@@ -103,13 +103,12 @@ test('the strip, the Inbox header, the Inbox tab badge and the switch agree on t
   apps.push(mount(MobileNavigation, { target: phone, props: { store: local, screen: 'threads' } }));
   await settle();
   expect(Number(text('mobile-activity-waiting'))).toBe(expected);
-  // The phone's Recent chip and its Inbox lanes split threads from bots as the desktop does (round 2: "3 at work" counted the bot).
+  // The phone's Recent tabs and its Inbox lanes split threads from bots as the desktop does (round 2: "3 at work" counted the bot).
   for (const app of apps.splice(-1)) await unmount(app);
   workspace.view = 'recent';
   apps.push(mount(MobileNavigation, { target: phone, props: { store: local, screen: 'threads' } }));
   await settle();
-  expect(Number(attr('mobile-at-work-threads', 'data-count'))).toBe(atWork.threads.working);
-  expect(Number(text('mobile-at-work-bots'))).toBe(atWork.bots.working);
+  expect(Number(attr('mobile-lifecycle-working', 'data-count'))).toBe(atWork.threads.working);
   for (const app of apps.splice(-1)) await unmount(app);
   workspace.view = 'projects';
   apps.push(mount(MobileNavigation, { target: phone, props: { store: local, screen: 'activity' } }));

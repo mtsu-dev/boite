@@ -1,16 +1,19 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
+  import { CircleAlert } from '@lucide/svelte';
   import type { ThreadState } from '../lib/thread-state';
   import { holdSpin, ringsStill } from '../lib/ring-budget.svelte';
 
   /**
    * A thread's state drawn around its picture, the same mark in every list:
-   * an amber ring and dot when it needs the user, a turning accent arc while it
-   * works, a dashed accent ring while work it left runs in the background, a
-   * dashed grey ring while it waits for a slot, a red ring and a "!" mark when
-   * it failed, a green dot when it finished something unread. At rest the
-   * picture dims and wears nothing. Each state has its own shape, so it reads
-   * without colour too: the failed mark carries a glyph, the waiting dot none.
+   * an amber ring and dot when it needs the user, a three-quarter accent arc
+   * turning while it works, a dashed accent ring while work it left runs in the
+   * background, a dashed grey ring while it waits for a slot, a red ring and
+   * the alert-circle when it failed, a green dot when it finished something
+   * unread. At rest the picture dims and wears nothing. Each state has its own
+   * shape, so it reads without colour too: the working arc leaves a gap the
+   * waiting ring never has (static under reduced motion, still a gap), the
+   * failed mark carries a glyph, the waiting dot none.
    * `asking`: a question came in while the turn still runs, so the arc keeps
    * turning and a small amber dot says it needs the user too. Past
    * `RING_SPIN_LIMIT` working rings on screen the arcs hold still.
@@ -42,7 +45,7 @@
   <span class="picture">{@render children()}</span>
   {#if ring === 'working'}<span class="arc"></span>{/if}
   {#if ring === 'waiting' || ring === 'done' || asks}<span class="dot"></span>{/if}
-  {#if ring === 'error'}<span class="dot mark">!</span>{/if}
+  {#if ring === 'error'}<span class="dot mark"><CircleAlert strokeWidth={2.5} /></span>{/if}
 </span>
 
 <style>
@@ -86,7 +89,7 @@
     border-style: dashed;
     animation: spin 6s linear infinite var(--loops);
   }
-  /* At work: a faint full track, a quarter arc turning on it. */
+  /* At work: a faint full track, a three-quarter arc turning on it; its gap tells it from the waiting ring without the hue. */
   .working::before { border-color: color-mix(in oklch, var(--color-accent) 26%, transparent); }
   .arc {
     position: absolute;
@@ -95,8 +98,9 @@
     border: var(--ring-width) solid transparent;
     border-top-color: var(--color-accent);
     border-right-color: var(--color-accent);
+    border-bottom-color: var(--color-accent);
     rotate: -45deg;
-    animation: spin 1.1s linear infinite var(--loops);
+    animation: spin var(--dur-ring-spin) linear infinite var(--loops);
   }
 
   .dot {
@@ -107,13 +111,13 @@
     box-shadow: 0 0 0 2px var(--ring-ground);
   }
   .waiting .dot { top: 0; right: 0; background: var(--color-live-fill); }
-  /* The failed mark is a touch larger and carries "!", so it never reads as the waiting dot in greyscale. */
+  /* The failed mark is the alert-circle, the one failure glyph of rows and cards, a touch larger than the waiting dot so it never reads as it in greyscale. */
   .error .mark {
-    top: -1px; right: -1px; display: grid; place-items: center;
-    width: max(9px, calc(var(--ring-size) * 0.4)); height: max(9px, calc(var(--ring-size) * 0.4));
-    background: var(--color-danger); color: var(--color-accent-ink);
-    font-size: max(7px, calc(var(--ring-size) * 0.32)); font-weight: 800; line-height: 1;
+    top: -2px; right: -2px; display: grid; place-items: center;
+    width: max(10px, calc(var(--ring-size) * 0.45)); height: max(10px, calc(var(--ring-size) * 0.45));
+    background: var(--ring-ground); color: var(--color-danger);
   }
+  .error .mark :global(svg) { width: 100%; height: 100%; }
   /* Asked mid-turn: the arc keeps turning, a smaller amber dot sits on it. */
   .asks .dot { top: 0; right: 0; width: max(5px, calc(var(--ring-size) * 0.26)); height: max(5px, calc(var(--ring-size) * 0.26)); background: var(--color-live-fill); }
   .still .arc { animation: none; }

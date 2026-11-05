@@ -45,8 +45,15 @@ test('a row across projects keeps its first line for the title: time and machine
   expect(headline.querySelector('.when, [data-testid=thread-state], .machine')).toBeNull();
   const facts = document.querySelector<HTMLElement>('[data-testid=thread-row] .facts')!;
   expect(facts.querySelector('[data-testid=thread-trail] .when')).not.toBeNull();
-  expect(facts.querySelector('[data-testid=thread-project]')?.textContent).toBe(project.name);
-  expect(facts.querySelector('[data-testid=thread-machine]')?.getAttribute('aria-label')).toBe('Lab');
+  expect(facts.querySelector('[data-testid=thread-project] > .ui-label')?.textContent).toBe(project.name);
+  // The project reads by its logo, not a folder glyph; another machine is named in plain muted text.
+  expect(facts.querySelector('[data-testid=thread-project] .tile')).not.toBeNull();
+  expect(facts.querySelector('[data-testid=thread-machine]')?.textContent).toBe('Lab');
+  // This PC is never named on its own rows.
+  await unmount(mounted);
+  mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'http://localhost:3773', label: 'This PC', store }, project, thread, now: Date.now(), showProject: true, showMachine: true } });
+  await settle();
+  expect(document.querySelector('[data-testid=thread-machine]')).toBeNull();
   // Under a project's header the row stays one line, its time at the title's end.
   await unmount(mounted);
   mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'lab', label: 'Lab', store }, project, thread, now: Date.now(), showProject: false, showMachine: false } });

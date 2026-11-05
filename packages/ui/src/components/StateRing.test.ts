@@ -14,9 +14,11 @@ const ring = (kind: ThreadState | null, extra: Record<string, unknown> = {}) => 
   return target.querySelector<HTMLElement>('[data-testid=state-ring]')!;
 };
 
-test('a failed ring carries a "!" mark and the waiting ring a bare dot, so the two differ without colour', () => {
+test('a failed ring carries the alert-circle and the waiting ring a bare dot, so the two differ without colour', () => {
   const failed = ring('error'), waiting = ring('waiting');
-  expect(failed.querySelector('.mark')?.textContent).toBe('!');
+  // One failure glyph across rows and cards (round 5 found three): the alert-circle, no "!".
+  expect(failed.querySelector('.mark svg circle')).not.toBeNull();
+  expect(failed.querySelector('.mark')?.textContent).toBe('');
   expect(waiting.querySelector('.mark')).toBeNull();
   expect(waiting.querySelector('.dot')?.textContent).toBe('');
 });

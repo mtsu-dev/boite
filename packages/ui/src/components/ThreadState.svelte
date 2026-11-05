@@ -2,8 +2,7 @@
   import { CircleAlert, CloudOff, GitPullRequest, LoaderCircle, Radar, Network } from '@lucide/svelte';
   import { pullRequestWatchWaits, type ThreadSummary } from '@boite/contracts';
   import { backgroundLabel } from '../lib/background';
-  import { secondClock } from '../lib/clock.svelte';
-  import { ago, elapsed, exactTime } from '../lib/format';
+  import { ago, exactTime } from '../lib/format';
   import { fill, strings } from '../lib/strings';
   import { shortAgo, threadState } from '../lib/thread-state';
   import type { WorkingChildren } from '../lib/thread-rows';
@@ -20,6 +19,16 @@
    */
   let { thread, now, subagents = null, away = false, compact = false }: { thread: Pick<ThreadSummary, 'status' | 'unread' | 'runningSince' | 'requestSince' | 'backgroundWork' | 'openQuestions' | 'lastUserMessageAt' | 'createdAt'> & Partial<Pick<ThreadSummary, 'backgroundWait' | 'pullRequestWatches'>>; now: number; subagents?: WorkingChildren | null; away?: boolean; compact?: boolean } = $props();
 
+  /**
+   * A list's run time in whole minutes, `28m` or `1h 02m`: thirteen rows at
+   * work never tick seconds in the corner of the eye. The seconds stay in the
+   * open thread's status strip.
+   */
+  function minutes(ms: number): string {
+    const total = Math.floor(Math.max(0, ms) / 60_000);
+    if (total < 1) return '<1m';
+    return total < 60 ? `${total}m` : `${Math.floor(total / 60)}h ${String(total % 60).padStart(2, '0')}m`;
+  }
   function earliest(a: number | null | undefined, b: number | null | undefined): number | null {
     return a == null ? b ?? null : b == null ? a : Math.min(a, b);
   }
@@ -46,8 +55,8 @@
     : kind === 'watching' ? thread.requestSince ?? (watches.length ? Math.min(...watches.map(watch => watch.since)) : null)
     : kind === 'delegating' ? subagents?.since ?? null
     : live ? thread.backgroundWork?.since ?? (wait?.state === 'waiting' ? wait.since : null) : null);
-  /** Counting time reads the second clock, only while the agent works: the list's clock ticks far slower. */
-  let spent = $derived(since === null ? null : elapsed(Math.max(secondClock.now, now) - since));
+  /** Counting time reads the list's own minute clock (`now`): no second clock runs for a row. */
+  let spent = $derived(since === null ? null : minutes(now - since));
   let label = $derived.by(() => {
     if (kind === null) return null;
     if (kind === 'working') return spent === null ? strings.sidebar.state.working : fill(strings.sidebar.state.workingFor, { elapsed: spent });

@@ -8,7 +8,7 @@
   import { workspace, type Machine } from '../lib/workspace.svelte';
   import { fill, strings } from '../lib/strings';
   import { projectName } from '../lib/format';
-  import { compareThreads } from '../lib/thread-order';
+  import { bandStarts, compareThreads } from '../lib/thread-order';
   import { projectRollup, threadState } from '../lib/thread-state';
   import { hasUnsentDraft } from '../lib/composer-queue';
   import { holdLanes, laneHold, moreRows, threadLanes, type LaneHold, type Lanes } from '../lib/thread-lanes.svelte';
@@ -127,6 +127,9 @@
   }
   let working = $derived(recentPreferences.groupWorking ? recent.filter(({ machine, thread }) => groupWorkingThread(machine.store, thread)) : []);
   let attention = $derived(recentPreferences.groupWorking ? recent.filter(({ machine, thread }) => !groupWorkingThread(machine.store, thread)) : recent);
+  const recentKey = (entry: { machine: Machine; thread: ThreadSummary }) => JSON.stringify([entry.machine.id, entry.thread.id]);
+  /** Recent's first row of each band (needs you, working, earlier) carries the band's label. */
+  let recentBands = $derived(bandStarts(attention, entry => entry.thread, recentKey));
   const listsFor = projectListMap();
   /** Each listed project's sorted rows, shared by its section and by Alt+digit. */
   let projectLists = $derived(listsFor(activeGroups));
@@ -350,8 +353,8 @@
           <DraftRow owner={machine.store} {entry} />
         {/each}
       {/each}
-      <WindowList items={attention} keyOf={entry => JSON.stringify([entry.machine.id, entry.thread.id])} {scrollRoot} estimate={56} measurements={measurements('recent')}>
-        {#snippet row(entry)}<ThreadCard {...entry} {now} showProject={recentGroups.length > 1} showMachine={multi} showDone />{/snippet}
+      <WindowList items={attention} keyOf={recentKey} {scrollRoot} estimate={56} measurements={measurements('recent')}>
+        {#snippet row(entry)}{@const band = recentBands.get(recentKey(entry))}{#if band}<p class="band ui-label" class:first={entry === attention[0]} data-testid="recent-band" data-band={band}>{strings.sidebar.bands[band]}</p>{/if}<ThreadCard {...entry} {now} showProject={recentGroups.length > 1} showMachine={multi} showDone />{/snippet}
       </WindowList>
       {#if groups.length > 0 && recent.length === 0 && !recentGroups.some(entry => entry.project.archivedThreads)}<p class="none">
           {strings.sidebar.noThreads}
@@ -570,6 +573,9 @@
   /* A filtered project keeps its header, which folds nothing. */
   .toggle.static { display: flex; align-items: center; cursor: default; }
   .recent-folds { margin-top: auto; padding-top: 12px; }
+  /* Where Recent passes from what needs the user to what works, then to the rest: a 1 px rule, 8 px above it, and the band's name. */
+  .band { margin: 8px 6px 2px; padding: 6px 4px 0; border-top: 1px solid var(--color-border); color: var(--color-muted-foreground); font-size: 11px; font-weight: 500; line-height: 14px; }
+  .band.first { margin-top: 2px; padding-top: 0; border-top: none; }
   .project-folds { margin-top: auto; }
   .project {
     /* The dots of the rows' rings cut out of the card's own colour. */

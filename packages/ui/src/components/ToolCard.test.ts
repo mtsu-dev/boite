@@ -178,6 +178,12 @@ test('a failed command retains its exit code and puts the explanation behind the
   });
   flushSync();
   expect(query('[data-testid=tool-exit-code]').textContent).toBe('Exit code 128');
+  // The code sits after the alert circle, with no x after it that reads as a dismiss button.
+  const failed = query('[data-testid=tool-failed]');
+  expect(failed.querySelector('svg')?.classList.contains('lucide-circle-alert')).toBe(true);
+  expect(failed.lastElementChild?.getAttribute('data-testid')).toBe('tool-exit-code');
+  expect(document.querySelector('[data-testid=tool-toggle] .lucide-x')).toBeNull();
+  expect(query('[data-testid=tool-toggle]').getAttribute('aria-label')).toContain(', failed');
   expect(document.querySelector('[data-testid=tool-error-preview]')).toBeNull();
   query<HTMLButtonElement>('[data-testid=tool-toggle]').click();
   flushSync();
@@ -195,6 +201,15 @@ test('successful stderr output stays folded as a successful command', () => {
   expect(document.querySelector('[data-testid=tool-error-preview]')).toBeNull();
   expect(document.querySelector('[data-testid=tool-exit-code]')).toBeNull();
 });
+
+test('a failed call with no exit code says Failed beside the alert circle', () => {
+  running = mount(ToolCard, {
+    target: document.body,
+    props: { name: 'Read', input: { file_path: 'src/missing.ts' }, output: 'File not found', status: 'error' as const }
+  });
+  flushSync();
+  expect(query('[data-testid=tool-failed]').textContent?.trim()).toBe('Failed');
+})
 
 test('a command\'s one diff keeps its heading, since the command does not name the file', () => {
   const diff = { kind: 'diff' as const, path: 'src/a.ts', oldText: 'a\n', newText: 'b\n' };

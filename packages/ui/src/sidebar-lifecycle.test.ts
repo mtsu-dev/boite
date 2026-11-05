@@ -148,7 +148,7 @@ test('the Recent view keeps its flat rows and their order under a filter, each n
   // The rows Recent drew, in the order it drew them: no project card, the project under each title.
   expect(sidebar().querySelector('section[data-filter]')).toBeNull();
   expect(rowIds(sidebar())).toEqual(order);
-  const projects = [...sidebar().querySelectorAll('[data-testid=thread-project]')].map(name => name.textContent);
+  const projects = [...sidebar().querySelectorAll('[data-testid=thread-project] > .ui-label')].map(name => name.textContent);
   expect(projects).toEqual(order.map(id => id === failing.id ? 'beta' : 'alpha'));
 
   // The Projects view keeps its cards under the same filter.

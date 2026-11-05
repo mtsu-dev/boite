@@ -149,7 +149,7 @@
   header > :global(svg) { flex: none; color: var(--color-muted-foreground); margin-right: 4px; }
   strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); font-weight: 600; }
   header button { width: var(--control-sm); height: var(--control-sm); padding: 0; }
-  header :global(.spinning) { animation: spin 900ms linear infinite var(--loops); }
+  header :global(.spinning) { animation: spin var(--dur-spin) linear infinite var(--loops); }
   .body { min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 0 8px; touch-action: pan-y; }
   article { padding: 4px 0; display: grid; gap: 2px; line-height: 1.25; }
   article + article { border-top: 1px solid var(--color-border); }

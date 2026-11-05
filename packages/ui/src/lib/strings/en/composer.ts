@@ -36,7 +36,7 @@ export const strings = {
     placeholderOfflineDraft: '{machine} is offline: the conversation starts when it reconnects',
     send: 'Send',
     sendWhenLoaded: 'Sends once the files are ready',
-    stop: 'Stop',
+    stop: 'Stop the agent',
     queued: 'Sent after the next tool, or when the turn ends',
     /** A refused send held the pending messages until the user sends again. */
     queuedPaused: 'Held after a refused send',
@@ -65,7 +65,7 @@ export const strings = {
     noModelsAvailable: 'The agent has not listed any models. Refresh to retry.',
     showAllModels: 'Show all {count} models',
     legacyModels: 'Legacy models',
-    refreshModels: 'Refresh models',
+    refreshModels: 'Reload the model list',
     probing: "Reading the agent's models",
     notInstalled: 'Not installed on this machine',
     installInSettings: 'Install in Settings',

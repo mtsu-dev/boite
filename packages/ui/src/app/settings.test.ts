@@ -60,10 +60,22 @@ test('the keybindings file moves a chord, takes one away, and the Keyboard page 
   await waitFor(() => document.querySelector('[data-testid=settings-page-keyboard]') !== null);
   expect([...document.querySelectorAll<HTMLElement>('[data-testid=settings-page-tabs] [role=tab]')].map((tab) => tab.textContent?.trim()))
     .toEqual(['Appearance', 'Keyboard', 'Voice']);
+  // The selected tab already names the page: no H1 repeats it above the first card.
+  await waitFor(() => document.querySelector('[data-testid=appearance-page]') !== null);
+  expect(document.querySelector('[data-testid=appearance-page] h1')).toBeNull();
   query<HTMLButtonElement>('[data-testid=settings-page-keyboard]').click();
   await waitFor(() => document.querySelector('[data-testid=keyboard-page]') !== null);
   expect(query('[data-testid=settings-page-keyboard]').getAttribute('aria-selected')).toBe('true');
   expect(query('[data-testid=settings-tab-appearance]').getAttribute('aria-current')).toBe('page');
+  // Keyboard drops its H1 too; its tip moves beside the tabs instead of going away.
+  expect(document.querySelector('[data-testid=keyboard-page] h1')).toBeNull();
+  expect(document.querySelector('[data-testid=settings-tab-tip]')).not.toBeNull();
+  query<HTMLButtonElement>('[data-testid=settings-page-voice]').click();
+  await waitFor(() => document.querySelector('[data-testid=voice-settings]') !== null);
+  expect(document.querySelector('[data-testid=voice-settings] h1')).toBeNull();
+  expect(document.querySelector('[data-testid=settings-tab-tip]')).not.toBeNull();
+  query<HTMLButtonElement>('[data-testid=settings-page-keyboard]').click();
+  await waitFor(() => document.querySelector('[data-testid=keyboard-page]') !== null);
   const keyOf = (id: string) =>
     query(`[data-testid=keybinding-row][data-command=${id}] [data-testid=keybinding-key]`).textContent?.trim();
   expect(keyOf('theme-light')).toBe('Ctrl+Shift+L');

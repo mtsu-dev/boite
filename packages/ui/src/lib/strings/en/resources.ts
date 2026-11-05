@@ -9,7 +9,9 @@ export const strings = {
     state: 'Protection status',
     states: { ok: 'Enough memory', critical: 'Memory limit crossed' },
     killTitle: 'Memory limit reached',
-    killCount: (count: number) => `Memory limit: ${count} stopped`,
+    /** The notice's one line: the limit a stop crossed, its reason behind the disclosure. */
+    killLimit: (limit: string) => `Memory limit reached: ${limit}`,
+    killCount: (count: number, limit: string) => `Memory limit reached: ${limit}, ${count} stopped`,
     stoppedProcesses: (count: number) => `Show ${count} stopped processes`,
     memorySettings: 'Memory settings',
     protectionOff: 'Memory protection is off',

@@ -163,8 +163,8 @@ export const fr: Translation = {
     connect: 'Connecter',
     /** The model picker rail's last tile, which opens Settings to connect another provider. */
     /** The Appearance entry's line beside the machine picker. */
-    scopeDevice: 'L\'apparence s\'applique à cet appareil. Clavier et Voix s\'appliquent à {machine}.',
-    scopeMachine: 'S\'applique à {machine}. L\'apparence ne concerne que cet appareil.',
+    scopeDevice: 'Enregistré sur cet appareil.',
+    scopeMachine: 'Enregistré sur {machine}.',
     providerRailAdd: 'Ajouter',
     warmProcessMinutes: 'Garder un agent chargé (minutes)',
     warmProcessOff: 'Désactivé : l\'agent s\'arrête après chaque tour.',

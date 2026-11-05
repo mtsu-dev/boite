@@ -14,9 +14,17 @@
     return strings.resources.states[notice.state];
   }
   const text = $derived(describeNotice(event));
+  const killed = $derived(event.kind === 'killed');
+  /** A stop's line is the limit it crossed; why, and what stopped, read behind the disclosure. */
+  // A narrow line wraps before the size, never between its number and its unit.
+  const limit = $derived(event.kind === 'killed' ? bytes(event.limitBytes).replace(' ', '\u00a0') : '');
+  const title = $derived(event.kind !== 'killed' ? '' : events.length > 1
+    ? strings.resources.killCount(events.length, limit)
+    : strings.resources.killLimit(limit));
 </script>
 
 {#snippet stoppedList()}
+      <p class="reason">{text}</p>
       <div class="processes" aria-label={strings.resources.stoppedProcesses(events.length)}>
         {#each events as stopped}
           <div class="stopped"><span class="process">{stopped.exe?.split(/[\\/]/).pop() ?? strings.resources.unknown}</span>{#if stopped.bytes !== undefined}<span class="size">{bytes(stopped.bytes)}</span>{/if}</div>
@@ -24,10 +32,9 @@
       </div>
 {/snippet}
 
-<!-- A memory stop is a notice in the flow, one line high: what stopped and why, the processes behind its disclosure. -->
+<!-- A memory stop is a notice in the flow, one line high: the limit it crossed, then why and the processes behind its disclosure. -->
 <NoticeBanner icon={TriangleAlert} tone="warning" testid="memory-row" kind={event.kind} inline
-  title={event.kind === 'killed' ? events.length > 1 ? strings.resources.killCount(events.length) : strings.resources.killTitle : ''}
-  label={event.kind === 'killed' ? undefined : text} {text} details={event.kind === 'killed' ? stoppedList : undefined}>
+  {title} label={killed ? undefined : text} text={killed ? '' : text} details={killed ? stoppedList : undefined}>
   {#snippet actions()}
     {#if onconfigure}<button type="button" class="small ghost configure" onclick={onconfigure} title={strings.resources.memorySettings}><Settings2 size={14} aria-hidden="true" /><span class="ui-label">{strings.resources.memorySettings}</span></button>{/if}
   {/snippet}

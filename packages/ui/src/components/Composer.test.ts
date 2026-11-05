@@ -1289,6 +1289,10 @@ test('a waiting question takes the composer as its free answer, with the card pi
   await waitFor(() => document.querySelector('[data-testid=composer-reply]') !== null, TYPING_PAUSE_MS);
   expect(input().placeholder).toBe('Write your answer');
   expect(query('[data-testid=composer-send]').getAttribute('aria-label')).toBe('Send the answer');
+  // The turn still runs: its stop says what it stops and sits beside Send, not among attach and the microphone.
+  expect(query('[data-testid=composer-stop]').getAttribute('aria-label')).toBe('Stop the agent');
+  expect(query('[data-testid=composer-stop]').title).toBe('Stop the agent');
+  expect(query('[data-testid=composer-stop]').nextElementSibling).toBe(query('[data-testid=composer-send]'));
   // One submit: the composer's send. The card keeps its choices and Skip, no Answer button and no hint.
   expect(pendingCard().querySelector('[data-testid=question-reply-hint]')).toBeNull();
   expect(pendingCard().querySelector('[data-testid=question-submit]')).toBeNull();

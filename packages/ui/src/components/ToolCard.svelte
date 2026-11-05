@@ -1,7 +1,7 @@
 <script lang="ts">
   import { errorText } from '../lib/errors';
   import { secondClock } from '../lib/clock.svelte';
-  import { Bot, ChevronRight, FilePen, FileText, Globe, Search, ShieldCheck, ShieldX, SquareTerminal, Wrench, X } from '@lucide/svelte';
+  import { Bot, ChevronRight, CircleAlert, FilePen, FileText, Globe, Search, ShieldCheck, ShieldX, SquareTerminal, Wrench } from '@lucide/svelte';
   import type { ToolDocument, ToolStatus } from '@boite/contracts';
   import { elapsed, json } from '../lib/format';
   import { fill, strings } from '../lib/strings';
@@ -194,7 +194,7 @@
     {#if took}
       <span class="took ui-label" data-testid="tool-elapsed">{took}</span>
     {/if}
-    {#if exitLabel}
+    {#if exitLabel && permission === 'deny'}
       <span class="took ui-label" data-testid="tool-exit-code">{exitLabel}</span>
     {/if}
     {#if permission}
@@ -206,7 +206,11 @@
     {#if status === 'running'}
       <span class="status" title={strings.chat.toolStatus.running}><span class="spinner"></span></span>
     {:else if failed && permission !== 'deny'}
-      <span class="status" title={strings.chat.toolStatus[status]}><X size={12} strokeWidth={2.25} /></span>
+      <!-- A failure is one glyph and one word, as on the home cards: an x here read as a button that dismisses the line. -->
+      <span class="status failed" data-testid="tool-failed" title={strings.chat.toolStatus[status]}>
+        <CircleAlert size={13} strokeWidth={2} aria-hidden="true" />
+        {#if exitLabel}<span class="ui-label" data-testid="tool-exit-code">{exitLabel}</span>{:else if status === 'error'}<span class="ui-label">{strings.chat.toolFailed}</span>{/if}
+      </span>
     {/if}
     <span class="fold-caret" class:open={shown} aria-hidden="true"><ChevronRight size={12} /></span>
   </button>
@@ -374,6 +378,15 @@
     flex: none;
     color: var(--color-subtle);
   }
+
+  .status.failed {
+    align-items: center;
+    gap: 4px;
+    font-size: var(--text-xs);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .status.failed :global(svg) { color: var(--color-danger); }
 
   /* The user's answer to the agent's ask: the shield in the answer's colour. */
   .verdict {
