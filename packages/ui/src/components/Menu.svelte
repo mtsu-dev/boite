@@ -419,7 +419,7 @@
   .machine {
     display: inline-flex;
     min-width: 0;
-    margin-left: 8px;
+    margin-left: 4px;
   }
 
   .hint {
