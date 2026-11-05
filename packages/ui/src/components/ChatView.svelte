@@ -320,6 +320,11 @@
     align-items: center;
   }
 
+  /* With cards or working rows under it, the block rises to the top third:
+     centred, the Inbox scrolled under a third of empty column. */
+  .draft-tail:has(:global([data-testid='inbox-card'])),
+  .draft-tail:has(:global([data-testid='inbox-working-toggle'])) { flex-grow: 2; }
+
   /* The home's accent sky: two still glows of the accent, the grain over them in its theme. */
   .chat.drafting {
     --sky: radial-gradient(70% 55% at 50% 0%, color-mix(in oklch, var(--color-accent) var(--sky-top), transparent), transparent 72%),
