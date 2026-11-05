@@ -290,7 +290,7 @@
   .ctl:focus-visible {
     background: var(--color-hover);
     color: var(--color-foreground);
-    outline: none;
+    outline-offset: -2px;
   }
 
   /* A window control is part of the frame: it darkens under the finger rather

@@ -247,7 +247,7 @@
      tile the rail at every frame: no gap between two bars, and no overlap that would hand a click to a neighbour. */
   .track button::before { content: ''; position: absolute; inset-inline: 0; top: 50%; height: var(--size, 100%); translate: 0 -50%; transition: height var(--dur-3) var(--ease-out-quint); }
   .track button:hover:not(:disabled) { background: transparent; }
-  .track button:focus-visible { outline: none; }
+  .track button:focus-visible { outline-offset: -2px; }
   i { display: block; flex: none; width: calc(10px + 12px * var(--weight, 0)); height: 2px; border-radius: 1px; background: currentColor; opacity: calc(0.45 + 0.55 * var(--weight, 0)); transition: width var(--dur-2) var(--ease-out-quint), opacity var(--dur-2), box-shadow var(--dur-2); }
   /* A marker's bar is its full 22 px scaled down: the active prompt changes on
      every few lines of a scroll, and a width easing there laid the page out

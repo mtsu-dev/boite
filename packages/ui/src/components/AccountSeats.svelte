@@ -129,7 +129,7 @@
   .seat:focus-visible:not([aria-pressed='true']) {
     background: var(--color-hover);
     color: var(--color-foreground);
-    outline: none;
+    outline-offset: -2px;
   }
 
   .seat[aria-pressed='true'] {

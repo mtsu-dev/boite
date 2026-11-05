@@ -213,7 +213,7 @@
   .row:hover:not(:disabled),
   .row:focus-visible {
     background: var(--color-active);
-    outline: none;
+    outline-offset: -2px;
   }
 
   .row:active:not(:disabled) {

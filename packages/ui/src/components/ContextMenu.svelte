@@ -217,7 +217,7 @@
   .row:hover:not(:disabled),
   .row:focus-visible {
     background: var(--color-hover);
-    outline: none;
+    outline-offset: -2px;
   }
 
   /* A full width row does not shrink under the finger, it fills one step more. */

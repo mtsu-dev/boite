@@ -123,7 +123,7 @@
   .tile:focus-visible {
     background: var(--color-hover);
     color: var(--color-foreground);
-    outline: none;
+    outline-offset: -2px;
   }
 
   .tile.current {

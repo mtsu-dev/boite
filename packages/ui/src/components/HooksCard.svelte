@@ -215,7 +215,7 @@
   .provider + .provider { border-top: 1px solid var(--color-border); }
   summary { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-height: var(--row); padding: 6px 8px; margin: 0 -8px; cursor: pointer; list-style: none; border-radius: var(--radius-md); font-size: var(--text-sm); transition: background var(--dur-2) var(--ease-out-quint); }
   summary::-webkit-details-marker { display: none; }
-  summary:hover, summary:focus-visible { background: var(--color-hover); outline: none; }
+  summary:hover, summary:focus-visible { background: var(--color-hover); outline-offset: -2px; }
   summary :global(svg) { flex: none; }
   .name { font-weight: 500; }
   .found { flex: 1; min-width: 0; color: var(--color-muted-foreground); }

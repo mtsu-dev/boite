@@ -392,6 +392,17 @@ const steps: Step[] = [
     async run(page) { await page.getByTestId('composer-picker').first().click(); await page.getByTestId('composer-picker-menu').waitFor(); },
   },
   {
+    name: 'menu-model-keyboard', caption: 'The model picker opened and walked from the keyboard: the focused row carries the accent ring.', devices: desktop,
+    async run(page) {
+      await page.getByTestId('composer-picker').first().focus();
+      await page.keyboard.press('Enter');
+      await page.getByTestId('composer-picker-menu').waitFor();
+      await page.keyboard.press('ArrowDown');
+      await page.keyboard.press('ArrowDown');
+      await page.waitForTimeout(300);
+    },
+  },
+  {
     name: 'menu-thread', caption: 'The phone title menu: project, machine, branch and PR whole, one tap copies each.', devices: phone,
     async run(page) { await page.getByTestId('thread-menu-trigger').first().click(); await page.getByTestId('thread-menu-trigger-menu').waitFor(); },
   },
