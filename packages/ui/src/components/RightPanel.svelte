@@ -16,7 +16,7 @@
   import type { BoundPanel, Surface, SurfaceKind } from '../lib/right-panel.svelte';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
-  import { offeredCards, kindName, label, tooltip } from '../lib/surface-labels';
+  import { offeredCards, kindName, label, tabKindLabel, tabLabel, tooltip } from '../lib/surface-labels';
   import Menu from './Menu.svelte';
   import PanelResizeHandle from './PanelResizeHandle.svelte';
   import SurfaceIcon from './SurfaceIcon.svelte';
@@ -211,18 +211,24 @@
   }
 
   /**
-   * Every tab keeps its name while the five fit; past that the ones behind
-   * the front tab give way to their icon and count, never to a cut word. A
-   * hidden copy of the full strip measures the room it needs.
+   * Every tab keeps its name while the five fit; when they do not, the tabs
+   * draw closer first (`tight`), which is what keeps French names whole at the
+   * default width; past that the ones behind the front tab give way to their
+   * icon and count, never to a cut word. Two hidden copies of the full strip,
+   * one at each spacing, measure the room each needs.
    */
   let header = $state<HTMLElement | undefined>(undefined);
   let measure = $state<HTMLDivElement | undefined>(undefined);
+  let measureTight = $state<HTMLDivElement | undefined>(undefined);
   let spacer = $state<HTMLSpanElement | undefined>(undefined);
   let compact = $state(false);
+  let tight = $state(false);
   function fit(): void {
     // jsdom lays nothing out: no room means no measure.
-    if (!measure || !tabs || !spacer || tabs.clientWidth + spacer.clientWidth === 0) return;
-    compact = measure.scrollWidth > tabs.clientWidth + spacer.clientWidth - 4;
+    if (!measure || !measureTight || !tabs || !spacer || tabs.clientWidth + spacer.clientWidth === 0) return;
+    const room = tabs.clientWidth + spacer.clientWidth - 4;
+    compact = measureTight.scrollWidth > room;
+    tight = !compact && measure.scrollWidth > room;
   }
   $effect(() => {
     void strip; void counts.of('changes'); void counts.atWork; void panel.activeSurfaceId; void strings.rightPanel.changes;
@@ -299,6 +305,7 @@
     <div
       class="tabs"
       class:compact
+      class:tight
       class:hidden-start={scroller.overflowing && scroller.hiddenStart}
       class:hidden-end={scroller.overflowing && scroller.hiddenEnd}
       role="tablist"
@@ -346,7 +353,7 @@
             </span>
             <span class="cross"><X size={14} strokeWidth={2} /></span>
           </button>
-          <span class="name ui-label">{label(surface)}</span>
+          <span class="name ui-label">{tabLabel(surface)}</span>
           {#if count}<span class="count" aria-hidden="true">{count.value}</span>{/if}
         </div>
         {:else}
@@ -364,23 +371,15 @@
           oncontextmenu={(event) => controlMenu(event, store, `panel.${item.kind}` as ControlId)}
         >
           <span class="glyph"><SurfaceIcon kind={item.kind} size={14} /></span>
-          <span class="name ui-label">{kindName(item.kind)}</span>
+          <span class="name ui-label">{tabKindLabel(item.kind)}</span>
           {#if count}<span class="count" aria-hidden="true">{count.value}</span>{/if}
         </button>
         {/if}
       {/each}
     </div>
-    <!-- The full strip, unseen: the room every name needs, which decides `compact`. -->
-    <div class="tabs measure" aria-hidden="true" bind:this={measure}>
-      {#each strip as item (item.key)}
-        {@const count = counts.of(item.kind)}
-        <span class="tab kind" class:active={item.surface !== undefined && item.surface.id === panel.activeSurfaceId}>
-          {#if item.surface && item.surface.id === panel.activeSurfaceId}<span class="closer"></span>{/if}
-          <span class="name ui-label">{item.surface ? label(item.surface) : kindName(item.kind)}</span>
-          {#if count}<span class="count">{count.value}</span>{/if}
-        </span>
-      {/each}
-    </div>
+    <!-- The full strip, unseen, at both spacings: the room every name needs, which decides `tight` and `compact`. -->
+    <div class="tabs measure" aria-hidden="true" bind:this={measure}>{@render measured()}</div>
+    <div class="tabs measure tight" aria-hidden="true" bind:this={measureTight}>{@render measured()}</div>
 
     {#if scroller.overflowing}
       <button
@@ -464,6 +463,18 @@
     {/each}
   {/if}
 </aside>
+
+
+{#snippet measured()}
+  {#each strip as item (item.key)}
+    {@const count = counts.of(item.kind)}
+    <span class="tab kind" class:active={item.surface !== undefined && item.surface.id === panel.activeSurfaceId}>
+      {#if item.surface && item.surface.id === panel.activeSurfaceId}<span class="closer"></span>{/if}
+      <span class="name ui-label">{item.surface ? tabLabel(item.surface) : tabKindLabel(item.kind)}</span>
+      {#if count}<span class="count">{count.value}</span>{/if}
+    </span>
+  {/each}
+{/snippet}
 
 <style>
   .panel {
@@ -690,6 +701,10 @@
   .tabs.compact .tab:not(.active) .name { display: none; }
   .tabs.compact .tab.kind { padding: 0 6px; gap: 0; }
   .tabs.compact .tab:not(.active) .count { margin-left: 2px; }
+  /* Closer tabs, the step before icons: every name still whole, less air around each. */
+  .tabs.tight { gap: 2px; }
+  .tabs.tight .tab:not(.active) { padding: 0 4px; }
+  .tabs.tight .tab.active { padding: 0 6px 0 4px; }
 
   .tabs.measure {
     position: absolute;

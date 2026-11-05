@@ -1,12 +1,13 @@
 <script lang="ts">
   import { errorText } from '../lib/errors';
   import { parseChord, type KeybindingCommand } from '@boite/contracts';
-  import { RotateCcw, Search, X } from '@lucide/svelte';
+  import { RotateCcw, Search, TriangleAlert, X } from '@lucide/svelte';
   import SyncMark from './SyncMark.svelte';
   import InfoTip from './InfoTip.svelte';
+  import ShowDetails from './ShowDetails.svelte';
   import { commandLabel } from '../lib/commands.svelte';
   import { openOwnFile } from '../lib/links';
-  import { COMMAND_GROUPS, chordFromEvent, chordParts, isMac, scopeOf } from '../lib/keybindings';
+  import { COMMAND_GROUPS, chordFromEvent, chordParts, isMac, refusedCommands, scopeOf } from '../lib/keybindings';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
 
@@ -36,6 +37,8 @@
         .filter((row) => needle === '' || row.label.toLowerCase().includes(needle) || row.id.includes(needle) || (row.parts?.join('+').toLowerCase().includes(needle) ?? false))
     })).filter((group) => group.rows.length > 0);
   });
+  /** The rows whose file entry the core refused: they keep their default, and say so. */
+  let refused = $derived(refusedCommands(store.keybindings?.errors ?? []));
   let anyCustom = $derived(Object.keys(store.keybindings?.bindings ?? {}).length > 0);
 
   function start(id: KeybindingCommand) {
@@ -180,14 +183,17 @@
   </label>
 
   {#if store.keybindings && store.keybindings.errors.length > 0}
-    <section class="card problems" data-testid="keybinding-problems">
-      <h2>{strings.keyboard.problems}</h2>
+    <!-- A warning, not an error: every other entry of the file applied. The raw lines wait in the fold. -->
+    <section class="card problems" data-testid="keybinding-problems" role="status">
+      <h2 class="problems-title"><TriangleAlert size={15} strokeWidth={1.9} aria-hidden="true" /><span class="ui-label">{strings.keyboard.problems}</span></h2>
       <p class="intro">{strings.keyboard.problemsHint}</p>
-      <ul>
-        {#each store.keybindings.errors as error (error)}
-          <li class="mono" data-testid="keybinding-error">{error}</li>
-        {/each}
-      </ul>
+      <ShowDetails testid="keybinding-details">
+        <ul>
+          {#each store.keybindings.errors as error (error)}
+            <li class="mono" data-testid="keybinding-error">{error}</li>
+          {/each}
+        </ul>
+      </ShowDetails>
     </section>
   {/if}
 
@@ -196,7 +202,8 @@
       <h2 class="section-label" id="settings-keys-{group.id}">{strings.keyboard.groups[group.id]}</h2>
       <div class="card list">
         {#each group.rows as row (row.id)}
-          <div class="row" data-testid="keybinding-row" data-command={row.id} data-recording={recording === row.id || undefined} class:custom={row.custom} class:recording={recording === row.id}>
+          {@const refusal = refused.get(row.id)}
+          <div class="row" data-testid="keybinding-row" data-command={row.id} data-recording={recording === row.id || undefined} data-refused={refusal !== undefined || undefined} class:custom={row.custom} class:recording={recording === row.id}>
             <div class="what">
               <span class="label" title={row.id}>{row.label}</span>
               {#if row.custom}<span class="tag">{strings.keyboard.custom}</span>{/if}
@@ -242,6 +249,7 @@
                 </span>
               </div>
             {/if}
+            {#if refusal !== undefined}<p class="row-note refused" data-testid="keybinding-refused" title={refusal}><TriangleAlert size={12} strokeWidth={1.9} aria-hidden="true" /><span class="ui-label">{strings.keyboard.rowRefused}</span></p>{/if}
             {#if problem?.id === row.id}<p class="row-note bad" role="alert"><span class="ui-label">{problem.message}</span></p>{/if}
           </div>
         {/each}
@@ -468,12 +476,33 @@
   .bad {
     color: var(--color-danger);
   }
+  .row-note.refused {
+    justify-content: flex-start;
+    gap: 6px;
+    margin-top: -2px;
+    font-size: var(--text-xs);
+    color: var(--color-subtle);
+  }
+  .row-note.refused :global(svg) {
+    flex: none;
+    color: var(--color-live);
+  }
 
   .problems {
-    border-color: var(--color-danger);
+    border-color: color-mix(in srgb, var(--color-live) 45%, var(--color-border));
+  }
+  .problems-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 8px;
+  }
+  .problems-title :global(svg) {
+    flex: none;
+    color: var(--color-live);
   }
   .problems ul {
-    margin: 8px 0 0;
+    margin: 0;
     padding-left: 18px;
   }
   .problems li {

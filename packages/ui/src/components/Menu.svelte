@@ -37,10 +37,10 @@
   let root = $state<HTMLDivElement | undefined>(undefined);
   let trigger = $state<HTMLButtonElement | undefined>(undefined);
 
-  /** The keyboard lands on the first item the moment the list is there. */
+  /** The keyboard lands on the first item the moment the list is there, unless it closed first. */
   $effect(() => {
     if (!popover.open) return;
-    void tick().then(() => rows()[0]?.focus({ preventScroll: true }));
+    void tick().then(() => { if (popover.open) rows()[0]?.focus({ preventScroll: true }); });
   });
 
   function rows(): HTMLElement[] {

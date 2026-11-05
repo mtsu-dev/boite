@@ -3,7 +3,7 @@
   import { isThisPC, workspace } from '../lib/workspace.svelte';
   import { strings } from '../lib/strings';
 
-  let { store, fallback = strings.quotas.glance }: { store: Store; fallback?: string } = $props();
+  let { store, fallback }: { store: Store; fallback?: string } = $props();
   let machine = $derived(workspace.machines.find((machine) => machine.store === store)
     ?? (store.core?.hostname || store.endpointUrl ? {
       id: store.endpointUrl ?? '', label: store.core?.hostname ?? store.endpointUrl!, store,
@@ -17,7 +17,7 @@
     {label[0]}<span class="name">{machine.label}</span>{label[1] ?? ''}
   </span>
 {:else}
-  {fallback}
+  {fallback ?? strings.quotas.glance}
 {/if}
 
 <style>

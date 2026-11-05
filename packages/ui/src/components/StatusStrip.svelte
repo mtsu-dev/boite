@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Archive, Check, ChevronRight, Network } from '@lucide/svelte';
+  import { Archive, ArrowDownToLine, Check, ChevronRight, Network } from '@lucide/svelte';
   import { threadBusy } from '@boite/contracts';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
@@ -17,9 +17,11 @@
    * finished with the two ways to put it away. Its right end walks the user to
    * the next thread that waits on them, on any machine, without touching it.
    * What it delegated is one chip, a glyph and a number with its words in the
-   * tooltip, so the line stays one line on every width.
+   * tooltip, so the line stays one line on every width. A finished thread
+   * read from far above its end offers the way back to the start of its last
+   * answer, where the turn's files and PR sit under it.
    */
-  let { store }: { store: Store } = $props();
+  let { store, away = false, onlastanswer }: { store: Store; away?: boolean; onlastanswer?: () => void } = $props();
 
   let thread = $derived(store.openThread);
   let state = $derived(thread ? stripState(thread, { permissions: store.pendingPermissions, questions: store.pendingQuestions }) : null);
@@ -97,6 +99,9 @@
         <span class="ui-label">{finishedLabel}</span>
       </span>
     {/if}
+    {#if state?.kind === 'finished' && doneAllowed && away && onlastanswer}
+      <button type="button" class="act last" data-testid="status-strip-last-answer" title={strings.chat.strip.lastAnswerTitle} onclick={onlastanswer}><ArrowDownToLine size={13} strokeWidth={1.75} /><span class="ui-label">{strings.chat.strip.lastAnswer}</span></button>
+    {/if}
     {#if state?.kind === 'finished' && doneAllowed}
       <!-- The two ways to put it away travel together: when the line is full they wrap to the second line as one. -->
       <span class="finish">
@@ -111,7 +116,7 @@
         class="act counts"
         class:working={state?.kind === 'working' || state?.kind === 'asking'}
         data-testid="active-subagents"
-        title={[strings.chat.strip.showAgents, state !== null && delegatedTime ? fill(strings.chat.strip.delegatedFor, { time: delegatedTime }) : null].filter(Boolean).join('\n')}
+        title={[delegatedWords, strings.chat.strip.showAgents, state !== null && delegatedTime ? fill(strings.chat.strip.delegatedFor, { time: delegatedTime }) : null].filter(Boolean).join('\n')}
         aria-label={delegatedWords}
         onclick={openAgents}
       >

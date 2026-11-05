@@ -221,6 +221,7 @@
           onwrite={() => writeAnswer(store, part.questionId)}
           page={part.open?.url}
           onopen={() => openQuestionPage(store, message.threadId, part.questionId)}
+          series={part.series}
         />{/snippet}</Deferred>
       {:else if part.type === 'secret_request'}
         <Deferred part={parts.SecretCard}>{#snippet children(SecretCard)}<SecretCard {store} threadId={message.threadId} {part} />{/snippet}</Deferred>

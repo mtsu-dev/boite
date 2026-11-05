@@ -6,6 +6,8 @@ export const strings = {
     status: { running: 'Running', paused: 'Paused', done: 'Done', failed: 'Failed', stopped: 'Stopped' },
     stepStatus: { waiting: 'Waiting', running: 'Running', done: 'Done', failed: 'Failed', skipped: 'Skipped', stopped: 'Stopped' },
     steps: '{done}/{total} steps',
+    /** An ended run's record on its line in the chat; the live count is the status strip's. */
+    stepsDone: '{done} of {total} steps',
     phase: 'Phase {n}',
     pause: 'Pause',
     resume: 'Resume',

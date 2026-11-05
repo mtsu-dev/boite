@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { Check } from '@lucide/svelte';
   import type { Autosave } from '../lib/autosave.svelte';
   import { strings } from '../lib/strings';
+  import SavedMark from './SavedMark.svelte';
 
   /**
    * What became of the last change of a form that saves by itself, at the right
@@ -17,7 +17,8 @@
     {#if save.state === 'waiting' || save.state === 'saving'}
       {t.saving}
     {:else if save.state === 'saved'}
-      <Check size={12} aria-hidden="true" />{t.saved}
+      <!-- The same mark as a form with a Save button: it fades, the state stays for whoever reads it. -->
+      <SavedMark announce={false} testid="save-status-saved" />
     {:else if save.state === 'invalid'}
       <span class="reason" title={save.error}>{save.error || t.invalid}</span>
     {:else}

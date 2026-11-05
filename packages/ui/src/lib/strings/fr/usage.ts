@@ -25,7 +25,7 @@ export const fr: Translation = {
     filterUnsupported: 'Cette machine ne filtre pas la consommation par fournisseur. Mettez Boite à jour dessus, puis réessayez.',
     noActivity: 'Aucun tour',
     noUsage: 'Non rapporté',
-    coverage: 'Jetons : {reported} tours sur {turns} · Prix : {priced} sur {turns}',
+    coverage: 'Jetons comptés : {reported} tours sur {turns} · Tarifés : {priced} tours sur {turns}',
     partialCost: "{count} tours n'ont pas de prix et sont laissés hors de l'estimation.",
     rates: 'Tarif API public de {model}, par million de jetons : entrée {input}, sortie {output}, lecture du cache {cacheRead}, écriture du cache {cacheWrite}.',
     cacheSplit: 'Cache : {read} lus, {write} écrits.',

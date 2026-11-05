@@ -5,6 +5,7 @@
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import InfoTip from './InfoTip.svelte';
+  import SavedMark from './SavedMark.svelte';
 
   /**
    * The `autoGoalMinChars` setting under the Automatic goals switch: how long
@@ -24,12 +25,14 @@
   let valid = $derived(typeof chars === 'number' && Number.isInteger(chars) && chars >= AUTO_GOAL_MIN_CHARS.min && chars <= AUTO_GOAL_MIN_CHARS.max);
 
   let saving = $state(false);
+  /** Raised after each save the core took, for the mark beside the label. */
+  let savedStamp = $state(0);
   async function save() {
     if (!valid) return;
     if (chars === saved) { dirty = false; return; }
     saving = true;
     const ok = await store.saveSettings({ autoGoalMinChars: chars as number }).finally(() => { saving = false; });
-    if (ok) dirty = false;
+    if (ok) { dirty = false; savedStamp += 1; }
   }
 </script>
 
@@ -37,7 +40,7 @@
 {#if store.owner && store.settings}
   <div class="option" data-testid="auto-goal-settings">
     <span class="icon"><TextQuote size={18} strokeWidth={1.75} /></span>
-    <label for="{uid}-chars" class="name"><span class="ui-label">{strings.experiments.autoGoal.minChars}</span><InfoTip topic={strings.experiments.autoGoal.minChars} text={strings.experiments.autoGoal.minCharsHint} /></label>
+    <label for="{uid}-chars" class="name"><span class="ui-label">{strings.experiments.autoGoal.minChars}</span><InfoTip topic={strings.experiments.autoGoal.minChars} text={strings.experiments.autoGoal.minCharsHint} /><SavedMark stamp={savedStamp} testid="auto-goal-saved" /></label>
     <span class="field">
       <input id="{uid}-chars" type="number" inputmode="numeric" min={AUTO_GOAL_MIN_CHARS.min} max={AUTO_GOAL_MIN_CHARS.max} step="100"
         data-testid="auto-goal-min-chars" aria-invalid={!valid}

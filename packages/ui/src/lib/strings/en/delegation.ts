@@ -33,6 +33,11 @@ export const strings = {
     /** When delegated work began, on its line in the chat while it runs. */
     startedAt: 'started {time}',
     completed: '{done}/{total} completed',
+    /** What ended subagents did, on their line in the chat once none runs. */
+    completedOne: '1 completed',
+    completedMany: '{count} completed',
+    stoppedOne: '1 stopped',
+    interruptedOne: '1 interrupted',
     failed: '{count} failed',
     stopped: '{count} stopped',
     elapsed: 'Elapsed time',

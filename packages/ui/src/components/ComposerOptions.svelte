@@ -92,7 +92,8 @@
   .choices label.selected { background: var(--color-accent-soft); border-color: var(--color-accent); color: var(--color-accent); }
   .choices.permissions { flex-direction: column; }
   .choices.permissions label { justify-content: flex-start; text-align: left; }
-  .mode-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  /* `margin: 0` undoes app.css's `label > span` gap, which left the two lines 2 px above the row's centre. */
+  .mode-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; margin: 0; }
   .mode-hint { font-size: var(--text-xs); line-height: 1.35; color: var(--color-muted-foreground); }
   .choices label:focus-within { outline: 2px solid var(--color-accent); outline-offset: 2px; }
   input { position: absolute; opacity: 0; width: 1px; height: 1px; }

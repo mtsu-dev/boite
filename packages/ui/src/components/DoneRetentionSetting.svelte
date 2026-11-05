@@ -3,6 +3,7 @@
   import { DEFAULT_THREAD_DONE_RETENTION_DAYS } from '@boite/contracts';
   import SyncMark from './SyncMark.svelte';
   import InfoTip from './InfoTip.svelte';
+  import SavedMark from './SavedMark.svelte';
   import { strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
 
@@ -11,6 +12,8 @@
   let days = $state<number | undefined>(DEFAULT_THREAD_DONE_RETENTION_DAYS);
   let dirty = $state(false);
   let saving = $state(false);
+  /** Raised after each save the core took, for the mark beside the button. */
+  let savedStamp = $state(0);
   const valid = $derived(typeof days === 'number' && Number.isInteger(days) && days >= 0 && days <= 3650);
   $effect(() => {
     const saved = store.settings?.threadDoneRetentionDays ?? DEFAULT_THREAD_DONE_RETENTION_DAYS;
@@ -22,7 +25,10 @@
     const submitted = days!;
     saving = true;
     try {
-      if (await store.saveSettings({ threadDoneRetentionDays: submitted }) && days === submitted) dirty = false;
+      if (await store.saveSettings({ threadDoneRetentionDays: submitted })) {
+        savedStamp += 1;
+        if (days === submitted) dirty = false;
+      }
     } finally { saving = false; }
   }
 </script>
@@ -40,6 +46,7 @@
         data-testid="done-retention-days" />
       <button type="submit" disabled={!valid || !dirty || saving || !store.settings || store.connection !== 'ready'}
         data-testid="done-retention-save"><span class="ui-label">{strings.common.save}</span></button>
+      <SavedMark stamp={savedStamp} testid="done-retention-saved" />
     </div>
     {#if !valid}<p id="{uid}-error" class="field-error" role="alert">{strings.settings.deleted.retentionError}</p>{/if}
   </form>

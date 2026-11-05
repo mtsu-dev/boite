@@ -55,6 +55,20 @@ export function kindName(kind: SurfaceKind): string {
 }
 
 /**
+ * The word a panel tab shows, which can be shorter than the kind's name so the
+ * strip keeps every label at its default width in a longer language. The
+ * tooltip and the accessible name keep the full name.
+ */
+export function tabLabel(surface: Surface): string {
+  return surface.kind === 'agents' ? strings.rightPanel.agentsTab : label(surface);
+}
+
+/** The same short word for a kind not open yet. */
+export function tabKindLabel(kind: SurfaceKind): string {
+  return kind === 'agents' ? strings.rightPanel.agentsTab : kindName(kind);
+}
+
+/**
  * A page needs a webview. Paired devices follow subagents and mail, read
  * changes and files read-only and watch the agent's browser, the Device and
  * the Window panels (`DEVICE_METHODS`), and follow a debate's salon; tasks and

@@ -64,7 +64,7 @@ export const fr: Translation = {
     defaultModel: 'Modèle par défaut',
     renamePlaceholder: 'Titre de la conversation',
     start: 'Lancer une conversation',
-    inWorktree: 'dans un worktree',
+    inWorktree: 'sur une copie à part',
     inProject: 'dans',
     onMachine: 'sur',
     using: 'avec',

@@ -85,6 +85,24 @@ export function resolveBindings(overrides: Keybindings['bindings']): BindingTabl
   return table;
 }
 
+const KNOWN_COMMANDS = new Set<string>(KEYBINDING_COMMANDS);
+
+/**
+ * The commands whose file entry the core refused, each with the core's reason
+ * for it. The core writes a refusal as `keybindings.json: "<id>": <reason>` or
+ * `keybindings.json: "<id>" <reason>`; a line about the whole file, or about
+ * an id Boite has no command for, names no row and is left out.
+ */
+export function refusedCommands(errors: readonly string[]): Map<KeybindingCommand, string> {
+  const refused = new Map<KeybindingCommand, string>();
+  for (const line of errors) {
+    const match = /^[^:"]+: "([^"]+)"(?::\s*|\s+)(.+)$/.exec(line);
+    if (!match || !KNOWN_COMMANDS.has(match[1]!)) continue;
+    refused.set(match[1] as KeybindingCommand, match[2]!);
+  }
+  return refused;
+}
+
 /** True while this keydown is exactly this chord: the same modifiers, no more, and the key. */
 export function matchesChord(event: KeyboardEvent, chord: Chord, mac: boolean = isMac()): boolean {
   const ctrl = chord.ctrl || (chord.mod && !mac);

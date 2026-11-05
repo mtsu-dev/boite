@@ -44,6 +44,9 @@
   let quotaRoom = $state<HTMLElement>();
   /** How tall the subagent bar stands over the composer: the band of tasks floats above it, not over it. */
   let agentDockRoom = $state(0);
+  /** The open thread's timeline, and whether its reader is away from the end: the strip's Last answer. */
+  let timelineList = $state<{ toLastAnswer: () => void } | undefined>(undefined);
+  let readerAway = $state(false);
   $effect(() => {
     const box = discussion, column = quotaRoom, owner = store;
     if (!box || !column || !experimentOn('pinned-quotas') || !pinnedQuotas.current.pinned) return;
@@ -151,7 +154,7 @@
         {#if store.loadingThreadId === thread.id && messages.length === 0}
           <ThreadLoading progress={store.loadingBytes?.threadId === thread.id ? store.loadingBytes : null} />
         {:else}
-          <MessageList {store} threadId={thread.id} {messages} />
+          <MessageList bind:this={timelineList} {store} threadId={thread.id} {messages} onbehind={(away) => readerAway = away} />
         {/if}
       {/key}
     {:else if sending}
@@ -207,7 +210,7 @@
     {#if thread?.worktreeRemoved}<WorktreeGoneNotice removal={thread.worktreeRemoved} archived={thread.archived} />{/if}
     {#if thread?.contactHold && !thread.archived}<ContactHoldNotice {store} threadId={thread.id} contacts={thread.contactHold.contacts} />{/if}
     <!-- Right on the composer, so the band of tasks rises by this line's height alone, whatever notice stands above. -->
-    {#if thread && !thread.archived && !locked}<div class="strip-room" bind:offsetHeight={agentDockRoom}><StatusStrip {store} /></div>{/if}
+    {#if thread && !thread.archived && !locked}<div class="strip-room" bind:offsetHeight={agentDockRoom}><StatusStrip {store} away={readerAway} onlastanswer={() => timelineList?.toLastAnswer()} /></div>{/if}
     {#if locked}<p class="locked" data-testid="chat-locked">{locked}</p>
     {:else if thread?.archived}<DoneThreadNotice {store} threadId={thread.id} />{:else if !thread && !sending && firstRunSteps(store).active}<FirstRun {store} />{:else}<Composer {store} centered={!thread && !sending} />{/if}
 

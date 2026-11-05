@@ -39,9 +39,10 @@ test('a coverage line breaks only between its pieces, each label staying beside 
   mounted = mount(UsagePage, { target: document.body, props: { store: store(vi.fn(async (_method: string, params: { edges: number[] }) => history(params.edges, 'claude'))) } });
   await settle();
   const pieces = (selector: string) => [...document.querySelectorAll(`${selector} .pair`)].map((piece) => piece.textContent);
-  expect(pieces('[data-testid=usage-coverage]')).toEqual(['Tokens: 0 of 2 turns ·', 'Price: 0 of 2']);
-  expect(pieces('[data-provider=claude] .provider small')).toEqual(['Tokens: 0 of 2 turns ·', 'Price: 0 of 2']);
-  expect(document.querySelector('[data-testid=usage-coverage]')!.textContent).toBe('Tokens: 0 of 2 turns · Price: 0 of 2');
+  // Both halves count the same thing, turns, so "Priced" says what it counts.
+  expect(pieces('[data-testid=usage-coverage]')).toEqual(['Tokens counted: 0 of 2 turns ·', 'Priced: 0 of 2 turns']);
+  expect(pieces('[data-provider=claude] .provider small')).toEqual(['Tokens counted: 0 of 2 turns ·', 'Priced: 0 of 2 turns']);
+  expect(document.querySelector('[data-testid=usage-coverage]')!.textContent).toBe('Tokens counted: 0 of 2 turns · Priced: 0 of 2 turns');
 });
 
 test('the refresh sits on the title line, not on a row of its own under the filters', async () => {

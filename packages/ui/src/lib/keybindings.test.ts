@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { KEYBINDING_COMMANDS, parseChord } from '@boite/contracts';
-import { COMMAND_GROUPS, chordFromEvent, chordLabel, chordParts, commandForKey, isMac, matchesChord, resolveBindings } from './keybindings';
+import { COMMAND_GROUPS, chordFromEvent, chordLabel, chordParts, commandForKey, isMac, matchesChord, refusedCommands, resolveBindings } from './keybindings';
 
 function key(init: KeyboardEventInit): KeyboardEvent {
   return new KeyboardEvent('keydown', init);
@@ -120,5 +120,18 @@ describe('recording a chord on the Keyboard page', () => {
     const listed = COMMAND_GROUPS.flatMap((group) => group.commands);
     expect([...listed].sort()).toEqual([...KEYBINDING_COMMANDS].sort());
     expect(new Set(listed).size).toBe(listed.length);
+  });
+
+  test('a refused file entry names its row, and a line about the file or an unknown id names none', () => {
+    const refused = refusedCommands([
+      'keybindings.json: "trace": "t" has no modifier: a chord needs mod, ctrl, alt or meta before its key',
+      'keybindings.json: "pin" must be a chord string like mod+shift+k, or null to unbind it',
+      'keybindings.json: "nope" is not a command Boite has (the Keyboard settings list them)',
+      'keybindings.json: not valid JSON (Unexpected token)'
+    ]);
+    expect([...refused.entries()]).toEqual([
+      ['trace', '"t" has no modifier: a chord needs mod, ctrl, alt or meta before its key'],
+      ['pin', 'must be a chord string like mod+shift+k, or null to unbind it']
+    ]);
   });
 });

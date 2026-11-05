@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ArrowUp, GitBranch, LoaderCircle, Mic, MicOff, Paperclip, Square } from '@lucide/svelte';
+  import { ArrowUp, GitBranch, LoaderCircle, Mic, MicOff, Paperclip, Plus, Square } from '@lucide/svelte';
   import { tick } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import { effectiveCompaction, type PermissionMode, type ProviderSummary } from '@boite/contracts';
@@ -9,6 +9,7 @@
   import { modeHint, modeIcon, modeLabel, modesFor, shownMode } from '../lib/permission-modes';
   import { fill, strings } from '../lib/strings';
   import type { Choice, PickPatch, Store } from '../lib/store.svelte';
+  import type { MenuItem } from '../lib/menu';
   import EffortSlider from './EffortSlider.svelte';
   import Menu from './Menu.svelte';
   import ModelPicker from './ModelPicker.svelte';
@@ -25,9 +26,11 @@
   import { desktopSettings } from '../lib/settings-tabs';
 
   /**
-   * The row under the composer's box: the model, effort, worktree and mode
-   * chips (folded into Options on a phone), then stop, attach, dictation and
-   * send. A pick on a thread is saved at once, after the switch warnings; on a
+   * The row under the composer's box: + (attach, the separate copy, and
+   * dictation once the box has text), the model, effort and mode chips (all
+   * folded into Options on a phone), then stop and one slot that holds the
+   * microphone while the box is empty and Send once it has something to send.
+   * A pick on a thread is saved at once, after the switch warnings; on a
    * draft the whole choice is remembered. `choice`, `picking` and `dictating`
    * are the composer's, bound here. An agent's box (`target`) keeps stop,
    * attach, dictation and send; its model chips save the agent's own setting,
@@ -40,9 +43,10 @@
     bot = null,
     provider,
     canSend,
+    empty = false,
     waiting = false,
     answering = false,
-    sendLabel = strings.composer.send,
+    sendLabel,
     choice = $bindable(),
     picking = $bindable(),
     dictating = $bindable(),
@@ -59,11 +63,13 @@
     bot?: string | null;
     provider: ProviderSummary | null | undefined;
     canSend: boolean;
+    /** Nothing typed, attached or referenced: the send slot holds the microphone. */
+    empty?: boolean;
     /** Send was pressed while files were still being read: it goes once they are ready. */
     waiting?: boolean;
     answering?: boolean;
     /** What Send does, when it answers a question rather than sending a message. */
-    sendLabel?: string;
+    sendLabel?: string | undefined;
     choice: Choice | null;
     picking: boolean;
     dictating: boolean;
@@ -74,6 +80,8 @@
   } = $props();
 
   let picker = $state<HTMLInputElement | undefined>(undefined);
+  // Read here, not as the prop's default, so a language switch reaches it.
+  let sendText = $derived(sendLabel ?? strings.composer.send);
   let bar = $state<HTMLDivElement | undefined>(undefined);
 
   let bound = $derived(!target && store.openThread !== null);
@@ -135,6 +143,28 @@
   let draftRepository = $derived(
     !target && work.shows('composer.worktree') && store.draft && !store.draftInDrafts ? store.projects.find((project) => project.id === store.draft?.projectId)?.repository === true : false
   );
+
+  let worktreeShown = $derived(!target && !!store.draft && draftRepository);
+  /**
+   * The user's own box shares one slot between the microphone and Send on a
+   * desktop: the microphone while the box is empty and no turn runs, and while
+   * it records, since it is then the Finish button; Send once there is text.
+   * Stop holds the end alone while a turn runs on an empty box. An agent's box
+   * and an answer keep both. The phone's row keeps its own layout.
+   */
+  let slotted = $derived(!answering && !target);
+  let micShown = $derived(voice.current.enabled && (!slotted || dictating || (empty && !stopShown)));
+  let moreItems = $derived.by((): MenuItem[] => [
+    ...(canAttach ? [{ id: 'attach', label: strings.composer.attach, glyph: Paperclip }] : []),
+    // With text in the box the microphone leaves the slot: it is one press away here.
+    ...(voice.current.enabled && !micShown ? [{ id: 'dictate', label: strings.speech.start, glyph: Mic }] : []),
+    ...(worktreeShown ? [{ id: 'worktree', label: strings.composer.worktree, title: store.draft?.worktree ? strings.composer.worktreeOn : strings.composer.worktreeOff, glyph: GitBranch, checked: !!store.draft?.worktree }] : []),
+  ]);
+  function pickMore(id: string) {
+    if (id === 'attach') picker?.click();
+    else if (id === 'dictate') bar?.querySelector<HTMLElement>('[data-testid="dictation-start"]')?.click();
+    else if (id === 'worktree') store.setDraftWorktree(!store.draft?.worktree);
+  }
 
   // The reasoning chip belongs to the model the choice is on, and a model that
   // offers no scale (an agent that keeps its own) gets no chip at all.
@@ -262,12 +292,26 @@
   {#key `${key}:${store.draft?.projectId ?? ''}`}
   <ComposerOptions busy={picking} levels={[]} effort={null} agentDefault={false} speeds={[]} speed={null} modes={[]} modeLabel={(mode) => modeLabel(mode, provider)} modeHint={(mode) => modeHint(mode, provider)} mode={displayedMode} worktree={null} {canAttach} onattach={() => picker?.click()} oneffort={pickEffort} onspeed={(speed) => void pick(speedOptions.pick(speed))} onmode={pickMode} onworktree={() => {}} />
   {/key}
+  {#if slotted && moreItems.length > 0}
+  <div class="more">
+    <Menu items={moreItems} onpick={pickMore} label={strings.composer.more} testid="composer-plus" variant="ghost" switches={worktreeShown}>
+      <Plus size={16} strokeWidth={1.75} />
+    </Menu>
+  </div>
+  {/if}
   <!-- The chips' room, empty, so the tools keep their place at the end of the row on both widths. -->
   <div class="chips" aria-hidden="true"></div>
   {:else if !answering}
   {#key `${key}:${store.draft?.projectId ?? ''}`}
   <ComposerOptions busy={picking} levels={effortLevels} effort={activeEffort} {agentDefault} {speeds} speed={speedOptions.speed} {modes} modeLabel={(mode) => modeLabel(mode, provider)} modeHint={(mode) => modeHint(mode, provider)} mode={displayedMode} worktree={store.draft && draftRepository ? store.draft.worktree : null} {canAttach} onattach={() => picker?.click()} oneffort={pickEffort} onspeed={(speed) => void pick(speedOptions.pick(speed))} onmode={pickMode} onworktree={() => store.setDraftWorktree(!store.draft?.worktree)} />
   {/key}
+  {#if slotted && moreItems.length > 0}
+  <div class="more">
+    <Menu items={moreItems} onpick={pickMore} label={strings.composer.more} testid="composer-plus" variant="ghost" switches={worktreeShown}>
+      <Plus size={16} strokeWidth={1.75} />
+    </Menu>
+  </div>
+  {/if}
   <div class="chips">
     <ModelPicker {store} {choice} disabled={picking} onpick={pick} />
     {#if signedOut && store.owner}
@@ -290,17 +334,17 @@
       <EffortSlider levels={effortLevels} active={activeEffort} onpick={pickEffort} ondefault={agentDefault ? () => pickEffort(null) : undefined} {speeds} speed={speedOptions.speed} onspeed={(speed) => void pick(speedOptions.pick(speed))} />
     {/if}
 
-    <!-- A thread keeps its directory, so the switch exists on a draft alone. -->
-    {#if !target && store.draft && draftRepository}
+    <!-- A thread keeps its directory, so the switch exists on a draft alone. It is
+         turned on from +; once on, this chip says so, and a press turns it off. -->
+    {#if worktreeShown && store.draft?.worktree}
       <button
         type="button"
-        class="chip worktree"
-        class:on={store.draft.worktree}
+        class="chip worktree on"
         data-testid="composer-worktree"
-        title={store.draft.worktree ? strings.composer.worktreeOn : strings.composer.worktreeOff}
+        title={strings.composer.worktreeOn}
         aria-label={strings.composer.worktree}
-        aria-pressed={store.draft.worktree}
-        onclick={() => store.setDraftWorktree(!store.draft?.worktree)}
+        aria-pressed="true"
+        onclick={() => store.setDraftWorktree(false)}
       >
         <GitBranch size={14} strokeWidth={1.75} />
         <span class="ui-label">{strings.composer.worktree}</span>
@@ -327,6 +371,7 @@
     </button>
   {/if}
     {#if canAttach}
+      {#if !slotted}
       <button
         type="button"
         class="icon attach"
@@ -337,6 +382,7 @@
       >
         <Paperclip size={16} strokeWidth={1.75} />
       </button>
+      {/if}
       <input
         bind:this={picker}
         class="file"
@@ -351,6 +397,7 @@
 
 
   {#if voice.current.enabled}
+  <span class="mic" class:tucked={!micShown}>
   {#key store}
     {#key `${key}:${store.draft?.projectId ?? ''}`}
       <Deferred part={parts.Dictation}>
@@ -362,22 +409,24 @@
       </Deferred>
     {/key}
   {/key}
+  </span>
   {/if}
   <!-- While it works, Stop holds the end alone; Send joins it once the box has something to send. -->
   {#if !stopShown || canSend || waiting || answering}
   <button
     type="button"
     class="primary icon send"
+    class:tucked={slotted && micShown}
     data-testid="composer-send"
     data-waiting={waiting || undefined}
-    title={waiting ? strings.composer.sendWhenLoaded : sendLabel}
-    aria-label={waiting ? strings.composer.sendWhenLoaded : sendLabel}
+    title={waiting ? strings.composer.sendWhenLoaded : sendText}
+    aria-label={waiting ? strings.composer.sendWhenLoaded : sendText}
     disabled={!canSend}
     onmousedown={keepFocus}
     onclick={() => onsubmit()}
   >
     {#if waiting}<LoaderCircle size={16} strokeWidth={2.25} class="spinner" />{:else}<ArrowUp size={16} strokeWidth={2.25} />{/if}
-    {#if answering}<span class="ui-label">{sendLabel}</span>{/if}
+    {#if answering}<span class="ui-label">{sendText}</span>{/if}
   </button>
   {/if}
 </div>
@@ -392,6 +441,18 @@
   }
 
   .context-control { flex: none; }
+
+  /* The microphone's own box lays out as the bar's child, so a tucked one leaves no gap. */
+  .mic { display: contents; }
+  .more { display: flex; flex: none; }
+  .more :global(.trigger.ghost) { width: 28px; height: 28px; padding: 0; justify-content: center; border-radius: var(--radius-full); color: var(--color-muted-foreground); }
+  .more :global(.trigger.ghost:hover), .more :global(.trigger.ghost[aria-expanded='true']) { background: var(--color-hover); color: var(--color-foreground); }
+  /* The slot: one of the microphone and Send. A failed dictation keeps its
+     microphone, since its panel (retry, settings) hangs from it. */
+  @media (min-width: 721px) {
+    .send.tucked, .mic.tucked :global(.dictation[data-phase='idle']), .mic.tucked .dictation-stand-in { display: none; }
+    .mic :global(.microphone), .mic .dictation-stand-in button { border-radius: var(--radius-full); }
+  }
 
   .mode-icon { display: inline-flex; }
   .chip.signed-out { color: var(--color-live); }
@@ -507,7 +568,7 @@
 
   @media (max-width: 720px) {
     .bar { gap: 2px; padding: var(--composer-bar-padding, 0 8px 6px); }
-    .desktop-options, .attach { display: none; }
+    .desktop-options, .attach, .more { display: none; }
     .chips { flex: 1; flex-wrap: nowrap; }
     .chips :global(.picker) { min-width: 0; max-width: 100%; }
     /* A capsule of fill, as on the desktop: no outline, no top highlight. */

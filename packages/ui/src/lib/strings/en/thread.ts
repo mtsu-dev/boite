@@ -66,7 +66,7 @@ export const strings = {
     renamePlaceholder: 'Thread title',
     /** The draft's own heading, the project's name in the dropdown after it. */
     start: 'Start a thread',
-    inWorktree: 'in a worktree',
+    inWorktree: 'on a separate copy',
     inProject: 'in',
     /** Before the machine the draft's project is on, which ends the heading. */
     onMachine: 'on',

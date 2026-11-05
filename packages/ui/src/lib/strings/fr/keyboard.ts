@@ -25,8 +25,9 @@ export const fr: Translation = {
     id: 'Identifiant',
     none: 'Non défini',
     custom: 'modifié',
-    problems: 'Refusé',
-    problemsHint: 'Ces lignes du fichier n\'ont pas été appliquées. Corrigez-les et enregistrez.',
+    problems: 'Certains raccourcis n\'ont pas été appliqués',
+    problemsHint: 'Le reste du fichier s\'applique. Corrigez les entrées signalées dans le fichier, puis enregistrez-le.',
+    rowRefused: 'L\'entrée du fichier n\'a pas été appliquée ; la valeur par défaut reste.',
     commands: {
       palette: 'Ouvrir la palette de commandes',
       browser: 'Ouvrir le navigateur',

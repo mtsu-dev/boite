@@ -10,6 +10,7 @@ import { defaultPrefs, PREFS_STORAGE_KEY, STASH_STORAGE_KEY } from '../lib/prefs
 import { Store, store } from '../lib/store.svelte';
 import { repliesOf, sendAnswer, TYPING_PAUSE_MS } from '../lib/question-reply.svelte';
 import { closeTour } from '../lib/onboarding.svelte';
+import { pickPlus, plusRows } from '../test/composer-plus';
 import { freshWork, work, WORK_STORAGE_KEY } from '../lib/work-prefs.svelte';
 import { retryTurn } from '../lib/composer-edit';
 import { strings } from '../lib/strings';
@@ -569,8 +570,9 @@ test('a first run shows the reasoning, mode and worktree chips at their defaults
   // The built-in entry shows the scale at once; the account's catalog adds the fast mode.
   await waitFor(() => store.modelOf(store.defaultChoice())?.speeds !== undefined);
   query('[data-testid=composer-mode]');
-  expect(query('[data-testid=composer-worktree]').getAttribute('aria-pressed')).toBe('false');
-  expect(document.querySelector('[data-testid=composer-more]')).toBeNull();
+  // Attach and the separate copy wait in +, the copy off: no chip says it is on.
+  expect(plusRows()).toEqual({ attach: null, worktree: false });
+  expect(document.querySelector('[data-testid=composer-worktree]')).toBeNull();
 
   effortChip()!.click();
   await waitFor(() => document.querySelector('[data-testid=composer-effort-menu]') !== null);
@@ -1151,8 +1153,9 @@ function loaded(): boolean {
 test('a pasted image becomes a chip, comes off again, and rides the prompt', async ({ app: _app }) => {
   await store.open('t-trace');
   await waitFor(() => store.openThread?.id === 't-trace' && !store.busy);
-  // The echo agent reads images, so the chip bar offers the paperclip.
-  await waitFor(() => document.querySelector('[data-testid=composer-attach]') !== null);
+  // The echo agent reads images, so + offers the paperclip.
+  await waitFor(() => document.querySelector('[data-testid=composer-file]') !== null);
+  expect(plusRows()).toEqual({ attach: null });
 
   paste(pngFile());
   await waitFor(() => chips().length === 1 && loaded());
@@ -1233,7 +1236,7 @@ test('a pasted image becomes a chip, comes off again, and rides the prompt', asy
 test('a picture tile draws a small thumbnail, the preview the bytes by URL, both revoked when it leaves', async ({ app: _app }) => {
   await store.open('t-trace');
   await waitFor(() => store.openThread?.id === 't-trace' && !store.busy);
-  await waitFor(() => document.querySelector('[data-testid=composer-attach]') !== null);
+  await waitFor(() => document.querySelector('[data-testid=composer-file]') !== null);
   let made = 0;
   const created = vi.fn((blob: Blob) => `blob:test/${++made}-${blob.type}`);
   const revoked = vi.fn();
@@ -1741,7 +1744,8 @@ test('a provider that reads no image still takes files and refuses an image past
   await waitFor(() => store.draft !== null);
   await waitFor(() => store.defaultChoice()?.providerId === 'opencode');
 
-  expect(document.querySelector('[data-testid=composer-attach]')).not.toBeNull();
+  expect(plusRows().attach).toBeNull();
+  expect(document.querySelector('[data-testid=composer-file]')).not.toBeNull();
 
   paste(pngFile());
   await waitFor(() => store.error !== null);
@@ -2824,4 +2828,44 @@ test('copying an image reference carries its picture to another composer, and st
   press('z', { ctrlKey: true });
   await waitFor(() => input().value === 'see ' && chips().length === 0);
   expect(store.composerStates['t-trace']!.attachments).toHaveLength(2);
+});
+
+test('one slot holds the microphone on an empty box and Send once it has text; + reaches attach and dictation, Stop stands alone while a turn runs', async ({ app: _app }) => {
+  await store.open('t-trace');
+  await waitFor(() => store.openThread?.id === 't-trace' && !store.busy && document.querySelector('[data-testid=dictation-start]') !== null);
+  const send = () => query<HTMLButtonElement>('[data-testid=composer-send]');
+  const micTucked = () => query('[data-testid=composer] .mic').classList.contains('tucked');
+  // Empty: the microphone holds the slot, Send waits behind it, + holds the paperclip.
+  expect(micTucked()).toBe(false);
+  expect(send().classList.contains('tucked')).toBe(true);
+  expect(plusRows()).toEqual({ attach: null });
+  // The paperclip opens the file picker from +.
+  const picked = vi.fn();
+  query<HTMLInputElement>('[data-testid=composer-file]').addEventListener('click', picked);
+  pickPlus('attach');
+  expect(picked).toHaveBeenCalledOnce();
+
+  // Text: Send takes the slot, and the microphone is one press away in +.
+  await type('Dictate after this');
+  expect(send().classList.contains('tucked')).toBe(false);
+  expect(send().disabled).toBe(false);
+  expect(micTucked()).toBe(true);
+  expect(plusRows()).toEqual({ attach: null, dictate: null });
+  const started = vi.fn();
+  query('[data-testid=dictation-start]').addEventListener('click', started);
+  pickPlus('dictate');
+  expect(started).toHaveBeenCalledOnce();
+
+  // A turn running on an empty box: Stop alone at the end, neither Send nor the microphone beside it.
+  await type('');
+  store.openThread!.status = 'running';
+  await waitFor(() => document.querySelector('[data-testid=composer-stop]') !== null);
+  expect(document.querySelector('[data-testid=composer-send]')).toBeNull();
+  expect(micTucked()).toBe(true);
+  expect(Object.keys(plusRows())).toEqual(['attach', 'dictate']);
+  // Text to queue: Send comes back beside Stop.
+  await type('Then this');
+  await waitFor(() => document.querySelector('[data-testid=composer-send]:not(.tucked)') !== null);
+  expect(document.querySelector('[data-testid=composer-stop]')).not.toBeNull();
+  store.openThread!.status = 'idle';
 });

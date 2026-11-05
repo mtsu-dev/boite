@@ -54,7 +54,11 @@
   const narrow = new MediaQuery('(max-width: 720px)');
   const reveal = new MessageReveal(() => messages, () => narrow.current);
 
-  let { store, threadId, messages }: { store: Store; threadId: string; messages: Message[] } = $props();
+  let { store, threadId, messages, onbehind }: {
+    store: Store; threadId: string; messages: Message[];
+    /** Whether the reader is away from the end: the finished strip then offers the last answer. */
+    onbehind?: (behind: boolean) => void;
+  } = $props();
   /**
    * The open viewer belongs to the list, not to the row it was opened from: a
    * running turn moves the window of rows, and the row leaving it must not
@@ -89,6 +93,8 @@
   /** The turns of the thread this list shows, open or delegated. */
   const shownTurns = $derived(store.openThread?.id === threadId ? store.openThread.turns : store.delegationThread?.id === threadId ? store.delegationThread.turns : []);
   const grouped = $derived.by(() => groupTimeline(messages, threadId, shownTurns, mail, launches, workflowRows, memoryRows));
+  /** When the newest turn the user or a wake asked for began: a launch or run line older than it belongs to a past turn, which keeps no live count. */
+  const newestTurnAt = $derived(shownTurns.reduce((latest, turn) => turn.execution?.operation === 'compact' || turn.execution?.operation === 'keepalive' ? latest : Math.max(latest, turn.startedAt ?? turn.queuedAt), -Infinity));
   /** The pages each turn published: its answer places them, or they go after it once the turn ends (`placeViews`). */
   let shownViews: ReadonlyMap<string, Message[]> | undefined;
   const views = $derived.by(() => (shownViews = turnViews(grouped.timeline, shownViews)));
@@ -206,6 +212,29 @@
     }
     return null;
   });
+
+  $effect(() => { onbehind?.(behind); });
+
+  /**
+   * To the first line of the last answer, the newest assistant message with
+   * prose, so it reads from its start with the turn's files and PR under it.
+   * A window short of the end reads the last page first.
+   */
+  export function toLastAnswer(): void {
+    if (cutBelow) { void store.loadLatest().then(() => { if (!cutBelow) toLastAnswer(); }); return; }
+    const answer = timeline.findLast(message => message.role === 'assistant' && message.parts.some(part => part.type === 'text' && part.text.trim() !== ''));
+    if (!answer) return;
+    jumpToMessage(answer.id);
+    // A last answer shorter than the screen cannot reach its top: the list then rests at its end,
+    // following again, so neither Last answer nor the way down stays offered for a place already reached.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const box = viewport;
+      if (!box || navigationTarget === null || !atBottom(box)) return;
+      releaseNavigation();
+      pinned = true; behind = false;
+      markSeen();
+    }));
+  }
 
   /** To a message, or to the row of it that draws `part` when a long one is cut in several. */
   function jumpToMessage(id: string, part?: number) {
@@ -784,9 +813,9 @@
           {:else if quietFold}
             <TurnFoldRow fold={quietFold} at={message.createdAt} compactions={shaped.compactions.get(quietFold.turnId)} />
           {:else if launches.has(message.id)}
-            <DelegationActivity {store} agents={launches.get(message.id)!.agents} />
+            <DelegationActivity {store} agents={launches.get(message.id)!.agents} past={message.createdAt < newestTurnAt} />
           {:else if workflowRows.has(message.id)}
-            <WorkflowActivity {store} run={workflowRows.get(message.id)!} />
+            <WorkflowActivity {store} run={workflowRows.get(message.id)!} past={message.createdAt < newestTurnAt} />
           {:else if group}
             <AgentMessageGroup {store} {group} />
           {:else if grouped.notices.has(message.id)}

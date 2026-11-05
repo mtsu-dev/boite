@@ -8,6 +8,7 @@ export const fr: Translation = {
     status: { running: 'En cours', paused: 'En pause', done: 'Terminé', failed: 'En échec', stopped: 'Arrêté' },
     stepStatus: { waiting: 'En attente', running: 'En cours', done: 'Terminée', failed: 'En échec', skipped: 'Sautée', stopped: 'Arrêtée' },
     steps: '{done}/{total} étapes',
+    stepsDone: '{done} sur {total} étapes',
     phase: 'Phase {n}',
     pause: 'Pause',
     resume: 'Reprendre',

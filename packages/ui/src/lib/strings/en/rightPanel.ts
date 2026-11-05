@@ -31,6 +31,8 @@ export const strings = {
     more: 'More',
     changesCount: '{count} files',
     agentsCount: '{count} at work',
+    /** The subagents surface's tab: the word the strip shows, the full name stays in its tooltip. */
+    agentsTab: 'Subagents',
     messages: 'Messages',
     /** The list beside the title bar's panel button: every surface and drawer by name. */
     launcherMenu: 'Open in the panel',

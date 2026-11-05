@@ -1,23 +1,45 @@
 import { expect, vi } from 'vitest';
-import { flushSync } from 'svelte';
+import { flushSync, tick } from 'svelte';
 import { store } from '../lib/store.svelte';
 import { mountOnFake, query, test, waitFor } from '../test/app';
+import { pickPlus, plusRows } from '../test/composer-plus';
 import { openUrl } from '../test/opener';
 
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
 
-test('the draft worktree chip puts the first send on its own branch, and the header names it', async ({ app: _app }) => {
+test('the draft worktree switch puts the first send on its own branch, and the header names it', async ({ app: _app }) => {
 
-  // A thread keeps its directory: no chip while one is open.
+  // A thread keeps its directory: + offers no switch and no chip shows while one is open.
+  expect(plusRows()).toEqual({ attach: null });
   expect(document.querySelector('[data-testid=composer-worktree]')).toBeNull();
 
   query<HTMLButtonElement>('[data-testid=new-thread]').click();
   await waitFor(() => store.draft !== null);
-  const chip = query<HTMLButtonElement>('[data-testid=composer-worktree]');
-  expect(chip.getAttribute('aria-pressed')).toBe('false');
-  chip.click();
+  // Off, the switch waits in +; on, the row says so and a chip beside the model too.
+  await waitFor(() => plusRows().worktree === false);
+  expect(document.querySelector('[data-testid=composer-worktree]')).toBeNull();
+  pickPlus('worktree');
   await waitFor(() => store.draft?.worktree === true);
+  expect(plusRows().worktree).toBe(true);
   expect(query<HTMLButtonElement>('[data-testid=composer-worktree]').getAttribute('aria-pressed')).toBe('true');
+  // The chip turns it off again, in one press, and goes.
+  query<HTMLButtonElement>('[data-testid=composer-worktree]').click();
+  await waitFor(() => store.draft?.worktree === false);
+  expect(document.querySelector('[data-testid=composer-worktree]')).toBeNull();
+  expect(plusRows().worktree).toBe(false);
+  // Turned from the keyboard, the switch keeps the focus in its menu: the box does not take it back.
+  query<HTMLButtonElement>('[data-testid=composer-plus]').click();
+  flushSync();
+  await tick();
+  const row = query<HTMLButtonElement>('[data-testid=composer-plus-menu]:not(.closing) [data-value=worktree]');
+  row.focus();
+  row.click();
+  await waitFor(() => store.draft?.worktree === true);
+  await tick();
+  flushSync();
+  expect(document.activeElement?.getAttribute('data-value')).toBe('worktree');
+  query<HTMLButtonElement>('[data-testid=composer-plus]').click();
+  flushSync();
 
   // A worktree belongs to the project even before a provider is configured.
   const providers = store.providers;
@@ -27,7 +49,7 @@ test('the draft worktree chip puts the first send on its own branch, and the hea
     store.draftChoice = null;
     flushSync();
     expect(store.defaultChoice()).toBeNull();
-    expect(query('[data-testid=draft-sentence]').textContent).toContain('in a worktree');
+    expect(query('[data-testid=draft-sentence]').textContent).toContain('on a separate copy');
   } finally {
     store.providers = providers;
     store.draftChoice = draftChoice;
@@ -47,8 +69,9 @@ test('the draft worktree chip puts the first send on its own branch, and the hea
   await waitFor(() => document.querySelector('[data-testid=thread-branch]') !== null);
   expect(query('[data-testid=thread-branch]').textContent?.trim()).toBe(branch);
   expect(query('[data-testid=thread-branch]').title).toContain(branch.slice(6));
-  // The chip went with the draft.
+  // The chip and the switch went with the draft.
   expect(document.querySelector('[data-testid=composer-worktree]')).toBeNull();
+  expect('worktree' in plusRows()).toBe(false);
   const cwd = store.openThread!.cwd;
   await waitFor(() => store.openThread?.turns.some(turn => turn.status === 'done') === true);
   await waitFor(() => query('[data-testid=thread-branch]').textContent?.trim() === 'boite/fix-the-login');
@@ -57,17 +80,17 @@ test('the draft worktree chip puts the first send on its own branch, and the hea
 
 test('a draft offers the worktree switch only on a folder where git was found', async ({ app: _app }) => {
   query<HTMLButtonElement>('[data-testid=new-thread]').click();
-  await waitFor(() => document.querySelector('[data-testid=composer-worktree]') !== null);
+  await waitFor(() => 'worktree' in plusRows());
   const project = store.projects.find((one) => one.id === store.draft?.projectId);
   if (!project) throw new Error('the draft has no project');
   project.repository = false;
-  await waitFor(() => document.querySelector('[data-testid=composer-worktree]') === null);
+  await waitFor(() => !('worktree' in plusRows()));
   // No answer yet, or a core older than the field: no `.git` was found, so no switch either.
   delete project.repository;
   flushSync();
-  expect(document.querySelector('[data-testid=composer-worktree]')).toBeNull();
+  expect('worktree' in plusRows()).toBe(false);
   project.repository = true;
-  await waitFor(() => document.querySelector('[data-testid=composer-worktree]') !== null);
+  await waitFor(() => 'worktree' in plusRows());
 });
 
 test('an empty app opens on its two steps in plain words, connecting an AI ticks the first, and skipping the folder lands on the composer', async () => {

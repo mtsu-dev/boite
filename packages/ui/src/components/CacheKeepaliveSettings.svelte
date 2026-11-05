@@ -6,6 +6,7 @@
   import type { Store } from '../lib/store.svelte';
   import SyncMark from './SyncMark.svelte';
   import InfoTip from './InfoTip.svelte';
+  import SavedMark from './SavedMark.svelte';
 
   /**
    * The `cacheKeepalive` setting: while a conversation waits on its agents,
@@ -33,9 +34,11 @@
     if (!ok && input) input.checked = !input.checked;
     return ok;
   }
+  /** Raised after each hours save the core took, for the mark beside the field. */
+  let savedStamp = $state(0);
   async function saveHours() {
     if (!rule || !valid) return;
-    if (await save(true)) dirty = false;
+    if (await save(true)) { dirty = false; savedStamp += 1; }
   }
 </script>
 
@@ -53,7 +56,7 @@
     {#if rule}
       <div class="option">
         <span class="icon"><Clock size={18} strokeWidth={1.75} /></span>
-        <label for="{uid}-hours" class="name"><span class="ui-label">{strings.settings.cacheKeepaliveHours}</span><InfoTip topic={strings.settings.cacheKeepaliveHours} text={strings.settings.cacheKeepaliveHoursHint} /></label>
+        <label for="{uid}-hours" class="name"><span class="ui-label">{strings.settings.cacheKeepaliveHours}</span><InfoTip topic={strings.settings.cacheKeepaliveHours} text={strings.settings.cacheKeepaliveHoursHint} /><SavedMark stamp={savedStamp} testid="cache-keepalive-saved" /></label>
         <span class="field">
           <input id="{uid}-hours" type="number" inputmode="numeric" min={CACHE_KEEPALIVE_HOURS.min} max={CACHE_KEEPALIVE_HOURS.max} step="1"
             data-testid="cache-keepalive-hours" aria-invalid={!valid}

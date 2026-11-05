@@ -259,6 +259,20 @@
     text-align: left;
   }
 
+  /* On a phone a finished run's summary takes a second line rather than lose its
+     last clause: "1 fichier modifié et 1 commande exécutée" needs 253 px and a
+     360 px screen leaves it 187. */
+  @media (max-width: 720px) {
+    .label:not(.shimmer) {
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+  }
+
   /* A light passing over the words while a call runs. It moves in 33 steps a
      sweep, one every fourth tick of the loops' 60 Hz grid (app.css): the text
      clipped gradient repaints on each step, not on every frame. */

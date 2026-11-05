@@ -10,7 +10,9 @@
    * Work the agent started, as one line in the chat where it started. The
    * status strip above the composer is the only live view of it, so while it
    * runs the line says what it is and when it started, with no bar, badge or
-   * ticking clock; once it ended it reads as a record with its duration.
+   * ticking clock; once it ended it reads as a record with its duration. The
+   * caller's progress says how far: a count on the newest turn, the start
+   * under an older one, the outcome once it ended.
    * Clicking opens the surface that follows it; the button's own attributes
    * pass through.
    */
@@ -67,11 +69,12 @@
   .live :global(.glyph) { color: var(--color-accent); }
   /* A line box taller than the button's: the clipped segments keep their descenders. */
   .line { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; overflow: hidden; white-space: nowrap; line-height: 16px; }
-  .heading { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--color-foreground); font-weight: 500; }
-  /* The progress gives way first; a long workflow name still ellipsizes, never to nothing.
-     Its labels are trimmed to the cap and the baseline, so the clip box takes back half an em
+  /* The name gives way, never to nothing: the progress is what the line says, so it reads whole
+     (at 360 px in French, "· 1/5 étapes" lost its last letter when it shrank first). */
+  .heading { flex: 0 1 auto; min-width: min(6em, 30%); overflow: hidden; text-overflow: ellipsis; color: var(--color-foreground); font-weight: 500; }
+  /* Its labels are trimmed to the cap and the baseline, so the clip box takes back half an em
      below them: clipped at their own height, "steps" lost the tail of its p. */
-  .progress { display: inline-flex; flex: 0 1000 auto; min-width: 0; overflow: hidden; align-items: center; gap: 4px; padding-block: 0.5em; margin-block: -0.5em; }
+  .progress { display: inline-flex; flex: none; min-width: 0; overflow: hidden; align-items: center; gap: 4px; padding-block: 0.5em; margin-block: -0.5em; }
   .progress > :global(span) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .when { flex: none; display: inline-flex; gap: 4px; }
   .activity :global(.chevron) { flex: none; }

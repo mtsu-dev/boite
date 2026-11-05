@@ -291,7 +291,7 @@ function flagship(ctx: FakeContext, now: number): void {
   Object.assign(thread, {
     title: 'Add CSV import to the contacts page', titleSource: 'user', providerId: 'claude', accountId: 'a-claude-main',
     model: 'claude-opus-5-5', effort: 'high', permissionMode: 'default', branch: 'orbit/csv-import', cwd: `${ORBIT}\\.boite\\worktrees\\csv-import`,
-    pinned: true, unread: false, createdAt: start, updatedAt: now - 40_000, lastUserMessageAt: now - 6 * MINUTE,
+    pinned: true, unread: false, createdAt: start, updatedAt: now - 40_000, lastUserMessageAt: now - 75_000,
     context: { tokens: 118_400, window: 200_000, at: now - MINUTE }, load: { processes: 3, cpuPercent: 18, memoryBytes: 640 * 1024 * 1024 },
     pullRequest: { number: 128, url: 'https://github.com/example/orbit/pull/128', state: 'OPEN' },
   });
@@ -334,9 +334,11 @@ function flagship(ctx: FakeContext, now: number): void {
     { type: 'text', text: PARSER_DONE },
   ]));
 
-  // Turn 3: reviewers and a workflow; the delegation demo's cards follow it.
-  const at3 = start + 40 * MINUTE;
-  const turn3 = turn(thread, 'turn-showcase-3', at3, 3);
+  // Turn 3: reviewers and a workflow; the delegation demo's cards follow it. It ends as the
+  // demo's run starts (150 s ago), before its children (85 s ago), so their lines sit under
+  // it, a past turn, and turn 4 starts after them (75 s ago).
+  const at3 = now - 270_000;
+  const turn3 = turn(thread, 'turn-showcase-3', at3, 2);
   thread.turns.push(turn3);
   thread.messages.push(message(thread, turn3.id, 'user', at3, [{ type: 'text', text: 'Spin up reviewers for the parser and run the whole suite while you build the preview.' }]));
   thread.messages.push(message(thread, turn3.id, 'assistant', at3 + 40_000, [
@@ -345,15 +347,15 @@ function flagship(ctx: FakeContext, now: number): void {
   ]));
 
   // Turn 4: the preview built, the push waiting on the user's approval.
-  const at4 = now - 6 * MINUTE;
+  const at4 = now - 75_000;
   const turn4 = turn(thread, 'turn-showcase-4', at4, 0, 'running');
   thread.turns.push(turn4);
   thread.messages.push(message(thread, turn4.id, 'user', at4, [{ type: 'text', text: 'Wire the Import button into the contacts toolbar, then push and open the PR.' }]));
   const live = message(thread, turn4.id, 'assistant', at4 + 15_000, [
     { type: 'thinking', text: 'The toolbar already has an Export button; Import goes beside it and opens the new route. Then commit, push and open the pull request.', startedAt: at4 + 5_000, finishedAt: at4 + 12_000 },
-    tool(ctx, at4 + 30_000, { name: 'Read', input: { file_path: 'src/routes/contacts/+page.svelte' }, output: '<Toolbar>\n  <Button href="/contacts/export">Export</Button>\n</Toolbar>' }),
-    tool(ctx, at4 + 60_000, { name: 'Edit', input: { file_path: 'src/routes/contacts/+page.svelte', old_string: '  <Button href="/contacts/export">Export</Button>', new_string: '  <Button href="/contacts/import" icon="upload">Import</Button>\n  <Button href="/contacts/export">Export</Button>' }, output: 'The file src/routes/contacts/+page.svelte has been updated.' }),
-    tool(ctx, at4 + 2 * MINUTE, { name: 'Bash', input: { command: 'bun run check && git add -A && git commit -m "Add CSV import to the contacts page"', description: 'Check and commit' }, output: 'svelte-check found 0 errors and 0 warnings\n[orbit/csv-import 4f1c2ab] Add CSV import to the contacts page\n 6 files changed, 412 insertions(+), 3 deletions(-)', exitCode: 0 }),
+    tool(ctx, at4 + 18_000, { name: 'Read', input: { file_path: 'src/routes/contacts/+page.svelte' }, output: '<Toolbar>\n  <Button href="/contacts/export">Export</Button>\n</Toolbar>' }),
+    tool(ctx, at4 + 24_000, { name: 'Edit', input: { file_path: 'src/routes/contacts/+page.svelte', old_string: '  <Button href="/contacts/export">Export</Button>', new_string: '  <Button href="/contacts/import" icon="upload">Import</Button>\n  <Button href="/contacts/export">Export</Button>' }, output: 'The file src/routes/contacts/+page.svelte has been updated.' }),
+    tool(ctx, at4 + 30_000, { name: 'Bash', input: { command: 'bun run check && git add -A && git commit -m "Add CSV import to the contacts page"', description: 'Check and commit' }, output: 'svelte-check found 0 errors and 0 warnings\n[orbit/csv-import 4f1c2ab] Add CSV import to the contacts page\n 6 files changed, 412 insertions(+), 3 deletions(-)', exitCode: 0 }),
     { type: 'text', text: 'Everything checks out and is committed. Pushing the branch needs your approval.' },
     { type: 'permission', requestId: 'req-showcase-push', toolName: 'Bash', decision: null },
   ], 'streaming');

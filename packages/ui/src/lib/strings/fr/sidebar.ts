@@ -54,9 +54,10 @@ export const fr: Translation = {
       ownerOnly: 'Faites-lui confiance depuis l’ordinateur qui fait tourner cette Boite.'
     },
     worktreeGone: {
-      title: 'Worktree supprimé',
-      merged: 'Boite a supprimé le worktree de cette conversation {when}, après la fusion de #{number}.',
-      clean: 'Boite a supprimé le worktree de cette conversation {when} : chacun de ses commits était déjà sur une autre branche.',
+      title: 'Copie à part supprimée',
+      tip: 'Un worktree git : la copie du projet où travaillait cette conversation. Supprimée {time}',
+      merged: 'Boite a supprimé la copie à part de cette conversation {when}, après la fusion de #{number}.',
+      clean: 'Boite a supprimé la copie à part de cette conversation {when} : chacun de ses commits était déjà sur une autre branche.',
       branchDeleted: 'La branche {branch} a été supprimée.',
       branchKept: 'La branche {branch} existe toujours.',
       archived: 'Remise dans Récent, cette conversation n’a plus de dossier où travailler.',

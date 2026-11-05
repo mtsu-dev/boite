@@ -20,7 +20,7 @@
   const branch = $derived(removal.branch === null ? '' : fill(removal.branchDeleted ? t.branchDeleted : t.branchKept, { branch: removal.branch }));
 </script>
 
-<NoticeBanner icon={FolderMinus} testid="worktree-gone" title={t.title} titleTip={exactTime(removal.removedAt)} text={[why, branch, archived ? t.archived : t.live].filter(Boolean).join(' ')}>
+<NoticeBanner icon={FolderMinus} testid="worktree-gone" title={t.title} titleTip={fill(t.tip, { time: exactTime(removal.removedAt) })} text={[why, branch, archived ? t.archived : t.live].filter(Boolean).join(' ')}>
   {#snippet actions()}
     {#if removal.pullRequest}<a class="pr" href={removal.pullRequest.url} target="_blank" rel="noopener noreferrer">#{removal.pullRequest.number}</a>{/if}
   {/snippet}

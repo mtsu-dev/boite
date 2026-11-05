@@ -31,6 +31,7 @@ export const fr: Translation = {
     more: 'Plus',
     changesCount: '{count} fichiers',
     agentsCount: '{count} au travail',
+    agentsTab: 'Agents',
     messages: 'Messages',
     launcherMenu: 'Ouvrir dans le panneau',
   }

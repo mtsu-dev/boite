@@ -97,13 +97,14 @@
       agents: store.owner ? store.harnessUpdates : []
     });
   }
-  const updateLabels: Record<MachineUpdateState, string> = {
+  // Derived, so a language switched while the page is open renames the states too.
+  const updateLabels: Record<MachineUpdateState, string> = $derived({
     failed: strings.machines.updateFailed,
     updating: strings.providerSettings.updating,
     available: strings.harnessUpdates.availableShort,
     checking: strings.harnessUpdates.checking,
     current: strings.serverUpdate.current
-  };
+  });
   /** Docker and hand-made installs update by their own command, and a server too old for the button once by hand: the row says how. */
   function byHand(machine: Machine): string | null {
     if (machine.store.localCore || !machine.store.owner) return null;

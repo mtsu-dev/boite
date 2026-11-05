@@ -16,6 +16,8 @@ export const strings = {
     replySend: 'Send the answer',
     replyIgnore: 'Write a message instead',
     replyIgnoreHint: 'Leave the question waiting and write an ordinary message',
+    /** The same button on a phone's question dock, where the long label would be cut. */
+    replyIgnoreShort: 'Write instead',
     switchTitle: 'Switch a {tokens} token thread to {provider}?',
     switchBody: '{provider} starts a new session and receives excerpts of the opening and of the most recent exchanges, about 20k tokens. The rest is lost to it. Compacting first changes nothing.',
     switchConfirm: 'Switch',
@@ -91,10 +93,12 @@ export const strings = {
     unavailable: 'not installed',
     noAccount: 'no account',
     noProvider: 'No AI connected',
-    /** The draft's worktree switch, off and on. */
-    worktree: 'Worktree',
-    worktreeOff: 'Start in a git worktree on its own branch',
-    worktreeOn: 'Starts in a git worktree on its own branch',
+    /** The draft's worktree switch, off and on: the plain name, the git term in the tooltip. */
+    worktree: 'Separate copy',
+    worktreeOff: 'Work on a separate copy of the project: a git worktree on its own branch',
+    worktreeOn: 'Works on a separate copy of the project: a git worktree on its own branch',
+    /** The desktop's + button beside the model: attach files, the separate copy, dictation once the box has text. */
+    more: 'Files and options',
     /** Images sent with the prompt: the strip above the box and what refuses one. */
     attach: 'Attach files',
     editQueued: 'Edit this pending message, or press Up in the empty composer',

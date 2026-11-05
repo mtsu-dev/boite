@@ -20,6 +20,9 @@ export const strings = {
       waiting: 'Waiting for you',
       finished: 'Finished {time}',
       finishedNow: 'Finished just now',
+      /** A finished thread read from above its end: back to the first line of the last answer. */
+      lastAnswer: 'Last answer',
+      lastAnswerTitle: 'Go to the start of the last answer',
       subagentOne: '1 subagent',
       subagentMany: '{count} subagents',
       showAgents: 'Show the subagents and workflows',
@@ -37,6 +40,8 @@ export const strings = {
     compactedFor: 'Compacted in {time}',
     compactionFailed: 'Compaction failed',
     compactionStopped: 'Compaction stopped',
+    /** A progress word and what it runs on ("Running tool: k6 run"). */
+    progressDetail: '{label}: {detail}',
     progress: { starting: 'Starting agent', thinking: 'Thinking', compacting: 'Compacting context', retrying: 'Retrying request', tool: 'Running tool', working: 'Receiving activity', waiting: 'Waiting for provider' },
     providerSignal: 'Provider signal {time} ago',
     noActivity: 'No new activity for {time}',
@@ -205,6 +210,8 @@ export const strings = {
     permissionAllowedBy: 'Allowed by you',
     permissionDeniedBy: 'Denied by you',
     questionHeading: 'Asks you',
+    questionSeries: '{index} of {total}',
+    questionSeriesTitle: 'The agent asked {total} questions at once: the next one comes once this one is answered or skipped',
     questionAsyncHeading: 'Question',
     questionAsyncHint: 'The agent keeps working. Without an answer it goes on with a default.',
     questionAnswer: 'Answer',

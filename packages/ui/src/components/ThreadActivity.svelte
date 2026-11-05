@@ -216,7 +216,7 @@
           <button type="button" class="ghost objective question-toggle" aria-expanded={questionOpen}
             title={questionOpen ? strings.activity.questionFold : strings.activity.questionUnfold} data-testid="activity-question-toggle"
             onclick={() => (questionOpen = !questionOpen)}>
-            <span class="question-line ui-label">{shown.secret ? shown.secret.name : questionOpen ? (shown.setting ? settingHeading(shown.setting) : shown.agentSetting ? fill(strings.agentSettingRequest.heading, { name: shown.agentSetting.agentName }) : shown.team ? teamHeading(shown.team) : strings.chat.questionAsyncHeading) : shown.text}</span>
+            <span class="question-line ui-label" class:generic={questionOpen && !shown.secret && !shown.setting && !shown.agentSetting && !shown.team}>{shown.secret ? shown.secret.name : questionOpen ? (shown.setting ? settingHeading(shown.setting) : shown.agentSetting ? fill(strings.agentSettingRequest.heading, { name: shown.agentSetting.agentName }) : shown.team ? teamHeading(shown.team) : strings.chat.questionAsyncHeading) : shown.text}</span>
             <ChevronDown size={16} class={questionOpen ? 'turned' : ''} />
           </button>
           {#if shown.secret}
@@ -224,7 +224,7 @@
           {/if}
           {#if !shown.secret && replyOf(store, shown.id).replying}
             <span data-testid="composer-reply" data-question={shown.id}>
-              <button type="button" class="ghost small" data-testid="composer-reply-ignore" title={strings.composer.replyIgnoreHint} onclick={() => ignoreQuestions(store)}>{strings.composer.replyIgnore}</button>
+              <button type="button" class="ghost small" data-testid="composer-reply-ignore" title={strings.composer.replyIgnoreHint} aria-label={strings.composer.replyIgnore} onclick={() => ignoreQuestions(store)}><span class="long">{strings.composer.replyIgnore}</span><span class="short">{strings.composer.replyIgnoreShort}</span></button>
             </span>
           {/if}
           {#if asked.length > 1}
@@ -472,8 +472,23 @@
   .pager .meta { font-variant-numeric: tabular-nums; }
   .activity-row > :global(svg) { flex: none; color: var(--color-muted-foreground); }
   .activity-row button { flex: none; }
-  /* A folded question's text gives way to the pager, not the pager to it. */
-  .activity-row .question-toggle { flex: 1 1 auto; min-width: 0; }
+  /* A folded question's text gives way to the pager, not the pager to it. The toggle keeps its
+     chevron and room for the open heading ("Question"), and "Write a message instead" ellipsizes
+     before either: at 360 px in French it pushed "1 sur 2" and the next arrow out of the dock. */
+  .activity-row .question-toggle { flex: 1 1 auto; min-width: calc(var(--control-sm) + 5.5em); }
+  /* On a phone the open heading only repeats the icon beside it ("Question"): the chevron stays,
+     and the room goes to "Write a message instead". */
+  @media (max-width: 480px) {
+    .activity-row .question-toggle:has(.generic) { flex: 0 0 auto; min-width: 0; }
+    .question-line.generic { display: none; }
+    /* "Écrire un message à la place" kept 118 of 193 px at 360: the phone says it short, the full words stay its name. */
+    .question-row [data-testid='composer-reply'] .long { display: none; }
+  }
+  @media (min-width: 481px) {
+    .question-row [data-testid='composer-reply'] .short { display: none; }
+  }
+  .question-row [data-testid='composer-reply'] { display: inline-flex; flex: 0 1 auto; min-width: 0; }
+  .question-row [data-testid='composer-reply'] > button { display: block; flex: 0 1 auto; min-width: 0; line-height: calc(var(--control-sm) - 2px); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .kind { flex: none; white-space: nowrap; font-weight: 600; color: var(--color-accent); }
   .kind .narrow { display: none; }
   .status { padding: 2px 8px; border-radius: var(--radius-sm); background: var(--color-surface-2); }

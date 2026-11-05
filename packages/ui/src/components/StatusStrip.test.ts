@@ -30,6 +30,28 @@ test('a finished turn offers Mark done and Archive, and Archive leaves the Undo 
   expect(undo.current?.message).toMatch(/^Archived /);
 });
 
+test('a finished thread read from above its end offers Last answer, and only then', async ({ ready }) => {
+  const { store } = await ready();
+  await store.open('t-trace');
+  const onlastanswer = vi.fn();
+  view = mount(StatusStrip, { target: document.body, props: { store, away: false, onlastanswer } });
+  flushSync();
+  // At the end the answer is in view: nothing to go back to.
+  expect(strip()?.dataset.state).toBe('finished');
+  expect(document.querySelector('[data-testid="status-strip-last-answer"]')).toBeNull();
+  unmount(view, { outro: false });
+  view = mount(StatusStrip, { target: document.body, props: { store, away: true, onlastanswer } });
+  flushSync();
+  const last = document.querySelector<HTMLButtonElement>('[data-testid="status-strip-last-answer"]')!;
+  expect(last.textContent).toBe('Last answer');
+  last.click();
+  expect(onlastanswer).toHaveBeenCalledOnce();
+  // A turn running again: the strip is the live line, no way back offered.
+  store.openThread!.status = 'running';
+  flushSync();
+  expect(document.querySelector('[data-testid="status-strip-last-answer"]')).toBeNull();
+});
+
 test('a thread waiting on the user says so in amber, never Working, even while its turn runs', async ({ ready }) => {
   const { store } = await ready();
   await store.open('t-scheduler');
@@ -102,6 +124,8 @@ test('one timer on the line: with a state shown, the delegated group keeps its t
   expect(counts.getAttribute('aria-label')).toMatch(/^\d+ subagents?( · \d+ workflows?)?$|^\d+ workflows?$/);
   expect(counts.querySelector('.time')).toBeNull();
   expect(counts.title).toMatch(/Delegated work running for \d/);
+  // The tooltip names the counts too: a mouse user on the shrunk chip reads what the glyph and number mean.
+  expect(counts.title.split('\n')[0]).toBe(counts.getAttribute('aria-label'));
   expect(strip()!.querySelectorAll('.time')).toHaveLength(1);
 });
 

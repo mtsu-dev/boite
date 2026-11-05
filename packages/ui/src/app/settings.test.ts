@@ -72,6 +72,14 @@ test('the keybindings file moves a chord, takes one away, and the Keyboard page 
   expect(query('[data-testid=keybinding-row][data-command=theme-light]').classList.contains('custom')).toBe(true);
   expect(query('[data-testid=keybinding-row][data-command=new-thread]').classList.contains('custom')).toBe(false);
   expect(query('[data-testid=keybindings-path]').textContent).toBe('C:\\Users\\you\\AppData\\Local\\boite2\\keybindings.json');
+  // The refusal is a warning: its raw line waits in the fold, and the row it names says it kept its default.
+  expect(query('[data-testid=keybinding-problems] h2').textContent?.trim()).toBe('Some shortcuts were not applied');
+  expect(document.querySelector('[data-testid=keybinding-error]')).toBeNull();
+  const refusal = query('[data-testid=keybinding-row][data-command=trace] [data-testid=keybinding-refused]');
+  expect(refusal.title).toBe('"t" has no modifier: a chord needs mod, ctrl, alt or meta before its key');
+  expect(document.querySelectorAll('[data-testid=keybinding-refused]').length).toBe(1);
+  query<HTMLButtonElement>('[data-testid=keybinding-details-toggle]').click();
+  await waitFor(() => document.querySelector('[data-testid=keybinding-error]') !== null);
   expect(query('[data-testid=keybinding-error]').textContent).toContain('"trace": "t" has no modifier');
 
   query<HTMLButtonElement>('[data-testid=settings-back]').click();

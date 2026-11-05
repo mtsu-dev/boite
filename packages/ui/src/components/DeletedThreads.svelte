@@ -7,6 +7,7 @@
   import type { Store } from '../lib/store.svelte';
   import SyncMark from './SyncMark.svelte';
   import InfoTip from './InfoTip.svelte';
+  import SavedMark from './SavedMark.svelte';
 
   let { store, eager = false }: { store: Store; eager?: boolean } = $props();
   const uid = $props.id();
@@ -18,6 +19,8 @@
   let days = $state<number | undefined>(DEFAULT_THREAD_DELETION_RETENTION_DAYS);
   let dirty = $state(false);
   let saving = $state(false);
+  /** Raised after each save the core took, for the mark beside the button. */
+  let savedStamp = $state(0);
   let retention = $derived(store.settings?.threadDeletionRetentionDays ?? DEFAULT_THREAD_DELETION_RETENTION_DAYS);
   let valid = $derived(typeof days === 'number' && Number.isInteger(days) && days >= 0 && days <= 3650);
 
@@ -32,6 +35,7 @@
     saving = true;
     try {
       if (await store.saveSettings({ threadDeletionRetentionDays: submitted })) {
+        savedStamp += 1;
         if (days === submitted) dirty = false;
         if (asked) await load();
       }
@@ -77,6 +81,7 @@
       <div class="retention-actions">
         <input id="{uid}-days" type="number" min="0" max="3650" step="1" bind:value={days} oninput={() => { dirty = true; }} aria-invalid={!valid} aria-describedby={valid ? undefined : `${uid}-error`} data-testid="deleted-retention-days" />
         <button type="submit" disabled={!valid || !dirty || saving || !store.settings || store.connection !== 'ready'} data-testid="deleted-retention-save"><span class="ui-label">{strings.common.save}</span></button>
+        <SavedMark stamp={savedStamp} testid="deleted-retention-saved" />
       </div>
       {#if !valid}<p id="{uid}-error" class="field-error" role="alert">{strings.settings.deleted.retentionError}</p>{/if}
     </form>

@@ -20,7 +20,8 @@
     skip,
     onwrite,
     page,
-    onopen
+    onopen,
+    series
   }: {
     text: string;
     options: QuestionOption[];
@@ -48,6 +49,8 @@
     /** The page asked with `boite ask --open`, and what its Open button does. */
     page?: string;
     onopen?: () => unknown;
+    /** One of several the agent asked in one call, which come one at a time: the head says which and how many. */
+    series?: { index: number; total: number };
   } = $props();
 
   let sent = $state(false);
@@ -132,6 +135,9 @@
     <div class="head">
       <span class="glyph"><MessageCircleQuestionMark size={15} strokeWidth={1.75} /></span>
       <span class="muted ui-label">{async ? strings.chat.questionAsyncHeading : strings.chat.questionHeading}</span>
+      {#if series && series.total > 1}
+        <span class="series ui-label" data-testid="question-series" title={fill(strings.chat.questionSeriesTitle, { total: String(series.total) })}>{fill(strings.chat.questionSeries, { index: String(series.index), total: String(series.total) })}</span>
+      {/if}
     </div>
   {/if}
 
@@ -248,6 +254,13 @@
     align-items: center;
     gap: 6px;
     flex-wrap: wrap;
+  }
+
+  .series {
+    margin-inline-start: auto;
+    color: var(--color-muted-foreground);
+    font-size: var(--text-xs);
+    font-variant-numeric: tabular-nums;
   }
 
   .glyph {

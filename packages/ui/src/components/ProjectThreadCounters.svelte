@@ -24,7 +24,7 @@
     entry: ProjectEntry; working: number; controls: string; collapsed?: boolean; searching?: boolean; away?: boolean; body?: readonly ProjectThreadKind[];
   } = $props();
   const kinds = ['working', 'done', 'archived'] as const;
-  const labels = { working: strings.sidebar.projectWorkingThreads, done: strings.sidebar.projectDoneThreads, archived: strings.sidebar.projectArchivedThreads };
+  const labels = $derived({ working: strings.sidebar.projectWorkingThreads, done: strings.sidebar.projectDoneThreads, archived: strings.sidebar.projectArchivedThreads });
   const name = $derived(projectName(entry.project));
   /** The rows waiting on the user's hand, split as the ring draws them: a question in amber, a failure in red. */
   const hands = $derived.by(() => {

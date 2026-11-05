@@ -297,14 +297,26 @@ const steps: Step[] = [
     },
   },
   {
-    name: 'questions-several', caption: 'Two questions waiting on one thread: the dock takes them one at a time and says how many are left.', devices: both,
+    name: 'questions-several', caption: 'Two questions asked without stopping on one running thread: the dock pages them, 1 of 2, and each leaves its line in the timeline.', devices: both,
     async run(page) {
-      await openThread(page, QUESTION);
+      // As `boite ask` draws them: a pending request and a message of its own each. Only asynchronous ones
+      // stack; a question the agent stops for comes one at a time (the question-series scene).
+      await openThread(page, WORKING);
       await store(page, `
-        const thread = s.threads.find((t) => t.id === arg);
-        s.pendingQuestions = [...s.pendingQuestions, { id: 'q-showcase-second', threadId: arg, turnId: thread?.activeTurnId ?? 'turn-showcase', text: 'Should the retry wait grow after each failure?', options: [{ id: 'grow', label: 'Double it each time' }, { id: 'flat', label: 'Keep 30 s' }], allowText: true, multiple: false, createdAt: Date.now() - 60_000 }];
-      `, QUESTION);
+        const thread = s.openThread;
+        if (!thread || thread.id !== arg) throw new Error('questions-several: the running thread is not open');
+        const turnId = thread.activeTurnId ?? thread.turns.at(-1)?.id ?? 'turn-showcase';
+        const asks = [
+          { id: 'q-showcase-first', text: 'Keep the old trace format readable for a release?', options: [{ id: 'keep', label: 'Keep it one release' }, { id: 'drop', label: 'Drop it now' }], at: Date.now() - 4 * 60_000 },
+          { id: 'q-showcase-second', text: 'Should the retry wait grow after each failure?', options: [{ id: 'grow', label: 'Double it each time' }, { id: 'flat', label: 'Keep 30 s' }], at: Date.now() - 60_000 },
+        ];
+        for (const ask of asks) {
+          s.pendingQuestions = [...s.pendingQuestions, { id: ask.id, threadId: arg, turnId, text: ask.text, options: ask.options, allowText: true, multiple: false, async: true, createdAt: ask.at }];
+          thread.messages = [...thread.messages, { id: 'msg-' + ask.id, threadId: arg, turnId, role: 'assistant', parts: [{ type: 'question', questionId: ask.id, text: ask.text, options: ask.options, allowText: true, multiple: false, async: true, answer: null }], state: 'complete', createdAt: ask.at }];
+        }
+      `, WORKING);
       await scrollTimeline(page, 'bottom');
+      await page.getByTestId('activity-question-index').waitFor({ timeout: 5000 });
     },
   },
   {
@@ -503,6 +515,73 @@ const steps: Step[] = [
     async run(page) { await openThread(page, FINISHED); await scrollTimeline(page, 'bottom'); },
   },
   {
+    name: 'last-answer', caption: 'A finished thread of four turns read from its start: the strip offers Last answer, and one press brings the start of the last answer to the top, with what follows it below (the log gives its distance from the top).', devices: both,
+    async run(page) {
+      await openThread(page, FINISHED);
+      // Three more finished turns after the seeded one, the last answer long enough to fill the screen.
+      await store(page, `
+        const thread = s.openThread;
+        if (!thread || thread.id !== arg) throw new Error('last-answer: the finished thread is not open');
+        const [ask, reply] = thread.messages;
+        const base = thread.turns.at(-1);
+        const rounds = [
+          ['Does it ask again after Not now?', 'Not on its own: Not now is stored per install, and the screen comes back only from Settings, under Notifications.'],
+          ['Check it on a phone set to French.', 'The screen reads well in French. "Pas maintenant" fits on one line down to 320 px, and the system prompt that follows is in French too.'],
+          ['Sum it up for the review.', ['What changed: a screen that explains notifications before the system prompt, shown once after the first delivery.', 'Allow opens the system prompt; Not now keeps it closed and is remembered per install. Settings, under Notifications, brings the screen back.', 'Checked on Android 15 and iOS 19 in English and French, down to 320 px. The captures for both platforms are in PR #88.', 'Tests: the opt-in state machine has unit tests for first delivery, Not now, reinstall and a later Allow from Settings. The widget test checks both buttons with a screen reader.', 'Copy: the title says what the driver gets ("Know when a parcel is waiting"), the body names the two cases that send one, and neither button says OK.', 'Accessibility: both buttons are 48 px tall, the title is a heading, and the order reads title, body, Allow, Not now with TalkBack and VoiceOver.', 'Analytics: one event per choice, with no device id, so the team can see how many drivers allow notifications without tracking anyone.', 'Left for later: a reminder after a week for drivers who chose Not now, if support asks for it.'].join('\\n\\n')],
+        ];
+        let at = reply.createdAt + 60_000;
+        const turns = [];
+        const messages = [];
+        rounds.forEach(([prompt, answer], index) => {
+          const turnId = base.id + '-more-' + index;
+          turns.push({ ...base, id: turnId, queuedAt: at, startedAt: at, finishedAt: at + 90_000 });
+          messages.push({ ...ask, id: ask.id + '-more-' + index, turnId, parts: [{ type: 'text', text: prompt }], createdAt: at });
+          messages.push({ ...reply, id: reply.id + '-more-' + index, turnId, parts: [{ type: 'text', text: answer }], state: 'complete', createdAt: at + 30_000 });
+          at += 5 * 60_000;
+        });
+        thread.turns = [...thread.turns, ...turns];
+        thread.messages = [...thread.messages, ...messages];
+      `, FINISHED);
+      await page.waitForTimeout(500);
+      await scrollTimeline(page, 'top');
+      await page.waitForTimeout(500);
+      const button = page.getByTestId('status-strip-last-answer');
+      await button.waitFor({ timeout: 5000 });
+      await button.click();
+      await page.waitForTimeout(900);
+      const placed = await page.evaluate(() => {
+        const box = document.querySelector<HTMLElement>('[data-testid=timeline]')!.getBoundingClientRect();
+        const answers = [...document.querySelectorAll<HTMLElement>('[data-testid=message][data-role=assistant]')];
+        const last = answers.at(-1);
+        const timeline = document.querySelector<HTMLElement>('[data-testid=timeline]')!;
+        const end = timeline.scrollTop + timeline.clientHeight >= timeline.scrollHeight - 2;
+        return last ? { top: Math.round(last.getBoundingClientRect().top - box.top), text: last.textContent!.trim().slice(0, 40), end } : null;
+      });
+      const offered = await button.isVisible().catch(() => false);
+      console.log(`  last-answer: ${placed ? `"${placed.text}" starts ${placed.top} px below the timeline top${placed.end ? ', the timeline at its end' : ''}` : 'no answer found'}, the button ${offered ? 'still offered' : 'gone'}`);
+      if (placed?.end && offered) throw new Error('last-answer: the end is reached and Last answer is still offered');
+      // Its start at the top, or as high as the timeline scrolls when what follows it is shorter than the screen.
+      if (!placed || !placed.text.startsWith('What changed') || placed.top < 0 || (placed.top > 120 && !placed.end)) throw new Error('last-answer: the last answer did not land at the top');
+    },
+  },
+  {
+    name: 'question-series', caption: 'The first of two questions an agent asked in one call, which come one at a time: the card says 1 of 2.', devices: both,
+    async run(page) {
+      await openThread(page, QUESTION);
+      await store(page, `
+        for (const message of s.openThread?.messages ?? []) {
+          const at = message.parts.findIndex((part) => part.type === 'question' && part.answer == null && !part.async);
+          if (at >= 0) message.parts[at] = { ...message.parts[at], series: { index: 1, total: 2 } };
+        }
+      `);
+      await scrollTimeline(page, 'bottom');
+      await page.getByTestId('question-series').first().waitFor({ timeout: 5000 });
+      // The card's head carries the count: bring it into view above the composer.
+      await page.getByTestId('question-series').first().evaluate((el: HTMLElement) => el.closest('[data-testid=question-card]')!.scrollIntoView({ block: 'center' }));
+      await page.waitForTimeout(400);
+    },
+  },
+  {
     name: 'notice', caption: 'A merged thread whose worktree was removed: the one-line notice banner above the composer.', devices: both,
     async run(page) {
       await openThread(page, 't-sc-openapi');
@@ -630,6 +709,16 @@ const steps: Step[] = [
     name: `settings-${tab}`, caption: `Settings, the ${tab} page.`, devices: desktop,
     async run(page) { await store(page, 's.showSettings(arg);', tab); await page.waitForTimeout(700); },
   })),
+  {
+    name: 'settings-keyboard-refused', caption: 'Settings, Keyboard: the file entry the core refused, its row marked and the raw line in the open fold.', devices: desktop,
+    async run(page) {
+      await store(page, 's.showSettings("keyboard");');
+      await page.waitForTimeout(700);
+      await page.getByTestId('keybinding-details-toggle').click();
+      await page.getByTestId('keybindings-filter').fill('trace');
+      await page.waitForTimeout(400);
+    },
+  },
   {
     name: 'settings-field-error', caption: 'Settings, General: a value out of range in the done retention field, its error under it and Save held.', devices: desktop,
     async run(page) {

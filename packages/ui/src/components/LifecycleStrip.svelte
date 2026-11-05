@@ -18,12 +18,12 @@
    */
   let { entries, prefix = '' }: { entries: readonly ProjectEntry[]; prefix?: string } = $props();
   const counts = $derived(lifecycleCounts(entries));
-  const hints: Record<Lifecycle, string> = {
+  const hints: Record<Lifecycle, string> = $derived({
     waiting: strings.sidebar.lifecycle.waitingHint,
     working: strings.sidebar.lifecycle.workingHint,
     done: strings.sidebar.lifecycle.doneHint,
     archived: strings.sidebar.lifecycle.archivedHint
-  };
+  });
   let strip = $state<HTMLDivElement>();
   let sizer = $state<HTMLSpanElement>();
   let compact = $state(false);

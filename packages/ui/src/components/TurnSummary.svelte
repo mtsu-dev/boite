@@ -124,7 +124,7 @@
     {/if}
     {#if observed}
       {#if showProgress}
-        {@render metric('turn-progress', observed.detail ? `${activityLabel}: ${observed.detail}` : activityLabel, observed.detail ?? undefined)}
+        {@render metric('turn-progress', observed.detail ? fill(strings.chat.progressDetail, { label: activityLabel ?? '', detail: observed.detail }) : activityLabel, observed.detail ?? undefined)}
       {/if}
       {#if quiet >= 60_000}
         {@render metric('turn-last-activity', fill(strings.chat.noActivity, { time: elapsed(quiet) }), undefined, true)}

@@ -24,8 +24,10 @@ export const strings = {
     id: 'Id',
     none: 'Not set',
     custom: 'changed',
-    problems: 'Refused',
-    problemsHint: 'These lines of the file were not applied. Fix them and save.',
+    problems: 'Some shortcuts were not applied',
+    problemsHint: 'The rest of the file applies. Fix the marked entries in the file and save it.',
+    /** Under a row whose file entry the core refused; the core's reason is its tooltip. */
+    rowRefused: 'The file\'s entry was not applied; the default stays.',
     commands: {
       palette: 'Open the command palette',
       browser: 'Open the browser',

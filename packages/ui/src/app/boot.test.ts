@@ -4,6 +4,7 @@ import { work } from '../lib/work-prefs.svelte';
 import { projectThreadView } from '../lib/project-threads.svelte';
 import { sidebarRows } from '../lib/sidebar-rows.svelte';
 import { emptyCore, mountOnFake, query, test, type, unmountApp, waitFor } from '../test/app';
+import { plusRows } from '../test/composer-plus';
 
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
 
@@ -162,6 +163,7 @@ test('first run opens a draft in the drafts, and the first send makes them', asy
   expect(query('[data-testid=draft-project]').textContent).toContain('Drafts');
   // A draft in the drafts has no repository to branch.
   expect(document.querySelector('[data-testid=composer-worktree]')).toBeNull();
+  expect('worktree' in plusRows()).toBe(false);
 
   const input = query<HTMLTextAreaElement>('[data-testid=composer-input]');
   input.value = 'Write a letter to the bank';

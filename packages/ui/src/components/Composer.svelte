@@ -86,11 +86,11 @@
   const mentions = new ComposerMentions();
 
   const inShell = window.__TAURI_INTERNALS__ !== undefined;
-  /** The three commands the composer runs itself: each one opens a chip's menu. */
+  /** The three commands the composer runs itself: each one opens a chip's menu. Getters, so a language switch reaches the descriptions. */
   const CHIP_COMMANDS: Record<string, ChipCommand> = {
-    model: { testid: 'composer-picker', description: strings.slash.model },
-    effort: { testid: 'composer-effort', description: strings.slash.effort },
-    mode: { testid: 'composer-mode', description: strings.slash.mode }
+    model: { testid: 'composer-picker', get description() { return strings.slash.model; } },
+    effort: { testid: 'composer-effort', get description() { return strings.slash.effort; } },
+    mode: { testid: 'composer-mode', get description() { return strings.slash.mode; } }
   };
 
   /** The chips follow the open thread, or the remembered choice on a draft; an agent's box has none. */
@@ -100,12 +100,18 @@
     choice = chipChoice(store, thread, target);
   });
 
-  /** Desktop drafts take the keyboard; touch navigation leaves it closed. */
+  /** Desktop drafts take the keyboard; touch navigation leaves it closed. Opening a draft again from the
+   *  sidebar replaces its object and brings the keyboard back, but a switch turned inside the composer
+   *  (the separate copy from +) replaces it too: on the same draft, a focus already in the composer stays. */
+  let focusedFor = '';
   $effect(() => {
-    key;
-    store.draft;
+    const draft = store.draft;
+    const identity = `${key}\u0000${draft?.id ?? ''}\u0000${draft?.projectId ?? ''}`;
     recall = null;
-    focusInitial(box, box?.closest<HTMLElement>('[data-testid=composer]'));
+    const frame = box?.closest<HTMLElement>('[data-testid=composer]');
+    if (identity === focusedFor && focusWithin(frame)) return;
+    focusedFor = identity;
+    focusInitial(box, frame);
   });
 
   /** This thread's own sent prompts, most recent first: what ArrowUp walks. */
@@ -802,7 +808,7 @@
 
     <ComposerSpeechPreview status={speechStatus} preview={speechPreview} error={speechError} />
 
-    <ComposerBar bind:this={toolbar} {store} {key} {target} {bot} {provider} canSend={sendable} waiting={sendWhenLoaded !== null} answering={!!reply} sendLabel={reply ? strings.composer.replySend : undefined} bind:choice bind:picking bind:dictating
+    <ComposerBar bind:this={toolbar} {store} {key} {target} {bot} {provider} canSend={sendable} empty={text.trim().length === 0 && attachments.length === 0 && previewReferences.length === 0} waiting={sendWhenLoaded !== null} answering={!!reply} sendLabel={reply ? strings.composer.replySend : undefined} bind:choice bind:picking bind:dictating
       onsubmit={() => void submit()}
       onfiles={(files) => void take(files)}
       onpreview={(text, status, error) => { speechPreview = text; speechStatus = status; speechError = error; }}

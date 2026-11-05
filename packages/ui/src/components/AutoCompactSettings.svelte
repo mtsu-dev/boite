@@ -24,11 +24,11 @@
   const FIRST_TOKENS = 200_000;
   const PRESETS = [100_000, 200_000, 400_000, 800_000];
   /** Idle moments, from cache reuse to one that can make a new message wait. */
-  const MOMENTS: { id: AutoCompactMoment; icon: typeof Timer; name: string; hint: string; recommended?: true }[] = [
+  const MOMENTS: { id: AutoCompactMoment; icon: typeof Timer; name: string; hint: string; recommended?: true }[] = $derived([
     { id: 'cache-expiry', icon: Timer, name: strings.settings.autoCompactCacheExpiry, hint: strings.settings.autoCompactCacheExpiryHint, recommended: true },
     { id: 'background', icon: Hourglass, name: strings.settings.autoCompactBackground, hint: strings.settings.autoCompactBackgroundHint },
     { id: 'turn-end', icon: CircleCheck, name: strings.settings.autoCompactTurnEnd, hint: strings.settings.autoCompactTurnEndHint }
-  ];
+  ]);
 
   let rule = $derived(compactionPolicy(store.settings, target).autoCompact);
   /** The field as typed, kept while the token limit is off so switching it back on restores it. */

@@ -63,9 +63,11 @@ export const strings = {
       ownerOnly: 'Trust it from the computer that runs this Boite.'
     },
     worktreeGone: {
-      title: 'Worktree removed',
-      merged: 'Boite removed this thread\'s worktree {when}, after #{number} was merged.',
-      clean: 'Boite removed this thread\'s worktree {when}: every commit in it was already on another branch.',
+      /** Plain words in the banner; the git term and the exact time in the title's tooltip. */
+      title: 'Separate copy removed',
+      tip: 'A git worktree: the copy of the project this thread worked in. Removed {time}',
+      merged: 'Boite removed this thread\'s separate copy {when}, after #{number} was merged.',
+      clean: 'Boite removed this thread\'s separate copy {when}: every commit in it was already on another branch.',
       branchDeleted: 'Branch {branch} was deleted.',
       branchKept: 'Branch {branch} is still there.',
       archived: 'Moved to Recent, this thread has no folder to work in.',

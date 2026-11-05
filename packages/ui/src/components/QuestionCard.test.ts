@@ -325,3 +325,22 @@ test('an option already named Skip stands for the button, so the card shows one 
   mountWith(['Signed in', 'Later']);
   expect(document.querySelector('[data-testid=question-skip]')).not.toBeNull();
 });
+
+test('one of several questions asked in one call says which and how many, so the user knows another follows', async () => {
+  const props = { text: 'Which database?', options: OPTIONS, allowText: true, multiple: false, answer: null, pending: true, submit: () => true };
+  running = mount(QuestionCard, { target: document.body, props: { ...props, series: { index: 1, total: 2 } } });
+  flushSync();
+  const series = query('[data-testid=question-series]');
+  expect(series.textContent).toBe('1 of 2');
+  expect(series.getAttribute('title')).toContain('next one comes once this one is answered or skipped');
+  await unmount(running, { outro: false });
+
+  // A lone question is not numbered, and an answered card folds without it.
+  running = mount(QuestionCard, { target: document.body, props });
+  flushSync();
+  expect(document.querySelector('[data-testid=question-series]')).toBeNull();
+  await unmount(running, { outro: false });
+  running = mount(QuestionCard, { target: document.body, props: { ...props, series: { index: 2, total: 2 }, answer: { optionIds: ['short'] } } });
+  flushSync();
+  expect(document.querySelector('[data-testid=question-series]')).toBeNull();
+});
