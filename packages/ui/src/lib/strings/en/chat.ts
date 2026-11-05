@@ -27,6 +27,8 @@ export const strings = {
       subagentMany: '{count} subagents',
       showAgents: 'Show the subagents and workflows',
       next: 'Next needs you ({count})',
+      /** The same chip on a phone's narrow line: what it opens, then how many wait. */
+      nextShort: 'Needs you · {count}',
       nextTitle: 'Open "{title}", the thread that has waited longest for you',
       days: '{days}d {hours}h',
       asking: 'question for you',

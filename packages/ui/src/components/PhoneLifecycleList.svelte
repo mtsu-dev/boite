@@ -3,7 +3,7 @@
   import type { Project, ThreadSummary } from '@boite/contracts';
   import type { Machine } from '../lib/workspace.svelte';
   import { projectKey, type ProjectEntry } from '../lib/project-view.svelte';
-  import { lifecycleFilter, lifecycleProjects, type Lifecycle } from '../lib/lifecycle-filter.svelte';
+  import { lifecycleFilter, lifecycleProjects, lifecycleRows, type Lifecycle } from '../lib/lifecycle-filter.svelte';
   import { compareThreads } from '../lib/thread-order';
   import { projectName } from '../lib/format';
   import { strings } from '../lib/strings';
@@ -16,13 +16,16 @@
    * it: every project that holds such a thread keeps its header, then its rows.
    * Done and archived list the project's fold in place. `row` is the list's own
    * row, so a filtered row opens, swipes and long-presses as any other.
+   * `flat`: the Recent view, whose filter keeps its flat rows and their order,
+   * each naming its project, with no project headers.
    */
-  let { entries, kind, now, scrollRoot, several = false, row: drawRow, onopen }: {
+  let { entries, kind, now, scrollRoot, several = false, flat = false, row: drawRow, onopen }: {
     entries: readonly ProjectEntry[];
     kind: Lifecycle;
     now: number;
     scrollRoot?: HTMLElement;
     several?: boolean;
+    flat?: boolean;
     row: Snippet<[Row, boolean]>;
     onopen: () => void;
   } = $props();
@@ -30,8 +33,21 @@
     entry,
     rows: threads.slice().sort(compareThreads).map(thread => ({ machine: entry.machine, thread, project: entry.project }) as Row)
   })));
+  let flatRows = $derived(flat && (kind === 'waiting' || kind === 'working')
+    ? lifecycleRows(entries, kind).map(({ machine, project, thread }) => ({ machine, thread, project }) as Row) : []);
 </script>
 
+{#if flat && projects.length > 0}
+  <div class="flat" data-testid="mobile-recent-filtered" data-filter={kind}>
+    {#if kind === 'done' || kind === 'archived'}
+      {#key kind}<RecentDone {kind} entries={[...entries]} {scrollRoot} {now} open header={false} {onopen} />{/key}
+    {:else}
+      <WindowList items={flatRows} keyOf={item => JSON.stringify([item.machine.id, item.thread.id])} {scrollRoot} estimate={77}>
+        {#snippet row(item)}{@render drawRow(item, false)}{/snippet}
+      </WindowList>
+    {/if}
+  </div>
+{:else}
 {#each projects as { entry, rows } (projectKey(entry))}
   <section class="filtered" data-testid="mobile-project-group" data-filter={kind} data-project-id={entry.project.id} data-machine-id={entry.machine.id}>
     <div class="heading">
@@ -48,6 +64,7 @@
 {:else}
   <p class="none" data-testid="mobile-lifecycle-empty">{strings.sidebar.lifecycle.none}</p>
 {/each}
+{/if}
 <!-- Keeps the filter's way out in reach at the list's end too. -->
 {#if projects.length > 0}<button type="button" class="ghost clear" data-testid="mobile-lifecycle-clear" onclick={() => lifecycleFilter.clear()}>{strings.sidebar.lifecycle.showAll}</button>{/if}
 

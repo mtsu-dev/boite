@@ -108,9 +108,11 @@
   role="group"
 >
   {#if answer !== null}
-    <button type="button" class="ghost answered-row" data-testid="question-toggle" aria-expanded={open} onclick={() => (open = !open)}>
+    <!-- The question stays readable in the history once answered: its words, then what was given. -->
+    <button type="button" class="ghost answered-row" data-testid="question-toggle" aria-expanded={open} aria-label={`${strings.chat.questionAnswered}: ${text}. ${summary(answer)}`} onclick={() => (open = !open)}>
       <span class="glyph"><MessageCircleQuestionMark size={15} strokeWidth={1.75} /></span>
-      <span class="verdict ui-label" data-testid="question-verdict">{strings.chat.questionAnswered}</span>
+      <span class="asked ui-label" data-testid="question-asked" title={text}>{text}</span>
+      <span class="sep" aria-hidden="true">·</span>
       <span class="given ui-label" data-testid="question-answer" title={summary(answer)}>{summary(answer)}</span>
       {#if answer.attachments?.length}
         <span class="given-files" data-testid="question-answer-files" title={fileNames(answer)}><Paperclip size={12} strokeWidth={2} />{answer.attachments.length}</span>
@@ -272,10 +274,22 @@
     color: var(--color-subtle);
   }
 
-  .verdict {
-    flex: none;
+  /* The question gives way before the answer: it keeps up to 60 % of the row, the answer the rest. */
+  .asked {
+    flex: 0 1 auto;
+    max-width: 60%;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
     font-size: var(--text-sm);
     color: var(--color-muted-foreground);
+  }
+
+  .answered-row .sep {
+    flex: none;
+    font-size: var(--text-sm);
+    color: var(--color-subtle);
   }
 
   .prompt {

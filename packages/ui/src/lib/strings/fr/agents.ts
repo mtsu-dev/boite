@@ -79,7 +79,7 @@ export const fr: Translation = {
     missedOne: '1 réponse manquée', missedMany: '{count} réponses manquées',
     backToChat: 'Retour à la discussion',
     planned: 'Routines',
-    entrustTo: 'Confier à un bot', entrustToName: 'Confier à {name}', entrustedTo: 'Confié à {name}', takeBack: 'Reprendre la main',
+    entrustTo: 'Attribuer à un bot', entrustToName: 'Attribuer à {name}', entrustedTo: 'Attribué à {name}', takeBack: 'Reprendre la main',
     welcomeHint: 'Un bot est une discussion qui garde son nom, sa mémoire et ses routines. Il travaille seul et vous dit ce qui compte.',
     runsHeading: 'Où il tourne', runsHint: 'Sa discussion, sa mémoire et ses routines restent sur cette machine. Les modèles viennent des comptes de cette machine.',
     machine: 'Machine', modelLabel: 'Modèle', machineOffline: 'Hors ligne', machineNotOwner: 'Accès propriétaire requis',

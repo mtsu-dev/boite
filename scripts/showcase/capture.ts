@@ -576,8 +576,8 @@ const steps: Step[] = [
       `);
       await scrollTimeline(page, 'bottom');
       await page.getByTestId('question-series').first().waitFor({ timeout: 5000 });
-      // The card's head carries the count: bring it into view above the composer.
-      await page.getByTestId('question-series').first().evaluate((el: HTMLElement) => el.closest('[data-testid=question-card]')!.scrollIntoView({ block: 'center' }));
+      // The dock's row carries the count, on the composer: bring it into view.
+      await page.getByTestId('question-series').first().evaluate((el: HTMLElement) => (el.closest('[data-testid=question-card]') ?? el.closest('[data-testid=thread-activity]'))!.scrollIntoView({ block: 'center' }));
       await page.waitForTimeout(400);
     },
   },

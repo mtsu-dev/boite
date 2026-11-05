@@ -126,6 +126,36 @@ test('the lifecycle strip counts every listed project and filters the list to on
   expect(sidebar().querySelectorAll('[data-testid=thread-row]')).toHaveLength(0);
 });
 
+test('the Recent view keeps its flat rows and their order under a filter, each naming its project', async () => {
+  await mountOnFake();
+  for (const t of store.threads) if (!t.archived) setThread(t.id, { status: 'idle', unread: false, openQuestions: 0, backgroundWork: null, pullRequestWatches: [] });
+  const alpha = await project('alpha');
+  const beta = await project('beta');
+  const asking = await thread(alpha.id, 'Asks a question');
+  const failing = await thread(beta.id, 'Build broke');
+  const later = await thread(alpha.id, 'Asks later');
+  await thread(beta.id, 'Quiet one');
+  setThread(asking.id, { status: 'waiting', lastUserMessageAt: Date.now() - 3 * 60_000 });
+  setThread(failing.id, { status: 'error', lastUserMessageAt: Date.now() - 2 * 60_000 });
+  setThread(later.id, { status: 'waiting', lastUserMessageAt: Date.now() - 60_000 });
+  workspace.view = 'recent';
+  await waitFor(() => sidebar().querySelector('section[data-testid=project]') === null && rowIds(sidebar()).includes(later.id) && count('waiting') === 3);
+  const wanted = new Set([asking.id, failing.id, later.id]);
+  const order = rowIds(sidebar()).filter(id => wanted.has(id!));
+
+  stage('waiting').click();
+  await waitFor(() => sidebar().querySelector('[data-testid=recent-filtered][data-filter=waiting]') !== null && rowIds(sidebar()).length === 3);
+  // The rows Recent drew, in the order it drew them: no project card, the project under each title.
+  expect(sidebar().querySelector('section[data-filter]')).toBeNull();
+  expect(rowIds(sidebar())).toEqual(order);
+  const projects = [...sidebar().querySelectorAll('[data-testid=thread-project]')].map(name => name.textContent);
+  expect(projects).toEqual(order.map(id => id === failing.id ? 'beta' : 'alpha'));
+
+  // The Projects view keeps its cards under the same filter.
+  workspace.view = 'projects';
+  await waitFor(() => sidebar().querySelectorAll('section[data-filter=waiting]').length === 2);
+});
+
 test('a project away from the open thread shows what needs the user and folds its resting rows under one row', async () => {
   await mountOnFake();
   const busy = await project('busy');

@@ -310,8 +310,8 @@
         onaction={(action) => rowAction(row.machine.store, row.thread, action, row.machine.id)} />
     {/snippet}
     {#if listScreen === 'threads' && lifecycleFilter.current && !query}
-      <!-- Worker 1's lifecycle filter: the matching projects, each under its header, rows drawn by threadRow. -->
-      <PhoneLifecycleList entries={groups} kind={lifecycleFilter.current} {now} {scrollRoot} {several} row={threadRow} onopen={() => show('chat')} />
+      <!-- The lifecycle filter: in Projects, the matching projects under their headers; in Recent, its flat rows. -->
+      <PhoneLifecycleList entries={groups} kind={lifecycleFilter.current} {now} {scrollRoot} {several} flat={workspace.view === 'recent'} row={threadRow} onopen={() => show('chat')} />
     {:else if listScreen === 'threads' && workspace.view === 'projects'}
       {#snippet projectRows(projects: ProjectEntry[], later = false)}
       {#each projects as group (projectKey(group))}

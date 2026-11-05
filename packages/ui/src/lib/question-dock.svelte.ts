@@ -14,6 +14,17 @@ export const questionDock = $state<{ focus: string | null; nonce: number }>({ fo
  */
 export const dockRoom = $state<{ height: number; clearance: number }>({ height: 0, clearance: 0 });
 
+/**
+ * Whether a pending question waits in the dock above the composer rather than
+ * as a card in the timeline. Asked without stopping, every kind does. One the
+ * agent stopped for does when it is a plain question: its options then sit on
+ * the composer that writes and sends the answer. A setting, team or bot
+ * request it stopped for keeps its card in the timeline.
+ */
+export function questionDocks(question: { async?: boolean; setting?: unknown; team?: unknown; agentSetting?: unknown }): boolean {
+  return question.async === true || (!question.setting && !question.team && !question.agentSetting);
+}
+
 export function showDockedQuestion(questionId: string): void {
   questionDock.focus = questionId;
   questionDock.nonce++;

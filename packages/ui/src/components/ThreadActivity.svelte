@@ -6,7 +6,7 @@
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
   import { permissionSentence } from '../lib/tool-summary';
-  import { dockRoom, questionDock } from '../lib/question-dock.svelte';
+  import { dockRoom, questionDock, questionDocks } from '../lib/question-dock.svelte';
   import { ignoreQuestions, releaseWaiting, replyOf, repliesOf, sendAnswer, writeAnswer } from '../lib/question-reply.svelte';
   import Deferred, { parts } from './Deferred.svelte';
   import InfoTip from './InfoTip.svelte';
@@ -30,8 +30,12 @@
   /*
    * The questions an agent asked without stopping (`boite ask`) wait here, on
    * top of the goal, the loop and the tasks, rather than in the timeline where
-   * a running turn would push them out of sight. Several stack behind a pager;
-   * each keeps what was picked or typed while another is on screen.
+   * a running turn would push them out of sight. So does a plain question the
+   * agent stopped for: its options sit on the composer that writes and sends
+   * its answer, one answer area instead of a card far up the timeline. Setting,
+   * team and bot requests it stopped for keep their card in the timeline.
+   * Several stack behind a pager, the one the agent stopped for first; each
+   * keeps what was picked or typed while another is on screen.
    *
    * A subagent's questions link to its conversation from this chatbar. Only
    * this thread's questions use this composer's answers. Child permissions
@@ -43,11 +47,12 @@
   let asked: DockRequest[] = $derived.by(() => {
     const threadId = store.openThread?.id;
     if (!threadId) return [];
-    const questions: DockRequest[] = store.pendingQuestions.filter((question) => question.async === true && question.threadId === threadId);
+    const questions: DockRequest[] = store.pendingQuestions.filter((question) => question.threadId === threadId && questionDocks(question));
     const secrets: DockRequest[] = store.pendingSecrets
       .filter((request) => request.threadId === threadId || children.has(request.threadId))
       .map((secret) => ({ id: secret.id, threadId: secret.threadId, turnId: secret.turnId, text: secret.reason, options: [], allowText: false, multiple: false, createdAt: secret.createdAt, secret }));
-    return [...questions, ...secrets].sort((a, b) => a.createdAt - b.createdAt);
+    const stopped = (request: DockRequest) => !request.secret && request.async !== true;
+    return [...questions, ...secrets].sort((a, b) => Number(stopped(b)) - Number(stopped(a)) || a.createdAt - b.createdAt);
   });
 
   function secretPart(request: SecretRequest): Extract<MessagePart, { type: 'secret_request' }> {
@@ -57,6 +62,16 @@
   let shownId = $state<string | null>(null);
   let shown = $derived(asked.find((question) => question.id === shownId) ?? asked[0]);
   let at = $derived(shown ? asked.indexOf(shown) : 0);
+  /** The place in a series of questions asked in one call, which only the timeline's part carries. */
+  let shownSeries = $derived.by(() => {
+    const id = shown && !shown.secret ? shown.id : null;
+    if (id === null) return undefined;
+    for (const message of store.openThread?.messages ?? []) {
+      const part = message.parts.find((one) => one.type === 'question' && one.questionId === id);
+      if (part?.type === 'question') return part.series;
+    }
+    return undefined;
+  });
   let questionOpen = $state(true);
   let inline = $derived(asked.length > 0 || waits.length > 0 || childQuestions.length > 0);
   // Start with the oldest pending question. New arrivals keep the current
@@ -216,7 +231,7 @@
           <button type="button" class="ghost objective question-toggle" aria-expanded={questionOpen}
             title={questionOpen ? strings.activity.questionFold : strings.activity.questionUnfold} data-testid="activity-question-toggle"
             onclick={() => (questionOpen = !questionOpen)}>
-            <span class="question-line ui-label" class:generic={questionOpen && !shown.secret && !shown.setting && !shown.agentSetting && !shown.team}>{shown.secret ? shown.secret.name : questionOpen ? (shown.setting ? settingHeading(shown.setting) : shown.agentSetting ? fill(strings.agentSettingRequest.heading, { name: shown.agentSetting.agentName }) : shown.team ? teamHeading(shown.team) : strings.chat.questionAsyncHeading) : shown.text}</span>
+            <span class="question-line ui-label" class:generic={questionOpen && !shown.secret && !shown.setting && !shown.agentSetting && !shown.team}>{shown.secret ? shown.secret.name : questionOpen ? (shown.setting ? settingHeading(shown.setting) : shown.agentSetting ? fill(strings.agentSettingRequest.heading, { name: shown.agentSetting.agentName }) : shown.team ? teamHeading(shown.team) : shown.async === true ? strings.chat.questionAsyncHeading : strings.chat.questionHeading) : shown.text}</span>
             <ChevronDown size={16} class={questionOpen ? 'turned' : ''} />
           </button>
           {#if shown.secret}
@@ -226,6 +241,9 @@
             <span data-testid="composer-reply" data-question={shown.id}>
               <button type="button" class="ghost small" data-testid="composer-reply-ignore" title={strings.composer.replyIgnoreHint} aria-label={strings.composer.replyIgnore} onclick={() => ignoreQuestions(store)}><span class="long">{strings.composer.replyIgnore}</span><span class="short">{strings.composer.replyIgnoreShort}</span></button>
             </span>
+          {/if}
+          {#if shownSeries && shownSeries.total > 1 && asked.length <= 1}
+            <span class="meta ui-label series" data-testid="question-series" title={fill(strings.chat.questionSeriesTitle, { total: String(shownSeries.total) })}>{fill(strings.chat.questionSeries, { index: String(shownSeries.index), total: String(shownSeries.total) })}</span>
           {/if}
           {#if asked.length > 1}
             <span class="pager">

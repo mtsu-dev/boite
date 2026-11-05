@@ -1,7 +1,7 @@
 export const strings = {
 
   permissionMode: {
-    default: 'Ask each time',
+    default: 'Ask for approval',
     acceptEdits: 'Auto-approve edits',
     /** The two run-everything modes differ in one thing, said in the name: whether the hooks and guards still check each call. */
     bypassPermissions: 'Run everything, guards on',

@@ -9,7 +9,9 @@
    * icon, its title, a muted summary that ends in an ellipsis when the line is
    * too short, and its actions as small buttons. Details, and the summary the
    * line cut, open below behind a disclosure, so the notice never grows into a
-   * card on its own.
+   * card on its own. When the line leaves the summary only a few letters (a
+   * phone), the summary leaves the line to the title and reads in the details:
+   * never two cut fragments side by side.
    */
   let {
     icon: Icon,
@@ -48,13 +50,20 @@
   let open = $state(false);
   let summary = $state<HTMLElement | undefined>(undefined);
   let cut = $state(false);
+  let tight = $state(false);
   const id = $props.id();
+  /** Below this, a cut summary is a fragment, not a sentence. */
+  const TIGHT_PX = 160;
 
   // The disclosure is offered when there is more to read: details, or a summary the line cut.
+  // A hidden summary keeps its place in the line, so its width is still the room it would have.
   $effect(() => {
     const node = summary;
     if (!node || typeof ResizeObserver === 'undefined') return;
-    const measure = () => { cut = node.scrollWidth > node.clientWidth + 1; };
+    const measure = () => {
+      cut = node.scrollWidth > node.clientWidth + 1;
+      tight = cut && !!title && node.clientWidth < TIGHT_PX;
+    };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(node);
@@ -63,7 +72,7 @@
   let disclosable = $derived(!!details || cut);
 </script>
 
-<aside class="notice {tone}" class:inline class:open data-testid={testid} data-kind={kind} {role} aria-label={label ?? title}>
+<aside class="notice {tone}" class:inline class:open class:tight data-testid={testid} data-kind={kind} {role} aria-label={label ?? title}>
   <div class="line">
     <span class="mark" aria-hidden="true"><Icon size={15} strokeWidth={1.9} /></span>
     <!-- `ui-label` trims each text to its cap height, so the icon centres on the words in every font. -->
@@ -104,6 +113,9 @@
   .title { flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: var(--color-foreground); }
   .summary { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-muted-foreground); font-variant-numeric: tabular-nums; }
   .fill { flex: 1; }
+  /* The title takes the line; the summary waits in the details. */
+  .tight .title { flex: 0 1 auto; min-width: 0; max-width: none; }
+  .tight .summary { visibility: hidden; }
   .actions { display: flex; flex: none; align-items: center; gap: 4px; }
   .actions :global(button) { height: 26px; min-height: 0; padding: 0 9px; font-size: var(--text-xs); }
   .disclose { display: inline-grid; place-items: center; flex: none; width: 26px; height: 26px; padding: 0; border: 0; border-radius: var(--radius-sm); background: none; color: var(--color-muted-foreground); cursor: pointer; }

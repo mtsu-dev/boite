@@ -42,6 +42,11 @@ test('Done loads only when expanded and restores the owning machine when thread 
   // The project shows beside the row, and the row's button names it too, for a screen reader moving between buttons.
   const project = projectName(entries()[0]!.project);
   expect(document.querySelector('[data-machine-id=first][data-thread-id=t-trace] [data-testid=done-thread-open]')?.textContent).toContain(project);
+  // Across projects the title owns its line: the project, the machine and the time go on the second, inside the button.
+  const done = document.querySelector('[data-machine-id=first][data-thread-id=t-trace] [data-testid=done-thread-open]')!;
+  expect(done.querySelector('.headline time, .headline .when, .headline [data-testid=done-thread-machine]')).toBeNull();
+  expect(done.querySelector('[data-testid=done-thread-trail] :is(time, .when)')).not.toBeNull();
+  expect(done.querySelector('.facts [data-testid=done-thread-machine]')).not.toBeNull();
   click('[data-machine-id=first][data-thread-id=t-trace] [data-testid=done-thread-restore]'); await settle();
   expect((await first.client.call('threads.get', { threadId: 't-trace' })).archived).toBe(false);
   expect((await second.client.call('threads.get', { threadId: 't-trace' })).archived).toBe(true);

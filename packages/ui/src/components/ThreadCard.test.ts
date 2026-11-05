@@ -31,6 +31,30 @@ test('child question links stay out of sidebar thread rows', async () => {
   expect(document.querySelector('[data-testid=subagent-question-alert]')).toBeNull();
 });
 
+test('a row across projects keeps its first line for the title: time and machine go under it, beside the project', async () => {
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  const thread = store.threads.find(row => !row.parentThreadId && row.projectId)!;
+  const project = store.projects.find(row => row.id === thread.projectId)!;
+  vi.spyOn(client, 'call').mockResolvedValue(null as never);
+  mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'lab', label: 'Lab', store }, project, thread, now: Date.now(), showProject: true, showMachine: true } });
+  await settle();
+  const headline = document.querySelector<HTMLElement>('[data-testid=thread-row] .headline')!;
+  // The title line holds the ring and the title alone; the second line, inside the row's button, names the project and
+  // the machine and ends on the time.
+  expect(headline.querySelector('.when, [data-testid=thread-state], .machine')).toBeNull();
+  const facts = document.querySelector<HTMLElement>('[data-testid=thread-row] .facts')!;
+  expect(facts.querySelector('[data-testid=thread-trail] .when')).not.toBeNull();
+  expect(facts.querySelector('[data-testid=thread-project]')?.textContent).toBe(project.name);
+  expect(facts.querySelector('[data-testid=thread-machine]')?.getAttribute('aria-label')).toBe('Lab');
+  // Under a project's header the row stays one line, its time at the title's end.
+  await unmount(mounted);
+  mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'lab', label: 'Lab', store }, project, thread, now: Date.now(), showProject: false, showMachine: false } });
+  await settle();
+  expect(document.querySelector('[data-testid=thread-trail]')).toBeNull();
+  expect(document.querySelector('[data-testid=thread-row] .headline > .when, [data-testid=thread-row] .headline > [data-testid=thread-state]')).not.toBeNull();
+});
+
 test('cards keep discovering after a merge, pause while hidden, and retain the last answer on errors', async () => {
   client = new FakeClient({ delayMs: 0 });
   store = new Store(); store.attach(client); await store.connect();

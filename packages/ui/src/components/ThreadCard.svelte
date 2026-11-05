@@ -10,6 +10,7 @@
   import { focusOnMount } from '../lib/actions';
   import { fill, strings } from '../lib/strings';
   import ThreadHeadline from './ThreadHeadline.svelte';
+  import MachineIcon from './MachineIcon.svelte';
   import { trackThreadPullRequest } from '../lib/thread-pull-request.svelte';
   import { projectName } from '../lib/format';
   import { canMarkDone, markDone } from '../lib/recent.svelte';
@@ -47,11 +48,13 @@
   // A move asked for while the turn runs, until the turn ends and applies it.
   let pending = $derived(pendingLine(thread));
   /**
-   * A row is one line: the ring, the title, the time. A second line only says
+   * A row is one line: the ring, the title, the time. A second line says
    * where a row belongs when the list mixes projects, or a move waiting for the
-   * turn's end. The branch and the pull request are on the open thread's
-   * header and in the row's tooltip; delegated agents ride the title line
-   * while the row is open or under the pointer (`ThreadHeadline`).
+   * turn's end; it then takes the machine and, at its right end, the time and
+   * the delegated agents, so the first line is the ring and the title alone.
+   * The branch and the pull request are on the open thread's header and in the
+   * row's tooltip; delegated agents show while the row is open or under the
+   * pointer (`ThreadHeadline`).
    */
   let meta = $derived(showProject || Boolean(pending));
   let prLabel = $derived(pullRequest ? fill(pullRequest.state === 'MERGED' ? strings.sidebar.prMerged : pullRequest.state === 'CLOSED' ? strings.sidebar.prClosed : strings.sidebar.prOpen, { number: String(pullRequest.number) }) : null);
@@ -133,14 +136,13 @@
       onclick={() => void workspace.select(owner, thread.id)}
       ondblclick={rename}
     >
-      <ThreadHeadline {owner} {thread} {now} {open} ring machine={showMachine ? machine : undefined} />
+      {#snippet facts()}
+        {#if pending}<span class="fact pending" data-testid="thread-pending" title={pending}><FolderInput size={12} /><span class="ui-label">{pending}</span></span>{/if}
+        {#if showProject}<span class="fact project-name" data-testid="thread-project" title={project.path}><Folder size={12} /><span class="ui-label">{projectName(project)}</span></span>{/if}
+        {#if showMachine}<span class="fact machine" class:offline={owner.connection !== 'ready'} data-testid="thread-machine" title={`${machine.label} · ${strings.connection[owner.connection]}`} aria-label={machine.label}><MachineIcon icon={machine.icon} os={owner.core?.os} size={12} /></span>{/if}
+      {/snippet}
+      <ThreadHeadline {owner} {thread} {now} {open} ring facts={meta ? facts : undefined} machine={showMachine && !meta ? machine : undefined} />
     </button>
-    {#if meta}
-    <div class="metadata">
-      {#if pending}<span class="pending" data-testid="thread-pending" title={pending}><FolderInput size={12} /><span class="ui-label">{pending}</span></span>{/if}
-      {#if showProject}<span class="project-name" data-testid="thread-project" title={project.path}><Folder size={12} /><span class="ui-label">{projectName(project)}</span></span>{/if}
-    </div>
-    {/if}
     <!-- Pin on hover; a pinned row keeps its 12 px mark in the title line. -->
     <button type="button" class="ghost small icon pin-action" data-testid="thread-pin" aria-pressed={thread.pinned === true}
       aria-label={thread.pinned ? strings.sidebar.unpin : strings.sidebar.pin} title={thread.pinned ? strings.sidebar.unpin : strings.sidebar.pin}
@@ -186,8 +188,7 @@
     user-select: none;
   }
   /* Its machine dropped: the row still opens, to read what is held and queue a prompt. */
-  .thread.offline .row,
-  .thread.offline .metadata {
+  .thread.offline .row {
     opacity: 0.55;
   }
   /* One line is 28 px: the 21 px ring and 3.5 px of air above and below, no border,
@@ -204,10 +205,12 @@
     gap: 0;
     background: transparent;
   }
-  /* The second line sits over the row's bottom padding, so the whole card stays one 44 px target. */
+  /* Two lines in one 44 px target: the title's, then the project, the machine and the time. */
   .meta .row {
     min-height: 44px;
-    padding: 3.5px 6px 18px 4px;
+    justify-content: center;
+    gap: 2px;
+    padding: 3px 8px 3px 4px;
   }
   .row:hover:not(:disabled) {
     background: transparent;
@@ -215,43 +218,25 @@
   .row:active:not(:disabled) {
     transform: none;
   }
-  .metadata {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    position: absolute;
-    bottom: 4px;
-    /* Under the title, past the ring: 3 px padding, the 21 px ring and its 5 px gap. */
-    left: 29px;
-    right: 8px;
-    height: 16px;
-    pointer-events: none;
-    min-width: 0;
-    font-size: var(--text-xs);
-    color: var(--color-muted-foreground);
-  }
-  .metadata > span {
+  .fact {
     display: flex;
     align-items: center;
     gap: 4px;
+    flex: 0 1 auto;
     min-width: 0;
   }
-  .metadata span span {
+  .fact span {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .metadata :global(svg) {
+  .fact :global(svg) {
     flex: none;
   }
-  .metadata > :global(*) { flex: 0 1 auto; }
   /* A move waiting for the turn's end: the accent, like the marker the move leaves in the chat. */
-  .pending { color: var(--color-accent); flex: 0 1 auto; }
-  .project-name {
-    flex: 0 1 auto;
-    max-width: 50%;
-  }
+  .pending { color: var(--color-accent); }
+  .machine.offline { color: var(--color-danger); }
   /* Centred on the title's line: the 28 px row less a 26 px button leaves 1 px over it. */
   .actions {
     position: absolute;
@@ -269,14 +254,16 @@
     opacity: 1;
   }
   /* Delegated agents at work show on the open row and under the pointer; one that asks always shows, it needs the user. */
-  .thread:not(.open):not(:hover):not(:focus-within) :global(.headline .agents:not(.asking)) { display: none; }
+  .thread:not(.open):not(:hover):not(:focus-within) :global(:is(.headline, .facts) > * > .agents:not(.asking)),
+  .thread:not(.open):not(:hover):not(:focus-within) :global(.headline > .agents:not(.asking)) { display: none; }
   /* The buttons take the time's place on hover: a resting time hides, a counting one steps left and stays. */
-  .thread:hover :global(.headline .when:not(.live)),
-  .thread:focus-within :global(.headline .when:not(.live)) {
+  /* On a two-line row the time sits on the second line, clear of the buttons: it stays. */
+  .thread:not(.meta):hover :global(.headline .when:not(.live)),
+  .thread:not(.meta):focus-within :global(.headline .when:not(.live)) {
     opacity: 0;
   }
-  .thread:hover :global(.headline .when.live), .thread:focus-within :global(.headline .when.live) { margin-right: 51px; }
-  .thread:has(.done):hover :global(.headline .when.live), .thread:has(.done):focus-within :global(.headline .when.live) { margin-right: 78px; }
+  .thread:not(.meta):hover :global(.headline .when.live), .thread:not(.meta):focus-within :global(.headline .when.live) { margin-right: 51px; }
+  .thread:not(.meta):has(.done):hover :global(.headline .when.live), .thread:not(.meta):has(.done):focus-within :global(.headline .when.live) { margin-right: 78px; }
   .rename {
     width: 100%;
     height: var(--row);
@@ -292,10 +279,13 @@
     .actions {
       opacity: 1;
     }
-    .thread :global(.headline .when) {
+    .thread:not(.meta) :global(.headline .when) {
       opacity: 1 !important;
       margin-right: 24px;
     }
-    .thread:has(.done) :global(.headline .when) { margin-right: 51px; }
+    .thread:not(.meta):has(.done) :global(.headline .when) { margin-right: 51px; }
+    /* A two-line row keeps its title clear of the drawn buttons instead; the time stays under them. */
+    .meta .row :global(.headline) { padding-right: 24px; }
+    .meta:has(.done) .row :global(.headline) { padding-right: 51px; }
   }
 </style>

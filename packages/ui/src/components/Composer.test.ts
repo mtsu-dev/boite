@@ -1798,12 +1798,12 @@ test('permission menu offers YOLO beside Auto and preserves legacy modes until p
   query('[data-testid=composer-mode]').click();
   await waitFor(() => document.querySelector('[data-testid=composer-mode-menu]') !== null);
   const menu = query('[data-testid=composer-mode-menu]');
-  expect(Array.from(menu.querySelectorAll('.label')).map(row => row.textContent?.trim())).toEqual(['Full access, no guards', 'Run everything, guards on', 'Auto-approve edits', 'Ask each time']);
+  expect(Array.from(menu.querySelectorAll('.label')).map(row => row.textContent?.trim())).toEqual(['Full access, no guards', 'Run everything, guards on', 'Auto-approve edits', 'Ask for approval']);
   // Each row says what it lets through on a line of its own, so the two run-everything modes read apart.
   expect(Array.from(menu.querySelectorAll('.hint')).map(row => row.textContent?.trim())).toEqual(['Approves every request; Claude and Codex hooks off', 'Runs anything on this computer; hooks still check', 'Edits without asking, asks before each command', 'Reads freely, asks before each edit or command']);
   // The old names stay in the tooltips, so a habit still finds them.
   expect(Array.from(menu.querySelectorAll<HTMLElement>('[data-value]')).map(row => row.title)).toEqual(expect.arrayContaining([expect.stringContaining('Formerly YOLO'), expect.stringContaining('Formerly Edit freely')]));
-  for (const [mode, label] of [['yolo', 'Full access, no guards'], ['bypassPermissions', 'Run everything, guards on'], ['acceptEdits', 'Auto-approve edits'], ['default', 'Ask each time']]) {
+  for (const [mode, label] of [['yolo', 'Full access, no guards'], ['bypassPermissions', 'Run everything, guards on'], ['acceptEdits', 'Auto-approve edits'], ['default', 'Ask for approval']]) {
     query(`[data-testid=composer-mode-menu] [data-value="${mode}"]`).click();
     await waitFor(() => store.openThread?.permissionMode === mode);
     expect(query('[data-testid=composer-mode]').textContent?.trim()).toBe(label);

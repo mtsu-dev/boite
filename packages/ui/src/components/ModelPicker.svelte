@@ -604,11 +604,13 @@
     position: fixed;
     z-index: 40;
     display: grid;
-    grid-template-columns: 76px minmax(0, 1fr);
-    width: min(440px, calc(100vw - 32px));
+    /* The rail is wide enough for "Muse Code" on one line, and the fixed refresh
+       keeps its own 48 px row: the providers scroll above it, never under it. */
+    grid-template-columns: 88px minmax(0, 1fr);
+    width: min(452px, calc(100vw - 32px));
     height: 360px;
     max-height: min(360px, 45dvh);
-    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-rows: minmax(0, 1fr) 48px;
     background: var(--color-float);
     -webkit-backdrop-filter: var(--float-blur);
     backdrop-filter: var(--float-blur);
@@ -639,8 +641,10 @@
   .rail {
     align-items: center;
     gap: 2px;
-    padding: 4px;
+    padding: 4px 4px 20px;
     background: var(--color-surface);
+    /* A tile the rail cuts fades into the refresh's row; the last one scrolls clear of the fade. */
+    mask-image: linear-gradient(to bottom, black calc(100% - 20px), transparent);
   }
 
   .models > * { flex-shrink: 0; }
@@ -654,7 +658,7 @@
   .single .main-models { grid-area: 1 / 1 / 3 / 2; border-left: none; }
   .single .main-models .head { padding-right: 44px; }
   .single .refresh { position: absolute; top: 6px; right: 6px; margin: 0; width: var(--control-sm); height: var(--control-sm); border: none; background: transparent; }
-  .refresh { grid-area: 2 / 1; align-self: end; justify-self: center; margin: 6px; position: relative; z-index: 3; display: grid; place-items: center; width: var(--control-lg); height: var(--control-lg); padding: 0; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); color: var(--color-muted-foreground); }
+  .refresh { grid-area: 2 / 1; align-self: center; justify-self: center; margin: 0; position: relative; z-index: 3; display: grid; place-items: center; width: var(--control-lg); height: var(--control-lg); padding: 0; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); color: var(--color-muted-foreground); }
   .refresh:hover:not(:disabled) { background: linear-gradient(var(--color-hover) 0 0), var(--color-surface); color: var(--color-foreground); }
   .head {
     display: flex;
@@ -816,7 +820,7 @@
     /* The rail is the finger's first stop on a phone, so its tiles (ProviderTiles)
        and the refresh button take a full touch target like every other control. */
     .main-models { grid-area: 2 / 1 / 3 / 3; border-left: none; }
-    .refresh { grid-area: 1 / 2; align-self: center; justify-self: end; justify-content: center; width: var(--touch-target); padding: 0; border: none; }
+    .refresh { grid-area: 1 / 2; align-self: center; justify-self: end; justify-content: center; width: var(--touch-target); margin: 6px; padding: 0; border: none; }
     .refresh {
       width: var(--touch-target);
       height: var(--touch-target);

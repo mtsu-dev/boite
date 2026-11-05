@@ -1,6 +1,7 @@
 import { expect, vi } from 'vitest';
 import { flushSync } from 'svelte';
 import { store } from '../lib/store.svelte';
+import { repliesOf } from '../lib/question-reply.svelte';
 import { count } from '../lib/format';
 import { SEEDED_THINKING, STREAMED_TOOL_INPUT, query, sendPrompt, test, type, waitFor } from '../test/app';
 
@@ -101,6 +102,36 @@ test('an async question waits in the dock above the composer, stacked, and the t
   const afterSkip = await store.client!.call('threads.get', { threadId: beforeSkip.id });
   expect(afterSkip.turns).toEqual(beforeSkip.turns);
   expect(afterSkip.messages.filter(message => message.role === 'user')).toEqual(beforeSkip.messages.filter(message => message.role === 'user'));
+});
+
+test('a question the agent stopped for waits on the composer, one answer area, and stays readable in the history once answered', async ({ app: _app }) => {
+  // Each fixture's fake core counts question ids from the same start: a set-aside id from an earlier test must not hide this one.
+  repliesOf(store).ignored = {};
+  query<HTMLButtonElement>('[data-testid=new-thread]').click();
+  await waitFor(() => store.draft !== null);
+  await sendPrompt('one question please');
+  await waitFor(() => document.querySelectorAll('[data-testid=activity-question]').length === 1);
+
+  // Its options sit in the dock over the composer, which writes and sends the answer: no card far up the timeline.
+  expect(document.querySelector('[data-testid=timeline] [data-testid=question-card]')).toBeNull();
+  expect(document.querySelectorAll('[data-testid=question-docked]').length).toBe(1);
+  const dock = query('[data-testid=activity-question]');
+  expect(query('[data-testid=thread-activity]').closest('[data-testid=composer]')).not.toBeNull();
+  expect(query('[data-testid=activity-question-toggle]').textContent).toContain('Asks you');
+  // The dock's row names the reply once the composer is quiet; the composer does not repeat it on an Answering line.
+  await waitFor(() => document.querySelectorAll('[data-testid=composer-reply]').length === 1);
+  expect(query('[data-testid=composer-reply]').closest('[data-testid=thread-activity]')).not.toBeNull();
+  const text = query('[data-testid=activity-question] [data-testid=question-text]').textContent ?? '';
+
+  dock.querySelector<HTMLButtonElement>('[data-testid=question-option]')?.click();
+  await waitFor(() => !query<HTMLButtonElement>('[data-testid=composer-send]').disabled);
+  query<HTMLButtonElement>('[data-testid=composer-send]').click();
+  await waitFor(() => document.querySelectorAll('[data-testid=activity-question]').length === 0);
+
+  // Answered, the question's words stay on its line in the history, beside the answer.
+  await waitFor(() => document.querySelector('[data-testid=timeline] [data-testid=question-card][data-state=answered]') !== null);
+  expect(query('[data-testid=timeline] [data-testid=question-asked]').textContent).toBe(text);
+  expect(query('[data-testid=timeline] [data-testid=question-answer]').textContent?.length).toBeGreaterThan(0);
 });
 
 test('a tool card stays folded while its input arrives and reveals parsed details on demand', async ({ app: _app }) => {

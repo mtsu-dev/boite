@@ -88,6 +88,9 @@ test('Next needs you walks the Inbox: it counts the same threads and opens the o
   flushSync();
   const next = document.querySelector<HTMLButtonElement>('[data-testid="status-strip-next"]')!;
   expect(next.textContent).toContain(`Next needs you (${others.length})`);
+  // The phone's chip keeps a label: a bare chevron and number never said what it opens.
+  expect(next.querySelector('.short')?.textContent).toBe(`Needs you · ${others.length}`);
+  expect(next.querySelector('.number')).toBeNull();
   next.click();
   expect(select).toHaveBeenCalledWith(store, oldest.id);
   // It only opens: no send, archive or move goes to the core.
@@ -141,7 +144,7 @@ test('the state label never shrinks, and under 420 px the counts and Next turn i
   const narrow = css.slice(css.indexOf('@container strip (max-width: 420px)'));
   expect(narrow.length).toBeGreaterThan(0);
   expect(rule('.words', narrow)).toMatch(/display: none/);
-  expect(rule('.number', narrow)).toMatch(/display: inline/);
+  expect(rule('.number, .short', narrow)).toMatch(/display: inline/);
   // The names stay whole while the words hide.
   expect(stripSource).toMatch(/data-testid="active-subagents"[\s\S]*?aria-label=\{delegatedWords\}/);
   expect(stripSource).toMatch(/data-testid="status-strip-next"[\s\S]*?aria-label=\{fill\(strings\.chat\.strip\.nextTitle/);

@@ -4,6 +4,7 @@ import { archiveCount } from './project-threads.svelte';
 import { threadState } from './thread-state';
 import { inbox, storeSources, threadLiveKind } from './inbox';
 import type { Machine } from './workspace.svelte';
+import { compareThreads } from './thread-order';
 
 /** The four lifecycle buttons over the thread list, in drawn order. */
 export const LIFECYCLES = ['waiting', 'working', 'done', 'archived'] as const;
@@ -76,4 +77,15 @@ export function lifecycleProjects(entries: readonly ProjectEntry[], kind: Lifecy
     if (threads.length > 0) kept.push({ entry, threads });
   }
   return kept;
+}
+
+/**
+ * The Recent view under a live filter: the same flat rows as unfiltered, in the
+ * same order, only those of the filter's lifecycle. Grouping by project
+ * belongs to the Projects view.
+ */
+export function lifecycleRows(entries: readonly ProjectEntry[], kind: 'waiting' | 'working'): (ProjectEntry & { thread: ThreadSummary })[] {
+  return lifecycleProjects(entries, kind)
+    .flatMap(({ entry, threads }) => threads.map(thread => ({ ...entry, thread })))
+    .sort((a, b) => compareThreads(a.thread, b.thread));
 }

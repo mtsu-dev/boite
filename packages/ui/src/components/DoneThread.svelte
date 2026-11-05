@@ -102,23 +102,30 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="done-thread" class:open class:meta class:pending data-testid="done-thread" data-thread-id={thread.id} data-machine-id={entry.machine.id} oncontextmenu={menu} use:longPress>
+  {#snippet when()}
+    {#if thread.status !== 'idle'}<ThreadState {thread} {now} away={owner.connection !== 'ready'} />{:else}<time datetime={new Date(archivedTime(thread)).toISOString()} title={exactTime(archivedTime(thread))}>{ago(archivedTime(thread), now)}</time>{/if}
+  {/snippet}
+  {#snippet machineMark()}
+    <span class="machine" data-testid="done-thread-machine" title={entry.machine.label} aria-label={entry.machine.label}><MachineIcon icon={entry.machine.icon} os={owner.core?.os} size={meta ? 12 : 13} /></span>
+  {/snippet}
   <button type="button" class="ghost row" data-testid="done-thread-open" title={tooltip} disabled={deleting} onclick={select}>
     <span class="headline">
-      {#if showMachine}
-        <span class="machine" title={entry.machine.label} aria-label={entry.machine.label}><MachineIcon icon={entry.machine.icon} os={owner.core?.os} /></span>
-      {/if}
+      {#if showMachine && !meta}{@render machineMark()}{/if}
       <span class="provider" title={agent} aria-label={agent}><StateRing kind={threadState(thread)} stale={offline} ground="var(--ring-ground, var(--color-frame))"><ThreadPicture {owner} {thread} size={16} logo={13} /></StateRing></span>
       <span class="title ui-label">{thread.title}</span>
-      <!-- The project shows below, outside the button: named here too, so two same-titled threads read apart. -->
-      {#if showProject}<span class="visually-hidden">{projectName(entry.project)}</span>{/if}
-      {#if thread.status !== 'idle'}<ThreadState {thread} {now} away={owner.connection !== 'ready'} />{:else}<time datetime={new Date(archivedTime(thread)).toISOString()} title={exactTime(archivedTime(thread))}>{ago(archivedTime(thread), now)}</time>{/if}
+      {#if !meta}{@render when()}{/if}
     </span>
+    <!-- Across projects, as the live rows above it: the title alone on its line, then the project, the machine and the time. -->
+    {#if meta}
+      <span class="facts">
+        <span class="known">
+          <span class="project-name" data-testid="done-thread-project" title={entry.project.path}><Folder size={12} /><span class="ui-label">{projectName(entry.project)}</span></span>
+          {#if showMachine}{@render machineMark()}{/if}
+        </span>
+        <span class="trail" data-testid="done-thread-trail">{@render when()}</span>
+      </span>
+    {/if}
   </button>
-  {#if meta}
-    <div class="metadata">
-      {#if showProject}<span class="project-name" title={entry.project.path}><Folder size={12} /><span class="ui-label">{projectName(entry.project)}</span></span>{/if}
-    </div>
-  {/if}
   <span class="actions">
     <button type="button" class="ghost small icon restore" data-testid="done-thread-restore" title={back.label}
       aria-label={fill(back.named, { title: thread.title })}
@@ -150,7 +157,10 @@
     gap: 0;
     background: transparent;
   }
-  .meta .row { min-height: 44px; padding: 3.5px 6px 18px 4px; }
+  .meta .row { min-height: 44px; justify-content: center; gap: 2px; padding: 3px 8px 3px 4px; }
+  /* A 20 px ring and a 14 px title, as the live rows across projects. */
+  .meta .provider :global([data-testid='state-ring']) { --ring-air: 0.5px; }
+  .meta .title { font-size: var(--text-base); }
   .row:hover:not(:disabled) { background: transparent; }
   .row:active:not(:disabled) { transform: none; }
   .headline { display: flex; align-items: center; min-width: 0; min-height: 1lh; gap: 6px; font-size: var(--text-sm); }
@@ -172,30 +182,32 @@
   .done-thread:hover .provider, .done-thread:focus-within .provider, .pending .provider { opacity: 1; }
   .pending .title { color: var(--color-foreground); }
   time { flex: none; color: var(--color-subtle); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
-  .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  .metadata {
-    position: absolute;
-    left: 33px;
-    right: 8px;
-    bottom: 4px;
+  /* The second line starts under the title, past the 20 px ring and its 6 px gap; the time ends it on the right. */
+  .facts {
     display: flex;
     align-items: center;
-    gap: 9px;
+    gap: 8px;
     min-width: 0;
-    pointer-events: none;
+    height: 16px;
+    padding-left: 26px;
     font-size: var(--text-xs);
     color: var(--color-muted-foreground);
   }
-  .project-name { display: flex; flex: 1; align-items: center; gap: 4px; min-width: 0; }
+  .known { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; }
+  .trail { display: flex; flex: none; align-items: center; }
+  .trail :global(.when) { min-width: 3.2ch; justify-content: flex-end; text-align: right; }
+  .project-name { display: flex; flex: 0 1 auto; align-items: center; gap: 4px; min-width: 0; }
   .project-name span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .metadata :global(svg) { flex: none; }
+  .facts :global(svg) { flex: none; }
   /* Restoring takes the time's place under the pointer, the way a thread row shows its menu. */
   .actions { position: absolute; top: 2px; right: 3px; display: flex; gap: 1px; opacity: 0; }
   .actions button { background: var(--color-surface-2); color: var(--color-muted-foreground); }
   .actions .remove:hover:not(:disabled) { color: var(--color-danger); }
   .done-thread:hover .actions, .done-thread:focus-within .actions { opacity: 1; }
-  .done-thread:hover time, .done-thread:focus-within time,
-  .done-thread:hover :global(.when), .done-thread:focus-within :global(.when) { opacity: 0; }
+  .done-thread:not(.meta):hover time, .done-thread:not(.meta):focus-within time,
+  .done-thread:not(.meta):hover :global(.when), .done-thread:not(.meta):focus-within :global(.when) { opacity: 0; }
+  /* Across projects the time sits on the second line, clear of the buttons: the hover keeps the title clear of them instead. */
+  .meta:hover .headline, .meta:focus-within .headline { padding-right: 52px; }
   /* No hover on a touch screen: the time stays, restoring is in the long-press menu. */
   @media (hover: none), (pointer: coarse) {
     .actions { display: none; }
@@ -205,5 +217,11 @@
   @media (max-width: 720px) {
     .row { min-height: var(--touch-target); }
     .title { font-size: var(--text-base); }
+    /* A phone's rows keep the time at the title's end, the project under it, as its live rows do. */
+    .meta .row { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 6px; align-content: center; }
+    .meta .headline { grid-area: 1 / 1; }
+    .meta .facts { display: contents; }
+    .meta .known { grid-area: 2 / 1 / 3 / 3; padding-left: 26px; font-size: var(--text-xs); color: var(--color-muted-foreground); }
+    .meta .trail { grid-area: 1 / 2; }
   }
 </style>

@@ -449,7 +449,8 @@ test('a run of calls reads as the agent\'s own summaries, and a step of reasonin
 
 test('multiple-choice questions show checkboxes and single-choice questions keep round indicators', async () => {
   await page.evaluate(`document.documentElement.dataset.theme = 'dark'`);
-  const card = `${id('message')} ${id('question-card')}`;
+  // A question the agent stopped for waits in the dock on the composer.
+  const card = `${id('activity-question')} ${id('question-card')}`;
   const option = (index: number) => `${card} ${id('question-option')}:nth-child(${index})`;
   for (const multiple of [true, false]) {
     await update(`

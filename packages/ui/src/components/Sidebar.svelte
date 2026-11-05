@@ -12,7 +12,7 @@
   import { projectRollup, threadState } from '../lib/thread-state';
   import { hasUnsentDraft } from '../lib/composer-queue';
   import { holdLanes, laneHold, moreRows, threadLanes, type LaneHold, type Lanes } from '../lib/thread-lanes.svelte';
-  import { lifecycleFilter, lifecycleProjects } from '../lib/lifecycle-filter.svelte';
+  import { lifecycleFilter, lifecycleProjects, lifecycleRows } from '../lib/lifecycle-filter.svelte';
   import LifecycleStrip from './LifecycleStrip.svelte';
   import { groupWorkingThread, recentPreferences } from '../lib/recent.svelte';
   import { dropKey as threadDropKey, takesDrop, threadDrag } from '../lib/thread-move.svelte';
@@ -245,9 +245,15 @@
     await tick();
     scrollRoot?.querySelector<HTMLElement>(`section[data-testid=project][data-project-key="${CSS.escape(projectKey(entry))}"]`)?.scrollIntoView({ block: 'start' });
   }
-  /** The filter over the list: its projects and their rows, the headers kept. */
-  let filtered = $derived(lifecycleFilter.current === null ? null : lifecycleProjects(groups, lifecycleFilter.current).map(({ entry, threads }) => ({ entry, threads: threads.slice().sort(compareThreads) })));
+  /** The filter over the Projects view: its projects and their rows, the headers kept. */
+  let filtered = $derived(lifecycleFilter.current === null || workspace.view === 'recent' ? null : lifecycleProjects(groups, lifecycleFilter.current).map(({ entry, threads }) => ({ entry, threads: threads.slice().sort(compareThreads) })));
   let filteredDoneRows = $state.raw<Record<string, { store: Store; threadId: ThreadId }[]>>({});
+  /** The filter over the Recent view: the same flat rows in the same order, never project cards. */
+  let recentFilter = $derived(workspace.view === 'recent' ? lifecycleFilter.current : null);
+  let recentFiltered = $derived(recentFilter === 'waiting' || recentFilter === 'working' ? lifecycleRows(groups, recentFilter) : []);
+  /** No listed project holds a thread of the Recent filter's lifecycle. */
+  let recentFilterEmpty = $derived(recentFilter !== null && lifecycleProjects(groups, recentFilter).length === 0);
+  let recentFilterDoneRows = $state.raw<{ store: Store; threadId: ThreadId }[]>([]);
   /** The rows of the listed projects in drawn order, read only as far as the ninth: projects below it cost nothing. */
   function projectRows(): { store: Store; threadId: ThreadId }[] {
     const rows: { store: Store; threadId: ThreadId }[] = [];
@@ -267,6 +273,8 @@
   // Alt+1 to Alt+9 count the rows as drawn: this view, open projects, then unfolded idle history.
   $effect(() => {
     sidebarRows.list = (filtered ? filtered.flatMap(({ entry, threads }) => threads.map(thread => ({ store: entry.machine.store, threadId: thread.id })).concat(filteredDoneRows[projectKey(entry)] ?? []))
+      : recentFilter !== null
+      ? recentFiltered.map(({ machine, thread }) => ({ store: machine.store, threadId: thread.id })).concat(recentFilter === 'done' || recentFilter === 'archived' ? recentFilterDoneRows : [])
       : workspace.view === 'recent'
       ? [...attention, ...(workingOpen ? working : [])].map(({ machine, thread }) => ({ store: machine.store, threadId: thread.id })).concat(doneRows, archivedRows)
       : projectRows().concat(idleRows)
@@ -325,6 +333,17 @@
       {:else}
         <p class="none" data-testid="lifecycle-empty">{strings.sidebar.lifecycle.none}</p>
       {/each}
+    {:else if recentFilter !== null}
+      <div class="recent-filtered" data-testid="recent-filtered" data-filter={recentFilter}>
+        {#if recentFilter === 'done' || recentFilter === 'archived'}
+          {#key recentFilter}<RecentDone kind={recentFilter} entries={groups} {scrollRoot} {now} open header={false} onrows={rows => recentFilterDoneRows = rows} />{/key}
+        {:else}
+          <WindowList items={recentFiltered} keyOf={entry => JSON.stringify([entry.machine.id, entry.thread.id])} {scrollRoot} estimate={56} measurements={measurements(`recent-${recentFilter}`)}>
+            {#snippet row(entry)}<ThreadCard {...entry} {now} showProject={groups.length > 1} showMachine={multi} showDone />{/snippet}
+          </WindowList>
+        {/if}
+        {#if recentFilterEmpty}<p class="none" data-testid="lifecycle-empty">{strings.sidebar.lifecycle.none}</p>{/if}
+      </div>
     {:else if workspace.view === 'recent'}
       {#each visible as machine (machine.id)}
         {#each machine.store.draftEntries.filter(entry => !selected || (selected.machine.id === machine.id && selected.project.id === entry.projectId)) as entry (entry.id)}

@@ -107,9 +107,9 @@
     align-items: center;
     justify-content: center;
     flex: none;
-    width: 64px;
+    width: 80px;
     min-height: 52px;
-    padding: 4px 2px;
+    padding: 4px;
     border: none;
     border-radius: var(--radius-md);
     background: transparent;

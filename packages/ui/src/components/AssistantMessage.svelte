@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Activity, Bot, FishingHook, MessageCircleQuestionMark, Settings2, Users } from '@lucide/svelte';
-  import { showDockedQuestion } from '../lib/question-dock.svelte';
+  import { questionDocks, showDockedQuestion } from '../lib/question-dock.svelte';
   import { replyOf, repliesOf, sendAnswer, writeAnswer } from '../lib/question-reply.svelte';
   import type { Account, MemoryEvent, Message } from '@boite/contracts';
   import { fill, strings } from '../lib/strings';
@@ -162,7 +162,7 @@
         <ChatFile file={part} {store} {threadId} messageId={message.id} partIndex={index} />
       {:else if part.type === 'tool' && planOf(part.name, part.input) !== null}
         <PlanCard {store} {threadId} plan={planOf(part.name, part.input) ?? ''} />
-      {:else if part.type === 'question' && part.async === true && (part.answer ?? null) === null && store.pendingQuestions.some((q) => q.id === part.questionId)}
+      {:else if part.type === 'question' && questionDocks(part) && (part.answer ?? null) === null && store.pendingQuestions.some((q) => q.id === part.questionId)}
         <!-- Waiting in the dock above the composer: here only a line that brings it up. -->
         <!-- The card above the composer says the question; its line here is a mark in the history, the text in its tooltip. -->
         {@const asked = store.pendingQuestions.find((q) => q.id === part.questionId)?.createdAt ?? message.createdAt}

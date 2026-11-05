@@ -22,7 +22,7 @@ test('a thread menu offers its agents, then the way to take the thread back', ()
   expect(entrustItems(store, thread()).map(i => i.id)).toEqual(['entrust']);
   expect(directory.agents.map(a => a.id)).toEqual(['mira']);
   directory.snapshot = { profiles: [profile('mira')], entrusted: [{ threadId: 't1', agentId: 'mira', objective: 'Ship', at: 1 }] } as unknown as AgentsSnapshot;
-  expect(entrustItems(store, thread()).map(i => [i.id, i.hint])).toEqual([['entrust-back', 'Entrusted to Mira']]);
+  expect(entrustItems(store, thread()).map(i => [i.id, i.hint])).toEqual([['entrust-back', 'Assigned to Mira']]);
   // Children, agent sessions, archived and incognito threads, and paired devices get nothing.
   for (const other of [thread({ parentThreadId: 'p' }), thread({ agentSessionId: 's' }), thread({ archived: true }), thread({ incognito: true }), thread({ projectId: null })]) expect(entrustItems(store, other)).toEqual([]);
   expect(entrustItems({ ...store, owner: false } as unknown as Store, thread())).toEqual([]);

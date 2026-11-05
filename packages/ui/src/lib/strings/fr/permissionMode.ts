@@ -3,7 +3,7 @@ import type { Translation } from '../../i18n.svelte';
 export const fr: Translation = {
 
   permissionMode: {
-    default: 'Demander à chaque fois',
+    default: 'Demander l’accord',
     acceptEdits: 'Modifs auto',
     bypassPermissions: 'Tout exécuter, garde-fous actifs',
     yolo: 'Accès total, sans garde-fous',

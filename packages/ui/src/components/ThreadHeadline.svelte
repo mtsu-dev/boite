@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Snippet } from 'svelte';
   import { Network, PencilLine, Pin } from '@lucide/svelte';
   import type { ThreadSummary } from '@boite/contracts';
   import type { Machine } from '../lib/workspace.svelte';
@@ -25,7 +26,8 @@
     open = false,
     wrap = false,
     picture = true,
-    ring = false
+    ring = false,
+    facts
   }: {
     owner: Store;
     thread: ThreadSummary;
@@ -41,7 +43,14 @@
     picture?: boolean;
     /** The sidebar's row: the state rings the picture, and the right end keeps only the time. */
     ring?: boolean;
+    /**
+     * A two-line sidebar row: the title line keeps the ring and the title alone, and
+     * a second line under it draws these facts (the project, the machine), then the
+     * sub-agents chip and the time at its right end.
+     */
+    facts?: Snippet;
   } = $props();
+  let stacked = $derived(facts !== undefined);
   let draft = $derived(!open && hasUnsentDraft(owner.composerStates[thread.id]));
   let subagents = $derived(owner.subagents(thread.id));
   let away = $derived(owner.connection !== 'ready');
@@ -49,7 +58,12 @@
   let agents = $derived(ring ? delegatedChip(subagents) : null);
 </script>
 
-<span class="headline" class:wrap class:ring class:unread={thread.unread && !wrap}>
+{#snippet trail()}
+  {#if agents}<span class="agents" class:asking={agents.asking} data-testid="thread-subagents" data-count={agents.shown} role="img" title={agents.label} aria-label={agents.label}><Network size={11} aria-hidden="true" /><span class="ui-label">{agents.shown}</span></span>{/if}
+  {#if now !== undefined}<ThreadState {thread} {now} {subagents} {away} compact={ring} />{/if}
+{/snippet}
+
+<span class="headline" class:wrap class:ring class:stacked class:unread={thread.unread && !wrap}>
   {#if machine}
     <span class="machine" class:offline={owner.connection !== 'ready'}
       title={`${machine.label} · ${strings.connection[owner.connection]}`} aria-label={machine.label}>
@@ -62,9 +76,9 @@
   <span class="title" class:ui-label={!wrap}>{thread.title}</span>
   {#if draft}<span class="draft" data-testid="thread-draft" title={strings.sidebar.unsentDraft} aria-label={strings.sidebar.unsentDraft}><PencilLine size={12} /></span>{/if}
   {#if thread.pinned}<span class="pin" data-testid="thread-pinned"><Pin size={12} /></span>{/if}
-  {#if agents}<span class="agents" class:asking={agents.asking} data-testid="thread-subagents" data-count={agents.shown} role="img" title={agents.label} aria-label={agents.label}><Network size={11} aria-hidden="true" /><span class="ui-label">{agents.shown}</span></span>{/if}
-  {#if now !== undefined}<ThreadState {thread} {now} {subagents} {away} compact={ring} />{/if}
+  {#if !stacked}{@render trail()}{/if}
 </span>
+{#if stacked}<span class="facts" class:ring><span class="known">{@render facts?.()}</span><span class="trail" data-testid="thread-trail">{@render trail()}</span></span>{/if}
 
 <style>
   .headline {
@@ -98,6 +112,23 @@
   .ring :global(.when) { min-width: 3.2ch; text-align: right; justify-content: flex-end; }
   .ring .title { font-size: var(--text-sm); }
   .ring.unread .title { font-weight: 500; }
+  /* Two lines: a 20 px ring (half a pixel of air) and the title at 14 px own the first line,
+     about 237 px of title at the 280 px default width. */
+  .stacked > :global([data-testid='state-ring']) { --ring-air: 0.5px; }
+  .ring.stacked .title { font-size: var(--text-base); }
+  /* The second line starts under the title, past the 20 px ring and its 5 px gap; the time ends on the title's right edge. */
+  .facts {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    height: 16px;
+    padding-left: 25px;
+    font-size: var(--text-xs);
+    color: var(--color-muted-foreground);
+  }
+  .known { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+  .trail { display: flex; align-items: center; gap: 6px; flex: none; }
   .machine,
   .draft,
   .pin {

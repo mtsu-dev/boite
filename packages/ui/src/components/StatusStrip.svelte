@@ -141,8 +141,9 @@
         onclick={() => void workspace.select(next.store, next.thread.id)}
       >
         <span class="words ui-label">{fill(strings.chat.strip.next, { count: String(waiting.length) })}</span>
+        <!-- Under 420 px the long words give way to a short label, never to a bare number: it still says what it opens. -->
+        <span class="short ui-label" aria-hidden="true">{fill(strings.chat.strip.nextShort, { count: String(waiting.length) })}</span>
         <ChevronRight size={13} strokeWidth={2} aria-hidden="true" />
-        <span class="number" aria-hidden="true">{waiting.length}</span>
       </button>
     {/if}
   </div>
@@ -205,7 +206,7 @@
   }
   .act:hover, .act:focus-visible { background: var(--color-hover); color: var(--color-foreground); }
   .words { display: inline-flex; align-items: center; gap: 4px; }
-  .number { display: none; }
+  .number, .short { display: none; }
   /* The delegated work: one chip at every width, its words in the tooltip. */
   .counts { gap: 4px; padding: 0 8px 0 7px; border-radius: var(--radius-full); background: var(--color-control-surface); }
   .counts .words { display: none; }
@@ -221,12 +222,12 @@
     .act::after { content: ''; position: absolute; inset: -11px -2px; }
   }
   /* A phone's line: the counts become a glyph and a number, Next a chip with
-     its count, the finish actions go to a second line together. */
+     its short label and count, the finish actions go to a second line together. */
   @container strip (max-width: 420px) {
     .words { display: none; }
-    .number { display: inline; }
-    .counts, .next { height: 22px; padding: 0 7px; border-radius: 999px; background: var(--color-control-surface); }
+    .number, .short { display: inline; }
+    .counts, .next { height: 22px; padding: 0 7px; border-radius: var(--radius-full); background: var(--color-control-surface); }
     /* Amber on the see-through control ground fell to 4.3:1 over the light wallpaper's teal: Next gets a solid amber tint. */
-    .next { gap: 2px; padding-right: 8px; color: var(--color-live); background: color-mix(in oklch, var(--color-live-fill) 14%, var(--color-surface-2)); }
+    .next { gap: 2px; padding: 0 6px 0 9px; color: var(--color-live); background: color-mix(in oklch, var(--color-live-fill) 14%, var(--color-surface-2)); }
   }
 </style>
