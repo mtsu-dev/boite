@@ -103,12 +103,14 @@ address, and gives the other members these addresses, best first:
 1. its public HTTPS address, when `publicUrl` is set ([phone](phone.md));
 2. its MagicDNS name, `http://<name>:<port>`;
 3. its tailnet address, `http://100.x.y.z:<port>`;
-4. its LAN address, when the core listens on the network (`listenOnLan`).
+4. its private LAN addresses, `http://192.168.x.y:<port>`, while it listens
+   on them;
+5. its LAN address, when the core listens on every address (`listenOnLan`).
 
 A member dialing another asks the address that answered last, and the
 others once that one has failed or stayed silent for a second, and keeps the
 first that answers with a valid signature. A machine reachable by any of the
-four is reached. Each address is sent a request of its own, signed and sealed
+five is reached. Each address is sent a request of its own, signed and sealed
 for that attempt: the same request sent twice to a machine that has two
 addresses would be refused there as a replay, and counted against its sender.
 A request begun for a member leaves sealed or not at all, even when this
@@ -120,7 +122,12 @@ as it does for two machines linked by hand ([coordination](coordination.md)).
 A client is sent to fewer of them, because its link is not sealed: to the
 HTTPS address alone when the machine has one, and otherwise only to an address
 written as numbers. A name over plain HTTP is whatever the client's resolver
-says it is, so a client never sends a ticket or a key to one. A device sends no
+says it is, so a client never sends a ticket or a key to one. A MagicDNS name
+is no exception: on a device that does not accept Tailscale's DNS
+(`--accept-dns=false`, common on Linux servers), the LAN's resolver answers
+`*.ts.net` and can point it anywhere, while a 100.x address is routed through
+Tailscale whatever the LAN says. A name is reached over HTTPS instead
+([Through Tailscale](phone.md#through-tailscale)). A device sends no
 secret at all, only a signature made for the machine it means, but what follows
 its hello is not sealed either, so it keeps to the same addresses. A link that
 adds a device follows the same rule.
@@ -135,16 +142,54 @@ A machine with no tailnet gives its LAN address, and two machines on one LAN
 group the same way once both listen on the network.
 
 Joining or creating a group makes the core listen on the tailnet address too,
-on the same port, beside the address it was started on. It stops when the
-machine leaves. Nothing else is opened: a core that listens on itself stays
-closed to the LAN. `--host` or `--lan` on the command line names the only
-address a core answers on, and such a core opens no other. On Windows the
-first listener outside loopback raises the firewall prompt for the core, unless
-the rule Boite asks for is already there ([phone](phone.md#windows-defender-firewall)).
+on the same port, beside the address it was started on, and on each private
+LAN address, so a phone or a computer on the same Wi-Fi reaches it without
+Tailscale. A private address is RFC 1918 (10/8, 172.16/12, 192.168/16) on a
+physical adapter: never loopback, link-local, a public address, the tailnet's
+100.64/10, or a container, VM or VPN adapter (`privateLanAddresses`,
+`packages/core/src/server/lan.ts`). A public address would put the core on the
+internet, and a bridge of guests leads to them rather than to the owner's
+phone. On Linux, sysfs decides: an adapter with a `device`, or a bridge with
+such a port (`br0` or Proxmox's `vmbr0` carrying the NIC, which is the LAN
+itself). A machine with no physical adapter, a container whose `eth0` is
+virtual yet is its LAN, falls back to the names that Windows and macOS use,
+and sysfs still rules out its bridges and tunnels whatever their names. The
+listeners follow the set of addresses: a network change opens and closes them
+(`ExtraListeners`, `packages/core/src/server/extra-listeners.ts`), an address
+that refuses the bind is logged once and skipped, and all of them close when
+the machine leaves. Nothing opens with `--host` or `--lan`, which name the only
+address a core answers on, nor on a core already bound everywhere, nor when the
+policy turns off `network.lan` or `network.groups` ([admin policy](enterprise.md)).
+The trade-off: members still seal what they say to each other, but a client on
+that network talks to the core over plain `ws://`, readable by the LAN.
 
-A machine that only listens on itself and has no tailnet gives a loopback
-address, which reaches it from the same computer and nowhere else. The group
-card says so.
+On Windows the core opens a LAN address only once the firewall lets it through
+on a private network, and only on the adapters on such a network
+(`LanGate`, `packages/core/src/group/lan.ts`): a listener anywhere else would
+raise Windows' own prompt, and a public or work network stays closed. While
+grouped, the core watches for itself, with or without a window open: its
+interfaces every 2.5 seconds, and the firewall every two minutes, since Windows
+turns a network public or private without changing its address. It reads the
+firewall too when the group starts, after `firewall.allow`, whenever the owner
+reads its status, and when an address changes; one reading at a time, never at
+every tick, since each runs PowerShell. From an address change until the
+reading after it, and after a reading that failed, the LAN stays closed: an
+older rule that allowed every profile would otherwise keep the core open on a
+network that just turned public. The card reads the firewall again when its
+window comes back to the front, so a network the owner just marked private in
+Windows settings opens without waiting. A core that leaves its group forgets
+what Windows said: grouped again, perhaps on another network, it reads the
+firewall before any listener opens. The rule Boite adds covers the Private
+profile only ([phone](phone.md#windows-defender-firewall)).
+
+The group card says, under this machine's row, how the LAN reaches it: at
+which address, that Windows still keeps it closed (with Allow on private
+networks for the owner), that the network is public and must be marked private
+in Windows settings, or that the policy forbids it. A machine that listens
+only on itself and has no tailnet gives a loopback address, which reaches it
+from the same computer and nowhere else, and the card says that instead.
+`?fake=1&lan=on` with `firewall=unset`, `firewall=public` or `policy=lan` shows
+those states.
 
 What two members say to each other is signed and sealed to the recipient,
 whatever network carries it: the roster, agents' messages and the join
@@ -161,9 +206,9 @@ request whatever `groupBots` says ([bots](bots.md#moving-a-bot-to-another-machin
 
 What a client says to a core is not sealed. That link is as private as its
 transport: WireGuard on a tailnet, TLS on an HTTPS address. A core that listens
-on the local network (`listenOnLan`) serves its clients over `ws://` there, as
-a pairing link already does, and a ticket or a session key sent on that link
-is readable by that LAN.
+on the local network (`listenOnLan`, or a grouped core on its private
+addresses) serves its clients over `ws://` there, as a pairing link already
+does, and a ticket or a session key sent on that link is readable by that LAN.
 
 Clocks of two members may differ by one minute; past that, signed requests and
 tickets are refused for their date.
@@ -277,7 +322,8 @@ member gave up. One of them that no longer lists the member stops every route
 to it, as it stops a direct ticket.
 
 On the socket, a refusal of the relay key (no key for the relaying machine, or
-a wrong one) is answered `Refused`, and a member it cannot reach `Unavailable`:
+a wrong one) is logged as a warning on the relaying machine and answered
+`Refused`, and a member it cannot reach `Unavailable`:
 never `Unauthorized`, which the client would take for its key on the member
 being revoked. A first frame that is not a hello is answered `Unauthorized`, as
 on a direct socket. A file or a view answers 404 for a machine that is not another member
@@ -292,7 +338,7 @@ came in with closes it, and its sockets to a machine that leaves the group are
 closed within fifteen seconds.
 
 While a member is reached through another, the client tries its own addresses
-a minute after the last try, longer after each that fails, and moves to the first that answers, so a phone back on the
+every 30 seconds while none answers, and moves to the first that answers, so a phone back on the
 tailnet, or a desktop given an HTTPS address, stops depending on the relaying
 machine. Settings, Machines names the machine a member is reached through.
 
@@ -480,12 +526,14 @@ listed in the roster as a device.
 
 The UI does the client's part by itself (`lib/group-links.svelte.ts`). Each
 connected machine says which group it is in; for every member this client
-holds no key for, it finds an address that answers and connects. A member that
-does not answer is tried again a minute later, then after 2, 4, 8 and at most
-15 minutes. The wait goes back to a minute when the roster gives the member
-other addresses, and the next try comes at once when the network comes back or
-the hidden page is shown; nothing is tried by the clock while the page is
-hidden. A device signs
+holds no key for, it finds an address that answers and connects. A member
+none of whose addresses or relays answers is probed again every 30 seconds:
+that probe spends no ticket, and the member comes back as soon as the network
+lets it through. An attempt that reached the member and then failed is tried
+again a minute later, then after 2, 4, 8 and at most 15 minutes. That wait goes
+back to a minute when the roster gives the member other addresses, and the
+next try comes at once when the network changes or the hidden page is shown;
+nothing is tried by the clock while the page is hidden. A device signs
 its own way in there and is done: what a member lists is all it needs, and a
 machine its key opens that another one of the group no longer lists leaves its
 list. A machine out of every group says so, to `group.get` or on the hello it
@@ -556,7 +604,11 @@ asks as for a core nobody knows. No ticket is asked for it on the word of a
 member that still lists the admission that was dropped. It ends when a new key
 is issued for the address: a pairing made by hand, a link the owner said yes
 to, or the machine admitted again, which a member lists under a later
-admission. A window that is open lets the machine go as soon as another window
+admission. A mark also ends ten minutes after it was made (`DROPPED_HOLD_MS`)
+once every hand-paired machine of that group lists the machine: a roster lagging
+behind a removal has caught up by then, and an entry saved without an admission
+is dropped at the highest there is, which no later admission could outrank. A
+window that is open lets the machine go as soon as another window
 marks its address, whoever answers in that window, and a ticket exchange that
 began before the mark and ends after it is refused its key and closed. Only a
 machine the group dropped is marked, and only when something saved says the
@@ -575,7 +627,31 @@ minute at most. A key that is dropped is taken out of both places it is saved
 in, the list of machines and the core the window opens on next. These rules
 spare a client a useless attempt. They are not what keeps a key safe: the
 member is, by refusing a ticket for an address it gave up and by revoking the
-keys issued for it ([tickets](#how-it-works)).
+keys issued for it ([tickets](#how-it-works)). For the same reason, a hand-paired
+machine cut off for more than ten minutes, its roster stale, can have a client
+try again a member that was removed: the member refuses it.
+
+A device key saved for a member can outlive the way it was saved at: a route
+through a machine that left, an address the member no longer gives, a plain-HTTP
+address the page cannot open. Its client keeps trying that one way, and while it
+stood nothing else looked for the member. So a member the group lists is looked
+for again when its signed entry sits anywhere the roster no longer gives, or has
+closed, as a client does with no key left for the machine that carried it. The
+new attempt signs with the same key,
+at an address the roster gives or through a machine carrying it, and asks for a
+ticket if the member refuses that key. The old entry goes once the new one is
+in. Nothing is marked. A machine that is connected, still trying an address the
+roster gives, or the one the window opened on is left alone, and so is one at an
+address the roster gives that asks to be paired. A signed entry that fails on that
+attempt leaves the list instead of reading Offline, and so does a ticket that
+opened nothing. A route to a machine the member carrying it no longer lists is
+removed. So is one whose carrier is gone, once it holds no key and no machine
+paired by hand lists its target: a key held for a listed member is what the next
+attempt signs with. The roster is read once the remembered machines are in, or
+after thirty seconds when one of them never ends connecting
+(`SETTLE_WAIT_MS`), so a saved entry that hangs cannot hide the group's other
+machines. An older client left in that state repairs itself at its first load
+of a build with these rules, with no new pairing.
 
 At start, a key the group brought for a plain HTTP address is not sent before
 the machines paired by hand have been asked, each on a short connection of its

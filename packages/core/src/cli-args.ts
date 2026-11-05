@@ -1,4 +1,5 @@
 import type { Channel } from '@boite/contracts';
+import { isPluginCommandWord } from './cli-commands.ts';
 
 export class Usage extends Error {}
 
@@ -89,6 +90,10 @@ const OWNED: { owns: (positional: string[]) => boolean; help: boolean; text?: (p
   { owns: ([command, action]) => command === 'delegate' && action === 'debate', help: true },
   // secret-cli.ts; after `--` every word is the child command's.
   { owns: ([command]) => command === 'secret', help: false, text: positional => positional.includes('--'), terminator: true },
+  // `plugin dev --remove <id>`: its flags are its own.
+  { owns: ([command]) => command === 'plugin', help: true },
+  // A plugin's command (plugins.command): every word after its name is the plugin's, --json and --help included.
+  { owns: ([command]) => isPluginCommandWord(command), help: false, text: () => true, terminator: true },
 ];
 
 /**

@@ -9,7 +9,7 @@ import type {
   RequestPermissionRequest,
   RequestPermissionResponse,
   SessionNotification,
-} from '@agentclientprotocol/sdk';
+} from '@agentclientprotocol/sdk/unstable';
 import { antigravitySubagentKind, isAntigravityQuestion } from '../antigravity.ts';
 import { usdCostOf, type AcpTurn } from './turn.ts';
 

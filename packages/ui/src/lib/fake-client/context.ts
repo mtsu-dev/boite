@@ -62,12 +62,14 @@ import {
   type ThreadId,
   type ThreadSummary,
   type Todo,
+  type FirewallStatus,
   type Turn,
   type Usage,
 } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import { FakeAgents } from '../fake-agents';
 import { checkEffort, checkModel, defaultModel } from './checks';
+import { fakeFirewall, fakeFirewallKind, fakeLan, type FakeFirewall } from './lan';
 import { modelsOf } from './provider-catalog';
 import { settleAgentSettings } from './agent-settings';
 import type { FakeFinishedTurn } from '../fake-usage';
@@ -170,6 +172,10 @@ export interface FakeClientOptions {
   policy?: PolicyState;
   coreName?: string;
   publicUrl?: string;
+  /** Windows Defender Firewall in front of this core; `?firewall=` picks it (`lan.ts`). */
+  firewall?: FakeFirewall;
+  /** A machine of a group listens on its LAN address beside loopback; `?lan=on` sets it (`lan.ts`). */
+  lan?: boolean;
   /**
    * A desktop app's core: its server updates by hand and its window reports
    * the app's updater, offered at `?desktopUpdate=<phase>`. The second fake
@@ -263,6 +269,12 @@ export class FakeContext {
   /** The group this fake core is in, shared by reference with the other fake cores of it. */
   roster: FakeRoster | null = null;
   readonly identity: CoordinationPeer;
+  /** What `firewall.status` answers; `firewall.allow` changes it (`pairing.ts`). */
+  firewall: FirewallStatus;
+  /** An administrator prompt nobody accepts: `firewall.allow` comes back cancelled. */
+  readonly firewallRefuses: boolean;
+  /** Whether a grouped machine listens on its LAN address once nothing stops it (`lan.ts`). */
+  readonly lanListening: boolean;
   readonly activityTimers = new Map<string, ReturnType<typeof setTimeout>>();
   readonly activityTurns = new Map<string, { kind: 'goal' | 'loop'; generation: number }>();
   readonly activityGenerations = new Map<string, number>();
@@ -541,6 +553,10 @@ export class FakeContext {
       running: [],
       queued: []
     };
+    const firewall = fakeFirewallKind(options.firewall);
+    this.firewall = fakeFirewall(firewall);
+    this.firewallRefuses = firewall === 'refused';
+    this.lanListening = fakeLan(options.lan);
     this.policy = options.policy ?? policyFixture(typeof location === 'undefined' ? null : new URLSearchParams(location.search).get('policy'));
     applyPolicy(this);
   }

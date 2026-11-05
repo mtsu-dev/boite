@@ -2,6 +2,7 @@ import type { ThreadSummary, Turn } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { messageOf } from '../errors.ts';
 import { withLoad } from '../threads/records.ts';
+import { sentBack } from '../workflows/follow-up.ts';
 
 const KEY = 'delegation-retiring:';
 /** A retired subagent the user reopened by hand, with the last turn it had then: it stays open until another turn ends. */
@@ -11,7 +12,8 @@ const KEPT = 'delegation-kept:';
  * A subagent is put away as done once it is over, so a conversation does not
  * keep every agent it ever started open:
  * - a delegated agent whose last turn ended done, once that result reached its parent;
- * - a workflow step's conversation, once its run is done;
+ * - a workflow step's conversation, once its run is done, unless its parent
+ *   sent it back to work: it then goes as a delegated agent does;
  * - a debater or a debate's summarizer, once its debate is over.
  * A persistent agent's next episode also archives the subagents of the last one.
  * One still watching its pull request is kept, with a marker when an episode
@@ -57,7 +59,8 @@ export class Retirements {
     const told = (sql: string, ...args: string[]) => this.#core.journal.db.query(sql).get(threadId, ...args) !== null;
     // Mail its parent sent it is more work.
     if (told("SELECT 1 FROM delegation_messages WHERE recipient_id = ? AND status IN ('received', 'uncertain') LIMIT 1")) return;
-    if (this.#core.workflows.owns(threadId)) {
+    const sent = sentBack(this.#core, threadId, turn);
+    if (this.#core.workflows.owns(threadId) && !sent) {
       // A failed or stopped run may retry the step in its own conversation.
       const run = this.#core.journal.db.query('SELECT r.status FROM workflow_steps s JOIN workflow_runs r ON r.id = s.run_id WHERE s.thread_id = ?').get(threadId) as { status: string } | null;
       if (run?.status === 'done') this.#retire(thread);
@@ -68,7 +71,7 @@ export class Retirements {
       if (this.#core.debates.overFor(threadId)) this.#retire(thread);
       return;
     }
-    if (!marked && !this.#finished(thread, turn)) return;
+    if (!marked && !this.#finished(thread, turn, sent)) return;
     if (turn && !told('SELECT 1 FROM delegation_messages WHERE sender_id = ? AND request_id = ?', `result:${turn.id}`)) return;
     if (told("SELECT 1 FROM delegation_messages WHERE sender_id = ? AND status IN ('received', 'uncertain') LIMIT 1")) return;
     this.#retire(thread);
@@ -128,9 +131,9 @@ export class Retirements {
     }
   }
 
-  /** A delegated agent that ended its work done, rather than stopped, failed or cut from its background work. */
-  #finished(thread: ThreadSummary, turn: Turn | null): boolean {
-    if (turn?.status !== 'done' || this.#core.journal.db.query('SELECT 1 FROM delegated_agents WHERE thread_id = ?').get(thread.id) === null) return false;
+  /** A delegated agent, or a step sent back to work, that ended its work done rather than stopped, failed or cut from its background work. */
+  #finished(thread: ThreadSummary, turn: Turn | null, sent: boolean): boolean {
+    if (turn?.status !== 'done' || (!sent && this.#core.journal.db.query('SELECT 1 FROM delegated_agents WHERE thread_id = ?').get(thread.id) === null)) return false;
     return withLoad(this.#core, thread).backgroundWait?.state !== 'interrupted';
   }
 

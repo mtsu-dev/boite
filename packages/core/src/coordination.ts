@@ -228,6 +228,8 @@ export class Coordination {
     const config = this.config(threadId);
     if (config.paused) this.#saveConfig(threadId, { ...config, paused: false });
   }
+  /** Paused by Stop or by the owner: what holds a thread's own scheduled wake (`threads/scheduled-wakes.ts`). */
+  heldByUser(threadId: string): boolean { return this.config(threadId).paused && !this.#wakesForAgent(threadId); }
   /** A pause another agent's letter ends: a restart's or a failed wake's, not Stop's or the owner's. One saved before reasons were recorded reads as a restart's. */
   #wakesForAgent(threadId: string): boolean {
     const reason = this.#core.journal.getSetting(`${AUTO_PAUSE_PREFIX}${threadId}`);
@@ -256,6 +258,7 @@ export class Coordination {
       sent: this.#count(threadId, 'out'), sendLimit: null,
       wakes: (this.#core.journal.db.query('SELECT count(*) AS n FROM coordination_wakes WHERE thread_id = ? AND at > ?').get(threadId, Date.now() - HOUR) as { n: number }).n,
       wakeLimit: null,
+      requests: this.#core.contacts.requests.ofThread(threadId),
     };
   }
   #count(threadId: string, direction: string): number {
@@ -544,7 +547,9 @@ export class Coordination {
     const config = this.config(threadId);
     if (config.mode === 'off') return '';
     const bot = contactsBot(this.#core);
-    return coordinationGuide(config.paused, config.remote && (this.#core.contacts.list().length > 0 || this.#core.contacts.members.relayed().length > 0 || this.#core.group.peers().length > 0), bot === null ? 'none' : bot.threadId === threadId ? 'self' : 'other');
+    // A member whose bot lives on the group's Bots host asks through it, like the host's own threads.
+    const role = bot !== null ? (bot.threadId === threadId ? 'self' : 'other') : this.#core.contacts.hostAsks.relays() ? 'other' : 'none';
+    return coordinationGuide(config.paused, config.remote && (this.#core.contacts.list().length > 0 || this.#core.contacts.members.relayed().length > 0 || this.#core.group.peers().length > 0), role);
   }
 
   /** Hook delivery: one batch at a provider's next safe tool boundary. */
@@ -857,8 +862,14 @@ export class Coordination {
     else {
       try { answer = await firstAnswer(routes, attempt); }
       catch (error) {
-        if (this.bridge.available(peer.coreId)) answer = await attempt(null);
-        else throw error instanceof AggregateError ? error.errors[0] ?? new Error('peer unreachable') : error;
+        const direct = error instanceof AggregateError ? error.errors[0] ?? new Error('peer unreachable') : error;
+        if (!this.bridge.available(peer.coreId)) throw direct;
+        // The relay is a last try: when it fails too, why the addresses did comes first, or the relay's word hides it.
+        try { answer = await attempt(null); }
+        catch (relayed) {
+          const both = `${messageOf(direct)}; through the owner app: ${messageOf(relayed)}`;
+          throw relayed instanceof RpcFailure ? new RpcFailure(relayed.code, both, relayed.data) : new Error(both, { cause: relayed });
+        }
       }
     }
     policedRoutes(this.#core, peer, operation);

@@ -19,6 +19,7 @@ export const platform: ProcessPlatform = {
   windowCapture: async () => (await import('./window-capture.ts')).loadWindowCapture(),
   // UI Automation and the pointer's window class load with the first `boite window read` or `point`.
   windowGuide: async () => (await import('./window-guide.ts')).loadWindowGuide(),
+  hiddenDesktops: async () => (await import('./hidden-desktop.ts')).hiddenDesktops,
   retain(events, protections) {
     jobs.retainJobs(events);
     guard.retainGuard(protections);

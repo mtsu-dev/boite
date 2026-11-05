@@ -275,8 +275,9 @@ agent hears which from `wait`, or as a message. See
 
 ## Virtual desktop
 
-`boite desktop help` lists the commands. On a Linux machine with Xvfb, the
-conversation gets a private desktop in memory: `run <program>` starts a GUI app
+`boite desktop help` lists the commands. The conversation gets a desktop of its
+own: in memory on Linux, hidden on Windows, in the background on macOS. On
+Windows and macOS input is semantic only. `run <program>` starts a GUI app
 there that outlives the turn, and every other word runs agent-desktop on it
 (`snapshot -i`, `click @ref`, `type`, `press`, `screenshot`) to read the app's
 accessibility tree and act on it. Boite installs a pinned agent-desktop the
@@ -873,6 +874,19 @@ one value, a provider login (`accounts#provider-claude`) or a device to add
 (`machines#machines`). Open Settings goes there with the same ring and sends
 `opened: the user opened Settings at <page>`; Dismiss sends `dismissed`. The
 MCP tools `boite_settings` and `boite_settings_request` do the same.
+
+`plugin add <url> [--ref <ref>] --why <text>` asks the user to look at a
+plugin someone shared: a repository URL, any page of it, `owner/repo` for
+GitHub, or its `git@host:path` clone URL, read as Settings > Plugins reads it
+([Install and run](plugins.md#install-and-run)). The card shows the
+repository and the ref; nothing is fetched yet. Preview opens Settings >
+Plugins with the repository read, where the user installs it or not, and
+sends `opened: the user is reading the preview of <url>`; Dismiss sends
+`dismissed`. An agent never installs: `plugins.inspect` and `plugins.add`
+stay the owner's. A phone and a paired device show the card without Preview,
+since their Settings have no Plugins page. One card per repository and
+thread. The MCP tool takes it as `boite_settings_request` with `page:
+"plugins"` and `plugin: { url, ref? }`.
 
 `settings bot [key]` reads a bot's settings a card may change: `name`,
 `domain` (its role), `instructions`, `avatar`, `status` (`active`, `paused`,

@@ -286,8 +286,8 @@ export class AgentBrowser {
       },
     };
     const on = (method: string, listener: (params: Record<string, unknown>) => void) =>
-      tab.off.push(engine.cdp.on(method, (params, session) => { if (session === sessionId) listener(params); }));
-    tab.page.frames = pageFrames(engine.cdp, sessionId, on);
+      tab.off.push(engine.cdp.on(method, (params, session) => { if (session === sessionId || (session && session === frames.runtime?.session)) listener(params); }));
+    const frames = tab.page.frames = pageFrames(engine.cdp, sessionId, on, engine.hosted ? null : targetId);
     watchPage(tab, on, (accept, promptText) => void engine.cdp.send('Page.handleJavaScriptDialog', { accept, ...(promptText === undefined ? {} : { promptText }) }, sessionId).catch(() => {}),
       url => { tab.url = url; tab.page.frameRefs?.clear(); this.#remote.stale(tab); this.#changed(threadId); this.#engines.saveCookiesSoon(engine); });
     watchNetwork(() => tab.network, on);
@@ -300,12 +300,12 @@ export class AgentBrowser {
     // Only `browser network` reads response bodies (`Network.getResponseBody`): until it starts, Chromium keeps none for this tab.
     await Promise.all([
       engine.cdp.send('Page.enable', {}, sessionId),
-      engine.cdp.send('Runtime.enable', {}, sessionId),
       engine.cdp.send('Network.enable', NO_NETWORK_BUFFERS, sessionId),
     ]);
     // A window opened by a page may have navigated before it was attached: its address is read once now.
     const current = await engine.cdp.send<{ targetInfo: { url: string; title: string } }>('Target.getTargetInfo', { targetId }).catch(() => null);
     if (current) { tab.url = current.targetInfo.url || tab.url; tab.title = current.targetInfo.title.slice(0, 200); }
+    await frames.runtime?.adopt(tab.url);
     // Every tab counts as focused, so a page waiting for focus or visibility runs.
     await engine.cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true }, sessionId).catch(() => {});
     // Given up while it attached: the tab is never the conversation's, and the caller closes its target.

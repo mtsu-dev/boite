@@ -31,7 +31,7 @@ export class AgentState {
     if (thread.providerId !== identity.providerId || (thread.sessionGeneration ?? 0) !== identity.sessionGeneration) return;
     const before = this.background.get(threadId) ?? [];
     if (JSON.stringify(before) === JSON.stringify(list)) return;
-    if (!this.backgroundHistory.observe(threadId, list, identity)) return;
+    if (!this.backgroundHistory.observe(threadId, list, identity, Date.now(), !this.#handingOver)) return;
     const liveIds = new Set(this.backgroundHistory.running(threadId, identity).map(task => task.id));
     list = list.filter(task => liveIds.has(task.id));
     if (list.length === 0) this.background.delete(threadId);
@@ -59,6 +59,15 @@ export class AgentState {
     this.backgroundHistory.cancelSession(threadId, owner);
     this.background.delete(threadId);
     this.publishBackground(threadId, []);
+  }
+
+  /**
+   * An update restart hands the running work to the next core: the agents it
+   * ends stop reporting their work, which stays running for that core to mark
+   * `core-restarted` (`auto-continue.ts`). A Stop still cancels it.
+   */
+  get #handingOver(): boolean {
+    return this.core.threads?.handoff.active === true;
   }
 
   private publishBackground(threadId: ThreadId, tasks: BackgroundTask[]): void {

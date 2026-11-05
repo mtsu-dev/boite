@@ -24,6 +24,8 @@ import { clientField, logConnectionClosed } from './server/connection-log.ts';
 import { handleFrame, refuseFrame } from './server/frame.ts';
 import { authenticateToken } from './server/hello.ts';
 import { FrameQueue } from './server/frame-queue.ts';
+import { NetworkWatch, ownerPresent } from './network-watch.ts';
+import { extraNetwork } from './server/extra-listeners.ts';
 import { Refusals } from './server/refusals.ts';
 import { ticketedFile, viewPage } from './server/tickets.ts';
 export { ServerConnection } from './server/connection.ts';
@@ -92,9 +94,10 @@ export interface ServerOptions {
   port?: number;
   helloTimeoutMs?: number;
   /**
-   * A core in a group may answer on this machine's tailnet address through a
-   * listener of its own. `main` turns it on unless `--host` or `--lan` chose
-   * the address; a test core never opens a port outside loopback.
+   * A core in a group may answer on this machine's tailnet address and its
+   * private LAN addresses through listeners of their own
+   * (`server/extra-listeners.ts`). `main` turns it on unless `--host` or
+   * `--lan` chose the address; a test core never opens a port outside loopback.
    */
   tailnet?: boolean;
 }
@@ -325,8 +328,8 @@ export function staticResponse(file: string, pathname: string, acceptEncoding: s
  */
 function mayReadTodos(core: Core, connection: Connection, projectId: string): boolean {
   const identity = connection.identity;
-  // A paired device is the user's, reading every project's threads and board as the owner does.
-  if (identity.principal === 'owner' || identity.principal === 'session') return true;
+  // A paired device reads every board as the owner does; a plugin hears todos.updated only with its `todos` permission.
+  if (identity.principal === 'owner' || identity.principal === 'session' || identity.principal === 'plugin') return true;
   if (identity.principal !== 'agent' || identity.threadId === null) return false;
   try {
     return core.threads.require(identity.threadId).projectId === projectId;
@@ -435,6 +438,8 @@ export function startServer(options: ServerOptions): RunningServer {
   const app = appOrigin();
   const connections = new Set<ServerConnection>();
   const helloTimers = new Map<ServerConnection, ReturnType<typeof setTimeout>>();
+  // Owner windows hear when this machine's addresses change, and the group's own addresses and tailnet listener follow at once.
+  const network = new NetworkWatch({ live: () => connections.size > 0, wanted: () => ownerPresent(connections), changed: (addresses) => { core.bus.emit('network.changed', { addresses }); core.group.relisten(true); } });
   /** The counted peer of each open socket from another machine, until it closes. */
   const peers = new Map<ServerConnection, string>();
   function* waitingPeers(): Generator<string> {
@@ -456,7 +461,7 @@ export function startServer(options: ServerOptions): RunningServer {
       try { return { sessionId: core.group.clients.authenticateDevice(credential, { name: 'pwa', version: '' }).sessionId }; } catch { return null; }
     }
     const identity = authenticateToken(core, credential);
-    return identity === null || identity.principal === 'agent' ? null : { sessionId: identity.sessionId };
+    return identity === null || identity.principal === 'agent' || identity.principal === 'plugin' ? null : { sessionId: identity.sessionId };
   }, { helloTimeoutMs, helloMaxBytes: PREAUTH_FRAME_MAX_BYTES });
   core.relays = relays;
   let stopping = false;
@@ -632,6 +637,7 @@ export function startServer(options: ServerOptions): RunningServer {
         const connection = socket.data.connection;
         connection.attach(socket as ServerWebSocket<SocketData>);
         connections.add(connection);
+        network.wake();
         if (socket.data.peer !== null) peers.set(connection, socket.data.peer);
         helloTimers.set(connection, setTimeout(() => {
           helloTimers.delete(connection);
@@ -698,37 +704,11 @@ export function startServer(options: ServerOptions): RunningServer {
 
   const port = server.port ?? 0;
   core.setEndpoint(host, port);
-  const everywhere = host === '0.0.0.0' || host === '::';
-  let extra: { host: string; server: ReturnType<typeof serve> } | null = null;
-  let refused: string | null = null;
-  const closeExtra = (): void => {
-    // As for the main listener: `stop()` never resolves once a socket was upgraded.
-    if (extra !== null) void extra.server.stop(true);
-    extra = null;
-  };
-  core.network = {
-    also(address: string | null): boolean {
-      if (stopping) return false;
-      // An admin policy without groups leaves nothing for the group to reach.
-      if (address === null || everywhere || address === host || options.tailnet !== true || core.policy.networkOff('groups')) {
-        closeExtra();
-        return address !== null && (everywhere || address === host);
-      }
-      if (extra?.host === address) return true;
-      closeExtra();
-      try {
-        extra = { host: address, server: serve(address, port) };
-        refused = null;
-        core.log('info', `listening on ${address}:${port} too, for the machines of this core's group`);
-        return true;
-      } catch (error) {
-        // Asked again at every tick while the address stays unusable: say it once.
-        if (refused !== address) core.log('warn', `could not listen on ${address}:${port} for the group: ${messageOf(error)}`);
-        refused = address;
-        return false;
-      }
-    },
-  };
+  const extra = extraNetwork({
+    host, port, enabled: options.tailnet === true, policy: core.policy, serve, stopping: () => stopping,
+    log: (level, message) => core.log(level, message),
+  });
+  core.network = extra;
   // What a restart handed over starts once agents can reach this core. After
   // the caller's own setup: `main` writes `core.json` right behind this call.
   setTimeout(() => {
@@ -755,7 +735,7 @@ export function startServer(options: ServerOptions): RunningServer {
       for (const connection of connections) {
         // Only a window counts: an agent or a desktop-app plugin following the
         // thread (B.O.T.S streams every thread at work) shows it to nobody.
-        if (!connection.authenticated || connection.identity.principal === 'agent' || connection.clientName === 'plugin') continue;
+        if (!connection.authenticated || connection.identity.principal === 'agent' || connection.identity.principal === 'plugin' || connection.clientName === 'plugin') continue;
         if (connection.subscriptions.has(threadId)) return true;
       }
       return false;
@@ -774,6 +754,7 @@ export function startServer(options: ServerOptions): RunningServer {
         }
       }
     },
+    closePlugin(pluginId: string): void { for (const c of connections) if (c.identity.principal === 'plugin' && c.identity.pluginId === pluginId) c.close(RpcCloseCode.Unauthorized, 'plugin token revoked'); },
     reveal(target): number {
       // Owner windows only: a paired phone or an agent has no window of the owner's
       // to raise, and a desktop-app plugin, often the caller itself, draws none of Boite's.
@@ -877,6 +858,7 @@ export function startServer(options: ServerOptions): RunningServer {
       stopping = true;
       incoming.close();
       off();
+      network.sleep();
       if (schedulerTimer !== null) clearTimeout(schedulerTimer);
       schedulerTimer = null;
       pendingScheduler = null;
@@ -889,7 +871,7 @@ export function startServer(options: ServerOptions): RunningServer {
       // Bun 1.3.11 never resolves server.stop() once a socket has been upgraded,
       // so the listener is closed without waiting on that promise.
       void server.stop(true);
-      closeExtra();
+      extra.close();
       await Promise.allSettled([...frames, ...peerRequests]);
     },
   };

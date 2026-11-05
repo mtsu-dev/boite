@@ -5,7 +5,8 @@
 
 import { afterEach, describe, expect, test } from 'bun:test';
 import { ManifestRefused, POOL_PROVIDERS, commandsOf, parseManifest, parseManifestText } from '../src/plugins/manifest.ts';
-import { checkRef, normalizeSourceUrl } from '../src/plugins/source.ts';
+import { checkRef, normalizeSourceUrl, readSource } from '../src/plugins/source.ts';
+import { readPluginSource, sameRepository } from '@boite/contracts';
 import { recommendedPlugins, recommendedUpdates } from '../src/plugins.ts';
 import { startTestCore, type TestCore } from './harness.ts';
 
@@ -69,7 +70,7 @@ describe('the plugin manifest', () => {
 
   const cases: [string, (raw: Record<string, unknown>) => void, string, string][] = [
     ['an unknown top-level field', (raw) => { raw['scripts'] = { postinstall: 'curl' }; }, 'scripts', 'one of schema, id, name'],
-    ['another schema', (raw) => { raw['schema'] = 2; }, 'schema', '1'],
+    ['another schema', (raw) => { raw['schema'] = 3; }, 'schema', '1 or 2'],
     ['an id with a path in it', (raw) => { raw['id'] = '../escape'; }, 'id', 'lowercase letters'],
     ['an id in capitals', (raw) => { raw['id'] = 'Seat'; }, 'id', 'lowercase letters'],
     ['an empty name', (raw) => { raw['name'] = ' '; }, 'name', 'a string of 1 to 60'],
@@ -108,6 +109,13 @@ describe('the plugin manifest', () => {
     expect(refusalOf([good()]).rejected.field).toBe('(root)');
   });
 
+  test('refuses a file past its size, from a dev folder too: 256 KB, and 64 KB for schema 1', () => {
+    const padded = (bytes: number) => JSON.stringify(good()).replace('"schema"', `${' '.repeat(bytes)}"schema"`);
+    expect(() => parseManifestText(padded(256 * 1024), 'boite-plugin.json', true)).toThrow('(file) must be at most 262144 bytes');
+    expect(() => parseManifestText(padded(64 * 1024), 'boite-plugin.json')).toThrow('(file) must be at most 65536 bytes for schema 1');
+    expect(parseManifestText(padded(1024), 'boite-plugin.json').id).toBe('seat-pool');
+  });
+
   test('places the fields of a manifest wrapped in installed.json', () => {
     try {
       parseManifest({ ...good(), schema: 0 }, 'installed.json', 'manifest.');
@@ -125,16 +133,17 @@ describe('the recommended list', () => {
 
   test('Bots is a desktop app, from its v0.1.16 release assets and digests', () => {
     const bots = recommendedPlugins().find((manifest) => manifest.id === 'bots')!;
+    const artifacts = bots.artifacts!;
     expect(bots.version).toBe('0.1.16');
     expect(bots.executable).toBe('bots');
     expect(bots.provides).toEqual({ desktopApp: {} });
-    expect(bots.artifacts['win32-x64']).toEqual({
+    expect(artifacts['win32-x64']).toEqual({
       url: 'https://github.com/Skollheim/bots/releases/download/v0.1.16/bots-x86_64-pc-windows-msvc.exe',
       sha256: '2d04730442c180197d289e839ce537000b5b50d03ea73f82340e21d11aecab35',
     });
-    expect(bots.artifacts['linux-arm64']?.sha256).toBe('66b3ed9dd2434eded78aff427d4c85936ef497ca54f0084b5aed766c443d17e9');
-    expect(Object.keys(bots.artifacts)).toHaveLength(6);
-    for (const artifact of Object.values(bots.artifacts)) expect(artifact?.url).toMatch(/^https:\/\/github\.com\/Skollheim\/bots\/releases\/download\/v0\.1\.16\/bots-/);
+    expect(artifacts['linux-arm64']?.sha256).toBe('66b3ed9dd2434eded78aff427d4c85936ef497ca54f0084b5aed766c443d17e9');
+    expect(Object.keys(artifacts)).toHaveLength(6);
+    for (const artifact of Object.values(artifacts)) expect(artifact?.url).toMatch(/^https:\/\/github\.com\/Skollheim\/bots\/releases\/download\/v0\.1\.16\/bots-/);
   });
 
   test('Bots and Douane find their newer releases on their own repositories', () => {
@@ -170,6 +179,46 @@ describe('a plugin source', () => {
     expect(() => normalizeSourceUrl('https://github.com/owner/repo?x=1')).toThrow('no query or fragment');
     expect(() => normalizeSourceUrl(process.cwd())).toThrow('plugin url must be an https URL');
     expect(() => normalizeSourceUrl('')).toThrow('plugin url must be');
+  });
+
+  test('reads a repository the way people share it, and the ref its page names', () => {
+    const read = (url: string, ref?: string) => readSource(url, ref);
+    const exact = (url: string, ref: string) => ({ url, ref, pagePath: false });
+    expect(read('owner/repo')).toEqual(exact('https://github.com/owner/repo', 'HEAD'));
+    expect(read('github.com/owner/repo')).toEqual(exact('https://github.com/owner/repo', 'HEAD'));
+    expect(read('git@github.com:owner/repo.git')).toEqual(exact('https://github.com/owner/repo.git', 'HEAD'));
+    expect(read('https://github.com/owner/repo/releases/tag/v1.4.0')).toEqual(exact('https://github.com/owner/repo', 'v1.4.0'));
+    expect(read('https://gitlab.com/group/sub/repo/-/releases/v1.0.0')).toEqual(exact('https://gitlab.com/group/sub/repo', 'v1.0.0'));
+    expect(read('https://gitlab.com/group/sub/repo/-/tags/release/2')).toEqual(exact('https://gitlab.com/group/sub/repo', 'release/2'));
+    expect(read('https://github.com/owner/repo/issues?q=x#top')).toEqual(exact('https://github.com/owner/repo', 'HEAD'));
+    // A file or folder page may hold a path after its ref; the inspection ends it at a branch or tag the repository lists (refOfPath).
+    const page = (url: string, ref: string) => ({ url, ref, pagePath: true });
+    expect(read('https://github.com/owner/repo/tree/release/1.x')).toEqual(page('https://github.com/owner/repo', 'release/1.x'));
+    expect(read('https://github.com/owner/repo/blob/main/README.md')).toEqual(page('https://github.com/owner/repo', 'main/README.md'));
+    expect(read('https://github.com/owner/repo/blob/main/boite-plugin.json')).toEqual(page('https://github.com/owner/repo', 'main'));
+    expect(read('https://gitlab.com/group/sub/repo/-/tree/v2')).toEqual(page('https://gitlab.com/group/sub/repo', 'v2'));
+    expect(read('https://codeberg.org/owner/repo/src/tag/v3')).toEqual(page('https://codeberg.org/owner/repo', 'v3'));
+    // A ref typed apart wins over the page's, and is fetched exactly.
+    expect(read('https://github.com/owner/repo/tree/main', 'v1.0.0')).toEqual(exact('https://github.com/owner/repo', 'v1.0.0'));
+    expect(read('https://github.com/owner/repo', 'main/missing')).toEqual(exact('https://github.com/owner/repo', 'main/missing'));
+    // The card keeps the page, without its query, so its Preview reads it the same way.
+    expect(readPluginSource('https://github.com/owner/repo/blob/main/README.md?plain=1')).toEqual({ ok: true, url: 'https://github.com/owner/repo', ref: 'main/README.md', page: 'https://github.com/owner/repo/blob/main/README.md' });
+    expect(readPluginSource('https://github.com/owner/repo/blob/main/README.md', 'v1')).toEqual({ ok: true, url: 'https://github.com/owner/repo', ref: 'v1' });
+  });
+
+  test('refuses what git must never run, however it is pasted', () => {
+    for (const url of ['http://github.com/owner/repo', 'ssh://git@github.com/owner/repo', 'file:///C:/repo', 'ext::sh -c touch% /tmp/pwned', 'git://github.com/owner/repo', '-oProxyCommand=x/y', process.cwd(), '']) {
+      expect(() => readSource(url, undefined)).toThrow('plugin url must be');
+    }
+    expect(() => readSource('https://token@github.com/owner/repo', undefined)).toThrow('carrying credentials');
+    for (const page of ['https://github.com/owner/repo/tree/--upload-pack=x', 'https://github.com/owner/repo/tree/a..b', 'https://github.com/owner/repo/tree/%zz']) {
+      expect(() => readSource(page, undefined)).toThrow('plugin ref must be');
+    }
+  });
+
+  test('knows one repository under its two clone URLs', () => {
+    expect(sameRepository('https://GitHub.com/owner/repo.git', 'https://github.com/owner/repo/')).toBe(true);
+    expect(sameRepository('https://github.com/owner/repo', 'https://github.com/owner/other')).toBe(false);
   });
 
   test('takes a local path only when the store allows it, which only tests do', () => {

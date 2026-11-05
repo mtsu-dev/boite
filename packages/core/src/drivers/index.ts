@@ -25,7 +25,7 @@ const DRIVERS = new Map<Protocol, Driver>([
   [
     'acp',
     lazyDriver('acp', () => import('./acp.ts').then(module => module.createAcpDriver({
-      loadSdk: () => import('@agentclientprotocol/sdk'),
+      loadSdk: () => import('@agentclientprotocol/sdk/unstable'),
     })), { prepare: true }),
   ],
   [

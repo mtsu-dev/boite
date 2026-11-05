@@ -79,6 +79,29 @@ test('Apply writes the setting through settings.set, the card closes as applied 
   }
 });
 
+test('a plugin card shows the repository, Preview opens Plugins with it read, and the agent is told', async () => {
+  const { client, store } = await setup();
+  try {
+    const { questionId } = await client.call('settings.request', { threadId: 't-trace', reason: 'Adds the standup command', page: 'plugins', plugin: { url: 'github.com/example/standup/tree/v1.2.0' } });
+    card(store, await asked(store, questionId));
+    expect(query('[data-testid=setting-plugin]').textContent).toContain('github.com/example/standup');
+    expect(query('[data-testid=setting-plugin]').textContent).toContain('v1.2.0');
+
+    query<HTMLButtonElement>('[data-testid=setting-open]').click();
+    flushSync();
+    expect(store.page).toBe('settings');
+    expect(store.settingsTab).toBe('plugins');
+    expect(store.settingsSection).toMatchObject({ id: 'plugins-add', flash: true });
+    // A folder page goes to the Plugins page as the link, so the core settles where its ref ends.
+    expect(store.pluginSource).toMatchObject({ url: 'https://github.com/example/standup/tree/v1.2.0', ref: null });
+    await vi.waitFor(() => expect(store.openThread!.messages.some((message) => message.role === 'user' && message.parts.some((part) => part.type === 'text'
+      && part.text.startsWith('> Adds the standup command\n\nopened: the user is reading the preview of https://github.com/example/standup at v1.2.0')))).toBe(true));
+  } finally {
+    store.detach();
+    client.close();
+  }
+});
+
 test('a sensitive switch is flipped in the card, with its warning, and the agent is told', async () => {
   const { client, store } = await setup();
   try {

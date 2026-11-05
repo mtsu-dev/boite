@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, test } from 'bun:test';
-import type { SessionNotification } from '@agentclientprotocol/sdk';
+import type { SessionNotification } from '@agentclientprotocol/sdk/unstable';
 import type { MessagePart, PermissionMode, RpcEvents, Settings } from '@boite/contracts';
 import type { CoreClient } from '../src/client.ts';
 import { createAcpDriver } from '../src/drivers/acp.ts';
@@ -110,7 +110,7 @@ afterEach(async () => {
  * Everything else, the agent process included, stays exactly what it was.
  */
 async function sdkWithUpdateSeam(): Promise<{ sdk: AcpSdk; send: (notification: SessionNotification) => void }> {
-  const real = await import('@agentclientprotocol/sdk');
+  const real = await import('@agentclientprotocol/sdk/unstable');
   let handler: ((context: { params: unknown }) => void) | null = null;
   let parse: (params: unknown) => unknown = (params) => params;
   const sdk = {

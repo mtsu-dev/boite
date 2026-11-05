@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { RpcErrorCode } from '@boite/contracts';
 import { FakeClient } from './fake-client';
 import { RpcFailure } from './client';
@@ -124,6 +124,25 @@ test('a request that names no contact waits for the bot, which picks the contact
   const waiting = await host.call('collaboration.ask', { threadId: 't-trace', text: 'A reviewer for the notes project' });
   expect(waiting.coreId).toBe('');
   const guestName = (await host.call('contacts.get', {})).contacts.find(contact => contact.coreId === 'core-guest')!.name;
+  // As the core's `CoordinationView.requests`: the asking thread sees its request with the bot, the bot's thread nothing yet.
+  expect((await host.call('collaboration.get', { threadId: 't-trace' })).requests).toMatchObject([{ id: waiting.id, stage: 'bot', status: 'pending' }]);
+  expect((await host.call('collaboration.get', { threadId: bot })).requests).toEqual([]);
+  const changed: string[] = [];
+  // The open thread hears its changes, as the app subscribes it.
+  for (const threadId of ['t-trace', bot]) await host.call('threads.subscribe', { threadId });
+  host.on('collaboration.changed', ({ threadId }) => { changed.push(threadId); });
   // The bot names the contact; the request leaves for it.
-  expect((await host.call('contacts.bot.forward', { threadId: bot, id: waiting.id, contact: guestName })).coreId).toBe('core-guest');
+  const forwarded = await host.call('contacts.bot.forward', { threadId: bot, id: waiting.id, contact: guestName });
+  expect(forwarded.coreId).toBe('core-guest');
+  expect(typeof forwarded.forwardedAt).toBe('number');
+  await vi.waitFor(() => expect(new Set(changed)).toEqual(new Set(['t-trace', bot])));
+  const asked = (await host.call('collaboration.get', { threadId: 't-trace' })).requests!;
+  expect(asked).toMatchObject([{ id: waiting.id, coreId: 'core-guest', status: 'pending' }]);
+  expect(asked[0]!.stage).toBeUndefined();
+  expect((await host.call('collaboration.get', { threadId: bot })).requests).toMatchObject([{ id: waiting.id, forwardedAt: forwarded.forwardedAt }]);
+  // Renamed while it waits: the thread reads the name its answer's address will take, as the core's `requests.renamed`.
+  changed.length = 0;
+  await host.call('contacts.update', { coreId: 'core-guest', name: 'Guest desk' });
+  expect((await host.call('collaboration.get', { threadId: 't-trace' })).requests).toMatchObject([{ id: waiting.id, contact: 'Guest desk' }]);
+  await vi.waitFor(() => expect(changed).toContain('t-trace'));
 });

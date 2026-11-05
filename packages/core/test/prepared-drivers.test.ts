@@ -13,7 +13,7 @@ import { countProcesses, readScriptedLog, writeScriptedProvider } from './script
 import { thrown } from './settle.ts';
 
 const cases = [
-  { protocol: 'acp' as const, fixture: 'acp-agent.ts', env: 'ACP_FAKE_LOG', prompt: 'session/prompt', create: () => createAcpDriver({ loadSdk: () => import('@agentclientprotocol/sdk') }) },
+  { protocol: 'acp' as const, fixture: 'acp-agent.ts', env: 'ACP_FAKE_LOG', prompt: 'session/prompt', create: () => createAcpDriver({ loadSdk: () => import('@agentclientprotocol/sdk/unstable') }) },
   { protocol: 'pi' as const, fixture: 'pi-agent.ts', env: 'PI_FAKE_LOG', prompt: 'prompt', create: createPiDriver },
   { protocol: 'muse' as const, fixture: 'muse-server.ts', env: 'MUSE_FAKE_LOG', prompt: 'turn/start', create: createMuseDriver },
 ];
@@ -216,12 +216,12 @@ for (const mismatch of ['unscoped', 'thread', 'cwd', 'context', 'environment', '
 test('ACP releasing during SDK loading cannot spawn a late process', async () => {
   const fixture = await setup(cases[0]!);
   driver!.shutdown!();
-  let releaseSdk!: (sdk: typeof import('@agentclientprotocol/sdk')) => void;
-  const sdk = new Promise<typeof import('@agentclientprotocol/sdk')>(resolve => { releaseSdk = resolve; });
+  let releaseSdk!: (sdk: typeof import('@agentclientprotocol/sdk/unstable')) => void;
+  const sdk = new Promise<typeof import('@agentclientprotocol/sdk/unstable')>(resolve => { releaseSdk = resolve; });
   driver = createAcpDriver({ loadSdk: () => sdk });
   const pending = driver.prepare!(fixture.ctx).then(() => 'ready', () => 'closed');
   driver.releaseThread!(fixture.ctx.thread.id);
-  releaseSdk(await import('@agentclientprotocol/sdk'));
+  releaseSdk(await import('@agentclientprotocol/sdk/unstable'));
   expect(await pending).toBe('closed');
   expect(fixture.processes.started).toHaveLength(0);
   expect(fixture.core.procs.liveCount(fixture.ctx.thread.id)).toBe(0);
@@ -261,12 +261,12 @@ test('ACP catalog requests share pending preparation and probe another model wit
 test('ACP refreshing during preparation prevents its late options from restoring an invalidated catalog', async () => {
   const fixture = await setup(cases[0]!);
   driver!.shutdown!();
-  let releaseSdk!: (sdk: typeof import('@agentclientprotocol/sdk')) => void;
-  const sdk = new Promise<typeof import('@agentclientprotocol/sdk')>(resolve => { releaseSdk = resolve; });
+  let releaseSdk!: (sdk: typeof import('@agentclientprotocol/sdk/unstable')) => void;
+  const sdk = new Promise<typeof import('@agentclientprotocol/sdk/unstable')>(resolve => { releaseSdk = resolve; });
   driver = createAcpDriver({ loadSdk: () => sdk });
   const preparation = driver.prepare!(fixture.ctx);
   driver.forgetProbes!({ providerId: fixture.ctx.provider.id, accountId: fixture.ctx.account.id });
-  releaseSdk(await import('@agentclientprotocol/sdk'));
+  releaseSdk(await import('@agentclientprotocol/sdk/unstable'));
   await preparation;
   expect(driver.probedModels!(fixture.ctx.provider.id, fixture.ctx.account.id)).toBeNull();
   await driver.probe!(fixture.probe);

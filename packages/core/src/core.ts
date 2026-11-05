@@ -38,6 +38,7 @@ import { eraseIncognitoRoot } from './threads/incognito.ts';
 import { removeTranscripts } from './threads/transcript-purge.ts';
 import { ThreadStore } from './threads.ts';
 import { DraftPreparations } from './threads/draft-preparations.ts';
+import { ScheduledWakes } from './threads/scheduled-wakes.ts';
 import { AttachmentUploads } from './attachment-uploads.ts';
 import { scheduleThreadDeletionRetention } from './threads/deletion-retention.ts';
 import { scheduleDoneRetention } from './threads/done-retention.ts';
@@ -91,6 +92,8 @@ export interface SubscriptionSink {
   closeSession(sessionId: string): void;
   /** Every socket an agent of this thread holds goes: the thread was archived or removed under it. */
   closeAgents(threadId: ThreadId): void;
+  /** Every socket a plugin's revoked token opened goes: it was uninstalled or its permissions changed. */
+  closePlugin(pluginId: string): void;
   /** Sends `ui.reveal` to every owner connection; returns how many it reached. */
   reveal(target: UiRevealTarget): number;
   /** Sends `windows.pointer` to the desktop apps of this machine; returns how many it reached. */
@@ -181,6 +184,8 @@ export class Core {
   readonly procs: ProcRegistry;
   readonly scheduler: Scheduler;
   readonly threads: ThreadStore;
+  /** The wakes agents schedule for themselves with ScheduleWakeup (`threads/scheduled-wakes.ts`). */
+  readonly wakes: ScheduledWakes;
   readonly drafts: DraftPreparations;
   readonly composer: Composer;
   readonly attachmentUploads: AttachmentUploads;
@@ -247,12 +252,13 @@ export class Core {
     hasSubscribers: () => false,
     closeSession: () => undefined,
     closeAgents: () => undefined,
+    closePlugin: () => undefined,
     reveal: () => 0,
     pointer: () => 0,
   };
 
   /** The server answers on one more address when a group asks; a core with no server answers on none. */
-  network: NetworkSink = { also: () => false };
+  network: NetworkSink = { also: () => ({ tailnet: false, lan: [] }), lanAllowed: () => false };
 
   /** The clients this core carries to other members of its group (`group/relay.ts`); none without a server. */
   relays: RelaySink = { size: 0, sweep: () => undefined };
@@ -400,6 +406,7 @@ export class Core {
     this.threads = new ThreadStore(this);
     // Read before any recovery writes, the team and workflow ones included: whether the previous core died at work within the hour.
     this.threads.autoContinue.previousRunCut();
+    this.wakes = new ScheduledWakes(this, this.threads);
     this.drafts = new DraftPreparations(this);
     this.attachmentUploads = new AttachmentUploads(this.dataDir);
     this.quotas = new QuotaStore(this);
@@ -473,6 +480,8 @@ export class Core {
     try { this.teams.recover(); } catch (error) { this.log('warn', `teams recovery failed: ${String(error)}`); }
     // After recovery: a resume planned before the previous core stopped, a usage limit's among them, goes on.
     this.threads.resumes.start();
+    // A wake an agent scheduled before the previous core stopped is this core's to open.
+    this.wakes.start();
     // Watched limits are read on their own, so an alert reaches a phone with no window open.
     this.quotas.alerts.start();
     // What a dead core cut, and any resume planned before it died, goes on (`threads/auto-continue.ts`).
@@ -587,6 +596,7 @@ export class Core {
     this.threads.backgroundCompact.close();
     this.threads.cacheKeepalive.close();
     this.threads.resumes.close();
+    this.wakes.close();
     this.threads.autoContinue.close();
     this.quotas.alerts.close();
     this.#drainPromise = this.agentRuntime.close().then(() => this.scheduler.drain(timeoutMs));
@@ -622,6 +632,7 @@ export class Core {
     this.threads.backgroundCompact.close();
     this.threads.cacheKeepalive.close();
     this.threads.resumes.close();
+    this.wakes.close();
     this.threads.autoContinue.close();
     await this.threads.codeCheckpoints.close();
     await this.agentRuntime.close();
@@ -652,7 +663,8 @@ export class Core {
     await this.push.close();
     await this.plugins.close();
     this.providers.installs.stop();
-    if (!this.journal.isClosed()) {
+    // A restart handoff leaves the work running: the next core marks it cut by the restart and resumes the threads waiting on it.
+    if (!this.journal.isClosed() && !this.threads.handoff.active) {
       for (const threadId of this.threads.agentState.background.keys()) this.threads.agentState.cancelBackground(threadId);
     }
     shutdownDrivers();

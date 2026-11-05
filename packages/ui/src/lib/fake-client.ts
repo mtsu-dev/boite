@@ -429,6 +429,11 @@ export class FakeClient implements ObservableClient {
     this.#ctx.emit('client.desktopExperiments', { experiments: [...experiments] });
   }
 
+  /** The fake machine's addresses changing, as the core's network watch announces it to owner windows. */
+  changeNetwork(addresses: string[]): void {
+    this.#ctx.emit('network.changed', { addresses: [...addresses] });
+  }
+
   /** The policy file edited on the fake machine, as the core's watcher rereads it and announces the change. */
   changePolicy(policy: PolicyState): void {
     this.#ctx.policy = structuredClone(policy);

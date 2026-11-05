@@ -42,6 +42,8 @@ import type { Invite } from './group/ticket.ts';
 import { DEVICES_MAX, GroupClients } from './group/clients.ts';
 import { askToJoin, JOIN_SIGNING_PREFIX, type JoinReply } from './group/join.ts';
 import { SyncBackoff } from './group/backoff.ts';
+import { LanGate } from './group/lan.ts';
+import { FirewallAccess } from './firewall.ts';
 import { newId, newToken } from './ids.ts';
 import { currentOs, machineName } from './paths.ts';
 import { principalOf as principalOfRole, type ClientIdentity, type Identity } from './sessions.ts';
@@ -91,6 +93,8 @@ export class GroupStore {
   private tailnet: Tailnet | null = null;
   #tailnetAt = 0;
   #onTailnet = false;
+  /** The private LAN addresses a listener answers on, published after the tailnet ones. */
+  #onLan: string[] = [];
   #timer: ReturnType<typeof setInterval> | null = null;
   #ticks = 0;
   #ticking = false;
@@ -104,9 +108,13 @@ export class GroupStore {
 
   /** Phones, browsers and the desktop app of a member: how each gets in (`group/clients.ts`). */
   readonly clients: GroupClients;
+  /** Which LAN addresses this machine may listen on; Windows asks its firewall. Replaced in tests. */
+  lan: LanGate;
 
   constructor(readonly core: Core) {
     this.clients = new GroupClients(this);
+    // A change of the LAN closes or opens its listeners now; the published entry follows at the refresh.
+    this.lan = new LanGate(new FirewallAccess(core), () => { if (this.#live && !this.#closed) { this.#listen(this.roster !== null); this.#background(this.#refresh()); } });
     const stored = core.journal.getSetting(SETTING);
     if (stored !== undefined && stored !== null) {
       try {
@@ -131,9 +139,8 @@ export class GroupStore {
   }
 
   /**
-   * Called by the core once this store is in place and before any socket is
-   * accepted: a crash between writing a removal and dropping the keys it
-   * kills, or between leaving and dropping them, must not leave them good.
+   * Called by the core once this store is in place and before any socket is accepted: a crash between writing a
+   * removal and dropping the keys it kills, or between leaving and dropping them, must not leave them good.
    */
   restore(): void {
     this.#reconcile();
@@ -213,17 +220,15 @@ export class GroupStore {
   }
 
   /**
-   * The address a pairing link names for a machine of a group, or null. A phone
-   * opens that link and sends its grant there, so it is an address whose
-   * transport says who answers: the HTTPS one, else a literal address. Never a
-   * name over plain HTTP, which is whatever the phone's resolver says it is.
+   * The address a pairing link names for a machine of a group, or null. A phone opens that link and sends its grant
+   * there, so it is an address whose transport says who answers: the HTTPS one, else a literal address. Never a name
+   * over plain HTTP, which is whatever the phone's resolver says it is.
    */
   ownAddress(): string | null {
     const mine = this.roster?.cores.find((core) => core.coreId === this.selfId());
     const dialable = mine?.addresses.filter((address) => !/^https?:\/\/(127\.0\.0\.1|\[::1\]|localhost)(:|$)/.test(address)) ?? [];
-    return dialable.find((address) => address.startsWith('https://'))
-      ?? dialable.find((address) => /^http:\/\/(\d{1,3}(\.\d{1,3}){3}|\[[0-9a-f:]+\])(:\d+)?$/i.test(address))
-      ?? null;
+    const literal = /^http:\/\/(\d{1,3}(\.\d{1,3}){3}|\[[0-9a-f:]+\])(:\d+)?$/i;
+    return dialable.find((address) => address.startsWith('https://')) ?? dialable.find((address) => literal.test(address)) ?? null;
   }
 
   /** A page served by one member opens its socket on another: the origin is a member's address. */
@@ -232,9 +237,8 @@ export class GroupStore {
   }
 
   /**
-   * A page of this machine opened its socket from `origin` and said hello:
-   * that is where this machine is served, behind a proxy or a name its
-   * addresses do not list. The other members accept it from then on.
+   * A page of this machine opened its socket from `origin` and said hello: that is where this machine is served,
+   * behind a proxy or a name its addresses do not list. The other members accept it from then on.
    */
   servedFrom(raw: string): void {
     // Only an origin the roster itself would read back: one it refused would make the whole roster unreadable.
@@ -296,14 +300,15 @@ export class GroupStore {
     this.tailnet = await probeTailnet(this.tailnet, stale);
   }
 
-  /** A member answers on its tailnet address, and so does a core a contact dials; any other core opens nothing. */
+  /** A member answers on its tailnet address and its private LAN ones; a core a contact dials, on its tailnet address; any other core opens nothing. */
   #listen(member: boolean): void {
     const wanted = member || this.core.contacts?.wantsTailnet() === true;
-    this.#onTailnet = this.core.network.also(wanted && this.tailnet !== null ? this.tailnet.ip : null);
+    const lan = this.lan.addresses(member && this.core.network.lanAllowed());
+    ({ tailnet: this.#onTailnet, lan: this.#onLan } = this.core.network.also({ tailnet: wanted && this.tailnet !== null ? this.tailnet.ip : null, lan }));
   }
 
-  /** Contacts changed: the tailnet listener follows. */
-  relisten(): void { if (!this.#closed && this.#live) this.#listen(this.roster !== null); }
+  /** Contacts changed: the tailnet listener follows. The network changed (`probe`): the addresses, the firewall and the published entry too, now rather than at the next tick. */
+  relisten(probe = false): void { if (this.#closed || !this.#live) return; if (probe) { this.lan.stale(); this.#listen(this.roster !== null); this.#background(this.#refresh().then(() => this.syncPending())); } else this.#listen(this.roster !== null); }
 
   #card(): CoreCard {
     const { coreId, publicKey } = this.core.coordination.card();
@@ -315,15 +320,14 @@ export class GroupStore {
       publicKey,
       box,
       boxSig: this.core.coordination.signature(boxSigningInput(coreId, box)).toString('base64'),
-      addresses: advertisedAddresses({ ...endpoint, tailnet: this.#onTailnet, publicUrl: this.core.settings.get().publicUrl }, this.tailnet),
+      addresses: advertisedAddresses({ ...endpoint, tailnet: this.#onTailnet, lan: this.#onLan, publicUrl: this.core.settings.get().publicUrl }, this.tailnet),
       os: currentOs(),
     };
   }
 
   /**
-   * The addresses a ticket or a group key may name at this moment, read off
-   * the interfaces and the settings now: the roster holds what this machine
-   * last published, and between a move and the next publication it is behind.
+   * The addresses a ticket or a group key may name at this moment, read off the interfaces and the settings now: the
+   * roster holds what this machine last published, and between a move and the next publication it is behind.
    */
   given(): string[] {
     // Where pages of this machine were served is given too: a proxy in front of it answers there.
@@ -332,7 +336,7 @@ export class GroupStore {
     if (!this.#live) return ticketAddresses([...(this.roster?.cores.find((core) => core.coreId === this.selfId())?.addresses ?? []), ...served]);
     const ip = tailnetAddress();
     const tailnet = ip === null ? null : { ip, name: null };
-    const listening = { ...this.core.boundEndpoint(), tailnet: this.#onTailnet && ip === this.tailnet?.ip, publicUrl: this.core.settings.get().publicUrl };
+    const listening = { ...this.core.boundEndpoint(), tailnet: this.#onTailnet && ip === this.tailnet?.ip, lan: this.#onLan, publicUrl: this.core.settings.get().publicUrl };
     return ticketAddresses([...advertisedAddresses(listening, tailnet), ...served]);
   }
 
@@ -395,10 +399,9 @@ export class GroupStore {
   }
 
   /**
-   * Keys the group handed out here die with what they stood for: a machine
-   * removed, a device revoked on any member, a device whose own machine left.
-   * A device this core has not heard of yet is not dead: its ticket can arrive
-   * before the roster that lists it.
+   * Keys the group handed out here die with what they stood for: a machine removed, a device revoked on any member, a
+   * device whose own machine left. A device this core has not heard of yet is not dead: its ticket can arrive before
+   * the roster that lists it.
    */
   #reconcile(): void {
     const roster = this.roster;
@@ -452,10 +455,9 @@ export class GroupStore {
   }
 
   /**
-   * `sessions.revoke` is about to take a session away: a device of the group
-   * is revoked on every member. The removal is written first, so a crash
-   * before the session row goes leaves a removal the next start acts on, never
-   * a deleted session whose device the other members still let in.
+   * `sessions.revoke` is about to take a session away: a device of the group is revoked on every member. The removal
+   * is written first, so a crash before the session row goes leaves a removal the next start acts on, never a deleted
+   * session whose device the other members still let in.
    */
   sessionRevoking(sessionId: string): void {
     const member = this.sessions[sessionId];
@@ -756,10 +758,9 @@ export class GroupStore {
   }
 
   /**
-   * The other end of `join`, on the member that minted the invitation. The
-   * caller is in no roster yet. Its request names an invitation and is sealed
-   * with that invitation's grant: a caller that does not hold it gets no
-   * answer worth reading, and nothing is computed for one that names none.
+   * The other end of `join`, on the member that minted the invitation. The caller is in no roster yet. Its request
+   * names an invitation and is sealed with that invitation's grant: a caller that does not hold it gets no answer
+   * worth reading, and nothing is computed for one that names none.
    */
   async http(request: Request): Promise<Response> {
     if (this.#closed || this.core.policy.networkOff('groups') || request.method !== 'POST' || request.headers.has('origin')) return new Response('forbidden', { status: 403 });
@@ -889,8 +890,7 @@ export class GroupStore {
   }
 
   beginClose(): void {
-    this.#closed = true;
-    this.#disarm();
+    this.#closed = true; this.#disarm(); this.lan.stop();
   }
 
   async close(): Promise<void> {

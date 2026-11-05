@@ -310,6 +310,8 @@ export class RelayPipe {
     // A failure here is this machine's, not the other member's: never Unauthorized, which the client would take for its key there being revoked.
     const holder = (typeof relay === 'string' && relay.length > 0 && relay.length <= 512) || (typeof relay === 'object' && relay !== null) ? this.#authenticate(relay) : null;
     if (holder === null) {
+      // The machine behind it never sees this socket, and the client only knows it was refused: nobody else can tell. Never the key itself.
+      this.#core.log('warn', `relay: refused to carry a client to ${this.coreId.slice(0, 8)}: ${relay === undefined ? 'its hello carried no relay key' : 'its relay key or signature opens nothing here'}`);
       this.#refuse(id, RpcErrorCode.Refused, `${this.#name()} carries to the other machines of its group only a client paired with it: hello relay must be this client's key for ${this.#name()}, or its device signature for it`, 1008);
       return;
     }

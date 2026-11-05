@@ -110,7 +110,8 @@ export function letterPrompt(letters: AgentLetter[], context: (letter: AgentLett
  * What every turn of a thread with coordination on reads about it; `contacts`
  * when this core has contacts the thread may reach. `bot`: `self` for the
  * Contacts bot's own thread, `other` for any other thread while the bot runs,
- * `none` when this core has no Contacts bot (the older direct paths).
+ * a member that asks through its group's Bots host included, `none` when
+ * neither this core nor that host has one (the older direct paths).
  */
 export function coordinationGuide(paused: boolean, contacts = false, bot: 'self' | 'other' | 'none' = 'none'): string {
   // Archived projects and pauses are shown on each contact by `boite threads`, at the moment they matter.

@@ -1,5 +1,7 @@
 import {
+  PLUGIN_MANIFEST_FILE,
   RpcErrorCode,
+  readPluginSource,
   type PluginAppState,
   type PluginManifest,
   type PluginPool,
@@ -35,7 +37,7 @@ export class FakePlugins {
   /** Whether that gateway answers now. */
   gatewayRunning(id: string): boolean { return this.#plugins.find((entry) => entry.id === id)?.gateway?.status === 'running'; }
   private readonly handlers: Handlers = {
-    'plugins.list': (params) => { return structuredClone(this.#plugins).sort((a, b) => a.origin === b.origin ? (a.origin === 'url' ? a.id.localeCompare(b.id) : 0) : a.origin === 'recommended' ? -1 : 1); },
+    'plugins.list': (params) => { return structuredClone(this.#plugins).sort((a, b) => (Number(b.origin === 'recommended') - Number(a.origin === 'recommended')) || (a.origin === 'recommended' ? 0 : a.id.localeCompare(b.id))); },
     'plugins.inspect': (params) => { return this.#inspectPlugin(params); },
     'plugins.add': (params) => { return this.#addPlugin(params.previewId); },
     'plugins.install': (params) => {
@@ -119,6 +121,21 @@ export class FakePlugins {
       return structuredClone(plugin);
     },
     'plugins.checkUpdates': (params) => { return this.#checkUpdates(params?.id); },
+    'plugins.command': (params) => {
+      const known = this.#plugins.flatMap((plugin) => plugin.status === 'installed' ? plugin.adds?.commands ?? [] : []);
+      if (!known.includes(params.name)) {
+        const expected = known.length === 0 ? 'no installed plugin provides a command' : `one of ${known.join(', ')}`;
+        throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `boite ${params.name} is no boite command and no installed plugin provides it; plugin commands: ${known.join(', ') || 'none'}`, data: { field: 'name', expected } });
+      }
+      return { exitCode: 0, stdout: `${params.name}: nothing to report in the in-memory client.\n`, stderr: '', truncated: false };
+    },
+    'plugins.dev': (params) => {
+      const plugin = this.#plugins.find((entry) => entry.origin === 'dev' && entry.devPath === params.path);
+      const expected = `an absolute path to a folder holding ${PLUGIN_MANIFEST_FILE}`;
+      if (!plugin) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `plugin dev path must be ${expected}, got ${JSON.stringify(params.path)}`, data: { field: 'path', expected } });
+      this.host.emit('plugins.updated', structuredClone(plugin));
+      return structuredClone(plugin);
+    },
   };
 
   /**
@@ -207,15 +224,13 @@ export class FakePlugins {
    * desktop app, anything else as a Pi pool plugin named after the repository.
    */
   async #inspectPlugin(params: RpcParams<'plugins.inspect'>): Promise<PluginPreview> {
-    const text = params.url.trim().replace(/\/+$/, '');
-    let url: URL | null = null;
-    try { url = new URL(text); } catch { url = null; }
-    if (url === null || url.protocol !== 'https:' || url.username !== '' || url.password !== '' || url.search !== '' || url.hash !== '') {
-      throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'plugin url must be an https URL of a git repository, such as https://github.com/owner/repo' });
-    }
+    const given = readPluginSource(params.url, params.ref);
+    if (!given.ok) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: given.message, data: { field: given.field, expected: given.expected } });
+    const text = given.url;
+    const url = new URL(text);
     // The core takes a moment to fetch; the page shows it reading.
     await new Promise((resolve) => setTimeout(resolve, this.host.delayMs() * 10));
-    const source = { url: `${url.origin}${url.pathname}`, ref: params.ref?.trim() || 'HEAD', commit: 'e7d1c9a35b2f4e6d8a0c1b3f5d7e9a2c4b6d8f0e' };
+    const source = { url: text, ref: given.ref ?? 'HEAD', commit: 'e7d1c9a35b2f4e6d8a0c1b3f5d7e9a2c4b6d8f0e' };
     const base: PluginPreview = { previewId: null, source, manifest: null, rejected: null, artifact: null, platform: 'win32-x64', commands: [], replaces: null, expiresAt: this.host.now() + 600_000 };
     if (text.includes('broken')) {
       return {
@@ -233,7 +248,24 @@ export class FakePlugins {
       artifacts: { 'win32-x64': { url: `${source.url}/releases/download/v1.5.0/${slug}-win32-x64.exe`, sha256: '5a7c9e1b3d5f7a9c2e4b6d8f0a1c3e5b7d9f2a4c6e8b0d1f3a5c7e9b2d4f6a8c' } },
       provides: desktop ? { desktopApp: {} } : { accountPools: { providers: ['pi'] } }
     };
-    const read: PluginPreview = { ...base, manifest, artifact: manifest.artifacts['win32-x64'] ?? null, commands: desktop ? appCommands(manifest.executable, manifest.id) : poolCommands(slug) };
+    if (text.includes('scoped')) {
+      // A schema 2 desktop app run by the core's Bun: its own token, scoped to what it declares.
+      Object.assign(manifest, {
+        schema: 2, runtime: 'bun', description: 'Shows the threads that wait for you in a window of its own.', permissions: ['threads.read', 'ui.reveal'],
+        artifacts: { any: { url: `${source.url}/releases/download/v1.5.0/${slug}.js`, sha256: '5a7c9e1b3d5f7a9c2e4b6d8f0a1c3e5b7d9f2a4c6e8b0d1f3a5c7e9b2d4f6a8c' } },
+        provides: { desktopApp: {}, slashCommands: [{ name: 'waiting', description: 'Lists the threads that wait for you.', prompt: 'List the threads that wait for me.' }] },
+      });
+    }
+    if (text.includes('text-only')) {
+      // Skills, a prompt and slash commands: nothing to download, nothing that runs.
+      delete manifest.executable; delete manifest.artifacts;
+      Object.assign(manifest, { schema: 2, description: 'Review prompts.', provides: { slashCommands: [{ name: 'review', description: 'Reviews the diff.', prompt: 'Review the diff.' }] } });
+    }
+    const artifact = manifest.artifacts?.['win32-x64'] ?? manifest.artifacts?.any ?? null;
+    const commands = manifest.executable === undefined ? [] : manifest.schema === 2
+      ? [`bun ${slug}.js`, `environment: BOITE_CORE_URL=<this core> BOITE_TOKEN=<${slug}'s token: ${(manifest.permissions ?? []).join(', ')}> BOITE_PLUGIN_ID=${slug} BOITE_PLUGIN_DATA=<its data directory>`]
+      : desktop ? appCommands(slug, manifest.id) : poolCommands(slug);
+    const read: PluginPreview = { ...base, manifest, artifact, commands };
     const existing = this.#plugins.find((entry) => entry.id === slug);
     if (existing?.origin === 'recommended') {
       const expected = `an id no recommended plugin uses (${this.#plugins.filter((entry) => entry.origin === 'recommended').map((entry) => entry.id).join(', ')})`;
@@ -264,7 +296,13 @@ export class FakePlugins {
     const plugin: PluginState = {
       id: manifest.id, name: manifest.name, origin: 'url', description: manifest.description, homepage: manifest.homepage,
       version: existing?.version ?? null, availableVersion: manifest.version, status: 'installing', progress: 0, error: null,
-      source: preview.source, artifact: preview.artifact, platform: preview.platform, commands: preview.commands, pools, rejected: null, app
+      source: preview.source, artifact: preview.artifact, platform: preview.platform, commands: preview.commands, pools, rejected: null, app,
+      // What the core derives from the manifest it installs: the token's permissions and the names the plugin adds.
+      ...(manifest.schema === 1 ? {} : { permissions: [...(manifest.permissions ?? [])] }),
+      adds: {
+        commands: (manifest.provides.commands ?? []).map((command) => command.name), skills: (manifest.provides.skills ?? []).map((skill) => skill.name),
+        slashCommands: (manifest.provides.slashCommands ?? []).map((command) => command.name), prompt: manifest.provides.prompt !== undefined,
+      },
     };
     if (existing !== undefined) Object.assign(existing, plugin);
     else this.#plugins.push(plugin);

@@ -108,6 +108,12 @@ export class ContactRelations {
     this.#core.journal.setSetting(ENDED, queue);
   }
 
+  /** The owner renamed the contact: its relations take that name, the one the directory gives its threads' addresses (`coordination-directory.ts`). */
+  renamed(coreId: string, name: string): void {
+    const relations = this.list();
+    if (relations.some(relation => relation.coreId === coreId && relation.contact !== name)) this.#save(relations.map(relation => relation.coreId === coreId ? { ...relation, contact: name } : relation));
+  }
+
   /** The contact moved to another core of its owner's group (`group-link.ts`): its relations follow it, its threads under their new address. */
   rekey(from: string, to: string, name: string, address: (thread: AgentContact) => AgentContact): void {
     const relations = this.list();

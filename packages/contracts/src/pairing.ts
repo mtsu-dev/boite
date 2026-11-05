@@ -66,21 +66,26 @@ export type NetworkCategory = 'public' | 'private' | 'domain';
 
 /**
  * Whether Windows Defender Firewall lets a phone reach this core. Only Windows
- * answers anything but `unsupported`. `ready`: every network this machine is
- * on allows the core's inbound connections. `unset`: one of them has no rule
- * for it, so Windows asks. `blocked`: a rule blocks it there, which wins over
- * any rule that allows it, the block rules a dismissed prompt leaves included.
- * `error`: Windows could not be read, `detail` says why.
+ * answers anything but `unsupported`, and only private networks count: Boite
+ * never opens on a public network or a work domain. `ready`: the private
+ * network this machine is on allows the core's inbound connections, or it is
+ * on no network but Tailscale's. `unset`: no rule covers private networks yet,
+ * so `firewall.allow` asks for one. `blocked`: a rule blocks it there, which
+ * wins over any rule that allows it, the block rules a dismissed prompt leaves
+ * included. `public`: it is on public or domain networks only, where Windows
+ * keeps the core closed and no prompt is asked; marking the network private
+ * in Windows settings opens it. `error`: Windows could not be read, `detail`
+ * says why.
  */
-export type FirewallState = 'unsupported' | 'ready' | 'unset' | 'blocked' | 'error';
+export type FirewallState = 'unsupported' | 'ready' | 'unset' | 'blocked' | 'public' | 'error';
 
 export interface FirewallStatus {
   state: FirewallState;
   /** The categories of the networks this machine is on now. Tailscale's own adapter is left out: Tailscale opens it itself. */
   networks: NetworkCategory[];
-  /** Of `networks`, those where the core's inbound connections are allowed. */
+  /** `private` when the core's inbound connections are allowed on the private network it is on. */
   allowed: NetworkCategory[];
-  /** Of `networks`, those where a rule blocks them. */
+  /** `private` when a rule blocks them on the private network it is on. */
   blocked: NetworkCategory[];
   /** `cancelled`: nobody accepted Windows' administrator prompt. */
   detail?: 'cancelled' | 'timeout' | 'unknown';
@@ -98,6 +103,6 @@ export interface PairingRpcMethods {
   'tailscale.disable': { params: Record<string, never>; result: TailscaleStatus };
   /** Whether Windows Defender Firewall lets other devices reach this core. Owner only. */
   'firewall.status': { params: Record<string, never>; result: FirewallStatus };
-  /** Allow this core through Windows Defender Firewall on every network, after Windows' administrator prompt. Owner only. */
+  /** Allow this core through Windows Defender Firewall on private networks, after Windows' administrator prompt. Owner only. */
   'firewall.allow': { params: Record<string, never>; result: FirewallStatus };
 }

@@ -2,7 +2,7 @@
  * The environment of a virtual desktop's programs, shared by the core that
  * starts them and the CLI that runs agent-desktop on them (docs/desktop.md).
  */
-import { posix } from 'node:path';
+import { join as nativeJoin, posix } from 'node:path';
 
 // The desktop is an X11 session on Linux: its paths are POSIX wherever the core is built or tested.
 const { join } = posix;
@@ -60,4 +60,13 @@ export function withDesktopEnv(base: Record<string, string | undefined>, env: Re
   const merged: Record<string, string | undefined> = { ...base };
   for (const [key, value] of Object.entries(env)) merged[key] = value === '' ? undefined : value;
   return merged;
+}
+
+/**
+ * A Windows or macOS desktop's environment: agent-desktop's own state folder,
+ * so its refs and sessions stay this desktop's, and the mark. The rest is the
+ * user's session, which those apps share.
+ */
+export function sharedDesktopEnv(dir: string, id: string): Record<string, string> {
+  return { AGENT_DESKTOP_HOME: nativeJoin(dir, 'agent-desktop'), [DESKTOP_MARK]: id };
 }

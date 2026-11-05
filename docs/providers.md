@@ -706,9 +706,14 @@ descriptor uses additional fields available to other providers:
 
 - `env`, on an OS profile, is environment every process of the provider gets,
   whatever its account, unlike `isolation`. Antigravity uses it for the harness
-  path and for a `BROWSER` pointed at `{browserNoop}`, a launcher that exits 0
-  which the core writes once under the data directory, so the agent never opens a
-  window on its own.
+  path and for a `BROWSER` pointed at `{browserNoop}`, so the agent never opens a
+  window on its own. Off Windows that is a script exiting 0 that the core writes
+  under the data directory. On Windows it is the command line
+  `'C:\Windows\System32\cmd.exe' /d /c exit 0 '"%s"'`: Python starts a `.cmd`
+  file through `cmd.exe`, which split the sign-in link at its `&`, failed, and
+  left Python to open the default browser. The `%s` makes Python split the value
+  like a POSIX shell, so the path keeps its backslashes (`cmd` reads `C:/Windows`
+  as switches) and the link reaches `cmd` quoted.
 - `unsetEnv`, on an OS profile, names variables taken out of the inherited
   environment before the spawn, so a key the user set for their own tools cannot
   redirect the agent Boite runs.
@@ -747,6 +752,24 @@ invoke_subagent?`; agents before 1.4.1 name it `start_subagent`; without
 is launched, its output is the launch's description, and the agent reports no
 child ids, names, models or results, so the batch stays running while the turn
 runs and reads unknown after it; only a failed launch is final, with its error.
+The same quirk changes three things in how Boite talks to it, found on the 1.4.5
+agent on 2026-11-04:
+
+- Every `initialize` (probe, sign-in, session) names the client `zed`. Named
+  anything else the agent lists Gemini 3.8 Flash only; named `zed` it adds
+  Claude Sonnet 4.6 (Thinking), Claude Opus 4.6 (Thinking) and GPT-OSS 120B
+  (Medium).
+- From 1.4.2, every `session/new` and `session/load` carries
+  `_meta.antigravity.disabledTools: ["run_workflow"]`. Without it the agent
+  writes `skills/system/run-workflow/SKILL.md` into the project.
+- The `model` option lists each family once (`gemini-3.8-flash`), and Gemini's
+  thinking is a `thinking_level` option of category `thought_level` (low,
+  medium, high), so Boite shows it as that model's effort; Claude and GPT have
+  none. The `models` list of the same answer still carries the pre-1.4 ids
+  `gemini-3.8-flash-low`, `-medium` and `-high`, which the agent takes as a
+  model and turns into the family plus that level. A thread or bot saved on one
+  of them keeps running: its id is sent as is, and the check that refuses an
+  unlisted model accepts an id that is a listed family followed by `-<level>`.
 A shell call (`kind: execute`) still running when the prompt answers is the
 thread's background work: the process stays up past the warm window, and the
 thread's next turns run on it, until the command's own update ends it, and Stop on the idle thread closes the process,
@@ -971,11 +994,12 @@ a Job Object and in the trace like any other, then asks the protocol's own quest
   thinking and Fast support come from each returned model. Descriptor effort
   controls stay hidden until that account has answered.
 - ACP: `initialize` and `session/new`, then whichever of two answers the agent
-  sent. `models.availableModels` wins when it is there: each entry is a model of
-  its own, and under the `grok` quirk it carries its own effort scale out of
-  `_meta.reasoningEfforts`, the level flagged `default: true` the one preselected.
-  Otherwise the `configOptions` whose category is `model` and `thought_level` are
-  read. That effort scale describes only the current model, so Boite does not
+  sent. The `configOptions` whose category is `model` and `thought_level` win
+  when there is a `model` one, since that option is what a turn sets.
+  Otherwise `models.availableModels` is read: each entry is a model of its own,
+  and under the `grok` quirk, read there even beside a `model` option, it
+  carries its own effort scale out of `_meta.reasoningEfforts`, the level
+  flagged `default: true` the one preselected. That effort scale describes only the current model, so Boite does not
   copy it to other models. An agent that sends neither leaves the descriptor's
   models standing. OpenCode names a model's `thought_level` only once a session
   is on that model: `providers.probe` takes an optional `model`, selects it with
@@ -1000,8 +1024,9 @@ a Job Object and in the trace like any other, then asks the protocol's own quest
 - Under the `antigravity` quirk a probe waits 90 seconds instead of 20. The
   agent is a PyInstaller one-file program that unpacks itself before its
   server reads a line: 45 to 54 seconds on an 8 GB laptop with 600 MB free
-  under 1.1.1, whose Windows build unpacked about 1.2 GB. The 1.4.1 builds are
-  smaller (Linux 930 MB, Windows 86 MB plus a 146 MB harness).
+  under 1.1.1, whose Windows build unpacked about 1.2 GB. The 1.4.5 builds are
+  smaller (Linux 826 MB plus a 134 MB harness, Windows 56 MB plus a 148 MB
+  harness).
   Each launch, probe, sign-in or session, unpacks into its own folder under
   `<isolationDir>/tmp`, set as `TEMP`, `TMP` and `TMPDIR`, and the folder goes
   once the process has exited. Every one of them ends in a forced stop, which

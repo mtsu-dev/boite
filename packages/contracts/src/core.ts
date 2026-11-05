@@ -165,4 +165,11 @@ export interface CoreRpcEvents {
   'core.updateChanged': ServerUpdateStatus;
   /** Owner connections only: this machine's desktop updater as its window reported it, null once that window left. */
   'core.desktopUpdateChanged': { status: DesktopUpdateStatus | null };
+  /**
+   * Owner connections only: this machine's network addresses changed (Tailscale
+   * came up or went down, another Wi-Fi). `addresses` is the new set of its
+   * non-internal interface addresses, sorted. A client retries at once every
+   * machine it could not reach.
+   */
+  'network.changed': { addresses: string[] };
 }

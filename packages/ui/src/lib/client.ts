@@ -51,6 +51,8 @@ export interface ObservableClient extends Client {
   onState(handler: (state: ClientState) => void): () => void;
   /** A later measure of `clockOffset` that moved by a second or more, on the same connection. */
   onClockOffset?(handler: (offset: number) => void): () => void;
+  /** The last `ready` came after failed attempts of the client's own, not on a first try or a `resume()`. */
+  readonly recovered?: boolean;
 }
 
 /** The slice of the browser WebSocket this client uses. A test supplies its own. */

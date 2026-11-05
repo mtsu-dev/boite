@@ -7,6 +7,7 @@
 import type { BrowserAction, BrowserActionResult, BrowserDialog, BrowserReply } from '@boite/contracts';
 import { kit } from './page-kit.ts';
 import { CdpSessionDetachedError } from './cdp.ts';
+import type { PageRuntime } from './page-runtime.ts';
 
 /** A way into one document of a tab: the top one speaks on the tab's own session. */
 export interface FrameChannel {
@@ -23,6 +24,8 @@ export interface PageFrames {
   reach(parent: FrameChannel, frameId: string): Promise<FrameChannel | null>;
   /** Closes what `reach` opened for the command that ran. */
   release(): void;
+  /** Whether the tab's page runs with DevTools' runtime on (`page-runtime.ts`). */
+  readonly runtime?: PageRuntime;
 }
 
 /** One tab as the commands see it: its DevTools session and the dialogs answered for the agent. */

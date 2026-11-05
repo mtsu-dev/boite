@@ -35,6 +35,7 @@ import { compactionTail } from './background-compact.ts';
 import { nativeCommandPrompt, systemOperation } from './operations.ts';
 import { stoppedInput } from './stopped-input.ts';
 import { sessionUsage } from '../usage.ts';
+import { pluginGuideLines } from '../plugins/extensions.ts';
 
 /**
  * The parts of a turn's prompt that building it consumes: the async answers
@@ -82,7 +83,8 @@ export class TurnContexts {
     // `boite goal track` needs the Automatic goals experiment and a top-level thread of the user's.
     const experiments = this.#core.clients.desktopExperiments() ?? this.#core.clients.current()?.experiments ?? [];
     const goalTrack = !thread.parentThreadId && !thread.agentSessionId && experiments.includes('auto-goal');
-    return agentGuide(provider.protocol !== 'echo' && settings.asyncQuestions !== false, logAccess, skills, !!thread.agentSessionId, goalTrack, experiments.includes('teams'));
+    const plugins = pluginGuideLines(this.#core.plugins.installedPlugins(), message => { try { this.#core.logs.warn(message, { source: 'plugins', event: 'plugins.skill-write-failed' }); } catch { /* The guide is built without that skill. */ } });
+    return agentGuide(provider.protocol !== 'echo' && settings.asyncQuestions !== false, logAccess, skills, !!thread.agentSessionId, goalTrack, experiments.includes('teams'), plugins);
   }
 
   /** The guide as a session option, for a driver that puts it in the system prompt. */
@@ -123,6 +125,8 @@ export class TurnContexts {
       hook: report => this.#core.hooks.record({ providerId: provider.id, accountId: account.id, threadId }, report),
       background: list => this.#threads.agentState.noteBackground(threadId, list, backgroundOwner),
       backgroundFinished: (id, state) => this.#threads.agentState.finishBackground(threadId, id, backgroundOwner, state),
+      wake: (text, display) => this.#threads.deferred.wake(threadId, text, display),
+      loopWake: scheduledFor => this.#core.wakes.cliFired(threadId, scheduledFor),
       spawnChild: this.leasedSpawnChild(threadId, provider, { resume: thread.sessionId !== null }),
       finishStartup: () => this.#core.procs.finishStartup(this.#core.procs.protection.controlScope(threadId) ?? threadId),
       lazyMcp: this.#lazyMcpFor(thread),
@@ -449,7 +453,8 @@ export class TurnContexts {
       },
       background: list => this.#threads.agentState.noteBackground(threadId, list, backgroundOwner),
       backgroundFinished: (id, state) => this.#threads.agentState.finishBackground(threadId, id, backgroundOwner, state),
-      wake: (text) => this.#threads.deferred.wake(threadId, text),
+      wake: (text, display) => this.#threads.deferred.wake(threadId, text, display),
+      loopWake: scheduledFor => this.#core.wakes.cliFired(threadId, scheduledFor),
       requestPermission: (toolName: string, input: unknown, description: string | null): PermissionTicket => {
         // Shared contexts hide native tools. Approval of the attested protected
         // facade still follows the host's original context and permission mode.

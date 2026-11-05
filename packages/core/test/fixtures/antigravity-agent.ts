@@ -6,10 +6,11 @@
  * fetches the redirect URL before `authenticate` answers.
  *
  * Run as `bun <this file>`. `AGY_FAKE_LOG` names a file it appends to:
- * `initialize`, `env <NAME>=<value>` for the variables the account is supposed
+ * `initialize`, `client:<name>` for the client it was told it serves, `env <NAME>=<value>` for the variables the account is supposed
  * to carry, `callback:<url>` with the redirect URL a test is meant to paste,
- * `fetched:<path>` when that URL is hit, `authenticated`, `new:<cwd>` for
- * each session it opens with its model list, and `prompt:<sessionId>` for a
+ * `fetched:<path>` when that URL is hit, `authenticated`, `new:<cwd>` then
+ * `meta:<json>` for each session it opens with its model list, `set:<id>=<value>`
+ * for each config change, and `prompt:<sessionId>` for a
  * prompt, answered with one word, then `block:<type>` for each block after
  * its text. The session token lands under `GEMINI_HOME`, which is how the
  * account is rechecked.
@@ -23,24 +24,45 @@
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { Readable, Writable } from 'node:stream';
-import { agent, ndJsonStream, PROTOCOL_VERSION } from '@agentclientprotocol/sdk';
+import { agent, ndJsonStream, PROTOCOL_VERSION } from '@agentclientprotocol/sdk/unstable';
 
 /** The variables a test asserts on: the isolation, the harness, the browser suppression and where it unpacks. */
 const WATCHED = ['GEMINI_HOME', 'AGY_ACP_FORCE_FILE_STORAGE', 'ANTIGRAVITY_HARNESS_PATH', 'BROWSER', 'GEMINI_API_KEY', 'TEMP', 'TMP', 'TMPDIR', 'SSL_CERT_FILE'];
 
-/** The model option the real server answers `session/new` with, cut to three entries. */
-const MODEL_OPTION = {
-  type: 'select' as const,
-  id: 'model',
-  category: 'model' as const,
-  name: 'Model',
-  currentValue: 'gemini-3.7-flash-high',
-  options: [
-    { value: 'gemini-3.8-flash-high', name: 'Gemini 3.8 Flash (High)' },
-    { value: 'gemini-3.7-flash-high', name: 'Gemini 3.7 Flash (High)' },
-    { value: 'gemini-pro-agent', name: 'Gemini 3.1 Pro (High)' },
-  ],
-};
+/**
+ * The models 1.4.5 answers `session/new` with (2026-11-04): Gemini for any
+ * client, Claude and GPT only for a client named `zed`. The `model` option
+ * lists each family once; Gemini's thinking is a `thought_level` option, which
+ * the other models do not have. The protocol's `models` list carries the
+ * pre-1.4 ids, the level in the id, and the agent still takes them as a model.
+ */
+const GEMINI = { value: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash' };
+const ALLOWLISTED = [
+  { value: 'claude-opus-4-6-thinking', name: 'Claude Opus 4.6 (Thinking)' },
+  { value: 'gpt-oss-120b-medium', name: 'GPT-OSS 120B (Medium)' },
+];
+const LEVELS = ['low', 'medium', 'high'];
+let clientName = '';
+
+const families = (): { value: string; name: string }[] => (clientName === 'zed' ? [GEMINI, ...ALLOWLISTED] : [GEMINI]);
+
+/** One session's model and level, as `configOptions` and as the `models` list. */
+function controls(state: { model: string; level: string }): Record<string, unknown> {
+  const configOptions: Record<string, unknown>[] = [
+    { type: 'select', id: 'model', category: 'model', name: 'Model', currentValue: state.model, options: families() },
+  ];
+  if (state.model === GEMINI.value) {
+    configOptions.push({
+      type: 'select', id: 'thinking_level', category: 'thought_level', name: 'Thinking', currentValue: state.level,
+      options: LEVELS.map((level) => ({ value: level, name: level[0]!.toUpperCase() + level.slice(1) })),
+    });
+  }
+  const legacy = ['high', 'medium', 'low'].map((level) => ({ modelId: `${GEMINI.value}-${level}`, name: `Gemini 3.8 Flash (${level})` }));
+  const others = families().slice(1).map((entry) => ({ modelId: entry.value, name: entry.name }));
+  return { configOptions, models: { availableModels: [...legacy, ...others], currentModelId: `${GEMINI.value}-high` } };
+}
+
+const sessions = new Map<string, { model: string; level: string }>();
 
 /** The scopes of the real sign-in link: the third is the one a cut link loses. */
 const SCOPES = [
@@ -92,13 +114,15 @@ function waitForCallback(): { url: string; hit: Promise<void>; stop(): void } {
 }
 
 const app = agent({ name: 'agy-fake' })
-  .onRequest('initialize', () => {
+  .onRequest('initialize', ({ params }) => {
     log('initialize');
+    clientName = params.clientInfo?.name ?? '';
+    log(`client:${clientName}`);
     for (const name of WATCHED) log(`env ${name}=${process.env[name] ?? ''}`);
     return {
       protocolVersion: PROTOCOL_VERSION,
       agentCapabilities: { loadSession: true, promptCapabilities: { image: true } },
-      agentInfo: { name: 'agy-fake', version: '1' },
+      agentInfo: { name: 'agy-fake', version: '1.4.5' },
       authMethods: [{ id: 'oauth-personal', name: 'Sign in with Google', description: null }],
     };
   })
@@ -124,7 +148,23 @@ const app = agent({ name: 'agy-fake' })
   })
   .onRequest('session/new', ({ params }) => {
     log(`new:${params.cwd}`);
-    return { sessionId: `agy-fake-${crypto.randomUUID().slice(0, 8)}`, configOptions: [MODEL_OPTION] };
+    log(`meta:${JSON.stringify(params._meta ?? null)}`);
+    const sessionId = `agy-fake-${crypto.randomUUID().slice(0, 8)}`;
+    const state = { model: GEMINI.value, level: 'high' };
+    sessions.set(sessionId, state);
+    return { sessionId, ...controls(state) };
+  })
+  .onRequest('session/set_config_option', ({ params }) => {
+    const state = sessions.get(params.sessionId);
+    const value = String(params.value);
+    log(`set:${params.configId}=${value}`);
+    if (state === undefined) throw new Error(`no session ${params.sessionId}`);
+    const legacy = LEVELS.find((level) => value === `${GEMINI.value}-${level}`);
+    if (params.configId === 'model' && legacy !== undefined) Object.assign(state, { model: GEMINI.value, level: legacy });
+    else if (params.configId === 'model' && families().some((entry) => entry.value === value)) state.model = value;
+    else if (params.configId === 'thinking_level' && state.model === GEMINI.value && LEVELS.includes(value)) state.level = value;
+    else throw new Error(`invalid ${params.configId} ${value}`);
+    return { configOptions: controls(state)['configOptions'] as never };
   })
   .onRequest('session/prompt', async ({ params, client }) => {
     log(`prompt:${params.sessionId}`);

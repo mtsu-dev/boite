@@ -4,13 +4,14 @@
  * module, and settles from that machine's reports as a local step settles from
  * its turn. No polling or extra runner: a listener on the reports.
  */
-import { WORKFLOW_LIMITS, extractJson, shapeMismatch, type Turn, type WorkflowInstance, type WorkflowNode, type WorkflowRun, type WorkflowStepPlan } from '@boite/contracts';
+import { WORKFLOW_LIMITS, extractJson, shapeMismatch, type DelegationWorktree, type Turn, type WorkflowInstance, type WorkflowNode, type WorkflowRun, type WorkflowStepPlan } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import { messageOf } from '../errors.ts';
 import { fingerprint } from '../contacts/project-journal.ts';
 import { memberNamed } from '../threads/group-spawn.ts';
 import { INTERRUPTION_TEXT } from '../delegation/interruption.ts';
 import { stepPrompt } from './prompt.ts';
+import { shapedOutput } from './step-result.ts';
 
 interface Hooks {
   load: (id: string) => WorkflowRun | null;
@@ -25,6 +26,9 @@ const INTERRUPTED = 'Interrupted by a core restart';
 /** As much of an answer as a local step's JSON is read from. */
 const ANSWER_CHARS = 64_000;
 
+/** A step's bounded result from its whole answer. */
+const bounded = (answer: string) => answer ? (answer.length > WORKFLOW_LIMITS.resultChars ? `${answer.slice(0, WORKFLOW_LIMITS.resultChars - 40)}\n[Truncated; the step's conversation has the rest.]` : answer) : null;
+
 const find = (run: WorkflowRun | null, key: string) => run?.nodes.flatMap(n => n.instances).find(i => i.key === key);
 
 export class MachineWorkflowSteps {
@@ -33,6 +37,8 @@ export class MachineWorkflowSteps {
   readonly #pending = new Set<Promise<unknown>>();
   /** `run:key:turn` being read now, so a report arriving meanwhile does not judge the same turn twice. */
   readonly #judging = new Set<string>();
+  /** `run:key:turn` checkpoints already read for a result, so each report does not read them again. */
+  readonly #checkpoints = new Set<string>();
   /** Correction request ids out now, so a report arriving meanwhile does not send one twice at once. */
   readonly #sending = new Set<string>();
 
@@ -157,8 +163,16 @@ export class MachineWorkflowSteps {
       this.#correct(run!, key, machine.requestId, record.childId, machine.correction);
       return;
     }
-    // At work, or ended to wait on its own background work, or cut by a restart there that resumes it, or already judged.
-    if (turn === null || ['queued', 'running'].includes(turn.status) || state.thread.backgroundWait?.state === 'waiting' || state.restarting || turn.id === machine.turnId) return;
+    // At work, or cut by a restart there that resumes it, or already judged.
+    if (turn === null || ['queued', 'running'].includes(turn.status) || state.restarting || turn.id === machine.turnId) return;
+    const step = run!.plan.steps.find(s => s.id === key.split('#')[0])!;
+    // A result taken from a checkpoint: the stop of its background work there ends no step, so only its worktree is waited on.
+    if (machine.accepted !== undefined) {
+      if (state.worktree?.state === 'active' && !state.worktree.error) return;
+      return this.#take(runId, key, machine.requestId);
+    }
+    // Ended to wait on its own background work: only a result its answer delivered settles the step now.
+    if (state.thread.backgroundWait?.state === 'waiting') return this.#checkpoint(runId, key, run!.rootThreadId, machine.requestId, record.childId, turn, state.result, step);
     if (record.interruption?.turnId === turn.id) {
       this.#fail(runId, key, machine.requestId, record.interruption.error);
       return;
@@ -168,17 +182,59 @@ export class MachineWorkflowSteps {
       this.#fail(runId, key, machine.requestId, `Its last message was a checkpoint, not its final result: ${wait.for} ${INTERRUPTION_TEXT[wait.reason]}`);
       return;
     }
+    this.#settle(runId, key, run!.rootThreadId, machine.requestId, record.childId, turn, state.result, state.worktree, step);
+  }
+
+  /** Judges an ended turn there on its whole answer. */
+  #settle(runId: string, key: string, rootId: string, requestId: string, childId: string, turn: Pick<Turn, 'id' | 'status' | 'error'>, reported: string | null, worktree: DelegationWorktree | undefined, step: WorkflowStepPlan): void {
     // A worktree of its own is settled there after the turn: the step ends once it is kept or removed, so the summary names what to merge.
-    if (state.worktree?.state === 'active' && !state.worktree.error) return;
+    if (worktree?.state === 'active' && !worktree.error) return;
     const mark = `${runId}:${key}:${turn.id}`;
     if (this.#judging.has(mark)) return;
     this.#judging.add(mark);
-    const step = run!.plan.steps.find(s => s.id === key.split('#')[0])!;
     const work = (async () => {
-      const answer = turn.status === 'done' ? await this.#answer(run!.rootThreadId, record.childId!, turn.id, state.result) : '';
-      this.#judge(runId, key, machine.requestId, turn, answer, step);
-    })().catch(error => this.#fail(runId, key, machine.requestId, messageOf(error))).finally(() => this.#judging.delete(mark));
+      const answer = turn.status === 'done' ? await this.#answer(rootId, childId, turn.id, reported) : '';
+      this.#judge(runId, key, requestId, turn, answer, step);
+    })().catch(error => this.#fail(runId, key, requestId, messageOf(error))).finally(() => this.#judging.delete(mark));
     this.#track(work);
+  }
+
+  /**
+   * A turn there that ended on live background work is a checkpoint, unless
+   * its answer carries the step's result: then that work is stopped there, so
+   * it never wakes the finished step, and the step settles on that answer once
+   * its worktree there is kept or removed.
+   */
+  #checkpoint(runId: string, key: string, rootId: string, requestId: string, childId: string, turn: Turn, reported: string | null, step: WorkflowStepPlan): void {
+    const mark = `${runId}:${key}:${turn.id}`;
+    if (turn.status !== 'done' || step.output === undefined || this.#checkpoints.has(mark)) return;
+    this.#checkpoints.add(mark);
+    const work = (async () => {
+      const answer = await this.#answer(rootId, childId, turn.id, reported);
+      const shaped = shapedOutput(answer, step.output!);
+      if (!('value' in shaped)) return;
+      const run = this.#hooks.load(runId), inst = find(run, key);
+      // The answer came over the network: a turn begun there meanwhile is the step's work now, and is not stopped for an older one.
+      const state = this.#core.delegation.remote.record(rootId, requestId)?.state;
+      if (!this.#running(run, key) || inst!.machine?.requestId !== requestId || inst!.machine.accepted !== undefined || state?.lastTurn?.id !== turn.id || state.restarting) return;
+      // Kept as read: a later read that fails would only have the bounded report, which may cut the JSON off.
+      inst!.machine = { ...inst!.machine, accepted: { turnId: turn.id, result: bounded(answer), output: shaped.value } };
+      this.#hooks.save(run!);
+      this.#core.log('info', `workflow step ${key} on another machine: its result is in, so the background work it left there is stopped`);
+      this.#halt(rootId, requestId);
+      this.#receive(runId, key);
+    })().catch(error => this.#fail(runId, key, requestId, messageOf(error)));
+    this.#track(work);
+  }
+
+  /** Ends the step on the result taken from its checkpoint. */
+  #take(runId: string, key: string, requestId: string): void {
+    const run = this.#hooks.load(runId), inst = find(run, key), accepted = inst?.machine?.accepted;
+    if (!this.#running(run, key) || inst!.machine?.requestId !== requestId || !accepted) return;
+    const { accepted: _taken, ...machine } = inst!.machine;
+    Object.assign(inst!, { machine: { ...machine, turnId: accepted.turnId }, result: accepted.result, output: accepted.output, status: 'done', finishedAt: Date.now() });
+    this.#hooks.save(run!);
+    this.#hooks.advance(runId);
   }
 
   /** The whole answer, read from that machine when JSON may run past the bounded result it reported. */
@@ -207,7 +263,7 @@ export class MachineWorkflowSteps {
     machine.turnId = turn.id;
     const now = Date.now();
     if (turn.status === 'done') {
-      inst!.result = answer ? (answer.length > WORKFLOW_LIMITS.resultChars ? `${answer.slice(0, WORKFLOW_LIMITS.resultChars - 40)}\n[Truncated; the step's conversation has the rest.]` : answer) : null;
+      inst!.result = bounded(answer);
       if (step.output !== undefined) {
         const parsed = extractJson(answer);
         const size = parsed ? JSON.stringify(parsed.value).length : 0;

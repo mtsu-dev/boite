@@ -1,6 +1,6 @@
 import { BACKGROUND_WAKE_GRACE_MS } from '@boite/contracts';
 import { afterEach, expect, spyOn, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ThreadSummary, WorkflowPlan, WorkflowRun } from '@boite/contracts';
@@ -63,6 +63,36 @@ function restartable(): string {
   restores.push(() => rmSync(dir, { recursive: true, force: true }));
   return dir;
 }
+
+/** Makes `path` a git repository with one commit, for steps with a worktree of their own. */
+function gitRepo(path: string): void {
+  for (const args of [['init', '-q'], ['commit', '-q', '--allow-empty', '-m', 'fixture init']]) {
+    const done = Bun.spawnSync({ cmd: ['git', ...args], cwd: path, env: { ...process.env, GIT_AUTHOR_NAME: 'boite test', GIT_AUTHOR_EMAIL: 'test@boite.invalid', GIT_COMMITTER_NAME: 'boite test', GIT_COMMITTER_EMAIL: 'test@boite.invalid' }, stdout: 'pipe', stderr: 'pipe' });
+    if (!done.success) throw new Error(done.stderr.toString());
+  }
+}
+
+/** Turns of the step `bus`'s subagent, and every later turn of it, wait for `finish`; any other turn answers at once. */
+function heldBus() {
+  const runs = new Map<string, { ctx: TurnContext; finish: (text: string) => void }>();
+  const prompts: string[] = [];
+  restores.push(setDriver('echo', { protocol: 'echo', startTurn(ctx) {
+    prompts.push(ctx.prompt);
+    const done = Promise.withResolvers<TurnResult>();
+    const finish = (text: string) => {
+      const id = ctx.emit.startMessage('assistant');
+      ctx.emit.part(id, 0, { type: 'text', text });
+      ctx.emit.complete(id, 'complete');
+      done.resolve({ status: 'done', sessionId: `session:${ctx.thread.id}`, usage: null });
+    };
+    if (ctx.prompt.includes('step bus') || runs.has(ctx.thread.id)) runs.set(ctx.thread.id, { ctx, finish });
+    else finish('Summary read.');
+    return { done: done.promise, stop() { done.resolve({ status: 'stopped', sessionId: null, usage: null }); } };
+  } }));
+  return { runs, prompts };
+}
+
+const WATCHER = { id: 'watch', kind: 'monitor' as const, description: 'Build watcher', toolId: null };
 
 const JSON_BLOCK = (value: unknown) => `Here it is.\n\`\`\`json\n${JSON.stringify(value)}\n\`\`\``;
 
@@ -284,10 +314,7 @@ test('a step on another machine in a worktree of its own ends once that worktree
     return 'Changed fix.txt.';
   });
   const { pc, owner, threadId, machine, notesPath, onPc, run } = await setup();
-  for (const args of [['init', '-q'], ['commit', '-q', '--allow-empty', '-m', 'fixture init']]) {
-    const done = Bun.spawnSync({ cmd: ['git', ...args], cwd: notesPath, env: { ...process.env, GIT_AUTHOR_NAME: 'boite test', GIT_AUTHOR_EMAIL: 'test@boite.invalid', GIT_COMMITTER_NAME: 'boite test', GIT_COMMITTER_EMAIL: 'test@boite.invalid' }, stdout: 'pipe', stderr: 'pipe' });
-    if (!done.success) throw new Error(done.stderr.toString());
-  }
+  gitRepo(notesPath);
   const started = await owner.call('workflows.start', { threadId, requestId: 'worktree-1', plan: { name: 'Worktree', steps: [{ id: 'edit', machine, project: 'notes', task: 'Edit one file.', worktree: true }] } });
   await waitFor(() => run(started.id).status === 'done', 10_000);
   const kept = pc.core.delegation.worktrees.get(onPc()[0]!.id)!;
@@ -375,4 +402,120 @@ for (const ending of ['completed', 'error', 'refused'] as const) test(`a remote 
   runs.get(childId)!.finish('Final result: CI passed.');
   await waitFor(() => run(started.id).status === 'done');
   expect(step().result).toBe('Final result: CI passed.');
+}, 20_000);
+
+test('a remote step whose answer carries its result settles at once, and the background work it left there is stopped', async () => {
+  const { runs, prompts } = heldBus();
+  const { desk, pc, owner, threadId, machine, onPc, run } = await setup();
+  const started = await owner.call('workflows.start', { threadId, requestId: 'remote-result', plan: { name: 'Remote bus', steps: [
+    { id: 'bus', machine, project: 'notes', task: 'Build the bus.', output: { branch: 'string' } },
+    { id: 'shots', after: ['bus'], task: 'Shoot {{bus.branch}}' },
+  ] } });
+  await waitFor(() => onPc().some(child => runs.has(child.id)));
+  const childId = onPc()[0]!.id, first = runs.get(childId)!;
+  const step = () => run(started.id).nodes[0]!.instances[0]!;
+  first.ctx.background!([{ ...WATCHER, startedAt: Date.now() }]);
+  first.finish(JSON_BLOCK({ branch: 'feat/bus' }));
+  // Long before the watcher would end: the step settles on its result and the step after it starts here.
+  await waitFor(() => step().status === 'done', 3000);
+  expect(step().output).toEqual({ branch: 'feat/bus' });
+  await waitFor(() => prompts.some(prompt => prompt.includes('Shoot feat/bus')), 3000);
+  // The watcher is stopped there and never wakes the finished step.
+  await waitFor(() => (pc.core.threads.agentState.background.get(childId) ?? []).length === 0, 3000);
+  expect(pc.core.threads.agentState.backgroundHistory.list(childId).find(task => task.id === 'watch')?.state).toBe('cancelled');
+  await new Promise(resolve => setTimeout(resolve, 200));
+  expect(runs.get(childId)).toBe(first);
+  expect(pc.core.journal.listTurns(childId)).toHaveLength(1);
+  await waitFor(() => run(started.id).status === 'done');
+  expect(desk.core.workflows.get(threadId, started.id).nodes[0]!.instances[0]!.status).toBe('done');
+}, 20_000);
+
+test('a remote step settled on its result ends once its worktree there is settled, and the step after it starts then', async () => {
+  const { runs, prompts } = heldBus();
+  const { pc, owner, threadId, machine, notesPath, onPc, run } = await setup();
+  gitRepo(notesPath);
+  const started = await owner.call('workflows.start', { threadId, requestId: 'remote-worktree-result', plan: { name: 'Remote bus', steps: [
+    { id: 'bus', machine, project: 'notes', task: 'Build the bus.', worktree: true, output: { branch: 'string' } },
+    { id: 'shots', after: ['bus'], task: 'Shoot {{bus.branch}}' },
+  ] } });
+  await waitFor(() => onPc().some(child => runs.has(child.id)), 10_000);
+  const childId = onPc()[0]!.id, first = runs.get(childId)!;
+  const step = () => run(started.id).nodes[0]!.instances[0]!;
+  const path = pc.core.delegation.worktrees.get(childId)!.path;
+  expect(existsSync(path)).toBe(true);
+  first.ctx.background!([{ ...WATCHER, startedAt: Date.now() }]);
+  first.finish(JSON_BLOCK({ branch: 'feat/bus' }));
+  await waitFor(() => step().status === 'done', 10_000);
+  // Before, the step ended at once and its clean worktree stayed in use there for good.
+  expect(step().worktree).toMatchObject({ state: 'removed', commits: 0, dirty: false });
+  expect(pc.core.delegation.worktrees.get(childId)).toMatchObject({ state: 'removed' });
+  expect(existsSync(path)).toBe(false);
+  expect(step().output).toEqual({ branch: 'feat/bus' });
+  await waitFor(() => prompts.some(prompt => prompt.includes('Shoot feat/bus')), 3000);
+  expect(pc.core.journal.listTurns(childId)).toHaveLength(1);
+  await waitFor(() => run(started.id).status === 'done');
+}, 30_000);
+
+test('a turn begun there while a checkpoint result is read is not stopped for that older result', async () => {
+  const { runs } = heldBus();
+  const { desk, pc, owner, threadId, machine, onPc, run } = await setup();
+  const remote = desk.core.delegation.remote, read = remote.read.bind(remote);
+  const gate = Promise.withResolvers<void>();
+  let reads = 0;
+  const spy = spyOn(remote, 'read').mockImplementation(async params => { reads++; await gate.promise; return read(params); });
+  restores.push(() => spy.mockRestore());
+  const started = await owner.call('workflows.start', { threadId, requestId: 'remote-stale-read', plan: { name: 'Remote bus', steps: [
+    { id: 'bus', machine, project: 'notes', task: 'Build the bus.', output: { branch: 'string' } },
+    { id: 'shots', after: ['bus'], task: 'Shoot {{bus.branch}}' },
+  ] } });
+  await waitFor(() => onPc().some(child => runs.has(child.id)));
+  const childId = onPc()[0]!.id, first = runs.get(childId)!;
+  const step = () => run(started.id).nodes[0]!.instances[0]!;
+  first.ctx.background!([{ ...WATCHER, startedAt: Date.now() }]);
+  first.finish(JSON_BLOCK({ branch: 'feat/old' }));
+  await waitFor(() => reads > 0, 3000);
+  // While that answer is read, the agent there starts another turn, and its report comes first.
+  const next = pc.core.threads.startTurn(childId, 'Check the bus build again.');
+  await waitFor(() => remote.record(threadId, step().machine!.requestId)?.state?.lastTurn?.id === next.id, 3000);
+  gate.resolve();
+  await new Promise(resolve => setTimeout(resolve, 300));
+  // Before, the old answer stopped this turn there and ended the step with its output.
+  expect(pc.core.journal.getTurn(next.id)!.status).toBe('running');
+  expect(step()).toMatchObject({ status: 'running', output: null });
+  runs.get(childId)!.finish(JSON_BLOCK({ branch: 'feat/new' }));
+  await waitFor(() => step().status === 'done', 3000);
+  expect(step().output).toEqual({ branch: 'feat/new' });
+  await waitFor(() => run(started.id).status === 'done');
+}, 20_000);
+
+test('a result taken from a remote checkpoint is kept as read, so a later failed read cannot lose its JSON', async () => {
+  const { runs, prompts } = heldBus();
+  const { desk, pc, owner, threadId, machine, onPc, run } = await setup();
+  const remote = desk.core.delegation.remote, read = remote.read.bind(remote);
+  let reads = 0;
+  // The first read of the whole answer goes through; the network is down for any read after it.
+  const spy = spyOn(remote, 'read').mockImplementation(async params => {
+    if (++reads > 1) throw new Error('the other machine is unreachable');
+    return read(params);
+  });
+  restores.push(() => spy.mockRestore());
+  const started = await owner.call('workflows.start', { threadId, requestId: 'remote-kept-result', plan: { name: 'Remote bus', steps: [
+    { id: 'bus', machine, project: 'notes', task: 'Build the bus.', output: { branch: 'string' } },
+    { id: 'shots', after: ['bus'], task: 'Shoot {{bus.branch}}' },
+  ] } });
+  await waitFor(() => onPc().some(child => runs.has(child.id)));
+  const childId = onPc()[0]!.id, first = runs.get(childId)!;
+  const step = () => run(started.id).nodes[0]!.instances[0]!;
+  first.ctx.background!([{ ...WATCHER, startedAt: Date.now() }]);
+  // The JSON block comes after the part of the answer the report carries.
+  first.finish(`${'Build log line.\n'.repeat(400)}${JSON_BLOCK({ branch: 'feat/bus' })}`);
+  await waitFor(() => remote.record(threadId, step().machine!.requestId)?.state?.lastTurn?.id === first.ctx.turn.id && reads > 0, 3000);
+  expect(remote.record(threadId, step().machine!.requestId)!.state!.result).not.toContain('feat/bus');
+  await waitFor(() => step().status !== 'running', 5000);
+  // Before, the second read failed, the bounded report had no JSON, and a correction went there instead.
+  expect(step()).toMatchObject({ status: 'done', output: { branch: 'feat/bus' } });
+  expect(step().machine).not.toHaveProperty('accepted');
+  await waitFor(() => prompts.some(prompt => prompt.includes('Shoot feat/bus')), 3000);
+  expect(pc.core.journal.listTurns(childId)).toHaveLength(1);
+  await waitFor(() => run(started.id).status === 'done');
 }, 20_000);

@@ -371,6 +371,41 @@ test('a crash that cut background work of an idle thread resumes it once the nex
   } finally { await next.stop(); }
 });
 
+test('an update restart that cut background work of an idle thread resumes it once the next core starts', async () => {
+  let stops = 0;
+  const h = await startTestCore({ onShutdown: () => { stops += 1; } });
+  const task = { id: 'bg-5', kind: 'shell' as const, description: 'kvm suite', toolId: null, startedAt: Date.now() };
+  scripted(ctx => { ctx.background?.([task]); return done; });
+  const client = await h.connect();
+  const { threadId } = await echoThread(h, client);
+  const { threadId: stopped } = await echoThread(h, client, 'Stopped');
+  for (const id of [threadId, stopped]) {
+    await client.call('turns.start', { threadId: id, prompt: 'run the kvm suite' });
+    await waitFor(() => turns(h, id)[0]?.status === 'done' && h.core.threads.require(id).status === 'idle');
+  }
+  // The agents wait on their tasks: no turn runs, so the update cannot stop at idle and hands over instead.
+  expect(h.core.requestUpdateHandoff()).toBe('accepted');
+  await waitFor(() => stops === 1);
+  // The user's Stop during the handoff still ends that work for good.
+  await client.call('turns.stop', { threadId: stopped });
+  client.close();
+  await h.core.drain();
+  await h.server.stop();
+  await h.core.close();
+  delete process.env.BOITE_DATA_DIR;
+  const asked = scripted(done);
+  const next = await restart(h);
+  try {
+    expect(next.core.threads.get(threadId).backgroundHistory).toMatchObject([{ id: 'bg-5', state: 'cancelled', reason: 'core-restarted' }]);
+    await waitFor(() => next.core.threads.get(threadId).turns.length === 2 && next.core.threads.get(threadId).turns[1]!.status === 'done');
+    expect(asked[0]!.prompt).toContain('kvm suite');
+    expect(asked[0]!.prompt).toContain('Boite or the PC restarted');
+    expect(next.core.threads.get(stopped).backgroundHistory).toMatchObject([{ id: 'bg-5', state: 'cancelled', reason: 'session-ended' }]);
+    await Bun.sleep(150);
+    expect(next.core.threads.get(stopped).turns).toHaveLength(1);
+  } finally { await next.stop(); }
+});
+
 test('a crash that cuts a turn out of resumes says the turn stopped, and resumes nothing', async () => {
   const { h, threadId, turnId } = await crashMidTurn('third try at the migration');
   const db = new Database(join(h.dataDir, 'journal.db'));

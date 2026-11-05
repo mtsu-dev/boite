@@ -562,7 +562,7 @@ test('cancelled invitations join nothing, and the tailnet listener closes with t
   cores.push(host, guest);
   host.core.contacts.selfUrl = async () => host.url;
   const heard: (string | null)[] = [];
-  host.core.network = { also: address => { heard.push(address); return address !== null; } };
+  host.core.network = { also: ({ tailnet }) => { heard.push(tailnet); return { tailnet: tailnet !== null, lan: [] }; }, lanAllowed: () => false };
   (host.core.group as unknown as { tailnet: { ip: string; name: string | null } }).tailnet = { ip: '100.64.0.7', name: null };
   const hostClient = await host.connect();
   const guestClient = await guest.connect();
@@ -583,7 +583,7 @@ test('the tailnet listener opens for an invitation and closes once the last one 
   cores.push(harness);
   harness.core.contacts.selfUrl = async () => harness.url;
   const heard: (string | null)[] = [];
-  harness.core.network = { also: address => { heard.push(address); return address !== null; } };
+  harness.core.network = { also: ({ tailnet }) => { heard.push(tailnet); return { tailnet: tailnet !== null, lan: [] }; }, lanAllowed: () => false };
   (harness.core.group as unknown as { tailnet: { ip: string; name: string | null } }).tailnet = { ip: '100.64.0.7', name: null };
   await harness.core.contacts.invite();
   expect(heard.at(-1)).toBe('100.64.0.7');

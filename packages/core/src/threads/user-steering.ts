@@ -8,6 +8,7 @@ import { newId } from '../ids.ts';
 import type { ThreadStore } from '../threads.ts';
 import { checkAttachmentArray, checkAttachments } from './inputs.ts';
 import { saveThread } from './records.ts';
+import { expandSlashPrompt } from '../plugins/extensions.ts';
 
 /** Shared read-only gate for the composer and the live submission path. */
 export function userSteeringUnavailable(core: Core, threads: ThreadStore, threadId: string, turn: Turn | null): ThreadCapabilityReason | null {
@@ -49,7 +50,7 @@ export async function steerUser(core: Core, threads: ThreadStore, params: RpcPar
   const handle = runner.handles.get(threadId);
   const submit = handle?.steerUser?.bind(handle) ?? handle?.steer?.bind(handle);
   if (userSteeringUnavailable(core, threads, threadId, turn) !== null || !submit) return { accepted: false };
-  const expanded = core.brain.expandPrompt(prompt, threads.agentState.commands.get(threadId));
+  const expanded = expandSlashPrompt(core, prompt, threads.agentState.commands.get(threadId));
   const offset = expanded.length - prompt.length;
   const expandedReferences = references.map(reference => reference.mention ? {
     ...reference, mention: { start: reference.mention.start + offset, end: reference.mention.end + offset },

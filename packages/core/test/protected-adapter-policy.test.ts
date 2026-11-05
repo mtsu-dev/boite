@@ -11,7 +11,7 @@ import {sessionKey as piKey} from '../src/drivers/pi/mapping.ts';
 import {sessionKey as museKey} from '../src/drivers/muse/mapping.ts';
 import {sessionKey as acpKey} from '../src/drivers/acp/session.ts';
 import {SessionControls} from '../src/drivers/acp/controls.ts';
-import type {ClientContext, SessionConfigOption} from '@agentclientprotocol/sdk';
+import type {ClientContext, SessionConfigOption} from '@agentclientprotocol/sdk/unstable';
 import {protectedMuse} from '../src/drivers/muse/protected.ts';
 import type {TurnContext} from '../src/drivers/types.ts';
 

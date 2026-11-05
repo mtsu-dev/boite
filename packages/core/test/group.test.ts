@@ -6,7 +6,7 @@ import { firstAnswer, settle } from '../src/coordination-wire.ts';
 import { GroupStore } from '../src/group.ts';
 import { group as groupCommand } from '../src/main.ts';
 import { Refusals, REFUSALS_PER_MINUTE, senderOf } from '../src/server/refusals.ts';
-import { advertisedAddresses, isTailnetAddress, tailnetAddress } from '../src/group/addresses.ts';
+import { advertisedAddresses, isTailnetAddress, tailnetAddress, ticketAddresses } from '../src/group/addresses.ts';
 import { checkRoster, digestOf, fingerprint, liveCores, liveDevices, mergeRosters, type CoreEntry, type Roster } from '../src/group/roster.ts';
 import { boxPublic, newBoxKey, open, openResponse, pack, seal, SEALED, sealResponse, unpack } from '../src/group/seal.ts';
 import { parseInvite, parseTicket } from '../src/group/ticket.ts';
@@ -206,6 +206,8 @@ test('the owner renames a group on either member, and the name survives synchron
   await waitFor(() => a.core.group.view('owner')?.settingsHome === undefined);
   expect(checkRoster(a.core.journal.getSetting('group'))).toMatchObject({ settingsHome: null, settingsHomeRev: 2 });
   a.core.group.settingsHome(id(b));
+  // The choice made on a reaches b before b answers with it.
+  await waitFor(() => b.core.group.view('owner')?.settingsHome === id(b));
   // The bots host is a role of its own, chosen and cleared the same way.
   expect(await owner.call('group.botsHome', { coreId: id(b) })).toMatchObject({ botsHome: id(b), settingsHome: id(b) });
   await waitFor(() => a.core.group.roleOf('botsHome') === id(b) && b.core.group.view('owner')?.botsHome === id(b));
@@ -1086,8 +1088,13 @@ test('"you were removed" counts only signed inside a sealed answer, never from a
   const sealed = seal('request', (b.core.journal.getSetting('group') as Roster).cores.find((core) => core.coreId === id(b))!.box, context);
   const answer = sealResponse(pack(gone, sign(gone)), sealed.responseKey, context);
   expect(settle('http://b', key, nonce, 200, answer, SEALED, { responseKey: sealed.responseKey, context })).toEqual({ url: 'http://b', gone: true });
-  // And a sealed request is never answered in the clear.
-  expect(() => settle('http://b', key, nonce, 200, ok, sign(ok), { responseKey: sealed.responseKey, context })).toThrow('in the clear');
+  // And a sealed request is never answered in the clear: a readable answer names its address and status, and what it said when it failed.
+  expect(() => settle('http://b', key, nonce, 200, ok, sign(ok), { responseKey: sealed.responseKey, context })).toThrow('http://b answered HTTP 200 unsealed to a sealed request');
+  expect(() => settle('http://b', key, nonce, 502, 'Bad Gateway\n', '', { responseKey: sealed.responseKey, context })).toThrow(/^http:\/\/b answered HTTP 502: Bad Gateway$/);
+  // An unsigned 403 to a sealed request is a relay or proxy refusing, not this core's own agent link: it names its address, status and reason, never the generic reconnect notice.
+  expect(() => settle('http://b', key, nonce, 403, 'Forbidden\n', '', { responseKey: sealed.responseKey, context })).toThrow(/^http:\/\/b answered HTTP 403: Forbidden$/);
+  // In the clear (no sealing) an unsigned 403 still means this core's own link was refused.
+  expect(() => settle('http://b', key, nonce, 403, 'Forbidden\n', '')).toThrow('destination refused this core; reconnect the agent link in Machines');
 });
 
 test('only a holder of the invitation spends the join allowance, and a pairing link never names a machine by a plain-HTTP name', async () => {
@@ -1153,6 +1160,10 @@ test('only a holder of the invitation spends the join allowance, and a pairing l
   expect(a.core.group.ownAddress()).toBe('https://desk.tail.example');
   withAddresses(['http://desk.tail.example:7000']);
   expect(a.core.group.ownAddress()).toBeNull();
+  // A tailnet name too: with Tailscale's DNS not accepted, the LAN's resolver answers it, while 100.x rides WireGuard.
+  withAddresses(['http://desk.tail0d6070.ts.net:7000', 'http://100.101.102.103:7000']);
+  expect(a.core.group.ownAddress()).toBe('http://100.101.102.103:7000');
+  expect(ticketAddresses(['http://desk.tail0d6070.ts.net:7000', 'http://100.101.102.103:7000'])).toEqual(['http://100.101.102.103:7000']);
   withAddresses([a.url]);
   expect(a.core.group.ownAddress()).toBeNull();
 });

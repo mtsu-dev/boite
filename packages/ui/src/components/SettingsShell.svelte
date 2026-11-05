@@ -51,6 +51,11 @@
     ?? (store.settingsTab === 'plugins' ? choices.find(isThisPC) : undefined)
     ?? choices.find((machine) => machine.store === store));
   let target = $derived(machinePage(store.settingsTab) ? chosen?.store ?? store : store);
+  /** A plugin card's Preview reads the repository on the card's machine, where the agent that asked runs. */
+  $effect(() => {
+    if (!store.pluginSource) return;
+    untrack(() => { picked = choices.find((machine) => machine.store === store)?.id ?? picked; });
+  });
   /** The bar when there is a machine to pick or a default machine to speak of. */
   let bar = $derived(machinePage(store.settingsTab) && chosen !== undefined && (choices.length > 1 || chosen.store.group?.settingsHome !== undefined));
   /** The policy banner stands above the page, so the panel scrolls both on one column, as under the bar. */

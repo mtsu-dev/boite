@@ -1,9 +1,11 @@
 /*
- * Desktop-app plugins: an executable the core starts with no arguments and
- * keeps running, such as Bots. The app reaches the core like any client, with
- * the core's address and the owner token in its environment; the core starts
- * it, stops it and relaunches it when it crashes. docs/plugins.md describes
- * the contract an app answers.
+ * Desktop-app and service plugins: an executable the core starts with no
+ * arguments and keeps running, such as Bots. The app reaches the core like any
+ * client, with the core's address and a token in its environment: the owner
+ * token for a schema 1 desktop app, the plugin's own (plugins/tokens.ts) for
+ * schema 2. The core starts it, stops it and relaunches it when it crashes. A
+ * service is the same process with no window, so it also runs on a core with
+ * no desktop. docs/plugins.md describes the contract an app answers.
  *
  * Whether the owner wants the app running is `enabled`, kept in `app.json`
  * beside `installed.json`, and whether it starts with the core is
@@ -18,6 +20,7 @@ import { AGENT_ENV } from '@boite/contracts';
 import type { PluginAppState } from '@boite/contracts';
 import { messageOf } from '../errors.ts';
 import type { SpawnedProcess } from '../procs.ts';
+import { pluginLaunch } from './launch.ts';
 
 const APP_FILE = 'app.json';
 /** The waits before each relaunch after a crash. One crash more within the window gives `crashed`. */
@@ -28,12 +31,25 @@ export const CRASH_WINDOW_MS = 5 * 60_000;
 export interface AppHost {
   procs: { spawn(threadId: string, cmd: string, args: string[], opts: { cwd: string; env: Record<string, string | undefined>; showWindow: boolean }): SpawnedProcess; killTree(threadId: string): number };
   coreUrl(): string;
-  ownerToken(): string;
+  /** The core's data directory, where the bun runtime's files live (plugins/launch.ts). */
+  coreDataDir: string;
   log(level: 'info' | 'warn', message: string): void;
-  /** The binary and directory of an installed plugin providing a desktop app, or null. */
-  installed(id: string): { binary: string; dir: string } | null;
+  /** What runs an installed plugin's desktop app or service, or null. */
+  installed(id: string): AppProgram | null;
   /** Announces the plugin's state after a change. */
   changed(id: string): void;
+}
+
+/** One installed app: its executable, its directory, whether it draws a window, and what its environment carries. */
+export interface AppProgram {
+  binary: string;
+  dir: string;
+  /** A service: no window, so no desktop needed. */
+  service: boolean;
+  /** The owner token for a schema 1 app, the plugin's own for schema 2. */
+  token: string;
+  /** BOITE_PLUGIN_DATA, for schema 2. */
+  dataDir: string | null;
 }
 
 /** Timers the tests replace to walk through the backoff without waiting it out. */
@@ -89,11 +105,18 @@ export function desktopProblem(env: Record<string, string | undefined> = process
  * sets, plus where the core answers and the owner token. `undefined` removes a
  * variable the core's environment carries, since the launcher merges onto it.
  */
-export function appEnv(base: Record<string, string | undefined>, fields: { coreUrl: string; token: string; pluginId: string }): Record<string, string | undefined> {
+export function appEnv(base: Record<string, string | undefined>, fields: { coreUrl: string; token: string; pluginId: string; dataDir?: string | null; callerThreadId?: string | null }): Record<string, string | undefined> {
   const env: Record<string, string | undefined> = {};
   const agent = new Set<string>(Object.values(AGENT_ENV));
   for (const name of Object.keys(base)) if (agent.has(name.toUpperCase()) || name.toUpperCase().startsWith('BOITE_AGENT_')) env[name] = undefined;
-  return { ...env, BOITE_CORE_URL: fields.coreUrl, BOITE_TOKEN: fields.token, BOITE_PLUGIN_ID: fields.pluginId };
+  return {
+    ...env,
+    BOITE_CORE_URL: fields.coreUrl,
+    BOITE_TOKEN: fields.token,
+    BOITE_PLUGIN_ID: fields.pluginId,
+    ...(fields.dataDir ? { BOITE_PLUGIN_DATA: fields.dataDir } : {}),
+    ...(fields.callerThreadId ? { BOITE_CALLER_THREAD_ID: fields.callerThreadId } : {}),
+  };
 }
 
 /** The stream read to its end and thrown away: the app's output may carry secrets and must never fill a pipe. */
@@ -161,15 +184,16 @@ export class PluginApps {
     });
   }
 
-  state(id: string, dir: string): PluginAppState {
+  state(id: string, dir: string, service = false): PluginAppState {
     const entry = this.#entries.get(id);
-    const problem = this.desktop();
+    const problem = service ? null : this.desktop();
     const { enabled, autostart } = readRunChoice(join(dir, APP_FILE));
+    const kind = service ? { kind: 'service' as const } : {};
     if (problem !== null && entry?.running == null) {
       return { enabled, autostart, status: 'unavailable', pid: null, exitCode: entry?.exitCode ?? null, error: problem, startedAt: null };
     }
-    if (entry === undefined || entry.status === 'unavailable') return { enabled, autostart, status: 'stopped', pid: null, exitCode: entry?.exitCode ?? null, error: null, startedAt: null };
-    return { enabled, autostart, status: entry.status, pid: entry.pid, exitCode: entry.exitCode, error: entry.error, startedAt: entry.startedAt };
+    if (entry === undefined || entry.status === 'unavailable') return { ...kind, enabled, autostart, status: 'stopped', pid: null, exitCode: entry?.exitCode ?? null, error: null, startedAt: null };
+    return { ...kind, enabled, autostart, status: entry.status, pid: entry.pid, exitCode: entry.exitCode, error: entry.error, startedAt: entry.startedAt };
   }
 
   /** Starts the app unless it runs already, the core is closing or this machine has no desktop. */
@@ -186,7 +210,7 @@ export class PluginApps {
       this.#host.changed(id);
       return;
     }
-    const problem = this.desktop();
+    const problem = installed.service ? null : this.desktop();
     if (problem !== null) {
       entry.status = 'unavailable';
       entry.error = problem;
@@ -196,11 +220,9 @@ export class PluginApps {
     const threadId = `plugin:${id}:app`;
     let spawned: SpawnedProcess;
     try {
-      spawned = this.#host.procs.spawn(threadId, installed.binary, [], {
-        cwd: installed.dir,
-        env: appEnv(process.env, { coreUrl: this.#host.coreUrl(), token: this.#host.ownerToken(), pluginId: id }),
-        showWindow: true,
-      });
+      const env = appEnv(process.env, { coreUrl: this.#host.coreUrl(), token: installed.token, pluginId: id, dataDir: installed.dataDir });
+      const launch = pluginLaunch(installed.binary, [], env, this.#host.coreDataDir);
+      spawned = this.#host.procs.spawn(threadId, launch.cmd, launch.args, { cwd: installed.dir, env: launch.env ?? env, showWindow: !installed.service });
     } catch (error) {
       entry.status = 'crashed';
       entry.error = `${id} could not start: ${messageOf(error)}`;

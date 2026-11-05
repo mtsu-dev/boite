@@ -20,6 +20,7 @@ import type { ProviderInstallState } from '@boite/contracts';
 import { connect } from '../src/client.ts';
 import { Core } from '../src/core.ts';
 import { jsonLinesOnly } from '../src/drivers/acp/stdout.ts';
+import { acpClientInfo } from '../src/drivers/acp/protocol.ts';
 import { newToken } from '../src/ids.ts';
 import { agentEnv, profileFor, resolveExecutable } from '../src/providers/resolve.ts';
 import { startServer } from '../src/server.ts';
@@ -108,7 +109,7 @@ describe('the real antigravity release', () => {
           env,
         });
         try {
-          const sdk = await import('@agentclientprotocol/sdk');
+          const sdk = await import('@agentclientprotocol/sdk/unstable');
           const stream = sdk.ndJsonStream(
             Writable.toWeb(child.stdin) as unknown as WritableStream<Uint8Array>,
             jsonLinesOnly(Readable.toWeb(child.stdout) as unknown as ReadableStream<Uint8Array>, (line) => {
@@ -119,7 +120,7 @@ describe('the real antigravity release', () => {
           const init = await connection.agent.request('initialize', {
             protocolVersion: sdk.PROTOCOL_VERSION,
             clientCapabilities: {},
-            clientInfo: { name: 'boite', version: '0' },
+            clientInfo: acpClientInfo(descriptor),
           });
           console.log(`initialize protocolVersion=${String(init.protocolVersion)}`);
           console.log(`authMethods ${(init.authMethods ?? []).map((method) => method.id).join(', ')}`);

@@ -1,6 +1,7 @@
 import { Store, store } from './store.svelte';
 import type { AgentPane } from './store/layout.svelte';
 import { INITIAL_PAGE_BYTES, RpcErrorCode, threadActive, withoutTrailingSlashes, type AgentAddress, type GroupCore } from '@boite/contracts';
+import { WsClient } from './client';
 import {
   forgetGroupOf,
   removeBrought,
@@ -97,6 +98,8 @@ export function machineHealth(machine: Machine, primary: Store): MachineHealth {
 export const PRIMARY_PATIENCE_MS = 2000;
 /** How long the window keeps its loading screen while another machine may still answer in place of the one it opened on. */
 export const STAND_IN_WAIT_MS = 6000;
+/** How long the group links wait for the remembered machines to be in: a connection that never ends must not hide the group's other machines for good. */
+export const SETTLE_WAIT_MS = 30_000;
 
 export const machineIcons = [
   'desktop', 'laptop', 'phone', 'tablet', 'apple', 'server', 'rack', 'nas',
@@ -182,10 +185,12 @@ export class Workspace {
     // A link in the address bar is the owner asking for that machine: its answer is waited for, whatever it is.
     this.waiting = !opensFromLink();
     const hold = setTimeout(() => { if (this.#current(lifecycle)) this.waiting = false; }, STAND_IN_WAIT_MS);
+    const settling = setTimeout(() => { if (this.#current(lifecycle)) this.settled = true; }, SETTLE_WAIT_MS);
     try {
       await this.#boot(thread);
     } finally {
       clearTimeout(hold);
+      clearTimeout(settling);
       this.settled = true;
       this.waiting = false;
     }
@@ -495,8 +500,9 @@ export class Workspace {
       return false;
     }
     if (target.connection !== 'ready') {
-      // A ticket that opened nothing leaves no key to retry with: the group asks for another.
-      if (endpoint.ticket !== undefined && !existing) {
+      // A machine only tried leaves nothing to retry with, a spent ticket or a device key it refused: the group links try again.
+      // Kept, it would sit in the list as Offline with its client retrying that address for good.
+      if (quiet && !existing) {
         target.client?.close();
         target.detach();
         this.machines = this.machines.filter((m) => m.store !== target);
@@ -590,6 +596,14 @@ export class Workspace {
     if (!local) { this.active.error = strings.connection.unavailable; return; }
     await local.addProjects(paths);
     await this.select(local, undefined, local.draft?.projectId ?? undefined);
+  }
+
+  /** The network changed: every machine waiting to retry tries now; one whose handshake is under way keeps it (`WsClient.wake`). */
+  resumeMachines(): void {
+    for (const machine of this.machines) {
+      const client = machine.store.client;
+      if (client instanceof WsClient) void client.wake().catch(() => undefined);
+    }
   }
 
   /** `dropped`: the group dropped this machine, as opposed to it having moved or the owner taking it off the list. */

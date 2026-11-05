@@ -2,7 +2,7 @@
  * What an agent says about its models, read off a `session/new` answer: the
  * protocol's `models` list, or the `model` and `thought_level` config options.
  */
-import type { SessionConfigOption, SessionConfigOptionCategory } from '@agentclientprotocol/sdk';
+import type { SessionConfigOption, SessionConfigOptionCategory } from '@agentclientprotocol/sdk/unstable';
 import type { ModelInfo, ProviderDescriptor } from '@boite/contracts';
 import { grokEffortOf } from '../grok.ts';
 import { isGrok } from './protocol.ts';
@@ -93,17 +93,20 @@ export function effortFrom(option: SessionConfigOption | null): ModelInfo['effor
 }
 
 /**
- * What a `session/new` said about models, as a model list. An agent that
- * answers with the protocol's `models.availableModels` is read there, an agent
- * that answers with a `model` config option is read there, and one that answers
- * with neither leaves the descriptor's models standing.
+ * What a `session/new` said about models, as a model list. A `model` config
+ * option is read first, since that is the option `applyConfig` sets; the
+ * protocol's `models.availableModels` is read when there is none, or for Grok,
+ * which takes its model through `session/set_model`; an agent that answers
+ * with neither leaves the descriptor's models standing. Antigravity 1.4 answers
+ * both: its option lists `gemini-3.8-flash` with a `thought_level` option, its
+ * list the pre-1.4 ids `gemini-3.8-flash-low`, `-medium` and `-high`.
  */
 export function modelsFrom(
   provider: ProviderDescriptor,
   options: SessionConfigOption[] | null,
   listed: AgentModels | null,
 ): ModelInfo[] {
-  if (listed !== null) return modelsFromList(provider, listed);
+  if (listed !== null && (isGrok(provider) || categoryOption(options, 'model') === null)) return modelsFromList(provider, listed);
   return modelsFromConfig(provider, options);
 }
 

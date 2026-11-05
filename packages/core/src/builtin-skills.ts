@@ -260,9 +260,18 @@ function write(path: string, text: string): void {
 
 /** Writes each skill when missing or different, and returns where each lives. A write that fails leaves that skill out. */
 export function ensureBuiltinSkills(dataDir: string, onError: (message: string) => void = () => {}): { name: string; description: string; path: string }[] {
+  return ensureSkills(join(dataDir, 'skills'), BUILTIN_SKILLS, onError, 'built-in skill');
+}
+
+/**
+ * Writes `<root>/<name>/SKILL.md` for each skill when missing or different,
+ * as for the built-in ones: a plugin's skills are rewritten from its manifest
+ * on every guide build the same way. Names must already be plain words.
+ */
+export function ensureSkills(root: string, skills: readonly BuiltinSkill[], onError: (message: string) => void = () => {}, label = 'skill'): { name: string; description: string; path: string }[] {
   const listed: { name: string; description: string; path: string }[] = [];
-  for (const skill of BUILTIN_SKILLS) {
-    const directory = join(dataDir, 'skills', skill.name);
+  for (const skill of skills) {
+    const directory = join(root, skill.name);
     const path = join(directory, 'SKILL.md');
     const text = render(skill);
     try {
@@ -274,7 +283,7 @@ export function ensureBuiltinSkills(dataDir: string, onError: (message: string) 
         write(path, text);
       }
       listed.push({ name: skill.name, description: skill.description, path });
-    } catch (error) { onError(`built-in skill ${skill.name} could not be written to ${path}: ${error instanceof Error ? error.message : String(error)}`); }
+    } catch (error) { onError(`${label} ${skill.name} could not be written to ${path}: ${error instanceof Error ? error.message : String(error)}`); }
   }
   return listed;
 }

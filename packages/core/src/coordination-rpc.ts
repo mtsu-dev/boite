@@ -2,7 +2,7 @@
 import type { Core } from './core.ts';
 import type { RpcParams, CoordinationBridgeResponse } from '@boite/contracts';
 import { invalidParams, refused } from './errors.ts';
-import { boundedBody, MAX_BODY, ROUTE } from './coordination-wire.ts';
+import { boundedBody, MAX_ANSWER, MAX_BODY, ROUTE } from './coordination-wire.ts';
 
 /** Forward only the original signed envelope; this path grants no peer permission. */
 export async function forwardCoordination(core: Core, params: RpcParams<'collaboration.bridge.forward'>): Promise<CoordinationBridgeResponse> {
@@ -12,7 +12,7 @@ export async function forwardCoordination(core: Core, params: RpcParams<'collabo
   if (typeof params.signature !== 'string' || params.signature.length > 1000) throw invalidParams('signature: expected at most 1000 characters');
   const response = await core.coordination.http(new Request(`http://127.0.0.1${ROUTE}`, { method: 'POST',
     headers: { 'content-type': 'application/json', 'x-boite-peer': coreId, 'x-boite-signature': params.signature }, body: params.body }));
-  return { status: response.status, body: await boundedBody(response.body), signature: response.headers.get('x-boite-signature') ?? '' };
+  return { status: response.status, body: await boundedBody(response.body, MAX_ANSWER), signature: response.headers.get('x-boite-signature') ?? '' };
 }
 
 export function registerCoordination(core: Core): void {

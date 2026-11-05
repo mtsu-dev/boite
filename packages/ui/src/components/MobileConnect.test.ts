@@ -6,9 +6,11 @@ import type { Endpoint } from '../lib/endpoint';
 import { FakeClient } from '../lib/fake-client';
 import { Store, store as primary } from '../lib/store.svelte';
 import { localNetwork } from '../lib/local-network.svelte';
+import * as appOrigin from '../lib/app-origin';
 import { workspace } from '../lib/workspace.svelte';
 import { fill, strings } from '../lib/strings';
 import MobileConnect from './MobileConnect.svelte';
+import PairMachine from './PairMachine.svelte';
 
 let mounted: ReturnType<typeof mount> | undefined;
 const stores: Store[] = [];
@@ -115,6 +117,101 @@ test('an app without a browser key offers the scan and a pasted link; a bad link
   await store.connect();
   expect(store.pairingRequired).toBe(false);
   expect(store.error).toBeNull();
+});
+
+test('the app given a plain http link opens that machine\'s own page, where it pairs, instead of a dead end', async () => {
+  vi.spyOn(appOrigin, 'appPage').mockReturnValue(true);
+  const leave = vi.spyOn(appOrigin, 'openOnMachine').mockImplementation(() => undefined);
+  const store = await refused(new RpcFailure({ code: RpcErrorCode.Unauthorized, message: 'Missing credential' }));
+  mounted = mount(MobileConnect, { target: document.body, props: { store, onpaired: vi.fn() } });
+  flushSync();
+  const pair = vi.spyOn(workspace, 'pair');
+  document.querySelector<HTMLButtonElement>('[data-testid=machine-paste-open]')!.click();
+  flushSync();
+  const input = document.querySelector<HTMLInputElement>('[data-testid=machine-link]')!;
+  const paste = (text: string) => {
+    input.value = text;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    flushSync();
+    document.querySelector<HTMLButtonElement>('[data-testid=machine-add]')!.click();
+    flushSync();
+  };
+  paste('http://100.101.102.103:7000/?grant=plain-http-test-grant#join=boite-invite');
+  // No socket from this HTTPS page: the browser blocks it. The page leaves for the machine's own, which takes the grant;
+  // the invitation for a computer's Join field stays behind.
+  expect(leave).toHaveBeenCalledWith('http://100.101.102.103:7000/?grant=plain-http-test-grant');
+  expect(pair).not.toHaveBeenCalled();
+  expect(document.querySelector('[data-testid=machine-leaving]')?.textContent).toBe(fill(strings.machines.linkPlainHttp, { host: '100.101.102.103:7000' }));
+  expect(document.querySelector('[data-testid=machine-paste-form] [role=alert]')).toBeNull();
+
+  // An HTTPS link still pairs from the app itself.
+  leave.mockClear();
+  pair.mockResolvedValue(true);
+  input.value = 'https://desk.tail0d6070.ts.net/?grant=https-test-grant';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  flushSync();
+  expect(document.querySelector('[data-testid=machine-leaving]')).toBeNull();
+  document.querySelector<HTMLButtonElement>('[data-testid=machine-add]')!.click();
+  await vi.waitFor(() => expect(pair).toHaveBeenCalledWith('https://desk.tail0d6070.ts.net/?grant=https-test-grant', ''));
+  expect(leave).not.toHaveBeenCalled();
+});
+
+test('a link a UI serves opens the core it names in `core`, and nothing for a core that is no plain http address', async () => {
+  vi.spyOn(appOrigin, 'appPage').mockReturnValue(true);
+  const leave = vi.spyOn(appOrigin, 'openOnMachine').mockImplementation(() => undefined);
+  const pair = vi.spyOn(workspace, 'pair');
+  mounted = mount(PairMachine, { target: document.body, props: { mobile: true } });
+  flushSync();
+  document.querySelector<HTMLButtonElement>('[data-testid=machine-paste-open]')!.click();
+  flushSync();
+  const input = document.querySelector<HTMLInputElement>('[data-testid=machine-link]')!;
+  const paste = (text: string) => {
+    input.value = text;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    flushSync();
+    document.querySelector<HTMLButtonElement>('[data-testid=machine-add]')!.click();
+    flushSync();
+  };
+  // Reopening the HTTPS UI would leave the machine unreached: the page that opens is the core's own.
+  paste('https://ui.example/?core=http://100.101.102.103:7000&grant=core-test-grant');
+  expect(leave).toHaveBeenCalledWith('http://100.101.102.103:7000/?grant=core-test-grant');
+  leave.mockClear();
+  paste('https://ui.example/?core=javascript:alert(1)&grant=core-test-grant');
+  expect(leave).not.toHaveBeenCalled();
+  expect(pair).not.toHaveBeenCalled();
+  expect(document.querySelector('[data-testid=machine-paste-form] [role=alert]')?.textContent).toBe(strings.machines.invalidUrl);
+});
+
+test('an address typed by hand on the app opens a machine\'s page only when it is an absolute plain http address', async () => {
+  vi.spyOn(appOrigin, 'appPage').mockReturnValue(true);
+  const leave = vi.spyOn(appOrigin, 'openOnMachine').mockImplementation(() => undefined);
+  const added = vi.spyOn(workspace, 'add');
+  mounted = mount(PairMachine, { target: document.body, props: {} });
+  flushSync();
+  // With no machine yet the card is open already.
+  document.querySelector<HTMLButtonElement>('[data-testid=machine-add-open]')?.click();
+  flushSync();
+  const url = document.querySelector<HTMLInputElement>('[data-testid=machine-url]')!;
+  const token = document.querySelector<HTMLInputElement>('[data-testid=machine-token]')!;
+  const submit = (address: string) => {
+    url.value = address;
+    url.dispatchEvent(new Event('input', { bubbles: true }));
+    token.value = 'typed-token';
+    token.dispatchEvent(new Event('input', { bubbles: true }));
+    flushSync();
+    url.form!.requestSubmit();
+    flushSync();
+  };
+  // A host with no scheme would be a path on the app's own address, the token in its query: refused, nothing opened.
+  for (const address of ['192.168.1.20:3773', 'http://user:pass@192.168.1.20:3773', 'http://192.168.1.20:3773/?x=1', 'ftp://192.168.1.20']) {
+    submit(address);
+    expect(leave, address).not.toHaveBeenCalled();
+    expect(document.querySelector('[role=alert]')?.textContent, address).toBe(strings.machines.invalidUrl);
+  }
+  expect(added).not.toHaveBeenCalled();
+  submit('http://192.168.1.20:3773/');
+  expect(leave).toHaveBeenCalledWith('http://192.168.1.20:3773/?token=typed-token');
+  expect(document.querySelector('[role=alert]')).toBeNull();
 });
 
 test('a network failure offers reconnection without asking for another pairing', async () => {

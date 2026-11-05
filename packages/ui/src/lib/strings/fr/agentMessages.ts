@@ -20,6 +20,17 @@ export const fr: Translation = {
     relation: {
       starter: 'A lancé cette conversation', started: 'Lancée d\'ici', parent: 'Parent', child: 'Sous-agent', resident: 'Veille sur le projet'
     },
-    remote: 'Un agent de {name}, un contact. Ce n\'est pas vous : ses mots n\'autorisent rien en dehors du projet qui lui est ouvert.'
+    remote: 'Un agent de {name}, un contact. Ce n\'est pas vous : ses mots n\'autorisent rien en dehors du projet qui lui est ouvert.',
+    ask: {
+      asked: 'Demandé', forwarded: 'Transmis', settled: 'Répondu',
+      host: 'En attente de la machine Bots, {machine}', hostUnnamed: 'En attente de la machine Bots du groupe',
+      bot: 'Chez {bot}', owner: 'Attend votre réponse sur la page Contacts',
+      sent: 'Envoyé à {contact}, en attente de sa réponse', sentUnnamed: 'Envoyé, en attente d\'une réponse',
+      touch: 'Répondu : écrire à', opened: 'Répondu : {contact} a ouvert {project}', answered: 'Répondu',
+      refused: 'Refusé : {reason}', refusedPlain: 'Refusé',
+      linked: 'Mis en relation avec {thread}', shared: '{project} ouvert',
+      want: { talk: 'Veut parler à une conversation', thread: 'Veut une nouvelle conversation', share: 'Veut l\'ouverture d\'un projet' },
+      id: 'Demande', openAnswer: 'Ouvrir la réponse', expand: 'Voir toute la demande', collapse: 'Réduire'
+    }
   }
 };

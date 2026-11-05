@@ -11,7 +11,7 @@
   import { openAgent, resetBuiltin, type AgentsView } from '../../lib/agents.svelte';
   import type { Store } from '../../lib/store.svelte';
   import type { MenuItem } from '../../lib/menu';
-  import { workspace } from '../../lib/workspace.svelte';
+  import { machineName, workspace } from '../../lib/workspace.svelte';
   import { botsHost } from '../../lib/operator';
   import ModelPicker from '../ModelPicker.svelte';
   import EffortSlider from '../EffortSlider.svelte';
@@ -98,15 +98,37 @@
   const avatar = () => picture ?? (robotTouched ? encodeRobot(robot) : profile?.avatar ?? '');
   /** Back to a robot: dice, the customizer and dropping the picture all leave the picture. */
   function wearRobot(next: typeof robot) { robot = next; robotTouched = true; picture = null; avatarChoice++; edited(); }
-  /** The projects an agent may be entrusted: those of the machine it lives on, the drafts aside. */
-  const entrustable = $derived(host.projects.filter(p => p.id !== host.draftsProject?.id));
+  /** The owner entrusts local ids here and <core-id>/<project-id> on other members of the bot's group. */
+  const projectMachines = $derived.by(() => {
+    const local = {
+      id: 'local', name: hostMachine ? machineName(hostMachine) : strings.machines.local, reason: null as string | null,
+      projects: host.projects.filter(p => p.kind !== 'drafts'),
+    };
+    const members = (host.group?.cores ?? []).filter(core => core.coreId !== host.group?.self);
+    const coreIds = new Set(members.map(core => core.coreId));
+    for (const id of projectIds) if (id.includes('/')) coreIds.add(id.slice(0, id.indexOf('/')));
+    const others = [...coreIds].map(coreId => {
+      const member = members.find(core => core.coreId === coreId);
+      const machine = workspace.machineOf(coreId);
+      const target = machine?.store;
+      const reason = !member ? labels.projectsOutsideGroup
+        : target?.connection !== 'ready' ? labels.machineOffline
+        : target.settings?.groupBots !== true ? fill(labels.projectsBotsOff, { setting: strings.machines.groupBots, page: strings.settings.tabs.machines }) : null;
+      const prefix = `${coreId}/`;
+      const projects = (member ? target?.projects ?? [] : []).filter(p => p.kind !== 'drafts').map(p => ({ id: prefix + p.id, name: p.name }));
+      // A cached list can be missing after a reconnect: keep existing grants visible and removable.
+      for (const id of projectIds) if (id.startsWith(prefix) && !projects.some(p => p.id === id)) projects.push({ id, name: id.slice(prefix.length) });
+      return { id: coreId, name: machine ? machineName(machine) : member?.name ?? coreId, reason, projects };
+    });
+    return [local, ...others];
+  });
 
   function pickHost(id: string) {
     const next = workspace.machines.find(m => m.id === id)?.store;
     if (!next || next === host) return;
     host = next;
     selection = defaultSelection(next, selection.permissionMode);
-    // Projects are a machine's own: another core knows none of this one's.
+    // The form's local project ids belong to the host it was showing.
     projectIds = [];
   }
 
@@ -308,14 +330,20 @@
     <!-- The projects it looks after: it follows their threads, starts new ones and answers for them. -->
     <fieldset class="agent-field" data-testid="agent-projects">
       <legend>{labels.projects}</legend>
-      {#if entrustable.length}
-        <div class="agent-checks">
-          {#each entrustable as project (project.id)}
-            <label class="agent-chip-check"><input type="checkbox" checked={projectIds.includes(project.id)} onchange={() => { projectIds = toggle(projectIds, project.id); }} data-testid="agent-project-{project.id}" /><span class="ui-label">{project.name}</span></label>
-          {/each}
-        </div>
-        <p class="hint agent-projects-hint">{labels.projectsHint}</p>
-      {:else}<p class="hint">{labels.noProjects}</p>{/if}
+      {#each projectMachines as machine (machine.id)}
+        <fieldset class="agent-project-machine" data-testid="agent-project-machine-{machine.id}">
+          {#if projectMachines.length > 1}<legend>{machine.name}</legend>{/if}
+          {#if machine.reason}<p class="hint">{machine.reason}</p>{/if}
+          {#if machine.projects.length}
+            <div class="agent-checks">
+              {#each machine.projects as project (project.id)}
+                <label class="agent-chip-check"><input type="checkbox" checked={projectIds.includes(project.id)} disabled={!!machine.reason && !projectIds.includes(project.id)} onchange={() => { projectIds = toggle(projectIds, project.id); }} data-testid="agent-project-{project.id}" /><span class="ui-label">{project.name}</span></label>
+              {/each}
+            </div>
+          {:else if !machine.reason}<p class="hint">{labels.noProjects}</p>{/if}
+        </fieldset>
+      {/each}
+      {#if projectMachines.some(m => m.projects.length)}<p class="hint agent-projects-hint">{labels.projectsHint}</p>{/if}
     </fieldset>
     {#if embedded}
       <div class="agent-field"><span>{labels.status}</span>

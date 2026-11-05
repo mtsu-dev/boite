@@ -1,5 +1,6 @@
 import type { Principal } from './agent-door.ts';
 import type { RpcEventName, RpcMethodName } from './index.ts';
+import { PLUGIN_PERMISSIONS, type PluginPermission } from './plugins.ts';
 
 /*
  * The device and agent boundaries, declared once. The core's router enforces
@@ -36,7 +37,8 @@ export const DEVICE_METHODS: ReadonlySet<RpcMethodName> = new Set<RpcMethodName>
   'delegation.get', 'delegation.result', 'delegation.wait', 'delegation.send', 'delegation.stop',
   // Follow a workflow, pause or stop it; resume and retry spend budget and are refused to a phone (checked in workflows.control).
   'workflows.list', 'workflows.get', 'workflows.control', 'workflows.templates.list',
-  // Coordination is visible with the conversation; only the owner enables it.
+  // Coordination is visible with the conversation; only the owner enables it. Its contact
+  // requests come with it: a phone shows where the thread's own asks stand, as the desktop does.
   'collaboration.get',
   // A phone's own rendering errors and failed calls land in the owner's diagnostics, bounded per connection.
   'diagnostics.report',
@@ -334,7 +336,7 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
   ['workflows.output', 'the structured result of the step this thread is, checked against its declared shape'],
   ['workflows.templates.list', 'the plans kept for its own project'],
   ['workflows.templates.save', 'keeping a new plan for its own project, never replacing a saved one; a template runs only through workflows.start'],
-  ['collaboration.get', 'its own coordination inbox, never other conversations'],
+  ['collaboration.get', 'its own coordination inbox and the contact requests it made, never other conversations; the Contacts bot also its forwards and settlements, which it reads anyway'],
   ['sharedProjects.list', 'associations of its own project, with locally configured contact names'],
   ['sharedProjects.get', 'one explicit association of its own project'],
   ['sharedProjects.threads', 'only the two associated endpoints under live grants and coordination settings'],
@@ -382,6 +384,8 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
   // owner entrusted to the bot, over the group's sealed link (agents/group-bots.ts). That machine holds each
   // request to the lease and to its own groupBots setting (agents/group-host.ts); nothing else crosses.
   ['resident.send', 'a message to a thread of a project of another machine of the group entrusted to it, marked there as the bot\'s, never the user\'s, while that machine has groupBots on'],
+  // The command runs the plugin the owner installed, as the owner saw it listed with its permissions; the plugin's token, not the agent's, reaches the core.
+  ['plugins.command', 'run a `boite <name>` command an installed plugin provides, in its own working directory'],
   ['agent.where', 'the thread, its project, its working directory and its branch: what the CLI prints first'],
   ['agent.projects', 'the names and folders of the projects the owner added, so it can name one to delegation.spawn or agent.move; reading them opens nothing'],
   ['agent.addProject', 'registering an existing folder as a project, which the owner sees appear and can remove; it opens no file access the agent\'s process lacks, and it stays within the communication settings and one agent generation, like agent.spawn'],
@@ -462,15 +466,30 @@ export function deviceDiffRef(ref: unknown): boolean {
   return ref === undefined || ref === '' || ref === 'HEAD';
 }
 
-/** Who calls: the owner, a paired device, or the agent of the one thread its token names. */
+/**
+ * Who calls: the owner, a paired device, the agent of the one thread its
+ * token names, or a plugin with the permissions its manifest declares.
+ */
 export interface Caller {
   principal: Principal;
   threadId: string | null;
+  /** Set on a plugin connection: what its manifest declared, nothing else. */
+  permissions?: readonly PluginPermission[];
+}
+
+/** Whether a plugin holding `permissions` may call `method`. */
+export function pluginMayCall(method: RpcMethodName, permissions: readonly PluginPermission[] = []): boolean {
+  return permissions.some(permission => PLUGIN_PERMISSIONS[permission]?.methods.includes(method) === true);
+}
+
+/** Whether a plugin holding `permissions` hears `name`. */
+export function pluginMayHear(name: RpcEventName, permissions: readonly PluginPermission[] = []): boolean {
+  return permissions.some(permission => PLUGIN_PERMISSIONS[permission]?.events.includes(name) === true);
 }
 
 export interface AccessRefusal {
   message: string;
-  data: { method: RpcMethodName; principal?: Principal; threadId?: unknown };
+  data: { method: RpcMethodName; principal?: Principal; threadId?: unknown; permissions?: readonly PluginPermission[] };
 }
 
 /**
@@ -481,6 +500,17 @@ export interface AccessRefusal {
  */
 export function accessRefusal(method: RpcMethodName, caller: Caller, params?: unknown): AccessRefusal | null {
   if (caller.principal === 'owner') return null;
+  if (caller.principal === 'plugin') {
+    if (pluginMayCall(method, caller.permissions)) return null;
+    const needed = (Object.keys(PLUGIN_PERMISSIONS) as PluginPermission[]).filter(permission => PLUGIN_PERMISSIONS[permission].methods.includes(method));
+    const declared = caller.permissions?.length ? caller.permissions.join(', ') : 'none';
+    return {
+      message: needed.length === 0
+        ? `${method} is not open to plugins; the plugin declared ${declared}`
+        : `${method} needs the plugin permission ${needed.join(' or ')}; the plugin declared ${declared}`,
+      data: { method, principal: 'plugin', permissions: caller.permissions ?? [] },
+    };
+  }
   if (caller.principal === 'agent') {
     if (!AGENT_METHODS.has(method)) return { message: `${method} is not one of the agent's methods`, data: { method, principal: 'agent' } };
     const named = (params as { threadId?: unknown } | null | undefined)?.threadId;
@@ -499,8 +529,12 @@ export function accessRefusal(method: RpcMethodName, caller: Caller, params?: un
   return { message: `${method} is for the owner only`, data: { method, principal: caller.principal } };
 }
 
-/** Whether a connection of `principal` hears `name` at all; `agentHearsEvent` narrows an agent's to its thread. */
-export function mayHearEvent(name: RpcEventName, principal: Principal): boolean {
+/**
+ * Whether a connection of `principal` hears `name` at all; `agentHearsEvent`
+ * narrows an agent's to its thread. A plugin hears what its permissions grant.
+ */
+export function mayHearEvent(name: RpcEventName, principal: Principal, permissions?: readonly PluginPermission[]): boolean {
+  if (principal === 'plugin') return pluginMayHear(name, permissions);
   return principal === 'owner' || (principal === 'agent' ? AGENT_EVENTS : DEVICE_EVENTS).has(name);
 }
 

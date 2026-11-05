@@ -1,0 +1,44 @@
+{
+  "schema": 2,
+  "id": "hello",
+  "name": "Hello",
+  "version": "0.1.0",
+  "description": "An example plugin: lists the conversations that changed last.",
+  "homepage": "https://github.com/mtsu-dev/boite/tree/main/examples/plugins/hello",
+  "runtime": "bun",
+  "executable": "hello",
+  "artifacts": {
+    "any": {
+      "url": "https://example.com/boite-plugins/hello/0.1.0/hello.js",
+      "sha256": "3d20e5217489f445a0cbfa133befe6202c8da98c36d56b43c276254aad90e3df"
+    }
+  },
+  "permissions": [
+    "threads.read"
+  ],
+  "provides": {
+    "commands": [
+      {
+        "name": "hello-threads",
+        "description": "Prints the titles and ids of the five conversations that changed last.",
+        "usage": "[--json]"
+      }
+    ],
+    "skills": [
+      {
+        "name": "hello-threads",
+        "description": "Find the conversations the user worked on last, to pick up where they left off.",
+        "body": "---\nname: hello-threads\ndescription: Find the conversations the user worked on last, to pick up where they left off.\n---\n\n# Recent conversations\n\nWhen the user asks what they were working on, or refers to \"the other\nconversation\" without naming it, run:\n\n```sh\nboite hello-threads\n```\n\nIt prints the titles and ids of the five conversations that changed last,\nnewest first. Add `--json` to read `id`, `title` and `updatedAt` (milliseconds\nsince 1970) as JSON. Pass an id to `boite threads read <id>` to read one.\n"
+      }
+    ],
+    "prompt": "Run `boite hello-threads` to see which conversations the user worked on last.",
+    "slashCommands": [
+      {
+        "name": "recap",
+        "description": "Recap the conversations that changed last.",
+        "hint": "<topic>",
+        "prompt": "Run `boite hello-threads`, then recap in a few lines what each of those conversations is about. Focus on:"
+      }
+    ]
+  }
+}

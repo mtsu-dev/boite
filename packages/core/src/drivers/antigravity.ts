@@ -20,8 +20,44 @@
  * the server's own Python finds none.
  */
 import { isAbsolute } from 'node:path';
-import type { RequestPermissionRequest } from '@agentclientprotocol/sdk';
-import type { NativeAgentUpdate, ToolStatus } from '@boite/contracts';
+import type { RequestPermissionRequest } from '@agentclientprotocol/sdk/unstable';
+import type { NativeAgentUpdate, ProviderDescriptor, ToolStatus } from '@boite/contracts';
+import { compareVersions } from '../providers/install-latest.ts';
+
+export function isAntigravity(provider: ProviderDescriptor): boolean {
+  return provider.quirks?.includes('antigravity') === true;
+}
+
+/**
+ * The `clientInfo` Antigravity is sent. The agent offers its Claude and GPT
+ * models only to clients it allowlists, Zed among them: named `boite`, 1.4.5
+ * listed Gemini 3.8 Flash alone on the same account that offers Claude Sonnet
+ * 4.6, Claude Opus 4.6 and GPT-OSS 120B to `zed` (2026-11-04).
+ */
+export const ANTIGRAVITY_CLIENT_INFO = { name: 'zed', version: '0.0.0' } as const;
+
+/**
+ * The `_meta` of a `session/new` or `session/load`. From 1.4.2 the agent
+ * writes `skills/system/run-workflow/SKILL.md` into the project unless its
+ * `run_workflow` tool is off, so it goes off for every release that has it.
+ */
+export function antigravitySessionMeta(version: string | null): { antigravity: { disabledTools: string[] } } | undefined {
+  if (version === null || !/^\d+\.\d+\.\d+/.test(version) || compareVersions(version, '1.4.2') < 0) return undefined;
+  return { antigravity: { disabledTools: ['run_workflow'] } };
+}
+
+/**
+ * The model family a pre-1.4 id belongs to. 1.3 put the thinking level in the
+ * id (`gemini-3.8-flash-low`); 1.4 lists the family (`gemini-3.8-flash`) and
+ * its levels as a `thought_level` option, yet still takes the old id as the
+ * model and sets the level from it (1.4.5, 2026-11-04). A thread or a bot saved
+ * on an old id keeps running on it. Null when `id` is listed or matches no family.
+ */
+export function antigravityLegacyFamily(values: readonly string[], id: string): string | null {
+  if (values.includes(id)) return null;
+  const families = values.filter((family) => id.startsWith(`${family}-`));
+  return families.sort((a, b) => b.length - a.length)[0] ?? null;
+}
 
 /** A tool's text is bounded at this, the tail kept: the end of a log is the part that matters. */
 const TEXT_LIMIT = 8_000;

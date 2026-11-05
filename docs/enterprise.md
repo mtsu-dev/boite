@@ -29,7 +29,9 @@ when its inode, size or modification time changed) and on every client read
 of the policy. An edit applies without a restart: settings it locks change at
 once, providers it blocks show as off, and clients receive `policy.changed`.
 Two exceptions need a restart: `network.lan` decides the listening address at
-startup, and `network.contacts` closes Tailscale Funnel routes at startup.
+startup, and `network.contacts` closes Tailscale Funnel routes at startup. A
+grouped core's extra LAN listeners follow `network.lan` without one, at the
+group's next check (15 seconds at most).
 
 Windows registry policies are not read yet; the file is the only source.
 
@@ -52,9 +54,9 @@ Windows registry policies are not read yet; the file is the only source.
 | `previews.remoteResources` | `false` | Agent-made HTML previews and views may load only their own files: a content security policy blocks remote scripts, images, styles, fonts and requests. |
 | `agentBrowser` | `false`, or `{ "searchUrl": "https://...{query}..." }` | `false` refuses every agent browser command, from an agent, the CLI or the panel. `searchUrl` is the address used for text typed in the browser's address bar that is not a URL; it must be https and contain `{query}`. |
 | `agentDesktop` | `false` | Refuses the agents' [virtual desktop](desktop.md): starting one, running a program on it and the agent-desktop download. Its status and stop stay open. |
-| `network.lan` | `false` | The core listens on loopback only, whatever the setting or `--lan`/`--host` say. An explicit loopback `--host` is kept. |
+| `network.lan` | `false` | The core listens on loopback only, whatever the setting or `--lan`/`--host` say, and a grouped core opens no listener on its private LAN addresses. An explicit loopback `--host` is kept. |
 | `network.tailscaleServe` | `false` | Serving the core over Tailscale HTTPS is refused. |
-| `network.groups` | `false` | Creating, joining and inviting to groups is refused, group exchanges with other machines stop, the extra tailnet listener closes, and the group settings are off. Adding a device of the user's own (the pairing link of Settings > Devices) stays available. |
+| `network.groups` | `false` | Creating, joining and inviting to groups is refused, group exchanges with other machines stop, the extra tailnet and LAN listeners close, and the group settings are off. Adding a device of the user's own (the pairing link of Settings > Devices) stays available. |
 | `network.contacts` | `false` | Contact joins, invitations, exchanges over kept links, contact relays through groups and the Tailscale API are refused. Kept links are not dialed, and Funnel routes close at startup. |
 | `network.push` | `false` | Web Push subscriptions are refused and nothing is sent to subscriptions kept from before. |
 | `pullRequests` | `false` | Boite runs no `gh` command: pull request discovery, linking, watching and the merged-PR archive stop. |

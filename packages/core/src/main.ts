@@ -299,6 +299,11 @@ export function main(argv: string[]): void {
     void import('./speech-native-worker.ts').then(worker => worker.runSpeechWorker());
     return;
   }
+  // `boite desktop` on Windows: one program started on a hidden desktop (desktop/launcher.ts DESKTOP_EXEC).
+  if (argv[0] === '--desktop-exec') {
+    void import('./desktop/launcher.ts').then(launcher => launcher.runDesktopExec(argv.slice(1)));
+    return;
+  }
   withUtf8Locale(process.env, process.platform);
   // The update worker, and the recovery its unit runs however the worker ended.
   if (argv[0] === 'update-apply' || argv[0] === 'update-recover') {

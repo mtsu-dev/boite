@@ -34,6 +34,8 @@ import { agentsCommand, AgentsUsage, WAIT_MAX_S } from './agents-cli.ts';
 import { contactsCommand } from './contacts/cli.ts';
 import type { RpcParams } from '@boite/contracts';
 import { contextRequest, parse, requiredText, Usage, type Parsed } from './cli-args.ts';
+import { PLUGIN_COMMAND_TIMEOUT_MS, isPluginCommandWord } from './cli-commands.ts';
+import { PLUGIN_HELP, pluginAction, pluginCommand } from './plugin-cli.ts';
 import { issueCommand, logsCommand } from './logs-cli.ts';
 import { CONTROL_HELP, controlCommand, isControlCommand, ownerThreadNew, ownerWithoutThread, spawnedLines, type Caller } from './control-cli.ts';
 
@@ -158,6 +160,7 @@ ${CONTROL_HELP}
                                  (--effort, --project a,b, --domain <text>,
                                  --instructions-file <path>); prints its id
                                  and conversation
+${PLUGIN_HELP}
   task list                      the agent's task list
   task add <text>                add a task (id t1, t2, ...)
   task start|done|remove <id>    move or drop one task
@@ -298,7 +301,7 @@ function targetOf(parsed: Parsed, env: CliIo['env']): Target {
     if (parsed.core !== undefined) throw new Error(`this CLI speaks for thread ${own} on its own core; --core is for a terminal`);
     return { url, token, threadId: own };
   }
-  const threadId = parsed.thread ?? own ?? (['server', 'logs', 'issue', 'journal-check'].includes(parsed.positional[0] ?? '') || ownerWithoutThread(parsed) ? '' : undefined);
+  const threadId = parsed.thread ?? own ?? (['server', 'logs', 'issue', 'journal-check', 'plugin'].includes(parsed.positional[0] ?? '') || isPluginCommandWord(parsed.positional[0]) || ownerWithoutThread(parsed) ? '' : undefined);
   if (parsed.core !== undefined) {
     // The token stays out of the command line, where any process listing would show it.
     const remoteToken = env.BOITE_TOKEN || undefined;
@@ -787,6 +790,7 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
         print([todoRow(todo)], todo);
       } else throw new Usage(`todo: unknown action ${action}`);
     },
+    plugin: () => pluginAction(client, io, threadId, rest, print),
     goal: async () => {
       const action = want(0, 'track');
       if (action !== 'track') throw new Usage(`goal: unknown action ${action}`);
@@ -796,6 +800,7 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
     },
   };
   const handler = command !== undefined && Object.hasOwn(commands, command) ? commands[command] : undefined;
+  if (handler === undefined && isPluginCommandWord(command)) return pluginCommand(client, io, threadId, command!, rest);
   if (handler === undefined) throw new Usage(`unknown command ${command}`);
   return handler();
 }
@@ -831,6 +836,7 @@ export async function runCli(argv: string[], io: CliIo): Promise<number> {
       // A window capture may wait ten minutes for the owner's consent.
       const waits = parsed.positional[0] === 'threads' && (parsed.wait || parsed.positional[1] === 'wait');
       const requestTimeoutMs = waits ? (WAIT_MAX_S + 30) * 1000
+        : isPluginCommandWord(parsed.positional[0]) ? PLUGIN_COMMAND_TIMEOUT_MS + 60_000
         : parsed.positional[0] === 'secret' ? 3_660_000
         : parsed.positional[0] === 'window' ? WINDOW_REQUEST_TIMEOUT_MS : undefined;
       client = await connect(target.url, target.token, { client: { name: 'cli', version: CORE_VERSION }, ...(requestTimeoutMs === undefined ? {} : { requestTimeoutMs }) });

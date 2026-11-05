@@ -140,6 +140,19 @@ it waiting; stop or archive prevents launch. A second invalid result fails it.
 The correction retains the execution's attempt count and original start time;
 it does not bypass the scheduler with a detached callback.
 
+A turn that delivers a valid result ends the step even when the agent leaves
+background work running (a watcher, a build): dependents start at once, and the
+core ends that agent and its process tree so the leftover work never wakes the
+finished step (`workflows/step-result.ts`). A step on another machine does the
+same from that machine's report: a checkpoint whose answer holds a valid `json`
+block is kept as the step's result (`machine.accepted`), and the stop goes to
+that machine, which settles the subagent's worktree once that work is stopped;
+the step ends on that kept result, with no second read, when its worktree there
+is kept or removed. The answer is read over the network, so a turn that began
+there meanwhile is not stopped for it: that turn's own answer settles the step.
+Without a valid result, a turn that ends on background work is a checkpoint:
+the step waits for that work, and its worktree stays in use.
+
 The step's brief tells it where it sits in the run, that other steps share the
 checkout, and that its answer is collected automatically. Steps share the
 parent's working directory: give parallel steps distinct files, or set
@@ -224,6 +237,11 @@ runs again, the "Not started" executions wait again, and the step's answer
 feeds the steps after it as if it had never stopped. A paused run takes such a
 turn too, since the turn runs either way; the pause still holds the steps after
 it until the run resumes.
+
+A step that finished, or one of a run that is over, keeps its result when its
+parent sends it more work with `boite delegate send`: that turn answers the
+parent as a subagent's does, a result letter that wakes it. A restart handoff
+that cuts such a turn continues it on the next core like a subagent's.
 
 A pause records who set it (`pausedBy`), and that decides who lifts it:
 

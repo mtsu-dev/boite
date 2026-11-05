@@ -26,8 +26,8 @@
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Readable, Writable } from 'node:stream';
-import { agent, ndJsonStream, PROTOCOL_VERSION, RequestError } from '@agentclientprotocol/sdk';
-import type { ContentBlock, SessionUpdate } from '@agentclientprotocol/sdk';
+import { agent, ndJsonStream, PROTOCOL_VERSION, RequestError } from '@agentclientprotocol/sdk/unstable';
+import type { ContentBlock, SessionUpdate } from '@agentclientprotocol/sdk/unstable';
 
 /** The variables a test asserts on: the isolation and what the profile unsets. */
 const WATCHED = ['HERMES_HOME', 'NO_COLOR', 'OPENAI_API_KEY', 'HERMES_TUI_GATEWAY_URL'];

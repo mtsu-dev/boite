@@ -54,6 +54,8 @@ test('a group contact route keeps letters and the wake on the initiating core wi
   const sent = await a.core.coordination.send(params);
   expect((await a.core.coordination.send(params)).id).toBe(sent.id);
   expect(sent.from).toMatchObject({ coreId: ai, threadId: source });
+  // The sending thread's own copy names the contact: its timeline draws the contact chip on the row.
+  expect(sent.contact).toMatchObject({ coreId: ci });
   await waitFor(() => c.core.coordination.get(recipient).messages.some(letter => letter.id === sent.id), 10000);
   const incoming = c.core.coordination.get(recipient).messages.find(letter => letter.id === sent.id)!;
   expect(incoming.from).toMatchObject({ coreId: bi, title: 'Actual initiating thread', agent: sent.from.agent });

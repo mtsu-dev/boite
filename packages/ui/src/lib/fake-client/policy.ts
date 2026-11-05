@@ -78,6 +78,8 @@ export function fakePolicy(values: AdminPolicy | null, problems: PolicyProblem[]
 export function policyFixture(kind: string | null): PolicyState {
   switch (kind) {
     case 'managed': return fakePolicy(MANAGED_POLICY);
+    // The local network alone: a machine still grouped, kept off its LAN (`OwnReach`).
+    case 'lan': return fakePolicy({ network: { lan: false } });
     case 'broken': return fakePolicy({ ...MANAGED_POLICY, updates: { ...MANAGED_POLICY.updates, app: 'off' } }, [
       { file: FILE, field: 'updates.app', expected: '"off" or "check" or "auto"', message: `${FILE}: updates.app is "weekly"; expected "off" or "check" or "auto"` },
       { file: FILE, field: 'telemetry', expected: 'one of analytics, updates, providers, gateway, quotaReads, plugins, issueReports, dictation, previews, agentBrowser, agentDesktop, network, pullRequests', message: `${FILE}: telemetry is an unknown key` }
@@ -209,6 +211,7 @@ const RULES: Partial<Record<RpcMethodName, Rule>> = {
   'quotas.reset': when('quotaReads', values => values.quotaReads === false),
   'plugins.install': plugins,
   'plugins.add': plugins,
+  'plugins.dev': plugins,
   'plugins.inspect': plugins,
   'diagnostics.issue': when('issueReports', values => values.issueReports === false),
   'speech.install': dictationOff,

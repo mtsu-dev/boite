@@ -128,6 +128,8 @@ describe('a desktop app', () => {
     });
     expect(harness.core.plugins.state('bots').app).toMatchObject({ enabled: true, status: 'stopped', pid: null });
     expect(harness.core.plugins.state('bots').commands[0]).toBe('bots');
+    // Schema 1: the app gets the owner token, so no scoped permission list stands for what it reaches.
+    expect('permissions' in harness.core.plugins.state('bots')).toBe(false);
 
     // An app that quits by itself can be gone before `start` answers, and the
     // answer then rightly says stopped: a macOS runner saw its exit settled
