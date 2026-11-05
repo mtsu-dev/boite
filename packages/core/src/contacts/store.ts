@@ -45,6 +45,7 @@ import { checkedContactOffers, contactOffers } from './offers.ts';
 import { contactFace, groupFace } from './face.ts';
 import { ContactGroupLink, GROUP_LETTER_TTL_MS } from './group-link.ts';
 import { ContactHostAsks } from './host-asks.ts';
+import { ContactHeld } from './held.ts';
 export { CONTACT_JOIN_ROUTE } from './join.ts';
 const dashedName = (name: string): string => name.replace(/\s+/g, '-').toLowerCase();
 export { CONTACT_LINK_ROUTE } from './link-hello.ts';
@@ -85,11 +86,15 @@ export class ContactStore implements LinkedContacts {
   readonly groupLink: ContactGroupLink;
   /** A member's asks through the Bots host, and the host's answers to them (`host-asks.ts`). */
   readonly hostAsks: ContactHostAsks;
+  /** The contacts the other members hold, by name for every thread here (`held.ts`). */
+  readonly held: ContactHeld;
   readonly maxContacts = MAX_CONTACTS;
   /** The origin an invitation gives: this machine's tailnet name. Tests point it at loopback. */
   selfUrl: (share: boolean) => Promise<string> = share => tailnetOrigin(this, this.#core, share);
   /** The origin an invitation for another network gives: the contact routes on Tailscale Funnel. Tests point it at loopback. */
   internetUrl: () => Promise<string> = () => this.funnel.open();
+  /** This core's Funnel origin while its mounts are up already, else null: nothing is mounted to answer. */
+  publicUrl: () => string | null = () => this.funnel.state()?.url ?? null;
   /** Guest side: the link this core keeps to each host. */
   readonly #dialed = new Map<string, { socket: TextSocket | null; state: 'connecting' | 'connected' }>();
   /** Host side: the link each guest keeps to this core, by the guest's id. */
@@ -129,6 +134,7 @@ export class ContactStore implements LinkedContacts {
     this.reach = new ContactReach(core, this);
     this.groupLink = new ContactGroupLink(core, this);
     this.hostAsks = new ContactHostAsks(core, this);
+    this.held = new ContactHeld(core, this);
     // A member that leaves the group takes the contacts it relayed out of `peers()`; a new Bots host takes this core's contacts.
     core.bus.onAny(name => { if (name === 'group.updated') { this.reset(); if (this.#started) { this.groupLink.sweep(true); this.hostAsks.retry(); } } });
   }
@@ -343,11 +349,17 @@ export class ContactStore implements LinkedContacts {
   #heldElsewhere(): Contact[] {
     if (this.#core.group.roleOf('botsHome') !== this.#core.coordination.card().coreId) return [];
     const shown = new Set(this.list().map(contact => contact.coreId));
-    return this.members.relayed().filter(entry => !shown.has(entry.coreId) && shown.add(entry.coreId)).map(entry => ({
+    const relayed: Contact[] = this.members.relayed().filter(entry => !shown.has(entry.coreId) && shown.add(entry.coreId)).map(entry => ({
       coreId: entry.coreId, name: entry.name, machine: entry.name, fingerprint: '', role: 'host', trusted: false,
       grants: entry.grants.map(grant => ({ ...grant, grantedAt: 0, machine: entry.via })), offers: entry.projectOffers ?? [], link: entry.link,
       lastSeenAt: null, addedAt: 0, ...(entry.capabilities ? { capabilities: entry.capabilities } : {}), heldBy: entry.via,
     }));
+    // A contact that opened nothing to this core is still one its bot asks for.
+    const held: Contact[] = this.held.list().filter(entry => !shown.has(entry.coreId) && shown.add(entry.coreId)).map(entry => ({
+      coreId: entry.coreId, name: entry.name, machine: entry.name, fingerprint: '', role: 'host', trusted: entry.trusted, grants: [], offers: [], link: entry.link,
+      lastSeenAt: null, addedAt: 0, capabilities: entry.capabilities, heldBy: entry.member.coreId,
+    }));
+    return [...relayed, ...held];
   }
 
   card(): ContactCard {
@@ -522,6 +534,7 @@ export class ContactStore implements LinkedContacts {
     const contact = this.find(coreId);
     if (!contact) throw invalidParams('coreId: expected the core id of one of this core\'s contacts', { field: 'coreId' });
     const holders = this.members.holdersOf(coreId);
+    this.groupLink.removed(contact);
     this.unlink(coreId);
     this.#save(this.list().filter(entry => entry.coreId !== coreId));
     this.requests.save(this.requests.list().filter(request => request.coreId !== coreId));
@@ -566,7 +579,10 @@ export class ContactStore implements LinkedContacts {
     const own = this.list().map(contact => ({ name: contact.name, coreId: contact.coreId, projects: contact.offers.map(offer => offer.name), link: this.#linkState(contact) }));
     const relayed = this.members.relayed().filter((entry, index, all) => !own.some(contact => contact.coreId === entry.coreId) && all.findIndex(other => other.coreId === entry.coreId) === index)
       .map(entry => ({ name: entry.name, coreId: entry.coreId, projects: entry.offers, link: entry.link }));
-    return [...own, ...relayed];
+    // The contacts other members hold, which a thread here asks for by name all the same (`held.ts`).
+    const held = this.held.list().filter(entry => !own.some(contact => contact.coreId === entry.coreId) && !relayed.some(contact => contact.coreId === entry.coreId))
+      .map(entry => ({ name: entry.name, coreId: entry.coreId, projects: entry.offers, link: entry.link }));
+    return [...own, ...relayed, ...held];
   }
 
   ask(params: RpcParams<'collaboration.ask'>): ContactRequest { return this.requests.ask(params); }
@@ -579,9 +595,9 @@ export class ContactStore implements LinkedContacts {
   synced(coreId: string, payload: unknown): { ok: true } {
     const checked = checkedContactOffers(coreId, payload);
     const contact = this.find(coreId);
-    const raw = payload as { capabilities?: { sharedProjects?: unknown; humanLetters?: unknown; contactsBot?: unknown; groupLink?: unknown }; bot?: { threadId?: unknown; title?: unknown } | null; group?: unknown };
+    const raw = payload as { capabilities?: { sharedProjects?: unknown; humanLetters?: unknown; contactsBot?: unknown; groupLink?: unknown; guestSeat?: unknown }; bot?: { threadId?: unknown; title?: unknown } | null; group?: unknown };
     const rawCaps = raw.capabilities;
-    const capabilities = { ...(rawCaps?.sharedProjects === 1 ? { sharedProjects: 1 as const } : {}), ...(rawCaps?.humanLetters === 1 ? { humanLetters: 1 as const } : {}), ...(rawCaps?.contactsBot === 1 ? { contactsBot: 1 as const } : {}), ...(rawCaps?.groupLink === 1 ? { groupLink: 1 as const } : {}) };
+    const capabilities = { ...(rawCaps?.sharedProjects === 1 ? { sharedProjects: 1 as const } : {}), ...(rawCaps?.humanLetters === 1 ? { humanLetters: 1 as const } : {}), ...(rawCaps?.contactsBot === 1 ? { contactsBot: 1 as const } : {}), ...(rawCaps?.groupLink === 1 ? { groupLink: 1 as const } : {}), ...(rawCaps?.guestSeat === 1 ? { guestSeat: 1 as const } : {}) };
     // A group with a Bots host names itself after the group: the contact shows that name, never a machine's.
     const group = raw.group === undefined || raw.group === null ? undefined : checkMachine(raw.group, 'sync.group');
     const bot = raw.bot === undefined || raw.bot === null ? undefined : { threadId: text(raw.bot.threadId, 'bot.threadId', 128), title: text(raw.bot.title, 'bot.title', 200) };
@@ -629,7 +645,7 @@ export class ContactStore implements LinkedContacts {
       const version = contact.syncPending;
       const bot = contactsBot(this.#core);
       const own = bot ? { bot: { threadId: bot.threadId, title: this.#core.journal.getThread(bot.threadId)?.title.slice(0, 200) || bot.name } } : {};
-      try { await this.#core.coordination.request(peer(), 'contact.sync', { offers: contactOffers(this.#core, contact), capabilities: { sharedProjects: 1, humanLetters: 1, contactsBot: 1, groupLink: 1 }, ...own, ...(groupFace(this.#core) ? { group: groupFace(this.#core) } : {}) }); }
+      try { await this.#core.coordination.request(peer(), 'contact.sync', { offers: contactOffers(this.#core, contact), capabilities: { sharedProjects: 1, humanLetters: 1, contactsBot: 1, groupLink: 1, guestSeat: 1 }, ...own, ...(groupFace(this.#core) ? { group: groupFace(this.#core) } : {}) }); }
       catch (error) { if (!(error instanceof PeerRefusal)) throw error; }
       if (this.find(coreId)?.syncPending === version) this.#mutate(coreId, entry => { delete entry.syncPending; });
     }
@@ -664,6 +680,8 @@ export class ContactStore implements LinkedContacts {
   attach(data: ContactSocketData['contact'], socket: LinkSocket): void {
     const contact = this.find(data.coreId);
     if (this.#closed || this.#core.policy.networkOff('contacts') || !contact || contact.role !== 'host') { socket.close(1008, 'not a contact'); return; }
+    // A probe's first frame proves this core's key (`dialProven`); an older guest ignores it.
+    if (data.proof) socket.send(JSON.stringify({ t: 'proof', signature: data.proof }));
     const previous = this.#hosted.get(data.coreId);
     if (previous) {
       this.#core.coordination.bridge.disconnect(previous.routeId);
@@ -773,10 +791,11 @@ export class ContactStore implements LinkedContacts {
     this.flags.watch();
     this.#listening = this.wantsTailnet();
     this.funnel.start(this.#listening && !this.#core.policy.networkOff('contacts'));
-    if (this.list().length > 0 || this.liveInvites().length > 0 || this.members.behind() || this.hostAsks.waiting()) this.arm();
+    if (this.list().length > 0 || this.liveInvites().length > 0 || this.members.behind() || this.hostAsks.waiting() || this.groupLink.resuming()) this.arm();
     this.members.push();
     this.groupLink.sweep();
     this.hostAsks.retry();
+    this.held.start();
   }
 
   arm(): void {
@@ -795,7 +814,7 @@ export class ContactStore implements LinkedContacts {
     if (open < this.#openSeen) this.changed();
     this.#openSeen = open;
     // A member's copy still to push keeps the timer, even once the last contact went.
-    if (contacts.length === 0 && open === 0 && !this.members.behind() && !this.hostAsks.waiting()) {
+    if (contacts.length === 0 && open === 0 && !this.members.behind() && !this.hostAsks.waiting() && !this.groupLink.resuming()) {
       if (this.timer !== null) clearInterval(this.timer);
       this.timer = null;
       return;
@@ -833,6 +852,7 @@ export class ContactStore implements LinkedContacts {
     this.members.beginClose();
     void this.groupLink.close();
     void this.hostAsks.close();
+    this.held.close();
     this.flags.close();
   }
 

@@ -81,8 +81,11 @@ of a client's experiments.
 
 Teams of bots ([teams](teams.md)). Teams needs Bots: its switch stays greyed
 while Bots is off, and turning Bots off turns Teams off too. The switch gates
-every `teams.*` method and `boite team` command on the core, which reads the
-desktop app's experiments, and the team lines of the bots' guide. Letters
+the `teams.*` methods and `boite team` commands on the teams a machine holds,
+on the core, which reads the desktop app's experiments, and the team lines of
+the bots' guide. A machine with its switch off lets no bot of its own enter a
+team; a bot already in a team another machine holds stays in it, and that
+machine's switch decides ([teams](teams.md#across-machines)). Letters
 already in a bot's inbox still go out once it is off. In the app it shows the
 Teams section above the bots on the Bots page, on the desktop and on the
 phone, and the team chats there ([teams](teams.md#in-the-app)); a phone

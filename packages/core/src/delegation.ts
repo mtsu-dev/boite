@@ -20,7 +20,7 @@ import { checkConfig, createChild, readConfig, type ChildRequest } from './deleg
 import { Retirements } from './delegation/retirement.ts';
 import { pauseHold, pauseOver } from './delegation/pauses.ts';
 import { dropRestartCuts, endRestart, recordRestartCut, resumeRestartCuts } from './delegation/restart.ts';
-import { delegationPrompt, teamInstructions } from './delegation/guide.ts';
+import { delegationPrompt, mailOrigin, teamInstructions } from './delegation/guide.ts';
 import { RemoteDelegation, type ChildState } from './delegation/remote.ts';
 import { sentBack } from './workflows/follow-up.ts';
 import type { Connection } from './router.ts';
@@ -424,7 +424,7 @@ export class Delegation {
   #contact(thread: ThreadSummary): AgentLetter['from'] {
     return { coreId: 'local', threadId: thread.id, title: thread.title, project: thread.projectId ? this.#core.journal.getProject(thread.projectId)?.name : undefined, machine: 'Boite', resources: '', status: thread.status, mode: 'team' };
   }
-  send(params: RpcParams<'delegation.send'>, origin: NonNullable<AgentLetter['origin']> = 'agent', checkpoint = false): AgentLetter {
+  send(params: RpcParams<'delegation.send'>, origin: NonNullable<AgentLetter['origin']> = 'agent', marks: Pick<AgentLetter, 'checkpoint' | 'carriesOn'> = {}): AgentLetter {
     // A child here whose parent is on another machine: the letter goes with its reports.
     if (this.remote.parentOf(params.threadId)) return this.remote.tell(params, origin);
     const sender = this.#core.threads.require(params.threadId), recipient = this.#core.threads.require(params.toThreadId);
@@ -450,7 +450,7 @@ export class Delegation {
     if (typeof reply === 'string') throw refused(reply, { field: 'text', toThreadId: recipient.id });
     const question = reply?.question, answer = reply?.answer;
     // A question letter stays until the card closes, which withdraws it if it was not delivered yet.
-    const letter: AgentLetter = { id: randomUUID(), origin, ...(checkpoint ? { checkpoint: true } : {}), from: this.#contact(sender), to: { coreId: 'local', threadId: recipient.id }, toTitle: recipient.title, toProject: this.#contact(recipient).project, toMachine: 'Boite', text: body, replyTo: null, createdAt: Date.now(), expiresAt: fromCore ? Number.MAX_SAFE_INTEGER : Date.now() + 15 * 60_000, status: question ? 'delivered' : 'received', error: null, ...(question ? { answered: question.id } : {}) };
+    const letter: AgentLetter = { id: randomUUID(), origin, ...marks, from: this.#contact(sender), to: { coreId: 'local', threadId: recipient.id }, toTitle: recipient.title, toProject: this.#contact(recipient).project, toMachine: 'Boite', text: body, replyTo: null, createdAt: Date.now(), expiresAt: fromCore ? Number.MAX_SAFE_INTEGER : Date.now() + 15 * 60_000, status: question ? 'delivered' : 'received', error: null, ...(question ? { answered: question.id } : {}) };
     const post = () => this.#core.journal.append({ type: 'delegation.sent', threadId: sender.id, version: 1, payload: letter }, () => {
       this.#core.journal.db.query('INSERT INTO delegation_messages VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(letter.id, root.id, sender.id, recipient.id, requestId, fingerprint, letter.status, letter.createdAt, JSON.stringify(letter));
     });
@@ -550,7 +550,7 @@ export class Delegation {
           if (!this.#closed) for (const letter of letters) this.#update(letter, 'uncertain', messageOf(error));
         }
       } else {
-        const turn = this.#core.threads.startTurn(threadId, prompt, { kind: 'delegation' });
+        const turn = this.#core.threads.startTurn(threadId, prompt, mailOrigin(Boolean(thread.parentThreadId || this.remote.parentOf(threadId)), letters));
         // The scheduler may have started it synchronously before startTurn returns.
         for (const letter of letters) this.#update(letter, 'uncertain', `${turn.status === 'queued' && this.#core.journal.getTurn(turn.id)?.status === 'queued' ? 'Queued for' : 'Awaiting'} provider turn ${turn.id}`);
       }
@@ -617,7 +617,7 @@ export class Delegation {
       const body = `${`${head}\n${result ?? 'No text result was returned.'}`.slice(0, 4000 - tail.length)}${tail}`;
       if (link) { this.remote.letter(thread.id, { origin: 'result', requestId: `result:${turn.id}`, text: body, ...(live.length > 0 ? { checkpoint: true as const } : {}) }); return; }
       try {
-        this.send({ threadId: thread.id, toThreadId: parentId, requestId: `result:${turn.id}`, text: body }, 'result', live.length > 0);
+        this.send({ threadId: thread.id, toThreadId: parentId, requestId: `result:${turn.id}`, text: body }, 'result', live.length > 0 ? { checkpoint: true } : {});
       } catch (error) { this.#core.log('warn', `delegation result ${thread.id}: ${messageOf(error)}`); }
     };
     if (settling) this.#track(settling.then(() => { if (!this.#closed) deliver(); }));
@@ -778,7 +778,7 @@ export class Delegation {
    * `agentId` when named) and, without `agentId`, resumes the root's paused
    * runs the caller may resume.
    */
-  resume(threadId: string, agentId: string | undefined, principal: Principal): DelegationResumed {
+  resume(threadId: string, agentId: string | undefined, principal: Principal, carriesOn = false): DelegationResumed {
     const root = this.#core.threads.require(threadId);
     if (root.parentThreadId) throw refused('a subagent cannot resume its team; tell its parent what blocks you with boite delegate send');
     if (root.archived || this.#closed) throw refused('subagents of an archived thread stay stopped');
@@ -798,7 +798,7 @@ export class Delegation {
       const requestId = `resume:${turn.id}`;
       const sent = this.#core.journal.db.query('SELECT status FROM delegation_messages WHERE sender_id = ? AND (request_id = ? OR substr(request_id, 1, ?) = ?)').all(root.id, requestId, requestId.length + 1, `${requestId}:`) as { status: string }[];
       if (sent.some(row => row.status !== 'rejected')) continue;
-      this.send({ threadId: root.id, toThreadId: child.id, requestId: sent.length ? `${requestId}:${sent.length}` : requestId, text: `Continue your task from where your last turn stopped (${why}). Check what is already done before redoing anything, then finish and end with your result.`.slice(0, 4000) }, principal === 'agent' ? 'agent' : 'user');
+      this.send({ threadId: root.id, toThreadId: child.id, requestId: sent.length ? `${requestId}:${sent.length}` : requestId, text: `Continue your task from where your last turn stopped (${why}). Check what is already done before redoing anything, then finish and end with your result.`.slice(0, 4000) }, principal === 'agent' ? 'agent' : 'user', carriesOn ? { carriesOn } : {});
       agents.push(child.id);
     }
     const runs = agentId === undefined ? this.#core.workflows.resumePaused(root.id, principal) : [];

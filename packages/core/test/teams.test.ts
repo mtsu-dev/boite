@@ -9,7 +9,7 @@ import { RESIDENT_LETTER_TTL_MS } from '../src/coordination.ts';
 import type { CoreClient } from '../src/client.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import type { TurnResult } from '../src/drivers/types.ts';
-import { answerPostId } from '../src/teams/store.ts';
+import { answerPostId } from '../src/teams/snapshots.ts';
 import { planTeamLetter, teamPostLine, teamPrompt } from '../src/teams/prompt.ts';
 import { costing, makeAgent, turnsOf } from './agent-fixture.ts';
 import { echoThread, holdAccountTurns, removeDir, startTestCore, waitFor, type TestCore } from './harness.ts';
@@ -90,7 +90,7 @@ const holdDelivery = (h: TestCore) => {
   return () => spy.mockRestore();
 };
 
-test('teams stay closed while the experiment is off, and members on other machines wait for a later version', async () => {
+test('teams stay closed while the experiment is off, and a machine in no group names no bot of another', async () => {
   const { h, owner, bots, team } = await setup();
   await experiment(owner, false);
   const off = await failure(() => owner.call('teams.list', {}));
@@ -98,8 +98,8 @@ test('teams stay closed while the experiment is off, and members on other machin
   expect((await failure(() => owner.call('teams.post', { teamId: team.id, id: 'x', text: 'hi' }))).rpc.data).toMatchObject({ reason: 'experiment-off' });
   await experiment(owner);
   expect((await owner.call('teams.list', {})).teams.map(entry => entry.name)).toEqual(['Crew']);
-  const later = await failure(() => owner.call('teams.members.add', { teamId: team.id, botId: 'pc/Bob' }));
-  expect(later.message).toContain('members on other machines come in a later version');
+  const alone = await failure(() => owner.call('teams.members.add', { teamId: team.id, botId: 'pc/Bob' }));
+  expect(alone.message).toContain('this machine is in no group');
   // The team chat runs no agent and is no coordination contact.
   expect(h.core.journal.getThread(team.threadId)).toMatchObject({ teamId: team.id, projectId: null });
   expect(() => h.core.threads.startTurn(team.threadId, 'hello')).toThrow('a team chat runs no agent');
@@ -426,7 +426,7 @@ test('a retried publication or post gives one post, and a reused id with other c
   expect((await failure(() => post('Something else', { id: 'p-1' }))).message).toContain('already used for a different post');
   await waitFor(() => posts(h, team).length === 2 && settledWakes(h, ada!.threadId));
   const [wake] = wakes(h, ada!.threadId);
-  const again = h.core.teams.publishAnswer(wake!);
+  const again = h.core.teams.snapshots.publishAnswer(wake!);
   expect(again?.id).toBe(answerPostId(wake!.id));
   expect(posts(h, team)).toHaveLength(2);
   expect(h.core.journal.listTurns(team.threadId)).toHaveLength(2);
@@ -460,7 +460,7 @@ test('boite team: a bot lists, posts, reads and asks for cards; the experiment a
   expect((await boiteAs(h, bob!.threadId, ['team', 'leave', 'Crew'])).out).toContain('card: leave Crew');
   const remote = await boiteAs(h, ada!.threadId, ['team', 'invite', 'Crew', 'pc/Cy']);
   expect(remote.code).not.toBe(0);
-  expect(remote.err).toContain('members on other machines come in a later version');
+  expect(remote.err).toContain('this machine is in no group');
   await experiment(owner, false);
   const off = await boiteAs(h, ada!.threadId, ['team', 'list']);
   expect(off.code).not.toBe(0);

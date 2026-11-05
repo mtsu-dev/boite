@@ -50,6 +50,8 @@
     const botId = botIdOf(party);
     return team?.members.find(member => member.key === party)?.name ?? profileOf(botId)?.name ?? botId;
   }
+  /** The machine a member of another machine runs on; a bot of the team's own machine says nothing. */
+  const machineOf = (party: TeamParty) => team?.members.find(member => member.key === party)?.machine;
   const dayOf = (at: number) => new Date(at).toDateString();
   /** A post under one of the same author's a few minutes before reads as its continuation. */
   function continues(previous: Post | undefined, post: Post): boolean {
@@ -117,9 +119,10 @@
       <div class="member-row" role="group" aria-label={labels.members}>
         {#each team.members as member (member.key)}
           {@const profile = profileOf(member.botId)}
-          <button type="button" class="ghost member" title={member.name} disabled={!profile} onclick={() => store.showAgents(member.botId)} data-testid="team-member" data-bot-id={member.botId}>
+          <button type="button" class="ghost member" title={member.machine ? `${member.name} (${member.machine})` : member.name} disabled={!profile} onclick={() => store.showAgents(member.botId)} data-testid="team-member" data-bot-id={member.botId}>
             <AgentAvatar kind="profile" id={member.botId} name={member.name} avatar={profile?.avatar ?? ''} size={20} />
             <span class="ui-label">{member.name}</span>
+            {#if member.machine}<span class="machine ui-label" data-testid="team-member-machine">{member.machine}</span>{/if}
           </button>
         {/each}
       </div>
@@ -156,6 +159,7 @@
             {#if !grouped}
               <div class="head">
                 <span class="author" class:own data-testid="team-post-author">{nameOf(post.ref.author)}</span>
+                {#if machineOf(post.ref.author)}<span class="machine ui-label" data-testid="team-post-machine">{machineOf(post.ref.author)}</span>{/if}
                 <time datetime={new Date(post.at).toISOString()} title={fullTime(post.at)}>{dayClock(post.at)}</time>
               </div>
             {/if}
@@ -197,6 +201,7 @@
   .member-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; max-width: var(--content); margin: 0 auto; }
   .member { gap: 6px; height: var(--control); padding: 0 8px 0 4px; border-radius: var(--radius-full); color: var(--color-foreground); }
   .member:disabled { opacity: 1; cursor: default; }
+  .machine { min-width: 0; max-width: 16ch; overflow: hidden; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
   .brief { max-width: var(--content); margin: 4px auto 0; color: var(--color-muted-foreground); font-size: var(--text-sm); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; }
 
   .scroller { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }

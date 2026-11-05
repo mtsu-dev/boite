@@ -9,7 +9,7 @@ import { startTestCore, waitFor, type TestCore } from './harness.ts';
 let harness: TestCore | undefined;
 afterEach(async () => { await harness?.stop(); harness = undefined; });
 
-test('Send now during OpenCode startup reaches the admitted input before a tool boundary', async () => {
+test('Send now during OpenCode startup stops the old turn and delivers a new one before a tool boundary', async () => {
   harness = await startTestCore();
   const owner = await harness.connect();
   process.env['OPENCODE_FIXTURE_TOOL_GATE'] = join(harness.dataDir, 'blocked-tools');
@@ -26,10 +26,13 @@ test('Send now during OpenCode startup reaches the admitted input before a tool 
       value: { input: { text: '', attachments: [], paused: false, queued: [{ id: 'opencode-startup-followup', text: 'Also check the bots', attachments: [] }] } } });
     await waitFor(() => harness!.core.composer.storage.get('inputs', thread.id).value?.input.queued.length === 0, 20000);
     const current = await owner.call('threads.get', { threadId: thread.id });
-    expect(current.turns).toHaveLength(1);
-    expect(current.turns[0]?.id).toBe(turn.id);
+    expect(current.turns).toHaveLength(2);
+    expect(current.turns[0]).toMatchObject({ id: turn.id, status: 'stopped' });
+    expect(current.turns[1]?.status).toBe('running');
     expect(current.status).toBe('running');
     expect(current.messages.filter(message => message.role === 'user')).toHaveLength(2);
+    await waitFor(() => harness!.core.journal.listMessages(thread.id).some(message => message.role === 'assistant' && message.parts.some(part => part.type === 'text' && part.text.includes('Also check the bots'))));
+    expect(harness.core.journal.listMessages(thread.id).filter(message => message.role === 'user').at(-1)).toMatchObject({ turnId: current.turns[1]!.id });
     expect(current.messages.flatMap(message => message.parts).some(part => part.type === 'tool')).toBe(false);
   } finally { delete process.env['OPENCODE_FIXTURE_TOOL_GATE']; }
 }, 30000);

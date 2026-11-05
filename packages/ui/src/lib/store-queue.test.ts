@@ -246,19 +246,19 @@ test('unsupported steering holds the queue until the running turn finishes', asy
   expect(calls.mock.calls.filter(([method]) => method === 'turns.stop')).toHaveLength(0);
 });
 
-test('Send now retains queued input when steering is unsupported, then the core delivers it after the turn', async ({ ready }) => {
+test('Send now interrupts and delivers the queue even when steering is unsupported', async ({ ready }) => {
   const core = new TestComposerCore();
   const { store, client } = await ready({ delayMs: 40, composerState: core });
   await store.open('t-trace');
   core.steer.mockResolvedValue({ accepted: false });
-  await store.send('[tools] Keep working', 't-trace');
+  await store.send('Keep working', 't-trace');
+  const original = store.openThread!.turns.at(-1)!;
   store.composerStates['t-trace'] = queued('Keep this input', true);
   await store.sendQueuedNow('t-trace');
-  await vi.waitFor(() => expect(core.steer).toHaveBeenCalled());
-  expect(store.composerStates['t-trace']?.queued.map(entry => entry.text)).toEqual(['Keep this input']);
-  expect(store.composerStates['t-trace']?.paused).toBe(false);
-  expect(store.error).toBeNull();
   await vi.waitFor(() => expect(store.composerStates['t-trace']?.queued).toHaveLength(0));
+  expect(core.steer).not.toHaveBeenCalled();
+  expect(store.openThread!.turns.find(turn => turn.id === original.id)?.status).toBe('stopped');
+  expect(store.error).toBeNull();
   expect(core.start).toHaveBeenCalledTimes(1);
   expect((await client.call('threads.get', { threadId: 't-trace' })).messages.filter(message => message.role === 'user').at(-1)?.parts).toEqual([{ type: 'text', text: 'Keep this input' }]);
 });

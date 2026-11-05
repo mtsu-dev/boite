@@ -172,8 +172,8 @@ test('Send now outlasts a permission the turn waits on, and a queue emptied mean
   await client.call('permissions.answer', { requestId: request, decision: 'allow' });
   await vi.waitFor(async () => expect(await queuedIds(client, thread.id)).toEqual([]));
   await vi.waitFor(async () => expect((await client.call('threads.get', { threadId: thread.id })).status).toBe('idle'));
-  // Steered into the turn that asked: no turn of its own.
-  expect((await client.call('threads.get', { threadId: thread.id })).turns).toHaveLength(turns);
+  // The pending approval held delivery; Send now then stops that turn for a new one.
+  expect((await client.call('threads.get', { threadId: thread.id })).turns).toHaveLength(turns + 1);
   await client.call('turns.start', { threadId: thread.id, prompt: '[permission] Write more notes' });
   request = await asked();
   await put([{ id: 'withdrawn', text: 'Never mind', attachments: [], choice }], true);
@@ -182,7 +182,7 @@ test('Send now outlasts a permission the turn waits on, and a queue emptied mean
   await client.call('permissions.answer', { requestId: request, decision: 'allow' });
   await vi.waitFor(async () => expect(await queuedIds(client, thread.id)).toEqual([]));
   const after = await client.call('threads.get', { threadId: thread.id });
-  expect(after.turns).toHaveLength(turns + 2);
+  expect(after.turns).toHaveLength(turns + 3);
   expect(await userTexts(client, thread.id)).toContain('Wait for this turn');
 });
 
@@ -213,7 +213,7 @@ test('a queued /goal2 starts a reviewed goal, its stale goal2 experiment id igno
   expect(await userTexts(client, thread.id)).not.toContain('/goal2 Ship the release');
 });
 
-test.each(['running', 'idle'] as const)('queued %s inputs follow the live permission mode instead of the captured one', async state => {
+test.each(['running', 'idle'] as const)('Send now from %s uses the live permission mode instead of the captured one', async state => {
   const client = await ready(25);
   const thread = await client.call('threads.get', { threadId: 't-trace' });
   const choice = choiceOf(thread);
@@ -229,10 +229,11 @@ test.each(['running', 'idle'] as const)('queued %s inputs follow the live permis
   await vi.waitFor(async () => expect(await queuedIds(client, thread.id)).toEqual([]));
   const current = await client.call('threads.get', { threadId: thread.id });
   expect(current.permissionMode).toBe('yolo');
-  expect(current.turns).toHaveLength(before + 1);
+  expect(current.turns).toHaveLength(before + (active ? 2 : 1));
   expect(current.turns.at(-1)?.execution?.permissionMode).toBe('yolo');
   const message = current.messages.find(message => message.parts.some(part => part.type === 'text' && part.text === 'Follow the current mode'));
-  expect(message?.turnId).toBe(active?.id ?? current.turns.at(-1)?.id);
+  expect(message?.turnId).toBe(current.turns.at(-1)?.id);
+  if (active) expect(current.turns.find(turn => turn.id === active.id)?.status).toBe('stopped');
 });
 
 test('a live mode update does not hide an effort change and return in the fake', async () => {

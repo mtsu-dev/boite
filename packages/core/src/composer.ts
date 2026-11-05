@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import type { ComposerChoice, ComposerQueuedPrompt, ComposerRecord, ComposerValue, RpcParams, ThreadSummary } from '@boite/contracts';
 import type { Core } from './core.ts';
 import type { Connection } from './router.ts';
@@ -26,6 +25,7 @@ export class Composer {
   readonly #dirty = new Set<string>();
   readonly #captured = new Map<string, ComposerQueuedPrompt[]>();
   readonly #boundaries = new Map<string, string>();
+  readonly #forced = new Map<string, string>();
   #stopWaiting!: () => void;
   readonly #stopped = new Promise<null>(resolve => { this.#stopWaiting = () => resolve(null); });
   readonly #unsubscribe: () => void;
@@ -50,6 +50,7 @@ export class Composer {
         this.storage.forgetThread(threadId);
         this.#pending.delete(recordKey('inputs', threadId)); this.#dirty.delete(recordKey('inputs', threadId));
         this.#boundaries.delete(threadId);
+        this.#forced.delete(threadId);
       }
     });
     core.router.register('composer.list', (_params, ctx) => this.storage.list(ctx.connection.id));
@@ -132,8 +133,8 @@ export class Composer {
     }
     const record = this.#atomic(() => this.storage.save(params.section, params.id, value, connection));
     if (params.section === 'inputs') {
-      if (!record.value?.input.queued.length) this.#boundaries.delete(params.id);
-      else if (params.sendNow) this.#boundaries.set(params.id, `manual-${randomUUID()}`);
+      if (!record.value?.input.queued.length) { this.#boundaries.delete(params.id); this.#forced.delete(params.id); }
+      else if (params.sendNow) this.#forced.set(params.id, record.value.input.queued[0]!.id);
     }
     this.#schedule([{ section: params.section, id: params.id }]);
     return { accepted: true, record };
@@ -171,7 +172,7 @@ export class Composer {
     const key = recordKey(section, id);
     while (!this.#closed && !this.#core.stopping) {
       const record = this.storage.get(section, id), value = record.value;
-      if (!value || !value.input.queued.length) { this.storage.queued.delete(key); if (section === 'inputs') this.#boundaries.delete(id); return; }
+      if (!value || !value.input.queued.length) { this.storage.queued.delete(key); if (section === 'inputs') { this.#boundaries.delete(id); this.#forced.delete(id); } return; }
       if (value.input.paused) return;
       const item = value.input.queued[0]!;
       const delivery = this.storage.delivery(item.id);
@@ -197,6 +198,17 @@ export class Composer {
         const refusal = admissionRefusal(this.#core, thread, choice);
         if (refusal !== null) throw refused(refusal);
         const active = this.#core.threads.isBusy(id);
+        const forced = this.#forced.get(id) === item.id;
+        // Startup may be awaiting native preparation without a stoppable handle.
+        // inputReady wakes us as soon as that handle exists, before any tool output.
+        const runner = this.#core.threads.runner;
+        if (active && forced && this.#core.journal.runningTurn(id) && !runner.handles.has(id) && !runner.retryOf(id) && !runner.isPaused(id)) return;
+        this.#forced.delete(id);
+        if (active && forced) {
+          // Only the current turn stops. Its children and coordination remain available to the new user turn.
+          await Promise.race([this.#stopped, this.#core.scheduler.stopAndWait(id)]);
+          continue;
+        }
         const running = active ? this.#core.journal.runningTurn(id) : null;
         if (active && (!boundary || boundary === item.afterBoundary || item.request || isComposerActivity(item.text) || !sameChoice(choice, choiceOf({ ...thread, ...running?.execution })) || userSteeringUnavailable(this.#core, this.#core.threads, id, running) !== null)) return;
         const batch = composerBatch(value.input.queued, this.storage);

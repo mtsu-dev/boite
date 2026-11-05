@@ -18,7 +18,7 @@ const experiments = (env: ContractEnv, on: boolean) =>
   env.call('client.preferences', { app: 'app-desktop-0001', language: 'en', experiments: on ? ['teams'] : [], labels: {} });
 
 export const TEAM_SCENARIOS: Record<string, Scenario> = {
-  'teams wait for their experiment; posts route by name, bots read only what they may see, and other machines wait for a later version': async (env: ContractEnv) => {
+  'teams wait for their experiment; posts route by name, bots read only what they may see, and a machine outside the group names no bot': async (env: ContractEnv) => {
     await experiments(env, false);
     same((await refused(env.call('teams.list', {}), RpcErrorCode.Refused)).reason, 'experiment-off', 'the refusal with the experiment off');
     await experiments(env, true);

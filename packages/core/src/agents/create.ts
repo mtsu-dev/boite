@@ -9,7 +9,7 @@ import { checkAgentCreate, type AgentCreateParams, type AgentCreateResult, type 
 import type { Core } from '../core.ts';
 import { resolveRoute } from '../delegation/routes.ts';
 import { refused, RpcFailure } from '../errors.ts';
-import { checkModel } from '../threads/selection.ts';
+import { botDefaultModel, checkModel } from '../threads/selection.ts';
 import type { AgentStore } from './store.ts';
 
 /** Any installed model, as a subagent with no limits would read it: a bot's own policy comes later, from the owner. */
@@ -26,7 +26,7 @@ export function createAgent(core: Core, store: AgentStore, params: AgentCreatePa
         const route = resolveRoute(core, thread, CREATE_ROUTES, { ...(model === undefined ? {} : { model }), ...(effort === undefined ? {} : { effort }) });
         const provider = core.providers.require(route.providerId);
         // As `agents.profile.save` fills a route on the provider's default model.
-        const chosen = checkModel(provider, route.accountId, route.model ?? provider.models.find(m => m.default)?.id ?? provider.models[0]?.id ?? null);
+        const chosen = checkModel(provider, route.accountId, route.model ?? botDefaultModel(provider, route.accountId));
         if (chosen === null) return { ok: false, message: 'model: this thread runs on its provider\'s default model; name one with --model' };
         // Full access, as a bot made on the Bots page.
         return { ok: true, value: { providerId: route.providerId, accountId: route.accountId, model: chosen, effort: effort === undefined ? null : route.effort, permissionMode: 'bypassPermissions' } };

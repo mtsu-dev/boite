@@ -160,9 +160,20 @@ window, so a changed limit reopens the session between turns. Its summary
 context-control request is local and makes no provider token-count call.
 
 `cache-expiry` is independent of this limit: it can compact a smaller context
-before the cache lapses. The optional `turn-end` and `background` moments keep
-their size condition when a token limit is set; without one, they compact at
-each selected moment.
+before the cache lapses. Without a limit, the optional `turn-end` and
+`background` moments compact at each selected moment. With one, they apply
+once the context nears it, from the size where a
+[background copy](#background-compaction) would start: 85% of the limit and at
+least 64 000 tokens (`nearLimit` in `threads/background-compact.ts`). Below
+that size they wait; at the limit itself, the limit compacts as above, whatever
+the moments. A limit of 200 000 with `background` selected compacts from
+170 000 tokens at the first answer that leaves a command or a monitor running,
+so the compaction fills a wait instead of blocking the turn that crosses 200 000.
+
+A background copy keeps priority over these moments: a running copy is waited
+for and a ready one is taken instead of compacting. When background work keeps
+a ready copy from being taken, the copy is dropped and the selected moment
+compacts the usual way.
 
 `moments` lists when the core checks. All three sit between two turns, because
 the core cannot cut into a running one:
@@ -258,8 +269,8 @@ before the request (`tailInput` in `continuation.ts`); the
 `compaction-tail:<thread>` marker clears once a turn that carried it ends
 `done`.
 
-The copy is dropped, and the compaction above runs at the limit as usual,
-when:
+The copy is dropped, and the compaction above runs as usual, at the limit or
+at a selected `turn-end` or `background` moment near it, when:
 
 - the thread changed session, generation, agent, account, model or folder,
   was rewound, archived or compacted, or its context shrank because the agent
@@ -302,10 +313,11 @@ clicking a pending message does the same. When the core reports a completed
 tool boundary, the queue tries the driver's native steering operation, even
 when another conversation is open. A driver that declines it retains input
 for the next turn. Enter again in the emptied composer (not where the primary
-pointer is coarse), or Send now under the bubbles, submits it immediately without stopping the agent when the driver accepts it.
+pointer is coarse), or Send now under the bubbles, stops the active turn and
+submits the queued messages as a new turn, even on drivers without steering.
 Permissions and blocking questions hold it until answered.
 Send now also works during agent startup: the core retains the request and
-delivers it when the native turn accepts input, without waiting for tool output.
+interrupts as soon as the native handle is available, without waiting for tool output.
 Answers to asynchronous questions and bot setting cards share the running
 turn's steering channel. Answers received while another message or memory
 notice is being delivered resume when that delivery finishes, in order. Each
@@ -315,7 +327,8 @@ attachments and preview references. While that batch goes out its bubbles stay
 drawn and cannot be removed or taken back for editing; a declined attempt
 leaves them in place, editable again until the next boundary. Messages added
 during that send wait for
-the next delivery. A changed model or account keeps input for its next turn.
+the next delivery. A changed model or account keeps automatic input for its next turn;
+Send now interrupts the old execution and uses the queued selection.
 Escape stops the current turn. An Escape that closes something first (a popover, a menu, a
 confirmation, the command palette, a rename field) only closes it, and the focus
 goes back to where it was, or to the composer when that is gone, so a second

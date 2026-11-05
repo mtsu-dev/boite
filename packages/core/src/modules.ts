@@ -110,6 +110,7 @@ export function registerModules(core: Core): void {
   core.activity.useProbe(probe);
   core.threads.spawns.useProbe(probe);
   core.delegation.remote.useProbe(probe);
+  core.workforce.builtins.useProbe(probe);
   // A child on another machine of the group is read and steered there.
   core.router.register('delegation.result', params => (core.delegation.remote.child(params.threadId, params.agentId) ? core.delegation.remote.read(params) : core.delegation.resultPage(params)));
   core.router.register('delegation.wait', (params, ctx) => core.delegation.wait(params, ctx.connection));

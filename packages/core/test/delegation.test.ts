@@ -1,7 +1,7 @@
 import { afterEach, expect, spyOn, test } from 'bun:test';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { DEFAULT_DELEGATION_CONFIG } from '@boite/contracts';
+import { DEFAULT_DELEGATION_CONFIG, queueOrder } from '@boite/contracts';
 import type { CoreClient } from '../src/client.ts';
 import type { DelegatedAgent, DelegationConfig, ModelInfo, ProcessRecord, SpeedTier, Turn } from '@boite/contracts';
 import { connect } from '../src/client.ts';
@@ -11,6 +11,7 @@ import { choiceRow, routeOf } from '../src/delegate-cli.ts';
 import type { TurnContext, TurnResult } from '../src/drivers/types.ts';
 import { runCli } from '../src/cli.ts';
 import { holdAccountTurns, echoThread, scriptedClaude, startTestCore, waitFor, type TestCore } from './harness.ts';
+import { resumeCut } from '../src/providers/update-background.ts';
 import { thrown } from './settle.ts';
 
 const cores: TestCore[] = [];
@@ -983,6 +984,61 @@ test('a finished child wakes an idle parent at once, without waiting for the tic
   await new Promise(resolve => setTimeout(resolve, 100));
   expect(h.core.journal.listTurns(threadId).map(turn => turn.execution?.operation)).toEqual(['delegation']);
   expect(runs.get(threadId)?.ctx.prompt).toContain('Checked src/example.ts');
+});
+
+test('a request survives another agent\'s letter while a child works and the child\'s result, and a parent\'s follow-up to its resting child opens its own', async () => {
+  const runs = scripted(); const { h, owner, threadId, spawn } = await setup();
+  const latest = (id: string) => h.core.journal.listTurns(id).sort(queueOrder).at(-1)!;
+  const settled = async (id: string) => {
+    runs.get(id)!.finish();
+    runs.delete(id);
+    await waitFor(() => h.core.threads.require(id).status === 'idle' && latest(id).status === 'done');
+  };
+  const running = (id: string) => waitFor(() => runs.has(id) && latest(id).status === 'running');
+  h.core.threads.startTurn(threadId, 'The user\'s request');
+  await running(threadId);
+  const request = latest(threadId).startedAt!;
+  await settled(threadId);
+  const child = await spawn();
+  await running(child.thread.id);
+
+  // Another agent writes while the child works: the parent is not at rest.
+  const bot = (await echoThread(h, owner, 'Bot')).threadId;
+  await h.core.coordination.send({ threadId: bot, to: h.core.coordination.get(threadId).self, text: 'One question', requestId: 'while-working' });
+  await running(threadId);
+  expect(latest(threadId).execution).toMatchObject({ operation: 'coordination' });
+  expect(latest(threadId).execution?.opensRequest).toBeUndefined();
+  expect(h.core.journal.requestSince(threadId)).toBe(request);
+  await settled(threadId);
+
+  // The child answers: still the same request, though no child works now.
+  await settled(child.thread.id);
+  await running(threadId);
+  expect(latest(threadId).execution).toMatchObject({ operation: 'delegation' });
+  expect(latest(threadId).execution?.opensRequest).toBeUndefined();
+  expect(h.core.journal.requestSince(threadId)).toBe(request);
+  await settled(threadId);
+
+  // The parent writes to its resting child: the child's row counts from this follow-up, not its first task.
+  const first = latest(child.thread.id);
+  h.core.delegation.send({ threadId, toThreadId: child.thread.id, text: 'One more thing', requestId: 'follow-up' });
+  await waitFor(() => latest(child.thread.id).id !== first.id);
+  await running(child.thread.id);
+  const followUp = latest(child.thread.id);
+  expect(followUp.execution).toMatchObject({ operation: 'delegation', opensRequest: true });
+  expect(h.core.journal.requestSince(child.thread.id)).toBe(followUp.startedAt);
+  expect(followUp.startedAt).toBeGreaterThan(first.startedAt!);
+
+  // An update cuts it short: Boite sends it back, and it still counts from that follow-up.
+  await owner.call('turns.stop', { threadId: child.thread.id });
+  await waitFor(() => h.core.threads.require(child.thread.id).status !== 'running' && latest(child.thread.id).status !== 'running');
+  runs.delete(child.thread.id);
+  resumeCut(h.core, new Map([[child.thread.id, 'its build']]), 'Claude');
+  await waitFor(() => latest(child.thread.id).id !== followUp.id);
+  await running(child.thread.id);
+  expect(latest(child.thread.id).execution).toMatchObject({ operation: 'delegation' });
+  expect(latest(child.thread.id).execution?.opensRequest).toBeUndefined();
+  expect(h.core.journal.requestSince(child.thread.id)).toBe(followUp.startedAt);
 });
 
 test('a paused team keeps its results until the owner resumes it, then they wake the parent at once', async () => {

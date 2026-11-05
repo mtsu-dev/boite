@@ -1,74 +1,19 @@
 import { afterEach, expect, test } from 'bun:test';
-import { mkdirSync } from 'node:fs';
-import { join } from 'node:path';
-import type { AgentLetter, CoordinationPeer } from '@boite/contracts';
-import type { CoreClient } from '../src/client.ts';
+import type { CoordinationPeer } from '@boite/contracts';
 import { memberThreadId } from '../src/contacts/members.ts';
 import { moveInput } from '../src/contacts/group-link.ts';
 import { botMoveId } from '../src/contacts/bot-home.ts';
 import { contactsBot } from '../src/contacts/bot.ts';
 import { contactsBotOf } from './contacts-fixture.ts';
 import { startTestCore, waitFor, type TestCore } from './harness.ts';
+import { botsHome, letters, named, project, remoteOn, requestOn, setup as groupSetup, storedBy, thread } from './contacts-group-fixture.ts';
 import { thrown } from './settle.ts';
 
 const cores: TestCore[] = [];
 afterEach(async () => {
   for (const core of cores.splice(0)) await core.stop();
 });
-
-async function project(harness: TestCore, client: CoreClient, name: string): Promise<{ id: string }> {
-  const path = join(harness.dataDir, 'projects', name);
-  mkdirSync(path, { recursive: true });
-  return client.call('projects.add', { path, name });
-}
-
-async function thread(client: CoreClient, projectId: string, title: string): Promise<string> {
-  const account = (await client.call('accounts.list', {})).find(entry => entry.providerId === 'echo');
-  if (!account) throw new Error('no echo account');
-  return (await client.call('threads.create', { projectId, providerId: 'echo', accountId: account.id, title })).id;
-}
-
-const letters = (harness: TestCore, threadId: string): AgentLetter[] => harness.core.coordination.get(threadId).messages;
-
-/** Every core of a test runs on one machine: each gets its own host name, so a leak can be told apart. */
-function named(harness: TestCore, hostname: string): void {
-  const real = harness.core.info.bind(harness.core);
-  harness.core.info = () => ({ ...real(), hostname });
-}
-
-/** What the contact keeps of this owner, as one text: its records, requests, relations and letters. */
-function storedBy(harness: TestCore): string {
-  const settings = ['contacts', 'contacts:requests', 'contacts:relations', 'contacts:recent'].map(key => harness.core.journal.getSetting(key) ?? null);
-  const rows = harness.core.journal.db.query('SELECT data FROM coordination_letters').all() as { data: string }[];
-  return JSON.stringify([settings, rows.map(row => row.data)]);
-}
-
-/** A group "Team" of A and X, and a contact C that joined A. No Bots host yet. */
-async function setup() {
-  const a = await startTestCore(), x = await startTestCore(), c = await startTestCore();
-  cores.push(a, x, c);
-  named(a, 'pc-alpha');
-  named(x, 'pc-xray');
-  named(c, 'pc-guest');
-  a.core.contacts.selfUrl = async () => a.url;
-  x.core.contacts.selfUrl = async () => x.url;
-  for (const side of [a, x, c]) side.core.contacts.setSettings({ minTier: 2 });
-  const aClient = await a.connect(), xClient = await x.connect(), cClient = await c.connect();
-  const aId = a.core.coordination.card().coreId, xId = x.core.coordination.card().coreId, cId = c.core.coordination.card().coreId;
-  await a.core.group.create('Team');
-  await x.core.group.join((await a.core.group.invite()).invite);
-  await waitFor(() => a.core.group.peers().some(peer => peer.coreId === xId) && x.core.group.peers().some(peer => peer.coreId === aId), 10000);
-  await cClient.call('contacts.join', { link: (await aClient.call('contacts.invite', {})).link });
-  await waitFor(() => a.core.contacts.linked(cId) && a.core.contacts.find(cId)?.capabilities?.groupLink === 1, 10000);
-  return { a, x, c, aClient, xClient, cClient, aId, xId, cId };
-}
-
-async function botsHome(a: TestCore, client: CoreClient, x: TestCore, xId: string): Promise<void> {
-  await client.call('group.botsHome', { coreId: xId });
-  await waitFor(() => a.core.group.roleOf('botsHome') === xId && x.core.group.roleOf('botsHome') === xId, 10000);
-  // The first hand may have reached X before X read the new roster: offered again now.
-  a.core.contacts.groupLink.sweep(true);
-}
+const setup = () => groupSetup(cores);
 
 const peerOf = (harness: TestCore, coreId: string): CoordinationPeer => harness.core.contacts.peers().find(peer => peer.coreId === coreId)!;
 
@@ -223,8 +168,6 @@ test('with no Bots host, a member keeps its contacts under its own name', async 
   expect(a.core.contacts.card().machine).toBe('pc-alpha');
 }, 60000);
 
-const remoteOn = (harness: TestCore, threadId: string): void => { harness.core.coordination.configure(threadId, { mode: 'brief', remote: true, resources: '', paused: false }); };
-const requestOn = (harness: TestCore, id: string) => harness.core.contacts.requests.list().find(request => request.id === id && request.direction === 'out');
 
 test('a member without a Contacts bot asks through the Bots host: queued while the host is silent, filed there under its thread and id, refused after 7 days, and answered back', async () => {
   const { a, x, c, aClient, xClient, cClient, aId, xId, cId } = await setup();
@@ -232,6 +175,9 @@ test('a member without a Contacts bot asks through the Bots host: queued while t
   remoteOn(a, aThread);
   const xBot = await contactsBotOf(x, xClient);
   await botsHome(a, aClient, x, xId);
+  // A's threads are told to ask, as on the host: the direct send of the older paths is refused here.
+  expect(a.core.coordination.instructions(aThread)).toContain('boite threads ask');
+  expect(a.core.coordination.instructions(aThread)).not.toContain('their threads there are in `boite threads`');
   // X does not answer: the ask waits on A with a status that says so.
   const real = a.core.coordination.request.bind(a.core.coordination);
   let silent = true;

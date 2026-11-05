@@ -223,6 +223,13 @@ that holds the project, each with the bot's lease, and `bot.event` comes back wi
 holding member refuses all of them while its own `groupBots` setting is off
 ([bots](bots.md#projects-of-the-other-machines-of-the-group)).
 
+The `team.*` operations, also sealed and group-only, carry a team between the
+machines of its members: `team.sync` from the machine holding it, `team.post`,
+`team.read`, `team.report`, `team.moved` and `team.owner` toward it, and
+`team.bot` to name a bot of a machine. The holder finds who speaks from the
+group identity of the machine asking
+([teams](teams.md#across-machines)).
+
 A group member can relay contact discovery, lookups, requests and letters
 through another member's durable virtual mailbox. The initiating core keeps
 the canonical exchange and wakes its own conversation. The gateway uses the
