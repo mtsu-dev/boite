@@ -17,12 +17,13 @@ if (!process.argv.includes('serve')) {
     for (const stream of streams) stream.enqueue(bytes);
   };
   // Opt in: each process appends the inline configuration it was started with, and lists a model of that window.
-  // A folder ending in "small" defaults to another model, of the small window, as an OpenCode project can.
+  // A folder ending in "small" defaults to another model of the small window, or gives the same model that window
+  // (`OPENCODE_FIXTURE_SAME_MODEL`), as an OpenCode project's configuration can.
   const configLog = process.env['OPENCODE_FIXTURE_CONFIG_LOG'];
   if (configLog) await Bun.write(configLog, `${await Bun.file(configLog).text().catch(() => '')}${process.env['OPENCODE_CONFIG_CONTENT'] ?? '{}'}\n`);
   const small = process.env['OPENCODE_FIXTURE_SMALL_WINDOW'] !== undefined && process.cwd().endsWith('small');
   const window = small ? process.env['OPENCODE_FIXTURE_SMALL_WINDOW'] : process.env['OPENCODE_FIXTURE_WINDOW'];
-  const model = { id: small ? 'small' : 'model', providerID: 'fixture', name: 'Fixture model', enabled: true, variants: [{ id: 'high' }], limit: { context: Number(window ?? 32000) } };
+  const model = { id: small && process.env['OPENCODE_FIXTURE_SAME_MODEL'] === undefined ? 'small' : 'model', providerID: 'fixture', name: 'Fixture model', enabled: true, variants: [{ id: 'high' }], limit: { context: Number(window ?? 32000) } };
   const session = () => ({ id: sessionID, cost, model: { id: model.id, providerID: model.providerID }, agent: 'build', location: { directory: process.cwd() } });
   const server = Bun.serve({ hostname: '127.0.0.1', port: 0, async fetch(request) {
     const url = new URL(request.url);

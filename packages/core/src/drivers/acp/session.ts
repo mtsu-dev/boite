@@ -63,23 +63,25 @@ export interface AcpMemory {
   /** `provider\0sessionId` of loads refused once with an `unsure` error. */
   refusedLoads: Set<string>;
   /**
-   * OpenCode 2's compaction window per `provider\0account\0model`, the model
-   * the agent actually runs (`provider/model`), as the last process on it read
-   * it: the next process of any thread on that model starts with its owner's
-   * limit once one process has seen it.
+   * OpenCode 2's compaction window per `provider\0account\0folder\0model`, the
+   * model the agent actually runs (`provider/model`) in the conversation's
+   * folder, whose OpenCode configuration may set its own `limit.context` and
+   * `limit.input`. Written as the last process there read it: the next process
+   * on that model in that folder starts with its owner's limit.
    */
   compactionWindows: Map<string, number>;
   /**
    * The model a thread on the agent's own model resolved to, per thread and
-   * per folder, since each OpenCode project may default to another model. A
-   * thread first looks up its own, then its folder's; neither known keeps the
-   * native ceiling.
+   * per folder, since each OpenCode project may default to another model, with
+   * the folder it resolved in. A thread first looks up its own, ignored once
+   * the thread moved to another folder, then its folder's; neither known keeps
+   * the native ceiling.
    */
-  resolvedModels: Map<string, string>;
+  resolvedModels: Map<string, { cwd: string; model: string }>;
 }
 
 function compactionModelKey(ctx: SessionContext, model: string): string {
-  return `${ctx.provider.id}\0${ctx.account.id}\0${model}`;
+  return `${ctx.provider.id}\0${ctx.account.id}\0${ctx.thread.cwd}\0${model}`;
 }
 
 function resolutionKeys(ctx: SessionContext): string[] {
@@ -285,12 +287,12 @@ export class AcpSession {
     return openCodeCompactionBuffer(window, ctx.autoCompactTokens?.() ?? null);
   }
 
-  /** The model the thread runs: the one it names, else what its own model last resolved to. */
+  /** The model the thread runs: the one it names, else what its own model last resolved to in its folder. */
   #resolvedModel(ctx: SessionContext): string | null {
     if (ctx.thread.model !== AGENT_OWN_MODEL) return ctx.thread.model;
     for (const key of resolutionKeys(ctx)) {
-      const model = this.#memory.resolvedModels.get(key);
-      if (model !== undefined) return model;
+      const resolved = this.#memory.resolvedModels.get(key);
+      if (resolved !== undefined && resolved.cwd === ctx.thread.cwd) return resolved.model;
     }
     return null;
   }
@@ -300,7 +302,7 @@ export class AcpSession {
     if (!(this.#connection instanceof OpenCodeConnection)) return;
     const { model, window } = this.#connection.compactionModel();
     if (model === '') return;
-    if (ctx.thread.model === AGENT_OWN_MODEL) for (const key of resolutionKeys(ctx)) this.#memory.resolvedModels.set(key, model);
+    if (ctx.thread.model === AGENT_OWN_MODEL) for (const key of resolutionKeys(ctx)) this.#memory.resolvedModels.set(key, { cwd: ctx.thread.cwd, model });
     if (window > 0) this.#memory.compactionWindows.set(compactionModelKey(ctx, model), window);
   }
 

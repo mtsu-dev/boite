@@ -183,27 +183,35 @@ test('OpenCode 2 compacts at the limit of each thread type and takes a changed o
   }
 }, 60_000);
 
-test('OpenCode 2 keeps the window of each project default model apart', async () => {
+/**
+ * One account, two projects whose OpenCode defaults differ, "big" with a
+ * 1000000 window and "small" with 500000, a 200000 limit; the threads' model
+ * reads "default" in both. `sameModel`: both projects give the same model id
+ * its own window, as a project's configuration can.
+ */
+async function twoProjects(sameModel: boolean, body: (setup: {
+  owner: Awaited<ReturnType<TestCore['connect']>>; a: string; b: string; small: string;
+  configs: () => Promise<unknown[]>; run: (threadId: string, prompt: string) => Promise<void>;
+}) => Promise<void>): Promise<void> {
   harness = await startTestCore();
   const owner = await harness.connect();
   const log = join(harness.dataDir, 'opencode-configs.jsonl');
-  process.env['OPENCODE_FIXTURE_CONFIG_LOG'] = log;
-  process.env['OPENCODE_FIXTURE_WINDOW'] = '1000000';
-  process.env['OPENCODE_FIXTURE_SMALL_WINDOW'] = '500000';
+  const fixture = { OPENCODE_FIXTURE_CONFIG_LOG: log, OPENCODE_FIXTURE_WINDOW: '1000000', OPENCODE_FIXTURE_SMALL_WINDOW: '500000', ...(sameModel ? { OPENCODE_FIXTURE_SAME_MODEL: '1' } : {}) };
+  Object.assign(process.env, fixture);
   try {
     const profile = { executable: [{ kind: 'file' as const, value: process.execPath }], detect: {}, isolation: {}, launch: { args: [join(import.meta.dir, 'fixtures/opencode2-server.ts'), 'acp'] } };
     Object.assign(harness.core.providers.require('opencode-v2'), { auth: { kind: 'none' }, env: {}, profiles: { windows: profile, linux: profile, macos: profile } });
     await owner.call('providers.setEnabled', { providerId: 'opencode-v2', enabled: true });
     await owner.call('settings.set', { warmProcessMinutes: 5, autoCompact: { tokens: 200_000, moments: [] } });
     const account = await owner.call('accounts.add', { providerId: 'opencode-v2', label: 'Fixture' });
-    // One account, two projects whose OpenCode default models differ: the thread's model reads "default" in both.
-    const thread = async (name: string) => {
+    const project = async (name: string) => {
       const path = join(harness!.dataDir, name);
       mkdirSync(path, { recursive: true });
-      const project = await owner.call('projects.add', { path, name });
-      return (await owner.call('threads.create', { projectId: project.id, accountId: account.id, providerId: 'opencode-v2' })).id;
+      return (await owner.call('projects.add', { path, name })).id;
     };
-    const a = await thread('big'), b = await thread('small');
+    const big = await project('big'), small = await project('small');
+    const thread = async (projectId: string) => (await owner.call('threads.create', { projectId, accountId: account.id, providerId: 'opencode-v2' })).id;
+    const a = await thread(big), b = await thread(small);
     const configs = async () => (await Bun.file(log).text()).trim().split('\n').map(line => (JSON.parse(line) as Record<string, unknown>)['compaction']);
     const run = async (threadId: string, prompt: string) => {
       await waitFor(() => !harness!.core.threads.isBusy(threadId));
@@ -211,17 +219,36 @@ test('OpenCode 2 keeps the window of each project default model apart', async ()
       await owner.call('turns.start', { threadId, prompt });
       expect(await finished).toMatchObject({ status: 'done', error: null });
     };
+    await body({ owner, a, b, small, configs, run });
+  } finally {
+    for (const key of Object.keys(fixture)) delete process.env[key];
+  }
+}
+
+for (const sameModel of [false, true]) {
+  test(`OpenCode 2 keeps the window of each project apart, ${sameModel ? 'one model with two windows' : 'two default models'}`, async () => {
+    await twoProjects(sameModel, async ({ a, b, configs, run }) => {
+      await run(a, '[done] A1');
+      await run(a, '[done] A2');
+      // B's default model is not known yet: OpenCode keeps its own ceiling, then takes B's window.
+      await run(b, '[done] B1');
+      await run(b, '[done] B2');
+      // A turn of B never changes A's buffer: A's process stays.
+      await run(a, '[done] A3');
+      expect(await configs()).toEqual([undefined, { buffer: 800_000 }, undefined, { buffer: 300_000 }]);
+    });
+  }, 60_000);
+}
+
+test('OpenCode 2 takes the default model of the folder a conversation moved to', async () => {
+  await twoProjects(false, async ({ owner, a, b, small, configs, run }) => {
     await run(a, '[done] A1');
     await run(a, '[done] A2');
-    // B's default model is not known yet: OpenCode keeps its own ceiling, then takes B's window.
     await run(b, '[done] B1');
     await run(b, '[done] B2');
-    // A turn of B never changes A's buffer: A's process stays.
-    await run(a, '[done] A3');
-    expect(await configs()).toEqual([undefined, { buffer: 800_000 }, undefined, { buffer: 300_000 }]);
-  } finally {
-    delete process.env['OPENCODE_FIXTURE_CONFIG_LOG'];
-    delete process.env['OPENCODE_FIXTURE_WINDOW'];
-    delete process.env['OPENCODE_FIXTURE_SMALL_WINDOW'];
-  }
+    await waitFor(() => !harness!.core.threads.isBusy(a));
+    await owner.call('threads.move', { threadId: a, projectId: small });
+    await run(a, '[done] A moved');
+    expect((await configs()).at(-1)).toEqual({ buffer: 300_000 });
+  });
 }, 60_000);
