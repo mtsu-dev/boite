@@ -17,7 +17,16 @@ export type Operation = 'directory' | 'deliver' | 'receipt' | 'search' | 'read' 
   /** Between members of a group: a thread one starts on another, the models it can run on there, and the setting that lets it (`threads/group-spawn.ts`). */
   | 'thread.start' | 'delegation.catalog' | 'delegation.start' | 'delegation.report' | 'delegation.letter' | 'delegation.read' | 'delegation.stop' | 'setting.read' | 'setting.changed'
   /** Between members of a group: a bot of one looks after projects of another, which hears it while its `groupBots` is on (`agents/group-host.ts`). */
-  | BotOperation;
+  | BotOperation
+  /** Between members of a group: the machine that holds a team and the machines of its members (`teams/peers.ts`). */
+  | TeamOperation;
+/**
+ * The machine holding a team asks who a bot is (`team.bot`) and sends its
+ * state and posts (`team.sync`); a member's machine posts, reads, reports and
+ * asks for the owner (`team.post`, `team.read`, `team.report`, `team.moved`, `team.owner`).
+ */
+export const TEAM_OPERATIONS = ['team.bot', 'team.sync', 'team.post', 'team.read', 'team.report', 'team.moved', 'team.owner'] as const;
+export type TeamOperation = (typeof TEAM_OPERATIONS)[number];
 /**
  * What a bot's core asks the machine whose projects it looks after, and the
  * events that machine sends back; `bot.move` hands a whole bot to another

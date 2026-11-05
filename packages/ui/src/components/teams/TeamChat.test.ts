@@ -184,6 +184,48 @@ test('the team chat draws each post with its author, a private post with its rec
   expect(query('[data-testid=team-members]').textContent).toContain('Ship the site.');
 });
 
+test('a member of another machine of the group carries that machine in the member row, on its posts and in the @ and audience menus; one of this machine says nothing', async () => {
+  const { client, store, huginn } = await skollheim();
+  const firebat = new FakeClient({ delayMs: 0, coreId: 'firebat', coreName: 'Firebat', publicUrl: 'https://firebat.test' });
+  closers.push(() => firebat.close());
+  await firebat.connect();
+  await client.call('group.create', { name: 'Home' });
+  await firebat.call('group.join', { invite: (await client.call('group.invite', {})).invite });
+  const distant = await firebat.call('agents.profile.save', { value: { name: 'Munin', domain: '', instructions: '', avatar: '', status: 'active', projectIds: [],
+    selection: { providerId: 'echo', accountId: 'a-echo', model: 'echo-1', effort: null, permissionMode: 'default' } } });
+
+  // The other machine's own switch keeps its bot out, with its name in the refusal.
+  await expect(client.call('teams.create', { name: 'Across', members: [huginn.id, 'Firebat/Munin'] })).rejects.toThrow('Firebat: teams need the Teams experiment');
+  firebat.reportDesktopExperiments(['teams']);
+  const team = await client.call('teams.create', { name: 'Across', members: [huginn.id, 'Firebat/Munin'] });
+  expect(team.members[1]).toMatchObject({ key: `firebat/${distant.id}`, coreId: 'firebat', botId: distant.id, machine: 'Firebat' });
+  await client.call('teams.post', { teamId: team.id, id: 'to-munin', text: '@Munin hello' });
+  // Its bot speaks from its own machine, and the post lands where the team is held.
+  const conversation = (await firebat.call('agents.open', { agentId: distant.id })).threadId;
+  await firebat.call('teams.say', { threadId: conversation, team: 'Across', text: 'On it.', id: 'from-munin' });
+
+  await store.open(team.threadId);
+  mounted.push(mount(TeamChat, { target: document.body, props: { store, thread: store.openThread! } }));
+  await vi.waitFor(() => query('[data-testid=team-composer-input]'));
+  await vi.waitFor(() => expect(all('[data-testid=team-post]')).toHaveLength(2));
+  await settle();
+  const rows = all('[data-testid=team-member]');
+  expect(rows.map(row => row.querySelector('[data-testid=team-member-machine]')?.textContent ?? null)).toEqual([null, 'Firebat']);
+  expect(rows[1]!.title).toBe('Munin (Firebat)');
+  expect(rows[0]!.title).toBe(huginn.name);
+  expect(all('[data-testid=team-post]').map(post => [post.querySelector('[data-testid=team-post-author]')?.textContent, post.querySelector('[data-testid=team-post-machine]')?.textContent ?? null])).toEqual([
+    ['You', null], ['Munin', 'Firebat'],
+  ]);
+
+  query<HTMLButtonElement>('[data-testid=team-mention]').click(); await settle();
+  expect(query(`[data-testid=team-mention-menu] [data-value="firebat/${distant.id}"]`).textContent).toContain('Firebat');
+  expect(query(`[data-testid=team-mention-menu] [data-value="${team.members[0]!.key}"]`).textContent).not.toContain('Firebat');
+  query<HTMLButtonElement>('[data-testid=team-mention]').click(); await settle();
+  query<HTMLButtonElement>('[data-testid=team-audience]').click(); await settle();
+  expect(query(`[data-testid=team-audience-menu] [data-value="firebat/${distant.id}"]`).textContent).toContain('Firebat');
+  expect(query(`[data-testid=team-audience-menu] [data-value="${team.members[0]!.key}"]`).textContent).not.toContain('Firebat');
+});
+
 test("the owner's composer says who a post wakes before it goes, and posts a mention, a reply and a private post", async () => {
   const { store, team, huginn, jeux, say, key } = await skollheim();
   const draft = await say(huginn.id, 'The draft is up.');

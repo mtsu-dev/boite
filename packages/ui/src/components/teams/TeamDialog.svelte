@@ -9,7 +9,7 @@
   import { count } from '../../lib/format';
   import { mobileOverlay } from '../../lib/mobile-history';
   import { fill, strings } from '../../lib/strings';
-  import { draftProblem, saveTeam, teamChoices, TEAM_LIMITS, type TeamChoice } from '../../lib/team-draft';
+  import { draftKey, draftProblem, saveTeam, teamChoices, TEAM_LIMITS, type TeamChoice } from '../../lib/team-draft';
   import { teamsOf } from '../../lib/teams.svelte';
   import type { Machine } from '../../lib/workspace.svelte';
   import AgentAvatar from '../agents/AgentAvatar.svelte';
@@ -17,15 +17,17 @@
 
   /**
    * A team written by hand (`docs/teams.md`, In the app): its name, its brief
-   * and its members, picked among the bots of the page's machine. Another
-   * machine's bots, and a bot on its way to one, are listed and cannot be
-   * picked; the "i" beside says why. Without `team` it creates one on the
-   * page's machine; with it, it brings that team to what was written.
+   * and its members, picked among the bots of the page's machine and of the
+   * other machines of its group, each of those with its machine's name. A bot
+   * of a machine outside the group, and a bot on its way to another machine,
+   * are listed and cannot be picked; the "i" beside says why. Without `team` it
+   * creates one on the page's machine; with it, it brings that team to what
+   * was written.
    */
   let { view, others = [], team = null, onclose, ondone }: {
-    /** The page's machine: the one the team is created on and its bots come from. */
+    /** The page's machine: the one the team is created on. */
     view: AgentsView;
-    /** The other machines' bots, listed and greyed. */
+    /** The other machines' bots: those of its group can join, the rest are listed greyed. */
     others?: readonly { machine: Machine; view: AgentsView }[];
     team?: Team | null;
     onclose: () => void;
@@ -39,7 +41,7 @@
   const initial = (() => team)();
   let name = $state(initial?.name ?? '');
   let brief = $state(initial?.brief ?? '');
-  let picked = $state<string[]>(initial?.members.map(member => member.botId) ?? []);
+  let picked = $state<string[]>(initial?.members.map(draftKey) ?? []);
   let tried = $state(false);
   let busy = $state(false);
   let failure = $state<string | null>(null);
@@ -171,6 +173,7 @@
                   onclick={() => toggle(choice)} data-testid="team-dialog-member" data-bot-id={choice.botId} data-key={choice.key}>
                   <AgentAvatar kind="profile" id={choice.botId} name={choice.name} avatar={choice.avatar} size={26} />
                   <span class="choice-name">{choice.name}</span>
+                  {#if choice.machine}<span class="choice-machine ui-label" data-testid="team-dialog-machine">{choice.machine}</span>{/if}
                   <span class="mark" aria-hidden="true">{#if on}<Check size={14} strokeWidth={2.25} />{/if}</span>
                 </button>
                 {#if tip}<InfoTip topic={fill(words.why, { name: choice.name })} text={tip} testid="team-dialog-why" />{/if}
@@ -225,6 +228,7 @@
   .choice[aria-disabled='true'] { cursor: default; opacity: 0.5; }
   .choice[aria-disabled='true']:hover { background: transparent; }
   .choice-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .choice-machine { min-width: 0; max-width: 16ch; overflow: hidden; color: var(--color-muted-foreground); font-size: var(--text-xs); text-overflow: ellipsis; white-space: nowrap; }
   .mark { flex: none; display: grid; place-items: center; width: 18px; height: 18px; border: 1px solid var(--color-edge); border-radius: var(--radius-sm);
     color: var(--color-accent-ink); transition: background var(--dur-2) var(--ease-out-quint), border-color var(--dur-2) var(--ease-out-quint); }
   .choice.on .mark { background: var(--color-accent); border-color: var(--color-accent); }

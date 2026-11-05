@@ -11,7 +11,7 @@ import { createSharedBoard } from '../contacts/board-journal.ts';
 import { createSharedCompute } from '../contacts/compute-journal.ts';
 import { createSharedAccess } from '../contacts/access-journal.ts';
 import { createSharedReview } from '../contacts/review-journal.ts';
-import { createTeams } from '../teams/journal.ts';
+import { createTeamMachines, createTeams } from '../teams/journal.ts';
 import { createDebates } from '../debates/journal.ts';
 
 export const SCHEMA_VERSION = 47;
@@ -493,6 +493,7 @@ export function migrate(db: Database, file: string): { from: number; to: number 
   createSharedCompute(db);
   createSharedAccess(db);
   createSharedReview(db);
+  createTeamMachines(db);
   version = Math.max(version, SCHEMA_VERSION);
   if (row?.user_version !== version) db.exec(`PRAGMA user_version = ${version}`);
   return { from: row?.user_version ?? 0, to: version };

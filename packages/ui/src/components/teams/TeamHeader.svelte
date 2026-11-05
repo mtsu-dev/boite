@@ -22,7 +22,7 @@
    */
   let { store, view, others = [], thread, team, onback }: {
     store: Store;
-    /** The page's machine, which holds the team and its bots. */
+    /** The page's machine, which holds the team. */
     view: AgentsView;
     others?: readonly { machine: Machine; view: AgentsView }[];
     thread: Thread;
@@ -35,9 +35,9 @@
   let editing = $state(false);
   let busy = $state(false);
 
-  /** The members as pictures: the bot's own once this machine's agents are read, else the robot its id picks. */
+  /** The members as pictures: a bot of this machine's own once its agents are read, else the robot its id picks. */
   const pictures = $derived((team?.members ?? []).map((member): Pick<AgentProfile, 'id' | 'name' | 'avatar'> =>
-    view.snapshot?.profiles.find(profile => profile.id === member.botId) ?? { id: member.botId, name: member.name, avatar: '' }));
+    (member.machine ? undefined : view.snapshot?.profiles.find(profile => profile.id === member.botId)) ?? { id: member.botId, name: member.name, avatar: '' }));
   const members = $derived(team?.members.length ?? 0);
   const room = $derived(team?.archived ? labels.archivedShort : team?.paused ? labels.pausedShort
     : members === 0 ? labels.room : fill(members === 1 ? labels.roomOne : labels.roomMany, { count: count(members) }));
@@ -46,7 +46,7 @@
     if (!team) return [];
     const guest = !store.owner;
     const off = (item: MenuItem): MenuItem => guest ? { ...item, disabled: true, title: labels.onComputer } : item;
-    // An archived team still takes out a member that left the machine: the core restores it only without one.
+    // An archived team still takes out a member whose bot is gone; restoring it no longer waits for that (`docs/teams.md`).
     if (team.archived) return [
       off({ id: 'edit', label: labels.edit, glyph: PenLine, ...(guest ? { hint: labels.onComputer } : {}) }),
       off({ id: 'restore', label: labels.restore, glyph: ArchiveRestore }),
