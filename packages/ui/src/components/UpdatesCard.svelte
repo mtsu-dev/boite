@@ -36,7 +36,9 @@
     .filter((part) => !(machine.local && part.id === 'app'))
     .map((part) => ({ id: machine.id, machine: workspace.machines.find((entry) => entry.id === machine.id), label: machine.label, part }))));
   /** A server's own refusal (a cancel, a release it would not take): said under the list, not lost. */
-  const failures = $derived(workspace.machines.filter((machine) => machine.store.owner && !machine.store.localCore && machine.store.serverUpdater.error));
+  const failures = $derived(workspace.machines.filter((machine) => machine.store.owner && !machine.store.localCore
+    && (machine.store.serverUpdater.error || (machine.store.serverUpdater.snapshot?.phase === 'error'
+      && !machine.store.serverUpdater.snapshot.version && machine.store.serverUpdater.snapshot.error))));
   const othersStartable = $derived(others.some(({ part }) => part.startable));
   /** A release downloaded and nothing else to start: the button restarts into it. */
   const restarts = $derived(app?.phase === 'ready' && !othersStartable);
@@ -167,8 +169,8 @@
   {/if}
   {#each failures as machine (machine.id)}
     <p class="failure" role="alert" data-testid="updates-failure">
-      <span>{listedName(machine)}: {machine.store.serverUpdater.error}</span>
-      <button type="button" class="ghost small" disabled={machine.store.connection !== 'ready' || machine.store.serverUpdater.busy} onclick={() => void machine.store.serverUpdater.load()}><span class="ui-label">{strings.common.retry}</span></button>
+      <span>{listedName(machine)}: {machine.store.serverUpdater.error ?? machine.store.serverUpdater.snapshot?.error}</span>
+      <button type="button" class="ghost small" disabled={machine.store.connection !== 'ready' || machine.store.serverUpdater.busy} onclick={() => void machine.store.serverUpdater.load(true)}><span class="ui-label">{strings.common.retry}</span></button>
     </p>
   {/each}
   {#if others.length > 0}

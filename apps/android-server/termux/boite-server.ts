@@ -1,14 +1,7 @@
 /**
- * `boite-server`: the Boite core on an Android phone, inside Termux.
- *
- * install.sh puts Bun and this file in ~/.boite-server and a `boite-server`
- * command on Termux's PATH. Everything else comes from a signed release:
- * `update` downloads `boite-server_<version>_android.zip`, checks its Minisign
- * signature against the key the desktop updater trusts, unpacks it beside the
- * previous one and switches `current`. A supervisor started detached from
- * Termux keeps the core running and starts it again when it exits. The Boite
- * Server app drives these commands through Termux's RUN_COMMAND intent and
- * reads their `--json` answers. docs/android-server.md.
+ * Boite in Termux: install.sh bootstraps this controller and Bun; signed bundles supply the core and UI.
+ * A detached supervisor restarts the core. The Android app invokes commands through Termux RUN_COMMAND
+ * and reads their --json answers. Installation, signature verification and rollback: docs/android-server.md.
  */
 import { spawn, spawnSync, type ChildProcess, type SpawnSyncReturns } from 'node:child_process';
 import { createHash, createPublicKey, randomUUID, verify, type KeyObject } from 'node:crypto';
@@ -29,6 +22,8 @@ const OWNERS = [`https://github.com/${REPOSITORY}`, 'https://github.com/beboite/
 export const UPDATE_PUBLIC_KEY = 'dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEIxQUMwNkU2MzREQjRFMTUKUldRVlR0czA1Z2Fzc1JuNTArSldvdXVsRi9NbGNrTWQ5QUFxcmdOZXllRnBKL1djRFVwMFg3MS8K';
 /** The updater manifest's key for this bundle (scripts/ci/updater-manifest.ts). */
 export const TARGET = 'android-aarch64-server';
+/** Capability read by the core before invoking the managed worker commands. */
+export const MANAGED_UPDATE_PROTOCOL = 1;
 const CLAUDE_RELEASES = 'https://downloads.claude.ai/claude-code-releases';
 /** What Claude Code's glibc build names as its ELF interpreter. */
 export const GLIBC_INTERPRETER = '/lib/ld-linux-aarch64.so.1';
@@ -38,12 +33,11 @@ const STOP_GRACE_MS = 60_000;
 /** Seconds between restarts of a core that keeps exiting within a minute of starting. */
 const BACKOFF_S = [1, 2, 5, 10, 30, 60];
 const MAX_LOG_BYTES = 8 * 1024 * 1024;
-const KEPT_RELEASES = 2;
 
 const PREFIX = process.env.PREFIX || '/data/data/com.termux/files/usr';
 const HOME = process.env.HOME || '/data/data/com.termux/files/home';
 /** Everything this server owns; `BOITE_SERVER_HOME` is for tests. */
-export const ROOT = process.env.BOITE_SERVER_HOME || join(HOME, '.boite-server');
+export const ROOT = process.env.BOITE_SERVER_HOME || process.env.BOITE_ANDROID_SERVER_ROOT || join(HOME, '.boite-server');
 const at = (...parts: string[]) => join(ROOT, ...parts);
 export const PATHS = {
   config: at('config.json'),
@@ -60,7 +54,6 @@ export const PATHS = {
   downloads: at('downloads'),
 };
 
-// ---------------------------------------------------------------------------
 // Configuration
 
 export type Channel = 'stable' | 'nightly';
@@ -131,7 +124,6 @@ function getprop(property: string): string {
   return result.status === 0 ? result.stdout : '';
 }
 
-// ---------------------------------------------------------------------------
 // Addresses
 
 export type Interfaces = NodeJS.Dict<NetworkInterfaceInfo[]>;
@@ -183,7 +175,6 @@ export function pairingLinks(url: string, reachable: string[]): string[] {
   return links.length ? links : [url];
 }
 
-// ---------------------------------------------------------------------------
 // Processes
 
 /** Field 22 of /proc/<pid>/stat: when the process started, in clock ticks since boot. A reused PID has another. */
@@ -423,16 +414,19 @@ async function ensureRuntime(bun: Runtime, say: (line: string) => void): Promise
   const binary = join(dir, 'bun');
   if (!existsSync(binary)) {
     say(`Bun ${bun.version} for Android`);
-    const zip = join(PATHS.downloads, `bun-${bun.version}.zip`);
-    const digest = await download(`https://github.com/oven-sh/bun/releases/download/bun-v${bun.version}/bun-linux-aarch64-android.zip`, zip, say);
-    if (digest !== bun.sha256) throw new Error(`bun-linux-aarch64-android.zip ${bun.version} hashes to ${digest}, the release expects ${bun.sha256}`);
-    const staging = `${dir}.tmp`;
-    unzip(zip, staging);
-    chmodSync(join(staging, 'bun-linux-aarch64-android', 'bun'), 0o755);
-    mkdirSync(dir, { recursive: true });
-    renameSync(join(staging, 'bun-linux-aarch64-android', 'bun'), binary);
-    rmSync(staging, { recursive: true, force: true });
-    rmSync(zip, { force: true });
+    const zip = join(PATHS.downloads, `bun-${bun.version}-${randomUUID()}.zip`);
+    const staging = `${zip}.tmp`;
+    try {
+      const digest = await download(`https://github.com/oven-sh/bun/releases/download/bun-v${bun.version}/bun-linux-aarch64-android.zip`, zip, say);
+      if (digest !== bun.sha256) throw new Error(`bun-linux-aarch64-android.zip ${bun.version} hashes to ${digest}, the release expects ${bun.sha256}`);
+      unzip(zip, staging);
+      chmodSync(join(staging, 'bun-linux-aarch64-android', 'bun'), 0o755);
+      mkdirSync(dir, { recursive: true });
+      if (!existsSync(binary)) renameSync(join(staging, 'bun-linux-aarch64-android', 'bun'), binary);
+    } finally {
+      rmSync(staging, { recursive: true, force: true });
+      rmSync(zip, { force: true });
+    }
   }
   return binary;
 }
@@ -442,28 +436,28 @@ export interface Prepared { staging: string; release: Release; runtime: string; 
 /** Downloads, checks and unpacks a release beside the running one, which keeps serving meanwhile. */
 async function prepareRelease(source: { offer: Offer } | { bundle: string }, say: (line: string) => void): Promise<Prepared> {
   mkdirSync(PATHS.releases, { recursive: true, mode: 0o700 });
-  let zip: string;
-  if ('offer' in source) {
-    zip = join(PATHS.downloads, bundleName(source.offer.version));
-    say(`Boite ${source.offer.version}`);
-    await download(source.offer.url, zip, say);
-    verifyFile(zip, source.offer.signature);
-  } else {
-    // A bundle built by hand: the person who copied it into Termux vouches for it.
-    zip = source.bundle;
-    say(`Boite from ${zip} (local bundle, signature not checked)`);
-  }
-  const staging = join(PATHS.releases, `.staging-${process.pid}`);
-  unzip(zip, staging);
-  if ('offer' in source) rmSync(zip, { force: true });
-  const release = readRelease(staging);
-  if ('offer' in source && release.version !== source.offer.version) {
-    throw new Error(`the signed bundle of v${source.offer.version} says it is ${release.version}`);
-  }
-  for (const required of ['core/main.js', 'ui/index.html', 'boite-server.ts']) {
-    if (!existsSync(join(staging, required))) throw new Error(`the bundle of ${release.version} has no ${required}`);
-  }
-  return { staging, release, runtime: await ensureRuntime(release.bun, say), controller: readFileSync(join(staging, 'boite-server.ts')) };
+  const remote = 'offer' in source;
+  const zip = remote ? join(PATHS.downloads, `${process.pid}-${randomUUID()}-${bundleName(source.offer.version)}`) : source.bundle;
+  const staging = join(PATHS.releases, `.staging-${process.pid}-${randomUUID()}`);
+  try {
+    if (remote) {
+      say(`Boite ${source.offer.version}`);
+      await download(source.offer.url, zip, say);
+      verifyFile(zip, source.offer.signature);
+    } else say(`Boite from ${zip} (local bundle, signature not checked)`);
+    unzip(zip, staging);
+    const release = readRelease(staging);
+    if (remote && release.version !== source.offer.version) {
+      throw new Error(`the signed bundle of v${source.offer.version} says it is ${release.version}`);
+    }
+    for (const required of ['core/main.js', 'ui/index.html', 'boite-server.ts']) {
+      if (!existsSync(join(staging, required))) throw new Error(`the bundle of ${release.version} has no ${required}`);
+    }
+    return { staging, release, runtime: await ensureRuntime(release.bun, say), controller: readFileSync(join(staging, 'boite-server.ts')) };
+  } catch (error) {
+    rmSync(staging, { recursive: true, force: true });
+    throw error;
+  } finally { if (remote) rmSync(zip, { force: true }); }
 }
 
 /** Where the installed generation is selected: the release directories, `current`, the Bun link and this controller. */
@@ -513,30 +507,7 @@ export function planActivation({ staging, release, runtime, controller }: Prepar
   return { apply, rollback, commit: () => { undo.length = 0; rmSync(aside, { recursive: true, force: true }); } };
 }
 
-/** Keeps the current release and the one before it, for `rollback`. */
-function pruneReleases(keep: string[]): void {
-  const entries = readdirSync(PATHS.releases, { withFileTypes: true }).filter((entry) => entry.isDirectory());
-  // What an interrupted update left behind.
-  for (const entry of entries) {
-    if (entry.name.startsWith('.staging-') || entry.name.includes('.replaced-')) rmSync(join(PATHS.releases, entry.name), { recursive: true, force: true });
-  }
-  const older = entries
-    .filter((entry) => VERSION.test(entry.name) && !keep.includes(join(PATHS.releases, entry.name)))
-    .map((entry) => entry.name)
-    .sort((a, b) => Bun.semver.order(b, a));
-  for (const name of older.slice(Math.max(0, KEPT_RELEASES - keep.length))) rmSync(join(PATHS.releases, name), { recursive: true, force: true });
-  const kept = new Set([...keep, ...older.slice(0, Math.max(0, KEPT_RELEASES - keep.length)).map((name) => join(PATHS.releases, name))]);
-  const used = [...kept].map((dir) => { try { return `bun-${readRelease(dir).bun.version}`; } catch { return ''; } });
-  for (const entry of readdirSync(PATHS.runtime, { withFileTypes: true })) {
-    if (entry.isDirectory() && entry.name.startsWith('bun-') && !used.includes(entry.name)) {
-      rmSync(join(PATHS.runtime, entry.name), { recursive: true, force: true });
-    }
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Claude Code
-
 /**
  * Claude Code ships no Android build. Its glibc build runs once its ELF
  * interpreter names the glibc loader Termux's glibc-runner installs. That
@@ -766,6 +737,7 @@ export function coreEnv(release: Release, config = readConfig(), name = config.n
     BOITE_DATA_DIR: PATHS.data,
     BOITE_UI_DIR: join(release.dir, 'ui'),
     BOITE_CLI_DIR: PATHS.cli,
+    BOITE_ANDROID_SERVER_ROOT: ROOT,
     NODE_ENV: 'production',
   };
   // Without it the core takes the host name, `localhost` on every phone. One
@@ -1032,11 +1004,15 @@ async function update(args: Args, say: (line: string) => void): Promise<Record<s
     source = { bundle };
   } else {
     const offer = await findOffer(config.channel);
+    if (args.flag('--check')) return { ok: true, version: before?.version ?? null, available: before?.version === offer.version ? null : offer.version, changed: false, channel: config.channel, managedUpdate: MANAGED_UPDATE_PROTOCOL };
     if (before?.version === offer.version && !args.flag('--force')) return { ok: true, version: offer.version, changed: false };
-    if (args.flag('--check')) return { ok: true, version: before?.version ?? null, available: offer.version, changed: false };
     source = { offer };
   }
   const prepared = await prepareRelease(source, say);
+  return activatePrepared(prepared, before, say);
+}
+
+async function activatePrepared(prepared: Prepared, before: Release | null, say: (line: string) => void): Promise<Record<string, unknown>> {
   // Everything that can fail without touching what runs comes before the core stops.
   const activation = planActivation(prepared);
   writeCliShim();
@@ -1061,8 +1037,22 @@ async function update(args: Args, say: (line: string) => void): Promise<Record<s
   }
   activation.commit();
   const previous = before && before.version !== installed.version ? before : null;
-  pruneReleases([installed.dir, ...(previous ? [previous.dir] : [])]);
+  const helper = join(installed.dir, 'managed-update.ts');
+  if (existsSync(helper)) (await import(helper)).pruneReleases([installed.dir, ...(previous ? [previous.dir] : [])], PATHS, readRelease);
   return { ok: true, version: installed.version, previous: previous?.version ?? null, changed: true };
+}
+
+
+async function managedCommand(command: string, file: string): Promise<void> {
+  const helper = join(dirname(import.meta.path), 'managed-update.ts');
+  const managed: typeof import('./managed-update.ts') = await import(existsSync(helper) ? helper : join(currentRelease()!.dir, 'managed-update.ts'));
+  if (command === 'managed-update-launch') return managed.launchManagedWorker(file, ROOT, HOME, currentRelease()!.dir);
+  return managed.managedWorker(file, {
+    root: ROOT, dataDir: PATHS.data, releases: PATHS.releases, log: line,
+    snapshot: () => { const core = readState().core; return { version: currentRelease()?.version, channel: readConfig().channel, corePid: alive(core) ? core.pid : null }; },
+    find: findOffer, prepare: offer => prepareRelease({ offer }, line),
+    activate: async prepared => { await activatePrepared(prepared, currentRelease(), line); },
+  });
 }
 
 async function pair(args: Args): Promise<{ ok: true; url: string; urls: string[]; role: string; expiresAt: string | null }> {
@@ -1131,6 +1121,12 @@ async function main(argv: string[]): Promise<void> {
     process.stdout.write(json ? `${JSON.stringify(value)}\n` : `${text}\n`);
   };
   switch (command) {
+    case 'managed-update-launch':
+      if (!rest[0]) throw new Error('managed-update-launch expects a plan file');
+      return managedCommand(command, rest[0]);
+    case 'managed-update-worker':
+      if (!rest[0]) throw new Error('managed-update-worker expects a plan file');
+      return managedCommand(command, rest[0]);
     case 'supervise':
       return supervise();
     case 'status': {

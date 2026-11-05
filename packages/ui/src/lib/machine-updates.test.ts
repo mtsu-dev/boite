@@ -7,6 +7,15 @@ const agent = (patch: Partial<HarnessUpdate> = {}): HarnessUpdate => ({
   state: 'idle', message: null, checkedAt: 1, ...patch
 });
 
+test('an agent check never calls an unchecked Boite installation up to date', () => {
+  for (const server of [null, { phase: 'idle' as const }]) {
+    expect(machineUpdateState({ server, app: null, agents: [agent()] })).toBeNull();
+  }
+  expect(machineUpdateState({ server: null, app: { phase: 'idle' }, agents: [agent()] })).toBeNull();
+  // A remote desktop core has no independent server updater.
+  expect(machineUpdateState({ server: { phase: 'idle' }, app: { phase: 'current' }, agents: [agent()] })).toBe('current');
+});
+
 test('a machine row reads its updates as one word, the most pressing first', () => {
   // Nothing has answered yet: the row says nothing rather than "Up to date".
   expect(machineUpdateState({ server: null, app: null, agents: [] })).toBeNull();

@@ -108,7 +108,7 @@
     if (machine.store.localCore || !machine.store.owner) return null;
     if (machine.store.serverUpdater.legacy) return strings.serverUpdate.legacy;
     const state = machine.store.serverUpdater.snapshot;
-    if (!state || state.mode === 'systemd' || state.phase !== 'available') return null;
+    if (!state || ['systemd', 'android'].includes(state.mode) || state.phase !== 'available') return null;
     return state.mode === 'docker' ? `${strings.serverUpdate.docker} docker compose pull && docker compose up -d` : strings.serverUpdate.manual;
   }
 

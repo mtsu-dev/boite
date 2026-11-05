@@ -39,7 +39,6 @@ export function machineUpdateState({ server, app, agents }: MachineUpdates): Mac
   // `ready` is the desktop app's downloaded release, waiting for a restart.
   if (phases.includes('available') || phases.includes('ready') || agents.some(harnessOffered)) return 'available';
   if (phases.includes('checking') || agents.some((update) => update.state === 'checking')) return 'checking';
-  // Nothing was read yet says nothing: a row is up to date only once something answered.
-  const answered = phases.includes('current') || agents.some((update) => update.checkedAt !== null);
-  return answered ? 'current' : null;
+  // An agent's successful check says nothing about Boite's own release.
+  return phases.includes('current') ? 'current' : null;
 }

@@ -168,8 +168,11 @@ test('OpenCode 2 compacts at the limit of each thread type and takes a changed o
     expect((await configs()).map(config => config['compaction'])).toEqual([undefined, { buffer: 800_000 }]);
     // A subagent compacts at its own limit, and without OpenCode's background compaction.
     const child = harness.core.threads.create({ projectId: project.id, providerId: 'opencode-v2', accountId: account.id }, { id: 'thr_opencode_child', branch: null, parentThreadId: thread.id });
+    const reported = owner.next('turn.finished', result => result.threadId === thread.id, 20_000);
     await run(child.id, '[done] child');
     expect((await configs()).at(-1)).toMatchObject({ compaction: { buffer: 700_000 }, experimental: { background_compaction: false } });
+    // The child's result wakes its parent: let that answer finish before the next user turn.
+    expect(await reported).toMatchObject({ status: 'done', error: null });
     // A limit changed during a turn leaves that turn's process alone; one at the window gives the native ceiling back.
     const boundary = owner.next('turn.toolCompleted', event => event.threadId === thread.id, 20_000);
     const finished = owner.next('turn.finished', result => result.threadId === thread.id, 20_000);
