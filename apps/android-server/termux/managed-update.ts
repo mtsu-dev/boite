@@ -69,6 +69,7 @@ interface ManagedController<Prepared> extends Omit<ManagedUpdateHooks<Prepared>,
 export async function managedWorker<Prepared extends { staging: string }>(file: string, controller: ManagedController<Prepared>): Promise<void> {
   const plan = readManagedPlan(file, controller.root, controller.dataDir);
   const directory = posix.dirname(file);
+  writeFileSync(join(directory, 'worker.pid'), String(process.pid), { mode: 0o600 });
   const validate = () => {
     const state = controller.snapshot();
     if (state.version !== plan.previousVersion) throw new Error('Android update previousVersion must match the installed release');
@@ -89,13 +90,30 @@ export async function managedWorker<Prepared extends { staging: string }>(file: 
     if (existsSync(directory)) writeFileSync(join(directory, 'error'), message, { mode: 0o600 });
     writeFileSync(join(controller.dataDir, 'server-update-result.json'), JSON.stringify({ error: message }), { mode: 0o600 });
     throw error;
-  } finally {
-    rmSync(join(controller.releases, `.staging-${process.pid}`), { recursive: true, force: true });
+  }
+}
+
+/** Reap only this installation's terminal operations after their recorded worker has exited. */
+function clearFinishedManagedUpdates(root: string): void {
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !/^\.boite-update-[a-f0-9-]{36}$/.test(entry.name)) continue;
+    const directory = join(root, entry.name);
+    try {
+      readManagedPlan(join(directory, 'plan.json'), root, join(root, 'data'));
+      if (!existsSync(join(directory, 'error')) && !existsSync(join(directory, 'cancelled'))) continue;
+      const pid = Number(readFileSync(join(directory, 'worker.pid'), 'utf8'));
+      if (!Number.isSafeInteger(pid) || pid < 1) continue;
+      try { process.kill(pid, 0); }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ESRCH') rmSync(directory, { recursive: true, force: true });
+      }
+    } catch { /* Unknown owner or worker: leave it alone. */ }
   }
 }
 
 export async function launchManagedWorker(file: string, root: string, home: string, release: string): Promise<void> {
   readManagedPlan(file, root, join(root, 'data'));
+  clearFinishedManagedUpdates(root);
   const directory = posix.dirname(file);
   const controller = join(directory, 'controller.ts');
   const source = process.argv[1]!;

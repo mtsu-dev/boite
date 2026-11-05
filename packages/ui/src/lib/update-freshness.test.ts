@@ -53,7 +53,7 @@ test('connecting to an Android server checks Boite even when only its agents wer
   const { store, refreshes } = await server(null, 'claude', 'android');
   await vi.waitFor(() => expect(store.harnessUpdates.length).toBeGreaterThan(0));
   await vi.waitFor(() => expect(refreshes('core.updateStatus')).toBe(1));
-  expect(store.serverUpdater.snapshot?.phase).toBe('available');
+  await vi.waitFor(() => expect(store.serverUpdater.snapshot?.phase).toBe('available'));
 });
 
 test('one agent updated a moment ago does not hide the others\' stale or missing readings', async () => {

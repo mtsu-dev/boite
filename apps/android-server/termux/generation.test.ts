@@ -260,4 +260,39 @@ test('a controller installed by an older updater launches its managed worker fro
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error; running = false; }
   }
   expect(running).toBe(false);
+  const plan = JSON.parse(readFileSync(file, 'utf8'));
+  const preserve: string[] = [];
+  for (const [id, pid, foreign] of [
+    ['bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', process.pid, false],
+    ['cccccccc-cccc-cccc-cccc-cccccccccccc', launched.pid, true],
+    ['dddddddd-dddd-dddd-dddd-dddddddddddd', null, false],
+  ] as const) {
+    const other = `${root}/.boite-update-${id}`;
+    mkdirSync(other);
+    writeFileSync(`${other}/plan.json`, JSON.stringify({ ...plan, id, root: foreign ? `${root}/another-installation` : root }));
+    if (pid) writeFileSync(`${other}/worker.pid`, String(pid));
+    writeFileSync(`${other}/error`, 'previous failure');
+    writeFileSync(`${other}/cancelled`, '');
+    preserve.push(other);
+  }
+  const retry = `${root}/.boite-update-eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee`;
+  mkdirSync(retry);
+  const retryFile = `${retry}/plan.json`;
+  writeFileSync(retryFile, JSON.stringify({ ...plan, id: 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee' }));
+  const next = Bun.spawn([process.execPath, join(root, 'boite-server.ts'), 'managed-update-launch', retryFile], {
+    env: { ...process.env, BOITE_SERVER_HOME: root, HOME: root }, stdout: 'pipe', stderr: 'pipe',
+  });
+  const [nextOut, nextError, nextCode] = await Promise.all([new Response(next.stdout).text(), new Response(next.stderr).text(), next.exited]);
+  expect({ nextCode, nextError }).toEqual({ nextCode: 0, nextError: '' });
+  const nextPid = (JSON.parse(nextOut) as { pid: number }).pid;
+  let nextRunning = true;
+  for (let i = 0; i < 400 && nextRunning; i++) {
+    try { process.kill(nextPid, 0); await Bun.sleep(10); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error; nextRunning = false; }
+  }
+  expect(nextRunning).toBe(false);
+  expect(readFileSync(`${retry}/error`, 'utf8')).toContain('originalPid must match');
+  expect(existsSync(directory)).toBe(false);
+  for (const other of preserve) expect(existsSync(other)).toBe(true);
+  expect(JSON.parse(readFileSync(`${root}/data/server-update-result.json`, 'utf8')).error).toContain('originalPid must match');
 });

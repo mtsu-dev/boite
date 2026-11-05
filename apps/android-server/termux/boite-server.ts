@@ -1,14 +1,7 @@
 /**
- * `boite-server`: the Boite core on an Android phone, inside Termux.
- *
- * install.sh puts Bun and this file in ~/.boite-server and a `boite-server`
- * command on Termux's PATH. Everything else comes from a signed release:
- * `update` downloads `boite-server_<version>_android.zip`, checks its Minisign
- * signature against the key the desktop updater trusts, unpacks it beside the
- * previous one and switches `current`. A supervisor started detached from
- * Termux keeps the core running and starts it again when it exits. The Boite
- * Server app drives these commands through Termux's RUN_COMMAND intent and
- * reads their `--json` answers. docs/android-server.md.
+ * Boite in Termux: install.sh bootstraps this controller and Bun; signed bundles supply the core and UI.
+ * A detached supervisor restarts the core. The Android app invokes commands through Termux RUN_COMMAND
+ * and reads their --json answers. Installation, signature verification and rollback: docs/android-server.md.
  */
 import { spawn, spawnSync, type ChildProcess, type SpawnSyncReturns } from 'node:child_process';
 import { createHash, createPublicKey, randomUUID, verify, type KeyObject } from 'node:crypto';
@@ -422,15 +415,18 @@ async function ensureRuntime(bun: Runtime, say: (line: string) => void): Promise
   if (!existsSync(binary)) {
     say(`Bun ${bun.version} for Android`);
     const zip = join(PATHS.downloads, `bun-${bun.version}-${randomUUID()}.zip`);
-    const digest = await download(`https://github.com/oven-sh/bun/releases/download/bun-v${bun.version}/bun-linux-aarch64-android.zip`, zip, say);
-    if (digest !== bun.sha256) throw new Error(`bun-linux-aarch64-android.zip ${bun.version} hashes to ${digest}, the release expects ${bun.sha256}`);
     const staging = `${zip}.tmp`;
-    unzip(zip, staging);
-    chmodSync(join(staging, 'bun-linux-aarch64-android', 'bun'), 0o755);
-    mkdirSync(dir, { recursive: true });
-    if (!existsSync(binary)) renameSync(join(staging, 'bun-linux-aarch64-android', 'bun'), binary);
-    rmSync(staging, { recursive: true, force: true });
-    rmSync(zip, { force: true });
+    try {
+      const digest = await download(`https://github.com/oven-sh/bun/releases/download/bun-v${bun.version}/bun-linux-aarch64-android.zip`, zip, say);
+      if (digest !== bun.sha256) throw new Error(`bun-linux-aarch64-android.zip ${bun.version} hashes to ${digest}, the release expects ${bun.sha256}`);
+      unzip(zip, staging);
+      chmodSync(join(staging, 'bun-linux-aarch64-android', 'bun'), 0o755);
+      mkdirSync(dir, { recursive: true });
+      if (!existsSync(binary)) renameSync(join(staging, 'bun-linux-aarch64-android', 'bun'), binary);
+    } finally {
+      rmSync(staging, { recursive: true, force: true });
+      rmSync(zip, { force: true });
+    }
   }
   return binary;
 }
@@ -440,28 +436,28 @@ export interface Prepared { staging: string; release: Release; runtime: string; 
 /** Downloads, checks and unpacks a release beside the running one, which keeps serving meanwhile. */
 async function prepareRelease(source: { offer: Offer } | { bundle: string }, say: (line: string) => void): Promise<Prepared> {
   mkdirSync(PATHS.releases, { recursive: true, mode: 0o700 });
-  let zip: string;
-  if ('offer' in source) {
-    zip = join(PATHS.downloads, `${process.pid}-${bundleName(source.offer.version)}`);
-    say(`Boite ${source.offer.version}`);
-    await download(source.offer.url, zip, say);
-    verifyFile(zip, source.offer.signature);
-  } else {
-    // A bundle built by hand: the person who copied it into Termux vouches for it.
-    zip = source.bundle;
-    say(`Boite from ${zip} (local bundle, signature not checked)`);
-  }
-  const staging = join(PATHS.releases, `.staging-${process.pid}`);
-  unzip(zip, staging);
-  if ('offer' in source) rmSync(zip, { force: true });
-  const release = readRelease(staging);
-  if ('offer' in source && release.version !== source.offer.version) {
-    throw new Error(`the signed bundle of v${source.offer.version} says it is ${release.version}`);
-  }
-  for (const required of ['core/main.js', 'ui/index.html', 'boite-server.ts']) {
-    if (!existsSync(join(staging, required))) throw new Error(`the bundle of ${release.version} has no ${required}`);
-  }
-  return { staging, release, runtime: await ensureRuntime(release.bun, say), controller: readFileSync(join(staging, 'boite-server.ts')) };
+  const remote = 'offer' in source;
+  const zip = remote ? join(PATHS.downloads, `${process.pid}-${randomUUID()}-${bundleName(source.offer.version)}`) : source.bundle;
+  const staging = join(PATHS.releases, `.staging-${process.pid}-${randomUUID()}`);
+  try {
+    if (remote) {
+      say(`Boite ${source.offer.version}`);
+      await download(source.offer.url, zip, say);
+      verifyFile(zip, source.offer.signature);
+    } else say(`Boite from ${zip} (local bundle, signature not checked)`);
+    unzip(zip, staging);
+    const release = readRelease(staging);
+    if (remote && release.version !== source.offer.version) {
+      throw new Error(`the signed bundle of v${source.offer.version} says it is ${release.version}`);
+    }
+    for (const required of ['core/main.js', 'ui/index.html', 'boite-server.ts']) {
+      if (!existsSync(join(staging, required))) throw new Error(`the bundle of ${release.version} has no ${required}`);
+    }
+    return { staging, release, runtime: await ensureRuntime(release.bun, say), controller: readFileSync(join(staging, 'boite-server.ts')) };
+  } catch (error) {
+    rmSync(staging, { recursive: true, force: true });
+    throw error;
+  } finally { if (remote) rmSync(zip, { force: true }); }
 }
 
 /** Where the installed generation is selected: the release directories, `current`, the Bun link and this controller. */

@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { thrown } from '../../../packages/core/test/settle.ts';
 import { runManagedUpdate, type ManagedUpdatePlan } from './managed-update.ts';
 
 // A real ZIP with bun-linux-aarch64-android/bun containing "fixture-runtime".
@@ -56,6 +57,57 @@ test('cancelling during a Bun change cannot remove the runtime archive or stagin
     expect(readdirSync(`${root}/downloads`)).toEqual([]);
     expect(readdirSync(`${root}/runtime`)).toEqual(['bun-9.9.9']);
     expect(existsSync(`${retry.directory}/ready`)).toBe(true);
+  } finally {
+    fetcher?.mockRestore();
+    if (previousHome === undefined) delete process.env.BOITE_SERVER_HOME; else process.env.BOITE_SERVER_HOME = previousHome;
+    if (previousPath === undefined) delete process.env.PATH; else process.env.PATH = previousPath;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test.each(['digest', 'extract', 'stream', 'signature', 'local'])('failed %s preparation removes only its own download and extraction', async (failure) => {
+  const root = mkdtempSync(join(tmpdir(), 'boite-runtime-failure-')).replaceAll('\\', '/');
+  const previousHome = process.env.BOITE_SERVER_HOME;
+  const previousPath = process.env.PATH;
+  let fetcher: ReturnType<typeof spyOn> | undefined;
+  try {
+    const controller = `${root}/controller.ts`;
+    writeFileSync(controller, readFileSync(join(import.meta.dir, 'boite-server.ts'), 'utf8') + '\nexport { ensureRuntime, prepareRelease };\n');
+    process.env.BOITE_SERVER_HOME = root;
+    const { ensureRuntime, prepareRelease } = await import(controller);
+    if (previousHome === undefined) delete process.env.BOITE_SERVER_HOME; else process.env.BOITE_SERVER_HOME = previousHome;
+    if (process.platform === 'win32') process.env.PATH = `C:/Program Files/Git/usr/bin;${previousPath}`;
+    mkdirSync(`${root}/downloads`);
+    mkdirSync(`${root}/releases`);
+    writeFileSync(`${root}/downloads/other-worker.zip`, 'keep');
+    mkdirSync(`${root}/downloads/other-worker.zip.tmp`);
+    mkdirSync(`${root}/releases/.staging-other-worker`);
+    const wrongEntry = Buffer.from(archive);
+    // Extraction succeeds but chmod cannot find the runtime: exercises cleanup after unzip.
+    const entry = 'bun-linux-aarch64-android/bun';
+    for (let offset = wrongEntry.indexOf(entry); offset !== -1; offset = wrongEntry.indexOf(entry, offset + entry.length)) {
+      wrongEntry.write('bad-linux-aarch64-android/bun', offset);
+    }
+    let bytes = archive;
+    let brokenStream = false;
+    fetcher = spyOn(globalThis, 'fetch').mockImplementation(Object.assign(async () => new Response(
+      brokenStream ? new ReadableStream({ start(stream) { stream.enqueue(archive.subarray(0, 10)); stream.error(new Error('download interrupted')); } }) : bytes,
+    ), { preconnect: fetch.preconnect }));
+    if (['digest', 'extract', 'stream'].includes(failure)) {
+      bytes = failure === 'extract' ? wrongEntry : archive;
+      brokenStream = failure === 'stream';
+      const digest = failure === 'digest' ? '0'.repeat(64) : createHash('sha256').update(bytes).digest('hex');
+      expect(await thrown(ensureRuntime({ version: '9.9.9', sha256: digest }, () => {}))).toThrow(failure === 'digest' ? 'hashes to' : failure === 'extract' ? 'ENOENT' : 'download interrupted');
+    } else if (failure === 'signature') {
+      expect(await thrown(prepareRelease({ offer: { version: '2.0.0', url: 'https://fixture.invalid/bundle.zip', signature: 'invalid' } }, () => {}))).toThrow('not a Minisign packet');
+    } else {
+      const local = `${root}/local.zip`;
+      writeFileSync(local, archive);
+      expect(await thrown(prepareRelease({ bundle: local }, () => {}))).toThrow('server-release.json');
+      expect(readFileSync(local)).toEqual(archive);
+    }
+    expect(readdirSync(`${root}/downloads`).sort()).toEqual(['other-worker.zip', 'other-worker.zip.tmp']);
+    expect(readdirSync(`${root}/releases`)).toEqual(['.staging-other-worker']);
   } finally {
     fetcher?.mockRestore();
     if (previousHome === undefined) delete process.env.BOITE_SERVER_HOME; else process.env.BOITE_SERVER_HOME = previousHome;
