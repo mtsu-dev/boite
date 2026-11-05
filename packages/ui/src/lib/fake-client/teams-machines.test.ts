@@ -51,3 +51,21 @@ test('the bots, teams and automatic posts of two machines counting alike keep ap
   expect(read.team.host).toBe('desk');
   expect(read.posts.map(post => post.text)).toEqual(['From here.', 'From there.']);
 });
+
+test('a bot in a team of one name on each of two machines is told to name one by id', async () => {
+  const desk = await machine('desk', 'Desk'), pc = await machine('pc', 'Pc');
+  await desk.call('group.create', { name: 'Home' });
+  await pc.call('group.join', { invite: (await desk.call('group.invite', {})).invite });
+  const ada = await bot(desk, 'Ada'), bob = await bot(pc, 'Bob');
+  const threadId = (await desk.call('agents.open', { agentId: ada.id })).threadId;
+  const held = await desk.call('teams.create', { name: 'Crew', members: [ada.id, 'Pc/Bob'] });
+  const away = await pc.call('teams.create', { name: 'crew', members: [bob.id, 'Desk/Ada'] });
+
+  const ambiguous = { message: `team: 2 of your teams are named "CREW"; name one by id: ${held.id}, ${away.id}`, data: { field: 'team' } };
+  await expect(desk.call('teams.read', { threadId, team: 'CREW' })).rejects.toMatchObject(ambiguous);
+  await expect(desk.call('teams.say', { threadId, team: 'CREW', text: 'Which one?' })).rejects.toMatchObject(ambiguous);
+
+  // The id the refusal offers settles it, and the owner names only the team held here.
+  expect((await desk.call('teams.read', { threadId, team: away.id })).team.id).toBe(away.id);
+  expect((await desk.call('teams.read', { team: 'CREW' })).team.id).toBe(held.id);
+});
