@@ -32,7 +32,7 @@ real('an open given up while its browser starts leaves no tab and no navigation 
     harness.core.browser.stepMs = bounds;
     await host.close();
   }
-}, 30_000);
+}, 150_000);
 
 real('an action given up on a tab marks it until its work ends: other commands on it are refused at once, close works', async () => {
   const { harness, agent, threadId } = browserFixture;
@@ -59,4 +59,4 @@ real('an action given up on a tab marks it until its work ends: other commands o
   expect((await agent.call('browser.command', { threadId, tabId, action: { kind: 'close' } })).value).toMatchObject({ closed: true });
   const closed = (await agent.call('browser.command', { threadId, action: { kind: 'status' } })).value as Tabs;
   expect(closed.tabs).toEqual([]);
-}, 30_000);
+}, 150_000);

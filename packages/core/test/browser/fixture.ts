@@ -228,9 +228,17 @@ export function createBrowserFixture() {
     hosts.add(close);
     try {
       const args = chromiumArgs(dir, 'linux').filter(arg => arg !== '--remote-debugging-pipe');
-      browser = Bun.spawn([findChromium().path!, ...args, '--remote-debugging-port=0', '--remote-debugging-address=127.0.0.1', ...extraArgs], { stdout: 'ignore', stderr: 'ignore' });
+      const started = browser = Bun.spawn([findChromium().path!, ...args, '--remote-debugging-port=0', '--remote-debugging-address=127.0.0.1', ...extraArgs], { stdout: 'ignore', stderr: 'pipe' });
+      // Chromium blocks on a full pipe, so it is read to the end; the tail says why a browser exited at once.
+      let stderrTail = '';
+      void (async () => { for await (const chunk of started.stderr.pipeThrough(new TextDecoderStream())) stderrTail = (stderrTail + chunk).slice(-2000); })().catch(() => {});
+      // The first Chromium of a file on a loaded runner has spent the default 20 s (Windows and Linux CI, 2026-11).
+      const endpoint = await waitForEndpoint(dir, started.exited, 60_000).catch(async (error: unknown) => {
+        const exited = started.exitCode === null ? 'still running' : `exit code ${started.exitCode}, signal ${started.signalCode ?? 'none'}`;
+        throw new Error(`${error instanceof Error ? error.message : String(error)} (${exited}); stderr: ${stderrTail.trim() || '(empty)'}`, { cause: error });
+      });
       // Bun's own WebSocket client closes sound devtools streams with 1002 (src/ws-client.ts).
-      const connectedSocket = socket = await TextSocket.connect(await waitForEndpoint(dir, browser.exited), 10_000)
+      const connectedSocket = socket = await TextSocket.connect(endpoint, 10_000)
         .catch((error: unknown) => { throw new Error(`could not open the desktop browser DevTools socket: ${error instanceof Error ? error.message : String(error)}`, { cause: error }); });
       const connectedApp = app = await connect(harness.url, harness.token, { client: { name, version: 'test' } });
       const relayed: string[] = [];
