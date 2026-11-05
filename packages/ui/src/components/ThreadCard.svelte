@@ -190,15 +190,17 @@
   .thread.offline .metadata {
     opacity: 0.55;
   }
-  /* One line is 30 px: the 23 px ring and 3.5 px of air above and below. */
+  /* One line is 28 px: the 21 px ring and 3.5 px of air above and below, no border,
+     so eight project headers and their rows fit a 900 px screen. */
   .row {
     display: flex;
     flex-direction: column;
     align-items: stretch;
     width: 100%;
     height: auto;
-    min-height: 30px;
-    padding: 3.5px 6px 3.5px 4px;
+    min-height: 28px;
+    padding: 3.5px 4px 3.5px 3px;
+    border-width: 0;
     gap: 0;
     background: transparent;
   }
@@ -219,8 +221,8 @@
     gap: 8px;
     position: absolute;
     bottom: 4px;
-    /* Under the title, past the ring: 4 px padding, the 23 px ring and its 6 px gap. */
-    left: 33px;
+    /* Under the title, past the ring: 3 px padding, the 21 px ring and its 5 px gap. */
+    left: 29px;
     right: 8px;
     height: 16px;
     pointer-events: none;
@@ -250,16 +252,16 @@
     flex: 0 1 auto;
     max-width: 50%;
   }
-  /* Centred on the title's line: the 30 px row less a 26 px button leaves 2 px over it. */
+  /* Centred on the title's line: the 28 px row less a 26 px button leaves 1 px over it. */
   .actions {
     position: absolute;
     right: 3px;
-    top: 2px;
+    top: 1px;
     opacity: 0;
     background: var(--color-surface-2);
   }
-  .done { position: absolute; right: 30px; top: 2px; opacity: 0; background: var(--color-surface-2); color: var(--color-muted-foreground); }
-  .pin-action { position: absolute; right: 30px; top: 2px; opacity: 0; background: var(--color-surface-2); color: var(--color-muted-foreground); }
+  .done { position: absolute; right: 30px; top: 1px; opacity: 0; background: var(--color-surface-2); color: var(--color-muted-foreground); }
+  .pin-action { position: absolute; right: 30px; top: 1px; opacity: 0; background: var(--color-surface-2); color: var(--color-muted-foreground); }
   .thread:has(.done) .pin-action { right: 57px; }
   .thread:hover .done, .thread:focus-within .done, .thread:hover .pin-action, .thread:focus-within .pin-action { opacity: 1; }
   .thread:hover .actions,
@@ -281,6 +283,9 @@
   }
   /* On touch the buttons stay drawn, so the time keeps clear of them. */
   @media (max-width: 720px), (hover: none) {
+    /* A finger keeps the 32 px row it had. */
+    .row { min-height: 32px; padding-block: 5.5px; }
+    .done, .pin-action, .actions { top: 3px; }
     .done { opacity: 1; }
     /* Touch pins from the row's menu: three buttons would leave the title no room. */
     .pin-action { display: none; }

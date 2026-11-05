@@ -126,8 +126,12 @@
   /** What waits on the user besides the conversation on screen: Back carries its mark. */
   let elsewhere = $derived(waiting.filter(e => !(e.machine.store === store && e.thread.id === store.openThread?.id)).length);
   const matches = (e: { machine: Machine; thread: ThreadSummary; project: Project | undefined }) => !query || [e.thread.title, projectName(e.project), e.thread.branch, e.machine.label].some(value => value?.toLocaleLowerCase().includes(query));
-  const inboxNeeds = $derived(lists.needs.filter(matches).map(({ machine, thread, project, reason, since }) => ({ machine, thread, project, wait: { reason, since } })));
-  const inboxWorking = $derived(lists.working.filter(matches).map(({ machine, thread, project }) => ({ machine, thread, project })));
+  const inboxNeeds = $derived(lists.needs.filter(matches).map(({ machine, thread, project, kind, reason, since }) => ({ machine, thread, project, kind, wait: { reason, since } })));
+  const inboxWorking = $derived(lists.working.filter(matches).map(({ machine, thread, project, kind }) => ({ machine, thread, project, kind })));
+  /** A lane's number counts project threads, as the strip does; the bots' rows count apart, as on the desktop home. */
+  const split = (lane: readonly { kind: string }[]) => { const bots = lane.filter(row => row.kind === 'bots').length; return { threads: lane.length - bots, bots }; };
+  const needsSplit = $derived(split(inboxNeeds));
+  const workingSplit = $derived(split(inboxWorking));
   /** Only Inbox rows say what they wait on. */
   const waitOf = (row: object) => 'wait' in row ? row.wait as { reason: InboxReason; since: number } : undefined;
   let rows = $derived(listScreen === 'activity' ? [...inboxNeeds, ...inboxWorking] : entries
@@ -149,6 +153,8 @@
   const groupWorking = $derived(inRecent && recentPreferences.groupWorking && !query);
   /** Recent's rows whose agent, sub-agents or background work are still going: the "at work" filter. */
   const atWorkRows = $derived(inRecent && !query ? rows.filter(row => workingThread(row.machine.store, row.thread)) : []);
+  /** The chip's number is the project threads at work, the strip's Working; a bot at work counts apart. */
+  const atWorkBots = $derived(atWorkRows.filter(row => row.thread.agentSessionId).length);
   let atWorkOnly = $state(false);
   const atWorkShown = $derived(atWorkOnly && atWorkRows.length > 0);
   // The chip goes with the last of that work: the filter does not come back by itself with the next turn.
@@ -250,7 +256,8 @@
     <Menu items={projects} onpick={pickProject} label={project ? `${strings.mobile.project} · ${projectName(project)}` : strings.mobile.project} placement="bottom" variant="ghost" testid="mobile-project">{#if project}<ProjectTile {project} {store} size={24} />{:else}<FolderOpen size={20} />{/if}</Menu>
   {/if}
   {#if !recover && !chatting && experimentOn('whip')}<WhipButton mobile />{/if}
-  {#if narrow.current && ContactRequestNotice && contactsShown(store)}<ContactRequestNotice {store} />{/if}
+  <!-- A conversation's row is for its title: the contacts count stays on the lists, the pages and the Inbox. -->
+  {#if narrow.current && ContactRequestNotice && contactsShown(store) && !chatting}<ContactRequestNotice {store} />{/if}
   <!-- Contacts left the bottom bar: the Bots page's header carries it with bots on, Settings lists it otherwise. -->
   {#if narrow.current && ContactsButton && contactsShown(store) && store.page === 'agents' && !mobileChrome.detail}<ContactsButton {store} />{/if}
 </header>
@@ -286,13 +293,16 @@
             </Menu>
           {/if}
           {#if atWorkRows.length > 0}
-            <button class="ghost at-work" class:on={atWorkShown} aria-pressed={atWorkShown} title={strings.mobile.atWorkFilter} data-testid="mobile-at-work" onclick={() => atWorkOnly = !atWorkShown}><Radar size={14} aria-hidden="true" /><span class="ui-label">{fill(strings.mobile.atWork, { count: String(atWorkRows.length) })}</span></button>
+            <button class="ghost at-work" class:on={atWorkShown} aria-pressed={atWorkShown} title={strings.mobile.atWorkFilter} data-testid="mobile-at-work" onclick={() => atWorkOnly = !atWorkShown}><Radar size={14} aria-hidden="true" />{#if atWorkRows.length > atWorkBots}<span class="ui-label" data-testid="mobile-at-work-threads" data-count={atWorkRows.length - atWorkBots}>{fill(strings.mobile.atWork, { count: String(atWorkRows.length - atWorkBots) })}</span>{/if}{#if atWorkBots}<span class="count bots" data-testid="mobile-at-work-bots" title={fill(strings.inbox.botsCount, { count: String(atWorkBots) })} aria-label={fill(strings.inbox.botsCount, { count: String(atWorkBots) })}><Bot size={11} aria-hidden="true" />{atWorkBots}</span>{/if}</button>
           {/if}
         </div>
       {/if}
     </div>
     {/if}
     {#if listScreen === 'threads' && groups.length && !query}<div class="lifecycle-slot"><LifecycleStrip entries={groups} prefix="mobile-" /></div>{/if}
+    {#snippet laneCount(count: { threads: number; bots: number }, testid: string)}
+      {#if count.threads}<span class="count" data-testid="{testid}-threads" data-count={count.threads} title={fill(strings.inbox.threadsCount, { count: String(count.threads) })}>{count.threads}</span>{/if}{#if count.bots}<span class="count bots" data-testid="{testid}-bots" data-count={count.bots} title={fill(strings.inbox.botsCount, { count: String(count.bots) })} aria-label={fill(strings.inbox.botsCount, { count: String(count.bots) })}><Bot size={11} aria-hidden="true" />{count.bots}</span>{/if}
+    {/snippet}
     {#snippet threadRow(row: typeof rows[number], grouped = false)}
       <!-- The row is worker 1's PhoneThreadRow: ring, two-line title, facts line, long press and both swipes. -->
       <PhoneThreadRow machine={row.machine} project={row.project} thread={row.thread} {now} {grouped} {several} wait={waitOf(row)} items={rowItems(row.machine.store, row.thread)}
@@ -391,15 +401,14 @@
       {#if ContactRequestNotice && contactsShown(store)}<div class="contact-flow"><ContactRequestNotice {store} flow /></div>{/if}
       <!-- Two lanes, as the desktop home's Inbox: what waits on the user, then the work going on. -->
       {#if inboxNeeds.length > 0}
-        {@const bots = inboxNeeds.filter(row => row.thread.agentSessionId).length}
         <!-- As on the desktop home: the threads' number is the strip's Needs you, a bot's ask counts apart. -->
-        <h2 class="lane" data-testid="mobile-inbox-needs"><span class="ui-label">{strings.inbox.needsYou}</span>{#if inboxNeeds.length > bots}<span class="count" title={fill(strings.inbox.threadsCount, { count: String(inboxNeeds.length - bots) })}>{inboxNeeds.length - bots}</span>{/if}{#if bots}<span class="count bots" title={fill(strings.inbox.botsCount, { count: String(bots) })} aria-label={fill(strings.inbox.botsCount, { count: String(bots) })}><Bot size={11} aria-hidden="true" />{bots}</span>{/if}</h2>
+        <h2 class="lane" data-testid="mobile-inbox-needs"><span class="ui-label">{strings.inbox.needsYou}</span>{@render laneCount(needsSplit, 'mobile-inbox-needs')}</h2>
         <WindowList items={inboxNeeds} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} estimate={77} measurements={measurements('inbox-needs')}>
           {#snippet row(entry)}{@render threadRow(entry)}{/snippet}
         </WindowList>
       {/if}
       {#if inboxWorking.length > 0}
-        <h2 class="lane working" data-testid="mobile-inbox-working"><span class="ui-label">{strings.inbox.workingNow}</span><span class="count">{inboxWorking.length}</span></h2>
+        <h2 class="lane working" data-testid="mobile-inbox-working"><span class="ui-label">{strings.inbox.workingNow}</span>{@render laneCount(workingSplit, 'mobile-inbox-working')}</h2>
         <WindowList items={inboxWorking} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} estimate={77} measurements={measurements('inbox-working')}>
           {#snippet row(entry)}{@render threadRow(entry)}{/snippet}
         </WindowList>
@@ -462,6 +471,7 @@
     .filters :global(.menu) { min-width: 0; max-width: 100%; }
     .at-work, .filters :global(.trigger) { display: inline-flex; gap: 6px; align-items: center; height: auto; min-height: var(--touch-target); max-width: 100%; padding: 0 14px; border: 1px solid transparent; border-radius: var(--radius-full); background: var(--color-control-surface); font-size: var(--text-sm); font-weight: 500; }
     .at-work { color: var(--color-accent); }
+    .at-work .count.bots { display: inline-flex; align-items: center; gap: 3px; font-size: var(--text-xs); font-variant-numeric: tabular-nums; color: var(--color-muted-foreground); }
     .filters :global(.trigger) { color: var(--color-foreground); }
     .filters :global(.trigger svg) { flex: none; color: var(--color-muted-foreground); }
     .filters :global(.trigger .ui-label) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

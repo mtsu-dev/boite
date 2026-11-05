@@ -1,27 +1,32 @@
 <script lang="ts">
-  import { CircleCheck, CircleX, Eye, GitMerge, GitPullRequest, GitPullRequestClosed, Handshake, LoaderCircle, MessageSquare, Play, X } from '@lucide/svelte';
-  import type { AgentWatch, Project } from '@boite/contracts';
+  import { CircleCheck, CircleX, GitMerge, GitPullRequest, GitPullRequestClosed, LoaderCircle, X } from '@lucide/svelte';
+  import type { AgentWatch, Project, ThreadSummary } from '@boite/contracts';
+  import type { Store } from '../../lib/store.svelte';
   import { deskState, deskTone, type DeskState } from '../../lib/agent-desk';
   import type { ThreadState } from '../../lib/thread-state';
   import StateRing from '../StateRing.svelte';
+  import ThreadPicture from '../ThreadPicture.svelte';
   import { workedTime } from '../../lib/agent-turns';
   import { ago, exactTime } from '../../lib/format';
   import { fill, strings } from '../../lib/strings';
 
   /**
-   * One thread on an agent's desk, as a row: the thread lists' StateRing
-   * around how the bot came to it (started, entrusted, followed, wrote
-   * there), its title, when it last moved,
-   * and one meta line with how it stands, its project and its pull request
-   * with its checks. A thread that asks the user opens its question under
+   * One thread on an agent's desk, as a row: the sidebar's StateRing around
+   * the thread's picture (how the bot came to it, started, entrusted,
+   * followed or wrote there, is the ring's tooltip), its title, when it last
+   * moved, and one grey line with how it stands in words, its project and its
+   * pull request with its checks. A thread that asks the user opens its question under
    * the line with the options, answered here. The row opens its thread; the
    * cross, shown on hover and focus, takes it off the desk. A thread of
    * another machine of the group names that machine, says when it cannot be
    * reached, and opens only where this client reaches that machine.
    */
-  let { watch, project, now, onopen, ondrop, onanswer }: {
+  let { watch, project, thread, owner, now, onopen, ondrop, onanswer }: {
     watch: AgentWatch;
     project: Project | null;
+    /** The thread as its machine's Store lists it, for the picture inside the ring; absent where no Store holds it. */
+    thread?: ThreadSummary;
+    owner?: Store;
     now: number;
     /** Absent for a thread of a machine this client does not reach. */
     onopen?: () => void;
@@ -36,8 +41,6 @@
   const pr = $derived(watch.pullRequest);
   /** The ring the thread lists draw for the same state: a stalled turn waits on someone, as one that asks. */
   const RING: Record<DeskState, ThreadState | null> = { 'needs-you': 'waiting', stalled: 'waiting', failed: 'error', working: 'working', queued: 'queued', merged: 'done', review: null, done: null, idle: null, archived: null };
-  const ORIGIN = { started: Play, entrusted: Handshake, followed: Eye, touched: MessageSquare } as const;
-  const Origin = $derived(ORIGIN[watch.origin]);
   let answering = $state<string | null>(null);
 
   async function answer(option: string) {
@@ -49,7 +52,7 @@
 
 <article class="desk-row" data-state={standing} data-tone={tone} data-testid="desk-card" data-thread={watch.threadId}>
   {#if onopen}<button type="button" class="desk-card-open" onclick={onopen} aria-label={fill(t.open, { title: watch.title })} title={fill(t.open, { title: watch.title })}></button>{/if}
-  <span class="desk-ring" title={t.origin[watch.origin]}><StateRing kind={RING[standing]} size={18} ground="var(--color-background)"><span class="desk-origin"><Origin size={12} strokeWidth={2} /></span></StateRing></span>
+  <span class="desk-ring" title={t.origin[watch.origin]}><StateRing kind={RING[standing]} ground="var(--color-background)">{#if thread && owner}<ThreadPicture {owner} {thread} size={16} logo={13} />{:else}<span class="desk-origin"></span>{/if}</StateRing></span>
   <div class="desk-row-text">
     <div class="desk-row-head">
       <strong class="desk-card-title">{watch.title}</strong>

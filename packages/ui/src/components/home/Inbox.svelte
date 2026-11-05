@@ -44,7 +44,17 @@
     try { localStorage.setItem(WORKING_KEY, workingOpen ? 'open' : 'closed'); } catch { /* Storage off: the fold lasts this page. */ }
   }
   const WORKING_ROWS = 5;
-  const cards = $derived(allCards ? lists.needs : lists.needs.slice(0, INBOX_CARDS));
+  /**
+   * One number, one set: the header's count and `See all (n)` both count the
+   * threads, as the sidebar's Needs you does. A bot's ask sits behind the
+   * robot chip beside that count, which opens its cards; with no thread
+   * asking, the bots' cards show at once.
+   */
+  const threadCards = $derived(lists.needs.filter(card => card.kind === 'threads'));
+  const botCards = $derived(lists.needs.filter(card => card.kind === 'bots'));
+  let botsOpen = $state(false);
+  const botsShown = $derived(botCards.length > 0 && (botsOpen || threadCards.length === 0));
+  const cards = $derived(allCards ? threadCards : threadCards.slice(0, INBOX_CARDS));
   const rows = $derived(allRows ? lists.working : lists.working.slice(0, WORKING_ROWS));
   const now = $derived(minuteClock.now);
 
@@ -67,15 +77,23 @@
   {#if ContactRequestNotice && contactsShown(store)}<ContactRequestNotice {store} flow />{/if}
   {#if lists.needs.length}
     <!-- The threads' number is the sidebar's Needs you; a bot's ask is counted apart, behind a robot, as the Threads switch does. -->
-    <h2 class="lane"><span class="ui-label">{labels.needsYou}</span>{#if threadNeeds}<span class="count" data-testid="inbox-needs-count" title={fill(labels.threadsCount, { count: String(threadNeeds) })}>{threadNeeds}</span>{/if}{#if botNeeds}<span class="count bots" data-testid="inbox-needs-bots" title={fill(labels.botsCount, { count: String(botNeeds) })} aria-label={fill(labels.botsCount, { count: String(botNeeds) })}><Bot size={11} aria-hidden="true" />{botNeeds}</span>{/if}</h2>
+    <h2 class="lane"><span class="ui-label">{labels.needsYou}</span>{#if threadNeeds}<span class="count" data-testid="inbox-needs-count" title={fill(labels.threadsCount, { count: String(threadNeeds) })}>{threadNeeds}</span>{/if}{#if botNeeds}{@const botsLabel = fill(labels.botsCount, { count: String(botNeeds) })}<button type="button" class="ghost count bots" data-testid="inbox-needs-bots"
+      aria-expanded={botsShown} aria-controls="inbox-bot-cards" disabled={threadCards.length === 0} title={botsLabel} aria-label={botsLabel} onclick={() => { botsOpen = !botsOpen; }}><Bot size={11} aria-hidden="true" />{botNeeds}</button>{/if}</h2>
+    {#if botsShown}
+      <ul class="cards bot-cards" id="inbox-bot-cards" data-testid="inbox-bot-cards">
+        {#each botCards as card (`${card.machine.id}:${card.thread.id}`)}
+          {@render needsCard(card)}
+        {/each}
+      </ul>
+    {/if}
     <ul class="cards">
       {#each cards as card (`${card.machine.id}:${card.thread.id}`)}
         {@render needsCard(card)}
       {/each}
     </ul>
-    {#if lists.needs.length > INBOX_CARDS}
-      <button type="button" class="ghost small more" data-testid="inbox-more" aria-expanded={allCards} onclick={() => { allCards = !allCards; }}>
-        <span class="ui-label">{allCards ? labels.fewer : fill(labels.more, { count: String(lists.needs.length) })}</span>
+    {#if threadCards.length > INBOX_CARDS}
+      <button type="button" class="ghost small more" data-testid="inbox-more" data-count={threadCards.length} aria-expanded={allCards} onclick={() => { allCards = !allCards; }}>
+        <span class="ui-label">{allCards ? labels.fewer : fill(labels.more, { count: String(threadCards.length) })}</span>
       </button>
     {/if}
   {:else}
@@ -199,7 +217,11 @@
   .why > :global(svg) { flex: none; }
   .where { display: inline-flex; flex: 0 1 auto; align-items: center; gap: 5px; min-width: 0; max-width: 45%; }
   .where::after { content: '·'; margin-left: 1px; color: var(--color-subtle); }
-  .lane .count.bots { display: inline-flex; align-items: center; gap: 3px; padding-left: 6px; }
+  .lane .count.bots { display: inline-flex; align-items: center; gap: 3px; height: 18px; padding-left: 6px; border: 0; font: inherit; font-variant-numeric: tabular-nums; }
+  /* The robot chip opens the bots' asks: a button, the lift on hover its only change. */
+  .lane button.count.bots:hover:not(:disabled) { background: color-mix(in oklch, var(--color-live-fill) 28%, var(--color-surface-2)); }
+  .lane button.count.bots:disabled { opacity: 1; cursor: default; }
+  .bot-cards { margin-bottom: 6px; }
   .where .ui-label, .machine { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .machine { flex: 0 1 auto; max-width: 25%; }
   .machine::after { content: '·'; margin-left: 6px; color: var(--color-subtle); }

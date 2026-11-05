@@ -255,9 +255,10 @@ fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-p
 /* A thread on its desk, one row: the dot says how it stands, the title, when it moved, one meta line; the question under it. */
 .desk-row { --tone: var(--color-subtle); position: relative; display: flex; align-items: flex-start; gap: 10px; padding: 8px 2px 8px 4px; border-radius: var(--radius-md); animation: rise var(--dur-3) var(--ease-out-quint); transition: background var(--dur-2) var(--ease-out-quint); }
 .desk-row:hover, .desk-row:focus-within { background: var(--color-hover); }
-/* The thread lists' ring around how the bot came to the thread, on the desk's own ground. */
+/* The sidebar's ring around the thread's picture, on the desk's own ground. */
 .desk-ring { flex: none; display: inline-flex; margin-top: -1px; }
-.desk-origin { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--color-surface-2); color: var(--color-muted-foreground); }
+/* A thread no Store of this client lists: the ring around a plain disc. */
+.desk-origin { display: block; width: 16px; height: 16px; border-radius: 50%; background: var(--color-surface-2); }
 .desk-needs .desk-head { display: flex; align-items: center; gap: 8px; }
 .desk-card-open { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; padding: 0; border: 0; border-radius: inherit; background: none; cursor: pointer; }
 .desk-card-open:hover { background: none; }
@@ -271,11 +272,8 @@ fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-p
 .desk-card-drop { flex: none; width: 20px; height: 20px; margin: 0 -2px 0 -4px; color: var(--color-subtle); opacity: 0; transition: opacity var(--dur-2) var(--ease-out-quint); }
 .desk-row:hover .desk-card-drop, .desk-row:focus-within .desk-card-drop { opacity: 1; }
 .desk-card-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; margin: 0; font-size: var(--text-xs); color: var(--color-muted-foreground); line-height: 1.4; }
-.desk-chip { --tone: var(--color-muted-foreground); color: var(--tone); font-weight: 500; animation: pop var(--dur-2) var(--ease-out-quint); }
-.desk-chip[data-tone='live'] { --tone: var(--color-live); }
-.desk-chip[data-tone='danger'] { --tone: var(--color-danger); }
-.desk-chip[data-tone='success'] { --tone: var(--color-success); }
-.desk-card-silent { color: var(--color-live); }
+/* The ring carries the colour: the state's word stays grey, as the second line of a sidebar row. */
+.desk-chip { color: var(--color-muted-foreground); font-weight: 500; animation: pop var(--dur-2) var(--ease-out-quint); }
 .desk-card-unreachable { color: var(--color-danger); }
 .desk-card-pr { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
 .desk-pr-badge, .desk-pr-checks { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }

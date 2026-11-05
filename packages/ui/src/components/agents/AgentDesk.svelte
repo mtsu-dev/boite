@@ -114,7 +114,9 @@
 </script>
 
 {#snippet card(watch: AgentWatch)}
+  {@const owner = watch.coreId === undefined ? store : remoteOf(watch)?.store}
   <DeskCard {watch} {now} project={watch.coreId === undefined ? store.projects.find(p => p.id === watch.projectId) ?? null : null}
+    {owner} thread={owner?.threads.find(thread => thread.id === watch.threadId)}
     onopen={watch.coreId === undefined || remoteOf(watch) ? () => open(watch) : undefined}
     ondrop={store.owner ? () => void drop(watch) : undefined}
     onanswer={watch.coreId === undefined || remoteOf(watch) ? option => answer(watch, option) : undefined} />

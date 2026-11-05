@@ -230,6 +230,26 @@ test('Contacts left the bar: the Bots page header carries it for the owner, a pa
   expect(store.page).toBe('home');
 });
 
+// Round 3's thread header shared its row with the contacts button and cut the title at 16 characters.
+test('the contacts count waits on the list, never in a conversation header', async () => {
+  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
+    media, matches: true, onchange: null, addListener() {}, removeListener() {}
+  }));
+  setExperiment('contacts', true);
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  workspace.machines = [{ id: 'local', label: 'Local', store }]; workspace.active = store;
+  const header = () => document.querySelector('[data-testid=mobile-header]')!;
+  mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'threads' } });
+  await vi.waitFor(async () => { await settle(); expect(header().querySelector('[data-testid=contact-request-open]')).not.toBeNull(); });
+  await unmount(mounted);
+  await store.open(store.threads.find(t => !t.parentThreadId && !t.archived)!.id);
+  mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'chat' } });
+  await vi.waitFor(async () => { await settle(); expect(header().querySelector('[data-testid=thread-title], [data-testid=thread-menu-trigger]')).not.toBeNull(); });
+  for (let i = 0; i < 5; i++) { await new Promise(resolve => setTimeout(resolve, 0)); await settle(); }
+  expect(header().querySelector('[data-testid=contact-request-open]')).toBeNull();
+});
+
 test("a contact's page opened from the list leaves for the board on the chat screen, and Back returns to the list", async () => {
   vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
     media, matches: true, onchange: null, addListener() {}, removeListener() {}

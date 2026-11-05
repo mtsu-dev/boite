@@ -48,6 +48,8 @@ test('the strip, the Inbox header, the Inbox tab badge and the switch agree on t
   expect(bot).toBeDefined();
   local.threads = local.threads.map(thread => thread.id === working ? { ...thread, status: 'running', runningSince: Date.now() }
     : thread.id === bot ? { ...thread, status: 'running', runningSince: Date.now(), agentSessionId: 'agt_count' } : thread);
+  // A bot on the second machine asks, so the Inbox's robot chip has a card of its own behind it.
+  remote.threads = remote.threads.map(thread => thread.id === bot ? { ...thread, status: 'waiting', requestSince: Date.now(), agentSessionId: 'agt_ask' } : thread);
   workspace.machines = [{ id: 'local', label: 'Local', store: local }, { id: 'remote', label: 'Builder', store: remote }];
   workspace.active = local;
   const entries = () => workspace.machines.flatMap(machine => machine.store.projects.filter(project => !project.archived).map(project => ({ machine, project })));
@@ -82,12 +84,40 @@ test('the strip, the Inbox header, the Inbox tab badge and the switch agree on t
   expect(atWork.bots.working).toBeGreaterThan(0);
   expect({ strip: Number(attr('lifecycle-working', 'data-count')), inbox: Number(text('inbox-working-count') ?? 0) }).toEqual({ strip: atWork.threads.working, inbox: atWork.threads.working });
 
+  // The Inbox's two needs numbers name one set each (round 2 read "Needs you 9", a robot 1, then "See all (10)"):
+  // the header and See all count the thread cards, the robot chip counts the bot cards it opens.
+  const cards = (scope: string) => document.querySelectorAll(`${scope} [data-testid=inbox-card]`).length;
+  expect(atWork.bots.needs).toBeGreaterThan(0);
+  expect(Number(text('inbox-needs-bots'))).toBe(atWork.bots.needs);
+  expect(document.querySelector('[data-testid=inbox-bot-cards]')).toBeNull();
+  const seeAll = document.querySelector<HTMLButtonElement>('[data-testid=inbox-more]');
+  if (seeAll) { expect(Number(seeAll.dataset.count)).toBe(expected); seeAll.click(); await settle(); }
+  expect(cards('[data-testid=inbox] > .cards:not(.bot-cards):not(.offline)')).toBe(expected);
+  document.querySelector<HTMLButtonElement>('[data-testid=inbox-needs-bots]')!.click();
+  await settle();
+  expect(cards('[data-testid=inbox-bot-cards]')).toBe(atWork.bots.needs);
+
   // The phone's Inbox tab reads the same pass through MobileNavigation.
   vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), { media, matches: true, onchange: null, addListener() {}, removeListener() {} }) as never);
   const phone = document.body.appendChild(document.createElement('div'));
   apps.push(mount(MobileNavigation, { target: phone, props: { store: local, screen: 'threads' } }));
   await settle();
   expect(Number(text('mobile-activity-waiting'))).toBe(expected);
+  // The phone's Recent chip and its Inbox lanes split threads from bots as the desktop does (round 2: "3 at work" counted the bot).
+  for (const app of apps.splice(-1)) await unmount(app);
+  workspace.view = 'recent';
+  apps.push(mount(MobileNavigation, { target: phone, props: { store: local, screen: 'threads' } }));
+  await settle();
+  expect(Number(attr('mobile-at-work-threads', 'data-count'))).toBe(atWork.threads.working);
+  expect(Number(text('mobile-at-work-bots'))).toBe(atWork.bots.working);
+  for (const app of apps.splice(-1)) await unmount(app);
+  workspace.view = 'projects';
+  apps.push(mount(MobileNavigation, { target: phone, props: { store: local, screen: 'activity' } }));
+  await settle();
+  expect({
+    needs: Number(attr('mobile-inbox-needs-threads', 'data-count')), needsBots: Number(attr('mobile-inbox-needs-bots', 'data-count')),
+    working: Number(attr('mobile-inbox-working-threads', 'data-count')), workingBots: Number(attr('mobile-inbox-working-bots', 'data-count'))
+  }).toEqual({ needs: expected, needsBots: atWork.bots.needs, working: atWork.threads.working, workingBots: atWork.bots.working });
 
   // A machine that stops answering counts nowhere; its asks move to the Inbox's muted Offline list.
   remote.connection = 'closed';

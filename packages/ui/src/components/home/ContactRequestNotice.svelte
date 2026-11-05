@@ -88,7 +88,7 @@
             <button type="button" class="ghost small details" onclick={() => review(displayed!)} data-testid="contact-mail-notice-details"><span class="ui-label">{strings.contacts.mail.details}</span><ArrowRight size={14} strokeWidth={1.75} /></button>
           </span>
         </span>
-        {#if pending.length > 1}<span class="count">{count(pending.length)}</span>{/if}
+        {#if pending.length > 1}<span class="count" data-testid="contact-request-count">{fill(strings.contacts.requests.waiting, { count: count(pending.length) })}</span>{/if}
       </div>
     {:else}
       <button type="button" class="row request" data-testid="contact-request-review"
@@ -98,7 +98,7 @@
           <span class="heading"><span>{fill(strings.contacts.requests.asks, { contact: displayed.request.contact })}</span><span class="machine">{machineName(displayed.machine)}</span></span>
           <span class="excerpt">{displayed.request.text}</span>
         </span>
-        {#if pending.length > 1}<span class="count">{count(pending.length)}</span>{/if}
+        {#if pending.length > 1}<span class="count" data-testid="contact-request-count">{fill(strings.contacts.requests.waiting, { count: count(pending.length) })}</span>{/if}
         <ArrowRight size={16} strokeWidth={1.75} />
       </button>
     {/if}
@@ -132,7 +132,7 @@
   .failed { font-size: var(--text-xs); color: var(--color-danger); overflow-wrap: anywhere; }
   .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; }
   .details { margin-left: auto; color: var(--color-muted-foreground); }
-  .count { flex: none; font-size: var(--text-xs); color: var(--color-accent); }
+  .count { flex: none; font-size: var(--text-xs); white-space: nowrap; color: var(--color-accent); }
   .letter .count { margin-top: 2px; }
   .request > :global(svg) { flex: none; color: var(--color-accent); }
   @media (max-width: 720px) {

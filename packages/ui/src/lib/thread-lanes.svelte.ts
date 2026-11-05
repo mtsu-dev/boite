@@ -85,6 +85,44 @@ export function threadLanes<T>(rows: readonly T[], stateOf: (row: T) => ThreadSt
   return { ...lanes, live, rest, hidden: [...liveFolded, ...restFolded], hiddenLive: liveFolded.length };
 }
 
+/** What a project's lanes drew, by row key, and the options they were drawn with. */
+export type LaneHold = { needs: string[]; live: string[]; rest: string[]; options: string };
+
+export function laneHold<T>(lanes: Lanes<T>, keyOf: (row: T) => string, options: string): LaneHold {
+  return { needs: lanes.needs.map(keyOf), live: lanes.live.map(keyOf), rest: lanes.rest.map(keyOf), options };
+}
+
+/**
+ * The lanes drawn in the places `held` recorded, while the pointer rests on
+ * the list or a row has keyboard focus: a thread that changes state keeps its
+ * row where it was, so nothing jumps under the pointer or the click about to
+ * land. Each row is the fresh one, so its ring and time change at once; a row
+ * gone from the project leaves at once; a row the held lanes did not draw
+ * waits in the folds, whose counts are the fresh ones. `fresh` is what
+ * `threadLanes` makes now, with the same options as `held`.
+ */
+export function holdLanes<T>(fresh: Lanes<T>, held: LaneHold, keyOf: (row: T) => string): Lanes<T> {
+  const asking = [...fresh.needs, ...fresh.needsHidden];
+  const live = new Set([...fresh.live, ...fresh.hidden.slice(0, fresh.hiddenLive)].map(keyOf));
+  const rows = new Map([...asking, ...fresh.live, ...fresh.rest, ...fresh.hidden].map(row => [keyOf(row), row]));
+  const place = (keys: string[]) => keys.flatMap(key => rows.get(key) ?? []);
+  const lanes = { needs: place(held.needs), live: place(held.live), rest: place(held.rest) };
+  const same = (a: T[], b: T[]) => a.length === b.length && a.every((row, index) => row === b[index]);
+  if (same(lanes.needs, fresh.needs) && same(lanes.live, fresh.live) && same(lanes.rest, fresh.rest)) return fresh;
+  const drawn = new Set([...held.needs, ...held.live, ...held.rest]);
+  const needsHidden = asking.filter(row => !drawn.has(keyOf(row)));
+  const askingKeys = new Set(asking.map(keyOf));
+  const hidden = [...fresh.live, ...fresh.rest, ...fresh.hidden].filter(row => !drawn.has(keyOf(row)) && !askingKeys.has(keyOf(row)));
+  return {
+    ...lanes,
+    needsHidden,
+    needsFoldable: needsHidden.length ? Math.max(fresh.needsFoldable, needsHidden.length) : fresh.needsFoldable,
+    hidden,
+    hiddenLive: hidden.filter(row => live.has(keyOf(row))).length,
+    foldable: hidden.length ? Math.max(fresh.foldable, hidden.length) : fresh.foldable
+  };
+}
+
 /** Which projects have their `n more` row opened, remembered on this screen across reloads. */
 export class MoreRows {
   open = $state<string[]>([]);

@@ -46,6 +46,7 @@ export const fr: Translation = {
       title: 'Demandes',
       review: 'Voir la demande du contact',
       pending: '{count} demandes de contacts en attente',
+      waiting: '{count} demandes',
       asks: '{contact} demande',
       asked: 'Vous avez demandé à {contact}',
       remote: 'Remote git',

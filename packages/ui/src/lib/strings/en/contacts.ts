@@ -47,6 +47,8 @@ export const strings = {
       title: 'Requests',
       review: 'Review the contact request',
       pending: '{count} contact requests waiting',
+      /** The card's count when more than one request or letter waits. */
+      waiting: '{count} requests',
       asks: '{contact} asks',
       asked: 'You asked {contact}',
       remote: 'Git remote',

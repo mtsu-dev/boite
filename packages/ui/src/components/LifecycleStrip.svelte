@@ -84,7 +84,7 @@
   .lifecycle {
     display: flex;
     align-items: center;
-    gap: 2px;
+    gap: 0;
     position: relative;
     min-width: 0;
     padding: 0 0 6px;
@@ -96,15 +96,18 @@
     display: inline-flex;
     flex: 0 1 auto;
     align-items: center;
-    gap: 5px;
+    gap: 4px;
     min-width: 0;
     height: 26px;
-    padding: 0 8px;
+    padding: 0 4px;
     border: 0;
     border-radius: var(--radius-full);
     background: transparent;
     color: var(--color-muted-foreground);
-    font-size: var(--text-sm);
+    /* 12 px, 4 px of padding and no gap between the pills: the four words and two one-digit counts
+       take about 245 px in English and 261 in French, so the 280 px default sidebar (a 264 px strip)
+       shows them all; a narrower column or two-digit counts give Done and Archived their glyph. */
+    font-size: var(--text-xs);
     font-weight: 500;
     transition: background var(--dur-2) var(--ease-out-quint), color var(--dur-2) var(--ease-out-quint);
   }
@@ -117,12 +120,12 @@
   }
   .glyph { display: none; }
   /*
-   * Four words need about 300 px on a desktop and 340 on a phone; the sidebar
+   * Four words need about 245 to 268 px on a desktop and 340 on a phone; the sidebar
    * opens at 280 and a small phone leaves 328. Done and archived, history, give
    * way to their glyph, so the live two never cut their word; the hidden word
    * still names the button to a screen reader.
    */
-  .compact .history { position: relative; padding: 0 7px; }
+  .compact .history { position: relative; padding: 0 6px; }
   .compact .history .glyph { display: inline-flex; }
   .compact .history .word { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .number {
@@ -142,5 +145,12 @@
     .lifecycle { gap: 4px; padding: 0 0 4px; }
     .stage { position: relative; height: 32px; padding: 0 11px; font-size: var(--text-sm); }
     .stage::after { content: ''; position: absolute; inset: -6px 0; }
+    /*
+     * A glyph is about 28 px wide: its target reaches 44 px without widening the row. The two
+     * glyphs share the 4 px gap between them, so Done reaches into Working's side and Archived
+     * past the strip's free end; Working keeps more than 44 px of its own.
+     */
+    .compact .history:has(+ .history)::after { inset: -6px -2px -6px min(-2px, calc(100% + 2px - 44px)); }
+    .compact .history + .history::after { inset: -6px min(-2px, calc(100% + 2px - 44px)) -6px -2px; }
   }
 </style>

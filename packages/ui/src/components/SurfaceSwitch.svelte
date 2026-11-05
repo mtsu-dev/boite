@@ -1,43 +1,41 @@
 <script lang="ts">
-  import { Bot, MessagesSquare, Network } from '@lucide/svelte';
+  import { Bot, MessagesSquare } from '@lucide/svelte';
   import { experimentOn } from '../lib/experiments.svelte';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import { workspace } from '../lib/workspace.svelte';
   import { followAgentDirectories } from '../lib/agent-directory.svelte';
-  import { badgeOf, workTally, type Badge } from '../lib/work-counts';
+  import { workTally } from '../lib/work-counts';
 
   /**
    * The switch at the top of the sidebar and of the Agents rail: the thread
-   * list or the Agents page, each with its count from the one rule
-   * (`workTally`): what needs the user there, in the waiting colour, else what
-   * works, in the accent. The Threads side counts project threads, the Bots
-   * side the bots' own threads. With the Agents experiment off there is only
-   * one place to be, so the switch is not drawn at all. On the thread list the
-   * lifecycle strip under it already counts the threads, so the Threads side
-   * shows its count only from the Agents page.
+   * list or the Agents page. A side carries one number, from the one rule
+   * (`workTally`): how many need the user there, in the waiting colour, and
+   * nothing when none does. Work and delegated agents are the lists' own
+   * counts (the lifecycle strip, the Bots page), so a navigation switch never
+   * shows a second number beside the first. The Threads side counts project
+   * threads, the Bots side the bots' own threads. With the Agents experiment
+   * off there is only one place to be, so the switch is not drawn at all. On
+   * the thread list the lifecycle strip under it already counts the threads,
+   * so the Threads side shows its count only from the Agents page.
    */
   let { store, current, prefix = '' }: { store: Store; current: 'threads' | 'agents'; prefix?: string } = $props();
 
   const stores = $derived(workspace.machines.length ? workspace.machines.map(machine => machine.store) : [store]);
   const on = $derived(experimentOn('resident-agents'));
   const tally = $derived(on ? workTally(stores) : null);
-  const threads = $derived(tally ? { ...badgeOf(tally.threads), subagents: tally.subagents } : null);
-  const agents = $derived(tally ? badgeOf(tally.bots) : null);
+  const threads = $derived(tally ? tally.threads.needs : 0);
+  const agents = $derived(tally ? tally.bots.needs : 0);
 
   // Every machine's agents snapshot stays loaded while the switch is drawn, so the Agents count is current from either side.
   followAgentDirectories(() => stores, () => on);
 </script>
 
-<!-- The number is the rows the list draws; delegated agents under them follow apart, behind the subagent glyph, so 2 rows and 6 agents never read as 8 threads. -->
-{#snippet badge(work: (Badge & { subagents?: number }) | null, testid: string)}
-  {@const subagents = work?.subagents ?? 0}
-  {#if work && (work.count > 0 || subagents > 0)}
-    {@const head = fill(work.waiting ? strings.sidebar.surfaceNeeds : strings.sidebar.surfaceWorking, { count: String(work.count) })}
-    {@const label = subagents ? `${head}\n${fill(subagents === 1 ? strings.sidebar.surfaceSubagentsOne : strings.sidebar.surfaceSubagentsMany, { count: String(subagents) })}` : head}
-    <span class="count" class:waiting={work.waiting} data-testid={testid} data-count={work.count} data-subagents={subagents} data-waiting={work.waiting} data-counts={work.counts} title={label} aria-label={label}>
-      <span class="pulse" aria-hidden="true"></span>{#if work.count > 0}<span class="ui-label" data-testid={`${testid}-rows`}>{work.count}</span>{/if}
-      {#if subagents > 0}<span class="subagents ui-label" data-testid={`${testid}-subagents`}><Network size={10} aria-hidden="true" />{subagents}</span>{/if}
+{#snippet badge(needs: number, testid: string)}
+  {#if needs > 0}
+    {@const label = fill(strings.sidebar.surfaceNeeds, { count: String(needs) })}
+    <span class="count" data-testid={testid} data-count={needs} data-counts="needs" title={label} aria-label={label}>
+      <span class="pulse" aria-hidden="true"></span><span class="ui-label" data-testid={`${testid}-rows`}>{needs}</span>
     </span>
   {/if}
 {/snippet}
@@ -65,7 +63,8 @@
   .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .view { border-radius: calc(var(--radius-md) - 3px); }
   .chosen, .chosen:hover:not(:disabled) { background: var(--color-segment-thumb); color: var(--color-foreground); box-shadow: var(--shadow-thumb); }
-  /* What works on that side: a small accent pill with a breathing dot, the waiting colour once something asks the user. */
+  /* What needs the user on that side: an amber pill with a breathing dot.
+     A solid ground: amber text on a see-through tint lost its contrast over the light glass (3.8:1). */
   .count {
     display: inline-flex;
     flex: none;
@@ -74,18 +73,13 @@
     height: 16px;
     padding: 0 6px 0 5px;
     border-radius: var(--radius-full);
-    /* A solid ground, as the waiting pill's: the accent on its see-through tint read 4.4:1 over the glass and 3.1:1 on the chosen thumb. */
-    background: color-mix(in oklch, var(--color-accent) 16%, var(--color-surface-2));
-    color: var(--color-accent);
+    background: color-mix(in oklch, var(--color-live) 16%, var(--color-surface-2));
+    color: var(--color-live);
     font-size: var(--text-xs);
     font-weight: 600;
     font-variant-numeric: tabular-nums;
     line-height: 1;
   }
-  /* Told apart by its glyph, not by fading: at 72 % the amber count fell to 4.3:1. */
-  .subagents { display: inline-flex; align-items: center; gap: 2px; }
-  /* A solid ground: amber text on a see-through tint lost its contrast over the light glass (3.8:1). */
-  .count.waiting { background: color-mix(in oklch, var(--color-live) 16%, var(--color-surface-2)); color: var(--color-live); }
   .pulse { width: 5px; height: 5px; border-radius: 50%; background: currentColor; animation: surface-pulse 1.6s var(--loop-ease-out-quint-48) infinite var(--loops); }
   @keyframes surface-pulse { 0%, 100% { opacity: 1; transform: none; } 50% { opacity: .35; transform: scale(.7); } }
   @media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }

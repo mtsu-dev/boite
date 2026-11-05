@@ -87,8 +87,10 @@
   .unread .title {
     font-weight: 600;
   }
-  /* The ringed row: a tighter gap and 13 px give the title its 30 characters at 288 px, and unread reads at 500. */
-  .ring { gap: 6px; }
+  /* The ringed row: a 21 px ring (1 px of air inside it), a 5 px gap and 13 px give the title
+     about 210 px, over 30 characters, at the 280 px default width; unread reads at 500. */
+  .ring { gap: 5px; }
+  .ring > :global([data-testid='state-ring']) { --ring-air: 1px; }
   .ring .pin { color: var(--color-muted-foreground); }
   .agents { display: inline-flex; align-items: center; gap: 2px; flex: none; font-size: var(--text-xs); font-variant-numeric: tabular-nums; color: var(--color-accent); }
   .agents.asking { color: var(--color-live); }

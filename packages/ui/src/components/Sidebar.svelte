@@ -11,7 +11,7 @@
   import { compareThreads } from '../lib/thread-order';
   import { projectRollup, threadState } from '../lib/thread-state';
   import { hasUnsentDraft } from '../lib/composer-queue';
-  import { moreRows, threadLanes, type Lanes } from '../lib/thread-lanes.svelte';
+  import { holdLanes, laneHold, moreRows, threadLanes, type LaneHold, type Lanes } from '../lib/thread-lanes.svelte';
   import { lifecycleFilter, lifecycleProjects } from '../lib/lifecycle-filter.svelte';
   import LifecycleStrip from './LifecycleStrip.svelte';
   import { groupWorkingThread, recentPreferences } from '../lib/recent.svelte';
@@ -141,16 +141,57 @@
    */
   function lanesOf(entry: ProjectEntry, attention: ThreadSummary[]): Lanes<ThreadSummary> {
     const store = entry.machine.store;
+    const key = projectKey(entry);
     // With no thread open, the project the home's composer starts in stands for it.
     const current = store.openThread ? store.openThread.projectId : store.draft?.projectId;
     const holdsOpen = workspace.active === store && current === entry.project.id;
-    return threadLanes(attention, thread => threadState(thread, store.subagents(thread.id)), {
-      expanded: moreRows.isOpen(projectKey(entry)),
-      needsExpanded: moreRows.isOpen(`needs:${projectKey(entry)}`),
+    const options = {
+      expanded: moreRows.isOpen(key),
+      needsExpanded: moreRows.isOpen(`needs:${key}`),
       away: !holdsOpen && activeGroups.length > 1,
-      keep: thread => thread.pinned || (workspace.active === store && store.openThread?.id === thread.id) || hasUnsentDraft(store.composerStates[thread.id])
-    });
+      keep: (thread: ThreadSummary) => thread.pinned || (workspace.active === store && store.openThread?.id === thread.id) || hasUnsentDraft(store.composerStates[thread.id])
+    };
+    const fresh = threadLanes(attention, thread => threadState(thread, store.subagents(thread.id)), options);
+    // A fold opened or another thread opened is the user's own move: it redraws at once and starts a new hold.
+    const drawn = `${options.expanded}|${options.needsExpanded}|${options.away}`;
+    const held = laneHolds.get(key);
+    if (holding && held?.options === drawn) return holdLanes(fresh, held, thread => thread.id);
+    laneHolds.set(key, laneHold(fresh, thread => thread.id, drawn));
+    return fresh;
   }
+  /**
+   * While the pointer rests on the list (desktop) or a row has keyboard focus,
+   * every row keeps the place it was drawn in: a thread that changes state
+   * moves to its new lane only once the pointer leaves or the focus goes, so
+   * a row never jumps under a click about to land. Rings, times and counts
+   * change at once. `laneHolds` is each project's last drawn lanes, never
+   * read by the template, so recording them redraws nothing.
+   */
+  let pointerHold = $state(false);
+  let focusHold = $state(false);
+  const holding = $derived(!mobile.current && (pointerHold || focusHold));
+  const laneHolds = new Map<string, LaneHold>();
+  $effect(() => {
+    const root = scrollRoot;
+    if (!root) return;
+    const enter = (event: PointerEvent) => { if (event.pointerType !== 'touch') pointerHold = true; };
+    const leave = () => { pointerHold = false; };
+    const focusIn = (event: FocusEvent) => { focusHold = event.target instanceof HTMLElement && event.target.matches(':focus-visible'); };
+    // A focused row that Svelte moves or removes fires `focusout` inside the update, where state
+    // may not change (state_unsafe_mutation): the release waits for the update to end.
+    const focusOut = (event: FocusEvent) => { if (!(event.relatedTarget instanceof Node && root.contains(event.relatedTarget))) queueMicrotask(() => { focusHold = false; }); };
+    root.addEventListener('pointerenter', enter);
+    root.addEventListener('pointerleave', leave);
+    root.addEventListener('focusin', focusIn);
+    root.addEventListener('focusout', focusOut);
+    return () => {
+      root.removeEventListener('pointerenter', enter);
+      root.removeEventListener('pointerleave', leave);
+      root.removeEventListener('focusin', focusIn);
+      root.removeEventListener('focusout', focusOut);
+      pointerHold = focusHold = false;
+    };
+  });
   /** The chips count needs, failures and work; a folded project still marks its news (finished, unread) and a queued start. */
   function foldedNews(owner: Store, projectId: Project['id']) {
     const threads = owner.threadsOf(projectId).filter(thread => { const state = threadState(thread, owner.subagents(thread.id)); return state === 'done' || state === 'queued'; });
@@ -489,14 +530,14 @@
     .head .project-actions { grid-column: 2; grid-row: 1; margin-left: 0; }
     .head :global(.counters) { grid-column: 1 / -1; grid-row: 2; justify-content: flex-end; margin-bottom: 4px; }
   }
-  .strip { margin: 0 10px; }
+  .strip { margin: 0 8px; }
   /* The `n more` row closing a busy project: quiet, aligned with the titles. */
   .more-row {
     width: 100%;
-    height: 26px;
+    height: 24px;
     justify-content: flex-start;
-    gap: 6px;
-    padding: 0 8px 0 9px;
+    gap: 8px;
+    padding: 0 8px 0 7px;
     font-size: var(--text-xs);
     color: var(--color-muted-foreground);
   }
@@ -514,8 +555,8 @@
   .project {
     /* The dots of the rows' rings cut out of the card's own colour. */
     --ring-ground: var(--color-tile-ground);
-    margin-bottom: 8px;
-    padding: 2px 3px 3px;
+    margin-bottom: 6px;
+    padding: 0 1px 2px;
     border: 1px solid transparent;
     border-radius: var(--radius-lg);
     background: var(--color-tile);
@@ -577,11 +618,11 @@
     align-items: center;
     gap: 2px;
   }
-  /* A project header is 30 px, as a one-line row: eight of them fit the first screen. */
+  /* A project header is 28 px, as a one-line row: six of eight busy projects fit a 900 px screen. */
   .toggle {
     flex: 1;
     min-width: 0;
-    height: 30px;
+    height: 28px;
     padding: 0 4px;
     justify-content: flex-start;
     gap: 5px;
