@@ -314,15 +314,19 @@ export class BackgroundCompaction {
   }
 
   /**
-   * The session the turn runs on at `boundary`, when the thread names it or
-   * the turn opened it: null when the boundary has no checkpoint or names
-   * another session (a resume forked away, a session the agent lost).
+   * The session the turn runs on at `boundary`: the one the thread names, the
+   * one the turn opened, or another one it moved to, which no copy of the
+   * thread's matches and none starts from. Null when the boundary has no
+   * checkpoint, the thread waits to resume at an entry, or a thread naming no
+   * session runs a turn that did not open this one.
    */
   #liveSession(thread: ThreadSummary, turn: Turn, boundary: StepBoundary): string | null {
     const checkpoint = boundary.checkpoint;
     if (checkpoint === null || checkpoint.sessionId.length === 0 || checkpoint.entry.length === 0) return null;
     if ((thread.sessionResumeAt ?? null) !== null) return null;
     if (thread.sessionId === checkpoint.sessionId) return checkpoint.sessionId;
+    // Another session than the one the thread names (a resume forked away, a session the agent lost): a copy of the thread's no longer matches.
+    if (thread.sessionId !== null) return checkpoint.sessionId;
     const execution = turn.execution;
     const fresh = thread.sessionId === null && execution !== undefined && (execution.sessionId ?? null) === null
       && execution.sessionGeneration === (thread.sessionGeneration ?? 0);
@@ -347,6 +351,8 @@ export class BackgroundCompaction {
     let limit: number | null = this.limit(thread);
     let stale = limit === null ? 'the setting is off' : this.#stale(thread, copy, limit, live);
     if (stale !== null) { this.#drop(thread.id, stale); return null; }
+    // A swap that background work forbids is not worth waiting for.
+    if (this.#backgroundWork(thread.id)) { this.#drop(thread.id, 'background work is running'); return null; }
     if (copy.ready === null) {
       await Promise.race([copy.settled, copy.gone.promise]);
       if (this.#closed || this.#core.journal.isClosed() || copy.dropped || this.#copies.get(thread.id) !== copy || copy.ready === null) return null;
@@ -359,7 +365,7 @@ export class BackgroundCompaction {
     }
     const ready = copy.ready;
     if (ready === null) return null;
-    // A new session loses what the agent still runs in the background.
+    // Work that started during the wait: a new session would lose it.
     if (this.#backgroundWork(thread.id)) { this.#drop(thread.id, 'background work is running'); return null; }
     let decision: StepDecision;
     try {

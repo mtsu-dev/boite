@@ -255,6 +255,43 @@ describe('background compaction', () => {
     } finally { client.close(); }
   });
 
+  test('background work at the limit drops a running copy at once rather than waiting for it', async () => {
+    const copy = heldCopy();
+    const client = await h.connect();
+    try {
+      let due = 0;
+      const after: { stops: number; waited: number }[] = [];
+      await longTurn(client, TOOLS(40), {
+        copy: copy.run,
+        boundary: (boundary, threadId) => {
+          if (boundary.tokens === 990) h.core.threads.agentState.noteBackground(threadId, [{ id: 'bg1', kind: 'shell', description: 'watch', toolId: null, startedAt: Date.now() }]);
+          // The copy would end 300 ms after the step at the limit.
+          if (boundary.tokens === 1015) { due = Date.now(); setTimeout(copy.release, 300); }
+          if (boundary.tokens === 1040) after.push({ stops: copy.stops(), waited: Date.now() - due });
+          return boundary;
+        },
+      });
+      expect(copy.started()).toBe(1);
+      // The step at 1015 went on without waiting, the copy stopped.
+      expect(after).toHaveLength(1);
+      expect(after[0]!.stops).toBe(1);
+      expect(after[0]!.waited).toBeLessThan(250);
+    } finally { copy.release(); client.close(); }
+  });
+
+  test('a turn whose boundaries name another session than the thread\'s drops the copy of the thread\'s', async () => {
+    const client = await h.connect();
+    try {
+      // From 915 on, the agent runs on a session it forked away to, which the thread does not name.
+      const run = await longTurn(client, TOOLS(40), { boundary: boundary =>
+        boundary.tokens >= 915 && boundary.checkpoint !== null ? { ...boundary, checkpoint: { ...boundary.checkpoint, sessionId: 'forked-elsewhere' } } : boundary });
+      expect(run.steps.some(step => step.tokens >= 1000)).toBe(true);
+      expect(run.steps.some(step => step.swapped)).toBe(false);
+      expect(run.background).toEqual([]);
+      expect(run.thread.sessionGeneration ?? 0).toBe(0);
+    } finally { client.close(); }
+  });
+
   test('a copy past its time is dropped at its deadline, and the success it reports later is thrown away', async () => {
     BACKGROUND_COMPACT.timeoutMs = 80;
     const copy = heldCopy();
