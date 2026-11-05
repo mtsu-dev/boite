@@ -5,7 +5,7 @@
   import { delegatedWork } from '../lib/delegated-work';
   import { elapsed, exactTime, relativeTime } from '../lib/format';
   import { minuteClock, secondClock } from '../lib/clock.svelte';
-  import { stripState, waitingElsewhere } from '../lib/status-strip';
+  import { needsAround, stripState } from '../lib/status-strip';
   import { canMarkDone, markDone } from '../lib/recent.svelte';
   import { archiveThread } from '../lib/archive';
   import { workspace } from '../lib/workspace.svelte';
@@ -41,8 +41,13 @@
   $effect(() => { if (thread) void store.loadDelegation(thread.id); });
   $effect(() => { if (thread) void store.loadWorkflows(thread.id); });
 
-  let waiting = $derived(waitingElsewhere(workspace.machinesOr(store), { store, threadId: thread?.id ?? null }));
+  let around = $derived(needsAround(workspace.machinesOr(store), { store, threadId: thread?.id ?? null }));
+  let waiting = $derived(around.others);
   let next = $derived(waiting[0] ?? null);
+  /** The jump's words: the tab's own count when the open thread needs nothing, else the rest, as the sidebar's fold says it. */
+  let jumpLabel = $derived(around.openNeeds
+    ? fill(waiting.length === 1 ? strings.chat.strip.nextMoreOne : strings.chat.strip.nextMoreMany, { count: String(waiting.length) })
+    : fill(strings.chat.strip.nextShort, { count: String(waiting.length) }));
 
   // Seconds count while it works or waits; a finished turn reads in minutes.
   let now = $derived((state?.kind === 'finished' ? minuteClock.now : secondClock.now) + store.clockOffset);
@@ -141,7 +146,7 @@
         onclick={() => void workspace.select(next.store, next.thread.id)}
       >
         <!-- One label at every width, never a bare number: it says what it opens, then how many wait. -->
-        <span class="jump ui-label" aria-hidden="true">{fill(strings.chat.strip.nextShort, { count: String(waiting.length) })}</span>
+        <span class="jump ui-label" aria-hidden="true">{jumpLabel}</span>
         <ChevronRight size={13} strokeWidth={2} aria-hidden="true" />
       </button>
     {/if}

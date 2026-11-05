@@ -75,6 +75,20 @@ test('a running turn counts its time in the accent', async ({ ready }) => {
   expect(document.querySelector('[data-testid="status-strip-waiting"]')).toBeNull();
 });
 
+test('on a thread that needs the user, the jump counts the others in the sidebar fold\'s words, never the tab\'s', async ({ ready }) => {
+  const { store } = await ready();
+  await store.open('t-scheduler');
+  const needs = inbox(storeSources(workspace.machinesOr(store))).needs;
+  // The Needs you tab counts the open thread; the jump walks only the others.
+  expect(needs.some(card => card.thread.id === 't-scheduler')).toBe(true);
+  const others = needs.length - 1;
+  expect(others).toBeGreaterThan(0);
+  view = mount(StatusStrip, { target: document.body, props: { store } });
+  flushSync();
+  const next = document.querySelector<HTMLButtonElement>('[data-testid="status-strip-next"]')!;
+  expect([...next.querySelectorAll('.ui-label')].map(node => node.textContent)).toEqual([others === 1 ? '1 more needs you' : `${others} more need you`]);
+});
+
 test('Next needs you walks the Inbox: it counts the same threads and opens the one that has waited longest, changing nothing else', async ({ ready }) => {
   const { store, client } = await ready();
   await store.open('t-trace');

@@ -55,7 +55,20 @@ export type Waiting = { store: Store; thread: ThreadSummary };
  * the link walks the user to work still open elsewhere.
  */
 export function waitingElsewhere(machines: readonly Pick<Machine, 'store'>[], open: { store: Store; threadId: string | null }): Waiting[] {
-  return inbox(storeSources(machines)).needs
-    .filter(card => !(card.machine.store === open.store && card.thread.id === open.threadId))
-    .map(card => ({ store: card.machine.store, thread: card.thread }));
+  return needsAround(machines, open).others;
+}
+
+/**
+ * The same walk, and whether the thread on screen is itself one of the
+ * threads that need the user: the Needs you tab counts it, the walk does not,
+ * so the strip words its count as the rest ("2 more need you") only then.
+ */
+export function needsAround(machines: readonly Pick<Machine, 'store'>[], open: { store: Store; threadId: string | null }): { others: Waiting[]; openNeeds: boolean } {
+  const others: Waiting[] = [];
+  let openNeeds = false;
+  for (const card of inbox(storeSources(machines)).needs) {
+    if (card.machine.store === open.store && card.thread.id === open.threadId) openNeeds = true;
+    else others.push({ store: card.machine.store, thread: card.thread });
+  }
+  return { others, openNeeds };
 }

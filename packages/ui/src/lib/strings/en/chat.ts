@@ -28,6 +28,9 @@ export const strings = {
       showAgents: 'Show the subagents and workflows',
       /** The jump to the next waiting thread, the same words on a desktop and a phone: what it opens, then how many wait. */
       nextShort: 'Needs you · {count}',
+      /** The same jump while the open thread itself needs the user: the others, in the sidebar fold's words. */
+      nextMoreOne: '1 more needs you',
+      nextMoreMany: '{count} more need you',
       nextTitle: 'Open "{title}", the thread that has waited longest for you',
       days: '{days}d {hours}h',
       asking: 'question for you',

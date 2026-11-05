@@ -76,12 +76,13 @@ test('closed until asked, then the recents come first and the commands after the
   expect(ids.some((id) => id.startsWith('project:'))).toBe(false);
   expect(ids.at(-1)).toBe('archive');
   expect(selectedId()).toBe(ids[0]);
-  // Each project's threads sit together under its name, the commands after them.
+  // Each project's threads sit together under its name, the commands after them;
+  // boite leads because its t-bench needs the user, as in the Recent sidebar.
   const sections = Array.from(document.querySelectorAll<HTMLElement>('[data-testid=palette-section]'));
   const of = (section: HTMLElement) => Array.from(section.querySelectorAll('[data-testid=palette-row]')).map((row) => row.getAttribute('data-palette-id'));
-  expect(sections.map((section) => section.querySelector('[data-testid=palette-project] .name')?.textContent ?? 'commands')).toEqual(['notes', 'boite', 'commands']);
-  expect(of(sections[0]!)).toEqual(['thread:t-descriptors']);
-  expect(of(sections[1]!).sort()).toEqual(['thread:t-bench', 'thread:t-scheduler', 'thread:t-trace']);
+  expect(sections.map((section) => section.querySelector('[data-testid=palette-project] .name')?.textContent ?? 'commands')).toEqual(['boite', 'notes', 'commands']);
+  expect(of(sections[0]!).sort()).toEqual(['thread:t-bench', 'thread:t-scheduler', 'thread:t-trace']);
+  expect(of(sections[1]!)).toEqual(['thread:t-descriptors']);
   // A row says what its thread is doing the way the sidebar does: the ring draws it, the words stay in the time's label.
   const bench = document.querySelector('[data-palette-id="thread:t-bench"]')!;
   expect(bench.querySelector('[data-testid=state-ring]')?.getAttribute('data-ring')).toBe('waiting');
@@ -189,6 +190,47 @@ test('a bot\'s own thread sits under Bots with the tab\'s glyph, not under a pro
   expect(heading?.querySelector('.name')?.textContent).toBe('Bots');
   expect(heading?.querySelector('[data-testid=palette-bots-glyph]')).not.toBeNull();
   expect(section.querySelector('[data-testid=palette-project]')).toBeNull();
+});
+
+test('a subagent stays out of the recents, and a query finds it named by its parent with the subagent glyph', async () => {
+  // The sidebar keeps a subagent behind its parent's chip: with nothing typed it would take a recent's place.
+  const parent = store.threads.find(thread => thread.id === 't-descriptors')!;
+  store.threads = store.threads.map(thread => thread.id === 't-bench' ? { ...thread, parentThreadId: parent.id, lastUserMessageAt: Date.now() } : thread);
+  flushSync();
+  store.paletteOpen = true;
+  flushSync();
+  await tick();
+  expect(rows()).not.toContain('thread:t-bench');
+  expect(rows()).toContain('thread:t-descriptors');
+  const child = store.threads.find(thread => thread.id === 't-bench')!;
+  await type(child.title);
+  const row = document.querySelector('[data-palette-id="thread:t-bench"]');
+  expect(row).not.toBeNull();
+  const hint = row!.querySelector('[data-testid=palette-parent]');
+  expect(hint?.textContent).toBe(`in ${parent.title}`);
+  expect(hint?.querySelector('svg')).not.toBeNull();
+  // A top-level thread names no parent.
+  expect(document.querySelector('[data-palette-id="thread:t-descriptors"] [data-testid=palette-parent]')).toBeNull();
+  // The parent's title is something a query lands on.
+  await type(parent.title);
+  expect(rows()).toContain('thread:t-bench');
+});
+
+test('with nothing typed, a thread that needs the user outranks newer idle ones, as in the Recent sidebar', async () => {
+  // Eight newer idle threads would fill the recents; the waiting one, asked long ago, must still show and lead.
+  const now = Date.now();
+  const bench = store.threads.find(thread => thread.id === 't-bench')!;
+  const idle = store.threads.find(thread => thread.id === 't-descriptors')!;
+  const fresh = Array.from({ length: 8 }, (_, i) => ({ ...idle, id: `t-fresh-${i}`, title: `Fresh ${i}`, lastUserMessageAt: now - i * 1000 }));
+  store.threads = [...store.threads.map(thread => thread.id === 't-bench' ? { ...thread, lastUserMessageAt: now - 86_400_000 } : thread), ...fresh];
+  flushSync();
+  expect(waitingSince(store, bench)).not.toBeNull();
+  store.paletteOpen = true;
+  flushSync();
+  await tick();
+  const threads = rows().filter(id => id.startsWith('thread:'));
+  expect(threads).toContain('thread:t-bench');
+  expect(threads.indexOf('thread:t-bench')).toBeLessThan(threads.indexOf('thread:t-fresh-0'));
 });
 
 test('a waiting thread reads the age of its home card, as its sidebar row does', async () => {

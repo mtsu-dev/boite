@@ -83,6 +83,10 @@ test('the Inbox heads with the request, naming the contact and the machine, and 
   components.push(mount(ContactRequestNotice, { target: document.body, props: { store, flow: true } }));
   await vi.waitFor(() => { flushSync(); expect(one('contact-request-notice')).not.toBeNull(); });
   expect(one('contact-request-notice')!.textContent).toContain('Chris');
+  // The heading names the contact, then the machine with its glyph, as the palette and the sidebar write it.
+  const machine = one('contact-notice-machine')!;
+  expect(machine.querySelector('svg')).not.toBeNull();
+  expect(machine.closest('.heading')!.textContent).toMatch(/^Chris asks·\S/);
   // In the page's column the card is the count: no second button beside it.
   expect(one('contact-request-open')).toBeNull();
   one<HTMLButtonElement>('contact-request-review')!.click();

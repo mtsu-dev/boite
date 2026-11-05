@@ -26,6 +26,8 @@ export const fr: Translation = {
       subagentMany: '{count} sous-agents',
       showAgents: 'Afficher les sous-agents et workflows',
       nextShort: 'En attente · {count}',
+      nextMoreOne: '1 autre vous attend',
+      nextMoreMany: '{count} autres vous attendent',
       nextTitle: 'Ouvrir « {title} », la conversation qui vous attend depuis le plus longtemps',
       days: '{days} j {hours} h',
       asking: 'une question pour vous',

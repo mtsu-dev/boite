@@ -13,6 +13,8 @@ export const strings = {
     hintEmpty: 'Esc to close',
     /** The foot's count of rows a cut list holds under its visible end. */
     more: '{count} more ↓',
+    /** A subagent's row, after its title: the thread it works for. */
+    inParent: 'in {title}',
     newThread: 'New thread',
     addProject: 'Add a project',
     importSession: 'Import a Claude Code session',

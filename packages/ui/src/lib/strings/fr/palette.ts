@@ -15,6 +15,8 @@ export const fr: Translation = {
     hintEmpty: 'Échap pour fermer',
     /** The foot's count of rows a cut list holds under its visible end. */
     more: '{count} de plus ↓',
+    /** A subagent's row, after its title: the thread it works for. */
+    inParent: 'dans {title}',
     newThread: 'Nouvelle conversation',
     addProject: 'Ajouter un projet',
     importSession: 'Importer une session Claude Code',

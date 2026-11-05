@@ -21,6 +21,13 @@ afterEach(async () => {
   vi.restoreAllMocks(); document.body.innerHTML = ''; localStorage.clear();
 });
 
+test('the phone list fades its rows out at the bottom edge, under the floating tab bar, as the sidebar does', async () => {
+  const { default: source } = await import('./MobileNavigation.svelte?raw');
+  const style = source.slice(source.indexOf('<style')).replace(/\/\*[\s\S]*?\*\//g, '');
+  const masks = [...style.matchAll(/\.mobile-list\s*\{([^{}]*)\}/g)].map(([, body = '']) => /mask-image:\s*([^;]+);/.exec(body)?.[1]?.trim()).filter(Boolean);
+  expect(masks).toEqual(['linear-gradient(to top, transparent 0, black 24px)']);
+});
+
 test('a phone row is one line: its linked PR and branch wait in the conversation header', async () => {
   vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
     media, matches: true, onchange: null, addListener() {}, removeListener() {}

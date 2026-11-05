@@ -511,6 +511,9 @@
     .mobile-list { display: block; position: absolute; inset: 0; overflow-y: auto; overscroll-behavior: contain; background: transparent; padding: 8px max(16px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
     /* The bottom bar owns the home indicator's inset; the last row clears the New thread button over it. */
     .mobile-list.tabbed { padding-bottom: 96px; }
+    /* Rows thin out at the screen's bottom edge, under the floating tab bar, as the sidebar's do, never cut flat. A mask,
+       not a scroll-driven animation: tests and closing elements wait on every running animation. */
+    .mobile-list { mask-image: linear-gradient(to top, transparent 0, black 24px); }
     .title-row { display: flex; align-items: center; gap: 2px; margin: 0 -10px 0 0; }
     .title-row .large-title { flex: 1; min-width: 0; }
     .title-row > .icon { flex: none; width: var(--touch-target); height: var(--touch-target); color: var(--color-muted-foreground); }

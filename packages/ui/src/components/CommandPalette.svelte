@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick, untrack } from 'svelte';
-  import { Bot, CornerDownLeft, Search } from '@lucide/svelte';
+  import { Bot, CornerDownLeft, Network, Search } from '@lucide/svelte';
   import type { Project, ProjectId, ThreadSummary } from '@boite/contracts';
   import { Closing } from '../lib/closing.svelte';
   import { minuteClock } from '../lib/clock.svelte';
@@ -19,7 +19,8 @@
   import ThreadPicture from './ThreadPicture.svelte';
   import ThreadState from './ThreadState.svelte';
   import { asksMidTurn, threadState } from '../lib/thread-state';
-  import { waitingSince } from '../lib/inbox';
+  import { storeOrder, waitingSince } from '../lib/inbox';
+  import { compareThreads, type OrderKey } from '../lib/thread-order';
   import { onBotsPage } from '../lib/experiments.svelte';
 
   let { store }: { store: Store } = $props();
@@ -73,15 +74,24 @@
     thread: ThreadSummary | null;
     /** A bot's own threads: they live on the Bots page, so they gather under its name, never a project's. */
     bots?: true;
+    /** A subagent's title: its row names the thread it works for, as the sidebar keeps it behind that row's chip. */
+    parent?: string;
   }
 
   let machines = $derived(workspace.machinesOr(store));
   /** One machine names no machine. */
   let several = $derived(workspace.machines.length > 1);
 
-  /** Every live thread, most recent first; the list cuts it to the recents until something is typed. */
+  /**
+   * Every live thread, most recent first; the list cuts it to the recents until
+   * something is typed. The recents read in the Recent sidebar's order (pinned,
+   * needs you, working, then the rest), so a thread waiting on the user is never
+   * pushed out by a newer idle one. A subagent lives behind its parent's chip in
+   * the sidebar, so the recents leave it out and only a query finds it, named by
+   * its parent.
+   */
   let threadData = $derived.by(() => {
-    const entries: { item: PaletteItem; at: number }[] = [];
+    const entries: { item: PaletteItem; at: number; child: boolean; thread: ThreadSummary; key: OrderKey }[] = [];
     const places = new Map<string, Place>();
     for (const machine of machines) {
       for (const thread of machine.store.threads) {
@@ -90,20 +100,23 @@
         const id = `thread:${machine.store.threadKey(thread.id)}`;
         const bot = onBotsPage(thread);
         const section = bot ? `bots:${machine.id}` : `in:${machine.id}:${thread.projectId}`;
-        places.set(id, { machine, project, thread });
+        const parent = thread.parentThreadId ? machine.store.threads.find(t => t.id === thread.parentThreadId)?.title ?? '' : undefined;
+        places.set(id, parent === undefined ? { machine, project, thread } : { machine, project, thread, parent });
         if (!places.has(section)) places.set(section, bot ? { machine, project: null, thread: null, bots: true } : { machine, project, thread: null });
-        entries.push({ at: thread.lastUserMessageAt ?? thread.createdAt, item: {
+        entries.push({ at: thread.lastUserMessageAt ?? thread.createdAt, child: parent !== undefined, thread, key: storeOrder(machine.store, thread), item: {
           id,
           kind: 'thread',
           label: thread.title,
-          // What a query may also land on: the project and the machine, never drawn on the row.
-          hint: [project ? projectName(project) : '', several ? machine.label : ''].filter(Boolean).join(' '),
+          // What a query may also land on: the parent, the project and the machine; only the parent is drawn.
+          hint: [parent ?? '', project ? projectName(project) : '', several ? machine.label : ''].filter(Boolean).join(' '),
           keywords: thread.status,
           section
         } });
       }
     }
-    return { items: entries.sort((a, b) => b.at - a.at).map(entry => entry.item), places };
+    const sorted = entries.sort((a, b) => b.at - a.at);
+    const recents = sorted.filter(entry => !entry.child).sort((a, b) => compareThreads(a.thread, b.thread, a.key, b.key));
+    return { items: sorted.map(entry => entry.item), recents: recents.map(entry => entry.item), places };
   });
 
   /** Every project, a new thread in it once picked: offered only to a query, nothing typed keeps the list short. */
@@ -129,7 +142,7 @@
     // Keep the exit animation's rows without subscribing a closed search to live updates.
     if (!store.paletteOpen) return snapshot.rows;
     const typed = query.trim().length > 0;
-    const threads = typed ? threadData.items : threadData.items.slice(0, RECENT_THREADS);
+    const threads = typed ? threadData.items : threadData.recents.slice(0, RECENT_THREADS);
     const projects = typed ? projectData.items : [];
     return snapshot.rows = rankItems(query, [...threads, ...projects, ...commandItems], PALETTE_LIMIT);
   });
@@ -366,6 +379,7 @@
                   {:else if item.kind === 'project' && place?.project}<ProjectTile project={place.project} store={place.machine.store} size={16} />{/if}
                 </span>
                 <span class="label ui-label">{item.label}</span>
+                {#if place?.parent !== undefined}<span class="parent ui-label" data-testid="palette-parent"><Network size={12} aria-hidden="true" /><span class="parent-title">{fill(strings.palette.inParent, { title: place.parent })}</span></span>{/if}
                 {#if place?.thread}
                   <!-- The ring says the state; the words stay in the time's title and label, as on a sidebar row. -->
                   <span class="state"><ThreadState thread={place.thread} {now} subagents={place.machine.store.subagents(place.thread.id)} away={place.machine.store.connection !== 'ready'} waited={waitingSince(place.machine.store, place.thread)} compact /></span>
@@ -601,6 +615,27 @@
     gap: 4px;
     font-size: var(--text-sm);
     color: var(--color-muted-foreground);
+  }
+
+  /* A subagent's parent, after its title in the muted tier: it gives way to the title, never pushes the time out. */
+  .parent {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 45%;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: var(--text-sm);
+    color: var(--color-muted-foreground);
+  }
+
+  .parent :global(svg) { flex: none; }
+
+  .parent-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   /* On the menu surface the selected row's tint darkens the ground: its time takes the meta tier, as on a sidebar row. */
