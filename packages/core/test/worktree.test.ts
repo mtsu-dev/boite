@@ -197,6 +197,28 @@ describe('a thread in its own worktree', () => {
     expect(readFileSync(ignore, 'utf8')).toBe('# kept\n*\n');
   });
 
+  test('a .boite linked to a folder outside the project still holds worktrees, and its target gets no .gitignore', async () => {
+    const project = await repoProject();
+    const row = harness.core.projects.require(project.id);
+    const target = join(harness.dataDir, 'elsewhere');
+    mkdirSync(target);
+    symlinkSync(target, join(project.path, '.boite'), 'junction');
+    const placed = await harness.core.worktrees.add('thr_linked', row, 'boite/linked');
+    expect(existsSync(join(placed.path, '.git'))).toBe(true);
+    expect(existsSync(join(target, '.gitignore'))).toBe(false);
+  });
+
+  test('an existing checkout whose .boite has no .gitignore gets one when ensure reuses it', async () => {
+    const project = await repoProject();
+    const row = harness.core.projects.require(project.id);
+    const ignore = join(project.path, '.boite', '.gitignore');
+    const placed = await harness.core.worktrees.ensure('thr_reused', row, 'boite/reused');
+    unlinkSync(ignore);
+    const reused = await harness.core.worktrees.ensure('thr_reused', row, 'boite/reused', placed.path);
+    expect(reused.path).toBe(placed.path);
+    expect(readFileSync(ignore, 'utf8')).toBe('*\n');
+  });
+
   test('workspace recovery reattaches a surviving legacy long branch after its directory was removed', async () => {
     const project = await repoProject();
     const row = harness.core.projects.require(project.id);
