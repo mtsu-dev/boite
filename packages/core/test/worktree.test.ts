@@ -185,6 +185,18 @@ describe('a thread in its own worktree', () => {
     expect(git(placed.path, 'branch', '--show-current').trim()).toBe(placed.branch);
   });
 
+  test("the project's .boite folder carries a .gitignore of its own, and one already there is kept", async () => {
+    const project = await repoProject();
+    const row = harness.core.projects.require(project.id);
+    const ignore = join(project.path, '.boite', '.gitignore');
+    await harness.core.worktrees.add('thr_ignore', row, 'boite/first');
+    expect(readFileSync(ignore, 'utf8')).toBe('*\n');
+    expect(git(project.path, 'status', '--porcelain')).toBe('');
+    writeFileSync(ignore, '# kept\n*\n');
+    await harness.core.worktrees.add('thr_ignore', row, 'boite/second');
+    expect(readFileSync(ignore, 'utf8')).toBe('# kept\n*\n');
+  });
+
   test('workspace recovery reattaches a surviving legacy long branch after its directory was removed', async () => {
     const project = await repoProject();
     const row = harness.core.projects.require(project.id);

@@ -1,4 +1,4 @@
-import { appendFileSync, closeSync, existsSync, fstatSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, renameSync, rmSync, statSync, unlinkSync } from 'node:fs';
+import { appendFileSync, closeSync, existsSync, fstatSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { BRANCH_NAME_MAX, type Project, type ThreadId, type WorktreeStorage } from '@boite/contracts';
 import { CheckoutReservations } from './checkouts.ts';
@@ -32,13 +32,29 @@ export function slugOf(title: string): string {
   return slug.length > 0 ? slug : 'thread';
 }
 
+/** The folder Boite keeps inside a project, worktrees included. */
+const PROJECT_FOLDER = '.boite';
+
+/**
+ * Creates a project's `.boite` folder with a `.gitignore` of `*`, so tools that
+ * read .gitignore files but not .git/info/exclude skip it too. A `.gitignore`
+ * already there is kept as it is.
+ */
+function ensureProjectFolder(projectPath: string): void {
+  const folder = join(projectPath, PROJECT_FOLDER);
+  mkdirSync(folder, { recursive: true });
+  try { writeFileSync(join(folder, '.gitignore'), '*\n', { flag: 'wx' }); } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+  }
+}
+
 /** The shared folder separates projects by their stable id, including namesakes. */
 export function worktreeRoot(projectPath: string, storage?: WorktreeStorage, projectId?: string): string {
   if (storage?.mode === 'shared') {
     if (!projectId) throw refused('a shared worktree folder requires a project id');
     return join(storage.directory, `${slugOf(basename(projectPath))}-${projectId.replace(/[^a-z0-9_-]/gi, '-')}`);
   }
-  return join(projectPath, '.boite', 'worktrees');
+  return join(projectPath, PROJECT_FOLDER, 'worktrees');
 }
 
 /**
@@ -426,7 +442,11 @@ export class Worktrees {
     const local = relative(project.path, dirname(path));
     if (!local || isAbsolute(local) || local === '..' || local.startsWith(`..${sep}`)) return;
     const folder = local.split(sep).join('/');
-    const pattern = folder.startsWith('.boite/') ? '/.boite/' : `/${folder.replace(/[\\[\]*?!# ]/g, '\\$&')}/`;
+    const boite = folder === PROJECT_FOLDER || folder.startsWith(`${PROJECT_FOLDER}/`);
+    if (boite) {
+      try { ensureProjectFolder(project.path); } catch (error) { throw refused(`cannot create ${join(project.path, PROJECT_FOLDER, '.gitignore')}: ${messageOf(error)}`); }
+    }
+    const pattern = boite ? `/${PROJECT_FOLDER}/` : `/${folder.replace(/[\\[\]*?!# ]/g, '\\$&')}/`;
     preparation?.assertActive();
     const result = await this.git(threadId, project.path, ['rev-parse', '--git-path', 'info/exclude'], preparation?.timeoutMs);
     preparation?.assertActive();
