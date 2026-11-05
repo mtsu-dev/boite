@@ -530,8 +530,9 @@
     /* Two lines stacked: a label's ascender room and its trim to the capitals would pull the second over the first. */
     .title-lines > .ui-label { margin-block: 0; padding-block: 0; text-box: normal; }
     /* A long title wraps to a second line before its ellipsis, so it reads whole more often than cut mid-word; the
-       header grows by that one line only for such a title, and the place drops below it. */
-    .title-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; max-width: 100%; min-width: 0; overflow: hidden; white-space: normal; overflow-wrap: anywhere; text-align: left; font-size: 17px; font-weight: 600; }
+       header grows by that one line only for such a title, and the place drops below it. `pretty` keeps the second
+       line from ending on one word ("Add rate limiting to the / public API"). */
+    .title-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; max-width: 100%; min-width: 0; overflow: hidden; white-space: normal; overflow-wrap: anywhere; text-wrap: pretty; text-align: left; font-size: 17px; font-weight: 600; }
     /* The place gives way first: the PR number after it always shows. Nothing to say, no line. */
     .title-place:not(:has(.place-text:not(:empty), .place-project:not(:empty), .place-branch, .place-bot, .place-pr:not(:empty))) { display: none; }
     .title-place { display: flex; align-items: center; max-width: 100%; min-width: 0; white-space: nowrap; font-size: var(--text-xs); font-weight: 400; color: var(--color-muted-foreground); }

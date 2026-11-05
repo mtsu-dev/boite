@@ -260,9 +260,14 @@ test('with nothing typed, a rule opens each Recent band, a row that needs the us
   // Nothing live on it: its mark takes the muted tier, the live rows keep their hue.
   expect(document.querySelector('[data-palette-id="thread:t-descriptors"] [data-mono]')).not.toBeNull();
   expect(document.querySelector('[data-palette-id="thread:t-scheduler"] [data-mono]')).toBeNull();
-  // A query ranks its rows: no band rule then.
+  // Round 13: "Crash when the camera opens on Andr…" was cut where its sidebar row wraps: a row that needs the user takes two lines.
+  const lines = (id: string) => document.querySelector<HTMLElement>(`[data-palette-id="thread:${id}"]`)?.dataset['lines'] ?? '1';
+  expect([lines('t-bench'), lines('t-scheduler'), lines('t-descriptors')]).toEqual(['2', '1', '1']);
+  // A query ranks its rows: no band rule then, and the failed row still takes its two lines.
   await type('t');
   expect(document.querySelector('[data-testid=palette-band-rule]')).toBeNull();
+  await type('legacy');
+  expect(lines('t-bench')).toBe('2');
 });
 
 test('a thread that asks reads Needs you after its project, since the palette draws no band heading', async () => {

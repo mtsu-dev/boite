@@ -67,11 +67,11 @@
    */
   let quiet = $derived(!thread.pinned && threadLiveKind(thread, kind) === null);
   /**
-   * Recent's Needs you band (`pin` off: the list draws its band labels, `bandStarts`):
-   * the rows to read before opening one, so a long title takes a second line
-   * before its ellipsis. Every other band keeps one line.
+   * A row that needs the user, wherever it is listed (Recent's band, its Needs you
+   * filter, a project's rows), pinned or not: the rows to read before opening one,
+   * so a long title takes a second line before its ellipsis. Every other row keeps one line.
    */
-  let clamp = $derived(!wrap && !pin && !thread.pinned && threadLiveKind(thread, kind) === 'needs');
+  let clamp = $derived(!wrap && threadLiveKind(thread, kind) === 'needs');
   /** A two-line row's pin sits on the second line, before the time, so it never takes the title's room. */
   let pinned = $derived(thread.pinned && pin);
   /** A failure says so in words on the second line, so the red mark is not the only cue beside a row that asks. */
@@ -137,6 +137,8 @@
     line-clamp: 2;
     white-space: normal;
     overflow-wrap: anywhere;
+    /* The second line never ends on one word: "Retry failed syncs when the / network drops". */
+    text-wrap: pretty;
     line-height: 18px;
     margin-top: 2px;
   }
@@ -175,6 +177,8 @@
   .known { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
   /* After the project, in the line's muted tier; it never yields its room to the project's name. */
   .failed { display: inline-flex; align-items: center; gap: 8px; flex: none; }
+  /* Under a project's header the line has no project before it: the word leads, with no dot. */
+  .known > .failed:first-child > [aria-hidden='true'] { display: none; }
   .trail { display: flex; align-items: center; gap: 6px; flex: none; }
   .machine,
   .draft,

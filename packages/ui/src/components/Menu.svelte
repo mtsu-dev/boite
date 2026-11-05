@@ -5,6 +5,7 @@
   import { floating } from '../lib/floating';
   import type { MenuItem } from '../lib/menu';
   import ProjectTile from './ProjectTile.svelte';
+  import MachineSuffix from './MachineSuffix.svelte';
 
   let {
     items,
@@ -76,7 +77,12 @@
 
   function pick(item: MenuItem) {
     if (disabled || item.disabled) return;
-    if ((!switches || item.checked === undefined) && !item.copy) popover.hide();
+    if ((!switches || item.checked === undefined) && !item.copy) {
+      popover.hide();
+      // As Escape does: the row leaves the DOM, so the keyboard goes back to the
+      // trigger, before the choice runs so one that opens another place can move it on.
+      trigger?.focus({ preventScroll: true });
+    }
     onpick(item.id);
   }
 
@@ -203,7 +209,7 @@
         {#if item.projectTile}<ProjectTile project={item.projectTile.project} store={item.projectTile.store} size={18} />{/if}
         {#if item.glyph}<span class="glyph" class:live={item.live} aria-hidden="true"><item.glyph size={16} strokeWidth={1.75} /></span>{/if}
         {#if item.status}<span class="status-dot" data-tone={item.status.tone} role="img" aria-label={item.status.label} title={item.status.label}></span>{/if}
-        <span class="ui-label">{item.label}</span>{#if item.count}<span class="count ui-label">{item.count}</span>{/if}
+        <span class="ui-label">{item.label}</span>{#if item.count}<span class="count ui-label">{item.count}</span>{/if}{#if item.machine}<span class="machine"><MachineSuffix machine={item.machine} /></span>{/if}
       </span>
       {#if item.hint}
         <span class="hint ui-label">{item.hint}</span>
@@ -408,6 +414,12 @@
     color: var(--color-muted-foreground);
     font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
+  }
+
+  .machine {
+    display: inline-flex;
+    min-width: 0;
+    margin-left: 8px;
   }
 
   .hint {

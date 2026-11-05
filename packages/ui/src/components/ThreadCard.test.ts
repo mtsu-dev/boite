@@ -400,7 +400,7 @@ test('a failed row says Failed after its project, and only a row nothing is live
   expect(quiet.slot).toBe(failed.slot);
 });
 
-test('a Needs you title may take two lines, every other band keeps one, and a two-line row carries its pin on the second line', async () => {
+test('a title that needs the user may take two lines in every list, every other row keeps one, and a two-line row carries its pin on the second line', async () => {
   client = new FakeClient({ delayMs: 0 });
   store = new Store(); store.attach(client); await store.connect();
   const thread = store.threads.find(row => !row.parentThreadId && !row.agentSessionId && row.projectId)!;
@@ -418,11 +418,49 @@ test('a Needs you title may take two lines, every other band keeps one, and a tw
   // Round 11: "Retry failed syncs when the networ…" and "Crash when the camera opens on A…" cut mid-word in Needs you.
   expect((await draw({ status: 'waiting', pinned: false }, false)).lines).toBe('2');
   expect((await draw({ status: 'error', pinned: false }, false)).lines).toBe('2');
-  // Working, Earlier and Pinned stay one line; so does a row outside the banded list.
+  // Working and Earlier stay one line.
   expect((await draw({ status: 'running', pinned: false }, false)).lines).toBe('1');
   expect((await draw({ status: 'idle', pinned: false }, false)).lines).toBe('1');
-  expect((await draw({ status: 'waiting', pinned: true }, false)).lines).toBe('1');
-  expect((await draw({ status: 'waiting', pinned: false }, true)).lines).toBe('1');
+  // Round 13: the Needs you filter (no band labels, `pin` on) cut the same titles to "…when the networ…"; a pinned ask wraps too.
+  expect((await draw({ status: 'waiting', pinned: true }, false)).lines).toBe('2');
+  expect((await draw({ status: 'waiting', pinned: false }, true)).lines).toBe('2');
   // The filtered view drew the pin in the title line, cutting "Add CSV import to the contacts p…" further.
-  expect(await draw({ status: 'waiting', pinned: true }, true)).toEqual({ lines: '1', pinInTitle: false, pinBeside: true });
+  expect(await draw({ status: 'waiting', pinned: true }, true)).toEqual({ lines: '2', pinInTitle: false, pinBeside: true });
+});
+
+test('under a project header, a failed row words it under the title, and a pinned row keeps one line with its pin before the time', async () => {
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  const thread = store.threads.find(row => !row.parentThreadId && !row.agentSessionId && row.projectId)!;
+  const project = store.projects.find(row => row.id === thread.projectId)!;
+  store.pendingQuestions = []; store.pendingPermissions = [];
+  vi.spyOn(client, 'call').mockResolvedValue(null as never);
+  const draw = async (fields: Partial<ThreadSummary>) => {
+    if (mounted) await unmount(mounted);
+    Object.assign(thread, { subagentQuestions: [], backgroundWork: undefined, backgroundWait: undefined, pullRequestWatches: undefined, ...fields });
+    mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'http://localhost:3773', label: 'This PC', store }, project, thread, now: Date.now(), showProject: false, showMachine: false, showDone: true } });
+    await settle();
+    const headline = document.querySelector<HTMLElement>('[data-testid=thread-row] .headline')!;
+    const facts = document.querySelector<HTMLElement>('[data-testid=thread-row] .facts');
+    return {
+      lines: headline.dataset.lines ?? '1',
+      subline: facts !== null,
+      word: facts?.querySelector('[data-testid=thread-failed] .ui-label')?.textContent ?? null,
+      pinInTitle: headline.querySelector('[data-testid=thread-pinned]') !== null,
+      pinBeside: facts?.querySelector('[data-testid=thread-trail] [data-testid=thread-pinned]') != null,
+      timeInTitle: headline.querySelector('.when') !== null
+    };
+  };
+  // Round 13: "Crash when the camera opens on … 4h" said Failed with a red badge alone.
+  expect(await draw({ status: 'error', pinned: false })).toEqual({ lines: '2', subline: true, word: 'Failed', pinInTitle: false, pinBeside: false, timeInTitle: false });
+  expect((await draw({ status: 'idle', pinned: false, backgroundWait: { state: 'interrupted', for: 'tests', reason: 'core-restarted', at: Date.now() } })).word).toBe('Interrupted');
+  // A failed pinned row carries its pin on that line, with the time.
+  expect(await draw({ status: 'error', pinned: true })).toEqual({ lines: '2', subline: true, word: 'Failed', pinInTitle: false, pinBeside: true, timeInTitle: false });
+  // A pinned row with nothing else to say keeps its one line: the pin just before the time (owner's call, round 13).
+  expect(await draw({ status: 'idle', pinned: true })).toEqual({ lines: '1', subline: false, word: null, pinInTitle: true, pinBeside: false, timeInTitle: true });
+  const line = document.querySelector<HTMLElement>('[data-testid=thread-row] .headline')!;
+  expect(line.querySelector('[data-testid=thread-pinned]')?.nextElementSibling?.classList.contains('when')).toBe(true);
+  expect(await draw({ status: 'waiting', pinned: false })).toEqual({ lines: '2', subline: false, word: null, pinInTitle: false, pinBeside: false, timeInTitle: true });
+  // A row with nothing to add keeps its one 28 px line.
+  expect(await draw({ status: 'idle', pinned: false })).toEqual({ lines: '1', subline: false, word: null, pinInTitle: false, pinBeside: false, timeInTitle: true });
 });

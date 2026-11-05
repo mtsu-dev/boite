@@ -4,6 +4,7 @@ import { flushSync, mount, unmount } from 'svelte';
 import { FakeClient } from '../lib/fake-client';
 import { Store } from '../lib/store.svelte';
 import PhoneThreadRow from './PhoneThreadRow.svelte';
+import rowSource from './PhoneThreadRow.svelte?raw';
 
 let mounted: ReturnType<typeof mount> | undefined;
 let client: FakeClient;
@@ -43,7 +44,7 @@ test('a phone row says Failed after its project, and only a row nothing is live 
   expect(await draw({ status: 'idle', pinned: false })).toEqual({ word: null, afterProject: false, mono: true });
 });
 
-test('a phone row names another machine as "· glyph name", gives a Needs you title two lines, and puts a pin on its second line', async () => {
+test('a phone row names another machine as "· glyph name", gives a title that needs the user two lines in every list, and puts a pin on its second line', async () => {
   client = new FakeClient({ delayMs: 0 });
   store = new Store(); store.attach(client); await store.connect();
   const thread = store.threads.find(row => !row.parentThreadId && !row.agentSessionId && row.projectId)!;
@@ -66,6 +67,38 @@ test('a phone row names another machine as "· glyph name", gives a Needs you ti
   expect(named.querySelector(':scope > .ui-label')?.textContent).toBe('Builder');
   expect((await draw({ status: 'idle', pinned: false }, false)).lines).toBe('1');
   expect((await draw({ status: 'running', pinned: false }, false)).lines).toBe('1');
-  expect((await draw({ status: 'waiting', pinned: false }, true)).lines).toBe('1');
-  expect(await draw({ status: 'waiting', pinned: true }, true)).toEqual({ lines: '1', pinInTitle: false, pinBeside: true });
+  // Round 13: the Needs you filter (no band labels, `pin` on) cut "Retry failed syncs when the netw…" to one line.
+  expect((await draw({ status: 'waiting', pinned: false }, true)).lines).toBe('2');
+  expect(await draw({ status: 'waiting', pinned: true }, true)).toEqual({ lines: '2', pinInTitle: false, pinBeside: true });
+});
+
+test('under a project header a pinned row keeps one line with its pin before the time, a failure leads its second line in words, and at 360 px every title takes two lines', async () => {
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  const thread = store.threads.find(row => !row.parentThreadId && !row.agentSessionId && row.projectId)!;
+  const project = store.projects.find(row => row.id === thread.projectId)!;
+  store.pendingQuestions = []; store.pendingPermissions = [];
+  vi.spyOn(client, 'call').mockResolvedValue(null as never);
+  const draw = async (fields: Partial<ThreadSummary>) => {
+    if (mounted) await unmount(mounted);
+    Object.assign(thread, { subagentQuestions: [], backgroundWork: undefined, backgroundWait: undefined, pullRequestWatches: undefined, ...fields });
+    mounted = mount(PhoneThreadRow, { target: document.body, props: { machine: { id: 'http://localhost:3773', label: 'This PC', store }, project, thread, now: Date.now(), items: [], grouped: true, onopen: () => {}, onaction: () => {} } });
+    await settle();
+    const head = document.querySelector<HTMLElement>('[data-testid=mobile-row] .head')!;
+    const meta = document.querySelector<HTMLElement>('[data-testid=mobile-row] .meta');
+    return { pinInTitle: head.querySelector('[data-testid=thread-pinned]') !== null, pinBeside: meta?.querySelector('[data-testid=thread-pinned]') != null, leads: meta?.firstElementChild?.getAttribute('data-testid') ?? null };
+  };
+  // Owner's call, round 13: a pin alone adds no second line; it stands just before the time.
+  expect(await draw({ status: 'idle', pinned: true })).toEqual({ pinInTitle: true, pinBeside: false, leads: null });
+  expect(document.querySelector('.head [data-testid=thread-pinned]')?.nextElementSibling?.classList.contains('time')).toBe(true);
+  // With a failure the pin joins the time on the second line.
+  expect(await draw({ status: 'error', pinned: true })).toEqual({ pinInTitle: false, pinBeside: true, leads: 'thread-failed' });
+  // Nothing before the word under a project's header: it leads the line, its dot hidden by `.meta > .fact.failed:first-child`.
+  expect((await draw({ status: 'error', pinned: false })).leads).toBe('thread-failed');
+  expect(await draw({ status: 'idle', pinned: false })).toEqual({ pinInTitle: false, pinBeside: false, leads: null });
+  expect(document.querySelector('[data-testid=mobile-row]')!.classList.contains('grouped')).toBe(true);
+  // jsdom applies no media query: read the rule the browser would apply at 360 px ("…the co…", "…sync e…" before).
+  const narrow = rowSource.slice(rowSource.indexOf('@media (max-width: 360px)'));
+  expect(narrow).toMatch(/\.grouped \.title \{[^}]*-webkit-line-clamp: 2[^}]*text-wrap: pretty/);
+  expect(rowSource).toMatch(/\.meta > \.fact\.failed:first-child > \[aria-hidden='true'\] \{ display: none; \}/);
 });

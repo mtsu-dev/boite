@@ -99,6 +99,39 @@ test('the menu opens on ArrowDown, walks with the arrows and Home and End, and E
   await settle();
   expect(picked).toEqual(['plan']);
   expect(document.querySelector('[data-testid=mode-menu]')).toBeNull();
+  // The pick hands the keyboard back to the trigger, as Escape does, not to the page.
+  expect(document.activeElement).toBe(trigger);
+});
+
+// jsdom plays no exit, as under reduced motion, so the scenario above closes
+// at once; with motion the menu leaves on animationend.
+test('Enter picks with an exit animation and the trigger holds the focus from the pick to the end of the close', async () => {
+  Element.prototype.getAnimations = () => [{} as Animation];
+  let focusAtPick: Element | null = null;
+  running = mount(Menu, {
+    target: document.body,
+    props: {
+      items: ITEMS,
+      onpick: () => { focusAtPick = document.activeElement; },
+      label: 'Permission mode',
+      testid: 'mode',
+      children: createRawSnippet(() => ({ render: () => '<span>Ask</span>' }))
+    }
+  });
+  flushSync();
+  const trigger = query<HTMLButtonElement>('[data-testid=mode]');
+  trigger.focus();
+  press('ArrowDown');
+  await settle();
+  press('Enter');
+  await settle();
+
+  // Already on the trigger when the choice runs, so a choice that opens another place can move it on.
+  expect(focusAtPick).toBe(trigger);
+  query<HTMLElement>('[data-testid=mode-menu]').dispatchEvent(new Event('animationend'));
+  await settle();
+  expect(document.querySelector('[data-testid=mode-menu]')).toBeNull();
+  expect(document.activeElement).toBe(trigger);
 });
 
 test('Escape closes and gives the trigger the focus back', async () => {

@@ -60,9 +60,12 @@ test('connecting another machine keeps thread rows at their single-machine heigh
   expect(await height()).toBeCloseTo(single, 1);
   // In Projects the header names the machine; a row repeating it would only take room from the title.
   expect(await page.evaluate(`Array.from(document.querySelectorAll('${id('thread-row')}')).every(e => !e.querySelector('.machine'))`)).toBe(true);
-  expect(await page.evaluate(`Array.from(document.querySelectorAll('${id('project-row')}')).every(e => e.querySelector('${id('project-host')}[title][aria-label]'))`)).toBe(true);
-  // The project's tile leads its header, the machine after it; under the keyboard (or a mouse) the tile gives way to the fold chevron.
-  expect(await page.evaluate(`Array.from(document.querySelectorAll('${id('project-row')}')).every(e => !!(e.querySelector('${id('project-tile')}').compareDocumentPosition(e.querySelector('${id('project-host')}')) & Node.DOCUMENT_POSITION_FOLLOWING))`)).toBe(true);
+  // As the Recent rows say it: another machine after the project's name ("render-farm · Builder"), nothing for this PC.
+  const local = `globalThis.__boiteTest.workspace.machines[0].id`;
+  expect(await page.evaluate(`Array.from(document.querySelectorAll('${id('project-row')}')).every(e => !!e.querySelector('${id('project-host')}[title]') === (e.closest('${id('project')}').dataset.machineId !== ${local}))`)).toBe(true);
+  expect(await page.evaluate(`document.querySelectorAll('${id('project-row')} ${id('project-host')}').length > 0`)).toBe(true);
+  // The project's tile leads its header, its name, then the machine; under the keyboard (or a mouse) the tile gives way to the fold chevron.
+  expect(await page.evaluate(`Array.from(document.querySelectorAll('${id('project-row')}')).filter(e => e.querySelector('${id('project-host')}')).every(e => !!(e.querySelector('.name').compareDocumentPosition(e.querySelector('${id('project-host')}')) & Node.DOCUMENT_POSITION_FOLLOWING))`)).toBe(true);
   const swapped = (tile: string, caret: string) => `(() => { const r = document.querySelector('${id('project-row')}'); return getComputedStyle(r.querySelector('${id('project-tile')}')).opacity === '${tile}' && getComputedStyle(r.querySelector('.fold-caret')).opacity === '${caret}'; })()`;
   expect(await page.evaluate<boolean>(swapped('1', '0'))).toBe(true);
   // A key first, so the focus that follows reads as the keyboard's.
@@ -102,8 +105,8 @@ test('thread metadata, message identity and expandable trace fit a narrow panel'
   await showPrRows();
   expect(await page.evaluate(`document.querySelector('${id('usage-pill')}') === null`)).toBe(true);
   expect(await page.evaluate(`Array.from(document.querySelectorAll('.metadata')).every(e => !e.textContent.includes('No PR') && !e.textContent.includes('My computer') && !e.textContent.includes('Builder'))`)).toBe(true);
-  // The rows that carry a PR say which machine they belong to, by their own mark or their project's header, and draw no badge.
-  expect(await page.evaluate(`${prRows}.every(row => row.closest('.thread').querySelector('.machine') || row.closest('${id('project')}')?.querySelector('${id('project-host')}'))`)).toBe(true);
+  // The rows that carry a PR say which machine they belong to, by their own mark or their project's header (this PC's by naming none), and draw no badge.
+  expect(await page.evaluate(`${prRows}.every(row => row.closest('.thread').querySelector('.machine') || row.closest('${id('project')}')?.querySelector('${id('project-host')}') || row.closest('${id('project')}')?.dataset.machineId === globalThis.__boiteTest.workspace.machines[0].id)`)).toBe(true);
   expect(await page.evaluate(`document.querySelector('${id('sidebar')} ${id('thread-pr')}') === null`)).toBe(true);
   // The open thread's header badge names the open row's PR and opens it.
   const openRowPr = await page.evaluate<string>(`document.querySelector('${id('sidebar')} .thread.open ${id('thread-row')}').title.split('\\n').at(-1)`);

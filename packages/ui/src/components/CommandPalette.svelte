@@ -396,10 +396,14 @@
               {@const place = placeOf(item.id)}
               {@const mono = !!place?.thread && quiet(place.thread, place.machine.store)}
               {@const word = recent && place?.thread ? needsWord(place) : null}
+              <!-- A thread that needs the user takes two lines for a long title, as its sidebar row does; the right cluster stays on the first. -->
+              {@const clamp = place?.thread ? (word ?? needsWord(place)) !== null : false}
               {#if breaks.has(item.id)}<div class="band-rule" aria-hidden="true" data-testid="palette-band-rule" data-band={item.band}></div>{/if}
               <button
                 type="button"
                 class="row"
+                class:clamp
+                data-lines={clamp ? 2 : undefined}
                 class:selected={index === selected}
                 role="option"
                 id={optionId(item)}
@@ -415,7 +419,7 @@
                   {#if place?.thread}{@const subagents = place.machine.store.subagents(place.thread.id)}<StateRing kind={threadState(place.thread, subagents)} asking={asksMidTurn(place.thread, subagents)} stale={place.machine.store.connection !== 'ready'} ground="var(--color-surface-2)"><ThreadPicture owner={place.machine.store} thread={place.thread} size={16} logo={13} {mono} /></StateRing>
                   {:else if item.kind === 'project' && place?.project}<ProjectTile project={place.project} store={place.machine.store} size={16} />{/if}
                 </span>
-                <span class="label ui-label">{item.label}</span>
+                <span class="label" class:ui-label={!clamp}>{item.label}</span>
                 {#if recent && place?.thread}
                   <!-- One heading for every recent: the row names its project where a heading would have,
                        then, as a Recent row's subline does, its machine when it is not this PC and what it needs in words. -->
@@ -588,6 +592,33 @@
 
   .row:hover:not(:disabled) {
     background: transparent;
+  }
+
+  /* A row that needs the user: up to two 18 px lines, then the ellipsis, so "Crash when the camera opens on
+     Android 15" reads whole. The row grows one line only for such a title; every other part keeps the first
+     line's centre, in a slot the row's height tall. */
+  .row.clamp {
+    height: auto;
+    min-height: var(--row);
+    align-items: flex-start;
+  }
+  /* A trimmed label's -0.5em margin would lift its slot above the title's first line. */
+  .row.clamp > :not(.label) {
+    height: var(--row);
+    margin-block: 0;
+    padding-block: 0;
+    align-items: center;
+  }
+  .row.clamp > .label {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-wrap: pretty;
+    line-height: 18px;
+    margin-block: calc((var(--row) - 18px) / 2);
   }
 
   /* The row Enter takes: the accent's wash, a bar on its edge and the Enter glyph, readable in both themes.

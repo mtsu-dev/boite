@@ -38,7 +38,8 @@
   import { openResident, residentsOf } from '../lib/resident';
   import DraftRow from './DraftRow.svelte';
   import GroupLabel from './GroupLabel.svelte';
-  import MachineIcon from './MachineIcon.svelte';
+  import MachineSuffix from './MachineSuffix.svelte';
+  import { namesMachine } from '../lib/row-machine';
   import ProjectTile from './ProjectTile.svelte';
   import RailFrame from './RailFrame.svelte';
   import CollapsedRail from './CollapsedRail.svelte';
@@ -329,8 +330,7 @@
           <div class="head">
             <span class="toggle static" title={multi ? `${project.path} · ${machine.label}` : project.path}>
               <span class="mark"><ProjectTile {project} store={machine.store} /></span
-              >{#if multi}<span class="host" data-testid="project-host" class:offline={machine.store.connection !== 'ready'}
-                title={`${machine.label} · ${strings.connection[machine.store.connection]}`} aria-label={machine.label}><MachineIcon icon={machine.icon} os={machine.store.core?.os} size={14} /></span>{/if}<span class="name ui-label">{projectName(project)}</span>
+              ><span class="title"><span class="name ui-label">{projectName(project)}</span>{#if multi && namesMachine(machine, machine.store.connection !== 'ready')}<MachineSuffix {machine} testid="project-host" />{/if}</span>
             </span>
           </div>
           {#if kind === 'done' || kind === 'archived'}
@@ -432,8 +432,7 @@
               onclick={() => projectThreadView.toggleProject(entry, lists, draftsHere.length)}
             >
               {#if projectView.order === 'manual'}<GripVertical size={12} />{/if}<span class="mark"><ProjectTile {project} store={owner} /><span class="fold-caret" class:open={!collapsed} aria-hidden="true"><ChevronRight size={16} /></span></span
-              >{#if multi}<span class="host" data-testid="project-host" class:offline={owner.connection !== 'ready'}
-                title={`${machine.label} · ${strings.connection[owner.connection]}`} aria-label={machine.label}><MachineIcon icon={machine.icon} os={owner.core?.os} size={14} /></span>{/if}<span class="name ui-label" class:gone={project.missing === true}>{projectName(project)}</span
+              ><span class="title"><span class="name ui-label" class:gone={project.missing === true}>{projectName(project)}</span>{#if multi && namesMachine(machine, away)}<MachineSuffix {machine} testid="project-host" />{/if}</span
               >{#if project.missing === true}<span class="missing" data-testid="project-missing" title={strings.sidebar.projectMissing} aria-label={strings.sidebar.projectMissing}><FolderX size={13} aria-hidden="true" /></span>{/if}{#if rollup}{@const label = fill(rollup.count === 1 ? strings.sidebar.rollupOne : strings.sidebar.rollupMany, { count: String(rollup.count), state: strings.sidebar.state[rollup.kind] })}<span
                   class="rollup {rollup.kind}" data-testid="project-rollup" data-state={rollup.kind} title={label} aria-label={label}
                   ><span class="dot" aria-hidden="true"></span>{#if rollup.count > 1}<span class="ui-label">{rollup.count}</span>{/if}</span
@@ -664,8 +663,12 @@
     justify-content: flex-start;
     gap: 5px;
   }
+  /* The name, then the machine when it is not this PC, as the Recent rows read: "render-farm · ☰ Builder".
+     The machine gives way first, so the name keeps its room. */
+  .title { display: flex; flex: 1; align-items: center; gap: 4px; min-width: 0; }
+  .title > :global(.machine-suffix) { flex-shrink: 1000; }
   .name {
-    flex: 1;
+    flex: 0 1 auto;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -724,15 +727,6 @@
   .toggle:focus-visible .mark .fold-caret { opacity: 1; }
   @media (prefers-reduced-motion: reduce) {
     .mark > :global(*) { transition: none; }
-  }
-  .host {
-    display: flex;
-    flex: none;
-    color: var(--color-muted-foreground);
-  }
-  /* The rows under it carry no machine icon, so the header says the machine is unreachable. */
-  .host.offline {
-    color: var(--color-danger);
   }
   .resident-mark { flex: none; width: 20px; height: var(--control-sm); padding: 0; }
   .resident-mark { position: relative; }

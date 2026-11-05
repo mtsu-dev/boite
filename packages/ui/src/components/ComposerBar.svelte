@@ -573,7 +573,12 @@
     .chips { flex-wrap: nowrap; }
     .desktop-options { flex: none; }
     .chips :global(.picker) { min-width: 0; }
+    /* The button shrinks with its box, its label ellipsized, so a long name ends
+       in "…" inside its own pill and never under the effort beside it. */
+    .chips :global(.picker > .trigger) { min-width: 0; max-width: 100%; }
     .chips :global(.picker > .trigger .account-name) { display: none; }
+    /* The three chevrons give their room back, as under 380 px. */
+    .chips :global(.trigger > .chevron) { display: none; }
   }
   @container composer (max-width: 480px) {
     .bar { gap: 6px; }

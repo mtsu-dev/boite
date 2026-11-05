@@ -33,6 +33,8 @@
   import DraftRow from './DraftRow.svelte';
   import GroupLabel from './GroupLabel.svelte';
   import ProjectTile from './ProjectTile.svelte';
+  import MachineSuffix from './MachineSuffix.svelte';
+  import { namesMachine } from '../lib/row-machine';
   import { projectKey, projectView, type ProjectEntry } from '../lib/project-view.svelte';
   import { activeProject, archiveCount, projectSections, projectThreadView } from '../lib/project-threads.svelte';
   import { workingThread } from '../lib/recent.svelte';
@@ -305,7 +307,7 @@
         <!-- The view and, in Recent, the project it lists: the sidebar's picker. The lifecycle tabs under it count the work. -->
         <div class="filters">
           <Menu items={viewItems} onpick={pickView} label={strings.sidebar.viewPicker} placement="bottom" variant="ghost" testid="mobile-project-filter">
-            <span class="view-name ui-label" data-testid="mobile-view-name">{inRecent ? strings.sidebar.recentView : strings.sidebar.projectsView}</span>{#if inRecent && selected}<ProjectTile project={selected.project} store={selected.machine.store} size={16} /><span class="ui-label">{projectName(selected.project)}</span>{#if several}<span class="filter-machine ui-label">{selected.machine.label}</span>{/if}{/if}<ChevronDown size={13} />
+            <span class="view-name ui-label" data-testid="mobile-view-name">{inRecent ? strings.sidebar.recentView : strings.sidebar.projectsView}</span>{#if inRecent && selected}<ProjectTile project={selected.project} store={selected.machine.store} size={16} /><span class="ui-label">{projectName(selected.project)}</span>{#if several && namesMachine(selected.machine, selected.machine.store.connection !== 'ready')}<MachineSuffix machine={selected.machine} testid="mobile-filter-machine" />{/if}{/if}<ChevronDown size={13} />
           </Menu>
         </div>
       {/if}
@@ -353,7 +355,7 @@
         {#if !query || groupRows.length > 0 || doneOpen || archivedOpen}
         <section class="project-group" class:inactive={!activeProject(group)} data-testid="mobile-project-group" data-project-id={group.project.id} data-machine-id={group.machine.id}>
           <div class="project-heading">
-            <ProjectTile project={group.project} store={group.machine.store} /><h2>{projectName(group.project)}{#if several}<span>{group.machine.label}</span>{/if}</h2>
+            <ProjectTile project={group.project} store={group.machine.store} /><h2>{projectName(group.project)}{#if several && namesMachine(group.machine, group.machine.store.connection !== 'ready')}<MachineSuffix machine={group.machine} testid="mobile-project-machine" />{/if}</h2>
             <ProjectThreadCounters entry={group} working={group.machine.store.threadsOf(group.project.id).filter(thread => workingThread(group.machine.store, thread)).length} {controls} searching={!!query} away={group.machine.store.connection !== 'ready'} body={later ? laterLists : undefined} />
             {#if projectView.order === 'manual'}
               <Menu items={[
@@ -501,7 +503,6 @@
     .filters :global(.trigger .ui-label) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     /* The view's name never yields its room; the project after it shortens first. */
     .filters .view-name { flex: none; overflow: visible; }
-    .filters .filter-machine { color: var(--color-muted-foreground); font-weight: 400; }
     /* Its menu reads as the sidebar's (ProjectViews.svelte): the scope at rest, a remote machine small and muted under its project. */
     .filters :global(.popover .item:not([data-value^='view:']) .label) { font-weight: 400; }
     .filters :global(.popover .item.checkable) { align-content: center; }
@@ -568,7 +569,8 @@
     .project-group { border: 0; border-radius: var(--radius-lg); background: var(--color-cell); box-shadow: var(--shadow-tile); margin-bottom: 14px; overflow: clip; }
     .project-heading { position: sticky; top: var(--sticky-top, 0px); z-index: 2; display: flex; align-items: center; min-height: 40px; box-sizing: border-box; padding: 0 12px; gap: 8px; background: var(--color-cell); color: var(--color-muted-foreground); border-bottom: 1px solid var(--color-border); }
     .project-heading h2 { margin: 0; flex: 1; min-width: 0; font-size: var(--text-sm); overflow-wrap: anywhere; }
-    .project-heading span { display: block; font-size: var(--text-xs); font-weight: 400; color: var(--color-muted-foreground); }
+    /* A machine other than this PC follows the name on its line, as the Recent rows name it: "render-farm · ☰ Builder". */
+    .project-heading h2 :global(.machine-suffix) { margin-left: 4px; vertical-align: -1px; }
     /* A whole touch target that eats the heading's padding rather than making it taller. */
     .project-heading .project-actions { flex: none; margin: -8px -8px -8px 0; color: var(--color-muted-foreground); }
     /* The count chips keep their 44 px targets but lend 2 px top and bottom, so the heading stays 40 px. */

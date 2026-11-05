@@ -70,13 +70,14 @@
   let elsewhere = $derived(several && !grouped && namesMachine(machine, away));
   /** The grey second line; the time joins it, so the title keeps the whole first line. */
   let second = $derived(Boolean(wait || pending || (!grouped && project) || elsewhere || failed || agents?.asking));
-  /**
-   * Recent's Needs you band (`pin` off: the list draws its band labels): a long title takes a
-   * second line before its ellipsis, as on the desktop; every other band keeps one line.
-   */
-  let clamp = $derived(!pin && !thread.pinned && threadLiveKind(thread, kind) === 'needs');
-  /** A pinned row with a second line carries its pin there, before the time, so it never takes the title's room. */
+  /** A pinned row draws its pin just before the time, on the second line when it has one. */
   let pinned = $derived(thread.pinned && pin);
+  /**
+   * A row that needs the user, wherever it is listed (Recent's band, its Needs you filter, a
+   * project's card), pinned or not: a long title takes a second line before its ellipsis, as on
+   * the desktop. Every other row keeps one line, except under a project's header at 360 px.
+   */
+  let clamp = $derived(threadLiveKind(thread, kind) === 'needs');
   const reasonIcons = { question: MessageCircleQuestion, permission: ShieldQuestion, secret: KeyRound, 'sign-in': LogIn, failed: CircleAlert, interrupted: CirclePause } as const;
   let draft = $derived(hasUnsentDraft(owner.composerStates[thread.id]) && !(owner.openThread?.id === thread.id));
   /** What a slide may do now: the menu's own items, so a thread at work is never marked done by a finger. */
@@ -95,7 +96,7 @@
   {:else}<span class="time"><ThreadState {thread} {now} {subagents} {away} {waited} compact /></span>{/if}
 {/snippet}
 
-<div class="phone-row" class:offline={away} class:quiet class:start class:end data-thread-id={thread.id} data-machine-id={machine.id} data-testid="mobile-row">
+<div class="phone-row" class:offline={away} class:quiet class:grouped class:start class:end data-thread-id={thread.id} data-machine-id={machine.id} data-testid="mobile-row">
   <!-- Under the row while it slides: done on the left, archive on the right, armed past the threshold. -->
   <div class="reveal" aria-hidden="true">
     <span class="side done"><Check size={20} /><span class="ui-label">{strings.sidebar.markDone}</span></span>
@@ -226,7 +227,8 @@
     line-height: 1.3;
   }
   .title.unread { font-weight: 650; }
-  /* Needs you: up to two lines, then the ellipsis; the marks stay on the first line's centre. */
+  /* Needs you: up to two lines, then the ellipsis; the marks stay on the first line's centre.
+     `pretty` keeps the second line from ending on one word. */
   .clamp .title {
     display: -webkit-box;
     -webkit-box-orient: vertical;
@@ -234,8 +236,23 @@
     line-clamp: 2;
     white-space: normal;
     overflow-wrap: anywhere;
+    text-wrap: pretty;
   }
   .clamp .mark { align-self: flex-start; margin-top: 3px; }
+  /* At 360 px a project's row leaves the title about 200 px: one line cut it to "…the co…", so every
+     title there takes up to two lines. */
+  @media (max-width: 360px) {
+    .grouped .title {
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      text-wrap: pretty;
+    }
+    .grouped .head .mark { align-self: flex-start; margin-top: 3px; }
+  }
   /* On the second line the pin stands right before the time, at the line's end. */
   .meta .mark.pin { margin-left: auto; }
   .meta .mark.pin + .time { margin-left: 0; padding-left: 0; }
@@ -257,6 +274,8 @@
   .fact.agents { flex: none; }
   /* The failure's word keeps its room; the project's name yields first. */
   .fact.failed { flex: none; gap: 8px; }
+  /* Under a project's header nothing comes before it: the word leads, with no dot. */
+  .meta > .fact.failed:first-child > [aria-hidden='true'] { display: none; }
   /* The machine yields its room before the project loses a letter: shrink is weighted by width, so the steps are far apart. */
   .fact.machine { flex-shrink: 1000; }
   /* The dot stands 8 px from the glyph, as "· Failed" stands from its word. */

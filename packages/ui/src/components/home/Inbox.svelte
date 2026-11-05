@@ -1,5 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte';
+  import { slide } from 'svelte/transition';
+  import { quintOut } from 'svelte/easing';
   import { Bot, ChevronRight, CircleAlert, CirclePause, KeyRound, LogIn, MessageCircleQuestion, ShieldQuestion } from '@lucide/svelte';
   import { minuteClock, secondClock } from '../../lib/clock.svelte';
   import { elapsed, exactTime, projectName } from '../../lib/format';
@@ -10,7 +12,10 @@
   import { contactsShown } from '../../lib/contacts-rail.svelte';
   import { workspace, type Machine } from '../../lib/workspace.svelte';
   import { namesMachine } from '../../lib/row-machine';
+  import { WORKING_ROWS, opensByItself, workingFit } from '../../lib/inbox-fit';
+  import { glides } from '../../lib/motion';
   import MachineIcon from '../MachineIcon.svelte';
+  import MachineSuffix from '../MachineSuffix.svelte';
   import ProjectTile from '../ProjectTile.svelte';
   import StateRing from '../StateRing.svelte';
   import ThreadPicture from '../ThreadPicture.svelte';
@@ -22,11 +27,17 @@
    * its thread, where the question or permission waits above the composer.
    * Nothing waiting says so quietly, on the sky.
    * Calm by default: three cards in one column, `See all` for the rest, and
-   * the work under one quiet line: open while its rows fit in the column left
-   * under the asks, folded when they would scroll it, and once the user folds
-   * or opens it, as they left it (remembered on this device).
+   * the work under one quiet line: open when its rows fit in the room the
+   * home has, folded when they would scroll it, and once the user folds or
+   * opens it, as they left it (remembered on this device).
    */
-  let { store }: { store: Store } = $props();
+  let { store, spare = () => 0, onroom }: {
+    store: Store;
+    /** The free room above the home's sentence that the block can still rise into (ChatView). */
+    spare?: () => number;
+    /** The height the column must take for the open rows, or null: the home lifts its block by the difference. */
+    onroom?: (height: number | null) => void;
+  } = $props();
   const labels = $derived(strings.inbox);
   const machines = $derived(workspace.machinesOr(store));
   const several = $derived(machines.length > 1);
@@ -43,7 +54,7 @@
   const WORKING_KEY = 'boite.inbox.working';
   /** The user's own fold, once they used the chevron; until then the room decides (`fits`). */
   let chosen = $state<'open' | 'closed' | null>(readWorkingFold());
-  /** Whether the working rows fit whole in the column under the asks, measured by `measure`. */
+  /** Whether the working rows fit whole in the room the home has, read by `decide`. */
   let fits = $state(false);
   const workingOpen = $derived(chosen === null ? fits : chosen === 'open');
   function readWorkingFold(): 'open' | 'closed' | null {
@@ -52,53 +63,61 @@
   function toggleWorking() {
     chosen = workingOpen ? 'closed' : 'open';
     try { localStorage.setItem(WORKING_KEY, chosen); } catch { /* Storage off: the fold lasts this page. */ }
+    onroom?.(chosen === 'open' ? room() : null);
   }
-  const WORKING_ROWS = 5;
-  /** A working row's height (`.row`'s min-height), and the `See all` line under five. */
-  const WORKING_ROW_HEIGHT = 34;
-  const MORE_HEIGHT = 34;
 
   let section = $state<HTMLElement | undefined>(undefined);
-  let workingRows = $state<HTMLElement | undefined>(undefined);
-  let workingMore = $state<HTMLElement | undefined>(undefined);
+  let working = $state<HTMLElement | undefined>(undefined);
+  let noticeSlot = $state<HTMLElement | undefined>(undefined);
 
-  /**
-   * Opens the work by default when its rows fit in the column's height under
-   * what is already drawn (the asks, the offline cards), so the home does not
-   * leave that room empty over a folded line; folded when they would make the
-   * column scroll. The column's height is the home's layout, not the list's,
-   * so opening the rows never changes the answer.
-   */
-  function measure() {
+  /** The height the open rows need from the column, null when they would make it scroll (`workingFit`). */
+  function room(): number | null {
     const target = section;
     const column = target?.parentElement;
-    if (!target || !column || chosen !== null) return;
-    const shown = (workingRows?.offsetHeight ?? 0) + (workingMore ? workingMore.offsetHeight + 6 : 0);
-    const without = target.scrollHeight - shown;
-    const count = Math.min(lists.working.length, WORKING_ROWS);
-    const need = count * WORKING_ROW_HEIGHT + (lists.working.length > WORKING_ROWS ? MORE_HEIGHT : 0);
+    if (!target || !column) return null;
     // What the column draws over the list (a folder button, a note) is not the list's room.
     const top = target.offsetParent === column ? target.offsetTop : target.offsetTop - column.offsetTop;
-    fits = count > 0 && without + need <= column.clientHeight - Math.max(0, top);
+    return workingFit({ count: lists.working.length, drawn: target.scrollHeight - (working?.offsetHeight ?? 0), column: column.clientHeight, top, spare: spare() });
   }
 
-  // Again when the lists change, when the column is resized and when what sits over the work
-  // changes (a contact's request loads after the lists, its cards after it).
+  /**
+   * Opens the work by default when its rows fit whole in the room the home's
+   * column has (under the composer, and above the sentence the block can rise
+   * into), so the home does not leave that room empty over a folded line;
+   * folded when they would make the column scroll. Read once the lane shows,
+   * then again only when the column is resized or a contact's request over the
+   * lists loads or leaves: a thread that starts or ends never opens or folds
+   * the rows under the pointer. The user's own fold always wins.
+   */
+  let decided = false;
+  function decide() {
+    if (!section?.parentElement || lists.working.length === 0) return;
+    decided = true;
+    const height = room();
+    if (chosen === null) fits = opensByItself(lists.working.length, height);
+    onroom?.(workingOpen ? height : null);
+  }
   $effect(() => {
-    void lists;
-    void tick().then(measure);
+    if (lists.working.length === 0 || decided) return;
+    void tick().then(() => { if (!decided) decide(); });
   });
   $effect(() => {
-    const target = section;
-    const column = target?.parentElement;
-    if (!target || !column) return;
-    const resized = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => measure());
-    resized?.observe(column);
-    resized?.observe(target);
-    const changed = typeof MutationObserver === 'undefined' ? null : new MutationObserver(() => measure());
-    changed?.observe(target, { childList: true, subtree: true });
-    return () => { resized?.disconnect(); changed?.disconnect(); };
+    const column = section?.parentElement;
+    const slot = noticeSlot;
+    if (!column || typeof ResizeObserver === 'undefined') return;
+    const resized = new ResizeObserver(() => decide());
+    resized.observe(column);
+    if (slot) resized.observe(slot);
+    return () => resized.disconnect();
   });
+  $effect(() => () => onroom?.(null));
+
+  /** The rows unfold on `--dur-2`, as the chevron turns; at once under reduced motion. */
+  function unfold(node: Element) {
+    const token = getComputedStyle(node).getPropertyValue('--dur-2').trim();
+    const duration = glides() ? parseFloat(token) * (token.endsWith('ms') ? 1 : 1000) || 0 : 0;
+    return slide(node, { duration, easing: quintOut });
+  }
   /**
    * One number, one set: the header's count and `See all (n)` both count the
    * threads, as the sidebar's Needs you does. A bot's ask sits behind the
@@ -129,7 +148,8 @@
 </script>
 
 <section class="inbox" data-testid="inbox" aria-label={labels.label} bind:this={section}>
-  {#if ContactRequestNotice && contactsShown(store)}<ContactRequestNotice {store} flow />{/if}
+  <!-- Its own box, so the fold reads the room again when the request loads or leaves (`decide`). -->
+  <div class="notice-slot" bind:this={noticeSlot}>{#if ContactRequestNotice && contactsShown(store)}<ContactRequestNotice {store} flow />{/if}</div>
   {#if lists.needs.length}
     <!-- The threads' number is the sidebar's Needs you; a bot's ask is counted apart, behind a robot, as the Threads switch does. -->
     <h2 class="lane"><span class="ui-label">{labels.needsYou}</span>{#if threadNeeds}<span class="count" data-testid="inbox-needs-count" title={fill(labels.threadsCount, { count: String(threadNeeds) })}>{threadNeeds}</span>{/if}{#if botNeeds}{@const botsLabel = fill(labels.botsCount, { count: String(botNeeds) })}<button type="button" class="ghost count bots" data-testid="inbox-needs-bots"
@@ -175,16 +195,18 @@
       </button>
     </h2>
     {#if workingOpen}
-    <ul class="rows" id="inbox-working-rows" bind:this={workingRows}>
-      {#each rows as row (`${row.machine.id}:${row.thread.id}`)}
-        {@render workingRow(row)}
-      {/each}
-    </ul>
-    {/if}
-    {#if workingOpen && lists.working.length > WORKING_ROWS}
-      <button type="button" class="ghost small more" data-testid="inbox-working-more" bind:this={workingMore} aria-expanded={allRows} onclick={() => { allRows = !allRows; }}>
-        <span class="ui-label">{allRows ? labels.fewer : fill(labels.more, { count: String(lists.working.length) })}</span>
-      </button>
+      <div class="work" bind:this={working} transition:unfold>
+        <ul class="rows" id="inbox-working-rows">
+          {#each rows as row (`${row.machine.id}:${row.thread.id}`)}
+            {@render workingRow(row)}
+          {/each}
+        </ul>
+        {#if lists.working.length > WORKING_ROWS}
+          <button type="button" class="ghost small more" data-testid="inbox-working-more" aria-expanded={allRows} onclick={() => { allRows = !allRows; }}>
+            <span class="ui-label">{allRows ? labels.fewer : fill(labels.more, { count: String(lists.working.length) })}</span>
+          </button>
+        {/if}
+      </div>
     {/if}
   {/if}
 </section>
@@ -218,6 +240,7 @@
 
 {#snippet workingRow(row: InboxRow<Machine>)}
   {@const time = elapsed(secondClock.now - row.since)}
+  {@const name = projectName(row.project)}
   <li>
     <button type="button" class="row" data-testid="inbox-working" data-thread-id={row.thread.id} data-machine-id={row.machine.id}
       aria-label={`${fill(labels.open, { title: row.thread.title })}. ${fill(labels.working, { time })}`} onclick={() => open(row)}>
@@ -225,7 +248,8 @@
         <ThreadPicture owner={row.machine.store} thread={row.thread} size={16} />
       </StateRing>
       <span class="title">{row.thread.title}</span>
-      <span class="where ui-label">{[projectName(row.project) || null, named(row.machine) ? row.machine.label : null].filter(Boolean).join(' · ')}</span>
+      <!-- Where it runs, as the Recent rows say it: the project, then the machine when it is not this PC ("render-farm · ☰ Builder"). -->
+      {#if name || named(row.machine)}<span class="where" data-testid="inbox-working-where">{#if name}<span class="ui-label">{name}</span>{/if}{#if named(row.machine)}<MachineSuffix machine={row.machine} testid="inbox-working-machine" />{/if}</span>{/if}
       <span class="elapsed">{time}</span>
     </button>
   </li>
@@ -291,7 +315,7 @@
   .more { align-self: flex-start; margin-top: 6px; margin-left: -6px; color: var(--color-muted-foreground); }
   .nothing { margin: 4px 0 0; text-align: center; font-size: var(--text-sm); color: var(--color-muted-foreground); }
 
-  .rows { display: flex; flex-direction: column; }
+  .work, .rows { display: flex; flex-direction: column; }
   .row {
     display: flex; align-items: center; gap: 10px; width: 100%; height: auto; min-height: 34px; padding: 4px 8px 4px 4px;
     border: 0; border-radius: var(--radius-md); background: transparent; color: var(--color-foreground);
@@ -299,7 +323,9 @@
   }
   .row:hover { background: color-mix(in oklch, var(--color-surface-3) 70%, transparent); }
   .row .title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .row .where { flex: 0 1 auto; max-width: 38%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); color: var(--color-muted-foreground); }
+  .row .where { flex: 0 1 auto; gap: 4px; max-width: 38%; overflow: hidden; white-space: nowrap; font-size: var(--text-xs); color: var(--color-muted-foreground); }
+  /* The machine gives way first, so the project keeps its room. */
+  .row .where > :global(.machine-suffix) { flex-shrink: 1000; }
   .row .where::after { content: none; }
   .elapsed { flex: none; min-width: 52px; text-align: right; font-size: var(--text-xs); font-variant-numeric: tabular-nums; color: var(--color-subtle); }
   @media (prefers-reduced-motion: reduce) { .inbox { animation: none; } .fold :global(.chevron) { transition: none; } }

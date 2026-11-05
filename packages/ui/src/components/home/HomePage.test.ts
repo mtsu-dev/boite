@@ -599,11 +599,28 @@ test('the Operator card links the bot, lists the threads in touch with an End th
   expect(store.page).toBe('agents');
 });
 
+/** The column's and the request's ResizeObservers: jsdom has none, so a test says when a box was resized. */
+let observers: (() => void)[] = [];
+const quietObserver = globalThis.ResizeObserver;
+afterEach(() => { globalThis.ResizeObserver = quietObserver; });
+function watchResizes() {
+  observers = [];
+  globalThis.ResizeObserver = class {
+    readonly call: () => void;
+    constructor(callback: () => void) { this.call = () => callback(); }
+    observe() { observers.push(this.call); }
+    unobserve() {}
+    disconnect() { observers = observers.filter(call => call !== this.call); }
+  } as unknown as typeof ResizeObserver;
+}
+const resized = async () => { for (const call of [...observers]) call(); await tick(); flushSync(); };
+
 /**
  * The home's Inbox in a column `room` px tall, its asks and lane lines `used`
- * px: jsdom lays nothing out, so the two heights the fold reads are given.
+ * px, `spare` px free over the sentence: jsdom lays nothing out, so the
+ * heights the fold reads are given.
  */
-async function drawInbox(room: number, used: number | { px: number }): Promise<Store> {
+async function drawInbox(room: number, used: number | { px: number }, spare = 0, onroom?: (height: number | null) => void): Promise<Store> {
   const height = typeof used === 'number' ? { px: used } : used;
   const store = new Store();
   store.attach(new FakeClient({ delayMs: 0 }));
@@ -615,17 +632,18 @@ async function drawInbox(room: number, used: number | { px: number }): Promise<S
   const column = document.createElement('div');
   column.dataset['testid'] = 'home-column';
   document.body.append(column);
-  components.push(mount(Inbox, { target: column, props: { store } }));
+  components.push(mount(Inbox, { target: column, props: { store, spare: () => spare, onroom } }));
   await vi.waitFor(() => { flushSync(); expect(one('inbox-working-toggle')).not.toBeNull(); });
   await tick();
   flushSync();
   return store;
 }
+const expanded = () => one('inbox-working-toggle')!.getAttribute('aria-expanded');
 
 test("the work opens by default when its rows fit in the column under the asks, folds when they would scroll it, and the chevron's choice is kept", async () => {
   // Round 12: under a one-line "Working now 2" the home's column stayed empty for 400 px with the two running threads folded away.
   await drawInbox(600, 200);
-  expect(one('inbox-working-toggle')!.getAttribute('aria-expanded')).toBe('true');
+  expect(expanded()).toBe('true');
   expect(document.querySelectorAll('[data-testid=inbox-working]')).toHaveLength(2);
   // The chevron still folds it, and the fold is kept over the room.
   one<HTMLButtonElement>('inbox-working-toggle')!.click();
@@ -638,23 +656,57 @@ test("the work opens by default when its rows fit in the column under the asks, 
   document.body.innerHTML = '';
   opened?.detach();
   await drawInbox(600, 200);
-  expect(one('inbox-working-toggle')!.getAttribute('aria-expanded')).toBe('false');
+  expect(expanded()).toBe('false');
 });
 
-test('the work stays folded when its rows would not fit under the asks', async () => {
-  // Two rows need 68 px; 40 px are left.
-  await drawInbox(240, 200);
-  expect(one('inbox-working-toggle')!.getAttribute('aria-expanded')).toBe('false');
+test('the work stays folded when its rows would not fit in the column, nor in the room over the sentence', async () => {
+  // Two rows need 68 px; 40 px are left under the asks, 20 over the sentence.
+  await drawInbox(240, 200, 20);
+  expect(expanded()).toBe('false');
   expect(document.querySelectorAll('[data-testid=inbox-working]')).toHaveLength(0);
   vi.restoreAllMocks();
 });
 
+test('the work opens into the free room over the sentence, and asks the home to lift its block by what the rows need', async () => {
+  // Round 13 at 1440x900: the rows lacked 19 px under the asks while 93 px stayed empty over "Start a thread in".
+  const asked: (number | null)[] = [];
+  await drawInbox(240, 200, 40, height => asked.push(height));
+  expect(expanded()).toBe('true');
+  expect(document.querySelectorAll('[data-testid=inbox-working]')).toHaveLength(2);
+  // 200 px drawn and two 34 px rows: the column takes 268 px, 28 of them from over the sentence.
+  expect(asked.at(-1)).toBe(268);
+  one<HTMLButtonElement>('inbox-working-toggle')!.click();
+  flushSync();
+  expect(asked.at(-1)).toBeNull();
+  vi.restoreAllMocks();
+});
+
+test('a thread that starts or ends never opens or folds the work by itself; a resize of the column reads the room again', async () => {
+  // Round 13: the lane was measured again on every list change, so a third agent starting folded the two open rows under the pointer.
+  watchResizes();
+  const used = { px: 200 };
+  const store = await drawInbox(600, used);
+  expect(expanded()).toBe('true');
+  used.px = 560;
+  store.threads = store.threads.map((thread, index) => index === 2 ? { ...thread, status: 'running', runningSince: Date.now() } : thread);
+  await tick();
+  flushSync();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  flushSync();
+  expect(document.querySelectorAll('[data-testid=inbox-working]')).toHaveLength(3);
+  expect(expanded()).toBe('true');
+  await resized();
+  expect(expanded()).toBe('false');
+});
+
 test('the work folds again when something that loads later over it (a contact\'s request) takes its room', async () => {
   // The first capture of round 12 opened the work before the request's card loaded, and the rows ran under the column's end.
+  watchResizes();
   const used = { px: 200 };
   await drawInbox(600, used);
-  expect(one('inbox-working-toggle')!.getAttribute('aria-expanded')).toBe('true');
+  expect(expanded()).toBe('true');
   used.px = 560;
-  one('inbox')!.prepend(document.createElement('div'));
-  await vi.waitFor(() => { flushSync(); expect(one('inbox-working-toggle')!.getAttribute('aria-expanded')).toBe('false'); });
+  // The request's box grows: its observer reads the room again.
+  await resized();
+  await vi.waitFor(() => { flushSync(); expect(expanded()).toBe('false'); });
 });

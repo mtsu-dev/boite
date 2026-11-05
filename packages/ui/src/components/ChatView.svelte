@@ -41,6 +41,17 @@
     && (!phone.current || !store.sidebarOpen)
     && !(pinnedQuotas.wantsDock(store) && dockAvailable));
   let discussion = $state<HTMLElement>();
+  /** The height the home's open working rows need from the column under the composer (home/Inbox.svelte), or null. */
+  let tailRoom = $state<number | null>(null);
+  /** The free room above the home's sentence: what the block can still rise by when the rows need it. */
+  function blockSpare(): number {
+    const body = discussion;
+    const heading = body?.querySelector<HTMLElement>('[data-testid=draft-sentence]');
+    // A phone draws no sentence and no column under its composer: nothing to rise for.
+    if (!body || !heading || heading.offsetHeight === 0) return 0;
+    const style = getComputedStyle(body);
+    return Math.max(0, body.clientHeight - heading.offsetHeight - (parseFloat(style.paddingTop) || 0) - (parseFloat(style.paddingBottom) || 0));
+  }
   let quotaRoom = $state<HTMLElement>();
   /** How tall the subagent bar stands over the composer: the band of tasks floats above it, not over it. */
   let agentDockRoom = $state(0);
@@ -217,7 +228,8 @@
     <!-- The draft's heading and composer are one block in the middle of the
          column: the body above and this tail below share the free space. -->
     {#if !thread && !sending}
-      <div class="draft-tail">
+      <!-- At least as tall as the open working rows need: the block rises into its free room above the sentence for them. -->
+      <div class="draft-tail" style:min-height={tailRoom === null ? undefined : `${tailRoom}px`}>
         <!-- In the drafts the agent gets a fresh folder; someone with work of
              their own is one click from pointing it there instead. -->
         {#if firstRunSteps(store).active}
@@ -235,7 +247,7 @@
           </button>
         {/if}
         <!-- What waits on the user and what works, from every project and machine (home/Inbox.svelte). -->
-        {#if !firstRunSteps(store).active}<Inbox {store} />{/if}
+        {#if !firstRunSteps(store).active}<Inbox {store} spare={blockSpare} onroom={height => tailRoom = height} />{/if}
       </div>
     {/if}
     <!-- Desktop drafts anchor against the whole chat so their centered heading stays clear. -->
@@ -321,12 +333,16 @@
     display: flex;
     flex-direction: column;
     align-items: center;
+    transition: min-height var(--dur-2) var(--ease-out-quint);
   }
+  @media (prefers-reduced-motion: reduce) { .draft-tail { transition: none; } }
+  :global(html[data-motion='reduced']) .draft-tail { transition: none; }
 
-  /* With cards or working rows under it, the block rises to the top third:
-     centred, the Inbox scrolled under a third of empty column. */
+  /* With cards or working rows under it, the block rises to the top quarter:
+     centred, it left 190 px empty over the sentence at 1440x900 while the
+     two working rows had no room under the asks. */
   .draft-tail:has(:global([data-testid='inbox-card'])),
-  .draft-tail:has(:global([data-testid='inbox-working-toggle'])) { flex-grow: 2; }
+  .draft-tail:has(:global([data-testid='inbox-working-toggle'])) { flex-grow: 3; }
 
   /* The home's accent sky: two still glows of the accent, the grain over them in its theme. */
   .chat.drafting {

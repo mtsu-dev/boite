@@ -16,6 +16,8 @@
   import { trackThreadPullRequest } from '../lib/thread-pull-request.svelte';
   import { projectName } from '../lib/format';
   import { canMarkDone, markDone } from '../lib/recent.svelte';
+  import { threadState } from '../lib/thread-state';
+  import { rowSubagents } from '../lib/delegated-work';
   import { ThreadRename, commitOnUnmount } from '../lib/thread-rename.svelte';
   let {
     machine,
@@ -59,9 +61,14 @@
    * the delegated agents, so the first line is the ring and the title alone.
    * The branch and the pull request are on the open thread's header and in the
    * row's tooltip; delegated agents show while the row is open or under the
-   * pointer (`ThreadHeadline`).
+   * pointer (`ThreadHeadline`). Under a project's header, a row also takes that
+   * line when it has a failure to word, as a Recent row does: "Failed" under the
+   * title, then the pin and the time. A pinned row with nothing else to say keeps
+   * one line, its pin just before the time.
    */
-  let meta = $derived(showProject || Boolean(pending));
+  let kind = $derived(threadState(thread, rowSubagents(owner, thread.id)));
+  let failed = $derived(owner.connection === 'ready' && (kind === 'error' || kind === 'interrupted'));
+  let meta = $derived(showProject || Boolean(pending) || failed);
   let prLabel = $derived(pullRequest ? fill(pullRequest.state === 'MERGED' ? strings.sidebar.prMerged : pullRequest.state === 'CLOSED' ? strings.sidebar.prClosed : strings.sidebar.prOpen, { number: String(pullRequest.number) }) : null);
   let tooltip = $derived([thread.title, thread.branch, prLabel].filter(Boolean).join('\n'));
   let doneAllowed = $derived(canMarkDone(owner, thread));
@@ -120,6 +127,7 @@
     class:unread={thread.unread}
     class:pinned={thread.pinned}
     class:meta
+    class:grouped={!showProject}
     class:offline={owner.connection !== 'ready'}
     class:dragging={threadDrag.current?.threadId === thread.id && threadDrag.current.machineId === machine.id}
     data-movable={movable}
@@ -223,6 +231,10 @@
     gap: 2px;
     padding: 3px 8px 3px 4px;
   }
+  /* Under a project's header its one-line rows set the edges: the ring and the time keep their column. */
+  .grouped.meta .row { padding: 3px 4px 3px 3px; }
+  /* and their 13 px title: a row taking a second line for its failure keeps the card's one size. */
+  .grouped.meta .row :global(.headline.stacked .title) { font-size: var(--text-sm); }
   .row:hover:not(:disabled) {
     background: transparent;
   }

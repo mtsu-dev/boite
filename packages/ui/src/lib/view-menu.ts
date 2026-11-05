@@ -14,7 +14,8 @@ import { namesMachine } from './row-machine';
  * `Menu` draws as a named group, so its check reads as one answer of two. A project's id is its `projectKey`, as `projectView.pick` reads it.
  * Every row leads with a mark, All projects its layers, so the labels start
  * on one column; a project names its machine only when the rows would, never
- * This PC.
+ * This PC, on the label's line in the muted tier: "render-farm · ☰ Builder", as
+ * the Recent rows read.
  */
 export function viewMenuItems(entries: ProjectEntry[], several: boolean): MenuItem[] {
   const recent = workspace.view === 'recent';
@@ -32,7 +33,8 @@ export function viewMenuItems(entries: ProjectEntry[], several: boolean): MenuIt
     { id: 'all', label: strings.sidebar.allProjects, glyph: Layers, checked: !selected, radio: true },
     ...entries.map(entry => ({
       id: projectKey(entry), label: projectName(entry.project),
-      hint: !several ? entry.project.path : namesMachine(entry.machine, entry.machine.store.connection !== 'ready') ? entry.machine.label : undefined,
+      hint: several ? undefined : entry.project.path,
+      machine: several && namesMachine(entry.machine, entry.machine.store.connection !== 'ready') ? entry.machine : undefined,
       checked: projectKey(entry) === projectView.filter, radio: true, projectTile: { project: entry.project, store: entry.machine.store }
     }))
   ];

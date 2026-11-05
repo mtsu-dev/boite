@@ -29,6 +29,17 @@ test('a narrowed composer cuts the model name before the effort', () => {
   expect(narrow).toMatch(/\.desktop-options \{ flex: none; \}/);
 });
 
+test('a narrowed composer clips the model chip to its own box, so no chip paints over the next', () => {
+  const start = barSource.indexOf('@container composer (max-width: 600px)');
+  const narrow = barSource.slice(start, barSource.indexOf('@container composer (max-width: 480px)'));
+  // A picker that shrinks while its button keeps its width lets the effort pill cover the model's end.
+  const trigger = narrow.match(/\.chips :global\(\.picker > \.trigger\) \{([^}]*)\}/)?.[1] ?? '';
+  expect(trigger).toMatch(/min-width: 0/);
+  expect(trigger).toMatch(/max-width: 100%/);
+  // The three chevrons give their room back, as under 380 px.
+  expect(narrow).toMatch(/\.chips :global\(\.trigger > \.chevron\) \{ display: none; \}/);
+});
+
 test('the effort and mode chips wear the model chip\'s 12 px chevron, and every chip drops it under 380 px', () => {
   const mode = barSource.slice(barSource.indexOf('testid="composer-mode"'), barSource.indexOf('</Menu>', barSource.indexOf('testid="composer-mode"')));
   expect(mode).toMatch(/<ChevronDown size=\{12\} strokeWidth=\{2\} class="chevron" \/>/);

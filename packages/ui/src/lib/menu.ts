@@ -1,6 +1,7 @@
 import type { Component } from 'svelte';
 import type { Project } from '@boite/contracts';
 import type { Store } from './store.svelte';
+import type { Machine } from './workspace.svelte';
 
 /** One row of a popover or context menu. A row with `separator` draws a rule and nothing else. */
 export interface MenuItem {
@@ -16,6 +17,8 @@ export interface MenuItem {
   live?: boolean;
   /** A project's tile before the label: its logo, its stack's mark or its initial, read through the Store that owns it. */
   projectTile?: { project: Project; store: Store };
+  /** Another machine named after the label as the Recent rows name it: "· ☰ Builder". */
+  machine?: Machine;
   status?: { tone: 'success' | 'warning' | 'danger' | 'neutral'; label: string };
   active?: boolean;
   /** A persistent toggle, announced and drawn as a checkbox in the context menu. */
