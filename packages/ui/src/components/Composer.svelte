@@ -1,14 +1,12 @@
 <script lang="ts">
   import { tick, untrack } from 'svelte';
-  import { supportsSideQuestions, type Attachment, type PreviewReference } from '@boite/contracts';
-  import { restorePreviewMentions } from '../lib/preview-mentions';
+  import { supportsSideQuestions, type Attachment } from '@boite/contracts';
   import { runCommand } from '../lib/commands.svelte';
   import { agentSlashItems, boiteSlashItems, skillSlashItems, slashCompletion, listKey, mentionQueryOf, slashQueryOf, type ChipCommand } from '../lib/composer-menus';
   import { AgentsView, agentOfThread } from '../lib/agents.svelte';
   import { composerPlaceholder } from '../lib/composer-placeholder';
   import { readyToSend, receiveDroppedFiles, takeFiles } from '../lib/composer-attachments';
   import { rewindComposerEdit } from '../lib/composer-edit';
-  import { editWhole } from '../lib/reading-window';
   import { fitHeight, selfSizing } from '../lib/composer-size';
   import { editComposerInput, insertImageReference, removeImageReferences, sameSend, sendShape, touchesImageReference, trackImageSend, type SendShape } from '../lib/composer-images';
   import { checkpoint, editKind, recordEdit, resetHistory, settled } from '../lib/composer-history';
@@ -18,9 +16,10 @@
   import { focusInitial, focusWithin } from '../lib/focus';
   import { touchScreen } from '../lib/device';
   import { ignoreQuestions, noteTyping, repliesOf, replyTarget, sendAnswer } from '../lib/question-reply.svelte';
-  import { emptyBox, returnPrompt, sentPrompts, textEntries, type ComposerState, type SentPrompt } from '../lib/composer-queue';
+  import { emptyBox, returnPrompt, sentPrompts, textEntries, type ComposerState } from '../lib/composer-queue';
+  import { PromptRecall } from '../lib/composer-recall.svelte';
   import { rankItems, type PaletteItem } from '../lib/palette';
-  import { clearStash, DRAFT_STASH_KEY, readStash, writeStash } from '../lib/prefs';
+  import { DRAFT_STASH_KEY } from '../lib/prefs';
   import { claudeKeywords, promptSegments } from '../lib/message-display';
   import { strings } from '../lib/strings';
   import type { Choice, Store } from '../lib/store.svelte';
@@ -70,10 +69,10 @@
   let toolbar = $state<ReturnType<typeof ComposerBar> | undefined>(undefined);
   let attachmentStrip = $state<ReturnType<typeof ComposerAttachments> | undefined>();
   let highlightedImage = $state<Attachment | null>(null);
-  /** Where ArrowUp stands in this thread's sent prompts, or null outside recall. */
-  let recall = $state<number | null>(null);
-  let recallRead = $state<Promise<boolean> | null>(null);
-  $effect(() => { if (recall === null) recallRead = null; });
+  /** ArrowUp and ArrowDown through the sent prompts, and the stash (`lib/composer-recall.svelte.ts`). */
+  const recall = new PromptRecall(() => ({ store, key, thread, composer, text, attachments, previewReferences, sent, box, state: stateForInput, put,
+    landed: (at) => { caret = at; requestAnimationFrame(grow); } }));
+  $effect(() => { if (recall.at === null) recall.read = null; });
   /** The box has the keyboard: one of the two things that open the slash menu. */
   let focused = $state(false);
   /** Escape shuts the menu on text it keeps, until that text changes again. */
@@ -107,7 +106,7 @@
   $effect(() => {
     const draft = store.draft;
     const identity = `${key}\u0000${draft?.id ?? ''}\u0000${draft?.projectId ?? ''}`;
-    recall = null;
+    recall.at = null;
     const frame = box?.closest<HTMLElement>('[data-testid=composer]');
     if (identity === focusedFor && focusWithin(frame)) return;
     focusedFor = identity;
@@ -147,7 +146,7 @@
   // An answer counts the card's picks, needs no model and cannot wait in the outbox.
   let sendable = $derived(
     (text.trim().length > 0 || attachments.length > 0 || (reply ? !!repliesOf(store).picks[reply.id]?.length : previewReferences.length > 0)) &&
-      recallRead === null &&
+      recall.read === null &&
       !attachments.some(unresolvedAssetId) &&
       (reply !== null || choice !== null || target !== null) &&
       (store.connection === 'ready' || (offline && !reply)) &&
@@ -307,7 +306,7 @@
     settled(state);
     if (kind === 'big' && !state.text && !state.attachments.length) offerDraftUndo(editing(), prior, strings.composer.draftCleared);
     pendingEdit = undefined;
-    recall = null;
+    recall.at = null;
     // Typing is proof the box has the keyboard, whatever the focus event did.
     focused = true;
     if (whole === null) track(); else caret = whole;
@@ -337,7 +336,7 @@
   /** What the composer's own edits write to (`lib/composer-editing.ts`). An answer's files reach the agent as paths, so it takes images whatever the provider reads. */
   function editing(): EditingHost {
     return { store, key, box, state: stateForInput(), provider: reply ? null : provider,
-      moved: (at) => { caret = at; recall = null; if (!sizesItself) grow(); else syncInput(); }, shown: () => key };
+      moved: (at) => { caret = at; recall.at = null; if (!sizesItself) grow(); else syncInput(); }, shown: () => key };
   }
 
   /**
@@ -369,14 +368,14 @@
       if (canSend && await sendAnswer(store, reply)) {
         const answered = store.composerStates[answeredKey];
         if (answered) resetHistory(answered);
-        recall = null; requestAnimationFrame(grow);
+        recall.at = null; requestAnimationFrame(grow);
       }
       return;
     }
     const ready = readyToSend(store, stateForInput(), stateForInput, () => [text, previewReferences, choice]); if (!(typeof ready === 'boolean' ? ready : await ready)) return; // Pictures being fitted go once they fit, in the same box (`lib/composer-attachments.ts`); an answer waits in `sendAnswer`.
     const prompt = text, images = attachments, references = previewReferences;
     if (target) {
-      if (canSend && await sendToTarget(target, stateForInput(), prompt, images)) recall = null;
+      if (canSend && await sendToTarget(target, stateForInput(), prompt, images)) recall.at = null;
       requestAnimationFrame(grow);
       return;
     }
@@ -398,7 +397,7 @@
       state.editing = null;
       emptyBox(state);
       resetHistory(state);
-      recall = null;
+      recall.at = null;
       requestAnimationFrame(grow);
       return;
     }
@@ -407,7 +406,7 @@
     // The box empties and the prompt joins the timeline now; the core's answer only ticks its receipts. A `/goal` writes no message.
     const local = edited ? edited.local : inputStore.stageSend(inputKey, prompt, images, references);
     // Undo never brings back a prompt that left.
-    if (local) { emptyBox(state); resetHistory(state); recall = null; requestAnimationFrame(grow); }
+    if (local) { emptyBox(state); resetHistory(state); recall.at = null; requestAnimationFrame(grow); }
     // A rewind's replacement belongs to the captured thread and machine, even after navigation.
     const accepted = await (editedThread
       ? inputStore.send(prompt, inputKey, images, references)
@@ -426,7 +425,7 @@
       if (state.text === '') resetHistory(state);
       state.paused = false;
     } else if (!accepted && local) { inputStore.unstageSend(local); returnPrompt(state, prompt, images, references); }
-    if (accepted) recall = null;
+    if (accepted) recall.at = null;
     requestAnimationFrame(grow);
     state.sending = false;
   }
@@ -513,114 +512,6 @@
     void store.sendQueuedNow(key);
   }
 
-  /** ArrowUp: one prompt older, or nothing when the user typed the text themselves. */
-  function older(): boolean {
-    if (recall === null && (text.length > 0 || previewReferences.length > 0)) return false;
-    if (recall === null && composer?.queued.length && !composer.sending && attachments.length === 0) {
-      restoreQueued(composer.queued.length - 1);
-      return true;
-    }
-    const next = recall === null ? 0 : recall + 1;
-    const prompt = sent[next];
-    if (prompt === undefined) return recall !== null;
-    recall = next;
-    recallPrompt(prompt);
-    return true;
-  }
-
-  /** An idle thread recalls a fully hydrated edit; a running thread recalls words to queue. */
-  function recallPrompt(prompt: SentPrompt) {
-    const state = stateForInput();
-    const edit = !store.busy && state.queued.length === 0 && thread !== null && (!!thread.agentSessionId || thread.projectId !== null);
-    if (edit) {
-      const owner = store, inputKey = key, at = recall;
-      const message = thread?.messages.find(message => message.id === prompt.id);
-      if (!message) return;
-      checkpoint(state);
-      const loading = editWhole(owner, inputKey, message, () => store === owner && key === inputKey && recall === at && recallRead === loading);
-      recallRead = loading;
-      void loading.then(applied => {
-        if (applied) { caret = state.text.length; requestAnimationFrame(grow); }
-      }).finally(() => { if (recallRead === loading) recallRead = null; });
-      return;
-    }
-    recallRead = null;
-    restorePrompt(prompt.text, prompt.previewReferences);
-    if (state.editing) state.attachments = [];
-    state.editing = null;
-  }
-
-  /** Leaves edit mode: the box empties, nothing was rewound. */
-  function cancelEdit() {
-    const state = stateForInput();
-    checkpoint(state);
-    state.editing = null;
-    state.attachments = [];
-    state.previewReferences = [];
-    recall = null; recallRead = null;
-    put('');
-    focusInitial(box, box?.closest<HTMLElement>('[data-testid=composer]'));
-  }
-
-  function restoreQueued(at: number) {
-    const state = composer;
-    if (!state || state.sending || text.length > 0 || attachments.length > 0 || previewReferences.length > 0) return;
-    const entry = store.restoreQueued(key, at);
-    if (!entry) return;
-    checkpoint(state);
-    state.attachments = entry.attachments;
-    recall = null;
-    restorePrompt(entry.text, entry.previewReferences ?? []);
-    box?.focus({ preventScroll: true });
-  }
-
-  /** ArrowDown: one prompt newer, and past the newest the composer is empty again. */
-  function newer(): boolean {
-    if (recall === null) return false;
-    const next = recall - 1;
-    if (next < 0) {
-      recall = null;
-      const state = stateForInput();
-      checkpoint(state);
-      state.previewReferences = [];
-      if (state.editing) { state.editing = null; state.attachments = []; }
-      put('');
-      return true;
-    }
-    const prompt = sent[next];
-    if (prompt === undefined) return true;
-    recall = next;
-    recallPrompt(prompt);
-    return true;
-  }
-
-  function restorePrompt(text: string, references: PreviewReference[]) {
-    const restored = restorePreviewMentions(text, references);
-    put(restored.text);
-    stateForInput().previewReferences = restored.references;
-  }
-
-  /** The stash chord sets text aside for this thread; an empty composer takes it back. */
-  function stash() {
-    if (previewReferences.length) { store.error = strings.previewComments.stashUnsupported; return; }
-    const stashKey = store.threadKey(key);
-    if (text.trim().length > 0) {
-      writeStash(stashKey, text);
-      recall = null;
-      // The text set aside is plain text: the next prompt typed is not an edit of a sent one.
-      const state = stateForInput();
-      checkpoint(state);
-      if (state.editing) { state.editing = null; state.attachments = []; }
-      put('');
-      return;
-    }
-    const stashed = readStash(stashKey);
-    if (stashed === null) return;
-    clearStash(stashKey);
-    recall = null;
-    put(stashed);
-  }
-
   /** Prompt commands complete the box; other commands execute and close the menu. */
   function pickSlash(item: PaletteItem) {
     const completion = slashCompletion(item);
@@ -684,7 +575,7 @@
     }
     if (store.isKey(event, 'stash')) {
       event.preventDefault();
-      stash();
+      recall.stash();
       return;
     }
     if (meta || event.altKey) return;
@@ -699,18 +590,18 @@
       if (boxEmpty && sendNow && !reply) sendQueuedNow();
       else void submit();
     } else if (event.key === 'ArrowUp' && !event.shiftKey) {
-      if (older()) event.preventDefault();
+      if (recall.older()) event.preventDefault();
     } else if (event.key === 'ArrowDown' && !event.shiftKey) {
-      if (newer()) event.preventDefault();
+      if (recall.newer()) event.preventDefault();
     } else if (event.key === 'Escape' && !reply && (target ? target.busy && !!target.stop : store.busy || thread?.activity?.goal?.status === 'active' || thread?.activity?.loop?.status === 'active')) {
       // Not while the box answers a question: a thread waiting on one opens
       // with the focus there, and an Escape pressed out of habit threw the
       // question away with the turn. Skip and the stop button still end it.
       event.preventDefault();
       if (target) target.stop?.(); else void store.stop();
-    } else if (event.key === 'Escape' && (composer?.editing || recallRead !== null)) {
+    } else if (event.key === 'Escape' && (composer?.editing || recall.read !== null)) {
       event.preventDefault();
-      cancelEdit();
+      recall.cancelEdit();
     }
   }
 </script>
@@ -732,7 +623,7 @@
         disabled={composer.sending || text.length > 0 || attachments.length > 0 || previewReferences.length > 0}
         paused={composer.paused} sending={composer.sending} outgoing={composer.outgoing ?? 0} connected={store.connection === 'ready'} machine={machineLabel} starts={!thread}
         {sendNow}
-        onrestore={restoreQueued} onremove={(at) => store.removeQueued(key, at)} onretry={(at) => store.retryQueued(key, at)}
+        onrestore={(at) => recall.restoreQueued(at)} onremove={(at) => store.removeQueued(key, at)} onretry={(at) => store.retryQueued(key, at)}
         onsendnow={sendQueuedNow} />
     {/if}
   </div>
@@ -744,7 +635,7 @@
     event.stopPropagation();
   }}>
     {#if !target}<ThreadActivity {store} reserveInComposer={hasQueue} onroom={(height) => (activityRoom = height)} />{/if}
-    <ComposerIntent editing={!!composer?.editing} reply={reply && reply.id === repliesOf(store).docked ? null : reply} oncancel={cancelEdit} onignore={() => ignoreQuestions(store)} />
+    <ComposerIntent editing={!!composer?.editing} reply={reply && reply.id === repliesOf(store).docked ? null : reply} oncancel={() => recall.cancelEdit()} onignore={() => ignoreQuestions(store)} />
 
     {#if side.current && side.current.threadId === thread?.id}<SideAnswer {...side.current} {store} onclose={() => { side.clear(); focusInitial(box, box?.closest<HTMLElement>('[data-testid=composer]')); }} />{/if}
     {#if attachments.length > 0}

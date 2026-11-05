@@ -1,54 +1,37 @@
 <script lang="ts">
   import { onDestroy, onMount, tick, untrack } from 'svelte';
-  import { MESSAGE_PAGE, type MemoryEvent, type Message, type Turn } from '@boite/contracts';
+  import { MESSAGE_PAGE, type MemoryEvent, type Message } from '@boite/contracts';
   import { strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
-  import MessageTurnSummary from './MessageTurnSummary.svelte';
-  import TurnFiles from './TurnFilesLoader.svelte';
-  import { TurnFileCache, answersByTurn, showsTurnFiles, type TurnFilesData } from '../lib/turn-files';
-  import { chatPrefs } from '../lib/chat-prefs.svelte';
   import MessageOutline from './MessageOutline.svelte';
   import JumpToLatest from './JumpToLatest.svelte';
-  import AgentMessageGroup from './AgentMessageGroup.svelte';
-  import WakeMarker, { wakeKind } from './WakeMarker.svelte';
-  import TurnFoldRow from './TurnFoldRow.svelte';
-  import DayDivider from './DayDivider.svelte';
   import { dayBreaks } from '../lib/day-breaks';
-  import { AgentTimeline, memoryPassOf, summaryMarks } from '../lib/agent-turns';
+  import { AgentTimeline, memoryPassOf } from '../lib/agent-turns';
   import { groupTimeline } from '../lib/timeline-group';
   import { agentMailFor } from '../lib/agent-mail';
-  import DelegationActivity from './DelegationActivity.svelte';
   import { teamLaunches } from '../lib/delegation-progress';
-  import UserMessage from './UserMessage.svelte';
   import Deferred, { parts } from './Deferred.svelte';
   import { provideViewerHost, type Gallery } from '../lib/media-gallery';
-  import AssistantMessage from './AssistantMessage.svelte';
-  import FailedAttempts from './FailedAttempts.svelte';
   import MoveMarker from './MoveMarker.svelte';
-  import SpawnMarker from './SpawnMarker.svelte';
-  import MemoryRow from './MemoryRow.svelte';
   import { mergeNoticeRows, placeMemoryEvents } from '../lib/memory-timeline';
-  import MessageActions from './MessageActions.svelte';
-  import { movedBy, pendingMoveOf, startedFrom, turnAnswer } from '../lib/message-display';
-  import { focusComposer } from '../lib/focus';
+  import { pendingMoveOf } from '../lib/message-display';
   import { isSending } from '../lib/composer-queue';
-  import { retryTurn } from '../lib/composer-edit';
-  import { TurnProgress } from '../lib/turn-progress.svelte';
   import { GAP, OVERSCAN, SlotTotals, WINDOW_FROM, atOrBefore, estimateSlot, gapChanged, keepOnly, measurable, reaches, sameView, slotGap, windowStats, type WindowView } from '../lib/message-window';
   import { TimelineRows, rowEstimate, rowIndexOf, seam, type TimelineRow } from '../lib/timeline-rows';
   import { GapRows, NO_GAPS, READ_AHEAD, RangeAsk, gapHeight, heldNear, loadKeepingReader, wantedRange } from '../lib/history-gaps';
   import TimelineGap from './TimelineGap.svelte';
-  import WorkflowActivity from './WorkflowActivity.svelte';
   import { dockRoom } from '../lib/question-dock.svelte';
   import { glides } from '../lib/motion';
   import { BottomEdge, BottomGlide, PointerHold, keysUp, pointedTurn, typingKey, watchWheel, wheelsUp } from '../lib/timeline-follow';
   import { selectionClicks } from '../lib/selection-clicks';
-  import { editWhole, fillShort, pullNewer, pullOlder } from '../lib/reading-window';
+  import { fillShort, pullNewer, pullOlder } from '../lib/reading-window';
   import { ReadingAnchor, type RowAnchor } from '../lib/reading-anchor';
   import { MediaQuery } from 'svelte/reactivity';
   import { MessageReveal } from '../lib/message-reveal.svelte';
   import { ViewPlacement, turnViews, viewPart } from '../lib/inline-view';
-  import { filesLast, firstAssistantByTurn, firstByTurn, publishedFile, quietKeepalives } from '../lib/message-order';
+  import { filesLast, publishedFile, quietKeepalives } from '../lib/message-order';
+  import { TimelineTurns } from '../lib/timeline-turns.svelte';
+  import TimelineMessage from './TimelineMessage.svelte';
 
   /** A phone has no room left of the bubbles for the outline rail: it is not drawn there. */
   const narrow = new MediaQuery('(max-width: 720px)');
@@ -728,46 +711,8 @@
     edge.follow(box);
   });
 
-  // Finished and streaming messages are derived apart, so a delta never rescans the thread.
-  const progress = new TurnProgress(() => messages);
-  /** One model attribution per turn, independent of the rendered window and streamed parts. */
-  const firstAssistantInTurn = $derived(firstAssistantByTurn(messages));
-  /** The last row of each turn: a later message of the same turn replaces an earlier one. */
-  const lastInTurn = $derived(new Map(timeline.map((message): [string, string] => [message.turnId, message.id])));
-  const firstInTurn = $derived(firstByTurn(messages));
-  /** Each turn's answers, rebuilt when a message comes or goes, never on a part or a delta. */
-  const answers = $derived(answersByTurn(messages));
-  const fileCache = new TurnFileCache();
-  /** A turn end's file summary, derived per closing row: a part on the running turn rereads no finished turn. */
-  function filesOf(turn: Turn): TurnFilesData | null {
-    const thread = store.openThread;
-    if (!thread || thread.id !== threadId || !showsTurnFiles(turn, chatPrefs.groupChanges)) return null;
-    windowStats.turnFiles += 1;
-    const data = fileCache.read(turn.id, answers.get(turn.id) ?? [], thread.cwd, turn.status === 'running');
-    return data.files.length ? data : null;
-  }
-
-  /**
-   * Edit and retry go through the core's rewind, fork through its fork, and
-   * only on a thread at rest: a turn still running is stopped first (Escape).
-   * A persistent agent's thread rewinds like any other, but has no project to
-   * fork into.
-   */
-  const branchable = $derived(store.openThread?.id === threadId && (!!store.openThread.agentSessionId || store.openThread.projectId !== null));
-  const forkable = $derived(branchable && !store.openThread?.agentSessionId);
-  // A prompt still waiting in the queue would run after the edit, on the rewound thread, as would an edit started under a prompt still on its way to the core.
-  const atRest = $derived(branchable && !store.busy && (store.composerStates[threadId]?.queued.length ?? 0) === 0 && !store.composerStates[threadId]?.sending);
-
-  async function editMessage(message: Message): Promise<void> {
-    if (await editWhole(store, threadId, message)) focusComposer({ typing: true });
-  }
-
-  /** The last turn again from its own prompt, on screen before the core rewinds (`retryTurn`). */
-  async function retry(turnId: string): Promise<void> {
-    const prompt = messages.find((message) => message.turnId === turnId && message.role === 'user');
-    if (prompt) await retryTurn(store, threadId, prompt);
-  }
-
+  /** Each turn's first and last rows, files, and edit, retry and fork (lib/timeline-turns.svelte.ts). */
+  const facts = new TimelineTurns(() => store, () => threadId, () => messages, () => timeline);
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -796,7 +741,7 @@
         {@const turn = store.openThread?.turns.find(turn => turn.id === message.turnId)}
         {@const source = group || viewPart(message) || publishedFile(message) ? messages.findLast(current => current.turnId === message.turnId) : message}
         {@const quietFold = shaped.folds.get(message.id)}
-        {@const closes = row.last && !quietFold && turn !== undefined && turn.execution?.operation !== 'keepalive' && lastInTurn.get(turn.id) === message.id}
+        {@const closes = row.last && !quietFold && turn !== undefined && turn.execution?.operation !== 'keepalive' && facts.last.get(turn.id) === message.id}
         {@const joined = seam(rows[view.start + index - 1], row)}
         <article
           use:track={{ row, joined }}
@@ -807,46 +752,8 @@
           data-testid={row.first ? 'message' : 'message-rest'}
           data-role={group ? 'agent-mail' : message.role} data-turn={message.turnId}
         >
-          {#if row.first && days.has(message.id)}<DayDivider at={days.get(message.id)!} />{/if}
-          {#if row.failures}
-            <FailedAttempts {store} {threadId} messages={row.failures} turns={shownTurns} {signedOut} canFork={!narrow.current && forkable && !store.openThread?.incognito} reveal={failureTarget} oninspect={inspectFailures} />
-          {:else if quietFold}
-            <TurnFoldRow fold={quietFold} at={message.createdAt} compactions={shaped.compactions.get(quietFold.turnId)} />
-          {:else if launches.has(message.id)}
-            <DelegationActivity {store} agents={launches.get(message.id)!.agents} past={message.createdAt < newestTurnAt} />
-          {:else if workflowRows.has(message.id)}
-            <WorkflowActivity {store} run={workflowRows.get(message.id)!} past={message.createdAt < newestTurnAt} />
-          {:else if group}
-            <AgentMessageGroup {store} {group} />
-          {:else if grouped.notices.has(message.id)}
-            {@const notices = grouped.notices.get(message.id)!}
-            <MemoryRow event={notices[0]!} events={notices} onconfigure={store.owner ? () => store.showSettings('resources', 'limits') : undefined} />
-          {:else if movedBy(message)}
-            <MoveMarker notice={movedBy(message)!} />
-          {:else if startedFrom(message)}
-            <SpawnMarker {store} link={startedFrom(message)!} direction="to" />
-          {:else if message.role !== 'assistant' && firstInTurn.get(message.turnId) === message.id && wakeKind(turn) && (message.role === 'system' || turn?.execution?.operation === 'routine' || turn?.execution?.operation === 'event')}
-            <WakeMarker {message} kind={wakeKind(turn)!} />
-          {:else if message.role === 'user'}
-            <UserMessage {store} {message} {turn} accepted={!!turn} responded={progress.responded(message.turnId)} edit={atRest && !isSending(message) ? () => void editMessage(message) : undefined} />
-          {:else}
-            <AssistantMessage {store} {threadId} {message} from={row.from} to={row.to} {signedOut} showModel={row.first && firstAssistantInTurn.get(message.turnId) === message.id}
-              latestInTurn={lastInTurn.get(message.turnId) === message.id} memoryEvents={memoryPlacement.inline.get(message.id) ?? []} views={views.get(message.turnId)} />
-          {/if}
-          {#if turn && closes}
-            {@const files = filesOf(turn)}
-            {#if files}<TurnFiles {store} {...files} loadDiffs={() => Promise.all(files.deferred.map(source => store.loadToolOutput(threadId, source.messageId, source.toolId))).then(() => {})} />{/if}
-            <MessageTurnSummary {store} {threadId} {turn} turns={shownTurns} message={source ?? message} {messages} pointed={pointed === turn.id}
-              {...summaryMarks(shaped, turn.id, () => store.panel.open('desk'))}>
-              {#snippet actions()}
-                <MessageActions
-                  text={() => turnAnswer(messages, turn.id)}
-                  retry={atRest && store.openThread?.turns.at(-1)?.id === turn.id ? () => void retry(turn.id) : undefined}
-                  fork={!narrow.current && forkable && !store.openThread?.incognito && source && source.state !== 'streaming' ? (worktree) => void store.fork(source.id, { worktree }) : undefined}
-                />
-              {/snippet}
-            </MessageTurnSummary>
-          {/if}
+          <TimelineMessage {store} {threadId} {messages} {row} {group} {turn} {source} {quietFold} {closes} {days} turns={shownTurns} {facts} {shaped} {launches} {workflowRows}
+            notices={grouped.notices} memoryInline={memoryPlacement.inline} {views} {newestTurnAt} {signedOut} narrow={narrow.current} {failureTarget} oninspect={inspectFailures} {pointed} />
         </article>
         {/if}
       {/each}

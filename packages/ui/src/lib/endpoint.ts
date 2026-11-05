@@ -16,6 +16,17 @@ export { ENDPOINT_STORAGE_KEY, readStoredEndpoint, storeEndpoint, clearStoredEnd
 
 export const CORE_QUERY_PARAM = 'core';
 
+/** A connection's URL is also its identity in the workspace and saved list. */
+export function endpointIdentity(endpoint: Endpoint): { id: string; host: string } | null {
+  try {
+    const url = new URL(endpoint.url);
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) return null;
+    return { id: withoutTrailingSlashes(url.toString()), host: url.host };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * A pairing link pasted by hand: the core it names and the grant inside it.
  * The core's own link is `<origin>/?grant=`, and a `core` parameter names a

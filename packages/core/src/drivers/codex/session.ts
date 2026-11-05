@@ -1,5 +1,5 @@
 import { logMessageOf, withLogDiagnostic } from '../../log-errors.ts';
-import type { ModelInfo, QuestionAnswer } from '@boite/contracts';
+import type { ModelInfo } from '@boite/contracts';
 import pkg from '../../../package.json';
 import { messageOf, unavailable } from '../../errors.ts';
 import { tildePath } from '../../paths.ts';
@@ -7,25 +7,22 @@ import { openAiCacheLife } from '../../prompt-cache.ts';
 import type { SpawnedChild } from '../../procs.ts';
 import { profileFor, resolveExecutable } from '../../providers/resolve.ts';
 import { subscriptionProxyCodexArgs } from '../../subscription-proxy.ts';
-import type { LiveTurnSettings, ProbeContext, QuestionAsk, SessionContext, TurnContext } from '../types.ts';
+import type { LiveTurnSettings, ProbeContext, SessionContext, TurnContext } from '../types.ts';
 import { preparedModels } from './models.ts';
 import { exitWithin } from '../exit.ts';
 import {
   addCounts,
-  answerTextOf,
   countsOf,
   imageInputsOf,
   mapUsage,
   modelOf,
-  optionsOf,
   planTasksOf,
-  questionTextOf,
   servedOf,
   textOf,
   toolViewOf,
   usageDelta,
 } from './mapping.ts';
-import type { CodexHookRun, CodexHooksListed, CodexItem, CodexQuestion, CodexThreadOpened, CodexTokenUsage, CodexTurnRecord, Timer } from './protocol.ts';
+import type { CodexHookRun, CodexHooksListed, CodexItem, CodexThreadOpened, CodexTokenUsage, CodexTurnRecord, Timer } from './protocol.ts';
 import {
   CLIENT_NAME,
   COMMAND_TOOL_NAME,
@@ -39,6 +36,7 @@ import {
   PERMISSIONS_TOOL_NAME,
   STDERR_MAX,
 } from './protocol.ts';
+import { answerElicitation, askAsync, askQuestions, askUser } from './ask.ts';
 import { CodexRpc } from './rpc.ts';
 import { CodexSkillCommands } from './skills.ts';
 import { resumeThread, ThreadLostError } from './resume.ts';
@@ -658,7 +656,7 @@ export class CodexSession {
         if (item.delivery === 'async') {
           if (this.#asyncItems.has(item.id)) return;
           this.#asyncItems.add(item.id);
-          for (const question of item.questions ?? []) this.#askAsync(turn, question);
+          for (const question of item.questions ?? []) askAsync(turn, question);
         } else if (completed && typeof item.text === 'string') turn.completeText(item.id, item.text);
         return;
     }
@@ -756,7 +754,8 @@ export class CodexSession {
     }
     switch (method) {
       case 'item/commandExecution/requestApproval': {
-        const decision = await this.#askUser(
+        const decision = await askUser(
+          this.#current,
           COMMAND_TOOL_NAME,
           { command: textOf(params['command']), cwd: params['cwd'] ?? null },
           textOf(params['reason']),
@@ -764,7 +763,8 @@ export class CodexSession {
         return { decision };
       }
       case 'item/fileChange/requestApproval': {
-        const decision = await this.#askUser(
+        const decision = await askUser(
+          this.#current,
           FILE_CHANGE_TOOL_NAME,
           { grantRoot: params['grantRoot'] ?? null },
           textOf(params['reason']),
@@ -772,13 +772,14 @@ export class CodexSession {
         return { decision };
       }
       case 'item/tool/requestUserInput':
-        return { answers: await this.#askQuestions(ctx, params['questions']) };
+        return { answers: await askQuestions(this.#current, ctx, params['questions']) };
       case 'mcpServer/elicitation/request':
-        return this.#answerElicitation(ctx, params);
+        return answerElicitation(this.#current, ctx, params);
       case 'item/permissions/requestApproval': {
         // Only asked with Codex's exec_permission_approvals or
         // request_permissions_tool features on. An empty profile grants nothing.
-        const decision = await this.#askUser(
+        const decision = await askUser(
+          this.#current,
           PERMISSIONS_TOOL_NAME,
           { permissions: params['permissions'] ?? null, cwd: params['cwd'] ?? null },
           textOf(params['reason']),
@@ -790,118 +791,5 @@ export class CodexSession {
       default:
         throw new Error(`boite does not implement ${method}`);
     }
-  }
-
-  /**
-   * An MCP server's elicitation. Codex routes its own MCP tool-call approvals
-   * through it (`_meta.codex_approval_kind: "mcp_tool_call"`), and a server
-   * may ask a plain yes or no as a form with nothing required: both become the
-   * permission card, accepted with empty content. A form with required fields,
-   * a url, or a device verification has no card yet and is declined, which
-   * Codex reports as a refused call instead of a failed request.
-   */
-  async #answerElicitation(ctx: SessionContext, params: Record<string, unknown>): Promise<unknown> {
-    const server = textOf(params['serverName']);
-    const meta = (params['_meta'] ?? {}) as Record<string, unknown>;
-    const schema = params['requestedSchema'] as { required?: unknown } | undefined;
-    const required = Array.isArray(schema?.required) ? schema.required.length : 0;
-    const confirmation = meta['codex_approval_kind'] === 'mcp_tool_call' || (params['mode'] === 'form' && required === 0);
-    if (!confirmation) {
-      ctx.log('warn', `codex: declined a ${textOf(params['mode']) || 'modeless'} elicitation from MCP server ${server || '(unnamed)'}, which boite cannot show`);
-      return { action: 'decline' };
-    }
-    const decision = await this.#askUser(
-      `mcp:${server}`,
-      { message: textOf(params['message']), tool_title: meta['tool_title'] ?? null, tool_params: meta['tool_params'] ?? null },
-      '',
-    );
-    return decision === 'accept' ? { action: 'accept', content: {} } : { action: decision };
-  }
-
-  /**
-   * `item/tool/requestUserInput` carries one or more questions, each with its
-   * own id and, sometimes, a list of options. Each becomes one question card,
-   * they are asked in order, and the answers go back keyed by the question id
-   * the server sent. A stop, or a turn that ends first, cancels the rest and
-   * the request is answered with what was collected: leaving it unanswered
-   * would hang the agent.
-   */
-  async #askQuestions(ctx: SessionContext, raw: unknown): Promise<Record<string, string>> {
-    const turn = this.#current;
-    const answers: Record<string, string> = {};
-    if (turn === null || !Array.isArray(raw)) return answers;
-    const entries = raw as CodexQuestion[];
-    const idOf = (entry: CodexQuestion | undefined) => typeof entry?.id === 'string' ? entry.id : '';
-    // Asked one at a time: each card says its place among those that will be asked.
-    const total = entries.filter((entry) => idOf(entry).length > 0).length;
-    let place = 0;
-    for (const entry of entries) {
-      if (turn.settled || turn.isStopped) break;
-      const id = idOf(entry);
-      if (id.length === 0) {
-        ctx.log('warn', 'codex: a question with no id was skipped');
-        continue;
-      }
-      place++;
-      const options = optionsOf(entry.options);
-      const answer = await this.#askOne(turn, total > 1 ? { index: place, total } : undefined, {
-        text: questionTextOf(entry),
-        options,
-        // A question the server marks `isOther`, or one with no options at all,
-        // is the free-text case: there is nothing to pick otherwise.
-        allowText: entry.isOther === true || options.length === 0,
-        multiple: false,
-      });
-      if (answer === null) break;
-      answers[id] = answerTextOf(answer, options);
-    }
-    return answers;
-  }
-
-  /**
-   * An asynchronous question (GPT-6 Astra's `delivery: "async"`): the agent
-   * goes on, so nothing waits here. The core folds the answer into the card
-   * and brings it back with `turn/steer` or as the next prompt, framed as the
-   * Codex TUI frames it: `> title`, a blank line, the answer.
-   */
-  #askAsync(turn: CodexTurn, question: { title?: string; options?: string[] | null }): void {
-    const text = typeof question.title === 'string' ? question.title.trim() : '';
-    if (text.length === 0) return;
-    const ask: QuestionAsk = { text, options: optionsOf(question.options), allowText: true, multiple: false, async: true };
-    const ticket = turn.ctx.askQuestion(ask);
-    turn.part(turn.takeIndex(), { type: 'question', questionId: ticket.questionId, ...ask, answer: null });
-  }
-
-  /** One question card, drawn and then folded with what the user picked. */
-  async #askOne(turn: CodexTurn, series: { index: number; total: number } | undefined, ask: QuestionAsk): Promise<QuestionAnswer | null> {
-    const ticket = turn.ctx.askQuestion(ask);
-    const index = turn.takeIndex();
-    const numbered = series ? { series } : {};
-    turn.part(index, { type: 'question', questionId: ticket.questionId, ...ask, ...numbered, answer: null });
-    const answer = await Promise.race([ticket, turn.stopped.then(() => null)]);
-    if (answer === null) return null;
-    turn.part(index, { type: 'question', questionId: ticket.questionId, ...ask, ...numbered, answer });
-    return answer;
-  }
-
-  /** The inline permission card, and the Codex decision the answer becomes. */
-  async #askUser(
-    toolName: string,
-    input: unknown,
-    reason: string,
-  ): Promise<'accept' | 'decline' | 'cancel'> {
-    const turn = this.#current;
-    if (turn === null || turn.isStopped) return 'cancel';
-    if (turn.ctx.thread.permissionMode === 'yolo') return 'accept';
-    const ticket = turn.ctx.requestPermission(toolName, input, reason.length === 0 ? null : reason);
-    const index = turn.takeIndex();
-    turn.part(index, { type: 'permission', requestId: ticket.requestId, toolName, decision: null });
-    const answer = await Promise.race([ticket, turn.stopped.then(() => 'cancelled' as const)]);
-    if (answer === 'cancelled') return 'cancel';
-    turn.part(index, { type: 'permission', requestId: ticket.requestId, toolName, decision: answer });
-    // Stop denies the open card before it stops the turn: that deny is a
-    // cancel, never the user's refusal.
-    if (turn.isStopped) return 'cancel';
-    return answer === 'allow' ? 'accept' : 'decline';
   }
 }
