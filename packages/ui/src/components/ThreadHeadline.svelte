@@ -11,6 +11,7 @@
   import ThreadState from './ThreadState.svelte';
   import StateRing from './StateRing.svelte';
   import { asksMidTurn, delegatedChip, threadState } from '../lib/thread-state';
+  import { rowSubagents } from '../lib/delegated-work';
   import { waitingSince } from '../lib/inbox';
 
   /**
@@ -56,7 +57,8 @@
   } = $props();
   let stacked = $derived(facts !== undefined);
   let draft = $derived(!open && hasUnsentDraft(owner.composerStates[thread.id]));
-  let subagents = $derived(owner.subagents(thread.id));
+  /** The open thread's row counts what its strip and panel tab count (`rowSubagents`). */
+  let subagents = $derived(rowSubagents(owner, thread.id));
   let away = $derived(owner.connection !== 'ready');
   /** The sidebar's row: its delegated agents as a glyph and a number before the time, so the row keeps one line. */
   let agents = $derived(ring ? delegatedChip(subagents) : null);

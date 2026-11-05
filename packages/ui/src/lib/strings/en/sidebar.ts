@@ -135,16 +135,16 @@ export const strings = {
       done: 'Finished',
       queued: 'Queued',
       /** The turn ended, the agent waits on the agents it delegated to: their results wake it. */
-      delegating: 'Sub-agents',
-      delegatingOne: 'Waiting on 1 sub-agent',
-      delegatingMany: 'Waiting on {count} sub-agents',
+      delegating: 'Subagents',
+      delegatingOne: 'Waiting on 1 subagent',
+      delegatingMany: 'Waiting on {count} subagents',
       /** The chip a parent's row carries while its delegated agents work, in every state. */
-      subagentsOne: '1 sub-agent at work',
-      subagentsMany: '{count} sub-agents at work',
+      subagentsOne: '1 subagent at work',
+      subagentsMany: '{count} subagents at work',
       /** The chip's own words, its count written out: the full sentence stays in its title. */
-      /** The same chip once a sub-agent asks the user something: the parent reads Needs you. */
-      subagentsAskingOne: '1 sub-agent needs you',
-      subagentsAskingMany: '{count} sub-agents need you',
+      /** The same chip once a subagent asks the user something: the parent reads Needs you. */
+      subagentsAskingOne: '1 subagent needs you',
+      subagentsAskingMany: '{count} subagents need you',
       /** The turn ended, the agent still watches something: a monitor it left going. */
       monitoring: 'Monitoring',
       monitoringFor: 'Monitoring for {elapsed}',

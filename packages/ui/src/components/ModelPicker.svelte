@@ -827,8 +827,15 @@
       grid-template-columns: minmax(0, 1fr) auto;
       grid-template-rows: auto minmax(0, 1fr);
       width: calc(100vw - 24px);
-      height: min(420px, 60dvh);
+      /* As tall as its rows when they fit, so the last one ends whole; never under the
+         old 420 px, so a short list does not shrink the sheet as the strip moves.
+         The sheet's own cap (floating) stops a long list, which then scrolls. */
+      height: auto;
+      min-height: min(420px, 60dvh);
     }
+    .popover.single, .popover.legacy-menu { min-height: 0; }
+    /* The last row stops 12 px above the sheet's edge, or above the home indicator. */
+    .model-list { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
 
     .rail {
       flex-direction: row;

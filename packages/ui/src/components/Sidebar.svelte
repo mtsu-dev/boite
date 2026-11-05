@@ -9,6 +9,7 @@
   import { fill, strings } from '../lib/strings';
   import { projectName } from '../lib/format';
   import { bandStarts, compareThreads } from '../lib/thread-order';
+  import { storeLiveKind } from '../lib/inbox';
   import { flipRows } from '../lib/flip-rows.svelte';
   import { projectRollup, threadState } from '../lib/thread-state';
   import { hasUnsentDraft } from '../lib/composer-queue';
@@ -105,9 +106,9 @@
       .flatMap(({ machine, project }) =>
         machine.store
           .threadsOf(project.id)
-          .map((thread) => ({ machine, project, thread }))
+          .map((thread) => ({ machine, project, thread, live: storeLiveKind(machine.store, thread) }))
       )
-      .sort((a, b) => compareThreads(a.thread, b.thread))
+      .sort((a, b) => compareThreads(a.thread, b.thread, a.live, b.live))
   );
   let workingOpen = $state(false);
   let doneRows = $state.raw<{ store: Store; threadId: ThreadId }[]>([]);
@@ -130,7 +131,7 @@
   let attention = $derived(recentPreferences.groupWorking ? recent.filter(({ machine, thread }) => !groupWorkingThread(machine.store, thread)) : recent);
   const recentKey = (entry: { machine: Machine; thread: ThreadSummary }) => JSON.stringify([entry.machine.id, entry.thread.id]);
   /** Recent's first row of each band (needs you, working, earlier) carries the band's label. */
-  let recentBands = $derived(bandStarts(attention, entry => entry.thread, recentKey));
+  let recentBands = $derived(bandStarts(attention, entry => entry.thread, recentKey, entry => entry.live));
   const listsFor = projectListMap();
   /** Each listed project's sorted rows, shared by its section and by Alt+digit. */
   let projectLists = $derived(listsFor(activeGroups));
@@ -361,7 +362,7 @@
         {/each}
       {/each}
       <WindowList items={attention} keyOf={recentKey} {scrollRoot} estimate={56} measurements={measurements('recent')}>
-        {#snippet row(entry)}{@const band = recentBands.get(recentKey(entry))}{#if band}<p class="band ui-label" class:first={entry === attention[0]} data-testid="recent-band" data-band={band}>{strings.sidebar.bands[band]}</p>{/if}<ThreadCard {...entry} {now} showProject={recentGroups.length > 1} showMachine={multi} showDone pin={recentBands.size === 0} />{/snippet}
+        {#snippet row(entry)}{@const band = recentBands.get(recentKey(entry))}{#if band}<p class="band ui-label" class:first={entry === attention[0]} role="heading" aria-level="3" data-testid="recent-band" data-band={band}>{strings.sidebar.bands[band]}</p>{/if}<ThreadCard {...entry} {now} showProject={recentGroups.length > 1} showMachine={multi} showDone pin={recentBands.size === 0} />{/snippet}
       </WindowList>
       {#if groups.length > 0 && recent.length === 0 && !recentGroups.some(entry => entry.project.archivedThreads)}<p class="none">
           {strings.sidebar.noThreads}

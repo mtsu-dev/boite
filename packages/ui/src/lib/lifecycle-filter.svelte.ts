@@ -79,6 +79,11 @@ export function lifecycleProjects(entries: readonly ProjectEntry[], kind: Lifecy
   return kept;
 }
 
+/** The count classification every row of a live filter carries, so its order is Recent's band order; none for done and archived. */
+export function filterLive(kind: Lifecycle): 'needs' | 'working' | undefined {
+  return kind === 'waiting' ? 'needs' : kind === 'working' ? 'working' : undefined;
+}
+
 /**
  * The Recent view under a live filter: the same flat rows as unfiltered, in the
  * same order, only those of the filter's lifecycle. Grouping by project
@@ -87,5 +92,5 @@ export function lifecycleProjects(entries: readonly ProjectEntry[], kind: Lifecy
 export function lifecycleRows(entries: readonly ProjectEntry[], kind: 'waiting' | 'working'): (ProjectEntry & { thread: ThreadSummary })[] {
   return lifecycleProjects(entries, kind)
     .flatMap(({ entry, threads }) => threads.map(thread => ({ ...entry, thread })))
-    .sort((a, b) => compareThreads(a.thread, b.thread));
+    .sort((a, b) => compareThreads(a.thread, b.thread, filterLive(kind), filterLive(kind)));
 }

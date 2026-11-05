@@ -118,11 +118,16 @@ export function workflowTone(status: WorkflowStatus | WorkflowStepStatus, run = 
  * when none does, how many still ask, with the full sentence for the title.
  * Null when it has none.
  */
-export function delegatedChip(subagents: { count: number; asking: number } | null | undefined): { shown: number; asking: boolean; text: string; label: string } | null {
-  const count = subagents?.count ?? 0, asking = subagents?.asking ?? 0;
+export function delegatedChip(subagents: { count: number; asking: number; runs?: number } | null | undefined): { shown: number; asking: boolean; text: string; label: string } | null {
+  const count = subagents?.count ?? 0, asking = subagents?.asking ?? 0, runs = subagents?.runs ?? 0;
   if (count === 0 && asking === 0) return null;
   const many = (one: string, other: string, n: number) => n === 1 ? one : fill(other, { count: String(n) });
-  const atWork = count > 0 ? many(strings.sidebar.state.subagentsOne, strings.sidebar.state.subagentsMany, count) : null;
+  // The open thread's count holds its workflow runs, one each, as its status strip words them.
+  const agents = count - runs;
+  const atWork = count > 0 ? [
+    agents > 0 ? many(strings.sidebar.state.subagentsOne, strings.sidebar.state.subagentsMany, agents) : null,
+    runs > 0 ? many(strings.workflow.activeOne, strings.workflow.activeMany, runs) : null
+  ].filter(Boolean).join(' · ') : null;
   const asks = asking > 0 ? many(strings.sidebar.state.subagentsAskingOne, strings.sidebar.state.subagentsAskingMany, asking) : null;
   const shown = count > 0 ? count : asking;
   return { shown, asking: asking > 0, text: many(strings.sidebar.agentsOne, strings.sidebar.agentsMany, shown), label: [atWork, asks].filter(Boolean).join('\n') };

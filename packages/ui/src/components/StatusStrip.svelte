@@ -1,9 +1,8 @@
 <script lang="ts">
   import { Archive, ArrowDownToLine, Check, ChevronRight, Network } from '@lucide/svelte';
-  import { threadBusy } from '@boite/contracts';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
-  import { upkeepOf } from '../lib/agent-upkeep';
+  import { delegatedWork } from '../lib/delegated-work';
   import { elapsed, exactTime, relativeTime } from '../lib/format';
   import { minuteClock, secondClock } from '../lib/clock.svelte';
   import { stripState, waitingElsewhere } from '../lib/status-strip';
@@ -27,10 +26,11 @@
   let state = $derived(thread ? stripState(thread, { permissions: store.pendingPermissions, questions: store.pendingQuestions }) : null);
 
   // The counts the floating pill used to carry. A persistent agent's memory pass is upkeep, not a subagent.
-  let active = $derived((store.delegation?.agents ?? []).filter(agent => threadBusy(agent.thread) && !upkeepOf(store).has(agent.thread.id)));
-  let native = $derived((store.delegation?.nativeAgents ?? []).filter(agent => agent.status === 'running'));
-  let agents = $derived(active.length + native.length);
-  let runs = $derived(thread ? store.workflowsOf(thread.id).filter(run => run.status === 'running') : []);
+  let work = $derived(delegatedWork(store));
+  let active = $derived(work.active);
+  let native = $derived(work.native);
+  let agents = $derived(work.agents);
+  let runs = $derived(work.runs);
   /** When the earliest delegated work began: its timer runs on the line once the thread's own turn ended. */
   let delegatedSince = $derived(Math.min(
     ...active.map(agent => agent.lastTurn?.startedAt ?? agent.lastTurn?.queuedAt ?? agent.thread.createdAt),

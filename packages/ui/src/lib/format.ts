@@ -34,14 +34,25 @@ interface Formatters {
 
 const sets = new Map<string, Formatters>();
 
+/**
+ * The hour as the region writes it: `1:31 PM` on a 12-hour clock, which never
+ * pads, and `09:35` on a 24-hour one, which always does. `'numeric'` alone
+ * would turn French's `09:35` into `9:35`.
+ */
+function hourStyle(tag: string): 'numeric' | '2-digit' {
+  const cycle = new Intl.DateTimeFormat(tag, { hour: 'numeric' }).resolvedOptions().hourCycle;
+  return cycle === 'h11' || cycle === 'h12' ? 'numeric' : '2-digit';
+}
+
 function formatters(): Formatters {
   const tag = formatLocale();
   const known = sets.get(tag);
   if (known) return known;
+  const hour = hourStyle(tag);
   const made: Formatters = {
     relative: new Intl.RelativeTimeFormat(tag, { style: 'short', numeric: 'always' }),
     clock: new Intl.DateTimeFormat(tag, { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-    dayClock: new Intl.DateTimeFormat(tag, { hour: '2-digit', minute: '2-digit' }),
+    dayClock: new Intl.DateTimeFormat(tag, { hour, minute: '2-digit' }),
     calendar: new Intl.DateTimeFormat(tag, { day: 'numeric', month: 'short' }),
     longDay: new Intl.DateTimeFormat(tag, { weekday: 'long', day: 'numeric', month: 'long' }),
     minutes: new Intl.NumberFormat(tag, { style: 'unit', unit: 'minute', unitDisplay: 'short' }),
@@ -50,7 +61,7 @@ function formatters(): Formatters {
     tenths: new Intl.NumberFormat(tag, { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
     whole: new Intl.NumberFormat(tag, { maximumFractionDigits: 0 }),
     credits: new Intl.NumberFormat(tag, { maximumSignificantDigits: 6 }),
-    weekday: new Intl.DateTimeFormat(tag, { weekday: 'short', hour: '2-digit', minute: '2-digit' }),
+    weekday: new Intl.DateTimeFormat(tag, { weekday: 'short', hour, minute: '2-digit' }),
     quotaDay: new Intl.DateTimeFormat(tag, { weekday: 'long' }),
     quotaYear: new Intl.DateTimeFormat(tag, { year: 'numeric', month: 'short', day: 'numeric' }),
     exact: new Intl.DateTimeFormat(tag, { year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' }),

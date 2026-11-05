@@ -45,7 +45,7 @@
   import { threadState } from '../lib/thread-state';
   import { hasUnsentDraft } from '../lib/composer-queue';
   import { ScreenSlide } from '../lib/screen-slide.svelte';
-  import { inbox, storeSources, type InboxReason } from '../lib/inbox';
+  import { inbox, storeLiveKind, storeSources, type InboxReason } from '../lib/inbox';
   import { firstRunSteps } from '../lib/first-run.svelte';
   import FirstRun from './home/FirstRun.svelte';
 
@@ -138,6 +138,8 @@
   const waitOf = (row: object) => 'wait' in row ? row.wait as { reason: InboxReason; since: number } : undefined;
   const recentGroups = $derived(selected ? [selected] : groups);
   const rowKey = (row: { machine: Machine; thread: ThreadSummary }) => JSON.stringify([row.machine.id, row.thread.id]);
+  /** Where a row counts (`threadLiveKind`): the sort and the bands read the tabs' own classification. */
+  const liveOf = (row: { machine: Machine; thread: ThreadSummary }) => storeLiveKind(row.machine.store, row.thread);
   /**
    * Recent lists what the sidebar's Recent lists (`threadsOf` of each listed project): a bot's own thread lives
    * under Bots on both sizes, so the Working band and its tab count the same rows.
@@ -146,7 +148,7 @@
   let rows = $derived(listScreen === 'activity' ? [...inboxNeeds, ...inboxWorking] : entries
     .filter(matches)
     .filter(e => workspace.view === 'recent' ? recentIds.has(rowKey(e)) : !e.thread.parentThreadId && !e.project?.archived)
-    .sort((a, b) => compareThreads(a.thread, b.thread)));
+    .sort((a, b) => compareThreads(a.thread, b.thread, liveOf(a), liveOf(b))));
   let projects = $derived([...machines.flatMap(m => m.store.projects.filter(p => p.archived !== true).map(p => ({
     id: JSON.stringify([m.id, p.id]), label: projectName(p), hint: several ? m.label : '', projectTile: { project: p, store: m.store },
     active: m.store === store && p.id === project?.id
@@ -159,8 +161,8 @@
   const working = $derived(groupWorking ? rows.filter(row => groupWorkingThread(row.machine.store, row.thread)) : []);
   const attention = $derived(groupWorking ? rows.filter(row => !groupWorkingThread(row.machine.store, row.thread)) : rows);
   /** Recent's bands, the sidebar's: a label where the rows pass from what needs the user to what works, then to the rest. */
-  const phoneBands = $derived(inRecent && !query ? bandStarts(attention, row => row.thread, rowKey) : new Map<string, ThreadBand>());
-  /** The last row of each band: the next band's divider is the only rule under it. */
+  const phoneBands = $derived(inRecent && !query ? bandStarts(attention, row => row.thread, rowKey, liveOf) : new Map<string, ThreadBand>());
+  /** The last row of each band: its card ends there, so no hairline under it. */
   const bandEnds = $derived(new Set(phoneBands.size ? attention.filter((row, index) => { const next = attention[index + 1]; return !next || phoneBands.has(rowKey(next)); }).map(rowKey) : []));
   /** A row that changes band or lane slides there, as in the sidebar; the key reads ids and states only. */
   flipRows(() => scrollRoot, () => [...rows.map(row => `${rowKey(row)}:${row.thread.status}`), '|', ...working.map(rowKey), '|', ...phoneBands.keys()].join(), () => `${listKey}:${query}`);
@@ -303,7 +305,7 @@
     {/snippet}
     {#snippet threadRow(row: typeof rows[number], grouped = false, banded = false)}
       <!-- The row is worker 1's PhoneThreadRow: ring, two-line title, facts line, long press and both swipes. -->
-      <!-- Under Recent's labels the Pinned label says the pin, and a band's divider is the only rule under its last row. -->
+      <!-- Under Recent's labels the Pinned label says the pin, and a band's last row ends its card with no hairline. -->
       <PhoneThreadRow machine={row.machine} project={row.project} thread={row.thread} {now} {grouped} {several} pin={!banded} end={banded && bandEnds.has(rowKey(row))} wait={waitOf(row)} items={rowItems(row.machine.store, row.thread)}
         onopen={() => { show('chat'); void workspace.select(row.machine.store, row.thread.id); }}
         onaction={(action) => rowAction(row.machine.store, row.thread, action, row.machine.id)} />
@@ -414,7 +416,7 @@
       {/if}
     {:else}
       <WindowList items={attention} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} estimate={77} measurements={measurements(listScreen)}>
-        {#snippet row(entry)}{@const band = phoneBands.get(rowKey(entry))}{#if band}<p class="band ui-label" class:first={entry === attention[0]} data-testid="mobile-recent-band" data-band={band}>{strings.sidebar.bands[band]}</p>{/if}{@render threadRow(entry, false, phoneBands.size > 0)}{/snippet}
+        {#snippet row(entry)}{@const band = phoneBands.get(rowKey(entry))}{#if band}<p class="band ui-label" class:first={entry === attention[0]} role="heading" aria-level="3" data-testid="mobile-recent-band" data-band={band}>{strings.sidebar.bands[band]}</p>{/if}{@render threadRow(entry, false, phoneBands.size > 0)}{/snippet}
       </WindowList>
       {#if inRecent}
         <div class="recent-folds">
@@ -483,9 +485,10 @@
     .filters :global(.popover .item.checkable:has(> .hint)) { row-gap: 2px; }
     .filters :global(.popover .item .hint) { font-size: var(--text-xs); }
     .filters :global(.popover .item:has(> .hint)) { padding-block: 6px; }
-    .band { margin: 8px 16px 2px; padding: 6px 0 0; border-top: 1px solid var(--color-border); color: var(--color-muted-foreground); font-size: 11px; font-weight: 500; line-height: 14px; }
-    .band.first { margin-top: 2px; padding-top: 0; border-top: none; }
-    /* Recent's row hairlines stop where its band dividers stop, 16 px short of the card's end. */
+    /* A grouped list's section label: the gap between the cards parts the bands, so no rule; the label sits 6 px over its own card. */
+    .band { margin: 14px 16px 6px; padding: 0; color: var(--color-muted-foreground); font-size: 11px; font-weight: 500; line-height: 14px; }
+    .band.first { margin-top: 2px; }
+    /* Recent's row hairlines stop 16 px short of the card's end, as a grouped list's do. */
     .mobile-list.recent { --hairline-end: 16px; }
     .brand-icon { flex: none; border-radius: var(--radius-md); }
     .back { position: relative; flex: none; }

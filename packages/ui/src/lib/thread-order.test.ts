@@ -1,5 +1,7 @@
 import { expect, test } from 'vitest';
+import type { Project, ThreadSummary } from '@boite/contracts';
 import { bandStarts, compareThreads } from './thread-order';
+import { inbox, storeLiveKind } from './inbox';
 
 const base = { pinned: false, status: 'idle' as const, lastUserMessageAt: null, createdAt: 0 };
 
@@ -38,4 +40,34 @@ test('Recent labels the first row of each band, the pins included, and a list of
   expect([...starts]).toEqual([['pinned', 'pinned'], ['failed', 'needs'], ['running', 'working'], ['idle', 'earlier']]);
   expect([...bandStarts([{ ...base, id: 'p', pinned: true }, { ...base, id: 'i' }], (row) => row, (row) => row.id)]).toEqual([['p', 'pinned'], ['i', 'earlier']]);
   expect(bandStarts([{ ...base, id: 'a' }, { ...base, id: 'b' }], (row) => row, (row) => row.id).size).toBe(0);
+});
+
+test('Recent sorts and bands by the count, so the Needs you band holds every row its tab counts', () => {
+  const project = { id: 'p', name: 'orbit', path: '/orbit' } as Project;
+  const row = (id: string, patch: Partial<ThreadSummary>): ThreadSummary => ({
+    id, title: id, projectId: 'p', status: 'idle', pinned: false, openQuestions: 0, unread: false, archived: false, updatedAt: 0, runningSince: null, createdAt: 0, lastUserMessageAt: null, ...patch
+  } as ThreadSummary);
+  const threads = [
+    row('running', { status: 'running', lastUserMessageAt: 90 }),
+    // Round 8: a running parent whose remote child asks counted under Needs you 9 yet sat in Working.
+    row('child-asks', { status: 'running', lastUserMessageAt: 10, subagentQuestions: [{ threadId: 'c', title: 'Keep the key?' }] }),
+    row('local-child-asks', { status: 'running', lastUserMessageAt: 20 }),
+    row('stopped', { lastUserMessageAt: 30, backgroundWait: { state: 'interrupted', for: 'the build', reason: 'core-restarted', at: 30 } } as Partial<ThreadSummary>),
+    row('delegating', { lastUserMessageAt: 95 }),
+    row('waiting', { status: 'waiting', lastUserMessageAt: 5 }),
+    row('quiet', { lastUserMessageAt: 99 })
+  ];
+  const delegated: Record<string, { count: number; asking: number; since: number | null }> = { 'local-child-asks': { count: 1, asking: 1, since: 20 }, delegating: { count: 2, asking: 0, since: 95 } };
+  const store = { subagents: (id: string) => delegated[id] ?? null };
+  const rows = threads.map(thread => ({ thread, live: storeLiveKind(store, thread) }))
+    .sort((a, b) => compareThreads(a.thread, b.thread, a.live, b.live));
+  expect(rows.map(r => r.thread.id)).toEqual(['stopped', 'local-child-asks', 'child-asks', 'waiting', 'running', 'delegating', 'quiet']);
+  const starts = bandStarts(rows, r => r.thread, r => r.thread.id, r => r.live);
+  expect([...starts]).toEqual([['stopped', 'needs'], ['running', 'working'], ['quiet', 'earlier']]);
+  const { tally } = inbox([{ machine: 'pc', threads, projects: [project], questions: [], permissions: [], subagents: id => store.subagents(id) }]);
+  const band = (from: string, to: string | undefined) => rows.slice(rows.findIndex(r => r.thread.id === from), to ? rows.findIndex(r => r.thread.id === to) : undefined).length;
+  expect(band('stopped', 'running')).toBe(tally.threads.needs);
+  expect(band('running', 'quiet')).toBe(tally.threads.working);
+  // A list with no store reads the child's question on the row too.
+  expect([threads[0]!, threads[1]!].sort(compareThreads).map(t => t.id)).toEqual(['child-asks', 'running']);
 });

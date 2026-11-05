@@ -12,6 +12,10 @@ export const strings = {
     /** The notice's one line: the limit a stop crossed, its reason behind the disclosure. */
     killLimit: (limit: string) => `Memory limit reached: ${limit}`,
     killCount: (count: number, limit: string) => `Memory limit reached: ${limit}, ${count} stopped`,
+    /** The notice's line, short enough for a 360 px phone: `Memory limit · 9.5 GB`. */
+    killLine: 'Memory limit',
+    /** The figure beside the title on the line, whole: `9.5 GB`, `9.5 GB, 3 stopped`. */
+    killFigure: (count: number, limit: string) => count > 1 ? `${limit}, ${count} stopped` : limit,
     stoppedProcesses: (count: number) => `Show ${count} stopped processes`,
     memorySettings: 'Memory settings',
     protectionOff: 'Memory protection is off',

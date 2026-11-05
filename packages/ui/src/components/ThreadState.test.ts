@@ -43,7 +43,7 @@ test('a parent whose turn ended waits on its working sub-agents, its count besid
   expect(state.querySelector('[data-testid=thread-subagents]')?.classList.contains('pulse')).toBe(true);
   expect(state.textContent?.replace(/\s+/g, ' ').trim()).toBe('1m 2');
   expect(state.querySelector('[data-testid=thread-subagents] svg')).not.toBeNull();
-  expect(state.getAttribute('title')).toBe('Waiting on 2 sub-agents\n1m');
+  expect(state.getAttribute('title')).toBe('Waiting on 2 subagents\n1m');
   // Its own turn or a question for the user still come first.
   expect(threadState({ status: 'running', unread: false }, 2)).toBe('working');
   expect(threadState({ status: 'waiting', unread: false }, 2)).toBe('waiting');
@@ -114,7 +114,7 @@ test('a parent at work shows its sub-agents on a chip, and one whose child asks 
   const chip = working.querySelector<HTMLElement>('[data-testid=thread-subagents]')!;
   // The robot says what the number counts: no word beside it.
   expect(chip.textContent).toBe('2');
-  expect(chip.getAttribute('aria-label')).toBe('2 sub-agents at work');
+  expect(chip.getAttribute('aria-label')).toBe('2 subagents at work');
   expect(chip.classList.contains('asking')).toBe(false);
   unmount(running!, { outro: false });
   running = null;
@@ -132,7 +132,7 @@ test('a parent at work shows its sub-agents on a chip, and one whose child asks 
   expect(parent.textContent).toContain('Needs you');
   const asks = parent.querySelector<HTMLElement>('[data-testid=thread-subagents]')!;
   expect(asks.classList.contains('asking')).toBe(true);
-  expect(asks.getAttribute('title')).toBe('2 sub-agents at work\n3 sub-agents need you');
+  expect(asks.getAttribute('title')).toBe('2 subagents at work\n3 subagents need you');
   // Only the parent's own failure outranks a child's question, in the row and the folded project alike.
   expect(threadState({ status: 'error', unread: false }, asking)).toBe('error');
   expect(threadState({ status: 'idle', unread: false }, { count: 0, asking: 1 })).toBe('waiting');

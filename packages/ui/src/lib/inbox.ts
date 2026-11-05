@@ -1,6 +1,6 @@
 import { requestExcerpt, type Account, type PermissionRequest, type Project, type QuestionRequest, type SecretRequest, type ThreadSummary } from '@boite/contracts';
 import { needsUser, shortAgo, threadState, type Delegated, type ThreadState } from './thread-state';
-import { compareThreads } from './thread-order';
+import { compareThreads, type LiveKind } from './thread-order';
 import { liveState, needsHand } from './thread-lanes.svelte';
 import { projectThread } from './thread-rows';
 import type { Store } from './store.svelte';
@@ -86,6 +86,15 @@ export function threadLiveKind(thread: ThreadSummary, state: ThreadState | null)
   return thread.subagentQuestions?.length ? 'needs' : liveKind(state);
 }
 
+/**
+ * Where a thread of this store counts, with its delegated agents read: the
+ * classification Recent's sort and bands take, so a band holds every row its
+ * tab counts, on desktop and phone.
+ */
+export function storeLiveKind(store: Pick<Store, 'subagents'>, thread: ThreadSummary): LiveKind {
+  return threadLiveKind(thread, threadState(thread, store.subagents(thread.id)));
+}
+
 /** What each machine's store holds for the Inbox: the home, the phone's tab and the status strip's Next read the same lists. */
 export function storeSources<M extends { store: Store }>(machines: readonly M[]): InboxSource<M>[] {
   return machines.map(machine => ({
@@ -157,7 +166,7 @@ export function inbox<M>(sources: readonly InboxSource<M>[]): InboxLists<M> {
       tally[kind][live] += 1;
     }
   }
-  const byRecent = (a: InboxCard<M>, b: InboxCard<M>) => compareThreads(a.thread, b.thread) || a.since - b.since;
+  const byRecent = (a: InboxCard<M>, b: InboxCard<M>) => compareThreads(a.thread, b.thread, 'needs', 'needs') || a.since - b.since;
   needs.sort(byRecent);
   offline.sort(byRecent);
   working.sort((a, b) => a.since - b.since);

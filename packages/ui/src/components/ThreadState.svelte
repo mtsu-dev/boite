@@ -4,7 +4,7 @@
   import { backgroundLabel } from '../lib/background';
   import { ago, exactTime } from '../lib/format';
   import { fill, strings } from '../lib/strings';
-  import { shortAgo, shortSpan, threadState } from '../lib/thread-state';
+  import { delegatedChip, shortAgo, shortSpan, threadState } from '../lib/thread-state';
   import type { WorkingChildren } from '../lib/thread-rows';
 
   /**
@@ -19,7 +19,7 @@
    * `waited`: since when it waits on the user (`waitingSince`, the home card's
    * `since`); the compact row's time reads it instead of the last message.
    */
-  let { thread, now, subagents = null, away = false, compact = false, waited = null }: { thread: Pick<ThreadSummary, 'status' | 'unread' | 'runningSince' | 'requestSince' | 'backgroundWork' | 'openQuestions' | 'lastUserMessageAt' | 'createdAt'> & Partial<Pick<ThreadSummary, 'backgroundWait' | 'pullRequestWatches'>>; now: number; subagents?: WorkingChildren | null; away?: boolean; compact?: boolean; waited?: number | null } = $props();
+  let { thread, now, subagents = null, away = false, compact = false, waited = null }: { thread: Pick<ThreadSummary, 'status' | 'unread' | 'runningSince' | 'requestSince' | 'backgroundWork' | 'openQuestions' | 'lastUserMessageAt' | 'createdAt'> & Partial<Pick<ThreadSummary, 'backgroundWait' | 'pullRequestWatches'>>; now: number; subagents?: (WorkingChildren & { runs?: number }) | null; away?: boolean; compact?: boolean; waited?: number | null } = $props();
 
   /**
    * The exact run time in whole minutes, `28m` or `1h 02m`, for the title and
@@ -89,13 +89,8 @@
    * A child asking turns it to the waiting colour and says so in its title.
    */
   let chip = $derived.by(() => {
-    const count = subagents?.count ?? 0, asking = subagents?.asking ?? 0;
-    if (count === 0 && asking === 0) return null;
-    const many = (one: string, other: string, n: number) => n === 1 ? one : fill(other, { count: String(n) });
-    const atWork = count > 0 ? many(strings.sidebar.state.subagentsOne, strings.sidebar.state.subagentsMany, count) : null;
-    const asks = asking > 0 ? many(strings.sidebar.state.subagentsAskingOne, strings.sidebar.state.subagentsAskingMany, asking) : null;
-    const shown = count > 0 ? count : asking;
-    return { shown, asking: asking > 0, text: String(shown), label: [atWork, asks].filter(Boolean).join('\n') };
+    const chip = delegatedChip(subagents);
+    return chip && { ...chip, text: String(chip.shown) };
   });
 </script>
 

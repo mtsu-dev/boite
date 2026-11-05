@@ -1,5 +1,4 @@
-import { threadBusy } from '@boite/contracts';
-import { upkeepOf } from './agent-upkeep';
+import { delegatedWork } from './delegated-work';
 import { fill, strings } from './strings';
 import type { Store } from './store.svelte';
 import type { Surface, SurfaceKind } from './right-panel.svelte';
@@ -60,9 +59,8 @@ export class PanelCounts {
     const store = this.#store();
     const thread = store.openThread;
     if (!thread) return 0;
-    const agents = (store.delegation?.agents ?? []).filter((agent) => threadBusy(agent.thread) && !upkeepOf(store).has(agent.thread.id)).length;
-    const native = (store.delegation?.nativeAgents ?? []).filter((agent) => agent.status === 'running').length;
-    return agents + native + store.workflowsOf(thread.id).filter((run) => run.status === 'running').length;
+    const { agents, runs } = delegatedWork(store);
+    return agents + runs.length;
   });
 
   constructor(store: () => Store) {

@@ -36,6 +36,20 @@ test('clockTime gives the hour today, a weekday this week and a date beyond', ()
   expect(clockTime(old, now).length).toBeGreaterThan(clockTime(today, now).length);
 });
 
+test('a 12-hour clock drops the leading zero, a 24-hour clock keeps it', async () => {
+  const now = new Date(2026, 8, 24, 18, 0).getTime();
+  const morning = new Date(2026, 8, 24, 9, 35).getTime();
+  const monday = new Date(2026, 8, 21, 13, 31).getTime();
+  const plain = (text: string) => text.replace(/\s/g, ' ');
+  expect(plain(dayClock(morning))).toBe('9:35 AM');
+  expect(plain(clockTime(monday, now))).toBe('Mon 1:31 PM');
+  await setLocaleSetting('fr');
+  try {
+    expect(dayClock(morning)).toBe('09:35');
+    expect(plain(clockTime(monday, now))).toBe('lun. 13:31');
+  } finally { await setLocaleSetting('en'); }
+});
+
 test('durations, sizes, effort levels and quota windows follow the language the app speaks', async () => {
   const friday = new Date(2026, 8, 25, 20, 55).getTime();
   expect(quotaResetTime(friday, friday)).toMatch(/^Friday /);

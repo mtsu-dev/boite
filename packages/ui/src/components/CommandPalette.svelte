@@ -19,6 +19,7 @@
   import ThreadPicture from './ThreadPicture.svelte';
   import ThreadState from './ThreadState.svelte';
   import { asksMidTurn, threadState } from '../lib/thread-state';
+  import { waitingSince } from '../lib/inbox';
 
   let { store }: { store: Store } = $props();
 
@@ -28,8 +29,17 @@
   let input = $state<HTMLInputElement | undefined>(undefined);
   let list = $state<HTMLDivElement | undefined>(undefined);
   let dialog = $state<HTMLDivElement | undefined>(undefined);
-  /** A row waits under the foot: the list's last 40 px fade out, so no row reads as cut by the rule. */
-  let more = $state(false);
+  /** The field names its list and its active row by these: one set per palette, so two never share an id. */
+  const uid = $props.id();
+  const listId = `${uid}-list`;
+  const optionIds = new Map<string, string>();
+  /** A row's DOM id, the same for one item while the palette lives, whatever the query puts around it. */
+  function optionId(item: PaletteItem): string {
+    let id = optionIds.get(item.id);
+    if (!id) optionIds.set(item.id, id = `${uid}-option-${optionIds.size}`);
+    return id;
+  }
+  const activeId = $derived.by(() => { const row = rows[selected]; return row ? optionId(row) : undefined; });
   /** What had the keyboard before the palette took it, where it goes back on close. */
   let previous: HTMLElement | null = null;
 
@@ -128,7 +138,10 @@
   // the selection cannot jump back to the top under his fingers.
   $effect(() => {
     void query;
-    untrack(() => (selected = 0));
+    untrack(() => {
+      selected = 0;
+      if (list) list.scrollTop = 0;
+    });
   });
 
   /** A shorter list keeps the keyboard on a row that is still there. */
@@ -139,27 +152,52 @@
     });
   });
 
-  $effect(() => {
-    const row = list?.querySelector<HTMLElement>(`[data-index="${selected}"]`);
-    // jsdom draws nothing and has no scrollIntoView; a real list keeps the row in view.
-    if (row && typeof row.scrollIntoView === 'function') row.scrollIntoView({ block: 'nearest' });
-  });
-
-  function measure() {
-    more = list !== undefined && list.scrollTop + list.clientHeight < list.scrollHeight - 1;
+  /** The list's padding, kept under its last whole row and over a revealed one. */
+  function padOf(target: HTMLElement): number {
+    return parseFloat(getComputedStyle(target).paddingBottom) || 0;
   }
 
-  // The list's height depends on the window and its rows on the query: either can put a row under the foot.
+  /**
+   * An overflowing list stops under the last row that fits whole, plus its
+   * padding, so the foot's rule never crosses a row. A heading always sits
+   * above its first row, so a list cut there ends on the row before the
+   * heading, never on the heading alone. The strip's whole-tiles rule, on rows.
+   */
+  function fit() {
+    const target = list;
+    if (!target) return;
+    target.style.maxHeight = '';
+    const room = target.clientHeight;
+    if (target.scrollHeight <= room + 1) return;
+    const pad = padOf(target);
+    // Layout values, measured from the list (it is positioned): the opening scale does not skew them.
+    const bottoms = [...target.querySelectorAll<HTMLElement>('[data-testid=palette-row]')].map(row => row.offsetTop + row.offsetHeight);
+    const whole = bottoms.filter(bottom => bottom + pad <= room).at(-1) ?? bottoms[0];
+    if (whole !== undefined) target.style.maxHeight = `${whole + pad}px`;
+  }
+
+  // The room depends on the window and the rows on the query: either changes where the last whole row ends.
   $effect(() => {
     void rows;
     const target = list;
     if (!target) return;
-    void tick().then(measure);
-    if (typeof ResizeObserver !== 'function') return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(target);
-    return () => observer.disconnect();
+    void tick().then(fit);
+    window.addEventListener('resize', fit);
+    return () => window.removeEventListener('resize', fit);
   });
+
+  /** The row the arrows reached, whole in the list with the padding around it; a section's first row brings its heading. */
+  function reveal(index: number) {
+    const target = list;
+    const row = target?.querySelector<HTMLElement>(`[data-index="${index}"]`);
+    if (!target || !row) return;
+    const pad = padOf(target);
+    const first = row.previousElementSibling?.classList.contains('section-label') && row.parentElement;
+    const top = (first ? first.offsetTop : row.offsetTop) - pad;
+    const bottom = row.offsetTop + row.offsetHeight + pad;
+    if (top < target.scrollTop) target.scrollTop = Math.max(0, top);
+    else if (bottom > target.scrollTop + target.clientHeight) target.scrollTop = bottom - target.clientHeight;
+  }
 
   function close() {
     store.paletteOpen = false;
@@ -221,6 +259,7 @@
     else if (event.key === 'End') selected = rows.length - 1;
     else return;
     event.preventDefault();
+    reveal(selected);
   }
 
   function placeOf(id: string): Place | null {
@@ -255,13 +294,18 @@
           bind:value={query}
           placeholder={strings.palette.placeholder}
           aria-label={strings.palette.placeholder}
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={rows.length > 0}
+          aria-controls={listId}
+          aria-activedescendant={activeId}
           autocomplete="off"
           spellcheck="false"
           data-testid="palette-input"
         />
         <span class="kbd ui-label-box"><span class="ui-label">Esc</span></span>
       </label>
-      <div class="list" role="listbox" bind:this={list} data-testid="palette-list" data-more={more || undefined} onscroll={measure}>
+      <div class="list" id={listId} role="listbox" aria-label={strings.palette.placeholder} bind:this={list} data-testid="palette-list">
         {#each sections as section, at (section.id)}
           {@const first = offset(at)}
           {@const heading = section.kind === 'thread' ? placeOf(section.id) : null}
@@ -283,6 +327,7 @@
                 class="row"
                 class:selected={index === selected}
                 role="option"
+                id={optionId(item)}
                 tabindex="-1"
                 aria-selected={index === selected}
                 data-index={index}
@@ -298,7 +343,7 @@
                 <span class="label ui-label">{item.label}</span>
                 {#if place?.thread}
                   <!-- The ring says the state; the words stay in the time's title and label, as on a sidebar row. -->
-                  <span class="state"><ThreadState thread={place.thread} {now} subagents={place.machine.store.subagents(place.thread.id)} away={place.machine.store.connection !== 'ready'} compact /></span>
+                  <span class="state"><ThreadState thread={place.thread} {now} subagents={place.machine.store.subagents(place.thread.id)} away={place.machine.store.connection !== 'ready'} waited={waitingSince(place.machine.store, place.thread)} compact /></span>
                 {:else if item.kind === 'project' && place}
                   <span class="meta ui-label">{#if several}<MachineIcon icon={place.machine.icon} os={place.machine.store.core?.os} size={12} />{place.machine.label}{' · '}{/if}{strings.palette.newThread}</span>
                 {:else if item.hint}
@@ -388,23 +433,13 @@
     outline: none;
   }
 
+  /* Positioned, so its rows' offsets count from it; `fit` ends it on a whole row. */
   .list {
+    position: relative;
     flex: 1;
     min-height: 0;
     overflow: auto;
     padding: 6px;
-    /* Longer than a 34 px row, so the line the foot's rule crosses has faded out whole
-       instead of reading at half ink under it. */
-    --fade: 40px;
-    /* A row the arrows reach stops above the fade, never inside it. */
-    scroll-padding-block: 6px var(--fade);
-  }
-
-  /* Rows run on under the foot: they fade out instead of meeting its rule cut at mid-height, gone by the
-     list's 6 px end padding, so the line the rule crosses shows no ink. Scrolled to the end, the last row is whole and the fade goes. */
-  .list[data-more] {
-    -webkit-mask-image: linear-gradient(to bottom, black calc(100% - var(--fade)), transparent calc(100% - 6px));
-    mask-image: linear-gradient(to bottom, black calc(100% - var(--fade)), transparent calc(100% - 6px));
   }
 
   .section + .section {

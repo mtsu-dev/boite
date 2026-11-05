@@ -4,6 +4,8 @@ import CommandPalette from './CommandPalette.svelte';
 import { FakeClient } from '../lib/fake-client';
 import { Store } from '../lib/store.svelte';
 import * as palette from '../lib/palette';
+import { waitingSince } from '../lib/inbox';
+import { shortAgo } from '../lib/thread-state';
 
 let running: Record<string, unknown> | null = null;
 let store: Store;
@@ -86,21 +88,137 @@ test('closed until asked, then the recents come first and the commands after the
   expect(document.body.textContent).toContain('Commands');
 });
 
-test('rows running on under the foot fade out until the list is scrolled to its end', async () => {
-  // jsdom lays nothing out: the list is 400 px tall over 600 px of rows, as a short window draws it.
-  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(400);
-  vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(600);
+/** Lays the list out as a short window draws it: `room` px tall, each heading 30 px and each row 34 px, in DOM order. */
+function layOut(room: number): void {
+  const list = document.querySelector<HTMLElement>('[data-testid=palette-list]')!;
+  const tops = new Map<Element, number>();
+  let y = 6;
+  for (const section of list.querySelectorAll('[data-testid=palette-section]')) {
+    tops.set(section, y);
+    y += 30;
+    for (const row of section.querySelectorAll('[data-testid=palette-row]')) {
+      tops.set(row, y);
+      y += 34;
+    }
+    y += 4;
+  }
+  const total = y + 2;
+  vi.spyOn(HTMLElement.prototype, 'offsetTop', 'get').mockImplementation(function (this: HTMLElement) { return tops.get(this) ?? 0; });
+  vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (this: HTMLElement) { return this.dataset['testid'] === 'palette-row' ? 34 : 0; });
+  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function (this: HTMLElement) {
+    if (this !== list) return 0;
+    const cap = parseFloat(this.style.maxHeight);
+    return Number.isFinite(cap) ? Math.min(cap, room) : room;
+  });
+  vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function (this: HTMLElement) { return this === list ? total : 0; });
+  // jsdom scrolls nothing: the list keeps the offset it is given.
+  let scrolled = 0;
+  vi.spyOn(HTMLElement.prototype, 'scrollTop', 'get').mockImplementation(function (this: HTMLElement) { return this === list ? scrolled : 0; });
+  vi.spyOn(HTMLElement.prototype, 'scrollTop', 'set').mockImplementation(function (this: HTMLElement, value: number) { if (this === list) scrolled = value; });
+  // jsdom applies no component CSS: the list's 6 px padding, as the stylesheet sets it.
+  const computed = window.getComputedStyle.bind(window);
+  vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) => {
+    const style = computed(element, pseudo);
+    return element === list ? ({ paddingBottom: '6px' } as CSSStyleDeclaration) : style;
+  });
+}
+
+test('an overflowing list ends on a whole row, never on a heading, and the arrows bring a row in whole', async () => {
   store.paletteOpen = true;
   flushSync();
   await tick();
-  await tick();
-
-  const list = document.querySelector<HTMLElement>('[data-testid=palette-list]')!;
-  expect(list.hasAttribute('data-more')).toBe(true);
-  list.scrollTop = 200;
-  list.dispatchEvent(new Event('scroll'));
+  // notes: heading 6-36, row 36-70; boite: heading 74-104, rows 104-138, 138-172, 172-206; commands: heading 210-240, rows from 240.
+  layOut(260);
+  window.dispatchEvent(new Event('resize'));
   flushSync();
+  const list = document.querySelector<HTMLElement>('[data-testid=palette-list]')!;
+  // 260 px would show the "Commands" heading and 14 px of its first row: the list stops under the last boite row, plus its 6 px padding.
+  expect(list.style.maxHeight).toBe('212px');
   expect(list.hasAttribute('data-more')).toBe(false);
+
+  // Down past the cut: the row's bottom lands on the list's, above its padding.
+  for (let i = 0; i < 4; i++) key('ArrowDown');
+  expect(selectedId()).toBe(rows()[4]);
+  expect(list.scrollTop).toBe(240 + 34 + 6 - 212);
+  // Back up to the first row: its heading comes with it.
+  key('Home');
+  expect(list.scrollTop).toBe(0);
+
+  // A list that fits keeps its natural height.
+  layOut(2000);
+  window.dispatchEvent(new Event('resize'));
+  flushSync();
+  expect(list.style.maxHeight).toBe('');
+});
+
+test('a waiting thread reads the age of its home card, as its sidebar row does', async () => {
+  const now = Date.now();
+  // Asked an hour ago; the turn that now waits on the user started a minute ago.
+  store.threads = store.threads.map(thread => thread.id === 't-bench' ? { ...thread, lastUserMessageAt: now - 3_600_000, runningSince: now - 30_000, updatedAt: now - 30_000 } : thread);
+  flushSync();
+  const bench = store.threads.find(thread => thread.id === 't-bench')!;
+  const since = waitingSince(store, bench);
+  expect(since).not.toBeNull();
+  expect(shortAgo(since!, now)).not.toBe(shortAgo(bench.lastUserMessageAt!, now));
+  store.paletteOpen = true;
+  flushSync();
+  await tick();
+  const text = document.querySelector('[data-palette-id="thread:t-bench"] [data-testid=thread-state-text]')?.textContent;
+  expect(text).toBe(shortAgo(since!, now));
+});
+
+test('the field is a combobox whose active option is the row Enter opens, after arrows, filtering and no result', async () => {
+  store.paletteOpen = true;
+  flushSync();
+  await tick();
+  const input = document.querySelector<HTMLInputElement>('[data-testid=palette-input]')!;
+  const list = document.querySelector<HTMLElement>('[data-testid=palette-list]')!;
+  expect(input.getAttribute('role')).toBe('combobox');
+  expect(input.getAttribute('aria-autocomplete')).toBe('list');
+  expect(input.getAttribute('aria-expanded')).toBe('true');
+  expect(list.getAttribute('role')).toBe('listbox');
+  expect(list.id).not.toBe('');
+  expect(input.getAttribute('aria-controls')).toBe(list.id);
+  expect(list.getAttribute('aria-label')).toBe(input.getAttribute('aria-label'));
+  const options = Array.from(list.querySelectorAll('[role=option]'));
+  expect(new Set(options.map((option) => option.id)).size).toBe(options.length);
+  const active = () => {
+    const id = input.getAttribute('aria-activedescendant');
+    return id ? document.getElementById(id)?.getAttribute('data-palette-id') ?? 'missing' : null;
+  };
+
+  expect(active()).toBe(selectedId());
+  key('ArrowDown');
+  key('ArrowDown');
+  expect(active()).toBe(rows()[2]);
+
+  await type('zzzz');
+  expect(rows()).toEqual([]);
+  expect(input.hasAttribute('aria-activedescendant')).toBe(false);
+  expect(input.getAttribute('aria-expanded')).toBe('false');
+
+  await type('trace');
+  expect(input.getAttribute('aria-expanded')).toBe('true');
+  expect(active()).toBe('trace');
+  key('ArrowDown');
+  expect(active()).toBe('thread:t-trace');
+  key('Enter');
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  expect(store.openThread?.id).toBe('t-trace');
+});
+
+test('two palettes never share a list or option id', async () => {
+  const second = mount(CommandPalette, { target: document.body, props: { store } });
+  store.paletteOpen = true;
+  flushSync();
+  await tick();
+  const lists = Array.from(document.querySelectorAll<HTMLElement>('[data-testid=palette-list]'));
+  expect(lists).toHaveLength(2);
+  expect(lists[0]!.id).not.toBe(lists[1]!.id);
+  const ids = lists.map((list) => Array.from(list.querySelectorAll('[role=option]')).map((option) => option.id));
+  expect(ids[0]!.length).toBeGreaterThan(0);
+  expect(ids[0]!.filter((id) => ids[1]!.includes(id))).toEqual([]);
+  await unmount(second, { outro: false });
 });
 
 test('a query finds a project by its name and folder, and Enter starts a thread there with the keyboard in the composer', async () => {

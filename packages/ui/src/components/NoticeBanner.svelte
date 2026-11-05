@@ -12,13 +12,16 @@
    * card on its own. When the line leaves the summary only a few letters (a
    * phone), the summary leaves the line to the title and reads in the details:
    * never two cut fragments side by side. A title alone takes the line and
-   * wraps to a second one rather than ending in an ellipsis.
+   * wraps to a second one rather than ending in an ellipsis. A title with a
+   * figure (`9.5 GB`) stays on one line: the words end in an ellipsis before
+   * the figure is cut or sent to a line of its own.
    */
   let {
     icon: Icon,
     tone = 'neutral',
     title,
     titleTip,
+    figure = '',
     text = '',
     testid,
     kind,
@@ -34,6 +37,8 @@
     tone?: 'neutral' | 'warning' | 'danger';
     title: string;
     titleTip?: string;
+    /** The number the title is about, kept whole beside it: `9.5 GB`. */
+    figure?: string;
     /** The one-line summary after the title. */
     text?: string;
     testid: string;
@@ -73,11 +78,12 @@
   let disclosable = $derived(!!details || cut);
 </script>
 
-<aside class="notice {tone}" class:inline class:open class:tight class:alone={!text} data-testid={testid} data-kind={kind} {role} aria-label={label ?? title}>
+<aside class="notice {tone}" class:inline class:open class:tight class:alone={!text && !figure} class:figured={!!figure} data-testid={testid} data-kind={kind} {role} aria-label={label ?? title}>
   <div class="line">
     <span class="mark" aria-hidden="true"><Icon size={15} strokeWidth={1.9} /></span>
     <!-- `ui-label` trims each text to its cap height, so the icon centres on the words in every font. -->
     {#if title}<strong class="title ui-label" title={titleTip}>{title}</strong>{/if}
+    {#if figure}<strong class="figure ui-label">{figure}</strong>{/if}
     {#if text}<span class="summary ui-label" bind:this={summary} role={timer ? 'timer' : undefined} aria-live={timer ? 'off' : undefined}>{text}</span>{:else}<span class="fill"></span>{/if}
     {#if actions}<span class="actions">{@render actions()}</span>{/if}
     {#if disclosable}
@@ -114,6 +120,10 @@
   .title { flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: var(--color-foreground); }
   .summary { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-muted-foreground); font-variant-numeric: tabular-nums; }
   .fill { flex: 1; }
+  /* The words give way before the figure: it never wraps, never cuts. */
+  .figured .title { flex: 0 1 auto; min-width: 0; max-width: none; }
+  .figure { flex: none; white-space: nowrap; font-weight: 600; color: var(--color-foreground); font-variant-numeric: tabular-nums; }
+  .figure::before { content: '·'; margin-right: 6px; color: var(--color-muted-foreground); font-weight: 400; }
   /* Nothing beside it: the title is the whole line and wraps rather than cut. */
   .alone .title { flex: 1; min-width: 0; max-width: none; white-space: normal; overflow-wrap: break-word; line-height: 1.35; }
   .alone .fill { display: none; }

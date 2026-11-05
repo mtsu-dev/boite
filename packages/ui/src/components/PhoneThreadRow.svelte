@@ -7,6 +7,7 @@
   import type { MenuItem } from '../lib/menu';
   import { hasUnsentDraft } from '../lib/composer-queue';
   import { asksMidTurn, delegatedChip, threadState } from '../lib/thread-state';
+  import { rowSubagents } from '../lib/delegated-work';
   import { pendingLine } from '../lib/thread-move.svelte';
   import { longPress } from '../lib/long-press';
   import { swipeActions, type SwipeSide } from '../lib/swipe-actions';
@@ -42,7 +43,7 @@
     several?: boolean;
     /** Off under Recent's Pinned label, which already says it. */
     pin?: boolean;
-    /** The last row of a Recent band: the band's divider under it is the only rule, no hairline above it. */
+    /** The last row of a Recent band: its card ends under it, so it draws no hairline. */
     end?: boolean;
     /** The Inbox tab: what the thread waits on and since when, the desktop Inbox card's reason, in place of the state's time. */
     wait?: { reason: InboxReason; since: number };
@@ -51,7 +52,8 @@
   } = $props();
   let owner = $derived(machine.store);
   let away = $derived(owner.connection !== 'ready');
-  let subagents = $derived(owner.subagents(thread.id));
+  /** The open thread's row counts what its strip and panel tab count (`rowSubagents`). */
+  let subagents = $derived(rowSubagents(owner, thread.id));
   let kind = $derived(threadState(thread, subagents));
   let agents = $derived(delegatedChip(subagents));
   /** A row that needs the user counts from the home card's `since`, so both read one age. */
@@ -129,7 +131,7 @@
   /* The hairline is drawn over the row's last pixel instead of under it, so a row is 56 or 64 px whole. */
   /* Inset to the title, as a grouped list draws its separators. */
   .phone-row::after { content: ''; position: absolute; inset: auto var(--hairline-end, 0px) 0 56px; z-index: 1; border-bottom: 1px solid var(--color-border); pointer-events: none; }
-  /* A band's divider follows: one rule between two groups, not two 8 px apart. */
+  /* A band's card ends here: the gap to the next band parts them, no rule. */
   .phone-row.end::after { display: none; }
   /* Inside a project's card the row sits on the card's surface, not the list's ground. */
   :global(.project-group) .phone-row { --row-ground: var(--color-cell); --ring-ground: var(--color-cell); }

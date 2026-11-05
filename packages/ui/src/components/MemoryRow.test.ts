@@ -18,7 +18,11 @@ test.each([['en', 'thread-quota'], ['en', 'budget'], ['en', 'machine'], ['fr', '
   const limit = locale === 'fr' ? '9,5 Go' : '9.5 GB';
   const kept = limit.replace(' ', '\u00a0');
   // One line: the limit it crossed. Why it stopped reads behind the chevron, never cut on the line.
-  expect(row.querySelector('.line .title')?.textContent).toBe(strings.resources.killLimit(kept));
+  expect(row.querySelector('.line .title')?.textContent).toBe(strings.resources.killLine);
+  // The figure is its own unbreakable piece: a narrow line cuts the words before it, never sends it alone below.
+  expect(row.querySelector('.line .figure')?.textContent).toBe(kept);
+  expect(row.querySelector('.line .title')?.textContent).not.toContain(kept);
+  expect(row.getAttribute('aria-label')).toBe(strings.resources.killLimit(kept));
   expect(row.querySelector('.line .summary')).toBeNull();
   expect(row.querySelector('.details .reason')?.textContent).toBe(strings.resources.killReason[reason](limit));
   expect(row.querySelector('.details')?.hasAttribute('hidden')).toBe(true);
@@ -58,8 +62,8 @@ test('a memory notice stays between the interrupted tool and later output in the
     mounted = mount(MessageList, { target: document.body, props: { store, threadId: thread.id, messages: thread.messages } });
     flushSync();
     const text = document.querySelector('[data-testid=timeline]')!.textContent!;
-    expect(text.indexOf(strings.resources.killTitle)).toBeGreaterThan(text.indexOf('Before the interruption'));
-    expect(text.indexOf(strings.resources.killTitle)).toBeLessThan(text.indexOf('After the interruption'));
+    expect(text.indexOf(strings.resources.killLine)).toBeGreaterThan(text.indexOf('Before the interruption'));
+    expect(text.indexOf(strings.resources.killLine)).toBeLessThan(text.indexOf('After the interruption'));
   } finally { store.detach(); client.close(); }
 });
 
@@ -78,16 +82,17 @@ test('live stops share a compact disclosure and stay at their boundary as the an
     flushSync();
     const row = document.querySelector('[data-testid=memory-row]')!;
     expect(document.querySelectorAll('[data-testid=memory-row]')).toHaveLength(1);
-    expect(row.textContent).toContain(strings.resources.killCount(3, '3.0\u00a0GB'));
+    expect(row.getAttribute('aria-label')).toBe(strings.resources.killCount(3, '3.0\u00a0GB'));
+    expect(row.querySelector('.figure')?.textContent).toBe(strings.resources.killFigure(3, '3.0\u00a0GB'));
     expect(row.querySelector('[data-testid=notice-disclose]')!.getAttribute('aria-expanded')).toBe('false');
     expect([...row.querySelectorAll('.process')].map(node => node.textContent)).toEqual(['cargo.exe', 'rustc.exe', 'node.exe']);
     const text = document.querySelector('[data-testid=timeline]')!.textContent!;
-    expect(text.indexOf(strings.resources.killCount(3, '3.0\u00a0GB'))).toBeLessThan(text.indexOf('Build retried'));
+    expect(text.indexOf(strings.resources.killFigure(3, '3.0\u00a0GB'))).toBeLessThan(text.indexOf('Build retried'));
     row.querySelector<HTMLButtonElement>('.configure')!.click();
     expect(store.settingsTab).toBe('resources');
     expect(store.settingsSection?.id).toBe('limits');
     await store.open('t-trace'); flushSync();
-    expect(document.body.textContent).toContain(strings.resources.killCount(3, '3.0\u00a0GB'));
+    expect(document.body.textContent).toContain(strings.resources.killFigure(3, '3.0\u00a0GB'));
     expect(store.openThread!.memoryEvents?.find(event => event.at === at)?.anchor).toEqual({ messageId: message.id, partIndex: 1 });
   } finally { store.detach(); client.close(); }
 });
@@ -126,7 +131,7 @@ test('back-to-back stops share one card until a message or another limit comes b
     flushSync();
     const rows = () => [...document.querySelectorAll('[data-testid=memory-row]')];
     expect(rows()).toHaveLength(before + 1);
-    expect(rows().at(-1)!.querySelector('.title')?.textContent).toBe(strings.resources.killCount(3, '3.2\u00a0GB'));
+    expect(rows().at(-1)!.querySelector('.figure')?.textContent).toBe(strings.resources.killFigure(3, '3.2\u00a0GB'));
     expect([...rows().at(-1)!.querySelectorAll('.process')].map(node => node.textContent)).toEqual(['link.exe', 'rust-lld.exe', 'rust-lld.exe']);
     // Another limit reads differently: its own card.
     stop('cargo.exe', 130_000, 9728 * 1048576);
@@ -134,6 +139,6 @@ test('back-to-back stops share one card until a message or another limit comes b
     store.openThread!.messages.push({ id: 'between-stops', threadId: 't-trace', turnId: 'between-stops', role: 'user', parts: [{ type: 'text', text: 'Build again' }], state: 'complete', createdAt: at + 140_000 });
     stop('link.exe', 150_000);
     flushSync(); expect(rows()).toHaveLength(before + 3);
-    expect(rows().at(-1)!.querySelector('.title')?.textContent).toBe(strings.resources.killLimit('3.2\u00a0GB'));
+    expect(rows().at(-1)!.querySelector('.figure')?.textContent).toBe(strings.resources.killFigure(1, '3.2\u00a0GB'));
   } finally { store.detach(); client.close(); }
 });

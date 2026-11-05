@@ -125,8 +125,8 @@ test('a parent on another machine shows its working sub-agents, counted, and the
     expect(state()?.querySelector('[data-testid=thread-state-text]')?.textContent).toMatch(/^1m/);
     // A phone row is one line: agents at work are the ring's and the state's tooltip, never a chip or words on the row.
     expect(document.querySelector(`[data-machine-id="${remote.machineId}"][data-thread-id="${parent.id}"] [data-testid=thread-subagents]`)).toBeNull();
-    expect(state()?.textContent).not.toContain('sub-agents');
-    expect(state()?.getAttribute('title')).toMatch(/^Waiting on 2 sub-agents/);
+    expect(state()?.textContent).not.toContain('subagents');
+    expect(state()?.getAttribute('title')).toMatch(/^Waiting on 2 subagents/);
     // A child is never a row of its own.
     expect(document.querySelector('[data-thread-id="child-1"]')).toBeNull();
 

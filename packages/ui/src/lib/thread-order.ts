@@ -1,26 +1,50 @@
 import type { ThreadSummary } from '@boite/contracts';
 
 /**
- * A thread that waits on the user or failed first, as the Needs you filter and
- * the home's count group them, then the ones at work, then the rest.
+ * Where a thread counts (`inbox`'s `threadLiveKind`): needs the user, at work,
+ * or neither. The sort and the bands read the same classification as the
+ * tabs' counts, so a band holds every row its tab counts.
  */
-const LIVE: Record<ThreadSummary['status'], number> = { waiting: 0, error: 0, running: 1, queued: 2, idle: 4 };
+export type LiveKind = 'needs' | 'working' | null;
+
+type OrderFields = Pick<ThreadSummary, 'pinned' | 'status' | 'lastUserMessageAt' | 'createdAt' | 'subagentQuestions'>;
+
+/**
+ * The classification a list reads when it has no store to ask about delegated
+ * agents: the status, and a child's question riding on its parent, which makes
+ * that parent need the user as the count says.
+ */
+export function statusLive(thread: Pick<ThreadSummary, 'status' | 'subagentQuestions'>): LiveKind {
+  if (thread.subagentQuestions?.length) return 'needs';
+  return thread.status === 'waiting' || thread.status === 'error' ? 'needs' : thread.status === 'idle' ? null : 'working';
+}
+
+/**
+ * A thread that waits on the user or failed first, as the Needs you filter and
+ * the home's count group them, then the ones at work (its own turn, then a
+ * queued one, then work it left running), then the rest.
+ */
+function rank(thread: Pick<ThreadSummary, 'status'>, live: LiveKind): number {
+  if (live === 'needs') return 0;
+  if (live === 'working') return thread.status === 'running' ? 1 : thread.status === 'queued' ? 2 : 3;
+  return 4;
+}
 
 /** The bands the Recent list draws a label over: the pins, what needs the user, what is at work, the rest by last message. */
 export type ThreadBand = 'pinned' | 'needs' | 'working' | 'earlier';
-const BAND: Record<ThreadSummary['status'], ThreadBand> = { waiting: 'needs', error: 'needs', running: 'working', queued: 'working', idle: 'earlier' };
 
 /** When the user last spoke in it. `updatedAt` moves on every event, so ordering by it makes rows jitter. */
 export function lastActivity(thread: Pick<ThreadSummary, 'lastUserMessageAt' | 'createdAt'>): number {
   return thread.lastUserMessageAt ?? thread.createdAt;
 }
 
-/** The sidebar's order, in both views: pinned threads, then live ones, then the last message. */
-export function compareThreads(
-  a: Pick<ThreadSummary, 'pinned' | 'status' | 'lastUserMessageAt' | 'createdAt'>,
-  b: Pick<ThreadSummary, 'pinned' | 'status' | 'lastUserMessageAt' | 'createdAt'>
-): number {
-  return Number(b.pinned) - Number(a.pinned) || LIVE[a.status] - LIVE[b.status] || lastActivity(b) - lastActivity(a);
+/**
+ * The sidebar's order, in both views: pinned threads, then live ones, then the
+ * last message. A list that reads a store passes each thread's count
+ * classification (`threadLiveKind`); `sort(compareThreads)` reads the status.
+ */
+export function compareThreads(a: OrderFields, b: OrderFields, liveA: LiveKind = statusLive(a), liveB: LiveKind = statusLive(b)): number {
+  return Number(b.pinned) - Number(a.pinned) || rank(a, liveA) - rank(b, liveB) || lastActivity(b) - lastActivity(a);
 }
 
 /**
@@ -29,12 +53,18 @@ export function compareThreads(
  * row waiting on the user is not read as an unlabeled part of Needs you. A
  * list of one band draws no label, since it would only name the whole list.
  */
-export function bandStarts<T>(rows: readonly T[], threadOf: (row: T) => Pick<ThreadSummary, 'pinned' | 'status'>, keyOf: (row: T) => string): Map<string, ThreadBand> {
+export function bandStarts<T>(
+  rows: readonly T[],
+  threadOf: (row: T) => Pick<ThreadSummary, 'pinned' | 'status' | 'subagentQuestions'>,
+  keyOf: (row: T) => string,
+  liveOf: (row: T) => LiveKind = row => statusLive(threadOf(row))
+): Map<string, ThreadBand> {
   const starts = new Map<string, ThreadBand>();
   let current: ThreadBand | null = null;
   for (const row of rows) {
     const thread = threadOf(row);
-    const band = thread.pinned ? 'pinned' : BAND[thread.status];
+    const live = liveOf(row);
+    const band: ThreadBand = thread.pinned ? 'pinned' : live ?? 'earlier';
     if (band !== current) starts.set(keyOf(row), band);
     current = band;
   }

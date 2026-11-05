@@ -46,6 +46,8 @@ export function groupWorkingThread(store: Store, thread: ThreadSummary): boolean
 
 /** At work, its own turn, its delegated agents', what it left running or a pull request it watches: nothing for the user to do yet. */
 export function workingThread(store: Pick<Store, 'subagents'>, thread: ThreadSummary): boolean {
+  // A child's question rides on its parent, which then needs the user, as the count says (`threadLiveKind`).
+  if (thread.subagentQuestions?.length) return false;
   const state = threadState(thread, store.subagents(thread.id));
   return state === 'working' || state === 'queued' || state === 'delegating' || state === 'monitoring' || state === 'background' || state === 'watching';
 }

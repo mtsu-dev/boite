@@ -18,9 +18,11 @@
   /** A stop's line is the limit it crossed; why, and what stopped, read behind the disclosure. */
   // A narrow line wraps before the size, never between its number and its unit.
   const limit = $derived(event.kind === 'killed' ? bytes(event.limitBytes).replace(' ', '\u00a0') : '');
-  const title = $derived(event.kind !== 'killed' ? '' : events.length > 1
+  /** Read whole by a screen reader; on the line, the words give way before the figure. */
+  const sentence = $derived(event.kind !== 'killed' ? '' : events.length > 1
     ? strings.resources.killCount(events.length, limit)
     : strings.resources.killLimit(limit));
+  const figure = $derived(killed ? strings.resources.killFigure(events.length, limit) : '');
 </script>
 
 {#snippet stoppedList()}
@@ -34,7 +36,7 @@
 
 <!-- A memory stop is a notice in the flow, one line high: the limit it crossed, then why and the processes behind its disclosure. -->
 <NoticeBanner icon={TriangleAlert} tone="warning" testid="memory-row" kind={event.kind} inline
-  {title} label={killed ? undefined : text} text={killed ? '' : text} details={killed ? stoppedList : undefined}>
+  title={killed ? strings.resources.killLine : ''} {figure} label={killed ? sentence : text} text={killed ? '' : text} details={killed ? stoppedList : undefined}>
   {#snippet actions()}
     {#if onconfigure}<button type="button" class="small ghost configure" onclick={onconfigure} title={strings.resources.memorySettings}><Settings2 size={14} aria-hidden="true" /><span class="ui-label">{strings.resources.memorySettings}</span></button>{/if}
   {/snippet}
