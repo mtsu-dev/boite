@@ -1,7 +1,8 @@
 import type { SessionConfigOption } from '@agentclientprotocol/sdk/unstable';
 import type { AccountId, ModelInfo, ProviderDescriptor, ProviderId, ThreadId } from '@boite/contracts';
 import { agentModelsOf, modelsFrom, plainObject } from './acp/models.ts';
-import { AcpSession, forgetCompaction, forgetFolder, forgetThreadResolution, sessionKey, type AcpMemory, type CompactionPlace } from './acp/session.ts';
+import { AcpSession, sessionKey, type AcpMemory } from './acp/session.ts';
+import { forgetCompaction, forgetFolder, forgetThreadResolution, type CompactionPlace } from './acp/opencode-compaction.ts';
 import { readModels, withModelEffort, type ProbeEntry } from './acp/probe.ts';
 import { isGrok, MINUTE_MS, type AcpDeps } from './acp/protocol.ts';
 import { AcpTurn } from './acp/turn.ts';

@@ -30,7 +30,8 @@ import { errorCodeOf, noteReady } from '../driver-log.ts';
 import { SessionRetention } from '../session-retention.ts';
 import { releaseChild } from '../session-close.ts';
 import { OpenCodeConnection } from './opencode-connection.ts';
-import { OPENCODE_V2, openCodeCompactionBuffer, withOpenCodeCompactionBuffer } from '../../providers/opencode.ts';
+import { OPENCODE_V2, withOpenCodeCompactionBuffer } from '../../providers/opencode.ts';
+import { noteCompactionModel, wantedCompactionBuffer, type CompactionCaches } from './opencode-compaction.ts';
 import {protectedAcp} from './protected.ts';
 
 /** A glog line at info severity: `I0921 09:51:32.917720 10292 main.py:80] ...`. */
@@ -51,9 +52,9 @@ function launchArgs(profile: OsProfile | undefined, prefix: string[], provider: 
 
 /**
  * What the driver learns about agents across their processes, for the life of
- * the core.
+ * the core, OpenCode 2's compaction windows included.
  */
-export interface AcpMemory {
+export interface AcpMemory extends CompactionCaches {
   /**
    * Providers seen to count a loaded session's cost from zero in each new
    * process, against the protocol's "cumulative session cost": their cold
@@ -62,63 +63,6 @@ export interface AcpMemory {
   costPerProcess: Set<ProviderId>;
   /** `provider\0sessionId` of loads refused once with an `unsure` error. */
   refusedLoads: Set<string>;
-  /**
-   * OpenCode 2's compaction window per `provider\0account\0folder\0model`, the
-   * model the agent actually runs (`provider/model`) in the conversation's
-   * folder, whose OpenCode configuration may set its own `limit.context` and
-   * `limit.input`. Written as the last process there read it: the next process
-   * on that model in that folder starts with its owner's limit.
-   */
-  compactionWindows: Map<string, number>;
-  /**
-   * The model a thread on the agent's own model resolved to, per thread and
-   * per folder, since each OpenCode project may default to another model, with
-   * the folder it resolved in. A thread first looks up its own, ignored once
-   * the thread moved to another folder, then its folder's; neither known keeps
-   * the native ceiling. A released thread drops its own entry.
-   */
-  resolvedModels: Map<string, { cwd: string; model: string }>;
-}
-
-/** A conversation archived, deleted or released resumes on its folder's resolution. */
-export function forgetThreadResolution(memory: AcpMemory, threadId: string): void {
-  const suffix = `\0thread\0${threadId}`;
-  for (const key of [...memory.resolvedModels.keys()]) if (key.endsWith(suffix)) memory.resolvedModels.delete(key);
-}
-
-/** A reloaded agent or a changed account: its windows and resolutions may no longer hold. */
-export function forgetCompaction(memory: AcpMemory, filter: ProbeFilter): void {
-  const matches = (key: string): boolean => {
-    const [providerId, accountId] = key.split('\0');
-    return (filter.providerId === undefined || filter.providerId === providerId) && (filter.accountId === undefined || filter.accountId === accountId);
-  };
-  for (const key of [...memory.compactionWindows.keys()]) if (matches(key)) memory.compactionWindows.delete(key);
-  for (const key of [...memory.resolvedModels.keys()]) if (matches(key)) memory.resolvedModels.delete(key);
-}
-
-/** Where a conversation runs, for the folder entries its account keeps. */
-export interface CompactionPlace { providerId: string; accountId: string; cwd: string }
-
-/**
- * The account's last live conversation in a folder left it: the folder's
- * resolution, its windows and what other threads resolved there go. A
- * conversation resuming there starts on OpenCode's own ceiling and gets its
- * buffer once a process read the window again.
- */
-export function forgetFolder(memory: AcpMemory, place: CompactionPlace): void {
-  const scope = `${place.providerId}\0${place.accountId}\0`;
-  const windows = `${scope}${place.cwd}\0`;
-  for (const key of [...memory.compactionWindows.keys()]) if (key.startsWith(windows)) memory.compactionWindows.delete(key);
-  for (const [key, resolved] of [...memory.resolvedModels]) if (key.startsWith(scope) && resolved.cwd === place.cwd) memory.resolvedModels.delete(key);
-}
-
-function compactionModelKey(ctx: SessionContext, model: string): string {
-  return `${ctx.provider.id}\0${ctx.account.id}\0${ctx.thread.cwd}\0${model}`;
-}
-
-function resolutionKeys(ctx: SessionContext): string[] {
-  const scope = `${ctx.provider.id}\0${ctx.account.id}`;
-  return [`${scope}\0thread\0${ctx.thread.id}`, `${scope}\0folder\0${ctx.thread.cwd}`];
 }
 
 /**
@@ -314,32 +258,14 @@ export class AcpSession {
    */
   compactionMoved(ctx: SessionContext): boolean {
     if (ctx.provider.id !== OPENCODE_V2 || this.#compactionBuffer === undefined || this.busy() || this.#ended || this.#closing) return false;
-    return this.#wantedBuffer(ctx) !== this.#compactionBuffer;
-  }
-
-  #wantedBuffer(ctx: SessionContext): number | null {
-    const model = this.#resolvedModel(ctx);
-    const window = model === null ? 0 : this.#memory.compactionWindows.get(compactionModelKey(ctx, model)) ?? 0;
-    return openCodeCompactionBuffer(window, ctx.autoCompactTokens?.() ?? null);
-  }
-
-  /** The model the thread runs: the one it names, else what its own model last resolved to in its folder. */
-  #resolvedModel(ctx: SessionContext): string | null {
-    if (ctx.thread.model !== AGENT_OWN_MODEL) return ctx.thread.model;
-    for (const key of resolutionKeys(ctx)) {
-      const resolved = this.#memory.resolvedModels.get(key);
-      if (resolved !== undefined && resolved.cwd === ctx.thread.cwd) return resolved.model;
-    }
-    return null;
+    return wantedCompactionBuffer(this.#memory, ctx) !== this.#compactionBuffer;
   }
 
   /** The model the process says the session runs and its window, for the next process on it. */
   #noteCompactionWindow(ctx: SessionContext): void {
     if (!(this.#connection instanceof OpenCodeConnection)) return;
     const { model, window } = this.#connection.compactionModel();
-    if (model === '') return;
-    if (ctx.thread.model === AGENT_OWN_MODEL) for (const key of resolutionKeys(ctx)) this.#memory.resolvedModels.set(key, { cwd: ctx.thread.cwd, model });
-    if (window > 0) this.#memory.compactionWindows.set(compactionModelKey(ctx, model), window);
+    noteCompactionModel(this.#memory, ctx, model, window);
   }
 
   attach(turn: AcpTurn, warmMs: number): void {
@@ -656,7 +582,7 @@ export class AcpSession {
     const nativeArgs = [...launch.prefix, ...(profile?.launch?.args ?? ['acp']).filter(arg => arg !== 'acp'), 'serve', '--stdio', '--port', '0'];
     // OpenCode 2 compacts at the thread's limit once a process has read the
     // model's window; until then it keeps its own ceiling.
-    const buffer = native ? this.#wantedBuffer(ctx) : null;
+    const buffer = native ? wantedCompactionBuffer(this.#memory, ctx) : null;
     const accountEnv = withOpenCodeCompactionBuffer(ctx.accountEnv, buffer);
     try {
       child = ctx.spawnChild(launch.executable, native ? nativeArgs : args, {
