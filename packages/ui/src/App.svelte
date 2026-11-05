@@ -810,10 +810,12 @@
     align-items: baseline;
     gap: 6px 8px;
     padding: 8px 12px 10px;
-    background: var(--color-surface-2);
-    border: 1px solid var(--color-border);
+    background: var(--color-float);
+    -webkit-backdrop-filter: var(--float-blur);
+    backdrop-filter: var(--float-blur);
+    border: 1px solid transparent;
     border-radius: var(--radius-md);
-    box-shadow: var(--shadow-e2);
+    box-shadow: var(--shadow-float);
     animation: pop var(--dur-2) var(--ease-out-quint);
     pointer-events: none;
   }

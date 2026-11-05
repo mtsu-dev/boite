@@ -34,9 +34,12 @@ function blocks(css: string): string[] {
 const relative = (path: string) => path.slice(SRC.length + 1).replaceAll('\\', '/');
 
 /**
- * The floating surfaces allowed a backdrop blur, each a bounded box: the blur
+ * The surfaces allowed a blur of their own, each a bounded box: the blur
  * costs its own area, measured at 60 fps under a streaming answer with the
- * CPU slowed four times.
+ * CPU slowed four times. Every other blur is the frosted glass of a floating
+ * surface (a menu, a popover, a dialog, a toast) and goes through the
+ * `--float-blur` token, which the solid panes, reduced transparency and a
+ * browser without `color-mix` turn off in one place (`app.css`).
  */
 const BLURRED_SURFACES = new Set([
   'components/Composer.svelte',
@@ -49,7 +52,8 @@ const BLURRED_SURFACES = new Set([
 test('a backdrop blur sits only on a bounded floating surface, never across the window', () => {
   const misplaced = sources(SRC).flatMap((path) => blocks(styleOf(path))
     .filter((body) => /backdrop-filter\s*:\s*(?!none)/.test(body))
-    .filter((body) => !BLURRED_SURFACES.has(relative(path)) || /\binset\s*:\s*0\b/.test(body))
+    .filter((body) => /\binset\s*:\s*0\b/.test(body)
+      || !BLURRED_SURFACES.has(relative(path)) && !/backdrop-filter\s*:\s*var\(--float-blur\)\s*(;|$)/.test(body.trim()))
     .map(() => relative(path)));
   expect(misplaced).toEqual([]);
 });

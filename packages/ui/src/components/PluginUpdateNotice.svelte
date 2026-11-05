@@ -105,10 +105,12 @@
     align-items: center;
     gap: 12px;
     padding: 10px 12px;
-    border: 1px solid var(--color-border);
+    border: 1px solid transparent;
     border-radius: var(--radius-lg);
-    background: var(--color-surface-2);
-    box-shadow: var(--shadow-e3);
+    background: var(--color-float);
+    -webkit-backdrop-filter: var(--float-blur);
+    backdrop-filter: var(--float-blur);
+    box-shadow: var(--shadow-float);
     overflow: hidden;
     animation: rise var(--dur-3) var(--ease-out-quint);
   }

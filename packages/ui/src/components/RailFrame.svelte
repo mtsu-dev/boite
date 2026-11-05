@@ -246,7 +246,9 @@
   }
   @media (max-width: 720px) {
     .rail.drawer {
-      background: var(--color-surface);
+      background: var(--color-sheet);
+      -webkit-backdrop-filter: var(--float-blur);
+      backdrop-filter: var(--float-blur);
       border-right: 1px solid var(--color-border);
       position: fixed;
       inset: var(--titlebar) auto 0 0;
@@ -258,7 +260,7 @@
       /* A drawer from the left edge, where its button is. */
       transform: translateX(calc(-100% - 12px));
       transition: opacity var(--dur-3) var(--ease-out-quint), transform var(--dur-slide) var(--ease-slide), visibility var(--dur-slide);
-      box-shadow: var(--shadow-e3);
+      box-shadow: var(--shadow-float);
     }
     .rail.drawer.open {
       visibility: visible;

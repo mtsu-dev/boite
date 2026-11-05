@@ -77,6 +77,15 @@ export function liveKind(state: ThreadState | null): keyof Tally | null {
   return needsHand(state) ? 'needs' : liveState(state) ? 'working' : null;
 }
 
+/**
+ * Where one thread counts, for the tallies and the lists that show them: a
+ * child's question rides on its parent's row while the parent's turn runs, so
+ * that parent needs the user and is not at work.
+ */
+export function threadLiveKind(thread: ThreadSummary, state: ThreadState | null): keyof Tally | null {
+  return thread.subagentQuestions?.length ? 'needs' : liveKind(state);
+}
+
 /** What each machine's store holds for the Inbox: the home, the phone's tab and the status strip's Next read the same lists. */
 export function storeSources<M extends { store: Store }>(machines: readonly M[]): InboxSource<M>[] {
   return machines.map(machine => ({
@@ -92,8 +101,8 @@ export function storeSources<M extends { store: Store }>(machines: readonly M[])
   }));
 }
 
-/** The cards the home shows before folding the rest under `n more`. */
-export const INBOX_CARDS = 4;
+/** The cards the home shows before folding the rest under `See all`: three keep the home a glance, not a list. */
+export const INBOX_CARDS = 3;
 
 /** The threads a list of the user's work shows: no archive, no incognito, no team or debate room. */
 export function listed(thread: ThreadSummary): boolean {
@@ -132,8 +141,7 @@ export function inbox<M>(sources: readonly InboxSource<M>[]): InboxLists<M> {
       const kind = countKind(thread, project, thread.parentThreadId ? byId.get(thread.parentThreadId) : undefined);
       if (!kind) continue;
       const state = threadState(thread, source.subagents?.(thread.id) ?? 0);
-      // A child's question rides on its parent's row while the parent's turn runs: it still needs the user.
-      const live = thread.subagentQuestions?.length ? 'needs' : liveKind(state);
+      const live = threadLiveKind(thread, state);
       if (!live) continue;
       if (live === 'needs') {
         const card = { machine: source.machine, thread, project, kind, ...cardOf(source, thread, state) };

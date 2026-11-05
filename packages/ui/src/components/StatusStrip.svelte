@@ -16,6 +16,8 @@
    * how long with what it delegated, waiting on the user and since when, or
    * finished with the two ways to put it away. Its right end walks the user to
    * the next thread that waits on them, on any machine, without touching it.
+   * What it delegated is one chip, a glyph and a number with its words in the
+   * tooltip, so the line stays one line on every width.
    */
   let { store }: { store: Store } = $props();
 
@@ -166,7 +168,10 @@
   /* The state is never cut: it keeps its whole width and everything else gives way. */
   .lead { display: inline-flex; align-items: center; gap: 6px; flex: none; }
   .working { color: var(--color-accent); }
-  .waiting, .asking { color: var(--color-live); font-weight: 500; }
+  /* The dot carries the amber, as the ring does in the list; the words stay ink and the time grey. */
+  .waiting { color: var(--color-foreground); font-weight: 500; }
+  .waiting .time, .waiting .sep { color: var(--color-muted-foreground); font-weight: 400; }
+  .asking { color: var(--color-live); font-weight: 500; }
   .time { font-variant-numeric: tabular-nums; }
   .sep { opacity: .6; }
   .dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
@@ -196,9 +201,12 @@
   .act:hover, .act:focus-visible { background: var(--color-hover); color: var(--color-foreground); }
   .words { display: inline-flex; align-items: center; gap: 4px; }
   .number { display: none; }
-  .counts { gap: 4px; }
+  /* The delegated work: one chip at every width, its words in the tooltip. */
+  .counts { gap: 4px; padding: 0 8px 0 7px; border-radius: var(--radius-full); background: var(--color-control-surface); }
+  .counts .words { display: none; }
+  .counts .number { display: inline; }
   .counts.working { color: var(--color-accent); }
-  .next { margin-left: auto; color: var(--color-live); font-weight: 500; padding-right: 2px; }
+  .next { margin-left: auto; color: var(--color-muted-foreground); font-weight: 500; padding-right: 2px; }
   .finish { display: inline-flex; align-items: center; gap: 2px; flex: none; }
 
   @media (max-width: 720px) {
@@ -212,7 +220,8 @@
   @container strip (max-width: 420px) {
     .words { display: none; }
     .number { display: inline; }
-    .counts, .next { height: 22px; padding: 0 7px; border-radius: 999px; background: var(--color-surface-2); }
-    .next { gap: 2px; padding-right: 8px; }
+    .counts, .next { height: 22px; padding: 0 7px; border-radius: 999px; background: var(--color-control-surface); }
+    /* Amber on the see-through control ground fell to 4.3:1 over the light wallpaper's teal: Next gets a solid amber tint. */
+    .next { gap: 2px; padding-right: 8px; color: var(--color-live); background: color-mix(in oklch, var(--color-live-fill) 14%, var(--color-surface-2)); }
   }
 </style>

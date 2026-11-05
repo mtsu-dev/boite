@@ -15,10 +15,11 @@ test('the composer is a solid card: no backdrop blur, no translucent default sur
   expect(supports.slice(0, supports.indexOf('}\n}'))).not.toMatch(/--color-composer-surface/);
 });
 
-test('the phone model chip has a whole outline, not the control highlight alone', () => {
+test('the phone model chip is a whole capsule of fill, not the control highlight alone', () => {
   const phone = barSource.slice(barSource.indexOf('@media (max-width: 720px)'));
   const rule = phone.match(/\.chips :global\(\.picker > \.trigger\) \{([^}]*)\}/)?.[1] ?? '';
-  expect(rule).toMatch(/border: 1px solid var\(--color-border\)/);
+  expect(rule).toMatch(/background: var\(--color-control-surface\)/);
+  expect(rule).toMatch(/border-radius: var\(--radius-full\)/);
   expect(rule).toMatch(/box-shadow: none/);
 });
 

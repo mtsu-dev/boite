@@ -212,6 +212,11 @@
         {/each}
       </div>
     </div>
+    <label class="switch-row" for="{uid}-glass">
+      <span class="text ui-label-box"><span class="ui-label" id="{uid}-glass-name">{strings.features.glass.title}</span><InfoTip topic={strings.features.glass.title} text={strings.features.glass.hint} /></span>
+      <input id="{uid}-glass" aria-labelledby="{uid}-glass-name" type="checkbox" role="switch" checked={featureOn('glass')} data-testid="setting-glass"
+        onchange={event => setFeature('glass', event.currentTarget.checked)} />
+    </label>
     <ThemeColors />
     {#if !phone}
     <div class="switch-row">
@@ -456,7 +461,7 @@
     flex: none;
     gap: 2px;
     padding: 2px;
-    border: 1px solid var(--color-border);
+    border: 1px solid transparent;
     border-radius: var(--radius-md);
     background: var(--color-segment-track);
   }
@@ -479,8 +484,8 @@
   /* The chosen option is a card on the track, never a solid foreground pill. */
   .segmented button.on {
     background: var(--color-segment-thumb);
-    border-color: var(--color-edge);
+    border-color: transparent;
     color: var(--color-foreground);
-    box-shadow: var(--shadow-e1);
+    box-shadow: var(--shadow-thumb);
   }
 </style>

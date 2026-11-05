@@ -362,10 +362,10 @@
   details { margin-top: 8px; }
 
   /* The options in one track, the chosen one filled like a primary button, as on Appearance. */
-  .segmented { display: inline-flex; flex: none; gap: 2px; padding: 2px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-segment-track); }
+  .segmented { display: inline-flex; flex: none; gap: 2px; padding: 2px; border: 1px solid transparent; border-radius: var(--radius-md); background: var(--color-segment-track); }
   .segmented button { height: var(--control-sm); padding: 0 12px; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: var(--color-muted-foreground); font-size: var(--text-sm); box-shadow: none; }
   .segmented button:hover:not(.on):not(:disabled) { background: var(--color-hover); color: var(--color-foreground); }
-  .segmented button.on { background: var(--color-segment-thumb); border-color: var(--color-edge); color: var(--color-foreground); box-shadow: var(--shadow-e1); }
+  .segmented button.on { background: var(--color-segment-thumb); border-color: transparent; color: var(--color-foreground); box-shadow: var(--shadow-thumb); }
   .segmented button:disabled { opacity: 1; }
 
   @media (max-width: 720px) {

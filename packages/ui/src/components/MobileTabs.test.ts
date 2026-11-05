@@ -66,7 +66,7 @@ test('Activity carries the count of conversations waiting on the user, capped so
   expect(tab('mobile-activity')!.getAttribute('aria-label')).toContain('140');
 });
 
-test('Bots carries the bots at work in the accent, and the ones that need the user instead, in the waiting colour', async () => {
+test('Bots carries a badge only for the bots that need the user, never for the ones at work', async () => {
   setExperiment('resident-agents', true);
   onTestFinished(() => setExperiment('resident-agents', false));
   const { agentDirectory } = await import('../lib/agent-directory.svelte');
@@ -77,10 +77,9 @@ test('Bots carries the bots at work in the accent, and the ones that need the us
   await settle();
   expect(tab('mobile-agents-at-work')).toBeNull();
   store.threads = store.threads.map(thread => thread.id === 't-trace' ? { ...thread, status: 'running' } : thread); await settle();
-  expect(tab('mobile-agents-at-work')!.textContent).toBe('1');
-  expect(tab('mobile-agents-at-work')!.dataset.waiting).toBe('false');
+  expect(tab('mobile-agents-at-work')).toBeNull();
   store.threads = store.threads.map(thread => thread.id === 't-trace' ? { ...thread, status: 'idle', openQuestions: 1 } : thread); await settle();
+  expect(tab('mobile-agents-at-work')!.textContent).toBe('1');
   expect(tab('mobile-agents-at-work')!.dataset.waiting).toBe('true');
-  expect(tab('mobile-agents-at-work')!.classList.contains('working')).toBe(false);
   expect(tab('mobile-agents')!.getAttribute('aria-label')).toBe('Bots, 1 need you');
 });

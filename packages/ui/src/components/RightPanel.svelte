@@ -20,7 +20,7 @@
   import Menu from './Menu.svelte';
   import PanelResizeHandle from './PanelResizeHandle.svelte';
   import SurfaceIcon from './SurfaceIcon.svelte';
-    import PanelSurfaceView from './PanelSurfaceView.svelte';
+  import PanelSurfaceView from './PanelSurfaceView.svelte';
   import PanelPhoneHeader from './PanelPhoneHeader.svelte';
 
   let {

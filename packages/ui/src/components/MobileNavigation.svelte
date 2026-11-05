@@ -387,6 +387,8 @@
         {#snippet row(entry)}{@render threadRow(entry)}{/snippet}
       </WindowList>
     {:else if listScreen === 'activity'}
+      <!-- A contact's request or message heads the Inbox, as on the desktop home; the header's count opens its contact. -->
+      {#if ContactRequestNotice && contactsShown(store)}<div class="contact-flow"><ContactRequestNotice {store} flow /></div>{/if}
       <!-- Two lanes, as the desktop home's Inbox: what waits on the user, then the work going on. -->
       {#if inboxNeeds.length > 0}
         {@const bots = inboxNeeds.filter(row => row.thread.agentSessionId).length}
@@ -439,13 +441,15 @@
   .mobile-header, .mobile-list { display: none; }
   @media (max-width: 720px) {
 
-    .mobile-header { display: flex; align-items: center; gap: 10px; min-height: 60px; padding: 8px max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left)); background: var(--color-background); border-bottom: 1px solid var(--color-border); padding-top: max(8px, env(safe-area-inset-top)); }
+    .mobile-header { display: flex; align-items: center; gap: 10px; min-height: 60px; padding: 8px max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left)); background: transparent; border-bottom: 1px solid transparent; padding-top: max(8px, env(safe-area-inset-top)); }
+    /* Over a conversation a hairline keeps the title off the messages; over the list the wallpaper runs on. */
+    .mobile-header.chatting { border-bottom-color: var(--color-border); }
     .chat-heading { flex: 1; min-width: 0; height: 44px; }
     .mobile-header.chatting { gap: 6px; padding-left: max(8px, env(safe-area-inset-left)); padding-right: max(8px, env(safe-area-inset-right)); }
     .chat-heading :global(.thread-header) { gap: 2px; }
     .chat-heading :global(.launcher span) { display: none; }
     .chat-heading :global(.launcher) { width: 44px; padding: 0; justify-content: center; flex: none; }
-    .search { display: flex; gap: 8px; align-items: center; padding: 0 0 0 12px; background: var(--color-surface-2); border: 1px solid var(--color-border); border-radius: var(--radius-lg); color: var(--color-muted-foreground); }
+    .search { display: flex; gap: 8px; align-items: center; padding: 0 0 0 12px; background: var(--color-control-surface); border: 1px solid transparent; border-radius: var(--radius-lg); color: var(--color-muted-foreground); }
     .search > :global(svg) { flex: none; }
     /* The display options close the field's row, after a hairline. */
     .display { display: flex; align-self: stretch; align-items: center; flex: none; border-left: 1px solid var(--color-border); }
@@ -456,13 +460,13 @@
     .filters { display: flex; flex-wrap: wrap; gap: 8px; }
     .search + .filters { margin-top: 8px; }
     .filters :global(.menu) { min-width: 0; max-width: 100%; }
-    .at-work, .filters :global(.trigger) { display: inline-flex; gap: 6px; align-items: center; height: auto; min-height: var(--touch-target); max-width: 100%; padding: 0 12px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface-2); font-size: var(--text-sm); font-weight: 500; }
+    .at-work, .filters :global(.trigger) { display: inline-flex; gap: 6px; align-items: center; height: auto; min-height: var(--touch-target); max-width: 100%; padding: 0 14px; border: 1px solid transparent; border-radius: var(--radius-full); background: var(--color-control-surface); font-size: var(--text-sm); font-weight: 500; }
     .at-work { color: var(--color-accent); }
     .filters :global(.trigger) { color: var(--color-foreground); }
     .filters :global(.trigger svg) { flex: none; color: var(--color-muted-foreground); }
     .filters :global(.trigger .ui-label) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .filters .filter-machine { color: var(--color-muted-foreground); font-weight: 400; }
-    .at-work.on { border-color: var(--color-accent); background: var(--color-surface); }
+    .at-work.on { border-color: transparent; background: var(--color-accent-soft); }
     .brand-icon { flex: none; border-radius: var(--radius-md); }
     .back { position: relative; flex: none; }
     .waiting-mark { position: absolute; top: 9px; right: 8px; width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--color-live); box-shadow: 0 0 0 2px var(--color-background); }
@@ -476,7 +480,7 @@
     .dot.ready { background: var(--color-success); }
     .identity { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; flex: 1; }
     .mobile-header > :global(.menu) { flex: none; }
-    .mobile-list { display: block; position: absolute; inset: 0; overflow-y: auto; overscroll-behavior: contain; background: var(--color-background); padding: 8px max(16px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
+    .mobile-list { display: block; position: absolute; inset: 0; overflow-y: auto; overscroll-behavior: contain; background: transparent; padding: 8px max(16px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
     /* The bottom bar owns the home indicator's inset; the last row clears the New thread button over it. */
     .mobile-list.tabbed { padding-bottom: 96px; }
     .title-row { display: flex; align-items: center; gap: 2px; margin: 0 -10px 0 0; }
@@ -484,7 +488,7 @@
     .title-row > .icon { flex: none; width: var(--touch-target); height: var(--touch-target); color: var(--color-muted-foreground); }
     .title-row .display { border-left: 0; }
     /* The strip and each project's header stay at the top while the rows scroll under them. */
-    .lifecycle-slot { position: sticky; top: 0; z-index: 3; margin: 0 -2px; padding: 4px 2px 2px; background: var(--color-background); }
+    .lifecycle-slot { position: sticky; top: 0; z-index: 3; margin: 0 -8px; padding: 4px 8px 2px; border-radius: 0 0 var(--radius-lg) var(--radius-lg); background: var(--color-float); -webkit-backdrop-filter: var(--float-blur); backdrop-filter: var(--float-blur); }
     .mobile-list:has(> .lifecycle-slot) { --sticky-top: 46px; }
     .more-row { display: flex; align-items: center; gap: 6px; width: 100%; min-height: var(--touch-target); padding: 0 14px; font-size: var(--text-sm); color: var(--color-muted-foreground); border-bottom: 1px solid var(--color-border); border-radius: 0; justify-content: flex-start; }
     .more-row.needs { color: var(--color-live); }
@@ -495,28 +499,33 @@
     .brand strong.folded { opacity: 0; translate: 0 4px; }
     .lane { display: flex; align-items: center; gap: 8px; margin: 4px 2px 6px; font-size: var(--text-xs); font-weight: 600; color: var(--color-muted-foreground); }
     .lane.working { margin-top: 18px; }
-    .lane .count { padding: 0 7px; border-radius: var(--radius-full); line-height: 18px; font-variant-numeric: tabular-nums; background: color-mix(in oklch, var(--color-live-fill) 18%, transparent); color: var(--color-live); }
+    /* The home Inbox's counts: amber on a solid tint (seen through the glass it fell to 4.3:1), and work's grey, since it asks nothing. */
+    .lane .count { padding: 0 7px; border-radius: var(--radius-full); line-height: 18px; font-variant-numeric: tabular-nums; background: color-mix(in oklch, var(--color-live-fill) 18%, var(--color-surface-2)); color: var(--color-live); }
     .lane .count.bots { display: inline-flex; align-items: center; gap: 3px; padding-left: 6px; }
-    .lane.working .count { background: var(--color-accent-soft); color: var(--color-accent); }
+    .lane.working .count { background: var(--color-control-surface); color: var(--color-muted-foreground); }
     .first-run-slot { display: flex; padding: 12px 0 24px; }
     .first-run-slot :global(.first-run) { width: 100%; }
     .list-heading { padding: 4px 0 8px; }
+    .contact-flow { padding-top: 4px; }
     p { font-size: var(--text-sm); }
     /* `clip`, not `hidden`: the heading stays stuck to the top of the list while its rows scroll under it. */
-    .project-group { border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); margin-bottom: 12px; overflow: clip; }
-    .project-heading { position: sticky; top: var(--sticky-top, 0px); z-index: 2; display: flex; align-items: center; min-height: 40px; box-sizing: border-box; padding: 0 12px; gap: 8px; background: var(--color-surface-2); color: var(--color-muted-foreground); border-bottom: 1px solid var(--color-border); }
+    .project-group { border: 0; border-radius: var(--radius-lg); background: var(--color-cell); box-shadow: var(--shadow-tile); margin-bottom: 14px; overflow: clip; }
+    .project-heading { position: sticky; top: var(--sticky-top, 0px); z-index: 2; display: flex; align-items: center; min-height: 40px; box-sizing: border-box; padding: 0 12px; gap: 8px; background: var(--color-cell); color: var(--color-muted-foreground); border-bottom: 1px solid var(--color-border); }
     .project-heading h2 { margin: 0; flex: 1; min-width: 0; font-size: var(--text-sm); overflow-wrap: anywhere; }
     .project-heading span { display: block; font-size: var(--text-xs); font-weight: 400; color: var(--color-muted-foreground); }
     /* A whole touch target that eats the heading's padding rather than making it taller. */
     .project-heading .project-actions { flex: none; margin: -8px -8px -8px 0; color: var(--color-muted-foreground); }
     /* The count chips keep their 44 px targets but lend 2 px top and bottom, so the heading stays 40 px. */
     .project-heading :global(.counters) { margin-block: -3px; }
+    /* A heading says one number, what needs the user; working, done and archived are the strip's filters and the project's menu. */
+    .project-heading :global(.counter.extra:not(.active)) { display: none; }
     .empty-state { display: flex; align-items: center; flex-direction: column; text-align: center; padding: 44px 16px; }
     .empty-icon { display: grid; place-items: center; width: 52px; height: 52px; border-radius: var(--radius-xl); border: 1px solid var(--color-edge); background: var(--color-surface-2); color: var(--color-muted-foreground); margin-bottom: 18px; }
     .empty-state h2 { font-size: var(--text-base); font-weight: 600; margin: 0 0 8px; }
     .empty-state p { color: var(--color-muted-foreground); line-height: 1.6; max-width: 280px; margin: 0 0 20px; }
     .mobile-header { grid-row: 1; grid-column: 1; }
-    .mobile-list { grid-row: 2; grid-column: 1; position: relative; z-index: 1; min-height: 0; }
+    /* The list runs under the tab bar, which floats over its last rows. */
+    .mobile-list { grid-row: 2 / 4; grid-column: 1; position: relative; z-index: 1; min-height: 0; }
     /* A conversation slides over the list it opens from, and off it on the way back (lib/screen-slide.svelte.ts). The
        conversation, the app's `.body`, spans the bottom bar's row too, as tall all the way as it is once open, so nothing
        inside rewraps; the list and the bar shift under it, and the header stays, raised over its shadow. */

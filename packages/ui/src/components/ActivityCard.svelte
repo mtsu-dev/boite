@@ -42,7 +42,7 @@
 </button>
 
 <style>
-  /* One 28 px line, the weight of a turn footer: history, not a second live view. */
+  /* One 28 px line, the weight of a tool line: history, not a second live view, so no box at rest. */
   .activity {
     width: 100%;
     height: var(--control-sm);
@@ -51,7 +51,7 @@
     align-items: center;
     gap: 8px;
     padding: 0 8px;
-    border: 1px solid var(--color-border);
+    border: 1px solid transparent;
     border-radius: var(--radius-md);
     background: none;
     text-align: left;
@@ -68,8 +68,10 @@
   /* A line box taller than the button's: the clipped segments keep their descenders. */
   .line { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; overflow: hidden; white-space: nowrap; line-height: 16px; }
   .heading { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--color-foreground); font-weight: 500; }
-  /* The progress gives way first; a long workflow name still ellipsizes, never to nothing. */
-  .progress { display: inline-flex; flex: 0 1000 auto; min-width: 0; overflow: hidden; align-items: center; gap: 4px; }
+  /* The progress gives way first; a long workflow name still ellipsizes, never to nothing.
+     Its labels are trimmed to the cap and the baseline, so the clip box takes back half an em
+     below them: clipped at their own height, "steps" lost the tail of its p. */
+  .progress { display: inline-flex; flex: 0 1000 auto; min-width: 0; overflow: hidden; align-items: center; gap: 4px; padding-block: 0.5em; margin-block: -0.5em; }
   .progress > :global(span) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .when { flex: none; display: inline-flex; gap: 4px; }
   .activity :global(.chevron) { flex: none; }

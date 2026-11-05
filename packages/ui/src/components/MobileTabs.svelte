@@ -5,7 +5,7 @@
   import { experimentOn } from '../lib/experiments.svelte';
   import { workspace } from '../lib/workspace.svelte';
   import { followAgentDirectories } from '../lib/agent-directory.svelte';
-  import { badgeOf, workTally } from '../lib/work-counts';
+  import { workTally } from '../lib/work-counts';
 
   /**
    * The phone's places, along the bottom edge where a thumb rests: Threads,
@@ -27,13 +27,13 @@
     inert?: boolean;
   } = $props();
 
-  /** The bots' own threads on every machine, as the desktop's switch counts them: what needs the user in the waiting colour, else what works. */
+  /** Bots, when that experiment is on. A tab's badge is only ever what needs the user: work in progress is the lists' to show. */
   const bots = $derived(experimentOn('resident-agents'));
   // Contacts sit under Bots, or under Settings without them: the tab that holds them stays lit on their page.
   const current = $derived(store.page === 'settings' ? 'settings' : store.page === 'agents' ? 'agents' : store.page === 'home' ? (bots ? 'agents' : 'settings') : screen === 'activity' ? 'activity' : 'threads');
   const page = (place: string) => current === place ? 'page' as const : undefined;
   const stores = $derived(workspace.machines.length ? workspace.machines.map(machine => machine.store) : [store]);
-  const atWork = $derived(bots ? badgeOf(workTally(stores).bots) : { count: 0, waiting: false, counts: 'working' as const });
+  const botNeeds = $derived(bots ? workTally(stores).bots.needs : 0);
   followAgentDirectories(() => stores, () => bots);
 </script>
 
@@ -54,8 +54,8 @@
   </button>
   {@render create()}
   {#if bots}
-    <button type="button" class="tab" data-testid="mobile-agents" data-preload-view="agents" aria-current={page('agents')} aria-label={atWork.count ? `${strings.agents.heading}, ${fill(atWork.waiting ? strings.sidebar.surfaceNeeds : strings.sidebar.surfaceWorking, { count: String(atWork.count) })}` : undefined} onclick={() => store.showAgents()}>
-      <span class="glyph"><Bot size={20} />{#if atWork.count}<span class="badge" class:working={!atWork.waiting} data-testid="mobile-agents-at-work" data-waiting={atWork.waiting}>{atWork.count > 99 ? '99+' : atWork.count}</span>{/if}</span><span class="name ui-label">{strings.agents.heading}</span>
+    <button type="button" class="tab" data-testid="mobile-agents" data-preload-view="agents" aria-current={page('agents')} aria-label={botNeeds ? `${strings.agents.heading}, ${fill(strings.sidebar.surfaceNeeds, { count: String(botNeeds) })}` : undefined} onclick={() => store.showAgents()}>
+      <span class="glyph"><Bot size={20} />{#if botNeeds}<span class="badge" data-testid="mobile-agents-at-work" data-waiting="true">{botNeeds > 99 ? '99+' : botNeeds}</span>{/if}</span><span class="name ui-label">{strings.agents.heading}</span>
     </button>
   {/if}
   <button type="button" class="tab" data-testid="mobile-settings" data-preload-view="settings" aria-current={page('settings')} onclick={() => store.showSettings()}>
@@ -67,34 +67,40 @@
   .mobile-tabs { display: none; }
   @media (max-width: 720px) {
     .mobile-tabs {
-      position: relative; grid-row: 3; grid-column: 1; z-index: 2;
-      /* The tabs share what the centre disc leaves; with 10 px labels, as iOS draws its own, "Conversations" fits at 360 px. */
-      display: flex; align-items: flex-start;
-      padding: 6px max(4px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(4px, env(safe-area-inset-left));
-      background: var(--color-background); border-top: 1px solid var(--color-border);
+      position: relative; grid-row: 3; grid-column: 1; z-index: 2; align-self: end;
+      /* A capsule of frosted glass floating over the list's last rows. The tabs share what the centre
+         disc leaves; with 10 px labels, as iOS draws its own, "Conversations" fits at 360 px. */
+      display: flex; align-items: center;
+      margin: 0 max(10px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+      padding: 5px 4px;
+      border-radius: var(--radius-full);
+      background: var(--color-float);
+      -webkit-backdrop-filter: var(--float-blur);
+      backdrop-filter: var(--float-blur);
+      box-shadow: var(--shadow-float);
     }
     /* The keyboard is up: the bar would ride on top of it. */
     :global(html[data-keyboard='open']) .mobile-tabs { display: none; }
     .tab {
-      display: flex; flex: 1 1 0; flex-direction: column; align-items: center; gap: 3px; min-width: 0; height: auto; min-height: 52px; padding: 2px 1px 0;
-      border: 0; border-radius: var(--radius-md); background: transparent; color: var(--color-muted-foreground);
+      display: flex; flex: 1 1 0; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 0; height: auto; min-height: 52px; padding: 2px 1px;
+      border: 0; border-radius: var(--radius-full); background: transparent; color: var(--color-muted-foreground);
       font-size: 10px; font-weight: 500; letter-spacing: -0.1px; -webkit-tap-highlight-color: transparent;
     }
     .glyph {
-      position: relative; display: grid; place-items: center; width: 56px; height: 30px; border-radius: var(--radius-full);
+      position: relative; display: grid; place-items: center; width: 52px; height: 28px; border-radius: var(--radius-full);
       transition: background var(--dur-2) var(--ease-out-quint), color var(--dur-2) var(--ease-out-quint);
     }
     .name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .tab[aria-current=page] { color: var(--color-accent); }
     .tab[aria-current=page] .glyph { background: var(--color-accent-soft); }
     .tab[aria-current=page] .name { color: var(--color-foreground); font-weight: 600; }
-    .tab:active .glyph { background: var(--color-surface-3); }
+    .tab:active .glyph { background: var(--color-active); }
     /* New thread in the centre slot: a 48 px accent disc inside the bar, never over the rows. */
-    .slot { display: grid; flex: 0 0 48px; place-items: center; min-height: 52px; }
+    .slot { display: grid; flex: 0 0 52px; place-items: center; min-height: 52px; }
     .new {
       display: grid; place-items: center; width: 48px; height: 48px; min-height: 48px; padding: 0;
-      border: 0; border-radius: var(--radius-full); background: var(--color-accent); color: var(--color-accent-ink);
-      box-shadow: var(--shadow-e1);
+      border: 0; border-radius: var(--radius-full); background: var(--primary-glaze) var(--color-accent); color: var(--color-accent-ink);
+      box-shadow: 0 6px 16px -4px color-mix(in oklch, var(--color-accent) 55%, transparent), inset 0 1px 0 rgb(255 255 255 / 0.25);
       -webkit-tap-highlight-color: transparent;
       transition: filter var(--dur-1) var(--ease-out-quint), scale var(--dur-1) var(--ease-out-quint);
     }
@@ -103,9 +109,8 @@
     .badge {
       position: absolute; top: -2px; left: calc(50% + 6px); min-width: 17px; height: 17px; padding: 0 4px; box-sizing: border-box;
       border-radius: var(--radius-full); background: var(--color-live); color: var(--color-accent-ink);
-      box-shadow: 0 0 0 2px var(--color-background); font-size: 10px; font-weight: 700; line-height: 17px; text-align: center; font-variant-numeric: tabular-nums;
+      font-size: 10px; font-weight: 700; line-height: 17px; text-align: center; font-variant-numeric: tabular-nums;
     }
     /* Bots at work and none asking: the accent, as the desktop's switch draws it. */
-    .badge.working { background: var(--color-accent); }
   }
 </style>

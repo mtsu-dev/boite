@@ -47,10 +47,12 @@
     gap: 8px;
     max-width: 100%;
     padding: 6px 6px 6px 14px;
-    border: 1px solid var(--color-border);
+    border: 1px solid transparent;
     border-radius: var(--radius-lg);
-    background: var(--color-surface-2);
-    box-shadow: var(--shadow-e3);
+    background: var(--color-float);
+    -webkit-backdrop-filter: var(--float-blur);
+    backdrop-filter: var(--float-blur);
+    box-shadow: var(--shadow-float);
     font-size: var(--text-sm);
     animation: rise var(--dur-3) var(--ease-out-quint);
   }

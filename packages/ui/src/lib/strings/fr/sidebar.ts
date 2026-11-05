@@ -89,7 +89,6 @@ export const fr: Translation = {
     autoArchiveMergedPr: 'Masquer les conversations des PR mergées',
     autoRemoveWorktrees: 'Supprimer les worktrees terminés',
     backToProjectMenu: 'Retour',
-    deletesOn: 'Suppression {date}',
     viewArchivedThreads: 'Voir les conversations archivées',
     importSession: 'Importer une session Claude Code',
     archiveProject: 'Archiver le projet',

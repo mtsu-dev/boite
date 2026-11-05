@@ -98,8 +98,6 @@ export const strings = {
     autoArchiveMergedPr: 'Hide merged PR conversations',
     autoRemoveWorktrees: 'Remove settled worktrees',
     backToProjectMenu: 'Back',
-    /** On a done row's meta line: when the done retention deletes it (`10:31`, `Sat 10:31`). */
-    deletesOn: 'Deletes {date}',
     viewArchivedThreads: 'View archived threads',
     importSession: 'Import a Claude Code session',
     /** Out of the list, not out of Boite: its threads keep running and a new one brings it back. */

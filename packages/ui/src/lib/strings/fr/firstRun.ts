@@ -27,7 +27,7 @@ export const fr: Translation = {
     bot: 'Bot',
     workingNow: 'Au travail',
     nothing: 'Rien ne vous attend',
-    more: '{count} de plus',
+    more: 'Tout voir ({count})',
     fewer: 'Afficher moins',
     offline: 'Hors ligne',
     offlineHint: 'En attente sur une machine déconnectée. Non compté tant qu’elle n’est pas revenue.',

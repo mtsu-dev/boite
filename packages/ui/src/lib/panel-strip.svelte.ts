@@ -27,27 +27,30 @@ export function stripItems(surfaces: readonly Surface[], available: (kind: Surfa
 }
 
 /**
- * The counts the strip's tabs carry while there is one: the working tree's
- * changed files on Changes, the subagents and workflow runs at work on Agents.
- * Built during a component's setup.
- */
-/**
  * One `git.status` per thread and turn, however many counters ask: the title
- * bar's list and the panel's strip both count the changes.
+ * bar's list and the panel's strip both count the changes. Each machine keeps
+ * its own answers, since thread IDs can repeat between machines.
  */
-const asked = new Map<string, Promise<number | null>>();
+const askedBy = new WeakMap<Store, Map<string, Promise<number | null>>>();
 function changesOf(store: Store, key: string, id: Parameters<Store['gitStatus']>[0]): Promise<number | null> {
+  let asked = askedBy.get(store);
+  if (!asked) askedBy.set(store, (asked = new Map()));
   let answer = asked.get(key);
   if (!answer) {
     answer = store.gitStatus(id).then((status) => (status ? status.changes.length : null));
     if (asked.size > 32) asked.clear();
     asked.set(key, answer);
     // A failed or empty answer is asked again on the next turn, never kept.
-    void answer.then((count) => { if (count === null) asked.delete(key); });
+    void answer.then((count) => { if (count === null) asked!.delete(key); });
   }
   return answer;
 }
 
+/**
+ * The counts the strip's tabs carry while there is one: the working tree's
+ * changed files on Changes, the subagents and workflow runs at work on Agents.
+ * Built during a component's setup.
+ */
 export class PanelCounts {
   readonly #store: () => Store;
   #changes = $state<number | null>(null);

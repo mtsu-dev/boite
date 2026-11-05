@@ -513,12 +513,13 @@
   .project-folds { margin-top: auto; }
   .project {
     /* The dots of the rows' rings cut out of the card's own colour. */
-    --ring-ground: color-mix(in srgb, var(--color-surface-2) 55%, var(--color-frame));
-    margin-bottom: 6px;
-    padding: 1px 3px 2px;
-    border: 1px solid var(--color-border);
+    --ring-ground: var(--color-tile-ground);
+    margin-bottom: 8px;
+    padding: 2px 3px 3px;
+    border: 1px solid transparent;
     border-radius: var(--radius-lg);
-    background: color-mix(in srgb, var(--color-surface-2) 55%, transparent);
+    background: var(--color-tile);
+    box-shadow: var(--shadow-tile);
   }
   .project {
     transition:
@@ -692,11 +693,17 @@
   .head:focus-within .project-actions {
     opacity: 1;
   }
+  /* At rest a header holds the mark, the name and what needs the user: the other counts and the
+     project's robot appear under the pointer or the focus, and a count stays while its fold is open. */
+  @media (hover: hover) {
+    .head:not(:hover):not(:focus-within) :global(.counter.extra:not(.active)),
+    .head:not(:hover):not(:focus-within) .resident-mark { display: none; }
+  }
   .back-to-open {
     position: sticky; bottom: 8px; z-index: 2;
     display: flex; align-items: center; gap: 5px; width: max-content; max-width: calc(100% - 16px); height: 26px; margin: 8px auto 0; padding: 0 10px;
-    border: 1px solid var(--color-border); border-radius: var(--radius-full);
-    background: var(--color-surface-2); box-shadow: var(--shadow-e2); color: var(--color-foreground); font-size: var(--text-xs);
+    border: 1px solid transparent; border-radius: var(--radius-full);
+    background: var(--color-float); -webkit-backdrop-filter: var(--float-blur); backdrop-filter: var(--float-blur); box-shadow: var(--shadow-float); color: var(--color-foreground); font-size: var(--text-xs);
     animation: rise var(--dur-2) var(--ease-out-quint);
   }
   @media (prefers-reduced-motion: reduce) { .back-to-open { animation: none; } }

@@ -1028,6 +1028,18 @@ successful request. A refusal leaves the document opaque. The shell avoids
 Tauri's material-clear path so changing to solid does not leave an accent
 policy that prevents a later backdrop from drawing.
 
+### Glass panes
+
+Settings, Appearance, **Glass** is on by default. On, the frame is a tinted
+pane over a fixed wash of the accent, the card and tiles are lighter panes,
+and every menu, popover, toast and sheet is frosted through `--float-blur`.
+Off, `theme.ts` sets `data-panes="solid"` on the root: every pane takes its
+palette's solid colour and `--float-blur` becomes `none`, so nothing blurs.
+The switch is stored with the other feature switches (`lib/features.ts`), and
+`index.html` reads it before the stylesheet arrives, so a reload never
+flashes the other look. It is independent of the window material above, which
+only the desktop shell draws.
+
 ## Chat readability
 
 Conversation text uses `--text-reading` and `--leading-reading`: 15 px with

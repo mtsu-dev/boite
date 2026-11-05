@@ -67,7 +67,7 @@
   }
 </script>
 
-<section class="turn-files" data-testid="turn-files" aria-label={strings.chat.turnFiles}>
+<section class="turn-files" class:open data-testid="turn-files" aria-label={strings.chat.turnFiles}>
   <header>
     <button type="button" class="ghost small fold" data-testid="turn-files-toggle" aria-expanded={open} onclick={() => (open = !open)}>
       <ChevronRight size={14} class={open ? 'fold-caret open' : 'fold-caret'} />
@@ -183,10 +183,11 @@
     min-width: 0;
     /* The answer's parts sit 4px in; the card lines up with them. */
     margin: 12px 0 0 4px;
-    background: var(--color-surface);
     border-radius: var(--radius-md);
     overflow: hidden;
   }
+  /* Folded, the files are one quiet line among the turn's; open, they get their card. */
+  .turn-files.open { background: var(--color-surface); }
 
   header {
     display: flex;

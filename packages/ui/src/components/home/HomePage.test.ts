@@ -58,7 +58,7 @@ async function draw(contact: string | null = null): Promise<Store> {
 const one = <T extends HTMLElement>(testid: string) => document.querySelector<T>(`[data-testid="${testid}"]`);
 const contacts = async (store: Store) => store.client!.call('contacts.get', {});
 
-test('a contact request stays visible at the top in Settings and opens the machine that received it', async () => {
+test('a contact request waits behind the bar\'s count in Settings, with no card over the page, and the count opens the machine that received it', async () => {
   const remote = await connect();
   const local = new Store();
   local.machineId = 'local';
@@ -67,14 +67,26 @@ test('a contact request stays visible at the top in Settings and opens the machi
   workspace.machines = [{ id: 'local', label: 'Local', store: local }, { id: 'home', label: 'Workstation', store: remote }];
   workspace.active = local;
   components.push(mount(TitleBar, { target: document.body, props: { store: local } }));
-  await vi.waitFor(() => { flushSync(); expect(one('contact-request-notice')).not.toBeNull(); });
-  expect(one('contact-request-notice')!.textContent).toContain('Chris');
-  expect(one('contact-request-notice')!.textContent).toContain('Workstation');
-  one<HTMLButtonElement>('contact-request-review')!.click();
+  await vi.waitFor(() => { flushSync(); expect(one('contact-request-open')).not.toBeNull(); });
+  expect(one('contact-request-open')!.textContent).toContain('1');
+  // Nothing floats over Settings: the Inbox holds the card.
+  expect(one('contact-request-notice')).toBeNull();
+  one<HTMLButtonElement>('contact-request-open')!.click();
   await vi.waitFor(() => expect(workspace.active).toBe(remote));
   await vi.waitFor(() => expect([remote.page, remote.contact]).toEqual(['home', 'core-chris']));
   await remote.client!.call('contacts.decide', { id: 'creq-pending', accept: true, projectId: remote.projects[0]!.id });
-  await vi.waitFor(() => { flushSync(); expect(one('contact-request-notice')).toBeNull(); });
+  await vi.waitFor(() => { flushSync(); expect(one('contact-request-open')).toBeNull(); });
+});
+
+test('the Inbox heads with the request, naming the contact and the machine, and opens his page', async () => {
+  const store = await connect();
+  components.push(mount(ContactRequestNotice, { target: document.body, props: { store, flow: true } }));
+  await vi.waitFor(() => { flushSync(); expect(one('contact-request-notice')).not.toBeNull(); });
+  expect(one('contact-request-notice')!.textContent).toContain('Chris');
+  // In the page's column the card is the count: no second button beside it.
+  expect(one('contact-request-open')).toBeNull();
+  one<HTMLButtonElement>('contact-request-review')!.click();
+  await vi.waitFor(() => expect([store.page, store.contact]).toEqual(['home', 'core-chris']));
 });
 
 test("a header with the phone's Contacts button shows one count: the notice leaves its own button out while that one shows", async () => {
@@ -85,8 +97,8 @@ test("a header with the phone's Contacts button shows one count: the notice leav
   const button = mount(ContactsButton, { target: document.body, props: { store } });
   await vi.waitFor(() => { flushSync(); expect(one('mobile-contacts-waiting')?.textContent).toBe('1'); });
   expect(one('contact-request-open')).toBeNull();
-  // The card itself still floats: only the duplicate button went.
-  expect(one('contact-request-notice')).not.toBeNull();
+  // Nothing floats over the page either way: the card is the Inbox's.
+  expect(one('contact-request-notice')).toBeNull();
   await unmount(button);
   flushSync();
   expect(one('contact-request-open')).not.toBeNull();
@@ -105,6 +117,7 @@ test('a dismissed request keeps its header badge, which refreshes after a reconn
     return { ...state, requests: state.requests.filter(request => request.status !== 'pending') };
   }) as typeof client.call);
   components.push(mount(TitleBar, { target: document.body, props: { store } }));
+  components.push(mount(ContactRequestNotice, { target: document.body, props: { store, flow: true } }));
   await vi.waitFor(() => { flushSync(); expect(one('contact-request-notice')).not.toBeNull(); });
   one<HTMLButtonElement>('contact-request-dismiss')!.click();
   await vi.waitFor(() => { flushSync(); expect(one('contact-request-notice')).toBeNull(); });
@@ -117,7 +130,7 @@ test('a dismissed request keeps its header badge, which refreshes after a reconn
   await vi.waitFor(() => { flushSync(); expect(one('contact-request-open')).toBeNull(); });
 });
 
-test('a message from a contact outside a shared project pops up to be read: Deliver hands it to its conversation, Refuse answers the sender, Details opens the contact', async () => {
+test('a message from a contact outside a shared project waits in the Inbox to be read: Deliver hands it to its conversation, Refuse answers the sender, Details opens the contact', async () => {
   const store = await connect();
   store.page = 'settings';
   const sam = new FakeClient({ delayMs: 0, coreId: 'core-sam', coreName: 'Sam' });
@@ -142,7 +155,7 @@ test('a message from a contact outside a shared project pops up to be read: Deli
       return (await client.call('contacts.get', {})).mail!.at(-1)!;
     };
     const status = async (id: string) => (await client.call('collaboration.get', { threadId: 't-trace' })).messages.find(letter => letter.id === id)?.status;
-    components.push(mount(TitleBar, { target: document.body, props: { store } }));
+    components.push(mount(ContactRequestNotice, { target: document.body, props: { store, flow: true } }));
 
     const first = await answered('Which tool schedules your posts?');
     expect(one('contact-request-notice')!.textContent).toContain(fill(strings.contacts.mail.writes, { contact: 'Sam', thread: 'Finish the trace tab' }));

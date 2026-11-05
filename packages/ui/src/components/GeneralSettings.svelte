@@ -77,7 +77,7 @@
     {/if}
   </section>
 
-  <ArchivedLink {store} {onopenlist} />
+  <ArchivedLink {store} {here} {onopenlist} />
   <WorktreesCard {store} />
   <WindowAllowlistCard {store} />
   <WindowExclusionsCard {store} />

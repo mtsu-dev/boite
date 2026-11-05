@@ -5,6 +5,7 @@ import { FakeClient } from '../lib/fake-client';
 import { Store } from '../lib/store.svelte';
 import { workspace } from '../lib/workspace.svelte';
 import { workTally } from '../lib/work-counts';
+import { lifecycleCounts, lifecycleProjects } from '../lib/lifecycle-filter.svelte';
 import Inbox from './home/Inbox.svelte';
 import LifecycleStrip from './LifecycleStrip.svelte';
 import MobileNavigation from './MobileNavigation.svelte';
@@ -95,4 +96,20 @@ test('the strip, the Inbox header, the Inbox tab badge and the switch agree on t
   expect(fewer).toBeLessThan(expected);
   expect(read()).toEqual({ strip: fewer, inbox: fewer, switch: fewer });
   expect(document.querySelectorAll('[data-testid=inbox-offline] [data-testid=inbox-card]').length).toBeGreaterThan(0);
+});
+
+test('a filter lists the rows its count holds: a parent whose remote subagent asks sits under Needs you, never under Working', async () => {
+  const local = await seed();
+  // The child runs on another machine, so only the parent's summary carries the question while its own turn runs.
+  const parent = local.threads.find(thread => thread.status === 'idle' && !thread.archived && !thread.parentThreadId && !thread.agentSessionId)!;
+  local.threads = local.threads.map(thread => thread.id === parent.id
+    ? { ...thread, status: 'running', runningSince: Date.now(), subagentQuestions: [{ threadId: 'remote-child', title: 'Keep the old key?' }] } as typeof thread
+    : thread);
+  workspace.machines = [{ id: 'local', label: 'Local', store: local }];
+  const entries = local.projects.filter(project => !project.archived).map(project => ({ machine: workspace.machines[0]!, project }));
+  const rows = (kind: 'waiting' | 'working') => lifecycleProjects(entries, kind).flatMap(({ threads }) => threads.map(thread => thread.id));
+  const counts = lifecycleCounts(entries);
+  expect(rows('waiting')).toContain(parent.id);
+  expect(rows('working')).not.toContain(parent.id);
+  expect({ waiting: rows('waiting').length, working: rows('working').length }).toEqual({ waiting: counts.waiting, working: counts.working });
 });

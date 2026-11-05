@@ -262,7 +262,7 @@
         <div class="page"><CompactionSettings store={target} /></div>
       {:else if shown === 'archived'}
         <div class="page archived-page">
-          <ArchivedLink store={target} eager {onopenlist} />
+          <ArchivedLink store={target} here={store} eager {onopenlist} />
         </div>
       {:else}
         <MachinesPage mobile {onopenthread} onopenphone={() => { store.showSettings(); phone = true; }} />
@@ -316,9 +316,9 @@
   header.limits h1 { flex: 1; min-width: 0; margin-right: 54px; }
   .phone-page { padding: 16px; }
   /* Usage and Limits: two tabs of one screen, in one track, the chosen one a card on it. */
-  .tabs { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 2px; margin: 16px 16px 0; padding: 2px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-segment-track); }
+  .tabs { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 2px; margin: 16px 16px 0; padding: 2px; border: 1px solid transparent; border-radius: var(--radius-lg); background: var(--color-segment-track); }
   .tab { min-width: 0; min-height: var(--touch-target); gap: 8px; border: 1px solid transparent; border-radius: var(--radius-md); background: transparent; color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 500; transition: background var(--dur-2) var(--ease-out-quint), color var(--dur-2) var(--ease-out-quint); }
-  .tab.on { background: var(--color-segment-thumb); border-color: var(--color-edge); color: var(--color-foreground); box-shadow: var(--shadow-e1); }
+  .tab.on { background: var(--color-segment-thumb); border-color: transparent; color: var(--color-foreground); box-shadow: var(--shadow-thumb); }
   .tab :global(svg) { flex: none; }
   /* The bar carries the page's name and its "i": the card's own heading steps aside. */
   .privacy-page :global(.card > h2) { display: none; }

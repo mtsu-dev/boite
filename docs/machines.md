@@ -402,11 +402,13 @@ title. In Projects the project header carries it once for its cards, in red
 while that machine is unreachable. The machine name remains in the tooltip and
 accessible label. Every card shows
 the provider's logo before the title; its tooltip names the provider and the
-model. A second row appears only for the project or an associated PR, shown as
-a green underlined number. A card that has that row also names the thread's
-worktree branch there; a branch alone does not add the row. The phone list
-always has a second line and appends the branch to it. Connecting another machine leaves cards without project or PR metadata
-at their single-machine height. No placeholder appears when there is no PR. PR
+model. A card is one line: the state ring, the title, the time. A second row
+appears only where the list mixes projects (the project's name) or for a move
+waiting for the turn's end. The branch and the associated PR are in the card's
+tooltip and on the open thread's header; delegated agents ride the title line
+while the card is open or under the pointer, and always when one asks. The
+phone list follows the same rule. Connecting another machine leaves cards at
+their single-machine height. PR
 metadata comes from the execution machine's `gh`, using the branch
 associated with the thread. A shared checkout's current branch alone does not
 identify a thread's PR. Non-repositories and detached checkouts have no PR.

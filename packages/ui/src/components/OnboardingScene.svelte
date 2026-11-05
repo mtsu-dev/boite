@@ -196,7 +196,7 @@
   .agent-old, .agent-new { display: flex; }
   .agent-old { animation: first var(--demo-duration) both; }
   .agent-new { position: absolute; left: 8px; animation: second var(--demo-duration) both; }
-  .agent-menu { position: absolute; bottom: calc(100% + 8px); left: 0; width: 158px; padding: 5px; border-radius: var(--radius-md); border: 1px solid var(--color-edge); background: var(--color-surface); box-shadow: var(--shadow-e2); animation: menu var(--demo-duration) both; }
+  .agent-menu { position: absolute; bottom: calc(100% + 8px); left: 0; width: 158px; padding: 5px; border-radius: var(--radius-md); border: 1px solid transparent; background: var(--color-float); -webkit-backdrop-filter: var(--float-blur); backdrop-filter: var(--float-blur); box-shadow: var(--shadow-float); animation: menu var(--demo-duration) both; }
   .agent-menu > span { display: flex; justify-content: space-between; align-items: center; padding: 8px; }
   .agent-menu .chosen { background: var(--color-accent-soft); border-radius: var(--radius-sm); }
   .send { display: flex; align-items: center; justify-content: center; width: 27px; height: 27px; border-radius: var(--radius-md); background: var(--color-foreground); color: var(--color-surface); }
@@ -243,7 +243,7 @@
   .old-button { justify-self: start; font-size: var(--text-xs); border: 1px solid var(--color-edge); padding: 3px 9px; border-radius: var(--radius-sm); color: var(--color-muted-foreground); }
   .new-button { display: flex; justify-content: center; align-items: center; gap: 7px; background: var(--color-foreground); color: var(--color-surface); border-radius: var(--radius-md); padding: 5px 8px; font-weight: 500; }
   .desktop-space { position: relative; padding: 14px 0 52px; border: 1px solid var(--color-edge); border-radius: var(--radius-lg); background: var(--color-surface-2); overflow: hidden; }
-  .quota-popup { width: min(290px, calc(100% - 32px)); margin: 0 18px 0 auto; padding: 14px 16px; border: 1px solid var(--color-edge); border-radius: var(--radius-lg); background: var(--color-surface); box-shadow: var(--shadow-e2); animation: pop var(--demo-duration) both; }
+  .quota-popup { width: min(290px, calc(100% - 32px)); margin: 0 18px 0 auto; padding: 14px 16px; border: 1px solid transparent; border-radius: var(--radius-lg); background: var(--color-float); -webkit-backdrop-filter: var(--float-blur); backdrop-filter: var(--float-blur); box-shadow: var(--shadow-float); animation: pop var(--demo-duration) both; }
   .quota-title { display: flex; align-items: center; gap: 9px; margin-bottom: 12px; }
   .quota-value { display: flex; justify-content: space-between; gap: 8px; }
   .quota-track { height: 8px; background: var(--color-surface-3); border-radius: 8px; margin: 10px 0; overflow: hidden; }
@@ -288,7 +288,7 @@
   .notes > strong { display: block; padding: 8px 16px 4px; }
   .notes > p { display: flex; align-items: center; gap: 8px; padding: 2px 16px; }
   .empty-check { width: 12px; height: 12px; border: 1px solid var(--color-edge); border-radius: 3px; flex: none; }
-  .notification { position: absolute; bottom: 0; right: 8px; display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--color-surface-3); border: 1px solid var(--color-edge); border-radius: var(--radius-lg); box-shadow: var(--shadow-e2); animation: second var(--demo-duration) both; }
+  .notification { position: absolute; bottom: 0; right: 8px; display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--color-float); -webkit-backdrop-filter: var(--float-blur); backdrop-filter: var(--float-blur); border: 1px solid transparent; border-radius: var(--radius-lg); box-shadow: var(--shadow-float); animation: second var(--demo-duration) both; }
   .notification div { display: grid; gap: 2px; }
   .notification strong { font-size: var(--text-xs); }
   .notification > :global(svg:last-child) { color: var(--color-success); }

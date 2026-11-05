@@ -262,11 +262,14 @@
     left: 0;
     min-width: 200px;
     max-width: 320px;
-    padding: 4px;
-    background: var(--color-surface-2);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    box-shadow: var(--shadow-e2);
+    padding: 5px;
+    /* Frosted glass over what it opens on. */
+    background: var(--color-float);
+    -webkit-backdrop-filter: var(--float-blur);
+    backdrop-filter: var(--float-blur);
+    border: 1px solid transparent;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-float);
     /* The list reads at the body size wherever the trigger sits, a heading
        included: it never inherits the type of the sentence around it. */
     font-size: var(--text-base);

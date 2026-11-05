@@ -258,7 +258,7 @@
   .hot i, .track button:focus-visible i { opacity: 1; }
   .marker.active { color: var(--color-accent); }
   .marker.active i { transform: scaleX(calc((16 + 6 * var(--weight, 0)) / 22)); opacity: 1; box-shadow: 0 0 8px color-mix(in oklch, var(--color-accent) 55%, transparent); }
-  .group-menu { position: fixed; z-index: 30; width: min(300px, calc(100vw - 70px)); max-height: 264px; overflow-y: auto; padding: 6px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface-2); box-shadow: var(--shadow-e2); animation: pop var(--dur-2); }
+  .group-menu { position: fixed; z-index: 30; width: min(300px, calc(100vw - 70px)); max-height: 264px; overflow-y: auto; padding: 6px; border: 1px solid transparent; border-radius: var(--radius-lg); background: var(--color-float); -webkit-backdrop-filter: var(--float-blur); backdrop-filter: var(--float-blur); box-shadow: var(--shadow-float); animation: pop var(--dur-2); }
   .group-menu.closing { animation-name: pop-out; pointer-events: none; }
   .group-menu button { width: 100%; height: auto; min-height: var(--control); padding: 6px 8px; gap: 10px; justify-content: flex-start; text-align: left; font-size: var(--text-sm); }
   .group-menu button span:last-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

@@ -375,14 +375,16 @@ link scanned or pasted in the app asks nothing either: the owner just showed it.
 The browser uses mobile navigation at 720 px and below. A bar along the bottom edge
 (`MobileTabs.svelte`) holds four places with their full names: Threads, Inbox,
 Bots when its experiment is on, and Settings. Inbox's tab counts the
-conversations waiting for you; Bots counts the bots at work on every machine,
-as the desktop's switch does, in the waiting colour once one needs you. A
+conversations waiting for you; Bots carries a badge only for the bots that
+need you, never for the ones at work, so one tab at most asks for attention
+for a given wait. A
 56 px round New thread button sits over the Threads and Inbox lists, above
 the bar; it slides away while a list scrolls down and comes back on the way
 up or at the end. Contacts moved into the Bots page header with its request
 badge, or into Settings when bots are off. Threads lists threads across
-connected machines under the lifecycle strip (Needs you, Working, Done,
-Archived), whose tiles filter the list; Inbox puts waiting requests first,
+connected machines under a row of text filters (Needs you, Working, Done,
+Archived; only the first two carry a count, done and archived say theirs in
+the tooltip); Inbox puts waiting requests first,
 longest wait first, followed by running and queued turns. Both lists open on
 a 28 px title that folds into the bar once it scrolls away, and a project's
 header stays at the top while its rows scroll under it. Each list's header shows the machine,
@@ -391,11 +393,13 @@ the + starts in, whose sheet also adds a project for owners. A conversation, a b
 page and an open keyboard hide the bar; the conversation's header shows its
 title over its project, and its machine once there are two.
 
-Each row in the list (`PhoneThreadRow.svelte`, 64 px at least) leads with
+Each row in the list (`PhoneThreadRow.svelte`, 52 px at least) leads with
 who runs the thread, the bot's picture or the provider's logo, inside the
-state ring, then the title on up to two lines and one line of facts (project,
-machine when the list mixes them, pull request, agents, branch) ending on the
-time. A finger that slides a row right marks it done, and left archives it,
+state ring, then the title on one line ending on the time. A grey second line
+appears only when it says something the list cannot: the Inbox's reason for a
+wait, a move pending the turn's end, the project or machine in a list that
+mixes them, or a delegated agent asking. The branch and the pull request are
+in the conversation's header; a project header shows only its needs count. A finger that slides a row right marks it done, and left archives it,
 each with the Undo toast; past 35 % of the row's width the reveal under it
 arms, short of it the row springs back (`lib/swipe-actions.ts`). A way the
 row's menu does not offer, such as Mark done on a thread at work, only
@@ -405,7 +409,7 @@ in its header lists Browser, files and tools (the right panel), pin, rename,
 find in this thread, Subagents when the thread has some, archive and delete,
 and a long press on a row opens the sheet of the actions a thread keeps on a
 phone, with Mark done in the list; the sheet's trigger stays in the row for a
-screen reader and a keyboard. A new title by the agent, moving to a project, the path,
+screen reader and a keyboard, drawn only while it has focus. A new title by the agent, moving to a project, the path,
 coordination and the terminal stay on the desktop. A draft's header shows its
 "New thread" label.
 

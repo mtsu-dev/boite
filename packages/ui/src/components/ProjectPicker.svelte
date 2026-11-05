@@ -137,7 +137,7 @@
 <style>
   .scrim { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 16px; background: var(--color-scrim); animation: fade var(--dur-2) var(--ease-out-quint); }
   .scrim.closing { animation-name: fade-out; pointer-events: none; }
-  .dialog { width: min(480px, 100%); max-height: calc(100dvh - 32px); overflow-y: auto; background: var(--color-surface); border: 1px solid var(--color-edge); border-radius: var(--radius-lg); box-shadow: var(--shadow-e3); }
+  .dialog { width: min(480px, 100%); max-height: calc(100dvh - 32px); overflow-y: auto; background: var(--color-sheet); -webkit-backdrop-filter: var(--float-blur); backdrop-filter: var(--float-blur); border: 1px solid transparent; border-radius: var(--radius-lg); box-shadow: var(--shadow-float); }
   header, footer { display: flex; align-items: center; gap: 8px; padding: 12px 16px; }
   header { justify-content: space-between; border-bottom: 1px solid var(--color-border); }
   h2 { font-size: var(--text-md); font-weight: 600; }

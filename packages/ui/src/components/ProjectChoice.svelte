@@ -429,10 +429,12 @@
     display: flex;
     flex-direction: column;
     padding: 6px;
-    background: var(--color-surface-2);
-    border: 1px solid var(--color-border);
+    background: var(--color-float);
+    -webkit-backdrop-filter: var(--float-blur);
+    backdrop-filter: var(--float-blur);
+    border: 1px solid transparent;
     border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-e2);
+    box-shadow: var(--shadow-float);
     /* The list reads at the body size even under the heading's large type. */
     font-size: var(--text-base);
     font-weight: 400;

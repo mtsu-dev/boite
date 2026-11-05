@@ -1,8 +1,3 @@
-<script module lang="ts">
-  /** How many pages show the card in their own flow (the Inbox): while one does, the floating copy stays away. */
-  let flowHosts = $state(0);
-</script>
-
 <script lang="ts">
   import type { ContactRequest, HeldContactLetter } from '@boite/contracts';
   import { untrack } from 'svelte';
@@ -21,15 +16,11 @@
    * first: a request opens its contact's page; a message outside a shared
    * project is read here and delivered, refused or opened on that page.
    * `indicator` draws the bar's Contacts button with the count, left out where
-   * the bar already has one; `flow` puts the card in its page's column (the
-   * Inbox) instead of floating it under the title bar.
+   * the bar already has one; `flow` draws the card itself, in its page's
+   * column (the Inbox). Nothing floats over the other pages: there the bar's
+   * count says something waits, and the Inbox holds it.
    */
   let { store, indicator = true, flow = false }: { store: Store; indicator?: boolean; flow?: boolean } = $props();
-  $effect(() => {
-    if (!flow) return;
-    untrack(() => { flowHosts += 1; });
-    return () => untrack(() => { flowHosts -= 1; });
-  });
   type Row = { machine: Machine; view: ContactsView; key: string; createdAt: number }
     & ({ request: ContactRequest; letter?: undefined } | { letter: HeldContactLetter; request?: undefined });
   const watched = watchContacts(() => workspace.machinesOr(store).filter(machine => contactsShown(machine.store)));
@@ -78,8 +69,8 @@
     <Users size={17} strokeWidth={1.75} /><span class="badge">{count(pending.length)}</span>
   </button>
 {/if}
-{#if displayed && toast.shown && (flow || flowHosts === 0)}
-  <div class="notice" class:flow class:closing={toast.closing} use:toast.attach onanimationend={toast.end} role="status" data-testid="contact-request-notice" data-kind={displayed.letter ? 'mail' : 'request'}>
+{#if flow && displayed && toast.shown}
+  <div class="notice" class:closing={toast.closing} use:toast.attach onanimationend={toast.end} role="status" data-testid="contact-request-notice" data-kind={displayed.letter ? 'mail' : 'request'}>
     {#if displayed.letter}
       {@const letter = displayed.letter}
       {@const busy = displayed.view.isBusy(`mail:${letter.id}`) || toast.closing}
@@ -118,14 +109,16 @@
 <style>
   /* The bar's Contacts button where it has no other: the same count as the column's toggle. */
   .indicator { position: relative; flex: none; color: var(--color-foreground); }
-  .badge { position: absolute; top: -2px; right: -4px; min-width: 15px; padding: 1px 3px; font-size: var(--text-xs); font-weight: 600; line-height: 14px; text-align: center; border-radius: var(--radius-full); background: var(--color-live-fill); color: var(--color-accent-ink); font-variant-numeric: tabular-nums; }
-  .notice { position: fixed; z-index: 80; top: calc(var(--titlebar) + 12px); left: 50%; transform: translateX(-50%); width: min(440px, calc(100vw - 32px)); animation: fade var(--dur-2) var(--ease-out-quint); }
+  .badge { position: absolute; top: -2px; right: -4px; min-width: 15px; padding: 1px 3px; font-size: var(--text-xs); font-weight: 600; line-height: 14px; text-align: center; border-radius: var(--radius-full); background: var(--color-live); color: var(--color-accent-ink); font-variant-numeric: tabular-nums; }
   /* In the page's column: as wide as it, nothing floats over the page. */
-  .notice.flow { position: relative; z-index: auto; top: auto; left: auto; transform: none; width: 100%; margin-bottom: 16px; }
+  .notice { position: relative; width: 100%; margin-bottom: 16px; animation: fade var(--dur-2) var(--ease-out-quint); }
   .notice.closing { animation: fade-out var(--dur-2) var(--ease-out-quint) forwards; }
   .dismiss { position: absolute; top: 2px; right: 2px; width: 24px; height: 24px; color: var(--color-subtle); }
-  .row { display: flex; align-items: center; gap: 12px; width: 100%; height: auto; min-height: 64px; padding: 12px 30px 12px 14px; text-align: left; background: var(--color-surface-2); border: 1px solid var(--color-accent); border-radius: var(--radius-lg); box-shadow: var(--shadow-e3); color: var(--color-foreground); }
-  .request:hover { background: var(--color-hover); }
+  /* A tile of the list, tinted by the accent: no blur, nothing passes under it. */
+  .row { display: flex; align-items: center; gap: 12px; width: 100%; height: auto; min-height: 64px; padding: 12px 30px 12px 14px; text-align: left;
+    background: linear-gradient(color-mix(in oklch, var(--color-accent) 10%, transparent), color-mix(in oklch, var(--color-accent) 10%, transparent)), var(--color-tile);
+    border: 1px solid transparent; border-radius: var(--radius-lg); box-shadow: var(--shadow-tile); color: var(--color-foreground); }
+  .request:hover { border-color: var(--color-accent); }
   /* No arrow closes this row: keep the machine name clear of the dismiss button. */
   .letter { align-items: flex-start; padding-right: 40px; }
   .bell { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: var(--radius-md); background: var(--color-accent-soft); color: var(--color-accent); }
@@ -143,7 +136,6 @@
   .letter .count { margin-top: 2px; }
   .request > :global(svg) { flex: none; color: var(--color-accent); }
   @media (max-width: 720px) {
-    .notice:not(.flow) { top: calc(68px + env(safe-area-inset-top)); width: calc(100vw - 24px); }
     .machine { max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .actions > button { min-height: var(--touch-target); }
   }

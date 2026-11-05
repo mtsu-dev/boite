@@ -16,6 +16,9 @@
    * and its needs and failures are not counted live.
    * `body`: the lists the card shows as its body. Their rows say the count, so the pill only stands in for them
    * while the card is folded, and unfolds it.
+   * At rest a header shows one number, what needs the user; the others are
+   * `extra` and appear while the pointer or the focus is on the header, or
+   * while the fold they toggle is open (`Sidebar.svelte`, `MobileNavigation.svelte`).
    */
   let { entry, working, controls, collapsed = false, searching = false, away = false, body = [] }: {
     entry: ProjectEntry; working: number; controls: string; collapsed?: boolean; searching?: boolean; away?: boolean; body?: readonly ProjectThreadKind[];
@@ -46,7 +49,7 @@
   {/if}
   {#if hands.failed > 0}
     {@const label = fill(strings.sidebar.projectFailed, { count: String(hands.failed), project: name })}
-    <span class="counter failed" data-testid="project-failed-count" data-count={hands.failed} role="img" title={label} aria-label={label}>
+    <span class="counter failed extra" data-testid="project-failed-count" data-count={hands.failed} role="img" title={label} aria-label={label}>
       <CircleAlert size={12} aria-hidden="true" /><span class="ui-label">{formatCount(hands.failed)}</span>
     </span>
   {/if}
@@ -59,7 +62,7 @@
     {@const toggles = inBody || (grouped && !(kind === 'working' && searching))}
     {#if total > 0 && (!inBody || collapsed)}
       {#if toggles}
-        <button type="button" class="ghost counter {kind}" class:away class:active={open && grouped} data-testid="project-{kind}-toggle" data-count={total}
+        <button type="button" class="ghost counter {kind} extra" class:away class:active={open && grouped} data-testid="project-{kind}-toggle" data-count={total}
           title={label} aria-label={label} aria-expanded={open} aria-controls={grouped ? `${controls}-${kind}` : undefined}
           onclick={() => inBody ? entry.machine.store.toggleProject(entry.project.id) : projectThreadView.toggle(entry, kind, collapsed)}>
           {#if kind === 'working'}<LoaderCircle size={12} aria-hidden="true" />{:else if kind === 'done'}<CheckCheck size={12} aria-hidden="true" />{:else}<Archive size={12} aria-hidden="true" />{/if}
@@ -67,7 +70,7 @@
         </button>
       {:else}
         <!-- Working rows listed inline have nothing to unfold: the count is a fact, never a dead button. -->
-        <span class="counter {kind}" class:away data-testid="project-{kind}-toggle" data-count={total} role="img" title={label} aria-label={label}>
+        <span class="counter {kind} extra" class:away data-testid="project-{kind}-toggle" data-count={total} role="img" title={label} aria-label={label}>
           <LoaderCircle size={12} aria-hidden="true" /><span class="ui-label">{formatCount(total)}</span>
         </span>
       {/if}

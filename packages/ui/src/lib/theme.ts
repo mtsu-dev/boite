@@ -8,6 +8,7 @@
  */
 
 import { isExperimentEnabled, subscribeExperiments } from './experiments';
+import { FEATURES_STORAGE_KEY, isFeatureEnabled, subscribeFeatures } from './features';
 import { startAccent } from './accent';
 import { startFonts } from './fonts';
 import { applyColors, COLORS_EVENT, startColors } from './theme-colors';
@@ -73,6 +74,13 @@ export function applyTheme(theme: Theme): void {
   window.dispatchEvent(new Event(COLORS_EVENT));
 }
 
+/** The `glass` feature: off stamps `data-panes="solid"`, which turns every pane in `app.css` opaque. */
+export function applyPanes(glass: boolean): void {
+  const root = document.documentElement;
+  if (glass) delete root.dataset.panes;
+  else root.dataset.panes = 'solid';
+}
+
 /** Stores the choice and paints it in one call: what the settings control uses. */
 export function setTheme(theme: Theme): void {
   writeTheme(theme);
@@ -90,10 +98,15 @@ export function startTheme(): () => void {
   const stopFonts = startFonts();
   const stopColors = startColors();
   applyTheme(readTheme());
+  applyPanes(isFeatureEnabled('glass'));
   const stopExperiments = subscribeExperiments(() => applyTheme(readTheme()));
-  const onstorage = (event: StorageEvent) => { if (event.key === THEME_STORAGE_KEY || event.key === null) applyTheme(readTheme()); };
+  const stopPanes = subscribeFeatures((features) => applyPanes(features.glass));
+  const onstorage = (event: StorageEvent) => {
+    if (event.key === THEME_STORAGE_KEY || event.key === null) applyTheme(readTheme());
+    if (event.key === FEATURES_STORAGE_KEY || event.key === null) applyPanes(isFeatureEnabled('glass'));
+  };
   window.addEventListener('storage', onstorage);
-  const cleanup = () => { stopExperiments(); stopAccent(); stopFonts(); stopColors(); window.removeEventListener('storage', onstorage); };
+  const cleanup = () => { stopExperiments(); stopPanes(); stopAccent(); stopFonts(); stopColors(); window.removeEventListener('storage', onstorage); };
   if (typeof window.matchMedia !== 'function') return cleanup;
   const query = window.matchMedia(LIGHT_QUERY);
   const onchange = () => {

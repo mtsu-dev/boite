@@ -13,17 +13,22 @@
  * A device that turned on its experiment keeps it on: the first read stores
  * that as its choice, since the Experiments page drops ids it no longer lists
  * the next time it saves.
+ *
+ * `glass` is the look of the panes: on, the frame is tinted glass over a wash
+ * of the accent and every menu is frosted; off, `data-panes="solid"` on the
+ * root keeps every surface opaque (`theme.ts`, and `index.html` before the
+ * stylesheet arrives).
  */
 
 import { EXPERIMENTS_STORAGE_KEY } from './experiments';
 
-export type FeatureId = 'chat-artifacts' | 'preview-comments' | 'open-chat-links' | 'edge-scrollbars';
+export type FeatureId = 'chat-artifacts' | 'preview-comments' | 'open-chat-links' | 'edge-scrollbars' | 'glass';
 
 export const FEATURES_STORAGE_KEY = 'boite.features';
 
-export const FEATURE_IDS: FeatureId[] = ['chat-artifacts', 'preview-comments', 'open-chat-links', 'edge-scrollbars'];
+export const FEATURE_IDS: FeatureId[] = ['chat-artifacts', 'preview-comments', 'open-chat-links', 'edge-scrollbars', 'glass'];
 
-const DEFAULTS: Record<FeatureId, boolean> = { 'chat-artifacts': true, 'preview-comments': true, 'open-chat-links': false, 'edge-scrollbars': true };
+const DEFAULTS: Record<FeatureId, boolean> = { 'chat-artifacts': true, 'preview-comments': true, 'open-chat-links': false, 'edge-scrollbars': true, glass: true };
 
 /** The experiments this device turned on before they graduated, read from their old array. */
 function formerExperiments(): string[] {

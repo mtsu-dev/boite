@@ -198,10 +198,12 @@
     width: max-content;
     max-width: calc(100% - 20px);
     padding: 8px 10px;
-    border: 1px solid var(--color-border);
+    border: 1px solid transparent;
     border-radius: var(--radius-md);
-    background: var(--color-surface-2);
-    box-shadow: var(--shadow-e2);
+    background: var(--color-float);
+    -webkit-backdrop-filter: var(--float-blur);
+    backdrop-filter: var(--float-blur);
+    box-shadow: var(--shadow-float);
     font-size: var(--text-sm);
     pointer-events: none;
     animation: fade var(--dur-1) var(--ease-out-quint);

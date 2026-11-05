@@ -11,5 +11,6 @@ export const fr: Translation = {
       title: 'Barres de défilement au bord',
       hint: 'Les barres de défilement ne prennent plus de place. Chacune apparaît quand le pointeur s’approche du bord de sa zone et reste déplaçable. Souris et stylet uniquement'
     },
+    glass: { title: 'Verre', hint: 'Un cadre translucide sur un voile de la couleur d’accent, et des menus givrés. Désactivé, toutes les surfaces sont opaques' },
   }
 };

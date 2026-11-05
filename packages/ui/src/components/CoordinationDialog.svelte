@@ -50,7 +50,7 @@
 </dialog>
 
 <style>
-  dialog { width: min(560px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); margin: auto; padding: 0; color: var(--color-foreground); background: var(--color-surface); border: 1px solid var(--color-edge); border-radius: var(--radius-xl); box-shadow: var(--shadow-e3); overflow: hidden; }
+  dialog { width: min(560px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); margin: auto; padding: 0; color: var(--color-foreground); background: var(--color-sheet); -webkit-backdrop-filter: var(--float-blur); backdrop-filter: var(--float-blur); border: 1px solid transparent; border-radius: var(--radius-xl); box-shadow: var(--shadow-float); overflow: hidden; }
   dialog[open] { display: flex; flex-direction: column; }
   dialog::backdrop { background: var(--color-scrim); }
   header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--color-border); }

@@ -217,7 +217,7 @@
    * One height for every step, so Next stays under the pointer from one screen to the next.
    * Every screen fits it in both languages; only a window shorter than the panel scrolls.
    */
-  .panel { display: flex; flex-direction: column; width: min(600px, 100%); height: min(600px, calc(100dvh - 32px)); background: var(--color-surface); border: 1px solid var(--color-edge); border-radius: var(--radius-xl); box-shadow: var(--shadow-e3); animation: pop var(--dur-3) var(--ease-out-quint); }
+  .panel { display: flex; flex-direction: column; width: min(600px, 100%); height: min(600px, calc(100dvh - 32px)); background: var(--color-sheet); -webkit-backdrop-filter: var(--float-blur); backdrop-filter: var(--float-blur); border: 1px solid transparent; border-radius: var(--radius-xl); box-shadow: var(--shadow-float); animation: pop var(--dur-3) var(--ease-out-quint); }
   .panel.privacy { width: min(680px, 100%); }
   .panel:focus, h1:focus { outline: none; }
   .panel.closing { animation: pop-out var(--dur-2) var(--ease-out-quint); }
@@ -240,9 +240,9 @@
   .preference { display: flex; align-items: center; gap: 10px; }
   .preference > span { margin-right: auto; }
   .segmented { display: flex; gap: 4px; }
-  .segmented { padding: 3px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-segment-track); }
+  .segmented { padding: 3px; border: 1px solid transparent; border-radius: var(--radius-md); background: var(--color-segment-track); }
   .segmented button { border: 1px solid transparent; background: transparent; color: var(--color-muted-foreground); font-size: var(--text-sm); }
-  .segmented button.on { background: var(--color-segment-thumb); border-color: var(--color-edge); color: var(--color-foreground); box-shadow: var(--shadow-e1); }
+  .segmented button.on { background: var(--color-segment-thumb); border-color: transparent; color: var(--color-foreground); box-shadow: var(--shadow-thumb); }
   .examples { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
   .examples button { position: relative; display: flex; align-items: center; justify-content: center; gap: 6px; height: auto; min-height: 48px; padding: 8px 20px 8px 10px; white-space: normal; line-height: 1.3; border: 1px solid var(--color-edge); border-radius: var(--radius-lg); background: var(--color-surface-2); color: var(--color-muted-foreground); font-size: var(--text-sm); cursor: pointer; }
   .examples button:hover { color: var(--color-foreground); background: var(--color-hover); border-color: var(--color-accent); }

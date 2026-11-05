@@ -34,10 +34,11 @@
     gap: 12px;
     padding: 14px;
     border-radius: var(--radius-lg);
-    background: color-mix(in srgb, var(--color-surface-2) 96%, transparent);
+    background: var(--color-float);
+    -webkit-backdrop-filter: var(--float-blur);
+    backdrop-filter: var(--float-blur);
     background-image: linear-gradient(110deg, color-mix(in srgb, var(--color-danger) 10%, transparent), transparent 55%);
-    backdrop-filter: blur(10px);
-    box-shadow: var(--shadow-e3);
+    box-shadow: var(--shadow-float);
   }
   .dot {
     width: 6px;

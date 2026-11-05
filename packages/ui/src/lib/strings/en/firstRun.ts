@@ -29,7 +29,7 @@ export const strings = {
     bot: 'Bot',
     workingNow: 'Working now',
     nothing: 'Nothing needs you',
-    more: '{count} more',
+    more: 'See all ({count})',
     fewer: 'Show less',
     /** Threads waiting on a machine that is not connected: listed apart, muted, never counted. */
     offline: 'Offline',

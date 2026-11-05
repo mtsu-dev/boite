@@ -146,10 +146,12 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
-    background: var(--color-surface-2);
-    border: 1px solid var(--color-border);
+    background: var(--color-float);
+    -webkit-backdrop-filter: var(--float-blur);
+    backdrop-filter: var(--float-blur);
+    border: 1px solid transparent;
     border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-e2);
+    box-shadow: var(--shadow-float);
     font-size: var(--text-sm);
     z-index: 40;
     animation: pop var(--dur-2) var(--ease-out-quint);
@@ -179,7 +181,6 @@
     padding: 2px;
     border-radius: var(--radius-md);
     background: var(--color-segment-track);
-    box-shadow: inset 0 0 0 1px var(--color-border);
   }
   .segment {
     min-width: 0;
@@ -197,7 +198,7 @@
   .segment span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .segment :global(svg) { flex: none; }
   .segment:hover:not(.checked) { color: var(--color-foreground); background: var(--color-hover); }
-  .segment.checked { background: var(--color-segment-thumb); color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-edge), var(--shadow-control); }
+  .segment.checked { background: var(--color-segment-thumb); color: var(--color-foreground); box-shadow: var(--shadow-thumb); }
   .segment.checked :global(svg) { color: var(--color-accent); }
   .option {
     display: flex;

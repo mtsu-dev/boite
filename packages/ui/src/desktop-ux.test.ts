@@ -387,7 +387,7 @@ test('the sidebar floats a thread that waits on the user, in both views, and nam
   store.threads.find((t) => t.id === last)!.status = 'waiting';
   await waitFor(() => rowsOf()[0] === last);
   expect(document.querySelector('[data-testid=thread-project]')).toBeNull();
-  // Every row names its provider; a worktree branch is a fact of its own and opens the second line, PR or not.
+  // Every row names its provider; a worktree branch rides the row's tooltip, so the row stays one line (the header shows it open).
   const branched = store.threadsOf(project.id).find((t) => !t.pullRequest)!;
   branched.branch = 'boite/port-the-scheduler';
   const providers = () => Array.from(document.querySelectorAll('[data-testid=thread-provider]'));
@@ -396,16 +396,18 @@ test('the sidebar floats a thread that waits on the user, in both views, and nam
   expect(provider.getAttribute('title')).toContain(store.providers.find((p) => p.id === branched.providerId)!.name);
   const card = () => document.querySelector(`[data-thread-id="${branched.id}"]`)!.closest('.thread')!;
   expect(card().querySelector('[data-testid=thread-pr]')).toBeNull();
-  await waitFor(() => card().querySelector('[data-testid=thread-branch]')?.textContent === 'boite/port-the-scheduler');
-  // A row with nothing beyond its title stays one line.
+  const tip = () => card().querySelector<HTMLElement>('[data-testid=thread-row]')!.title;
+  await waitFor(() => tip().split('\n').includes('boite/port-the-scheduler'));
+  expect(card().querySelector('[data-testid=thread-branch]')).toBeNull();
+  expect(card().querySelector('.metadata')).toBeNull();
   branched.branch = null;
-  await waitFor(() => card().querySelector('.metadata') === null);
+  await waitFor(() => !tip().includes('boite/port-the-scheduler'));
   branched.branch = 'boite/port-the-scheduler';
 
   workspace.view = 'recent';
   await waitFor(() => rows()[0] === last);
   expect(document.querySelectorAll('[data-testid=thread-project]').length).toBe(rows().length);
-  await waitFor(() => card().querySelector('[data-testid=thread-branch]')?.textContent === 'boite/port-the-scheduler');
+  await waitFor(() => tip().split('\n').includes('boite/port-the-scheduler'));
 });
 
 test('an archive offers its way back for a moment: the toast button, or Ctrl+Z outside a field', async () => {

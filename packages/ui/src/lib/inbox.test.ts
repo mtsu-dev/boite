@@ -61,11 +61,11 @@ test('the Inbox counts the threads the sidebar counts: work that stopped short w
   expect(working.map(row => row.thread.id)).toEqual(['delegating']);
 });
 
-test('the home folds the cards past the first four', () => {
-  expect(INBOX_CARDS).toBe(4);
+test('the home folds the cards past the first three', () => {
+  expect(INBOX_CARDS).toBe(3);
   const { needs } = inbox([source('pc', Array.from({ length: 7 }, (_, index) => thread(`t${index}`, { status: 'waiting', runningSince: 10 - index })))]);
   expect(needs).toHaveLength(7);
-  expect(needs.slice(0, INBOX_CARDS).map(card => card.thread.id)).toEqual(['t6', 't5', 't4', 't3']);
+  expect(needs.slice(0, INBOX_CARDS).map(card => card.thread.id)).toEqual(['t6', 't5', 't4']);
 });
 
 test('a machine that is not connected counts nothing; its asks wait apart, muted, and its work is left out', () => {

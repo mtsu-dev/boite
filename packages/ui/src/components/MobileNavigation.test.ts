@@ -20,23 +20,25 @@ afterEach(async () => {
   vi.restoreAllMocks(); document.body.innerHTML = ''; localStorage.clear();
 });
 
-test('phone rows show linked PRs without a branch, using their owning machine', async () => {
+test('a phone row is one line: its linked PR and branch wait in the conversation header', async () => {
   vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
     media, matches: true, onchange: null, addListener() {}, removeListener() {}
   }));
   client = new FakeClient({ delayMs: 0 });
   store = new Store(); store.attach(client); await store.connect();
   const thread = store.threads.find(t => !t.parentThreadId && !t.archived && t.projectId !== null)!;
-  thread.branch = null;
+  thread.branch = 'calm-topic';
   const url = 'https://github.com/example/repo/pull/9951';
   await client.call('threads.linkPullRequest', { threadId: thread.id, url });
   workspace.machines = [{ id: 'local', label: 'Local', store }]; workspace.active = store;
   mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'threads' } });
   await settle();
-  const badge = document.querySelector<HTMLAnchorElement>(`[data-thread-id="${thread.id}"] [data-testid=thread-pr]`);
-  expect(badge?.href).toBe(url);
-  expect(badge?.textContent).toContain('#9951');
-  expect(badge?.closest('button')).toBeNull();
+  const row = document.querySelector<HTMLElement>(`[data-thread-id="${thread.id}"]`)!;
+  expect(row).not.toBeNull();
+  expect(row.querySelector('[data-testid=thread-pr]')).toBeNull();
+  expect(row.querySelector('[data-testid=thread-branch]')).toBeNull();
+  expect(row.textContent).not.toContain('#9951');
+  expect(row.textContent).not.toContain('calm-topic');
 });
 
 test('selecting a conversation beyond the first mobile window finishes loading its history', async () => {
@@ -121,9 +123,8 @@ test('a parent on another machine shows its working sub-agents, counted, and Rec
     const state = () => document.querySelector<HTMLElement>(`[data-machine-id="${remote.machineId}"][data-thread-id="${parent.id}"] [data-testid=thread-state]`);
     expect(state()?.dataset['state']).toBe('delegating');
     expect(state()?.querySelector('[data-testid=thread-state-text]')?.textContent).toMatch(/^1m/);
-    // The count rides the row's facts line, as a computer's row shows it: once, never also written out.
-    const agents = document.querySelector<HTMLElement>(`[data-machine-id="${remote.machineId}"][data-thread-id="${parent.id}"] [data-testid=thread-subagents]`);
-    expect([agents?.dataset['count'], agents?.textContent]).toEqual(['2', '2 agents']);
+    // A phone row is one line: agents at work are the ring's and the state's tooltip, never a chip or words on the row.
+    expect(document.querySelector(`[data-machine-id="${remote.machineId}"][data-thread-id="${parent.id}"] [data-testid=thread-subagents]`)).toBeNull();
     expect(state()?.textContent).not.toContain('sub-agents');
     expect(state()?.getAttribute('title')).toMatch(/^Waiting on 2 sub-agents/);
     // A child is never a row of its own.

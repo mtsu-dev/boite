@@ -32,9 +32,11 @@
     padding: 0;
     border: 0;
     border-radius: 50%;
-    background: var(--color-surface-2);
+    background: var(--color-float);
+    -webkit-backdrop-filter: var(--float-blur);
+    backdrop-filter: var(--float-blur);
     color: var(--color-foreground);
-    box-shadow: inset 0 0 0 1px var(--color-border), var(--shadow-e2);
+    box-shadow: var(--shadow-float);
     cursor: pointer;
     animation: rise var(--dur-2) var(--ease-out-quint);
     transition: background var(--dur-1);

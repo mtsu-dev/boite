@@ -53,14 +53,15 @@
 
 <style>
   .filtered {
-    --row-ground: var(--color-surface);
-    --ring-ground: var(--color-surface);
+    --row-ground: var(--color-cell);
+    --ring-ground: var(--color-cell);
     margin-bottom: 12px;
     /* clip, not hidden: hidden would make the card a scroll box and stop its header sticking. */
     overflow: clip;
-    border: 1px solid var(--color-border);
+    border: 0;
     border-radius: var(--radius-lg);
-    background: var(--color-surface);
+    background: var(--color-cell);
+    box-shadow: var(--shadow-tile);
   }
   .heading {
     position: sticky;
@@ -72,7 +73,7 @@
     min-height: var(--touch-target);
     padding: 6px 12px;
     color: var(--color-muted-foreground);
-    background: var(--color-surface-2);
+    background: var(--color-cell);
     border-bottom: 1px solid var(--color-border);
   }
   .heading h2 { flex: 1; min-width: 0; margin: 0; font-size: var(--text-sm); overflow-wrap: anywhere; }

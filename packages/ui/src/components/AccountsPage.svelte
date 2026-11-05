@@ -732,8 +732,11 @@
   .secondary .summary:hover .name { color: var(--color-foreground); }
   .secondary-list { background: transparent; }
 
-  /* Turned off: still listed, read as set aside. The switch keeps its full weight, it is the way back. */
-  .provider.off .summary, .member.off .member-line > :not(.act), .member.off .account { opacity: 0.55; }
+  /* Turned off: still listed, read as set aside. Its words drop to the muted tier, which keeps 4.5:1, and only its
+     pictures fade: faded whole, "Turned off" read 3.4:1. The switch keeps its full weight, it is the way back. */
+  .provider.off .summary, .member.off .member-line > :not(.act), .member.off .account,
+  .provider.off .summary :global(:is(.name, .member-name, .badge)) { color: var(--color-muted-foreground); }
+  .provider.off .summary :global(:is(img, svg)), .member.off .member-line > :not(.act) :global(:is(img, svg)), .member.off .account :global(:is(img, svg)) { opacity: 0.55; }
   .name, .member-name { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
   .badge { padding: 1px 7px; border-radius: var(--radius-sm); background: var(--color-surface-3); color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; white-space: nowrap; }
 

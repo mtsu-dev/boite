@@ -1,13 +1,17 @@
 <script lang="ts">
-  import { Archive, CheckCheck, CircleDot, LoaderCircle } from '@lucide/svelte';
+  import { Archive, Check } from '@lucide/svelte';
   import type { ProjectEntry } from '../lib/project-view.svelte';
   import { LIFECYCLES, lifecycleCounts, lifecycleFilter, type Lifecycle } from '../lib/lifecycle-filter.svelte';
   import { count as formatCount } from '../lib/format';
   import { fill, strings } from '../lib/strings';
 
   /**
-   * The four lifecycle buttons over the thread list: needs you, working, done,
-   * archived, each with its count across every listed project and machine.
+   * The four lifecycle filters over the thread list: needs you, working, done,
+   * archived, counted across every listed project and machine. The live two
+   * show their number; done and archived say theirs in the tooltip, and give
+   * their word up for a glyph when the four words outgrow the column: a hidden
+   * copy of the full row measures them, in the language and the counts drawn,
+   * so a 360 px phone or a longer French word never cuts a live word.
    * One filters the list to its state; the same button or Escape clears it.
    * Escape clears only while focus is in the list's column, so from the
    * composer the key still stops a turn.
@@ -21,6 +25,19 @@
     archived: strings.sidebar.lifecycle.archivedHint
   };
   let strip = $state<HTMLDivElement>();
+  let sizer = $state<HTMLSpanElement>();
+  let compact = $state(false);
+
+  $effect(() => {
+    const row = strip, full = sizer;
+    if (!row || !full || typeof ResizeObserver === 'undefined') return;
+    const measure = () => { compact = full.getBoundingClientRect().width > row.clientWidth + 1; };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(row);
+    observer.observe(full);
+    return () => observer.disconnect();
+  });
 
   $effect(() => {
     const scope = strip?.closest<HTMLElement>('[data-testid="sidebar"], [data-testid="mobile-list"]') ?? strip;
@@ -38,90 +55,92 @@
   });
 </script>
 
-<div class="lifecycle" role="group" aria-label={strings.sidebar.lifecycle.label} bind:this={strip} data-testid={`${prefix}lifecycle`}>
+<div class="lifecycle" class:compact role="group" aria-label={strings.sidebar.lifecycle.label} bind:this={strip} data-testid={`${prefix}lifecycle`}>
   {#each LIFECYCLES as kind (kind)}
     {@const total = counts[kind]}
     {@const active = lifecycleFilter.current === kind}
     {@const hint = fill(hints[kind], { count: String(total) })}
-    <button type="button" class="ghost stage {kind}" class:active class:zero={total === 0} aria-pressed={active}
+    {@const live = kind === 'waiting' || kind === 'working'}
+    <button type="button" class="ghost stage {kind}" class:active class:zero={total === 0} class:history={!live} aria-pressed={active}
       data-testid={`${prefix}lifecycle-${kind}`} data-count={total}
       title={active ? `${hint}\n${strings.sidebar.lifecycle.clearHint}` : hint}
       onclick={() => lifecycleFilter.toggle(kind)}>
-      <span class="figure">
-        {#if kind === 'waiting'}<CircleDot size={11} aria-hidden="true" />{:else if kind === 'working'}<LoaderCircle size={11} aria-hidden="true" />{:else if kind === 'done'}<CheckCheck size={11} aria-hidden="true" />{:else}<Archive size={11} aria-hidden="true" />{/if}
-        <span class="number">{formatCount(total)}</span>
-      </span>
+      {#if !live}<span class="glyph" aria-hidden="true">{#if kind === 'done'}<Check size={15} strokeWidth={2} />{:else}<Archive size={14} strokeWidth={1.75} />{/if}</span>{/if}
       <span class="word">{strings.sidebar.lifecycle[kind]}</span>
+      <!-- Only what is live gets a number: how much is done or archived is history, said in the tooltip. -->
+      {#if live && total > 0}<span class="number">{formatCount(total)}</span>{/if}
     </button>
   {/each}
+  <!-- The four words at full width, never seen or read: the width they would need. -->
+  <span class="measure" aria-hidden="true"><span class="sizer" bind:this={sizer}>
+    {#each LIFECYCLES as kind (kind)}
+      <span class="stage {kind}"><span class="word">{strings.sidebar.lifecycle[kind]}</span>{#if (kind === 'waiting' || kind === 'working') && counts[kind] > 0}<span class="number">{formatCount(counts[kind])}</span>{/if}</span>
+    {/each}
+  </span></span>
 </div>
 
 <style>
+  /* One line of text filters over the list, the way a mail app filters its inbox: words, and a number where something is live. */
   .lifecycle {
-    display: grid;
-    /* A tile never gets narrower than its word: the longer words take room from the shorter ones. */
-    grid-template-columns: repeat(4, minmax(max-content, 1fr));
-    gap: 3px;
-    padding: 2px 0 8px;
-  }
-  /* A stat tile: the number first, the word under it, so four fit at 288 px in French too. */
-  .stage {
     display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    justify-content: center;
-    gap: 1px;
-    height: auto;
-    min-width: 0;
-    padding: 5px 4px 6px;
-    border-radius: var(--radius-md);
-    border: 1px solid var(--color-border);
-    background: color-mix(in srgb, var(--color-surface-2) 55%, transparent);
-    color: var(--color-muted-foreground);
-    text-align: left;
-    transition: border-color var(--dur-2) var(--ease-out-quint), background var(--dur-2) var(--ease-out-quint), color var(--dur-2) var(--ease-out-quint);
-  }
-  .figure {
-    display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: 2px;
+    position: relative;
+    min-width: 0;
+    padding: 0 0 6px;
   }
-  .number {
-    font-size: var(--text-base);
-    font-weight: 600;
-    line-height: 1.2;
-    font-variant-numeric: tabular-nums;
-    color: var(--color-foreground);
+  /* Clipped to the strip, so the full row it holds never widens a scroller. */
+  .measure { position: absolute; inset: 0; gap: inherit; overflow: hidden; visibility: hidden; pointer-events: none; }
+  .sizer { position: absolute; top: 0; left: 0; display: flex; gap: inherit; width: max-content; white-space: nowrap; }
+  .stage {
+    display: inline-flex;
+    flex: 0 1 auto;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    height: 26px;
+    padding: 0 8px;
+    border: 0;
+    border-radius: var(--radius-full);
+    background: transparent;
+    color: var(--color-muted-foreground);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    transition: background var(--dur-2) var(--ease-out-quint), color var(--dur-2) var(--ease-out-quint);
   }
+  .stage:first-child { margin-left: -2px; }
   .word {
-    max-width: 100%;
-    font-size: 11px;
-    line-height: 1.25;
-    white-space: nowrap;
+    min-width: 0;
     overflow: hidden;
-    text-overflow: clip;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
-  .waiting:not(.zero) .figure { color: var(--color-live); }
-  .working:not(.zero) .figure { color: var(--color-accent); }
-  .done:not(.zero) .figure { color: var(--color-success); }
-  /* Zero stays in place, quiet: the tile keeps its slot so the strip never shifts. */
-  .zero .number { color: var(--color-subtle); font-weight: 500; }
-  .zero .word { color: var(--color-subtle); }
-  .stage:hover:not(:disabled) { background: var(--color-hover); }
-  .stage.active {
-    border-color: var(--color-accent);
+  .glyph { display: none; }
+  /*
+   * Four words need about 300 px on a desktop and 340 on a phone; the sidebar
+   * opens at 280 and a small phone leaves 328. Done and archived, history, give
+   * way to their glyph, so the live two never cut their word; the hidden word
+   * still names the button to a screen reader.
+   */
+  .compact .history { position: relative; padding: 0 7px; }
+  .compact .history .glyph { display: inline-flex; }
+  .compact .history .word { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .number {
+    flex: none;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  /* Amber is needs-you only: the one number that asks for the user. */
+  .waiting .number { color: var(--color-live); }
+  .stage:hover:not(:disabled) { background: var(--color-hover); color: var(--color-foreground); }
+  .stage.active, .stage.active:hover:not(:disabled) {
     background: var(--color-accent-soft);
-    box-shadow: inset 0 0 0 1px var(--color-accent);
+    color: var(--color-accent);
   }
-  .stage.active .word { color: var(--color-foreground); }
-  /* A phone: 36 px tiles, the number over its word as on the desktop, the word at the tab bar's
-     10 px, so four tiles fit 360 px in French without a cut; the touch target reaches 4 px past
-     each edge to keep its 44 px. */
+  /* A phone: the same words at the touch size, the target reaching past the 30 px pill. */
   @media (max-width: 720px) {
-    .lifecycle { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; padding: 0 0 4px; }
-    .stage { position: relative; gap: 0; height: 36px; min-height: 0; padding: 2px 8px; }
-    .stage::after { content: ''; position: absolute; inset: -4px 0; }
-    .number { font-size: var(--text-sm); line-height: 16px; }
-    .word { font-size: 10px; line-height: 12px; text-overflow: ellipsis; }
+    .lifecycle { gap: 4px; padding: 0 0 4px; }
+    .stage { position: relative; height: 32px; padding: 0 11px; font-size: var(--text-sm); }
+    .stage::after { content: ''; position: absolute; inset: -6px 0; }
   }
 </style>

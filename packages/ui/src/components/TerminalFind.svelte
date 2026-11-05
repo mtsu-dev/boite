@@ -83,10 +83,12 @@
     align-items: center;
     gap: 2px;
     padding: 3px 3px 3px 10px;
-    border: 1px solid var(--color-edge);
+    border: 1px solid transparent;
     border-radius: var(--radius-md);
-    background: var(--color-surface);
-    box-shadow: var(--shadow-e2);
+    background: var(--color-float);
+    -webkit-backdrop-filter: var(--float-blur);
+    backdrop-filter: var(--float-blur);
+    box-shadow: var(--shadow-float);
     animation: pop var(--dur-2) var(--ease-out-quint);
   }
 

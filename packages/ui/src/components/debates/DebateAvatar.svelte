@@ -39,6 +39,9 @@
     line-height: 1;
     user-select: none;
   }
+  /* The series colours are a chart's: under the light theme's white letter they read 3 to 4:1,
+     so a face takes its colour at half lightness at most. */
+  :global([data-theme='light']) .av:not(.me, .mod) { background: oklch(from var(--av-fill) min(l, 0.5) c h); }
   .me { background: var(--color-surface-3); color: var(--color-foreground); }
   .mod { background: transparent; border: 1px solid var(--color-border); color: var(--color-muted-foreground); }
 </style>

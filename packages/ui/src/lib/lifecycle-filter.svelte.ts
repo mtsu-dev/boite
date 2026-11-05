@@ -2,8 +2,7 @@ import type { ThreadSummary } from '@boite/contracts';
 import type { ProjectEntry } from './project-view.svelte';
 import { archiveCount } from './project-threads.svelte';
 import { threadState } from './thread-state';
-import { liveState, needsHand } from './thread-lanes.svelte';
-import { inbox, storeSources } from './inbox';
+import { inbox, storeSources, threadLiveKind } from './inbox';
 import type { Machine } from './workspace.svelte';
 
 /** The four lifecycle buttons over the thread list, in drawn order. */
@@ -38,8 +37,8 @@ export const lifecycleFilter = new LifecycleFilter();
 export function inLifecycle(entry: ProjectEntry, thread: ThreadSummary, kind: 'waiting' | 'working'): boolean {
   // The count rule's own population (`countKind`): a team or debate room under a project is not counted.
   if (thread.teamId || thread.debateId) return false;
-  const state = threadState(thread, entry.machine.store.subagents(thread.id));
-  return kind === 'waiting' ? needsHand(state) : liveState(state);
+  // The count's own classification, so a parent carrying a remote child's question lists where it counts.
+  return threadLiveKind(thread, threadState(thread, entry.machine.store.subagents(thread.id))) === (kind === 'waiting' ? 'needs' : 'working');
 }
 
 /**

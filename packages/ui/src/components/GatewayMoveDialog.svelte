@@ -176,10 +176,12 @@
     width: min(580px, calc(100vw - 32px));
     max-height: min(80vh, 680px);
     display: flex; flex-direction: column;
-    background: var(--color-surface);
-    border: 1px solid var(--color-edge);
+    background: var(--color-sheet);
+    -webkit-backdrop-filter: var(--float-blur);
+    backdrop-filter: var(--float-blur);
+    border: 1px solid transparent;
     border-radius: var(--radius-xl);
-    box-shadow: var(--shadow-e3);
+    box-shadow: var(--shadow-float);
     overflow: hidden;
     animation: pop var(--dur-2) var(--ease-out-quint);
   }

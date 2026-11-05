@@ -56,14 +56,15 @@
 {/if}
 
 <style>
-  .surface-switch { container-type: inline-size; display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: var(--radius-md); background: var(--color-edge); }
+  .surface-switch { container-type: inline-size; display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: var(--radius-md); background: var(--color-segment-track); }
   /* A phone's menu holds Conversations and Bots already, with what waits: the switch would say it twice. */
   @media (max-width: 720px) { :global(.app:not(.shell)) .surface-switch { display: none; } }
   /* Each side grows from its own content, so "Conversations" and its count
      keep their width beside a short "Bots" instead of an equal half each. */
   .view { flex: 1 1 auto; min-width: 0; padding-inline: 5px; color: var(--color-muted-foreground); }
   .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .chosen { background: var(--color-active); color: var(--color-foreground); }
+  .view { border-radius: calc(var(--radius-md) - 3px); }
+  .chosen, .chosen:hover:not(:disabled) { background: var(--color-segment-thumb); color: var(--color-foreground); box-shadow: var(--shadow-thumb); }
   /* What works on that side: a small accent pill with a breathing dot, the waiting colour once something asks the user. */
   .count {
     display: inline-flex;
@@ -73,15 +74,18 @@
     height: 16px;
     padding: 0 6px 0 5px;
     border-radius: var(--radius-full);
-    background: var(--color-accent-soft);
+    /* A solid ground, as the waiting pill's: the accent on its see-through tint read 4.4:1 over the glass and 3.1:1 on the chosen thumb. */
+    background: color-mix(in oklch, var(--color-accent) 16%, var(--color-surface-2));
     color: var(--color-accent);
     font-size: var(--text-xs);
     font-weight: 600;
     font-variant-numeric: tabular-nums;
     line-height: 1;
   }
-  .subagents { display: inline-flex; align-items: center; gap: 2px; opacity: .72; }
-  .count.waiting { background: color-mix(in oklch, var(--color-live) 18%, transparent); color: var(--color-live); }
+  /* Told apart by its glyph, not by fading: at 72 % the amber count fell to 4.3:1. */
+  .subagents { display: inline-flex; align-items: center; gap: 2px; }
+  /* A solid ground: amber text on a see-through tint lost its contrast over the light glass (3.8:1). */
+  .count.waiting { background: color-mix(in oklch, var(--color-live) 16%, var(--color-surface-2)); color: var(--color-live); }
   .pulse { width: 5px; height: 5px; border-radius: 50%; background: currentColor; animation: surface-pulse 1.6s var(--loop-ease-out-quint-48) infinite var(--loops); }
   @keyframes surface-pulse { 0%, 100% { opacity: 1; transform: none; } 50% { opacity: .35; transform: scale(.7); } }
   @media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }

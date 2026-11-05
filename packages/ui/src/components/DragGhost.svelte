@@ -64,10 +64,12 @@
     gap: 8px;
     min-height: var(--row);
     padding: 8px 10px;
-    border: 1px solid var(--color-border);
+    border: 1px solid transparent;
     border-radius: var(--radius-md);
-    background: var(--color-surface);
-    box-shadow: var(--shadow-e3);
+    background: var(--color-float);
+    -webkit-backdrop-filter: var(--float-blur);
+    backdrop-filter: var(--float-blur);
+    box-shadow: var(--shadow-float);
     transform: rotate(-1.5deg) scale(1.03);
     transform-origin: 20% 50%;
     animation: lift var(--dur-2) var(--ease-out-quint);
@@ -92,7 +94,7 @@
   /* Over a place that takes it, the card straightens and wears the accent, ready to land. */
   .card.armed {
     border-color: var(--color-accent);
-    box-shadow: var(--shadow-e3), 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent);
+    box-shadow: var(--shadow-float), 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent);
     transform: rotate(0deg) scale(1.01);
   }
   .logo {

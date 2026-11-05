@@ -9,6 +9,8 @@ let mounted: ReturnType<typeof mount> | undefined;
 let client: FakeClient;
 let store: Store;
 const settle = async () => { for (let i = 0; i < 20; i++) { await Promise.resolve(); flushSync(); } };
+/** The card's pull request as its tooltip names it (`#181 open`): the row draws no badge, the open thread's header does. */
+const shownPr = () => document.querySelector<HTMLElement>('[data-testid=thread-row]')?.title.split('\n').find(line => /^#\d+ /.test(line)) ?? null;
 afterEach(async () => {
   if (mounted) await unmount(mounted);
   mounted = undefined;
@@ -43,14 +45,14 @@ test('cards keep discovering after a merge, pause while hidden, and retain the l
   mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'local', label: 'Local', store }, project, thread, now: Date.now(), showProject: false } });
   await settle();
   expect(call).toHaveBeenCalledTimes(1);
-  expect(document.querySelector('[data-testid=thread-pr]')).toBeNull();
+  expect(shownPr()).toBeNull();
   answer = pr;
   await vi.advanceTimersByTimeAsync(60_000); await settle();
   expect(call).toHaveBeenCalledTimes(2);
-  expect(document.querySelector('[data-testid=thread-pr]')?.textContent).toContain('#181');
+  expect(shownPr()).toContain('#181');
   call.mockRejectedValueOnce(new Error('offline'));
   await vi.advanceTimersByTimeAsync(60_000); await settle();
-  expect(document.querySelector('[data-testid=thread-pr]')?.textContent).toContain('#181');
+  expect(shownPr()).toContain('#181');
   expect(store.error).toBeNull();
   thread.status = 'running'; await settle();
   const working = call.mock.calls.length;
@@ -62,12 +64,12 @@ test('cards keep discovering after a merge, pause while hidden, and retain the l
   expect(call).toHaveBeenCalledTimes(working + 1);
   answer = { ...pr, state: 'MERGED' };
   visibility.mockReturnValue(false); document.dispatchEvent(new Event('visibilitychange')); await settle();
-  expect(document.querySelector('[data-testid=thread-pr]')?.getAttribute('data-state')).toBe('MERGED');
+  expect(shownPr()).toMatch(/ merged$/);
   // A new PR on the same branch appears without another turn or a remount.
   thread.status = 'idle'; await settle();
   answer = next;
   await vi.advanceTimersByTimeAsync(60_000); await settle();
-  expect(document.querySelector('[data-testid=thread-pr]')?.textContent).toContain('#182');
+  expect(shownPr()).toContain('#182');
   const { contextMenu } = await import('../lib/context-menu.svelte');
   document.querySelector('[data-testid=thread-row]')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 4, clientY: 4 }));
   contextMenu.current!.onpick('pr'); contextMenu.close(); await settle();
@@ -78,7 +80,7 @@ test('cards keep discovering after a merge, pause while hidden, and retain the l
   expect(call).toHaveBeenCalledTimes(ended);
   mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'local', label: 'Local', store }, project, thread, now: Date.now(), showProject: false } });
   flushSync();
-  expect(document.querySelector('[data-testid=thread-pr]')?.textContent).toContain('#182');
+  expect(shownPr()).toContain('#182');
   await settle();
   expect(call).toHaveBeenCalledTimes(ended + 1);
 });
@@ -130,21 +132,21 @@ test('moving a thread clears its PR and ignores the previous checkout lookup', a
   mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'local', label: 'Local', store }, project, thread, now: Date.now(), showProject: false } });
   await settle();
   expect(call).toHaveBeenCalledWith('threads.pullRequest', { threadId: thread.id });
-  expect(document.querySelector('[data-testid=thread-pr]')?.textContent).toContain('#180');
+  expect(shownPr()).toContain('#180');
   thread.branch = 'new-topic';
   thread.cwd = '/new-worktree';
   await settle();
-  expect(document.querySelector('[data-testid=thread-pr]')).toBeNull();
+  expect(shownPr()).toBeNull();
   expect(call).toHaveBeenCalledTimes(2);
   thread.branch = null;
   thread.cwd = project.path;
   await settle();
   answer(previous); await settle();
-  expect(document.querySelector('[data-testid=thread-pr]')).toBeNull();
+  expect(shownPr()).toBeNull();
   expect(document.querySelector('.metadata')).toBeNull();
 });
 
-test('a reconnect keeps the PR line on screen while the core is asked again', async () => {
+test('a reconnect keeps the PR in the card while the core is asked again', async () => {
   client = new FakeClient({ delayMs: 0 });
   store = new Store(); store.attach(client); await store.connect();
   const thread = store.threads.find(thread => thread.branch)!;
@@ -154,16 +156,15 @@ test('a reconnect keeps the PR line on screen while the core is asked again', as
   const call = vi.spyOn(client, 'call').mockResolvedValueOnce(held).mockReturnValueOnce(pending);
   mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'local', label: 'Local', store }, project, thread, now: Date.now(), showProject: false } });
   await settle();
-  expect(document.querySelector('[data-testid=thread-pr]')?.textContent).toContain('#181');
+  expect(shownPr()).toContain('#181');
   store.connection = 'connecting';
   await settle();
-  expect(document.querySelector('[data-testid=thread-pr]')?.textContent).toContain('#181');
+  expect(shownPr()).toContain('#181');
   store.connection = 'ready';
   await settle();
-  // The second lookup is out and unanswered: the line it will confirm never left.
+  // The second lookup is out and unanswered: the PR it will confirm never left.
   expect(call).toHaveBeenCalledTimes(2);
-  expect(document.querySelector('[data-testid=thread-pr]')?.textContent).toContain('#181');
-  expect(document.querySelector('.metadata')).not.toBeNull();
+  expect(shownPr()).toContain('#181');
 });
 
 test('a turn left running on a machine that went away stops spinning until the machine is back', async () => {
@@ -201,13 +202,11 @@ test('a branchless conversation discovers its linked PR and a merge event update
   const listeners = vi.spyOn(client, 'on');
   mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'local', label: 'Local', store }, project, thread, now: Date.now(), showProject: false } });
   await settle();
-  expect(document.querySelector('[data-testid=thread-pr]')?.textContent).toContain('#77');
+  expect(shownPr()).toContain('#77');
   const receive = listeners.mock.calls.find(([event]) => event === 'threads.pullRequestsChanged')?.[1] as (event: { threadId: string; pullRequests: typeof list }) => void;
   receive({ threadId: thread.id, pullRequests: [{ ...list[0]!, state: 'MERGED' }] });
   await settle();
-  const badge = document.querySelector('[data-testid=thread-pr]');
-  expect(badge?.getAttribute('data-state')).toBe('MERGED');
-  expect(badge?.getAttribute('aria-label')).toContain('merged');
+  expect(shownPr()).toBe('#77 merged');
 });
 
 test('empty link event must fence the lookup it replaces', async () => {
@@ -226,7 +225,7 @@ test('empty link event must fence the lookup it replaces', async () => {
   receive({threadId: thread.id, pullRequests: []});
   await settle();
   release(old); await settle();
-  expect(document.querySelector('[data-testid=thread-pr]')).toBeNull();
+  expect(shownPr()).toBeNull();
 });
 
 test('terminal link event must allow newer OPEN discovery in same response', async () => {
@@ -245,10 +244,10 @@ test('terminal link event must allow newer OPEN discovery in same response', asy
   const receive = listeners.mock.calls.find(([name]) => name === 'threads.pullRequestsChanged')![1] as (event: { threadId: string; pullRequests: typeof old[] }) => void;
   receive({threadId: thread.id, pullRequests: [old]});
   release(opened); await settle();
-  expect(document.querySelector('[data-testid=thread-pr]')?.textContent).toContain('#9873');
+  expect(shownPr()).toContain('#9873');
   // A poll's identical linked-list event must not replace automatic discovery.
   receive({ threadId: thread.id, pullRequests: [old] }); await settle();
-  expect(document.querySelector('[data-testid=thread-pr]')?.textContent).toContain('#9873');
+  expect(shownPr()).toContain('#9873');
 });
 
 test('removing one of two links must fence its pending answer', async () => {
@@ -269,7 +268,7 @@ test('removing one of two links must fence its pending answer', async () => {
   receive({threadId: thread.id, pullRequests: [other]});
   await settle();
   release(old); await settle();
-  expect(document.querySelector('[data-testid=thread-pr]')?.textContent).toContain('#9982');
+  expect(shownPr()).toContain('#9982');
 });
 
 test('merge event compares GitHub URLs without case sensitivity', async () => {
@@ -287,7 +286,7 @@ test('merge event compares GitHub URLs without case sensitivity', async () => {
   const receive = listeners.mock.calls.find(([name]) => name === 'threads.pullRequestsChanged')![1] as (event: { threadId: string; pullRequests: NonNullable<ThreadSummary['pullRequest']>[] }) => void;
   receive({threadId: thread.id, pullRequests: [{...old, url: 'https://github.com/Example/Repo/pull/9983', state: 'MERGED'}]});
   release(old); await settle();
-  expect(document.querySelector('[data-testid=thread-pr]')?.getAttribute('data-state')).toBe('MERGED');
+  expect(shownPr()).toMatch(/ merged$/);
 });
 
 test('a card unmounted with its rename open still writes the title typed so far', async () => {

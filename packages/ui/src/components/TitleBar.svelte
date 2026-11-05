@@ -228,7 +228,7 @@
   .contacts-toggle { position: relative; flex: none; margin-left: auto; }
   .contacts-toggle.open { color: var(--color-foreground); }
   /* One button for Contacts: the column and what its contacts wait on, counted. */
-  .contacts-waiting { position: absolute; top: -2px; right: -4px; min-width: 15px; padding: 1px 3px; border-radius: var(--radius-full); background: var(--color-live-fill); color: var(--color-accent-ink); font-size: var(--text-xs); font-weight: 600; line-height: 14px; text-align: center; font-variant-numeric: tabular-nums; }
+  .contacts-waiting { position: absolute; top: -2px; right: -4px; min-width: 15px; padding: 1px 3px; border-radius: var(--radius-full); background: var(--color-live); color: var(--color-accent-ink); font-size: var(--text-xs); font-weight: 600; line-height: 14px; text-align: center; font-variant-numeric: tabular-nums; }
   .project-heading {
     display: flex;
     align-items: center;

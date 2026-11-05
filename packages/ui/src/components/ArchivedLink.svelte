@@ -11,16 +11,17 @@
   /**
    * Archived threads live in the thread list, under its Archived filter, with
    * every action a row has there. Settings keeps how long done threads stay,
-   * the deleted ones, and one line that leads to the filter. `onopenlist`
-   * shows a phone's list, which Settings covers.
+   * the deleted ones, and one line that leads to the filter. `store` is the
+   * machine whose settings these are; `here`, this window's, leaves Settings
+   * for the list. `onopenlist` shows a phone's list, which Settings covers.
    */
-  let { store, eager = false, onopenlist }: { store: Store; eager?: boolean; onopenlist?: () => void } = $props();
+  let { store, here = store, eager = false, onopenlist }: { store: Store; here?: Store; eager?: boolean; onopenlist?: () => void } = $props();
 
   let count = $derived(store.projects.reduce((sum, project) => sum + archiveCount(project, 'archived'), 0));
 
   function open(): void {
     lifecycleFilter.show('archived');
-    store.showChat();
+    here.showChat();
     onopenlist?.();
   }
 </script>

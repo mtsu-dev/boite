@@ -160,7 +160,7 @@
     background: var(--color-scrim); animation: fade var(--dur-2) var(--ease-out-quint); }
   .scrim.closing { animation-name: fade-out; pointer-events: none; }
   .dialog { width: min(640px, calc(100vw - 32px)); max-height: min(80vh, 760px); display: flex; flex-direction: column;
-    background: var(--color-surface); border: 1px solid var(--color-edge); border-radius: var(--radius-xl); box-shadow: var(--shadow-e3);
+    background: var(--color-sheet); -webkit-backdrop-filter: var(--float-blur); backdrop-filter: var(--float-blur); border: 1px solid transparent; border-radius: var(--radius-xl); box-shadow: var(--shadow-float);
     overflow: hidden; animation: pop var(--dur-2) var(--ease-out-quint); color: var(--color-foreground); }
   .dialog.closing { animation-name: pop-out; }
   .dialog:focus { outline: none; }

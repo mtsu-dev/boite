@@ -79,7 +79,7 @@
 
 <style>
   .options { display: none; }
-  .options-sheet { color: var(--color-foreground); background: var(--color-surface-2); border: 1px solid var(--color-edge); border-radius: var(--radius-xl); padding: 16px; overflow-y: auto; box-shadow: var(--shadow-e3); animation: pop var(--dur-2) var(--ease-out-quint); }
+  .options-sheet { color: var(--color-foreground); background: var(--color-sheet); -webkit-backdrop-filter: var(--float-blur); backdrop-filter: var(--float-blur); border: 1px solid transparent; border-radius: var(--radius-xl); padding: 16px; overflow-y: auto; box-shadow: var(--shadow-float); animation: pop var(--dur-2) var(--ease-out-quint); }
   .options-sheet.closing { animation-name: pop-out; }
   header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
   h2 { font-size: var(--text-md); margin: 0; font-weight: 600; }

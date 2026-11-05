@@ -332,10 +332,10 @@
     min-width: 0;
     flex: 0 1 auto;
     color: var(--color-foreground);
-    overflow: hidden;
-    text-overflow: ellipsis;
     white-space: nowrap;
   }
+  /* The label ellipsizes in its own padded box: clipped at the trimmed row, "csv-import" lost the tail of its p. */
+  .root .ui-label { overflow: hidden; text-overflow: ellipsis; }
 
   .spacer {
     flex: 1;

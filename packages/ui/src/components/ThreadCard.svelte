@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte';
-  import { Check, Ellipsis, Folder, FolderInput, GitBranch, Pin, PinOff } from '@lucide/svelte';
+  import { Check, Ellipsis, Folder, FolderInput, Pin, PinOff } from '@lucide/svelte';
   import { type Project, type ThreadSummary } from '@boite/contracts';
   import type { Machine } from '../lib/workspace.svelte';
   import { workspace } from '../lib/workspace.svelte';
@@ -8,10 +8,9 @@
   import { canMove, moveBlocked, pendingLine, startThreadDrag, threadDrag } from '../lib/thread-move.svelte';
   import { pickThreadAction, threadMenuItems } from '../lib/thread-menu';
   import { focusOnMount } from '../lib/actions';
-  import { strings } from '../lib/strings';
+  import { fill, strings } from '../lib/strings';
   import ThreadHeadline from './ThreadHeadline.svelte';
   import { trackThreadPullRequest } from '../lib/thread-pull-request.svelte';
-  import PullRequestBadge from './PullRequestBadge.svelte';
   import { projectName } from '../lib/format';
   import { canMarkDone, markDone } from '../lib/recent.svelte';
   import { ThreadRename, commitOnUnmount } from '../lib/thread-rename.svelte';
@@ -47,8 +46,16 @@
   const pullRequest = $derived(pr.value);
   // A move asked for while the turn runs, until the turn ends and applies it.
   let pending = $derived(pendingLine(thread));
-  /** A second line only for facts the title line cannot hold: the project in a mixed list, a pull request, a worktree branch, a move. Delegated agents ride the title line, a glyph and a number (`ThreadHeadline`). */
-  let meta = $derived(showProject || pullRequest !== null || Boolean(thread.branch) || Boolean(pending));
+  /**
+   * A row is one line: the ring, the title, the time. A second line only says
+   * where a row belongs when the list mixes projects, or a move waiting for the
+   * turn's end. The branch and the pull request are on the open thread's
+   * header and in the row's tooltip; delegated agents ride the title line
+   * while the row is open or under the pointer (`ThreadHeadline`).
+   */
+  let meta = $derived(showProject || Boolean(pending));
+  let prLabel = $derived(pullRequest ? fill(pullRequest.state === 'MERGED' ? strings.sidebar.prMerged : pullRequest.state === 'CLOSED' ? strings.sidebar.prClosed : strings.sidebar.prOpen, { number: String(pullRequest.number) }) : null);
+  let tooltip = $derived([thread.title, thread.branch, prLabel].filter(Boolean).join('\n'));
   let doneAllowed = $derived(canMarkDone(owner, thread));
 
   function rename() {
@@ -122,7 +129,7 @@
       data-preload-thread={thread.id}
       data-status={thread.status}
       data-pinned={thread.pinned ? 'true' : undefined}
-      title={thread.title}
+      title={tooltip}
       onclick={() => void workspace.select(owner, thread.id)}
       ondblclick={rename}
     >
@@ -132,10 +139,6 @@
     <div class="metadata">
       {#if pending}<span class="pending" data-testid="thread-pending" title={pending}><FolderInput size={12} /><span class="ui-label">{pending}</span></span>{/if}
       {#if showProject}<span class="project-name" data-testid="thread-project" title={project.path}><Folder size={12} /><span class="ui-label">{projectName(project)}</span></span>{/if}
-      {#if pullRequest}
-        <PullRequestBadge {pullRequest} />
-      {/if}
-      {#if thread.branch}<span class="branch" data-testid="thread-branch" title={thread.branch}><GitBranch size={12} /><span class="ui-label">{thread.branch}</span></span>{/if}
     </div>
     {/if}
     <!-- Pin on hover; a pinned row keeps its 12 px mark in the title line. -->
@@ -247,13 +250,6 @@
     flex: 0 1 auto;
     max-width: 50%;
   }
-  /* The branch is a name in the repository: mono, and the first to give way. */
-  .metadata .branch {
-    flex: 0 1 auto;
-    margin-left: auto;
-    font-family: var(--font-mono);
-    font-size: 11px;
-  }
   /* Centred on the title's line: the 30 px row less a 26 px button leaves 2 px over it. */
   .actions {
     position: absolute;
@@ -270,6 +266,8 @@
   .thread:focus-within .actions {
     opacity: 1;
   }
+  /* Delegated agents at work show on the open row and under the pointer; one that asks always shows, it needs the user. */
+  .thread:not(.open):not(:hover):not(:focus-within) :global(.headline .agents:not(.asking)) { display: none; }
   /* The buttons take the time's place on hover: a resting time hides, a counting one steps left and stays. */
   .thread:hover :global(.headline .when:not(.live)),
   .thread:focus-within :global(.headline .when:not(.live)) {

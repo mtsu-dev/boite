@@ -424,9 +424,9 @@
   /* 28 px chips: the surface step marks them, no outline on top of it. */
   .chips :global(.trigger), .chips .worktree {
     height: 28px;
-    padding: 0 10px;
+    padding: 0 11px;
     gap: 7px;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-full);
     font-size: var(--text-sm);
     font-weight: 500;
   }
@@ -510,15 +510,15 @@
     .desktop-options, .attach { display: none; }
     .chips { flex: 1; flex-wrap: nowrap; }
     .chips :global(.picker) { min-width: 0; max-width: 100%; }
-    /* A whole outline or none: the control's top highlight alone, on a clear chip, drew half a box. */
-    .chips :global(.picker > .trigger) { max-width: 100%; height: var(--touch-target); padding: 0 8px; border: 1px solid var(--color-border); border-radius: var(--radius-md); box-shadow: none; background: transparent; font-weight: 500; color: var(--color-muted-foreground); }
+    /* A capsule of fill, as on the desktop: no outline, no top highlight. */
+    .chips :global(.picker > .trigger) { max-width: 100%; height: var(--touch-target); padding: 0 14px; border: 1px solid transparent; border-radius: var(--radius-full); box-shadow: none; background: var(--color-control-surface); font-weight: 500; color: var(--color-foreground); }
     /* The model's name alone, and whole words of it: one line high, a name too long for the row
        wraps its last words onto a second line nobody sees, never half of one. */
     .chips :global(.picker > .trigger > .label) { min-width: 0; max-width: none; height: 1lh; padding-block: 0; margin-block: 0; text-box: normal; overflow: hidden; white-space: normal; overflow-wrap: normal; }
     .chips :global(.picker > .trigger .account-name) { display: none; }
-    .chips :global(.picker > .trigger.connect) { padding: 0 12px; border-radius: var(--radius-md); background: var(--color-accent-soft); color: var(--color-accent); }
+    .chips :global(.picker > .trigger.connect) { padding: 0 12px; border-radius: var(--radius-full); background: var(--color-accent-soft); color: var(--color-accent); }
     .send, .stop { margin-left: 2px; }
-    /* The microphone draws its whole ring like Stop beside it, not the top highlight alone. */
-    .bar :global(.microphone), .dictation-stand-in button { box-shadow: none; border: 1px solid var(--color-border); }
+    /* The microphone is a round fill like Stop beside it. */
+    .bar :global(.microphone), .dictation-stand-in button { box-shadow: none; border-radius: var(--radius-full); }
   }
 </style>

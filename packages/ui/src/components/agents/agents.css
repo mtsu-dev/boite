@@ -148,9 +148,9 @@ fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-p
 .agent-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 
 /* Planning: the form that plans a task, and each routine in words. */
-.agent-schedule .segmented { display: flex; flex-wrap: wrap; gap: 2px; padding: 3px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-segment-track); align-self: flex-start; }
+.agent-schedule .segmented { display: flex; flex-wrap: wrap; gap: 2px; padding: 3px; border: 1px solid transparent; border-radius: var(--radius-md); background: var(--color-segment-track); align-self: flex-start; }
 .agent-schedule .segmented button { height: var(--control-sm); padding: 0 12px; border: 1px solid transparent; background: none; color: var(--color-muted-foreground); font-weight: 500; }
-.agent-schedule .segmented button.on { background: var(--color-segment-thumb); border-color: var(--color-edge); color: var(--color-foreground); box-shadow: var(--shadow-e1); }
+.agent-schedule .segmented button.on { background: var(--color-segment-thumb); border-color: transparent; color: var(--color-foreground); box-shadow: var(--shadow-thumb); }
 .schedule-detail { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
 .schedule-detail .chip { cursor: pointer; }
 .schedule-detail .chip.on { border-color: var(--color-accent); background: var(--color-accent-soft); color: var(--color-foreground); }

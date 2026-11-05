@@ -126,10 +126,12 @@
     width: min(420px, 100%);
     overflow: auto;
     padding: 6px;
-    background: var(--color-surface-2);
-    border: 1px solid var(--color-border);
+    background: var(--color-float);
+    -webkit-backdrop-filter: var(--float-blur);
+    backdrop-filter: var(--float-blur);
+    border: 1px solid transparent;
     border-radius: var(--radius-md);
-    box-shadow: var(--shadow-e2);
+    box-shadow: var(--shadow-float);
     animation: pop var(--dur-2) var(--ease-out-quint);
     transform-origin: bottom left;
   }

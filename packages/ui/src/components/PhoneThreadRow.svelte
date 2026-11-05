@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Archive, Check, CirclePause, Ellipsis, FolderInput, GitBranch, KeyRound, LogIn, MessageCircleQuestion, Network, PencilLine, Pin, ShieldQuestion, TriangleAlert } from '@lucide/svelte';
+  import { Archive, Check, CirclePause, Ellipsis, FolderInput, KeyRound, LogIn, MessageCircleQuestion, Network, PencilLine, Pin, ShieldQuestion, TriangleAlert } from '@lucide/svelte';
   import { waitedFor, type InboxReason } from '../lib/inbox';
   import type { Project, ThreadSummary } from '@boite/contracts';
   import type { Machine } from '../lib/workspace.svelte';
@@ -7,24 +7,25 @@
   import { hasUnsentDraft } from '../lib/composer-queue';
   import { asksMidTurn, delegatedChip, threadState } from '../lib/thread-state';
   import { pendingLine } from '../lib/thread-move.svelte';
-  import { trackThreadPullRequest } from '../lib/thread-pull-request.svelte';
   import { longPress } from '../lib/long-press';
   import { swipeActions, type SwipeSide } from '../lib/swipe-actions';
   import { projectName } from '../lib/format';
   import { fill, strings } from '../lib/strings';
   import Menu from './Menu.svelte';
-  import PullRequestBadge from './PullRequestBadge.svelte';
   import StateRing from './StateRing.svelte';
   import ThreadPicture from './ThreadPicture.svelte';
   import ThreadState from './ThreadState.svelte';
 
   /**
-   * A thread in a phone's list: its picture in the state ring, the title on up
-   * to two lines, then one line of facts (the project and the machine when the
-   * list mixes them, the pull request, the branch, its agents) and the time.
-   * A 44 px `⋯` at the end of the facts line opens the row's sheet, as a long
-   * press does, for a finger, a screen reader and a keyboard alike. A finger slides the row right
-   * to mark it done or left to archive it, each with the Undo toast.
+   * A thread in a phone's list, one line the way a mail app lists its mail:
+   * its picture in the state ring, the title and the time. A second grey line
+   * comes only for what the user must know from the list: what it waits on in
+   * the Inbox, a move to come, the project and machine when the list mixes
+   * them, a subagent asking. The branch and the pull request are the thread's
+   * own header. A long press opens the row's sheet; the same sheet's trigger
+   * stays in the row for a keyboard and a screen reader, drawn only while it
+   * has the focus. A finger slides the row right to mark it done or left to
+   * archive it, each with the Undo toast.
    * `grouped`: under its project's header, which already names it.
    */
   let { machine, project, thread, now, items, grouped = false, several = false, wait, onopen, onaction }: {
@@ -49,7 +50,6 @@
   let pending = $derived(pendingLine(thread));
   const reasonIcons = { question: MessageCircleQuestion, permission: ShieldQuestion, secret: KeyRound, 'sign-in': LogIn, failed: TriangleAlert, interrupted: CirclePause } as const;
   let draft = $derived(hasUnsentDraft(owner.composerStates[thread.id]) && !(owner.openThread?.id === thread.id));
-  const pr = trackThreadPullRequest(() => ({ owner, thread }));
   /** What a slide may do now: the menu's own items, so a thread at work is never marked done by a finger. */
   const allowed = (side: SwipeSide) => items.some(item => item.id === (side === 'right' ? 'done' : 'archive') && !item.disabled);
   let body = $state<HTMLElement>();
@@ -74,24 +74,29 @@
     <span class="lines">
       <!-- The title is the row's button; its overlay stretches over the whole row, so a tap anywhere opens it
            while the pull request's link above the overlay stays its own target, never a link inside a button. -->
-      <button class="ghost thread" data-testid="mobile-thread-{thread.id}" onclick={onopen}>
-        <span class="title" class:unread={thread.unread}>{thread.title}{#if draft}<span class="mark draft" data-testid="thread-draft" title={strings.sidebar.unsentDraft} aria-label={strings.sidebar.unsentDraft}><PencilLine size={13} /></span>{/if}{#if thread.pinned}<span class="mark pin"><Pin size={13} /></span>{/if}</span>
-      </button>
-      <span class="meta">
-        {#if wait}{@const Icon = reasonIcons[wait.reason]}<span class="fact why" class:failed={wait.reason === 'failed' || wait.reason === 'sign-in' || wait.reason === 'interrupted'} data-testid="thread-wait-reason" data-reason={wait.reason}><Icon size={12} aria-hidden="true" /><span class="ui-label" title={strings.inbox.reasons[wait.reason]}>{strings.inbox.reasonTags[wait.reason]}</span></span>{/if}
-        {#if pending}<span class="fact pending" data-testid="thread-pending" title={pending}><FolderInput size={12} aria-hidden="true" /><span class="ui-label">{pending}</span></span>{/if}
-        {#if !grouped && project}<span class="fact project" data-testid="thread-project">{projectName(project)}</span>{/if}
-        {#if several && !grouped}<span class="fact machine">{machine.label}</span>{/if}
-        {#if pr.value}<span class="fact pr"><PullRequestBadge pullRequest={pr.value} /></span>{/if}
-        {#if agents}<span class="fact agents" class:asking={agents.asking} data-testid="thread-subagents" data-count={agents.shown} role="img" title={agents.label} aria-label={agents.label}><Network size={12} aria-hidden="true" /><span class="ui-label">{wait ? agents.shown : agents.text}</span></span>{/if}
-        <!-- An Inbox row spends its line on what it waits on and where; the branch is the thread's detail. -->
-        {#if thread.branch && !wait}<span class="fact branch" data-testid="thread-branch" title={thread.branch}><GitBranch size={12} aria-hidden="true" /><span class="ui-label">{thread.branch}</span></span>{/if}
+      <span class="head">
+        <button class="ghost thread" data-testid="mobile-thread-{thread.id}" onclick={onopen}>
+          <span class="title" class:unread={thread.unread}>{thread.title}</span>
+        </button>
+        {#if draft}<span class="mark draft" data-testid="thread-draft" title={strings.sidebar.unsentDraft} aria-label={strings.sidebar.unsentDraft}><PencilLine size={13} /></span>{/if}
+        {#if thread.pinned}<span class="mark pin"><Pin size={13} /></span>{/if}
         {#if wait}<time class="time waited" datetime={new Date(wait.since).toISOString()} title={fill(strings.inbox.waited, { time: waitedFor(now, wait.since) })}>{waitedFor(now, wait.since)}</time>
         {:else}<span class="time"><ThreadState {thread} {now} {subagents} {away} compact /></span>{/if}
       </span>
+      {#if wait || pending || (!grouped && project) || (several && !grouped) || agents?.asking}
+        <span class="meta">
+          {#if wait}{@const Icon = reasonIcons[wait.reason]}<span class="fact why" class:failed={wait.reason === 'failed' || wait.reason === 'sign-in' || wait.reason === 'interrupted'} data-testid="thread-wait-reason" data-reason={wait.reason}><Icon size={12} aria-hidden="true" /><span class="ui-label" title={strings.inbox.reasons[wait.reason]}>{strings.inbox.reasonTags[wait.reason]}</span></span>{/if}
+          {#if pending}<span class="fact pending" data-testid="thread-pending" title={pending}><FolderInput size={12} aria-hidden="true" /><span class="ui-label">{pending}</span></span>{/if}
+          {#if !grouped && project}<span class="fact project" data-testid="thread-project">{projectName(project)}</span>{/if}
+          {#if several && !grouped}<span class="fact machine">{machine.label}</span>{/if}
+          <!-- Agents at work are the ring's to say; one asking is said here, it needs the user. -->
+          {#if agents?.asking}<span class="fact agents asking" data-testid="thread-subagents" data-count={agents.shown} role="img" title={agents.label} aria-label={agents.label}><Network size={12} aria-hidden="true" /><span class="ui-label">{wait ? agents.shown : agents.text}</span></span>{/if}
+        </span>
+      {/if}
     </span>
   </div>
-  <!-- The row's actions: the same sheet a long press opens, one visible target for every hand. -->
+  <!-- The row's actions: the same sheet a long press opens. A finger has the long press; the keyboard and a
+       screen reader reach this trigger, drawn while it has the focus, and the sheet anchors to it. -->
   <span class="menu-slot">
     <Menu {items} onpick={onaction} label={strings.sidebar.threadMenu} placement="bottom" variant="ghost" testid="mobile-thread-menu-{thread.id}"><Ellipsis size={18} /></Menu>
   </span>
@@ -104,9 +109,10 @@
     -webkit-touch-callout: none;
   }
   /* The hairline is drawn over the row's last pixel instead of under it, so a row is 56 or 64 px whole. */
-  .phone-row::after { content: ''; position: absolute; inset: auto 0 0; z-index: 1; border-bottom: 1px solid var(--color-border); pointer-events: none; }
+  /* Inset to the title, as a grouped list draws its separators. */
+  .phone-row::after { content: ''; position: absolute; inset: auto 0 0 56px; z-index: 1; border-bottom: 1px solid var(--color-border); pointer-events: none; }
   /* Inside a project's card the row sits on the card's surface, not the list's ground. */
-  :global(.project-group) .phone-row { --row-ground: var(--color-surface); --ring-ground: var(--color-surface); }
+  :global(.project-group) .phone-row { --row-ground: var(--color-cell); --ring-ground: var(--color-cell); }
   .reveal {
     position: absolute;
     inset: 0;
@@ -132,16 +138,16 @@
   .body {
     position: relative;
     display: flex;
-    /* 56 px with a one-line title, 64 with two; the right end keeps room for the menu target. */
-    min-height: 56px;
+    /* 52 px for the one line, 60 with the grey line under it. */
+    min-height: 52px;
     gap: 10px;
     align-items: center;
-    padding: 3px 44px 3px 8px;
+    padding: 4px 16px 4px 8px;
     user-select: none;
     touch-action: pan-y;
     transform: translateX(var(--swipe, 0px));
     transition: transform var(--dur-3) var(--ease-out-quint);
-    background: var(--row-ground, var(--color-background));
+    background: var(--row-ground, var(--color-cell));
   }
   .body:global(.dragging) { transition: none; }
   .thread {
@@ -160,23 +166,22 @@
   .thread:active::after { background: var(--color-hover); }
   .thread:focus-visible { outline: none; }
   .thread:focus-visible::after { outline: 2px solid var(--color-accent); outline-offset: -2px; }
-  /* What a finger can reach inside the row rides above the overlay. */
-  .fact.pr { position: relative; z-index: 1; }
   .face { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--color-surface-2); }
   .phone-row.offline .lines, .phone-row.offline .face { opacity: 0.55; }
   .lines { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 2px; }
+  .head { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+  .head .thread { flex: 0 1 auto; width: auto; min-width: 0; }
   .title {
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
+    display: block;
     overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-size: 15px;
-    font-weight: 600;
-    line-height: 1.25;
-    overflow-wrap: anywhere;
+    font-weight: 500;
+    line-height: 1.3;
   }
-  .mark { display: inline-flex; margin-left: 6px; vertical-align: -1px; }
+  .title.unread { font-weight: 650; }
+  .mark { display: inline-flex; flex: none; align-self: center; }
   .mark.draft { color: var(--color-accent); }
   .mark.pin { color: var(--color-muted-foreground); }
   .meta {
@@ -188,35 +193,36 @@
     line-height: 16px;
     color: var(--color-muted-foreground);
   }
-  .fact { display: inline-flex; align-items: center; gap: 4px; min-width: 0; flex: 0 1 auto; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  /* Half an em of clip room under a trimmed label: at the label's own height, "2 agents" lost the tail of its g. */
+  .fact { display: inline-flex; align-items: center; gap: 4px; min-width: 0; flex: 0 1 auto; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; padding-block: 0.5em; margin-block: -0.5em; }
   .fact .ui-label { overflow: hidden; text-overflow: ellipsis; }
-  .fact.pr, .fact.agents { flex: none; }
-  /* The branch yields its room first, then the machine, then the project; the time never does.
-     Shrink is weighted by width, so the steps are far apart: the machine is gone before the project loses a letter. */
-  .fact.branch { flex-shrink: 100000; }
+  .fact.agents { flex: none; }
+  /* The machine yields its room before the project loses a letter: shrink is weighted by width, so the steps are far apart. */
   .fact.machine { flex-shrink: 1000; }
   .fact.project { flex-shrink: 1; }
   .fact.project { max-width: 55%; }
   .pending { color: var(--color-accent); }
-  .agents { color: var(--color-accent); }
   .agents.asking { color: var(--color-live); }
-  .branch { font-family: var(--font-mono); font-size: 12px; }
   /* The reason, one word, leads the line and never yields its room; the wait reads in the needs colour, a failure in danger. */
   .fact.why { flex: none; color: var(--color-foreground); font-weight: 500; }
   .fact.why > :global(svg) { color: var(--color-live); }
   .fact.why.failed > :global(svg) { color: var(--color-danger); }
-  .waited { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--color-live); }
+  /* Grey like every time in the list: the ring says it waits. */
+  .waited { font-variant-numeric: tabular-nums; color: var(--color-subtle); font-size: 13px; }
   .time { margin-left: auto; flex: none; padding-left: 4px; }
   .time :global(.when) { font-size: 13px; }
-  /* At the end of the facts line, 44 px square; it steps aside while the row slides. */
+  /* The sheet's anchor at the row's right end, 44 px square, drawn only while the keyboard is on it. */
   .menu-slot {
     position: absolute;
     right: 0;
-    bottom: 0;
+    bottom: 4px;
     display: flex;
+    opacity: 0;
+    pointer-events: none;
     transition: opacity var(--dur-2) var(--ease-out-quint);
   }
-  .menu-slot :global(.trigger) { width: 44px; height: 44px; justify-content: center; color: var(--color-muted-foreground); background: transparent; }
+  .menu-slot:focus-within { opacity: 1; pointer-events: auto; }
+  .menu-slot :global(.trigger) { width: 44px; height: 44px; justify-content: center; color: var(--color-muted-foreground); background: var(--row-ground, var(--color-cell)); }
   .phone-row:global([data-swipe]) .menu-slot { opacity: 0; pointer-events: none; }
   @media (prefers-reduced-motion: reduce) { .body { transition: none; } }
   :global(html[data-motion='reduced']) .body { transition: none; }

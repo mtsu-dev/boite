@@ -441,10 +441,10 @@
   .body.stale { opacity: 0.6; }
 
   /* The options in one track, the chosen one filled like a primary button. */
-  .segmented { display: inline-flex; flex: none; gap: 2px; padding: 2px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-segment-track); }
+  .segmented { display: inline-flex; flex: none; gap: 2px; padding: 2px; border: 1px solid transparent; border-radius: var(--radius-md); background: var(--color-segment-track); }
   .segmented button { height: var(--control-sm); padding: 0 10px; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: var(--color-muted-foreground); font-size: var(--text-sm); }
   .segmented button:hover:not(.on) { background: var(--color-hover); color: var(--color-foreground); }
-  .segmented button.on { background: var(--color-segment-thumb); border-color: var(--color-edge); color: var(--color-foreground); box-shadow: var(--shadow-e1); }
+  .segmented button.on { background: var(--color-segment-thumb); border-color: transparent; color: var(--color-foreground); box-shadow: var(--shadow-thumb); }
 
   .hero { display: grid; gap: 4px; }
   .hero strong { font-size: calc(var(--text-lg) * 1.6); line-height: 1.1; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }

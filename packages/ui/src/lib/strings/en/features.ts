@@ -9,5 +9,6 @@ export const strings = {
       title: 'Edge scrollbars',
       hint: 'Scrollbars take no room. Each one fades in as the pointer nears the edge of its area and can still be dragged. Mouse and pen only'
     },
+    glass: { title: 'Glass', hint: 'A see-through frame over a soft wash of the accent, and frosted menus. Off, every surface is solid' },
   }
 } as const;

@@ -406,6 +406,9 @@
     font-weight: 600;
   }
 
+  /* On the light ground an 18 % fill brings the dark green letter to 4.4:1; 12 % keeps 4.8:1. */
+  :global([data-theme='light']) .mark { background: color-mix(in srgb, var(--mark) 12%, transparent); }
+
   .mark[data-status='added'],
   .mark[data-status='copied'] {
     --mark: var(--color-success);
