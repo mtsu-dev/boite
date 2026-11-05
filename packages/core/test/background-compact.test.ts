@@ -255,6 +255,69 @@ describe('background compaction', () => {
     } finally { client.close(); }
   });
 
+  test('a copy past its time is dropped at its deadline, and the success it reports later is thrown away', async () => {
+    BACKGROUND_COMPACT.timeoutMs = 80;
+    const copy = heldCopy();
+    const client = await h.connect();
+    try {
+      // The copy reports a good compaction at 100 ms, after its 80 ms deadline.
+      const run = await longTurn(client, TOOLS(40), { copy: ctx => { setTimeout(copy.release, 100); return copy.run(ctx); } });
+      expect(copy.started()).toBe(1);
+      expect(copy.stops()).toBe(1);
+      expect(run.steps.some(step => step.swapped)).toBe(false);
+      await Bun.sleep(150);
+      const thread = await client.call('threads.get', { threadId: run.childId });
+      expect(thread.sessionGeneration ?? 0).toBe(0);
+      expect(thread.messages.flatMap(m => m.parts).filter(p => p.type === 'compaction' && p.background === true)).toEqual([]);
+    } finally { copy.release(); client.close(); }
+  });
+
+  test('a parent with a delegated child still at work crosses the limit and does not swap', async () => {
+    const client = await h.connect();
+    let restore = () => {};
+    let childId = '';
+    try {
+      const created = await child(client, '[sleep:2000]');
+      childId = created.childId;
+      await waitFor(() => h.core.journal.runningTurn(childId) !== null);
+      await client.call('settings.set', { autoCompact: { tokens: 1000, moments: [] }, backgroundCompaction: true, compactionByType: {} });
+      const steps: { tokens: number; swapped: boolean }[] = [];
+      let copies = 0;
+      restore = setDriver('echo', { ...echoDriver, startTurn(ctx) {
+        if (isCopy(ctx)) { copies += 1; return echoDriver.startTurn(ctx); }
+        const step = ctx.step;
+        if (ctx.thread.id !== created.parentId || step === undefined) return echoDriver.startTurn(ctx);
+        return echoDriver.startTurn({ ...ctx, prompt: TOOLS(40), step: async boundary => {
+          const decision = await step(boundary);
+          steps.push({ tokens: boundary.tokens, swapped: decision !== null });
+          return decision;
+        } });
+      } });
+      await turn(client, created.parentId, TOOLS(40));
+      // The copy was made, then refused at the limit while the child still ran.
+      expect(copies).toBe(1);
+      expect(steps.some(step => step.tokens >= 1000)).toBe(true);
+      expect(steps.some(step => step.swapped)).toBe(false);
+      expect(h.core.journal.runningTurn(childId)).not.toBeNull();
+      expect(h.core.journal.getThread(created.parentId)!.sessionGeneration ?? 0).toBe(0);
+    } finally { if (childId) h.core.threads.stopTurn(childId); restore(); client.close(); }
+  });
+
+  test('stopping a turn that waits on a running copy stops the copy and lets the turn finish stopped', async () => {
+    const copy = heldCopy();
+    const client = await h.connect();
+    try {
+      const run = await longTurn(client, TOOLS(40), {
+        copy: copy.run,
+        // Stop once the step at the limit is waiting for the copy.
+        boundary: (boundary, threadId) => { if (boundary.tokens >= 1000) setTimeout(() => h.core.threads.stopTurn(threadId), 20); return boundary; },
+      });
+      expect(run.turn.status).toBe('stopped');
+      expect(copy.stops()).toBe(1);
+      expect(run.steps.some(step => step.swapped)).toBe(false);
+    } finally { copy.release(); client.close(); }
+  });
+
   test('a copy compacts near the limit and the thread takes it at the next pause, then sends what came after', async () => {
     let release: () => void = () => undefined;
     const gate = new Promise<void>(resolve => { release = resolve; });

@@ -326,6 +326,29 @@ test('a tool batch past the limit swaps in the copy forked at a tool result, and
   } finally { client.close(); }
 });
 
+test('a later turn swaps too, judged on the context its boundaries report rather than the last turn\'s', async () => {
+  const client = await harness.connect();
+  try {
+    const { threadId, finished } = await stepThread(client);
+    scripted(() => {}, answerEach('sess-main'));
+    expect(await runTurn(client, threadId, 'seed')).toBe('done');
+    // The seed turn ended at 160 000 tokens: Claude reports the next context only with that turn's final result.
+    harness.core.threads.agentState.noteContext(threadId, { tokens: 160_000, window: 1_000_000 });
+    finished.length = 0;
+    const hooks = stepTurn({ first: 175_000, second: 200_500 });
+    expect(await runTurn(client, threadId, 'work')).toBe('done');
+    expect(hooks).toEqual([
+      { event: 'PostToolBatch', output: {} },
+      { event: 'PostToolBatch', output: { continue: false, stopReason: expect.any(String) } },
+    ]);
+    const thread = await client.call('threads.get', { threadId });
+    expect(thread.sessionId).toBe('sess-copy');
+    expect(thread.sessionGeneration).toBe(1);
+    await waitFor(() => finished.length > 0);
+    expect(finished).toEqual(['done']);
+  } finally { client.close(); }
+});
+
 test('the CLI reaching its own threshold first blocks its compaction for a ready copy, then the same swap', async () => {
   const client = await harness.connect();
   try {

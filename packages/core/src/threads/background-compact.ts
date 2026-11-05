@@ -7,7 +7,7 @@ import type { EmitSink, PermissionTicket, QuestionTicket, SessionContext, StepBo
 import { messageOf } from '../errors.ts';
 import { newId } from '../ids.ts';
 import type { ThreadStore } from '../threads.ts';
-import { saveThread, withLoad } from './records.ts';
+import { backgroundWaitOf, saveThread, withLoad } from './records.ts';
 import { removeTranscripts } from './transcript-purge.ts';
 
 /**
@@ -17,9 +17,9 @@ import { removeTranscripts } from './transcript-purge.ts';
  * while what the thread added since the copy (its tail) stays within
  * `tailTokens` and `tailShare` of the limit. A thread stops trying after
  * `maxFailures` copies in a row failed, until its next swap or a restart. A
- * copy still running after `timeoutMs` is stopped, and a step that reached the
- * limit waits that long at most for one still running. Mutable so a test can
- * change them.
+ * copy still running `timeoutMs` after it started is dropped and stopped,
+ * which also ends the wait of a step that reached the limit. Mutable so a test
+ * can change them.
  */
 export const BACKGROUND_COMPACT = { startRatio: 0.85, minTokens: 64_000, tailTokens: 30_000, tailShare: 0.25, maxFailures: 2, timeoutMs: 300_000 };
 
@@ -88,6 +88,9 @@ interface Copy {
 /** The session a step's check compares the copy with, and the context the step carries. */
 interface Live { sessionId: string | null; resumeAt: string | null; tokens: number | null }
 
+/** The context the last step boundary of a running turn reported, on the session generation it ran on. */
+interface Boundary { turnId: TurnId; generation: number; tokens: number; at: number }
+
 /**
  * The experimental `backgroundCompaction` setting, ported from OpenCode v2's
  * precompute (`session/compaction.ts`): as a thread nears its `autoCompact`
@@ -114,6 +117,10 @@ export class BackgroundCompaction {
   readonly #failures = new Map<ThreadId, number>();
   /** The turn carrying a thread's tail, which clears it once done. */
   readonly #carrying = new Map<ThreadId, TurnId>();
+  /** The latest context a running turn's step boundaries reported: an agent may report the thread's own only once its turn ends. */
+  readonly #boundaries = new Map<ThreadId, Boundary>();
+  /** Threads whose step at the limit waits for a running copy. */
+  readonly #waiting = new Set<ThreadId>();
   #closed = false;
 
   readonly #core: Core;
@@ -133,6 +140,7 @@ export class BackgroundCompaction {
       this.#drop(threadId);
       this.#failures.delete(threadId);
       this.#carrying.delete(threadId);
+      this.#boundaries.delete(threadId);
     });
   }
 
@@ -148,6 +156,8 @@ export class BackgroundCompaction {
 
   /** Called by `AutoCompaction.turnFinished`, before it plans anything. */
   turnFinished(thread: ThreadSummary, turn: Turn): void {
+    // The turn's final result is the thread's context from now on.
+    if (this.#boundaries.get(thread.id)?.turnId === turn.id) this.#boundaries.delete(thread.id);
     if (this.#carrying.get(thread.id) === turn.id) {
       this.#carrying.delete(thread.id);
       if (turn.status === 'done') this.#core.journal.deleteSetting(`${COMPACTION_TAIL_PREFIX}${thread.id}`);
@@ -226,6 +236,7 @@ export class BackgroundCompaction {
     if (limit === null) { this.#drop(threadId, 'the setting is off'); return null; }
     const tokens = Number.isFinite(boundary.tokens) && boundary.tokens >= 0 ? boundary.tokens : null;
     if (tokens === null) return null;
+    this.#boundaries.set(threadId, { turnId: turn.id, generation: thread.sessionGeneration ?? 0, tokens, at: Date.now() });
     const sessionId = this.#liveSession(thread, turn, boundary);
     const live: Live = sessionId === null
       ? { sessionId: thread.sessionId, resumeAt: thread.sessionResumeAt ?? null, tokens }
@@ -258,14 +269,50 @@ export class BackgroundCompaction {
     this.#drop(threadId, 'the agent compacted by itself');
   }
 
+  /**
+   * The thread's running turn is being stopped: a step waiting for a running
+   * copy goes on at once, and that copy is stopped. A finished copy stays for
+   * the next turn.
+   */
+  turnStopped(threadId: ThreadId): void {
+    if (this.#waiting.has(threadId)) this.#drop(threadId, 'its turn was stopped');
+  }
+
   close(): void {
     this.#closed = true;
     for (const threadId of [...this.#copies.keys()]) this.#drop(threadId);
   }
 
-  /** Whether the thread's agent still runs something in the background, which a new session would lose. */
+  /**
+   * Whether work the thread started still runs outside its turn, which a new
+   * session would lose or report to a context that no longer holds it: the
+   * agent's own background tasks, a Boite child here or on another machine
+   * still at work, or a workflow run of the conversation at work.
+   */
   #backgroundWork(threadId: ThreadId): boolean {
-    return (this.threads.agentState.background.get(threadId)?.length ?? 0) > 0;
+    if ((this.threads.agentState.background.get(threadId)?.length ?? 0) > 0) return true;
+    if (this.#core.workflows.atWork(threadId) || this.#core.delegation.remote.busy(threadId)) return true;
+    const rows = this.#core.journal.db.query('SELECT id, status FROM threads WHERE parent_thread_id = ?').all(threadId) as { id: ThreadId; status: string }[];
+    return rows.some(row => {
+      // A persistent agent's memory pass is Boite's own housekeeping, outside the conversation.
+      if (this.#core.workforce?.memory.owns(row.id)) return false;
+      if (row.status === 'queued' || row.status === 'running' || row.status === 'waiting') return true;
+      const tasks = this.threads.agentState.background.get(row.id) ?? [];
+      if (tasks.length > 0) return true;
+      const child = this.#core.journal.getThread(row.id);
+      return child !== null && backgroundWaitOf(this.#core, child, tasks)?.state === 'waiting';
+    });
+  }
+
+  /**
+   * The thread's context now: what the last step boundary of its running turn
+   * reported, unless the agent reported one since; the journal's otherwise.
+   */
+  #contextTokens(thread: ThreadSummary): number | null {
+    const journal = thread.context ?? null;
+    const boundary = this.#boundaries.get(thread.id);
+    if (boundary === undefined || boundary.generation !== (thread.sessionGeneration ?? 0) || this.#core.journal.runningTurn(thread.id)?.id !== boundary.turnId) return journal?.tokens ?? null;
+    return journal !== null && journal.at > boundary.at ? journal.tokens : boundary.tokens;
   }
 
   /**
@@ -293,20 +340,18 @@ export class BackgroundCompaction {
 
   /**
    * At the limit, the copy replaces the session inside the turn, or null. One
-   * still running is awaited (OpenCode's `Fiber.await`), and everything is
-   * checked again when it returns: a copy that failed, timed out or no longer
-   * matches gives null, and the agent's own compaction handles the limit.
+   * still running is awaited (OpenCode's `Fiber.await`) until it ends, its
+   * deadline drops it or the turn is stopped, and everything is checked again
+   * when it returns: a copy that failed, timed out or no longer matches gives
+   * null, and the agent's own compaction handles the limit.
    */
   async #takeInTurn(thread: ThreadSummary, turn: Turn, copy: Copy, live: Live, fileReference: Parameters<typeof stepTail>[3]): Promise<StepDecision | null> {
     let limit: number | null = this.limit(thread);
     let stale = limit === null ? 'the setting is off' : this.#stale(thread, copy, limit, live);
     if (stale !== null) { this.#drop(thread.id, stale); return null; }
     if (copy.ready === null) {
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const late = new Promise<'late'>(resolve => { timer = setTimeout(() => resolve('late'), BACKGROUND_COMPACT.timeoutMs); });
-      const waited = await Promise.race([copy.settled.then(() => 'settled' as const), copy.gone.promise.then(() => 'settled' as const), late]);
-      clearTimeout(timer);
-      if (waited === 'late') { this.#drop(thread.id, 'it was still running at the limit'); return null; }
+      this.#waiting.add(thread.id);
+      try { await Promise.race([copy.settled, copy.gone.promise]); } finally { this.#waiting.delete(thread.id); }
       if (this.#closed || this.#core.journal.isClosed() || copy.dropped || this.#copies.get(thread.id) !== copy || copy.ready === null) return null;
       const current = this.#core.journal.getThread(thread.id);
       if (current === null || this.#core.journal.runningTurn(thread.id)?.id !== turn.id) return null;
@@ -334,7 +379,7 @@ export class BackgroundCompaction {
   /** Why the copy cannot replace the thread's session now, or null. `live`: what a step of a running turn reports instead of the thread. */
   #stale(thread: ThreadSummary, copy: Copy, limit: number, live?: Live): string | null {
     const { source } = copy;
-    const at: Live = live ?? { sessionId: thread.sessionId, resumeAt: thread.sessionResumeAt ?? null, tokens: thread.context?.tokens ?? null };
+    const at: Live = live ?? { sessionId: thread.sessionId, resumeAt: thread.sessionResumeAt ?? null, tokens: this.#contextTokens(thread) };
     if (this.policy(thread) !== copy.policy) return 'the compaction policy changed';
     if (thread.archived) return 'the thread is archived';
     if (at.sessionId !== source.sessionId || (thread.sessionGeneration ?? 0) !== source.generation || at.resumeAt !== null) return 'the session changed';
@@ -409,6 +454,9 @@ export class BackgroundCompaction {
     let result: TurnResult | null = null;
     // What the copy's agent wrote and read, kept from its sink.
     const seen: { compaction: Extract<MessagePart, { type: 'compaction' }> | null; use: Omit<ContextUse, 'at'> | null } = { compaction: null, use: null };
+    // The deadline covers the fork too; past it, whatever the copy reports is thrown away.
+    const deadline = setTimeout(() => this.#expire(thread.id, copy), BACKGROUND_COMPACT.timeoutMs);
+    deadline.unref?.();
     try {
       // Codex forks first and compacts the fork; Claude and echo fork as the turn resumes at the checkpoint.
       if (provider.protocol !== 'claude-sdk' && provider.protocol !== 'echo') {
@@ -428,12 +476,11 @@ export class BackgroundCompaction {
       };
       const ctx = this.#turnContext(thread, key, provider, account, sessionId, resumeAt, sink, reading => { seen.use = reading; });
       copy.handle = driver.startTurn(ctx);
-      const timer = setTimeout(() => copy.handle?.stop(), BACKGROUND_COMPACT.timeoutMs);
-      timer.unref?.();
-      try { result = await copy.handle.done; } finally { clearTimeout(timer); }
+      result = await copy.handle.done;
     } catch (error) {
       this.#core.log('info', `thread ${thread.id}: background compaction failed: ${messageOf(error)}`, { source: provider.id, threadId: thread.id });
     } finally {
+      clearTimeout(deadline);
       releaseThread(key);
     }
     if (this.#closed || this.#core.journal.isClosed()) return;
@@ -463,6 +510,18 @@ export class BackgroundCompaction {
     const stale = current === null ? 'the thread is gone' : limit === null ? 'the setting is off' : this.#stale(current, copy, limit);
     if (stale !== null) { this.#drop(thread.id, stale); return; }
     this.threads.autoCompact.recheck(thread.id);
+  }
+
+  /**
+   * The copy's deadline: one still running counts as a failure and is dropped
+   * now, which stops it and lets a step waiting for it go on at once. A
+   * result it gives later finds it dropped and is thrown away.
+   */
+  #expire(threadId: ThreadId, copy: Copy): void {
+    if (this.#copies.get(threadId) !== copy || copy.ready !== null) return;
+    this.#failures.set(threadId, (this.#failures.get(threadId) ?? 0) + 1);
+    this.#drop(threadId, 'it was still running after its time');
+    if (!this.#closed && !this.#core.journal.isClosed()) this.threads.autoCompact.recheck(threadId);
   }
 
   /** The thread as the copy's driver sees it: its own id, so the thread's warm session is left alone. */
@@ -577,6 +636,7 @@ export class BackgroundCompaction {
       this.#core.journal.deleteSetting(`${COMPACTION_TAIL_PREFIX}${thread.id}`);
     });
     this.#carrying.delete(thread.id);
+    this.#boundaries.delete(thread.id);
     this.#announce(next, divider);
     // The answer goes on in a new message after the divider.
     this.threads.runner.answerAfter.set(turn.id, Math.max(divider.createdAt, this.threads.runner.answerAfter.get(turn.id) ?? 0));

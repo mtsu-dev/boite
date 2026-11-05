@@ -261,8 +261,9 @@ starting or running on. At the first boundary where the context reaches the
 limit, the core takes the copy inside the same turn, as OpenCode does at the
 start of a step:
 
-- a copy still running is waited for, 5 minutes at most, and checked again
-  when it returns;
+- a copy still running is waited for until it ends, its deadline drops it
+  (5 minutes after it started) or the turn is stopped, which also stops the
+  copy; it is checked again when it returns;
 - the thread moves to the compacted session: a new session generation, the
   `thread.compacted.background` journal entry, and a divider marked
   `background: true` (`in the background`) among this turn's messages, the
@@ -282,7 +283,10 @@ A thread's first turn names its session only once it ends: a copy started in
 that turn names it on the thread at once, so the copy and the turn's result
 agree on it. A turn that compacts natively, by itself (a compaction part not
 marked `background`), drops the copy, and a copy that finishes after that is
-thrown away. Compaction and keepalive turns have no step boundary.
+thrown away. Compaction and keepalive turns have no step boundary. While a
+turn runs, the context it is judged by, for growth or shrink, is the one its
+last step boundary reported, since Claude reports the thread's own only with
+the turn's final result.
 
 A driver without `stepSwap` takes a finished copy at the thread's first pause
 instead, under the same conditions as the timer above and after the same 2 s:
@@ -311,11 +315,15 @@ at a selected `turn-end` or `background` moment near it, when:
   compacted by itself;
 - the thread grew by more than 30 000 tokens, or a quarter of the limit, since
   the copy started;
-- background work is running at the swap, a background shell or a running
-  subagent, since the new session would lose it;
+- background work is running at the swap, since the new session would lose
+  it or hear its result without its context: a background shell or a native
+  subagent of the agent, a Boite child still at work (here or on another
+  machine, its turn under way or waiting on its own background work), or a
+  workflow run of the conversation at work;
 - the copy failed, named no new session or did not compact; after two failures
   in a row the thread stops trying until its next swap or a restart. A copy
-  still running after 5 minutes is stopped;
+  still running 5 minutes after it started counts as a failure: it is dropped
+  and stopped then, and a result it gives later is thrown away;
 - the effective policy changed, including turning the setting off.
 
 At a pause, a thread that reaches the limit while a matching copy still runs
