@@ -149,11 +149,12 @@ not substitute a per-model threshold.
 |---|---|
 | Claude | Measures the native output and compaction reserves locally, opens with a calibrated window and verifies the exact threshold before sending the prompt. An unsupported or clamped window keeps native policy and the between-turn fallback. |
 | Codex | Sends the owner's count as `model_auto_compact_token_limit` on thread start and resume; Codex performs compaction in its own loop. |
-| Muse, pi, ACP | Keep their native in-turn policy; Boite checks its limit between turns because these protocols expose no exact token-limit setter. |
+| OpenCode 2 | Sends `compaction.buffer`, the model's window less the limit, in `OPENCODE_CONFIG_CONTENT`, so OpenCode compacts in its own loop at the limit. The window comes from the model list a process reads (the smaller of `limit.input` and `limit.context`), so the first process on a model keeps OpenCode's ceiling, the window less the larger of 15% and 16 000 tokens; the driver remembers the window per account and model and replaces an idle process whose buffer no longer matches before the next turn. No limit, or one at or above the window, sends no buffer. |
+| Muse, pi, other ACP | Keep their native in-turn policy; Boite checks its limit between turns because these protocols expose no exact token-limit setter. |
 | echo | Checks between turns only. |
 
-Changing the limit during a running Claude or Codex turn applies before the
-next prompt. Claude defers reopening while its native background work still
+Changing the limit during a running Claude, Codex or OpenCode 2 turn applies
+before the next prompt. Claude defers reopening while its native background work still
 holds the query. Boite never interrupts and restarts a running turn to compact it.
 Claude Code 2.1.310 accepts the live window flag without updating its active
 window, so a changed limit reopens the session between turns. Its summary
@@ -255,7 +256,7 @@ agents keep working on the original session meanwhile.
 | Claude | Resumes at the turn's checkpoint with `resumeSessionAt` and `forkSession`, then compacts. |
 | Codex | `forkSession` at the turn's checkpoint, then compacts the fork. |
 | echo | Names the fork after the turn. |
-| OpenCode 2 | No copy: the setting turns on OpenCode's own `experimental.background_compaction` in `OPENCODE_CONFIG_CONTENT`, for the processes started afterwards. |
+| OpenCode 2 | No copy: the setting turns OpenCode's own `experimental.background_compaction` on or off in `OPENCODE_CONFIG_CONTENT` for the thread's type, off written too so a profile cannot outrank it, for the processes started afterwards. |
 | OpenCode 1, Muse, pi, other ACP | None: the compaction above runs as before. |
 
 At the first pause after the copy finished, under the same conditions as the

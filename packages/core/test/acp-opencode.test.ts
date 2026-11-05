@@ -132,3 +132,52 @@ for (const outcome of ['delivered', 'cancelled'] as const) {
     expect(current.messages.some(message => message.turnId === turn.id && message.parts.some(part => part.type === 'text' && part.text === 'Late follow-up answered'))).toBe(!cancelled);
   }, 30000);
 }
+
+test('OpenCode 2 compacts at the limit of each thread type and takes a changed one at the next idle turn', async () => {
+  harness = await startTestCore();
+  const owner = await harness.connect();
+  const log = join(harness.dataDir, 'opencode-configs.jsonl');
+  process.env['OPENCODE_FIXTURE_CONFIG_LOG'] = log;
+  process.env['OPENCODE_FIXTURE_WINDOW'] = '1000000';
+  try {
+    const profile = { executable: [{ kind: 'file' as const, value: process.execPath }], detect: {}, isolation: {}, launch: { args: [join(import.meta.dir, 'fixtures/opencode2-server.ts'), 'acp'] } };
+    Object.assign(harness.core.providers.require('opencode-v2'), { auth: { kind: 'none' }, env: {}, profiles: { windows: profile, linux: profile, macos: profile } });
+    await owner.call('providers.setEnabled', { providerId: 'opencode-v2', enabled: true });
+    await owner.call('settings.set', { warmProcessMinutes: 5, autoCompact: { tokens: 200_000, moments: [] },
+      compactionByType: { subagent: { autoCompact: { tokens: 300_000, moments: [] }, backgroundCompaction: false } } });
+    const account = await owner.call('accounts.add', { providerId: 'opencode-v2', label: 'Fixture' });
+    const project = await owner.call('projects.add', { path: harness.dataDir, name: 'Fixture' });
+    const thread = await owner.call('threads.create', { projectId: project.id, accountId: account.id, providerId: 'opencode-v2' });
+    const configs = async () => (await Bun.file(log).text()).trim().split('\n').map(line => JSON.parse(line) as Record<string, unknown>);
+    const run = async (threadId: string, prompt: string) => {
+      await waitFor(() => !harness!.core.threads.isBusy(threadId));
+      const finished = owner.next('turn.finished', result => result.threadId === threadId, 20_000);
+      await owner.call('turns.start', { threadId, prompt });
+      expect(await finished).toMatchObject({ status: 'done', error: null });
+    };
+    // The window is unknown until the first process lists its models: OpenCode keeps its own ceiling.
+    await run(thread.id, '[done] first');
+    expect((await configs()).map(config => config['compaction'])).toEqual([undefined]);
+    // Known now, the next idle turn restarts the process with a ceiling at the limit, then keeps it.
+    await run(thread.id, '[done] second');
+    await run(thread.id, '[done] third');
+    expect((await configs()).map(config => config['compaction'])).toEqual([undefined, { buffer: 800_000 }]);
+    // A subagent compacts at its own limit, and without OpenCode's background compaction.
+    const child = harness.core.threads.create({ projectId: project.id, providerId: 'opencode-v2', accountId: account.id }, { id: 'thr_opencode_child', branch: null, parentThreadId: thread.id });
+    await run(child.id, '[done] child');
+    expect((await configs()).at(-1)).toMatchObject({ compaction: { buffer: 700_000 }, experimental: { background_compaction: false } });
+    // A limit changed during a turn leaves that turn's process alone; one at the window gives the native ceiling back.
+    const boundary = owner.next('turn.toolCompleted', event => event.threadId === thread.id, 20_000);
+    const finished = owner.next('turn.finished', result => result.threadId === thread.id, 20_000);
+    await owner.call('turns.start', { threadId: thread.id, prompt: '[slow]' });
+    await boundary;
+    await owner.call('settings.set', { autoCompact: { tokens: 1_000_000, moments: [] } });
+    expect(await finished).toMatchObject({ status: 'done', error: null });
+    expect(await configs()).toHaveLength(3);
+    await run(thread.id, '[done] after');
+    expect((await configs()).map(config => config['compaction'])).toEqual([undefined, { buffer: 800_000 }, { buffer: 700_000 }, undefined]);
+  } finally {
+    delete process.env['OPENCODE_FIXTURE_CONFIG_LOG'];
+    delete process.env['OPENCODE_FIXTURE_WINDOW'];
+  }
+}, 60_000);

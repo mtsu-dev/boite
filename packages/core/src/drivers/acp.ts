@@ -14,28 +14,26 @@ export function createAcpDriver(deps: AcpDeps): Driver {
   const viewed = new Set<ThreadId>();
   const probes = new Map<string, ProbeEntry>();
   let probeRevision = 0;
-  const memory: AcpMemory = { costPerProcess: new Set<ProviderId>(), refusedLoads: new Set<string>() };
+  const memory: AcpMemory = { costPerProcess: new Set<ProviderId>(), refusedLoads: new Set<string>(), compactionWindows: new Map<string, number>() };
 
   const keyOf = (providerId: ProviderId, accountId: AccountId): string => `${providerId}::${accountId}`;
 
-  function acquire(ctx: SessionContext): AcpSession {
+  /** `forTurn`: a turn is about to run, the only time an idle process is replaced for its compaction limit. */
+  function acquire(ctx: SessionContext, forTurn = false): AcpSession {
     const threadId = ctx.thread.id;
     const warmMs = Math.max(0, ctx.warmProcessMinutes) * MINUTE_MS;
     const key = sessionKey(ctx);
 
     let session = sessions.get(threadId) ?? null;
-    const usable = session?.usable(key, warmMs) === true;
-    noteWarmSession(ctx, `${ctx.provider.id} ACP`, { kept: session !== null, usable, sameSetup: session?.key === key, setupChange: isGrok(ctx.provider) ? 'the thread changed mode, account or folder' : 'the thread changed account or folder' });
+    const compaction = forTurn && session?.compactionMoved(ctx) === true;
+    const usable = session?.usable(key, warmMs) === true && !compaction;
+    const changed = isGrok(ctx.provider) ? 'the thread changed mode, account or folder' : 'the thread changed account or folder';
+    const sameSetup = session?.key === key;
+    noteWarmSession(ctx, `${ctx.provider.id} ACP`, { kept: session !== null, usable, sameSetup: sameSetup && !compaction, setupChange: sameSetup ? 'the compaction limit changed' : changed });
     if (session !== null && !usable) {
       sessions.delete(threadId);
-      session.close(
-        session.key === key
-          ? null
-          : isGrok(ctx.provider)
-            ? 'the thread changed mode, account or folder'
-            : 'the thread changed account or folder',
-        ctx,
-      );
+      if (sameSetup && compaction) ctx.log('info', 'acp session: OpenCode 2 restarts with the compaction limit of the thread');
+      session.close(sameSetup ? null : changed, ctx);
       session = null;
     }
     const probeKey = keyOf(ctx.provider.id, ctx.account.id);
@@ -77,7 +75,7 @@ export function createAcpDriver(deps: AcpDeps): Driver {
   }
 
   return {
-    prepare: (ctx, options) => acquire(ctx).prepare(ctx, options?.forTurn),
+    prepare: (ctx, options) => acquire(ctx, options?.forTurn === true).prepare(ctx, options?.forTurn),
     setViewed(threadId, active) {
       if (active) viewed.add(threadId);
       else viewed.delete(threadId);
@@ -202,7 +200,7 @@ export function createAcpDriver(deps: AcpDeps): Driver {
     startTurn(ctx: TurnContext): TurnHandle {
       const turn = new AcpTurn(ctx);
       const warmMs = Math.max(0, ctx.warmProcessMinutes) * MINUTE_MS;
-      const running = acquire(ctx);
+      const running = acquire(ctx, true);
       running.attach(turn, warmMs);
       return {
         done: turn.done,
@@ -232,6 +230,7 @@ export function createAcpDriver(deps: AcpDeps): Driver {
       probes.clear();
       memory.costPerProcess.clear();
       memory.refusedLoads.clear();
+      memory.compactionWindows.clear();
       for (const session of open) session.close(null);
     },
   };

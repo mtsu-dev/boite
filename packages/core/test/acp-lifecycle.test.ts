@@ -69,7 +69,7 @@ for (const stopped of [false, true]) {
         },
       } as unknown as TurnContext;
       session = new AcpSession('lifecycle', 300_000, { loadSdk: () => import('@agentclientprotocol/sdk/unstable') },
-        { costPerProcess: new Set(), refusedLoads: new Set() }, () => order.push(`session ended: ${turn.settled}`));
+        { costPerProcess: new Set(), refusedLoads: new Set(), compactionWindows: new Map() }, () => order.push(`session ended: ${turn.settled}`));
       turn = new AcpTurn(ctx);
       session.attach(turn, 300_000);
       await waitFor(() => parts.some(part => part.type === 'tool'), 20_000);

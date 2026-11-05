@@ -339,7 +339,7 @@ export class AccountStore {
       env[key] = isolationDir === null ? value : value.split('{isolationDir}').join(isolationDir);
     }
     if (provider.quirks?.includes('antigravity') === true) Object.assign(env, antigravityCertificates(currentOs(), process.env, existsSync));
-    // OpenCode 2 compacts in the background by itself once asked to; a process started afterwards takes the change.
+    // OpenCode 2's own background compaction follows the thread type, off included; the driver adds the limit once it knows the window.
     return openCodeBackgroundCompaction(provider.id, effectiveCompaction(this.#core.settings.get(), thread).backgroundCompaction, { ...env, ...subscriptionProxyEnv(this.#core, provider) });
   }
 

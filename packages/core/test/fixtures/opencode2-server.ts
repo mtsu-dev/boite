@@ -16,7 +16,11 @@ if (!process.argv.includes('serve')) {
     const bytes = encoder.encode(`data: ${JSON.stringify({ type, data: { sessionID, ...data } })}\n\n`);
     for (const stream of streams) stream.enqueue(bytes);
   };
-  const model = { id: 'model', providerID: 'fixture', name: 'Fixture model', enabled: true, variants: [{ id: 'high' }], limit: { context: 32000 } };
+  // Opt in: each process appends the inline configuration it was started with, and lists a model of that window.
+  const configLog = process.env['OPENCODE_FIXTURE_CONFIG_LOG'];
+  if (configLog) await Bun.write(configLog, `${await Bun.file(configLog).text().catch(() => '')}${process.env['OPENCODE_CONFIG_CONTENT'] ?? '{}'}
+`);
+  const model = { id: 'model', providerID: 'fixture', name: 'Fixture model', enabled: true, variants: [{ id: 'high' }], limit: { context: Number(process.env['OPENCODE_FIXTURE_WINDOW'] ?? 32000) } };
   const session = () => ({ id: sessionID, cost, model: { id: model.id, providerID: model.providerID }, agent: 'build', location: { directory: process.cwd() } });
   const server = Bun.serve({ hostname: '127.0.0.1', port: 0, async fetch(request) {
     const url = new URL(request.url);
@@ -69,7 +73,13 @@ if (!process.argv.includes('serve')) {
         };
         setTimeout(() => void tool(), 400);
         if (!process.env['OPENCODE_FIXTURE_TOOL_GATE']) timer = setTimeout(() => { cost += 0.01; event('session.execution.succeeded', {}); }, 4000);
-      } else event('session.text.delta', { delta: `Received: ${body.text}; images: ${body.files?.length ?? 0}\n` });
+      } else {
+        event('session.text.delta', { delta: `Received: ${body.text}; images: ${body.files?.length ?? 0}\n` });
+        if (body.text.includes('[done]')) {
+          event('session.step.ended', { tokens: { input: 17, output: 3 } });
+          event('session.execution.succeeded', {});
+        }
+      }
       return Response.json({ data: inbox });
     }
     if (url.pathname.endsWith('/interrupt')) {
