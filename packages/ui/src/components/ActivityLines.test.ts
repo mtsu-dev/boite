@@ -18,7 +18,9 @@ afterEach(async () => {
 });
 
 const store = {} as Store;
-const at = new Date(2026, 10, 5, 3, 12).getTime();
+// 03:12 today, so the line keeps its same-day form whatever day the suite runs.
+const today = new Date();
+const at = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 3, 12).getTime();
 
 function run(status: WorkflowRun['status'], done: number): WorkflowRun {
   const nodes = Array.from({ length: 5 }, (_, index) => ({ id: `s${index}`, status: index < done ? 'done' : index === done && status === 'running' ? 'running' : 'waiting', instances: [] }));

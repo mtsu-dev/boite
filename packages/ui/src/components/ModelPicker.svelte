@@ -850,19 +850,20 @@
       /* The sheet's own glass, not a band of the desktop rail's surface across it. */
       background: transparent;
       /* Tiles as wide as their names may run past the end: a 24 px fade says
-         more waits there while it does (wholeTiles' data-more-end), the padding
-         lets the last tile scroll clear of it, and a swipe rests on a tile's left
-         edge, so the tile at the end peeks by half (peekGrow) rather than a sliver. */
-      padding-right: 24px;
+         more waits there while it does (wholeTiles' data-more-end), then a 20 px
+         gutter holds the chevron alone. The padding spans both, so the last tile
+         scrolls clear of them, and a swipe rests on a tile's left edge, so the
+         tile at the end peeks by half before the fade (peekGrow) rather than a sliver. */
+      padding-right: 44px;
       scroll-snap-type: x mandatory;
       scroll-padding-inline: 4px;
     }
     /* data-more-end comes from wholeTiles, outside the template: global, or the compiler drops the rule. */
-    /* The fade clears 14 px before the end, so the chevron in its middle never sits on a peeking logo. */
-    .rail:global([data-more-end]) { mask-image: linear-gradient(to right, black calc(100% - 24px), transparent calc(100% - 14px)); }
-    /* A centred logo leaves the peeking box half empty: the rail's chevron, turned along the strip,
-       sits in the fade's middle while a provider waits past the end, and fades out at the end. */
-    .rail-cue { grid-area: 1 / 1 / 2 / 3; justify-self: end; z-index: 2; width: 24px; align-items: center; padding: 4px 0 6px; background: transparent; color: var(--color-muted-foreground); }
+    /* The fade ends where the gutter starts: a peeking tile only fades out, and no glyph or label fragment sits under the chevron. */
+    .rail:global([data-more-end]) { mask-image: linear-gradient(to right, black calc(100% - 44px), transparent calc(100% - 20px)); }
+    /* The rail's chevron, turned along the strip, sits in the clear gutter past the fade
+       while a provider waits past the end, and fades out at the end. */
+    .rail-cue { grid-area: 1 / 1 / 2 / 3; justify-self: end; z-index: 2; width: 20px; align-items: center; padding: 4px 0 6px; background: transparent; color: var(--color-muted-foreground); }
     .rail-cue :global(svg) { width: 16px; height: 16px; rotate: -90deg; }
     .rail:global([data-more-end]) ~ .rail-cue :global(svg) { opacity: 1; }
 

@@ -418,7 +418,7 @@ test('the phone sheet puts its text on the list cards\' 16 px edge and fades its
   expect(rule('.popover .main-models :global(.search-bar)')).toMatch(/padding-inline: 12px/);
   // The fade is the cue that the strip scrolls on: never on a strip scrolled to its last tab.
   expect(rule('.rail')).not.toMatch(/mask-image/);
-  expect(rule('.rail:global([data-more-end])')).toMatch(/mask-image: linear-gradient\(to right, black calc\(100% - 24px\), transparent calc\(100% - 14px\)\)/);
+  expect(rule('.rail:global([data-more-end])')).toMatch(/mask-image: linear-gradient\(to right, black calc\(100% - 44px\), transparent calc\(100% - 20px\)\)/);
   expect(rule('.rail')).toMatch(/scroll-snap-type: x mandatory/);
 });
 

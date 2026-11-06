@@ -56,7 +56,7 @@ test('the phone provider strip shows a right chevron in its fade while a provide
   expect(phone).not.toMatch(/\.rail-cue \{ display: none; \}/);
   expect(phone).toMatch(/\.rail:global\(\[data-more-end\]\) ~ \.rail-cue :global\(svg\) \{ opacity: 1; \}/);
   const cue = phone.match(/\n {4}\.rail-cue \{([^}]*)\}/)?.[1] ?? '';
-  expect(cue).toMatch(/width: 24px/);
+  expect(cue).toMatch(/width: 20px/);
   expect(cue).toMatch(/justify-self: end/);
   expect(cue).toMatch(/color: var\(--color-muted-foreground\)/);
   // The desktop rail's down chevron, turned to point along the strip, at 16 px.
