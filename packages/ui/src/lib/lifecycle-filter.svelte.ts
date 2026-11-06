@@ -64,7 +64,11 @@ export function lifecycleCounts(entries: readonly ProjectEntry[]): Record<Lifecy
   return counts;
 }
 
-/** The projects a filter keeps, each with the rows it shows: a live filter lists threads, done and archived list the project's fold. */
+/**
+ * The projects a filter keeps, each with the rows it shows: a live filter lists threads, done and archived list the project's fold.
+ * `entries` holds archived projects too: their history belongs to Done and Archived (the project menu's "View archived threads"
+ * opens it), while the live filters skip them as the count does (`inbox`).
+ */
 export function lifecycleProjects(entries: readonly ProjectEntry[], kind: Lifecycle): { entry: ProjectEntry; threads: ThreadSummary[] }[] {
   const kept: { entry: ProjectEntry; threads: ThreadSummary[] }[] = [];
   for (const entry of entries) {
@@ -72,6 +76,7 @@ export function lifecycleProjects(entries: readonly ProjectEntry[], kind: Lifecy
       if (archiveCount(entry.project, kind) > 0) kept.push({ entry, threads: [] });
       continue;
     }
+    if (entry.project.archived === true) continue;
     if (entry.machine.store.connection !== 'ready') continue;
     const threads = entry.machine.store.threadsOf(entry.project.id).filter(thread => inLifecycle(entry, thread, kind));
     if (threads.length > 0) kept.push({ entry, threads });

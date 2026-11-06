@@ -13,7 +13,7 @@ import { formatLocale } from './i18n.svelte';
  */
 export type ThreadState = 'working' | 'waiting' | 'error' | 'interrupted' | 'done' | 'queued' | 'delegating' | 'monitoring' | 'background' | 'watching';
 
-type StateFields = Pick<ThreadSummary, 'status' | 'unread' | 'backgroundWork' | 'openQuestions'> & Partial<Pick<ThreadSummary, 'backgroundWait' | 'pullRequestWatches'>>;
+type StateFields = Pick<ThreadSummary, 'status' | 'unread' | 'backgroundWork' | 'openQuestions'> & Partial<Pick<ThreadSummary, 'backgroundWait' | 'pullRequestWatches' | 'subagentQuestions'>>;
 
 /**
  * The thread waits on the user: a card that stopped its turn, or a question
@@ -32,15 +32,23 @@ export function avatarStatus(status: ThreadStatus | undefined): 'running' | 'wai
 /** What a parent's delegated agents add to its state: how many are at work, and how many wait on the user. */
 export type Delegated = number | { count: number; asking: number } | null;
 
+/** How many of a parent's delegated agents ask the user: the local ones counted, or the questions the core lists, local and remote. */
+function childAsking(thread: Partial<Pick<ThreadSummary, 'subagentQuestions'>>, delegated: Delegated): number {
+  const local = typeof delegated === 'number' ? 0 : delegated?.asking ?? 0;
+  return Math.max(local, thread.subagentQuestions?.length ?? 0);
+}
+
 /**
  * `delegated`: how many of the thread's delegated agents still have a turn
  * under way, or that count with how many of them ask the user. A sub-agent's
  * question is the user's turn on its parent too, which the sidebar shows when
  * the child has no row of its own; only the parent's own failure outranks it.
+ * A child on another machine has no local row to count: the core lists its
+ * question on the parent's summary (`subagentQuestions`), read here the same way.
  */
 export function threadState(thread: StateFields, delegated: Delegated = 0): ThreadState | null {
   const working = typeof delegated === 'number' ? delegated : delegated?.count ?? 0;
-  const asking = typeof delegated === 'number' ? 0 : delegated?.asking ?? 0;
+  const asking = childAsking(thread, delegated);
   if (needsUser(thread)) return 'waiting';
   if (asking > 0 && thread.status !== 'error') return 'waiting';
   switch (thread.status) {
@@ -74,10 +82,9 @@ export function threadState(thread: StateFields, delegated: Delegated = 0): Thre
  * (`threadState` says `waiting`) yet the agent is still at work, so its ring
  * keeps turning with a small amber dot on it (`StateRing`'s `asking`).
  */
-export function asksMidTurn(thread: Pick<ThreadSummary, 'status' | 'openQuestions'>, delegated: Delegated = 0): boolean {
+export function asksMidTurn(thread: Pick<ThreadSummary, 'status' | 'openQuestions'> & Partial<Pick<ThreadSummary, 'subagentQuestions'>>, delegated: Delegated = 0): boolean {
   if (thread.status !== 'running') return false;
-  const asking = typeof delegated === 'number' ? 0 : delegated?.asking ?? 0;
-  return (thread.openQuestions ?? 0) > 0 || asking > 0;
+  return (thread.openQuestions ?? 0) > 0 || childAsking(thread, delegated) > 0;
 }
 
 /** What a folded project says for the threads it hides, most urgent first: the user's turn, a failure, work, work waiting for a slot, then news. */

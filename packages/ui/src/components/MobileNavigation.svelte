@@ -134,6 +134,8 @@
   /** At work on top when working grouping is on, open, then set aside; idle projects go to their fold, as on the desktop. */
   let sections = $derived(projectSections(groups, recentPreferences.groupOtherProjects, recentPreferences.groupWorking));
   let shelved = $derived(machines.flatMap(machine => machine.store.projects.filter(project => project.archived === true).map(project => ({ machine, project }))));
+  /** The filters' projects: the archived ones too, whose done and archived threads their history filters list (`lifecycleProjects`). */
+  let filterGroups = $derived(projectView.sorted(machines.flatMap(machine => machine.store.projects.map(project => ({ machine, project })))));
   let selected = $derived(projectView.selected(groups));
   let draftOwner = $derived(listScreen === 'threads' && workspace.view === 'recent' && selected ? selected.machine.store : store);
   let entries = $derived(machines.flatMap(machine => {
@@ -320,7 +322,7 @@
       </div>
     </div>
     {/if}
-    {#if listScreen === 'threads' && groups.length && !query}<div class="lifecycle-slot"><LifecycleStrip entries={groups} prefix="mobile-" /></div>{/if}
+    {#if listScreen === 'threads' && groups.length && !query}<div class="lifecycle-slot"><LifecycleStrip entries={filterGroups} prefix="mobile-" /></div>{/if}
     {#snippet laneCount(count: { threads: number; bots: number }, testid: string)}
       {#if count.threads}<span class="count" data-testid="{testid}-threads" data-count={count.threads} title={fill(strings.inbox.threadsCount, { count: String(count.threads) })}>{count.threads}</span>{/if}{#if count.bots}<span class="count bots" data-testid="{testid}-bots" data-count={count.bots} title={fill(strings.inbox.botsCount, { count: String(count.bots) })} aria-label={fill(strings.inbox.botsCount, { count: String(count.bots) })}><Bot size={11} aria-hidden="true" />{count.bots}</span>{/if}
     {/snippet}
@@ -333,7 +335,7 @@
     {/snippet}
     {#if listScreen === 'threads' && lifecycleFilter.current && !query}
       <!-- The lifecycle filter: in Projects, the matching projects under their headers; in Recent, its flat rows. -->
-      <PhoneLifecycleList entries={groups} kind={lifecycleFilter.current} {now} {scrollRoot} {several} flat={workspace.view === 'recent'} row={threadRow} onopen={() => show('chat')} />
+      <PhoneLifecycleList entries={filterGroups} kind={lifecycleFilter.current} {now} {scrollRoot} {several} flat={workspace.view === 'recent'} row={threadRow} onopen={() => show('chat')} />
     {:else if listScreen === 'threads' && workspace.view === 'projects'}
       {#snippet projectRows(projects: ProjectEntry[], later = false)}
       {#each projects as group (projectKey(group))}

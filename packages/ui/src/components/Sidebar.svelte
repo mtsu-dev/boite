@@ -100,6 +100,8 @@
     }
   });
   let shelved = $derived(all.filter(({ project }) => project.archived === true));
+  /** The filters' projects: the archived ones too, whose done and archived threads their history filters list (`lifecycleProjects`). */
+  let filterGroups = $derived(projectView.sorted(all));
   let selected = $derived(projectView.selected(groups));
   let recentGroups = $derived(selected ? [selected] : groups);
   let recent = $derived(
@@ -252,11 +254,11 @@
     scrollRoot?.querySelector<HTMLElement>(`section[data-testid=project][data-project-key="${CSS.escape(projectKey(entry))}"]`)?.scrollIntoView({ block: 'start' });
   }
   /** The filter over the Projects view: its projects and their rows, the headers kept. */
-  let filtered = $derived(lifecycleFilter.current === null || workspace.view === 'recent' ? null : sortedLifecycleProjects(groups, lifecycleFilter.current));
+  let filtered = $derived(lifecycleFilter.current === null || workspace.view === 'recent' ? null : sortedLifecycleProjects(filterGroups, lifecycleFilter.current));
   let filteredDoneRows = $state.raw<Record<string, { store: Store; threadId: ThreadId }[]>>({});
   /** The filter over the Recent view: the same flat rows in the same order, never project cards. */
   let recentFilter = $derived(workspace.view === 'recent' ? lifecycleFilter.current : null);
-  let recentFiltered = $derived(recentFilter === 'waiting' || recentFilter === 'working' ? lifecycleRows(groups, recentFilter) : []);
+  let recentFiltered = $derived(recentFilter === 'waiting' || recentFilter === 'working' ? lifecycleRows(filterGroups, recentFilter) : []);
   /** A row that changes band or lane slides there instead of jumping (round 6); the key reads ids and states only, so a clock tick reads no layout. */
   flipRows(() => scrollRoot, () => workspace.view === 'recent'
     ? [...(recentFilter ? recentFiltered : attention).map(recentKey), '|', ...working.map(recentKey), '|', ...recentBands.keys()].join()
@@ -264,7 +266,7 @@
       .map(entry => { const { lists } = projectLists.get(projectKey(entry))!; return [...lists.attention, ...lists.working].map(thread => `${thread.id}:${thread.status}`).join(); })
       .join('|') + String(holding), () => `${workspace.view}:${lifecycleFilter.current}`);
   /** No listed project holds a thread of the Recent filter's lifecycle. */
-  let recentFilterEmpty = $derived(recentFilter !== null && lifecycleProjects(groups, recentFilter).length === 0);
+  let recentFilterEmpty = $derived(recentFilter !== null && lifecycleProjects(filterGroups, recentFilter).length === 0);
   let recentFilterDoneRows = $state.raw<{ store: Store; threadId: ThreadId }[]>([]);
   /** The rows of the listed projects in drawn order, read only as far as the ninth: projects below it cost nothing. */
   function projectRows(): { store: Store; threadId: ThreadId }[] {
@@ -318,7 +320,7 @@
 
 <RailFrame {store} kind="sidebar" label={strings.sidebar.threads} testid="sidebar" drawer bind:scroller={scrollRoot} onscroll={() => { if (showRows && scrollRoot) { savedScrolls.set(scrollKey, scrollRoot.scrollTop); checkOpenRow(); } }}>
   {#snippet head()}<ProjectViews entries={groups} {store} />{/snippet}
-  {#snippet subhead()}{#if showRows && groups.length > 0}<div class="strip"><LifecycleStrip entries={groups} /></div>{/if}{/snippet}
+  {#snippet subhead()}{#if showRows && groups.length > 0}<div class="strip"><LifecycleStrip entries={filterGroups} /></div>{/if}{/snippet}
     {#if showRows}
     {#if groups.length === 0}<p class="empty">{strings.sidebar.noProjects}</p>{/if}
     {#if filtered}
@@ -347,7 +349,7 @@
     {:else if recentFilter !== null}
       <div class="recent-filtered" data-testid="recent-filtered" data-filter={recentFilter}>
         {#if recentFilter === 'done' || recentFilter === 'archived'}
-          {#key recentFilter}<RecentDone kind={recentFilter} entries={groups} {scrollRoot} {now} open header={false} onrows={rows => recentFilterDoneRows = rows} />{/key}
+          {#key recentFilter}<RecentDone kind={recentFilter} entries={filterGroups} {scrollRoot} {now} open header={false} onrows={rows => recentFilterDoneRows = rows} />{/key}
         {:else}
           <WindowList items={recentFiltered} keyOf={entry => JSON.stringify([entry.machine.id, entry.thread.id])} {scrollRoot} estimate={56} measurements={measurements(`recent-${recentFilter}`)}>
             {#snippet row(entry)}<ThreadCard {...entry} {now} showProject={groups.length > 1} showMachine={multi} showDone />{/snippet}

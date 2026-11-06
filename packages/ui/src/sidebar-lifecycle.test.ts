@@ -88,8 +88,8 @@ test('the lifecycle strip counts every listed project and filters the list to on
   setThread(failing.id, { status: 'error' });
   setThread(busy.id, { status: 'running', runningSince: Date.now() - 60_000 });
   await waitFor(() => document.querySelector('[data-testid=lifecycle]') !== null && count('waiting') === 2 && count('working') === 1);
-  // Done and archived are the projects' own counts, the numbers their folds list.
-  const listed = store.projects.filter((p) => !p.archived);
+  // Done and archived are the projects' own counts, the numbers their folds list, an archived project's history included.
+  const listed = store.projects;
   expect(count('done')).toBe(listed.reduce((sum, p) => sum + (p.doneThreads ?? 0), 0));
   expect(count('archived')).toBe(listed.reduce((sum, p) => sum + Math.max(0, (p.archivedThreads ?? 0) - (p.doneThreads ?? 0)), 0));
 
@@ -124,6 +124,16 @@ test('the lifecycle strip counts every listed project and filters the list to on
   stage('archived').click();
   await waitFor(() => section(beta.id)?.querySelector(`[data-testid=done-thread][data-thread-id="${failing.id}"]`) != null);
   expect(sidebar().querySelectorAll('[data-testid=thread-row]')).toHaveLength(0);
+
+  // An archived project's history stays under the filter its menu's "View archived threads" opens.
+  expect(await store.archiveProject(beta.id, true)).toBe(true);
+  await waitFor(() => store.projects.find((p) => p.id === beta.id)?.archived === true);
+  await waitFor(() => section(beta.id)?.querySelector(`[data-testid=done-thread][data-thread-id="${failing.id}"]`) != null);
+  // Its threads at work count nowhere live, as the Inbox counts them.
+  stage('archived').click();
+  stage('working').click();
+  await waitFor(() => lifecycleFilter.current === 'working');
+  expect(sidebar().querySelector(`section[data-filter][data-project-id="${beta.id}"]`)).toBeNull();
 });
 
 test('the Recent view keeps its flat rows and their order under a filter, each naming its project', async () => {

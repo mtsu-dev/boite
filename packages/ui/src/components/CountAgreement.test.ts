@@ -6,8 +6,10 @@ import { Store } from '../lib/store.svelte';
 import { workspace } from '../lib/workspace.svelte';
 import { workTally } from '../lib/work-counts';
 import { lifecycleCounts, lifecycleProjects } from '../lib/lifecycle-filter.svelte';
+import { asksMidTurn, threadState } from '../lib/thread-state';
 import Inbox from './home/Inbox.svelte';
 import LifecycleStrip from './LifecycleStrip.svelte';
+import ProjectThreadCounters from './ProjectThreadCounters.svelte';
 import MobileNavigation from './MobileNavigation.svelte';
 import SurfaceSwitch from './SurfaceSwitch.svelte';
 
@@ -141,4 +143,15 @@ test('a filter lists the rows its count holds: a parent whose remote subagent as
   expect(rows('waiting')).toContain(parent.id);
   expect(rows('working')).not.toContain(parent.id);
   expect({ waiting: rows('waiting').length, working: rows('working').length }).toEqual({ waiting: counts.waiting, working: counts.working });
+  // The project's own chip and the row's ring read the same rule: no local child counts, the summary's question does.
+  const row = local.threads.find(thread => thread.id === parent.id)!;
+  expect(threadState(row, local.subagents(parent.id))).toBe('waiting');
+  expect(asksMidTurn(row, local.subagents(parent.id))).toBe(true);
+  const entry = entries.find(({ project }) => project.id === parent.projectId)!;
+  const target = document.createElement('div');
+  document.body.append(target);
+  apps.push(mount(ProjectThreadCounters, { target, props: { entry, working: 0, controls: 'counters' } }));
+  await settle();
+  const waitingHere = lifecycleProjects([entry], 'waiting').flatMap(({ threads }) => threads).length;
+  expect(Number(target.querySelector('[data-testid=project-waiting-count]')?.getAttribute('data-count'))).toBe(waitingHere);
 });

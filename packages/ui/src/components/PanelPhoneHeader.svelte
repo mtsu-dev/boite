@@ -22,13 +22,19 @@
   let count = $derived(active ? counts.of(active.kind) : null);
   let name = $derived(active ? label(active) : strings.rightPanel.newSurface);
 
-  /** The tabs no kind of the list stands for (a file, a second browser) first, then the list. */
+  /**
+   * The open tabs no row of the list stands for first (a file, a second browser,
+   * or a kind put away in Appearance after it opened, which the list leaves out),
+   * then the list: every open tab stays reachable.
+   */
   let items = $derived.by((): MenuItem[] => {
-    const extra = panel.surfaces.filter((surface) => surface.kind === 'file' || surface.kind === 'browser' || surface.kind === 'window' || surface.kind === 'council');
+    const listed = launcherItems(store, (kind) => counts.of(kind), active?.kind ?? null);
+    const kinds = new Set(listed.map((item) => item.id));
+    const extra = panel.surfaces.filter((surface) => surface.kind === 'file' || surface.kind === 'browser' || surface.kind === 'window' || surface.kind === 'council' || !kinds.has(surface.kind));
     return [
       ...extra.map((surface): MenuItem => ({ id: `surface:${surface.id}`, label: label(surface), title: tooltip(surface), glyph: surfaceGlyph(surface.kind), active: surface.id === panel.activeSurfaceId })),
       ...(extra.length > 0 ? [separator('sep-open')] : []),
-      ...launcherItems(store, (kind) => counts.of(kind), active?.kind ?? null)
+      ...listed
     ];
   });
 
