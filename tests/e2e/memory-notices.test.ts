@@ -48,9 +48,11 @@ test('memory stops stay between tools, fold together and link to a working switc
       { type: 'tool', toolId: 'retry', name: 'Bash', input: { command: 'cargo build -j 2' }, output: 'Build completed', status: 'done', startedAt: at + 20000 },
     );
   })()`);
-  await page.waitFor(`document.querySelector('${id('memory-row')}')?.textContent.includes('4 processus')`);
+  // The four stops fold into one line that counts them: "4 arrêts à la limite mémoire", the processes behind its disclosure.
+  const line = '4 arrêts à la limite mémoire';
+  await page.waitFor(`document.querySelector('${id('memory-row')} .title')?.textContent.includes(${JSON.stringify(line)})`);
   expect(await page.evaluate(`document.querySelectorAll('${id('memory-row')}').length`)).toBe(1);
-  expect(await page.evaluate(`(() => { const t = document.querySelector('${id('timeline')}').textContent; return t.indexOf('cargo build') < t.indexOf('4 processus') && t.indexOf('4 processus') < t.indexOf('Retrying'); })()`)).toBe(true);
+  expect(await page.evaluate(`(() => { const t = document.querySelector('${id('timeline')}').textContent; return t.indexOf('cargo build') < t.indexOf(${JSON.stringify(line)}) && t.indexOf(${JSON.stringify(line)}) < t.indexOf('Retrying'); })()`)).toBe(true);
   for (const width of [1280, 390]) {
     await page.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: width < 720 });
     await page.evaluate(`document.querySelector('${id('memory-row')}').scrollIntoView({ block: 'center' })`);

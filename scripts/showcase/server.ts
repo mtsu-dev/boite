@@ -9,7 +9,7 @@ const ui = join(root, 'packages/ui');
 const fakeClient = join(ui, 'src/lib/fake-client.ts').replaceAll('\\', '/');
 
 /** The last demo seed of the fake core's constructor: the showcase seed runs right after it. */
-const HOOK = 'if (options.debatesDemo) seedDebatesDemo(ctx);';
+const HOOK = 'if (options.councilDemo) seedCouncilDemo(ctx);';
 
 /** The Vite plugin that calls `seedShowcase` inside the fake core, only on this rig's server. */
 const showcaseSeed = {

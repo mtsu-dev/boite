@@ -76,7 +76,10 @@ test('connecting another machine keeps thread rows at their single-machine heigh
   await page.evaluate(`document.querySelector('${id('project-row')}').blur()`);
   await page.waitFor(swapped('1', '0'));
   await showThreadView(page, 'recent');
-  await page.waitFor(`Array.from(document.querySelectorAll('${id('thread-row')}')).every(e => e.querySelector('.headline .machine[title][aria-label]'))`);
+  // Recent names the machine on the row's second line, after the project: the other machine's rows by its glyph, name and tooltip, this PC's by none.
+  const rowMachine = `Array.from(document.querySelectorAll('${id('thread-row')}')).every(e => { const fact = e.querySelector('.facts ${id('thread-project')} ~ ${id('thread-machine')}[title]'); const machine = globalThis.__boiteTest.workspace.machines.find(m => m.id === e.dataset.machineId); return e.dataset.machineId === ${local} ? !e.querySelector('.machine') : fact?.querySelector('.ui-label')?.textContent === machine.label && fact.title.startsWith(machine.label + ' · '); })`;
+  await page.waitFor(rowMachine);
+  expect(await page.evaluate(`Array.from(document.querySelectorAll('${id('thread-row')}')).some(e => e.dataset.machineId !== ${local})`)).toBe(true);
   await page.click(id('project-filter'));
   await page.evaluate(`Array.from(document.querySelectorAll('${id('project-filter-menu')} [data-value]')).find(e => e.dataset.value === JSON.stringify(['http://builder.test', 'p-notes'])).click()`);
   await page.waitFor(`document.querySelectorAll('${id('thread-row')}').length === 1`);

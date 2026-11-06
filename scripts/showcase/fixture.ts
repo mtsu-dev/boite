@@ -1,7 +1,7 @@
 /**
  * The showcase seed: public sample data that fills every screen of the app for
  * the capture rig. Loaded only by the rig's own Vite server, after the fake
- * core's demo seeds (`team`, `agents`, `subagents`, `board`, `debates`).
+ * core's demo seeds (`team`, `agents`, `subagents`, `board`, `council`).
  * Everything here is invented: projects, people (generic first names) and code.
  */
 import type { AgentProfile, AgentRuntimeConfig, Message, MessagePart, PermissionRequest, Project, Thread, ThreadStatus, Turn } from '../../packages/contracts/src/index';

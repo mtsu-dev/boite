@@ -14,7 +14,7 @@ const arg = (name: string, fallback: string) => {
 };
 const out = resolve(arg('out', 'showcase-explore'));
 const phone = Bun.argv.includes('--phone');
-const query = arg('query', 'fake=1&team=1&agents=1&subagents=1&board=1&debates=1&windows=1&machines=1');
+const query = arg('query', 'fake=1&team=1&agents=1&subagents=1&board=1&council=1&windows=1&machines=1');
 mkdirSync(out, { recursive: true });
 await waitForMemory(3.5e9);
 const rig = await startServer();

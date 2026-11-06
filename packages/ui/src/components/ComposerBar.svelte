@@ -458,6 +458,8 @@
   @media (min-width: 721px) {
     .send.tucked, .mic.tucked :global(.dictation[data-phase='idle']), .mic.tucked .dictation-stand-in { display: none; }
     .mic :global(.microphone), .mic .dictation-stand-in button { border-radius: var(--radius-full); }
+    /* Both faces of the slot are the microphone's 32 px circle, so a recording that swaps Send for it moves nothing in the bar. */
+    .bar:not(.answering):not(.direct) .send { width: 32px; height: 32px; }
   }
 
   .mode-icon { display: inline-flex; }

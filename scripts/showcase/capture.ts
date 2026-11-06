@@ -89,7 +89,7 @@ const recent = view === 'recent';
 const seed = option('seed') ?? 'calm';
 if (!['calm', 'stress'].includes(seed)) throw new Error(`--seed: expected calm or stress, got ${seed}`);
 
-const QUERY = 'fake=1&team=1&agents=1&subagents=1&board=1&debates=1&machines=1';
+const QUERY = 'fake=1&team=1&agents=1&subagents=1&board=1&council=1&machines=1';
 const FLAGSHIP = 't-trace';
 const QUESTION = 't-scheduler';
 const WORKING = 't-sc-ratelimit';
@@ -493,11 +493,11 @@ const steps: Step[] = [
     async run(page) { await panel(page, 's.panel.openMessages();'); },
   },
   {
-    name: 'panel-debate', caption: 'Right panel, a debate salon.', devices: desktop,
+    name: 'panel-council', caption: 'Right panel, a council salon.', devices: desktop,
     async run(page) {
-      const ids = await store(page, 'const r = await s.client.call("debates.list", {}); return (r.debates ?? r).map?.((d) => d.id) ?? [];');
-      if (!ids?.length) throw new Error('the fake core lists no debate');
-      await panel(page, 's.panel.openDebate(arg);', ids[0]);
+      const ids = await store(page, 'const r = await s.client.call("council.list", {}); return r.councils.map((c) => c.id);');
+      if (!ids?.length) throw new Error('the fake core lists no council');
+      await panel(page, 's.panel.openCouncil(arg);', ids[0]);
     },
   },
   {

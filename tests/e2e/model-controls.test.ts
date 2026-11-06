@@ -405,10 +405,11 @@ test('the draft keeps a compact composer separate from the fixed favorites menu'
   expect(layout.composerHeight).toBe(before.height);
   expect(layout.composerTop).toBe(before.top);
   // With cards in the Inbox the home lifts the draft composer to the top third (ChatView.svelte), leaving
-  // less than the menu's 360 px above it: the menu then opens below. Either way it never covers the composer
+  // less than the menu's 416 px above it: the menu then opens below. Either way it never covers the composer
   // and stays whole on screen.
   expect(layout.menuTop + layout.menuHeight < layout.composerTop || layout.menuTop > layout.composerBottom).toBe(true);
   expect(layout.menuTop).toBeGreaterThanOrEqual(0);
   expect(layout.menuTop + layout.menuHeight).toBeLessThanOrEqual(900);
-  expect(layout.menuHeight).toBe(360);
+  // The provider rail's menu is 416 px at a 900 px window (ModelPicker's menuCap): six provider tiles whole above the refresh.
+  expect(layout.menuHeight).toBe(416);
 }, 30_000);
