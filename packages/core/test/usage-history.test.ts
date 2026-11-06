@@ -309,6 +309,128 @@ test('usage.history rejects edges that are not ascending timestamps', async () =
   expect((await client.call('usage.history', { edges: EDGES, providerId: 'removed-provider' })).rows).toEqual([]);
 });
 
+/** What the journal still holds of the turns a removal erased. */
+function kept(): { finished_at: number; provider_id: string; model: string | null; usage: string | null }[] {
+  return harness.core.journal.db.query('SELECT * FROM removed_turn_usage ORDER BY finished_at, rowid').all() as ReturnType<typeof kept>;
+}
+
+test('removing a project leaves usage.history as it was, to the turn and the token, and only its ranking loses the threads', async () => {
+  const { echo, codex } = await threads();
+  const journal = harness.core.journal;
+  journal.putProject({ id: 'prj_staying', name: 'Staying', path: harness.dataDir, createdAt: D0 });
+  const staying: ThreadSummary = { ...echo, id: 'thr_staying', title: 'Staying work', projectId: 'prj_staying' };
+  journal.putThread(staying);
+  const opus = { providerId: 'claude', model: 'claude-opus-5-5' };
+  journal.putTurn(turn(echo, D0 + 1, usage(10, 5, 0, 0.25), opus));
+  // The same day, provider and model in a project that stays: one row joins both.
+  journal.putTurn(turn(staying, D0 + 2, usage(20, 5, 0, 0.5), opus));
+  journal.putTurn(turn(echo, D0 + DAY - 1, null, opus));
+  // On the edge, so the later day; a compaction that charged a cost and no token.
+  journal.putTurn(turn(echo, D0 + DAY, { ...usage(0, 0), costUsdEquivalent: 0.21 }, opus));
+  // Saved by an older core before execution snapshots: its thread names the provider and model.
+  journal.putTurn(turn(codex, D0 + DAY + 1, legacy(1000, 50, 800, 100), null));
+  journal.putTurn(turn(codex, D0 + 2 * DAY, usage(200, 50, 800), { providerId: 'codex', model: 'gpt-5' }));
+  // Never finished: counted neither before nor after.
+  journal.putTurn(turn(echo, null, usage(1000, 1000)));
+
+  const client = await harness.connect();
+  // Days, and edges a millisecond apart around the turns, so a kept time rounded at all would move a turn.
+  const fine = [D0, D0 + DAY - 1, D0 + DAY, D0 + DAY + 1, D0 + 3 * DAY];
+  const read = () => Promise.all([EDGES, fine].flatMap((edges) => [client.call('usage.history', { edges }), client.call('usage.history', { edges, providerId: 'codex' })]));
+  const before = await read();
+  expect(before[0]!.rows.map((row) => [row.bucket, row.providerId, row.model, row.turns, row.reported, row.estimated ?? 0])).toEqual([
+    [0, 'claude', 'claude-opus-5-5', 3, 2, 0],
+    [1, 'claude', 'claude-opus-5-5', 1, 1, 0],
+    [1, 'codex', 'gpt-legacy', 1, 1, 1],
+    [2, 'codex', 'gpt-5', 1, 1, 0],
+  ]);
+  expect(before[1]!.rows.map((row) => row.providerId)).toEqual(['codex', 'codex']);
+  expect(before[2]!.rows.map((row) => [row.bucket, row.turns])).toEqual([[0, 2], [1, 1], [2, 1], [3, 1], [3, 1]]);
+
+  await client.call('projects.remove', { projectId: echo.projectId! });
+  expect(journal.getThread(echo.id)).toBeNull();
+  expect(journal.getThread(codex.id)).toBeNull();
+  const after = await read();
+  expect(after.map((history) => history.rows)).toEqual(before.map((history) => history.rows));
+  expect(after.map((history) => history.threads.map((thread) => thread.threadId))).toEqual([[staying.id], [], [staying.id], []]);
+});
+
+test('purging a deleted conversation leaves usage.history as it was', async () => {
+  const { echo, codex } = await threads();
+  const journal = harness.core.journal;
+  const opus = { providerId: 'claude', model: 'claude-opus-5-5' };
+  journal.putTurn(turn(echo, D0 + 1, usage(10, 5, 0, 0.25), opus));
+  journal.putTurn(turn(echo, D0 + DAY + 2, null, opus));
+  journal.putTurn(turn(codex, D0 + 3, usage(7, 3)));
+
+  const client = await harness.connect();
+  const read = () => client.call('usage.history', { edges: EDGES });
+  const before = await read();
+  expect(before.rows.map((row) => [row.bucket, row.providerId, row.turns, row.reported])).toEqual([[0, 'claude', 1, 1], [0, 'codex', 1, 1], [1, 'claude', 1, 0]]);
+  await client.call('threads.remove', { threadId: echo.id });
+  // In the deleted list the conversation still counts.
+  expect((await read()).rows).toEqual(before.rows);
+  expect(journal.purgeDeletedThreads(Date.now())).toBe(1);
+  expect(journal.getThread(echo.id)).toBeNull();
+  const after = await read();
+  expect(after.rows).toEqual(before.rows);
+  expect(after.threads.map((thread) => thread.threadId)).toEqual([codex.id]);
+});
+
+test('a removed project keeps no title, prompt, answer, path or project id: only each finished turn\'s time, route and usage', async () => {
+  const client = await harness.connect();
+  const { threadId } = await echoThread(harness, client, 'Secret plans');
+  const thread = harness.core.threads.require(threadId);
+  const finished = client.next('turn.finished', (finishedTurn) => finishedTurn.threadId === threadId, 10000);
+  await client.call('turns.start', { threadId, prompt: 'whisper the launch codes' });
+  const done = await finished;
+  expect(harness.core.journal.listMessages(threadId).length).toBeGreaterThan(0);
+
+  await client.call('projects.remove', { projectId: thread.projectId! });
+  const rows = kept();
+  expect(rows.map((row) => ({ ...row, usage: JSON.parse(row.usage!) as unknown }))).toEqual([
+    { finished_at: done.finishedAt!, provider_id: 'echo', model: done.execution?.model ?? null, usage: done.usage },
+  ]);
+  const values = rows.flatMap((row) => Object.values(row)).map(String);
+  for (const secret of ['Secret plans', 'launch codes', thread.projectId!, thread.cwd, threadId, done.id]) {
+    expect(values.filter((value) => value.includes(secret))).toEqual([]);
+  }
+  expect(harness.core.journal.listMessages(threadId)).toEqual([]);
+});
+
+test('an incognito conversation leaves no usage behind, whether erased, purged at startup or swept with a project', async () => {
+  const client = await harness.connect();
+  const journal = harness.core.journal;
+  const account = (await client.call('accounts.list', {})).find((entry) => entry.providerId === 'echo')!;
+  const incognito = await client.call('threads.create', { projectId: harness.core.projects.drafts().id, providerId: 'echo', accountId: account.id, incognito: true });
+  const finished = client.next('turn.finished', (finishedTurn) => finishedTurn.threadId === incognito.id, 10000);
+  await client.call('turns.start', { threadId: incognito.id, prompt: 'nobody may know' });
+  await finished;
+  const now = Date.now();
+  const edges = [now - DAY, now + DAY];
+  expect((await client.call('usage.history', { edges })).rows).toHaveLength(1);
+  await client.call('threads.remove', { threadId: incognito.id });
+  expect((await client.call('usage.history', { edges })).rows).toEqual([]);
+
+  // What a core that stopped left: erased at the next start.
+  const { echo } = await threads();
+  const left: ThreadSummary = { ...echo, id: 'thr_left', incognito: true };
+  journal.putThread(left);
+  journal.putTurn(turn(left, D0 + 1, usage(1, 1)));
+  journal.purgeIncognitoThreads();
+  // An incognito conversation and its subagent caught in a project removal.
+  const root: ThreadSummary = { ...echo, id: 'thr_hidden', incognito: true };
+  const child: ThreadSummary = { ...echo, id: 'thr_hidden_child', parentThreadId: root.id };
+  journal.putThread(root);
+  journal.putThread(child);
+  journal.putTurn(turn(root, D0 + 2, usage(2, 2)));
+  journal.putTurn(turn(child, D0 + 3, usage(3, 3)));
+  await client.call('projects.remove', { projectId: echo.projectId! });
+  expect(journal.getThread(root.id)).toBeNull();
+  expect(kept()).toEqual([]);
+  expect((await client.call('usage.history', { edges: EDGES })).rows).toEqual([]);
+});
+
 test('usage.history reads a real echo turn', async () => {
   const client = await harness.connect();
   const { threadId } = await echoThread(harness, client);

@@ -189,9 +189,9 @@ function inflated(deflated: Uint8Array): Uint8Array {
   }
 }
 
-/** Why `TextSocket.connect` failed; `timedOut` when the server never answered the upgrade. */
+/** Why `TextSocket.connect` failed; `timedOut` when the server never answered the upgrade, `head` the answer's status line and headers when it refused. */
 export class UpgradeError extends Error {
-  constructor(message: string, readonly timedOut = false) { super(message); }
+  constructor(message: string, readonly timedOut = false, readonly head?: string) { super(message); }
 }
 
 export interface ConnectOptions {
@@ -339,12 +339,12 @@ export class TextSocket {
       let settled = false;
       /** The connection before it upgraded: a failed upgrade ends it, including one that connects after the timeout. */
       let raw: Bun.Socket | null = null;
-      const fail = (message: string, timedOut = false) => {
+      const fail = (message: string, timedOut = false, head?: string) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
         raw?.end();
-        reject(new UpgradeError(message, timedOut));
+        reject(new UpgradeError(message, timedOut, head));
       };
       const receive = (bytes: Uint8Array) => {
         let delivered = false;
@@ -394,7 +394,7 @@ export class TextSocket {
             }
             const head = new TextDecoder().decode(handshake.subarray(0, end));
             const status = head.split('\r\n', 1)[0] ?? '';
-            if (!/^HTTP\/1\.1 101\b/.test(status)) { fail(`the server refused the WebSocket upgrade: ${status}`); return; }
+            if (!/^HTTP\/1\.1 101\b/.test(status)) { fail(`the server refused the WebSocket upgrade: ${status}`, false, head); return; }
             if (/^sec-websocket-accept:\s*(\S+)/im.exec(head)?.[1] !== accept) { fail('the server answered the upgrade with a wrong Sec-WebSocket-Accept'); return; }
             const refused = upgradeRefusal(head);
             if (refused !== null) { fail(refused); return; }

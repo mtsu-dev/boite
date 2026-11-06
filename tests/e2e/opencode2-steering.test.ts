@@ -6,7 +6,7 @@ import { BrowserPage } from './lib/cdp.ts';
 import { pairingUrlOf, mintPairing } from './lib/core.ts';
 import { ensureProductionUi } from './lib/prod-ui.ts';
 
-test('OpenCode 2 tools stay folded while queued and immediate messages reach its running turn on desktop and phone', async () => {
+test('OpenCode 2 tools stay folded across automatic delivery and Send now interruption on desktop and phone', async () => {
   ensureProductionUi();
   const inheritedUi = process.env['BOITE_UI_DIR'];
   process.env['BOITE_UI_DIR'] = resolve('packages/ui/dist');
@@ -37,16 +37,21 @@ test('OpenCode 2 tools stay folded while queued and immediate messages reach its
       await page.screenshot(join(import.meta.dir, '.artifacts', `opencode2-${mobile ? 'phone' : 'desktop'}-queued.png`));
       writeFileSync(gate, 'ready');
       await page.waitFor('!document.querySelector("[data-testid=composer-queued]") && document.body.textContent.includes("Received: Check the parser first")');
+      const automatic = await client.call('threads.get', { threadId: thread.id });
+      expect(automatic.turns).toHaveLength(1);
+      expect(automatic.messages.filter(message => message.role === 'user').at(-1)?.turnId).toBe(turn.id);
       await page.type('[data-testid=composer-input]', 'Then check the error message');
       await page.click('[data-testid=composer-send]');
       await page.waitFor('document.querySelector("[data-testid=composer-send-now]")');
       await page.click('[data-testid=composer-send-now]');
-      await page.waitFor('!document.querySelector("[data-testid=composer-queued]") && document.body.textContent.includes("Received: Then check the error message")');
+      await page.waitFor('!document.querySelector("[data-testid=composer-queued]") && Array.from(document.querySelectorAll("[data-testid=message][data-role=assistant]")).some(message => message.textContent.includes("Then check the error message"))');
       const current = await client.call('threads.get', { threadId: thread.id });
       expect(current.status).toBe('running');
-      expect(current.turns).toHaveLength(1);
+      expect(current.turns).toHaveLength(2);
+      expect(current.turns[0]).toMatchObject({ id: turn.id, status: 'stopped' });
       expect(current.messages.filter(message => message.role === 'user')).toHaveLength(3);
-      expect(current.messages.filter(message => message.role === 'user').every(message => message.turnId === turn.id)).toBe(true);
+      expect(current.messages.filter(message => message.role === 'user').slice(0, 2).every(message => message.turnId === turn.id)).toBe(true);
+      expect(current.messages.filter(message => message.role === 'user').at(-1)?.turnId).toBe(current.turns[1]?.id);
       const tool = '[data-testid=tool-card]';
       await page.waitFor(`document.querySelector('${tool}[data-family=command][data-status=done]')`);
       expect(await page.evaluate(`document.querySelector('${tool} [data-testid=tool-toggle]')?.getAttribute('aria-expanded')`)).toBe('false');

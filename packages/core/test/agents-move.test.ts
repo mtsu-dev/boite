@@ -139,29 +139,40 @@ test('a bot wearing an imported picture takes it along: the target stores the by
   expect((await pcOwner.call('agents.snapshot', {})).profiles.find(p => p.id === other.id)?.avatar).toBe('');
 }, 60_000);
 
-test('a bot on its way to another machine joins no team meanwhile, and its archived team stays archived', async () => {
+test('a bot on its way to another machine joins no team meanwhile, and its archived team follows it', async () => {
   const { desk, owner, pcId } = await group();
   const { agent } = await makeAgent(desk, owner);
   await owner.call('client.preferences', { app: 'app-desktop-0001', language: 'en', experiments: ['teams'], labels: {} });
   const old = desk.core.teams.create({ name: 'Old crew', members: [agent.id] });
   desk.core.teams.archive({ teamId: old.id, archived: true });
   const request = desk.core.coordination.request.bind(desk.core.coordination);
-  let joined: unknown = null, restored: unknown = null;
+  let joined: unknown = null;
   desk.core.coordination.request = async (peer: CoordinationPeer, operation, payload) => {
-    if (operation === 'bot.move') {
-      joined = await thrown(Promise.resolve().then(() => desk.core.teams.create({ name: 'Crew', members: [agent.id] })));
-      restored = await thrown(Promise.resolve().then(() => desk.core.teams.archive({ teamId: old.id, archived: false })));
-    }
+    if (operation === 'bot.move') joined = await thrown(Promise.resolve().then(() => desk.core.teams.create({ name: 'Crew', members: [agent.id] })));
     return request(peer, operation, payload);
   };
   await owner.call('agents.move', { agentId: agent.id, machine: pcId });
-  expect(joined).toThrow(`${agent.name} is moving to another machine; a team holds bots of one machine`);
-  expect(restored).toThrow(`Old crew has members on or going to another machine: ${agent.name}; remove them before restoring it`);
-  // Once it left, the team comes back only without it.
-  expect(await thrown(Promise.resolve().then(() => desk.core.teams.archive({ teamId: old.id, archived: false })))).toThrow('remove them before restoring it');
-  desk.core.teams.removeMember({ teamId: old.id, botId: agent.id });
-  expect(desk.core.teams.archive({ teamId: old.id, archived: false })).toMatchObject({ archived: false, members: [] });
+  expect(joined).toThrow(`${agent.name} is moving to another machine; name it there once it arrived`);
+  expect(desk.core.teams.archive({ teamId: old.id, archived: false })).toMatchObject({ archived: false, members: [{ botId: agent.id, coreId: pcId }] });
   expect(desk.core.teams.list().map(team => team.name)).toEqual(['Old crew']);
+}, 60_000);
+
+test('an archived team whose member left before teams followed moves comes back: with the bot where its move went, without one nobody can find', async () => {
+  const { desk, owner, deskId, pcId } = await group();
+  const { agent } = await makeAgent(desk, owner);
+  await owner.call('client.preferences', { app: 'app-desktop-0001', language: 'en', experiments: ['teams'], labels: {} });
+  const gone = await makeAgent(desk, owner, { name: 'Gone' });
+  const old = desk.core.teams.create({ name: 'Old crew', members: [agent.id, gone.agent.id] });
+  desk.core.teams.archive({ teamId: old.id, archived: true });
+  await owner.call('agents.move', { agentId: agent.id, machine: pcId });
+  // As an older core left it: the member still reads as here, though only the move's receipt knows the bot.
+  const row = desk.core.journal.db.query('SELECT data FROM teams WHERE id = ?').get(old.id) as { data: string };
+  const stored = JSON.parse(row.data) as { members: { botId: string; coreId: string }[] };
+  for (const member of stored.members) member.coreId = deskId;
+  desk.core.journal.db.query('UPDATE teams SET data = ? WHERE id = ?').run(JSON.stringify(stored), old.id);
+  desk.core.journal.db.query('DELETE FROM agent_entities WHERE id = ?').run(gone.agent.id);
+  const restored = desk.core.teams.archive({ teamId: old.id, archived: false });
+  expect(restored.members.map(member => [member.botId, member.coreId])).toEqual([[agent.id, pcId]]);
 }, 60_000);
 
 test('the same request reaching the target twice makes one bot, and the same requestId answers the first move again', async () => {
@@ -191,7 +202,7 @@ test('the same request reaching the target twice makes one bot, and the same req
   expect(await thrown(request(pcPeer, 'bot.move', { ...sent, requestId: 'another' }))).toThrow(`already holds a bot ${agent.id}`);
 }, 60_000);
 
-test('a move is refused, with nothing changed here, for this machine, an unknown one, a team member, a turn in flight, a target without an account or with its own built-in', async () => {
+test('a move is refused, with nothing changed here, for this machine, an unknown one, a turn in flight, a target without an account or with its own built-in', async () => {
   const { desk, pc, owner, pcOwner, deskId, pcId, pcProject } = await group();
   const { agent, threadId } = await makeAgent(desk, owner, { projectIds: [`${pcId}/${pcProject.id}`] });
   await owner.call('agents.routine.save', { value: { agentId: agent.id, name: 'Round', prompt: 'Look around.', schedule: { kind: 'interval', everyMinutes: 30 }, enabled: true, nextAt: null, lastTurnId: null, lastScheduledAt: null } });
@@ -202,18 +213,6 @@ test('a move is refused, with nothing changed here, for this machine, an unknown
   unchanged();
   expect(await thrown(owner.call('agents.move', { agentId: agent.id, machine: 'nowhere' }))).toThrow('no machine nowhere in this group');
   unchanged();
-
-  // A team member stays, even once the Teams experiment is off; an archived team lets it go.
-  await owner.call('client.preferences', { app: 'app-desktop-0001', language: 'en', experiments: ['teams'], labels: {} });
-  const crew = desk.core.teams.create({ name: 'Crew', members: [agent.id] });
-  await owner.call('client.preferences', { app: 'app-desktop-0001', language: 'en', experiments: [], labels: {} });
-  const teamed = await owner.call('agents.move', { agentId: agent.id, machine: pcId }).catch(error => error as { message: string; rpc: { data: Record<string, unknown> } });
-  expect((teamed as { message: string }).message).toContain('belongs to the team "Crew"; remove it from it first');
-  expect((teamed as { rpc: { data: Record<string, unknown> } }).rpc.data).toMatchObject({ reason: 'team', teams: ['Crew'] });
-  unchanged();
-  await owner.call('client.preferences', { app: 'app-desktop-0001', language: 'en', experiments: ['teams'], labels: {} });
-  desk.core.teams.archive({ teamId: crew.id, archived: true });
-  expect(desk.core.teams.namesOf(agent.id)).toEqual([]);
 
   // A turn in flight: refused with its reason.
   driver!.restore();

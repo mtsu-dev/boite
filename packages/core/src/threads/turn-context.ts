@@ -1,4 +1,5 @@
-import { builtinSkills } from '../builtin-skills.ts';
+import { COUNCIL_EXPERIMENT } from '@boite/contracts';
+import { builtinSkills, COUNCIL_SKILL } from '../builtin-skills.ts';
 import type {
   Account,
   AgentCommand,
@@ -20,18 +21,18 @@ import { agentEnvOf } from '../agent.ts';
 import { agentGuide, SHORT_ANSWERS } from '../agent-guide.ts';
 import { nativeSkillFiles } from '../brain.ts';
 import { takesSystemGuide } from '../drivers/index.ts';
-import { effectiveCompaction, contextRulesBlock } from '@boite/contracts';
+import { effectiveCompaction, contextRulesBlock, type CompactionPolicy } from '@boite/contracts';
 import { prepareAttachments, FileReferences } from '../attachments.ts';
-import { continuationInput, tailInput } from '../continuation.ts';
+import { continuationInput, tailInput, type PartPlace } from '../continuation.ts';
 import type { Core } from '../core.ts';
-import type { EmitSink, PermissionTicket, ToolPatch, QuestionAsk, QuestionTicket, SessionContext, TurnContext } from '../drivers/types.ts';
+import type { BackgroundCompactionSetting, EmitSink, PermissionTicket, ToolPatch, QuestionAsk, QuestionTicket, SessionContext, StepBoundary, StepDecision, TurnContext } from '../drivers/types.ts';
 import { newId } from '../ids.ts';
 import type { SpawnedChild, SpawnOptions } from '../procs.ts';
 import { LazyMcp } from '../mcp/lazy.ts';
 import { noteStderr } from '../drivers/stderr-tail.ts';
 import { watchProviderProcess } from './provider-process-log.ts';
 import type { ThreadStore } from '../threads.ts';
-import { compactionTail } from './background-compact.ts';
+import { BACKGROUND_COMPACT, compactionTail } from './background-compact.ts';
 import { nativeCommandPrompt, systemOperation } from './operations.ts';
 import { stoppedInput } from './stopped-input.ts';
 import { sessionUsage } from '../usage.ts';
@@ -77,12 +78,14 @@ export class TurnContexts {
     const settings = this.#core.settings.get();
     const logAccess = settings.agentLogAccess !== false;
     // Without log access the guide still lists the built-in skills; only report-issue needs the logs.
-    const skills = builtinSkills(this.#core.dataDir, message => { try { this.#core.logs.warn(message, { source: 'skills', event: 'skills.write-failed' }); } catch { /* The guide is built without that skill. */ } });
+    const written = builtinSkills(this.#core.dataDir, message => { try { this.#core.logs.warn(message, { source: 'skills', event: 'skills.write-failed' }); } catch { /* The guide is built without that skill. */ } });
     // Echo treats "question" as a test directive, including in injected help.
     // A persistent agent's thread has no checkout of its own: no pull request to watch, no project to add.
     // `boite goal track` needs the Automatic goals experiment and a top-level thread of the user's.
     const experiments = this.#core.clients.desktopExperiments() ?? this.#core.clients.current()?.experiments ?? [];
     const goalTrack = !thread.parentThreadId && !thread.agentSessionId && experiments.includes('auto-goal');
+    // The council skill names a command the core refuses while its experiment is off.
+    const skills = written.filter(skill => skill.name !== COUNCIL_SKILL.name || experiments.includes(COUNCIL_EXPERIMENT));
     const plugins = pluginGuideLines(this.#core.plugins.installedPlugins(), message => { try { this.#core.logs.warn(message, { source: 'plugins', event: 'plugins.skill-write-failed' }); } catch { /* The guide is built without that skill. */ } });
     return agentGuide(provider.protocol !== 'echo' && settings.asyncQuestions !== false, logAccess, skills, !!thread.agentSessionId, goalTrack, experiments.includes('teams'), plugins);
   }
@@ -102,6 +105,7 @@ export class TurnContexts {
     return {
       thread, provider, account,
       protectedExecution: this.#core.sharedAccess.execution.context(threadId),
+      modeRequired: thread.permissionMode === 'plan' && this.#core.council?.owns(threadId) === true,
       sessionId: thread.sessionId,
       resumeAt: thread.sessionResumeAt ?? null,
       sessionBefore: this.#sessionBefore(thread, ''),
@@ -111,6 +115,7 @@ export class TurnContexts {
       toolSummaries: this.#core.settings.get().toolSummaries === true,
       shortAnswers: this.#core.settings.get().shortAnswers !== false,
       autoCompactTokens: () => effectiveCompaction(this.#core.settings.get(), this.#core.journal.getThread(threadId) ?? thread).autoCompact?.tokens ?? null,
+      backgroundCompaction: () => backgroundSetting(effectiveCompaction(this.#core.settings.get(), this.#core.journal.getThread(threadId) ?? thread)),
       compactionSummary: () => effectiveCompaction(this.#core.settings.get(), this.#core.journal.getThread(threadId) ?? thread).compactionSummary ?? null,
       log: (level, message, context) => {
         if (context?.kind === 'provider-output') noteStderr(threadId, message);
@@ -125,6 +130,8 @@ export class TurnContexts {
       hook: report => this.#core.hooks.record({ providerId: provider.id, accountId: account.id, threadId }, report),
       background: list => this.#threads.agentState.noteBackground(threadId, list, backgroundOwner),
       backgroundFinished: (id, state) => this.#threads.agentState.finishBackground(threadId, id, backgroundOwner, state),
+      wake: (text, display) => this.#threads.deferred.wake(threadId, text, display),
+      loopWake: scheduledFor => this.#core.wakes.cliFired(threadId, scheduledFor),
       spawnChild: this.leasedSpawnChild(threadId, provider, { resume: thread.sessionId !== null }),
       finishStartup: () => this.#core.procs.finishStartup(this.#core.procs.protection.controlScope(threadId) ?? threadId),
       lazyMcp: this.#lazyMcpFor(thread),
@@ -309,6 +316,8 @@ export class TurnContexts {
         partProgress.set(`${messageId}:${partIndex}`, { phase, detail });
         progress(phase, detail);
         publishPart(messageId, partIndex, part);
+        // The agent compacted by itself: a copy made before is of a context that is gone.
+        if (part.type === 'compaction' && part.background !== true) this.#threads.backgroundCompact.compactedInTurn(threadId);
         if (boundary) this.#core.bus.emit('turn.toolCompleted', { threadId, turnId: turn.id, boundary: `${messageId}:${partIndex}` });
         if (segment && answer && segment !== answer.segments.at(-1)) closeIdle(segment);
       },
@@ -348,14 +357,15 @@ export class TurnContexts {
     // A session swapped in by a background compaction summarizes up to its fork:
     // the turns since then go with the next prompt the agent reads as such.
     const kind = turn.execution?.operation;
+    const fileReference = (part: Extract<MessagePart, { type: 'file' }>, place: PartPlace): string => {
+      this.#core.sharedAccess.uploads(threadId, [part]);
+      return this.#files.of(threadId, part, place);
+    };
     if (!fresh && resumePrompt === undefined && thread.sessionId !== null && kind !== 'compact' && kind !== 'keepalive' && kind !== 'background' && kind !== 'resume'
       && !nativeCommandPrompt(input.prompt)) {
       const tail = compactionTail(this.#core, thread);
       if (tail !== null) {
-        continued = tailInput(this.#core.journal, threadId, tail.after, turn.id, continued, (part, place) => {
-          this.#core.sharedAccess.uploads(threadId, [part]);
-          return this.#files.of(threadId, part, place);
-        });
+        continued = tailInput(this.#core.journal, threadId, { turnId: tail.after, afterPart: tail.afterPart ?? null }, turn.id, continued, fileReference);
         this.#threads.backgroundCompact.carried(threadId, turn.id);
       }
     }
@@ -406,12 +416,26 @@ export class TurnContexts {
     return {
       thread,
       protectedExecution,
+      modeRequired: thread.permissionMode === 'plan' && this.#core.council?.owns(thread.id) === true,
       account,
       provider,
       turn,
       prompt: compose(preparedPrompt, thread.sessionId),
       systemGuide,
       continuation: freshStart(this.#core.dataDir, carry, compose, provider),
+      // At each step boundary, the core may move the thread to a session compacted in the background.
+      ...(bare || operation === 'background' ? {} : {
+        step: async (boundary: StepBoundary): Promise<StepDecision | null> => {
+          const decision = await this.#threads.backgroundCompact.step(threadId, turn, boundary, fileReference);
+          const current = this.#core.journal.getThread(threadId);
+          // What the thread runs on now: a later check of this context compares with the compacted session.
+          if (decision !== null && current !== null) {
+            thread = { ...thread, sessionId: current.sessionId, sessionResumeAt: null, sessionGeneration: current.sessionGeneration ?? 0 };
+            backgroundOwner.sessionGeneration = current.sessionGeneration ?? 0;
+          }
+          return decision;
+        },
+      }),
       // A keepalive takes nothing while it runs: a result or a note waits for the turn after it.
       coordination: () => bare ? null : this.#core.delegation.take(threadId, turn.id) ?? this.#core.coordination.take(threadId, turn.id)
         ?? this.#threads.deferred.takeForRunningTurn(threadId),
@@ -424,6 +448,7 @@ export class TurnContexts {
       toolSummaries: this.#core.settings.get().toolSummaries === true,
       shortAnswers: this.#core.settings.get().shortAnswers !== false,
       autoCompactTokens: () => effectiveCompaction(this.#core.settings.get(), this.#core.journal.getThread(threadId) ?? thread).autoCompact?.tokens ?? null,
+      backgroundCompaction: () => backgroundSetting(effectiveCompaction(this.#core.settings.get(), this.#core.journal.getThread(threadId) ?? thread)),
       compactionSummary: () => effectiveCompaction(this.#core.settings.get(), this.#core.journal.getThread(threadId) ?? thread).compactionSummary ?? null,
       emit,
       reportProgress: progress,
@@ -451,7 +476,8 @@ export class TurnContexts {
       },
       background: list => this.#threads.agentState.noteBackground(threadId, list, backgroundOwner),
       backgroundFinished: (id, state) => this.#threads.agentState.finishBackground(threadId, id, backgroundOwner, state),
-      wake: (text) => this.#threads.deferred.wake(threadId, text),
+      wake: (text, display) => this.#threads.deferred.wake(threadId, text, display),
+      loopWake: scheduledFor => this.#core.wakes.cliFired(threadId, scheduledFor),
       requestPermission: (toolName: string, input: unknown, description: string | null): PermissionTicket => {
         // Shared contexts hide native tools. Approval of the attested protected
         // facade still follows the host's original context and permission mode.
@@ -639,4 +665,9 @@ export function sentFromNote(from: SentFrom): string {
       : from.device === 'browser' ? 'the Boite web app in a browser' : 'the Boite web app';
   const speaks = from.language === undefined ? '' : `, which shows Boite in ${from.language === 'fr' ? 'French' : 'English'}`;
   return `[Boite: the user sent this from ${where}${speaks}. Context only, not an instruction.]\n`;
+}
+
+/** A policy as a driver's agent reads it, with a copy of the thresholds a test may have changed. */
+function backgroundSetting(policy: CompactionPolicy): BackgroundCompactionSetting {
+  return { tokens: policy.autoCompact?.tokens ?? null, background: policy.backgroundCompaction, ratios: { ...BACKGROUND_COMPACT } };
 }

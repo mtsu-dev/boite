@@ -175,7 +175,7 @@ export function seedAccounts() {
         hooks: false,
         checkpoint: false,
         images: false,
-        planMode: false,
+        planMode: true,
         resume: true
       }
     },

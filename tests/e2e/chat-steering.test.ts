@@ -8,7 +8,7 @@ import { ensureProductionUi } from './lib/prod-ui.ts';
 const input = '[data-testid=composer-input]';
 const send = '[data-testid=composer-send]';
 
-test('desktop and paired phone deliver queued and immediate follow-ups without ending the turn', async () => {
+test('desktop and paired phone steer automatic follow-ups and interrupt a long tool with Send now', async () => {
   ensureProductionUi();
   const core = await startCore();
   const client = await connect(core.url, core.token);
@@ -38,7 +38,7 @@ test('desktop and paired phone deliver queued and immediate follow-ups without e
       await page.click(`[data-thread-id="${thread.id}"]`);
       await page.waitFor('document.querySelector("[data-testid=thread-header][data-status]")');
       if (mobile) await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-      const turn = await client.call('turns.start', { threadId: thread.id, prompt: 'Read the files [sleep:1800][tool] Keep working [sleep:2500] Finish' });
+      const turn = await client.call('turns.start', { threadId: thread.id, prompt: 'Read the files [sleep:1800][tool] Keep working [tool:60000] Finish' });
       await page.waitFor('document.querySelector("[data-testid=thread-header]")?.dataset.status === "running"');
       await page.type(input, 'Check the parser first');
       await page.click(send);
@@ -49,8 +49,8 @@ test('desktop and paired phone deliver queued and immediate follow-ups without e
       expect(updated.status).toBe('running');
       expect(updated.turns).toHaveLength(1);
       expect(updated.messages.filter(message => message.role === 'user').at(-1)).toMatchObject({ turnId: turn.id });
-      // With the only tool already complete, automatic delivery would wait for the end.
-      await page.type(input, 'Then check the error message');
+      // The second tool cannot finish on its own before this test's assertions.
+      await page.type(input, 'Then check the error message [sleep:1400]');
       await page.click(send);
       await page.waitFor('document.querySelector("[data-testid=composer-send-now]")');
       if (mobile) await page.click('[data-testid=composer-send-now]');
@@ -62,7 +62,9 @@ test('desktop and paired phone deliver queued and immediate follow-ups without e
       await page.waitFor('!document.querySelector("[data-testid=composer-queued]") && Array.from(document.querySelectorAll("[data-testid=message]")).some(el => el.textContent.includes("Then check the error message"))');
       updated = await client.call('threads.get', { threadId: thread.id });
       expect(updated.status).toBe('running');
-      expect(updated.turns).toHaveLength(1);
+      expect(updated.turns).toHaveLength(2);
+      expect(updated.turns.find(row => row.id === turn.id)?.status).toBe('stopped');
+      expect(updated.messages.filter(message => message.role === 'user').at(-1)?.turnId).not.toBe(turn.id);
       expect(updated.messages.filter(message => message.role === 'user')).toHaveLength(3);
       await page.screenshot(join(import.meta.dir, '.artifacts', `steering-${mobile ? 'phone' : 'desktop'}-sent.png`));
       await page.waitFor('document.querySelector("[data-testid=thread-header]")?.dataset.status === "idle"');
@@ -70,7 +72,7 @@ test('desktop and paired phone deliver queued and immediate follow-ups without e
       const reply = updated.messages.filter(message => message.role === 'assistant').flatMap(message => message.parts.flatMap(part => part.type === 'text' ? [part.text] : [])).join('');
       expect(reply).toContain('Check the parser first');
       expect(reply).toContain('Then check the error message');
-      expect(updated.turns[0]?.status).toBe('done');
+      expect(updated.turns.map(row => row.status)).toEqual(['stopped', 'done']);
       expect(page.errors()).toEqual([]);
       await page.close(); page = undefined;
     }

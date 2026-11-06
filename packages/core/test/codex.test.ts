@@ -11,6 +11,7 @@ import { readCodexQuota } from '../src/drivers/codex.ts';
 import { codexQuotaDetails } from '../src/quota-details.ts';
 import { consumeCodexReset } from '../src/drivers/codex/models.ts';
 import { CodexRateLimits } from '../src/drivers/codex/rate-limits.ts';
+import { readOnlyEnv } from '../src/drivers/codex/protocol.ts';
 import type { CodexRpc } from '../src/drivers/codex/rpc.ts';
 import { nativeScopeOf } from '../src/platform/scoped.ts';
 import { memoryLimitOfJob, cpuRateOfGlobalJob } from '../src/platform/windows/jobs.ts';
@@ -45,7 +46,7 @@ test('native collaboration is journalled and appears in Team without using Boite
   ]);
 });
 
-test('Send now during Codex startup reaches its native turn once without a tool call', async () => {
+test('Send now during Codex startup stops the old turn and starts one new native turn before output', async () => {
   const client = await startCore();
   const threadId = await codexThread(client);
   process.env['CODEX_FAKE_SLOW_START'] = '250';
@@ -57,16 +58,20 @@ test('Send now during Codex startup reaches its native turn once without a tool 
   await client.call('composer.put', { section: 'inputs', id: threadId, expectedRevision: 0, sendNow: true,
     value: { input: { text: 'still typing', attachments: [], paused: false,
       queued: [{ id: 'codex-startup-followup', text: 'also check the bots', attachments: [] }] } } });
-  await waitFor(() => fakeLog().includes('turn/steer codex-fake-turn-1 also check the bots'));
+  await waitFor(() => harness!.core.journal.getTurn(turn.id)?.status === 'stopped');
   await waitFor(() => harness!.core.composer.storage.get('inputs', threadId).value?.input.queued.length === 0);
-  expect(countLogLines(fakeLog(), 'turn/steer codex-fake-turn-1 also check the bots')).toBe(1);
-  expect(harness!.core.journal.listTurns(threadId)).toHaveLength(1);
-  expect(harness!.core.journal.getTurn(turn.id)?.status).toBe('running');
+  await waitFor(() => fakeLog().split('\n').filter(line => line.startsWith('turn/start ')).length === 1);
+  expect(fakeLog()).not.toContain('turn/steer');
+  const turns = harness!.core.journal.listTurns(threadId);
+  expect(turns).toHaveLength(2);
+  expect(turns[1]?.status).toBe('running');
+  expect(harness!.core.journal.listMessages(threadId).filter(message => message.role === 'user').at(-1)).toMatchObject({ turnId: turns[1]!.id, parts: [{ type: 'text', text: 'also check the bots' }] });
   expect(harness!.core.composer.storage.get('inputs', threadId).value?.input.text).toBe('still typing');
   expect(fakeLog()).not.toContain('waiting for interrupt');
   writeFileSync(outputGate, 'ready');
-  await waitFor(() => fakeLog().includes('waiting for interrupt'));
-  await client.call('turns.stop', { threadId });
+  await waitFor(() => harness!.core.journal.getTurn(turns[1]!.id)?.status === 'done');
+  expect(fakeLog().split('\n').filter(line => line.startsWith('turn/start '))).toHaveLength(1);
+  expect(harness!.core.journal.listMessages(threadId).flatMap(message => message.parts).some(part => part.type === 'tool')).toBe(false);
 });
 
 test('coordination steers the current Codex turn without creating a user turn', async () => {
@@ -2151,6 +2156,20 @@ describe('native Codex fork', () => {
     expect(fakeLog()).toContain(`thread/resume ${fork.sessionId}`);
     expect(fakeLog().split('\n').filter(line => line.includes('"mcp_servers"'))).toHaveLength(1);
   });
+  test('a fork made through the subscription proxy resumes under the proxy provider', async () => {
+    const client = await startCore();
+    const threadId = await codexThread(client);
+    // The gateway's address reaches the driver in the account's environment, where `subscriptionProxyEnv` puts it.
+    const provider = harness!.core.providers.require('codex-fake');
+    for (const profile of Object.values(provider.profiles)) if (profile) profile.env = { ...profile.env, BOITE_SUBSCRIPTION_PROXY_URL: 'http://127.0.0.1:9/v1' };
+    const first = await completed(client, threadId, 'First');
+    await completed(client, threadId, 'Second');
+    await sourceIdle(threadId);
+    const fork = await client.call('threads.fork', { threadId, messageId: first.id });
+    await client.call('threads.subscribe', { threadId: fork.id });
+    await completed(client, fork.id, 'Fork continuation');
+    expect(fakeLog()).toContain(`thread/resume ${fork.sessionId}`);
+  });
   test('native fork failure leaves source and journal thread count unchanged', async () => {
     const client = await startCore(); const threadId = await codexThread(client);
     const reply = await completed(client, threadId, 'First');
@@ -2393,4 +2412,13 @@ describe('native Codex rewind', () => {
     } finally { turns.mockRestore(); messages.mockRestore(); }
   });
 
+});
+
+test('a read-only session on Windows leaves the Store off its PATH only when the Store holds its pwsh', () => {
+  const store = 'C:\\Users\\Me\\AppData\\Local\\Microsoft\\WindowsApps';
+  const env = { Path: `C:\\Windows\\system32;${store};${store}\\Microsoft.PowerShell_8wekyb3d8bbwe;C:\\Tools`, HOME: 'home' };
+  expect(readOnlyEnv(env, 'win32', () => `${store}\\pwsh.exe`)).toEqual({ Path: 'C:\\Windows\\system32;C:\\Tools', HOME: 'home' });
+  expect(readOnlyEnv(env, 'win32', () => 'C:\\Program Files\\PowerShell\\7\\pwsh.exe')).toBe(env);
+  expect(readOnlyEnv(env, 'win32', () => null)).toBe(env);
+  expect(readOnlyEnv(env, 'linux', () => `${store}\\pwsh.exe`)).toBe(env);
 });

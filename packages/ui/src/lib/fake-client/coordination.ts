@@ -217,6 +217,30 @@ function relationOf(ctx: FakeContext, threadId: ThreadId, other: AgentAddress): 
   return self.projectId === peer.projectId ? 'project' : 'other-project';
 }
 
+/**
+ * As the core's `requests.ofThread`: what this thread asked, and on the
+ * Contacts bot's thread what it forwarded and what it settled, oldest first.
+ */
+export function fakeThreadRequests(ctx: FakeContext, threadId: ThreadId): ContactRequest[] {
+  const state = fakeContacts(ctx);
+  if (!state) return [];
+  const self = ctx.identity.coreId;
+  const bot = ctx.agents.builtinThread('contacts');
+  const own = (request: ContactRequest) => request.direction === 'out' && request.from.coreId === self && request.from.threadId === threadId;
+  const shown = (request: ContactRequest) => request.direction === 'out' ? request.forwardedAt !== undefined && !own(request) : request.decidedBy === 'bot';
+  const at = (request: ContactRequest) => own(request) ? request.createdAt : request.direction === 'out' ? request.forwardedAt! : request.decidedAt ?? request.createdAt;
+  return structuredClone(state.requests.filter(request => own(request) || (threadId === bot && shown(request))).sort((a, b) => at(a) - at(b)).slice(-50));
+}
+
+/** Tells the threads that show a request it moved: the one that asked, and the Contacts bot's. */
+export function fakeRequestsChanged(ctx: FakeContext): void {
+  const threads = new Set<string>();
+  for (const request of fakeContacts(ctx)?.requests ?? []) if (request.direction === 'out' && request.from.coreId === ctx.identity.coreId) threads.add(request.from.threadId);
+  const bot = ctx.agents.builtinThread('contacts');
+  if (bot) threads.add(bot);
+  for (const threadId of threads) ctx.emit('collaboration.changed', { threadId });
+}
+
 function coordinationView(ctx: FakeContext, threadId: ThreadId): CoordinationView {
   const config = coordinationConfig(ctx, threadId);
   const letters = ctx.letters.get(threadId) ?? [];
@@ -228,7 +252,8 @@ function coordinationView(ctx: FakeContext, threadId: ThreadId): CoordinationVie
     sent: letters.filter(letter => letter.from.coreId === ctx.identity.coreId && letter.from.threadId === threadId && letter.createdAt > ctx.now() - 3_600_000).length,
     sendLimit: null,
     wakes: 0,
-    wakeLimit: null
+    wakeLimit: null,
+    requests: fakeThreadRequests(ctx, threadId)
   };
 }
 

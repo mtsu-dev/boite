@@ -66,7 +66,7 @@ export interface LiveTally { threads: Tally; bots: Tally }
  * archived. A bot's own thread counts apart. A team or debate room is neither.
  */
 export function countKind(thread: ThreadSummary, project: Project | undefined, parent: ThreadSummary | undefined): CountKind | null {
-  if (thread.archived || thread.incognito || thread.teamId || thread.debateId) return null;
+  if (thread.archived || thread.incognito || thread.teamId || thread.councilId) return null;
   if (thread.agentSessionId) return 'bots';
   if (!projectThread(thread, parent)) return null;
   return project && project.archived !== true ? 'threads' : null;
@@ -132,7 +132,7 @@ export { NEEDS_CARDS as INBOX_CARDS } from './inbox-fit';
 
 /** The threads a list of the user's work shows: no archive, no incognito, no team or debate room. */
 export function listed(thread: ThreadSummary): boolean {
-  return !thread.archived && !thread.incognito && !thread.teamId && !thread.debateId;
+  return !thread.archived && !thread.incognito && !thread.teamId && !thread.councilId;
 }
 
 export interface InboxLists<M> {

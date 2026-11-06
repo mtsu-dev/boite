@@ -32,7 +32,7 @@ export function panelAvailable(store: Store, kind: SurfaceKind): boolean {
 /** The terminal drawer: the owner's, in a thread that runs an agent, unless this device put it away. */
 export function terminalOffered(store: Store): boolean {
   const thread = store.openThread;
-  return !!thread && store.owner && !thread.teamId && !thread.debateId && work.shows('header.terminal');
+  return !!thread && store.owner && !thread.teamId && !thread.councilId && work.shows('header.terminal');
 }
 
 /** The kinds a list offers: what this device may open and did not put away. */

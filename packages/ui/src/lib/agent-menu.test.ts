@@ -176,14 +176,14 @@ test('Move to a machine opens the group\'s machines where the menu stood, the of
   // A pick leads to the same dialog as the Machine row of its settings.
   const real = first.client.call.bind(first.client);
   vi.spyOn(first.client, 'call').mockImplementation(async (method, params) => {
-    if (method === 'agents.move') throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'agents.move: Operator belongs to the team "Ops"; remove it from it first, a team holds bots of one machine', data: { field: 'agentId', reason: 'team' } });
+    if (method === 'agents.move') throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'agents.move: Operator has a turn in flight; wait for it to end', data: { field: 'agentId', reason: 'busy' } });
     return real(method, params);
   });
   picker.onpick('second');
   await vi.waitFor(() => expect(confirm.current?.title).toBe(fill(strings.agents.move.title, { name: 'Operator', machine: 'Second' })));
   // A refusal is told on the page on screen, not on the bot's machine.
   confirm.answer(true);
-  await vi.waitFor(() => expect(second.store.error).toContain('belongs to the team'));
+  await vi.waitFor(() => expect(second.store.error).toContain('has a turn in flight'));
   expect(first.store.error).toBeNull();
 });
 

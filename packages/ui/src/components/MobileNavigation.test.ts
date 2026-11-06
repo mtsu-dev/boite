@@ -195,7 +195,7 @@ test('the Inbox tab lists what waits on the user in Recent\'s order, newest wait
   client = new FakeClient({ delayMs: 0 });
   store = new Store(); store.attach(client); await store.connect();
   workspace.machines = [{ id: 'local', label: 'Local', store }]; workspace.active = store;
-  const [older, newer, busy, quiet] = store.threads.filter(thread => !thread.archived && !thread.incognito && !thread.teamId && !thread.debateId && !thread.parentThreadId);
+  const [older, newer, busy, quiet] = store.threads.filter(thread => !thread.archived && !thread.incognito && !thread.teamId && !thread.councilId && !thread.parentThreadId);
   const rest = { status: 'idle' as const, pinned: false, openQuestions: 0, subagentQuestions: [] as NonNullable<ThreadSummary['subagentQuestions']>, unread: false };
   store.pendingQuestions = []; store.pendingPermissions = [];
   store.threads = store.threads.map(thread => thread.id === older!.id ? { ...thread, ...rest, status: 'waiting', runningSince: 1_000, lastUserMessageAt: 1_000 }
@@ -373,7 +373,7 @@ test("phone Recent lists the sidebar's rows: a bot's own thread lives under Bots
   store = new Store(); store.attach(client); await store.connect();
   workspace.machines = [{ id: 'local', label: 'Local', store }]; workspace.active = store;
   workspace.view = 'recent';
-  const [pinned, asking, rest] = store.threads.filter(thread => !thread.archived && !thread.incognito && !thread.teamId && !thread.debateId && !thread.parentThreadId && !thread.agentSessionId && thread.projectId !== null);
+  const [pinned, asking, rest] = store.threads.filter(thread => !thread.archived && !thread.incognito && !thread.teamId && !thread.councilId && !thread.parentThreadId && !thread.agentSessionId && thread.projectId !== null);
   const calm = { status: 'idle' as const, pinned: false, unread: false, openQuestions: 0, subagentQuestions: [] as NonNullable<ThreadSummary['subagentQuestions']>, backgroundWork: null };
   const now = Date.now();
   store.threads = [
@@ -418,7 +418,7 @@ test("a project card's fold says how many threads at work it hides, as the deskt
   workspace.view = 'projects';
   // Another test left this project's fold open.
   moreRows.open = [];
-  const model = store.threads.find(thread => !thread.archived && !thread.incognito && !thread.teamId && !thread.debateId && !thread.parentThreadId && !thread.agentSessionId && thread.projectId !== null)!;
+  const model = store.threads.find(thread => !thread.archived && !thread.incognito && !thread.teamId && !thread.councilId && !thread.parentThreadId && !thread.agentSessionId && thread.projectId !== null)!;
   const calm = { pinned: false, unread: false, openQuestions: 0, subagentQuestions: [] as NonNullable<ThreadSummary['subagentQuestions']>, backgroundWork: null, archived: false };
   const now = Date.now();
   // Eight at work and two at rest: six fit the budget, so two at work fold with the two at rest.

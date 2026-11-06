@@ -203,7 +203,7 @@ export class ComposerSync {
     queueMicrotask(() => this.#flushSoon(true));
   }
 
-  /** Send now: the core skips its wait for a tool boundary. */
+  /** Send now: the core interrupts the active turn and delivers the queue. */
   async sendNow(threadId: string): Promise<void> {
     const key = entryKey('inputs', threadId);
     this.#dirty.add(key);

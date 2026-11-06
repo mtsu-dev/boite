@@ -38,6 +38,7 @@ import { eraseIncognitoRoot } from './threads/incognito.ts';
 import { removeTranscripts } from './threads/transcript-purge.ts';
 import { ThreadStore } from './threads.ts';
 import { DraftPreparations } from './threads/draft-preparations.ts';
+import { ScheduledWakes } from './threads/scheduled-wakes.ts';
 import { AttachmentUploads } from './attachment-uploads.ts';
 import { scheduleThreadDeletionRetention } from './threads/deletion-retention.ts';
 import { scheduleDoneRetention } from './threads/done-retention.ts';
@@ -60,7 +61,7 @@ import { Telemetry } from './telemetry.ts';
 import { HarnessUpdates } from './providers/updates.ts';
 import { Coordination } from './coordination.ts';
 import { TeamStore } from './teams/store.ts';
-import { Debates } from './debates/store.ts';
+import { CouncilStore } from './council/store.ts';
 import { GroupStore, type NetworkSink } from './group.ts';
 import { ContactStore } from './contacts/store.ts';
 import { SharedProjects } from './contacts/projects.ts';
@@ -181,6 +182,8 @@ export class Core {
   readonly procs: ProcRegistry;
   readonly scheduler: Scheduler;
   readonly threads: ThreadStore;
+  /** The wakes agents schedule for themselves with ScheduleWakeup (`threads/scheduled-wakes.ts`). */
+  readonly wakes: ScheduledWakes;
   readonly drafts: DraftPreparations;
   readonly composer: Composer;
   readonly attachmentUploads: AttachmentUploads;
@@ -209,8 +212,8 @@ export class Core {
   readonly coordination: Coordination;
   /** Teams of bots (`docs/teams.md`). */
   readonly teams: TeamStore;
-  /** Debates between AIs (`docs/debates.md`). */
-  readonly debates: Debates;
+  /** Models of several providers review one request alone (`docs/council.md`). */
+  readonly council: CouncilStore;
   /** The machines this core trusts as one owner's, and what it hands their clients. */
   readonly group: GroupStore;
   /** Other owners' Boites linked for agent work on the projects each side opens. */
@@ -400,6 +403,7 @@ export class Core {
     this.threads = new ThreadStore(this);
     // Read before any recovery writes, the team and workflow ones included: whether the previous core died at work within the hour.
     this.threads.autoContinue.previousRunCut();
+    this.wakes = new ScheduledWakes(this, this.threads);
     this.drafts = new DraftPreparations(this);
     this.attachmentUploads = new AttachmentUploads(this.dataDir);
     this.quotas = new QuotaStore(this);
@@ -443,7 +447,7 @@ export class Core {
 
     this.workforce = new AgentStore(this);
     this.teams = new TeamStore(this);
-    this.debates = new Debates(this);
+    this.council = new CouncilStore(this);
     this.pullRequests = new PullRequests(this);
     this.linkedPullRequests = new LinkedPullRequests(this, (threadId, url, refresh) => this.pullRequests.detail(threadId, url, refresh));
     this.pullRequestWatches = new PullRequestWatches(this, (threadId, args) => this.pullRequests.gh(threadId, args), options.pullRequestWatches);
@@ -473,6 +477,8 @@ export class Core {
     try { this.teams.recover(); } catch (error) { this.log('warn', `teams recovery failed: ${String(error)}`); }
     // After recovery: a resume planned before the previous core stopped, a usage limit's among them, goes on.
     this.threads.resumes.start();
+    // A wake an agent scheduled before the previous core stopped is this core's to open.
+    this.wakes.start();
     // Watched limits are read on their own, so an alert reaches a phone with no window open.
     this.quotas.alerts.start();
     // What a dead core cut, and any resume planned before it died, goes on (`threads/auto-continue.ts`).
@@ -569,7 +575,7 @@ export class Core {
     this.#stopping = true;
     this.delegation.beginClose();
     this.workflows.beginClose();
-    this.debates.beginClose();
+    this.council.beginClose();
     this.coordination.beginClose();
     this.teams.close();
     void this.mergedPrArchive.close();
@@ -586,6 +592,7 @@ export class Core {
     this.threads.backgroundCompact.close();
     this.threads.cacheKeepalive.close();
     this.threads.resumes.close();
+    this.wakes.close();
     this.threads.autoContinue.close();
     this.quotas.alerts.close();
     this.#drainPromise = this.agentRuntime.close().then(() => this.scheduler.drain(timeoutMs));
@@ -621,6 +628,7 @@ export class Core {
     this.threads.backgroundCompact.close();
     this.threads.cacheKeepalive.close();
     this.threads.resumes.close();
+    this.wakes.close();
     this.threads.autoContinue.close();
     await this.threads.codeCheckpoints.close();
     await this.agentRuntime.close();
@@ -638,7 +646,7 @@ export class Core {
     await this.drain();
     await this.delegation.close();
     await this.workflows.close();
-    this.debates.close();
+    this.council.close();
     await this.coordination.close();
     await this.group.close();
     await this.contacts.close();

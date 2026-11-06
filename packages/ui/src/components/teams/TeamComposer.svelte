@@ -11,7 +11,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { ArrowUp, AtSign, Lock, LoaderCircle, UsersRound, X } from '@lucide/svelte';
-  import { routeTeamPost, TEAM_OWNER, TEAM_POST_MAX, type Team } from '@boite/contracts';
+  import { routeTeamPost, TEAM_OWNER, TEAM_POST_MAX, type Team, type TeamMember } from '@boite/contracts';
   import { errorText } from '../../lib/errors';
   import { hasKeyboard } from '../../lib/live-input';
   import { separator, type MenuItem } from '../../lib/menu';
@@ -79,15 +79,17 @@
     return fill(labels.wakes, { names: listNames(woken.map(party => partyName(team, party))) });
   });
 
+  /** A bot of another machine says which, beside its name. */
+  const machineHint = (member: TeamMember) => (member.machine ? { hint: member.machine } : {});
   const audienceItems = $derived<MenuItem[]>([
     { id: 'team', label: labels.everyoneReads, glyph: UsersRound, active: !recipient },
     separator(),
-    ...team.members.map(member => ({ id: member.key, label: fill(labels.onlyReads, { name: member.name }), glyph: Lock, active: recipient?.key === member.key })),
+    ...team.members.map(member => ({ id: member.key, label: fill(labels.onlyReads, { name: member.name }), glyph: Lock, active: recipient?.key === member.key, ...machineHint(member) })),
   ]);
   const mentionItems = $derived<MenuItem[]>([
     { id: 'everyone', label: labels.everyone, hint: labels.everyoneLabel },
     separator(),
-    ...team.members.map(member => ({ id: member.key, label: `@${member.name.trim()}` })),
+    ...team.members.map(member => ({ id: member.key, label: `@${member.name.trim()}`, ...machineHint(member) })),
   ]);
 
   function pickAudience(id: string) {

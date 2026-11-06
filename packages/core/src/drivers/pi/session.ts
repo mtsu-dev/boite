@@ -27,6 +27,7 @@ import { noteReady } from '../driver-log.ts';
 import { SessionRetention } from '../session-retention.ts';
 import { endOnClose, releaseChild } from '../session-close.ts';
 import {protectedPi} from './protected.ts';
+import { COMPACTION_ENV, extensionWriter, isBackgroundCompaction, writeCompactionExtension } from './compaction.ts';
 
 type Timer = ReturnType<typeof setTimeout>;
 
@@ -91,11 +92,17 @@ export class PiSession {
     readonly key: string,
     private warmMs: number,
     private readonly onEnded: (session: PiSession) => void,
+    /** `BOITE_COMPACTION` for this process, null for none (`compaction.ts`). */
+    readonly compaction: string | null = null,
   ) {}
 
-  /** Reusable only while the process is up and the turn asks for the very same setup. */
-  usable(key: string, warmMs: number): boolean {
-    return !this.#ended && !this.#closing && this.key === key && this.#retention.reusable(warmMs, this.warmMs);
+  /**
+   * Reusable only while the process is up and the turn asks for the very same
+   * setup. A changed background compaction setting waits for the process to
+   * be idle: a turn queued behind a running one keeps it.
+   */
+  usable(key: string, warmMs: number, compaction: string | null = this.compaction): boolean {
+    return !this.#ended && !this.#closing && this.key === key && (compaction === this.compaction || this.busy()) && this.#retention.reusable(warmMs, this.warmMs);
   }
 
   setViewed(viewed: boolean): void {
@@ -467,9 +474,11 @@ export class PiSession {
       ...(this.#protection ? [] : contextArgs(ctx.thread.contextMode)),
     ];
     if (this.#protection) args.push(...this.#protection.args);
+    // `--extension` loads even under `--no-extensions`, as the protected one does.
+    if (this.compaction !== null) args.push('--extension', writeCompactionExtension(this.#protection?.asset ?? extensionWriter()));
     const child = ctx.spawnChild(launch.executable, args, {
       cwd: this.#protection?.cwd ?? ctx.thread.cwd,
-      env: {...agentEnv(ctx.accountEnv), ...this.#protection?.env},
+      env: {...agentEnv(ctx.accountEnv), ...this.#protection?.env, ...(this.compaction === null ? {} : {[COMPACTION_ENV]: this.compaction})},
     });
     this.#child = child;
     this.#killTree = ctx.killTree ?? null;
@@ -695,6 +704,9 @@ export class PiSession {
       case 'compaction_end':
         this.#onCompaction(turn, message);
         break;
+      case 'entry_appended':
+        this.#onEntry(turn, message['entry']);
+        break;
       case 'compaction_start':
         turn.ctx.reportProgress?.('compacting');
         break;
@@ -717,7 +729,7 @@ export class PiSession {
   #onCompaction(turn: PiTurn, message: Record<string, unknown>): void {
     const reason = textOf(message['reason']);
     if (reason === 'manual' || message['aborted'] === true) return;
-    const result = message['result'] as { tokensBefore?: unknown; estimatedTokensAfter?: unknown; usage?: PiUsage } | undefined | null;
+    const result = message['result'] as { tokensBefore?: unknown; estimatedTokensAfter?: unknown; usage?: PiUsage; details?: unknown } | undefined | null;
     if (result === undefined || result === null) {
       turn.ctx.log('warn', `pi: the automatic compaction failed: ${textOf(message['errorMessage']) || 'no reason given'}`);
       return;
@@ -728,7 +740,21 @@ export class PiSession {
       trigger: 'auto',
       preTokens: numberOf(result.tokensBefore),
       postTokens: numberOf(result.estimatedTokensAfter),
+      // pi's threshold compaction took the copy Boite's extension made.
+      ...(isBackgroundCompaction(result.details) ? { background: true as const } : {}),
     });
+  }
+
+  /**
+   * An entry an extension appended. The one drawn is the compaction Boite's
+   * extension appends at a `turn_end` that reached the limit: its copy, made
+   * in the background, which pi announces with no `compaction_end`.
+   */
+  #onEntry(turn: PiTurn, value: unknown): void {
+    const entry = (value ?? {}) as { type?: unknown; tokensBefore?: unknown; details?: unknown; usage?: PiUsage };
+    if (entry.type !== 'compaction' || !isBackgroundCompaction(entry.details)) return;
+    if (entry.usage !== undefined && entry.usage !== null) turn.addUsage(entry.usage);
+    turn.part(turn.takeIndex(), { type: 'compaction', trigger: 'auto', preTokens: numberOf(entry.tokensBefore), postTokens: null, background: true });
   }
 
   /**

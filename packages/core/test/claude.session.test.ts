@@ -754,7 +754,7 @@ function appendedPrompt(options: Options): string {
 }
 
 
-test('Send now during cold Claude startup reaches its prompt stream before model output', async () => {
+test('Send now during cold Claude startup stops the old turn and sends one new prompt before model output', async () => {
   const client = await harness.connect();
   const threadId = await claudeThread(client);
   const ready = Promise.withResolvers<void>();
@@ -767,13 +767,15 @@ test('Send now during cold Claude startup reaches its prompt stream before model
     await Bun.sleep(30);
     expect(calls).toHaveLength(0);
     ready.resolve();
-    await waitFor(() => calls[0]?.prompts.length === 2);
-    expect(calls[0]!.prompts[1]).toBe('Also check the bots');
+    await waitFor(() => calls.some(call => call.prompts.some(prompt => prompt.endsWith('Also check the bots'))));
+    expect(calls.flatMap(call => call.prompts).filter(prompt => prompt.endsWith('Also check the bots'))).toHaveLength(1);
     await waitFor(() => harness.core.composer.storage.get('inputs', threadId).value?.input.queued.length === 0);
-    expect(harness.core.journal.listTurns(threadId)).toHaveLength(1);
-    expect(harness.core.journal.getTurn(turn.id)?.status).toBe('running');
-    expect(queries[0]!.interrupts).toBe(0);
-    queries[0]!.emit(success('sess-startup'));
+    const turns = harness.core.journal.listTurns(threadId);
+    expect(turns).toHaveLength(2);
+    expect(harness.core.journal.getTurn(turn.id)?.status).toBe('stopped');
+    expect(turns[1]?.status).toBe('running');
+    expect(queries.at(-1)!.interrupts).toBe(0);
+    queries.at(-1)!.emit(success('sess-startup'));
   } finally { ready.resolve(); }
 });
 

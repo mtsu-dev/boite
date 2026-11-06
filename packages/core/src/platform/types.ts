@@ -1,5 +1,5 @@
 import type { MachineGpu, MachineVolume, ResourceByteUsage, Settings, TraceCapability } from '@boite/contracts';
-import type { ServerUpdatePlatform } from '../server-update/types.ts';
+import type { AndroidServerUpdatePlatform, ServerUpdatePlatform } from '../server-update/types.ts';
 import type { CgroupMemory } from './linux-cgroup.ts';
 import type { NativeExecutionBoundary } from './protected.ts';
 
@@ -157,6 +157,7 @@ export interface ProcessPlatform {
   /** Model tool execution only. Trusted account/control processes never gain authority from this descriptor. */
   protectedExecution?: NativeExecutionBoundary;
   serverUpdates?: ServerUpdatePlatform;
+  androidServerUpdates?: AndroidServerUpdatePlatform;
   /** Absolute path of the tailscale CLI, or null when it is not installed. */
   tailscaleCli?(): string | null;
   /** The command lines that read and fix the OS firewall for `program`; Windows only (`windows/firewall.ts`). */
@@ -166,6 +167,8 @@ export interface ProcessPlatform {
    * Wayland, no display, macOS. Absent reads as unavailable.
    */
   windowCapture?(): Promise<WindowCapture | { unavailable: string }>;
+  /** Hidden desktops of the user's session for `boite desktop`, loaded on first call; Windows only (`windows/hidden-desktop.ts`). */
+  hiddenDesktops?(): Promise<HiddenDesktops>;
   retain(jobs: ProcessEventSink, guards: GuardEventSink): void;
   /** Resolves once nothing native is left holding the user's state: hooks, muted sessions. */
   release(): Promise<void>;
@@ -239,4 +242,29 @@ export interface ProcessPlatform {
    * this before it stops a process whose parent the registry does not hold.
    */
   runningSince(pid: number): number | null;
+}
+
+/** A desktop of the user's session that no screen shows (docs/desktop.md). */
+export interface HiddenDesktop {
+  name: string;
+  /** What `STARTUPINFO.lpDesktop` takes: `WinSta0\<name>`. */
+  path: string;
+  width: number;
+  height: number;
+  /** The processes owning a window on it, for a stop to end what left the helper's tree. */
+  windowPids(): number[];
+  /** Releases the core's handle; Windows frees the desktop with its last window. */
+  close(): void;
+}
+
+export interface HiddenDesktops {
+  /** Why this process cannot make one, or null. */
+  unsupported(): string | null;
+  create(name: string): HiddenDesktop;
+  /** Leaves a folder, and what it will hold, to the user's account alone. */
+  privateFolder(path: string): void;
+  /** Every process of the machine, with its parent and executable file name. */
+  processes(): { pid: number; ppid: number; name: string }[];
+  /** Runs `argv` on the desktop `path` (`WinSta0\name`) and waits: the `--desktop-exec` launcher. */
+  run(path: string, argv: string[]): number;
 }

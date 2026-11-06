@@ -97,6 +97,8 @@ export const strings = {
     namePlaceholder: 'Mira, Scout, Pixel', whatItDoes: 'What it does', instructionsPlaceholder: 'For example: every morning, read the new issues and sum them up in five lines.',
     openAgent: 'Open {name}',
     projects: 'Projects', projectsHint: 'It follows their threads, starts new ones, answers their questions and tells you what matters.', noProjects: 'Open a project first.',
+    projectsBotsOff: 'Enable "{setting}" in {page} on this machine to add its projects.',
+    projectsOutsideGroup: 'This machine is no longer in the group.',
     eventWakes: 'Automatic project and desk wakes', eventWakesHint: 'When off, only threads it started, was entrusted or watches wake it; other events wait for the next routine. Direct messages still run.',
     autoMemory: 'Update memory after each answer', autoMemoryHint: 'A small helper rewrites its memory from what you asked and what it answered.',
     brainFolder: 'Brain folder', brainFolderHint: 'Where every bot keeps its instructions and notes on this machine. Changing it moves them all.', brainDefault: 'Default, in Boite’s data folder',

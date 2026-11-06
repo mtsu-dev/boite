@@ -100,13 +100,13 @@ export class ServerUpdater {
     if (this.snapshot === null && !this.legacy) await this.load();
     const state = this.snapshot;
     // Only an installation the core can update checks at all; a download or a failure stays shown as it is.
-    if (state?.mode === 'systemd' && ['idle', 'current'].includes(state.phase) && updateStale(state.checkedAt, now)) await this.load(true);
+    if (state && ['systemd', 'android'].includes(state.mode) && ['idle', 'current'].includes(state.phase) && updateStale(state.checkedAt, now)) await this.load(true);
   }
 
   async install(machine: string): Promise<void> {
     const client = this.ctx.client;
     const state = this.snapshot;
-    if (!client || !state?.version || state.mode !== 'systemd' || this.preparing || this.busy
+    if (!client || !state?.version || !['systemd', 'android'].includes(state.mode) || this.preparing || this.busy
       || !['available', 'error'].includes(state.phase)) return;
     this.preparing = true;
     try {

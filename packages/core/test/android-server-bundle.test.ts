@@ -24,9 +24,10 @@ test('the Android bundle holds the core scripts, the UI and the controller, and 
 
     const files = unzipSync(androidServerBundle(dist, ui, termux, '2.0.0-nightly.20261025.1'));
     expect(Object.keys(files).sort()).toEqual([
-      'boite-server.ts', 'core/core-1a2b.js', 'core/main.js', 'core/shipped/echo-login.ts', 'server-release.json', 'ui/assets/app.js', 'ui/index.html',
+      'boite-server.ts', 'core/core-1a2b.js', 'core/main.js', 'core/shipped/echo-login.ts', 'managed-update.ts', 'server-release.json', 'ui/assets/app.js', 'ui/index.html',
     ]);
     expect(Buffer.from(files['boite-server.ts']!).equals(readFileSync(join(termux, 'boite-server.ts')))).toBe(true);
+    expect(Buffer.from(files['managed-update.ts']!).equals(readFileSync(join(termux, 'managed-update.ts')))).toBe(true);
     const pin = androidBunPin(readFileSync(join(termux, 'install.sh'), 'utf8'));
     expect(pin.sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(JSON.parse(Buffer.from(files['server-release.json']!).toString())).toEqual({ version: '2.0.0-nightly.20261025.1', bun: pin });

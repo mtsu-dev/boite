@@ -161,7 +161,10 @@ paired devices cannot stop or update the server. The action always goes to the
 machine on the card, even after switching to another machine.
 
 Automatic server installation supports standalone Linux x64 and ARM64 cores
-started by a systemd user service. Keep the compiled `boite-core`, `boite` shim
+started by a systemd user service, and the managed [Android server](android-server.md#releases-and-updates)
+in Termux. Android uses its signed controller and its own configured channel,
+with the same admission, cancellation and turn handoff gates. The systemd
+installation described below keeps the compiled `boite-core`, `boite` shim
 and `ui` folder together in one writable directory, outside the data directory.
 The default service name is `boite.service`; set `BOITE_SERVER_SERVICE` in the
 service environment for another name. Its `ExecStart` must name that core

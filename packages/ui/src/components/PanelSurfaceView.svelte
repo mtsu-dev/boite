@@ -16,7 +16,7 @@
   import TasksSurface from './TasksSurface.svelte';
   import TraceSurface from './TraceSurface.svelte';
   import AgentDesk from './agents/AgentDesk.svelte';
-  import DebateSalon from './debates/DebateSalon.svelte';
+  import CouncilSalon from './council/CouncilSalon.svelte';
 
   /** What the panel's tab in front shows, or the launcher while no tab is open. */
   let { store, panel, active, available, onlaunch }: {
@@ -63,9 +63,9 @@
   {/if}
 {:else if active?.kind === 'tasks'}
   <TasksSurface {store} />
-{:else if active?.kind === 'debate' && active.debateId}
-  <!-- One salon per debate: the tab moved to another debate starts its reading afresh. -->
-  {#key active.debateId}<DebateSalon {store} debateId={active.debateId} threadId={panel.threadId ?? undefined} />{/key}
+{:else if active?.kind === 'council' && active.councilId}
+  <!-- One salon per council: the tab moved to another council starts its reading afresh. -->
+  {#key active.councilId}<CouncilSalon {store} councilId={active.councilId} threadId={panel.threadId ?? undefined} />{/key}
 {:else}
   <SurfaceLauncher
     {available}

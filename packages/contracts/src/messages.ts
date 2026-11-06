@@ -260,10 +260,12 @@ export type MessagePart =
    */
   | { type: 'window_consent'; requestId: string; kind: WindowCaptureKind; process: string; path: string; expiresAt: Timestamp; answer: WindowConsentAnswer | 'expired' | null }
   /**
-   * A debate the turn started (`boite delegate debate`): a client draws its
-   * card from the thread's `debates.list`, with the rounds, the status and the salon to open.
-   * One without the debates experiment draws nothing.
+   * A council the turn started (`boite delegate council`): a client draws its
+   * card from the thread's `council.list`, with the round, the status and the salon to open.
+   * One without the Council experiment draws nothing.
    */
+  | { type: 'council'; councilId: string; topic: string }
+  /** The same card in a message stored before the council replaced debates: a stored debate stays readable. */
   | { type: 'debate'; debateId: string; topic: string }
   | { type: 'error'; message: string };
 

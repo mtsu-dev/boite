@@ -50,7 +50,7 @@ export function kindName(kind: SurfaceKind): string {
   if (kind === 'window') return strings.rightPanel.window;
   if (kind === 'file') return strings.rightPanel.file;
   if (kind === 'tasks') return strings.rightPanel.tasks;
-  if (kind === 'debate') return strings.debates.salon;
+  if (kind === 'council') return strings.council.salon;
   return strings.rightPanel.trace;
 }
 
@@ -71,11 +71,11 @@ export function tabKindLabel(kind: SurfaceKind): string {
 /**
  * A page needs a webview. Paired devices follow subagents and mail, read
  * changes and files read-only and watch the agent's browser, the Device and
- * the Window panels (`DEVICE_METHODS`), and follow a debate's salon; tasks and
+ * the Window panels (`DEVICE_METHODS`), and follow a council's salon; tasks and
  * the trace read what only the owner may ask for.
  */
 export function available(kind: SurfaceKind, inShell: boolean, owner: boolean): boolean {
-  if (kind === 'desk' || kind === 'agents' || kind === 'messages' || kind === 'changes' || kind === 'files' || kind === 'file' || kind === 'device' || kind === 'window' || kind === 'agent-browser' || kind === 'debate') return true;
+  if (kind === 'desk' || kind === 'agents' || kind === 'messages' || kind === 'changes' || kind === 'files' || kind === 'file' || kind === 'device' || kind === 'window' || kind === 'agent-browser' || kind === 'council') return true;
   return kind === 'browser' ? inShell : owner;
 }
 

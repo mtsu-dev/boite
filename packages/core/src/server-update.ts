@@ -5,11 +5,12 @@ import type { ServerUpdateStatus } from '@boite/contracts';
 import type { Core } from './core.ts';
 import { messageOf, refused } from './errors.ts';
 import { processPlatform } from './platform/index.ts';
-import type { ServerInstallation, ServerUpdatePlatform, ServerUpdatePlan } from './server-update/types.ts';
+import type { AndroidServerInstallation, AndroidServerUpdatePlatform, ServerInstallation, ServerUpdatePlatform, ServerUpdatePlan } from './server-update/types.ts';
 import type { ServerOffer } from './server-update/release.ts';
 
 export interface ServerUpdateOptions {
   platform?: ServerUpdatePlatform;
+  androidPlatform?: AndroidServerUpdatePlatform;
   findOffer?: (current: string, arch: string, signal: AbortSignal) => Promise<ServerOffer | null>;
   prepare?: (offer: ServerOffer, directory: string, signal: AbortSignal, progress: (received: number, total: number | null) => void) => Promise<string>;
   pollMs?: number;
@@ -22,6 +23,7 @@ export class ServerUpdates {
 
   #state: ServerUpdateStatus;
   #installation: ServerInstallation | null = null;
+  #androidInstallation: AndroidServerInstallation | null = null;
   #inspected = false;
   #inspection: Promise<void> | null = null;
   #workerLaunched = false;
@@ -33,6 +35,7 @@ export class ServerUpdates {
   #first: ReturnType<typeof setTimeout> | null = null;
   #interval: ReturnType<typeof setInterval> | null = null;
   #closed = false;
+  #resultText: string | null = null;
 
   constructor(core: Core, options: ServerUpdateOptions = {}) {
     this.#core = core;
@@ -41,12 +44,14 @@ export class ServerUpdates {
       version: null, channel: core.version.includes('-nightly.') ? 'nightly' : 'stable', publishedAt: null,
       checkedAt: null, received: 0, total: null, error: null };
     try {
-      const result = JSON.parse(readFileSync(join(core.dataDir, 'server-update-result.json'), 'utf8')) as { error?: string };
+      this.#resultText = readFileSync(join(core.dataDir, 'server-update-result.json'), 'utf8');
+      const result = JSON.parse(this.#resultText) as { error?: string };
       if (typeof result.error === 'string') this.#state = { ...this.#state, phase: 'error', error: result.error };
     } catch { /* No previous update. */ }
   }
 
   get #platform(): ServerUpdatePlatform | undefined { return this.#options.platform ?? processPlatform.serverUpdates; }
+  get #androidPlatform(): AndroidServerUpdatePlatform | undefined { return this.#options.androidPlatform ?? processPlatform.androidServerUpdates; }
   snapshot(): ServerUpdateStatus { return { ...this.#state }; }
   #move(patch: Partial<ServerUpdateStatus>): ServerUpdateStatus {
     const was = this.#state.phase;
@@ -65,13 +70,27 @@ export class ServerUpdates {
   async #run(command: string, args: string[]): Promise<string> {
     const child = this.#core.procs.spawn('system:server-update', command, args, { agentRoot: false });
     const [out, error, code] = await Promise.all([new Response(child.proc.stdout).text(), new Response(child.proc.stderr).text(), child.exited]);
-    if (code !== 0) throw new Error(`${command}: ${error.trim() || `exit ${code}`}`);
+    if (code !== 0) {
+      let detail = error.trim();
+      // The Termux controller's --json failures are on stdout, not stderr.
+      if (!detail) {
+        try { const result = JSON.parse(out) as { error?: unknown }; if (typeof result.error === 'string') detail = result.error; }
+        catch { /* Non-JSON service command output. */ }
+      }
+      throw new Error(`${command}: ${detail || `exit ${code}`}`);
+    }
     return out.trim();
   }
   async #inspect(): Promise<void> {
     if (this.#inspected) return;
     if (this.#inspection) return this.#inspection;
     this.#inspection = (async () => {
+      this.#androidInstallation = await this.#androidPlatform?.inspect(this.#core.dataDir) ?? null;
+      if (this.#androidInstallation) {
+        this.#inspected = true;
+        this.#move({ mode: 'android', channel: this.#androidInstallation.channel });
+        return;
+      }
       this.#installation = await this.#platform?.inspect((cmd, args) => this.#run(cmd, args)) ?? null;
       this.#inspected = true;
       if (this.#installation) this.#move({ mode: 'systemd' });
@@ -82,21 +101,36 @@ export class ServerUpdates {
   async status(refresh = false): Promise<ServerUpdateStatus> {
     if (typeof refresh !== 'boolean') throw refused('core.updateStatus.refresh must be a boolean');
     this.#core.policy.assert(refresh && this.#core.policy.update('server') === 'off', 'updates.server', 'the release check');
+    // A detached Android worker learns the rollback outcome after the restored core has started.
+    if (!['downloading', 'waiting', 'installing'].includes(this.#state.phase)) {
+      try {
+        const text = readFileSync(join(this.#core.dataDir, 'server-update-result.json'), 'utf8');
+        if (text !== this.#resultText) {
+          const result = JSON.parse(text) as { error?: unknown };
+          this.#resultText = text;
+          if (typeof result.error === 'string') this.#move({ phase: 'error', error: result.error });
+          else if (result.error === null && this.#state.phase === 'error') this.#move({ phase: 'idle', error: null });
+        }
+      } catch { /* No completed worker result yet. */ }
+    }
     if (this.#check) return this.#check;
-    await this.#inspect();
+    try { await this.#inspect(); }
+    catch (error) { return this.#move({ phase: 'error', error: messageOf(error), checkedAt: Date.now() }); }
     if (this.#check) return this.#check;
-    if (!refresh || !this.#installation || ['downloading', 'waiting', 'installing'].includes(this.#state.phase)) return this.snapshot();
+    if (!refresh || (!this.#installation && !this.#androidInstallation) || ['downloading', 'waiting', 'installing'].includes(this.#state.phase)) return this.snapshot();
     this.#abort = new AbortController();
     const signal = this.#abort.signal;
     this.#move({ phase: 'checking', error: null });
     this.#check = (async () => {
       try {
-        const find = this.#options.findOffer ?? (await import('./server-update/release.ts')).findServerOffer;
-        const offer = await find(this.#core.version, process.arch, signal);
+        const android = this.#androidInstallation;
+        const managed = android ? await this.#androidPlatform!.check((cmd, args) => this.#run(cmd, args), android, this.#core.version) : null;
+        const find = android ? null : this.#options.findOffer ?? (await import('./server-update/release.ts')).findServerOffer;
+        const offer = android ? managed && { version: managed.version, publishedAt: '', url: '', signature: '' } : await find!(this.#core.version, process.arch, signal);
         if (this.#closed) return this.snapshot();
         this.#offer = offer;
         return this.#move({ phase: offer ? 'available' : 'current', version: offer?.version ?? null,
-          publishedAt: offer?.publishedAt ?? null, checkedAt: Date.now(), received: 0, total: null });
+          channel: android?.channel ?? this.#state.channel, publishedAt: offer?.publishedAt || null, checkedAt: Date.now(), received: 0, total: null });
       } catch (error) {
         if (this.#closed) return this.snapshot();
         return this.#move({ phase: 'error', error: messageOf(error), checkedAt: Date.now() });
@@ -107,7 +141,7 @@ export class ServerUpdates {
 
   install(version: string): ServerUpdateStatus {
     this.#core.policy.assert(this.#core.policy.update('server') === 'off', 'updates.server');
-    if (!this.#installation || !this.#offer || version !== this.#offer.version) throw refused('core.updateInstall.version must match the available server update');
+    if ((!this.#installation && !this.#androidInstallation) || !this.#offer || version !== this.#offer.version) throw refused('core.updateInstall.version must match the available server update');
     if (['downloading', 'waiting', 'installing'].includes(this.#state.phase)) return this.snapshot();
     if (this.#state.phase !== 'available' && this.#state.phase !== 'error') throw refused('Check for a server update before installing it');
     const abort = new AbortController();
@@ -124,6 +158,22 @@ export class ServerUpdates {
   }
 
   async #prepare(offer: ServerOffer, abort: AbortController): Promise<void> {
+    if (this.#androidInstallation) {
+      const installation = this.#androidInstallation;
+      const id = randomUUID();
+      const directory = join(installation.root, `.boite-update-${id}`);
+      this.#directory = directory;
+      mkdirSync(directory, { mode: 0o700 });
+      const file = join(directory, 'plan.json');
+      writeFileSync(file, JSON.stringify({ id, root: installation.root, dataDir: this.#core.dataDir, version: offer.version,
+        previousVersion: this.#core.version, channel: installation.channel, originalPid: process.pid }), { mode: 0o600 });
+      this.#workerLaunched = true;
+      try { await this.#androidPlatform!.launch((cmd, args) => this.#run(cmd, args), installation, file); }
+      catch (error) { if (this.#abort === abort) this.#workerLaunched = false; throw error; }
+      if (abort.signal.aborted || this.#closed) return;
+      this.#waitForAdmission(directory, id, abort, 15 * 60_000);
+      return;
+    }
     const installation = this.#installation!;
     const { clearStaleUpdates, UPDATE_OWNER } = await import('./server-update/apply.ts');
     // A worker cut off with its recovery, by a power cut, left its files beside the installation.
@@ -158,9 +208,19 @@ export class ServerUpdates {
     catch (error) { if (this.#abort === abort) this.#workerLaunched = false; throw error; }
     if (abort.signal.aborted || this.#closed) return;
     this.#move({ phase: 'waiting' });
-    const readyDeadline = Date.now() + 15_000;
+    this.#waitForAdmission(directory, id, abort, 15_000);
+  }
+
+  #waitForAdmission(directory: string, id: string, abort: AbortController, timeout: number): void {
+    const readyDeadline = Date.now() + timeout;
     const poll = () => {
       if (this.#closed || abort.signal.aborted) return;
+      if (existsSync(join(directory, 'error'))) {
+        const error = readFileSync(join(directory, 'error'), 'utf8');
+        this.#cancelFiles(); this.#abort = null;
+        this.#move({ phase: 'error', error });
+        return;
+      }
       if (!existsSync(join(directory, 'ready'))) {
         if (Date.now() > readyDeadline) {
           this.#cancelFiles(); this.#abort = null;
@@ -168,6 +228,7 @@ export class ServerUpdates {
           return;
         }
       } else {
+        if (this.#state.phase === 'downloading') this.#move({ phase: 'waiting' });
         let admission: 'accepted' | 'busy' | 'unsupported';
         const admit = () => writeFileSync(join(directory, 'admitted'), id, { mode: 0o600 });
         try {

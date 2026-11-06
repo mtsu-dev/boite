@@ -30,7 +30,7 @@ import type { DetectedIcon as StoredProjectIcon } from './project-icons.ts';
 import { copyStoredParts, foldStreamingParts, messageOfError, StreamBuffer } from './journal/stream-buffer.ts';
 import { requestSince } from './journal/request-since.ts';
 import { threadStats } from './journal/thread-stats.ts';
-import { usageByBucket, usageByThread, usageOfTree, type UsageGroupRow, type UsageSumRow, type UsageThreadRow } from './journal/usage-sums.ts';
+import { keepRemovedTurnUsage, usageByBucket, usageByThread, usageOfTree, type UsageGroupRow, type UsageSumRow, type UsageThreadRow } from './journal/usage-sums.ts';
 import { sent, type Projection } from './journal/sent.ts';
 import { threadSessions, type NativeSession } from './threads/native-sessions.ts';
 import { deleteComposerInput } from './journal/composer-assets.ts';
@@ -300,7 +300,7 @@ export class Journal {
   deleteThreadsOfProject(projectId: string): string[] {
     const rows = this.db.query('SELECT id FROM threads WHERE project_id = ?').all(projectId) as { id: string }[];
     const ids = rows.map(row => row.id);
-    this.deleteThreads(ids);
+    this.deleteThreads(ids, { keepUsage: true });
     return ids;
   }
 
@@ -354,15 +354,17 @@ export class Journal {
       (SELECT root_id FROM thread_deletions WHERE thread_id = root_id AND deleted_at <= ?)`)
       .all(before) as { thread_id: string }[];
     if (rows.length > 0) beforeDelete?.(rows.map(row => row.thread_id));
-    this.deleteThreads(rows.map(row => row.thread_id));
+    this.deleteThreads(rows.map(row => row.thread_id), { keepUsage: true });
     return rows.length;
   }
 
   /** Erase conversation history and its dependent records in one transaction, before client notifications. */
-  deleteThreads(threadIds: string[]): void {
+  deleteThreads(threadIds: string[], options: { keepUsage?: boolean } = {}): void {
     if (threadIds.length === 0) return;
     // Foreign keys are off: clear dependent records, including unsent composer input.
     this.db.transaction(() => {
+      // A project removal or trash purge keeps what the usage page counts of the turns; an incognito erase does not.
+      if (options.keepUsage === true) keepRemovedTurnUsage(this.db, threadIds);
       for (const table of ['background_observations', 'turn_requests', 'turns', 'messages', 'native_agent_messages', 'part_blobs', 'streaming_parts', 'media_previews', 'media_displays', 'processes', 'command_lines', 'coordination_letters', 'coordination_wakes', 'events', 'pending_questions']) {
         const query = this.db.query(`DELETE FROM ${table} WHERE thread_id = ?`);
         for (const id of threadIds) query.run(id);

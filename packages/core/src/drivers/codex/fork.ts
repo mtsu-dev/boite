@@ -1,6 +1,7 @@
 import pkg from '../../../package.json';
 import { unavailable } from '../../errors.ts';
 import { profileFor, resolveExecutable } from '../../providers/resolve.ts';
+import { subscriptionProxyCodexArgs } from '../../subscription-proxy.ts';
 import type { ForkedSession, SessionContext } from '../types.ts';
 import { exitWithin } from '../exit.ts';
 import { NativeForkUnsupported } from '../native-fork.ts';
@@ -16,7 +17,9 @@ export async function forkSession(ctx: SessionContext, checkpoint: { sessionId: 
   const profile = profileFor(ctx.provider);
   const executable = profile === undefined ? null : resolveExecutable(profile);
   if (executable === null) throw unavailable(`no ${ctx.provider.id} executable on this machine`, { providerId: ctx.provider.id });
-  const args = [...(profile?.launch?.args ?? []), ...(ctx.thread.permissionMode === 'yolo' ? ['--config', 'features.hooks=false'] : []), ...NO_NATIVE_SUBAGENTS, ...NO_PLUGINS];
+  // The fork's rollout records the provider of this process, and Codex resumes it only under that one.
+  const launch = subscriptionProxyCodexArgs(profile?.launch?.args ?? [], ctx.accountEnv);
+  const args = [...launch, ...(ctx.thread.permissionMode === 'yolo' ? ['--config', 'features.hooks=false'] : []), ...NO_NATIVE_SUBAGENTS, ...NO_PLUGINS];
   const child = ctx.spawnChild(executable, args, { startup: true, cwd: ctx.thread.cwd, env: { ...process.env, ...ctx.accountEnv } });
   const exited = new Promise<number | null>(resolve => { child.once('exit', resolve); child.once('error', () => resolve(null)); });
   const rpc = new CodexRpc(child, {

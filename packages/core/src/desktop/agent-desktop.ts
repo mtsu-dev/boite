@@ -2,7 +2,7 @@
  * The agent-desktop build `boite desktop` runs, which Boite fetches itself on
  * first use: one pinned npm release, checked against the digests below, so no
  * agent installs a tool, and every machine runs the version the CLI's help
- * describes. Only the Linux binary and its clipboard helper are kept, in
+ * describes. Only this machine's binary and its helper are kept, in
  * `<data dir>/tools/agent-desktop-<version>/<install id>/`. See docs/desktop.md.
  */
 import { createHash, randomBytes } from 'node:crypto';
@@ -17,7 +17,7 @@ export interface AgentDesktopRelease {
   url: string;
   /** Of the whole archive. */
   sha256: string;
-  /** Per CPU: the archive entries kept, each under the name agent-desktop looks for, with its digest. */
+  /** Per `<platform>-<cpu>`: the archive entries kept, the executable first, each under the name agent-desktop looks for, with its digest. */
   builds: Partial<Record<string, { entry: string; name: string; sha256: string }[]>>;
 }
 
@@ -26,14 +26,28 @@ export const AGENT_DESKTOP_RELEASE: AgentDesktopRelease = {
   url: 'https://registry.npmjs.org/agent-desktop/-/agent-desktop-1.0.2.tgz',
   sha256: '6a2bbcc1bda2cf92a23e52675ad7ca3f36fd8cb2ac649cd01361bfc8b3820b28',
   builds: {
-    x64: [
+    'linux-x64': [
       { entry: 'package/bin/agent-desktop-linux-x64', name: 'agent-desktop', sha256: '05427281a6746489bc0e15c16698a70a86322125c76c7a9e2f4c2d7a12bf7c5b' },
-      // agent-desktop runs its clipboard owner from its own folder, under this name.
+      // agent-desktop runs its helpers from its own folder, under these names.
       { entry: 'package/bin/agent-desktop-linux-clipboard-owner-linux-x64', name: 'agent-desktop-linux-clipboard-owner', sha256: 'bf17de139902724e86b3616970b7b7f16f5f1fb4143910b532a38dd2182720fa' },
     ],
-    arm64: [
+    'linux-arm64': [
       { entry: 'package/bin/agent-desktop-linux-arm64', name: 'agent-desktop', sha256: '529ae49006278f778bcda6b68d7460a55148e2cefb1cb69a23485381d9dbdec0' },
       { entry: 'package/bin/agent-desktop-linux-clipboard-owner-linux-arm64', name: 'agent-desktop-linux-clipboard-owner', sha256: 'dcd6f2ce9a0e92e42f4d2ee9161ea1b9f2b11c0e4b1878119a19c0a2db3630a6' },
+    ],
+    'win32-x64': [
+      { entry: 'package/bin/agent-desktop-win32-x64.exe', name: 'agent-desktop.exe', sha256: '409e58cbdd6aed47e29771ffa60bc122a9843505a227af488cded85215943988' },
+    ],
+    'win32-arm64': [
+      { entry: 'package/bin/agent-desktop-win32-arm64.exe', name: 'agent-desktop.exe', sha256: '5877fbca41fb85806353d0aaf67c23cfdf06a58a77c5d9cba005727a2891034e' },
+    ],
+    'darwin-x64': [
+      { entry: 'package/bin/agent-desktop-darwin-x64', name: 'agent-desktop', sha256: '9684916bb4b5486c02cef8b2d480e55a551639b08358284f90a87cef43b2da8b' },
+      { entry: 'package/bin/agent-desktop-macos-helper-darwin-x64', name: 'agent-desktop-macos-helper', sha256: 'ce52467818ac601ae1145a0b9ecaa14aaf04d2e72d24cf6d29d26757340f9c6b' },
+    ],
+    'darwin-arm64': [
+      { entry: 'package/bin/agent-desktop-darwin-arm64', name: 'agent-desktop', sha256: 'bf0a3c9256512f2f57288d37ccd17d7f03665fccc53c2f74011a49b98e61ba59' },
+      { entry: 'package/bin/agent-desktop-macos-helper-darwin-arm64', name: 'agent-desktop-macos-helper', sha256: '522829116cb006b5770c6a82b361f466a4775f794d6af4083e75231a2d6bb551' },
     ],
   },
 };
@@ -55,6 +69,7 @@ function digestOf(path: string): string | null {
 
 export interface AgentDesktopToolOptions {
   release?: AgentDesktopRelease;
+  platform?: NodeJS.Platform;
   arch?: string;
   fetch?: (url: string, init: RequestInit) => Promise<Response>;
 }
@@ -70,6 +85,7 @@ export class AgentDesktopTool {
   readonly #root: string;
   readonly #procs: Pick<ProcRegistry, 'spawn'>;
   readonly #release: AgentDesktopRelease;
+  readonly #platform: NodeJS.Platform;
   readonly #arch: string;
   readonly #fetch: (url: string, init: RequestInit) => Promise<Response>;
   #verified: string | null = null;
@@ -79,6 +95,7 @@ export class AgentDesktopTool {
     this.#procs = procs;
     this.#release = options.release ?? AGENT_DESKTOP_RELEASE;
     this.#root = join(toolsDir, `agent-desktop-${this.#release.version}`);
+    this.#platform = options.platform ?? process.platform;
     this.#arch = options.arch ?? process.arch;
     this.#fetch = options.fetch ?? ((url, init) => fetch(url, init));
   }
@@ -88,8 +105,8 @@ export class AgentDesktopTool {
   /** The binary's path, installing it first when this machine has none; concurrent calls share one install. */
   async path(): Promise<string> {
     if (this.#verified) return this.#verified;
-    const build = this.#release.builds[this.#arch];
-    if (!build) throw new Error(`agent-desktop ${this.#release.version} has no Linux build for ${this.#arch}`);
+    const build = this.#release.builds[`${this.#platform}-${this.#arch}`];
+    if (!build) throw new Error(`agent-desktop ${this.#release.version} has no build for ${this.#platform}-${this.#arch}`);
     const found = this.#find(build);
     if (found) return (this.#verified = found);
     this.#installing ??= this.#install(build).finally(() => { this.#installing = null; });
@@ -103,7 +120,7 @@ export class AgentDesktopTool {
       if (name.startsWith('.')) continue;
       const folder = join(this.#root, name);
       const intact = build.every(file => digestOf(join(folder, file.name)) === file.sha256);
-      if (intact) return join(folder, 'agent-desktop');
+      if (intact) return join(folder, build[0]!.name);
       rmSync(folder, { recursive: true, force: true });
     }
     return null;
@@ -130,7 +147,7 @@ export class AgentDesktopTool {
     try {
       const tgz = join(staging, 'release.tgz');
       writeFileSync(tgz, archive, { mode: 0o600 });
-      const run = await runCommand(this.#procs, SCOPE, 'tar', ['-xzf', tgz, '-C', staging, ...build.map(file => file.entry)], EXTRACT_TIMEOUT_MS);
+      const run = await runCommand(this.#procs, SCOPE, tarProgram(this.#platform), ['-xzf', tgz, '-C', staging, ...build.map(file => file.entry)], EXTRACT_TIMEOUT_MS);
       if (run.code !== 0) throw new Error(`tar could not unpack it: ${run.stderr.trim() || (run.timedOut ? 'it timed out' : `exit code ${run.code}`)}`);
       const folder = join(staging, 'tool');
       mkdirSync(folder, { mode: 0o755 });
@@ -147,6 +164,14 @@ export class AgentDesktopTool {
     } finally {
       rmSync(staging, { recursive: true, force: true });
     }
-    return (this.#verified = join(published, 'agent-desktop'));
+    return (this.#verified = join(published, build[0]!.name));
   }
+}
+
+/**
+ * Windows' own bsdtar, never the first `tar` on PATH: Git's GNU tar reads the
+ * `C:` of an archive path as a remote host.
+ */
+function tarProgram(platform: NodeJS.Platform): string {
+  return platform === 'win32' ? join(process.env['SystemRoot'] ?? 'C:\\Windows', 'System32', 'tar.exe') : 'tar';
 }

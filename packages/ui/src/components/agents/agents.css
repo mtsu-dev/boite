@@ -14,6 +14,11 @@
 .agents-rail .agents-card { margin-bottom: 10px; padding: 4px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--color-surface-2) 55%, transparent); }
 /* With teams listed, each card stands under its heading: Teams, then Bots. */
 .agents-rail .agents-section { margin: 4px 10px 6px; }
+/* The Teams heading carries its New team button; the line under it stands in for the card before the first team. */
+.agents-rail .agents-section-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 4px 4px 10px; min-height: var(--control-sm); }
+.agents-rail .agents-section-head .section-label { margin: 0; }
+.agents-rail .agents-section-head [aria-disabled='true'] { opacity: 0.5; }
+.agents-rail .agents-teams-note { margin: 0 10px 12px; font-size: var(--text-xs); line-height: 1.5; color: var(--color-muted-foreground); }
 
 /* The card beside it, where the chat card stands on the thread page. */
 .agents-main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
@@ -112,6 +117,10 @@ fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-p
 .agent-field textarea { resize: vertical; min-height: 64px; font-family: inherit; line-height: 1.6; }
 .agent-field .hint { font-weight: 400; }
 .agent-field .agent-projects-hint { margin: 8px 0 0; font-size: var(--text-xs); }
+.agent-project-machine + .agent-project-machine { margin-top: 8px; }
+.agent-project-machine > .hint { margin: 0 0 8px; }
+.agent-project-machine .agent-chip-check { max-width: 100%; }
+.agent-chip-check:has(input:disabled) { cursor: default; color: var(--color-muted-foreground); }
 .agent-field > .menu { align-self: flex-start; }
 .agent-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
 .agent-inline { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }

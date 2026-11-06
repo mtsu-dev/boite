@@ -21,7 +21,7 @@ const sources = import.meta.glob([
   '../components/WakeMarker.svelte',
   '../components/WorkflowActivity.svelte',
   '../components/WorkflowGraph.svelte',
-  '../components/debates/DebateCard.svelte'
+  '../components/council/CouncilCard.svelte'
 ], { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
 
 test('the components that show work never wear the needs-you amber', () => {

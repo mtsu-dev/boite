@@ -467,6 +467,34 @@ test('the footer follows outgoing mail at the end of an ordinary answer', async 
   expect(group.compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
 
+test('a contact request sits where the thread asked, and a letter only sent to a contact still carries its chip', async ({ createStore }) => {
+  const { store: owner, client } = createStore({ delayMs: 0 });
+  owner.attach(client); await owner.connect(); await owner.open('t-trace');
+  const thread = owner.openThread!;
+  const turn = { ...thread.turns[0]!, startedAt: 1, finishedAt: 60, status: 'done' as const };
+  thread.turns = [turn];
+  thread.memoryEvents = [];
+  thread.messages = [
+    { id: 'msg-before-ask', threadId: thread.id, turnId: turn.id, role: 'assistant', state: 'complete', createdAt: 10, parts: [{ type: 'text', text: 'Asking the Contacts bot' }] },
+    { id: 'msg-after-ask', threadId: thread.id, turnId: turn.id, role: 'assistant', state: 'complete', createdAt: 40, parts: [{ type: 'text', text: 'Wrote to the thread it named' }] }
+  ];
+  const self = { coreId: 'core-local', threadId: thread.id };
+  const from = { ...self, title: thread.title, machine: 'This PC', resources: '', status: 'idle' as const, mode: 'brief' as const };
+  owner.coordination = { self, config: { mode: 'brief', resources: '', remote: true, paused: false }, messages: [{
+    id: 'sent-to-contact', from, to: { coreId: 'core-chris', threadId: 'chris-loader' }, toTitle: 'Harden the loader', text: 'Do you refuse a roots entry outside the directory?', replyTo: null,
+    createdAt: 45, expiresAt: 1000, status: 'delivered', error: null, contact: { coreId: 'core-chris', name: 'Chris' }
+  }], sent: 1, sendLimit: null, wakes: 0, wakeLimit: null, requests: [{
+    id: 'r-ask', direction: 'out', coreId: 'core-chris', contact: 'Chris', from, text: 'Someone who knows the website loader', createdAt: 20, forwardedAt: 25, status: 'pending'
+  }] };
+  running = mount(MessageList, { target: document.body, props: { store: owner, threadId: thread.id, messages: thread.messages } });
+  flushSync();
+  expect(shownIds()).toEqual(['msg-before-ask', 'contact-request:out:r-ask', 'msg-after-ask', 'coordination:sent-to-contact']);
+  const ask = document.querySelector<HTMLElement>('[data-testid=contact-ask-row]')!;
+  expect(ask.dataset).toMatchObject({ role: 'asked', state: 'sent', request: 'r-ask' });
+  const discussion = document.querySelector('[data-testid=agent-discussion-row]')!;
+  expect(discussion.querySelector('[data-testid=agent-remote-chip]')?.textContent?.trim()).toBe('Chris');
+});
+
 test('a call finished in the running turn rereads only that turn files, never a finished one', async ({ createStore }) => {
   window.localStorage.clear();
   const { store: owner, client } = createStore({ delayMs: 0 });

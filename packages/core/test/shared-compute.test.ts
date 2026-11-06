@@ -2,7 +2,7 @@ import { afterEach, expect, spyOn, test } from 'bun:test';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { SharedComputeJob, SharedProjectRef, WorkflowPlan } from '@boite/contracts';
+import { queueOrder, type SharedComputeJob, type SharedProjectRef, type WorkflowPlan } from '@boite/contracts';
 import { holdAccountTurns, startTestCore, waitFor, type TestCore } from './harness.ts';
 import { connect } from '../src/client.ts';
 import { unavailable } from '../src/errors.ts';
@@ -504,6 +504,11 @@ test('cancellation before a delayed start is durable; follow-up retries create o
   await waitFor(() => b.h.core.sharedCompute.journal.get(first.id, 'host')?.job.status === 'done');
   await a.client.call('sharedCompute.send', followup);
   expect(b.h.core.journal.db.query('SELECT COUNT(*) AS n FROM turns WHERE thread_id=?').get(first.worker!.threadId)).toEqual({n: 2});
+  // The worker at rest takes the follow-up as a request of its own: its row does not count from the first task.
+  const [task, again] = b.h.core.journal.listTurns(first.worker!.threadId).sort(queueOrder);
+  expect(again!.execution?.opensRequest).toBe(true);
+  expect(b.h.core.journal.requestSince(first.worker!.threadId)).toBe(again!.startedAt);
+  expect(again!.startedAt).toBeGreaterThan(task!.startedAt!);
   expect(await thrown(a.client.call('sharedCompute.send', {...followup, text: 'different'}))).toThrow('different content');
 }, 30000);
 

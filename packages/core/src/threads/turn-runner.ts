@@ -126,6 +126,9 @@ export class TurnRunner {
         if (this.#attempts.preparationStopped(threadId)) throw refused('worktree preparation was stopped');
       });
       if (entering) await entering;
+      // Any conversation in a checkout under its project's .boite, perhaps made by an older core, gets the marker.
+      const project = state.thread.projectId === null ? null : this.#core.journal.getProject(state.thread.projectId);
+      if (project !== null) this.#core.worktrees.markReused(project, state.thread.cwd);
       this.#core.workforce.resident.assertThreadRoute(threadId, state.thread);
       const provider = this.#core.providers.require(state.thread.providerId);
       const account = this.#core.accounts.require(state.thread.accountId);

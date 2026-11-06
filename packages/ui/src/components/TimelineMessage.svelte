@@ -1,9 +1,9 @@
 <script lang="ts">
   import type { Account, MemoryEvent, Message, Turn } from '@boite/contracts';
   import type { Store } from '../lib/store.svelte';
-  import type { AgentMailGroup } from '../lib/agent-mail';
+  import type { AgentMail, AgentMailGroup } from '../lib/agent-mail';
   import { summaryMarks, type ShapedTimeline, type TurnFold } from '../lib/agent-turns';
-  import type { TeamLaunch } from '../lib/delegation-progress';
+  import type { TimelineCard as Card } from '../lib/timeline-cards';
   import { isSending } from '../lib/composer-queue';
   import { movedBy, startedFrom, turnAnswer } from '../lib/message-display';
   import type { TimelineRow } from '../lib/timeline-rows';
@@ -14,7 +14,7 @@
   import WakeMarker, { wakeKind } from './WakeMarker.svelte';
   import TurnFoldRow from './TurnFoldRow.svelte';
   import DayDivider from './DayDivider.svelte';
-  import DelegationActivity from './DelegationActivity.svelte';
+  import TimelineCard from './TimelineCard.svelte';
   import UserMessage from './UserMessage.svelte';
   import AssistantMessage from './AssistantMessage.svelte';
   import FailedAttempts from './FailedAttempts.svelte';
@@ -22,14 +22,13 @@
   import SpawnMarker from './SpawnMarker.svelte';
   import MemoryRow from './MemoryRow.svelte';
   import MessageActions from './MessageActions.svelte';
-  import WorkflowActivity from './WorkflowActivity.svelte';
 
   /** What one row of the message list draws inside its `<article>`: the list keeps the row's place, measure and seam. */
-  let { store, threadId, messages, row, group, turn, source, quietFold, closes, days, turns, facts, shaped, launches, workflowRows, notices, memoryInline, views, newestTurnAt, signedOut, narrow, failureTarget, oninspect, pointed }: {
+  let { store, threadId, messages, row, group, turn, source, quietFold, closes, days, turns, facts, shaped, cards, mail, notices, memoryInline, views, newestTurnAt, signedOut, narrow, failureTarget, oninspect, pointed }: {
     store: Store; threadId: string; messages: Message[]; row: TimelineRow;
     group: AgentMailGroup | undefined; turn: Turn | undefined; source: Message | undefined; quietFold: TurnFold | undefined; closes: boolean;
     days: ReadonlyMap<string, number>; turns: Turn[]; facts: TimelineTurns; shaped: ShapedTimeline;
-    launches: ReadonlyMap<string, TeamLaunch>; workflowRows: ReadonlyMap<string, ReturnType<Store['workflowsOf']>[number]>;
+    cards: ReadonlyMap<string, Card>; mail: readonly AgentMail[];
     notices: ReadonlyMap<string, MemoryEvent[]>; memoryInline: ReadonlyMap<string, MemoryEvent[]>; views: ReadonlyMap<string, Message[]>;
     newestTurnAt: number; signedOut: Account | null; narrow: boolean; failureTarget: { id: string } | null;
     oninspect: (opening: boolean) => void; pointed: string | null;
@@ -42,10 +41,8 @@
   <FailedAttempts {store} {threadId} messages={row.failures} {turns} {signedOut} canFork={!narrow && facts.forkable && !store.openThread?.incognito} reveal={failureTarget} {oninspect} />
 {:else if quietFold}
   <TurnFoldRow fold={quietFold} at={message.createdAt} compactions={shaped.compactions.get(quietFold.turnId)} />
-{:else if launches.has(message.id)}
-  <DelegationActivity {store} agents={launches.get(message.id)!.agents} past={message.createdAt < newestTurnAt} />
-{:else if workflowRows.has(message.id)}
-  <WorkflowActivity {store} run={workflowRows.get(message.id)!} past={message.createdAt < newestTurnAt} />
+{:else if cards.has(message.id)}
+  <TimelineCard {store} card={cards.get(message.id)!} {mail} past={message.createdAt < newestTurnAt} />
 {:else if group}
   <AgentMessageGroup {store} {group} />
 {:else if notices.has(message.id)}

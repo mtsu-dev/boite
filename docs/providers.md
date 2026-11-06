@@ -21,7 +21,10 @@ unchanged to Anthropic on a subscription: tool search, first-party model aliases
 and the one-hour prompt cache stay on (`_CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL`,
 `CLAUDE_CODE_PROMPT_CACHE_TTL=1h`), and fast mode skips the organization check
 that needs a native login (`CLAUDE_CODE_SKIP_FAST_MODE_ORG_CHECK`). Codex already
-sends its service tier and prompt cache key to a custom provider.
+sends its service tier and prompt cache key to a custom provider. Every Codex
+process starts under the gateway's provider, the setup process of a native fork
+included: Codex writes the provider into a thread's rollout and refuses to
+resume it under another ("This chat uses openai").
 
 While the proxy is enabled, Claude, Codex and both OpenCode versions show one account named
 after the gateway, Douane or CLIProxyAPI, with the API URL's origin, and so
@@ -223,7 +226,8 @@ password and the same isolated environment. Closing its stdin ends its lease.
 The native event stream draws tools, reasoning, permissions and usage; plain
 tool text stays output, while images and file diffs stay attached documents.
 Follow-ups use the native prompt inbox with `delivery: "steer"`, so queued
-messages and Send now join the running execution. OpenCode 2's ACP endpoint
+messages join the running execution at tool boundaries. Send now interrupts
+the active turn before starting its queued input. OpenCode 2's ACP endpoint
 rejects concurrent prompts. Events received during a follow-up submission wait
 until its acceptance is journalled, keeping the user message before its reply.
 Accepted inbox IDs remain tracked until delivery or cancellation, so a previous
@@ -1205,7 +1209,8 @@ live inference. The exact release and gate are described under [Muse Code](#muse
   deliberately not part of the session key, so a warm session follows a change
   instead of being dropped. An agent that lists no modes or refuses the call is one
   warning in the log while the turn runs anyway: a mode is a preference, never a
-  reason to refuse a turn. An agent may list its modes as a config option of
+  reason to refuse a turn, except for a protected turn or a
+  [council](council.md#read-only) member, whose read-only rests on it. An agent may list its modes as a config option of
   category `mode` instead, with no `availableModes` at all, which is what
   OpenCode does with `build` and `plan`: the same candidates are matched
   against that option's values and the mode goes out as a
@@ -1218,6 +1223,9 @@ live inference. The exact release and gate are described under [Muse Code](#muse
 - Codex takes a pair when the thread opens, an approval policy and a sandbox:
   `default` and `acceptEdits` are on-request plus workspace-write, `plan` never
   plus read-only, `bypassPermissions` and `dontAsk` never plus danger-full-access.
+  On Windows `plan` also leaves the Microsoft Store's folders off the `PATH` when
+  the first `pwsh` is the Store's, which cannot start under the read-only sandbox
+  (`CreateProcessAsUserW failed: 5`, codex-cli 0.166); Codex then uses Windows PowerShell.
   No call changes that pair on a running turn, so the mode is part of the session
   key: changing it interrupts and resumes the active turn with the new pair,
   keeping the same Boite turn and conversation.

@@ -1,4 +1,5 @@
 /** OpenCode 2's native API, with an ACP fallback to reproduce the old refusal. */
+import { instructionsOf } from './history.ts';
 export {};
 if (!process.argv.includes('serve')) {
   await import('./acp-agent.ts');
@@ -15,7 +16,14 @@ if (!process.argv.includes('serve')) {
     const bytes = encoder.encode(`data: ${JSON.stringify({ type, data: { sessionID, ...data } })}\n\n`);
     for (const stream of streams) stream.enqueue(bytes);
   };
-  const model = { id: 'model', providerID: 'fixture', name: 'Fixture model', enabled: true, variants: [{ id: 'high' }], limit: { context: 32000 } };
+  // Opt in: each process appends the inline configuration it was started with, and lists a model of that window.
+  // A folder ending in "small" defaults to another model of the small window, or gives the same model that window
+  // (`OPENCODE_FIXTURE_SAME_MODEL`), as an OpenCode project's configuration can.
+  const configLog = process.env['OPENCODE_FIXTURE_CONFIG_LOG'];
+  if (configLog) await Bun.write(configLog, `${await Bun.file(configLog).text().catch(() => '')}${process.env['OPENCODE_CONFIG_CONTENT'] ?? '{}'}\n`);
+  const small = process.env['OPENCODE_FIXTURE_SMALL_WINDOW'] !== undefined && process.cwd().endsWith('small');
+  const window = small ? process.env['OPENCODE_FIXTURE_SMALL_WINDOW'] : process.env['OPENCODE_FIXTURE_WINDOW'];
+  const model = { id: small && process.env['OPENCODE_FIXTURE_SAME_MODEL'] === undefined ? 'small' : 'model', providerID: 'fixture', name: 'Fixture model', enabled: true, variants: [{ id: 'high' }], limit: { context: Number(window ?? 32000) } };
   const session = () => ({ id: sessionID, cost, model: { id: model.id, providerID: model.providerID }, agent: 'build', location: { directory: process.cwd() } });
   const server = Bun.serve({ hostname: '127.0.0.1', port: 0, async fetch(request) {
     const url = new URL(request.url);
@@ -30,6 +38,7 @@ if (!process.argv.includes('serve')) {
     if (url.pathname === '/api/session' || (url.pathname === `/api/session/${sessionID}` && request.method === 'GET')) return Response.json({ data: session() });
     if (url.pathname.endsWith('/prompt')) {
       const body = await request.json() as { text: string; delivery: string; files?: unknown[] };
+      const instructions = instructionsOf(body.text);
       if (body.delivery !== 'steer') return new Response('delivery must be steer', { status: 400 });
       const inbox = { id: `msg_fixture_${++inboxSequence}`, delivery: 'steer' };
       if (lateAdmission) {
@@ -54,9 +63,9 @@ if (!process.argv.includes('serve')) {
         event('permission.asked', { sessionID: 'ses_child', id: 'permission_child', action: 'shell', metadata: { command: 'git status' } });
         return Response.json({ data: inbox });
       }
-      if (body.text.includes('[slow]')) {
-        lateAdmission = body.text.includes('[late-admission]');
-        cancelAdmission = body.text.includes('[cancelled]');
+      if (instructions.includes('[slow]')) {
+        lateAdmission = instructions.includes('[late-admission]');
+        cancelAdmission = instructions.includes('[cancelled]');
         event('session.execution.started', {});
         const tool = async () => {
           const gate = process.env['OPENCODE_FIXTURE_TOOL_GATE'];
@@ -67,7 +76,13 @@ if (!process.argv.includes('serve')) {
         };
         setTimeout(() => void tool(), 400);
         if (!process.env['OPENCODE_FIXTURE_TOOL_GATE']) timer = setTimeout(() => { cost += 0.01; event('session.execution.succeeded', {}); }, 4000);
-      } else event('session.text.delta', { delta: `Received: ${body.text}; images: ${body.files?.length ?? 0}\n` });
+      } else {
+        event('session.text.delta', { delta: `Received: ${body.text}; images: ${body.files?.length ?? 0}\n` });
+        if (body.text.includes('[done]')) {
+          event('session.step.ended', { tokens: { input: 17, output: 3 } });
+          event('session.execution.succeeded', {});
+        }
+      }
       return Response.json({ data: inbox });
     }
     if (url.pathname.endsWith('/interrupt')) {

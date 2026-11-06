@@ -16,25 +16,12 @@ import { describeWorkerError, workerEntry } from './worker-entry.ts';
 import { resolveMemoryLimits } from '../../memory-limits.ts';
 import { StartupPriority } from './startup-priority.ts';
 import { processEventDiagnostic } from '../../process-event-diagnostics.ts';
+import { UNNAMED_PROCESS } from '../../process-identity.ts';
 import { listJobPids } from './jobs-packets.ts';
 import { applyCpuCap, applyMemoryLimit, cpuRateOfJob, memoryLimitOfJob as readMemoryLimit,
   OFF_TOTAL_USER_TIME, OFF_TOTAL_KERNEL_TIME, OFF_ACTIVE_PROCESSES, ACCOUNTING_SIZE } from './job-limits.ts';
-import {
-  commandLineOf,
-  consoleHost,
-  cpuMsOf,
-  createdAtOfPid,
-  creationIdentityOf,
-  exitCodeOf,
-  exitStatusOf,
-  imageNameOf,
-  ioBytesOf,
-  parentPidOf,
-  peakMemoryOf,
-  startedAs,
-  whenCommandLineReads,
-  workingSetOf,
-} from './process-reads.ts';
+import { commandLineOf, consoleHost, cpuMsOf, createdAtOfPid, creationIdentityOf, exitCodeOf, exitStatusOf, imageNameOf,
+  ioBytesOf, parentPidOf, peakMemoryOf, startedAs, whenCommandLineReads, workingSetOf } from './process-reads.ts';
 
 import type { NativeProcessInfo, NativeProcessExit, ProcessSample, ProcessEventSink, ProcessLimits } from '../types.ts';
 
@@ -743,7 +730,7 @@ function onProcessStarted(threadId: string, pid: number, opened = 0): void {
       ignored.add(pid);
       return;
     }
-    sink?.started(threadId, pid, { exe: 'unknown', commandLine: null, parentPid: null });
+    sink?.started(threadId, pid, { exe: UNNAMED_PROCESS, commandLine: null, parentPid: null });
     return;
   }
   // A new start can reuse an ignored PID whose exit packet never arrived.
@@ -762,6 +749,9 @@ function onProcessStarted(threadId: string, pid: number, opened = 0): void {
     incarnation: identity?.incarnation ?? null, awaitingCommandLine: commandLine === null && api.hasNt});
   tracked.set(pid, { threadId, handle, peakMemoryBytes: 0, identity });
   const record = { parentPid: parentPidOf(api, handle), ...identity };
+  // A parent's start goes first: it runs, so its line reads now, and a child
+  // reported above nothing looks like an orphan to the sweep.
+  if (record.parentPid !== null) awaitingCommandLine.get(record.parentPid)?.flush();
   const waiting = whenCommandLineReads(api, handle, commandLine, (line) => {
     awaitingCommandLine.delete(pid);
     const name = startedAs(api, handle, exe, line);

@@ -43,8 +43,8 @@ export const strings = {
       needsBots: 'Needs Bots: a team\'s chat is listed with its bots. Turn Bots on first'
     },
     debates: {
-      title: 'AI debates',
-      hint: 'Your agents can ask several AIs to debate a question in rounds with boite delegate debate. You follow them in a salon and may write there, and an AI that did not debate sends the summary back to the thread. Not ready for everyday use'
+      title: 'Council',
+      hint: 'Your agents can ask several AIs to review a piece of work or a plan with boite delegate council, each alone and read-only. You follow them in a salon and may write there; the thread that started it gets their answers and scores. Not ready for everyday use'
     }
   }
 } as const;

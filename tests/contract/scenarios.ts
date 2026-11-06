@@ -12,7 +12,7 @@ import { CONTACT_MAIL_SCENARIOS } from './contact-mail.ts';
 import { CONTACTS_BOT_SCENARIOS } from './contacts-bot.ts';
 import { SHARED_SCENARIOS } from './shared-projects.ts';
 import { TEAM_SCENARIOS } from './teams.ts';
-import { DEBATE_SCENARIOS } from './debates.ts';
+import { COUNCIL_SCENARIOS } from './council.ts';
 import {
   GROUP_INVITE_PREFIX,
   PROJECT_NAME_MAX,
@@ -164,7 +164,7 @@ export const SCENARIOS: Record<string, Scenario> = {
   ...CONTACT_MAIL_SCENARIOS,
   ...CONTACTS_BOT_SCENARIOS,
   ...TEAM_SCENARIOS,
-  ...DEBATE_SCENARIOS,
+  ...COUNCIL_SCENARIOS,
   'artifacts.viewBlock reuses HTML and refuses empty or oversized UTF-8 input': async (env) => {
     const html = '<p>Shared view</p>';
     const { url } = await env.call('artifacts.viewBlock', { html });
@@ -702,7 +702,17 @@ export const SCENARIOS: Record<string, Scenario> = {
     const first = await env.call('threads.listChanges', {});
     same(first.kind, 'full', 'the first read');
     same(ids(own(first.threads)), [pinned.id, unchanged.id, archived.id, removed.id].sort(), 'the initial project rows');
-    same(first.threads.map(row => row.id), (await env.call('threads.list', {})).map(row => row.id), 'the full list order');
+    // Another scenario's late commit can move a row of the shared core between
+    // two reads, so the order is compared where the list held still around it.
+    const order = async () => (await env.call('threads.list', {})).map(row => row.id);
+    await until('a full list while the list holds still', async () => {
+      const before = await order();
+      const full = await env.call('threads.listChanges', {});
+      check(full.kind === 'full', 'a read without a cursor did not return the full list');
+      if (JSON.stringify(before) !== JSON.stringify(await order())) return false;
+      same(full.threads.map(row => row.id), before, 'the full list order');
+      return true;
+    });
 
     await env.call('threads.pin', { threadId: pinned.id, pinned: true });
     await env.call('threads.archive', { threadId: archived.id, archived: true });

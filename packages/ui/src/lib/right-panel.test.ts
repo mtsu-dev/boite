@@ -56,6 +56,17 @@ describe('the right panel', () => {
     expect(bound.active?.kind).toBe('agents');
   });
 
+  test('a salon tab stored while it was a debate\'s comes back on that debate, as the one council tab', () => {
+    window.localStorage.setItem(PANEL_STORAGE_KEY, JSON.stringify({ version: PANEL_VERSION, threads: { 't-1': { isOpen: true, activeSurfaceId: 'debate', surfaces: [{ id: 'trace', kind: 'trace' }, { id: 'debate', kind: 'debate', debateId: 'dbt_1' }] } } }));
+
+    const bound = new RightPanelStore().for('t-1');
+
+    expect(bound.active).toMatchObject({ id: 'council', kind: 'council', councilId: 'dbt_1' });
+    bound.openCouncil('cnl_2');
+    expect(bound.surfaces.filter((surface) => surface.kind === 'council')).toHaveLength(1);
+    expect(bound.active).toMatchObject({ kind: 'council', councilId: 'cnl_2' });
+  });
+
   test('opens the panel on the surface it just made', () => {
     const { bound } = panel();
 

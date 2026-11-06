@@ -3,6 +3,7 @@ import { CgroupMemoryReader } from './linux-cgroup.ts';
 import { LinuxLoad, linuxMachineMemory, linuxStartKey, linuxStartedAt } from './linux-load.ts';
 import type { ProcessPlatform } from './types.ts';
 import { linuxServerUpdates } from './linux-server-update.ts';
+import { androidServerUpdates } from './android-server-update.ts';
 import { findTailscaleCli } from './tailscale.ts';
 import { LinuxExecutionBoundary } from './linux-protected.ts';
 import { linuxGpus, linuxOsLabel, linuxVolumes, macosOsLabel, macosVolumes } from './posix-machine.ts';
@@ -35,7 +36,7 @@ export function createPosixPlatform(
   const cgroups = os === 'linux' ? new CgroupMemoryReader() : null;
   return {
     ...(os === 'linux' ? {protectedExecution: new LinuxExecutionBoundary()} : {}),
-    ...(os === 'linux' ? { serverUpdates: linuxServerUpdates() } : {}),
+    ...(os === 'linux' ? { serverUpdates: linuxServerUpdates(), androidServerUpdates: androidServerUpdates() } : {}),
     tailscaleCli: () => findTailscaleCli(os),
     // libX11 loads with the first `boite window` on an X11 session, never at startup.
     windowCapture: async () => {

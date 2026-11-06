@@ -4,7 +4,8 @@ import { RpcFailure } from '../client';
 import { encodeInvite, INVITE_PREFIX, inviteShare, readInvite } from '../contact-link';
 import type { FakeContext, FakeMethods } from './context';
 import { createFakeThread, publishFakeThread } from './create-thread';
-import { checkContactTier, contactSender, coordinationConfig, decideFakeMail, deliverContactAnswer, fakeContactRoutes, fakeCore, fakeHeldMail, registerContactState, releaseFakeMail, trusts } from './coordination';
+import { T0 } from './shared';
+import { checkContactTier, contactSender, coordinationConfig, decideFakeMail, deliverContactAnswer, fakeContactRoutes, fakeCore, fakeHeldMail, fakeRequestsChanged, registerContactState, releaseFakeMail, trusts } from './coordination';
 
 const DAY = 24 * 60 * 60_000;
 const WORDS = ['amber', 'orbit', 'lantern', 'meadow', 'falcon', 'cobalt', 'harbor', 'velvet', 'thistle', 'glacier', 'ember', 'quartz'];
@@ -93,6 +94,26 @@ function tailscale(apiKey: boolean): ContactTailscale {
     : { fqdn: 'boite-pc.tail4f2a.ts.net', apiKey: false, policy: 'unknown' };
 }
 
+/**
+ * `?asks=1`: the boot thread asked the Contacts bot four times, so its
+ * timeline shows a request in each state: with the bot, sent to Chris,
+ * answered with the thread to write to, refused.
+ */
+function askedSeed(ctx: FakeContext, chris: Contact, from: Omit<ContactRequest['from'], 'threadId' | 'title'>): ContactRequest[] {
+  const thread = ctx.threads.get('t-descriptors');
+  if (!thread) return [];
+  const asker = { ...from, coreId: ctx.identity.coreId, machine: ctx.identity.name, threadId: thread.id, title: thread.title, project: 'notes', agent: 'echo echo-1' };
+  const base = { direction: 'out' as const, from: asker, want: 'talk' as const };
+  const at = T0 + 330_000;
+  return [
+    { ...base, id: 'creq-ask-touch', coreId: chris.coreId, contact: chris.name, text: 'Someone who knows how the website loads its descriptors: ours refuse a roots entry outside the directory, does theirs?', createdAt: at, status: 'accepted', decidedBy: 'bot', decidedAt: at + 40_000,
+      relation: { id: 'crel-ask-touch', coreId: chris.coreId, contact: chris.name, local: { threadId: thread.id, title: thread.title }, remote: { ...from, threadId: 'chris-thread-loader', title: 'Harden the descriptor loader', project: 'website', agent: 'claude claude-opus-5-5' }, requestId: 'creq-ask-touch', createdAt: at + 40_000 } },
+    { ...base, id: 'creq-ask-refused', coreId: chris.coreId, contact: chris.name, text: 'Read access to the website repository to compare both loaders line by line.', want: 'share', createdAt: at + 60_000, status: 'refused', reason: 'Chris shares no repository with read access; ask its agent instead', decidedBy: 'bot', decidedAt: at + 75_000 },
+    { ...base, id: 'creq-ask-sent', coreId: chris.coreId, contact: chris.name, text: 'An agent that ran the descriptor fuzzer on Windows paths, to compare the cases it found.', createdAt: at + 90_000, forwardedAt: at + 95_000, status: 'pending' },
+    { ...base, id: 'creq-ask-bot', coreId: '', contact: '', text: 'Anyone who has a loader test for symlinked roots.', want: 'thread', createdAt: at + 120_000, status: 'pending', stage: 'bot' }
+  ];
+}
+
 /** Chris, connected, with one project each way, one request waiting and one this core made earlier. */
 function seed(ctx: FakeContext): ContactsState {
   const at = ctx.now();
@@ -139,6 +160,7 @@ function seed(ctx: FakeContext): ContactsState {
       decidedAt: at - 2 * DAY + 4_000
     }
   ];
+  if (typeof location !== 'undefined' && new URLSearchParams(location.search).get('asks') === '1') requests.push(...askedSeed(ctx, chris, from));
   // One thread here already works with one of Chris's, and one of Chris's letters there waits for the bot.
   const local = [...ctx.threads.values()].find(thread => !thread.archived && !thread.agentSessionId && !thread.parentThreadId && thread.projectId !== null);
   const relations: ContactRelation[] = local ? [{
@@ -253,6 +275,7 @@ function settle(ctx: FakeContext, request: ContactRequest, by: 'owner' | 'bot', 
   Object.assign(origin.request, { status: request.status, project: request.project, reason: request.reason, decidedBy: request.decidedBy, decidedAt: request.decidedAt, ...(mirror ? { relation: mirror } : {}) });
   delete origin.request.stage;
   origin.source.emit('contacts.updated', {});
+  fakeRequestsChanged(origin.source);
   deliverContactAnswer(origin.source, origin.request);
 }
 
@@ -272,6 +295,7 @@ function endRelation(ctx: FakeContext, relation: ContactRelation): void {
 export function contactMethods(ctx: FakeContext) {
   const changed = () => {
     ctx.emit('contacts.updated', {});
+    fakeRequestsChanged(ctx);
     for (const peer of ctx.roster?.cores ?? []) if (peer.coreId !== ctx.identity.coreId) fakeCore(peer.coreId)?.emit('contacts.updated', {});
   };
   const checkTier = (thread: Thread) => {
@@ -462,7 +486,11 @@ export function contactMethods(ctx: FakeContext) {
       const contact = contactOf(state, params?.coreId);
       if (name !== undefined) {
         contact.name = name;
-        for (const request of state.requests) if (request.coreId === contact.coreId) request.contact = name;
+        for (const request of state.requests) {
+          if (request.coreId !== contact.coreId) continue;
+          request.contact = name;
+          if (request.relation) request.relation = { ...request.relation, contact: name };
+        }
         for (const relation of state.relations ?? []) if (relation.coreId === contact.coreId) relation.contact = name;
         for (const flag of state.flags ?? []) if (flag.coreId === contact.coreId) flag.contact = name;
       }
@@ -650,6 +678,8 @@ export function contactMethods(ctx: FakeContext) {
       else if (!sameContact) delete request.target;
       delete request.stage;
       send(request, thread, contact, gateway);
+      // As the core: stamped after the forward, so the contact's copy never carries it.
+      request.forwardedAt = ctx.now();
       changed();
       return structuredClone(request);
     },

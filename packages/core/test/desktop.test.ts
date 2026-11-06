@@ -83,7 +83,7 @@ test.skipIf(!posix)('a desktop the policy turned off takes no more commands, and
     writeFileSync(join(dir, 'agent-desktop'), '#!/bin/sh\necho own "$@"\n');
     chmodSync(join(dir, 'agent-desktop'), 0o755);
     const io = { cwd: dir, env: { PATH: `${dir}:/usr/bin:/bin` }, out: () => {}, err: () => {} };
-    const session = { display: ':9', width: 1280, height: 800, apps: [], env: { DISPLAY: ':9' } };
+    const session = { kind: 'x11', display: ':9', width: 1280, height: 800, apps: [], env: { DISPLAY: ':9' } };
     const fails = (code: number) => Object.assign(new Error(`tool ${code}`), { rpc: { code, message: `tool ${code}` } });
     const client = (status: { available: boolean; reason?: string }, tool: number) => ({
       call: async (method: string) => {
@@ -154,7 +154,7 @@ test('the core stopping while a desktop starts stops it at once, without waiting
   expect(performance.now() - began).toBeLessThan(1_000);
   expect(await start).toThrow('archived or Boite is stopping');
   expect(stack.live()).toBe(0);
-  expect(stack.desktops.status({ threadId: stack.thread.id }).session).toBeNull();
+  expect((await stack.desktops.status({ threadId: stack.thread.id })).session).toBeNull();
   expect(await thrown(stack.desktops.start({ threadId: stack.thread.id }))).toThrow('Boite is stopping');
 });
 
@@ -191,7 +191,7 @@ test('archiving while the desktop restarts stops the new one too', async () => {
   await stop;
   expect(await restart).toThrow('archived');
   expect(stack.live()).toBe(0);
-  expect(stack.desktops.status({ threadId: stack.thread.id }).session).toBeNull();
+  expect((await stack.desktops.status({ threadId: stack.thread.id })).session).toBeNull();
 });
 
 test('a program still starts with a log after something on the desktop removed the logs folder', async () => {
@@ -200,7 +200,7 @@ test('a program still starts with a log after something on the desktop removed t
   rmSync(join(dirname(session.env['XAUTHORITY']!), 'logs'), { recursive: true });
   const { app } = await stack.desktops.run({ threadId: stack.thread.id, command: ['app'], cwd: tmpdir() });
   expect(existsSync(app.log)).toBe(true);
-  expect(stack.desktops.status({ threadId: stack.thread.id }).session!.apps.map(entry => entry.pid)).toEqual([app.pid]);
+  expect((await stack.desktops.status({ threadId: stack.thread.id })).session!.apps.map(entry => entry.pid)).toEqual([app.pid]);
   await stack.desktops.stop({ threadId: stack.thread.id });
   expect(stack.live()).toBe(0);
 });
@@ -237,7 +237,7 @@ describe.skipIf(!posix)('the agent-desktop Boite installs', () => {
     const pinned: AgentDesktopRelease = {
       version: '9.9.9', url: 'https://registry.example/agent-desktop-9.9.9.tgz',
       sha256: tamper.archive ? sha(new TextEncoder().encode('another')) : sha(archive),
-      builds: { x64: [
+      builds: { 'linux-x64': [
         { entry: 'package/bin/agent-desktop-linux-x64', name: 'agent-desktop', sha256: sha(new TextEncoder().encode(tool)) },
         { entry: 'package/bin/helper-x64', name: 'agent-desktop-linux-clipboard-owner', sha256: sha(new TextEncoder().encode(helper)) },
       ] },
@@ -259,7 +259,7 @@ describe.skipIf(!posix)('the agent-desktop Boite installs', () => {
   test('the pinned release is fetched once, checked, kept executable and reused by the next core', async () => {
     const { pinned, fetched, fetch } = release();
     const tools = join(dir, 'tools');
-    const tool = new AgentDesktopTool(tools, harness.core.procs, { release: pinned, arch: 'x64', fetch });
+    const tool = new AgentDesktopTool(tools, harness.core.procs, { release: pinned, platform: 'linux', arch: 'x64', fetch });
     // Two commands at once share one download.
     const [path, again] = await Promise.all([tool.path(), tool.path()]);
     expect(dirname(dirname(path))).toBe(join(tools, 'agent-desktop-9.9.9'));
@@ -271,7 +271,7 @@ describe.skipIf(!posix)('the agent-desktop Boite installs', () => {
     // Nothing staged is left beside it.
     expect(readdirSync(tools)).toEqual(['agent-desktop-9.9.9']);
     expect(readdirSync(join(tools, 'agent-desktop-9.9.9'))).toHaveLength(1);
-    const next = new AgentDesktopTool(tools, harness.core.procs, { release: pinned, arch: 'x64', fetch });
+    const next = new AgentDesktopTool(tools, harness.core.procs, { release: pinned, platform: 'linux', arch: 'x64', fetch });
     expect(await next.path()).toBe(path);
     expect(fetched).toHaveLength(1);
   });
@@ -280,32 +280,32 @@ describe.skipIf(!posix)('the agent-desktop Boite installs', () => {
     const tools = join(dir, 'tools');
     for (const tamper of [{ archive: true }, { entry: true }]) {
       const { pinned, fetch } = release(tamper);
-      const tool = new AgentDesktopTool(tools, harness.core.procs, { release: pinned, arch: 'x64', fetch });
+      const tool = new AgentDesktopTool(tools, harness.core.procs, { release: pinned, platform: 'linux', arch: 'x64', fetch });
       expect(await thrown(tool.path())).toThrow(tamper.archive ? 'does not match its pinned SHA-256; nothing was installed' : 'package/bin/agent-desktop-linux-x64 does not match its pinned SHA-256');
       const folder = join(tools, 'agent-desktop-9.9.9');
       expect(existsSync(folder) ? readdirSync(folder) : []).toEqual([]);
     }
     const { pinned, fetched, fetch } = release();
-    const damaged = await new AgentDesktopTool(tools, harness.core.procs, { release: pinned, arch: 'x64', fetch }).path();
+    const damaged = await new AgentDesktopTool(tools, harness.core.procs, { release: pinned, platform: 'linux', arch: 'x64', fetch }).path();
     writeFileSync(damaged, 'truncated');
     // A file that cannot be read, as one another core removes mid-check, is damage too, not an error.
     const unreadable = join(tools, 'agent-desktop-9.9.9', 'unreadable');
     mkdirSync(unreadable);
     writeFileSync(join(unreadable, 'agent-desktop'), 'x');
     chmodSync(join(unreadable, 'agent-desktop'), 0o000);
-    const path = await new AgentDesktopTool(tools, harness.core.procs, { release: pinned, arch: 'x64', fetch }).path();
+    const path = await new AgentDesktopTool(tools, harness.core.procs, { release: pinned, platform: 'linux', arch: 'x64', fetch }).path();
     expect(existsSync(unreadable)).toBe(false);
     expect(fetched).toHaveLength(2);
-    expect(sha(readFileSync(path))).toBe(pinned.builds.x64![0]!.sha256);
+    expect(sha(readFileSync(path))).toBe(pinned.builds['linux-x64']![0]!.sha256);
     expect(existsSync(dirname(damaged))).toBe(false);
-    expect(await thrown(new AgentDesktopTool(tools, harness.core.procs, { release: pinned, arch: 'riscv64', fetch }).path())).toThrow('has no Linux build for riscv64');
+    expect(await thrown(new AgentDesktopTool(tools, harness.core.procs, { release: pinned, platform: 'linux', arch: 'riscv64', fetch }).path())).toThrow('has no build for linux-riscv64');
   });
 
   test('cores sharing a data dir never remove an install another returned, even while one repairs a damaged install', async () => {
     const { pinned, fetched, fetch } = release();
     const tools = join(dir, 'tools');
-    const tool = () => new AgentDesktopTool(tools, harness.core.procs, { release: pinned, arch: 'x64', fetch });
-    const intact = (path: string) => existsSync(path) && sha(readFileSync(path)) === pinned.builds.x64![0]!.sha256;
+    const tool = () => new AgentDesktopTool(tools, harness.core.procs, { release: pinned, platform: 'linux', arch: 'x64', fetch });
+    const intact = (path: string) => existsSync(path) && sha(readFileSync(path)) === pinned.builds['linux-x64']![0]!.sha256;
     // Two at once: each keeps the install it made, both stay.
     const [first, second] = await Promise.all([tool().path(), tool().path()]);
     expect(fetched).toHaveLength(2);
@@ -415,8 +415,8 @@ describe('boite desktop', () => {
     owner.close();
     const deadline = Date.now() + 10_000;
     // The archive answers first; the desktop stops behind it.
-    while (harness.core.desktops.status({ threadId }).session && Date.now() < deadline) await Bun.sleep(100);
-    expect(harness.core.desktops.status({ threadId }).session).toBeNull();
+    while ((await harness.core.desktops.status({ threadId })).session && Date.now() < deadline) await Bun.sleep(100);
+    expect((await harness.core.desktops.status({ threadId })).session).toBeNull();
     expect(markedProcesses(mark)).toEqual([]);
     expect(existsSync(join(session.env['XAUTHORITY']!, '..'))).toBe(false);
   }, 30_000);

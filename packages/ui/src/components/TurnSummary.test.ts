@@ -100,6 +100,18 @@ test('a wake on a watched pull request the next day counts the work, not the nig
   expect(document.querySelector('[data-testid=turn-elapsed]')?.getAttribute('title')).toBe('This reply alone: 6m 00s');
 });
 
+test('another agent writing to a thread at rest the next day counts that turn alone', () => {
+  const user = turn({ id: 'user', finishedAt: STARTED + 1_200_000 });
+  const letter = turn({ id: 'letter', queuedAt: STARTED + 64_800_000, startedAt: STARTED + 64_800_000, finishedAt: STARTED + 65_160_000, execution: { ...compactExecution, operation: 'coordination', automatic: undefined, opensRequest: true } });
+  const store = { connection: 'ready', clockOffset: 0, openThread: { id: 't-1', status: 'idle', turns: [user, letter] } } as unknown as Store;
+  const message = { id: 'answer', role: 'assistant', turnId: 'letter', parts: [] } as unknown as Message;
+  running = mount(MessageTurnSummary, { target: document.body, props: { store, threadId: 't-1', turn: letter, turns: [user, letter], message, messages: [message] } });
+  flushSync();
+  // The letter's own 6 minutes, not the night since the user's turn; the words stay in the tooltip.
+  expect(text('turn-elapsed')).toBe('6m 00s');
+  expect(document.querySelector('[data-testid=turn-elapsed]')?.getAttribute('title')).toBe('Worked for 6m 00s');
+});
+
 test('a compaction keeps its own duration whatever request it follows', () => {
   running = mount(TurnSummary, { target: document.body, props: { turn: turn({ execution: compactExecution }), workedBefore: 1_800_000 } });
   flushSync();

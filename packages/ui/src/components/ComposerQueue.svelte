@@ -42,7 +42,7 @@
     machine?: string;
     /** A draft's queue: its first prompt starts the conversation once the machine is back. */
     starts?: boolean;
-    /** What Send now would do: steer the turn, resume the held queue, or nothing. */
+    /** What Send now would do: interrupt the turn, resume the held queue, or nothing. */
     sendNow: 'steer' | 'resume' | null;
     onrestore: (at: number) => void;
     onremove?: (at: number) => void;

@@ -139,7 +139,7 @@
   let entries = $derived(machines.flatMap(machine => {
     const byId = new Map(machine.store.projects.map(p => [p.id, p]));
     // A team's chat is listed with the bots (`agents/AgentsRail.svelte`), not among the threads.
-    return machine.store.threads.filter(t => !t.archived && !t.incognito && !t.teamId && !t.debateId).map(thread => ({ machine, thread, project: thread.projectId === null ? undefined : byId.get(thread.projectId) }));
+    return machine.store.threads.filter(t => !t.archived && !t.incognito && !t.teamId && !t.councilId).map(thread => ({ machine, thread, project: thread.projectId === null ? undefined : byId.get(thread.projectId) }));
   }));
   /** The Inbox tab: what waits on the user, in Recent's order, then the work going on (`lib/inbox.ts`, the desktop home's Inbox too). */
   let lists = $derived(inbox(storeSources(machines)));

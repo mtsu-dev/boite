@@ -8,7 +8,7 @@ import { verify } from 'node:crypto';
 import type { AgentContact, AgentLetter, CoordinationPeer } from '@boite/contracts';
 import { text } from './coordination-letter.ts';
 import { checkRemoteContact, PARTIAL, searchContacts, searchWords, transcript } from './coordination-lookup.ts';
-import { boundedBody, BOT_OPERATIONS, type BotOperation, type Envelope } from './coordination-wire.ts';
+import { boundedBody, BOT_OPERATIONS, TEAM_OPERATIONS, type BotOperation, type Envelope, type TeamOperation } from './coordination-wire.ts';
 import { pack, SEALED, sealResponse, unpack, type Sealing } from './group/seal.ts';
 import type { Core } from './core.ts';
 import { invalidParams, refused, RpcFailure } from './errors.ts';
@@ -98,10 +98,12 @@ export class PeerDesk {
       this.#core.group.backoff.heard(peer.coreId);
       // So does what this core holds for it: subagent reports, stops and retirements go now rather than at their next retry.
       this.#core.delegation.remote.heard(peer.coreId);
+      // And the team posts, letters' reports and answers waiting for it.
+      this.#core.teams.peers.heard(peer.coreId);
       if (rate.count > 120) return this.#signed({nonce: envelope.nonce, error: 'peer rate limit'}, 429, sealing);
     } catch { return new Response('invalid signed message', { status: 403 }); }
     const groupOnly = envelope.operation === 'group.sync' || envelope.operation === 'group.push' || envelope.operation === 'contact.route' || envelope.operation === 'contact.hand'
-      || envelope.operation === 'thread.start' || envelope.operation.startsWith('delegation.') || envelope.operation.startsWith('setting.') || envelope.operation.startsWith('bot.'); // the group's own: sealed, from a member
+      || envelope.operation === 'thread.start' || envelope.operation.startsWith('delegation.') || envelope.operation.startsWith('setting.') || envelope.operation.startsWith('bot.') || envelope.operation.startsWith('team.'); // the group's own: sealed, from a member
     if (this.#core.group.removedPeer(peer.coreId) !== null && (groupOnly || !this.#side.trusted().some(p => p.coreId === peer.coreId))) {
       return this.#signed({ nonce: envelope.nonce, error: 'this machine was removed from the group', gone: true }, 410, sealing);
     }
@@ -130,6 +132,7 @@ export class PeerDesk {
         if (!member && envelope.operation.startsWith('delegation.')) throw refused('operation: only a machine of this core\'s group reads its models or runs subagents here');
         if (!member && envelope.operation.startsWith('setting.')) throw refused('operation: only a machine of this core\'s group reads or announces its settings');
         if (!member && envelope.operation.startsWith('bot.')) throw refused('operation: only a machine of this core\'s group looks after projects here');
+        if (!member && envelope.operation.startsWith('team.')) throw refused('operation: only a machine of this core\'s group takes part in its teams');
         if (contact) result = await this.contact(currentPeer, envelope.operation, envelope.payload, false);
         else if (envelope.operation === 'contact.route') result = await this.#core.coordination.mailboxes.handle(currentPeer, envelope.payload);
         else if (envelope.operation === 'contact.hand') result = await this.#core.contacts.groupLink.handed(currentPeer, envelope.payload);
@@ -165,7 +168,8 @@ export class PeerDesk {
         else if (envelope.operation === 'setting.read') result = readMachineSetting(this.#core, envelope.payload);
         else if (envelope.operation === 'setting.changed') result = machineSettingChanged(this.#core, currentPeer, envelope.payload);
         else if ((BOT_OPERATIONS as readonly string[]).includes(envelope.operation)) result = await this.#core.workforce.group.peer(currentPeer, envelope.operation as BotOperation, envelope.payload);
-        else throw invalidParams(member ? 'operation: expected directory, deliver, receipt, search, read, group.sync, group.push, relay.*, thread.start, delegation.*, setting.* or bot.*' : 'operation: expected directory, deliver, receipt, search, read, group.sync or group.push');
+        else if ((TEAM_OPERATIONS as readonly string[]).includes(envelope.operation)) result = await this.#core.teams.peers.answer(currentPeer, envelope.operation as TeamOperation, envelope.payload);
+        else throw invalidParams(member ? 'operation: expected directory, deliver, receipt, search, read, group.sync, group.push, relay.*, thread.start, delegation.*, setting.*, bot.* or team.*' : 'operation: expected directory, deliver, receipt, search, read, group.sync or group.push');
         // An asynchronous contact lookup must not return data after access was withdrawn.
         policedRoutes(this.#core, currentPeer, envelope.operation);
       } catch (reason) {

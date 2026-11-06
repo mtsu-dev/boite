@@ -221,8 +221,8 @@
         {:else if thread.teamId}
           <!-- A team's chat takes its team's name and no thread action: the core refuses them on a chat that runs no agent. -->
           <span class="title team" data-testid="thread-title" title={thread.title}><UsersRound size={15} strokeWidth={1.75} /><span class="ui-label">{thread.title}</span></span>
-        {:else if thread.debateId}
-          <!-- A debate's salon runs no agent either: its title is the debate's, and it has no thread action. -->
+        {:else if thread.councilId}
+          <!-- A council's salon runs no agent either: its title is the council's, and it has no thread action. -->
           <span class="title team" data-testid="thread-title" title={thread.title}><MessagesSquare size={15} strokeWidth={1.75} /><span class="ui-label">{thread.title}</span></span>
         {:else}
           <button
@@ -284,7 +284,7 @@
         <span class="context-chip"><ContextModeBadge mode={thread.contextMode} testid="thread-context-mode" /></span>
       {/if}
 
-      {#if thread && !thread.teamId && !thread.debateId}
+      {#if thread && !thread.teamId && !thread.councilId}
         <!-- Where the thread works and who looks after it, in one neutral pill:
              the branch, its PR, then the real avatar of the agent it is
              entrusted to or of the one looking after its project. A phone keeps

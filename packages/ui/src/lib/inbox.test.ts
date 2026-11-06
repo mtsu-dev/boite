@@ -100,11 +100,11 @@ test('a machine that is not connected counts nothing; its asks wait apart, muted
   expect(lists.tally).toEqual({ threads: { needs: 1, working: 1 }, bots: { needs: 0, working: 0 } });
 });
 
-test('a bot\'s own thread is counted apart from the project threads, and a team or debate room is not counted', () => {
+test('a bot\'s own thread is counted apart from the project threads, and a team or council room is not counted', () => {
   const lists = inbox([source('pc', [
     thread('bot-asks', { projectId: null, agentSessionId: 'session-1', openQuestions: 1 } as Partial<ThreadSummary>),
     thread('bot-runs', { projectId: null, agentSessionId: 'session-2', status: 'running' } as Partial<ThreadSummary>),
-    thread('room', { status: 'waiting', debateId: 'd-1' } as Partial<ThreadSummary>),
+    thread('room', { status: 'waiting', councilId: 'c-1' } as Partial<ThreadSummary>),
     thread('asks', { status: 'waiting' })
   ])]);
   expect(lists.tally).toEqual({ threads: { needs: 1, working: 0 }, bots: { needs: 1, working: 1 } });

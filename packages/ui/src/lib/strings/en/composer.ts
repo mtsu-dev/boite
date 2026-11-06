@@ -44,7 +44,7 @@ export const strings = {
     queueWaitForEnd: 'Goals and loops wait for the current turn to finish. Your command remains queued.',
     queueTurnNotReady: 'The running turn has not reached this client yet. Your message remains queued.',
     queueNotAccepted: 'This turn did not accept the queued input. It remains queued and will be sent when the turn ends.',
-    sendNowHint: 'Sends pending messages to the running agent without stopping it. Enter in the empty composer does the same.',
+    sendNowHint: 'Stops the current turn and sends pending messages. Enter in the empty composer does the same.',
     retryQueuedHint: 'Sends all pending messages together again. Enter in the empty composer does the same.',
     /** The outbox: messages written while the machine was away, kept on this device. */
     outboxKept: 'Kept on this device and sent in order, once each',

@@ -7,10 +7,13 @@ import { ClaudeSession } from './claude/session.ts';
 import { titleQuery } from './claude/title.ts';
 import { sideQuestion } from './claude/side-question.ts';
 import { ClaudeTurn } from './claude/turn.ts';
-import type { Driver, ProbeContext, ProbeResult, TitleContext, SessionContext, TurnContext, TurnHandle } from './types.ts';
+import type { Driver, DriverCapabilities, ProbeContext, ProbeResult, TitleContext, SessionContext, TurnContext, TurnHandle } from './types.ts';
 import { noteWarmSession } from './driver-log.ts';
 
 const MINUTE_MS = 60_000;
+
+/** A `PostToolBatch` hook is the step boundary, and a swap goes on in the same turn (`claude/step.ts`). */
+export const CLAUDE_CAPABILITIES: DriverCapabilities = { stepSwap: true };
 
 /**
  * One session per thread. `warmProcessMinutes` at zero keeps the old rule, one
@@ -67,6 +70,7 @@ export function createClaudeDriver(deps: ClaudeDeps): Driver {
 
   return {
     protocol: 'claude-sdk',
+    capabilities: CLAUDE_CAPABILITIES,
     sideQuestion: ctx => sideQuestion(deps, ctx),
     prepare: (ctx, options) => acquire(ctx).prepare(options?.forTurn),
     setViewed(threadId, active) {

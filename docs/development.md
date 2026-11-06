@@ -98,7 +98,8 @@ client. Development fixtures spend no provider tokens:
 | `?fake=1&rtt=200` | Every call waits a 200 ms round trip, half each way; pushed events are not delayed |
 | `?fake=1&open=recent` | Opens the latest thread instead of a new draft |
 | `?fake=1&readability=1&open=recent` | A request over three days: narration between calls, a mid-turn and an automatic compaction, pull-request and review wakes, day dividers |
-| `?fake=1&debates=1` | A thread with a running and a finished AI debate; the cards and salon draw with the `debates` experiment on ([debates](debates.md)) |
+| `?fake=1&council=1` | A thread with a running and a finished council and an older debate; the cards and salon draw with the `debates` experiment on ([council](council.md)) |
+| `?fake=1&asks=1&open=recent` | The opened thread asked the Contacts bot four times: one request with the bot, one sent to Chris, one answered, one refused ([contacts](contacts.md#in-the-conversation)) |
 | `?fake=1&uninstalled=1` | No connected provider |
 | `?fake=1&policy=managed` | An admin policy that locks every key a control shows; `broken` adds problems, `closed` fails closed ([enterprise](enterprise.md)) |
 
@@ -886,6 +887,7 @@ Real-provider tests use CLI logins and spend tokens. Run selected cases from
 | `BOITE_E2E_GROK=1` | `test/grok.live.test.ts`: default login, model/effort and cold resume; empty isolated homes can open sign-in |
 | `BOITE_E2E_GROK_QUOTA=1` | `test/grok-quota.live.test.ts`: quota for the existing default login |
 | `BOITE_E2E_GROK_PROXY=1` | `test/grok-proxy.live.test.ts`: Grok behind a Douane gateway, on an isolated account that never signed in; `BOITE_E2E_GROK_PROXY_URL` is the gateway's API URL, `BOITE_E2E_GROK_PROXY_KEY` its key |
+| `BOITE_E2E_COUNCIL=1` | `test/council.live.test.ts`: one [council](council.md) round with real models behind a Douane gateway, in a folder without git; `BOITE_E2E_COUNCIL_PROXY_URL` is the gateway's API URL, `BOITE_E2E_COUNCIL_PROXY_KEY` its key, `BOITE_E2E_COUNCIL_MODELS` the members |
 | `BOITE_E2E_CODEX=1` | `test/codex.live.test.ts`: app-server turn and resume |
 | `BOITE_E2E_PI=1` | `test/pi.live.test.ts`: turn and resume |
 | `BOITE_E2E_INSTALLS=1` | `test/shipped-installs.live.test.ts`: pinned Codex/OpenCode downloads and versions |

@@ -9,7 +9,7 @@
   import { AgentTimeline, memoryPassOf } from '../lib/agent-turns';
   import { groupTimeline } from '../lib/timeline-group';
   import { agentMailFor } from '../lib/agent-mail';
-  import { teamLaunches } from '../lib/delegation-progress';
+  import { timelineCards } from '../lib/timeline-cards';
   import Deferred, { parts } from './Deferred.svelte';
   import { provideViewerHost, type Gallery } from '../lib/media-gallery';
   import MoveMarker from './MoveMarker.svelte';
@@ -59,7 +59,6 @@
   $effect(() => {
     if (store.findOpen && !FindBar) void import('./FindBar.svelte').then((module) => { FindBar = module.default; }).catch(() => { store.findOpen = false; });
   });
-  const delegation = $derived(store.delegation && (store.delegation.rootThreadId === threadId || store.delegation.agents.some(agent => agent.thread.id === threadId)) ? store.delegation : null);
   const mail = $derived(agentMailFor(store, threadId));
   /** The thread's account is signed out and no other of its agent can take the next turn: an error carries the way back in. */
   const signedOut = $derived.by(() => {
@@ -68,14 +67,11 @@
     const account = store.accountOf(thread.accountId);
     return account?.status === 'unauthenticated' && store.usableAccountOf(account.providerId, account.id) === null ? account : null;
   });
-  const team = $derived(delegation?.rootThreadId === threadId ? delegation.agents : []);
-  /** One card per launch, where it happened; children outside the held page wait for theirs. */
-  const launches = $derived(new Map(teamLaunches(team, messages, store.openThread?.id === threadId && store.openThread.messagesBefore !== null, store.openThread?.id === threadId && (store.openThread.messagesAfter ?? null) !== null).map(launch => [launch.id, launch])));
-  /** The runs this thread started, each a card where it began. */
-  const workflowRows = $derived(new Map(store.workflowsOf(threadId).filter(run => run.rootThreadId === threadId).map(run => [`workflow:${run.id}`, run])));
+  /** Launches, workflow runs and contact requests, each a card where it happened (`timelineCards`). */
+  const cards = $derived(timelineCards(store, threadId, messages));
   /** The turns of the thread this list shows, open or delegated. */
   const shownTurns = $derived(store.openThread?.id === threadId ? store.openThread.turns : store.delegationThread?.id === threadId ? store.delegationThread.turns : []);
-  const grouped = $derived.by(() => groupTimeline(messages, threadId, shownTurns, mail, launches, workflowRows, memoryRows));
+  const grouped = $derived.by(() => groupTimeline(messages, threadId, shownTurns, mail, cards, memoryRows));
   /** When the newest turn the user or a wake asked for began: a launch or run line older than it belongs to a past turn, which keeps no live count. */
   const newestTurnAt = $derived(shownTurns.reduce((latest, turn) => turn.execution?.operation === 'compact' || turn.execution?.operation === 'keepalive' ? latest : Math.max(latest, turn.startedAt ?? turn.queuedAt), -Infinity));
   /** The pages each turn published: its answer places them, or they go after it once the turn ends (`placeViews`). */
@@ -755,7 +751,7 @@
           data-testid={row.first ? 'message' : 'message-rest'}
           data-role={group ? 'agent-mail' : message.role} data-turn={message.turnId}
         >
-          <TimelineMessage {store} {threadId} {messages} {row} {group} {turn} {source} {quietFold} {closes} {days} turns={shownTurns} {facts} {shaped} {launches} {workflowRows}
+          <TimelineMessage {store} {threadId} {messages} {row} {group} {turn} {source} {quietFold} {closes} {days} turns={shownTurns} {facts} {shaped} {cards} {mail}
             notices={grouped.notices} memoryInline={memoryPlacement.inline} {views} {newestTurnAt} {signedOut} narrow={narrow.current} {failureTarget} oninspect={inspectFailures} {pointed} />
         </article>
         {/if}

@@ -493,7 +493,7 @@
   let boxEmpty = $derived(text.trim().length === 0 && attachments.length === 0 && previewReferences.length === 0 && !dictating);
 
   /**
-   * What Send now does to the queue: steer the running turn, resume it
+   * What Send now does to the queue: interrupt the running turn, resume it
    * after a refusal held it, or nothing while a pending prompt is going out.
    */
   let sendNow = $derived<'steer' | 'resume' | null>(
@@ -504,7 +504,7 @@
   );
 
   /**
-   * Send now submits queued prompts to the live agent without interrupting it. A queue held after a refusal is resumed too.
+   * Send now interrupts the active turn before submitting queued prompts. A queue held after a refusal is resumed too.
    */
   function sendQueuedNow() {
     const state = composer;

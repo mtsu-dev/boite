@@ -17,6 +17,7 @@ import { probeTimeoutMs } from '../src/drivers/acp/probe.ts';
 import { antigravityCertificates, antigravitySubagentBatch } from '../src/drivers/antigravity.ts';
 import { shareProfile, variableHome } from '../src/profile-share.ts';
 import { profileFor } from '../src/providers/resolve.ts';
+import { saveCatalog } from '../src/providers/saved-catalogs.ts';
 import { LAUNCH_TEMP_DIR } from '../src/drivers/launch-temp.ts';
 import { startTestCore, waitFor } from './harness.ts';
 import type { TestCore } from './harness.ts';
@@ -478,4 +479,15 @@ describe('antigravity', () => {
     expect(readFileSync(join(account, 'antigravity-cli', 'skills', 'deploy', 'SKILL.md'), 'utf8')).toBe('deploy');
     expect(existsSync(join(account, 'mcp_config.json'))).toBe(false);
   });
+});
+
+test('a council member named by its family resolves over a list an earlier core saved, on the scale its session reads', async () => {
+  const client = await startCore();
+  const { accountId, threadId } = await agyThread(client);
+  // What a core from before the family list saved: the level in the id, no family and no scale.
+  saveCatalog(harness!.core, 'agy-fake', accountId, { models: ['high', 'medium', 'low'].map(level => ({ id: `gemini-3.8-flash-${level}`, name: `Gemini 3.8 Flash (${level})` })), probedAt: Date.now() });
+  await client.call('client.preferences', { app: 'app-desktop-0001', language: 'en', experiments: ['debates'], labels: {} });
+  const council = await client.call('council.start', { threadId, request: 'Review the plan.', models: ['agy-fake/gemini-3.8-flash', 'echo/echo'] });
+  expect(council.members[0]).toMatchObject({ providerId: 'agy-fake', model: 'gemini-3.8-flash', effort: 'high', readOnly: 'approvals' });
+  expect(council.warnings).toContain(`${council.members[0]!.name} has no xhigh effort, so it runs at high.`);
 });

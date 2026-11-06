@@ -24,7 +24,7 @@
 
   /** The tabs no kind of the list stands for (a file, a second browser) first, then the list. */
   let items = $derived.by((): MenuItem[] => {
-    const extra = panel.surfaces.filter((surface) => surface.kind === 'file' || surface.kind === 'browser' || surface.kind === 'window' || surface.kind === 'debate');
+    const extra = panel.surfaces.filter((surface) => surface.kind === 'file' || surface.kind === 'browser' || surface.kind === 'window' || surface.kind === 'council');
     return [
       ...extra.map((surface): MenuItem => ({ id: `surface:${surface.id}`, label: label(surface), title: tooltip(surface), glyph: surfaceGlyph(surface.kind), active: surface.id === panel.activeSurfaceId })),
       ...(extra.length > 0 ? [separator('sep-open')] : []),

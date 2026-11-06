@@ -1,5 +1,5 @@
 import { afterEach, expect, spyOn, test } from 'bun:test';
-import { AGENT_ENV, DEFAULT_DELEGATION_CONFIG, type ThreadId } from '@boite/contracts';
+import { AGENT_ENV, DEFAULT_DELEGATION_CONFIG, queueOrder, type ThreadId } from '@boite/contracts';
 import { runCli, watchStatus } from '../src/cli.ts';
 import { connect } from '../src/client.ts';
 import { Core } from '../src/core.ts';
@@ -378,6 +378,37 @@ test('a watch read refreshes the head the conversation link claims for the workt
   await owner.call('threads.watchPullRequest', { threadId });
   await drive();
   expect(harness!.core.linkedPullRequests.saved(threadId)[0]).toMatchObject({ state: 'OPEN', head: 'renamed', headRepository: 'me/repo' });
+});
+
+test('another agent writing while a watch waits on its checks carries the request on, and opens its own once nothing waits', async () => {
+  const { owner, threadId, github, drive } = await watchedThread();
+  await owner.call('turns.start', { threadId, prompt: 'open the pull request' });
+  await settled(threadId);
+  await owner.call('threads.watchPullRequest', { threadId });
+  const request = harness!.core.journal.requestSince(threadId);
+  expect(request).toBeNumber();
+  const core = harness!.core;
+  const bot = (await echoThread(harness!, owner, 'Bot')).threadId;
+  const letter = async (requestId: string) => {
+    const before = core.journal.listTurns(threadId).length;
+    await core.coordination.send({ threadId: bot, to: core.coordination.get(threadId).self, text: 'A note', requestId });
+    await waitFor(() => core.journal.listTurns(threadId).length > before);
+    await settled(threadId);
+    return core.journal.listTurns(threadId).sort(queueOrder).at(-1)!;
+  };
+  const waiting = await letter('checks-running');
+  expect(waiting.execution).toMatchObject({ operation: 'coordination' });
+  expect(waiting.execution?.opensRequest).toBeUndefined();
+  expect(core.journal.requestSince(threadId)).toBe(request);
+
+  // The checks passed: nothing waits on them any more.
+  github.runs = [{ name: 'test', conclusion: 'SUCCESS' }];
+  github.updatedAt = '2026-10-15T09:31:00Z';
+  await drive();
+  await settled(threadId);
+  const resting = await letter('checks-done');
+  expect(resting.execution).toMatchObject({ operation: 'coordination', opensRequest: true });
+  expect(core.journal.requestSince(threadId)).toBe(resting.startedAt);
 });
 
 test('a watch reads first without waking, wakes once per change with links, and reads in full only when the fingerprint moves', async () => {

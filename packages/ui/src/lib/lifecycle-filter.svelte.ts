@@ -37,7 +37,7 @@ export const lifecycleFilter = new LifecycleFilter();
  */
 export function inLifecycle(entry: ProjectEntry, thread: ThreadSummary, kind: 'waiting' | 'working'): boolean {
   // The count rule's own population (`countKind`): a team or debate room under a project is not counted.
-  if (thread.teamId || thread.debateId) return false;
+  if (thread.teamId || thread.councilId) return false;
   // The count's own classification, so a parent carrying a remote child's question lists where it counts.
   return threadLiveKind(thread, threadState(thread, entry.machine.store.subagents(thread.id))) === (kind === 'waiting' ? 'needs' : 'working');
 }

@@ -41,7 +41,7 @@ export const fr: Translation = {
     queueWaitForEnd: 'Les objectifs et les boucles attendent la fin du tour en cours. Votre commande reste en attente.',
     queueTurnNotReady: "Ce client n'a pas encore reçu le tour en cours. Votre message reste en attente.",
     queueNotAccepted: "Ce tour n'a pas accepté le message. Il reste en attente et sera envoyé à la fin du tour.",
-    sendNowHint: "Transmet les messages à l'agent en cours sans l'arrêter. Entrée dans le champ vide fait de même.",
+    sendNowHint: "Arrête le tour en cours et envoie les messages en attente. Entrée dans le champ vide fait de même.",
     retryQueuedHint: 'Renvoie tous les messages en attente ensemble. Entrée dans le champ vide fait de même.',
     outboxKept: "Gardés sur cet appareil, envoyés dans l'ordre, une seule fois chacun",
     outboxStarts: 'Gardé sur cet appareil : la conversation démarre dès le retour de {machine}',
