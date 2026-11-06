@@ -63,10 +63,15 @@ export class StripScroll {
     node.scrollBy({ left: step * direction, behavior: 'smooth' });
   }
 
-  /** A vertical wheel scrolls the strip sideways. */
+  /**
+   * A vertical wheel scrolls the strip sideways. A strip that fits, or already
+   * rests at the end the wheel goes toward, leaves the wheel to the page.
+   */
   onwheel = (event: WheelEvent): void => {
     const node = this.#node();
     if (!node || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+    const end = node.scrollWidth - node.clientWidth;
+    if (end <= 1 || (event.deltaY < 0 && node.scrollLeft <= 1) || (event.deltaY > 0 && node.scrollLeft >= end - 1)) return;
     event.preventDefault();
     node.scrollLeft += event.deltaY;
   };

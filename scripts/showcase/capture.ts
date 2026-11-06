@@ -3,6 +3,8 @@
  * reviews: `bun scripts/showcase/capture.ts --out <dir> [--only <name,...>]
  * [--theme dark|light|both] [--device desktop|phone|both] [--lang en|fr|both]
  * [--narrow] [--contrast] [--solid] [--view projects|recent] [--seed calm|stress]`.
+ * `BOITE_PLAYWRIGHT` names Playwright Core's `index.mjs` when the package
+ * does not resolve from here.
  *
  * Each screen is a named step that navigates through the test bridge's store
  * (`__boiteTest.workspace.active`) or aria labels, waits for fonts and
@@ -596,7 +598,7 @@ const steps: Step[] = [
     name: 'notice', caption: 'A merged thread whose worktree was removed: the one-line notice banner above the composer.', devices: both,
     async run(page) {
       await openThread(page, 't-sc-openapi');
-      await store(page, 's.openThread.worktreeRemoved = { path: "/home/boite/projects/boite/.boite/worktrees/wt-openapi", branch: "atlas/openapi", branchDeleted: true, reason: "pr-merged" }; if (s.boardShown) s.toggleBoard();');
+      await store(page, 's.openThread.worktreeRemoved = { path: "/home/dev/atlas/.boite/worktrees/wt-openapi", branch: "atlas/openapi", branchDeleted: true, reason: "pr-merged" }; if (s.boardShown) s.toggleBoard();');
       await scrollTimeline(page, 'bottom');
     },
   },

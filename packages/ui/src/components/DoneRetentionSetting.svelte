@@ -25,9 +25,10 @@
     const submitted = days!;
     saving = true;
     try {
-      if (await store.saveSettings({ threadDoneRetentionDays: submitted })) {
+      // A value typed during the save is not the one stored: no "Saved" beside it.
+      if (await store.saveSettings({ threadDoneRetentionDays: submitted }) && days === submitted) {
         savedStamp += 1;
-        if (days === submitted) dirty = false;
+        dirty = false;
       }
     } finally { saving = false; }
   }

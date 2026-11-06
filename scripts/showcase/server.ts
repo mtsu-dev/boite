@@ -39,7 +39,8 @@ export async function startServer(): Promise<Rig> {
   return { base: server.resolvedUrls!.local[0]!.replace(/\/$/, ''), close: () => server.close() };
 }
 
-const PLAYWRIGHT = '/home/boite/.local/lib/browser-tools/node_modules/playwright-core/index.mjs';
+/** Playwright Core lives outside the repository: `BOITE_PLAYWRIGHT` names its `index.mjs`, or the package resolves. */
+const PLAYWRIGHT = process.env.BOITE_PLAYWRIGHT ?? 'playwright-core';
 
 /** Headless Chrome on the GPU, muted. Software rendering is refused by `assertHardware`. */
 export async function launchBrowser(executable: string, playwright = PLAYWRIGHT): Promise<any> {

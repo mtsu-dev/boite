@@ -18,7 +18,7 @@
 </script>
 
 {#if pr.value}
-  {#if text}<span class="pr-text {pr.value.state.toLowerCase()}" data-testid="thread-pr-text" data-state={pr.value.state} aria-label={label}>{separated ? ' · ' : ''}#{pr.value.number}</span>
+  {#if text}<span class="pr-text {pr.value.state.toLowerCase()}" data-testid="thread-pr-text" data-state={pr.value.state} role="img" aria-label={label}>{separated ? ' · ' : ''}#{pr.value.number}</span>
   {:else}<PullRequestBadge pullRequest={pr.value} />{/if}
 {/if}
 

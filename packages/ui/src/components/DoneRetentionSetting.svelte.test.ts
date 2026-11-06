@@ -76,3 +76,33 @@ test('a save the core took says "Saved" beside the button and fades; a refused o
   await settle();
   expect(mark()?.textContent?.trim()).toBe('Saved');
 });
+
+// A value typed while the save was in flight drew "Saved" beside a field the core never stored.
+test('a value typed during a save gets no "Saved" mark and keeps Save on', async () => {
+  let land!: (ok: boolean) => void;
+  const store = $state({
+    owner: true,
+    connection: 'ready',
+    settings: { threadDoneRetentionDays: 7 },
+    kept: () => false,
+    saveSettings: vi.fn(() => new Promise<boolean>(resolve => { land = resolve; }))
+  });
+  mounted = mount(DoneRetentionSetting, { target: document.body, props: { store: store as unknown as Store } });
+  await settle();
+  const field = document.querySelector<HTMLInputElement>('[data-testid=done-retention-days]')!;
+  const save = document.querySelector<HTMLButtonElement>('[data-testid=done-retention-save]')!;
+  const type = async (value: string) => {
+    field.value = value;
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    await settle();
+  };
+  await type('30');
+  save.click();
+  await settle();
+  await type('45');
+  land(true);
+  await settle();
+  expect(document.querySelector('[data-testid=done-retention-saved]')).toBeNull();
+  expect(field.value).toBe('45');
+  expect(save.disabled).toBe(false);
+});
