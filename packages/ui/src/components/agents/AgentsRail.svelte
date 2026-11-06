@@ -1,11 +1,11 @@
 <script lang="ts">
   import type { Component } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
-  import { Bot, Brain, FilePen, FileText, Globe, Hourglass, Layers, MessageCircleQuestionMark, Moon, PenLine, Play, Plus, RotateCw, Search, Settings2, SquareTerminal, TriangleAlert, Wrench, X } from '@lucide/svelte';
+  import { Bot, Brain, FilePen, FileText, Globe, Hourglass, Layers, MessageCircleQuestionMark, Moon, PenLine, Play, Plus, RotateCw, Search, SquareTerminal, TriangleAlert, Wrench, X } from '@lucide/svelte';
   import type { AgentProfile, AgentStatus, Team, ThreadSummary } from '@boite/contracts';
   import { agentMenuItems, pickAgentAction, saveAgent } from '../../lib/agent-menu';
   import { botLeaving, leavingLine } from '../../lib/agent-move-flow';
-  import { agentRows, agentsFilter, liveActivity, previewOf, waitingOn, type ActivityKind, type AgentMood, type AgentRowData, type AgentsView } from '../../lib/agents.svelte';
+  import { agentRows, liveActivity, previewOf, waitingOn, type ActivityKind, type AgentMood, type AgentRowData, type AgentsView } from '../../lib/agents.svelte';
   import { contextMenu } from '../../lib/context-menu.svelte';
   import { experimentOn } from '../../lib/experiments.svelte';
   import type { AgentPane } from '../../lib/store/layout.svelte';
@@ -13,20 +13,26 @@
   import { listNames, watchTeams, type TeamRow } from '../../lib/teams.svelte';
   import { workspace, type Machine } from '../../lib/workspace.svelte';
   import RailFrame from '../RailFrame.svelte';
-  import RailHead from '../RailHead.svelte';
-  import MachineStatus from '../MachineStatus.svelte';
   import AgentAvatar from './AgentAvatar.svelte';
   import AgentRow from './AgentRow.svelte';
+  import BotColumn from './BotColumn.svelte';
+  import BotColumnHead from './BotColumnHead.svelte';
   import { minuteClock } from '../../lib/clock.svelte';
 
   /**
-   * The agents, listed the way a messenger lists its chats in the thread
-   * list's own frame and head (`RailFrame`, `RailHead`): one card of rows,
+   * The Bots page's column. On a desktop the window's rail lists the bots, so
+   * the column is the selected bot's (`BotColumnHead`, `BotColumn`): who it
+   * is, its conversation and the threads it handles, or a team's chat and
+   * members.
+   *
+   * On a phone there is no rail: the column is the Bots screen, the agents
+   * listed the way a messenger lists its chats in the thread list's frame
+   * (`RailFrame`) under the page's heading, search and New bot: one card of rows,
    * each with its robot by state, its name, what it does this second or the
    * last thing it said, the missed answers or the time, and its next wake.
    * Like the thread list, it holds every connected machine's agents, pinned
    * ones first then newest first, each row with its machine's icon once there
-   * are two; the foot's machine button narrows it to one. A row has the thread
+   * are two. A row has the thread
    * rows' menu, cut to what a bot has (`agentMenuItems`), on a right click or
    * a long press. A bot waiting to move once its turn ends says where it goes.
    *
@@ -40,17 +46,23 @@
    * team stays on the computer.
    */
   type MachineAgents = { machine: Machine; view: AgentsView };
-  let { view, lists, filter, active, activeTeam = null, onopen, onteam, oncreate, onnewteam, onengine, engine = false }: {
+  let { view, lists, active, activeTeam = null, agent = null, status = null, thread = null, team = null, conversation = false, onopen, onteam, oncreate, onnewteam, onengine, onpane }: {
     /** The page's machine: the one a new agent and the engine settings belong to. */
     view: AgentsView;
     /** Each listed machine's agents, the page's own first. */
     lists: MachineAgents[];
-    /** The machine the list is narrowed to, null for all. */
-    filter: string | null;
     /** The agent whose thread is open, on the page's machine. */
     active: string | null;
     /** The chat thread of the team open, on the page's machine. */
     activeTeam?: string | null;
+    /** The open bot, its status and thread row, for its desktop column. */
+    agent?: AgentProfile | null;
+    status?: AgentStatus | null;
+    thread?: ThreadSummary | null;
+    /** The open team, for its desktop column. */
+    team?: Team | null;
+    /** The card beside shows the conversation, no form over it. */
+    conversation?: boolean;
     /** Opens the agent, with one of its panes when named. */
     onopen: (machine: Machine, agentId: string, pane?: AgentPane) => void;
     onteam: (machine: Machine, team: Team) => void;
@@ -58,8 +70,8 @@
     /** Opens the dialog that creates a team on the page's machine. */
     onnewteam?: () => void;
     onengine: () => void;
-    /** The engine settings are what the card shows. */
-    engine?: boolean;
+    /** Opens one of the open bot's panes over its conversation. */
+    onpane: (pane: AgentPane) => void;
   } = $props();
 
   const labels = $derived(strings.agents);
@@ -68,6 +80,9 @@
   let searching = $state(false);
   const now = $derived(minuteClock.now);
 
+  const phone = new MediaQuery('(max-width: 720px)');
+  /** The page's own machine, which a desktop column's actions go through. */
+  const here = $derived(lists.find(list => list.view === view)?.machine ?? null);
   const multi = $derived(workspace.machinesOr(view.store).length > 1);
   const needle = $derived(query.trim().toLowerCase());
   const rows = $derived(lists
@@ -77,7 +92,7 @@
   const found = $derived(needle ? lists.flatMap(({ machine, view: owner }) =>
     (owner.snapshot?.profiles ?? []).filter(a => a.status === 'archived' && a.name.toLowerCase().includes(needle)).map(profile => ({ machine, profile }))) : []);
 
-  /** The listed machines' teams, read only while the experiment is on: off, the rail is the bots alone. */
+  /** The listed machines' teams, read only while the experiment is on: the phone's list draws them, a desktop's column the open one. */
   const watched = watchTeams(() => experimentOn('teams') ? lists.map(list => list.machine) : []);
   /** The teams a search names, the one with the latest post first. */
   const teams = $derived(watched()
@@ -146,13 +161,6 @@
   function earliest(a: number | null | undefined, b: number | null | undefined): number | null {
     return a == null ? b ?? null : b == null ? a : Math.min(a, b);
   }
-  /** Narrowing to another machine moves the page there, so a new agent is created where the list shows. */
-  function narrow(id: string | null) {
-    agentsFilter.machine = id;
-    const target = id ? workspace.machines.find(m => m.id === id) : undefined;
-    if (target && target.store !== view.store) workspace.showAgents(target.store);
-  }
-  const phone = new MediaQuery('(max-width: 720px)');
   /** The row whose name is a field, `[machine, agent]`: ids can collide between machines. */
   let renaming = $state<string | null>(null);
   const rowKey = (machine: Machine, id: string) => JSON.stringify([machine.id, id]);
@@ -179,20 +187,23 @@
   function closeSearch() { searching = false; query = ''; searchToggle?.focus(); }
 </script>
 
-<RailFrame store={view.store} kind="agents-rail" label={labels.heading}>
+<RailFrame store={view.store} kind="agents-rail" label={phone.current ? labels.heading : agent?.name ?? team?.name ?? labels.heading}>
   {#snippet head()}
-    <RailHead store={view.store} current="agents">
-      {#snippet actions()}
+    {#if !phone.current}
+      <BotColumnHead {view} {agent} {status} {thread} {team} {onpane} {onengine} onopen={pane => agent && here && onopen(here, agent.id, pane)} />
+    {:else}
+      <div class="agents-phone-head">
+        <h2 class="agents-phone-title">{labels.heading}</h2>
         <button type="button" class="ghost icon small" bind:this={searchToggle} class:active={searching} aria-pressed={searching} title={labels.search} aria-label={labels.search} onclick={() => (searching ? closeSearch() : (searching = true))} data-testid="agents-search-toggle"><Search size={16} /></button>
         {#if view.store.owner}
           <button type="button" class="ghost icon small" title={labels.newAgent} aria-label={labels.newAgent} onclick={oncreate} data-testid="agents-create"><Plus size={16} /></button>
         {/if}
-      {/snippet}
-    </RailHead>
+      </div>
+    {/if}
   {/snippet}
 
   {#snippet subhead()}
-    {#if searching}
+    {#if phone.current && searching}
       <label class="agents-search"><Search size={14} strokeWidth={1.75} />
         <!-- svelte-ignore a11y_autofocus -->
         <input type="search" bind:value={query} aria-label={labels.search} placeholder={labels.search} autofocus onkeydown={e => { if (e.key === 'Escape') closeSearch(); }} />
@@ -201,6 +212,16 @@
     {/if}
   {/snippet}
 
+  {#if !phone.current}
+    <BotColumn {view} {agent} {team} {conversation}
+      onconversation={() => { if (agent && here) onopen(here, agent.id); else if (team && here) onteam(here, team); }}
+      onmember={id => here && onopen(here, id)} />
+  {:else}
+    {@render list()}
+  {/if}
+</RailFrame>
+
+{#snippet list()}
   {#if teamsShown}
     <div class="agents-section agents-section-head">
       <h2 class="section-label" id="{uid}-teams">{strings.teamChat.heading}</h2>
@@ -257,12 +278,4 @@
   {/if}
   {#if needle && !rows.length && !found.length && !teams.length}<p class="agent-empty">{labels.noMatch}</p>{/if}
 
-  {#snippet lead()}
-    <!-- The thread list's machine button: every machine, or one. -->
-    <MachineStatus store={view.store} {filter} onfilter={narrow} testid="agents-machine" />
-  {/snippet}
-
-  {#snippet foot()}
-    {#if view.store.owner}<button type="button" class="ghost icon" class:active={engine} title={labels.engineSettings} aria-label={labels.engineSettings} onclick={onengine} data-testid="agents-engine"><Settings2 size={16} /></button>{/if}
-  {/snippet}
-</RailFrame>
+{/snippet}

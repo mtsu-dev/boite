@@ -491,8 +491,8 @@
   .blocker p { flex: 1; min-width: 0; margin: 0; line-height: 1.45; overflow-wrap: anywhere; }
   .ask { font-weight: 600; color: var(--color-foreground); }
   .hint { color: var(--color-muted-foreground); }
-  .reply { flex: none; gap: 6px; padding-inline: 10px; border: none; border-radius: var(--radius-full); background: var(--color-accent-soft); color: var(--color-accent); font-weight: 600; }
-  .reply:hover { background: color-mix(in oklch, var(--color-accent) 28%, transparent); }
+  .reply { flex: none; gap: 6px; padding-inline: 10px; border: none; border-radius: var(--radius-full); background: var(--color-surface-3); color: var(--color-foreground); font-weight: 600; }
+  .reply:hover { background: var(--color-hover); }
   .objective, .current { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; min-width: 0; text-align: left; }
   .meta, .count { color: var(--color-muted-foreground); font-size: var(--text-xs); flex: none; }
   .tasks-toggle { display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 6px; width: 100%; height: auto; min-height: var(--control); padding: 6px 8px; font-weight: 400; color: var(--color-foreground); }

@@ -1,26 +1,21 @@
 <script lang="ts">
   import { untrack, type Snippet } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
-  import { Settings } from '@lucide/svelte';
   import type { Store } from '../lib/store.svelte';
   import { clampSidebar, SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN } from '../lib/prefs';
   import { strings } from '../lib/strings';
   import { experimentOn } from '../lib/experiments.svelte';
   import { pinnedQuotas } from '../lib/pinned-quotas.svelte';
-  import { work } from '../lib/work-prefs.svelte';
-  import { controlMenu } from '../lib/controls';
-  import LimitsGlance from './LimitsGlance.svelte';
-  import WhipButton from './WhipButton.svelte';
   import Deferred, { parts } from './Deferred.svelte';
   import ResizeHandle from './ResizeHandle.svelte';
 
   /**
-   * The column on the left of the window, for the thread list and the Agents
-   * list alike: one width the user drags, one fold from the title bar, the
-   * head on top, an optional subhead that stays put (the Agents search), the
-   * rows in one scroll, and one foot ending on the limits and Settings. Each
-   * list fills the head, the rows and the foot's own buttons, and may fill the
-   * subhead and the foot's lead (the thread list's machine button).
+   * The column right of the app rail, for the thread list and the Bots list
+   * alike: one width the user drags, one fold from the title bar, the head on
+   * top, an optional subhead that stays put (the Bots search) and the rows in
+   * one scroll. On a desktop it reaches the window's top, its head level with
+   * the main column's bar; the limits, the machines and Settings live on the
+   * app rail.
    *
    * `drawer` is the thread list's phone form, a sheet over the chat; the Agents
    * list is a whole screen on a phone and stays in the flow.
@@ -35,9 +30,7 @@
     onscroll,
     head,
     subhead,
-    children,
-    lead,
-    foot
+    children
   }: {
     store: Store;
     kind: 'sidebar' | 'agents-rail';
@@ -50,10 +43,6 @@
     /** What stays put between the head and the rows, like the Agents search. */
     subhead?: Snippet;
     children: Snippet;
-    /** The foot's left end, before the gap. */
-    lead?: Snippet;
-    /** The list's own buttons, right before the limits and Settings. */
-    foot?: Snippet;
   } = $props();
 
   let rail = $state<HTMLElement | undefined>(undefined);
@@ -68,18 +57,18 @@
    */
   let wasFolded = $state(untrack(() => store.sidebarCollapsed));
   let sliding: ReturnType<typeof setTimeout> | undefined;
-  let marked: HTMLElement | undefined;
+  let marked: HTMLElement[] = [];
 
   function unmark(): void {
     clearTimeout(sliding);
-    if (marked) delete marked.dataset.railSliding;
-    marked = undefined;
+    for (const element of marked) delete element.dataset.railSliding;
+    marked = [];
   }
 
   /**
    * Marks the body row while the list folds or unfolds, so the chat card's own
-   * left gap eases in step (app.css); the boot and a page change move that gap
-   * at once. An attribute, since Svelte rewrites the row's class list. Before
+   * left gap eases in step (app.css), and the main column's bar beside it,
+   * whose left end follows; the boot and a page change move both at once. An attribute, since Svelte rewrites the row's class list. Before
    * the DOM update, so the mark and the fold reach the same style pass.
    */
   $effect.pre(() => {
@@ -91,7 +80,9 @@
     if (was === undefined || was === now || !row) return;
     unmark();
     row.dataset.railSliding = '';
-    marked = row;
+    const bar = row.parentElement?.querySelector<HTMLElement>(':scope > .titlebar');
+    if (bar) bar.dataset.railSliding = now ? 'out' : 'in';
+    marked = bar ? [row, bar] : [row];
     sliding = setTimeout(unmark, 600);
   });
 
@@ -122,25 +113,6 @@
   {#if (store.page === 'chat' || store.page === 'agents') && dockVisible && experimentOn('pinned-quotas') && pinnedQuotas.current.pinned && pinnedQuotas.wantsDock(store)}
     <Deferred part={parts.PinnedQuota} quiet>{#snippet children(PinnedQuota)}<PinnedQuota {store} dock />{/snippet}</Deferred>
   {/if}
-  <div class="foot">
-    {@render lead?.()}
-    <span class="grow"></span>
-    {@render foot?.()}
-    <Deferred part={parts.UpdatesNotice} quiet>{#snippet children(UpdatesNotice)}<UpdatesNotice />{/snippet}</Deferred>
-    {#if work.shows('sidebar.limits')}
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <span class="control" oncontextmenu={(event) => controlMenu(event, store, 'sidebar.limits')}><LimitsGlance {store} /></span>
-    {/if}
-    {#if experimentOn('whip')}<WhipButton />{/if}
-    <button
-      class="ghost icon"
-      title={`${strings.sidebar.settings}${store.keyHint('settings')}`}
-      aria-label={strings.sidebar.settings}
-      data-testid="nav-settings"
-      data-preload-view="settings"
-      onclick={() => store.showSettings()}><Settings size={16} /></button
-    >
-  </div>
   <div class="resize">
     <ResizeHandle
       orientation="vertical"
@@ -190,38 +162,6 @@
     mask-image: linear-gradient(to bottom, transparent, black var(--fade-top), black calc(100% - var(--fade)), transparent);
   }
   .scroll > :global(*) { flex-shrink: 0; }
-  .foot {
-    display: flex;
-    /* The machine button alone on the left, the others together on the
-       right, at the bottom: square targets as tall as the composer's, whose
-       lower edge meets the chat card's instead of floating above it. */
-    align-items: flex-end;
-    gap: 4px;
-    box-sizing: border-box;
-    margin: 0 10px;
-    padding-top: 8px;
-  }
-  .grow { flex: 1; }
-  /* Five square buttons and their gaps need 220 pixels: below that, the
-     update button's arrival closes the gaps instead of pushing Settings out. */
-  @container sidebar (max-width: 219.98px) {
-    .foot:has(:global(.update-trigger)) { gap: 0; }
-  }
-  .control {
-    display: contents;
-  }
-  .foot :global(button.icon) {
-    flex: none;
-    width: var(--control-lg);
-    height: var(--control-lg);
-  }
-  .foot :global(.machines) { min-width: var(--control-lg); }
-  .foot :global(.machines .menu),
-  .foot :global(.machines .trigger) { height: var(--control-lg); max-width: 100%; }
-  .foot :global(.machines .trigger:not(:has(.name))) { width: var(--control-lg); }
-  /* With one machine the wrapper stays, empty, for its connection state. */
-  .foot :global(.machines:not(:has(.trigger))) { display: none; }
-  .foot :global(button.icon.active) { background: var(--color-active); color: var(--color-foreground); }
 
   /* The edge that drags the width, centred in the frame gap (ResizeHandle). */
   .resize { display: contents; }
@@ -230,6 +170,9 @@
        widens with it: a margin as wide as the list and its gap gives that room
        back, so the chat never jumps. App.svelte eases the card's own left gap
        in step. */
+    /* Up to the window's top (App.svelte pulls it over the bar's band), its
+       head in that band, level with the main column's title. */
+    .rail { padding-top: 6px; }
     .rail {
       --slide-room: calc(var(--sidebar-width) + var(--frame-gap));
       transition: margin-left var(--dur-slide) var(--ease-slide), opacity var(--dur-3) var(--ease-out-quint), display var(--dur-slide) allow-discrete;
@@ -270,9 +213,6 @@
        below already leads to Settings. */
     .rail:not(.drawer) { width: auto; flex: 1; }
     .rail:not(.drawer) .views { margin: 0 12px; }
-    .rail:not(.drawer) .foot,
-    .resize {
-      display: none;
-    }
+    .resize { display: none; }
   }
 </style>

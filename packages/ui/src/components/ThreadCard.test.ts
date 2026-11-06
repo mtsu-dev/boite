@@ -24,7 +24,7 @@ test('child question links stay out of sidebar thread rows', async () => {
   const project = store.projects.find(row => row.id === thread.projectId)!;
   thread.subagentQuestions = [{ threadId: 'child', title: 'Check the parser' }];
   vi.spyOn(client, 'call').mockResolvedValue(null as never);
-  mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'remote', label: 'Remote', store }, project, thread, now: Date.now(), showProject: false } });
+  mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'remote', label: 'Remote', store }, project, thread, now: Date.now() } });
   await settle();
   expect(document.querySelector('[data-testid=subagent-question-alert]')).toBeNull();
 });
@@ -40,7 +40,7 @@ test('cards keep discovering after a merge, pause while hidden, and retain the l
   let answer: typeof pr | null = null;
   const call = vi.spyOn(client, 'call').mockImplementation(async () => answer);
   vi.useFakeTimers();
-  mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'local', label: 'Local', store }, project, thread, now: Date.now(), showProject: false } });
+  mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'local', label: 'Local', store }, project, thread, now: Date.now() } });
   await settle();
   expect(call).toHaveBeenCalledTimes(1);
   expect(document.querySelector('[data-testid=thread-pr]')).toBeNull();
@@ -76,7 +76,7 @@ test('cards keep discovering after a merge, pause while hidden, and retain the l
   const ended = call.mock.calls.length;
   await vi.advanceTimersByTimeAsync(120_000); await settle();
   expect(call).toHaveBeenCalledTimes(ended);
-  mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'local', label: 'Local', store }, project, thread, now: Date.now(), showProject: false } });
+  mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'local', label: 'Local', store }, project, thread, now: Date.now() } });
   flushSync();
   expect(document.querySelector('[data-testid=thread-pr]')?.textContent).toContain('#182');
   await settle();
@@ -127,7 +127,7 @@ test('moving a thread clears its PR and ignores the previous checkout lookup', a
   let answer!: (value: typeof previous) => void;
   const pending = new Promise<typeof previous>(resolve => { answer = resolve; });
   const call = vi.spyOn(client, 'call').mockResolvedValue(null).mockResolvedValueOnce(previous).mockReturnValueOnce(pending);
-  mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'local', label: 'Local', store }, project, thread, now: Date.now(), showProject: false } });
+  mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'local', label: 'Local', store }, project, thread, now: Date.now() } });
   await settle();
   expect(call).toHaveBeenCalledWith('threads.pullRequest', { threadId: thread.id });
   expect(document.querySelector('[data-testid=thread-pr]')?.textContent).toContain('#180');
@@ -152,7 +152,7 @@ test('a reconnect keeps the PR line on screen while the core is asked again', as
   const held = { number: 181, url: 'https://github.com/example/repo/pull/181', state: 'OPEN' as const };
   const pending = new Promise<typeof held>(() => undefined);
   const call = vi.spyOn(client, 'call').mockResolvedValueOnce(held).mockReturnValueOnce(pending);
-  mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'local', label: 'Local', store }, project, thread, now: Date.now(), showProject: false } });
+  mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'local', label: 'Local', store }, project, thread, now: Date.now() } });
   await settle();
   expect(document.querySelector('[data-testid=thread-pr]')?.textContent).toContain('#181');
   store.connection = 'connecting';
@@ -174,7 +174,7 @@ test('a turn left running on a machine that went away stops spinning until the m
   thread.status = 'running';
   thread.runningSince = Date.now() - 3 * 3_600_000;
   const project = store.projects.find(project => project.id === thread.projectId)!;
-  mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'laptop', label: 'Laptop', store }, project, thread, now: Date.now(), showProject: false } });
+  mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'laptop', label: 'Laptop', store }, project, thread, now: Date.now() } });
   await settle();
   const state = () => document.querySelector<HTMLElement>('[data-testid=thread-state]');
   expect(state()?.dataset.state).toBe('working');
@@ -196,7 +196,7 @@ test('a branchless conversation discovers its linked PR and a merge event update
   const url = 'https://github.com/example/repo/pull/77';
   const list = await client.call('threads.linkPullRequest', { threadId: thread.id, url });
   const listeners = vi.spyOn(client, 'on');
-  mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'local', label: 'Local', store }, project, thread, now: Date.now(), showProject: false } });
+  mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'local', label: 'Local', store }, project, thread, now: Date.now() } });
   await settle();
   expect(document.querySelector('[data-testid=thread-pr]')?.textContent).toContain('#77');
   const receive = listeners.mock.calls.find(([event]) => event === 'threads.pullRequestsChanged')?.[1] as (event: { threadId: string; pullRequests: typeof list }) => void;
@@ -294,7 +294,7 @@ test('a card unmounted with its rename open still writes the title typed so far'
   const project = store.projects.find(row => row.id === thread.projectId)!;
   vi.spyOn(client, 'call').mockResolvedValue(null as never);
   const rename = vi.spyOn(store, 'rename').mockResolvedValue();
-  mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'local', label: 'Local', store }, project, thread, now: Date.now(), showProject: false } });
+  mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'local', label: 'Local', store }, project, thread, now: Date.now() } });
   await settle();
   document.querySelector('[data-testid=thread-row]')!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
   flushSync();

@@ -17,6 +17,7 @@
 
   import Sidebar from './components/Sidebar.svelte';
   import TitleBar from './components/TitleBar.svelte';
+  import AppRail from './components/AppRail.svelte';
   import { Closing } from './lib/closing.svelte';
   import { focusComposer } from './lib/focus';
   import { handleAppKey } from './lib/app-keys';
@@ -518,6 +519,14 @@
    * that selector made every node a streaming answer or a scroll mounted
    * anywhere below restyle the body, right before the list read its layout.
    */
+  /**
+   * The desktop's left edge: the app rail on every page but Settings, which
+   * has its own nav, then the list column (threads or bots). Both reach the
+   * window's top, so the main column's bar starts right of them.
+   */
+  let railShown = $derived(booted && !wideRecovery && store.page !== 'settings');
+  let listShown = $derived(booted && !wideRecovery && (store.page !== 'settings' || (store.connection === 'closed' && !store.core)));
+  let barLeft = $derived(!listShown ? '0px' : store.sidebarCollapsed ? 'var(--frame-gap)' : `calc(${store.sidebarWidth}px + var(--frame-gap))`);
   let sidebarFolded = $derived(store.sidebarCollapsed && store.booted && ((store.connection === 'closed' && !store.core) || store.page !== 'settings'));
   let tour = $derived(store.booted && store.connection === 'ready' && (tourRequested() || !tourSeen()));
 
@@ -549,7 +558,8 @@
   <ThreadPreparation {store} visible={documentVisible && (inShell || mobileScreen === 'chat')} />
 {/if}
 
-<div class="app" class:shell={inShell} class:ready={booted} class:phone-chat={!inShell && !mobileRecovery && store.page === 'chat' && mobileScreen === 'chat'} class:off-chat={!inShell && store.page !== 'chat'} class:tabbed={!inShell && mobileTabs} class:quitting bind:this={appRoot}>
+<div class="app" class:shell={inShell} class:ready={booted} class:phone-chat={!inShell && !mobileRecovery && store.page === 'chat' && mobileScreen === 'chat'} class:off-chat={!inShell && store.page !== 'chat'} class:tabbed={!inShell && mobileTabs} class:railed={railShown} class:quitting style:--bar-left={barLeft} bind:this={appRoot}>
+  {#if railShown}<AppRail {store} />{/if}
   {#if !inShell && booted}
     {#if mobileNavigation.current}
       {@const MobileNavigation = mobileNavigation.current}
@@ -561,7 +571,7 @@
       </p>
     {/if}
   {/if}
-  <TitleBar {store} />
+  <TitleBar {store} edge={!railShown && !listShown} />
 
   <div class="body" class:mobile-covered={!inShell && store.page === 'chat' && (mobileScreen !== 'chat' || mobileRecovery)} class:panel-maximized={(store.page === 'chat' || store.page === 'agents') && rightPanel.maximized && !rightPanel.floating && store.panelOpen} class:sidebar-folded={sidebarFolded}>
     {#if !booted}
@@ -741,10 +751,16 @@
      only a folded column (RailFrame) leaves the chat or Agents card a left gap
      to keep itself. */
   @media (min-width: 721px) {
+    .app.railed { padding-left: var(--app-rail); }
+
     .body {
       gap: var(--frame-gap);
       padding: 0 var(--frame-gap) var(--frame-gap) 0;
     }
+
+    /* The list column climbs over the bar's band to the window's top; the bar
+       starts right of it (`--bar-left`). */
+    .body > :global(.rail) { margin-top: calc(-1 * var(--titlebar)); }
 
     .body.sidebar-folded {
       padding-left: var(--frame-gap);

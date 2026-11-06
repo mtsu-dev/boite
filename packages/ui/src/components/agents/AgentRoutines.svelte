@@ -30,10 +30,11 @@
 
 <div class="agent-routines" class:compact data-testid="agent-routines">
   {#if compact}
-    <header class="desk-head">
-      <h3>{labels.planned}</h3>
+    <p class="desk-label">
+      <CalendarClock size={13} strokeWidth={1.75} /><span>{labels.planned}</span>
+      <span class="desk-label-value"></span>
       {#if view.store.owner && !showForm}<button type="button" class="ghost small icon" title={labels.when.newRoutine} aria-label={labels.when.newRoutine} onclick={() => { adding = true; }} data-testid="routine-add"><Plus size={14} strokeWidth={1.75} /></button>{/if}
-    </header>
+    </p>
   {:else}
     <div class="agent-card-head agent-pane-head">
       <div>

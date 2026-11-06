@@ -14,12 +14,13 @@
   import QuotaPin from './QuotaPin.svelte';
 
   /**
-   * The sidebar's gauge: the tray's glance at every account's subscription
+   * The app rail's gauge: the tray's glance at every account's subscription
    * windows, without leaving the conversation. It reads the core it belongs
    * to while open, keeps the last reading on screen while the next loads, and
    * sends monitoring and accounts to the Limits page.
    */
-  let { store }: { store: Store } = $props();
+  /** `right`: the glance opens beside the trigger, from the app rail. */
+  let { store, side }: { store: Store; side?: 'right' } = $props();
   /** Providers is a desktop settings page and the owner's: a phone is offered no way to it. */
   const phoneWidth = new MediaQuery('(max-width: 720px)');
   let providersReachable = $derived(store.owner && desktopSettings(phoneWidth.current));
@@ -131,7 +132,7 @@
 
 {#if popover.shown}
   <div class="glance" class:closing={popover.closing} bind:this={content} role="dialog" tabindex="-1" aria-label={strings.quotas.glance} data-testid="limits-glance"
-    use:popover.attach onanimationend={popover.end} use:floating={{ anchor: () => trigger ?? null, dismiss: close, cap: 460 }}>
+    use:popover.attach onanimationend={popover.end} use:floating={{ anchor: () => trigger ?? null, side, dismiss: close, cap: 460 }}>
     <QuotaPopup {rows} loading={reader.busy} completed={reader.landed} error={failed} outdated={reader.outdated} owner={store.owner}
       order={store.settings?.quotaOrder ?? []} reorder={store.owner ? (quotaOrder) => store.saveSettings({ quotaOrder }) : undefined}
       refresh={() => read(true)} connect={providersReachable ? () => page('accounts') : undefined} settings={() => page('limits')} {close} testPrefix="limits-glance">

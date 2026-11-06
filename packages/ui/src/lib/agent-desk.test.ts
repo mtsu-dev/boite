@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import type { AgentWatch } from '@boite/contracts';
-import { budgetMeter, deskOrder, deskState, deskTone } from './agent-desk';
+import { deskOrder, deskState, deskTone, memoryNotes, splitDesk } from './agent-desk';
 
 const watch = (threadId: string, extra: Partial<AgentWatch> = {}): AgentWatch => ({
   agentId: 'a', threadId, title: threadId, projectId: null, origin: 'started', since: 0, state: 'idle', stalledSince: null, lastActivityAt: 0, pullRequest: null, question: null, ...extra,
@@ -34,9 +34,22 @@ test('the desk lists what needs the user first and settled threads last, newest 
   expect(order.map(w => w.threadId)).toEqual(['ask', 'silent', 'new-work', 'old-work', 'done']);
 });
 
-test('the budget meter fills against the daily budget and has nothing to measure without one', () => {
-  expect(budgetMeter(1.35, 2)).toEqual({ ratio: 0.675, reached: false });
-  expect(budgetMeter(3, 2)).toEqual({ ratio: 1, reached: true });
-  expect(budgetMeter(1, null)).toBeNull();
-  expect(budgetMeter(1, 0)).toBeNull();
+test('the column keeps what the bot still handles apart from what it is done with', () => {
+  const { handling, done } = splitDesk([
+    watch('merged', { state: 'done', pullRequest: pr('merged'), lastActivityAt: 9 }),
+    watch('review', { state: 'idle', pullRequest: pr('open', 'failing'), lastActivityAt: 8 }),
+    watch('ask', { state: 'needs-you', lastActivityAt: 1 }),
+    watch('old', { state: 'archived', lastActivityAt: 2 }),
+    watch('closed', { state: 'done', pullRequest: pr('closed'), lastActivityAt: 7 }),
+  ]);
+  expect(handling.map(w => w.threadId)).toEqual(['ask', 'review']);
+  expect(done.map(w => w.threadId)).toEqual(['merged', 'closed', 'old']);
+});
+
+test('a memory reads as its list items, else its paragraphs, in plain words', () => {
+  expect(memoryNotes('# Memory\n\n- The **e2e** suite needs `staging` once a week.\n* [Retry](https://x.test) once.\n1. Release PRs wait.\n')).toEqual([
+    'The e2e suite needs staging once a week.', 'Retry once.', 'Release PRs wait.',
+  ]);
+  expect(memoryNotes('## Notes\nFirst paragraph.\n\n---\nSecond one.')).toEqual(['First paragraph.', 'Second one.']);
+  expect(memoryNotes('  \n')).toEqual([]);
 });

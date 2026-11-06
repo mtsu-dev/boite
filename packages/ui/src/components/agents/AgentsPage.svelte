@@ -3,8 +3,9 @@
   import { MediaQuery } from 'svelte/reactivity';
   import { ArrowLeft, Bot } from '@lucide/svelte';
   import type { Team } from '@boite/contracts';
-  import { AgentsView, agentOfThread, agentRows, agentsFilter, firstDeskVisit, lastOpenedAgent, openAgent, rememberAgent, statusOf, type AgentFocus } from '../../lib/agents.svelte';
+  import { AgentsView, agentOfThread, agentRows, firstDeskVisit, lastOpenedAgent, openAgent, rememberAgent, statusOf, type AgentFocus } from '../../lib/agents.svelte';
   import { agentDirectory } from '../../lib/agent-directory.svelte';
+  import { agentsIntent, takeAgentsIntent } from '../../lib/agents-view.svelte';
   import { experimentOn } from '../../lib/experiments.svelte';
   import { mobileOverlay } from '../../lib/mobile-history';
   import { mobileChrome } from '../../lib/mobile-chrome.svelte';
@@ -48,13 +49,11 @@
   /**
    * The list shows every connected machine's agents, the way the thread list
    * shows every machine's threads. The page itself works on one machine at a
-   * time: a row of another opens that machine. A filter holds only while the
-   * page is on the machine it names.
+   * time: a row of another opens that machine.
    */
   const machines = $derived(workspace.machinesOr(store));
   const here = $derived(machines.find(m => m.store === store) ?? null);
-  const filter = $derived(here && agentsFilter.machine === here.id ? here.id : null);
-  const others = $derived(filter ? [] : machines.filter(m => m.store !== store).map(machine => ({ machine, view: AgentsView.of(machine.store) })));
+  const others = $derived(machines.filter(m => m.store !== store).map(machine => ({ machine, view: AgentsView.of(machine.store) })));
   const lists = $derived([...(here ? [{ machine: here, view }] : []), ...others]);
   const snapshot = $derived(view.snapshot);
   const rows = $derived(agentRows(snapshot));
@@ -112,6 +111,16 @@
     const id = agentId;
     if (!id || !threadId || narrow.current) return;
     untrack(() => { if (!store.panel.isOpen && store.panel.surfaces.length === 0 && firstDeskVisit(id)) store.panel.open('desk'); });
+  });
+  // The window's rail asks for a new bot, a new team or the engine settings: the page owns those forms.
+  $effect(() => {
+    void agentsIntent.request;
+    untrack(() => {
+      const kind = takeAgentsIntent(store);
+      if (kind === 'new-bot') focus = { kind: 'new' };
+      else if (kind === 'engine') focus = { kind: 'engine' };
+      else if (kind === 'new-team' && experimentOn('teams') && store.owner) creatingTeam = true;
+    });
   });
   /** The desktop's default agent was opened, or gave way to one named on the way in. */
   let tried = false;
@@ -187,8 +196,10 @@
   }
 </script>
 
-<AgentsRail {view} {lists} {filter} active={focus ? null : agent?.id ?? null} activeTeam={focus ? null : teamThread?.id ?? null} engine={focus?.kind === 'engine'}
-  onopen={open} onteam={openTeam} oncreate={() => { focus = { kind: 'new' }; }} onnewteam={() => { creatingTeam = true; }} onengine={() => { focus = focus?.kind === 'engine' ? null : { kind: 'engine' }; }} />
+<AgentsRail {view} {lists} active={focus ? null : agent?.id ?? null} activeTeam={focus ? null : teamThread?.id ?? null}
+  agent={thread ? agent : null} {status} {thread} team={teamThread ? team : null} conversation={!focus && !pane && !!(thread || teamThread)}
+  onopen={open} onteam={openTeam} oncreate={() => { focus = { kind: 'new' }; }} onnewteam={() => { creatingTeam = true; }} onengine={() => { focus = focus?.kind === 'engine' ? null : { kind: 'engine' }; }}
+  onpane={next => { focus = null; pane = pane === next ? null : next; }} />
 
 {#if creatingTeam}
   <TeamDialog {view} {others} onclose={() => { creatingTeam = false; }} ondone={created => { if (here) openTeam(here, created); }} />

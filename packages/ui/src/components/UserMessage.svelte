@@ -222,8 +222,8 @@
   .bubble {
     max-width: min(85%, var(--prose));
     padding: 12px 16px;
-    background: var(--color-accent-soft);
-    border: 1px solid color-mix(in oklch, var(--color-accent) 35%, transparent);
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-border);
     border-radius: var(--radius-bubble);
     border-bottom-right-radius: var(--radius-sm);
     box-shadow: var(--shadow-e1);

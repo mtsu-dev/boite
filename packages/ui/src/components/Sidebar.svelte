@@ -2,20 +2,20 @@
   import { tick, untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import WindowList from './WindowList.svelte';
-  import { ChevronRight, Ellipsis, FolderX, GripVertical, LoaderCircle, FolderPlus } from '@lucide/svelte';
+  import { ChevronRight, Ellipsis, FolderPlus, FolderX, GripVertical, LoaderCircle } from '@lucide/svelte';
   import type { Project, ThreadId } from '@boite/contracts';
   import type { Store } from '../lib/store.svelte';
   import { workspace, type Machine } from '../lib/workspace.svelte';
   import { fill, strings } from '../lib/strings';
   import { projectName } from '../lib/format';
   import { compareThreads } from '../lib/thread-order';
-  import { projectRollup } from '../lib/thread-state';
+  import { projectRollup, threadState } from '../lib/thread-state';
   import { groupWorkingThread, recentPreferences } from '../lib/recent.svelte';
   import { dropKey as threadDropKey, takesDrop, threadDrag } from '../lib/thread-move.svelte';
-  import { controlMenu } from '../lib/controls';
   import { sidebarRows } from '../lib/sidebar-rows.svelte';
   import { projectMenu } from '../lib/project-menu';
   import { work } from '../lib/work-prefs.svelte';
+  import { machineFilter } from '../lib/machine-filter.svelte';
   import { projectActivity, projectKey, projectView, type ProjectEntry } from '../lib/project-view.svelte';
   import { projectDrag, startProjectDrag } from '../lib/project-drag.svelte';
   import { activeProject, archiveCount, projectListMap, projectSections, projectThreadView, type ArchiveKind, type ProjectSection } from '../lib/project-threads.svelte';
@@ -26,10 +26,7 @@
   import ProjectThreadCounters from './ProjectThreadCounters.svelte';
   import ProjectShelf from './ProjectShelf.svelte';
   import ProjectCardsSection from './ProjectCardsSection.svelte';
-  import MachineStatus from './MachineStatus.svelte';
   import ThreadCard from './ThreadCard.svelte';
-  import AgentAvatar from './agents/AgentAvatar.svelte';
-  import { openResident, residentsOf } from '../lib/resident';
   import DraftRow from './DraftRow.svelte';
   import GroupLabel from './GroupLabel.svelte';
   import MachineIcon from './MachineIcon.svelte';
@@ -47,15 +44,13 @@
   }
   const showRows = $derived(mobile.current ? store.sidebarOpen : !store.sidebarCollapsed);
   $effect(() => { if (showRows && scrollRoot) void tick().then(() => { if (scrollRoot && showRows) scrollRoot.scrollTop = savedScroll; }); });
-  let projectButton = $state<HTMLButtonElement>();
   /** The clock the rows' times read: a minute's precision is all they show. */
   const now = $derived(minuteClock.now);
-  let filter = $state<string | null>(null);
   let machines = $derived(workspace.machinesOr(store));
   /** One machine says nothing about where a thread runs: its icon only shows once there are two. */
   let multi = $derived(machines.length > 1);
-  /** A filter on a machine that has since gone filters nothing, so the list never empties itself. */
-  let shownFilter = $derived(machines.some((m) => m.id === filter) ? filter : null);
+  /** The display menu and the rail's machine button set it (machine-filter.svelte.ts). */
+  let shownFilter = $derived(machineFilter.shown(machines));
   let visible = $derived(machines.filter((m) => shownFilter === null || m.id === shownFilter));
   let all = $derived(visible.flatMap((machine) => machine.store.projects.map((project) => ({ machine, project }))));
   /** An archived project leaves the list for the fold under it; its threads keep running. */
@@ -120,6 +115,15 @@
   }
   let working = $derived(recentPreferences.groupWorking ? recent.filter(({ machine, thread }) => groupWorkingThread(machine.store, thread)) : []);
   let attention = $derived(recentPreferences.groupWorking ? recent.filter(({ machine, thread }) => !groupWorkingThread(machine.store, thread)) : recent);
+  /**
+   * Recent puts the threads with something to say (the user's turn, a failure, work, news) and the pinned ones above a
+   * hairline, the ones that only show a time under it; each part keeps the list's order, and Alt+digit counts them as drawn.
+   */
+  let split = $derived.by(() => {
+    const active: typeof attention = [], older: typeof attention = [];
+    for (const entry of attention) (entry.thread.pinned || threadState(entry.thread, entry.machine.store.subagents(entry.thread.id)) !== null ? active : older).push(entry);
+    return { active, older };
+  });
   const listsFor = projectListMap();
   /** Each listed project's sorted rows, shared by its section and by Alt+digit. */
   let projectLists = $derived(listsFor(activeGroups));
@@ -141,13 +145,18 @@
   // Alt+1 to Alt+9 count the rows as drawn: this view, open projects, then unfolded idle history.
   $effect(() => {
     sidebarRows.list = (workspace.view === 'recent'
-      ? [...attention, ...(workingOpen ? working : [])].map(({ machine, thread }) => ({ store: machine.store, threadId: thread.id })).concat(doneRows, archivedRows)
+      ? [...split.active, ...split.older, ...(workingOpen ? working : [])].map(({ machine, thread }) => ({ store: machine.store, threadId: thread.id })).concat(doneRows, archivedRows)
       : projectRows().concat(idleRows)
     ).slice(0, 9);
   });
-  function addProject() {
-    store.projectPickerOpen = true;
+  /** The threads of a project that wait on the user, its header's amber count; a sub-agent's question counts for its parent. */
+  function waitingCount(entry: ProjectEntry): number {
+    const owner = entry.machine.store;
+    return owner.threadsOf(entry.project.id).filter(thread => threadState(thread, owner.subagents(thread.id)) === 'waiting').length;
   }
+  const canAddProject = $derived(store.owner && work.shows('sidebar.add-project'));
+  /** Nothing listed yet: the list says why, and where the projects come from. */
+  const loading = $derived(groups.length === 0 && visible.some(machine => machine.store.connection !== 'ready'));
   /** `list` is the section the card sits in: a project moves among its neighbours there, as the sections place it themselves. */
   function openProjectMenu(event: MouseEvent, machine: Machine, project: Project, list: ProjectEntry[]) {
     const key = projectKey({ machine, project });
@@ -172,15 +181,27 @@
 <RailFrame {store} kind="sidebar" label={strings.sidebar.threads} testid="sidebar" drawer bind:scroller={scrollRoot} onscroll={() => { if (showRows && scrollRoot) savedScroll = scrollRoot.scrollTop; }}>
   {#snippet head()}<ProjectViews entries={groups} {store} />{/snippet}
     {#if showRows}
-    {#if groups.length === 0}<p class="empty">{strings.sidebar.noProjects}</p>{/if}
+    {#if groups.length === 0}
+      <div class="empty" data-testid="sidebar-empty" role={loading ? 'status' : undefined}>
+        {#if loading}<LoaderCircle size={16} class="spinner" aria-hidden="true" /><span class="ui-label">{strings.sidebar.loadingProjects}</span>
+        {:else}
+          <span class="ui-label">{strings.sidebar.noProjects}</span>
+          {#if canAddProject}<button type="button" class="ghost small add" data-testid="add-project" onclick={() => { store.projectPickerOpen = true; }}><FolderPlus size={14} /><span class="ui-label">{strings.sidebar.addProject}</span></button>{/if}
+        {/if}
+      </div>
+    {/if}
     {#if workspace.view === 'recent'}
       {#each visible as machine (machine.id)}
         {#each machine.store.draftEntries.filter(entry => !selected || (selected.machine.id === machine.id && selected.project.id === entry.projectId)) as entry (entry.id)}
           <DraftRow owner={machine.store} {entry} />
         {/each}
       {/each}
-      <WindowList items={attention} keyOf={entry => JSON.stringify([entry.machine.id, entry.thread.id])} {scrollRoot} estimate={56} measurements={measurements('recent')}>
-        {#snippet row(entry)}<ThreadCard {...entry} {now} showProject={recentGroups.length > 1} showMachine={multi} showDone />{/snippet}
+      <WindowList items={split.active} keyOf={entry => JSON.stringify([entry.machine.id, entry.thread.id])} {scrollRoot} estimate={32} measurements={measurements('recent')}>
+        {#snippet row(entry)}<ThreadCard {...entry} {now} compact showDone />{/snippet}
+      </WindowList>
+      {#if split.active.length > 0 && split.older.length > 0}<div class="rest-line" role="separator"></div>{/if}
+      <WindowList items={split.older} keyOf={entry => JSON.stringify([entry.machine.id, entry.thread.id])} {scrollRoot} estimate={32} measurements={measurements('recent-rest')}>
+        {#snippet row(entry)}<ThreadCard {...entry} {now} compact showDone />{/snippet}
       </WindowList>
       {#if groups.length > 0 && recent.length === 0 && !recentGroups.some(entry => entry.project.archivedThreads)}<p class="none">
           {strings.sidebar.noThreads}
@@ -188,8 +209,8 @@
       <div class="recent-folds">
         {#if working.length > 0}
           <RecentGroup kind="working" count={working.length} bind:open={workingOpen}>
-            <WindowList items={working} keyOf={entry => JSON.stringify([entry.machine.id, entry.thread.id])} {scrollRoot} estimate={56} measurements={measurements('recent-working')}>
-              {#snippet row(entry)}<ThreadCard {...entry} {now} showProject={recentGroups.length > 1} showMachine={multi} showDone />{/snippet}
+            <WindowList items={working} keyOf={entry => JSON.stringify([entry.machine.id, entry.thread.id])} {scrollRoot} estimate={32} measurements={measurements('recent-working')}>
+              {#snippet row(entry)}<ThreadCard {...entry} {now} compact showDone />{/snippet}
             </WindowList>
           </RecentGroup>
         {/if}
@@ -246,22 +267,15 @@
               title={multi ? `${project.path} · ${machine.label}` : project.path}
               onclick={() => projectThreadView.toggleProject(entry, lists, draftsHere.length)}
             >
-              {#if projectView.order === 'manual'}<GripVertical size={12} />{/if}<span class="mark"><ProjectTile {project} store={owner} /><span class="fold-caret" class:open={!collapsed} aria-hidden="true"><ChevronRight size={16} /></span></span
+              {#if projectView.order === 'manual'}<GripVertical size={12} />{/if}<span class="mark"><ProjectTile {project} store={owner} size={18} /><span class="fold-caret" class:open={!collapsed} aria-hidden="true"><ChevronRight size={16} /></span></span
+              ><span class="name ui-label" class:gone={project.missing === true}>{projectName(project)}</span
               >{#if multi}<span class="host" data-testid="project-host" class:offline={owner.connection !== 'ready'}
-                title={`${machine.label} · ${strings.connection[owner.connection]}`} aria-label={machine.label}><MachineIcon icon={machine.icon} os={owner.core?.os} size={14} /></span>{/if}<span class="name ui-label" class:gone={project.missing === true}>{projectName(project)}</span
-              >{#if project.missing === true}<span class="missing" data-testid="project-missing" title={strings.sidebar.projectMissing} aria-label={strings.sidebar.projectMissing}><FolderX size={13} aria-hidden="true" /></span>{/if}{#if rollup}{@const label = fill(rollup.count === 1 ? strings.sidebar.rollupOne : strings.sidebar.rollupMany, { count: String(rollup.count), state: strings.sidebar.state[rollup.kind] })}<span
+                title={`${machine.label} · ${strings.connection[owner.connection]}`} aria-label={machine.label}><MachineIcon icon={machine.icon} os={owner.core?.os} size={13} /></span>{/if}{#if project.missing === true}<span class="missing" data-testid="project-missing" title={strings.sidebar.projectMissing} aria-label={strings.sidebar.projectMissing}><FolderX size={13} aria-hidden="true" /></span>{/if}{#if rollup}{@const label = fill(rollup.count === 1 ? strings.sidebar.rollupOne : strings.sidebar.rollupMany, { count: String(rollup.count), state: strings.sidebar.state[rollup.kind] })}<span
                   class="rollup {rollup.kind}" data-testid="project-rollup" data-state={rollup.kind} title={label} aria-label={label}
                   >{#if rollup.kind === 'working'}<LoaderCircle size={11} class="spinner" aria-hidden="true" />{:else}<span class="dot" aria-hidden="true"></span>{/if}{#if rollup.count > 1}<span class="ui-label">{rollup.count}</span>{/if}</span
                 >{/if}
             </button>
-            {#each residentsOf(owner, project.id).slice(0, 2) as resident (resident.id)}
-              <!-- An agent the owner entrusted this project to: its robot, and the way to its conversation. -->
-              <button type="button" class="ghost icon small resident-mark" title={fill(strings.resident.lookedAfterBy, { name: resident.name })} aria-label={fill(strings.resident.lookedAfterBy, { name: resident.name })}
-                onclick={() => openResident(owner, resident.id)} data-testid="project-resident" data-agent-id={resident.id}>
-                <AgentAvatar kind="profile" id={resident.id} name={resident.name} avatar={resident.avatar} size={18} />
-              </button>
-            {/each}
-            <ProjectThreadCounters {entry} working={lists.working.length} {controls} {collapsed} {away} body={later ? laterLists : undefined} />
+            <ProjectThreadCounters {entry} part="head" working={lists.working.length} waiting={away || rollup ? 0 : waitingCount(entry)} {controls} {collapsed} {away} />
             <button
               class="ghost small icon project-actions"
               data-testid="project-menu"
@@ -275,12 +289,12 @@
               <SharedProjectThreads store={owner} projectId={project.id} active={!collapsed && !away}>
               {#each draftsHere as draft (draft.id)}<DraftRow {owner} entry={draft} />{/each}
               <WindowList items={lists.attention} keyOf={thread => JSON.stringify([machine.id, thread.id])} {scrollRoot} active={!collapsed} estimate={34} measurements={measurements(JSON.stringify([machine.id, project.id]))}>
-                {#snippet row(thread)}<ThreadCard {machine} {project} {thread} {now} showProject={false} showMachine={false} showDone />{/snippet}
+                {#snippet row(thread)}<ThreadCard {machine} {project} {thread} {now} showMachine={false} showDone />{/snippet}
               </WindowList>
               <div id="{controls}-working" hidden={!workingOpen || lists.working.length === 0} data-testid="project-working">
                 {#if workingOpen && lists.working.length > 0}
                   <WindowList items={lists.working} keyOf={thread => JSON.stringify([machine.id, thread.id])} {scrollRoot} active={!collapsed} estimate={34} measurements={measurements(JSON.stringify([machine.id, project.id, 'working']))}>
-                    {#snippet row(thread)}<ThreadCard {machine} {project} {thread} {now} showProject={false} showMachine={false} showDone />{/snippet}
+                    {#snippet row(thread)}<ThreadCard {machine} {project} {thread} {now} showMachine={false} showDone />{/snippet}
                   </WindowList>
                 {/if}
               </div>
@@ -298,6 +312,10 @@
               </SharedProjectThreads>
             </div>
           </div>
+          <!-- Done and Archived wait at the card's foot: the header keeps what needs the user now. -->
+          {#if archiveCount(project, 'done') > 0 || (archiveCount(project, 'archived') > 0 && (!later || collapsed))}
+            <div class="card-foot"><ProjectThreadCounters {entry} part="foot" working={0} {controls} {collapsed} {away} body={later ? laterLists : undefined} /></div>
+          {/if}
         </section>
       {/snippet}
       <!-- Idle projects sit as compact rows in their fold below, so Alt+digit and reordering count only the cards. -->
@@ -319,35 +337,38 @@
       </div>
     {/if}
     {/if}
-  {#snippet lead()}
-    <MachineStatus {store} filter={shownFilter} onfilter={id => { if (id && selected && selected.machine.id !== id) projectView.pick('all'); filter = id; }} />
-  {/snippet}
-  {#snippet foot()}
-    {#if store.owner && work.shows('sidebar.add-project')}
-      <button class="ghost icon" data-testid="add-project" bind:this={projectButton} onclick={addProject}
-        title={strings.sidebar.addProject} aria-label={strings.sidebar.addProject}
-        oncontextmenu={(event) => controlMenu(event, store, 'sidebar.add-project')}><FolderPlus size={16} /></button>
-    {/if}
-  {/snippet}
 </RailFrame>
 
 <style>
   /* `sidebar` is the container RailFrame.svelte declares on the column. */
-  @container sidebar (max-width: 240px) {
-    .project .head { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
-    .head .toggle { grid-column: 1; grid-row: 1; }
-    .head .project-actions { grid-column: 2; grid-row: 1; }
-    .head :global(.counters) { grid-column: 1 / -1; grid-row: 2; justify-content: flex-end; margin-bottom: 4px; }
-  }
   .recent-folds { margin-top: auto; padding-top: 12px; }
   .project-folds { margin-top: auto; }
+  /* A card on the inset panel's surface, edged by a hairline. */
   .project {
-    margin-bottom: 10px;
+    margin-bottom: 8px;
     padding: 4px;
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
-    background: color-mix(in srgb, var(--color-surface-2) 55%, transparent);
+    background: var(--color-surface);
   }
+  /* Recent's line between the threads with something to say and the ones at rest. */
+  .rest-line { height: 1px; margin: 8px 10px; background: var(--color-border); }
+  /* Done and Archived, quiet at the card's right foot. */
+  .card-foot { display: flex; justify-content: flex-end; padding: 2px 2px 0; }
+  .empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 28px 12px;
+    color: var(--color-subtle);
+    font-size: var(--text-sm);
+    text-align: center;
+  }
+  .empty .add { gap: 6px; color: var(--color-muted-foreground); }
+  .empty .add:hover { color: var(--color-foreground); }
+  .empty :global(.spinner) { color: var(--color-accent); animation: spin 1s steps(60) infinite var(--loops); }
+  @media (prefers-reduced-motion: reduce) { .empty :global(.spinner) { animation: none; } }
   .project {
     transition:
       border-color var(--dur-2) var(--ease-out-quint),
@@ -400,26 +421,33 @@
     user-select: none;
   }
   .head {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 2px;
+    height: 34px;
   }
   .toggle {
     flex: 1;
     min-width: 0;
-    height: var(--control-lg);
+    height: 34px;
     padding: 0 4px;
     justify-content: flex-start;
-    gap: 6px;
+    gap: 8px;
   }
+  .toggle:hover:not(:disabled) { background: transparent; }
+  .toggle:active:not(:disabled) { transform: none; }
+  /* The name takes what it needs first: the host icon and the counters are small and follow it. */
   .name {
-    flex: 1;
+    flex: 0 1 auto;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     text-align: left;
     white-space: nowrap;
-    font-weight: 600;
+    font-size: 13.5px;
+    font-weight: 620;
+    letter-spacing: -0.01em;
     color: var(--color-foreground);
   }
   /* Its folder left the disk: the name steps back and a mark says why. */
@@ -475,22 +503,27 @@
   .host {
     display: flex;
     flex: none;
-    color: var(--color-muted-foreground);
+    color: var(--color-subtle);
   }
   /* The rows under it carry no machine icon, so the header says the machine is unreachable. */
   .host.offline {
     color: var(--color-danger);
   }
-  .resident-mark { flex: none; width: var(--control-sm); height: var(--control-sm); padding: 0; }
-  /* The menu keeps its slot at the right end even while hidden, so it sits at
-     the same place on every project and the counters never move. */
+  .head :global(.counters) { margin-right: 2px; transition: margin-right var(--dur-2) var(--ease-out-quint); }
+  /* The menu appears at the right end on hover and the counters step left of it, as a row's state does. */
   .project-actions {
-    flex: none;
+    position: absolute;
+    right: 2px;
+    top: 4px;
     opacity: 0;
   }
   .head:hover .project-actions,
   .head:focus-within .project-actions {
     opacity: 1;
+  }
+  .head:hover :global(.counters),
+  .head:focus-within :global(.counters) {
+    margin-right: 28px;
   }
   .none {
     padding: 4px 10px;
@@ -507,5 +540,6 @@
     .project-actions {
       opacity: 1;
     }
+    .head :global(.counters) { margin-right: 28px; }
   }
 </style>

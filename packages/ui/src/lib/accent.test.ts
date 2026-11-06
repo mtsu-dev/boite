@@ -10,5 +10,5 @@ test('accent persists and invalid values cannot become CSS', () => {
   setAccent(NaN);
   expect(readAccent()).toBe(145);
   localStorage.setItem(ACCENT_KEY, '361');
-  expect(readAccent()).toBe(260);
+  expect(readAccent()).toBe(295);
 });

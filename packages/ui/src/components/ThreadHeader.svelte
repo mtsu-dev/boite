@@ -243,7 +243,7 @@
         <button type="button" class="chip entrusted" title={fill(strings.agents.entrustedTo, { name: carrier.agent.name })} data-testid="thread-entrusted-chip"
           onclick={(event) => carrierMenu(event.currentTarget)}>
           <AgentAvatar kind="profile" id={carrier.agent.id} name={carrier.agent.name} avatar={carrier.agent.avatar} size={16} />
-          <span class="chip-name ui-label">{fill(strings.agents.entrustedTo, { name: carrier.agent.name })}</span>
+          <span class="chip-name ui-label">{carrier.agent.name}</span>
         </button>
       {/if}
       {#if resident}
@@ -252,7 +252,7 @@
           aria-label={fill(strings.resident.lookedAfterBy, { name: resident.name })} data-testid="thread-resident-chip" data-agent-id={resident.id}
           onclick={() => openResident(store, resident!.id)}>
           <AgentAvatar kind="profile" id={resident.id} name={resident.name} avatar={resident.avatar} size={16} />
-          <span class="chip-name ui-label">{fill(strings.resident.lookedAfterBy, { name: resident.name })}</span>
+          <span class="chip-name ui-label">{resident.name}</span>
         </button>
       {/if}
       {#if thread && (thread.pullRequestWatches?.length ?? 0) > 0}
@@ -276,6 +276,10 @@
           <GitBranch size={13} strokeWidth={1.75} />
           <span class="branch-name ui-label">{thread.branch}</span>
         </span>
+      {/if}
+      {#if thread && (carrier || resident || (thread.pullRequestWatches?.length ?? 0) > 0 || (thread.branch && work.shows('header.branch')))}
+        <!-- A hairline between what the thread is (its bot, its branch) and the tools it opens. -->
+        <span class="vsep" aria-hidden="true"></span>
       {/if}
       <!-- The shell is the owner's: a phone reaches it by this button, not by Ctrl+J. -->
       {#if thread && store.owner && !thread.teamId && !thread.councilId}
@@ -397,12 +401,16 @@
     font-size: var(--text-sm);
   }
 
-  .resident { flex: 0 1 auto; min-width: 0; max-width: 220px; gap: 6px; padding-left: 4px; border-color: color-mix(in oklch, var(--color-resident) 45%, transparent); background: var(--color-resident-soft); color: var(--color-resident); cursor: pointer; }
-  .entrusted { flex: 0 1 auto; min-width: 0; max-width: 220px; gap: 6px; padding-left: 4px; border-color: color-mix(in oklch, var(--color-accent) 40%, transparent); background: var(--color-accent-soft); color: var(--color-accent); cursor: pointer; }
+  /* The bot that carries or looks after the thread: its picture and its name on a
+     neutral chip; the tooltip says which of the two it is. */
+  .resident, .entrusted { flex: 0 1 auto; min-width: 0; max-width: 200px; gap: 6px; padding-left: 3px; border-color: var(--color-border); background: var(--color-surface-2); color: var(--color-foreground); font-weight: 500; cursor: pointer; }
+  .resident:hover, .entrusted:hover { background: var(--color-surface-3); border-color: var(--color-edge); }
+  .branch { color: var(--color-muted-foreground); background: transparent; border-color: var(--color-border); }
+  .vsep { flex: none; width: 1px; height: 16px; margin: 0 2px; background: var(--color-edge); }
   .chip-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .branch-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .branch :global(svg) { flex: none; }
-  .watch-chip { flex: none; display: inline-flex; color: var(--color-accent); }
+  .watch-chip { flex: none; display: inline-flex; color: var(--color-muted-foreground); }
   .watch-chip :global(svg) { flex: none; }
 
   .trace {
@@ -440,7 +448,7 @@
     flex: 0 1 auto;
     min-width: 0;
     font-size: var(--text-sm);
-    color: var(--color-accent);
+    color: var(--color-muted-foreground);
   }
   .pending :global(svg) { flex: none; }
   .pending-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -452,7 +460,7 @@
     /* The title is what tells one conversation from another: the buttons give
        up their words for it, and keep a finger-sized square. */
     .thread-header { gap: 4px; }
-    .path { display: none; }
+    .path, .vsep { display: none; }
     .pending { flex: none; min-width: var(--touch-target); justify-content: center; }
     .pending-text { display: none; }
     .trace { padding: 0; min-width: var(--touch-target); justify-content: center; }

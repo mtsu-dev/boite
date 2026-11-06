@@ -13,7 +13,8 @@
    * last occurrence ended. Run now, pause, edit and remove sit under it;
    * editing opens the same form that planned it. Run now waits while the bot's
    * thread is at work, as the core refuses a second turn then. `compact`, on the desk: one row,
-   * the name over its schedule and next time, the actions as icons on the right.
+   * the name and its next run (the schedule on hover), a failed last run under the name, the
+   * actions as icons over the time on hover.
    */
   let { view, routine, compact = false }: { view: AgentsView; routine: AgentRoutine; compact?: boolean } = $props();
   let editing = $state(false);
@@ -43,12 +44,11 @@
   <AgentSchedule {view} {routine} ondone={() => { editing = false; }} oncancel={() => { editing = false; }} />
 {:else if compact}
   <article class="desk-routine" data-state={standing.kind} data-testid="routine-{routine.id}">
-    <span class="desk-routine-icon" data-state={standing.kind}><CalendarClock size={14} strokeWidth={1.75} /></span>
     <div class="desk-routine-text" title={showPrompt ? routine.prompt : undefined}>
       <strong>{routine.name}</strong>
-      <span class="desk-routine-when">{describeSchedule(routine.schedule)} <span class="routine-state" data-state={standing.kind}>· {standing.text}</span></span>
-      {#if outcome && routine.lastScheduledAt}<span class="desk-routine-last agent-state" data-status={outcome}>{fill(t.lastRun, { state: labels.outcome[outcome], when: dateTime(routine.lastScheduledAt) })}</span>{/if}
+      {#if outcome === 'error' && routine.lastScheduledAt}<span class="desk-routine-last agent-state" data-status={outcome}>{fill(t.lastRun, { state: labels.outcome[outcome], when: dateTime(routine.lastScheduledAt) })}</span>{/if}
     </div>
+    <span class="desk-routine-when routine-state" data-state={standing.kind} title={describeSchedule(routine.schedule)}>{standing.kind === 'next' ? dateTime(routine.nextAt!) : standing.text}</span>
     {#if view.store.owner}
       <div class="desk-routine-actions">
         <button type="button" class="ghost small icon" disabled={view.pending || busy || agent?.status === 'archived'} title={busy ? labels.runNowBusy : labels.runNow} aria-label={labels.runNow} onclick={() => void runNow()} data-testid="routine-run"><Play size={13} strokeWidth={1.75} /></button>

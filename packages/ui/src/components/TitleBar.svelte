@@ -1,33 +1,30 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { PanelLeftClose, PanelLeftOpen, Users } from '@lucide/svelte';
+  import { PanelLeftClose, PanelLeftOpen, Settings } from '@lucide/svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import ThreadHeader from './ThreadHeader.svelte';
-  import type { Window as TauriWindow } from '@tauri-apps/api/window';
   import { strings } from '../lib/strings';
   import { projectName } from '../lib/format';
   import type { Store } from '../lib/store.svelte';
-  import { work } from '../lib/work-prefs.svelte';
-  import { controlMenu } from '../lib/controls';
   import { isMac } from '../lib/keybindings';
   import { linuxShell } from '../lib/shell-platform';
-  import ProjectTile from './ProjectTile.svelte';
+  import { dragWindow, shellWindow, toggleMaximize } from '../lib/window-drag';
   import WindowResizeHandles from './WindowResizeHandles.svelte';
-  import { contactsRail, contactsShown } from '../lib/contacts-rail.svelte';
 
-  let { store }: { store: Store } = $props();
-  let ContactRequestNotice = $state<typeof import('./home/ContactRequestNotice.svelte').default>();
-  $effect(() => {
-    if (!contactsShown(store) || ContactRequestNotice) return;
-    void import('./home/ContactRequestNotice.svelte').then(module => { ContactRequestNotice = module.default; }).catch(() => {});
-  });
+  /**
+   * The main column's top bar, on the chrome above its panel: the sidebar's
+   * fold, the open thread's title and tools, the dev tag and, in the Windows
+   * shell, the caption buttons at the window's corner. On a desktop the app
+   * rail and the list column stand left of it up to the window's top
+   * (App.svelte sets `--bar-left`); `edge` says nothing stands there (Settings),
+   * so macOS's traffic lights land on the bar itself.
+   */
+  let { store, edge = false }: { store: Store; edge?: boolean } = $props();
 
   const inShell = window.__TAURI_INTERNALS__ !== undefined;
-  /** macOS draws its own traffic lights over the bar's left end, and no caption buttons are drawn here. */
+  /** macOS draws its own traffic lights over the window's top left corner, and no caption buttons are drawn here. */
   const macShell = inShell && isMac();
   const linuxFrame = linuxShell();
-  /** The room the traffic lights take beyond the bar's usual 8 px of padding. */
-  const lights = macShell ? 72 : 0;
   const mobile = new MediaQuery('(max-width: 720px)');
   let expanded = $derived(mobile.current ? store.sidebarOpen : !store.sidebarCollapsed);
   /**
@@ -36,8 +33,6 @@
    * to open.
    */
   let foldable = $derived(store.booted && (store.page === 'chat' || store.page === 'home' || (store.page === 'agents' && !mobile.current)));
-  /** The contacts column folds from the bar's other end, beside the pages that keep it. */
-  let contactsToggle = $derived(store.booted && contactsShown(store) && !mobile.current && (store.page === 'chat' || store.page === 'home'));
   function toggleSidebar() {
     if (mobile.current) store.sidebarOpen = !store.sidebarOpen;
     else store.toggleSidebar();
@@ -45,18 +40,11 @@
 
   let maximized = $state(false);
 
-  let cached: Promise<TauriWindow> | null = null;
-
-  function windowOf(): Promise<TauriWindow> {
-    cached ??= import('@tauri-apps/api/window').then(({ getCurrentWindow }) => getCurrentWindow());
-    return cached;
-  }
-
   onMount(() => {
     if (!inShell) return;
     let disposed = false;
     let stop: (() => void) | undefined;
-    void windowOf().then(async (win) => {
+    void shellWindow().then(async (win) => {
       maximized = await win.isMaximized();
       // onResized fires on every frame of a drag-resize. One query in flight,
       // one trailing pass for the final size, never a round-trip per event.
@@ -85,33 +73,13 @@
     };
   });
 
-  /**
-   * The bar itself is the drag region, by hand rather than through
-   * `data-tauri-drag-region`: that attribute only works on the exact element
-   * under the pointer, and it toggles maximize on its own double-click, so
-   * pairing it with a handler here would toggle twice.
-   */
-  function onmousedown(event: MouseEvent) {
-    if (!inShell || linuxFrame || event.button !== 0) return;
-    if (event.target instanceof Element && event.target.closest('button, input, a, textarea, [role=button]')) return;
-    if (event.detail === 2) {
-      void maximize();
-      return;
-    }
-    void windowOf().then((win) => win.startDragging());
-  }
-
   async function minimize() {
-    await (await windowOf()).minimize();
-  }
-
-  async function maximize() {
-    await (await windowOf()).toggleMaximize();
+    await (await shellWindow()).minimize();
   }
 
   /** The shell quits by default, or hides when its close-to-tray setting is on. */
   async function close() {
-    await (await windowOf()).close();
+    await (await shellWindow()).close();
   }
 
   /**
@@ -129,7 +97,7 @@
 <WindowResizeHandles />
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<header style:--project-width={`${Math.max(0, (store.sidebarCollapsed ? 156 : store.sidebarWidth - 40) - lights)}px`} class="titlebar" class:browser={!inShell} class:mac={macShell} class:linux={linuxFrame} {onmousedown} data-testid="titlebar">
+<header class="titlebar" class:browser={!inShell} class:mac={macShell} class:edge class:linux={linuxFrame} onmousedown={dragWindow} data-testid="titlebar">
   {#if foldable}
     <button type="button" class="ghost icon sidebar-toggle"
       aria-label={expanded ? strings.sidebar.collapse : strings.sidebar.expand}
@@ -138,28 +106,15 @@
       {#if expanded}<PanelLeftClose size={17} strokeWidth={1.75} />{:else}<PanelLeftOpen size={17} strokeWidth={1.75} />{/if}
     </button>
   {/if}
-  {#if threadHeader && store.openProject && work.shows('header.project')}
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="project-heading" data-testid="header-project" title={store.openProject.path}
-      oncontextmenu={(event) => controlMenu(event, store, 'header.project')}>
-      <ProjectTile project={store.openProject} {store} size={18} />
-      <span class="ui-label">{projectName(store.openProject)}</span>
-    </div>
-  {/if}
   {#if threadHeader && (inShell || !mobile.current)}
     {#key store}<ThreadHeader {store} />{/key}
   {:else}
     <span class="name ui-label">{store.page === 'agents' ? strings.agents.heading : store.page === 'home' ? strings.contacts.heading : heading}</span>
   {/if}
-  {#if ContactRequestNotice && contactsShown(store) && (inShell || !mobile.current)}<ContactRequestNotice {store} />{/if}
-  {#if contactsToggle}
-    <button type="button" class="ghost icon contacts-toggle" class:open={!contactsRail.folded}
-      aria-label={contactsRail.folded ? strings.contacts.rail.show : strings.contacts.rail.hide}
-      title={contactsRail.folded ? strings.contacts.rail.show : strings.contacts.rail.hide}
-      aria-expanded={!contactsRail.folded} data-testid="contacts-toggle" onclick={() => contactsRail.toggle()}>
-      <Users size={17} strokeWidth={1.75} />
-      {#if contactsRail.folded && contactsRail.waiting}<span class="contacts-waiting" data-testid="contacts-toggle-waiting"></span>{/if}
-    </button>
+  {#if inShell && store.booted && store.page !== 'settings'}
+    <!-- A shell window narrower than a phone has no app rail: Settings stays one press away here. -->
+    <button type="button" class="ghost icon narrow-settings" title={strings.sidebar.settings} aria-label={strings.sidebar.settings}
+      data-testid="titlebar-settings" onclick={() => store.showSettings()}><Settings size={17} strokeWidth={1.75} /></button>
   {/if}
   {#if dev}
     <span class="channel ui-label-box" title={strings.app.channelDevTitle} data-testid="titlebar-channel"><span class="ui-label">{strings.app.channelDev}</span></span>
@@ -178,7 +133,7 @@
       title={maximized ? strings.titlebar.restore : strings.titlebar.maximize}
       data-testid="titlebar-maximize"
       data-maximized={maximized}
-      onclick={() => void maximize()}
+      onclick={() => void toggleMaximize()}
     >
       {#if maximized}
         <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2.5 2.5v-2h7v7h-2" /><rect x="0.5" y="2.5" width="7" height="7" /></svg>
@@ -197,10 +152,11 @@
   .titlebar {
     display: flex;
     gap: 8px;
-    padding-left: 8px;
+    padding-left: 6px;
     align-items: center;
     height: var(--titlebar);
-    /* It stands on the app's frame: no ground and no line of its own. */
+    min-width: 0;
+    /* It stands on the app's chrome: no ground and no line of its own. */
     background: transparent;
     user-select: none;
     -webkit-user-select: none;
@@ -209,27 +165,20 @@
   }
 
   /* In the shell the caption buttons end the bar at its edge. */
-  .titlebar.browser, .titlebar.linux { padding-right: 8px; }
-  /* macOS: the traffic lights, 16 px in and about 52 px wide, then the usual gap. */
-  .titlebar.mac { padding-left: 80px; padding-right: 8px; }
+  .titlebar.browser, .titlebar.linux { padding-right: 4px; }
+  .titlebar.mac { padding-right: 8px; }
   .sidebar-toggle { flex: none; }
-  .contacts-toggle { position: relative; flex: none; margin-left: auto; }
-  .contacts-toggle.open { color: var(--color-foreground); }
-  /* Folded, the button alone says a contact asks something. */
-  .contacts-waiting { position: absolute; top: 5px; right: 5px; width: 7px; height: 7px; border-radius: 50%; background: var(--color-live); box-shadow: 0 0 0 2px var(--color-frame); }
-  .project-heading {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    width: var(--project-width);
-    flex: none;
-    min-width: 0;
-    padding-right: 12px;
-    font-size: var(--text-sm);
-    font-weight: 600;
+  .narrow-settings { flex: none; display: none; margin-left: auto; }
+  @media (min-width: 721px) {
+    /* Right of the app rail and the list column, which reach the window's top. */
+    .titlebar { margin-left: var(--bar-left, 0px); }
+    /* macOS: the traffic lights, 16 px in and about 52 px wide, then the usual gap, where nothing stands left of the bar. */
+    .titlebar.mac.edge { padding-left: 80px; }
   }
-  .project-heading span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  @media (max-width: 720px) { .project-heading { display: none; } }
+  @media (max-width: 720px) {
+    .titlebar.mac { padding-left: 80px; }
+    .narrow-settings { display: inline-flex; }
+  }
   @media (max-width: 720px) {
     .titlebar { background: var(--color-frame); border-bottom: 1px solid var(--color-border); }
     .titlebar.browser { background: var(--color-background); padding: 0 16px; }

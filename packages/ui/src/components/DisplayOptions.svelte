@@ -7,14 +7,17 @@
   import type { Store } from '../lib/store.svelte';
 
   /**
-   * The sliders over the thread list and the panel of display options they
-   * open (DisplayOptionsPanel.svelte). The panel loads on its own, a moment
-   * after the list has drawn, so it stays out of the entry chunk and the first
-   * press still opens it at once. It stays open while the user adjusts it; a
-   * press outside or Escape puts it away.
+   * The display button over the thread list and the menu it opens
+   * (DisplayOptionsPanel.svelte). The menu loads on its own, a moment after
+   * the list has drawn, so it stays out of the entry chunk and the first press
+   * still opens it at once. It stays open while the user adjusts it; a press
+   * outside or Escape puts it away. `filtered` marks the button while a filter
+   * hides threads, since the menu that says so is closed.
    */
   /** `compact`: the phone's choices only, the view and the groups; the order and a project's own switches stay on the desktop. */
-  let { entries, target, owner, prefix = '', compact = false }: { entries: ProjectEntry[]; target: Project | undefined; owner: Store; prefix?: string; compact?: boolean } = $props();
+  let { entries, target, owner, prefix = '', compact = false, filtered = false, onaddproject }: {
+    entries: ProjectEntry[]; target: Project | undefined; owner: Store; prefix?: string; compact?: boolean; filtered?: boolean; onaddproject?: () => void;
+  } = $props();
 
   const popover = new Closing();
   let root = $state<HTMLDivElement>();
@@ -41,7 +44,7 @@
   }
   function onWindowPointerdown(event: PointerEvent): void {
     if (!popover.open || (root && event.target instanceof Node && root.contains(event.target))) return;
-    // A tooltip opened from the panel lives in the top layer, outside it.
+    // A tooltip or the project list opened from the menu lives in the top layer, outside it.
     if (event.target instanceof Element && event.target.closest('.info-bubble')) return;
     close();
   }
@@ -50,16 +53,19 @@
 <svelte:window onpointerdown={onWindowPointerdown} />
 
 <div class="display-options" bind:this={root}>
-  <button type="button" class="ghost icon small trigger" bind:this={trigger} aria-haspopup="dialog" aria-expanded={popover.open}
+  <button type="button" class="ghost icon small trigger" class:filtered bind:this={trigger} aria-haspopup="dialog" aria-expanded={popover.open}
     aria-label={strings.sidebar.groupingOptions} title={strings.sidebar.groupingOptions} data-testid={`${prefix}grouping-options`} onclick={toggle}>
     <SlidersHorizontal size={16} />
   </button>
   {#if popover.shown && Panel}
-    <Panel {popover} anchor={() => trigger ?? null} onclose={close} {entries} {target} {owner} {prefix} {compact} />
+    <Panel {popover} anchor={() => trigger ?? null} onclose={close} {entries} {target} {owner} {prefix} {compact} {onaddproject} />
   {/if}
 </div>
 
 <style>
   .display-options { position: relative; display: inline-flex; }
-  .trigger[aria-expanded='true'] { background: var(--color-surface-3); color: var(--color-foreground); }
+  .trigger { position: relative; }
+  .trigger[aria-expanded='true'] { background: var(--color-surface-3); color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-edge); }
+  /* A filter on: a small mark in the corner, the selected thing's accent. */
+  .trigger.filtered::after { content: ''; position: absolute; top: 4px; right: 4px; width: 5px; height: 5px; border-radius: var(--radius-full); background: var(--color-accent); }
 </style>

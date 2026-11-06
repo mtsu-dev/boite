@@ -461,6 +461,7 @@
     flex: none;
   }
 
+  .send { box-shadow: var(--shadow-send); }
   .send:not(:disabled):active { transform: scale(.92); }
   .send :global(.spinner) { animation: spin 1s linear infinite var(--loops); }
   @media (prefers-reduced-motion: reduce) { .send :global(.spinner) { animation: none; } }

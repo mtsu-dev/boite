@@ -162,47 +162,57 @@
   --ansi-bright-magenta: #d670d6;
   --ansi-bright-cyan: #29b8db;
   --ansi-bright-white: #ffffff;
-  --color-background: #101013;
-  /* The window's frame: title bar and rails on one grey, the work
-     inset in cards of the page colour with an edge that reads. */
-  --color-frame: #1a1a1d;
-  --color-frame-edge: rgba(255, 255, 255, 0.11);
-  --color-surface: #151518;
-  --color-surface-2: #1b1b1f;
-  --color-surface-3: #232327;
-  --color-border: rgba(255, 255, 255, 0.07);
-  --color-edge: rgba(255, 255, 255, 0.14);
+  /* The inset panel the work sits in. */
+  --color-background: #131314;
+  /* The window's chrome: the app rail, the sidebar and the top bars on one
+     near black, the work inset in panels of the page colour with a hairline. */
+  --color-frame: #0b0b0c;
+  --color-frame-edge: rgba(255, 255, 255, 0.075);
+  --color-surface: #161617;
+  /* The two raised fills: a chip, a card, the composer; then a pressed or selected raise. */
+  --color-surface-2: #1a1a1c;
+  --color-surface-3: #222225;
+  /* The two hairlines: a quiet separator, and an edge that must read. */
+  --color-border: rgba(255, 255, 255, 0.075);
+  --color-edge: rgba(255, 255, 255, 0.11);
   /* The lift a hovered or selected row takes: light over the ground, never a new grey. */
-  --color-hover: rgba(255, 255, 255, 0.05);
-  --color-active: rgba(255, 255, 255, 0.09);
-  --color-foreground: #ececf1;
+  --color-hover: rgba(255, 255, 255, 0.045);
+  --color-active: rgba(255, 255, 255, 0.075);
+  --color-foreground: #ededef;
   /* Both text tiers clear 4.5:1 on every surface in both themes: subtle carries paths and timestamps (lib/contrast.test.ts). */
-  --color-muted-foreground: #a2a2ad;
-  --color-subtle: #8c8c96;
+  --color-muted-foreground: #a6a6ac;
+  --color-subtle: #89898f;
+  /* Below reading contrast: a disabled mark, a placeholder glyph, never words that must be read. */
+  --color-faint: #4a4a50;
   --color-selection: rgba(228, 228, 231, 0.18);
-  --accent-hue: 260;
-  --color-accent: oklch(68% 0.19 var(--accent-hue));
-  --color-accent-soft: color-mix(in oklch, var(--color-accent) 18%, transparent);
-  --color-accent-ink: #101013;
+  --accent-hue: 295;
+  --color-accent: oklch(75.5% 0.141 var(--accent-hue));
+  /* Once a violet tint under selected and highlighted things; the accent now
+     stays on the send button, focus, spinners and small marks, so the fill
+     under them is the neutral selection. A palette may still set its own. */
+  --color-accent-soft: var(--color-active);
+  --color-accent-ink: #15111f;
   --color-reasoning: var(--color-accent);
-  /* What the agent looking after a project sends: the accent turned away round the wheel, so its letters never read as the user's own. */
-  --color-resident: oklch(66% 0.15 calc(var(--accent-hue) + 150));
+  /* What the agent looking after a project sends: the accent turned away round the wheel (orange at the default violet), so its letters never read as the user's own. */
+  --color-resident: oklch(66% 0.15 calc(var(--accent-hue) + 115));
   --color-resident-soft: color-mix(in oklch, var(--color-resident) 14%, transparent);
-  --accent-spectrum: linear-gradient(to right, oklch(68% .19 0), oklch(68% .19 60), oklch(68% .19 120), oklch(68% .19 180), oklch(68% .19 240), oklch(68% .19 300), oklch(68% .19 360));
+  --accent-spectrum: linear-gradient(to right, oklch(75.5% .141 0), oklch(75.5% .141 60), oklch(75.5% .141 120), oklch(75.5% .141 180), oklch(75.5% .141 240), oklch(75.5% .141 300), oklch(75.5% .141 360));
   --picker-white: #ffffff;
   --picker-black: #000000;
   --picker-hues: linear-gradient(to right, hsl(0 100% 50%), hsl(60 100% 50%), hsl(120 100% 50%), hsl(180 100% 50%), hsl(240 100% 50%), hsl(300 100% 50%), hsl(360 100% 50%));
   --color-reasoning-on: #ffffff;
-  --color-live: #eab308;
-  --color-success: #4ade80;
-  --color-danger: #f0716f;
+  /* Needs you: the one warm colour, and its soft fill behind a count. */
+  --color-live: #f5b84a;
+  --color-live-soft: rgba(245, 184, 74, 0.12);
+  --color-success: #4cc38a;
+  --color-danger: #f2555a;
   --color-danger-hover: #d36060;
   --color-on-danger: #ffffff;
   /* The Windows 11 caption close, the same red in both themes: the danger
      salmon under a white cross read at 2.9:1, this one at 5.7:1. */
   --color-caption-close: #c42b1c;
   --color-scrim: rgba(6, 6, 8, 0.55);
-  --color-on-foreground: #101013;
+  --color-on-foreground: #131314;
 
   /*
    * Chart series, one hue per provider in a fixed order: Claude, Codex,
@@ -226,26 +236,29 @@
   --radius-xl: 16px;
   --radius-full: 999px;
   /* A framed card's corner, and the frame between two cards and the window edge. */
-  --radius-frame: 10px;
+  --radius-frame: 12px;
   --frame-gap: 8px;
 
   --shadow-e1: 0 1px 2px rgb(0 0 0 / 0.35), inset 0 1px 0 rgb(255 255 255 / 0.05);
   --shadow-e2: 0 8px 24px rgb(0 0 0 / 0.45), 0 0 0 1px rgb(255 255 255 / 0.05);
   --shadow-e3: 0 20px 60px rgb(0 0 0 / 0.55), 0 0 0 1px rgb(255 255 255 / 0.06);
-  --shadow-frame: 0 3px 8px rgb(0 0 0 / 0.24);
+  /* The panel's border draws its hairline; then a top light and two shadows that set it in the chrome. */
+  --shadow-frame: inset 0 1px 0 rgb(255 255 255 / 0.035), 0 1px 2px rgb(0 0 0 / 0.6), 0 12px 40px rgb(0 0 0 / 0.35);
   /* The left edge of a phone's screen sliding over another (`lib/screen-slide.svelte.ts`). */
   --shadow-screen: -8px 0 24px -6px rgb(0 0 0 / 0.5);
 
-  /* The composer and its activity dock share a top reflection. The dock floats over
-     the scrolling timeline, so its fill is nearly opaque: the blur only softens
-     the edge and the lines passing under it never read through its text. */
+  /* The composer: a raised neutral surface with a hairline, a brighter one on
+     focus. Its activity dock floats over the scrolling timeline, so that fill is
+     nearly opaque: the lines passing under it never read through its text. */
   --color-composer-surface: var(--color-surface-2);
   --color-activity-surface: var(--color-surface);
-  --color-composer-focus: var(--color-edge);
-  /* The focused composer's edge light: none where the browser cannot mix the accent. */
-  --composer-edge: transparent;
-  --composer-glaze: linear-gradient(145deg, rgb(255 255 255 / 0.055), rgb(255 255 255 / 0.012) 48%, transparent);
-  --shadow-composer: 0 6px 20px rgb(0 0 0 / 0.24), inset 0 1px 0 rgb(255 255 255 / 0.06);
+  --color-composer-edge: var(--color-edge);
+  --color-composer-focus: rgba(255, 255, 255, 0.2);
+  --radius-composer: 18px;
+  --composer-glaze: none;
+  --shadow-composer: inset 0 1px 0 rgb(255 255 255 / 0.04), 0 10px 30px rgb(0 0 0 / 0.35);
+  /* The send button: the accent with a fine light along its top. */
+  --shadow-send: inset 0 1px 0 rgb(255 255 255 / 0.35), 0 1px 2px rgb(0 0 0 / 0.5);
   --control-glaze: var(--composer-glaze);
   --color-control-surface: var(--color-surface-2);
   --color-control-hover: var(--color-surface-3);
@@ -314,7 +327,12 @@
   --robot-bandage: #f6d6b4;
   --robot-bandage-pad: #e7b98f;
 
-  --titlebar: 44px;
+  /* The main column's top bar, on the chrome above its panel. */
+  --titlebar: 46px;
+  /* The app rail down the window's left edge (AppRail.svelte): its width, a button's side and corner. */
+  --app-rail: 72px;
+  --rail-button: 44px;
+  --radius-rail: 14px;
   /* A caption button, Windows' own width, the bar's full height. */
   --caption: 46px;
   --sidebar: 280px;
@@ -388,10 +406,10 @@
  * Sources and redistribution notices: public/theme-licenses.txt.
  */
 :root {
-  --palette-dark-default-background: #101013;
-  --palette-dark-default-frame: #1a1a1d;
-  --palette-dark-default-surface: #1b1b1f;
-  --palette-dark-default-foreground: #ececf1;
+  --palette-dark-default-background: #131314;
+  --palette-dark-default-frame: #0b0b0c;
+  --palette-dark-default-surface: #1a1a1c;
+  --palette-dark-default-foreground: #ededef;
   --palette-light-default-background: #f3f3f6;
   --palette-light-default-frame: #e7e7ec;
   --palette-light-default-surface: #ffffff;
@@ -731,11 +749,12 @@ html[data-chat-width='full'] {
   --color-surface-3: #ebebef;
   --color-border: rgba(0, 0, 0, 0.08);
   --color-edge: rgba(0, 0, 0, 0.16);
-  --color-hover: rgba(0, 0, 0, 0.045);
-  --color-active: rgba(0, 0, 0, 0.08);
+  --color-hover: rgba(0, 0, 0, 0.04);
+  --color-active: rgba(0, 0, 0, 0.07);
   --color-foreground: #1c1c21;
   --color-muted-foreground: #50505a;
   --color-subtle: #67676f;
+  --color-faint: #b4b4bb;
   --color-selection: rgba(28, 28, 33, 0.14);
   --color-terminal-background: var(--color-surface-2);
   --ansi-black: #000000;
@@ -754,7 +773,8 @@ html[data-chat-width='full'] {
   --ansi-bright-magenta: #bc05bc;
   --ansi-bright-cyan: #0598bc;
   --ansi-bright-white: #a5a5a5;
-  --color-live: #ca8a04;
+  --color-live: #b97806;
+  --color-live-soft: rgba(185, 120, 6, 0.12);
   --color-success: #16a34a;
   --color-danger: #dc2626;
   --color-danger-hover: #bb2020;
@@ -772,10 +792,11 @@ html[data-chat-width='full'] {
   --shadow-e1: 0 1px 2px rgb(0 0 0 / 0.08), inset 0 1px 0 rgb(255 255 255 / 0.6);
   --shadow-e2: 0 8px 24px rgb(0 0 0 / 0.12), 0 0 0 1px rgb(0 0 0 / 0.06);
   --shadow-e3: 0 20px 60px rgb(0 0 0 / 0.18), 0 0 0 1px rgb(0 0 0 / 0.08);
-  --shadow-frame: 0 2px 6px rgb(0 0 0 / 0.07);
+  --shadow-frame: inset 0 1px 0 rgb(255 255 255 / 0.6), 0 1px 2px rgb(0 0 0 / 0.06), 0 12px 40px rgb(0 0 0 / 0.06);
   --shadow-screen: -8px 0 24px -6px rgb(0 0 0 / 0.14);
-  --composer-glaze: linear-gradient(145deg, rgb(255 255 255 / 0.7), rgb(255 255 255 / 0.18) 48%, transparent);
-  --shadow-composer: 0 6px 20px rgb(0 0 0 / 0.08), inset 0 1px 0 rgb(255 255 255 / 0.8);
+  --color-composer-focus: rgba(0, 0, 0, 0.24);
+  --shadow-composer: inset 0 1px 0 rgb(255 255 255 / 0.8), 0 10px 30px rgb(0 0 0 / 0.07);
+  --shadow-send: inset 0 1px 0 rgb(255 255 255 / 0.35), 0 1px 2px rgb(0 0 0 / 0.18);
   --shadow-control: inset 0 1px 0 rgb(255 255 255 / 0.7);
   color-scheme: light;
 }
@@ -783,23 +804,10 @@ html[data-chat-width='full'] {
 /* Unsupported mixes must not invalidate a control's entire background at computed-value time. */
 @supports (color: color-mix(in oklab, white 50%, black)) {
   :root {
-    --color-composer-surface: color-mix(in oklab, var(--color-surface-2) 82%, transparent);
     --color-activity-surface: color-mix(in oklab, var(--color-surface) 94%, transparent);
-    --color-composer-focus: color-mix(in oklch, var(--color-accent) 55%, transparent);
-    /* Replaces the resting shadow on focus, slot for slot so it animates: a bloom under the box, the top
-       reflection put out (it would double the lit edge), then a blurred halo. Every layer is blurred: a
-       spread-only ring draws a second, hard outline. The halo spreads outward: a negative spread shrinks
-       its corner radius below the box's, and the corners went darker than the sides (19 against 30 of
-       luminance, 4 px out, on the dark ground at 16). The edge itself is a gradient, below. */
-    --composer-glow: 0 12px 32px -6px color-mix(in oklch, var(--color-accent) 30%, transparent), inset 0 1px 0 transparent, 0 0 14px 4px color-mix(in oklch, var(--color-accent) 13%, transparent);
-    --composer-edge: linear-gradient(to bottom, color-mix(in oklch, var(--color-accent) 85%, var(--color-foreground)), color-mix(in oklch, var(--color-accent) 50%, transparent) 45%, color-mix(in oklch, var(--color-accent) 24%, transparent));
     --color-control-surface: color-mix(in oklab, var(--color-surface-2) 82%, transparent);
     --color-control-hover: color-mix(in oklab, var(--color-surface-3) 90%, transparent);
     --color-control-primary-hover: color-mix(in oklch, var(--color-accent) 88%, var(--color-foreground));
-  }
-  /* On a light page the bloom reads stronger: half as much. */
-  [data-theme='light'] {
-    --composer-glow: 0 12px 32px -6px color-mix(in oklch, var(--color-accent) 22%, transparent), inset 0 1px 0 transparent, 0 0 14px 4px color-mix(in oklch, var(--color-accent) 9%, transparent);
   }
 }
 
@@ -807,8 +815,7 @@ html[data-chat-width='full'] {
    its 18 percent there, and the few one-off mixes simply draw no tint. */
 @supports not (color: color-mix(in oklch, red 50%, blue)) {
   :root {
-    --color-accent-soft: oklch(68% 0.19 var(--accent-hue) / 0.18);
-    --color-resident-soft: oklch(66% 0.15 calc(var(--accent-hue) + 150) / 0.14);
+    --color-resident-soft: oklch(66% 0.15 calc(var(--accent-hue) + 115) / 0.14);
   }
 }
 
@@ -882,6 +889,9 @@ body {
   font-family: var(--font-sans);
   font-size: var(--text-base);
   line-height: 1.5;
+  /* A touch tighter than the face's default, and figures of one width so counts and times never jitter. */
+  letter-spacing: -0.006em;
+  font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   overflow: hidden;
@@ -1931,38 +1941,14 @@ html[data-glass] #app {
   }
 }
 
-/* The focused composer (Composer.svelte): the accent lights its edge, bright along the top and fading
-   down the sides, and lays a soft bloom under the box rather than a hard ring around it. Under
-   `.composer-wrap` so it outranks the component's own resting shadow whichever stylesheet loads last. */
-.composer-wrap .composer::before {
-  content: '';
-  position: absolute;
-  inset: -1px;
-  z-index: 2;
-  padding: 1px;
-  border-radius: inherit;
-  background: var(--composer-edge);
-  -webkit-mask: linear-gradient(black, black) content-box, linear-gradient(black, black);
-  -webkit-mask-composite: xor;
-  mask: linear-gradient(black, black) content-box, linear-gradient(black, black);
-  mask-composite: exclude;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--dur-3) var(--ease-out-quint);
-}
+/* The focused composer (Composer.svelte): only its hairline brightens, no glow and no accent. Under
+   `.composer-wrap` so it outranks the component's own resting border whichever stylesheet loads last. */
 .composer-wrap .composer:focus-within { border-color: var(--color-composer-focus); }
-.composer-wrap .composer:focus-within::before { opacity: 1; }
-/* The gradient draws the whole edge and the glow takes the shadow's place; without color-mix the accent hairline and resting shadow stay. */
-@supports (color: color-mix(in oklch, red 50%, blue)) { .composer-wrap .composer:focus-within { border-color: transparent; box-shadow: var(--composer-glow); } }
 
 @supports (color: color-mix(in oklab, white 50%, black)) {
-  html[data-theme='grain'] .composer {
-    --color-composer-surface: color-mix(in oklab, var(--color-surface-2) 62%, transparent);
-  }
-
-  html[data-glass] .composer {
-    --color-composer-surface: color-mix(in oklab, var(--color-surface-2) 70%, transparent);
-  }
+  /* The translucent themes keep a see-through composer, blurred (Composer.svelte) so the timeline under it never reads. */
+  html[data-theme='grain'] .composer { --color-composer-surface: color-mix(in oklab, var(--color-surface-2) 62%, transparent); --composer-blur: blur(16px) saturate(1.2); }
+  html[data-glass] .composer { --color-composer-surface: color-mix(in oklab, var(--color-surface-2) 70%, transparent); --composer-blur: blur(16px) saturate(1.2); }
 }
 
 /* The app's body row (App.svelte): a pane sliding in from the right edge
@@ -1972,6 +1958,9 @@ html[data-glass] #app {
   .app > .body { overflow-x: clip; }
   .app > .body[data-rail-sliding] { transition: padding-left var(--dur-slide) var(--ease-slide); }
   .app > .body.sidebar-folded[data-rail-sliding] { transition-duration: var(--dur-slide-out); }
+  /* The main column's bar follows the list column's fold in step (RailFrame marks it too). */
+  .app > .titlebar[data-rail-sliding] { transition: margin-left var(--dur-slide) var(--ease-slide); }
+  .app > .titlebar[data-rail-sliding='out'] { transition-duration: var(--dur-slide-out); }
 }
 
 /* Keyframes shared by the components. */
@@ -2131,7 +2120,7 @@ html[data-glass] #app {
   }
 }
 
-[data-accent-swatch] { --color-accent: oklch(68% 0.19 var(--accent-hue)); }
+[data-accent-swatch] { --color-accent: oklch(75.5% 0.141 var(--accent-hue)); }
 /* One switch: the native checkbox with role=switch, or the `.switch` span a menu row or a button draws (`.on` when set).
    `--switch-width` and `--switch-height` size it; the knob keeps 3px of air inside the 1px rim. */
 input[type=checkbox][role=switch], .switch { appearance: none; position: relative; flex: 0 0 var(--switch-width, 40px); width: var(--switch-width, 40px); height: var(--switch-height, 24px); min-height: var(--switch-height, 24px); padding: 0; margin: 0; border: 1px solid var(--color-edge); border-radius: 999px; background: var(--color-surface-3); transition: background var(--dur-2), border-color var(--dur-2); }

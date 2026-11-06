@@ -1,24 +1,26 @@
 <script lang="ts">
-  import { ChevronDown, Folder, Plus, Search } from '@lucide/svelte';
+  import { Plus, Search } from '@lucide/svelte';
   import { workspace } from '../lib/workspace.svelte';
-  import { projectKey, projectView, type ProjectEntry } from '../lib/project-view.svelte';
+  import { projectView, type ProjectEntry } from '../lib/project-view.svelte';
+  import { machineFilter } from '../lib/machine-filter.svelte';
+  import { work } from '../lib/work-prefs.svelte';
   import { projectName } from '../lib/format';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
-  import Menu from './Menu.svelte';
-  import ProjectTile from './ProjectTile.svelte';
-  import RailHead from './RailHead.svelte';
   import DisplayOptions from './DisplayOptions.svelte';
 
-  let { entries, store, prefix = '' }: { entries: ProjectEntry[]; store: Store; prefix?: string } = $props();
+  /**
+   * The thread list's head: its name, then the display menu, search and a new
+   * thread. Recent's project filter and the machine filter live in the display
+   * menu, which marks its button while one of them hides threads.
+   */
+  let { entries, store }: { entries: ProjectEntry[]; store: Store } = $props();
   const selected = $derived(projectView.selected(entries));
   const target = $derived(workspace.view === 'recent' && selected ? selected.project : store.openProject ?? store.projects.find(p => !p.archived));
   const targetOwner = $derived(workspace.view === 'recent' && selected ? selected.machine.store : store);
   const newLabel = $derived(target ? fill(strings.sidebar.newThreadIn, { project: projectName(target) }) : strings.sidebar.newThread);
-  const items = $derived([
-    { id: 'all', label: strings.sidebar.allProjects, active: !selected },
-    ...entries.map(entry => ({ id: projectKey(entry), label: projectName(entry.project), hint: workspace.machines.length > 1 ? entry.machine.label : entry.project.path, active: projectKey(entry) === projectView.filter, projectTile: { project: entry.project, store: entry.machine.store } }))
-  ]);
+  const filtered = $derived((workspace.view === 'recent' && selected !== undefined) || machineFilter.shown(workspace.machinesOr(store)) !== null);
+  const addProject = $derived(store.owner && work.shows('sidebar.add-project') ? () => { store.projectPickerOpen = true; } : undefined);
   /** Always a new draft: one already written stays in the list, where it was. */
   async function create() {
     if (workspace.view === 'recent' && selected) await workspace.select(selected.machine.store, undefined, selected.project.id, { fresh: true });
@@ -26,30 +28,28 @@
   }
 </script>
 
-<RailHead {store} current="threads" {prefix}>
-  {#snippet lead()}
-    {#if workspace.view === 'recent' && entries.length}
-      <div class="filter">
-        <Menu {items} onpick={key => projectView.pick(key)} label={strings.sidebar.filterProject} placement="bottom" variant="text" testid={`${prefix}project-filter`}>
-          {#if selected}<ProjectTile project={selected.project} store={selected.machine.store} size={16} />{:else}<Folder size={13} />{/if}<span class="ui-label">{selected ? projectName(selected.project) : strings.sidebar.allProjects}</span>{#if selected && workspace.machines.length > 1}<span class="machine ui-label">{selected.machine.label}</span>{/if}<ChevronDown size={12} />
-        </Menu>
-      </div>
-    {/if}
-  {/snippet}
-  {#snippet actions()}
+<div class="list-head">
+  <h2 class="title">{strings.sidebar.threads}</h2>
+  <div class="actions">
+    <DisplayOptions {entries} {target} owner={targetOwner} {filtered} onaddproject={addProject} />
     {#if entries.length}
-      <DisplayOptions {entries} {target} owner={targetOwner} {prefix} />
-      <button class="ghost icon small" title={`${strings.sidebar.search}${store.keyHint('palette')}`} aria-label={strings.sidebar.search} data-testid={`${prefix}sidebar-search-open`} onclick={() => store.paletteOpen = true}><Search size={16} /></button>
-      {#if !prefix}<button class="ghost icon small" title={`${newLabel}${store.keyHint('new-thread')}`} aria-label={newLabel} data-testid="new-thread" onclick={create}><Plus size={16} /></button>{/if}
+      <button class="ghost icon small" title={`${strings.sidebar.search}${store.keyHint('palette')}`} aria-label={strings.sidebar.search} data-testid="sidebar-search-open" onclick={() => store.paletteOpen = true}><Search size={16} /></button>
+      <button class="ghost icon small new" title={`${newLabel}${store.keyHint('new-thread')}`} aria-label={newLabel} data-testid="new-thread" onclick={create}><Plus size={16} /></button>
     {/if}
-  {/snippet}
-</RailHead>
+  </div>
+</div>
 
 <style>
-  .filter { flex: 1; min-width: 0; }
-  .filter :global(.menu) { display: flex; min-width: 0; }
-  .filter :global(.trigger) { min-width: 0; width: 100%; height: var(--control-sm); justify-content: flex-start; font-size: var(--text-sm); gap: 6px; }
-  .filter span { flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .filter .machine { flex: 0 1 auto; max-width: 40%; font-size: var(--text-xs); color: var(--color-muted-foreground); }
-  .filter :global(svg) { flex: none; }
+  /* No rule under it: the rows fade out beneath it instead (RailFrame.svelte). */
+  .list-head { display: flex; align-items: center; gap: 4px; min-width: 0; height: 36px; margin-top: 10px; padding: 0 0 0 8px; }
+  .title { flex: 1; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 650; letter-spacing: -0.015em; color: var(--color-foreground); }
+  .actions { display: flex; align-items: center; gap: 4px; flex: none; }
+  .actions :global(button.icon) { flex: none; width: 28px; height: 28px; border-radius: var(--radius-md); color: var(--color-subtle); }
+  .actions :global(button.icon:hover) { color: var(--color-foreground); }
+  /* The one filled button: a new thread is the list's main action. */
+  .actions .new.icon { background: var(--color-surface-2); color: var(--color-muted-foreground); }
+  @media (max-width: 720px) {
+    /* `button.icon` grows to the touch target on a phone. */
+    .actions :global(button.icon) { width: var(--touch-target); height: var(--touch-target); }
+  }
 </style>

@@ -14,12 +14,14 @@
   import BuiltinBadge from './BuiltinBadge.svelte';
 
   /**
-   * The top of an agent's conversation: its robot in its ring (breathing
-   * while it works), its name and one live line that says what it does this
-   * second (the step its turn is on, with the time it has run), what it waits
-   * on, or when it next wakes. Beside it the
-   * desk toggle and a menu with its settings, its brain, pause and archive. A
-   * problem that keeps it from running shows under it with the way to fix it.
+   * The top of an agent's conversation. On a desktop the column beside says
+   * who the bot is and what it does, so this is one short line: its name and
+   * "Conversation", the desk toggle and a menu with its settings, its brain,
+   * pause and archive. On a phone (`onback`) it is the screen's only head: its
+   * robot in its ring (breathing while it works), its name and one live line
+   * that says what it does this second (the step its turn is on, with the time
+   * it has run), what it waits on, or when it next wakes. A problem that keeps
+   * it from running shows under it with the way to fix it.
    */
   let { store, view, agent, status, thread, onpane, onback }: {
     store: Store;
@@ -67,32 +69,34 @@
   }
 </script>
 
-<header class="agent-head" data-state={state} data-testid="agent-header">
+<header class="agent-head" class:compact={!onback} data-state={state} data-testid="agent-header">
   {#if onback}
     <button type="button" class="ghost icon agent-mobile-back" aria-label={labels.list} title={labels.list} onclick={onback} data-testid="agent-back"><ArrowLeft size={18} strokeWidth={1.75} /></button>
   {/if}
   <button type="button" class="ghost agent-head-identity" onclick={() => onpane('settings')} aria-label={fill(labels.settingsOf, { name: agent.name })}>
-    <span class="agent-head-robot"><AgentAvatar kind="profile" id={agent.id} name={agent.name} avatar={agent.avatar} mood={moodOf(state)} size={36} ring /></span>
+    {#if onback}<span class="agent-head-robot"><AgentAvatar kind="profile" id={agent.id} name={agent.name} avatar={agent.avatar} mood={moodOf(state)} size={32} ring /></span>{/if}
     <span class="agent-head-text">
-      {#if agent.builtin}<span class="agent-head-name"><strong>{agent.name}</strong><BuiltinBadge word /></span>{:else}<strong>{agent.name}</strong>{/if}
-      <span class="agent-live" data-state={state} aria-live="polite" data-testid="agent-live">
-        {#if state === 'working'}
-          <span class="agent-live-text">{step ?? labels.state.working}</span>
-          {#if since !== null}<span class="agent-live-time">· <Elapsed startedAt={since} finishedAt={null} active /></span>{/if}
-        {:else if state === 'queued'}
-          <span class="agent-live-text">{labels.state.queued}</span>
-        {:else if state === 'waiting'}
-          <span class="agent-live-text">{pending ? fill(labels.waitingOn, { what: pending }) : labels.state.waiting}</span>
-        {:else if state === 'error'}
-          <span class="agent-live-text">{labels.state.error}</span>
-        {:else if state === 'paused' || state === 'archived'}
-          <span class="agent-live-text">{labels.state[state]}</span>
-        {:else if status?.nextWake}
-          <span class="agent-live-text">{fill(labels.nextWake, { name: status.nextWake.label, when: dateTime(status.nextWake.at, now) })}</span>
-        {:else}
-          <span class="agent-live-text">{agent.domain || labels.state.idle}</span>
-        {/if}
-      </span>
+      <span class="agent-head-name"><strong>{agent.name}</strong>{#if agent.builtin}<BuiltinBadge word />{/if}{#if !onback}<span class="agent-head-crumb">{labels.deskPanel.conversation}</span>{/if}</span>
+      {#if onback}
+        <span class="agent-live" data-state={state} aria-live="polite" data-testid="agent-live">
+          {#if state === 'working'}
+            <span class="agent-live-text">{step ?? labels.state.working}</span>
+            {#if since !== null}<span class="agent-live-time">· <Elapsed startedAt={since} finishedAt={null} active /></span>{/if}
+          {:else if state === 'queued'}
+            <span class="agent-live-text">{labels.state.queued}</span>
+          {:else if state === 'waiting'}
+            <span class="agent-live-text">{pending ? fill(labels.waitingOn, { what: pending }) : labels.state.waiting}</span>
+          {:else if state === 'error'}
+            <span class="agent-live-text">{labels.state.error}</span>
+          {:else if state === 'paused' || state === 'archived'}
+            <span class="agent-live-text">{labels.state[state]}</span>
+          {:else if status?.nextWake}
+            <span class="agent-live-text">{fill(labels.nextWake, { name: status.nextWake.label, when: dateTime(status.nextWake.at, now) })}</span>
+          {:else}
+            <span class="agent-live-text">{agent.domain || labels.state.idle}</span>
+          {/if}
+        </span>
+      {/if}
     </span>
   </button>
   <nav class="agent-head-actions" aria-label={agent.name}>

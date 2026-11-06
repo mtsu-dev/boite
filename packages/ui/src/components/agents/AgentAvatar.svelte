@@ -24,8 +24,11 @@
    * robot's own colour at rest. The robot's face moves with it. Without a ring
    * the corner dot says whether it works or waits, for a picture too small to
    * read a face, and for text avatars.
+   *
+   * `squircle` rounds the corners instead of drawing a disc, about a third of
+   * the side: the selected bot's picture in its column and on its desk.
    */
-  let { kind, id, name, avatar = '', members = [], status = 'idle', mood, size = 40, ring = false }: {
+  let { kind, id, name, avatar = '', members = [], status = 'idle', mood, size = 40, ring = false, squircle = false }: {
     kind: 'profile' | 'group' | 'team' | 'mission';
     id: string;
     name: string;
@@ -36,6 +39,7 @@
     mood?: AgentMood;
     size?: number;
     ring?: boolean;
+    squircle?: boolean;
   } = $props();
 
   const grouped = $derived(kind === 'group' || kind === 'team');
@@ -68,7 +72,7 @@
   {#if image}<img class="agent-picture" src={image} alt="" draggable="false" />{:else if own}<Deferred part={parts.RobotFace} quiet>{#snippet children(RobotFace)}<RobotFace robot={own} {state} />{/snippet}</Deferred>{:else if !isAgentPicture(member.avatar)}<span class="ui-label">{avatarText(member.name, member.avatar)}</span>{/if}
 {/snippet}
 
-<span class="agent-avatar" class:robot={!!robot} class:pictured data-kind={kind} data-ring={ring ? standing : null} style:--size="{size}px" style:--tint={kind === 'mission' ? null : tintOf(id)} style:--ring-tint={ring ? ringTint : null} aria-hidden="true">
+<span class="agent-avatar" class:robot={!!robot} class:pictured class:squircle style:--avatar-radius={squircle ? `${Math.round(size * 0.32)}px` : null} data-kind={kind} data-ring={ring ? standing : null} style:--size="{size}px" style:--tint={kind === 'mission' ? null : tintOf(id)} style:--ring-tint={ring ? ringTint : null} aria-hidden="true">
   {#if ring}
     <svg class="avatar-ring" aria-hidden="true">
       <circle class="track" cx="50%" cy="50%" r={radius} pathLength="100" />
@@ -103,6 +107,10 @@
   .agent-avatar :global(svg.robot) { border-radius: 50%; overflow: hidden; transition: opacity var(--dur-3) var(--ease-out-quint); }
   /* An imported image fills the disc, cropped to it, whatever its shape. */
   .agent-picture { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; transition: opacity var(--dur-3) var(--ease-out-quint); }
+  /* A squircle crops the robot or the picture to its corners, on the raised fill a robot leaves around its face. */
+  .agent-avatar.squircle { border-radius: var(--avatar-radius); overflow: hidden; }
+  .agent-avatar.squircle.robot { background: var(--color-surface-3); }
+  .agent-avatar.squircle :global(svg.robot), .agent-avatar.squircle .agent-picture { border-radius: var(--avatar-radius); }
   .agent-avatar[data-kind='mission'] { border-radius: var(--radius-md); background: var(--color-surface-3); color: var(--color-muted-foreground); }
   .agent-avatar-stack { position: absolute; width: 62%; height: 62%; display: grid; place-items: center; border-radius: 50%; background: color-mix(in srgb, var(--tint) 28%, var(--color-surface-2)); color: color-mix(in srgb, var(--tint) 40%, var(--color-foreground)); font-size: calc(var(--size) * 0.26); box-shadow: 0 0 0 2px var(--ring, var(--color-surface)); }
   .agent-avatar-stack.robot { background: none; }

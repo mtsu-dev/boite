@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte';
-  import { Check, Ellipsis, Folder, FolderInput, GitBranch } from '@lucide/svelte';
+  import { Check, Ellipsis, FolderInput, GitBranch } from '@lucide/svelte';
   import { type Project, type ThreadSummary } from '@boite/contracts';
   import type { Machine } from '../lib/workspace.svelte';
   import { workspace } from '../lib/workspace.svelte';
@@ -12,7 +12,6 @@
   import ThreadHeadline from './ThreadHeadline.svelte';
   import { trackThreadPullRequest } from '../lib/thread-pull-request.svelte';
   import PullRequestBadge from './PullRequestBadge.svelte';
-  import { projectName } from '../lib/format';
   import { canMarkDone, markDone } from '../lib/recent.svelte';
   import { ThreadRename, commitOnUnmount } from '../lib/thread-rename.svelte';
   let {
@@ -22,7 +21,7 @@
     now,
     hidden = false,
     showDone = false,
-    showProject = true,
+    compact = false,
     showMachine = true
   }: {
     machine: Machine;
@@ -33,8 +32,11 @@
     hidden?: boolean;
     /** The quick action puts finished work in Done. */
     showDone?: boolean;
-    /** Off under the project's own header, where the folder line would only repeat it. */
-    showProject?: boolean;
+    /**
+     * The Recent list's one line: the project's tile, the title and one
+     * marker. No second line and no machine: the thread opens to say the rest.
+     */
+    compact?: boolean;
     /** Off while only one machine is connected, and under a project header, which already shows it. */
     showMachine?: boolean;
   } = $props();
@@ -45,8 +47,8 @@
   commitOnUnmount(() => renaming);
   const pr = trackThreadPullRequest(() => ({ owner, thread, hidden }));
   const pullRequest = $derived(pr.value);
-  /** Only a project or pull request needs a second line; the machine and the provider stay beside the title. */
-  let meta = $derived(showProject || pullRequest !== null);
+  /** Only a pull request earns a second line, its branch beside it, and never in the Recent list: a branch alone would double every worktree row. */
+  let meta = $derived(!compact && pullRequest !== null);
   // A move asked for while the turn runs, until the turn ends and applies it.
   let pending = $derived(pendingLine(thread));
   let doneAllowed = $derived(canMarkDone(owner, thread));
@@ -105,6 +107,7 @@
     class:unread={thread.unread}
     class:pinned={thread.pinned}
     class:meta
+    class:compact
     class:offline={owner.connection !== 'ready'}
     class:dragging={threadDrag.current?.threadId === thread.id && threadDrag.current.machineId === machine.id}
     data-movable={movable}
@@ -126,18 +129,16 @@
       onclick={() => void workspace.select(owner, thread.id)}
       ondblclick={rename}
     >
-      <ThreadHeadline {owner} {thread} {now} {open} machine={showMachine ? machine : undefined} />
+      <ThreadHeadline {owner} {thread} {now} {open} machine={showMachine && !compact ? machine : undefined} tile={compact ? project : undefined} mark={compact} />
       {#if pending}
         <span class="pending" data-testid="thread-pending" title={pending}><FolderInput size={12} /><span class="ui-label">{pending}</span></span>
       {/if}
     </button>
     {#if meta}
     <div class="metadata">
-      {#if showProject}<span class="project-name" data-testid="thread-project" title={project.path}><Folder size={12} /><span class="ui-label">{projectName(project)}</span></span>{/if}
       {#if pullRequest}
         <PullRequestBadge {pullRequest} />
       {/if}
-      <!-- Only on a card that already has a second line: a branch alone would double every worktree row. -->
       {#if thread.branch}<span class="branch" data-testid="thread-branch" title={thread.branch}><GitBranch size={12} /><span class="ui-label">{thread.branch}</span></span>{/if}
     </div>
     {/if}
@@ -158,6 +159,7 @@
   .thread {
     position: relative;
     border-radius: var(--radius-md);
+    font-size: 13.5px;
     transition: background var(--dur-2) var(--ease-out-quint);
   }
   .thread:hover {
@@ -186,22 +188,27 @@
   .thread.offline .metadata {
     opacity: 0.55;
   }
+  /* One line of 32 px: the title's 20 px line in 6 px of padding. */
   .row {
     display: flex;
     flex-direction: column;
     align-items: stretch;
     width: 100%;
     height: auto;
-    min-height: var(--row);
-    padding: 8px 10px;
-    gap: 7px;
+    min-height: 32px;
+    padding: 6px 8px;
+    gap: 4px;
+    border-radius: inherit;
     background: transparent;
   }
-  /* The metadata line sits over the row's bottom padding, so the whole card stays one target. */
+  /* The PR line sits over the row's bottom padding, so the whole card stays one target. */
   .meta .row {
-    min-height: calc(var(--row) + 22px);
-    padding: 9px 10px 28px;
+    min-height: 50px;
+    padding: 6px 8px 24px;
   }
+  /* The Recent list: one line, a step wider inside, the tile in the picture's place. */
+  .compact .row { padding: 6px 10px; }
+  .compact :global(.headline) { gap: 10px; }
   .row:hover:not(:disabled) {
     background: transparent;
   }
@@ -225,18 +232,20 @@
   .pending :global(svg) {
     flex: none;
   }
+  /* Under the title, from the title's edge: the pull request, then its branch in mono. */
   .metadata {
     display: flex;
     align-items: center;
-    gap: 9px;
+    gap: 10px;
     position: absolute;
-    bottom: 9px;
-    left: 10px;
-    right: 10px;
+    bottom: 6px;
+    left: 30px;
+    right: 8px;
+    height: 16px;
     pointer-events: none;
     min-width: 0;
-    font-size: var(--text-xs);
-    color: var(--color-muted-foreground);
+    font-size: 11.5px;
+    color: var(--color-subtle);
   }
   .metadata > span {
     display: flex;
@@ -253,30 +262,27 @@
   .metadata :global(svg) {
     flex: none;
   }
-  .project-name {
-    flex: 1;
-  }
-  /* Beside a branch, the project keeps its length up to half the line and the branch takes the rest. */
-  .project-name:has(~ .branch) {
-    flex: 0 0 auto;
-    max-width: 50%;
-  }
+  /* The number in the row's quiet ink, its state in the icon's tone only: no underline, no badge. */
+  .metadata :global(.pr-link) { color: var(--color-muted-foreground); text-decoration: none; font-size: inherit; }
+  .metadata :global(.pr-link:hover) { color: var(--color-foreground); }
+  .metadata :global(.pr-link.merged svg) { color: var(--color-success); }
+  .metadata :global(.pr-link.closed svg) { color: var(--color-danger); }
   .metadata .branch {
     flex: 0 1 auto;
-    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0;
   }
   /* Centred on the title's line, 21 px under the row's 1 px border and top padding: 26 px buttons at 5 px
      sat 1.5 px above it. A whole pixel keeps the icons sharp, so they stay half a pixel high. */
   .actions {
     position: absolute;
-    right: 5px;
-    top: 6px;
+    right: 3px;
+    top: 3px;
     opacity: 0;
     background: var(--color-surface-2);
   }
-  .done { position: absolute; right: 32px; top: 6px; opacity: 0; background: var(--color-surface-2); color: var(--color-muted-foreground); }
-  /* A card with a second line pads its top by one pixel more. */
-  .meta .actions, .meta .done { top: 7px; }
+  .done { position: absolute; right: 30px; top: 3px; opacity: 0; background: var(--color-surface-2); color: var(--color-muted-foreground); }
   .thread:hover .done, .thread:focus-within .done { opacity: 1; }
   .thread:hover .actions,
   .thread:focus-within .actions {
@@ -295,7 +301,7 @@
   .thread:has(.done):hover :global(.headline .when:not(.state)), .thread:has(.done):focus-within :global(.headline .when:not(.state)) { margin-right: 27px; }
   .rename {
     width: 100%;
-    height: var(--row);
+    height: 32px;
   }
   @media (max-width: 720px) {
     .done { opacity: 1; }

@@ -120,7 +120,7 @@
     max-width: 75%;
     height: auto;
     padding: 10px 14px;
-    border: 1px dashed color-mix(in oklch, var(--color-accent) 60%, transparent);
+    border: 1px dashed var(--color-edge);
     border-radius: var(--radius-lg);
     border-bottom-right-radius: var(--radius-sm);
     background: transparent;
@@ -135,7 +135,7 @@
 
   .queued-bubble:hover:not(:disabled) {
     background: transparent;
-    border-color: var(--color-accent);
+    border-color: var(--color-subtle);
   }
 
   /* Still waiting to go while the box holds other text: the bubble stays legible. */

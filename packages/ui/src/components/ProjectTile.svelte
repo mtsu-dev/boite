@@ -60,7 +60,8 @@
     height: var(--tile);
     flex: none;
     overflow: hidden;
-    border-radius: var(--radius-sm);
+    /* Rounding follows the size, as an app icon's does: 4.5 px at 16, 5 at 18, the token's 6 px from 22 up. */
+    border-radius: min(var(--radius-sm), calc(var(--tile) * 0.28));
   }
   .letter {
     background: var(--color-surface-3);

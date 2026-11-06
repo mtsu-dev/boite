@@ -16,9 +16,9 @@ export function colorMode(): ColorMode { return document.documentElement.dataset
 function hue(): number {
   try {
     const raw = localStorage.getItem('boite.accent-hue');
-    const value = raw === null ? 260 : Number(raw);
-    return Number.isFinite(value) && value >= 0 && value <= 360 ? value : 260;
-  } catch { return 260; }
+    const value = raw === null ? 295 : Number(raw);
+    return Number.isFinite(value) && value >= 0 && value <= 360 ? value : 295;
+  } catch { return 295; }
 }
 export function presetPalette(id: PaletteId, mode: ColorMode): Palette {
   if (id === 'oled') mode = 'dark';

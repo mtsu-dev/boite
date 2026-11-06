@@ -7,6 +7,12 @@ import { OWNER_ONLY_COMMANDS, OWNER_ONLY_IN_ADVANCED, OWNER_ONLY_IN_CHAT, OWNER_
 
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
 
+
+async function openDisplayMenu(): Promise<void> {
+  query<HTMLButtonElement>('[data-testid=grouping-options]').click();
+  await waitFor(() => document.querySelector('[data-testid=grouping-options-menu]') !== null);
+}
+
 test('a dialog waiting for an answer holds the window chords', async ({ app: _app }) => {
   const open = store.openThread?.id;
   const page = store.page;
@@ -56,7 +62,10 @@ test('a paired device is offered none of the affordances the core refuses it', a
   expect(store.error).toBeNull();
   expect(store.threads.length).toBe(4);
 
+  // Add a project sits in the thread list's display menu: open it so its absence means something.
+  await openDisplayMenu();
   for (const selector of OWNER_ONLY_IN_CHAT) expect(document.querySelector(selector)).toBeNull();
+  query<HTMLButtonElement>('[data-testid=grouping-options]').click();
 
   store.paletteOpen = true;
   await waitFor(() => document.querySelector('[data-testid=palette]') !== null);
@@ -93,7 +102,9 @@ test('the desktop still has every one of them', async ({ app: _app }) => {
   expect(store.principal).toBe('owner');
   expect(store.owner).toBe(true);
 
+  await openDisplayMenu();
   for (const selector of OWNER_ONLY_IN_CHAT) expect(document.querySelector(selector)).not.toBeNull();
+  query<HTMLButtonElement>('[data-testid=grouping-options]').click();
 
   store.paletteOpen = true;
   await waitFor(() => document.querySelector('[data-testid=palette]') !== null);

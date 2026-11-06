@@ -5,6 +5,7 @@ import { AgentsView, agentOfThread, agentRows, openAgent } from '../../lib/agent
 import { setExperiment } from '../../lib/experiments';
 import { rightPanel } from '../../lib/right-panel.svelte';
 import { strings } from '../../lib/strings';
+import { newBot } from '../../lib/agents-view.svelte';
 import AgentsPage from './AgentsPage.svelte';
 
 test('an agent named on the way in opens alone: the default agent of the visit gives way to it', async ({ ready }) => {
@@ -149,6 +150,51 @@ test('a default bot that cannot be opened offers a retry instead of loading fore
     await vi.waitFor(() => expect(store.openThread?.agentSessionId).toBeTruthy());
   } finally {
     if (page) unmount(page);
+    setExperiment('resident-agents', false);
+  }
+});
+
+test("a desktop's column is the open bot's: who it is, its conversation, its threads; the rail's New bot opens the form here", async ({ ready }) => {
+  setExperiment('resident-agents', true);
+  let page: ReturnType<typeof mount> | null = null;
+  try {
+    const { store } = await ready({ delayMs: 0, agentsDemo: true });
+    const view = AgentsView.of(store);
+    await view.refresh();
+    const nova = view.snapshot!.profiles.find(p => p.name === 'Nova')!;
+    store.showAgents(nova.id);
+    page = mount(AgentsPage, { target: document.body, props: { store } });
+    // The fake core seeds Nova's desk as its thread opens, without the change event the real core sends.
+    await vi.waitFor(() => expect(store.openThread?.agentSessionId).toBeTruthy());
+    await view.refresh();
+    await vi.waitFor(() => { flushSync(); expect(document.querySelector('[data-testid=bot-handling]')).not.toBeNull(); });
+
+    // Its head names it and says what it does; no list of bots, no search, no Teams or Bots heading.
+    const head = document.querySelector('[data-testid=bot-column-head]')!;
+    expect(head.textContent).toContain('Nova');
+    expect(document.querySelector('[data-testid=bot-column-live]')?.textContent).toContain('Run the UI tests');
+    expect(document.querySelector('[data-testid^="agent-entry-"]')).toBeNull();
+    expect(document.querySelector('[data-testid=agents-search-toggle]')).toBeNull();
+    expect(document.querySelectorAll('.agents-rail .section-label')).toHaveLength(0);
+    // The chat's header is one line: its name and Conversation, nothing it repeats from the column.
+    expect(document.querySelector('[data-testid=agent-header]')?.textContent).toContain(`${nova.name}${strings.agents.deskPanel.conversation}`);
+    expect(document.querySelector('[data-testid=agent-live]')).toBeNull();
+    const conversation = document.querySelector<HTMLButtonElement>('[data-testid=bot-conversation]')!;
+    expect(conversation.getAttribute('aria-current')).toBe('page');
+
+    // A row opens its thread the way the desk does.
+    const row = [...document.querySelectorAll<HTMLElement>('[data-testid=desk-card]')].find(node => node.querySelector('.desk-card-title')?.textContent === 'Fix login redirect loop')!;
+    const id = row.dataset.thread!;
+    row.querySelector<HTMLButtonElement>('.desk-card-open')!.click();
+    await vi.waitFor(() => expect(store.openThread?.id).toBe(id));
+
+    // The window's rail asks for a new bot: the form opens on this page.
+    newBot(store);
+    await vi.waitFor(() => { flushSync(); expect(document.querySelector('[data-testid=agent-editor]')).not.toBeNull(); });
+    expect(store.page).toBe('agents');
+  } finally {
+    if (page) unmount(page);
+    document.body.innerHTML = '';
     setExperiment('resident-agents', false);
   }
 });

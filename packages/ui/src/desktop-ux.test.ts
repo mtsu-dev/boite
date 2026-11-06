@@ -360,7 +360,7 @@ test('removing a machine asks first, and cancel keeps its card', async () => {
   expect(document.querySelectorAll('[data-testid=machine-card]')).toHaveLength(2);
 });
 
-test('the sidebar floats a thread that waits on the user, in both views, and names the project only in Recent', async () => {
+test('the sidebar floats a thread that waits on the user, in both views, and Recent keeps each to one line', async () => {
   await mountOnFake();
   workspace.view = 'projects';
   await waitFor(() => document.querySelectorAll('[data-testid=thread-row]').length >= 2);
@@ -390,8 +390,11 @@ test('the sidebar floats a thread that waits on the user, in both views, and nam
 
   workspace.view = 'recent';
   await waitFor(() => rows()[0] === last);
-  expect(document.querySelectorAll('[data-testid=thread-project]').length).toBe(rows().length);
-  await waitFor(() => card().querySelector('[data-testid=thread-branch]')?.textContent === 'boite/port-the-scheduler');
+  // Recent: the project's tile in the picture's place, one marker, no second line.
+  await waitFor(() => document.querySelectorAll('[data-testid=thread-row] [data-testid=project-tile]').length === rows().length);
+  expect(document.querySelectorAll('[data-testid=thread-row] [data-testid=thread-provider]')).toHaveLength(0);
+  expect(document.querySelectorAll('[data-testid=thread-branch], [data-testid=thread-pr]')).toHaveLength(0);
+  expect(document.querySelector(`[data-thread-id="${last}"] [data-testid=thread-state]`)?.getAttribute('data-state')).toBe('waiting');
 });
 
 test('an archive offers its way back for a moment: the toast button, or Ctrl+Z outside a field', async () => {

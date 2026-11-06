@@ -121,17 +121,18 @@ test('a machine filter whose machine goes away lists the remaining machine again
   await mountOnFake('/?fake=1&machines=1');
   await waitFor(() => workspace.machines.length === 2);
   const threads = () => document.querySelectorAll('[data-thread-id]').length;
-  await waitFor(() => threads() > 0 && document.querySelector('[data-testid=machine-status]') !== null);
+  await waitFor(() => threads() > 0);
   const everything = threads();
   const remote = workspace.machines.find((machine) => machine.store !== store)!;
-  query<HTMLButtonElement>('[data-testid=machine-status]').click();
-  await waitFor(() => document.querySelector(`[data-testid=machine-status-menu] [data-value="${remote.id}"]`) !== null);
-  query<HTMLButtonElement>(`[data-testid=machine-status-menu] [data-value="${remote.id}"]`).click();
+  // The machine filter sits in the thread list's display menu.
+  query<HTMLButtonElement>('[data-testid=grouping-options]').click();
+  await waitFor(() => document.querySelector(`[data-testid=machine-filter] [data-value="machine:${remote.id}"]`) !== null);
+  query<HTMLButtonElement>(`[data-testid=machine-filter] [data-value="machine:${remote.id}"]`).click();
   await waitFor(() => threads() < everything);
   workspace.machines = workspace.machines.filter((machine) => machine !== remote);
   flushSync();
-  // One machine draws no machine button, so a filter left on the gone one could never be cleared.
-  expect(document.querySelector('[data-testid=machine-status]')).toBeNull();
+  // One machine draws no machine choice, so a filter left on the gone one could never be cleared.
+  expect(document.querySelector('[data-testid=machine-filter]')).toBeNull();
   expect(threads()).toBeGreaterThan(0);
 });
 

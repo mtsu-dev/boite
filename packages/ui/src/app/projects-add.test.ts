@@ -8,10 +8,17 @@ import { query, showMobileThreads, test, type, waitFor } from '../test/app';
 
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
 
+/** Add a project is the display menu's last row: open the menu, then press it. */
+async function openAddProject(): Promise<void> {
+  query<HTMLButtonElement>('[data-testid=grouping-options]').click();
+  await waitFor(() => document.querySelector('[data-testid=add-project]') !== null);
+  query<HTMLButtonElement>('[data-testid=add-project]').click();
+}
+
 test('browser Add project opens a path form and starts a draft in the added folder', async ({ app: _app }) => {
   const before = store.projects.length;
   store.sidebarOpen = true;
-  query<HTMLButtonElement>('[data-testid=add-project]').click();
+  await openAddProject();
   // The form is loaded on demand: the first test of a file pays that import.
   await waitFor(() => document.querySelector('[data-testid=add-project-form]') !== null);
   expect(store.page).toBe('chat');
@@ -25,8 +32,7 @@ test('browser Add project opens a path form and starts a draft in the added fold
 });
 
 test('browser Add project keeps refused paths and Escape returns to its button', async ({ app: _app }) => {
-  query<HTMLButtonElement>('[data-testid=add-project]').focus();
-  query<HTMLButtonElement>('[data-testid=add-project]').click();
+  await openAddProject();
   await waitFor(() => document.querySelector('[data-testid=project-path]') !== null);
   const field = query<HTMLInputElement>('[data-testid=project-path]');
   await waitFor(() => document.activeElement === field);
@@ -43,7 +49,8 @@ test('browser Add project keeps refused paths and Escape returns to its button',
     expect(field.value).toBe('D:\\missing-project');
     field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
     await waitFor(() => document.querySelector('[data-testid=add-project-form]') === null);
-    expect(document.activeElement).toBe(query('[data-testid=add-project]'));
+    // Its button went with the display menu, so focus lands on the menu's button.
+    expect(document.activeElement).toBe(query('[data-testid=grouping-options]'));
     expect(store.page).toBe('chat');
   } finally {
     spy.mockRestore();

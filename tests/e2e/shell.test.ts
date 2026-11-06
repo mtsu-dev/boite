@@ -622,9 +622,9 @@ shellTest(
     await page?.click(testid('settings-tab-appearance'));
     await page?.waitFor(`document.querySelector('${testid('colors-customize')}')`);
     await page?.click(testid('colors-customize'));
-    await page?.waitFor(`document.querySelector('${testid('accent-300')}')`);
-    await page?.click(testid('accent-300'));
-    expect(await page?.evaluate(`document.documentElement.style.getPropertyValue('--accent-hue')`)).toBe('300');
+    await page?.waitFor(`document.querySelector('${testid('accent-295')}')`);
+    await page?.click(testid('accent-295'));
+    expect(await page?.evaluate(`document.documentElement.style.getPropertyValue('--accent-hue')`)).toBe('295');
     await page?.screenshot(join(import.meta.dir, '.artifacts', 'shell-accent.png'));
     await page?.click(testid('settings-back'));
   },

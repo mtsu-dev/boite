@@ -257,11 +257,11 @@ test('the accent persists, the effort track glows brighter as it rises, and a sp
   await page.click('[data-testid=nav-settings]');
   await page.click('[data-testid=settings-tab-appearance]');
   await page.click('[data-testid=colors-customize]');
-  await page.click('[data-testid=accent-300]');
+  await page.click('[data-testid=accent-295]');
   await capture('appearance-accent.png');
   await page.navigate(url);
   await page.waitFor(`document.querySelector('[data-testid=composer-picker]')`);
-  expect(await page.evaluate(`document.documentElement.style.getPropertyValue('--accent-hue')`)).toBe('300');
+  expect(await page.evaluate(`document.documentElement.style.getPropertyValue('--accent-hue')`)).toBe('295');
   await page.click('[data-testid=composer-picker]');
   await page.click('[data-provider=claude]');
   await page.click('[data-model=claude-opus-5-5]');

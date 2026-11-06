@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Bot, CircleAlert, CloudOff, GitPullRequest, LoaderCircle, Radar } from '@lucide/svelte';
+  import { Bot, Check, CircleAlert, CloudOff, GitPullRequest, LoaderCircle, Radar } from '@lucide/svelte';
   import { pullRequestWatchWaits, type ThreadSummary } from '@boite/contracts';
   import { backgroundLabel } from '../lib/background';
   import { secondClock } from '../lib/clock.svelte';
@@ -14,8 +14,11 @@
    * parent at work says it has children on a computer and a phone alike.
    * `away`: its machine is not connected, so a turn it last saw at work may have
    * ended long ago. The row says so instead of spinning and counting time.
+   * `mark`: the Recent list's one marker instead of words: a dot for the
+   * user's turn or a failure, a spinner for work, a check for news, else the
+   * time. The words stay in its tooltip.
    */
-  let { thread, now, subagents = null, away = false }: { thread: Pick<ThreadSummary, 'status' | 'unread' | 'runningSince' | 'requestSince' | 'backgroundWork' | 'openQuestions' | 'lastUserMessageAt' | 'createdAt'> & Partial<Pick<ThreadSummary, 'backgroundWait' | 'pullRequestWatches'>>; now: number; subagents?: WorkingChildren | null; away?: boolean } = $props();
+  let { thread, now, subagents = null, away = false, mark = false }: { thread: Pick<ThreadSummary, 'status' | 'unread' | 'runningSince' | 'requestSince' | 'backgroundWork' | 'openQuestions' | 'lastUserMessageAt' | 'createdAt'> & Partial<Pick<ThreadSummary, 'backgroundWait' | 'pullRequestWatches'>>; now: number; subagents?: WorkingChildren | null; away?: boolean; mark?: boolean } = $props();
 
   function earliest(a: number | null | undefined, b: number | null | undefined): number | null {
     return a == null ? b ?? null : b == null ? a : Math.min(a, b);
@@ -90,6 +93,12 @@
   </span>
 {:else if kind === null}
   <span class="when" title={exactTime(thread.lastUserMessageAt ?? thread.createdAt)}>{ago(thread.lastUserMessageAt ?? thread.createdAt, now)}</span>
+{:else if mark}
+  <span class="when state mark {kind}" data-testid="thread-state" data-state={kind} title={label} aria-label={label} role="img">
+    {#if kind === 'waiting' || kind === 'error' || kind === 'interrupted' || kind === 'queued'}<span class="dot" aria-hidden="true"></span>
+    {:else if kind === 'done'}<Check size={13} aria-hidden="true" />
+    {:else}<LoaderCircle size={13} class="spinner" aria-hidden="true" />{/if}
+  </span>
 {:else}
   <span class="when state {kind}" data-testid="thread-state" data-state={kind} title={label} aria-label={label}>
     {#if kind === 'working'}<LoaderCircle size={11} class="spinner" aria-hidden="true" /><span class="ui-label">{spent ?? strings.sidebar.state.working}</span>
@@ -107,6 +116,7 @@
   .when {
     flex: none;
     font-size: var(--text-xs);
+    font-weight: 500;
     color: var(--color-subtle);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
@@ -114,12 +124,15 @@
   .state {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: 5px;
     font-weight: 500;
   }
+  /* The words of a state that asks for the user read bold; work reads as plain time beside the accent spinner. */
+  .waiting, .error, .interrupted, .done { font-weight: 600; }
   .working {
-    color: var(--color-accent);
+    color: var(--color-muted-foreground);
   }
+  .working :global(.spinner) { color: var(--color-accent); }
   .waiting {
     color: var(--color-live);
   }
@@ -142,8 +155,10 @@
   .monitoring,
   .background,
   .watching {
-    color: var(--color-accent);
+    color: var(--color-muted-foreground);
   }
+  .delegating :global(svg), .monitoring :global(svg), .background :global(svg), .watching :global(svg), .background .dot { color: var(--color-accent); }
+  .background .dot { background: var(--color-accent); }
   /* The sub-agents chip: the state's own colour on a faint wash of it, the waiting colour once a child asks; the robot is the Threads badge's and stands for the word, so the chip is only the robot and the number. */
   .agents {
     display: inline-flex;
@@ -165,6 +180,11 @@
     border-radius: 50%;
     background: currentColor;
   }
+  /* The marker: one glyph in a fixed slot, so the titles above and below end at one edge. */
+  .mark { justify-content: center; min-width: 14px; height: 14px; }
+  .mark .dot { width: 7px; height: 7px; box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 16%, transparent); }
+  .mark.queued .dot { background: transparent; box-shadow: inset 0 0 0 1.5px currentColor; }
+  .mark.working, .mark.delegating, .mark.monitoring, .mark.background, .mark.watching { color: var(--color-accent); }
   .state :global(.spinner) {
     flex: none;
     animation: spin 1s steps(60) infinite var(--loops);

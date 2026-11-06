@@ -826,7 +826,7 @@
     padding: 0 20px;
   }
 
-  /* A translucent surface with a top reflection. Focus lights its edge and lays a bloom under it: app.css, beside its themes. */
+  /* A raised neutral surface with a hairline and a faint top light. Focus brightens the hairline: app.css, beside its themes. */
   .composer {
     position: relative;
     display: flex;
@@ -834,15 +834,16 @@
     width: 100%;
     max-width: var(--content);
     margin: 0 auto;
-    background: var(--composer-glaze) var(--color-composer-surface);
-    backdrop-filter: blur(16px) saturate(1.2);
-    -webkit-backdrop-filter: blur(16px) saturate(1.2);
-    border: 1px solid var(--color-border);
-    border-top-color: var(--color-edge);
-    border-radius: var(--radius-xl);
+    background: var(--color-composer-surface);
+    border: 1px solid var(--color-composer-edge);
+    border-radius: var(--radius-composer);
     /* The bar's chips read the composer's own width: the side panel narrows it on a wide window. */
     container: composer / inline-size;
     --composer-rest: var(--shadow-composer);
+    /* Only the translucent themes see through it (app.css sets their surface). */
+    --composer-blur: none;
+    backdrop-filter: var(--composer-blur);
+    -webkit-backdrop-filter: var(--composer-blur);
     box-shadow: var(--composer-rest);
     transition: border-color var(--dur-3) var(--ease-out-quint), box-shadow var(--dur-3) var(--ease-out-quint);
   }

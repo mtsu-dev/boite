@@ -61,7 +61,7 @@
 
 {#if first}
   <button type="button" class="ghost icon indicator" data-testid="contact-request-open" title={label} aria-label={label} onclick={() => review(first)}>
-    <Bell size={17} strokeWidth={1.75} /><span class="badge">{count(pending.length)}</span>
+    <Bell size={18} strokeWidth={1.75} /><span class="badge">{count(pending.length)}</span>
   </button>
 {/if}
 {#if displayed && toast.shown}
@@ -102,16 +102,23 @@
 {/if}
 
 <style>
-  .indicator { position: relative; flex: none; color: var(--color-accent); }
-  .badge { position: absolute; top: -2px; right: -4px; min-width: 15px; padding: 1px 3px; font-size: var(--text-xs); line-height: 14px; border-radius: var(--radius-full); background: var(--color-accent); color: var(--color-accent-ink); }
+  /* The count is something that waits on the user: the waiting colour, never the accent. */
+  .indicator { position: relative; flex: none; color: var(--color-muted-foreground); }
+  .badge { position: absolute; top: -2px; right: -4px; min-width: 15px; padding: 1px 3px; font-size: var(--text-xs); line-height: 14px; border-radius: var(--radius-full); background: var(--color-live); color: var(--color-accent-ink); }
+  @media (min-width: 721px) {
+    /* The app rail's Activity button (AppRail.svelte): a rail square, its count at the bottom corner. */
+    .indicator { width: var(--rail-button); height: var(--rail-button); padding: 0; border: none; border-radius: var(--radius-rail); background: var(--color-surface-2); box-shadow: none; }
+    .indicator:hover:not(:disabled) { background: var(--color-surface-3); color: var(--color-foreground); }
+    .badge { top: auto; right: -4px; bottom: -3px; min-width: 18px; height: 18px; box-sizing: border-box; padding: 0 5px; display: grid; place-items: center; font-weight: 700; line-height: 1; box-shadow: 0 0 0 3px var(--color-frame); }
+  }
   .notice { position: fixed; z-index: 80; top: calc(var(--titlebar) + 12px); left: 50%; transform: translateX(-50%); width: min(440px, calc(100vw - 32px)); animation: fade var(--dur-2) var(--ease-out-quint); }
   .notice.closing { animation: fade-out var(--dur-2) var(--ease-out-quint) forwards; }
   .dismiss { position: absolute; top: 2px; right: 2px; width: 24px; height: 24px; color: var(--color-subtle); }
-  .row { display: flex; align-items: center; gap: 12px; width: 100%; height: auto; min-height: 64px; padding: 12px 30px 12px 14px; text-align: left; background: var(--color-surface-2); border: 1px solid var(--color-accent); border-radius: var(--radius-lg); box-shadow: var(--shadow-e3); color: var(--color-foreground); }
+  .row { display: flex; align-items: center; gap: 12px; width: 100%; height: auto; min-height: 64px; padding: 12px 30px 12px 14px; text-align: left; background: var(--color-surface-2); border: 1px solid var(--color-edge); border-radius: var(--radius-lg); box-shadow: var(--shadow-e3); color: var(--color-foreground); }
   .request:hover { background: var(--color-hover); }
   /* No arrow closes this row: keep the machine name clear of the dismiss button. */
   .letter { align-items: flex-start; padding-right: 40px; }
-  .bell { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: var(--radius-md); background: var(--color-accent-soft); color: var(--color-accent); }
+  .bell { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: var(--radius-md); background: var(--color-live-soft); color: var(--color-live); }
   .copy { display: grid; flex: 1; gap: 4px; min-width: 0; }
   .heading { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: var(--text-sm); font-weight: 600; }
   .heading > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -122,9 +129,9 @@
   .failed { font-size: var(--text-xs); color: var(--color-danger); overflow-wrap: anywhere; }
   .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; }
   .details { margin-left: auto; color: var(--color-muted-foreground); }
-  .count { flex: none; font-size: var(--text-xs); color: var(--color-accent); }
+  .count { flex: none; font-size: var(--text-xs); color: var(--color-live); }
   .letter .count { margin-top: 2px; }
-  .request > :global(svg) { flex: none; color: var(--color-accent); }
+  .request > :global(svg) { flex: none; color: var(--color-muted-foreground); }
   @media (max-width: 720px) {
     .notice { top: calc(68px + env(safe-area-inset-top)); width: calc(100vw - 24px); }
     .machine { max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

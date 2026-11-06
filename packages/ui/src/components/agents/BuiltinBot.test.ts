@@ -29,8 +29,8 @@ test('a built-in bot carries its badge, locks its texts and resets after the app
     page = mount(AgentsPage, { target: document.body, props: { store } });
     await vi.waitFor(() => { flushSync(); expect(one('[data-testid="agent-sheet"] [data-testid="agent-editor"]')).not.toBeNull(); });
 
-    // The badge in its rail row and in its header; an owner's bot has none.
-    expect(one(`[data-testid="agent-entry-${made.id}"] [data-testid="agent-builtin-badge"]`)?.getAttribute('title')).toBe(strings.agents.builtin.badgeTip);
+    // The badge in its column's head and in its header; an owner's bot has none.
+    expect(one('[data-testid="bot-column-head"] [data-testid="agent-builtin-badge"]')?.getAttribute('title')).toBe(strings.agents.builtin.badgeTip);
     expect(one('[data-testid="agent-header"] [data-testid="agent-builtin-badge"]')?.textContent).toContain(strings.agents.builtin.badge);
     expect(document.querySelectorAll('[data-testid="agent-builtin-badge"]')).toHaveLength(2);
 

@@ -12,7 +12,6 @@ export const fr: Translation = {
     composer: 'Barre de saisie',
     sidebar: 'Barre latérale',
     panel: 'Menu du panneau latéral',
-    project: 'Nom du projet',
     branch: 'Branche',
     context: 'Jauge de contexte',
     hide: 'Masquer ce bouton',

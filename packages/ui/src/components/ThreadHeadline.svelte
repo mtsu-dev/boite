@@ -1,11 +1,13 @@
 <script lang="ts">
   import { PencilLine, Pin } from '@lucide/svelte';
-  import type { ThreadSummary } from '@boite/contracts';
+  import type { Project, ThreadSummary } from '@boite/contracts';
   import type { Machine } from '../lib/workspace.svelte';
   import type { Store } from '../lib/store.svelte';
   import { hasUnsentDraft } from '../lib/composer-queue';
+  import { threadState } from '../lib/thread-state';
   import { strings } from '../lib/strings';
   import MachineIcon from './MachineIcon.svelte';
+  import ProjectTile from './ProjectTile.svelte';
   import ThreadPicture from './ThreadPicture.svelte';
   import ThreadState from './ThreadState.svelte';
 
@@ -13,7 +15,9 @@
    * A thread row's first line, in the sidebar and in a phone's list: who runs
    * it (the agent it belongs or was entrusted to, else the
    * provider's logo, whose tooltip names the provider and the model), the
-   * title, an unsent draft, the pin, then the state or the time.
+   * title, an unsent draft, the pin, then the state or the time. The Recent
+   * list shows the project's tile in the picture's place and one marker for
+   * the state (`tile`, `mark`).
    */
   let {
     owner,
@@ -22,7 +26,9 @@
     machine,
     open = false,
     wrap = false,
-    picture = true
+    picture = true,
+    tile,
+    mark = false
   }: {
     owner: Store;
     thread: ThreadSummary;
@@ -36,29 +42,33 @@
     wrap?: boolean;
     /** A phone's row draws the picture itself, in a tile beside the lines. */
     picture?: boolean;
+    /** The project's tile where the picture goes. */
+    tile?: Project;
+    /** The state as one marker instead of words. */
+    mark?: boolean;
   } = $props();
   let draft = $derived(!open && hasUnsentDraft(owner.composerStates[thread.id]));
 </script>
 
-<span class="headline" class:wrap class:unread={thread.unread && !wrap}>
+<span class="headline" class:wrap class:unread={thread.unread && !wrap} class:hot={open || threadState(thread, owner.subagents(thread.id)) !== null}>
   {#if machine}
     <span class="machine" class:offline={owner.connection !== 'ready'}
       title={`${machine.label} · ${strings.connection[owner.connection]}`} aria-label={machine.label}>
       <MachineIcon icon={machine.icon} os={owner.core?.os} />
     </span>
   {/if}
-  {#if picture}<ThreadPicture {owner} {thread} size={wrap ? 13 : 12} />{/if}
+  {#if tile}<ProjectTile project={tile} store={owner} size={16} />{:else if picture}<ThreadPicture {owner} {thread} size={wrap ? 13 : 14} />{/if}
   <span class="title" class:ui-label={!wrap}>{thread.title}</span>
   {#if draft}<span class="draft" data-testid="thread-draft" title={strings.sidebar.unsentDraft} aria-label={strings.sidebar.unsentDraft}><PencilLine size={12} /></span>{/if}
   {#if thread.pinned}<span class="pin"><Pin size={12} /></span>{/if}
-  {#if now !== undefined}<ThreadState {thread} {now} subagents={owner.subagents(thread.id)} away={owner.connection !== 'ready'} />{/if}
+  {#if now !== undefined}<ThreadState {thread} {now} {mark} subagents={owner.subagents(thread.id)} away={owner.connection !== 'ready'} />{/if}
 </span>
 
 <style>
   .headline {
     display: flex;
     align-items: center;
-    min-height: 1lh; /* Keep the row stable when machine glyphs appear. */
+    min-height: 20px; /* Keep the row stable when machine glyphs appear. */
     gap: 8px;
     min-width: 0;
   }
@@ -72,8 +82,14 @@
     color: var(--color-foreground);
     font-weight: 400;
   }
-  .unread .title {
-    font-weight: 600;
+  /* In the list, a row at rest reads a step back; one with a state to show reads at full strength. */
+  .headline:not(.wrap) .title {
+    color: var(--color-muted-foreground);
+    font-weight: 500;
+  }
+  .headline.unread:not(.wrap) .title,
+  .headline.hot:not(.wrap) .title {
+    color: var(--color-foreground);
   }
   .machine,
   .draft,
@@ -84,6 +100,9 @@
   }
   .machine {
     color: var(--color-muted-foreground);
+  }
+  .pin {
+    color: var(--color-subtle);
   }
   .machine.offline {
     color: var(--color-danger);

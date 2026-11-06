@@ -96,7 +96,7 @@
       {/each}
       <div class="swatches" role="group" aria-label={strings.settings.accent}>
         {#each ACCENT_PRESETS as hue, index (hue)}
-          <button type="button" class="swatch" data-accent-swatch style:background={`oklch(68% 0.19 ${hue})`} aria-label={strings.settings.accentNames[index]} aria-pressed={palette.accent === accentHex(hue)} data-testid="accent-{hue}" onclick={() => pickAccent(hue)}></button>
+          <button type="button" class="swatch" data-accent-swatch style:background={`oklch(75.5% 0.141 ${hue})`} aria-label={strings.settings.accentNames[index]} aria-pressed={palette.accent === accentHex(hue)} data-testid="accent-{hue}" onclick={() => pickAccent(hue)}></button>
         {/each}
       </div>
     </div>

@@ -1,9 +1,11 @@
+import { formatLocale } from './i18n.svelte';
 import type { AgentWatch, Message, MessagePart, Thread } from '@boite/contracts';
 
 /**
  * What the desk (the right panel's `desk` surface of a persistent agent's
- * thread) reads: how each thread on it stands, what the running turn has done
- * so far, and the day's spend against its budget.
+ * thread) and the bot's column read: how each thread on it stands, which are
+ * still in hand and which are done, what the running turn has done so far, and
+ * the notes its memory holds.
  */
 
 /** A desk card's state, the one its chip says: what the user most needs to know about that thread. */
@@ -61,13 +63,36 @@ export function runningTurn(thread: Pick<Thread, 'turns'> | null | undefined) {
   return thread?.turns.findLast(turn => turn.status === 'running') ?? null;
 }
 
-/** How far the day's spend went into the budget, 0 to 1, and whether it reached it; null without a budget. */
-export function budgetMeter(spent: number, budget: number | null | undefined): { ratio: number; reached: boolean } | null {
-  if (budget === null || budget === undefined || !(budget > 0)) return null;
-  return { ratio: Math.min(1, Math.max(0, spent / budget)), reached: spent >= budget };
+/** A thread the bot is done with: merged, finished or archived. The rest it still handles. */
+export function deskDone(watch: Pick<AgentWatch, 'state' | 'stalledSince' | 'pullRequest'>): boolean {
+  const state = deskState(watch);
+  return state === 'merged' || state === 'done' || state === 'archived';
 }
 
-/** Dollars the way a meter reads them: two decimals, cents under a dollar kept. */
-export function dollars(value: number): string {
-  return `$${value.toFixed(2)}`;
+/** The desk in the column's two sections, each in the desk's order. */
+export function splitDesk(watches: readonly AgentWatch[]): { handling: AgentWatch[]; done: AgentWatch[] } {
+  const ordered = deskOrder(watches);
+  return { handling: ordered.filter(watch => !deskDone(watch)), done: ordered.filter(deskDone) };
+}
+
+/**
+ * The notes of a MEMORY.md, as plain lines: its list items when it has any,
+ * else its paragraphs. Headings, rules and empty lines are not notes; inline
+ * marks (bold, code, links) are read as their words.
+ */
+export function memoryNotes(text: string): string[] {
+  const lines = text.split(/\r?\n/).map(line => line.trim());
+  const items = lines.filter(line => /^([-*+]|\d+[.)])\s+/.test(line)).map(line => line.replace(/^([-*+]|\d+[.)])\s+(\[[ xX]\]\s+)?/, ''));
+  const notes = items.length ? items : lines.filter(line => line && !/^(#{1,6}\s|[-*_]{3,}$|```|>)/.test(line));
+  return notes.map(plain).filter(Boolean);
+}
+
+function plain(line: string): string {
+  return line.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/(\*\*|__|\*|_|`)(.+?)\1/g, '$2').trim();
+}
+
+/** `12 Oct`, or `12 Oct 2025` in another year: the day a bot was made, on its desk. */
+export function calendarDay(at: number, now = Date.now()): string {
+  const sameYear = new Date(at).getFullYear() === new Date(now).getFullYear();
+  return new Intl.DateTimeFormat(formatLocale(), sameYear ? { day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' }).format(at);
 }

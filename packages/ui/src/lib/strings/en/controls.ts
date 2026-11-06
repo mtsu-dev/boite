@@ -11,7 +11,6 @@ export const strings = {
     composer: 'Message bar',
     sidebar: 'Sidebar',
     panel: 'Side panel menu',
-    project: 'Project name',
     branch: 'Branch',
     context: 'Context gauge',
     hide: 'Hide this button',

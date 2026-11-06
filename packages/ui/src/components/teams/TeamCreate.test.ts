@@ -63,7 +63,9 @@ function phone() {
     media, matches: media.includes('max-width'), onchange: null, addListener() {}, removeListener() {}
   }));
 }
+/** The Bots page as a phone draws it: a desktop's bots and teams are in the window's rail, the page's column is the open one's. */
 function page(store: Store) {
+  phone();
   store.showAgents();
   mounted.push(mount(AgentsPage, { target: document.body, props: { store } }));
   mounted.push(mount(ConfirmDialog, { target: document.body }));
@@ -82,9 +84,8 @@ async function openDialog() {
   return query('[data-testid=team-dialog]');
 }
 
-test.each([false, true])('with no team yet the Bots page shows the Teams heading with New team and one line (phone: %s)', async narrow => {
+test('with no team yet the Bots list shows the Teams heading with New team and one line', async () => {
   const { store, bots } = await computer();
-  if (narrow) phone();
   page(store);
   await vi.waitFor(() => query(`[data-testid="agent-entry-${bots[0]!.id}"]`));
   await settle();

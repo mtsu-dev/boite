@@ -1,25 +1,32 @@
 <script lang="ts">
-  import { CircleCheck, CircleX, GitMerge, GitPullRequest, GitPullRequestClosed, LoaderCircle, X } from '@lucide/svelte';
+  import { CircleCheck, CircleX, GitMerge, GitPullRequest, GitPullRequestClosed, LoaderCircle, MessageSquare, X } from '@lucide/svelte';
   import type { AgentWatch, Project } from '@boite/contracts';
   import { deskState, deskTone } from '../../lib/agent-desk';
   import { workedTime } from '../../lib/agent-turns';
   import { ago, exactTime } from '../../lib/format';
+  import type { Store } from '../../lib/store.svelte';
   import { fill, strings } from '../../lib/strings';
+  import Elapsed from '../Elapsed.svelte';
+  import ProjectTile from '../ProjectTile.svelte';
 
   /**
-   * One thread on an agent's desk, as a row: a status dot (breathing while
-   * the thread works or waits on the user), its title, when it last moved,
-   * and one meta line with how it stands, its project and its pull request
-   * with its checks. A thread that asks the user opens its question under
-   * the line with the options, answered here. The row opens its thread; the
-   * cross, shown on hover and focus, takes it off the desk. A thread of
-   * another machine of the group names that machine, says when it cannot be
-   * reached, and opens only where this client reaches that machine.
+   * One thread a bot handles, as a row of its column: its project's mark, its
+   * title, when it last moved (a live timer while it runs), and a second line
+   * only when it has something to say: that it needs the user or failed, a
+   * silent turn, its machine when out of reach, its pull request and checks.
+   * A thread that asks the user carries the question and its options, answered
+   * here. The row opens its thread; the cross, on hover and focus, takes it off
+   * the desk. A thread of a machine this client does not reach opens nowhere.
    */
-  let { watch, project, now, onopen, ondrop, onanswer }: {
+  let { watch, project, store, now, runningSince = null, done = false, onopen, ondrop, onanswer }: {
     watch: AgentWatch;
     project: Project | null;
+    store: Store;
     now: number;
+    /** When its running turn started, for the live timer: this client's own threads only. */
+    runningSince?: number | null;
+    /** In the Done section: drawn dimmer. */
+    done?: boolean;
     /** Absent for a thread of a machine this client does not reach. */
     onopen?: () => void;
     /** Absent for a device that may not change the desk. */
@@ -31,6 +38,9 @@
   const standing = $derived(deskState(watch));
   const tone = $derived(deskTone(standing));
   const pr = $derived(watch.pullRequest);
+  /** The states that earn words on the second line; the others read from the time and the mark. */
+  const said = $derived(standing === 'needs-you' || standing === 'failed' || standing === 'stalled' || standing === 'queued');
+  const meta = $derived(said || !!pr || !!watch.unreachable || (!!watch.machine && !project));
   let answering = $state<string | null>(null);
 
   async function answer(option: string) {
@@ -40,38 +50,39 @@
   }
 </script>
 
-<article class="desk-row" data-state={standing} data-tone={tone} data-testid="desk-card" data-thread={watch.threadId}>
+<article class="desk-row" class:done data-state={standing} data-tone={tone} data-testid="desk-card" data-thread={watch.threadId}>
   {#if onopen}<button type="button" class="desk-card-open" onclick={onopen} aria-label={fill(t.open, { title: watch.title })} title={fill(t.open, { title: watch.title })}></button>{/if}
-  <span class="desk-dot" data-tone={tone} title={t.origin[watch.origin]} aria-hidden="true"></span>
+  <span class="desk-row-tile" title={t.origin[watch.origin]}>
+    {#if project}<ProjectTile {project} {store} size={16} />{:else}<span class="desk-row-blank"><MessageSquare size={10} strokeWidth={2} /></span>{/if}
+  </span>
   <div class="desk-row-text">
     <div class="desk-row-head">
       <strong class="desk-card-title">{watch.title}</strong>
-      <span class="desk-card-when" title={exactTime(watch.lastActivityAt)}>{ago(watch.lastActivityAt, now)}</span>
+      {#if standing === 'working'}<LoaderCircle size={12} strokeWidth={2} class="desk-row-spin" aria-label={t.state.working} />{:else if standing === 'needs-you' || standing === 'failed'}<span class="desk-row-mark" data-tone={tone} aria-hidden="true"></span>{/if}
+      <span class="desk-card-when" title={exactTime(watch.lastActivityAt)}>
+        {#if standing === 'working' && runningSince !== null}<Elapsed startedAt={runningSince} finishedAt={null} active />{:else}{ago(watch.lastActivityAt, now)}{/if}
+      </span>
       {#if ondrop}
-        <button type="button" class="ghost small icon desk-card-drop" aria-label={fill(t.drop, { title: watch.title })} title={fill(t.drop, { title: watch.title })} onclick={ondrop} data-testid="desk-card-drop"><X size={13} strokeWidth={1.75} /></button>
+        <button type="button" class="ghost small icon desk-card-drop" aria-label={fill(t.drop, { title: watch.title })} title={fill(t.drop, { title: watch.title })} onclick={ondrop} data-testid="desk-card-drop"><X size={12} strokeWidth={1.75} /></button>
       {/if}
     </div>
-    <p class="desk-card-meta">
-      {#key standing}<span class="desk-chip" data-tone={tone} data-testid="desk-chip">{t.state[standing]}</span>{/key}
-      {#if standing === 'stalled' && watch.stalledSince !== null}<span class="desk-card-silent">{fill(t.silent, { time: workedTime(now - watch.stalledSince) })}</span>{/if}
-      {#if project}<span class="desk-card-project">{project.name}</span>{/if}
-      {#if watch.machine}<span class="desk-card-machine" data-testid="desk-card-machine">{watch.machine}</span>{/if}
-      {#if watch.unreachable}<span class="desk-card-unreachable" title={watch.unreachable} data-testid="desk-card-unreachable">{t.unreachable}</span>{/if}
-      {#if pr}
-        <span class="desk-card-pr" data-pr={pr.state} data-checks={pr.checks ?? 'none'} data-testid="desk-card-pr">
-          <span class="desk-pr-badge">
+    {#if meta}
+      <p class="desk-card-meta">
+        {#if said}{#key standing}<span class="desk-chip" data-tone={tone} data-testid="desk-chip">{standing === 'stalled' && watch.stalledSince !== null ? fill(t.silent, { time: workedTime(now - watch.stalledSince) }) : t.state[standing]}</span>{/key}{/if}
+        {#if watch.machine && (watch.unreachable || !project)}<span class="desk-card-machine" data-testid="desk-card-machine">{watch.machine}</span>{/if}
+        {#if watch.unreachable}<span class="desk-card-unreachable" title={watch.unreachable} data-testid="desk-card-unreachable">{t.unreachable}</span>{/if}
+        {#if pr}
+          <span class="desk-card-pr" data-pr={pr.state} data-checks={pr.checks ?? 'none'} data-testid="desk-card-pr">
             {#if pr.state === 'merged'}<GitMerge size={12} strokeWidth={1.75} />{:else if pr.state === 'closed'}<GitPullRequestClosed size={12} strokeWidth={1.75} />{:else}<GitPullRequest size={12} strokeWidth={1.75} />{/if}
-            {fill(t.pr[pr.state], { number: String(pr.number) })}
+            <span>{fill(t.pr[pr.state], { number: String(pr.number) })}</span>
+            {#if pr.checks && pr.state !== 'merged' && pr.state !== 'closed'}
+              {#if pr.checks === 'pending'}<LoaderCircle size={11} strokeWidth={2} class="spin" />{:else if pr.checks === 'passing'}<CircleCheck size={11} strokeWidth={2} />{:else}<CircleX size={11} strokeWidth={2} />{/if}
+              <span>{t.checks[pr.checks]}</span>
+            {/if}
           </span>
-          {#if pr.checks}
-            <span class="desk-pr-checks">
-              {#if pr.checks === 'failing'}<CircleX size={12} strokeWidth={1.75} />{:else if pr.checks === 'passing'}<CircleCheck size={12} strokeWidth={1.75} />{:else}<LoaderCircle size={12} strokeWidth={1.75} class="spin" />{/if}
-              {t.checks[pr.checks]}
-            </span>
-          {/if}
-        </span>
-      {/if}
-    </p>
+        {/if}
+      </p>
+    {/if}
     {#if watch.question}
       <div class="desk-question" data-testid="desk-question">
         <p>{watch.question.text}</p>

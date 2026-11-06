@@ -87,10 +87,10 @@ function search(text: string) {
   flushSync();
 }
 
-test("the Bots page lists the teams above the bots, opens a team's chat beside them, and its search finds teams by name", async () => {
+test("a phone's Bots list holds the teams above the bots, opens a team's chat, and its search finds teams by name", async () => {
   const { store, team, huginn, say } = await skollheim();
   await say(huginn.id, 'The draft is up. @tous have a look.');
-  botsPage(store, false);
+  botsPage(store, true);
 
   const row = `[data-testid="agent-team-${team.id}"]`;
   const bot = `[data-testid="agent-entry-${huginn.id}"]`;
@@ -99,8 +99,6 @@ test("the Bots page lists the teams above the bots, opens a team's chat beside t
   expect(all('.agents-rail .section-label').map(heading => heading.textContent)).toEqual(['Teams', 'Bots']);
   expect(query(row).textContent).toContain('Skollheim');
   expect(query(row).textContent).toContain('Huginn (Réseaux) and Jeux (Producteur)');
-  // The desktop's default bot is open first; the team's row then takes the card.
-  await vi.waitFor(() => expect(store.openThread?.agentSessionId).toBeTruthy());
 
   query<HTMLButtonElement>(row).click();
   await vi.waitFor(() => expect(store.openThread?.id).toBe(team.threadId));
@@ -109,8 +107,6 @@ test("the Bots page lists the teams above the bots, opens a team's chat beside t
   expect([query('[data-testid=team-title]').textContent, query('[data-testid=team-room]').textContent]).toEqual(['Skollheim', 'Team chat · 2 bots and you']);
   expect(query(row).getAttribute('aria-current')).toBe('page');
   await vi.waitFor(() => expect(document.querySelector(row)?.hasAttribute('data-unread')).toBe(false));
-  // A desktop has no way back to a list it already shows.
-  expect(document.querySelector('[data-testid=agent-back]')).toBeNull();
 
   query<HTMLButtonElement>('[data-testid=agents-search-toggle]').click(); flushSync();
   search('skoll');
@@ -119,6 +115,27 @@ test("the Bots page lists the teams above the bots, opens a team's chat beside t
   expect([!!document.querySelector(row), !!document.querySelector(bot)]).toEqual([false, true]);
   // One card left: no headings over it.
   expect(all('.agents-rail .section-label')).toHaveLength(0);
+});
+
+test("a desktop's column shows the open team: its picture, its name, who is in it, its chat, and its members open their bot", async () => {
+  const { store, team, huginn } = await skollheim();
+  botsPage(store, false);
+  // The desktop's default bot is open first; the rail then opens the team.
+  await vi.waitFor(() => expect(store.openThread?.agentSessionId).toBeTruthy());
+  await store.open(team.threadId);
+  store.showAgents();
+  await vi.waitFor(() => query('[data-testid=team-chat]'));
+  await settle();
+  expect(query('[data-testid=bot-column-head]').textContent).toContain('Skollheim');
+  expect(query('[data-testid=bot-column-head]').textContent).toContain('Huginn (Réseaux) and Jeux (Producteur)');
+  expect(query('[data-testid=bot-conversation]').getAttribute('aria-current')).toBe('page');
+  expect(all('[data-testid=bot-member]').map(row => row.querySelector('strong')?.textContent)).toEqual(['Huginn (Réseaux)', 'Jeux (Producteur)']);
+  // No list of bots or teams on a desktop's page, and no way back to one.
+  expect(document.querySelector(`[data-testid="agent-team-${team.id}"]`)).toBeNull();
+  expect(document.querySelector('[data-testid=agent-back]')).toBeNull();
+  all('[data-testid=bot-member]')[0]!.click();
+  await vi.waitFor(() => expect(store.openThread?.agentSessionId).toBeTruthy());
+  await vi.waitFor(() => expect(query('[data-testid=bot-column-head]').textContent).toContain(huginn.name));
 });
 
 test("a phone's Bots list holds the teams, a team's chat opens full screen over it and goes back to it, and no thread row lists the chat", async () => {
@@ -149,7 +166,7 @@ test("a phone's Bots list holds the teams, a team's chat opens full screen over 
 test('with Teams off the Bots page lists the bots alone, and a team chat opens in the chat', async () => {
   const { store, team, huginn } = await skollheim();
   setExperiment('teams', false);
-  botsPage(store, false);
+  botsPage(store, true);
   await vi.waitFor(() => query(`[data-testid="agent-entry-${huginn.id}"]`));
   await settle();
   expect(document.querySelector('[data-testid=agents-teams]')).toBeNull();

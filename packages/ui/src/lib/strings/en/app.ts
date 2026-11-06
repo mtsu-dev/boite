@@ -12,6 +12,18 @@ export const strings = {
     noEndpointTitle: 'No core to connect to',
     noEndpointBody:
       'On one of your machines, open Settings, Machines, Add a device, and scan or type its code here.',
-    openSettings: 'Open settings'
+    openSettings: 'Open settings',
+    /** The column of buttons down the window's left edge (AppRail.svelte). */
+    rail: {
+      label: 'Boite',
+      waitingOne: '1 thread needs you',
+      waitingMany: '{count} threads need you',
+      bots: 'Bots',
+      add: 'New bot or team',
+      botWaiting: '{name} needs you',
+      botFailed: '{name} failed',
+      botWorking: '{name} is at work',
+      botPaused: '{name} is paused'
+    }
   }
 } as const;
