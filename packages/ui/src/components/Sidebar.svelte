@@ -14,7 +14,7 @@
   import { projectRollup, threadState } from '../lib/thread-state';
   import { hasUnsentDraft } from '../lib/composer-queue';
   import { holdLanes, laneHold, moreRows, threadLanes, type LaneHold, type Lanes } from '../lib/thread-lanes.svelte';
-  import { filterOrder, lifecycleFilter, lifecycleProjects, lifecycleRows } from '../lib/lifecycle-filter.svelte';
+  import { lifecycleFilter, lifecycleProjects, lifecycleRows, sortedLifecycleProjects } from '../lib/lifecycle-filter.svelte';
   import LifecycleStrip from './LifecycleStrip.svelte';
   import { groupWorkingThread, recentPreferences } from '../lib/recent.svelte';
   import { dropKey as threadDropKey, takesDrop, threadDrag } from '../lib/thread-move.svelte';
@@ -252,7 +252,7 @@
     scrollRoot?.querySelector<HTMLElement>(`section[data-testid=project][data-project-key="${CSS.escape(projectKey(entry))}"]`)?.scrollIntoView({ block: 'start' });
   }
   /** The filter over the Projects view: its projects and their rows, the headers kept. */
-  let filtered = $derived(lifecycleFilter.current === null || workspace.view === 'recent' ? null : lifecycleProjects(groups, lifecycleFilter.current).map(({ entry, threads }) => ({ entry, threads: threads.slice().sort((a, b) => compareThreads(a, b, filterOrder(entry.machine.store, a, lifecycleFilter.current!), filterOrder(entry.machine.store, b, lifecycleFilter.current!))) })));
+  let filtered = $derived(lifecycleFilter.current === null || workspace.view === 'recent' ? null : sortedLifecycleProjects(groups, lifecycleFilter.current));
   let filteredDoneRows = $state.raw<Record<string, { store: Store; threadId: ThreadId }[]>>({});
   /** The filter over the Recent view: the same flat rows in the same order, never project cards. */
   let recentFilter = $derived(workspace.view === 'recent' ? lifecycleFilter.current : null);

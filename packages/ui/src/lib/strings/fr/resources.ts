@@ -10,7 +10,6 @@ export const fr: Translation = {
     unknown: 'Indisponible',
     state: 'État de la protection',
     states: { ok: 'Mémoire suffisante', critical: 'Limite de mémoire dépassée' },
-    killTitle: 'Limite mémoire atteinte',
     killLimit: (limit: string) => `Arrêt à la limite mémoire : ${limit}`,
     killCount: (count: number, limit: string) => `${count} arrêts à la limite mémoire : ${limit}`,
     killLine: (count: number) => count > 1 ? `${count} arrêts à la limite mémoire` : 'Arrêt à la limite mémoire',

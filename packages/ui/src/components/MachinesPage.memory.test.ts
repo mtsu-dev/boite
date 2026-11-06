@@ -14,7 +14,7 @@ const settle = async () => { for (let i = 0; i < 20; i++) { await Promise.resolv
 /** No notice and no line on the page names the pressure or a stopped process. */
 const pressureShown = () => {
   const page = document.body.textContent ?? '';
-  const words = [strings.resources.states.critical, strings.resources.killTitle, strings.resources.killReason.budget('\0').split('\0')[0]!];
+  const words = [strings.resources.states.critical, strings.resources.killReason.budget('\0').split('\0')[0]!];
   return words.some(word => page.includes(word));
 };
 afterEach(async () => {

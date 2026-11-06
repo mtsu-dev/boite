@@ -19,10 +19,7 @@ export const fr: Translation = {
     surface: 'Conversations ou bots',
     threads: 'Conversations',
     agents: 'Bots',
-    surfaceWorking: '{count} au travail',
     surfaceNeeds: '{count} vous attendent',
-    surfaceSubagentsOne: 'et 1 sous-agent',
-    surfaceSubagentsMany: 'et {count} sous-agents',
     projectsView: 'Projets',
     recentView: 'Récent',
     viewPicker: 'Affichage et projet',
@@ -67,7 +64,6 @@ export const fr: Translation = {
       live: 'Un nouveau message ici n’a pas de dossier où s’exécuter. Démarrez une nouvelle conversation pour continuer.'
     },
     allProjects: 'Tous les projets',
-    filterProject: 'Filtrer par projet',
     recentOrder: 'Activité récente',
     customOrder: 'Ordre personnel',
     moveProjectUp: 'Monter le projet',

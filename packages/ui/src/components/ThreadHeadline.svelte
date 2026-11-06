@@ -16,7 +16,7 @@
   import { lastLine } from '../lib/last-line';
 
   /**
-   * A thread row's first line, in the sidebar and in a phone's list: who runs
+   * A thread row's first line in the sidebar (a phone's list draws `PhoneThreadRow`): who runs
    * it (the agent it belongs or was entrusted to, else the
    * provider's logo, whose tooltip names the provider and the model), the
    * title, an unsent draft, the pin, then the state or the time.
@@ -27,8 +27,6 @@
     now,
     machine,
     open = false,
-    wrap = false,
-    picture = true,
     ring = false,
     pin = true,
     facts
@@ -41,10 +39,6 @@
     machine?: Machine;
     /** The open thread shows its box: its row marks no draft. */
     open?: boolean;
-    /** A phone's list: the title wraps over several lines instead of ending in an ellipsis. */
-    wrap?: boolean;
-    /** A phone's row draws the picture itself, in a tile beside the lines. */
-    picture?: boolean;
     /** The sidebar's row: the state rings the picture, and the right end keeps only the time. */
     ring?: boolean;
     /** Off under Recent's band labels, the Pinned one already saying it. */
@@ -72,7 +66,7 @@
    * filter, a project's rows), pinned or not: the rows to read before opening one,
    * so a long title takes a second line before its ellipsis. Every other row keeps one line.
    */
-  let clamp = $derived(!wrap && threadLiveKind(thread, kind) === 'needs');
+  let clamp = $derived(threadLiveKind(thread, kind) === 'needs');
   /**
    * Such a title with no second line under it: the right cluster (draft, pin, subagents,
    * time) ends the title's last line, as a two-line row's ends its subline (`lastLine`), so
@@ -95,18 +89,18 @@
   {#if now !== undefined}<ThreadState {thread} {now} {subagents} {away} {waited} compact={ring} />{/if}
 {/snippet}
 
-<span class="headline" class:wrap class:ring class:stacked class:quiet class:clamp class:low class:unread={thread.unread && !wrap} data-lines={clamp ? 2 : undefined}>
+<span class="headline" class:ring class:stacked class:quiet class:clamp class:low class:unread={thread.unread} data-lines={clamp ? 2 : undefined}>
   {#if machine}
     <span class="machine" class:offline={owner.connection !== 'ready'}
       title={`${machine.label} · ${strings.connection[owner.connection]}`} aria-label={machine.label}>
       <MachineIcon icon={machine.icon} os={owner.core?.os} />
     </span>
   {/if}
-  {#if picture && ring}
+  {#if ring}
     <StateRing {kind} asking={asksMidTurn(thread, subagents)} stale={away} ground="var(--ring-ground, var(--color-frame))"><ThreadPicture {owner} {thread} size={16} logo={13} mono={quiet} /></StateRing>
-  {:else if picture}<ThreadPicture {owner} {thread} size={wrap ? 13 : 12} mono={quiet} />{/if}
+  {:else}<ThreadPicture {owner} {thread} size={12} mono={quiet} />{/if}
   <span class="line" use:lastLine={low ? thread.title : null}>
-    <span class="title" class:ui-label={!wrap && !clamp} data-last-line="title">{thread.title}{#if low}<span class="room" data-last-line="room" aria-hidden="true"></span>{/if}</span>
+    <span class="title" class:ui-label={!clamp} data-last-line="title">{thread.title}{#if low}<span class="room" data-last-line="room" aria-hidden="true"></span>{/if}</span>
     <span class="cluster" data-last-line="cluster">
       {#if draft}<span class="draft" data-testid="thread-draft" title={strings.sidebar.unsentDraft} aria-label={strings.sidebar.unsentDraft}><PencilLine size={12} /></span>{/if}
       {#if pinned && !stacked}{@render pinMark()}{/if}
@@ -223,31 +217,5 @@
   /* A draft left in the box: the accent, so it reads as the user's own work waiting. */
   .draft {
     color: var(--color-accent);
-  }
-  /* On a phone the line is text: the marks flow with the title and it wraps. */
-  .wrap {
-    display: block;
-    font-size: var(--text-base);
-    font-weight: 500;
-    overflow-wrap: anywhere;
-  }
-  .wrap .title {
-    display: inline;
-    overflow: visible;
-    white-space: normal;
-    font-weight: inherit;
-  }
-  .wrap :global(.picture) {
-    margin-right: 6px;
-    vertical-align: -2px;
-  }
-  .wrap .draft {
-    margin-left: 6px;
-    vertical-align: -1px;
-  }
-  .wrap .pin {
-    margin-left: 4px;
-    vertical-align: -1px;
-    color: var(--color-muted-foreground);
   }
 </style>

@@ -3,8 +3,7 @@
   import type { Project, ThreadSummary } from '@boite/contracts';
   import type { Machine } from '../lib/workspace.svelte';
   import { projectKey, type ProjectEntry } from '../lib/project-view.svelte';
-  import { filterOrder, lifecycleFilter, lifecycleProjects, lifecycleRows, type Lifecycle } from '../lib/lifecycle-filter.svelte';
-  import { compareThreads } from '../lib/thread-order';
+  import { lifecycleFilter, lifecycleRows, sortedLifecycleProjects, type Lifecycle } from '../lib/lifecycle-filter.svelte';
   import { projectName } from '../lib/format';
   import { strings } from '../lib/strings';
   import ProjectTile from './ProjectTile.svelte';
@@ -29,9 +28,9 @@
     row: Snippet<[Row, boolean]>;
     onopen: () => void;
   } = $props();
-  let projects = $derived(lifecycleProjects(entries, kind).map(({ entry, threads }) => ({
+  let projects = $derived(sortedLifecycleProjects(entries, kind).map(({ entry, threads }) => ({
     entry,
-    rows: threads.slice().sort((a, b) => compareThreads(a, b, filterOrder(entry.machine.store, a, kind), filterOrder(entry.machine.store, b, kind))).map(thread => ({ machine: entry.machine, thread, project: entry.project }) as Row)
+    rows: threads.map(thread => ({ machine: entry.machine, thread, project: entry.project }) as Row)
   })));
   let flatRows = $derived(flat && (kind === 'waiting' || kind === 'working')
     ? lifecycleRows(entries, kind).map(({ machine, project, thread }) => ({ machine, thread, project }) as Row) : []);

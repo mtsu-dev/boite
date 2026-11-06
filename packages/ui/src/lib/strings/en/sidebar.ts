@@ -23,10 +23,7 @@ export const strings = {
     threads: 'Threads',
     agents: 'Bots',
     /** The count beside Threads or Bots in that switch: what works now, and whether something there needs the user. */
-    surfaceWorking: '{count} at work',
     surfaceNeeds: '{count} need you',
-    surfaceSubagentsOne: 'and 1 subagent',
-    surfaceSubagentsMany: 'and {count} subagents',
     /** The two ways the display options can list threads. */
     projectsView: 'Projects',
     recentView: 'Recent',
@@ -80,7 +77,6 @@ export const strings = {
       live: 'A new message here has no folder to run in. Start a new thread to keep working.'
     },
     allProjects: 'All projects',
-    filterProject: 'Filter by project',
     recentOrder: 'Recent activity',
     customOrder: 'Custom order',
     moveProjectUp: 'Move project up',

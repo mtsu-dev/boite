@@ -90,6 +90,17 @@ export function filterOrder(store: OrderStore, thread: ThreadSummary, kind: Life
   return live && { live, waited: live === 'needs' ? waitingSince(store, thread) : null };
 }
 
+/** The Projects view under a filter: each project's rows in Recent's band order, as the sidebar and a phone list them. */
+export function sortedLifecycleProjects(entries: readonly ProjectEntry[], kind: Lifecycle): { entry: ProjectEntry; threads: ThreadSummary[] }[] {
+  return lifecycleProjects(entries, kind).map(({ entry, threads }) => ({
+    entry,
+    threads: threads
+      .map(thread => ({ thread, key: filterOrder(entry.machine.store, thread, kind) }))
+      .sort((a, b) => compareThreads(a.thread, b.thread, a.key, b.key))
+      .map(({ thread }) => thread)
+  }));
+}
+
 /**
  * The Recent view under a live filter: the same flat rows as unfiltered, in the
  * same order, only those of the filter's lifecycle. Grouping by project

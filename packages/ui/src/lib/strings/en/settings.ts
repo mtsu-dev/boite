@@ -229,7 +229,6 @@ export const strings = {
       doneRetentionHint: 'Counted from Mark done or an automatic archive after a PR merge. 3 days by default; 0 disables deletion. Manual archives are kept. Deleted conversations remain recoverable for the configured deletion retention.',
       deletesAt: 'Deletion: {date}',
       heading: 'Archived threads',
-      mergedReason: 'Archived after PR #{number} merged',
       intro: 'The agent of an archived thread stops. It starts again with the first message after a restore.',
       show: 'Show archived threads',
       empty: 'No archived thread on this machine.',

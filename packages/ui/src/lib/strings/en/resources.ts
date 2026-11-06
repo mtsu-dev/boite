@@ -8,7 +8,6 @@ export const strings = {
     unknown: 'Not available',
     state: 'Protection status',
     states: { ok: 'Enough memory', critical: 'Memory limit crossed' },
-    killTitle: 'Memory limit reached',
     /** The notice's one line read whole: what happened and the limit, its reason behind the disclosure. */
     killLimit: (limit: string) => `Stopped at the memory limit: ${limit}`,
     killCount: (count: number, limit: string) => `${count} stopped at the memory limit: ${limit}`,
