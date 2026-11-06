@@ -4,6 +4,7 @@ import type { CoreClient } from '../../packages/core/src/client.ts';
 import { startTestCore, waitFor, type TestCore } from '../../packages/core/test/harness.ts';
 import { BrowserPage } from './lib/cdp.ts';
 import { ensureProductionUi } from './lib/prod-ui.ts';
+import { openBot } from './lib/bots.ts';
 
 let harness: TestCore;
 let owner: CoreClient;
@@ -34,8 +35,7 @@ for (const width of [1440, 390]) test(`a bot on a retired provider opens and its
   try {
     page = await BrowserPage.launch({ url: `${harness.url}/?token=${harness.token}`, experiments: ['resident-agents'], windowSize: { width, height: 900 } });
     await page.waitFor(`document.querySelector('[data-testid=status-connection]')?.dataset.state === 'ready'`, 30_000);
-    await page.click('[data-testid=view-agents]');
-    await page.click(`[data-testid="agent-entry-${agent.id}"]`);
+    await openBot(page, agent.id, 30_000);
     await page.waitFor(`document.querySelector('[data-testid=agent-header]')?.textContent.includes('B.O.T.S')`);
     expect(await page.text('[data-testid=agent-problem]')).toContain('antigravity-cli');
     expect(harness.core.journal.listTurns(harness.core.workforce.sessionOf(agent.id)!.threadId)).toHaveLength(0);

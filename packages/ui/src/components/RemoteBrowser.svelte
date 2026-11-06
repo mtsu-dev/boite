@@ -509,7 +509,7 @@
   small, .empty { color: var(--color-muted-foreground); font-size: var(--text-sm); }
   .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .state { flex: none; margin-left: 6px; font-size: var(--text-xs); color: var(--color-muted-foreground); }
-  .toggle[aria-pressed=true] { color: var(--color-accent); background: var(--color-accent-soft); }
+  .toggle[aria-pressed=true] { color: var(--color-foreground); background: var(--color-active); }
   .viewer { position: relative; flex: 1; min-height: 80px; overflow: hidden; }
   .screen-area { width: 100%; height: 100%; display: flex; background: var(--color-background); overflow: auto; }
   .zoomed .screen { touch-action: pan-x pan-y; }
@@ -520,7 +520,7 @@
   .display-settings input { width: 100%; height: var(--control-sm); font-size: var(--text-sm); }
   .display-settings form { display: flex; gap: 6px; align-items: flex-end; }
   .display-settings .restore { justify-self: start; }
-  .options [aria-pressed=true] { color: var(--color-accent); border-color: var(--color-accent); background: var(--color-accent-soft); }
+  .options [aria-pressed=true] { color: var(--color-foreground); border-color: var(--color-muted-foreground); background: var(--color-active); }
   .screen { flex: none; margin: 0 auto auto; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; touch-action: none; cursor: default; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
   .screen:hover:not(:disabled) { background: transparent; }
   .screen:active:not(:disabled) { transform: none; }
@@ -530,7 +530,7 @@
   .picker button { flex: none; justify-content: flex-start; min-height: var(--control-sm); padding: 4px 10px; border: 0; border-radius: var(--radius-sm); background: transparent; box-shadow: none; color: var(--color-foreground); font-size: var(--text-sm); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .picker button.grouped { padding-left: 20px; }
   .picker button.active:not(:disabled) { background: var(--color-surface-3); }
-  .picker button[aria-selected=true] { color: var(--color-accent); background: var(--color-accent-soft); }
+  .picker button[aria-selected=true] { color: var(--color-foreground); background: var(--color-active); }
   .picker button:disabled { color: var(--color-muted-foreground); opacity: .6; }
   .picker .group { padding: 6px 10px 2px; font-size: var(--text-xs); font-weight: 600; color: var(--color-muted-foreground); }
   .toast { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); max-width: calc(100% - 24px); padding: 6px 12px; border-radius: var(--radius-full); background: var(--color-surface-3); color: var(--color-foreground); box-shadow: var(--shadow-e2); font-size: var(--text-xs); pointer-events: none; }

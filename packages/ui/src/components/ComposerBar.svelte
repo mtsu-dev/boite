@@ -440,11 +440,11 @@
     color: var(--color-foreground);
   }
 
-  /* Nothing to pick yet: the one chip that gets somewhere wears the accent. */
+  /* Nothing to pick yet: the one chip that gets somewhere reads at full ink. */
   .chips :global(.trigger.connect) {
     border-color: transparent;
-    background: var(--color-accent-soft);
-    color: var(--color-accent);
+    background: var(--color-active);
+    color: var(--color-foreground);
   }
 
   .chips :global(.trigger:hover) {
@@ -498,7 +498,7 @@
        wraps its last words onto a second line nobody sees, never half of one. */
     .chips :global(.picker > .trigger > .label) { min-width: 0; max-width: none; height: 1lh; padding-block: 0; margin-block: 0; text-box: normal; overflow: hidden; white-space: normal; overflow-wrap: normal; }
     .chips :global(.picker > .trigger .account-name) { display: none; }
-    .chips :global(.picker > .trigger.connect) { padding: 0 12px; border-radius: var(--radius-md); background: var(--color-accent-soft); color: var(--color-accent); }
+    .chips :global(.picker > .trigger.connect) { padding: 0 12px; border-radius: var(--radius-md); background: var(--color-active); color: var(--color-foreground); }
     .send, .stop { margin-left: 2px; }
   }
 </style>

@@ -265,7 +265,7 @@
   .who { --tone: var(--color-subtle); display: flex; align-items: center; gap: 14px; max-width: var(--settings-width); margin-bottom: 28px; }
   .who[data-link='connected'] { --tone: var(--color-success); }
   .who[data-link='connecting'] { --tone: var(--color-live); }
-  .avatar { position: relative; flex: none; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: var(--color-accent-soft); color: var(--color-accent); font-size: var(--text-md); font-weight: 700; }
+  .avatar { position: relative; flex: none; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: var(--color-active); color: var(--color-foreground); font-size: var(--text-md); font-weight: 700; }
   .dot { position: absolute; right: 0; bottom: 0; width: 11px; height: 11px; border-radius: 50%; background: var(--tone); box-shadow: 0 0 0 2px var(--color-background); }
   .who-text { display: grid; gap: 4px; min-width: 0; }
   .who h1 { margin: 0; font-size: var(--text-lg); line-height: 1.3; }
@@ -282,12 +282,12 @@
   .project .ui-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .machine { display: inline-flex; align-items: center; gap: 4px; min-width: 0; margin-left: auto; color: var(--color-muted-foreground); font-size: var(--text-xs); }
   .machine :global(svg) { flex: none; }
-  .initial { display: grid; flex: none; place-items: center; width: 18px; height: 18px; border-radius: var(--radius-sm); background: var(--color-accent-soft); color: var(--color-accent); font-size: var(--text-xs); font-weight: 700; }
+  .initial { display: grid; flex: none; place-items: center; width: 18px; height: 18px; border-radius: var(--radius-sm); background: var(--color-active); color: var(--color-foreground); font-size: var(--text-xs); font-weight: 700; }
   /* The board's columns as four counts, each in its column's tone: to do, in progress, in review, done. */
   .board { display: inline-flex; flex: none; align-items: center; gap: 6px; height: 28px; padding: 0 8px; border-radius: var(--radius-sm); color: var(--color-muted-foreground); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
   .tally { min-width: 1ch; font-weight: 600; text-align: center; }
   .tally[data-column='doing'] { color: var(--color-live); }
-  .tally[data-column='review'] { color: var(--color-accent); }
+  .tally[data-column='review'] { color: var(--color-foreground); }
   .tally[data-column='done'] { color: var(--color-success); }
   .tally.zero { color: var(--color-subtle); font-weight: 400; }
   .read { display: inline-flex; flex: none; align-items: center; gap: 6px; color: var(--color-muted-foreground); font-size: var(--text-sm); cursor: pointer; }

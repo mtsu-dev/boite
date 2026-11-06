@@ -74,7 +74,7 @@
   }
   .top { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .faces { display: grid; grid-template-columns: repeat(2, 16px); gap: 2px; flex: none; }
-  .glyph { display: inline-flex; flex: none; color: var(--color-accent); }
+  .glyph { display: inline-flex; flex: none; color: var(--color-muted-foreground); }
   .heading { display: flex; flex-direction: column; min-width: 0; }
   .name { font-size: var(--text-sm); font-weight: 600; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
   .cast { color: var(--color-muted-foreground); font-size: var(--text-xs); }

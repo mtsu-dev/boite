@@ -58,17 +58,18 @@ test('Nova\'s desk is one column: who it is, its live step, its routines and its
     flushSync();
     expect(document.querySelector('[data-testid=desk-schedule] textarea')).not.toBeNull();
 
-    // Memory: the count of its notes and the first ones, in plain words, the whole file on request.
+    // Memory: the count of its notes and the first three, in plain words; no pass line under them.
     await vi.waitFor(() => expect(document.querySelector('[data-testid=desk-memory]')?.textContent).toContain('3 notes'));
     expect([...document.querySelectorAll('[data-testid=desk-memory-text] li')].map(li => li.textContent)[0]).toBe('The login fix ships in it, PR #482.');
     expect(document.querySelector('[data-testid=desk-memory-text]')?.textContent).toContain('Release notes live in CHANGELOG.md, newest first.');
-    expect(document.querySelector('[data-testid=desk-memory-pass]')?.textContent).toMatch(/Updated 37 min\. ago\s*·\s*PR #482 fails its e2e redirect test/);
+    expect(document.querySelectorAll('[data-testid=desk-memory-text] li').length).toBeLessThanOrEqual(3);
+    expect(document.querySelector('[data-testid=desk-memory]')?.textContent).not.toContain('Updated');
     // A new snapshot flags a failed background memory update on its card.
     view.snapshot = { ...view.snapshot!, status: view.snapshot!.status.map(s => s.agentId === nova.id
       ? { ...s, memory: { ...s.memory!, status: 'error', summary: 'The rewritten memory ran past 8000 characters; it was kept as it is.' } } : s) };
     flushSync();
     expect(document.querySelector('[data-testid=desk-memory] [aria-label="Memory update failed"]')).not.toBeNull();
-    expect(document.querySelector('[data-testid=desk-memory-pass]')?.textContent).toContain('8000 characters');
+    expect(document.querySelector('[data-testid=desk-memory-alert]')?.getAttribute('title')).toContain('8000 characters');
   } finally {
     if (desk) await unmount(desk);
     document.body.innerHTML = '';

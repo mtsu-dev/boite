@@ -47,18 +47,18 @@ beforeEach(async () => { page = await BrowserPage.launch({ url: `${base}/?fake=1
 afterEach(async () => { await page?.close(); }, 15_000);
 afterAll(async () => { await server?.close(); }, 30_000);
 
-test('the footer button and Machines both reach updates, and the foot fits its controls', async () => {
+test('the rail\'s foot button and Machines both reach updates, and the foot fits its controls', async () => {
   await page.navigate(`${base}/?fake=1&open=recent&machines=1&appUpdate=ready&appUpdateChannel=nightly`);
-  await page.waitFor(`window.__boiteTest?.workspace.machines.length === 2 && ['machine-status', 'add-project', 'nav-updates', 'nav-limits', 'nav-settings'].every(name => document.querySelector('[data-testid="' + name + '"]'))`);
-  // A downloaded release is announced in the foot, bottom left, beside Settings.
+  const foot = ['machine-status', 'nav-updates', 'nav-limits', 'nav-settings'];
+  await page.waitFor(`window.__boiteTest?.workspace.machines.length === 2 && ${JSON.stringify(foot)}.every(name => document.querySelector('${id('app-rail')} .foot [data-testid="' + name + '"]'))`);
+  // A downloaded release is announced in the app rail's foot, bottom left, above Settings.
   expect(await page.evaluate(`document.querySelector('${id('nav-updates')}') !== null`)).toBe(true);
-  expect((await page.text(id('add-project'))).trim()).toBe('');
   expect((await page.text(id('panel-toggle'))).trim()).toBe('');
-  await page.evaluate('window.__boiteTest.workspace.active.setSidebarWidth(208)');
+  // Stacked in the 72 px rail, each control keeps its size and its own row.
   expect(await page.evaluate(`(() => {
-    const controls = ['machine-status', 'add-project', 'nav-updates', 'nav-limits', 'nav-settings'].map(name => document.querySelector('[data-testid="' + name + '"]').getBoundingClientRect());
-    const foot = document.querySelector('.foot').getBoundingClientRect();
-    return controls.every((box, index) => box.width >= 26 && box.right <= foot.right && (!index || box.left >= controls[index - 1].right));
+    const controls = ${JSON.stringify(foot)}.map(name => document.querySelector('${id('app-rail')} .foot [data-testid="' + name + '"]').getBoundingClientRect());
+    const rail = document.querySelector('${id('app-rail')}').getBoundingClientRect();
+    return controls.every((box, index) => box.width >= 26 && box.left >= rail.left && box.right <= rail.right && box.bottom <= innerHeight && (!index || box.top >= controls[index - 1].bottom));
   })()`)).toBe(true);
   const active = await page.evaluate('window.__boiteTest.workspace.active.machineId');
   await page.evaluate(`document.querySelector('${id('nav-settings')}').focus()`);

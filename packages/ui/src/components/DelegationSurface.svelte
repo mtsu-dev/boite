@@ -352,9 +352,9 @@
   .meta { display: grid; justify-items: end; gap: 6px; padding-top: 2px; color: var(--color-muted-foreground); font-size: var(--text-xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .outcome { font-weight: 500; }
   .outcome[data-status='error'], .outcome[data-status='failed'], .outcome[data-status='interrupted'] { color: var(--color-danger); }
-  .outcome[data-status='background'] { color: var(--color-accent); }
+  .outcome[data-status='background'] { color: var(--color-muted-foreground); }
   /* What a subagent at rest waits on, or what ended without waking it. */
-  .note { grid-column: 2 / -1; margin-top: 8px; display: flex; align-items: baseline; gap: 6px; min-width: 0; color: var(--color-accent); font-size: var(--text-xs); }
+  .note { grid-column: 2 / -1; margin-top: 8px; display: flex; align-items: baseline; gap: 6px; min-width: 0; color: var(--color-muted-foreground); font-size: var(--text-xs); }
   .note > .ui-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .note.interrupted { color: var(--color-danger); }
   .note.interrupted > .ui-label { white-space: normal; }

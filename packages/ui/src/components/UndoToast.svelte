@@ -78,7 +78,7 @@
 
   .undo {
     flex: none;
-    color: var(--color-accent);
+    color: var(--color-foreground);
     font-weight: 600;
   }
 </style>

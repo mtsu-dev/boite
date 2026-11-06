@@ -46,25 +46,25 @@
     gap: 10px;
     margin: 6px 0;
     font-size: var(--text-xs);
-    color: var(--color-accent);
+    color: var(--color-muted-foreground);
   }
   .rule {
     flex: 1;
     height: 1px;
-    background: color-mix(in oklch, var(--color-accent) 45%, transparent);
+    background: var(--color-edge);
   }
   /* Not said yet: the rule is drawn, not ruled. */
   .pending .rule {
     height: 0;
     background: none;
-    border-top: 1px dashed color-mix(in oklch, var(--color-accent) 45%, transparent);
+    border-top: 1px dashed var(--color-edge);
   }
   .label {
     flex: none;
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    color: var(--color-accent);
+    color: var(--color-muted-foreground);
     font-size: var(--text-xs);
     font-weight: 600;
   }
@@ -79,9 +79,9 @@
     white-space: pre-line;
     margin: 0 0 8px;
     padding: 8px 12px;
-    border-left: 2px solid var(--color-accent);
+    border-left: 2px solid var(--color-edge);
     border-radius: var(--radius-sm);
-    background: var(--color-accent-soft);
+    background: var(--color-surface-2);
     color: var(--color-muted-foreground);
     font-size: var(--text-xs);
     white-space: pre-wrap;

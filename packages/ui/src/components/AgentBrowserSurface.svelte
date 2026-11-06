@@ -234,7 +234,7 @@
   .start { background: var(--color-surface); gap: 12px; border-top: 0; }
   .start .muted { max-width: 360px; }
   .start .omnibox { display: flex; align-items: center; gap: 6px; width: min(440px, 100%); padding: 4px 4px 4px 14px; border: 1px solid var(--color-border); border-radius: var(--radius-full); background: var(--color-surface-2); }
-  .start .omnibox:focus-within { border-color: color-mix(in srgb, var(--color-accent) 60%, var(--color-edge)); box-shadow: 0 0 0 3px var(--color-accent-soft); }
+  .start .omnibox:focus-within { border-color: var(--color-muted-foreground); }
   .start input { flex: 1; min-width: 0; height: var(--control-sm); padding: 0; border: 0; background: transparent; box-shadow: none; font-size: var(--text-sm); outline: none; }
   .start .primary { border-radius: var(--radius-full); padding: 0 14px; }
   .failure { color: var(--color-danger); font-size: var(--text-sm); }

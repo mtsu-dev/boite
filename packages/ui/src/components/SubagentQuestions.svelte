@@ -33,7 +33,7 @@
     margin: 0;
     padding: 6px 8px;
     text-align: left;
-    color: var(--color-accent);
+    color: var(--color-live);
     border-radius: var(--radius-sm);
   }
   .subagent-question :global(svg) { flex: none; }

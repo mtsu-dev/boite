@@ -204,7 +204,7 @@
 
   .head { display: flex; align-items: center; gap: 6px; min-width: 0; }
   .head .muted { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-  .glyph { display: inline-flex; flex: none; color: var(--color-accent); }
+  .glyph { display: inline-flex; flex: none; color: var(--color-muted-foreground); }
 
   .reason { margin: 0; font-weight: 500; white-space: pre-wrap; overflow-wrap: anywhere; }
 
@@ -223,7 +223,7 @@
   .name { min-width: 0; overflow-wrap: anywhere; }
   .values { display: inline-flex; align-items: center; gap: 8px; color: var(--color-subtle); min-width: 0; }
   .old { color: var(--color-muted-foreground); text-decoration: line-through; overflow-wrap: anywhere; }
-  .new { color: var(--color-accent); font-weight: 600; overflow-wrap: anywhere; }
+  .new { color: var(--color-foreground); font-weight: 600; overflow-wrap: anywhere; }
 
   .picture { display: inline-flex; }
   .picture.old { opacity: 0.55; }
@@ -251,7 +251,7 @@
   }
   .row input { flex: none; margin: 0; }
   .action { flex: none; color: var(--color-subtle); }
-  .project { min-width: 0; color: var(--color-accent); font-weight: 600; overflow-wrap: anywhere; }
+  .project { min-width: 0; color: var(--color-foreground); font-weight: 600; overflow-wrap: anywhere; }
   .row.removal .project { color: var(--color-danger); }
   .row:has(input:not(:checked)) .project { color: var(--color-muted-foreground); font-weight: 400; text-decoration: line-through; }
 

@@ -68,7 +68,7 @@
 <style>
   .scope { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 20px; margin-bottom: 20px; border-bottom: 1px solid var(--color-border); }
   .chip { flex: 1; justify-content: center; min-width: max-content; }
-  .chip.picked { border-color: var(--color-accent); color: var(--color-foreground); background: var(--color-active); }
+  .chip.picked { border-color: var(--color-muted-foreground); color: var(--color-foreground); background: var(--color-active); }
   .customize { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
   .words { display: flex; align-items: center; gap: 8px; }
   .hint { margin: 0 0 20px; }

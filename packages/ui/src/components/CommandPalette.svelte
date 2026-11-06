@@ -427,17 +427,17 @@
     background: transparent;
   }
 
-  /* The row Enter takes: the accent's wash, a bar on its edge and the Enter glyph, readable in both themes. */
+  /* The row Enter takes: the selection wash, a bar on its edge and the Enter glyph, readable in both themes. */
   .row.selected {
     background: var(--color-accent-soft);
-    box-shadow: inset 2px 0 0 var(--color-accent);
+    box-shadow: inset 2px 0 0 var(--color-muted-foreground);
   }
 
   .enter {
     display: inline-flex;
     flex: none;
     width: 13px;
-    color: var(--color-accent);
+    color: var(--color-foreground);
     opacity: 0;
   }
 

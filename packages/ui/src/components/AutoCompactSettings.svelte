@@ -199,16 +199,16 @@
   .option { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; column-gap: 14px; row-gap: 4px; padding: 14px 16px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-2); transition: border-color var(--dur-2), background var(--dur-2); }
   .option .words { display: contents; }
   label.option { cursor: pointer; }
-  .option.on { border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border)); background: color-mix(in srgb, var(--color-accent) 6%, var(--color-surface-2)); }
+  .option.on { border-color: var(--color-muted-foreground); background: var(--color-active); }
   .icon { display: grid; place-items: center; grid-column: 1; grid-row: 1; width: 34px; height: 34px; border-radius: var(--radius-sm); background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-muted-foreground); transition: color var(--dur-2); }
-  .option.on .icon { color: var(--color-accent); }
+  .option.on .icon { color: var(--color-foreground); }
   .name { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; grid-column: 2; grid-row: 1; color: var(--color-foreground); font-size: var(--text-base); font-weight: 500; }
-  .badge { padding: 1px 7px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--color-accent) 14%, transparent); color: var(--color-accent); font-size: var(--text-xs); font-weight: 600; white-space: nowrap; }
+  .badge { padding: 1px 7px; border-radius: var(--radius-sm); background: var(--color-active); color: var(--color-foreground); font-size: var(--text-xs); font-weight: 600; white-space: nowrap; }
   .option > input { grid-column: 3; grid-row: 1; }
   .size, .field-error { grid-column: 2; }
   .size { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
   .presets { display: flex; flex-wrap: wrap; gap: 6px; }
-  .chip.picked { border-color: var(--color-accent); color: var(--color-foreground); }
+  .chip.picked { border-color: var(--color-muted-foreground); color: var(--color-foreground); }
   .field { display: flex; align-items: center; gap: 8px; }
   input[type='number'] { width: 120px; text-align: right; }
   input[aria-invalid='true'] { border-color: var(--color-danger); }

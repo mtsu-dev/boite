@@ -107,9 +107,9 @@
   .machine.offline {
     color: var(--color-danger);
   }
-  /* A draft left in the box: the accent, so it reads as the user's own work waiting. */
+  /* A draft left in the box: full ink, the user's own work waiting. */
   .draft {
-    color: var(--color-accent);
+    color: var(--color-foreground);
   }
   /* On a phone the line is text: the marks flow with the title and it wraps. */
   .wrap {

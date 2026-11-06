@@ -18,7 +18,7 @@
   import { focusInitial, focusWithin } from '../lib/focus';
   import { touchScreen } from '../lib/device';
   import { ignoreQuestions, noteTyping, repliesOf, replyTarget, sendAnswer } from '../lib/question-reply.svelte';
-  import { emptyBox, returnPrompt, sentPrompts, textEntries, type ComposerState, type SentPrompt } from '../lib/composer-queue';
+  import { emptyBox, returnPrompt, sendNowAction, sentPrompts, type ComposerState, type SentPrompt } from '../lib/composer-queue';
   import { rankItems, type PaletteItem } from '../lib/palette';
   import { clearStash, DRAFT_STASH_KEY, readStash, writeStash } from '../lib/prefs';
   import { claudeKeywords, promptSegments } from '../lib/message-display';
@@ -29,7 +29,7 @@
   import ComposerImageReferences from './ComposerImageReferences.svelte';
   import ComposerBar from './ComposerBar.svelte';
   import ComposerIntent from './ComposerIntent.svelte';
-  import ComposerQueue from './ComposerQueue.svelte';
+  import ComposerQueueRegion from './ComposerQueueRegion.svelte';
   import ComposerSpeechPreview from './ComposerSpeechPreview.svelte';
   import MentionMenu from './MentionMenu.svelte';
   import SlashMenu from './SlashMenu.svelte';
@@ -52,7 +52,6 @@
   let composer = $derived(store.composerStates[key]);
   let hasQueue = $derived(!!(composer?.queued.length || thread?.pendingAnswers?.length));
   let activityRoom = $state(0);
-  const answerEntries = textEntries();
   let text = $derived(composer?.text ?? '');
   let attachments = $derived<Attachment[]>(composer?.attachments ?? []);
   let previewReferences = $derived(composer?.previewReferences ?? []);
@@ -487,16 +486,8 @@
   /** Nothing in the box and nothing on its way into it: what a second Enter needs. */
   let boxEmpty = $derived(text.trim().length === 0 && attachments.length === 0 && previewReferences.length === 0 && !dictating);
 
-  /**
-   * What Send now does to the queue: interrupt the running turn, resume it
-   * after a refusal held it, or nothing while a pending prompt is going out.
-   */
-  let sendNow = $derived<'steer' | 'resume' | null>(
-    !composer?.queued.length || composer.sending || store.connection !== 'ready' || !thread ? null
-      // A refused outbox prompt has its own Send again; one written offline is a turn of its own, not steering.
-      : composer.queued[0]!.request?.failed !== undefined ? null
-      : thread.status === 'running' ? (composer.queued[0]!.request ? null : 'steer') : store.busy ? null : composer.paused ? 'resume' : null
-  );
+  /** What Send now does to the queue: interrupt the running turn, resume a held one, or nothing. */
+  let sendNow = $derived(sendNowAction(composer, thread, store));
 
   /**
    * Send now interrupts the active turn before submitting queued prompts. A queue held after a refusal is resumed too.
@@ -715,21 +706,8 @@
     event.preventDefault(); event.stopPropagation();
   }
 }}>
-  <div class="queue-region" style:padding-bottom={hasQueue ? `${activityRoom}px` : undefined}>
-    {#if thread?.pendingAnswers?.length}
-      <div data-testid="question-queued">
-        <ComposerQueue queued={answerEntries(thread.pendingAnswers)} disabled={true} paused={false} sendNow={null} onrestore={() => {}} onsendnow={() => {}} />
-      </div>
-    {/if}
-    {#if composer && composer.queued.length > 0}
-      <ComposerQueue queued={composer.queued}
-        disabled={composer.sending || text.length > 0 || attachments.length > 0 || previewReferences.length > 0}
-        paused={composer.paused} sending={composer.sending} outgoing={composer.outgoing ?? 0} connected={store.connection === 'ready'} machine={machineLabel} starts={!thread}
-        {sendNow}
-        onrestore={restoreQueued} onremove={(at) => store.removeQueued(key, at)} onretry={(at) => store.retryQueued(key, at)}
-        onsendnow={sendQueuedNow} />
-    {/if}
-  </div>
+  <ComposerQueueRegion {store} {key} {thread} {composer} room={hasQueue ? activityRoom : null} machine={machineLabel} {sendNow}
+    blocked={text.length > 0 || attachments.length > 0 || previewReferences.length > 0} onrestore={restoreQueued} onsendnow={sendQueuedNow} />
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="composer" class:dictating data-testid="composer" tabindex="-1" {ondragover} {ondrop} onkeydown={(event) => {
     if (event.target !== event.currentTarget || event.key !== 'Escape') return;

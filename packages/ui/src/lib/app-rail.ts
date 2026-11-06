@@ -1,20 +1,21 @@
 import type { AgentProfile, AgentStatus, ThreadSummary } from '@boite/contracts';
 import { threadState, type Delegated } from './thread-state';
 
-/** What a bot's picture in the app rail says at its corner. */
-export type RailBotState = 'waiting' | 'failed' | 'working' | 'paused' | 'idle';
+/** How a bot stands, for its picture in the app rail and its row in the phone's bot list. */
+export type RailBotState = 'waiting' | 'failed' | 'working' | 'queued' | 'paused' | 'idle';
 
 /**
- * How a bot stands, read the way the Bots column reads it: its thread's row
- * first, live between two snapshots, then the snapshot's status. `asking` is a
- * question of its thread still open.
+ * How a bot stands: its thread's row first, live between two snapshots, then
+ * the snapshot's status. `asking` is a question of its thread still open.
+ * Paused, by itself or with every bot, it sleeps between the turns you start.
+ * The rail and the bot list both read it, so they never disagree.
  */
 export function railBotState(profile: Pick<AgentProfile, 'status'>, status: AgentStatus | null, thread: Pick<ThreadSummary, 'status'> | null, asking: boolean): RailBotState {
   if (thread?.status === 'running') return asking ? 'waiting' : 'working';
-  if (thread?.status === 'queued') return 'working';
+  if (thread?.status === 'queued') return 'queued';
   if (thread?.status === 'waiting' || asking) return 'waiting';
   const state = status?.state;
-  if (state === 'working' || state === 'queued') return 'working';
+  if (state === 'working' || state === 'queued') return state;
   if (state === 'waiting') return 'waiting';
   if (state === 'error' || status?.problem) return 'failed';
   return profile.status === 'paused' || state === 'paused' ? 'paused' : 'idle';

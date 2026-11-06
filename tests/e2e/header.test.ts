@@ -85,16 +85,17 @@ test('sidebar shortcuts preserve the prompt and file edits, and toggle both pane
   expect(page.errors()).toEqual([]);
 }, 30_000);
 
-test('header and project layout', async () => {
+test('header layout', async () => {
   await capture(process.env.BOITE_CAPTURE_BEFORE ? 'header-before.png' : 'header-expanded.png');
   if (process.env.BOITE_CAPTURE_BEFORE) return;
   expect(await page.evaluate(`document.querySelectorAll('${id('titlebar')}').length`)).toBe(1);
   expect(await page.evaluate(`document.querySelector('${id('titlebar')}').contains(document.querySelector('${id('thread-title')}'))`)).toBe(true);
+  // The bar names the thread alone, over the main column: the project's name left it with the redesign.
+  expect(await page.evaluate(`document.querySelector('${id('header-project')}')`)).toBeNull();
   expect(await page.evaluate(`(() => {
-    const project = document.querySelector('${id('header-project')}').getBoundingClientRect();
     const title = document.querySelector('${id('thread-title')}').getBoundingClientRect();
     const sidebar = document.querySelector('${id('sidebar')}').getBoundingClientRect();
-    return project.right <= title.left && title.left >= sidebar.right;
+    return title.left >= sidebar.right;
   })()`)).toBe(true);
   await page.send('Emulation.setDeviceMetricsOverride', { width: 880, height: 820, deviceScaleFactor: 1, mobile: false });
   await page.evaluate('window.__boiteTest.workspace.active.setSidebarWidth(440)');

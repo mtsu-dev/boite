@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, expect, test } from 'bun:test';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp.ts';
-import { showThreadView } from './lib/views.ts';
+import { closeDisplayOptions, openProjectFilter, showThreadView } from './lib/views.ts';
 import { startUi } from './lib/ui.ts';
 
 let server: { close(): Promise<void> };
@@ -155,15 +155,17 @@ test('a merged PR arrives in Done and project filtering and restoration follow t
   await page.waitFor(`document.querySelector(${JSON.stringify(inGroup('done', main, threadId))})`);
   expect(await page.evaluate(`document.querySelector(${JSON.stringify(inGroup('done', main, threadId))}).querySelector('${id('done-thread-pr')}').getAttribute('href')`)).toBe('https://github.com/example/repo/pull/407');
   await capture('recent-done-desktop.png');
-  await page.click(id('project-filter'));
+  await openProjectFilter(page);
   await page.evaluate(`Array.from(document.querySelectorAll('${id('project-filter-menu')} [data-value]')).find(e => e.dataset.value === ${JSON.stringify(JSON.stringify(['http://builder.test', 'p-boite']))}).click()`);
+  await closeDisplayOptions(page);
   // The other machine has no done thread in this project, only its seeded archive.
   await page.waitFor(`!document.querySelector('${id('recent-done')}')`);
   await page.click(id('recent-archived-toggle'));
   await page.waitFor(`document.querySelectorAll('${id('done-thread')}').length === 1 && document.querySelector(${JSON.stringify(inGroup('archived', remote, 't-parser'))})`);
   expect(await page.evaluate(`!!document.querySelector(${JSON.stringify(desktopRow(remote))})`)).toBe(true);
-  await page.click(id('project-filter'));
+  await openProjectFilter(page);
   await page.click(`${id('project-filter-menu')} [data-value=all]`);
+  await closeDisplayOptions(page);
   await page.waitFor(`document.querySelector(${JSON.stringify(doneRow(main, threadId))})`);
   await page.click(`${doneRow(main, threadId)} ${id('done-thread-restore')}`);
   await page.waitFor(`document.querySelector(${JSON.stringify(desktopRow(main, threadId))})`);

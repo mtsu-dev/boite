@@ -2,7 +2,7 @@ import { mobileAction } from './lib/mobile.ts';
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp';
-import { showThreadView } from './lib/views.ts';
+import { closeDisplayOptions, openProjectFilter, showThreadView } from './lib/views.ts';
 import { startDevUi } from './lib/ui.ts';
 let server: { close(): Promise<void> };
 let page: BrowserPage;
@@ -52,14 +52,17 @@ test('connecting another machine keeps thread rows at their single-machine heigh
   await page.evaluate(`document.querySelector('${id('project-row')}').blur()`);
   await page.waitFor(swapped('1', '0'));
   await showThreadView(page, 'recent');
-  await page.waitFor(`Array.from(document.querySelectorAll('${id('thread-row')}')).every(e => e.querySelector('.headline .machine[title][aria-label]'))`);
-  await page.click(id('project-filter'));
+  // Recent's rows are compact: the project's tile leads each one, and neither the machine nor the project's name repeats.
+  await page.waitFor(`Array.from(document.querySelectorAll('${id('thread-row')}')).every(e => e.querySelector('.headline ${id('project-tile')}') && !e.querySelector('.machine'))`);
+  await openProjectFilter(page);
   await page.evaluate(`Array.from(document.querySelectorAll('${id('project-filter-menu')} [data-value]')).find(e => e.dataset.value === JSON.stringify(['http://builder.test', 'p-notes'])).click()`);
   await page.waitFor(`document.querySelectorAll('${id('thread-row')}').length === 1`);
+  await closeDisplayOptions(page);
   expect(await height()).toBeCloseTo(single, 1);
   await capture('readability-thread-filtered');
-  await page.click(id('project-filter'));
+  await openProjectFilter(page);
   await page.click(`${id('project-filter-menu')} [data-value=all]`);
+  await closeDisplayOptions(page);
   await showThreadView(page, 'projects');
   await page.evaluate(`globalThis.__boiteTest.workspace.active.setSidebarWidth(208)`);
   await page.waitFor(`document.querySelector('${id('sidebar')}').getBoundingClientRect().width <= 210`);
@@ -80,7 +83,8 @@ test('thread metadata, message identity and expandable trace fit a narrow panel'
   await page.waitFor(`document.querySelectorAll('${id('thread-pr')}').length === 2`);
   expect(await page.evaluate(`document.querySelector('${id('usage-pill')}') === null`)).toBe(true);
   expect(await page.evaluate(`Array.from(document.querySelectorAll('.metadata')).every(e => !e.textContent.includes('No PR') && !e.textContent.includes('My computer') && !e.textContent.includes('Builder'))`)).toBe(true);
-  expect(await page.evaluate(`Array.from(document.querySelectorAll('${id('thread-pr')}')).every(e => (e.closest('.thread').querySelector('.machine') || e.closest('${id('project')}')?.querySelector('${id('project-host')}')) && getComputedStyle(e).textDecorationLine.includes('underline'))`)).toBe(true);
+  // A row's pull request is a link in the row's quiet ink, its machine named once by the card: no underline since the redesign.
+  expect(await page.evaluate(`Array.from(document.querySelectorAll('${id('thread-pr')}')).every(e => (e.closest('.thread').querySelector('.machine') || e.closest('${id('project')}')?.querySelector('${id('project-host')}')) && !!e.getAttribute('href'))`)).toBe(true);
   await page.evaluate(`window.__openedPr = null; window.open = (url) => { window.__openedPr = url; return null; }`);
   const prUrl = await page.evaluate<string>(`document.querySelector('${id('thread-pr')}').href`);
   await page.click(id('thread-pr'));
@@ -297,9 +301,12 @@ test('PR links appear during work without remounting and disappear after a move 
   expect(await prBeforeBranch(id('sidebar'))).toBe(true);
   await capture('pr-links-desktop');
   await showThreadView(page, 'recent');
-  await page.waitFor(`document.querySelector('${id('sidebar')} ${id('thread-project')}')`);
-  expect(await prBeforeBranch(id('sidebar'))).toBe(true);
+  // Recent lists compact rows without the project cards: a tile, the title and one marker, no pull request line.
+  await page.waitFor(`!document.querySelector('${id('sidebar')} section${id('project')}') && document.querySelector('${id('sidebar')} ${id('thread-row')}') && !document.querySelector('${id('sidebar')} ${id('thread-pr')}')`);
   await capture('pr-links-recent');
+  // The cards carry the pull request: the live one is followed there.
+  await showThreadView(page, 'projects');
+  await page.waitFor(`document.querySelector('${id('sidebar')} section${id('project')} ${id('thread-pr')}')`);
   await page.evaluate(`(() => {
     const store = globalThis.__boiteTest.workspace.active, client = store.client;
     window.__prOriginal = client.call.bind(client);

@@ -291,9 +291,9 @@
 .level { grid-column: 2; white-space: nowrap; }
 .speed { grid-column: 1; justify-self: start; display: inline-flex; align-items: center; gap: 5px; height: 24px; margin-left: -4px; padding: 0 6px; border: none; border-radius: var(--radius-md); background: transparent; font-size: var(--text-xs); font-weight: 500; color: var(--color-muted-foreground); transition: color var(--dur-2), background var(--dur-2), box-shadow var(--dur-2); }
 .speed :global(svg) { transition: transform var(--dur-2) var(--ease-out-quint); }
-.speed:hover { color: var(--color-accent); background: var(--color-accent-soft); box-shadow: 0 0 12px var(--color-accent-soft); }
+.speed:hover { color: var(--color-foreground); background: var(--color-hover); }
 .speed:hover :global(svg) { transform: rotate(-12deg) scale(1.16); }
-.speed.active { color: var(--color-accent); background: var(--color-accent-soft); }
+.speed.active { color: var(--color-foreground); background: var(--color-active); }
 .speed:active :global(svg) { transform: scale(.9); }
 .agent-default { grid-column: 3; justify-self: end; margin: 0 -4px 0 0; }
 .track { padding: 3px 12px; cursor: pointer; touch-action: none; height: 30px; background: var(--color-edge); border-radius: 999px; }

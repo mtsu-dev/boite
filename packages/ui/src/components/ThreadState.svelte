@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Bot, Check, CircleAlert, CloudOff, GitPullRequest, LoaderCircle, Radar } from '@lucide/svelte';
+  import { Check, CircleAlert, CloudOff, GitPullRequest, LoaderCircle, Radar } from '@lucide/svelte';
   import { pullRequestWatchWaits, type ThreadSummary } from '@boite/contracts';
   import { backgroundLabel } from '../lib/background';
   import { secondClock } from '../lib/clock.svelte';
@@ -10,8 +10,8 @@
 
   /**
    * `subagents`: the thread's delegated agents at work or asking, from its
-   * store. Their count rides a chip beside the state, in every state, so a
-   * parent at work says it has children on a computer and a phone alike.
+   * store. They decide the state (delegating, or waiting once one asks); their
+   * count stays in the tooltip, the thread view shows them.
    * `away`: its machine is not connected, so a turn it last saw at work may have
    * ended long ago. The row says so instead of spinning and counting time.
    * `mark`: the Recent list's one marker instead of words: a dot for the
@@ -71,19 +71,6 @@
     }
     return strings.sidebar.state[kind];
   });
-  /**
-   * The sub-agents chip: how many work, or, when none does, how many still ask.
-   * A child asking turns it to the waiting colour and says so in its title.
-   */
-  let chip = $derived.by(() => {
-    const count = subagents?.count ?? 0, asking = subagents?.asking ?? 0;
-    if (count === 0 && asking === 0) return null;
-    const many = (one: string, other: string, n: number) => n === 1 ? one : fill(other, { count: String(n) });
-    const atWork = count > 0 ? many(strings.sidebar.state.subagentsOne, strings.sidebar.state.subagentsMany, count) : null;
-    const asks = asking > 0 ? many(strings.sidebar.state.subagentsAskingOne, strings.sidebar.state.subagentsAskingMany, asking) : null;
-    const shown = count > 0 ? count : asking;
-    return { shown, asking: asking > 0, text: String(shown), label: [atWork, asks].filter(Boolean).join('\n') };
-  });
 </script>
 
 {#if stale && kind !== null}
@@ -102,13 +89,12 @@
 {:else}
   <span class="when state {kind}" data-testid="thread-state" data-state={kind} title={label} aria-label={label}>
     {#if kind === 'working'}<LoaderCircle size={11} class="spinner" aria-hidden="true" /><span class="ui-label">{spent ?? strings.sidebar.state.working}</span>
-    {:else if kind === 'delegating'}<span class="ui-label" data-testid="thread-state-text">{spent ?? strings.sidebar.state.delegating}</span>
+    {:else if kind === 'delegating'}<span class="dot pulse" aria-hidden="true"></span><span class="ui-label" data-testid="thread-state-text">{spent ?? strings.sidebar.state.delegating}</span>
     {:else if kind === 'monitoring'}<Radar size={11} class="pulse" aria-hidden="true" /><span class="ui-label">{spent ?? strings.sidebar.state.monitoring}</span>
     {:else if kind === 'background'}<span class="dot pulse" aria-hidden="true"></span><span class="ui-label">{spent ?? strings.sidebar.state.background}</span>
     {:else if kind === 'watching'}<GitPullRequest size={11} class="pulse" aria-hidden="true" /><span class="ui-label">{spent ?? strings.sidebar.state.watching}</span>
     {:else if kind === 'interrupted'}<CircleAlert size={11} aria-hidden="true" /><span class="ui-label">{strings.sidebar.state.interrupted}</span>
     {:else}<span class="ui-label">{label}</span>{/if}
-    {#if chip}<span class="agents" class:asking={chip.asking} class:pulse={kind === 'delegating'} data-testid="thread-subagents" data-count={chip.shown} role="img" title={chip.label} aria-label={chip.label}><Bot size={10} aria-hidden="true" /><span class="ui-label">{chip.text}</span></span>{/if}
   </span>
 {/if}
 
@@ -158,21 +144,7 @@
     color: var(--color-muted-foreground);
   }
   .delegating :global(svg), .monitoring :global(svg), .background :global(svg), .watching :global(svg), .background .dot { color: var(--color-accent); }
-  .background .dot { background: var(--color-accent); }
-  /* The sub-agents chip: the state's own colour on a faint wash of it, the waiting colour once a child asks; the robot is the Threads badge's and stands for the word, so the chip is only the robot and the number. */
-  .agents {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    height: 16px;
-    padding: 0 5px;
-    margin-left: 2px;
-    border-radius: var(--radius-sm);
-    background: color-mix(in srgb, currentColor 14%, transparent);
-  }
-  .agents.asking {
-    color: var(--color-live);
-  }
+  .background .dot, .delegating .dot { background: var(--color-accent); }
   .dot {
     flex: none;
     width: 6px;
@@ -189,7 +161,7 @@
     flex: none;
     animation: spin 1s steps(60) infinite var(--loops);
   }
-  /* Waiting on its sub-agents, the chip itself breathes: no second icon beside it. */
+  /* Work the turn left behind breathes instead of spinning. */
   .state :global(.pulse) {
     flex: none;
     animation: pulse 1.6s var(--loop-ease-out-quint-48) infinite var(--loops);

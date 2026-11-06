@@ -181,7 +181,7 @@
     text-decoration: none;
     border-radius: var(--radius-sm);
   }
-  .pr.merged { color: var(--color-accent); }
+  .pr.merged { color: var(--color-success); }
   .pr.closed { color: var(--color-danger); }
   .pr:hover span, .pr:focus-visible span { text-decoration: underline; text-underline-offset: 3px; }
   /* Restoring takes the time's place under the pointer, the way a thread row shows its menu. */

@@ -170,8 +170,8 @@
   }
   /* The row left behind while its card travels: an empty slot, so the list does not jump. */
   .thread.dragging {
-    background: color-mix(in srgb, var(--color-accent) 6%, transparent);
-    outline: 1px dashed color-mix(in srgb, var(--color-accent) 55%, transparent);
+    background: var(--color-hover);
+    outline: 1px dashed var(--color-edge);
     outline-offset: -1px;
   }
   .thread.dragging > * {
@@ -200,6 +200,14 @@
     gap: 4px;
     border-radius: inherit;
     background: transparent;
+    container: thread-row / inline-size;
+  }
+  /* The title wins: the pin shows on a wide row, or on the one under the pointer. */
+  .row :global(.headline .pin) { display: none; }
+  .thread:hover .row :global(.headline .pin),
+  .thread:focus-within .row :global(.headline .pin) { display: inline-flex; }
+  @container thread-row (min-width: 340px) {
+    .row :global(.headline .pin) { display: inline-flex; }
   }
   /* The PR line sits over the row's bottom padding, so the whole card stays one target. */
   .meta .row {
@@ -215,14 +223,14 @@
   .row:active:not(:disabled) {
     transform: none;
   }
-  /* A move waiting for the turn's end: the accent, like the marker the move leaves in the chat. */
+  /* A move waiting for the turn's end, like the marker the move leaves in the chat. */
   .pending {
     display: flex;
     align-items: center;
     gap: 4px;
     min-width: 0;
     font-size: var(--text-xs);
-    color: var(--color-accent);
+    color: var(--color-muted-foreground);
   }
   .pending span {
     overflow: hidden;

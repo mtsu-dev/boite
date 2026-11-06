@@ -99,7 +99,7 @@
   }
   :global(.request) + .request { border-top: 1px solid var(--color-border); }
   :global(h2) + .request { padding-top: 0; }
-  .kicker { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--color-accent); font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+  .kicker { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
   .request:not(.incoming) .kicker { color: var(--color-muted-foreground); }
   .kicker .ui-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .age { margin-left: auto; flex: none; color: var(--color-subtle); font-weight: 500; text-transform: none; letter-spacing: 0; }
@@ -121,8 +121,8 @@
   .sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-muted-foreground); font-size: var(--text-xs); }
   .by { padding: 2px 8px; border-radius: var(--radius-full); background: var(--color-surface-3); color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; }
   .stage { justify-self: start; margin: 0; padding: 1px 8px; border-radius: var(--radius-full); background: var(--color-surface-3); color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; }
-  .stage[data-stage='owner'] { background: var(--color-accent-soft); color: var(--color-accent); }
-  .by[data-by='bot'], .by[data-by='concierge'] { background: var(--color-accent-soft); color: var(--color-accent); }
+  .stage[data-stage='owner'] { background: var(--color-active); color: var(--color-foreground); }
+  .by[data-by='bot'], .by[data-by='concierge'] { background: var(--color-active); color: var(--color-foreground); }
   .by[data-by='match'] { background: color-mix(in oklch, var(--color-success) 14%, transparent); color: var(--color-success); }
   @media (prefers-reduced-motion: reduce) { .request { animation: none; } }
   :global(html[data-motion='reduced']) .request { animation: none; }

@@ -12,7 +12,7 @@
    * A burst of agent mail in the timeline: one row per conversation it went to
    * or came from, in the order they started, with what was last said. A row
    * says first which way the burst went: what this agent sent sits on its side,
-   * what reached it on the right in the accent, as in the discussion itself. A
+   * what reached it on the right, as in the discussion itself. A
    * row opens that discussion in the panel, on the burst's first letter. Two
    * lines a row: which way and with whom, then what was last said.
    */
@@ -91,19 +91,19 @@
   }
   .discussion:hover { background: var(--color-surface-3); border-color: var(--color-edge); color: var(--color-foreground); }
   .discussion:active { transform: scale(0.99); }
-  /* What reached this agent: the user's side, in the accent, its corner toward the right. */
-  .discussion.in { align-self: flex-end; border-color: color-mix(in oklch, var(--color-accent) 55%, transparent); border-bottom-left-radius: var(--radius-lg); border-bottom-right-radius: var(--radius-sm); background: var(--color-accent-soft); }
-  .discussion.in:hover { background: color-mix(in oklch, var(--color-accent) 18%, var(--color-surface-2)); border-color: var(--color-accent); }
+  /* What reached this agent: the user's side, its corner toward the right. */
+  .discussion.in { align-self: flex-end; border-color: var(--color-edge); border-bottom-left-radius: var(--radius-lg); border-bottom-right-radius: var(--radius-sm); background: var(--color-accent-soft); }
+  .discussion.in:hover { background: var(--color-hover); border-color: var(--color-muted-foreground); }
   .discussion.resident { border-left: 2px solid var(--color-resident); }
   .kicker { flex: none; max-width: 40%; min-width: 0; display: inline-flex; align-items: center; align-self: center; gap: 5px; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; }
   .kicker :global(svg) { flex: none; }
   .kicker > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .in .kicker { color: var(--color-accent); }
+  .in .kicker { color: var(--color-muted-foreground); }
   .body { min-width: 0; display: grid; gap: 1px; }
   /* The title keeps its line; the tag and the place wrap under it when the row is narrow. */
   .top { min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; }
   .title { flex: 0 1 auto; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-foreground); font-weight: 600; }
-  .tag { flex: none; padding: 1px 6px; border-radius: var(--radius-full); background: var(--color-accent-soft); color: var(--color-accent); font-size: var(--text-xs); font-weight: 500; }
+  .tag { flex: none; padding: 1px 6px; border-radius: var(--radius-full); background: var(--color-active); color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 500; }
   .resident .tag { background: var(--color-resident-soft); color: var(--color-resident); }
   .where { flex: 1 1 0; min-width: 6ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); }
   .preview { min-width: 0; display: flex; align-items: center; gap: 4px; font-size: var(--text-xs); }
@@ -111,7 +111,7 @@
   .preview > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .counts { display: flex; gap: 6px; font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
   .count { display: inline-flex; align-items: center; gap: 2px; }
-  .count.in { color: var(--color-accent); }
+  .count.in { color: var(--color-foreground); }
   .line { display: inline-flex; align-items: center; gap: 6px; height: auto; min-height: 0; padding: 4px 10px; border: 0; border-left: 2px solid var(--color-border); border-radius: var(--radius-sm); background: transparent; color: var(--color-muted-foreground); font-size: var(--text-xs); }
   .line:hover { color: var(--color-foreground); background: var(--color-hover); }
   @media (max-width: 720px) {

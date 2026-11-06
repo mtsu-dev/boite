@@ -161,9 +161,10 @@ joins again by itself for up to 15 minutes, with **Stop** to end it.
 
 ## Projects and requests
 
-A pending incoming request appears at the top of the app, with the contact,
-receiving machine and request text. Dismissing the notice leaves a bell with
-the pending count. Either opens the request on its owning machine, including
+A pending incoming request appears as a bell in the app rail (a phone keeps
+it at the top of the app), with the contact, receiving machine and request
+text in its card. Dismissing the card leaves the bell with the pending
+count. Either opens the request on its owning machine, including
 from Settings and on a phone. Reconnection refreshes requests even when the
 Contacts page is closed.
 

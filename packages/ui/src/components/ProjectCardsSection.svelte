@@ -33,6 +33,6 @@
   .later { border-top: 1px solid var(--color-border); }
   .cards { padding-top: 2px; }
   .glyph { display: inline-flex; flex: none; }
-  .working .glyph { color: var(--color-accent); }
+  .working .glyph { color: var(--color-muted-foreground); }
   @media (max-width: 720px) { .working { margin-bottom: 12px; } }
 </style>

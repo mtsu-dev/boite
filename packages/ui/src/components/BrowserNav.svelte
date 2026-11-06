@@ -46,7 +46,7 @@
   .nav > :global(button) { flex: none; }
   .omnibox { flex: 1; min-width: 0; display: flex; align-items: center; height: var(--control-sm); margin: 0 4px; padding: 0 10px 0 0; border: 1px solid transparent; border-radius: var(--radius-full); background: var(--color-surface-2); color: var(--color-muted-foreground); cursor: text; transition: border-color var(--dur-2) var(--ease-out-quint); }
   .omnibox:hover { border-color: var(--color-border); }
-  .omnibox:focus-within { border-color: color-mix(in srgb, var(--color-accent) 60%, var(--color-edge)); box-shadow: 0 0 0 3px var(--color-accent-soft); }
+  .omnibox:focus-within { border-color: var(--color-muted-foreground); }
   .omnibox > :global(input) { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; color: var(--color-foreground); font-size: var(--text-sm); text-overflow: ellipsis; outline: none; }
   .site { display: flex; align-items: center; flex: none; align-self: stretch; padding: 0 6px 0 10px; line-height: 0; cursor: text; }
   .omnibox.secure .site { color: var(--color-foreground); opacity: .7; }

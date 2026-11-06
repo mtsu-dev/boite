@@ -27,9 +27,9 @@
   .context-mode {
     gap: 4px;
     flex: none;
-    border-color: color-mix(in oklch, var(--color-accent) 40%, transparent);
+    border-color: var(--color-edge);
     background: var(--color-accent-soft);
-    color: var(--color-accent);
+    color: var(--color-muted-foreground);
     font-size: var(--text-xs);
     font-weight: 600;
     white-space: nowrap;

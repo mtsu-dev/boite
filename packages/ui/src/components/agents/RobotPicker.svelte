@@ -76,7 +76,7 @@
   .options.swatches { display: grid; grid-template-columns: repeat(9, 28px); }
   .option { width: auto; height: auto; padding: 3px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-2); }
   .option.family { gap: 6px; padding: 3px 10px 3px 3px; font-size: var(--text-sm); font-weight: 500; }
-  .option.on, .swatch.on { border-color: var(--color-accent); box-shadow: 0 0 0 2px var(--color-accent-soft); }
+  .option.on, .swatch.on { border-color: var(--color-foreground); box-shadow: 0 0 0 2px var(--color-active); }
   .thumb { width: 34px; height: 34px; display: block; border-radius: 50%; overflow: hidden; flex: none; }
   .swatch { width: 28px; height: 28px; padding: 0; border-radius: 50%; border: 2px solid var(--color-surface); background: var(--swatch); }
   @media (max-width: 720px) {

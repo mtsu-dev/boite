@@ -72,7 +72,7 @@
   video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity var(--dur-2); }
   video.live { opacity: 1; }
   /* Where to hold the code: a square the width of the view, never taller than it. */
-  .frame { position: relative; width: min(70%, 280px); aspect-ratio: 1; border: 2px solid var(--color-accent); border-radius: var(--radius-lg); box-shadow: 0 0 0 100vmax var(--color-scrim); }
+  .frame { position: relative; width: min(70%, 280px); aspect-ratio: 1; border: 2px solid var(--color-foreground); border-radius: var(--radius-lg); box-shadow: 0 0 0 100vmax var(--color-scrim); }
   .status { position: absolute; left: 16px; right: 16px; margin: 0; text-align: center; font-size: var(--text-base); line-height: 1.5; color: var(--color-foreground); overflow-wrap: anywhere; }
   .status[role=status] { color: var(--color-muted-foreground); }
   .hint { flex: none; margin: 0; padding: 14px 20px 18px; text-align: center; font-size: var(--text-sm); line-height: 1.5; color: var(--color-muted-foreground); }

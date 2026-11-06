@@ -396,17 +396,17 @@
     .display { display: flex; align-self: stretch; align-items: center; flex: none; border-left: 1px solid var(--color-border); }
     .display :global(.trigger) { width: var(--touch-target); height: var(--touch-target); border-radius: 0 var(--radius-lg) var(--radius-lg) 0; }
     .search input { flex: 1; min-width: 0; border: 0; background: transparent; min-height: 44px; font-size: 16px; padding: 8px 0; }
-    .search:focus-within { border-color: var(--color-accent); }
+    .search:focus-within { border-color: var(--color-muted-foreground); }
     .search input:focus { outline: none; }
     .filters { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
     .filters :global(.menu) { min-width: 0; max-width: 100%; }
     .at-work, .filters :global(.trigger) { display: inline-flex; gap: 6px; align-items: center; height: auto; min-height: var(--touch-target); max-width: 100%; padding: 0 12px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface-2); font-size: var(--text-sm); font-weight: 500; }
-    .at-work { color: var(--color-accent); }
+    .at-work { color: var(--color-foreground); }
     .filters :global(.trigger) { color: var(--color-foreground); }
     .filters :global(.trigger svg) { flex: none; color: var(--color-muted-foreground); }
     .filters :global(.trigger .ui-label) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .filters .filter-machine { color: var(--color-muted-foreground); font-weight: 400; }
-    .at-work.on { border-color: var(--color-accent); background: var(--color-surface); }
+    .at-work.on { border-color: var(--color-muted-foreground); background: var(--color-surface); }
     .brand-icon { flex: none; border-radius: var(--radius-md); }
     .back { position: relative; flex: none; }
     .waiting-mark { position: absolute; top: 9px; right: 8px; width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--color-live); box-shadow: 0 0 0 2px var(--color-background); }
@@ -438,7 +438,7 @@
     .swipe { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; width: 76px; height: 100%; padding: 0 6px; border: 0; border-radius: 0; font-size: 11px; font-weight: 500; }
     .swipe .ui-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .swipe.pin { background: var(--color-surface-3); color: var(--color-foreground); }
-    .swipe.archive { background: var(--color-accent); color: var(--color-accent-ink); }
+    .swipe.archive { background: var(--color-surface-3); color: var(--color-foreground); }
     .row-body { position: relative; display: flex; align-items: center; padding-right: 4px; touch-action: pan-y; transform: translateX(var(--swipe, 0px)); transition: transform var(--dur-3) var(--ease-out-quint); background: var(--color-background); }
     .project-group .row-body { background: var(--color-surface); }
     .row-body:global(.dragging) { transition: none; }

@@ -18,7 +18,7 @@ afterAll(async () => { await page?.close(); await server?.close(); }, 30_000);
 
 test('text and icons share a vertical centre across reading fonts, menus and phone controls', async () => {
   const pairs: [string, string][] = [
-    ['[data-testid="header-project"]', '[data-testid="header-project"] > span:last-child'],
+    ['[data-testid="thread-title"]', '[data-testid="thread-title"] > .ui-label'],
     ['[data-testid="composer-picker"]', '[data-testid="composer-picker"] .label'],
     ['[data-testid="composer-effort"]', '[data-testid="composer-effort"]'],
     ['[data-testid="composer-mode"]', '[data-testid="composer-mode"]'],

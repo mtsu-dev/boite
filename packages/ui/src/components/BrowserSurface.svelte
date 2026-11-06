@@ -323,7 +323,7 @@
 
 <style>
   .annotation-notice { margin: 0; padding: 8px 12px; font-size: var(--text-sm); color: var(--color-muted-foreground); border-bottom: 1px solid var(--color-border); }
-  .chrome button[aria-pressed="true"] { color: var(--color-accent); background: var(--color-accent-soft); }
+  .chrome button[aria-pressed="true"] { color: var(--color-foreground); background: var(--color-active); }
   .browser-surface {
     position: relative;
     display: flex;
@@ -406,7 +406,7 @@
   .problem { margin: 0; padding: 8px 12px; color: var(--color-danger); font-size: var(--text-sm); overflow-wrap: anywhere; }
   .profile { flex: none; display: flex; min-width: 0; max-width: 40%; }
   .profile :global(.trigger) { gap: 4px; min-width: 0; }
-  .profile.named :global(.trigger) { width: auto; padding: 0 8px; color: var(--color-accent); background: var(--color-accent-soft); }
+  .profile.named :global(.trigger) { width: auto; padding: 0 8px; color: var(--color-foreground); background: var(--color-active); }
   .profile.private :global(.trigger) { color: var(--color-foreground); background: var(--color-surface-2); }
   .profile-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); font-weight: 500; }
   /* A narrow bar keeps the address: the badge shows its icon and colour, its label names the profile. */

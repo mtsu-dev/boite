@@ -115,7 +115,7 @@
   .logo { display: grid; place-items: center; flex: none; width: 38px; height: 38px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface-3); }
   .identity { flex: 1; min-width: 0; display: grid; gap: 3px; }
   .bell { flex: none; align-self: flex-start; color: var(--color-muted-foreground); }
-  .bell.set { color: var(--color-accent); }
+  .bell.set { color: var(--color-foreground); }
   .bell[aria-expanded='true'] { background: var(--color-active); }
   header strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; font-size: var(--text-md); }
   .checked { display: flex; align-items: center; gap: 5px; }

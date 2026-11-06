@@ -256,7 +256,7 @@
 <style>
   .update-trigger { position: relative; flex: none; }
   .update-trigger.lit { color: var(--color-foreground); }
-  .dot { position: absolute; width: 6px; height: 6px; right: 3px; top: 3px; border-radius: 50%; background: var(--color-accent); box-shadow: 0 0 0 2px var(--color-frame); }
+  .dot { position: absolute; width: 6px; height: 6px; right: 3px; top: 3px; border-radius: 50%; background: var(--color-live); box-shadow: 0 0 0 2px var(--color-frame); }
   .update-trigger.busy .dot { animation: pulse 1.4s var(--ease-out-quint) infinite var(--loops); }
 
   .updates-card { display: flex; flex-direction: column; width: 336px; max-width: calc(100vw - 24px); padding: 0; color: var(--color-foreground); background: var(--color-surface-2); border: 1px solid var(--color-edge); border-radius: var(--radius-lg); box-shadow: var(--shadow-e2); overflow: hidden; transform-origin: bottom left; animation: pop var(--dur-2) var(--ease-out-quint); }
@@ -264,7 +264,7 @@
   .updates-card.closing { animation-name: pop-out; pointer-events: none; }
 
   header { display: flex; align-items: center; gap: 10px; padding: 12px 14px 10px; }
-  .glyph { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: var(--radius-md); color: var(--color-accent); background: var(--color-accent-soft); transition: color var(--dur-2), background-color var(--dur-2); }
+  .glyph { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: var(--radius-md); color: var(--color-foreground); background: var(--color-active); transition: color var(--dur-2), background-color var(--dur-2); }
   .glyph.busy :global(svg) { animation: breathe 1.6s ease-in-out infinite var(--loops); }
   .glyph.done { color: var(--color-success); background: color-mix(in oklch, var(--color-success) 16%, transparent); }
   .glyph.done :global(svg) { animation: pop var(--dur-2) var(--ease-out-quint); }

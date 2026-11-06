@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
-  import { ArrowLeft, Bot } from '@lucide/svelte';
+  import { ArrowLeft, Bot, TriangleAlert } from '@lucide/svelte';
   import type { Team } from '@boite/contracts';
   import { AgentsView, agentOfThread, agentRows, firstDeskVisit, lastOpenedAgent, openAgent, rememberAgent, statusOf, type AgentFocus } from '../../lib/agents.svelte';
   import { agentDirectory } from '../../lib/agent-directory.svelte';
@@ -9,6 +9,7 @@
   import { experimentOn } from '../../lib/experiments.svelte';
   import { mobileOverlay } from '../../lib/mobile-history';
   import { mobileChrome } from '../../lib/mobile-chrome.svelte';
+  import { titleSlot } from '../../lib/title-slot.svelte';
   import type { AgentPane } from '../../lib/store/layout.svelte';
   import type { Store } from '../../lib/store.svelte';
   import { fill, strings } from '../../lib/strings';
@@ -171,6 +172,13 @@
     return () => { mobileChrome.detail = false; };
   });
 
+  // On a desktop the bot's name and buttons stand in the window's top bar, not in the card.
+  $effect(() => {
+    if (narrow.current || focus || !thread || !agent) return;
+    titleSlot.current = barHead;
+    return () => { if (titleSlot.current === barHead) titleSlot.current = null; };
+  });
+
   /** Opens an agent from the list, with one of its panes when named (its row's Edit opens its settings). */
   function open(machine: Machine, agentId: string, next?: AgentPane) {
     // Read now: the page, and the row's values with it, is drawn again for the other machine.
@@ -195,6 +203,12 @@
     else listShown = true;
   }
 </script>
+
+{#snippet barHead()}
+  {#if thread && agent}
+    <AgentHeader {store} {view} {agent} {status} {thread} onpane={next => { pane = pane === next ? null : next; }} />
+  {/if}
+{/snippet}
 
 <AgentsRail {view} {lists} active={focus ? null : agent?.id ?? null} activeTeam={focus ? null : teamThread?.id ?? null}
   agent={thread ? agent : null} {status} {thread} team={teamThread ? team : null} conversation={!focus && !pane && !!(thread || teamThread)}
@@ -225,7 +239,14 @@
         {/if}
       </div>
     {:else if thread && agent}
-      <AgentHeader {store} {view} {agent} {status} {thread} onpane={next => { pane = pane === next ? null : next; }} onback={narrow.current ? back : undefined} />
+      {#if narrow.current}<AgentHeader {store} {view} {agent} {status} {thread} onpane={next => { pane = pane === next ? null : next; }} onback={back} />{/if}
+      {#if status?.problem && agent.status !== 'archived'}
+        <div class="agent-problem" role="alert" data-testid="agent-problem">
+          <TriangleAlert size={15} strokeWidth={1.75} />
+          <span>{status.problem}</span>
+          {#if store.owner}<button type="button" class="small" onclick={() => { pane = 'settings'; }}>{labels.fix}</button>{/if}
+        </div>
+      {/if}
       <div class="agents-chat">
         <ChatView {store} {locked} />
       </div>

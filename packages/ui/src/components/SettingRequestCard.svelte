@@ -224,7 +224,7 @@
   }
 
   .head { display: flex; align-items: center; gap: 6px; }
-  .glyph { display: inline-flex; flex: none; color: var(--color-accent); }
+  .glyph { display: inline-flex; flex: none; color: var(--color-muted-foreground); }
   .sensitive .glyph { color: var(--color-danger); }
 
   .reason { margin: 0; font-weight: 500; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -245,7 +245,7 @@
   .toggle { flex-wrap: nowrap; }
   .values { display: inline-flex; align-items: center; gap: 8px; color: var(--color-subtle); min-width: 0; }
   .old { color: var(--color-muted-foreground); text-decoration: line-through; overflow-wrap: anywhere; }
-  .new { color: var(--color-accent); font-weight: 600; overflow-wrap: anywhere; }
+  .new { color: var(--color-foreground); font-weight: 600; overflow-wrap: anywhere; }
   .sensitive .new { color: var(--color-danger); }
 
   .place { margin: 0; font-size: var(--text-xs); color: var(--color-subtle); }

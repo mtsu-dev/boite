@@ -80,7 +80,9 @@ test('project and recent cards show both hosts, PRs and user-message ordering on
   await capture('machine-customization.png');
   await page.evaluate('location.reload()');
   await page.waitFor(`document.querySelectorAll('${id('thread-row')}').length === 8`);
-  expect(await page.evaluate(`!!document.querySelector('[data-testid="sidebar"] .machine[aria-label="Build server"]')`)).toBe(true);
+  // Recent's compact rows name no machine: the project card's host icon carries the new name.
+  await showThreadView(page, 'projects');
+  await page.waitFor(`!!document.querySelector('[data-testid="sidebar"] [data-testid="project-host"][aria-label="Build server"]')`);
   expect(await page.evaluate(`document.querySelector('[data-testid="nav-machines"]') === null`)).toBe(true);
   await page.click(id('nav-settings'));
   await page.click(id('settings-tab-machines'));

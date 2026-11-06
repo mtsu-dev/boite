@@ -523,10 +523,10 @@
     cursor: pointer;
   }
 
-  /* The row Enter takes, as in the command palette: the accent's wash and a bar on its edge. */
+  /* The row Enter takes, as in the command palette: the selection wash and a bar on its edge. */
   .row.highlight {
     background: var(--color-accent-soft);
-    box-shadow: inset 2px 0 0 var(--color-accent);
+    box-shadow: inset 2px 0 0 var(--color-muted-foreground);
   }
 
   .row:active {
@@ -538,7 +538,7 @@
     flex: none;
     display: inline-flex;
     width: 15px;
-    color: var(--color-accent);
+    color: var(--color-foreground);
   }
 
   .machine {

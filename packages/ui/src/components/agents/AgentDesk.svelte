@@ -8,13 +8,12 @@
   import { workedTime } from '../../lib/agent-turns';
   import { minuteClock } from '../../lib/clock.svelte';
   import { dateTime } from '../../lib/schedule';
-  import { count, relativeTime } from '../../lib/format';
+  import { count } from '../../lib/format';
   import type { Store } from '../../lib/store.svelte';
   import { machineName, workspace } from '../../lib/workspace.svelte';
   import { fill, strings } from '../../lib/strings';
   import { toolLine } from '../../lib/tool-groups';
   import Elapsed from '../Elapsed.svelte';
-  import Prose from '../Prose.svelte';
   import ProviderLogo from '../ProviderLogo.svelte';
   import AgentAvatar from './AgentAvatar.svelte';
   import AgentBrainEditor from './AgentBrainEditor.svelte';
@@ -63,8 +62,7 @@
   /** Its brain files, kept beside the snapshot and read again when the agent changes. */
   let brain = $state<AgentBrain | null>(null);
   let editing = $state(false);
-  /** The memory shows its first notes until opened. */
-  let memoryOpen = $state(false);
+  /** The memory card shows its first three notes; the brain pane has them all. */
   const notes = $derived(brain ? memoryNotes(brain.memory) : []);
   const revision = $derived(view.snapshot?.revision ?? 0);
   $effect(() => {
@@ -147,7 +145,7 @@
       <section class="desk-card" data-testid="desk-memory">
         <p class="desk-label">
           <Brain size={13} strokeWidth={1.75} /><span>{t.memory}</span>
-          {#if status?.memory?.status === 'error'}<TriangleAlert size={12} class="desk-memory-alert" aria-label={t.memoryProblem} />{/if}
+          {#if status?.memory?.status === 'error'}<span class="desk-memory-alert" role="img" aria-label={t.memoryProblem} title={status.memory.summary ?? t.memoryProblem} data-testid="desk-memory-alert"><TriangleAlert size={12} /></span>{/if}
           <span class="desk-label-value">{#if brain && notes.length}{notes.length === 1 ? t.noteOne : fill(t.noteMany, { count: count(notes.length) })}{/if}</span>
           {#if store.owner && brain && !editing}<button type="button" class="ghost small icon" title={strings.agents.edit} aria-label={strings.agents.edit} onclick={() => { editing = true; }} data-testid="desk-memory-edit"><Pencil size={13} strokeWidth={1.75} /></button>{/if}
         </p>
@@ -156,23 +154,11 @@
         {:else if brain}
           {#if !brain.memory.trim()}
             <p class="desk-empty">{t.memoryEmpty}</p>
-          {:else if memoryOpen}
-            <div class="desk-memory open" data-testid="desk-memory-text"><Prose text={brain.memory} {store} threadId={thread?.id} /></div>
           {:else}
             <ul class="desk-notes" data-testid="desk-memory-text">
               {#each notes.slice(0, 3) as note, index (index)}<li>{note}</li>{/each}
             </ul>
           {/if}
-          {#if brain.memory.trim() && (memoryOpen || notes.length > 3)}
-            <button type="button" class="ghost small desk-memory-more" aria-expanded={memoryOpen} onclick={() => { memoryOpen = !memoryOpen; }} data-testid="desk-memory-more">{memoryOpen ? t.memoryLess : t.memoryMore}</button>
-          {/if}
-        {/if}
-        {#if status?.memory}
-          {@const pass = status.memory}
-          <p class="desk-memory-pass" data-status={pass.status} data-testid="desk-memory-pass" title={pass.summary ?? undefined}>
-            <span class="desk-memory-pass-when">{pass.status === 'running' ? t.memoryPass.running : fill(t.memoryPass[pass.status], { when: relativeTime(pass.at, now) })}</span>
-            {#if pass.summary && pass.status !== 'running'}<span class="desk-memory-pass-summary">· {pass.summary}</span>{/if}
-          </p>
         {/if}
       </section>
 

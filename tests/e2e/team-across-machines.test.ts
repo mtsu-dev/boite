@@ -7,6 +7,7 @@ import { quietAgent } from '../../packages/core/test/harness.ts';
 import { BrowserPage, freePort } from './lib/cdp.ts';
 import { startCore, type RunningCore } from './lib/core.ts';
 import { startUi } from './lib/ui.ts';
+import { openRailBot, openRailTeam, railAdd } from './lib/bots.ts';
 
 /* A team across machines (`docs/teams.md`): two real core processes of one group, a bot on each, a machine cut off and back, and the app showing a member of the other machine. */
 
@@ -118,11 +119,7 @@ test('a post, an @name and a private post reach the bot of the other machine, it
   await page.waitFor(`document.querySelector('[data-testid="confirm-ok"]')`);
   await page.click('[data-testid="confirm-ok"]');
   await page.waitFor(`globalThis.__boiteTest.workspace.machines.filter(machine => machine.store.connection === 'ready').length === 2`, 30_000);
-  await page.waitFor(`document.querySelector('[data-testid="view-agents"]')`);
-  await page.click('[data-testid="view-agents"]');
-  const row = `[data-testid="agent-team-${team.id}"]`;
-  await page.waitFor(`document.querySelector('${row}')`);
-  await page.click(row);
+  await openRailTeam(page, team.id);
   await page.waitFor(`document.querySelectorAll('[data-testid=team-post]').length > 0`);
 
   const shot = async (name: string) => {
@@ -154,8 +151,7 @@ test('a post, an @name and a private post reach the bot of the other machine, it
   // A bot's card names the machine of the bot it would bring.
   await a.call('teams.propose', { threadId: huginn.threadId, name: 'Backups', members: [huginn.id, 'Firebat/Munin'], brief: 'The backups of both machines.' });
   await page.send('Emulation.setDeviceMetricsOverride', WIDE);
-  await page.waitFor(`document.querySelector('[data-testid="agent-entry-${huginn.id}"]')`);
-  await page.click(`[data-testid="agent-entry-${huginn.id}"]`);
+  await openRailBot(page, huginn.id);
   const card = '.agents-main [data-testid=team-card][data-state=pending]';
   await page.waitFor(`document.querySelector('${card}')`);
   expect(await page.text(card)).toContain('Munin (Firebat)');
@@ -167,8 +163,7 @@ test('a post, an @name and a private post reach the bot of the other machine, it
 
   // A team written by hand takes that bot too, through the real core, and the dialog says where it runs.
   await page.send('Emulation.setDeviceMetricsOverride', WIDE);
-  await page.waitFor(`document.querySelector('[data-testid=agents-new-team]')`);
-  await page.click('[data-testid=agents-new-team]');
+  await railAdd(page, 'team');
   const far = `[data-testid=team-dialog-member][data-key="${distant.key}"]`;
   await page.waitFor(`document.querySelector('${far}')`);
   // Both cores run on this PC here, so the app may add its "(you)".

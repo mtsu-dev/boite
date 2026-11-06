@@ -6,6 +6,7 @@ import { findChromium } from '../../packages/core/src/browser/chromium.ts';
 import { quietAgent, startTestCore, testProject, waitFor, type TestCore } from '../../packages/core/test/harness.ts';
 import { BrowserPage } from './lib/cdp.ts';
 import { ensureProductionUi } from './lib/prod-ui.ts';
+import { openRailBot, railBot } from './lib/bots.ts';
 
 /**
  * The Agents page over a real core: the echo agent answers, the production UI
@@ -99,20 +100,22 @@ afterAll(async () => {
   await site?.stop(true);
 }, 30_000);
 
-test('the Agents list takes the thread list\'s place without moving it, and folds with it', async () => {
+test('the bot column takes the thread list\'s place without moving it, and folds with it', async () => {
   const layout = `(() => { const r = s => { const b = document.querySelector(s)?.getBoundingClientRect(); return b && [b.left, b.top, b.width, b.height].map(Math.round); };
     return { rail: r('[data-testid="sidebar"]') ?? r('.agents-rail'), card: r('.body main'), fold: !!document.querySelector('[data-testid="sidebar-toggle"]') }; })()`;
-  await page.waitFor(`document.querySelector('[data-testid="sidebar"]') && document.querySelector('.body main') && document.querySelector('[data-testid="view-agents"]')`);
+  await page.waitFor(`document.querySelector('[data-testid="sidebar"]') && document.querySelector('.body main') && document.querySelector('${id('rail-add')}')`);
   await page.settleAnimations();
   const threads = await page.evaluate<{ rail?: number[]; card?: number[]; fold: boolean }>(layout);
   expect(threads.rail?.[2]).toBeGreaterThan(0);
-  // The switch changes the rows and the card's content, nothing else.
-  const switching = await framesAfter(id('view-agents'), '.agents-rail');
+  // The app rail's + opens the Bots page: the column and the card change their content, nothing else.
+  await page.click(id('rail-add'));
+  await page.waitFor(`document.querySelector('${id('context-menu')} [data-value="bot"]')`);
+  const switching = await framesAfter(`${id('context-menu')} [data-value="bot"]`, '.agents-rail');
   expect(switching.length).toBeGreaterThan(2);
   expect([...new Set(switching.map(f => `${f.rail} ${f.card}`))]).toEqual([`${threads.rail![0]} ${threads.card![0]}`]);
   await page.settleAnimations();
   expect(await page.evaluate(layout)).toEqual(threads);
-  // The title bar's fold hides the Agents list as it hides the thread list; unfolding slides it in from the window's edge.
+  // The title bar's fold hides the bot column as it hides the thread list; unfolding slides it in from the window's edge.
   await page.click(id('sidebar-toggle'));
   await page.waitFor(`getComputedStyle(document.querySelector('.agents-rail')).display === 'none'`);
   const unfolding = await framesAfter(id('sidebar-toggle'), '.agents-rail');
@@ -123,8 +126,8 @@ test('the Agents list takes the thread list\'s place without moving it, and fold
 }, 60_000);
 
 test('a new agent opens its own thread, where its introduction runs', async () => {
-  await page.waitFor(`document.querySelector('${id('agents-empty')}')`);
-  await page.click(id('agents-first'));
+  // The rail's + left the new bot's form open on the Bots page.
+  await page.waitFor(`document.querySelector('${id('agents-page')} ${id('agent-name')}')`);
   await page.type(id('agent-name'), 'Mira');
   await page.type(id('agent-instructions'), 'Look after the landing page and tell me when its build breaks.');
   await page.waitFor(`!document.querySelector('${id('agent-save')}').disabled`);
@@ -141,20 +144,20 @@ test('a new agent opens its own thread, where its introduction runs', async () =
   expect(intro.map(t => [t.execution?.operation, t.status])).toEqual([['event', 'done']]);
   // Still on the Agents page, with the introduction's answer in the conversation.
   await page.waitFor(`document.querySelector('${id('agents-page')}') && document.querySelector('.agents-main [data-role="assistant"][data-turn="${intro[0]!.id}"]')`);
-  await page.waitFor(`document.querySelector('${id(`agent-entry-${agent.id}`)}')`);
+  await page.waitFor(`document.querySelector('${railBot(agent.id)}')?.getAttribute('aria-current') === 'page'`);
 }, 60_000);
 
-test('a message runs as a turn: the list and the header show its step, the next one queues, Stop ends one', async () => {
+test('a message runs as a turn: the rail and the column show its step, the next one queues, Stop ends one', async () => {
   const { agent, threadId } = mira;
-  const row = id(`agent-entry-${agent.id}`);
+  const pin = railBot(agent.id);
   await send('[tool:8000] Check the build of the landing page.');
-  // While it works, the row and the header say what it is doing this second.
-  await page.waitFor(`document.querySelector('${row}')?.closest('.agent-row')?.dataset.tone === 'working'`);
-  await page.waitFor(`document.querySelector('${row} ${id('agent-row-detail')}')?.textContent.includes('fake_tool')`);
-  await page.waitFor(`document.querySelector('${id('agent-live')}')?.dataset.state === 'working' && document.querySelector('${id('agent-live')}').textContent.includes('fake_tool')`);
+  // While it works, its picture in the rail turns, and the column's head says what it is doing this second
+  // (on a desktop the conversation's header names it alone; its live line is the phone's, checked below).
+  await page.waitFor(`document.querySelector('${pin}')?.dataset.state === 'working'`);
+  await page.waitFor(`document.querySelector('${id('bot-column-live')}')?.dataset.state === 'working' && document.querySelector('${id('bot-column-live')}').textContent.includes('fake_tool')`);
   await capture('working-desktop.png');
   await until(threadId, () => turns(threadId).length === 2 && free(threadId), 20_000);
-  await page.waitFor(`document.querySelector('${row}')?.closest('.agent-row')?.dataset.tone !== 'working'`);
+  await page.waitFor(`document.querySelector('${pin}')?.dataset.state !== 'working'`);
 
   // A message sent while it works waits in the composer's queue, then runs as the next turn.
   await send('[sleep:8000] Read the deploy logs.');
@@ -174,15 +177,15 @@ test('a message runs as a turn: the list and the header show its step, the next 
   await page.click(`.agents-main ${id('composer-stop')}`);
   await until(threadId, () => turns(threadId).length === 5 && free(threadId), 10_000);
   expect(turns(threadId).at(-1)!.status).toBe('stopped');
-  await page.waitFor(`document.querySelector('${id('agent-live')}')?.dataset.state !== 'working'`);
+  await page.waitFor(`document.querySelector('${id('bot-column-live')}')?.dataset.state !== 'working'`);
 }, 120_000);
 
-test('Run now on a routine opens a "Routine · <name>" turn, and the list shows the next wake', async () => {
+test('Run now on a routine opens a "Routine · <name>" turn, and the column shows the next wake', async () => {
   const { agent, threadId } = mira;
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const routine = await owner.call('agents.routine.save', { value: { agentId: agent.id, name: 'Morning check', prompt: 'Look at the landing page build.',
     schedule: { kind: 'daily', time: '09:00', timezone }, enabled: true, nextAt: null, lastTurnId: null, lastScheduledAt: null } });
-  await page.waitFor(`document.querySelector('${id(`agent-entry-${agent.id}`)} ${id('agent-row-wake')}')`);
+  await page.waitFor(`document.querySelector('${id('bot-column-live')}')?.textContent.includes('Morning check')`);
   await page.click(id('agent-menu'));
   await page.click('[data-value="settings"]');
   await page.waitFor(`document.querySelector('${id(`routine-${routine.id}`)} ${id('routine-run')}')?.disabled === false`);
@@ -239,17 +242,17 @@ real('Open on a sign-in card shows the browser in the panel beside the conversat
   await capture('browser-open-desktop.png');
 }, 90_000);
 
-real('three agents in the list; a phone shows the list, then the conversation full screen, then its browser', async () => {
+real('three agents in the rail; a phone shows the list, then the conversation full screen, then its browser', async () => {
   const nova = await agentOf('Nova', 'Runs the UI tests');
   const iris = await agentOf('Iris', 'Watches the deploys');
-  // An agent whose introduction ended rests in the list: its last answer, no live dot.
+  // An agent whose introduction ended rests in the rail: no count and no turning arc on its picture.
   const started = Date.now();
-  await page.waitFor(`document.querySelector('${id(`agent-entry-${iris.agent.id}`)}')?.closest('.agent-row')?.dataset.tone === 'idle'`, 20_000);
+  await page.waitFor(`document.querySelector('${railBot(iris.agent.id)}')?.dataset.state === 'idle'`, 20_000);
   console.log(`[agents] Iris read idle ${Date.now() - started} ms after its introduction ended`);
   await owner.call('turns.start', { threadId: nova.threadId, prompt: '[tool:60000] Run the UI tests.' });
   const row = id(`agent-entry-${nova.agent.id}`);
-  await page.waitFor(`document.querySelectorAll('.agents-rail [data-testid^="agent-entry-"]').length === 3`);
-  await page.waitFor(`document.querySelector('${row} ${id('agent-row-detail')}')?.textContent.includes('fake_tool')`);
+  await page.waitFor(`document.querySelectorAll('${id('app-rail')} ${id('rail-bot')}').length === 3`);
+  await page.waitFor(`document.querySelector('${railBot(nova.agent.id)}')?.dataset.state === 'working'`);
   // The panel left open beside the open agent (Mira's browser, or a desk) closes for the rail's capture.
   await page.evaluate(`document.querySelector('${id('right-panel')} ${id('panel-close')}')?.click()`);
   await page.waitFor(`!(document.querySelector('${id('right-panel')}')?.getBoundingClientRect().width > 0)`);
@@ -263,6 +266,10 @@ real('three agents in the list; a phone shows the list, then the conversation fu
   await page.click(id('agent-back'));
   await page.waitFor(`document.querySelector('.agents-rail')?.getBoundingClientRect().width === ${PHONE.width} && !(document.querySelector('.agents-main')?.getBoundingClientRect().width > 0)`);
   expect(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`)).toBe(true);
+  // A phone has no app rail: its rows list the bots, and Nova's says the step it is on.
+  expect(await page.evaluate(`document.querySelector('${id('app-rail')}')?.getBoundingClientRect().width > 0`)).toBe(false);
+  await page.waitFor(`document.querySelectorAll('.agents-rail [data-testid^="agent-entry-"]').length === 3 && document.querySelector('${row}')?.closest('.agent-row')?.dataset.tone === 'working'`);
+  await page.waitFor(`document.querySelector('${row} ${id('agent-row-detail')}')?.textContent.includes('fake_tool')`);
   await capture('rail-three-phone.png');
   await page.click(row);
   await page.waitFor(`document.querySelector('.agents-main')?.getBoundingClientRect().width === ${PHONE.width} && document.querySelector('${id('agent-header')}')?.textContent.includes('Nova')`);
@@ -285,13 +292,17 @@ real('three agents in the list; a phone shows the list, then the conversation fu
   expect(page.errors()).toEqual([]);
 }, 120_000);
 
-test('a bot\'s row has the thread menu on a right click and a long press: pin, rename in place, pause, edit, archive, copy', async () => {
-  // Lyra speaks first, so it sits under the two others: the row pinned and long-pressed below is never one they archive or pause.
+test('a bot\'s menu sits in its column on a desktop and on its row\'s long press on a phone: pin, rename, pause, edit, archive, copy', async () => {
+  // Lyra speaks first, so it sits before the two others in the rail: the bot pinned and long-pressed below is never one they archive or pause.
   await agentOf('Lyra', 'Keeps the calendar');
   const orion = (await agentOf('Orion', 'Watches the builds')).agent;
   const vega = (await agentOf('Vega', 'Reads the papers')).agent;
-  const rows = '.agents-rail [data-testid^="agent-entry-"]';
-  const order = `[...document.querySelectorAll('${rows}')].map(row => row.dataset.testid.slice('agent-entry-'.length))`;
+  const pins = `${id('app-rail')} ${id('rail-bot')}`;
+  const order = `[...document.querySelectorAll('${pins}')].map(pin => pin.dataset.agentId)`;
+  /** The open bot's menu, at the top of its column. */
+  const column = id('bot-column-menu-menu');
+  const columnItems = `[...document.querySelectorAll('${column} [data-value]')].map(item => item.dataset.value)`;
+  /** A row's menu on a phone, at the finger. */
   const menu = id('context-menu');
   const items = `[...document.querySelectorAll('${menu} [data-value]')].map(item => item.dataset.value)`;
   const profile = async (agentId: string) => (await snapshot()).profiles.find(p => p.id === agentId)!;
@@ -308,77 +319,75 @@ test('a bot\'s row has the thread menu on a right click and a long press: pin, r
     await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: name, code: name, windowsVirtualKeyCode: code, ...(name === 'Enter' ? { text: '\r' } : {}) });
     await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: name, code: name, windowsVirtualKeyCode: code });
   };
-  /** A real right click on the row, as the mouse sends it. */
-  const rightClick = async (agentId: string) => {
-    await page.waitFor(`document.querySelector('${id(`agent-entry-${agentId}`)}')?.getBoundingClientRect().width > 0`);
-    const at = await center(agentId);
-    await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...at });
-    await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...at, button: 'right', buttons: 2, clickCount: 1 });
-    await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...at, button: 'right', buttons: 0, clickCount: 1 });
-    await page.waitFor(`document.querySelector('${menu} [data-value]')`);
+  /** Opens the bot from its picture in the rail, then its column's menu. */
+  const columnMenu = async (agentId: string) => {
+    await openRailBot(page, agentId);
+    await page.click(id('bot-column-menu'));
+    await page.waitFor(`document.querySelector('${column} [data-value]')`);
+  };
+  const columnPick = async (action: string) => {
+    await page.click(`${column} [data-value="${action}"]`);
+    await page.waitFor(`!document.querySelector('${column}')`);
   };
   const pick = async (action: string) => {
     await page.click(`${menu} [data-value="${action}"]`);
     await page.waitFor(`!document.querySelector('${menu}')`);
   };
-  await page.evaluate(`document.querySelector('.agents-rail') || document.querySelector('${id('view-agents')}')?.click()`);
+  /** Writes in the open settings' name field and leaves it, which saves it. */
+  const rename = async (name: string) => {
+    await page.type(`${id('agent-editor')} ${id('agent-name')}`, name);
+    await page.evaluate(`document.querySelector('${id('agent-editor')} ${id('agent-name')}').dispatchEvent(new Event('change', { bubbles: true }))`);
+  };
   await page.evaluate(`document.querySelector('${id('right-panel')} ${id('panel-close')}')?.click()`);
-  await page.waitFor(`document.querySelectorAll('${rows}').length >= 3 && document.querySelector('${id(`agent-entry-${orion.id}`)}') && document.querySelector('${id(`agent-entry-${vega.id}`)}')`);
+  await page.waitFor(`document.querySelectorAll('${pins}').length >= 3 && document.querySelector('${railBot(orion.id)}') && document.querySelector('${railBot(vega.id)}')`);
 
-  // The thread menu's groups, cut to what a bot has; alone in no group, it has nowhere to move.
+  // The thread menu's groups, cut to what a bot has, then its brain and the engine; alone in no group, it has nowhere to move.
   const last = (await page.evaluate<string[]>(order)).filter(agentId => agentId !== orion.id && agentId !== vega.id).at(-1)!;
-  await rightClick(last);
-  expect(await page.evaluate(items)).toEqual(['open', 'pin', 'pause', 'archive', 'rename', 'edit', 'copy']);
+  await columnMenu(last);
+  expect(await page.evaluate(columnItems)).toEqual(['open', 'pin', 'pause', 'archive', 'rename', 'edit', 'copy', 'brain', 'engine']);
+  // Its conversation is the one open.
+  expect(await page.evaluate(`document.querySelector('${column} [data-value="open"]').disabled`)).toBe(true);
   await capture('menu-desktop.png');
-  // Pinned, the bot at the bottom climbs to the top with the pin before its time, and its machine keeps the choice.
-  await pick('pin');
-  await page.waitFor(`${order}[0] === '${last}' && document.querySelector('${id(`agent-entry-${last}`)} ${id('agent-pinned')}')`);
+  // Pinned, the bot climbs to the top of the rail, and its machine keeps the choice.
+  await columnPick('pin');
+  await page.waitFor(`${order}[0] === '${last}'`);
   expect((await profile(last)).pinned).toBe(true);
-  await rightClick(last);
-  expect(await page.text(`${menu} [data-value="pin"]`)).toContain('Unpin');
+  await page.click(id('bot-column-menu'));
+  expect(await page.text(`${column} [data-value="pin"]`)).toContain('Unpin');
   await key('Escape');
-  await page.waitFor(`!document.querySelector('${menu}')`);
+  await page.waitFor(`!document.querySelector('${column}')`);
 
-  // Rename in place: the name becomes a field in the row, Escape keeps the old name, Enter saves.
-  await rightClick(orion.id);
-  await pick('rename');
-  await page.waitFor(`document.activeElement?.matches('${id('agent-rename')}')`);
-  await page.type(id('agent-rename'), 'Not kept');
-  await key('Escape');
-  await page.waitFor(`!document.querySelector('${id('agent-rename')}')`);
-  expect((await profile(orion.id)).name).toBe('Orion');
-  await rightClick(orion.id);
-  await pick('rename');
-  await page.type(id('agent-rename'), 'Orion Builds');
+  // The column has no name field: Rename opens the settings on the name, and the column's head follows.
+  await columnMenu(orion.id);
+  await columnPick('rename');
+  await page.waitFor(`document.querySelector('${id('agent-editor')} ${id('agent-name')}')?.value === 'Orion'`);
+  await rename('Orion Builds');
+  await saved(orion.id, agent => agent.name === 'Orion Builds');
+  await page.waitFor(`document.querySelector('${id('bot-column-head')}')?.textContent.includes('Orion Builds')`);
   await capture('rename-desktop.png');
-  await key('Enter');
-  await page.waitFor(`document.querySelector('${id(`agent-entry-${orion.id}`)} .title')?.textContent === 'Orion Builds'`);
-  expect((await profile(orion.id)).name).toBe('Orion Builds');
-  // The keyboard goes back to the row, not to the page.
-  expect(await page.evaluate(`document.activeElement?.dataset.testid`)).toBe(`agent-entry-${orion.id}`);
+  await key('Escape');
+  await page.waitFor(`!document.querySelector('.agent-sheet')`);
 
   // Pause and resume.
-  await rightClick(vega.id);
-  await pick('pause');
+  await columnMenu(vega.id);
+  await columnPick('pause');
   await saved(vega.id, agent => agent.status === 'paused');
-  await rightClick(vega.id);
-  expect(await page.evaluate(items)).toContain('resume');
-  await pick('resume');
+  await page.waitFor(`document.querySelector('${railBot(vega.id)}')?.dataset.state === 'paused'`);
+  await page.click(id('bot-column-menu'));
+  await page.waitFor(`${columnItems}.includes('resume')`);
+  await columnPick('resume');
   await saved(vega.id, agent => agent.status === 'active');
 
-  // Edit opens its settings; a rename and a pause from the menu while they are open are followed, and the next edit there still saves.
-  await rightClick(vega.id);
-  await pick('edit');
+  // Edit opens its settings; a pause from the menu while they are open is followed, and the next edits there still save.
+  await columnMenu(vega.id);
+  await columnPick('edit');
   await page.waitFor(`document.querySelector('${id('agent-header')}')?.textContent.includes('Vega') && document.querySelector('${id('agent-editor')} ${id('agent-name')}')?.value === 'Vega'`);
-  await rightClick(vega.id);
-  expect(await page.evaluate(`document.querySelector('${menu} [data-value="open"]').disabled`)).toBe(true);
-  await pick('rename');
-  await page.type(id('agent-rename'), 'Vega Reads');
-  await key('Enter');
-  await page.waitFor(`document.querySelector('${id('agent-editor')} ${id('agent-name')}')?.value === 'Vega Reads'`);
-  await rightClick(vega.id);
-  await pick('pause');
+  await page.click(id('bot-column-menu'));
+  await page.waitFor(`document.querySelector('${column} [data-value]')`);
+  await columnPick('pause');
   await saved(vega.id, agent => agent.status === 'paused');
+  await rename('Vega Reads');
+  await saved(vega.id, agent => agent.name === 'Vega Reads');
   await page.type(id('agent-instructions'), 'Read the papers and keep the best three.');
   await page.evaluate(`document.querySelector('${id('agent-instructions')}').dispatchEvent(new Event('change', { bubbles: true }))`);
   await saved(vega.id, agent => agent.instructions === 'Read the papers and keep the best three.');
@@ -390,20 +399,20 @@ test('a bot\'s row has the thread menu on a right click and a long press: pin, r
 
   // Copy the path: the bot's brain folder on its machine.
   await page.evaluate(`Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.__copied = text; } } })`);
-  await rightClick(vega.id);
-  await pick('copy');
+  await page.click(id('bot-column-menu'));
+  await columnPick('copy');
   await page.waitFor('window.__copied');
   expect(await page.evaluate(`window.__copied`)).toBe((await owner.call('agents.brain.get', { agentId: vega.id })).path);
 
-  // Archive still asks for the exact name.
-  await rightClick(orion.id);
-  await pick('archive');
+  // Archive still asks for the exact name, and the bot leaves the rail.
+  await columnMenu(orion.id);
+  await columnPick('archive');
   await page.waitFor(`document.activeElement?.matches('${id('confirm-name')}')`);
   expect(await page.evaluate(`document.querySelector('${id('confirm-ok')}').disabled`)).toBe(true);
   await page.type(id('confirm-name'), 'Orion Builds');
   await page.click(id('confirm-ok'));
   await saved(orion.id, agent => agent.status === 'archived');
-  await page.waitFor(`!document.querySelector('${id(`agent-entry-${orion.id}`)}')`);
+  await page.waitFor(`!document.querySelector('${railBot(orion.id)}')`);
 
   // A phone: a long press opens the short menu at the finger, and the press does not open the bot.
   await page.send('Emulation.setDeviceMetricsOverride', PHONE);
@@ -431,6 +440,16 @@ test('a bot\'s row has the thread menu on a right click and a long press: pin, r
     await capture('rename-phone.png');
     await key('Escape');
     await page.waitFor(`!document.querySelector('${id('agent-rename')}')`);
+    const before = (await profile(last)).name;
+    expect(await page.text(`${id(`agent-entry-${last}`)} .title`)).toBe(before);
+    // Enter saves the name typed in the row, and the keyboard goes back to the row, not to the page.
+    await hold(last);
+    await pick('rename');
+    await page.type(id('agent-rename'), `${before} Keeps`);
+    await key('Enter');
+    await page.waitFor(`document.querySelector('${id(`agent-entry-${last}`)} .title')?.textContent === '${before} Keeps'`);
+    expect((await profile(last)).name).toBe(`${before} Keeps`);
+    expect(await page.evaluate(`document.activeElement?.dataset.testid`)).toBe(`agent-entry-${last}`);
     await hold(last);
     await pick('pin');
     await page.waitFor(`!document.querySelector('${id(`agent-entry-${last}`)} ${id('agent-pinned')}')`);

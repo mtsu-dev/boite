@@ -202,9 +202,9 @@
   .version { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; color: var(--color-muted-foreground); }
   .name { color: var(--color-foreground); font-weight: 600; font-size: var(--text-md); }
   .number { font-family: var(--font-mono); font-size: var(--text-sm); overflow-wrap: anywhere; }
-  .target { color: var(--color-accent); }
+  .target { color: var(--color-foreground); }
   .status { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; color: var(--color-muted-foreground); font-size: var(--text-sm); overflow-wrap: anywhere; }
-  .status.offer > span:first-child { color: var(--color-accent); }
+  .status.offer > span:first-child { color: var(--color-foreground); }
   .status.error { color: var(--color-danger); }
   .subtle { color: var(--color-subtle); font-size: var(--text-xs); }
   .changelog { display: inline-flex; align-items: center; gap: 5px; color: var(--color-muted-foreground); text-decoration: none; }

@@ -8,7 +8,7 @@
   import { watchWindows } from './lib/window-watch';
   import { browserProfiles } from './lib/browser-profiles.svelte';
   import UndoToast from './components/UndoToast.svelte';
-  import NotificationCard from './components/NotificationCard.svelte';
+  import ErrorToast from './components/ErrorToast.svelte';
   import ChatView from './components/ChatView.svelte';
   import ConfirmDialog from './components/ConfirmDialog.svelte';
   import ContextMenu from './components/ContextMenu.svelte';
@@ -37,7 +37,6 @@
   import { rightPanel } from './lib/right-panel.svelte';
   import { workspace } from './lib/workspace.svelte';
   import { hostLocalAgentBrowser } from './lib/agent-browser-host.svelte';
-  import type { Store } from './lib/store.svelte';
   import { tourRequested, tourSeen } from './lib/onboarding.svelte';
   import { whenIdle } from './lib/idle';
   import { prefetchAllowed, prefetchNames, warmPages } from './lib/prefetch';
@@ -278,31 +277,12 @@
     };
   });
 
-  // The three overlays of this file leave the way they arrived: one `--dur-2`
+  // The overlays of this file leave the way they arrived: one `--dur-2`
   // playing the reverse animation, then out of the DOM on `animationend`.
-  const toast = new Closing();
   const scrim = new Closing();
   const panelSlot = new Closing();
   const terminalSlot = new Closing();
   const boardSlot = new Closing();
-  /** The error is cleared the moment Dismiss is pressed, so the exit plays on a copy. */
-  let toastText = $state('');
-  let toastThreadId = $state<string | null>(null);
-  let toastStore = $state<Store | null>(null);
-
-  function dismissError(): void {
-    if (toastStore) toastStore.error = null;
-  }
-
-  function openErrorThread(): void {
-    const owner = toastStore;
-    const threadId = toastThreadId;
-    if (!owner || !threadId) return;
-    owner.error = null;
-    void workspace.select(owner, threadId);
-    mobileScreen = 'chat';
-  }
-
   // Ctrl+Q quits the shell after a hold or a double press, never on one slip:
   // the hint shows for as long as the key is down. Only the shell has a
   // process to quit; a browser tab keeps its own Ctrl+Q.
@@ -320,37 +300,6 @@
         failed: error => { store.error = String(error); }
       })
     : null;
-
-  $effect(() => {
-    const owner = store;
-    const error = owner.error;
-    // Missing/revoked phone credentials have a persistent recovery screen.
-    // Keep other errors (including a failed pairing attempt) visible.
-    const pairingNotice = !inShell && (narrow.current || wideRecovery) && store.pairingRequired
-      && (error === strings.errors.unpaired || error === strings.errors.revoked);
-    // A machine that may still give way to one that answers has nothing to report yet.
-    const held = workspace.waiting && owner === workspace.primary;
-    // Chrome refuses every socket until "Local network" is allowed: the recovery screen says so, and "socket error" says nothing more.
-    const blocked = mobileRecovery && localNetwork.state === 'denied';
-    if (!error || owner.errorOffline || pairingNotice || held || blocked) {
-      toast.hide();
-      return;
-    }
-    toastText = error;
-    toastThreadId = store.errorThreadId;
-    toastStore = store;
-    toast.show();
-  });
-
-  $effect(() => {
-    const owner = store;
-    const error = owner.error;
-    if (!error || owner.errorSeverity !== 'minor' || owner.errorThreadId) return;
-    const timer = setTimeout(() => {
-      if (owner.error === error && owner.errorSeverity === 'minor') owner.error = null;
-    }, 5_000);
-    return () => clearTimeout(timer);
-  });
 
   $effect(() => {
     if (store.sidebarOpen) scrim.show();
@@ -679,23 +628,9 @@
     </div>
   {/if}
 
-  {#if toast.shown}
-    <div
-      class="toast"
-      class:closing={toast.closing}
-      role="alert"
-      use:toast.attach
-      onanimationend={toast.end}
-      data-testid="error-toast"
-    >
-      <NotificationCard
-        title={toastThreadId ? strings.notify.failed : strings.errors.prefix}
-        message={toastText}
-        dismiss={dismissError}
-        action={toastThreadId ? { label: strings.notify.openThread, run: openErrorThread } : undefined}
-      />
-    </div>
-  {/if}
+  <!-- A missing or revoked phone pairing has its own recovery screen; Chrome refuses every socket until "Local network" is allowed, which that screen says too. -->
+  <ErrorToast {store} pairingScreen={!inShell && (narrow.current || wideRecovery) && store.pairingRequired}
+    blocked={mobileRecovery && localNetwork.state === 'denied'} onopen={() => { mobileScreen = 'chat'; }} />
   <UndoToast onerror={(error) => (store.error = errorText(error))} />
   {#if store.booted && experimentOn('whip') && WhipOverlay}
     <WhipOverlay onerror={(error) => (store.error = errorText(error))} />
@@ -798,22 +733,6 @@
 
   .scrim {
     display: none;
-  }
-
-  .toast {
-    position: absolute;
-    right: max(16px, env(safe-area-inset-right));
-    top: calc(16px + env(safe-area-inset-top, 0px));
-    z-index: 80;
-    width: min(380px, calc(100vw - 32px));
-    animation: rise var(--dur-3) var(--ease-out-quint);
-  }
-
-  .shell .toast { top: calc(var(--titlebar) + 16px); }
-
-  .toast.closing {
-    animation: fade-out var(--dur-2) var(--ease-out-quint);
-    pointer-events: none;
   }
 
   /* The quit hint: a card at the top centre with a bar that fills over the

@@ -35,7 +35,7 @@
     at: number;
     now: number;
     detail?: string;
-    /** How the line under the name reads: the accent while it works, the waiting colour while it waits, danger after a failure, faded asleep. */
+    /** How the line under the name reads: muted while it works, the waiting colour while it waits, danger after a failure, faded asleep. */
     tone?: 'idle' | 'working' | 'waiting' | 'error' | 'asleep';
     /** The glyph before that line: the kind of step it is on, what it waits on, a failure. */
     icon?: Component<{ size?: number; strokeWidth?: number }>;
@@ -161,19 +161,19 @@
   .headline { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-foreground); font-weight: 500; }
   .unread .title { font-weight: 600; }
-  .unread-count { flex: none; min-width: 18px; height: 18px; padding: 0 5px; display: grid; place-items: center; border-radius: 999px; background: var(--color-accent); color: var(--color-accent-ink); font-size: var(--text-xs); font-weight: 600; }
+  .unread-count { flex: none; min-width: 18px; height: 18px; padding: 0 5px; display: grid; place-items: center; border-radius: 999px; background: var(--color-foreground); color: var(--color-background); font-size: var(--text-xs); font-weight: 600; }
   /* A built-in bot's name keeps its badge right after it, the time still on the far right. */
   .name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
   .name .title { flex: 0 1 auto; }
   .when { flex: none; color: var(--color-subtle); font-size: var(--text-xs); }
-  .spent { flex: none; color: var(--color-accent); font-size: var(--text-xs); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .spent { flex: none; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; font-variant-numeric: tabular-nums; }
   .detail-line { display: flex; align-items: center; gap: 5px; min-width: 0; font-size: var(--text-xs); color: var(--color-muted-foreground); }
   .glyph { display: inline-flex; flex: none; }
   .detail { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* An answer not read yet reads like an unread message, in the foreground; a state's own colour wins over it. */
   .unread[data-tone='idle'] .detail { color: var(--color-foreground); font-weight: 500; }
-  /* Hue says status: work in the accent, its glyph breathing; the user's turn in the live colour; a failure in danger. */
-  [data-tone='working'] .detail-line { color: var(--color-accent); }
+  /* Hue says status: work in muted ink, its glyph breathing; the user's turn in the live colour; a failure in danger. */
+  [data-tone='working'] .detail-line { color: var(--color-muted-foreground); }
   [data-tone='working'] .detail { font-weight: 500; }
   [data-tone='working'] .glyph { animation: pulse 1.6s var(--loop-ease-in-out-48) infinite var(--loops); }
   [data-tone='waiting'] .detail-line { color: var(--color-live); }
@@ -183,8 +183,8 @@
   [data-tone='asleep'] .title { color: var(--color-muted-foreground); }
   .wake { flex: none; display: inline-flex; align-items: center; gap: 3px; color: var(--color-subtle); font-variant-numeric: tabular-nums; }
   .pin { display: inline-flex; align-items: center; flex: none; color: var(--color-muted-foreground); }
-  /* A move waiting for the turn's end: the accent, like a thread's. */
-  .pending { display: flex; align-items: center; gap: 4px; min-width: 0; font-size: var(--text-xs); color: var(--color-accent); }
+  /* A move waiting for the turn's end, like a thread's. */
+  .pending { display: flex; align-items: center; gap: 4px; min-width: 0; font-size: var(--text-xs); color: var(--color-muted-foreground); }
   .pending span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pending :global(svg) { flex: none; }
   /* The name becomes its field where it stood: the row keeps its height and its picture. */

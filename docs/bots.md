@@ -40,23 +40,32 @@ thread is archived too and read-only; unarchiving the bot restores it.
 
 ## The page
 
-The Bots page is the chat page with the bots in the thread list's column
-(`RailFrame` and `RailHead`, with the Threads and Bots switch). Opening a
-bot opens its thread on the store of the machine that owns it, in the
-ordinary `ChatView` with the ordinary `Composer`, so questions, the browser
-watch and `openQuestionPage` work as in any thread, and Open on a login card
-shows the browser beside the conversation. A phone shows the list, then the
-conversation full screen, with the desk and the browser in its panel.
+On a desktop, every bot of every machine is a picture in the app rail, the
+column down the window's left edge (`AppRail.svelte`), under Threads and the
+contacts; its `+` makes a bot, a team or opens the bot engine. A picture says
+how the bot stands (`railBotState`, `lib/app-rail.ts`, which the phone's bot
+list reads too): an amber count while it needs the user, a red `!` after a
+failure, a turning accent arc while it works, dimmed while paused. Clicking
+one opens the Bots page: the chat page with the bot column in the thread
+list's place (`BotColumnHead` and `BotColumn`). The column's head shows the
+bot's squircle, its name and one live line (the step and a timer, what it
+waits on, an error, its next wake); its more menu holds the row menu below,
+the brain and the bot engine. Under it come Conversation, then the threads
+it handles and those it finished.
 
-The header of a bot's thread shows its robot, its name and one live line:
-the step it is on (`AgentStatus.activity`) while it works, what it waits on,
-else its next routine or Idle. A `problem` shows as a warning with its fix.
-The header menu holds Settings, Brain, Pause or Resume and Archive.
+Opening a bot opens its thread on the store of the machine that owns it, in
+the ordinary `ChatView` with the ordinary `Composer`, so questions, the
+browser watch and `openQuestionPage` work as in any thread, and Open on a
+login card shows the browser beside the conversation. The window's top bar
+names the bot and "Conversation", with its pin, info panel and more buttons
+on the right; a `problem` shows as a warning with its fix above the
+conversation. A phone shows the bot list, then the conversation full screen
+under its own header, with the info panel and the browser in its panel.
 
-In the list, a bot's row is its robot beside two lines, the messenger way:
+On a phone, a bot's row is its robot beside two lines, the messenger way:
 its name over what it does this second, with a glyph for the kind of step
 (a command, a file read or edited, a search, the web, a subagent, thinking,
-a pause). That line is in the accent while it works and the right side
+a pause). That line is muted while it works and the right side
 counts the time it has worked; it shows the question in the waiting colour
 while it needs the user, the failure in danger, Paused asleep, else the last
 thing it said, bold while unread. A driver that reports only the running
@@ -90,8 +99,8 @@ unless their own field was being edited.
 
 The ring around the robot, in the list, the header and the desk, says how the
 bot stands (`AgentMood`): an accent arc turning while it works, a dashed
-accent ring while queued, the waiting colour pulsing while it needs the user,
-danger after a failure, a full accent ring over answers not read, a dashed
+grey ring while queued, the waiting colour pulsing while it needs the user,
+danger after a failure, a full light ring over answers not read, a dashed
 grey ring asleep (paused), a hairline in the robot's own colour at rest. The
 face moves with it.
 A routine
@@ -113,23 +122,19 @@ ids per machine (`lib/agent-upkeep.ts`). The composer of a bot's thread is
 addressed to it by name and shows no model, effort or mode chips: those are
 its settings.
 
-The desk is a surface of the thread's right panel (`desk`), opened by the
-header's desk button and, the first time this device shows a bot on a wide
-window, by itself. It keeps what the bot is doing now above three tabs: Work,
-Routines and Memory. The current step and elapsed time stay visible; the
-step count unfolds the last four calls. When idle, the card shows what it
-waits on or its next wake with a countdown. Work opens by default and shows
-its followed threads as rows (a status dot that
-breathes while the thread works or waits on the user, title, time, one meta
-line with state, project, pull request and checks, how long a stalled turn has
-been silent; a needs-you row opens its question with its options to answer in
-place; a row opens its thread, its cross, shown on hover and focus, takes it
-off the desk). Routines holds scheduled work and its actions; Memory holds
-the memory preview, its last update and AGENTS.md. A failed memory update
-marks its tab, with the full error inside. Arrow keys, Home and End change
-tabs; switching tabs preserves unfinished forms. Today's spend stays in a
-summary that unfolds the turn counts and budget bar. Reaching the budget
-opens that summary so its warning stays visible.
+The info panel is a surface of the thread's right panel (`desk`), opened
+by the top bar's info button and, the first time this device shows a bot on
+a wide window, by itself. Alone in the panel it draws no tab strip; its
+close and expand buttons show on hover. It is one column: the bot's
+squircle, name and description over chips for its model, machine and age;
+then, while it is busy, a Now card with the step, a timer and a fold with
+the last steps; its routines with a `+`; and its memory, the note count and
+the first three notes, with a warning mark and the full error in its tooltip
+after a failed update. The threads it handles sit in the bot column (status,
+title, time, one meta line with state, project, pull request and checks; a
+needs-you row opens its question to answer in place; its cross, shown on
+hover and focus, takes it off the desk). The daily budget is set in the
+bot's settings.
 
 A new bot needs a name and what it does; its robot, model and projects come
 filled in. It is free to act: its permission mode starts on full access (Auto,

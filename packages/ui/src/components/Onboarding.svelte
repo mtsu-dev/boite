@@ -245,15 +245,15 @@
   .segmented button.on { background: var(--color-accent-soft); color: var(--color-foreground); }
   .examples { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
   .examples button { position: relative; display: flex; align-items: center; justify-content: center; gap: 6px; height: auto; min-height: 48px; padding: 8px 20px 8px 10px; white-space: normal; line-height: 1.3; border: 1px solid var(--color-edge); border-radius: var(--radius-lg); background: var(--color-surface-2); color: var(--color-muted-foreground); font-size: var(--text-sm); cursor: pointer; }
-  .examples button:hover { color: var(--color-foreground); background: var(--color-hover); border-color: var(--color-accent); }
-  .examples button.on { border-color: var(--color-accent); background: var(--color-accent-soft); color: var(--color-foreground); box-shadow: inset 0 -2px var(--color-accent); }
-  .examples :global(.selected-mark) { position: absolute; top: 7px; right: 7px; color: var(--color-accent); }
+  .examples button:hover { color: var(--color-foreground); background: var(--color-hover); border-color: var(--color-muted-foreground); }
+  .examples button.on { border-color: var(--color-muted-foreground); background: var(--color-active); color: var(--color-foreground); }
+  .examples :global(.selected-mark) { position: absolute; top: 7px; right: 7px; color: var(--color-foreground); }
   .profiles { display: grid; gap: 8px; margin: 12px 0; }
   .profiles button { position: relative; display: flex; align-items: flex-start; gap: 14px; height: auto; padding: 16px 36px 16px 16px; white-space: normal; text-align: left; border: 1px solid var(--color-edge); border-radius: var(--radius-lg); background: var(--color-surface-2); color: var(--color-muted-foreground); cursor: pointer; }
   .profiles button :global(svg) { flex: none; margin-top: 2px; }
-  .profiles button:hover { color: var(--color-foreground); background: var(--color-hover); border-color: var(--color-accent); }
-  .profiles button.on { border-color: var(--color-accent); background: var(--color-accent-soft); color: var(--color-foreground); }
-  .profiles :global(.selected-mark) { position: absolute; top: 10px; right: 10px; color: var(--color-accent); }
+  .profiles button:hover { color: var(--color-foreground); background: var(--color-hover); border-color: var(--color-muted-foreground); }
+  .profiles button.on { border-color: var(--color-muted-foreground); background: var(--color-active); color: var(--color-foreground); }
+  .profiles :global(.selected-mark) { position: absolute; top: 10px; right: 10px; color: var(--color-foreground); }
   .answer { display: grid; gap: 4px; }
   .answer strong { font-size: var(--text-base); font-weight: 600; line-height: 1.4; color: var(--color-foreground); }
   .answer span { font-size: var(--text-sm); line-height: 1.5; }
@@ -272,7 +272,7 @@
   .dots { display: flex; margin-right: auto; }
   .dot { position: relative; width: 26px; height: 32px; padding: 0; border: 0; background: transparent; }
   .dot::after { content: ''; position: absolute; width: 6px; height: 6px; left: 10px; top: 13px; border-radius: 999px; background: var(--color-edge); }
-  .dot.on::after { background: var(--color-accent); width: 14px; left: 6px; }
+  .dot.on::after { background: var(--color-foreground); width: 14px; left: 6px; }
   @media (max-width: 480px) {
     .panel { height: min(640px, calc(100dvh - 32px)); }
     .scrim.shell .panel { height: min(640px, calc(100dvh - 32px - var(--titlebar))); }

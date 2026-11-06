@@ -23,3 +23,34 @@ export async function setProjectOrder(page: BrowserPage, order: 'recent' | 'manu
   await page.click(trigger);
   await page.waitFor(`!document.querySelector('${menu}')`);
 }
+
+/**
+ * Opens the thread list's display menu, which holds the view, the project and
+ * machine filters and Add a project since the redesign. A choice leaves it open.
+ */
+export async function openDisplayOptions(page: BrowserPage, prefix = ''): Promise<void> {
+  const trigger = `[data-testid=${prefix}grouping-options]`;
+  await page.waitFor(`document.querySelector('${trigger}')`);
+  if (await page.evaluate(`document.querySelector('${trigger}').getAttribute('aria-expanded') !== 'true'`)) await page.click(trigger);
+  await page.waitFor(`document.querySelector('[data-testid=${prefix}grouping-options-menu]')`);
+}
+
+/** Closes the display menu again when a choice left it open. */
+export async function closeDisplayOptions(page: BrowserPage, prefix = ''): Promise<void> {
+  const trigger = `[data-testid=${prefix}grouping-options]`;
+  if (await page.evaluate(`document.querySelector('${trigger}')?.getAttribute('aria-expanded') === 'true'`)) await page.click(trigger);
+  await page.waitFor(`!document.querySelector('[data-testid=${prefix}grouping-options-menu]')`);
+}
+
+/** Opens the Recent view's project filter, inside the display menu. */
+export async function openProjectFilter(page: BrowserPage, prefix = ''): Promise<void> {
+  await openDisplayOptions(page, prefix);
+  await page.click(`[data-testid=${prefix}project-filter]`);
+  await page.waitFor(`document.querySelector('[data-testid=${prefix}project-filter-menu]')`);
+}
+
+/** Add a project, the display menu's last row. */
+export async function clickAddProject(page: BrowserPage): Promise<void> {
+  await openDisplayOptions(page);
+  await page.click('[data-testid=grouping-options-menu] [data-testid=add-project]');
+}

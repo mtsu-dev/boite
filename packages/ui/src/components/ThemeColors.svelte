@@ -122,7 +122,7 @@
   .presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
   .preset { display: flex; justify-content: space-between; align-items: center; padding: 0 10px; gap: 8px; height: var(--control); border: 1px solid var(--color-border); background: transparent; border-radius: var(--radius-md); min-width: 0; text-align: left; color: var(--color-foreground); font-size: var(--text-sm); }
   .preset:hover { border-color: var(--color-edge); }
-  .preset[aria-pressed='true'] { border-color: var(--color-accent); color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-accent); }
+  .preset[aria-pressed='true'] { border-color: var(--color-muted-foreground); color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-muted-foreground); }
   .selection { display: flex; }
   .customize { display: inline-flex; align-items: center; gap: 7px; flex: none; }
   .editor { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; }
@@ -134,7 +134,7 @@
   .dot { height: 26px; width: 26px; flex: none; border-radius: var(--radius-sm); border: 1px solid var(--color-edge); }
   .role-name { flex: 1; display: grid; gap: 2px; font-size: var(--text-sm); white-space: normal; }
   .value { color: var(--color-muted-foreground); font-size: var(--text-xs); font-family: var(--font-mono); }
-  .selected { width: 5px; height: 5px; border-radius: 50%; background: var(--color-accent); }
+  .selected { width: 5px; height: 5px; border-radius: 50%; background: var(--color-foreground); }
   .right { display: grid; gap: 12px; min-width: 0; }
   .swatches { display: flex; flex-wrap: wrap; gap: 6px; padding: 14px 10px 0; }
   .swatch { width: 22px; height: 22px; min-height: 0; padding: 0; border-radius: 50%; border: 2px solid var(--color-surface); }

@@ -96,15 +96,15 @@
   .heading .unit { margin-left: 6px; opacity: 0.75; }
   .line { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
   .period { font-size: var(--text-sm); }
-  /* Each share its own toggle, filled with the accent when on; several may be. */
+  /* Each share its own toggle, filled with the foreground when on; several may be. */
   .chips { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
   .chip { display: inline-flex; align-items: center; gap: 4px; height: var(--control-sm); min-width: 44px; justify-content: center; padding: 0 9px; border: 1px solid var(--color-edge); border-radius: var(--radius-md);
     background: var(--color-surface-2); color: var(--color-muted-foreground); font-size: var(--text-sm); font-variant-numeric: tabular-nums;
     transition: background-color var(--dur-2) var(--ease-out-quint), color var(--dur-2) var(--ease-out-quint), border-color var(--dur-2) var(--ease-out-quint); }
   .chip:hover:not(.on):not(:disabled) { background: var(--color-surface-3); color: var(--color-foreground); }
-  .chip.on { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-accent-ink); }
+  .chip.on { background: var(--color-foreground); border-color: var(--color-foreground); color: var(--color-background); }
   .chip.add { border-style: dashed; }
-  .field { width: 64px; height: var(--control-sm); padding: 0 8px; border: 1px solid var(--color-accent); border-radius: var(--radius-md); background: var(--color-surface-2); color: var(--color-foreground); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+  .field { width: 64px; height: var(--control-sm); padding: 0 8px; border: 1px solid var(--color-edge); border-radius: var(--radius-md); background: var(--color-surface-2); color: var(--color-foreground); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
   .chips[aria-busy='true'] { opacity: 0.7; }
   @media (max-width: 720px) {
     .chips { flex: 1 1 100%; justify-content: flex-start; }

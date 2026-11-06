@@ -8,6 +8,7 @@ import { connect } from '../../packages/core/src/client.ts';
 import { claudeProjectFolder } from '../../packages/core/src/imports/claude.ts';
 import { claudeSessionFixture, FIXTURE_SESSION_ID } from '../../packages/core/test/fixtures/claude-session.ts';
 import { BrowserPage } from './lib/cdp.ts';
+import { clickAddProject } from './lib/views.ts';
 import { mintPairing, pairingUrlOf, removeDirectory, startCore, type RunningCore } from './lib/core.ts';
 import { developmentMarkers, ensureProductionUi, UI_DIST } from './lib/prod-ui.ts';
 
@@ -94,7 +95,7 @@ test(
 test(
   'opening a folder makes a project and a draft thread, and the first send creates the thread',
   async () => {
-    await page.click(testid('add-project'));
+    await clickAddProject(page);
     await page.waitFor(`document.querySelector('[data-testid=project-path]') && !document.querySelector('[data-testid=project-add]').disabled`);
     await page.type(testid('project-path'), projectDir);
     await clickWhenEnabled(testid('project-add'));

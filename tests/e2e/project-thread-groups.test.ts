@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp.ts';
-import { showThreadView } from './lib/views.ts';
+import { openProjectFilter, showThreadView } from './lib/views.ts';
 import { mobileAction } from './lib/mobile.ts';
 import { startUi } from './lib/ui.ts';
 
@@ -77,15 +77,15 @@ for (const width of [1280, 390]) {
         await page.evaluate('globalThis.__boiteTest.workspace.machines[0].store.client.sweepMergedPrArchives()');
         expect(await page.evaluate(`globalThis.__boiteTest.workspace.machines[0].store.client.call('threads.get', {threadId:${JSON.stringify(merged)}}).then(t => ({archived:t.archived, reason:t.archiveReason?.type}))`)).toEqual({archived:true, reason:'pr-merged'});
         await page.waitFor(`!document.querySelector('${row(merged)}')`);
-        await page.click(id(`${prefix}project-filter`));
+        await openProjectFilter(page, prefix);
         await page.evaluate(`Array.from(document.querySelectorAll('${id(`${prefix}project-filter-menu`)} [data-value]')).find(e => e.dataset.value === JSON.stringify(['http://builder.test', 'p-boite'])).click()`);
         await option('merged');
         expect(await page.evaluate('globalThis.__boiteTest.workspace.machines.map(m => m.store.projects.find(p => p.id === "p-boite").autoArchiveMergedPr)')).toEqual([true, false]);
       }
       await page.waitFor(`document.querySelector('${menu} [role=switch]')`);
       await shot('recent-options');
-      // Each switch draws one knob, the shared one from app.css, not a second of its own.
-      expect(await page.evaluate(`[...document.querySelectorAll('${menu} [role=switch]')].every(sw => sw.childElementCount === 0 && getComputedStyle(sw, '::after').content !== 'none')`)).toBe(true);
+      // Each switch row draws one knob, the shared \`.switch\` from app.css, not a second of its own.
+      expect(await page.evaluate(`[...document.querySelectorAll('${menu} [role=switch]')].every(sw => { const knobs = sw.querySelectorAll('.switch'); return knobs.length === 1 && knobs[0].childElementCount === 0 && getComputedStyle(knobs[0], '::after').content !== 'none'; })`)).toBe(true);
       expect(await page.evaluate(`(() => { const r=document.querySelector('${menu}').getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth; })()`)).toBe(true);
       await page.reload();
       await page.waitFor('globalThis.__boiteTest?.workspace.machines.length === 2');
@@ -284,7 +284,8 @@ for (const width of [1280, 390]) {
       else await page.evaluate('globalThis.__boiteTest.workspace.active.setSidebarWidth(208)');
       await shot('narrow');
       expect(await page.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
-      expect(await page.evaluate(`Array.from(document.querySelectorAll('${root} ${width < 720 ? '.project-heading h2' : '.head .name'}')).every(name => name.getBoundingClientRect().width >= 50)`)).toBe(true);
+      // A name keeps 50 px, or its whole width when shorter: the row's counters and buttons never crush it.
+      expect(await page.evaluate(`Array.from(document.querySelectorAll('${root} ${width < 720 ? '.project-heading h2' : '.head .name'}')).every(name => name.getBoundingClientRect().width >= Math.min(50, name.scrollWidth - 1))`)).toBe(true);
       expect(page.errors()).toEqual([]);
     } catch (error) {
       await page.screenshot(join(import.meta.dir, '.artifacts', `project-groups-failure-${width}.png`)).catch(() => {});

@@ -231,7 +231,7 @@
   .choice-machine { min-width: 0; max-width: 16ch; overflow: hidden; color: var(--color-muted-foreground); font-size: var(--text-xs); text-overflow: ellipsis; white-space: nowrap; }
   .mark { flex: none; display: grid; place-items: center; width: 18px; height: 18px; border: 1px solid var(--color-edge); border-radius: var(--radius-sm);
     color: var(--color-accent-ink); transition: background var(--dur-2) var(--ease-out-quint), border-color var(--dur-2) var(--ease-out-quint); }
-  .choice.on .mark { background: var(--color-accent); border-color: var(--color-accent); }
+  .choice.on .mark { background: var(--color-foreground); border-color: var(--color-foreground); }
   .note { margin: 0; font-size: var(--text-xs); font-weight: 400; line-height: 1.5; color: var(--color-muted-foreground); }
   .foot { padding: 10px 18px 14px; border-top: 1px solid var(--color-border); display: flex; flex-direction: column; gap: 8px; }
   .problem { margin: 0; font-size: var(--text-xs); color: var(--color-danger); }

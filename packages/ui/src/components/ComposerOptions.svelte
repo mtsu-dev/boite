@@ -89,7 +89,7 @@
   .hint { margin: 10px 0 0; font-size: var(--text-xs); line-height: 1.5; color: var(--color-muted-foreground); }
   .choices { display: flex; flex-wrap: wrap; gap: 6px; }
   .choices label { position: relative; flex: 1 0 auto; display: flex; justify-content: center; align-items: center; min-height: var(--touch-target); padding: 8px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); cursor: pointer; font-size: var(--text-sm); }
-  .choices label.selected { background: var(--color-accent-soft); border-color: var(--color-accent); color: var(--color-accent); }
+  .choices label.selected { background: var(--color-active); border-color: var(--color-muted-foreground); color: var(--color-foreground); }
   .choices label:focus-within { outline: 2px solid var(--color-accent); outline-offset: 2px; }
   input { position: absolute; opacity: 0; width: 1px; height: 1px; }
   .worktree span:first-of-type { flex: 1; }

@@ -89,3 +89,20 @@ export function sentPrompts(messages: Message[]): SentPrompt[] {
 export function hasUnsentDraft(state: ComposerState | undefined): boolean {
   return state !== undefined && (state.text.trim().length > 0 || state.attachments.length > 0);
 }
+
+/**
+ * What Send now does to the queue: interrupt the running turn, resume it
+ * after a refusal held it, or nothing while a pending prompt is going out.
+ */
+export function sendNowAction(
+  composer: ComposerState | undefined,
+  thread: { status: string } | null,
+  store: Pick<Store, 'connection' | 'busy'>
+): 'steer' | 'resume' | null {
+  if (!composer?.queued.length || composer.sending || store.connection !== 'ready' || !thread) return null;
+  const head = composer.queued[0]!;
+  // A refused outbox prompt has its own Send again; one written offline is a turn of its own, not steering.
+  if (head.request?.failed !== undefined) return null;
+  if (thread.status === 'running') return head.request ? null : 'steer';
+  return store.busy ? null : composer.paused ? 'resume' : null;
+}

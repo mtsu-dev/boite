@@ -5,6 +5,7 @@
   import type { AgentProfile, AgentStatus, Team, ThreadSummary } from '@boite/contracts';
   import { agentMenuItems, pickAgentAction, saveAgent } from '../../lib/agent-menu';
   import { botLeaving, leavingLine } from '../../lib/agent-move-flow';
+  import { railBotState, type RailBotState } from '../../lib/app-rail';
   import { agentRows, liveActivity, previewOf, waitingOn, type ActivityKind, type AgentMood, type AgentRowData, type AgentsView } from '../../lib/agents.svelte';
   import { contextMenu } from '../../lib/context-menu.svelte';
   import { experimentOn } from '../../lib/experiments.svelte';
@@ -121,17 +122,10 @@
     return status?.threadId ? machine.store.threads.find(t => t.id === status.threadId) ?? null : null;
   }
   type Tone = 'idle' | 'working' | 'queued' | 'waiting' | 'error' | 'asleep';
-  /** How the row stands: its thread's row first, the snapshot's status else. Paused, by itself or with every bot, it sleeps between the turns you start. */
+  /** The row's words for the rail's states: one decision (`railBotState`) for both. */
+  const TONES: Record<RailBotState, Tone> = { idle: 'idle', working: 'working', queued: 'queued', waiting: 'waiting', failed: 'error', paused: 'asleep' };
   function toneOf(row: AgentRowData, thread: ThreadSummary | null, asking: boolean): Tone {
-    if (thread?.status === 'running') return asking ? 'waiting' : 'working';
-    if (thread?.status === 'queued') return 'queued';
-    if (thread?.status === 'waiting' || asking) return 'waiting';
-    const state = row.status?.state;
-    if (state === 'working') return 'working';
-    if (state === 'queued') return 'queued';
-    if (state === 'waiting') return 'waiting';
-    if (state === 'error' || row.status?.problem) return 'error';
-    return row.profile.status === 'paused' || state === 'paused' ? 'asleep' : 'idle';
+    return TONES[railBotState(row.profile, row.status, thread, asking)];
   }
   /** The glyph of each kind of step, the way the timeline draws its calls. */
   const GLYPHS: Record<ActivityKind, Component<{ size?: number; strokeWidth?: number }>> = {

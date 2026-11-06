@@ -26,7 +26,7 @@
 </div>
 
 <style>
-  /* Drawn like a wake divider: a quiet line, the icon alone in the accent. */
+  /* Drawn like a wake divider: a quiet line and a muted icon. */
   .spawn {
     align-self: stretch;
     display: flex;
@@ -52,5 +52,5 @@
     height: auto;
   }
   button.label:hover, button.label:focus-visible { color: var(--color-foreground); }
-  .label :global(svg) { flex: none; color: var(--color-accent); }
+  .label :global(svg) { flex: none; color: var(--color-muted-foreground); }
 </style>

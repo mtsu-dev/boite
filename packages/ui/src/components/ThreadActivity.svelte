@@ -474,7 +474,7 @@
   .activity-row button { flex: none; }
   /* A folded question's text gives way to the pager, not the pager to it. */
   .activity-row .question-toggle { flex: 1 1 auto; min-width: 0; }
-  .kind { flex: none; white-space: nowrap; font-weight: 600; color: var(--color-accent); }
+  .kind { flex: none; white-space: nowrap; font-weight: 600; color: var(--color-foreground); }
   .kind .narrow { display: none; }
   .status { padding: 2px 8px; border-radius: var(--radius-sm); background: var(--color-surface-2); }
   .status.live { color: var(--color-accent); }

@@ -9,6 +9,8 @@
   import { isMac } from '../lib/keybindings';
   import { linuxShell } from '../lib/shell-platform';
   import { dragWindow, shellWindow, toggleMaximize } from '../lib/window-drag';
+  import { titleSlot } from '../lib/title-slot.svelte';
+  import { contactsShown } from '../lib/contacts-rail.svelte';
   import WindowResizeHandles from './WindowResizeHandles.svelte';
 
   /**
@@ -32,6 +34,13 @@
    * together. On a phone the Agents list is the screen itself, with no drawer
    * to open.
    */
+  /** Settings has no app rail: what waits from contacts keeps its bell and its pop-ups in the bar there. */
+  let contactNotice = $derived(store.page === 'settings' && contactsShown(store) && (inShell || !mobile.current));
+  let ContactRequestNotice = $state<typeof import('./home/ContactRequestNotice.svelte').default>();
+  $effect(() => {
+    if (!contactNotice || ContactRequestNotice) return;
+    void import('./home/ContactRequestNotice.svelte').then(module => { ContactRequestNotice = module.default; }).catch(() => {});
+  });
   let foldable = $derived(store.booted && (store.page === 'chat' || store.page === 'home' || (store.page === 'agents' && !mobile.current)));
   function toggleSidebar() {
     if (mobile.current) store.sidebarOpen = !store.sidebarOpen;
@@ -108,9 +117,12 @@
   {/if}
   {#if threadHeader && (inShell || !mobile.current)}
     {#key store}<ThreadHeader {store} />{/key}
+  {:else if store.page === 'agents' && titleSlot.current && !mobile.current}
+    {@render titleSlot.current()}
   {:else}
     <span class="name ui-label">{store.page === 'agents' ? strings.agents.heading : store.page === 'home' ? strings.contacts.heading : heading}</span>
   {/if}
+  {#if contactNotice && ContactRequestNotice}<ContactRequestNotice {store} />{/if}
   {#if inShell && store.booted && store.page !== 'settings'}
     <!-- A shell window narrower than a phone has no app rail: Settings stays one press away here. -->
     <button type="button" class="ghost icon narrow-settings" title={strings.sidebar.settings} aria-label={strings.sidebar.settings}

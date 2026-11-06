@@ -89,10 +89,10 @@
   .grip {
     color: var(--color-subtle);
   }
-  /* Over a place that takes it, the card straightens and wears the accent, ready to land. */
+  /* Over a place that takes it, the card straightens and firms its edge, ready to land. */
   .card.armed {
-    border-color: var(--color-accent);
-    box-shadow: var(--shadow-e3), 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent);
+    border-color: var(--color-muted-foreground);
+    box-shadow: var(--shadow-e3);
     transform: rotate(0deg) scale(1.01);
   }
   .logo {
@@ -123,8 +123,8 @@
     transition: background var(--dur-2) var(--ease-out-quint), color var(--dur-2) var(--ease-out-quint);
   }
   .hint.armed {
-    color: var(--color-accent-ink);
-    background: var(--color-accent);
+    color: var(--color-background);
+    background: var(--color-foreground);
   }
   .hint :global(svg) {
     flex: none;

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ArrowLeft, Brain, Ellipsis, Archive, Pause, Play, LampDesk, RotateCcw, Settings2, TriangleAlert } from '@lucide/svelte';
+  import { ArrowLeft, Brain, Ellipsis, Archive, Pause, Play, LampDesk, RotateCcw, Settings2 } from '@lucide/svelte';
   import type { AgentProfile, AgentStatus, ThreadSummary } from '@boite/contracts';
   import { moodOf, liveState, liveStep, resetBuiltin, waitingOn, type AgentsView } from '../../lib/agents.svelte';
   import { confirmArchive } from '../../lib/agent-menu';
@@ -21,7 +21,8 @@
    * robot in its ring (breathing while it works), its name and one live line
    * that says what it does this second (the step its turn is on, with the time
    * it has run), what it waits on, or when it next wakes. A problem that keeps
-   * it from running shows under it with the way to fix it.
+   * it from running shows under it, from the page, with the way to fix it.
+   * On a desktop the page draws this line in the window's top bar.
    */
   let { store, view, agent, status, thread, onpane, onback }: {
     store: Store;
@@ -106,10 +107,3 @@
     </Menu>
   </nav>
 </header>
-{#if status?.problem && agent.status !== 'archived'}
-  <div class="agent-problem" role="alert" data-testid="agent-problem">
-    <TriangleAlert size={15} strokeWidth={1.75} />
-    <span>{status.problem}</span>
-    {#if store.owner}<button type="button" class="small" onclick={() => onpane('settings')}>{labels.fix}</button>{/if}
-  </div>
-{/if}

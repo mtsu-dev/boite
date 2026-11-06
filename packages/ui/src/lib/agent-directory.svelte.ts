@@ -204,10 +204,20 @@ export class AgentDirectory {
 
 const directories = new WeakMap<Store, AgentDirectory>();
 
-/** The one directory of a machine's Store. */
+/**
+ * The one directory of a machine's Store. It is born in a root of its own:
+ * state born inside a derived is never a dependency of that derived, so the
+ * first caller (the rail's bots, on a cold load) would miss the snapshot that
+ * lands later.
+ */
 export function agentDirectory(store: Store): AgentDirectory {
   let directory = directories.get(store);
-  if (!directory) { directory = new AgentDirectory(store); directories.set(store, directory); }
+  if (!directory) {
+    let made!: AgentDirectory;
+    $effect.root(() => { made = new AgentDirectory(store); })();
+    directory = made;
+    directories.set(store, directory);
+  }
   return directory;
 }
 

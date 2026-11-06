@@ -11,7 +11,8 @@
   import { contactsRail, contactsShown } from '../lib/contacts-rail.svelte';
   import { machineFilter } from '../lib/machine-filter.svelte';
   import { projectView } from '../lib/project-view.svelte';
-  import { newBot, newTeam } from '../lib/agents-view.svelte';
+  import { botEngine, newBot, newTeam } from '../lib/agents-view.svelte';
+  import { separator } from '../lib/menu';
   import { contextMenu } from '../lib/context-menu.svelte';
   import { work } from '../lib/work-prefs.svelte';
   import { controlMenu } from '../lib/controls';
@@ -66,7 +67,9 @@
   function stateOf({ machine, row }: Bot): RailBotState {
     const threadId = row.status?.threadId;
     const thread = threadId ? machine.store.threads.find(entry => entry.id === threadId) ?? null : null;
-    return railBotState(row.profile, row.status, thread, waitingOn(machine.store, threadId) !== null);
+    const state = railBotState(row.profile, row.status, thread, waitingOn(machine.store, threadId) !== null);
+    // A queued turn is work on its way: the picture draws it as work.
+    return state === 'queued' ? 'working' : state;
   }
   /** The questions and permissions its thread holds open: at least one while it waits. */
   function asksOf({ machine, row }: Bot): number {
@@ -110,8 +113,9 @@
     const rect = anchor.getBoundingClientRect();
     contextMenu.show({ x: rect.right + 8, y: rect.top }, [
       { id: 'bot', label: strings.agents.newAgent },
-      ...(teamsOn && store.owner ? [{ id: 'team', label: strings.teamChat.newTeam }] : [])
-    ], id => { if (id === 'bot') newBot(store); else newTeam(store); }, anchor);
+      ...(teamsOn && store.owner ? [{ id: 'team', label: strings.teamChat.newTeam }] : []),
+      ...(store.owner ? [separator('sep-engine'), { id: 'engine', label: strings.agents.engineSettings }] : [])
+    ], id => { if (id === 'bot') newBot(store); else if (id === 'team') newTeam(store); else botEngine(store); }, anchor);
   }
   function pickMachine(id: string | null) {
     const entries = machines.flatMap(machine => machine.store.projects.map(project => ({ machine, project })));
@@ -149,7 +153,7 @@
         {#if contactsRail.folded && contactsRail.waiting}<span class="dot" data-testid="contacts-toggle-waiting"></span>{/if}
       </button>
     </div>
-    {#if ContactRequestNotice}<div class="slot"><ContactRequestNotice {store} /></div>{/if}
+    {#if ContactRequestNotice}<div class="slot"><ContactRequestNotice {store} rail /></div>{/if}
   {/if}
 
   {#if botsOn}

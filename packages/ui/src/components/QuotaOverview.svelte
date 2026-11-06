@@ -212,7 +212,7 @@
   .overview { display: grid; grid-template-columns: minmax(0, 1fr); }
   article { min-width: 0; padding: 4px 0; }
   article + article { border-top: 1px solid var(--color-border); }
-  article.dragging { background: var(--color-accent-soft); outline: 1px solid var(--color-accent); }
+  article.dragging { background: var(--color-active); outline: 1px solid var(--color-muted-foreground); }
   .account-heading { display: flex; align-items: stretch; gap: 2px; }
   .summary { flex: 1; min-width: 0; width: 100%; height: auto; min-height: 44px; padding: 2px 4px; line-height: 1.2; display: flex; align-items: start; gap: 8px; text-align: left; border-radius: var(--radius-md); white-space: normal; }
   .summary:disabled { opacity: 1; cursor: default; }

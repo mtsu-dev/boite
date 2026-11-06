@@ -236,7 +236,7 @@
 <style>
   .salon-page { display: flex; flex-direction: column; width: 100%; max-width: var(--content); height: 100%; min-height: 0; margin: 0 auto; }
   .project-choice { display: inline-flex; max-width: 100%; border: 1px dashed var(--color-muted-foreground); border-radius: var(--radius-md); }
-  .project-choice:hover, .project-choice:focus-within { border-color: var(--color-accent); }
+  .project-choice:hover, .project-choice:focus-within { border-color: var(--color-muted-foreground); }
   .project-choice :global(.choice) { min-width: 0; max-width: 100%; }
   .project-choice :global(.trigger) { min-height: var(--row); height: auto; max-width: 100%; padding: 7px 12px; gap: 8px; }
   .project-label { min-width: 0; overflow-wrap: anywhere; }

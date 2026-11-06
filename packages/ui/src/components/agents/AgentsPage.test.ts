@@ -7,6 +7,7 @@ import { rightPanel } from '../../lib/right-panel.svelte';
 import { strings } from '../../lib/strings';
 import { newBot } from '../../lib/agents-view.svelte';
 import AgentsPage from './AgentsPage.svelte';
+import TitleBar from '../TitleBar.svelte';
 
 test('an agent named on the way in opens alone: the default agent of the visit gives way to it', async ({ ready }) => {
   setExperiment('resident-agents', true);
@@ -38,6 +39,7 @@ test('an agent named on the way in opens alone: the default agent of the visit g
 for (const previousBot of [false, true]) test(`a background reload preserves a pending bot selection (previous bot: ${previousBot})`, async ({ ready }) => {
   setExperiment('resident-agents', true);
   let page: ReturnType<typeof mount> | null = null;
+  let bar: ReturnType<typeof mount> | null = null;
   let release!: () => void;
   const gate = new Promise<void>(resolve => { release = resolve; });
   try {
@@ -56,6 +58,8 @@ for (const previousBot of [false, true]) test(`a background reload preserves a p
     });
     store.showAgents(named.id);
     page = mount(AgentsPage, { target: document.body, props: { store } });
+    // On a desktop the bot's name and buttons stand in the window's top bar.
+    bar = mount(TitleBar, { target: document.body, props: { store } });
     flushSync();
     await vi.waitFor(() => expect(opening).toBe(true));
     await store.reload();
@@ -67,6 +71,7 @@ for (const previousBot of [false, true]) test(`a background reload preserves a p
     expect(document.querySelector('.agents-main .agent-empty')).toBeNull();
   } finally {
     release();
+    if (bar) await unmount(bar);
     if (page) await unmount(page);
     setExperiment('resident-agents', false);
   }
@@ -157,6 +162,7 @@ test('a default bot that cannot be opened offers a retry instead of loading fore
 test("a desktop's column is the open bot's: who it is, its conversation, its threads; the rail's New bot opens the form here", async ({ ready }) => {
   setExperiment('resident-agents', true);
   let page: ReturnType<typeof mount> | null = null;
+  let bar: ReturnType<typeof mount> | null = null;
   try {
     const { store } = await ready({ delayMs: 0, agentsDemo: true });
     const view = AgentsView.of(store);
@@ -164,6 +170,7 @@ test("a desktop's column is the open bot's: who it is, its conversation, its thr
     const nova = view.snapshot!.profiles.find(p => p.name === 'Nova')!;
     store.showAgents(nova.id);
     page = mount(AgentsPage, { target: document.body, props: { store } });
+    bar = mount(TitleBar, { target: document.body, props: { store } });
     // The fake core seeds Nova's desk as its thread opens, without the change event the real core sends.
     await vi.waitFor(() => expect(store.openThread?.agentSessionId).toBeTruthy());
     await view.refresh();
@@ -176,7 +183,8 @@ test("a desktop's column is the open bot's: who it is, its conversation, its thr
     expect(document.querySelector('[data-testid^="agent-entry-"]')).toBeNull();
     expect(document.querySelector('[data-testid=agents-search-toggle]')).toBeNull();
     expect(document.querySelectorAll('.agents-rail .section-label')).toHaveLength(0);
-    // The chat's header is one line: its name and Conversation, nothing it repeats from the column.
+    // The window's top bar carries the chat's header, one line: its name and Conversation, nothing it repeats from the column.
+    expect(document.querySelector('[data-testid=titlebar] [data-testid=agent-header]')).not.toBeNull();
     expect(document.querySelector('[data-testid=agent-header]')?.textContent).toContain(`${nova.name}${strings.agents.deskPanel.conversation}`);
     expect(document.querySelector('[data-testid=agent-live]')).toBeNull();
     const conversation = document.querySelector<HTMLButtonElement>('[data-testid=bot-conversation]')!;
@@ -193,6 +201,7 @@ test("a desktop's column is the open bot's: who it is, its conversation, its thr
     await vi.waitFor(() => { flushSync(); expect(document.querySelector('[data-testid=agent-editor]')).not.toBeNull(); });
     expect(store.page).toBe('agents');
   } finally {
+    if (bar) unmount(bar);
     if (page) unmount(page);
     document.body.innerHTML = '';
     setExperiment('resident-agents', false);

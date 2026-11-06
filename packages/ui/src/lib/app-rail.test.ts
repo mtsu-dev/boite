@@ -5,7 +5,7 @@ test("a bot's picture reads its thread first, then its snapshot, a question outr
   const active = { status: 'active' } as const;
   expect(railBotState(active, null, { status: 'running' }, false)).toBe('working');
   expect(railBotState(active, null, { status: 'running' }, true)).toBe('waiting');
-  expect(railBotState(active, null, { status: 'queued' }, false)).toBe('working');
+  expect(railBotState(active, null, { status: 'queued' }, false)).toBe('queued');
   expect(railBotState(active, null, { status: 'idle' }, true)).toBe('waiting');
   expect(railBotState(active, { state: 'error' } as never, null, false)).toBe('failed');
   expect(railBotState({ status: 'paused' }, null, null, false)).toBe('paused');

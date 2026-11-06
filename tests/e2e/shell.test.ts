@@ -4,6 +4,7 @@ import { basename, dirname, join } from 'node:path';
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { connect } from '../../packages/core/src/client.ts';
 import { BrowserPage, freePort } from './lib/cdp.ts';
+import { clickAddProject } from './lib/views.ts';
 import { describeShell, TAURI_READY, waitForShellPage, type ShellUnderTest } from './lib/shell-diagnosis.ts';
 import { freshDataDir, killProcessTree, removeDirectory, startCore } from './lib/core.ts';
 
@@ -717,7 +718,7 @@ shellTest(
   async () => {
     // The dialog IPC is answered here so this test never puts a native window on screen.
     await page?.waitFor(`document.querySelector('${testid('draft-open-folder')}')`);
-    await page?.click(testid('add-project'));
+    if (page) await clickAddProject(page);
     await page?.waitFor(`document.querySelector('[data-testid=pick-project]') && !document.querySelector('[data-testid=pick-project]').disabled`);
     await page?.evaluate(`document.fonts.ready`);
     await page?.screenshot(join(import.meta.dir, '.artifacts', 'shell-project-picker.png'));
@@ -920,7 +921,7 @@ shellTest('the machine picker opens a folder on the selected core and reports a 
     await page?.click(testid('settings-back'));
     // One machine draws no machine button; the second one brings it back.
     await page?.waitFor(`document.querySelector('[data-testid=status-connection] [data-testid=machine-status]')`);
-    await page?.click(testid('add-project'));
+    if (page) await clickAddProject(page);
     await page?.waitFor(`document.querySelector('[data-testid=project-path]') && !document.querySelector('[data-testid=project-add]').disabled`);
     expect(await page?.evaluate(`!!document.querySelector('[data-testid=pick-project]')`)).toBe(true);
     await page?.waitFor(`document.querySelector('[data-testid=pick-project]') && !document.querySelector('[data-testid=pick-project]').disabled`);

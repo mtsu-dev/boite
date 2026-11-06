@@ -104,7 +104,7 @@
   .row.current { background: var(--color-active); }
   .row[data-link='connected'] { --tone: var(--color-success); }
   .row[data-link='connecting'] { --tone: var(--color-live); }
-  .avatar { position: relative; display: grid; flex: none; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--color-accent-soft); color: var(--color-accent); font-size: var(--text-xs); font-weight: 700; letter-spacing: 0.02em; }
+  .avatar { position: relative; display: grid; flex: none; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--color-active); color: var(--color-foreground); font-size: var(--text-xs); font-weight: 700; letter-spacing: 0.02em; }
   .avatar.add { background: var(--color-surface-2); color: var(--color-muted-foreground); }
   .dot { position: absolute; right: -1px; bottom: -1px; width: 9px; height: 9px; border-radius: 50%; background: var(--tone); box-shadow: 0 0 0 2px var(--color-frame); }
   .text { display: flex; flex: 1; flex-direction: column; min-width: 0; line-height: 1.25; }

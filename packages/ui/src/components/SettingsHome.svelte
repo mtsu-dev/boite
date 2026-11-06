@@ -219,7 +219,7 @@
   .text { display: grid; align-content: start; gap: 2px; width: 100%; min-width: 0; min-height: calc(var(--text-base) * 1.3 + 2px + var(--text-sm) * 1.35 * 2); }
   .label { font-size: var(--text-base); font-weight: 500; line-height: 1.3; overflow-wrap: break-word; }
   .status { font-size: var(--text-sm); line-height: 1.35; color: var(--color-muted-foreground); overflow-wrap: break-word; }
-  .status.call { color: var(--color-accent); }
+  .status.call { color: var(--color-foreground); }
 
   /* Two a row, the glyph goes back beside the words: a half-width tile is wide
      enough for both and a tall one would be mostly empty. */

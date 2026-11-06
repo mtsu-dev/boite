@@ -605,7 +605,7 @@
   }
 
   .num.on {
-    color: var(--color-accent);
+    color: var(--color-foreground);
     font-weight: 600;
   }
 
@@ -616,8 +616,8 @@
     left: 44px;
     right: 0;
     height: var(--line);
-    background: color-mix(in srgb, var(--color-accent) 16%, transparent);
-    border-left: 2px solid var(--color-accent);
+    background: var(--color-selection);
+    border-left: 2px solid var(--color-muted-foreground);
     pointer-events: none;
     z-index: 0;
   }
@@ -650,7 +650,7 @@
   .paint pre { margin: 0; padding: var(--pad) 10px; width: max-content; min-width: 100%;
     font: inherit; line-height: inherit; white-space: pre; tab-size: 2; }
   .colored .text { color: transparent; caret-color: var(--color-foreground); }
-  .colored .text::selection { color: transparent; background: color-mix(in srgb, var(--color-accent) 25%, transparent); }
+  .colored .text::selection { color: transparent; background: var(--color-selection); }
 
   .text:focus-visible {
     outline: none;
@@ -678,8 +678,8 @@
   }
 
   .line.on {
-    background: color-mix(in srgb, var(--color-accent) 16%, transparent);
-    box-shadow: inset 2px 0 0 var(--color-accent);
+    background: var(--color-selection);
+    box-shadow: inset 2px 0 0 var(--color-muted-foreground);
   }
 
   .line-number {
@@ -692,7 +692,7 @@
     user-select: none;
   }
 
-  .line.on .line-number { color: var(--color-accent); font-weight: 600; }
+  .line.on .line-number { color: var(--color-foreground); font-weight: 600; }
 
   .line-text {
     flex: 1;

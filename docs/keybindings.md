@@ -65,7 +65,7 @@ A chord is modifiers, then one key, joined with `+`, case and spaces ignored.
 | Id | Default | What it does |
 |---|---|---|
 | `new-thread` | `mod+n` | A draft in the open project |
-| `palette` | `mod+k` | The command palette, also the command button at the foot of the sidebar |
+| `palette` | `mod+k` | The command palette, also the search button over the thread list |
 | `sidebar` | `mod+s` | Fold or unfold the thread sidebar |
 | `panel` | `mod+alt+b` | The right panel, on an open thread |
 | `browser` | `mod+shift+j` | The conversation's browser, on every client |

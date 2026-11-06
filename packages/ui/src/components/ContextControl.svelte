@@ -202,7 +202,7 @@
   .heading { display: flex; justify-content: space-between; font-size: var(--text-sm); font-weight: 600; }
   .title { display: flex; align-items: center; gap: 4px; }
   .reading-info { width: 22px; height: 22px; margin: -2px 0; padding: 0; color: var(--color-muted-foreground); }
-  .reading-info[aria-expanded='true'] { color: var(--color-accent); }
+  .reading-info[aria-expanded='true'] { color: var(--color-foreground); }
   .total { margin: 8px 0 12px; font-size: var(--text-sm); }
   .unit { color: var(--color-muted-foreground); font-size: var(--text-xs); }
   .remaining { margin: 10px 0 0; font-size: var(--text-xs); line-height: 1.5; color: var(--color-muted-foreground); }

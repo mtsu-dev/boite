@@ -185,7 +185,7 @@
   .dictation button { flex: none; width: var(--control); height: var(--control); }
   /* Same face and place as the attach button beside it; while it records it is the Finish button, tinted. */
   .microphone { transition: background var(--dur-2), color var(--dur-2), border-color var(--dur-2), box-shadow var(--dur-2); }
-  .microphone.listening { color: var(--color-accent); background: var(--color-accent-soft); border-color: var(--color-accent); box-shadow: 0 0 0 3px var(--color-accent-soft); }
+  .microphone.listening { color: var(--color-foreground); background: var(--color-active); border-color: var(--color-muted-foreground); }
   .microphone.busy:disabled { opacity: 1; color: var(--color-accent); }
   .panel {
     z-index: 40; display: flex; align-items: center; gap: 4px;

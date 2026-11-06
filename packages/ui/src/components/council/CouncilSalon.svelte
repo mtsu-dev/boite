@@ -66,7 +66,7 @@
   }
   const excerpt = (text: string) => text.replace(/\s+/g, ' ').trim().slice(0, 140);
 
-  /** An owner's message cut where it names a member, so the names read in the accent colour. */
+  /** An owner's message cut where it names a member, so the names read at full ink. */
   function pieces(text: string): { text: string; mention: boolean }[] {
     const words = (council?.members ?? []).flatMap(member => [member.name.trim(), member.handle]).filter(Boolean)
       .sort((a, b) => b.length - a.length).map(word => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
@@ -362,11 +362,11 @@
   .who b { color: var(--color-foreground); font-weight: 600; }
   .who time { margin-left: 2px; color: var(--color-subtle); font-variant-numeric: tabular-nums; }
   .score { font-variant-numeric: tabular-nums; }
-  .to-one { align-self: flex-start; padding: 0 8px; border-radius: var(--radius-full); background: var(--color-accent-soft); color: var(--color-accent); font-size: var(--text-xs); font-weight: 500; }
+  .to-one { align-self: flex-start; padding: 0 8px; border-radius: var(--radius-full); background: var(--color-active); color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 500; }
   .reply-to { margin: 0; padding-left: 8px; border-left: 2px solid var(--color-border); color: var(--color-muted-foreground); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .text { min-width: 0; font-size: var(--text-sm); overflow-wrap: anywhere; }
   .plain { margin: 0; white-space: pre-wrap; }
-  .mention { color: var(--color-accent); font-weight: 500; }
+  .mention { color: var(--color-foreground); font-weight: 600; }
 
   .review { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); }
 

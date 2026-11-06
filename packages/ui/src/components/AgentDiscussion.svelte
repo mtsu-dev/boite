@@ -11,7 +11,7 @@
 
   /**
    * One discussion, back and forth, the way this thread's chat reads: its own
-   * agent on the left, what reaches it on the right in the accent, like the
+   * agent on the left, what reaches it on the right, like the
    * user's prompts. Consecutive letters of one side share their time stamp; a
    * long silence gets its own line.
    */
@@ -212,7 +212,7 @@
   .who strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); }
   .facts { min-width: 0; display: flex; align-items: center; gap: 6px; color: var(--color-muted-foreground); font-size: var(--text-xs); }
   .facts > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .facts .tag { flex: none; padding: 1px 6px; border-radius: var(--radius-full); background: var(--color-accent-soft); color: var(--color-accent); font-weight: 500; }
+  .facts .tag { flex: none; padding: 1px 6px; border-radius: var(--radius-full); background: var(--color-active); color: var(--color-muted-foreground); font-weight: 500; }
   .facts .tag.resident { background: var(--color-resident-soft); color: var(--color-resident); }
   .facts .model { font-family: var(--font-mono); }
   .about { flex: none; margin: 0; padding: 8px 14px; border-bottom: 1px solid var(--color-border); color: var(--color-muted-foreground); font-size: var(--text-xs); line-height: 1.45; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
@@ -227,12 +227,12 @@
   .bubble { max-width: 100%; padding: 7px 11px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface-2); color: var(--color-foreground); transition: box-shadow var(--dur-3) var(--ease-out-quint); }
   .msg .bubble { border-bottom-left-radius: var(--radius-sm); }
   .msg:not(.first) .bubble { border-top-left-radius: var(--radius-sm); }
-  .msg.right .bubble { border-color: color-mix(in oklch, var(--color-accent) 55%, transparent); border-bottom-left-radius: var(--radius-lg); border-bottom-right-radius: var(--radius-sm); background: var(--color-accent-soft); }
+  .msg.right .bubble { border-color: var(--color-edge); border-bottom-left-radius: var(--radius-lg); border-bottom-right-radius: var(--radius-sm); background: var(--color-accent-soft); }
   .msg.right:not(.first) .bubble { border-top-left-radius: var(--radius-lg); border-top-right-radius: var(--radius-sm); }
   .msg.resident .bubble { border-color: color-mix(in oklch, var(--color-resident) 45%, transparent); border-left: 2px solid var(--color-resident); background: var(--color-resident-soft); }
   .msg.resident .label { color: var(--color-resident); }
   .msg.failed .bubble { border-style: dashed; }
-  .msg.flash .bubble { box-shadow: 0 0 0 2px var(--color-accent); }
+  .msg.flash .bubble { box-shadow: 0 0 0 2px var(--color-muted-foreground); }
   .text { margin: 0; font-size: var(--text-sm); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
   .quote { display: flex; align-items: center; gap: 5px; width: 100%; height: auto; min-height: 0; margin: 0 0 5px; padding: 3px 7px; border: 0; border-left: 2px solid var(--color-edge); border-radius: var(--radius-sm); background: var(--color-hover); color: var(--color-muted-foreground); font-size: var(--text-xs); text-align: left; }
   .quote:hover { color: var(--color-foreground); }

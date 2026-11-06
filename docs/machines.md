@@ -391,8 +391,8 @@ then create a draft in that project. An archived or removed selection falls
 back to All projects. Inside projects and in Recent, pinned threads come
 first, followed by threads needing attention and then recent user messages.
 
-All machines can be narrowed to one machine from the filter button beside
-Settings at the bottom of the sidebar. The search icon opens the command
+All machines can be narrowed to one machine from the machine button at the
+foot of the app rail, or from the display menu over the thread list. The search icon over the list opens the command
 palette, also available with Ctrl+K, without a permanent search field.
 It matches thread titles, project names and machine names across connected
 hosts. The draft's project picker also includes every connected host.

@@ -84,7 +84,7 @@
     min-width: 0;
   }
   .head { display: flex; align-items: center; gap: 6px; min-width: 0; }
-  .glyph { display: inline-flex; flex: none; color: var(--color-accent); }
+  .glyph { display: inline-flex; flex: none; color: var(--color-muted-foreground); }
   .reason { font-weight: 500; overflow-wrap: anywhere; }
   .delta {
     display: flex;

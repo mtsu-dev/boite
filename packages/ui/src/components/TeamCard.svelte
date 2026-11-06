@@ -123,7 +123,7 @@
 
   .head { display: flex; align-items: center; gap: 6px; min-width: 0; }
   .head .muted { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-  .glyph { display: inline-flex; flex: none; color: var(--color-accent); }
+  .glyph { display: inline-flex; flex: none; color: var(--color-muted-foreground); }
 
   .reason { margin: 0; font-weight: 500; white-space: pre-wrap; overflow-wrap: anywhere; }
   .hint { margin: 0; font-size: var(--text-sm); color: var(--color-muted-foreground); }

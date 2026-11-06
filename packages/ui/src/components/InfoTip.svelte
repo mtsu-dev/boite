@@ -144,6 +144,6 @@
      the open state shows in the icon alone: a filled disc that size is loud. */
   @media (max-width: 720px) {
     .info-tip { width: 30px; height: 30px; margin: -8px -6px -8px -2px; }
-    .info-tip[aria-expanded='true'] { background: transparent; color: var(--color-accent); }
+    .info-tip[aria-expanded='true'] { background: transparent; color: var(--color-foreground); }
   }
 </style>

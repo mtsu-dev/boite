@@ -254,17 +254,17 @@
   .outline-group i { background: repeating-linear-gradient(to right, currentColor 0 2px, transparent 2px 4px); }
   .hot, .track button:focus-visible { color: var(--color-foreground); }
   .hot i, .track button:focus-visible i { opacity: 1; }
-  .marker.active { color: var(--color-accent); }
-  .marker.active i { transform: scaleX(calc((16 + 6 * var(--weight, 0)) / 22)); opacity: 1; box-shadow: 0 0 8px color-mix(in oklch, var(--color-accent) 55%, transparent); }
+  .marker.active { color: var(--color-foreground); }
+  .marker.active i { transform: scaleX(calc((16 + 6 * var(--weight, 0)) / 22)); opacity: 1; }
   .group-menu { position: fixed; z-index: 30; width: min(300px, calc(100vw - 70px)); max-height: 264px; overflow-y: auto; padding: 6px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface-2); box-shadow: var(--shadow-e2); animation: pop var(--dur-2); }
   .group-menu.closing { animation-name: pop-out; pointer-events: none; }
   .group-menu button { width: 100%; height: auto; min-height: var(--control); padding: 6px 8px; gap: 10px; justify-content: flex-start; text-align: left; font-size: var(--text-sm); }
   .group-menu button span:last-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .group-menu button:hover, .group-menu button:focus-visible { background: var(--color-hover); color: var(--color-foreground); }
   /* The user bubble of the timeline, laid on the page colour so the tint matches, its short corner toward the bar. */
-  .preview { position: fixed; z-index: 30; display: flex; align-items: baseline; gap: 10px; width: max-content; max-width: min(360px, calc(100vw - 70px)); padding: 10px 14px; border: 1px solid color-mix(in oklch, var(--color-accent) 35%, transparent); border-radius: var(--radius-lg); border-top-left-radius: var(--radius-sm); background: linear-gradient(var(--color-accent-soft), var(--color-accent-soft)), var(--color-background); box-shadow: var(--shadow-e2), 0 0 28px -10px color-mix(in oklch, var(--color-accent) 60%, transparent); pointer-events: none; transform-origin: 0 21px; animation: pop var(--dur-2) var(--ease-out-quint); transition: top var(--dur-2) var(--ease-out-quint); }
+  .preview { position: fixed; z-index: 30; display: flex; align-items: baseline; gap: 10px; width: max-content; max-width: min(360px, calc(100vw - 70px)); padding: 10px 14px; border: 1px solid var(--color-edge); border-radius: var(--radius-lg); border-top-left-radius: var(--radius-sm); background: var(--color-surface-2); box-shadow: var(--shadow-e2); pointer-events: none; transform-origin: 0 21px; animation: pop var(--dur-2) var(--ease-out-quint); transition: top var(--dur-2) var(--ease-out-quint); }
   .number { flex: none; color: var(--color-subtle); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
-  .preview .number { color: var(--color-accent); font-family: var(--font-mono); }
+  .preview .number { color: var(--color-muted-foreground); font-family: var(--font-mono); }
   .command { color: var(--color-accent); font-weight: 600; }
   p { margin: 0; line-height: 1.5; color: var(--color-foreground); overflow-wrap: anywhere; white-space: pre-wrap; display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
   /* A finger has no hover to open the rail: wider rows, and the rail scrolls when a short timeline cannot hold it. */

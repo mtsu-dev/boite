@@ -2,7 +2,7 @@ import { mobileAction, screensSettled } from './lib/mobile.ts';
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp.ts';
-import { setProjectOrder, showThreadView } from './lib/views.ts';
+import { closeDisplayOptions, openDisplayOptions, openProjectFilter, setProjectOrder, showThreadView } from './lib/views.ts';
 import { startUi } from './lib/ui.ts';
 
 let server: { close(): Promise<void> };
@@ -25,12 +25,13 @@ afterAll(async () => { await page?.close(); await server?.close(); }, 30_000);
 test('recent view filters one owning project and creates its draft', async () => {
   await showThreadView(page, 'recent');
   await capture('project-views-desktop.png');
-  expect(await page.evaluate(`!!document.querySelector('${id('project-filter')}')`)).toBe(true);
-  await page.click(id('project-filter'));
+  // The project filter sits in the display menu, shown with the Recent view.
+  await openProjectFilter(page);
   await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowDown', code: 'ArrowDown', windowsVirtualKeyCode: 40 });
   expect(await page.evaluate(`document.activeElement?.getAttribute('role')`)).toBe('menuitem');
   await page.evaluate(`Array.from(document.querySelectorAll('${id('project-filter-menu')} [data-value]')).find(e => e.dataset.value === JSON.stringify(['http://builder.test', 'p-notes'])).click()`);
   await page.waitFor(`document.querySelectorAll('${id('thread-row')}').length === 1`);
+  await closeDisplayOptions(page);
   expect(await page.evaluate(`document.querySelector('${id('thread-row')}').dataset.machineId`)).toBe('http://builder.test');
   await page.click(id('new-thread'));
   await page.waitFor(`globalThis.__boiteTest.workspace.active.draft?.projectId === 'p-notes'`);
@@ -40,11 +41,14 @@ test('recent view filters one owning project and creates its draft', async () =>
   await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'n', code: 'KeyN', modifiers: 2, windowsVirtualKeyCode: 78 });
   await page.waitFor(`globalThis.__boiteTest.workspace.active.machineId === 'http://builder.test' && globalThis.__boiteTest.workspace.active.draft?.projectId === 'p-notes'`);
   await page.evaluate(`globalThis.__boiteTest.workspace.active.archiveProject('p-notes', true)`);
-  await page.waitFor(`document.querySelector('${id('project-filter')}')?.textContent.includes('All projects') && document.querySelectorAll('${id('thread-row')}').length === 7`);
+  await page.waitFor(`document.querySelectorAll('${id('thread-row')}').length === 7`);
+  await openDisplayOptions(page);
+  await page.waitFor(`document.querySelector('${id('project-filter')}')?.textContent.includes('All projects')`);
   await page.evaluate(`globalThis.__boiteTest.workspace.active.archiveProject('p-notes', false)`);
   await page.click(id('project-filter'));
   await page.click(`${id('project-filter-menu')} [data-value=all]`);
   await page.waitFor(`document.querySelectorAll('${id('thread-row')}').length === 8`);
+  await closeDisplayOptions(page);
   await page.click(id('sidebar-search-open'));
   await page.waitFor(`document.querySelector('${id('palette-input')}')`);
   await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
@@ -175,9 +179,10 @@ test('phone exposes project filtering and custom-order controls without overflow
   await mobileAction(page, 'mobile-conversations');
   await page.waitFor(`document.querySelector('${id('mobile-list')}')`);
   await showThreadView(page, 'recent', 'mobile-');
-  await page.click(id('mobile-project-filter'));
+  await openProjectFilter(page, 'mobile-');
   await page.evaluate(`Array.from(document.querySelectorAll('${id('mobile-project-filter-menu')} [data-value]')).find(e => e.dataset.value === JSON.stringify(['http://builder.test', 'p-notes'])).click()`);
   await page.waitFor(`document.querySelectorAll('${id('mobile-list')} .thread').length === 1`);
+  await closeDisplayOptions(page, 'mobile-');
   await capture('project-filter-phone.png');
   await showThreadView(page, 'projects', 'mobile-');
   await page.waitFor(`document.querySelectorAll('${id('mobile-project-group')}').length === 4`);
@@ -197,6 +202,7 @@ test('phone exposes project filtering and custom-order controls without overflow
   await page.evaluate(`globalThis.__boiteTest.workspace.active.setSidebarWidth(208)`);
   await page.waitFor(`document.querySelector('${id('sidebar')}')?.getBoundingClientRect().width === 208`);
   await capture('project-order-narrow-fr.png');
-  expect(await page.evaluate(`(() => { const tools = document.querySelector('${id('grouping-options')}')?.closest('.tools'); return !!tools && tools.scrollWidth <= tools.clientWidth; })()`)).toBe(true);
+  // The list's head keeps its title and its three buttons inside the narrow sidebar in French.
+  expect(await page.evaluate(`(() => { const head = document.querySelector('${id('grouping-options')}')?.closest('.list-head'); const box = head?.getBoundingClientRect(); return !!head && head.scrollWidth <= head.clientWidth && [...head.querySelectorAll('button')].every(b => b.getBoundingClientRect().right <= box.right + 0.5); })()`)).toBe(true);
   expect(page.errors()).toEqual([]);
 }, 20_000);

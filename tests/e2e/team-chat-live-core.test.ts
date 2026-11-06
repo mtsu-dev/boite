@@ -6,6 +6,7 @@ import { echoThread, quietAgent, startTestCore, waitFor, type TestCore } from '.
 import { setDriver } from '../../packages/core/src/drivers/index.ts';
 import { BrowserPage } from './lib/cdp.ts';
 import { ensureProductionUi } from './lib/prod-ui.ts';
+import { railTeam } from './lib/bots.ts';
 
 /** `boite <args>` from a bot's thread, with its agent token, as the bot runs it. */
 async function boiteAs(harness: TestCore, threadId: string, args: string[]) {
@@ -62,27 +63,23 @@ test('the owner finds a team on the Bots page on a desktop and a phone, reads it
     const told = await boiteAs(harness, jeuxThread, ['team', 'dm', 'Skollheim', 'owner', 'Entre nous : le budget est serré.']);
     expect([said.code, said.err, told.code, told.err]).toEqual([0, '', 0, '']);
 
-    // Desktop: the Bots page lists the team above the bots, its chat unread.
-    await page.waitFor(`document.querySelector('[data-testid="view-agents"]')`);
-    await page.click('[data-testid="view-agents"]');
-    const row = `[data-testid="agent-team-${team.id}"]`;
-    await page.waitFor(`document.querySelector('${row}')?.dataset.unread === 'true'`);
-    await page.waitFor(`document.querySelectorAll('.agents-rail .section-label').length === 2`);
-    expect(await page.evaluate(`[...document.querySelectorAll('.agents-rail .section-label')].map(heading => heading.textContent)`)).toEqual(['Équipes', 'Bots']);
-    expect(await page.text(row)).toContain('Skollheim');
-    expect(await page.text(row)).toContain('Huginn (Réseaux) et Jeux (Producteur)');
+    // Desktop: the app rail shows the team after the bots, its chat unread.
+    const pin = railTeam(team.id);
+    const unread = `document.querySelector('${pin}')?.closest('.slot')?.classList.contains('unread')`;
+    await page.waitFor(`${unread} === true`);
+    expect(await page.evaluate(`document.querySelector('${pin}').getAttribute('aria-label')`)).toBe('Skollheim');
     await page.settleAnimations();
     await page.screenshot(join(import.meta.dir, '.artifacts', 'team-chat-bots-desktop.png'));
-    await page.click(row);
+    await page.click(pin);
     await page.waitFor(`document.querySelectorAll('[data-testid=team-post]').length === 2`);
     expect(await page.evaluate(posts)).toEqual([
       ['Huginn (Réseaux)', 'team', null, 'A réveillé toute l\'équipe'],
       ['Jeux (Producteur)', 'private', 'Privé pour vous', null],
     ]);
     expect([await page.text('[data-testid=team-title]'), await page.text('[data-testid=team-room]')]).toEqual(['Skollheim', 'Salon d\'équipe · 2 bots et vous']);
-    // Opened, the chat reads as read, and its row is the open one.
-    await page.waitFor(`document.querySelector('${row}') && !document.querySelector('${row}').dataset.unread`);
-    expect(await page.evaluate(`document.querySelector('${row}').getAttribute('aria-current')`)).toBe('page');
+    // Opened, the chat reads as read, and its picture in the rail is the open one.
+    await page.waitFor(`${unread} === false`);
+    expect(await page.evaluate(`document.querySelector('${pin}').getAttribute('aria-current')`)).toBe('page');
 
     await page.type('[data-testid=team-composer-input]', '@Jeux (Producteur) tu valides le budget ?');
     await page.waitFor(`document.querySelector('[data-testid=team-wakes]')?.textContent === 'Réveille Jeux (Producteur)'`);
@@ -95,6 +92,7 @@ test('the owner finds a team on the Bots page on a desktop and a phone, reads it
     await page.screenshot(join(import.meta.dir, '.artifacts', 'team-chat-desktop.png'));
 
     // Phone: the chat full screen, back to the Bots list with the team above the bots, then the chat again.
+    const row = `[data-testid="agent-team-${team.id}"]`;
     await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
     const shown = (selector: string) => `(() => { const node = document.querySelector('${selector}'); return !!node && node.getBoundingClientRect().width > 0; })()`;
     await page.waitFor(shown('[data-testid=agent-back]'));
@@ -102,6 +100,9 @@ test('the owner finds a team on the Bots page on a desktop and a phone, reads it
     await page.click('[data-testid=agent-back]');
     await page.waitFor(shown(row));
     expect(await page.evaluate(shown('[data-testid=team-chat]'))).toBe(false);
+    expect(await page.evaluate(`[...document.querySelectorAll('.agents-rail .section-label')].map(heading => heading.textContent)`)).toEqual(['Équipes', 'Bots']);
+    expect(await page.text(row)).toContain('Skollheim');
+    expect(await page.text(row)).toContain('Huginn (Réseaux) et Jeux (Producteur)');
     await page.settleAnimations();
     await page.screenshot(join(import.meta.dir, '.artifacts', 'team-chat-list-phone.png'));
     await page.click(row);

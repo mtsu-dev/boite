@@ -24,7 +24,7 @@ function draw(thread: Partial<Shown>, subagents: WorkingChildren | null = null):
   return document.body.firstElementChild as HTMLElement;
 }
 
-test('a parent whose turn ended waits on its working sub-agents, its count beside a robot', () => {
+test('a parent whose turn ended waits on its working sub-agents, their count in its tooltip', () => {
   vi.useFakeTimers({ now: NOW });
   const children = [
     { id: 'child-1', parentThreadId: 'parent', status: 'running', runningSince: NOW - 90_000 },
@@ -39,10 +39,9 @@ test('a parent whose turn ended waits on its working sub-agents, its count besid
 
   const state = draw({ status: 'idle', unread: true, backgroundWork: { kinds: ['shell'], since: NOW } }, working.get('parent' as ThreadId)!);
   expect(state.dataset['state']).toBe('delegating');
-  // The chip breathes in place of a second sign: the row reads "1m 30s", then a robot and "2".
-  expect(state.querySelector('[data-testid=thread-subagents]')?.classList.contains('pulse')).toBe(true);
-  expect(state.textContent?.replace(/\s+/g, ' ').trim()).toBe('1m 30s 2');
-  expect(state.querySelector('[data-testid=thread-subagents] svg')).not.toBeNull();
+  // The row reads only the time beside a breathing dot: the count leaves it, so the title keeps its room.
+  expect(state.querySelector('.dot.pulse')).not.toBeNull();
+  expect(state.textContent?.replace(/\s+/g, ' ').trim()).toBe('1m 30s');
   expect(state.getAttribute('title')).toBe('Waiting on 2 sub-agents\n1m 30s');
   // Its own turn or a question for the user still come first.
   expect(threadState({ status: 'running', unread: false }, 2)).toBe('working');
@@ -105,17 +104,13 @@ test('a parent counts a child waiting on its background work among its working s
   expect(working.get('p' as ThreadId)).toEqual({ count: 1, since: NOW - 60_000, asking: 0 });
 });
 
-test('a parent at work shows its sub-agents on a chip, and one whose child asks reads Needs you', () => {
+test('a parent at work reads working, and one whose child asks reads Needs you, with no count on the row', () => {
   vi.useFakeTimers({ now: NOW });
   const child = (id: string, fields: Partial<ThreadSummary>) => ({ id: id as ThreadId, parentThreadId: 'p' as ThreadId, archived: false, status: 'running', runningSince: NOW - 30_000, ...fields }) as ThreadSummary;
-  // Its own turn runs: the chip says it has children, which the working state alone never did.
+  // Its own turn runs: the row says working and its time, the thread view lists the children.
   const working = draw({ status: 'running', runningSince: NOW - 65_000 }, { count: 2, since: NOW - 30_000, asking: 0 });
   expect(working.dataset['state']).toBe('working');
-  const chip = working.querySelector<HTMLElement>('[data-testid=thread-subagents]')!;
-  // The robot says what the number counts: no word beside it.
-  expect(chip.textContent).toBe('2');
-  expect(chip.getAttribute('aria-label')).toBe('2 sub-agents at work');
-  expect(chip.classList.contains('asking')).toBe(false);
+  expect(working.textContent?.trim()).toBe('1m 05s');
   unmount(running!, { outro: false });
   running = null;
 
@@ -130,9 +125,7 @@ test('a parent at work shows its sub-agents on a chip, and one whose child asks 
   const parent = draw({ status: 'running', runningSince: NOW - 65_000 }, asking);
   expect(parent.dataset['state']).toBe('waiting');
   expect(parent.textContent).toContain('Needs you');
-  const asks = parent.querySelector<HTMLElement>('[data-testid=thread-subagents]')!;
-  expect(asks.classList.contains('asking')).toBe(true);
-  expect(asks.getAttribute('title')).toBe('2 sub-agents at work\n3 sub-agents need you');
+  expect(parent.textContent).not.toMatch(/\d/);
   // Only the parent's own failure outranks a child's question, in the row and the folded project alike.
   expect(threadState({ status: 'error', unread: false }, asking)).toBe('error');
   expect(threadState({ status: 'idle', unread: false }, { count: 0, asking: 1 })).toBe('waiting');

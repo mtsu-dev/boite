@@ -702,7 +702,7 @@
   .saved-account { display: grid; gap: 10px; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-2); }
   .account-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .account-head strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); font-weight: 600; }
-  .dev-tag { flex: none; padding: 1px 6px; border-radius: var(--radius-sm); background: var(--color-accent-soft); color: var(--color-accent); font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 500; }
+  .dev-tag { flex: none; padding: 1px 6px; border-radius: var(--radius-sm); background: var(--color-active); color: var(--color-muted-foreground); font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 500; }
   .extras { align-items: baseline; }
   .with-tip { display: inline-flex; align-items: center; gap: 4px; }
   .chips { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 4px; }

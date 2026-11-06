@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { BrowserPage, freePort } from './lib/cdp.ts';
+import { clickAddProject } from './lib/views.ts';
 import { startDevUi } from './lib/ui.ts';
 let server: { close(): Promise<void> };
 let page: BrowserPage;
@@ -18,14 +19,14 @@ afterAll(async () => { await page?.close(); await server?.close(); }, 30_000);
 test('project picker browses folders, opens a draft, and fits a phone', async () => {
   expect(await page.evaluate(`document.body.textContent.includes('Enter to send')`)).toBe(false);
   await capture('polish-desktop.png');
-  await page.click('[data-testid=add-project]');
+  await clickAddProject(page);
   await page.waitFor(`document.querySelector('[data-testid=project-path]')?.value === '/workspace'`);
   await capture('polish-project-picker.png');
   await page.evaluate(`Array.from(document.querySelectorAll('.folder')).find(e => e.textContent.includes('notes')).click()`);
   await page.waitFor(`document.querySelector('[data-testid=project-path]')?.value === '/workspace/notes'`);
   await page.click('[data-testid=project-add]');
   await page.waitFor(`!document.querySelector('[data-testid=project-picker]') && document.querySelector('[data-testid=draft-empty]')`);
-  await page.click('[data-testid=add-project]');
+  await clickAddProject(page);
   await page.waitFor(`document.querySelector('[data-testid=project-path]')?.value === '/workspace'`);
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   await capture('polish-project-phone.png');

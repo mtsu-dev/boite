@@ -407,7 +407,7 @@
   }
 
   .glyph[data-file-kind='dir'] {
-    color: var(--color-accent);
+    color: var(--color-muted-foreground);
   }
 
   .glyph[data-file-kind='image'],

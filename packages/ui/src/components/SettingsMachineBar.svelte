@@ -60,14 +60,14 @@
     width: 100%;
     margin: 0;
     padding: 10px 14px;
-    border: 1px solid color-mix(in srgb, var(--color-accent) 35%, var(--color-border));
+    border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
-    background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface));
+    background: var(--color-surface-2);
     color: var(--color-foreground);
     font-size: var(--text-sm);
     line-height: 1.5;
   }
-  .info :global(svg) { flex: none; margin-top: 2px; color: var(--color-accent); }
+  .info :global(svg) { flex: none; margin-top: 2px; color: var(--color-muted-foreground); }
   .info.quiet { border-color: var(--color-border); background: var(--color-surface); color: var(--color-muted-foreground); }
   .info.quiet :global(svg) { color: var(--color-muted-foreground); }
 </style>

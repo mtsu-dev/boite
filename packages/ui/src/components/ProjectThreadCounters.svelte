@@ -51,12 +51,12 @@
   /* A phone's header: a pill per state that holds threads; nothing is drawn for a 0. */
   .all .counter { height: 28px; min-width: 0; padding: 0 10px 0 9px; gap: 5px; border-radius: var(--radius-full); font-size: var(--text-xs); font-weight: 600;
     color: var(--color-muted-foreground); background-color: var(--color-hover); border: 1px solid transparent; background-clip: padding-box; }
-  .all .working:not(.away) { color: var(--color-accent); }
+  .all .working:not(.away) { color: var(--color-foreground); }
   .all .done { color: var(--color-success); background-color: color-mix(in oklch, var(--color-success) 14%, transparent); }
   .all .counter.active { box-shadow: inset 0 0 0 1px currentColor; }
   /* Hover deepens the pill's own tint instead of the grey a ghost button takes. */
   .all .counter:hover:not(:disabled) { background-color: color-mix(in oklch, currentColor 24%, transparent); background-clip: padding-box; }
-  .all .working:not(.away):hover:not(:disabled) { color: var(--color-accent); }
+  .all .working:not(.away):hover:not(:disabled) { color: var(--color-foreground); }
   .all .done:hover:not(:disabled) { color: var(--color-success); }
 
   /* The desktop card: small tags with no fill, but the user's turn in its amber. */

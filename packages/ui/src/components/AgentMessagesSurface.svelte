@@ -111,7 +111,7 @@
   .line { min-width: 0; display: flex; align-items: center; gap: 6px; }
   .line strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-foreground); font-size: var(--text-sm); font-weight: 600; }
   time { flex: none; font-variant-numeric: tabular-nums; }
-  .tag { flex: none; padding: 1px 6px; border-radius: var(--radius-full); background: var(--color-accent-soft); color: var(--color-accent); font-weight: 500; }
+  .tag { flex: none; padding: 1px 6px; border-radius: var(--radius-full); background: var(--color-active); color: var(--color-muted-foreground); font-weight: 500; }
   .resident .tag { background: var(--color-resident-soft); color: var(--color-resident); }
   .where { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .preview .text { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; }

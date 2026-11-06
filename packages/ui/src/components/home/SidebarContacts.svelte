@@ -92,7 +92,7 @@
   .row.current { background: var(--color-active); }
   .row[data-link='connected'] { --tone: var(--color-success); }
   .row[data-link='connecting'] { --tone: var(--color-live); }
-  .avatar { position: relative; display: grid; flex: none; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--color-accent-soft); color: var(--color-accent); font-size: var(--text-xs); font-weight: 700; }
+  .avatar { position: relative; display: grid; flex: none; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--color-active); color: var(--color-foreground); font-size: var(--text-xs); font-weight: 700; }
   .dot { position: absolute; right: -1px; bottom: -1px; width: 7px; height: 7px; border-radius: 50%; background: var(--tone); box-shadow: 0 0 0 2px var(--color-surface); }
   .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; color: var(--color-foreground); }
   .state { flex: none; color: var(--color-subtle); font-size: var(--text-xs); }

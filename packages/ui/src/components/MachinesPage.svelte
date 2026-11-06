@@ -359,8 +359,8 @@
     flex: none;
     padding: 1px 7px;
     border-radius: var(--radius-sm);
-    background: color-mix(in srgb, var(--color-accent) 16%, transparent);
-    color: var(--color-accent);
+    background: var(--color-active);
+    color: var(--color-foreground);
     font-size: var(--text-xs);
     font-weight: 500;
   }
@@ -408,7 +408,7 @@
   .lost .status { color: var(--color-danger); }
   /* What the machine has to say about its updates, after its connection. */
   .updates { color: var(--color-muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: none; }
-  .updates[data-state='available'] { color: var(--color-accent); }
+  .updates[data-state='available'] { color: var(--color-foreground); }
   .updates[data-state='failed'] { color: var(--color-danger); }
   .remove { color: var(--color-danger); }
   .actions {

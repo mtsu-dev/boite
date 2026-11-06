@@ -421,7 +421,7 @@
   }
 
   .mark[data-status='renamed'] {
-    --mark: var(--color-accent);
+    --mark: var(--color-muted-foreground);
   }
 
   .mark[data-status='untracked'] {

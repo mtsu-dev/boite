@@ -28,7 +28,7 @@
 <style>
   .receipts { display: flex; align-items: center; gap: 1px; margin: 4px 2px 0; color: var(--color-muted-foreground); }
   .receipts .tick { display: flex; opacity: .45; }
-  .receipts .received { color: var(--color-accent); opacity: 1; }
+  .receipts .received { color: var(--color-foreground); opacity: 1; }
   /* Delivered and answered: the ticks wait for the pointer like the time beside them. A pending one stays. */
   .receipts.settled .tick { opacity: 0; transition: opacity var(--dur-2); }
   :global(.message:hover) .receipts.settled .tick, .receipts.settled:focus-within .tick, .receipts.settled:not(:has(button)) .tick { opacity: 1; }

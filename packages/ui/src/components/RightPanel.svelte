@@ -106,6 +106,8 @@
   let surfaces = $derived(panel.surfaces);
   let active = $derived(panel.active);
   let empty = $derived(surfaces.length === 0);
+  /** A bot's info alone in a docked panel needs no tab strip: its controls float at the top right. */
+  let bare = $derived(!phone && !rightPanel.floating && surfaces.length === 1 && surfaces[0]!.kind === 'desk');
 
   /** The user's own browser needs the shell's webview, or the iframe a test page paints. */
   function available(kind: SurfaceKind): boolean {
@@ -320,7 +322,7 @@
 >
   {#if !rightPanel.floating}<PanelResizeHandle {store} bind:dragging />{/if}
 
-  <header class="strip" data-panel-move data-testid="panel-titlebar">
+  <header class="strip" class:bare data-panel-move data-testid="panel-titlebar">
     {#if rightPanel.floating}
       <button type="button" class="ghost small icon move-handle" data-panel-move data-testid="panel-move"
         title={strings.browser.move} aria-label={strings.browser.move} disabled={rightPanel.maximized}>
@@ -710,6 +712,13 @@
     min-width: 4px;
   }
 
+  /* The bot's info alone: the strip leaves the flow without its tabs; add,
+     expand and close show under the pointer, or always without one. */
+  .strip.bare { position: absolute; top: 0; right: 0; z-index: 2; border-bottom: none; opacity: 0; transition: opacity var(--dur-2) var(--ease-out-quint); }
+  .panel:hover .strip.bare, .strip.bare:focus-within { opacity: 1; }
+  @media (hover: none) { .strip.bare { opacity: 1; } }
+  .strip.bare :is(.tabs, .chev, .spacer) { display: none; }
+
   .body {
     flex: 1;
     min-height: 0;
@@ -735,6 +744,8 @@
       overflow: clip;
       border-radius: 0 0 calc(var(--radius-frame) - 1px) calc(var(--radius-frame) - 1px);
     }
+
+    .strip.bare + .body { border-radius: calc(var(--radius-frame) - 1px); }
   }
 
   .sheet-scrim {

@@ -201,7 +201,7 @@
   .dot { display: inline-block; width: calc(var(--lead) - 6px); text-align: center; opacity: .6; }
   [data-testid='turn-progress'] { min-width: 0; overflow-wrap: anywhere; }
   .quiet { color: var(--color-muted-foreground); }
-  .background { display: inline-flex; align-items: center; gap: 6px; color: var(--color-accent); }
+  .background { display: inline-flex; align-items: center; gap: 6px; color: var(--color-muted-foreground); }
   .pulse { width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: pulse 1.6s var(--loop-ease-out-quint-48) infinite var(--loops); }
   .paused .pulse { animation-play-state: paused; }
   .stop-background { display: inline-grid; place-items: center; width: 18px; height: 18px; padding: 0; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: transparent; color: var(--color-muted-foreground); cursor: pointer; }

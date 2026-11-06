@@ -216,17 +216,17 @@
   .post.grouped { margin-top: 0; }
   .post:hover { background: var(--color-hover); }
   .gutter { display: flex; justify-content: center; padding-top: 2px; }
-  .owner-avatar { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--color-accent-soft); color: var(--color-accent); }
+  .owner-avatar { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--color-active); color: var(--color-foreground); }
   .aside { visibility: hidden; padding-top: 3px; color: var(--color-subtle); font-size: 10px; font-variant-numeric: tabular-nums; }
   .post:hover .aside { visibility: visible; }
   .main { min-width: 0; }
   .head { display: flex; align-items: baseline; gap: 8px; }
   .author { font-weight: 600; color: var(--color-foreground); }
-  .author.own { color: var(--color-accent); }
+  .author.own { color: var(--color-foreground); }
   .head time { color: var(--color-subtle); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
-  .private-chip { display: inline-flex; align-items: center; gap: 4px; margin: 2px 0; padding: 1px 8px; border-radius: var(--radius-full); background: var(--color-accent-soft); color: var(--color-accent); font-size: var(--text-xs); font-weight: 500; }
+  .private-chip { display: inline-flex; align-items: center; gap: 4px; margin: 2px 0; padding: 1px 8px; border-radius: var(--radius-full); background: var(--color-active); color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 500; }
   .quote { display: flex; align-items: baseline; gap: 6px; max-width: 100%; margin: 2px 0 4px; padding: 2px 8px; border: 0; border-left: 2px solid var(--color-border); border-radius: 0; background: transparent; color: var(--color-muted-foreground); font-size: var(--text-sm); text-align: left; cursor: pointer; }
-  .quote:hover { border-left-color: var(--color-accent); }
+  .quote:hover { border-left-color: var(--color-muted-foreground); }
   .quote .ui-label { flex: none; font-weight: 600; }
   .quote .excerpt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .body { min-width: 0; overflow-wrap: anywhere; }

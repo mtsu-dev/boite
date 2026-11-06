@@ -67,5 +67,5 @@
   .trigger { position: relative; }
   .trigger[aria-expanded='true'] { background: var(--color-surface-3); color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-edge); }
   /* A filter on: a small mark in the corner, the selected thing's accent. */
-  .trigger.filtered::after { content: ''; position: absolute; top: 4px; right: 4px; width: 5px; height: 5px; border-radius: var(--radius-full); background: var(--color-accent); }
+  .trigger.filtered::after { content: ''; position: absolute; top: 4px; right: 4px; width: 5px; height: 5px; border-radius: var(--radius-full); background: var(--color-foreground); }
 </style>

@@ -501,7 +501,7 @@
     position: absolute;
     inset: 0;
     pointer-events: none;
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 55%, transparent);
+    box-shadow: inset 0 0 0 1px var(--color-muted-foreground);
   }
 
   /* The line between two panes; its handle (ResizeHandle) lies over it. */

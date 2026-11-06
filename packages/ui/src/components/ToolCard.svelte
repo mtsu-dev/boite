@@ -350,8 +350,8 @@
 
   .chip.live {
     gap: 5px;
-    color: var(--color-accent);
-    border-color: color-mix(in oklch, var(--color-accent) 40%, transparent);
+    color: var(--color-muted-foreground);
+    border-color: var(--color-edge);
   }
 
   .pulse {

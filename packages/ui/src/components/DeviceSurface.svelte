@@ -488,9 +488,9 @@
   .tabs, .actions, .keys { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
   /* A desktop panel's controls are its size; a finger gets the touch target (the rule at the end of this block). */
   .chip { min-height: var(--control); min-width: var(--control); justify-content: center; }
-  .tabs [aria-selected=true], .chip[aria-pressed=true] { color: var(--color-accent); border-color: var(--color-accent); }
+  .tabs [aria-selected=true], .chip[aria-pressed=true] { color: var(--color-foreground); border-color: var(--color-muted-foreground); }
   .dot { width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--color-muted-foreground); flex: none; }
-  .dot.ready { background: var(--color-accent); } .dot.failed { background: var(--color-danger); }
+  .dot.ready { background: var(--color-success); } .dot.failed { background: var(--color-danger); }
   .muted, small { color: var(--color-muted-foreground); font-size: var(--text-sm); }
   .error { margin: 0; padding: 0 16px 8px; font-size: var(--text-sm); color: var(--color-danger); overflow-wrap: anywhere; max-height: 90px; overflow: auto; }
   .picker { padding: 8px 16px 16px; display: grid; gap: 8px; align-content: start; overflow: auto; }

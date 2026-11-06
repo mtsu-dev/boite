@@ -92,7 +92,7 @@
     padding: 5px;
     border-radius: var(--radius-sm);
     background: var(--color-accent-soft);
-    color: var(--color-accent);
+    color: var(--color-muted-foreground);
   }
   .title { min-width: 0; }
   .title :global(button) { vertical-align: middle; }

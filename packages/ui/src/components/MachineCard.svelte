@@ -124,7 +124,7 @@
   /* A button for the keyboard and screen readers, a card to the eye: none of a control's fixed height, centring or single line. */
   .machine { display: grid; align-content: start; justify-content: stretch; gap: 12px; min-width: 0; height: auto; padding: 12px; text-align: left; color: inherit; font: inherit; font-weight: 400; white-space: normal; cursor: pointer; transition: border-color var(--dur-2) var(--ease-out-quint); }
   .machine:hover:not(:disabled) { border-color: var(--color-edge); background: var(--color-surface); }
-  .machine.selected { border-color: var(--color-accent); }
+  .machine.selected { border-color: var(--color-muted-foreground); }
   .machine:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
   .head { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .icon { display: flex; flex: none; color: var(--color-muted-foreground); }

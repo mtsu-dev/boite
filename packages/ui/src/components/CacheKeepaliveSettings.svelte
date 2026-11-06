@@ -74,7 +74,7 @@
   .master .words { display: grid; gap: 6px; flex: 1; min-width: 0; }
   .card .master h2 { margin: 0; }
   .option { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; column-gap: 14px; row-gap: 4px; margin-top: 16px; padding: 14px 16px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-2); }
-  .icon { display: grid; place-items: center; width: 34px; height: 34px; border-radius: var(--radius-sm); background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-accent); }
+  .icon { display: grid; place-items: center; width: 34px; height: 34px; border-radius: var(--radius-sm); background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-muted-foreground); }
   .name { display: flex; align-items: center; gap: 4px 8px; color: var(--color-foreground); font-size: var(--text-base); font-weight: 500; }
   .field { display: flex; align-items: center; gap: 8px; }
   input[type='number'] { width: 72px; text-align: right; }

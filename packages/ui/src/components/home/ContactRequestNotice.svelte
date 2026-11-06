@@ -14,8 +14,9 @@
    * What waits for the owner from contacts, on every listed machine, oldest
    * first: a request opens its contact's page; a message outside a shared
    * project is read here and delivered, refused or opened on that page.
+   * `rail`: the app rail draws the bell as one of its squares.
    */
-  let { store }: { store: Store } = $props();
+  let { store, rail = false }: { store: Store; rail?: boolean } = $props();
   type Row = { machine: Machine; view: ContactsView; key: string; createdAt: number }
     & ({ request: ContactRequest; letter?: undefined } | { letter: HeldContactLetter; request?: undefined });
   const watched = watchContacts(() => workspace.machinesOr(store).filter(machine => contactsShown(machine.store)));
@@ -60,7 +61,7 @@
 </script>
 
 {#if first}
-  <button type="button" class="ghost icon indicator" data-testid="contact-request-open" title={label} aria-label={label} onclick={() => review(first)}>
+  <button type="button" class="ghost icon indicator" class:rail data-testid="contact-request-open" title={label} aria-label={label} onclick={() => review(first)}>
     <Bell size={18} strokeWidth={1.75} /><span class="badge">{count(pending.length)}</span>
   </button>
 {/if}
@@ -107,9 +108,9 @@
   .badge { position: absolute; top: -2px; right: -4px; min-width: 15px; padding: 1px 3px; font-size: var(--text-xs); line-height: 14px; border-radius: var(--radius-full); background: var(--color-live); color: var(--color-accent-ink); }
   @media (min-width: 721px) {
     /* The app rail's Activity button (AppRail.svelte): a rail square, its count at the bottom corner. */
-    .indicator { width: var(--rail-button); height: var(--rail-button); padding: 0; border: none; border-radius: var(--radius-rail); background: var(--color-surface-2); box-shadow: none; }
-    .indicator:hover:not(:disabled) { background: var(--color-surface-3); color: var(--color-foreground); }
-    .badge { top: auto; right: -4px; bottom: -3px; min-width: 18px; height: 18px; box-sizing: border-box; padding: 0 5px; display: grid; place-items: center; font-weight: 700; line-height: 1; box-shadow: 0 0 0 3px var(--color-frame); }
+    .indicator.rail { width: var(--rail-button); height: var(--rail-button); padding: 0; border: none; border-radius: var(--radius-rail); background: var(--color-surface-2); box-shadow: none; }
+    .indicator.rail:hover:not(:disabled) { background: var(--color-surface-3); color: var(--color-foreground); }
+    .rail .badge { top: auto; right: -4px; bottom: -3px; min-width: 18px; height: 18px; box-sizing: border-box; padding: 0 5px; display: grid; place-items: center; font-weight: 700; line-height: 1; box-shadow: 0 0 0 3px var(--color-frame); }
   }
   .notice { position: fixed; z-index: 80; top: calc(var(--titlebar) + 12px); left: 50%; transform: translateX(-50%); width: min(440px, calc(100vw - 32px)); animation: fade var(--dur-2) var(--ease-out-quint); }
   .notice.closing { animation: fade-out var(--dur-2) var(--ease-out-quint) forwards; }

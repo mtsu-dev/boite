@@ -382,16 +382,13 @@
   }
   .project.candidate {
     border-style: dashed;
-    border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border));
+    border-color: var(--color-edge);
   }
-  /* The one under the mouse takes the row: solid accent edge, soft fill and a ring. */
+  /* The one under the mouse takes the row: a solid edge and the selection fill. */
   .project.drop {
     border-style: solid;
-    border-color: var(--color-accent);
-    background: var(--color-accent-soft);
-  }
-  .project.candidate.drop {
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent);
+    border-color: var(--color-muted-foreground);
+    background: var(--color-active);
   }
   /* A project on the move leaves a faded slot; a line between two sections says where it lands. */
   .project { position: relative; }
@@ -404,8 +401,7 @@
     right: 6px;
     height: 2px;
     border-radius: var(--radius-full);
-    background: var(--color-accent);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 18%, transparent);
+    background: var(--color-foreground);
     pointer-events: none;
     animation: insert-in var(--dur-2) var(--ease-out-quint);
   }
@@ -464,7 +460,7 @@
     font-variant-numeric: tabular-nums;
   }
   .rollup .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-  .rollup.working, .rollup.delegating, .rollup.monitoring, .rollup.background, .rollup.watching { color: var(--color-accent); }
+  .rollup.working, .rollup.delegating, .rollup.monitoring, .rollup.background, .rollup.watching { color: var(--color-muted-foreground); }
   .rollup.waiting { color: var(--color-live); }
   .rollup.error { color: var(--color-danger); }
   .rollup.done { color: var(--color-success); }
