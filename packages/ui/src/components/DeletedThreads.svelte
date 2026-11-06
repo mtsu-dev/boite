@@ -35,8 +35,8 @@
     saving = true;
     try {
       if (await store.saveSettings({ threadDeletionRetentionDays: submitted })) {
-        savedStamp += 1;
-        if (days === submitted) dirty = false;
+        // A value typed during the save is not the one stored: no "Saved" beside it.
+        if (days === submitted) { savedStamp += 1; dirty = false; }
         if (asked) await load();
       }
     } finally { saving = false; }
