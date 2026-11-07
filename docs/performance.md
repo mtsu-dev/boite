@@ -294,6 +294,16 @@ It warms up once, then reports six samples. On 2026-09-22, the median fell from
 that stops after the first user message and nonempty assistant answer.
 This measures local history lookup and title persistence, not provider latency.
 
+## A workflow's completion summary
+
+`bun bench/workflow-notice.ts [--root <checkout>]` builds finished runs in memory
+and prints the UTF-8 size of the summary their conversation reads. On 2026-11-07,
+a run of 64 executions (a scan, 62 reviews of which 3 failed with a
+2,000-character error, a report, every answer 4,000 characters) went from 52,367
+to 19,992 bytes in Japanese and from 23,879 to 19,998 bytes in French once the
+whole summary was held to 20,000 bytes. A three-step run stayed at 637 bytes,
+byte for byte the same. Fitting a large run takes about 2.3 ms, once per run.
+
 ## Persistent-agent history
 
 `bun run bench/agents-snapshot.ts [steps]` gives one agent's thread a finished

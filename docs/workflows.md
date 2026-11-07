@@ -208,6 +208,15 @@ step. Without a step, retry runs every failed step. While another step stays
 failed, retrying one named step is refused with the names of the steps that
 still hold the run, and nothing changes.
 
+The summary gives each step its status, error, worktree and value. A run whose
+summary fits in 20,000 UTF-8 bytes, header and envelope included, gets each value
+cut to an equal share of 10,000 characters. A larger one is held to those
+20,000 bytes: every execution keeps its status and the first 120 bytes of its
+value, errors and the answers of the last steps (those no other step reads) then
+grow evenly, then the other values. Each shortened text ends in `[cut]`, and the
+summary's first line counts them and points to `boite workflow show <run-id>`
+and the steps' conversations for the whole text.
+
 Handing the summary back is a turn of the parent. If the team is paused before
 delivery, the run keeps the reason as `deliveryError` and the panel shows it.
 The summary goes again when the parent ends another turn or the owner resumes
