@@ -21,6 +21,7 @@
  */
 
 import { threadActive, type AccountId, type ContextUse, type ProviderId, type ThreadId, type ThreadSummary, type Turn, type TurnId } from '@boite/contracts';
+import { plannedFileReference } from '../attachments.ts';
 import { switchGapFits, type TailAnchor } from '../continuation.ts';
 import type { Core } from '../core.ts';
 import type { TurnResult } from '../drivers/types.ts';
@@ -65,7 +66,8 @@ export interface Restored { sessionId: string; resumeAt: string | null; context:
 export function resumeRefusal(core: Core, thread: ThreadSummary, to: { providerId: ProviderId }, saved: SavedSession): string | null {
   if (saved.providerId !== to.providerId) return 'it ran on another provider';
   if (saved.cwd !== thread.cwd) return 'the thread moved to another folder since';
-  if (!switchGapFits(core.journal, thread.id, saved.after)) return 'what came since is past the bound or no longer in the conversation';
+  // Measured as the prompt will carry it, files as the paths of their copies.
+  if (!switchGapFits(core.journal, thread.id, saved.after, file => plannedFileReference(core.dataDir, file))) return 'what came since is past the bound or no longer in the conversation';
   return null;
 }
 

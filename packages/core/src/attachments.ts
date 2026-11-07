@@ -26,12 +26,21 @@ function untouched(path: string): boolean {
   return stat !== undefined && stat.isFile() && stat.size === known.size && stat.mtimeNs === known.mtimeNs && stat.ino === known.ino;
 }
 
-function storeFile(dataDir: string, file: FileAttachment | Extract<MessagePart, { type: 'file' }>): { line: string; path: string } {
-  const body = Buffer.from(file.data, 'base64');
+/** Where an upload's content-addressed copy goes: its directory and file name. */
+function copyPlace(dataDir: string, file: FileAttachment | Extract<MessagePart, { type: 'file' }>, body: Buffer): { directory: string; name: string } {
   const hash = createHash('sha256').update(body).digest('hex');
   // Prefix avoids Windows device names; remove separators, control characters and ADS syntax.
   const name = `file-${(file.name ?? 'attachment').replace(/[^\p{L}\p{N}._ -]/gu, '_').slice(-120).replace(/[. ]+$/, '') || 'attachment'}`;
-  const directory = join(dataDir, 'attachments', hash);
+  return { directory: join(dataDir, 'attachments', hash), name };
+}
+
+function referenceLine(file: FileAttachment | Extract<MessagePart, { type: 'file' }>, path: string, bytes: number): string {
+  return JSON.stringify({ name: file.name, path, mimeType: file.mimeType, bytes });
+}
+
+function storeFile(dataDir: string, file: FileAttachment | Extract<MessagePart, { type: 'file' }>): { line: string; path: string } {
+  const body = Buffer.from(file.data, 'base64');
+  const { directory, name } = copyPlace(dataDir, file, body);
   mkdirSync(directory, { recursive: true });
   let path = join(directory, name);
   try { writeFileSync(path, body, { flag: 'wx', mode: 0o600 }); }
@@ -49,12 +58,22 @@ function storeFile(dataDir: string, file: FileAttachment | Extract<MessagePart, 
     }
   }
   remember(path);
-  return { line: JSON.stringify({ name: file.name, path, mimeType: file.mimeType, bytes: body.length }), path };
+  return { line: referenceLine(file, path, body.length), path };
 }
 
 /** Content-addressed copies survive warm sessions and core restarts. Never execute uploads. */
 export function fileReference(dataDir: string, file: FileAttachment | Extract<MessagePart, { type: 'file' }>): string {
   return storeFile(dataDir, file).line;
+}
+
+/**
+ * The line `fileReference` gives `file`, without writing its copy: what a
+ * prompt will say about it, for a bound checked before the prompt is built.
+ */
+export function plannedFileReference(dataDir: string, file: FileAttachment | Extract<MessagePart, { type: 'file' }>): string {
+  const body = Buffer.from(file.data, 'base64');
+  const { directory, name } = copyPlace(dataDir, file, body);
+  return referenceLine(file, join(directory, name), body.length);
 }
 
 /**

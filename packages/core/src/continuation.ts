@@ -188,6 +188,7 @@ function collectTail(
   journal: Journal, threadId: string, anchor: TailAnchor, upTo: string | null,
   fileReference: (file: Extract<MessagePart, { type: 'file' }>, place: PartPlace) => string,
   images?: { slots: number; room: number },
+  stopAtOmission = false,
 ): { entries: string[]; omitted: number; images: ImageAttachment[]; imageCount: number } {
   const end = upTo === null ? undefined : turnStart(journal, threadId, upTo);
   const entries: string[] = [];
@@ -198,7 +199,11 @@ function collectTail(
     if (message.turnId === upTo) continue;
     const next = tailEntry(message, from, fileReference);
     if (!next) continue;
-    if (omitted > 0 || (entries.length > 0 && size + next.length > RECENT_LIMIT)) { omitted += 1; continue; }
+    if (omitted > 0 || (entries.length > 0 && size + next.length > RECENT_LIMIT)) {
+      omitted += 1;
+      if (stopAtOmission) break;
+      continue;
+    }
     entries.push(next);
     size += next.length;
     for (let index = message.parts.length - 1; index >= from; index--) {
@@ -244,19 +249,15 @@ export function tailInput(
 
 /**
  * Whether what came after `anchor` fits a switch back to the session that
- * stopped there: its history entries together within `RECENT_LIMIT`
- * characters, the bound `switchBackInput` keeps whole. Reads newest first and
- * stops at the first entry past the bound.
+ * stopped there: `switchBackInput` would carry all of it, none omitted.
+ * `fileReference` must give the lines the prompt will give, without side
+ * effects. It runs before the turn back exists, so nothing is left out for it.
  */
-export function switchGapFits(journal: Journal, threadId: string, anchor: TailAnchor): boolean {
-  if (!anchored(journal, threadId, anchor)) return false;
-  const reference = (file: Extract<MessagePart, { type: 'file' }>): string => `[File: ${file.name ?? 'attachment'}]`;
-  let size = 0;
-  for (const { message, from } of afterAnchor(journal, threadId, anchor, undefined)) {
-    size += tailEntry(message, from, reference).length;
-    if (size > RECENT_LIMIT) return false;
-  }
-  return true;
+export function switchGapFits(
+  journal: Journal, threadId: string, anchor: TailAnchor,
+  fileReference: (file: Extract<MessagePart, { type: 'file' }>, place: PartPlace) => string,
+): boolean {
+  return anchored(journal, threadId, anchor) && collectTail(journal, threadId, anchor, null, fileReference, undefined, true).omitted === 0;
 }
 
 /**
