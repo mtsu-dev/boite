@@ -113,6 +113,15 @@ export class Connection {
   }
 
   /**
+   * The Add a project form works here: always for the owner, and for a paired
+   * device once its core lets one browse and add (`deviceProjects`). An older
+   * core refuses a device, so the form stays off its screen there.
+   */
+  get addsProjects(): boolean {
+    return this.owner || this.core?.features?.deviceProjects === true;
+  }
+
+  /**
    * The native folder dialog names a path on this computer, which is only a
    * path the core can open when the core runs here too. A shell paired with a
    * core on a server types the server's path instead.

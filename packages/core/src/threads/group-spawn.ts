@@ -152,13 +152,14 @@ export function agentHere(core: Core, start: Pick<GroupStart, 'agent'>, machine:
 /**
  * Why a member did not do what this machine asked, in words the calling
  * agent can act on: the switch its owner keeps off, a Boite too old to
- * `what`, or its own refusal.
+ * `what`, or its own refusal. `off` words what that switch would let it do
+ * there, and what the agent says it is for.
  */
-export function peerRefusal(core: Core, peer: CoordinationPeer, error: unknown, what = 'start threads for another machine'): Error {
+export function peerRefusal(core: Core, peer: CoordinationPeer, error: unknown, what = 'start threads for another machine', off = { lets: 'start threads there', why: 'what the thread is for' }): Error {
   const name = machineArg(core, peer);
   if (error instanceof PeerRefusal) {
     if (error.message === GROUP_THREADS_OFF) {
-      return refused(`${peer.name} does not let the other machines of its group start threads there; propose the switch to the user with boite settings request groupThreads true --machine ${name} --why "<what the thread is for>"`, { field: 'machine', setting: 'groupThreads' });
+      return refused(`${peer.name} does not let the other machines of its group ${off.lets}; propose the switch to the user with boite settings request groupThreads true --machine ${name} --why "<${off.why}>"`, { field: 'machine', setting: 'groupThreads' });
     }
     if (error.message.startsWith('operation: expected')) return refused(`Boite on ${peer.name} is too old to ${what}; the owner updates it in Settings, Machines and updates`, { field: 'machine' });
     return refused(`${peer.name}: ${error.message}`, { field: 'machine' });

@@ -90,6 +90,22 @@ export function assertDeviceFile(core: Core, threadId: ThreadId, cwd: string, pa
   }
 }
 
+/**
+ * A folder a paired device adds as a project becomes a root the checks above
+ * read from, so it is held to the same two rules first: not boite's data
+ * folder or inside it, and not a folder that holds keys or tokens or one inside it.
+ * Its links are followed, as a read follows them.
+ */
+export function assertDeviceProjectFolder(core: Core, folder: string): void {
+  const real = realOf(folder);
+  if (contains(realOf(core.dataDir), real)) {
+    throw refused(`a paired device does not add boite's data folder, or a folder inside it, as a project: ${folder}`, { field: 'path', path: folder, expected: 'a folder outside boite\'s data folder' });
+  }
+  if (real.split(sep).some((part) => DEVICE_SECRET_DIRS.has(part.toLowerCase()))) {
+    throw refused(`a paired device does not add a folder that holds keys or tokens as a project; add ${folder} on the owner's machine`, { field: 'path', path: folder, expected: `a folder outside ${[...DEVICE_SECRET_DIRS].join(', ')}` });
+  }
+}
+
 function realOf(path: string): string {
   try {
     return realpathSync(path);

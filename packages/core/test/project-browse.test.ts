@@ -21,5 +21,6 @@ test('folder browsing names only directories, navigates parents and refuses inva
   expect(await thrown(client.call('projects.browse', { path: 'relative' }))).toThrow('absolute directory path');
   expect(await thrown(client.call('projects.browse', { path: join(root, 'file.txt') }))).toThrow('projects.browse.path');
   expect(await thrown(client.call('projects.browse', { path: join(root, 'missing') }))).toThrow('missing');
-  expect(DEVICE_METHODS.has('projects.browse')).toBe(false);
+  // A paired device browses too, for its Add a project form; access.test.ts holds its rules.
+  expect(DEVICE_METHODS.has('projects.browse')).toBe(true);
 });
