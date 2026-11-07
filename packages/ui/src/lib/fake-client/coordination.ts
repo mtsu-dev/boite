@@ -1,5 +1,5 @@
 /** Coordination between threads, on this core and on the other fake cores it trusts. */
-import { defaultCoordinationConfig, RpcErrorCode, type AgentAddress, type AgentContact, type AgentLetter, type AgentMatch, type AgentRelation, type Contact, type ContactRequest, type ContactsState, type CoordinationConfig, type HeldContactLetter, type CoordinationPeer, type CoordinationView, type Thread, type ThreadId } from '@boite/contracts';
+import { defaultCoordinationConfig, RpcErrorCode, TRANSCRIPT_ENTRY_PAGE, TRANSCRIPT_ENTRY_TEXT, TRANSCRIPT_READ_ENTRIES, transcriptStretch, type AgentAddress, type AgentContact, type AgentLetter, type AgentMatch, type AgentRelation, type Contact, type ContactRequest, type ContactsState, type CoordinationConfig, type HeldContactLetter, type CoordinationPeer, type CoordinationView, type Thread, type ThreadId } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import { archiveProject } from './project-archive';
 import { approveContactMail, contactMailRoute, holdContactMail } from './contact-hold';
@@ -504,16 +504,21 @@ export function coordinationMethods(ctx: FakeContext) {
       if (found.core !== ctx && !(route ? openedTo(found.core, route.gateway, found.core.thread(found.contact.threadId), true) : reads(found.core, ctx.identity.coreId))) throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'agents on this machine are not allowed to read conversations; enable their access in Machines on the destination' });
       const chat = chatOf(found.core.thread(found.contact.threadId));
       // As the core: one entry's text from an offset, or a page whose long entries name where the rest starts.
+      if (params.entry === undefined && params.offset !== undefined) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: 'offset: expected a nonnegative integer beside entry' });
       if (params.entry !== undefined) {
         const entry = chat.find(item => item.id === params.entry);
         if (!entry) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `entry: ${params.entry} is not an entry of this thread` });
         const offset = params.offset ?? 0;
-        const end = Math.min(entry.text.length, offset + 16_000);
-        return { contact: found.contact, entries: [{ ...entry, text: entry.text.slice(offset, end), tools: [], length: entry.text.length, offset, ...(end < entry.text.length ? { next: end } : {}) }], more: false };
+        if (!Number.isSafeInteger(offset) || offset < 0 || offset > entry.text.length) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `offset: expected 0 to ${entry.text.length}, the length of entry ${entry.id}` });
+        const page = transcriptStretch(entry.text, offset, TRANSCRIPT_ENTRY_PAGE);
+        return { contact: found.contact, entries: [{ ...entry, ...page, tools: [], length: entry.text.length, offset }], more: false };
       }
-      const limit = params.limit ?? 10;
+      const limit = params.limit ?? TRANSCRIPT_READ_ENTRIES;
       const entries = chat.filter(entry => (params.before === undefined || entry.at < params.before) && (entry.text.length > 0 || entry.tools.length > 0))
-        .map(entry => entry.text.length > 3000 ? { ...entry, text: entry.text.slice(0, 3000), length: entry.text.length, next: 3000 } : entry);
+        .map(entry => {
+          const page = transcriptStretch(entry.text, 0, TRANSCRIPT_ENTRY_TEXT);
+          return page.next === undefined ? entry : { ...entry, ...page, length: entry.text.length };
+        });
       return { contact: found.contact, entries: entries.slice(-limit), more: entries.length > limit };
     },
     'collaboration.wait': async (params) => {

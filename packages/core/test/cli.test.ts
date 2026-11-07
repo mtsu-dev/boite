@@ -173,6 +173,9 @@ test('threads reach each other by a short address, find by chat, read and wait f
   expect(command).toBe(`threads read ${other} --entry report --offset 3000`);
   const rest = await boite(command!.split(' '));
   expect(rest.out).toContain('[characters 3000 to 3022 of 3022]\n    the rest of the report');
+  // An id another machine chose is printed as one shell word, so the hint cannot run anything else.
+  harness.core.journal.putMessage({ id: "x'; touch pwned; '", threadId: other, turnId: 'history', role: 'assistant', state: 'complete', createdAt: Date.now() + 2, parts: [{ type: 'text', text: report }] });
+  expect((await boite(['threads', 'read', other, '--last', '1'])).out).toContain(`--entry 'x'\\''; touch pwned; '\\''' --offset 3000)`);
   const self = harness.core.coordination.get(threadId).self;
   // The answer goes out once the CLI waits for it: one that came first would wake this idle thread
   // with a turn instead. The CLI reaches its wait late here, as it did on a loaded macOS runner.

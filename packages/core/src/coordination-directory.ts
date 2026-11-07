@@ -159,15 +159,16 @@ export class CoordinationLookups {
     if (this.hidden(threadId)(to.coreId)) throw refused('target: only the Contacts bot reads a contact\'s threads; ask it with boite threads ask', { field: 'target' });
     const payload = { threadId: to.threadId, ...queryPayload(query) };
     if (!peer) return this.side.mailboxes.read(threadId, to.coreId, payload);
+    let incompatible: string | undefined;
     const collect = await this.remoteAll(threadId, 'read', payload, (answer, from) => {
       const raw = answer as { contact?: AgentContact } | null;
       const contact = checkRemoteContact(raw?.contact as AgentContact, from);
       if (contact.threadId !== to.threadId) throw new Error('transcript of another thread');
       // An older machine sends a page for a read of one entry: say so rather than "did not answer".
-      try { return { contact, ...checkTranscript(answer, query) }; } catch (error) { throw new PeerRefusal(messageOf(error)); }
+      try { return { contact, ...checkTranscript(answer, query) }; } catch (error) { incompatible = messageOf(error); throw new PeerRefusal(incompatible); }
     }, [peer]);
     const { results, unavailable } = collect();
     if (!this.side.trusted().some(current => current.coreId === peer.coreId)) throw refused('target.coreId: machine permission revoked');
-    if (!results[0]) throw refused(`${unavailable[0] ?? peer.name} did not answer the read`);
+    if (!results[0]) throw refused(incompatible === undefined ? `${unavailable[0] ?? peer.name} did not answer the read` : `${peer.name}: ${incompatible}`);
     return results[0];
   }}
