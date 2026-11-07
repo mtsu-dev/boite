@@ -251,6 +251,17 @@ export function partialList(answer: unknown, max = 100): PartialList {
   return { entries: value.entries, unavailable: value.unavailable! };
 }
 
+/**
+ * One tool call's output from `offset`, `ENTRY_PAGE` characters at a time, as
+ * an entry naming the tool: the whole result a carried history cut
+ * (`continuation.ts`). Only the thread that ran the call reads it.
+ */
+export function toolOutputEntry(entry: Pick<AgentTranscriptEntry, 'id' | 'role' | 'at'>, tool: string, output: string, offset: number): AgentTranscriptEntry {
+  if (offset > output.length) throw invalidParams(`offset: expected 0 to ${output.length}, the length of that tool call's output`);
+  const page = stretch(output, offset, ENTRY_PAGE);
+  return { ...entry, text: page.text, tools: [tool], length: output.length, offset, ...(page.next === undefined ? {} : { next: page.next }) };
+}
+
 /** The name a lookup reports for a source that answered without some of its machines. */
 export function partialName(name: string, missing: number): string {
   return missing === 0 ? name : `${name} (${missing} of its machines did not answer)`;

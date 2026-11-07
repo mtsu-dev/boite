@@ -25,6 +25,7 @@ export interface AgentsOptions {
   before?: number;
   entry?: string;
   offset?: number;
+  tool?: string;
 }
 
 type Printer = (lines: string[], value: unknown) => void;
@@ -184,10 +185,12 @@ export async function agentsCommand(client: CoreClient, threadId: string, rest: 
     print([...lines, ...result.unavailable.map(name => `unavailable: ${name}`)], result);
   } else if (action === 'read') {
     const typed = want(1, 'a thread from boite threads');
-    const { to, self } = await resolve(typed);
+    // Its own id needs no directory: the history a fresh session carries points at its own tool output.
+    const { to, self } = typed === threadId ? await view().then(({ self }) => ({ to: self, self })) : await resolve(typed);
     if (options.offset !== undefined && options.entry === undefined) throw new AgentsUsage('threads read --offset goes with --entry <id>');
+    if (options.tool !== undefined && options.entry === undefined) throw new AgentsUsage('threads read --tool goes with --entry <id>, the message that made the call');
     const result = await client.call('collaboration.read', { threadId, target: to, ...(options.last === undefined ? {} : { limit: options.last }), ...(options.before === undefined ? {} : { before: options.before }),
-      ...(options.entry === undefined ? {} : { entry: options.entry, ...(options.offset === undefined ? {} : { offset: options.offset }) }) });
+      ...(options.entry === undefined ? {} : { entry: options.entry, ...(options.offset === undefined ? {} : { offset: options.offset }), ...(options.tool === undefined ? {} : { tool: options.tool }) }) });
     const lines = [contactLine(result.contact, self.coreId)];
     if (result.more && result.entries[0]) lines.push(`(older entries: --before ${result.entries[0].at})`);
     for (const entry of result.entries) {
@@ -195,7 +198,7 @@ export async function agentsCommand(client: CoreClient, threadId: string, rest: 
       const span = entry.offset === undefined ? '' : ` [characters ${entry.offset} to ${entry.offset + entry.text.length} of ${entry.length}]`;
       lines.push(`${clock(entry.at)} ${entry.role}:${tools}${span}${entry.text ? `\n    ${entry.text.replace(/\n/g, '\n    ')}` : ''}`);
       // The id and offset of the rest: a cut entry is never lost.
-      if (entry.next !== undefined) lines.push(`    (cut at ${entry.next} of ${entry.length} characters; the rest: boite threads read ${typed} --entry ${entry.id} --offset ${entry.next})`);
+      if (entry.next !== undefined) lines.push(`    (cut at ${entry.next} of ${entry.length} characters; the rest: boite threads read ${typed} --entry ${entry.id}${options.tool === undefined ? '' : ` --tool ${options.tool}`} --offset ${entry.next})`);
     }
     print(lines, result);
   } else if (action === 'send' || action === 'reply') {

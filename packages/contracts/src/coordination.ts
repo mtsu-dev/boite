@@ -525,8 +525,11 @@ export interface CoordinationRpcMethods {
   /**
    * Another contact's conversation, newest `limit` entries (default 10, at most 100) before `before`.
    * With `entry`, that one entry from `offset` instead: the rest of a text a page cut.
+   * With `entry` and `tool`, the output of that tool call from `offset`, on the
+   * caller's own thread only: the whole result its carried history cut
+   * (`continuation.ts`). No thread reads another one's tool output.
    */
-  'collaboration.read': { params: { threadId: ThreadId; target: AgentAddress; limit?: number; before?: Timestamp; entry?: string; offset?: number }; result: AgentTranscript };
+  'collaboration.read': { params: { threadId: ThreadId; target: AgentAddress; limit?: number; before?: Timestamp; entry?: string; offset?: number; tool?: string }; result: AgentTranscript };
   /**
    * Waits up to `timeoutMs` (at most 300,000) for incoming messages, from `from` only when given,
    * and hands them over as delivered: they are not injected into the turn a second time.

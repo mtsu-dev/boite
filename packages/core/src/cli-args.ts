@@ -24,9 +24,10 @@ export interface Parsed {
   timeout?: number;
   last?: number;
   before?: number;
-  /** `threads read --entry <id>`: the rest of one entry, from `--offset`. */
+  /** `threads read --entry <id>`: the rest of one entry, from `--offset`; with `--tool <id>`, that call's output. */
   entry?: string;
   offset?: number;
+  tool?: string;
   limit?: number;
   level?: 'debug' | 'info' | 'warn' | 'error';
   /** `threads --project` or `delegate spawn --project`: one project by id, name or folder. */
@@ -170,6 +171,8 @@ export function parse(argv: string[]): Parsed {
     else if (arg === '--machine') parsed.machine = next();
     else if (arg === '--key' && parsed.positional[0] === 'bot') parsed.key = next();
     else if (arg === '--entry') parsed.entry = next();
+    // `agents` is the older name of `threads`, normalised after parsing.
+    else if (arg === '--tool' && (parsed.positional[0] === 'threads' || parsed.positional[0] === 'agents')) parsed.tool = next();
     else if (arg === '--limit') {
       const value = number(arg, next());
       // The widest any command takes (`boite logs`); a command with a lower cap checks its own.
