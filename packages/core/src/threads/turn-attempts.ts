@@ -210,6 +210,10 @@ export class TurnAttempts {
       // Whether this attempt writes anything but an error: the agent's session then holds work a new try must not repeat.
       let wrote = false;
       const sink = context.emit;
+      // Closed once the core stops awaiting this attempt (its result, or the stop
+      // deadline's forced one): output a wedged driver writes after that belongs
+      // to no turn the journal still holds open, so it reaches no message.
+      let listening = true;
       // While the core hands its turns over, a service manager may signal every agent with it: an agent
       // that dies then reports the restart as its error. That error waits for the attempt's end; one the
       // agent writes past (a pi error notice) did not end it and goes out then. Redrawing an earlier part
@@ -221,17 +225,19 @@ export class TurnAttempts {
         for (const failed of held.failed.splice(0)) sink.complete(failed, 'error');
       };
       context.emit = {
-        startMessage: role => { release(null, 0); return sink.startMessage(role); },
-        delta: (messageId, partIndex, text) => { release(messageId, partIndex); wrote = true; sink.delta(messageId, partIndex, text); },
+        startMessage: role => { if (!listening) return 'msg_abandoned' as MessageId; release(null, 0); return sink.startMessage(role); },
+        delta: (messageId, partIndex, text) => { if (!listening) return; release(messageId, partIndex); wrote = true; sink.delta(messageId, partIndex, text); },
         part: (messageId, partIndex, part) => {
+          if (!listening) return;
           if (part.type === 'error' && this.threads.handoff.active) { held.errors.push([messageId, partIndex, part]); return; }
           release(messageId, partIndex);
           if (part.type !== 'error') wrote = true;
           sink.part(messageId, partIndex, part);
         },
         // A patch changes a tool part already written.
-        patchTool: (messageId, partIndex, fields) => sink.patchTool(messageId, partIndex, fields),
+        patchTool: (messageId, partIndex, fields) => { if (listening) sink.patchTool(messageId, partIndex, fields); },
         complete: (messageId, messageState) => {
+          if (!listening) return;
           if (messageState === 'error' && held.errors.length > 0) { held.failed.push(messageId); return; }
           sink.complete(messageId, messageState);
         },
@@ -239,6 +245,7 @@ export class TurnAttempts {
       const step = context.step;
       if (step !== undefined) {
         context.step = async boundary => {
+          if (!listening) return null;
           const decision = await step(boundary);
           this.#followSession(state, decision);
           return decision;
@@ -277,6 +284,7 @@ export class TurnAttempts {
       if (this.#core.updates.wantsPause(provider.id)) this.#pauseWanted.set(threadId, provider.id);
       if (!resumed && !retriedLostSession && capacityTries === 0 && !queued.execution?.operation) this.threads.titles.autoTitle(threadId, turnId);
       result = await Promise.race([handle.done, forced.promise]);
+      listening = false;
       totals = result.agentTotals ?? totals;
       logAttemptEnd(this.#core, threadId, turnId, attempt, result, performance.now() - attemptAt);
       permissions.detach();

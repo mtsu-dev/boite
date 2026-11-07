@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setDriver } from '../src/drivers/index.ts';
-import type { Driver, TurnResult } from '../src/drivers/types.ts';
+import type { Driver, TurnContext, TurnResult } from '../src/drivers/types.ts';
 import type { SpawnedProcess } from '../src/procs.ts';
 import type { NativeProcessExit } from '../src/platform/types.ts';
 import type { ProcessRecord } from '@boite/contracts';
@@ -58,6 +58,39 @@ test('a driver that never settles its stop is ended by the core', async () => {
     const second = await client.call('turns.start', { threadId, prompt: 'again' });
     await waitFor(() => harness.core.journal.getTurn(second.id)?.status === 'done', 3000);
     await client.call('projects.remove', { projectId });
+  } finally {
+    restore();
+  }
+}, 15_000);
+
+test('output a wedged driver writes after its forced stop reaches no message', async () => {
+  let emit: ((text: string) => void) | undefined;
+  const restore = setDriver('echo', {
+    protocol: 'echo',
+    startTurn(ctx: TurnContext) {
+      emit = (text) => {
+        const id = ctx.emit.startMessage('assistant');
+        ctx.emit.part(id, 0, { type: 'text', text });
+        ctx.emit.complete(id, 'complete');
+      };
+      return { stop() {}, done: new Promise<TurnResult>(() => {}) };
+    },
+  } as unknown as Driver);
+  try {
+    const client = await harness.connect();
+    const { threadId } = await echoThread(harness, client);
+    const { id: turnId } = await client.call('turns.start', { threadId, prompt: 'hi' });
+    await waitFor(() => harness.core.threads.get(threadId).status === 'running');
+    await client.call('turns.stop', { threadId });
+    await waitFor(() => harness.core.journal.getTurn(turnId)?.status === 'stopped', 3000);
+    await waitFor(() => harness.core.threads.get(threadId).status === 'idle', 3000);
+    const before = harness.core.journal.listMessages(threadId).length;
+    emit!('written after the turn ended');
+    await Bun.sleep(50);
+    const messages = harness.core.journal.listMessages(threadId);
+    expect(messages).toHaveLength(before);
+    expect(messages.some(message => message.state === 'streaming')).toBe(false);
+    expect(messages.flatMap(message => message.parts).some(part => part.type === 'text' && part.text.includes('written after'))).toBe(false);
   } finally {
     restore();
   }
