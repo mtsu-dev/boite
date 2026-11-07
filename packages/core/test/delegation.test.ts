@@ -701,6 +701,7 @@ test('a checkpoint letter with a long head keeps its note on the rest of a long 
   await waitFor(() => lettersFrom(h, threadId, childId).length === 1);
   const [letter] = lettersFrom(h, threadId, childId);
   expect(letter!.text.length).toBeLessThanOrEqual(4000);
+  expect(letter).toMatchObject({ origin: 'result', checkpoint: true });
   // Unbounded, this head left the answer its 1,000-character floor and the letter's final cut dropped the note.
   const cut = /\n([^\n]*\n[\s\S]*)\n\[Cut at character (\d+) of (\d+)\. The rest: boite delegate result \S+ (\S+) (\d+)\]$/.exec(letter!.text)!;
   expect(cut).not.toBeNull();
@@ -710,6 +711,8 @@ test('a checkpoint letter with a long head keeps its note on the rest of a long 
     rest += page.text;
     next = page.nextOffset;
   }
+  const head = cut[1]!.slice(0, cut[1]!.indexOf('Started'));
+  expect(head).toContain('Checkpoint, not its final result');
   expect(answer.startsWith(cut[1]!.slice(cut[1]!.indexOf('Started')))).toBe(true);
   expect(cut[1]!.slice(cut[1]!.indexOf('Started')) + rest).toBe(answer);
 });
