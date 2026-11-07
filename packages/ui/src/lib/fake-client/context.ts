@@ -77,7 +77,7 @@ import { activityMethods, finishActivityTurn } from './activity';
 import { FakeBus } from './bus';
 import { FAKE_TREE } from './files';
 import { seedHooks } from './hooks';
-import { delegationConfig, watchQuestionParents, workflowAnswer, workflowChild } from './delegation';
+import { delegationConfig, watchQuestionParents, workflowAnswer, workflowAgain, workflowChild } from './delegation';
 import { FakePlugins } from './plugins';
 import { initialHarnessUpdates } from './provider-installs';
 import { DATA_DIR, T0, toSummary } from './shared';
@@ -137,6 +137,8 @@ export interface FakeClientOptions {
   uninstalled?: boolean;
   /** Adds a deterministic active team for visual checks on `?fake=1&team=1`. */
   delegationDemo?: boolean;
+  /** That team's workflow is a fix and review loop in its second round instead, on `?fake=1&team=1&loop=1`. */
+  loopDemo?: boolean;
   /** Two parents at work, one whose sub-agents ask a question and a permission, on `?fake=1&subagents=1`. */
   subagentsDemo?: boolean;
   /** An agent with an entrusted project, a picture, a memory pass and a notice, on `?fake=1&agents=1`. */
@@ -379,6 +381,7 @@ export class FakeContext {
   readonly rttMs: number;
   readonly chunkSize: number | undefined;
   readonly long: boolean;
+  readonly loopDemo: boolean;
   readonly longCopies: number;
   readonly heavy: boolean;
   readonly diagrams: boolean;
@@ -476,6 +479,7 @@ export class FakeContext {
       },
       child: (root, profile, title, task) => workflowChild(this, root, profile, title, task),
       answer: (threadId, text, ok) => workflowAnswer(this, threadId, text, ok),
+      again: (threadId, task) => workflowAgain(this, threadId, task),
       member: (query, field) => void fakeMember(this, query, field),
       there: (root, profile, step, title, task) => workflowThere(this, root, delegationConfig(this, root.id), profile, step, title, task),
       answerThere: (coreId, threadId, text, ok) => {
@@ -494,6 +498,7 @@ export class FakeContext {
     this.rttMs = options.rttMs ?? roundTrip();
     this.chunkSize = options.chunkSize ?? tokenStream();
     this.long = options.long ?? false;
+    this.loopDemo = options.loopDemo ?? false;
     this.longCopies = options.longCopies ?? 0;
     this.heavy = options.heavy ?? false;
     this.diagrams = options.diagrams ?? false;

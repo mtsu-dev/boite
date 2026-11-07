@@ -223,7 +223,8 @@ export function seedDelegationDemo(ctx: FakeContext): void {
     { threadId: interrupted.id, profileId: implementer.id, task: 'Build the release and report the artifact sizes.' }
   ]);
   ctx.delegationTurns.set(root.id, 4);
-  seedWorkflowDemo(ctx, root.id);
+  if (ctx.loopDemo) seedLoopDemo(ctx, root.id);
+  else seedWorkflowDemo(ctx, root.id);
 }
 
 /** A workflow step's thread, the way `delegation.spawn` makes one: the task sent, the turn running. */
@@ -247,6 +248,21 @@ export function workflowChild(ctx: FakeContext, root: Thread, profile: ChildRout
   ctx.threads.set(id, child);
   ctx.emit('thread.created', structuredClone(toSummary(child)));
   return id;
+}
+
+/** A loop's next round in a step's thread: its task as a new message, the thread running again. */
+export function workflowAgain(ctx: FakeContext, threadId: ThreadId, task: string): void {
+  const thread = ctx.threads.get(threadId);
+  if (!thread) return;
+  const at = ctx.now();
+  const turn: Turn = { id: `turn-${threadId}-${++ctx.seq}`, threadId, status: 'running', queuedAt: at, startedAt: at, finishedAt: null, usage: null, error: null };
+  const message: Message = { id: `m-${threadId}-${++ctx.seq}`, threadId, turnId: turn.id, role: 'user', parts: [{ type: 'text', text: task }], state: 'complete', createdAt: at };
+  thread.turns.push(turn);
+  thread.messages.push(message);
+  thread.status = 'running';
+  ctx.emitToThread(threadId, 'message.started', structuredClone(message));
+  ctx.emitToThread(threadId, 'message.completed', { threadId, messageId: message.id, state: 'complete' });
+  ctx.touch(thread);
 }
 
 /** The step's answer, and its thread idle again. */
@@ -286,6 +302,33 @@ function seedWorkflowDemo(ctx: FakeContext, rootId: ThreadId): void {
     ctx.workflows.finish(run.id, 'scan');
     ctx.workflowLag = -45_000;
     ctx.workflows.finish(run.id, 'review#0');
+  });
+  ctx.workflowLag = 0;
+}
+
+/** A fix and review loop whose review asked for changes: the fix runs its second round in its own conversation. */
+function seedLoopDemo(ctx: FakeContext, rootId: ThreadId): void {
+  ctx.workflowLag = -240_000;
+  ctx.workflows.hold(() => {
+    const run = ctx.workflows.start(rootId, {
+      name: 'Fix the lexer until approved',
+      steps: [
+        { id: 'plan', title: 'Plan the fix', profile: 'reviewer', task: 'Read issue 412 and list what the lexer must change.', output: { changes: ['string'] } },
+        { id: 'tests', title: 'Write failing tests', profile: 'implementer', task: 'Add one failing test per change, in test/lexer only: {{plan.changes}}' },
+        { id: 'fix', title: 'Fix the lexer', profile: 'implementer', task: 'Make these changes in src/lexer: {{plan.changes}}' },
+        { id: 'review', title: 'Review the fix', profile: 'reviewer', after: ['fix', 'tests'], task: 'Review the lexer diff against the tests. Do not edit files.', output: { verdict: 'string', notes: 'string' },
+          repeat: { from: 'fix', until: { path: 'review.verdict', equals: 'APPROVE' }, max: 3 } },
+        { id: 'report', title: 'Write the report', profile: 'reviewer', task: 'Summarize the fix and the review: {{review.notes}}' }
+      ]
+    }, 'demo-loop', undefined, 'agent');
+    ctx.workflowLag = -200_000;
+    ctx.workflows.finish(run.id, 'plan');
+    ctx.workflowLag = -150_000;
+    ctx.workflows.finish(run.id, 'tests');
+    ctx.workflowLag = -120_000;
+    ctx.workflows.finish(run.id, 'fix');
+    ctx.workflowLag = -70_000;
+    ctx.workflows.finish(run.id, 'review');
   });
   ctx.workflowLag = 0;
 }
