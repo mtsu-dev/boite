@@ -48,6 +48,8 @@ export interface CoreInfo {
     gatewayMove?: boolean;
     /** `todos.update` takes `goalThreadId`, a card carries its goal, and a paired device reads and moves cards: the project board. */
     projectBoard?: boolean;
+    /** `projects.browse` and `projects.add` answer a paired device: the Add a project form works from a phone. */
+    deviceProjects?: boolean;
     /** Shared-project version 1 RPCs and scoped invalidations; absent until all enforcing handlers exist. */
     sharedProjects?: 1;
     /** contacts.sendHuman preserves a contact's human provenance without owner authority. */

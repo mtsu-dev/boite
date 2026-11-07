@@ -1,5 +1,6 @@
 import { pullRequestAddress, type PullRequestReview, type PullRequestFiles, type PullRequestComment } from '@boite/contracts';
 import { refused } from './errors.ts';
+import { budgetPatches, REVIEW_FILE_LIMIT } from './pull-request-diff-budget.ts';
 
 type Row = Record<string, unknown>;
 const row = (value: unknown): Row => value && typeof value === 'object' && !Array.isArray(value) ? value as Row : {};
@@ -46,15 +47,29 @@ export class PullRequestReviews {
         truncated: comments.length > 150 || reviews.length >= 100 || checks.length >= 100 || inline.length >= 100 || list(item.comments).length >= 100 || text(item.body, 40001).length > 40000 || [...comments, ...reviews].some(c => text(row(c).body, 12001).length > 12000) };
     });
   }
-  files(threadId: string, url: string, page: number): Promise<PullRequestFiles> {
+  /** A page of files whose patches share one budget, or with `path`, that file of the page alone with up to REVIEW_FILE_LIMIT characters of its patch. */
+  files(threadId: string, url: string, page: number, path?: string): Promise<PullRequestFiles> {
     const a = this.address(url);
     if (!Number.isSafeInteger(page) || page < 1 || page > 100) throw refused('pull request files page must be between 1 and 100');
+    if (path !== undefined && (typeof path !== 'string' || !path || path.length > 2000)) throw refused('pull request file path must be a file path of the page', { field: 'path', expected: 'a path of 1 to 2000 characters' });
     return this.cached(`${threadId}:${a.url}:files:${page}`, async () => {
       const values = json(await this.run(threadId, ['api', '--hostname', a.host, `repos/${a.repository}/pulls/${a.number}/files?per_page=30&page=${page}`]));
       if (!Array.isArray(values)) throw refused('GitHub files must be an array');
-      return { page, hasMore: values.length === 30 && page < 100, truncated: (page === 100 && values.length === 30) || values.some(v => text(row(v).patch, 100001).length > 100000),
-        files: values.slice(0, 30).map(value => { const f = row(value); return { path: text(f.filename, 2000), previousPath: f.previous_filename ? text(f.previous_filename, 2000) : undefined,
-          status: text(f.status, 50), additions: Math.max(0, Number(f.additions) || 0), deletions: Math.max(0, Number(f.deletions) || 0), patch: typeof f.patch === 'string' ? f.patch.slice(0, 100000) : null }; }) };
-    });
+      return values;
+    }).then(values => filesPage(values, page, path));
   }
+}
+
+function filesPage(values: unknown[], page: number, path: string | undefined): PullRequestFiles {
+  const hasMore = values.length === 30 && page < 100, all = values.slice(0, 30).map(value => { const f = row(value); return { path: text(f.filename, 2000), previousPath: f.previous_filename ? text(f.previous_filename, 2000) : undefined,
+    status: text(f.status, 50), additions: Math.max(0, Number(f.additions) || 0), deletions: Math.max(0, Number(f.deletions) || 0), patch: typeof f.patch === 'string' ? f.patch : null }; });
+  if (path !== undefined) {
+    const file = all.find(f => f.path === path);
+    if (!file) throw refused(`page ${page} has no file ${path}`, { field: 'path', expected: all.map(f => f.path).join(', ') || 'a page with files' });
+    const omitted = Math.max(0, (file.patch?.length ?? 0) - REVIEW_FILE_LIMIT);
+    return { page, hasMore, truncated: omitted > 0 || (page === 100 && values.length === 30), files: [{ ...file, patch: file.patch?.slice(0, REVIEW_FILE_LIMIT) ?? null, ...(omitted ? { omitted } : {}) }] };
+  }
+  const patches = budgetPatches(all, page);
+  return { page, hasMore, truncated: (page === 100 && values.length === 30) || patches.some(p => p.omitted > 0),
+    files: all.map((f, i) => ({ ...f, patch: patches[i]!.patch, ...(patches[i]!.omitted ? { omitted: patches[i]!.omitted } : {}) })) };
 }

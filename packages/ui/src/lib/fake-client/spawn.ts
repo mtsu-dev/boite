@@ -2,7 +2,9 @@
 import { RpcErrorCode, type AgentProjectAdded, type AgentSpawn, type Message, type ThreadLink } from '@boite/contracts';
 import { RpcFailure } from '../client';
 import { missingFolder, pathKey } from './checks';
-import { coordinationConfig } from './coordination';
+import { coordinationConfig, fakeCore } from './coordination';
+import { addFakeProject, folderToAdd } from './projects';
+import { fakeMember } from './requests';
 import { toSummary } from './shared';
 import { chooseHere, chooseModel, machineArg, memberModels, type ModelRequest } from './thread-models';
 import { resolveProject } from './thread-move';
@@ -27,26 +29,50 @@ export function spawnMethods(ctx: FakeContext, create: FakeMethods['threads.crea
       const caller = ctx.thread(params.threadId);
       if (caller.agentSessionId || caller.projectId === null) throw refuse('a persistent agent session takes its work through Agents and cannot add projects', { threadId: caller.id, field: 'threadId' });
       if (caller.parentThreadId) throw refuse('a delegated agent or workflow step cannot add projects; ask its parent', { threadId: caller.id, field: 'threadId' });
+      if (caller.archived) throw refuse('an archived thread cannot add projects', { threadId: caller.id, field: 'threadId', expected: 'a thread that is not archived' });
       const path = typeof params.path === 'string' ? params.path.trim() : '';
+      const gate = () => {
+        const config = coordinationConfig(ctx, caller.id);
+        if (config.mode === 'off') throw refuse(`${method}: communication is off for this thread; the owner turns it on in Communication settings`, { threadId: caller.id, field: 'coordination' });
+        if (config.paused) throw refuse(`${method}: communication is paused for this thread; only the owner resumes it`, { threadId: caller.id, field: 'coordination' });
+        if (!config.remote) throw refuse(`${method}: this thread may only reach its own project; the owner allows other projects in Communication settings`, { threadId: caller.id, field: 'coordination' });
+        if (origins.has(caller.id) && caller.messages.filter(m => m.role === 'user').length <= 1) throw refuse('a thread an agent started cannot add a project until the user writes in it', { threadId: caller.id, field: 'threadId' });
+      };
+      const systemLine = (text: string) => {
+        const line: Message = {
+          id: `m-${++ctx.seq}`, threadId: caller.id, turnId: caller.turns.at(-1)?.id ?? `turn-${++ctx.seq}`, role: 'system', state: 'complete', createdAt: ctx.now(),
+          parts: [{ type: 'text', text }],
+        };
+        caller.messages.push(line);
+        ctx.emitToThread(caller.id, 'message.started', structuredClone(line));
+        ctx.emitToThread(caller.id, 'message.completed', { threadId: caller.id, messageId: line.id, state: 'complete' });
+      };
+      if (params.machine !== undefined) {
+        // The core's `#addElsewhere` and the member's `addFor`: the path is that machine's, checked there.
+        gate();
+        const machine = fakeMember(ctx, params.machine, method);
+        const there = fakeCore(machine.coreId);
+        if (there === undefined) throw new RpcFailure({ code: RpcErrorCode.Unavailable, message: `${machine.name} did not answer`, data: { field: 'machine' } });
+        const name = machineArg(ctx, machine);
+        if (there.settings.groupThreads !== true) {
+          throw refuse(`${machine.name} does not let the other machines of its group add projects there; propose the switch to the user with boite settings request groupThreads true --machine ${name} --why "<what the project is for>"`, { field: 'machine', setting: 'groupThreads' });
+        }
+        let added: ReturnType<typeof addFakeProject>;
+        try { added = addFakeProject(there, folderToAdd({ path, name: params.name }, 'project.add')); }
+        catch (error) { throw error instanceof RpcFailure ? refuse(`${machine.name}: ${error.message}`, { field: 'machine' }) : error; }
+        const { project } = added;
+        if (added.added) systemLine(`The agent added the project ${project.name} (${project.path}) on ${machine.name}.`);
+        return { id: project.id, name: project.name, path: project.path, repository: project.repository === true, drafts: project.kind === 'drafts', current: false, added: added.added, machine: name };
+      }
       if (!path || !/^([A-Za-z]:[\\/]|[\\/])/.test(path)) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `${method}.path: expected an absolute folder, got ${path}` });
       const answer = (p: { id: string; name: string; path: string; repository?: boolean; kind?: string }, added: boolean): AgentProjectAdded => (
         { id: p.id, name: p.name, path: p.path, repository: p.repository === true, drafts: p.kind === 'drafts', current: p.id === caller.projectId, added });
       const known = ctx.projects.find(p => pathKey(p.path) === pathKey(path));
       if (known) return answer(known, false);
-      const config = coordinationConfig(ctx, caller.id);
-      if (config.mode === 'off') throw refuse(`${method}: communication is off for this thread; the owner turns it on in Communication settings`, { threadId: caller.id, field: 'coordination' });
-      if (config.paused) throw refuse(`${method}: communication is paused for this thread; only the owner resumes it`, { threadId: caller.id, field: 'coordination' });
-      if (!config.remote) throw refuse(`${method}: this thread may only reach its own project; the owner allows other projects in Communication settings`, { threadId: caller.id, field: 'coordination' });
-      if (origins.has(caller.id) && caller.messages.filter(m => m.role === 'user').length <= 1) throw refuse('a thread an agent started cannot add a project until the user writes in it', { threadId: caller.id, field: 'threadId' });
+      gate();
       if (missingFolder(path)) throw refuse('a project path must be an existing directory', { path });
       const project = await addProject({ path, ...(params.name === undefined ? {} : { name: params.name.trim() }) });
-      const line: Message = {
-        id: `m-${++ctx.seq}`, threadId: caller.id, turnId: caller.turns.at(-1)?.id ?? `turn-${++ctx.seq}`, role: 'system', state: 'complete', createdAt: ctx.now(),
-        parts: [{ type: 'text', text: `The agent added the project ${project.name} (${project.path}).` }],
-      };
-      caller.messages.push(line);
-      ctx.emitToThread(caller.id, 'message.started', structuredClone(line));
-      ctx.emitToThread(caller.id, 'message.completed', { threadId: caller.id, messageId: line.id, state: 'complete' });
+      systemLine(`The agent added the project ${project.name} (${project.path}).`);
       return answer(project, true);
     },
     'agent.spawn': async (params): Promise<AgentSpawn> => {

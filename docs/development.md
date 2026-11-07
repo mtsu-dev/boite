@@ -145,9 +145,11 @@ too. Trimmed names must contain 1 to 1024 UTF-16 code units; the core rejects
 larger names before journaling or broadcasting. The system drafts project
 keeps its localized name.
 
-Owners open a folder through the project dialog by selecting its machine and
-browsing or typing an absolute path. `projects.browse` is owner-only; the native
-folder picker is available only on the shell's local core. Dropping a desktop
+The owner, and a paired device whose core has `deviceProjects`, open a folder
+through the project dialog by selecting its machine and browsing or typing an
+absolute path; `store.addsProjects` says which machines take one
+([phone](phone.md#what-a-paired-device-may-call)). The native folder picker is
+available only on the shell's local core. Dropping a desktop
 folder switches to that core. A delayed dialog response remains tied to its
 original machine and dialog revision.
 

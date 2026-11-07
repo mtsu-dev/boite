@@ -323,7 +323,19 @@ allowlists; the real router and in-memory client enforce them before handlers.
 They cover conversation lists, prompts, agent cards and permitted read-only
 settings. Methods absent from the list remain owner-only, including newly
 added methods. A refusal names the method, such as
-`projects.add is for the owner only`.
+`settings.set is for the owner only`.
+
+A paired device adds projects with the same Add a project form, on the machine
+it picks in it, once that machine's core says so (`CoreInfo.features.deviceProjects`;
+an older core offers no button, and the form names it as too old). It browses folder
+names with `projects.browse` and registers one with `projects.add`; nothing in
+a folder is read before then. That core checks the path, absolute and an
+existing directory there, and refuses Boite's data folder, a folder inside it,
+and a folder that is or is inside `.git`, `.ssh`, `.gnupg`, `.aws`, `.azure`,
+`.kube` or `.docker`, so a device's reads, which start from its projects, never begin in
+one of them. It adds no reach the device lacked: it already starts agents that
+run commands in those projects. `settings.set`, `providers.dryRun` and
+`accounts.add` stay the owner's.
 
 A paired device reads and moves the project's todos for the board
 ([board.md](board.md)): `todos.list`, `todos.add`, `todos.update` and

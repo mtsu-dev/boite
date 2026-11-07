@@ -4,7 +4,7 @@ import { type RpcMethodName } from '@boite/contracts';
 import { store } from '../lib/store.svelte';
 import { work } from '../lib/work-prefs.svelte';
 import { projectMenu } from '../lib/project-menu';
-import { query, showMobileThreads, test, type, waitFor } from '../test/app';
+import { mountOnFake, query, showMobileThreads, test, type, waitFor } from '../test/app';
 
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
 
@@ -48,6 +48,29 @@ test('browser Add project keeps refused paths and Escape returns to its button',
   } finally {
     spy.mockRestore();
   }
+});
+
+test('a paired device adds a project through the same form, and its core checks the folder', async () => {
+  await mountOnFake('/?fake=1&principal=session');
+  expect([store.owner, store.addsProjects]).toEqual([false, true]);
+  const before = store.projects.length;
+  store.sidebarOpen = true;
+  query<HTMLButtonElement>('[data-testid=add-project]').click();
+  await waitFor(() => document.querySelector('[data-testid=add-project-form]') !== null);
+  const field = query<HTMLInputElement>('[data-testid=project-path]');
+  // Boite's own data folder is never a device's project: the core says why, and the path stays.
+  await type(field, 'C:\\Users\\you\\AppData\\Local\\boite2\\logs');
+  query<HTMLButtonElement>('[data-testid=project-add]').click();
+  await waitFor(() => store.error?.includes('a paired device does not add boite\'s data folder') === true);
+  expect(field.value).toBe('C:\\Users\\you\\AppData\\Local\\boite2\\logs');
+  expect(store.projects).toHaveLength(before);
+
+  await type(field, 'D:\\work\\from-the-phone');
+  query<HTMLButtonElement>('[data-testid=project-add]').click();
+  await waitFor(() => store.projects.length === before + 1);
+  const added = store.projects.find((p) => p.path === 'D:\\work\\from-the-phone')!;
+  expect(store.draft?.projectId).toBe(added.id);
+  await waitFor(() => document.querySelector('[data-testid=add-project-form]') === null);
 });
 
 test('the phone list header holds the project picker, the bottom bar the new thread, and neither manages a project', async ({ app: _app }) => {

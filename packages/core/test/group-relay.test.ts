@@ -165,7 +165,7 @@ test('a phone paired with one member reaches another through it, and keeps the k
   expect(onB.principal).toBe('session');
   // It is b that answers, under b's own rules for a device.
   expect((await onB.call('group.get', {}))?.self).toBe(id(b));
-  expect(await thrown(onB.call('projects.add', { path: b.dataDir, name: 'relay' }))).toThrow('owner only');
+  expect(await thrown(onB.call('settings.set', { listenOnLan: true }))).toThrow('owner only');
   const key = onB.session!.token;
   onB.close();
   await waitFor(() => a.core.relays.size === 0);

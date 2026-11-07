@@ -513,7 +513,7 @@ test('a phone paired with one member reaches the others as a device, and one rev
   expect(a.core.group.view('owner')?.devices).toEqual([{ id: deviceId, name: 'pwa', role: 'device', by: id(a), legacy: true }]);
   const onB = await connect(b.url, '', { ticket: ticket.ticket, client: { name: 'pwa', version: '1' } });
   expect(onB.principal).toBe('session');
-  expect(await thrown(onB.call('projects.add', { path: b.dataDir }))).toThrow('owner only');
+  expect(await thrown(onB.call('settings.set', { listenOnLan: true }))).toThrow('owner only');
   // From b it can ask a ticket back to a, under the same device.
   expect(parseTicket((await onB.call('group.ticket', { coreId: id(a) })).ticket).payload.sub).toBe(`device:${deviceId}`);
   await waitFor(() => b.core.group.view('owner')?.devices.length === 1);
