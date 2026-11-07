@@ -9,6 +9,7 @@ import type { PullRequestWatch } from './pull-requests';
 import type { BackgroundTask, BackgroundTaskObservation, BackgroundWait, QuestionRequest } from './questions';
 import type { MemoryEvent } from './scheduler';
 import type { DeletedThreadSummary } from './settings';
+import type { StreamChannel } from './stream-channels';
 import type { Turn } from './turns';
 
 export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'yolo' | 'plan' | 'dontAsk';
@@ -735,6 +736,8 @@ export interface ThreadsRpcMethods {
       sync?: true | MessageSync;
       /** Subscribe after a successful snapshot, optionally replacing the previous subscription and acknowledging unread content. */
       open?: { previous?: ThreadId; requests?: boolean; markRead?: boolean };
+      /** With `open`, the channels the subscription receives, as `threads.subscribe` takes them. */
+      channels?: StreamChannel[];
     };
     result: ThreadSnapshot;
   };
@@ -849,8 +852,17 @@ export interface ThreadsRpcMethods {
    * later letter outside one holds the thread again.
    */
   'threads.trustContactHistory': { params: { threadId: ThreadId }; result: { ok: true } };
-  /** Only subscribed threads stream message events to this connection. */
-  'threads.subscribe': { params: { threadId: ThreadId }; result: { ok: true } };
+  /**
+   * Only subscribed threads stream message events to this connection.
+   * `channels` narrows what this connection receives of the thread's streaming
+   * messages (`StreamChannel`); omitted, it receives every channel. A later
+   * call replaces them, and a channel it turns back on resends what the
+   * thread's streaming messages hold on it, so a card opened on a running call
+   * gets its output without waiting for the next redraw. A finished call is
+   * sent whatever the channels; its whole output stays readable with
+   * `messages.toolPart`. Needs `features.streamChannels`; older cores ignore it.
+   */
+  'threads.subscribe': { params: { threadId: ThreadId; channels?: StreamChannel[] }; result: { ok: true } };
   'threads.unsubscribe': { params: { threadId: ThreadId }; result: { ok: true } };
   /** The visible conversation and unsent input leases. Omitted leases remain; an empty list clears them.
    * A focus caller without an input report blocks automatic archive until it reports leases or disconnects.

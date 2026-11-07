@@ -162,7 +162,11 @@ export function registerThreadMethods(core: Core, probe: ProviderProbe): void {
     ctx.connection.subscriptions.add(params.threadId);
     // Live tool parts, files and pictures reach this socket the way its pages do.
     ctx.connection.transport = { compactTools: params.compactTools, compactToolParts: params.compactToolParts, compactFiles: params.compactFiles, compactImages: params.compactImages };
-    if (params.open.previous && params.open.previous !== params.threadId) ctx.connection.subscriptions.delete(params.open.previous);
+    ctx.connection.setStreamChannels?.(params.threadId, params.channels);
+    if (params.open.previous && params.open.previous !== params.threadId) {
+      ctx.connection.subscriptions.delete(params.open.previous);
+      ctx.connection.setStreamChannels?.(params.open.previous, undefined);
+    }
     if (params.open.markRead) { core.threads.markRead(params.threadId); thread.unread = false; }
     return { ...thread, opened: params.open.requests === false ? {} : {
       permissions: core.threads.listPermissions(params.threadId), questions: core.threads.listQuestions(params.threadId)
@@ -214,10 +218,12 @@ export function registerThreadMethods(core: Core, probe: ProviderProbe): void {
   core.router.register('threads.subscribe', (params, ctx) => {
     core.threads.require(params.threadId);
     ctx.connection.subscriptions.add(params.threadId);
+    ctx.connection.setStreamChannels?.(params.threadId, params.channels);
     return { ok: true } as const;
   });
   core.router.register('threads.unsubscribe', (params, ctx) => {
     ctx.connection.subscriptions.delete(params.threadId);
+    ctx.connection.setStreamChannels?.(params.threadId, undefined);
     return { ok: true } as const;
   });
   core.router.register('threads.focus', (params, ctx) => {

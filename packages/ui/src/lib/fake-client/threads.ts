@@ -1,4 +1,4 @@
-import { permissionAutoDecision } from '@boite/contracts';
+import { partChannel, permissionAutoDecision, type StreamChannel, type ThreadId } from '@boite/contracts';
 import { noteUserMessage } from './checklist';
 import { startAutoGoal, startsAutoGoal } from './activity';
 import { createFakeThread, publishFakeThread } from './create-thread';
@@ -26,6 +26,24 @@ import { registerFakeWorktree, requireFakeCwd } from './worktrees';
 import { boundedMessageWindow, listCursorProblem, pageBytes, pageBytesProblem, projectMessage, resumeAnchor, snapshotOptionsProblem, type TransportOptions } from '@boite/contracts';
 import { dropWaitingMove, fakeMoveNote } from './thread-move';
 import { cancelFamilySideQuestions, cancelSide, sideQuestionMethods } from './side-questions';
+
+/**
+ * `ServerConnection.setStreamChannels`: the thread's channels on this socket,
+ * and what its streaming messages hold on each channel turned back on.
+ */
+function setStreamChannels(ctx: FakeContext, threadId: ThreadId, channels: StreamChannel[] | undefined): void {
+  const enabled = ctx.bus.streams.set(threadId, channels);
+  if (enabled.length === 0) return;
+  for (const message of ctx.threads.get(threadId)?.messages ?? []) {
+    if (message.state !== 'streaming') continue;
+    message.parts.forEach((part, partIndex) => {
+      const channel = partChannel(part);
+      if (channel === null) return;
+      if (!enabled.includes(channel) && !(enabled.includes('liveOutput') && part.type === 'tool' && part.status === 'running')) return;
+      ctx.emitToThread(threadId, 'message.part', { threadId, messageId: message.id, partIndex, part: structuredClone(part) });
+    });
+  }
+}
 
 function writeFakeFork(ctx: FakeContext, source: Thread, kept: Message[], placed: ReturnType<typeof fakeWorktree> | null = null) {
   const title = `${source.title} (fork)`;
@@ -376,7 +394,11 @@ export function threadMethods(ctx: FakeContext) {
       if (!params.open) return pagingReply(snapshot);
       ctx.bus.subscribed.add(thread.id);
       ctx.bus.transport = { compactTools: params.compactTools, compactToolParts: params.compactToolParts };
-      if (params.open.previous && params.open.previous !== thread.id) ctx.bus.subscribed.delete(params.open.previous);
+      setStreamChannels(ctx, thread.id, params.channels);
+      if (params.open.previous && params.open.previous !== thread.id) {
+        ctx.bus.subscribed.delete(params.open.previous);
+        ctx.bus.streams.forget(params.open.previous);
+      }
       if (params.open.markRead && thread.unread) { thread.unread = false; ctx.touch(thread); }
       snapshot.unread = thread.unread;
       const opened = params.open.requests === false ? {} : {
@@ -622,10 +644,12 @@ export function threadMethods(ctx: FakeContext) {
       // The core runs `threads.require` first, so an unknown id is a NotFound.
       ctx.thread(params.threadId);
       ctx.bus.subscribed.add(params.threadId);
+      setStreamChannels(ctx, params.threadId, params.channels);
       return { ok: true };
     },
     'threads.unsubscribe': async (params) => {
       ctx.bus.subscribed.delete(params.threadId);
+      ctx.bus.streams.forget(params.threadId);
       return { ok: true };
     },
     'turns.steer': async params => steerUser(ctx, params),

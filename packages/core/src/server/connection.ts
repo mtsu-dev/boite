@@ -1,4 +1,4 @@
-import { RPC_CHUNK_BYTES, RPC_CHUNK_MARK, RPC_MAX_FRAME_BYTES, RpcErrorCode, projectLiveMessage, projectLivePart, type HelloAccepted, type RpcError, type RpcEventName, type RpcEvents, type SentFrom, type ThreadId, type TransportOptions } from '@boite/contracts';
+import { RPC_CHUNK_BYTES, RPC_CHUNK_MARK, RPC_MAX_FRAME_BYTES, RpcErrorCode, StreamGate, partChannel, projectLiveMessage, projectLivePart, type HelloAccepted, type MessagePart, type StreamChannel, type RpcError, type RpcEventName, type RpcEvents, type SentFrom, type ThreadId, type TransportOptions } from '@boite/contracts';
 import type { ServerWebSocket } from 'bun';
 import type { Core } from '../core.ts';
 import { newId } from '../ids.ts';
@@ -67,6 +67,8 @@ export class ServerConnection implements Connection {
   closedBy: { code: number; reason: string } | null = null;
   /** A hello is being answered. */
   greeting = false;
+  /** The stream channels of each subscribed thread (`threads.subscribe` `channels`). */
+  readonly streams = new StreamGate();
 
   #socket: ServerWebSocket<SocketData> | null = null;
   #congested = false;
@@ -109,6 +111,14 @@ export class ServerConnection implements Connection {
    */
   sendEvent<E extends RpcEventName>(name: E, payload: RpcEvents[E], frames?: EventFrames): void {
     if (this.#closed) return;
+    let narrowed = '';
+    if (name === 'message.part' || name === 'message.delta') {
+      const gated = this.streams.filter(name, payload, this.#partType);
+      if (gated === null) return;
+      // A call sent without its output is another frame than the whole one.
+      if (gated !== payload) narrowed = '|o';
+      payload = gated;
+    }
     if (name === 'message.delta' && this.remote && !this.#congested) {
       this.#pace(payload as RpcEvents['message.delta']);
       return;
@@ -119,7 +129,7 @@ export class ServerConnection implements Connection {
       this.#queueCatchUp(payload as RpcEvents['message.delta']);
       return;
     }
-    const key = this.#variant(name, payload);
+    const key = this.#variant(name, payload) + narrowed;
     let frame = frames?.get(key);
     if (frame === undefined) {
       const text = JSON.stringify({ jsonrpc: '2.0', method: name, params: this.#live(name, payload) });
@@ -127,6 +137,35 @@ export class ServerConnection implements Connection {
       frames?.set(key, frame);
     }
     this.#sendNow(name, payload, frame);
+  }
+
+  /** The kind of part a delta lands on, which says whether it is text or a tool's streamed input. */
+  readonly #partType = (messageId: string, partIndex: number): MessagePart['type'] | undefined =>
+    this.core.journal.streaming.partType(messageId, partIndex);
+
+  /**
+   * `threadId`'s channels on this socket, every channel when `channels` is
+   * undefined. A channel turned back on gets what the thread's streaming
+   * messages hold on it now: a running call's output, a text written while it
+   * was off. A thread this socket no longer follows only forgets its channels.
+   */
+  setStreamChannels(threadId: ThreadId, channels: readonly StreamChannel[] | undefined): void {
+    if (this.#closed) return;
+    if (!this.subscriptions.has(threadId)) { this.streams.forget(threadId); return; }
+    // The text the bus still holds goes out under the old channels first; the
+    // journal flush below folds it into the parts resent, as `drain` does.
+    this.core.bus.flush();
+    const enabled = this.streams.set(threadId, channels);
+    if (enabled.length === 0 || this.#closed) return;
+    const output = enabled.includes('liveOutput');
+    for (const message of this.core.journal.streaming.openOf(threadId)) {
+      message.parts.forEach((part, partIndex) => {
+        const channel = partChannel(part);
+        if (channel === null) return;
+        if (!enabled.includes(channel) && !(output && part.type === 'tool' && part.status === 'running')) return;
+        this.sendEvent('message.part', { threadId, messageId: message.id, partIndex, part });
+      });
+    }
   }
 
   /** What changes how this socket projects the event: two sockets with the same variant receive the same frame. */
@@ -461,11 +500,9 @@ export class ServerConnection implements Connection {
       this.#catchUp.delete(key);
       this.#catchUpBytes -= Buffer.byteLength(key);
       if (message === null || part === undefined) continue;
-      const sent = this.#write({
-        jsonrpc: '2.0',
-        method: 'message.part',
-        params: this.#live('message.part', { threadId: message.threadId, messageId, partIndex, part }),
-      });
+      const event = this.streams.filter('message.part', { threadId: message.threadId, messageId, partIndex, part }, this.#partType);
+      if (event === null) continue;
+      const sent = this.#write({ jsonrpc: '2.0', method: 'message.part', params: this.#live('message.part', event) });
       if (sent === 0) { this.close(1013, 'catch-up dropped; reconnect'); return; }
       // -1 is queued, not lost: Bun delivers it. The keys left wait for the next drain.
       if (sent < 0) { this.#markCongested(); return; }

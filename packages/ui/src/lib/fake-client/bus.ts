@@ -1,5 +1,5 @@
 /** The socket's side of the fake: its state, the event handlers, thread subscriptions and the calls it holds. */
-import { RpcErrorCode, SUBSCRIBED_EVENTS, agentHearsEvent, eventThreadId, mayHearEvent, previewToolPart, type Principal, type RpcEventName, type RpcEvents, type ThreadId, type Todo, type TransportOptions } from '@boite/contracts';
+import { RpcErrorCode, SUBSCRIBED_EVENTS, StreamGate, agentHearsEvent, eventThreadId, mayHearEvent, previewToolPart, type MessagePart, type Principal, type RpcEventName, type RpcEvents, type StreamChannel, type ThreadId, type Todo, type TransportOptions } from '@boite/contracts';
 import { RpcFailure, droppedFailure, type ClientState, type EventHandler } from '../client';
 
 export class FakeBus {
@@ -12,6 +12,10 @@ export class FakeBus {
   readonly subscribed = new Set<ThreadId>();
   /** `WsClient.#subscribed`'s mirror: the ids the client itself puts back after a reconnect. */
   readonly clientSubscribed = new Set<ThreadId>();
+  /** The stream channels the client last asked for each of them, which a reconnect asks again. */
+  readonly clientChannels = new Map<ThreadId, StreamChannel[] | undefined>();
+  /** What the core narrows this socket's live events to (`ServerConnection.streams`); a new socket starts from every channel. */
+  streams = new StreamGate();
   /** What the last opened page left on the core: `ServerConnection.livePart` sends finished calls the same way. */
   transport: TransportOptions = {};
   focusedThreadId: ThreadId | null = null;
@@ -24,9 +28,10 @@ export class FakeBus {
   /**
    * `agent` is the thread an agent's token names, how to read a thread's
    * project and which cards of a board that agent reads: what the core's
-   * broadcast narrows an agent socket's events to.
+   * broadcast narrows an agent socket's events to. `partType` names the part a
+   * delta lands on, which a socket's stream channels sort it by.
    */
-  constructor(public principal: Principal, private readonly agent: { threadId(): ThreadId | null; projectOf(threadId: ThreadId): string | null; visibleTodos(threadId: ThreadId, todos: Todo[]): Todo[] } = { threadId: () => null, projectOf: () => null, visibleTodos: (_, todos) => todos }) {}
+  constructor(public principal: Principal, private readonly agent: { threadId(): ThreadId | null; projectOf(threadId: ThreadId): string | null; visibleTodos(threadId: ThreadId, todos: Todo[]): Todo[]; partType?(threadId: ThreadId, messageId: string, partIndex: number): MessagePart['type'] | undefined } = { threadId: () => null, projectOf: () => null, visibleTodos: (_, todos) => todos }) {}
 
   onState(handler: (state: ClientState) => void): () => void {
     this.stateHandlers.add(handler);
@@ -92,6 +97,12 @@ export class FakeBus {
     if (event === 'todos.updated' && this.principal === 'agent' && agentThreadId !== null) {
       const board = payload as RpcEvents['todos.updated'];
       payload = { ...board, todos: this.agent.visibleTodos(agentThreadId, board.todos) } as RpcEvents[E];
+    }
+    if (event === 'message.part' || event === 'message.delta') {
+      const threadId = eventThreadId(payload) ?? '';
+      const gated = this.streams.filter(event, payload, (messageId, partIndex) => this.agent.partType?.(threadId, messageId, partIndex));
+      if (gated === null) return;
+      payload = gated;
     }
     if (event === 'message.part' && (this.transport.compactTools || this.transport.compactToolParts)) {
       const live = payload as RpcEvents['message.part'];
