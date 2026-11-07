@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { AGENT_ENV } from '@boite/contracts';
 import { runCli, splitLine } from '../src/cli.ts';
+import { continuationInput } from '../src/continuation.ts';
 import type { CliIo } from '../src/cli.ts';
 import { setDriver } from '../src/drivers/index.ts';
 import type { TurnResult } from '../src/drivers/index.ts';
@@ -152,6 +153,38 @@ test('threads commands discover, send and reply using the calling thread identit
   const direct = await boite(['threads', 'send', `${contact.coreId}/${other}`, 'Direct address']);
   expect(direct.code).toBe(0);
   expect(direct.out).toContain('recipient activity is unknown');
+});
+
+test('the history a fresh session carries points at its own tool output, which threads read pages whole', async () => {
+  const client = await harness.connect();
+  const other = (await echoThread(harness, client, 'Neighbour')).threadId;
+  // Past 4 KiB the output lives in part_blobs; past 16,000 characters the read pages it.
+  const output = `first line\n${'x'.repeat(20_000)}\nlast line`;
+  harness.core.journal.putMessage({ id: 'ran', threadId, turnId: 'history', role: 'assistant', state: 'complete', createdAt: Date.now(), parts: [{ type: 'tool', toolId: 'call-big', name: 'Bash', input: {}, status: 'done', output }] });
+  const { prompt } = continuationInput(harness.core.journal, threadId, null, { prompt: 'Go on', attachments: [] }, harness.core.providers.require('echo'));
+  const command = /read it whole with: boite (threads read \S+ --entry ran --tool call-big)\.\]/.exec(prompt)?.[1];
+  expect(command).toBe(`threads read ${threadId} --entry ran --tool call-big`);
+  // With coordination off too: the thread reads nothing but its own journal.
+  const config = harness.core.coordination.config(threadId);
+  harness.core.coordination.configure(threadId, { ...config, mode: 'off' });
+  const first = await boite(command!.split(' '));
+  expect(first.code).toBe(0);
+  expect(first.out).toContain('assistant: [tools: Bash] [characters 0 to 16000 of 20021]\n    first line\n    xxx');
+  const rest = /the rest: boite (threads read \S+ --entry ran --tool call-big --offset 16000)\)/.exec(first.out)?.[1];
+  expect(rest).toBe(`threads read ${threadId} --entry ran --tool call-big --offset 16000`);
+  const second = await boite(rest!.split(' '));
+  expect(second.out).toContain('[characters 16000 to 20021 of 20021]');
+  expect(second.out).toContain('xxx\n    last line');
+  expect(second.out).not.toContain('the rest:');
+  // The older `agents` name of the command takes the same flags.
+  expect((await boite(['agents', 'read', threadId, '--entry', 'ran', '--tool', 'call-big', '--offset', '20000'])).out).toContain('[characters 20000 to 20021 of 20021]');
+  // Another thread's tool output stays unread, its own text still reads.
+  harness.core.coordination.configure(threadId, config);
+  harness.core.journal.putMessage({ id: 'theirs', threadId: other, turnId: 'history', role: 'assistant', state: 'complete', createdAt: Date.now(), parts: [{ type: 'tool', toolId: 'call-1', name: 'Bash', input: {}, status: 'done', output: 'private' }] });
+  const refused = await boite(['threads', 'read', other, '--entry', 'theirs', '--tool', 'call-1']);
+  expect(refused.code).not.toBe(0);
+  expect(refused.err).toContain('a thread reads only its own tool output');
+  expect((await boite(['threads', 'read', threadId, '--entry', 'ran', '--tool', 'missing'])).err).toContain('tool: missing is not a tool call of entry ran');
 });
 
 test('threads reach each other by a short address, find by chat, read and wait for an answer', async () => {

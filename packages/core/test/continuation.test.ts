@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, expect, test } from 'bun:test';
 import { ATTACHMENTS_PER_TURN, ATTACHMENTS_TOTAL_MAX_BYTES, decodedBytes, type Attachment, type ImageAttachment, type MessagePart, type ProviderDescriptor } from '@boite/contracts';
 import { FileReferences, fileReference } from '../src/attachments.ts';
-import { continuationInput } from '../src/continuation.ts';
+import { continuationInput, messageExcerpt, TOOL_ENTRY_LIMIT, TOOL_LIMIT, toolPointer } from '../src/continuation.ts';
 import { Journal } from '../src/journal.ts';
 
 let dir: string;
@@ -20,23 +20,8 @@ afterEach(() => {
 
 const provider = { name: 'Echo', capabilities: { images: true } } as ProviderDescriptor;
 
-/** The single full walk `continuationInput` made before it read only the kept messages, kept verbatim as the reference. */
+/** The single full walk `continuationInput` made before it read only the kept messages, kept as the reference. */
 function fullWalk(threadId: string, upTo: string | null, input: { prompt: string; attachments: Attachment[]; moved?: true }, reference: (file: Extract<MessagePart, { type: 'file' }>) => string): { prompt: string; attachments: Attachment[] } {
-  const excerpt = (text: string, limit: number): string => {
-    if (text.length <= limit) return text;
-    const half = Math.floor((limit - 80) / 2);
-    return `${text.slice(0, half)}\n[Middle omitted from this history excerpt.]\n${text.slice(-half)}`;
-  };
-  const textPart = (part: MessagePart): string => {
-    switch (part.type) {
-      case 'text': return part.moved ? `${part.moved.note}${part.text}` : part.text;
-      case 'tool': return `Tool ${part.name}: ${part.status}\n${JSON.stringify(part.output ?? '')}`;
-      case 'error': return `Error: ${part.message}`;
-      case 'image': return `[Image: ${part.alt ?? 'attachment'}]`;
-      case 'artifact': return part.view ? `[Inline view shown to the user: ${part.view.title}, from ${part.view.source ?? part.name}]` : `[Published file: ${part.name}, ${part.bytes} bytes]`;
-      default: return '';
-    }
-  };
   const first: string[] = [], recent: string[] = [], images: ImageAttachment[] = [];
   let firstSize = 0, recentSize = 0, omitted = 0, imageCount = 0, moved = input.moved === true;
   for (const message of journal.walkMessages(threadId)) {
@@ -48,9 +33,10 @@ function fullWalk(threadId: string, upTo: string | null, input: { prompt: string
       images.push({ kind: 'image', mimeType: part.mimeType, data: part.data, name: part.alt });
       if (images.length > ATTACHMENTS_PER_TURN - input.attachments.length) images.shift();
     }
-    const text = message.parts.map(part => part.type === 'file' ? reference(part) : textPart(part)).filter(Boolean).map((part) => excerpt(part, 12_000)).join('\n');
+    // How one message reads is `messageExcerpt`'s; this reference checks which messages the walks keep.
+    const text = messageExcerpt(message, reference, toolPointer(threadId));
     if (!text) continue;
-    const entry = `[${message.role}, ${message.state}]\n${excerpt(text, 12_000)}`;
+    const entry = `[${message.role}, ${message.state}]\n${text}`;
     if (firstSize + entry.length <= 12_000 && recent.length === 0 && omitted === 0) {
       first.push(entry);
       firstSize += entry.length;
@@ -128,4 +114,38 @@ test('the bounded walks build the prompt and images the full walk built, byte fo
   expect(long.attachments.length).toBeGreaterThan(5);
   expect(() => continuationInput(journal, 'thr_long', 'turn-3', { prompt: 'x', attachments: [] }, { ...provider, capabilities: { ...provider.capabilities, images: false } })).not.toThrow();
   expect(() => continuationInput(journal, 'thr_long', 'turn-80', { prompt: 'x', attachments: [] }, { ...provider, capabilities: { ...provider.capabilities, images: false } })).toThrow('historical images');
+});
+
+test('tool output keeps to its own budget, with a pointer to the whole of it, and leaves the room to the conversation', () => {
+  const output = (tag: number): string => `head-${tag} ${'o'.repeat(60_000)} tail-${tag}`;
+  for (let turn = 0; turn < 12; turn++) {
+    journal.putMessage({ id: `u-${turn}`, threadId: 'thr_tools', turnId: `turn-${turn}`, role: 'user', state: 'complete', createdAt: 2 * turn, parts: [{ type: 'text', text: `ask-${turn} ${'q'.repeat(1_500)}` }] });
+    // The last turn ran six calls: the newest ones take the message's tool budget.
+    const calls = turn === 11 ? 6 : 1;
+    journal.putMessage({ id: `a-${turn}`, threadId: 'thr_tools', turnId: `turn-${turn}`, role: 'assistant', state: 'complete', createdAt: 2 * turn + 1, parts: [
+      { type: 'text', text: `answer-${turn} ${'a'.repeat(1_500)}` },
+      ...Array.from({ length: calls }, (_, call): MessagePart => ({ type: 'tool', toolId: `call-${turn}-${call}`, name: 'Read', input: { turn }, status: 'done', output: output(100 * turn + call) })),
+    ] });
+  }
+  const { prompt } = continuationInput(journal, 'thr_tools', 'next', { prompt: 'Current request', attachments: [] }, provider);
+  // Every exchange is carried: before, each 60k output took a 12k excerpt and pushed the older ones out.
+  expect(prompt).not.toContain('older messages omitted');
+  for (let turn = 0; turn < 12; turn++) {
+    expect(prompt).toContain(`ask-${turn} ${'q'.repeat(1_500)}`);
+    expect(prompt).toContain(`answer-${turn} ${'a'.repeat(1_500)}`);
+  }
+  expect(prompt).toContain(`head-0 ${'o'.repeat(TOOL_LIMIT / 2 - 7)}\n[`);
+  expect(prompt).toContain(`omitted; read it whole with: boite threads read thr_tools --entry a-0 --tool call-0-0.]\n${'o'.repeat(TOOL_LIMIT / 2 - 7)} tail-0`);
+  // Three newest calls of the last turn share its budget; the three before carry the pointer alone.
+  for (const call of [3, 4, 5]) expect(prompt).toContain(`head-${1100 + call}`);
+  for (const call of [0, 1, 2]) {
+    expect(prompt).not.toContain(`head-${1100 + call}`);
+    expect(prompt).toContain(`[Output of ${output(1100 + call).length} characters not carried; read it whole with: boite threads read thr_tools --entry a-11 --tool call-11-${call}.]`);
+  }
+  const last = messageExcerpt(journal.getMessage('a-11')!, undefined, toolPointer('thr_tools'));
+  // A call id the shell would split stays one word in the pointer.
+  expect(toolPointer('thr_tools')('a-11', "call 1's")).toBe("boite threads read thr_tools --entry a-11 --tool 'call 1'\\''s'");
+  expect(last.length).toBeLessThan(1_510 + TOOL_ENTRY_LIMIT + 6 * 160);
+  // A move carries no pointer: the journal it would read stays on the other machine.
+  expect(messageExcerpt(journal.getMessage('a-0')!)).toContain(`[${output(0).length - TOOL_LIMIT} of ${output(0).length} output characters omitted.]`);
 });

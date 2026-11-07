@@ -357,6 +357,7 @@ boite threads                           # who is reachable, most recently active
 boite threads find login blank screen       # every word in the chat, title, project, branch or model
 boite threads read <thread-id> --last 20        # that agent's conversation, text and tool names
 boite threads read <thread-id> --entry <id> --offset 3000   # the rest of an entry a page cut
+boite threads read <own-thread-id> --entry <id> --tool <call-id>   # your own tool call's whole output
 boite threads send <thread-id> "Can the shared test service stop now?" --wait
 boite threads send <machine>/<thread-id> "The parser check fails on main."
 boite threads reply <message-id> "Wait until the current test finishes."

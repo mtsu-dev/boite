@@ -830,6 +830,13 @@ test('coordination stays scoped to its core and paired devices can only inspect 
     createClient({ delayMs: 0, principal: 'session', coreId: 'core-phone' })
   ]);
 
+  // As the core: a thread reads its own tool output, whatever its coordination settings, and no other thread's.
+  const ran = (await first.call('threads.get', { threadId: 't-trace' })).messages.flatMap(message => message.parts.flatMap(part => part.type === 'tool' && part.output ? [{ message, part }] : []))[0]!;
+  const self = (await first.call('collaboration.get', { threadId: 't-trace' })).self;
+  const own = (await first.call('collaboration.read', { threadId: 't-trace', target: self, entry: ran.message.id, tool: ran.part.toolId })).entries[0]!;
+  expect(own).toMatchObject({ id: ran.message.id, tools: [ran.part.name], offset: 0 });
+  expect(own.text.startsWith(ran.part.output!.slice(0, 100))).toBe(true);
+  await expect(first.call('collaboration.read', { threadId: 't-descriptors', target: self, entry: ran.message.id, tool: ran.part.toolId })).rejects.toThrow('reads only its own tool output');
   expect((await first.call('collaboration.get', { threadId: 't-trace' })).config.mode).toBe('brief');
   await first.call('collaboration.configure', { threadId: 't-trace', config: { mode: 'team', resources: 'UI', remote: true, paused: false } });
   expect((await first.call('collaboration.get', { threadId: 't-trace' })).config.resources).toBe('UI');

@@ -498,6 +498,16 @@ export function coordinationMethods(ctx: FakeContext) {
       return { matches, unavailable: [] };
     },
     'collaboration.read': async (params) => {
+      // As the core: a thread reads its own tool output, whatever its coordination settings, and no other thread's.
+      if (params.tool !== undefined) {
+        if (params.target.coreId !== ctx.identity.coreId || params.target.threadId !== params.threadId) throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'tool: a thread reads only its own tool output; another thread shows its text and tool names' });
+        const message = ctx.thread(params.threadId).messages.find(item => item.id === params.entry);
+        const part = message?.parts.find(item => item.type === 'tool' && item.toolId === params.tool);
+        if (!message || part?.type !== 'tool') throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `tool: ${params.tool} is not a tool call of entry ${params.entry}` });
+        const output = part.output ?? '', offset = params.offset ?? 0;
+        if (!Number.isSafeInteger(offset) || offset < 0 || offset > output.length) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `offset: expected 0 to ${output.length}, the length of that tool call's output` });
+        return { contact: fakeAgentContact(ctx, ctx.thread(params.threadId), ctx.identity.coreId, ctx.identity.name), entries: [{ id: message.id, role: message.role, at: message.createdAt, ...transcriptStretch(output, offset, TRANSCRIPT_ENTRY_PAGE), tools: [part.name], length: output.length, offset }], more: false };
+      }
       const found = reachable(ctx, params.threadId).find(entry => entry.contact.coreId === params.target.coreId && entry.contact.threadId === params.target.threadId);
       if (!found) throw new RpcFailure({ code: RpcErrorCode.Refused, message: `target: ${params.target.threadId} is not a contact this thread may reach; see boite threads` });
       const route = routeTo(ctx, found.core.identity.coreId);
