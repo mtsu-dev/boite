@@ -230,7 +230,7 @@ Tool output has its own, smaller budget so the conversation's text keeps the
 room: a call carries the head and tail of its output up to 1,000 characters,
 and one message all its calls' output up to 3,000, newest call first. A call
 past that keeps its name and status. A cut output names the command that reads
-it whole, `boite threads read <thread> --entry <message> --tool <call>`, which
+it back, `boite threads read <thread> --entry <message> --tool <call>`, which
 pages 16,000 characters at a time and reads only the thread's own tool calls.
 On a 100-turn (200-message) bench thread with one 64 KiB tool result per answer, one
 answer goes from 11,965 to 1,168 characters and the history keeps 123 messages
