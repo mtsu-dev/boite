@@ -223,7 +223,7 @@
   .choice-row { display: flex; align-items: center; gap: 2px; }
   .choice { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; min-height: var(--row); padding: 4px 8px; border: none; border-radius: var(--radius-md);
     background: transparent; color: inherit; font-weight: 400; text-align: left; cursor: pointer; transition: background var(--dur-2) var(--ease-out-quint); }
-  .choice:hover, .choice:focus-visible { background: var(--color-hover); outline: none; }
+  .choice:hover, .choice:focus-visible { background: var(--color-hover); }
   .choice.on { background: var(--color-active); }
   .choice[aria-disabled='true'] { cursor: default; opacity: 0.5; }
   .choice[aria-disabled='true']:hover { background: transparent; }

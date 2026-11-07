@@ -33,6 +33,8 @@ export const strings = {
     displayOrder: 'Sort by',
     groupWorkingRow: 'Working threads',
     groupIdleRow: 'Idle projects',
+    showDoneRow: 'Done threads',
+    showDoneHint: 'Lists finished threads after the live ones, in Projects and Recent. This device only.',
     autoArchiveMergedPrHint: 'A worktree conversation leaves the list for Done once its branch is merged. Its history stays. Applies to this project.',
     autoRemoveWorktreesHint: 'An hour after every conversation in a worktree is done or archived, Boite deletes the worktree if nothing would be lost: its last commit is on another branch, or a merged pull request has that exact commit. A merged branch goes too. Uncommitted changes always stay. Applies to this project.',
     noActiveProjects: 'No conversations need attention.',
@@ -61,7 +63,7 @@ export const strings = {
       branchDeleted: 'Branch {branch} was deleted.',
       branchKept: 'Branch {branch} is still there.',
       archived: 'Moved to Recent, this thread has no folder to work in.',
-      live: 'A new message here has no folder to run in. Start a new thread to keep working.'
+      live: 'A new message here has no folder to run in.'
     },
     allProjects: 'All projects',
     filterProject: 'Filter by project',

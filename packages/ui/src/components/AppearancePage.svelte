@@ -12,20 +12,21 @@
   import { readTheme, setTheme, THEME_STORAGE_KEY, type Theme } from '../lib/theme';
   import { COLORS_EVENT } from '../lib/theme-colors';
   import { readChatWidth, setChatWidth, type ChatWidth } from '../lib/chat-width';
-  import { readTerminalCursor, readTerminalGpu, setTerminalCursor, setTerminalGpu, type TerminalCursor } from '../lib/terminal-cursor';
-  import { matchingPreset, work, type PanelStart, type Profile, type StartIn } from '../lib/work-prefs.svelte';
+  import { readTerminalCursor, setTerminalCursor, type TerminalCursor } from '../lib/terminal-cursor';
+  import { matchingPreset, work, type Profile } from '../lib/work-prefs.svelte';
   import ThemeColors from './ThemeColors.svelte';
   import { controlGroups } from '../lib/control-groups';
   import type { Store } from '../lib/store.svelte';
   import SurfaceIcon from './SurfaceIcon.svelte';
-  import { chatPrefs, setChatPref } from '../lib/chat-prefs.svelte';
   import { featureOn } from '../lib/features.svelte';
   import { setFeature } from '../lib/features';
 
   /**
-   * `phone`: what a phone reads and looks like. The column width, the terminal,
-   * the workspace and the header's buttons are the desktop's; the chat's files
-   * and previews switch, on the desktop's General page, joins the display here.
+   * Visual choices only: language, theme, colours, widths, faces, zoom and the
+   * buttons shown. What the app does (how a turn's changes show, where a window
+   * starts, the terminal's renderer) lives under General. `phone`: what a phone
+   * reads and looks like; the column width, the terminal and the header's
+   * buttons are the desktop's.
    */
   let { store, phone = false }: { store: Store; phone?: boolean } = $props();
   const uid = $props.id();
@@ -85,15 +86,6 @@
 
   // `readTheme` answers `system` for a grain that lost its experiment, which is
   // the fallback the segmented control has to show.
-  let starts = $derived<{ id: StartIn; label: string }[]>([
-    { id: 'drafts', label: strings.settings.startDrafts },
-    { id: 'project', label: strings.settings.startProject }
-  ]);
-  let panels = $derived<{ id: PanelStart; label: string }[]>([
-    { id: 'launcher', label: strings.settings.panelLauncher },
-    { id: 'files', label: strings.settings.panelFiles },
-    { id: 'changes', label: strings.settings.panelChanges }
-  ]);
   let theme = $state<Theme>(untrack(() => readTheme()));
 
   let chatWidth = $state<ChatWidth>(untrack(() => readChatWidth()));
@@ -108,7 +100,6 @@
   }
 
   let terminalCursor = $state<TerminalCursor>(untrack(() => readTerminalCursor()));
-  let terminalGpu = $state(untrack(() => readTerminalGpu()));
   let cursors = $derived<{ id: TerminalCursor; label: string }[]>([
     { id: 'bar', label: strings.settings.terminalCursorBar },
     { id: 'block', label: strings.settings.terminalCursorBlock },
@@ -230,38 +221,11 @@
         {/each}
       </div>
     </div>
-    <label class="switch-row">
-      <span class="text ui-label" title={strings.settings.terminalGpuHint}>{strings.settings.terminalGpu}</span>
-      <input type="checkbox" role="switch" checked={terminalGpu} data-testid="terminal-gpu"
-        onchange={(event) => { terminalGpu = event.currentTarget.checked; setTerminalGpu(terminalGpu); }} />
+    <label class="switch-row" for="{uid}-edge-scrollbars">
+      <span class="text ui-label-box"><span class="ui-label" id="{uid}-edge-scrollbars-name">{strings.features.edgeScrollbars.title}</span><InfoTip topic={strings.features.edgeScrollbars.title} text={strings.features.edgeScrollbars.hint} /></span>
+      <input id="{uid}-edge-scrollbars" aria-labelledby="{uid}-edge-scrollbars-name" type="checkbox" role="switch" checked={featureOn('edge-scrollbars')} data-testid="setting-edge-scrollbars"
+        onchange={event => setFeature('edge-scrollbars', event.currentTarget.checked)} />
     </label>
-    {/if}
-    <label class="switch-row">
-      <span class="text ui-label">{strings.settings.groupChanges}</span>
-      <input type="checkbox" role="switch" checked={chatPrefs.groupChanges} data-testid="chat-group-changes" onchange={event => setChatPref('groupChanges', event.currentTarget.checked)} />
-    </label>
-    <label class="switch-row">
-      <span class="text ui-label">{strings.settings.expandDiffs}</span>
-      <input type="checkbox" role="switch" checked={chatPrefs.expandDiffs} data-testid="chat-expand-diffs" onchange={event => setChatPref('expandDiffs', event.currentTarget.checked)} />
-    </label>
-    {#if !phone}
-      <label class="switch-row" for="{uid}-edge-scrollbars">
-        <span class="text ui-label-box"><span class="ui-label" id="{uid}-edge-scrollbars-name">{strings.features.edgeScrollbars.title}</span><InfoTip topic={strings.features.edgeScrollbars.title} text={strings.features.edgeScrollbars.hint} /></span>
-        <input id="{uid}-edge-scrollbars" aria-labelledby="{uid}-edge-scrollbars-name" type="checkbox" role="switch" checked={featureOn('edge-scrollbars')} data-testid="setting-edge-scrollbars"
-          onchange={event => setFeature('edge-scrollbars', event.currentTarget.checked)} />
-      </label>
-    {/if}
-    {#if phone}
-      <label class="switch-row" for="{uid}-chat-artifacts">
-        <span class="text ui-label-box"><span class="ui-label" id="{uid}-chat-artifacts-name">{strings.features.chatArtifacts.title}</span><InfoTip topic={strings.features.chatArtifacts.title} text={strings.features.chatArtifacts.hint} /></span>
-        <input id="{uid}-chat-artifacts" aria-labelledby="{uid}-chat-artifacts-name" type="checkbox" role="switch" checked={featureOn('chat-artifacts')} data-testid="setting-chat-artifacts"
-          onchange={event => setFeature('chat-artifacts', event.currentTarget.checked)} />
-      </label>
-      <label class="switch-row" for="{uid}-preview-comments">
-        <span class="text ui-label-box"><span class="ui-label" id="{uid}-preview-comments-name">{strings.features.previewComments.title}</span><InfoTip topic={strings.features.previewComments.title} text={strings.features.previewComments.hint} /></span>
-        <input id="{uid}-preview-comments" aria-labelledby="{uid}-preview-comments-name" type="checkbox" role="switch" checked={featureOn('preview-comments')} data-testid="setting-preview-comments"
-          onchange={event => setFeature('preview-comments', event.currentTarget.checked)} />
-      </label>
     {/if}
     {#if hasMaterial}
       <div class="switch-row">
@@ -320,27 +284,6 @@
   </section>
 
   {#if !phone}
-  <!-- What the tour's question set, each piece on its own. -->
-  <section class="card" id="settings-workspace">
-    <h2>{strings.settings.workspace}</h2>
-    <div class="switch-row">
-      <span class="text ui-label">{strings.settings.startIn}</span>
-      <div class="segmented" role="group" aria-label={strings.settings.startIn}>
-        {#each starts as option (option.id)}
-          <button type="button" class:on={work.current.startIn === option.id} aria-pressed={work.current.startIn === option.id} data-testid="start-in-{option.id}" onclick={() => work.setStartIn(option.id)}><span class="ui-label">{option.label}</span></button>
-        {/each}
-      </div>
-    </div>
-    <div class="switch-row">
-      <span class="text ui-label">{strings.settings.panelStart}</span>
-      <div class="segmented" role="group" aria-label={strings.settings.panelStart}>
-        {#each panels as option (option.id)}
-          <button type="button" class:on={work.current.panel === option.id} aria-pressed={work.current.panel === option.id} data-testid="panel-start-{option.id}" onclick={() => work.setPanel(option.id)}><span class="ui-label">{option.label}</span></button>
-        {/each}
-      </div>
-    </div>
-  </section>
-
   <!-- Every optional button in one place, grouped by where it sits. A button's
        own right click hides it and leads here; this is the only way back. -->
   <section class="card" id="settings-buttons" data-testid="settings-buttons">
@@ -381,17 +324,17 @@
 <style>
   /* The text font's choices are tiles, each drawn in the face it picks, so the
      choice is made by reading rather than by name. */
-  :global(.settings .page) .faces-row { flex-direction: column; align-items: stretch; gap: 12px; }
+  :global(.settings .page) .faces-row { flex-direction: column; align-items: stretch; gap: var(--space-3); }
   /* Five faces: one row on a desktop card, none left alone on a second one. */
-  .faces { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+  .faces { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--space-2); }
   .face {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 4px;
+    gap: var(--space-1);
     height: auto;
     min-height: 0;
-    padding: 10px 12px;
+    padding: var(--space-3);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
     background: var(--color-surface-2);
@@ -399,7 +342,7 @@
     text-align: left;
     white-space: normal;
   }
-  .face:hover:not([aria-pressed='true']) { background: var(--color-surface-3); }
+  @media (hover: hover) { .face:hover:not([aria-pressed='true']) { background: var(--color-surface-3); } }
   .face[aria-pressed='true'] { border-color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-foreground); }
   .face-name { font-size: var(--text-sm); font-weight: 600; }
   .face-sample { font-size: var(--text-base); line-height: 1.45; color: var(--color-muted-foreground); }
@@ -407,19 +350,19 @@
   .zoom-error { margin: 0; color: var(--color-danger); font-size: var(--text-xs); overflow-wrap: anywhere; }
   .zoom .zoom-value { min-width: 56px; font-variant-numeric: tabular-nums; color: var(--color-foreground); }
   /* The title on the left, the presets on the right, the groups under them. */
-  .card-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+  .card-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); flex-wrap: wrap; margin-bottom: var(--space-4); }
   .card-head h2 { margin-bottom: 0; }
-  .control-group + .control-group { margin-top: 20px; }
-  .control-group .section-label { margin-bottom: 8px; }
+  .control-group + .control-group { margin-top: var(--space-5); }
+  .control-group .section-label { margin-bottom: var(--space-2); }
   /* Each button as a tile that reads like the button itself: its icon and its
      name, dimmed while it is hidden, with the switch that brings it back. */
-  .toggles { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px; }
+  .toggles { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: var(--space-2); }
   .toggle {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--space-3);
     min-height: 44px;
-    padding: 0 10px 0 12px;
+    padding: 0 var(--space-3);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
     background: var(--color-surface-2);
@@ -429,7 +372,7 @@
     cursor: pointer;
     transition: background var(--dur-2), border-color var(--dur-2);
   }
-  .toggle:hover { border-color: var(--color-edge); background: var(--color-surface-3); }
+  @media (hover: hover) { .toggle:hover { border-color: var(--color-edge); background: var(--color-surface-3); } }
   .toggle .glyph { display: inline-flex; flex: none; color: var(--color-muted-foreground); transition: opacity var(--dur-2); }
   .toggle .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: opacity var(--dur-2); }
   .toggle.off .glyph, .toggle.off .name { opacity: 0.5; }
@@ -471,9 +414,11 @@
     font-size: var(--text-sm);
   }
 
-  .segmented button:hover:not(.on) {
-    background: var(--color-surface-3);
-    color: var(--color-foreground);
+  @media (hover: hover) {
+    .segmented button:hover:not(.on) {
+      background: var(--color-surface-3);
+      color: var(--color-foreground);
+    }
   }
 
   .segmented button.on {

@@ -133,6 +133,12 @@
   const tail = $derived(views?.length && /^ {0,3}!\[[^\n]*$/.test(pending) ? '' : pending);
   /** A diagram, formula or view being written shows as a placeholder, not as its source. */
   const drafting = $derived(pendingDrawing(tail));
+  /**
+   * The paragraph still being written, cut at its closed `code` spans (odd
+   * pieces): those show as code at once, rather than as raw backticks until
+   * the paragraph ends. An open span stays text until its backtick closes it.
+   */
+  const draftingPieces = $derived(drafting.text.split(/(`[^`\n]+`)/));
 
   let host = $state<HTMLDivElement>();
 
@@ -208,7 +214,7 @@
   }
 </script>
 
-{#snippet writing()}{#if drafting.text}<p class="pending" data-testid="paragraph-pending">{drafting.text}</p>{/if}{#if drafting.drawing}<div class="drawing-pending" role="status" aria-label={strings.chat.drawingPending} data-testid="drawing-pending"></div>{/if}{#if typing && text.trim().length > 0}<TypingIndicator />{/if}{/snippet}
+{#snippet writing()}{#if drafting.text}<p class="pending" data-testid="paragraph-pending">{#each draftingPieces as piece, index (index)}{#if index % 2}<code>{piece.slice(1, -1)}</code>{:else}{piece}{/if}{/each}</p>{/if}{#if drafting.drawing}<div class="drawing-pending" role="status" aria-label={strings.chat.drawingPending} data-testid="drawing-pending"></div>{/if}{#if typing && text.trim().length > 0}<TypingIndicator />{/if}{/snippet}
 
 {#if groups && store && threadId}
   {@const end = groups.at(-1)}

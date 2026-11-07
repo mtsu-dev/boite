@@ -111,7 +111,7 @@
   .section-label { margin: 6px 0 0; }
   .instances { display: grid; gap: 2px; }
   .instance { width: 100%; height: auto; min-height: var(--row); padding: 0 8px; display: flex; align-items: center; gap: 8px; border-radius: var(--radius-md); background: transparent; color: var(--color-foreground); font-weight: 400; text-align: left; }
-  .instance:hover, .instance:focus-visible { outline: none; background: var(--color-hover); }
+  .instance:hover, .instance:focus-visible { background: var(--color-hover); }
   .instance.chosen { background: var(--color-active); }
   .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); }
   .time { flex: none; color: var(--color-subtle); font-size: var(--text-xs); }

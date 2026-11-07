@@ -368,7 +368,7 @@
   }
 
   .compact .service { min-height: var(--row); padding: 4px 10px; border-color: transparent; }
-  .service:hover, .service:focus-visible { background: var(--color-hover); outline: none; }
+  .service:hover, .service:focus-visible { background: var(--color-hover); }
   .service:active { transform: none; }
   .who { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   .name { font-weight: 500; }

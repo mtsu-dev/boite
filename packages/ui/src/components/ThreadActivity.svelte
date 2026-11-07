@@ -138,11 +138,12 @@
   });
   const detailsId = $props.id();
 
-  // Task details overlay the timeline; the strip above the box stays clear of them.
+  // The dock floats over the timeline's end: the timeline keeps its whole
+  // measured height as room below, open task details included, so its last
+  // block always scrolls clear of them.
   let height = $state(0);
-  let readingHeight = $state(0);
   $effect(() => {
-    dockRoom.height = visible && !inline ? readingHeight : 0;
+    dockRoom.height = visible && !inline ? height : 0;
     dockRoom.clearance = visible && !inline ? height : 0;
   });
   $effect(() => () => {
@@ -160,8 +161,6 @@
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         height = node.offsetHeight;
-        const details = node.querySelector<HTMLElement>(':scope > .disclosure-fold');
-        readingHeight = height - (details?.offsetHeight ?? 0);
       });
     });
     observer.observe(node);
@@ -170,7 +169,6 @@
         observer.disconnect();
         cancelAnimationFrame(frame);
         height = 0;
-        readingHeight = 0;
       }
     };
   }

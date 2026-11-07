@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { MessageSquare, Plus, Settings, Users } from '@lucide/svelte';
+  import { Activity, MessageSquare, Plus, Settings, Users } from '@lucide/svelte';
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
   import { count } from '../lib/format';
@@ -19,6 +19,7 @@
   import { dragWindow } from '../lib/window-drag';
   import { isMac } from '../lib/keybindings';
   import { railBotState, threadsNeedingYou, type RailBotState } from '../lib/app-rail';
+  import { inbox } from '../lib/inbox.svelte';
   import AgentAvatar from './agents/AgentAvatar.svelte';
   import MachineStatus from './MachineStatus.svelte';
   import LimitsGlance from './LimitsGlance.svelte';
@@ -27,7 +28,7 @@
 
   /**
    * The column down the window's left edge, on a desktop: where to be (the
-   * threads, the contacts, what asks), then one picture per bot of every
+   * threads, Activity with what asks, the contacts), then one picture per bot of every
    * machine and the teams, then one menu for the machines and the limits,
    * and Settings. It
    * stands on the window's chrome from top to bottom; a phone keeps its own
@@ -51,7 +52,8 @@
     .flatMap(machine => agentRows(agentDirectory(machine.store).snapshot).map(row => ({ machine, row })))
     .sort((a, b) => Number(b.row.profile.pinned === true) - Number(a.row.profile.pinned === true) || a.row.profile.createdAt - b.row.profile.createdAt) : []);
   const teams = $derived(teamsOn ? watchedTeams() : []);
-  const waiting = $derived(threadsNeedingYou(stores));
+  /** What Activity holds for the user: the threads waiting on them and what contacts ask. */
+  const waiting = $derived(threadsNeedingYou(stores) + inbox.contacts);
   const waitingLabel = $derived(waiting === 1 ? strings.app.rail.waitingOne : fill(strings.app.rail.waitingMany, { count: String(waiting) }));
 
   /** The bot whose conversation the Bots page shows, on the window's machine. */
@@ -62,7 +64,9 @@
     return directory.agentOfThread(thread.id)?.id ?? directory.ownerOf(thread)?.id ?? null;
   });
   const openTeam = $derived(store.page === 'agents' ? store.openThread?.teamId ?? null : null);
-  const onThreads = $derived(store.page === 'chat' || store.page === 'home');
+  const onList = $derived(store.page === 'chat' || store.page === 'home');
+  const onThreads = $derived(onList && !inbox.open);
+  const onActivity = $derived(onList && inbox.open);
 
   type Bot = { machine: Machine; row: AgentRowData };
   function stateOf({ machine, row }: Bot): RailBotState {
@@ -94,11 +98,19 @@
 
   /** The thread list, or the Bots page left for it. */
   function showThreads() {
-    if (!onThreads) store.showChat();
+    inbox.open = false;
+    if (!onList) store.showChat();
+    store.sidebarCollapsed = false;
+  }
+  /** Activity takes the thread list's column, as the phone's tab does. */
+  function showActivity() {
+    inbox.open = true;
+    if (!onList) store.showChat();
+    store.sidebarCollapsed = false;
   }
   /** The contacts column the title bar folded before: drawn beside the thread list, so it brings the list back first. */
   function showContacts() {
-    if (!onThreads) {
+    if (!onList) {
       store.showChat();
       if (contactsRail.folded) contactsRail.toggle();
       return;
@@ -144,14 +156,22 @@
   <div class="slot" class:selected={onThreads}>
     <span class="pip" aria-hidden="true"></span>
     <button type="button" class="rail-button" class:on={onThreads} aria-current={onThreads ? 'page' : undefined}
-      title={strings.sidebar.threads} aria-label={waiting ? `${strings.sidebar.threads}, ${waitingLabel}` : strings.sidebar.threads}
+      title={strings.sidebar.threads} aria-label={strings.sidebar.threads}
       data-testid="view-threads" onclick={showThreads}>
       <MessageSquare size={19} strokeWidth={1.75} />
-      {#if waiting}<span class="count" data-testid="rail-threads-waiting" title={waitingLabel}>{count(waiting)}</span>{/if}
+    </button>
+  </div>
+  <div class="slot" class:selected={onActivity}>
+    <span class="pip" aria-hidden="true"></span>
+    <button type="button" class="rail-button" class:on={onActivity} aria-current={onActivity ? 'page' : undefined}
+      title={waiting ? `${strings.mobile.activity}\n${waitingLabel}` : strings.mobile.activity} aria-label={waiting ? `${strings.mobile.activity}, ${waitingLabel}` : strings.mobile.activity}
+      data-testid="nav-activity" onclick={showActivity}>
+      <Activity size={19} strokeWidth={1.75} />
+      {#if waiting}<span class="count" data-testid="rail-activity-waiting">{count(waiting)}</span>{/if}
     </button>
   </div>
   {#if contactsOn}
-    {@const open = onThreads && !contactsRail.folded}
+    {@const open = onList && !contactsRail.folded}
     <div class="slot">
       <button type="button" class="rail-button" class:on={open}
         aria-label={contactsRail.folded ? strings.contacts.rail.show : strings.contacts.rail.hide}
@@ -161,7 +181,8 @@
         {#if contactsRail.folded && contactsRail.waiting}<span class="dot" data-testid="contacts-toggle-waiting"></span>{/if}
       </button>
     </div>
-    {#if ContactRequestNotice}<div class="slot"><ContactRequestNotice {store} rail /></div>{/if}
+    <!-- Its toast only: what contacts ask is listed in Activity. -->
+    {#if ContactRequestNotice}<ContactRequestNotice {store} />{/if}
   {/if}
 
   {#if botsOn}
@@ -213,7 +234,7 @@
       <span class="pip" aria-hidden="true"></span>
       <button type="button" class="ghost icon" class:on={store.page === 'settings'} aria-current={store.page === 'settings' ? 'page' : undefined}
         title={`${strings.sidebar.settings}${store.keyHint('settings')}`} aria-label={strings.sidebar.settings}
-        data-testid="nav-settings" data-preload-view="settings" onclick={() => store.showSettings()}><Settings size={18} strokeWidth={1.75} /></button>
+        data-testid="nav-settings" data-preload-view="settings" onclick={() => store.showSettings()}><Settings size={19} strokeWidth={1.75} /></button>
     </div>
   </div>
 </nav>

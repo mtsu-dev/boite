@@ -128,7 +128,6 @@
   .tile:focus-visible {
     background: var(--color-hover);
     color: var(--color-foreground);
-    outline: none;
   }
 
   .tile.current {

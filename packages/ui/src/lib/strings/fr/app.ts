@@ -14,8 +14,8 @@ export const fr: Translation = {
     openSettings: 'Ouvrir les réglages',
     rail: {
       label: 'Boite',
-      waitingOne: '1 conversation a besoin de vous',
-      waitingMany: '{count} conversations ont besoin de vous',
+      waitingOne: '1 élément vous attend',
+      waitingMany: '{count} éléments vous attendent',
       bots: 'Bots',
       add: 'Nouveau bot ou équipe',
       botWaiting: '{name} a besoin de vous',

@@ -1,104 +1,91 @@
 <script lang="ts">
-  // The phone's options sheet: the bar has no room for chips, so the effort,
-  // the speed, the permission mode and the worktree switch live in here. On a
-  // computer every one of them is a chip in the bar and this stays hidden.
-  import { GitBranch, Paperclip, Plus, X } from '@lucide/svelte';
+  // The composer's one "+": every way to add to the message (files, a file
+  // mention, a command) and the draft's worktree switch, on both widths. The
+  // model, effort and permission live in the model chip instead.
+  import { AtSign, GitBranch, Paperclip, Plus, SquareSlash } from '@lucide/svelte';
   import { tick } from 'svelte';
-  import { MediaQuery } from 'svelte/reactivity';
-  import type { EffortLevel, PermissionMode } from '@boite/contracts';
   import { Closing } from '../lib/closing.svelte';
   import { floating } from '../lib/floating';
   import { strings } from '../lib/strings';
-  import { levelName } from '../lib/format';
 
-  let { levels, effort, agentDefault = false, speeds, speed, modes, modeLabel, modeHint, mode, worktree, canAttach, busy, onattach, oneffort, onspeed, onmode, onworktree } : {
-    levels: EffortLevel[]; effort: string | null;
-    speeds: { id: string; label: string }[]; speed: string | null;
-    /** The composer's list, the most open first; the panel reads it the other way. */
-    modes: PermissionMode[]; modeLabel: (mode: PermissionMode) => string; modeHint: (mode: PermissionMode) => string;
-    mode: PermissionMode; worktree: boolean | null; canAttach: boolean; busy: boolean;
-    onattach: () => void; oneffort: (id: string | null) => void;
-    /** The model has no default level: a Default choice hands the level back to the agent. */
-    agentDefault?: boolean;
-    onspeed: (id: string | null) => void; onmode: (id: PermissionMode) => void;
+  let { worktree, canAttach, anchor, onattach, onworktree, onmention, oncommand }: {
+    /** The draft's worktree switch, or null where a thread keeps its folder. */
+    worktree: boolean | null;
+    canAttach: boolean;
+    /** What the menu opens above: the "+", or the whole composer while an ask is docked in it. */
+    anchor?: () => HTMLElement | null;
+    onattach: () => void;
     onworktree: () => void;
+    onmention?: () => void;
+    oncommand?: () => void;
   } = $props();
   const panel = new Closing();
-  const mobile = new MediaQuery('(max-width: 720px)');
-  // The sheet belongs to a phone's width: widening the window closes it.
-  $effect(() => { if (!mobile.current) panel.hide(); });
   let trigger = $state<HTMLButtonElement>();
   let content = $state<HTMLDivElement>();
-  let ordered = $derived([...modes].reverse());
+  let empty = $derived(!canAttach && !onmention && !oncommand && worktree === null);
   function close() { panel.hide(); trigger?.focus({ preventScroll: true }); }
   async function open() {
     panel.show(); await tick();
-    content?.querySelector<HTMLButtonElement>('button, input')?.focus({ preventScroll: true });
+    content?.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
   }
+  function run(action: () => void) { panel.hide(); action(); }
   function keydown(event: KeyboardEvent) {
-    if (!panel.open) return;
-    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); }
-    if (event.key !== 'Tab' || !content) return;
-    const nodes = [...content.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled)')];
-    const first = nodes[0], last = nodes.at(-1);
-    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
-    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    if (!panel.open || !content) return;
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); return; }
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    event.preventDefault();
+    const rows = [...content.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];
+    const here = rows.indexOf(document.activeElement as HTMLButtonElement);
+    rows[(here + (event.key === 'ArrowDown' ? 1 : -1) + rows.length) % rows.length]?.focus();
+  }
+  function outside(event: PointerEvent) {
+    if (!panel.open || !(event.target instanceof Node)) return;
+    if (trigger?.contains(event.target) || content?.contains(event.target)) return;
+    panel.hide();
   }
 </script>
 
+<svelte:window onpointerdown={outside} />
+
+{#if !empty}
 <div class="options">
-  <button class="icon ghost opener" bind:this={trigger} data-testid="composer-options" aria-label={strings.composer.options} aria-haspopup="dialog" aria-expanded={panel.open} onclick={() => panel.open ? close() : void open()}><Plus size={21} /></button>
+  <button class="icon ghost opener" bind:this={trigger} data-testid="composer-options" aria-label={strings.composer.options} title={strings.composer.options} aria-haspopup="menu" aria-expanded={panel.open} onclick={() => panel.open ? close() : void open()}><Plus size={18} strokeWidth={1.75} /></button>
   {#if panel.shown}
-    <div class="options-sheet" class:closing={panel.closing} bind:this={content} role="dialog" aria-modal="true" aria-label={strings.composer.options} tabindex="-1" data-testid="composer-options-sheet" onkeydown={keydown}
-      use:panel.attach onanimationend={panel.end} use:floating={{ anchor: () => trigger ?? null, dismiss: close }}>
-      <header><h2>{strings.composer.options}</h2><button class="icon ghost" aria-label={strings.common.close} onclick={close}><X size={19} /></button></header>
+    <div class="options-menu" class:closing={panel.closing} bind:this={content} role="menu" tabindex="-1" aria-label={strings.composer.options} data-testid="composer-options-sheet" onkeydown={keydown}
+      use:panel.attach onanimationend={panel.end} use:floating={{ anchor: () => anchor?.() ?? trigger ?? null, placement: 'top', sheet: anchor?.() ? false : undefined, dismiss: close }}>
       {#if canAttach}
-        <button class="attachment" data-testid="composer-options-attach" onclick={() => { onattach(); close(); }}><Paperclip size={20} /><span class="ui-label">{strings.composer.attach}</span></button>
+        <button class="row" role="menuitem" data-testid="composer-attach" onclick={() => run(onattach)}><Paperclip size={16} strokeWidth={1.75} /><span class="ui-label">{strings.composer.attach}</span></button>
       {/if}
-      {#if levels.length}
-        <fieldset disabled={busy}><legend>{strings.composer.effortTitle}</legend><div class="choices">
-          {#if agentDefault}<label class:selected={!levels.some(level => level.id === effort)} title={strings.composer.effortDefaultHint}><input type="radio" name="mobile-effort" value="" checked={!levels.some(level => level.id === effort)} onchange={() => oneffort(null)} /><span class="ui-label">{strings.composer.effortDefault}</span></label>{/if}
-          {#each levels as level (level.id)}<label class:selected={effort === level.id}><input type="radio" name="mobile-effort" value={level.id} checked={effort === level.id} onchange={() => oneffort(level.id)} /><span class="ui-label">{levelName(level)}</span></label>{/each}
-        </div></fieldset>
+      {#if onmention}
+        <button class="row" role="menuitem" data-testid="composer-mention" onclick={() => run(onmention)}><AtSign size={16} strokeWidth={1.75} /><span class="ui-label">{strings.composer.mentionFile}</span></button>
       {/if}
-      {#if speeds.length}
-        <fieldset disabled={busy}><legend>{strings.composer.speed}</legend><div class="choices">
-          {#each [{ id: null, label: strings.composer.standardSpeed }, ...speeds] as entry (entry.id)}<label class:selected={speed === entry.id}><input type="radio" name="mobile-speed" checked={speed === entry.id} onchange={() => onspeed(entry.id)} /><span class="ui-label">{entry.label}</span></label>{/each}
-        </div></fieldset>
+      {#if oncommand}
+        <button class="row" role="menuitem" data-testid="composer-commands" onclick={() => run(oncommand)}><SquareSlash size={16} strokeWidth={1.75} /><span class="ui-label">{strings.composer.commands}</span></button>
       {/if}
-      {#if ordered.length > 0}<fieldset disabled={busy}><legend>{strings.composer.mode}</legend><div class="choices permissions">
-        {#each ordered as item (item)}<label class:selected={mode === item} title={modeHint(item)}><input type="radio" name="mobile-mode" value={item} checked={mode === item} onchange={() => onmode(item)} /><span class="ui-label">{modeLabel(item)}</span></label>{/each}
-      </div><p class="hint">{modeHint(mode)}</p></fieldset>{/if}
       {#if worktree !== null}
-        <button class="worktree" aria-pressed={worktree} data-testid="composer-options-worktree" onclick={onworktree}><GitBranch size={19} /><span class="ui-label">{strings.composer.worktree}</span><span class="switch" class:on={worktree}></span></button>
+        <button class="row worktree" role="menuitemcheckbox" aria-checked={worktree} data-testid="composer-worktree" title={worktree ? strings.composer.worktreeOn : strings.composer.worktreeOff} onclick={onworktree}><GitBranch size={16} strokeWidth={1.75} /><span class="ui-label">{strings.composer.worktree}</span><span class="switch" class:on={worktree}></span></button>
       {/if}
     </div>
   {/if}
 </div>
+{/if}
 
 <style>
-  .options { display: none; }
-  .options-sheet { color: var(--color-foreground); background: var(--color-surface-2); border: 1px solid var(--color-edge); border-radius: var(--radius-xl); padding: 16px; overflow-y: auto; box-shadow: var(--shadow-e3); animation: pop var(--dur-2) var(--ease-out-quint); }
-  .options-sheet.closing { animation-name: pop-out; }
-  header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-  h2 { font-size: var(--text-md); margin: 0; font-weight: 600; }
-  .attachment, .worktree { display: flex; align-items: center; gap: 12px; width: 100%; min-height: var(--touch-target); height: auto; text-align: left; border: none; background: var(--color-hover); padding: 10px 12px; border-radius: var(--radius-lg); }
-  fieldset { border: none; padding: 0; margin: 22px 0; min-width: 0; }
-  fieldset:disabled { opacity: .6; }
-  legend { padding: 0; margin-bottom: 10px; font-size: var(--text-sm); color: var(--color-muted-foreground); }
-  .hint { margin: 10px 0 0; font-size: var(--text-xs); line-height: 1.5; color: var(--color-muted-foreground); }
-  .choices { display: flex; flex-wrap: wrap; gap: 6px; }
-  .choices label { position: relative; flex: 1 0 auto; display: flex; justify-content: center; align-items: center; min-height: var(--touch-target); padding: 8px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); cursor: pointer; font-size: var(--text-sm); }
-  .choices label.selected { background: var(--color-active); border-color: var(--color-muted-foreground); color: var(--color-foreground); }
-  .choices label:focus-within { outline: 2px solid var(--color-accent); outline-offset: 2px; }
-  input { position: absolute; opacity: 0; width: 1px; height: 1px; }
-  .worktree span:first-of-type { flex: 1; }
-  /* The shared switch (app.css), at the size of the button's text. */
-  .switch { --switch-width: 32px; --switch-height: 20px; }
-  .worktree { margin-top: 12px; }
+  .options { display: flex; flex: none; }
+  .opener { width: var(--control); height: var(--control); border-radius: var(--radius-full); color: var(--color-muted-foreground); }
+  .opener:hover, .opener[aria-expanded='true'] { color: var(--color-foreground); }
+  .options-menu { min-width: 220px; padding: 6px; color: var(--color-foreground); background: var(--color-surface-2); border: 1px solid var(--color-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-e2); overflow-y: auto; animation: pop var(--dur-2) var(--ease-out-quint); }
+  .options-menu.closing { animation-name: pop-out; pointer-events: none; }
+  .row { display: flex; align-items: center; justify-content: flex-start; gap: 10px; width: 100%; min-height: var(--row); padding: 4px 10px; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--color-foreground); font-size: var(--text-sm); text-align: left; }
+  .row :global(svg) { flex: none; color: var(--color-muted-foreground); }
+  .row:hover, .row:focus-visible { background: var(--color-hover); }
+  .worktree .ui-label { flex: 1; }
+  /* The shared switch (app.css), at the size of the row's text. */
+  .switch { --switch-width: 28px; --switch-height: 16px; }
 
   @media (max-width: 720px) {
-    .options { display: block; flex: none; }
-    .opener { width: var(--touch-target); height: var(--touch-target); border-radius: var(--radius-xl); }
+    .opener { width: var(--touch-target); height: var(--touch-target); }
+    .options-menu { padding: 8px; }
+    .row { min-height: var(--touch-target); gap: 12px; font-size: var(--text-base); }
   }
 </style>

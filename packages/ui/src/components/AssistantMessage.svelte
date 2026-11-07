@@ -24,6 +24,7 @@
   import MemoryRow from './MemoryRow.svelte';
   import KeepaliveMarker from './KeepaliveMarker.svelte';
   import ErrorCard from './ErrorCard.svelte';
+  import { retryTurn } from '../lib/composer-edit';
   import WindowCard from './WindowCardLoader.svelte';
   import { keepaliveRun } from '../lib/message-order';
   import { AgentsView, agentOfThread } from '../lib/agents.svelte';
@@ -85,6 +86,12 @@
   const narrates = (index: number, text: string) => index < lastStepAt && text.length <= NARRATION_MAX;
   /** An answer headed "Plan" is a plan written out rather than handed over: once said, it reads in the plan's outline. */
   const writtenPlan = (text: string) => message.role === 'assistant' && /^\s*#{1,6}\s+plan\s*\n/i.test(text);
+  /**
+   * An error that ended the thread's last turn, at rest, can be answered in
+   * place: the same prompt sent again (`retryTurn`, the turn's own Retry).
+   */
+  const retryable = $derived(store.openThread?.id === threadId && !store.busy && store.openThread.turns.at(-1)?.id === message.turnId
+    && !store.composerStates[threadId]?.sending && (store.composerStates[threadId]?.queued.length ?? 0) === 0);
   const end = $derived(to ?? message.parts.length);
   // A run over the same parts stays the same object, so a new part does not redraw the groups above it.
   const runList = new MessageRuns();
@@ -245,7 +252,9 @@
         <WindowCard {store} threadId={message.threadId} agent={agentName ?? (execution ? providerName(store, execution.providerId) : strings.windows.consent.anAgent)} {part} />
       {:else if part.type === 'error'}
         {@const account = store.owner ? signedOut : null}
-        <ErrorCard message={part.message} reconnect={account ? () => store.openConnect(account.providerId, account.id) : undefined} />
+        {@const prompt = !account && retryable ? store.openThread?.messages.find(entry => entry.turnId === message.turnId && entry.role === 'user') : undefined}
+        <ErrorCard message={part.message} reconnect={account ? () => store.openConnect(account.providerId, account.id) : undefined}
+          retry={prompt ? () => void retryTurn(store, threadId, prompt) : undefined} />
       {/if}
     </div>
     {/if}

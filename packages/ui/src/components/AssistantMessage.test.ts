@@ -301,3 +301,19 @@ test('a short text between calls reads as narration, what follows the last call 
     expect([...document.querySelectorAll('[data-kind=text]:not([data-testid=narration])')].map(node => node.textContent?.trim().slice(0, 6))).toEqual(['A long', 'Fixed.']);
   } finally { store.detach(); client.close(); }
 });
+
+test('a paragraph still being written shows its closed code spans as code, never raw backticks', async () => {
+  const client = new FakeClient({ delayMs: 0 });
+  const store = new Store(); store.attach(client);
+  try {
+    await store.connect(); await store.open('t-trace');
+    const message = store.openThread!.messages.at(-1)!;
+    message.state = 'streaming';
+    message.parts = [{ type: 'text', text: 'Reading `src/app.ts` then `lib' }];
+    mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: message.threadId, message, signedOut: null, showModel: false } });
+    flushSync();
+    const pending = document.querySelector('[data-testid=paragraph-pending]')!;
+    expect(pending.querySelector('code')?.textContent).toBe('src/app.ts');
+    expect(pending.textContent).toBe('Reading src/app.ts then `lib');
+  } finally { store.detach(); client.close(); }
+});

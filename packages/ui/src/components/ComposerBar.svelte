@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ArrowUp, GitBranch, LoaderCircle, Mic, MicOff, Paperclip, Square } from '@lucide/svelte';
+  import { ArrowUp, LoaderCircle, Mic, MicOff, Square } from '@lucide/svelte';
   import { tick } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import { effectiveCompaction, type PermissionMode, type ProviderSummary } from '@boite/contracts';
@@ -25,9 +25,9 @@
   import { desktopSettings } from '../lib/settings-tabs';
 
   /**
-   * The row under the composer's box: the model, effort, worktree and mode
-   * chips (folded into Options on a phone), then stop, attach, dictation and
-   * send. A pick on a thread is saved at once, after the switch warnings; on a
+   * The row under the composer's box, the same on every width: one "+" for
+   * what adds to the message, one model chip (its effort and permission rows
+   * inside, its context ring beside the name), then stop, dictation and send. A pick on a thread is saved at once, after the switch warnings; on a
    * draft the whole choice is remembered. `choice`, `picking` and `dictating`
    * are the composer's, bound here. An agent's box (`target`) keeps stop,
    * attach, dictation and send; its model chips save the agent's own setting,
@@ -42,6 +42,7 @@
     canSend,
     waiting = false,
     answering = false,
+    composer = null,
     sendLabel = strings.composer.send,
     choice = $bindable(),
     picking = $bindable(),
@@ -49,19 +50,23 @@
     onsubmit,
     onfiles,
     onpreview,
-    ontranscript
+    ontranscript,
+    onmention,
+    oncommand
   }: {
     store: Store;
     /** The open thread's id, or the draft's stash key. */
     key: string;
     target?: ComposerTarget | null;
-    /** The persistent agent this box writes to, by name: its model, effort and mode are its settings, so the bar shows no chips. */
+    /** The persistent agent this box writes to, by name: its model, effort and mode are its settings, so its chip only names the model. */
     bot?: string | null;
     provider: ProviderSummary | null | undefined;
     canSend: boolean;
     /** Send was pressed while files were still being read: it goes once they are ready. */
     waiting?: boolean;
     answering?: boolean;
+    /** The composer while an ask is docked in it: menus open above it, so the ask stays readable. */
+    composer?: HTMLElement | null;
     /** What Send does, when it answers a question rather than sending a message. */
     sendLabel?: string;
     choice: Choice | null;
@@ -71,7 +76,13 @@
     onfiles: (files: File[]) => void;
     onpreview: (text: string, status: string, error: boolean) => void;
     ontranscript: (transcript: string) => void;
+    /** Starts a file mention or a command in the box; absent where the box has neither. */
+    onmention?: () => void;
+    oncommand?: () => void;
   } = $props();
+  let chip = $state<ModelPicker | undefined>(undefined);
+  const askAnchor = () => composer;
+  let stopping = $derived(!!(target ? target.busy && target.stop : store.busy));
 
   let picker = $state<HTMLInputElement | undefined>(undefined);
   let bar = $state<HTMLDivElement | undefined>(undefined);
@@ -236,33 +247,50 @@
     onfiles(files);
   }
 
-  /** The chip's own trigger opens its menu: one popover, owned by one component. */
+  /** The chip's own trigger opens its menu: one popover, owned by one component. Effort and mode are rows of the model chip's. */
   export async function openChip(testid: string) {
     await tick();
-    const composer = bar?.closest('[data-testid="composer"]');
-    if (window.matchMedia('(max-width: 720px)').matches && testid !== 'composer-picker') testid = 'composer-options';
-    composer?.querySelector<HTMLElement>(`[data-testid="${testid}"]`)?.click();
+    if (testid === 'composer-picker' || testid === 'composer-effort' || testid === 'composer-mode') {
+      await chip?.reveal(testid === 'composer-picker' ? undefined : testid);
+      return;
+    }
+    bar?.closest('[data-testid="composer"]')?.querySelector<HTMLElement>(`[data-testid="${testid}"]`)?.click();
   }
 </script>
 
 <svelte:window onstorage={(event) => { if (event.key === VOICE_STORAGE_KEY || event.key === null) voice.load(); }} />
 
-<div class="bar" class:answering class:direct={!!target} bind:this={bar}>
+<div class="bar" bind:this={bar}>
+  <!-- One "+" at the start: files, a file mention, a command and the draft's worktree. -->
+  {#key `${key}:${store.draft?.projectId ?? ''}`}
+  <ComposerOptions worktree={!answering && store.draft && draftRepository ? store.draft.worktree : null} {canAttach} anchor={askAnchor} onattach={() => picker?.click()} onworktree={() => store.setDraftWorktree(!store.draft?.worktree)} {onmention} {oncommand} />
+  {/key}
   {#if target && !target.selection}
   <div class="chips">{#if target.chips}{@render target.chips()}{/if}</div>
-  {:else if bot !== null && !answering}
-  <!-- A bot's box: the phone's options keep the attachment, nothing else to pick here. -->
-  {#key `${key}:${store.draft?.projectId ?? ''}`}
-  <ComposerOptions busy={picking} levels={[]} effort={null} agentDefault={false} speeds={[]} speed={null} modes={[]} modeLabel={(mode) => modeLabel(mode, provider)} modeHint={(mode) => modeHint(mode, provider)} mode={displayedMode} worktree={null} {canAttach} onattach={() => picker?.click()} oneffort={pickEffort} onspeed={(speed) => void pick(speedOptions.pick(speed))} onmode={pickMode} onworktree={() => {}} />
-  {/key}
-  <!-- The chips' room, empty, so the tools keep their place at the end of the row on both widths. -->
-  <div class="chips" aria-hidden="true"></div>
   {:else if !answering}
-  {#key `${key}:${store.draft?.projectId ?? ''}`}
-  <ComposerOptions busy={picking} levels={effortLevels} effort={activeEffort} {agentDefault} {speeds} speed={speedOptions.speed} {modes} modeLabel={(mode) => modeLabel(mode, provider)} modeHint={(mode) => modeHint(mode, provider)} mode={displayedMode} worktree={store.draft && draftRepository ? store.draft.worktree : null} {canAttach} onattach={() => picker?.click()} oneffort={pickEffort} onspeed={(speed) => void pick(speedOptions.pick(speed))} onmode={pickMode} onworktree={() => store.setDraftWorktree(!store.draft?.worktree)} />
-  {/key}
   <div class="chips">
-    <ModelPicker {store} {choice} disabled={picking} onpick={pick} />
+    {#snippet ring()}
+      {#if bound && showContext}
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="context-control" oncontextmenu={(event) => controlMenu(event, store, 'header.context')}><ContextControl {store} anchor={askAnchor} /></div>
+      {/if}
+    {/snippet}
+    {#snippet rows()}
+      {#if effortLevels.length > 0 || speeds.length > 0}
+        <div class="setting"><span class="setting-name ui-label">{strings.composer.effortTitle}</span>
+          <EffortSlider levels={effortLevels} active={activeEffort} onpick={pickEffort} ondefault={agentDefault ? () => pickEffort(null) : undefined} {speeds} speed={speedOptions.speed} onspeed={(speed) => void pick(speedOptions.pick(speed))} /></div>
+      {/if}
+      {#if modes.length > 0}
+        <div class="setting"><span class="setting-name ui-label">{strings.composer.mode}</span>
+          <Menu items={modeItems} onpick={pickMode} label={strings.composer.mode} testid="composer-mode" align="end" variant="ghost">
+            {@const ModeIcon = modeIcon(displayedMode)}
+            <span class="mode-icon"><ModeIcon size={14} strokeWidth={1.75} /></span>
+            <span class="ui-label">{modeLabel(displayedMode, provider)}</span>
+          </Menu></div>
+      {/if}
+    {/snippet}
+    <!-- A bot's model is its own setting: its chip names it and changes nothing here. -->
+    <ModelPicker bind:this={chip} {store} {choice} disabled={picking} readonly={bot !== null} readonlyHint={bot ? fill(strings.composer.botModel, { name: bot }) : ''} anchor={askAnchor} settings={bot === null ? rows : undefined} trailing={ring} onpick={pick} />
     {#if signedOut && store.owner}
       <button type="button" class="chip signed-out" data-testid="composer-reconnect" title={fill(strings.connect.signedOut, { provider: provider?.name ?? '' })} onclick={() => store.openConnect(signedOut.providerId, signedOut.id)}><span class="ui-label">{strings.connect.reconnect}</span></button>
     {/if}
@@ -277,71 +305,28 @@
     {#if accountRemoved}
       <button type="button" class="chip signed-out" data-testid="composer-account-removed" title={strings.accounts.removedHint} onclick={() => void openChip('composer-picker')}><span class="ui-label">{strings.accounts.removed}</span></button>
     {/if}
-
-    <div class="desktop-options">
-    {#if effortLevels.length > 0 || speeds.length > 0}
-      <EffortSlider levels={effortLevels} active={activeEffort} onpick={pickEffort} ondefault={agentDefault ? () => pickEffort(null) : undefined} {speeds} speed={speedOptions.speed} onspeed={(speed) => void pick(speedOptions.pick(speed))} />
-    {/if}
-
-    <!-- A thread keeps its directory, so the switch exists on a draft alone. -->
-    {#if !target && store.draft && draftRepository}
-      <button
-        type="button"
-        class="chip worktree"
-        class:on={store.draft.worktree}
-        data-testid="composer-worktree"
-        title={store.draft.worktree ? strings.composer.worktreeOn : strings.composer.worktreeOff}
-        aria-label={strings.composer.worktree}
-        aria-pressed={store.draft.worktree}
-        onclick={() => store.setDraftWorktree(!store.draft?.worktree)}
-      >
-        <GitBranch size={14} strokeWidth={1.75} />
-        <span class="ui-label">{strings.composer.worktree}</span>
-      </button>
-    {/if}
-
-    {#if modes.length > 0}
-      <Menu items={modeItems} onpick={pickMode} label={strings.composer.mode} testid="composer-mode" align="end" variant="ghost">
-        {@const ModeIcon = modeIcon(displayedMode)}
-        <span class="mode-icon"><ModeIcon size={14} strokeWidth={1.75} /></span>
-        <span class="ui-label">{modeLabel(displayedMode, provider)}</span>
-      </Menu>
-    {/if}
-    </div>
   </div>
+  {:else}
+  <!-- An answer picks nothing: the row's room still puts the tools at its end. -->
+  <div class="chips"></div>
   {/if}
-  {#if bound && showContext && !answering}
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="context-control" oncontextmenu={(event) => controlMenu(event, store, 'header.context')}><ContextControl {store} /></div>
-  {/if}
-  {#if target ? target.busy && target.stop : store.busy}
+  {#if stopping}
     <button type="button" class="icon quiet stop" data-testid="composer-stop" title={strings.composer.stop} aria-label={strings.composer.stop} onmousedown={keepFocus} onclick={() => { if (target) target.stop?.(); else void store.stop(); }}>
       <Square size={12} strokeWidth={2.5} />
     </button>
   {/if}
-    {#if canAttach}
-      <button
-        type="button"
-        class="icon quiet attach"
-        data-testid="composer-attach"
-        title={strings.composer.attach}
-        aria-label={strings.composer.attach}
-        onclick={() => picker?.click()}
-      >
-        <Paperclip size={16} strokeWidth={1.75} />
-      </button>
-      <input
-        bind:this={picker}
-        class="file"
-        type="file"
-        multiple
-        tabindex="-1"
-        aria-hidden="true"
-        data-testid="composer-file"
-        onchange={onchoose}
-      />
-    {/if}
-
+  {#if canAttach}
+    <input
+      bind:this={picker}
+      class="file"
+      type="file"
+      multiple
+      tabindex="-1"
+      aria-hidden="true"
+      data-testid="composer-file"
+      onchange={onchoose}
+    />
+  {/if}
 
   {#if voice.current.enabled}
   {#key store}
@@ -356,9 +341,11 @@
     {/key}
   {/key}
   {/if}
+  <!-- While a turn runs on an empty box, Stop takes Send's place; typing brings Send back. -->
   <button
     type="button"
     class="primary icon send"
+    class:resting={stopping && !canSend && !waiting}
     data-testid="composer-send"
     data-waiting={waiting || undefined}
     title={waiting ? strings.composer.sendWhenLoaded : sendLabel}
@@ -380,16 +367,15 @@
     display: none;
   }
 
-  .context-control { flex: none; }
+  .context-control { display: flex; flex: none; }
+  .bar .chips .context-control :global(.trigger) { padding: 0 8px 0 4px; gap: 5px; }
 
   .mode-icon { display: inline-flex; }
   .chips .chip.signed-out { color: var(--color-live); }
 
-  .bar .chips .worktree.on {
-    background: var(--control-glaze) var(--color-active);
-    border-color: var(--color-active);
-    color: var(--color-foreground);
-  }
+  /* The effort and permission rows under the models: the setting's name, its control at the end. */
+  .setting { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: var(--row); padding: 0 4px 0 8px; }
+  .setting-name { color: var(--color-muted-foreground); font-size: var(--text-sm); }
 
   /* Every child is one control high, so the end is the centre on one row; on a
      composer too narrow for one, the tools sit on the chips' last row. */
@@ -408,9 +394,7 @@
     flex-wrap: wrap;
     min-width: 0;
   }
-  .desktop-options { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
-
-  .chips :global(.trigger), .chips .worktree {
+  .chips :global(.trigger) {
     height: var(--control);
     padding: 0 10px;
     gap: 7px;
@@ -419,9 +403,9 @@
     font-weight: 500;
   }
 
-  /* One quiet chip for the model, the effort, the worktree and the mode: no
-     frame, muted ink, a fill only under the pointer or while its menu is open. */
-  .bar .chips :global(.trigger), .bar .chips .worktree {
+  /* One quiet chip for the model, the effort and the mode: no frame, muted
+     ink, a fill only under the pointer or while its menu is open. */
+  .bar .chips :global(.trigger) {
     width: auto;
     border-color: transparent;
     background: transparent;
@@ -429,7 +413,7 @@
     color: var(--color-muted-foreground);
   }
 
-  .bar .chips :global(.trigger:hover), .bar .chips .worktree:hover,
+  .bar .chips :global(.trigger:hover),
   .bar .chips :global(.trigger[aria-expanded='true']) {
     border-color: transparent;
     background: var(--color-hover);
@@ -446,7 +430,6 @@
 
   .send,
   .stop {
-    margin-left: auto;
     width: var(--control);
     height: var(--control);
     border-radius: var(--radius-full);
@@ -454,43 +437,36 @@
   }
 
   .send { box-shadow: var(--shadow-send); }
+  .send.resting { display: none; }
   .send:not(:disabled):active { transform: scale(.92); }
   .send :global(.spinner) { animation: spin 1s linear infinite var(--loops); }
   @media (prefers-reduced-motion: reduce) { .send :global(.spinner) { animation: none; } }
-  /* No chips to fill the row: the tools sit beside the send button on the right. */
-  .answering { justify-content: flex-end; }
-  .answering .stop, .answering .send { margin-left: 0; }
-  .answering .attach, .direct .attach { display: inline-flex; }
 
   /* The tools beside send are quiet and round like the chips, so send stays
      the one solid control of the row. */
   .bar .stop { color: var(--color-foreground); }
-  .bar .attach, .bar :global(.microphone:not(.listening)) { border-radius: var(--radius-full); }
+  .bar :global(.microphone:not(.listening)) { border-radius: var(--radius-full); }
   .bar :global(.microphone:not(.listening)) { border-color: transparent; box-shadow: none; }
   .bar :global(.microphone:not(.listening):not(:hover)) { background: transparent; }
 
-  /* A composer the side panel narrowed keeps its tools on one row: the effort,
-     worktree and mode chips keep only their icons and tooltips. */
+  /* A composer the side panel narrowed keeps its tools on one row. */
   @container composer (max-width: 600px) {
     .chips :global(.picker) { min-width: 0; }
   }
   @container composer (max-width: 480px) {
     .bar { gap: 6px; }
-    .desktop-options :global(.trigger > .ui-label), .desktop-options .worktree > .ui-label { display: none; }
-    .desktop-options :global(.trigger), .desktop-options .worktree { padding: 0 9px; }
   }
 
   @media (max-width: 720px) {
     .bar { gap: 2px; padding: var(--composer-bar-padding, 0 8px 6px); }
-    .desktop-options, .attach { display: none; }
     .chips { flex: 1; flex-wrap: nowrap; }
+    .setting { min-height: var(--touch-target); }
     .chips :global(.picker) { min-width: 0; max-width: 100%; }
     .chips :global(.picker > .trigger) { max-width: 100%; height: var(--touch-target); padding: 0 6px; }
     /* The model's name alone, and whole words of it: one line high, a name too long for the row
        wraps its last words onto a second line nobody sees, never half of one. */
     .chips :global(.picker > .trigger > .label) { min-width: 0; max-width: none; height: 1lh; padding-block: 0; margin-block: 0; text-box: normal; overflow: hidden; white-space: normal; overflow-wrap: normal; }
     .bar .chips :global(.picker > .trigger.connect) { padding: 0 12px; border-radius: var(--radius-md); background: var(--color-active); color: var(--color-foreground); }
-    .send, .stop { margin-left: 2px; }
   }
   /* A 360 px phone gives the model's whole name the room of the chevron, of the gaps
      and of the context ring's side margin; every control keeps its full height. */

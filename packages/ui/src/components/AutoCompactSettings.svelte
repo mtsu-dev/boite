@@ -193,7 +193,7 @@
   .master { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; cursor: pointer; }
   .master .words { display: grid; gap: 6px; flex: 1; min-width: 0; }
   .master h2 { margin: 0; }
-  h3 { margin: 22px 0 10px; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+  h3 { margin: var(--space-6) 0 var(--space-2); color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; }
   .options { display: grid; gap: 8px; }
   /* Icon, name, help and switch share the first line. */
   .option { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; column-gap: 14px; row-gap: 4px; padding: 14px 16px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-2); transition: border-color var(--dur-2), background var(--dur-2); }

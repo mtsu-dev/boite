@@ -86,6 +86,8 @@ export const strings = {
     diffRemoved: '-{count}',
     noOutput: 'No output',
     toolExitCode: 'Exit code {code}',
+    /** A failed step's mark when no exit code says more. */
+    toolFailed: 'Failed',
     toolCommandFailed: 'No diagnostic was reported. See the full output below.',
     /** Under an expanded tool input that opened cut to six lines. */
     showAll: 'Show all',

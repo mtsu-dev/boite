@@ -35,6 +35,8 @@ afterEach(() => {
   document.body.innerHTML = '';
   writeExperiments([]);
   window.localStorage.clear();
+  // A panel a test opened stays in memory: the next test starts with none, its thread list in place.
+  rightPanel.threads = {};
   work.load();
   workspace.view = 'projects';
   undo.dismiss();
@@ -379,7 +381,7 @@ test('the sidebar floats a thread that waits on the user, in both views, and Rec
   const branched = store.threadsOf(project.id).find((t) => !t.pullRequest)!;
   branched.branch = 'boite/port-the-scheduler';
   const row = () => document.querySelector<HTMLElement>(`[data-testid=thread-row][data-thread-id="${branched.id}"]`)!;
-  await waitFor(() => row()?.title === `${branched.title}\nboite/port-the-scheduler`);
+  await waitFor(() => { const lines = row()?.title.split('\n') ?? []; return lines[0] === branched.title && lines.includes('boite/port-the-scheduler'); });
   expect(document.querySelectorAll('[data-testid=thread-provider], [data-testid=thread-branch]')).toHaveLength(0);
   expect(row().closest('.thread')!.querySelector('[data-testid=thread-pr]')).toBeNull();
   // Only a thread with a pull request shows the mark, its number at the row's end.

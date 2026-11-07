@@ -7,6 +7,7 @@
   import { machineFilter } from '../lib/machine-filter.svelte';
   import { projectKey, projectView, type ProjectEntry } from '../lib/project-view.svelte';
   import { recentPreferences } from '../lib/recent.svelte';
+  import { doneFilter } from '../lib/inbox.svelte';
   import { projectName } from '../lib/format';
   import { strings } from '../lib/strings';
   import type { Project } from '@boite/contracts';
@@ -151,6 +152,7 @@
   <div class="separator" role="separator"></div>
   {@render toggle('working', strings.sidebar.groupWorkingRow, recentPreferences.groupWorking, strings.settings.groupWorkingThreadsHint,
     () => recentPreferences.setGroupWorking(!recentPreferences.groupWorking))}
+  {@render toggle('done', strings.sidebar.showDoneRow, doneFilter.shown, strings.sidebar.showDoneHint, () => doneFilter.set(!doneFilter.shown))}
   {#if projects}
     {@render toggle('other', strings.sidebar.groupIdleRow, recentPreferences.groupOtherProjects, strings.settings.groupOtherProjectsHint,
       () => recentPreferences.setGroupOtherProjects(!recentPreferences.groupOtherProjects))}
@@ -226,7 +228,7 @@
   /* A switch's label may run to two lines rather than lose its end: a project's switches have long names. */
   .row[role='switch'] { height: auto; min-height: 30px; padding-block: 6px; gap: 10px; line-height: 1.3; }
   .row[role='switch'] .ui-label { white-space: normal; }
-  .row:hover:not(:disabled), .row:focus-visible { background: var(--color-hover); color: var(--color-foreground); outline: none; }
+  .row:hover:not(:disabled), .row:focus-visible { background: var(--color-hover); color: var(--color-foreground); }
   .row:active:not(:disabled) { transform: none; background: var(--color-active); }
   .row:disabled { opacity: 0.55; }
   .row.on[role='radio'] { color: var(--color-foreground); }

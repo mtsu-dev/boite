@@ -70,6 +70,11 @@
     if (machine === store) return;
     untrack(() => { machine.settingsTab = tab; machine.settingsSection = section; });
   });
+  /** The Workspace card moved from Appearance to General: an old link to it lands on its new page. */
+  $effect(() => {
+    const section = store.settingsSection;
+    if (store.settingsTab === 'appearance' && section?.id === 'workspace') untrack(() => store.showSettings('general', 'workspace', { flash: section.flash === true }));
+  });
   const narrow = new MediaQuery('(max-width: 720px)');
   const inShell = window.__TAURI_INTERNALS__ !== undefined;
 
@@ -100,6 +105,7 @@
   let children: Partial<Record<SettingsTab, { id: string; label: string }[]>> = $derived({
     general: [
       { id: 'conversations', label: strings.settings.conversations },
+      { id: 'workspace', label: strings.settings.workspace },
       { id: 'archived', label: strings.settings.archived.heading },
       ...(store.owner ? [{ id: 'worktrees', label: strings.settings.worktrees.heading }] : []),
       ...(store.owner ? [{ id: 'windows', label: strings.windows.settings.allowedHeading }, { id: 'window-exclusions', label: strings.windows.settings.exclusionsHeading }] : []),
@@ -109,7 +115,7 @@
       ...(store.owner ? [{ id: 'privacy', label: strings.telemetry.heading }] : []),
       ...(target.policy?.present ? [{ id: 'policy', label: strings.policy.heading }] : [])
     ],
-    appearance: [{ id: 'theme', label: strings.settings.display }, { id: 'reading', label: strings.settings.reading }, { id: 'workspace', label: strings.settings.workspace }, { id: 'buttons', label: strings.controls.heading }],
+    appearance: [{ id: 'theme', label: strings.settings.display }, { id: 'reading', label: strings.settings.reading }, { id: 'buttons', label: strings.controls.heading }],
     keyboard: [
       ...COMMAND_GROUPS.map((group) => ({ id: `keys-${group.id}`, label: strings.keyboard.groups[group.id] })),
       { id: 'keybinding-file', label: strings.keyboard.file }
@@ -201,14 +207,15 @@
     ['appearance', 'theme', strings.settings.accent],
     ['appearance', 'theme', strings.settings.material],
     ['appearance', 'theme', strings.settings.language],
-    ['appearance', 'theme', strings.settings.groupChanges],
-    ['appearance', 'theme', strings.settings.expandDiffs],
     ['appearance', 'theme', strings.features.edgeScrollbars.title],
     ['appearance', 'reading', strings.settings.font],
     ['appearance', 'reading', strings.settings.monoFont],
     ...(inShell ? [['appearance', 'reading', strings.settings.zoom] as [SettingsTab, string, string]] : []),
-    ['appearance', 'workspace', strings.settings.startIn],
-    ['appearance', 'workspace', strings.settings.panelStart],
+    ['general', 'workspace', strings.settings.startIn],
+    ['general', 'workspace', strings.settings.panelStart],
+    ['general', 'conversations', strings.settings.groupChanges],
+    ['general', 'conversations', strings.settings.expandDiffs],
+    ['general', 'app', strings.settings.terminalGpu],
     // The buttons people most often look for by name, the ones the old developer switch hid.
     ['appearance', 'buttons', strings.terminal.title],
     ['appearance', 'buttons', strings.rightPanel.trace],

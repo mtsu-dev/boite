@@ -326,3 +326,19 @@ test('an answer given with files lists them, and a files-only answer says how ma
   flushSync();
   expect(query('.answer-detail').textContent).toContain('Files given: IMG_0042.jpg, trace.txt');
 });
+
+test('code an agent quotes in backticks reads as code in the question and its options, nothing else changes', () => {
+  running = mount(QuestionCard, {
+    target: document.body,
+    props: {
+      text: 'Retry `src/lib/sync/queue.ts` on *every* failure?',
+      options: [{ id: 'yes', label: 'Keep `retry()`', description: 'runs `bun test` after' }, { id: 'no', label: 'No' }],
+      allowText: true, multiple: false, answer: null, pending: true, docked: true, submit: () => {}
+    }
+  });
+  flushSync();
+  const prompt = query('[data-testid=question-text]');
+  expect(Array.from(prompt.querySelectorAll('code')).map(code => code.textContent)).toEqual(['src/lib/sync/queue.ts']);
+  expect(prompt.textContent).toBe('Retry src/lib/sync/queue.ts on *every* failure?');
+  expect(Array.from(options()[0]!.querySelectorAll('code')).map(code => code.textContent)).toEqual(['retry()', 'bun test']);
+});

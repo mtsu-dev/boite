@@ -126,14 +126,14 @@ test('the phone settings list the desktop\'s groups, General and Advanced hold t
   store.showSettings();
   await waitFor(home);
   expect(rows('mobile-settings-home')).toEqual([
-    'settings-tab-general', 'settings-tab-appearance', 'settings-tab-brain', 'settings-tab-usage', 'settings-tab-resources', 'mobile-settings-connection', 'settings-tab-advanced'
+    'settings-tab-general', 'settings-tab-appearance', 'settings-tab-accounts', 'settings-tab-brain', 'settings-tab-usage', 'settings-tab-resources', 'mobile-settings-connection', 'settings-tab-advanced'
   ]);
   // The header already says Settings, and the list's display options group the threads.
   expect(document.querySelector('[data-testid=mobile-settings-home] h1')).toBeNull();
   expect(query('[data-testid=settings]').dataset.detail).toBeUndefined();
   await open('settings-tab-general', general);
   expect(rows('mobile-settings-general')).toEqual([
-    'mobile-settings-phone', 'mobile-settings-privacy', 'settings-tab-voice', 'mobile-settings-archived', 'mobile-settings-secrets',
+    'mobile-settings-conversations', 'mobile-settings-phone', 'mobile-settings-privacy', 'settings-tab-voice', 'mobile-settings-archived', 'mobile-settings-secrets',
     'mobile-settings-browser-profiles', 'mobile-settings-windows', 'mobile-settings-worktrees'
   ]);
   // A page carries its own header, so the app drops its own over it: one header a screen.
@@ -184,12 +184,24 @@ test('the phone settings list the desktop\'s groups, General and Advanced hold t
   await waitFor(() => store.settingsTab === 'limits' && document.querySelector('[data-testid=mobile-usage-tab-limits][aria-selected=true]') !== null);
   await back();
 
-  // Appearance takes the files and previews and element reference switches, and leaves the desktop's rows behind.
+  // Appearance holds visual choices only, and leaves the desktop's rows behind.
   query<HTMLButtonElement>('[data-testid=settings-tab-appearance]').click();
   await waitFor(() => document.querySelector('[data-testid=appearance-page]') !== null);
-  expect(document.querySelector('[data-testid=setting-chat-artifacts]')).not.toBeNull();
-  expect(document.querySelector('[data-testid=setting-preview-comments]')).not.toBeNull();
-  for (const id of ['chat-width-comfortable', 'terminal-gpu', 'settings-buttons', 'start-in-drafts', 'setting-edge-scrollbars']) expect(document.querySelector(`[data-testid=${id}]`)).toBeNull();
+  for (const id of ['chat-width-comfortable', 'terminal-gpu', 'settings-buttons', 'start-in-drafts', 'setting-edge-scrollbars', 'setting-chat-artifacts', 'chat-group-changes']) expect(document.querySelector(`[data-testid=${id}]`)).toBeNull();
+  await back();
+
+  // The conversation switches sit under General, as on the desktop.
+  await open('settings-tab-general', general);
+  query<HTMLButtonElement>('[data-testid=mobile-settings-conversations]').click();
+  await waitFor(() => document.querySelector('[data-testid=setting-chat-artifacts]') !== null);
+  for (const id of ['setting-preview-comments', 'chat-group-changes', 'chat-expand-diffs']) expect(document.querySelector(`[data-testid=${id}]`), id).not.toBeNull();
+  expect(document.querySelector('[data-testid=setting-group-working-threads]')).toBeNull();
+  await back(general);
+  await back();
+
+  // Providers, the desktop's third group, has its page here too.
+  query<HTMLButtonElement>('[data-testid=settings-tab-accounts]').click();
+  await waitFor(() => document.querySelector('[data-testid=accounts-page]') !== null);
 });
 
 test('on a phone too, a page of one machine is picked above it without moving the window', async () => {

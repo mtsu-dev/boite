@@ -17,14 +17,15 @@ afterEach(async () => {
 
 /** What a phone shows for a route: the page a desktop shows for it, the card's own page, its group's index, or Home where the phone has no such page. */
 const ROUTES: { owner: boolean; tab: SettingsTab; section?: string; shows: string }[] = [
-  // Installing, signing in and plugins stay on the desktop.
-  { owner: true, tab: 'accounts', shows: 'mobile-settings-home' },
+  // Providers has its page as on the desktop; plugins and the keyboard stay on the desktop.
+  { owner: true, tab: 'accounts', shows: 'accounts-page' },
   { owner: true, tab: 'plugins', shows: 'mobile-settings-home' },
   { owner: true, tab: 'general', section: 'secrets', shows: 'secrets-card' },
   { owner: true, tab: 'keyboard', shows: 'mobile-settings-home' },
   // A group with no card named opens its index; a card the phone has no page for lands there too.
   { owner: true, tab: 'general', shows: 'mobile-settings-general' },
-  { owner: true, tab: 'general', section: 'conversations', shows: 'mobile-settings-general' },
+  { owner: true, tab: 'general', section: 'conversations', shows: 'setting-chat-artifacts' },
+  { owner: true, tab: 'general', section: 'app', shows: 'mobile-settings-general' },
   { owner: true, tab: 'advanced', shows: 'mobile-settings-advanced' },
   { owner: false, tab: 'accounts', shows: 'mobile-settings-home' },
   { owner: false, tab: 'general', section: 'worktrees', shows: 'mobile-settings-home' },

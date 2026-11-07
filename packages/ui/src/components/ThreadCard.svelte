@@ -9,7 +9,8 @@
   import { pickThreadAction, threadMenuItems } from '../lib/thread-menu';
   import { focusOnMount } from '../lib/actions';
   import { strings } from '../lib/strings';
-  import ThreadHeadline from './ThreadHeadline.svelte';
+  import ThreadHeadline, { pullRequestLabel } from './ThreadHeadline.svelte';
+  import { ago } from '../lib/format';
   import { trackThreadPullRequest } from '../lib/thread-pull-request.svelte';
   import { canMarkDone, markDone } from '../lib/recent.svelte';
   import { ThreadRename, commitOnUnmount } from '../lib/thread-rename.svelte';
@@ -20,10 +21,13 @@
     now,
     hidden = false,
     showDone = false,
-    compact = false
+    compact = false,
+    reason,
+    nested = false
   }: {
     machine: Machine;
-    project: Project;
+    /** None for a bot's thread, which Activity lists too. */
+    project: Project | undefined;
     thread: ThreadSummary;
     now: number;
     /** In a folded project: the card waits for the unfold to look up its pull request. */
@@ -32,6 +36,10 @@
     showDone?: boolean;
     /** Recent's flat list: the project's tile leads the row, since no card names it. */
     compact?: boolean;
+    /** Activity's second line: what the thread wants, or where it lives. */
+    reason?: string;
+    /** Activity: a sub-agent under its parent's row. */
+    nested?: boolean;
   } = $props();
   let owner = $derived(machine.store);
   let open = $derived(workspace.active === owner && owner.openThread?.id === thread.id);
@@ -43,6 +51,8 @@
   // A move asked for while the turn runs, until the turn ends and applies it.
   let pending = $derived(pendingLine(thread));
   let doneAllowed = $derived(canMarkDone(owner, thread));
+  /** The details the row only shows under the pointer or open, in its tooltip at rest: the pull request, the branch, the time. */
+  let tip = $derived([thread.title, pullRequest && pullRequestLabel(pullRequest), thread.branch, ago(thread.lastUserMessageAt ?? thread.createdAt, now)].filter(Boolean).join('\n'));
 
   function rename() {
     renaming = new ThreadRename(owner, thread.id, thread.title);
@@ -98,6 +108,7 @@
     class:unread={thread.unread}
     class:pinned={thread.pinned}
     class:compact
+    class:nested
     class:offline={owner.connection !== 'ready'}
     class:dragging={threadDrag.current?.threadId === thread.id && threadDrag.current.machineId === machine.id}
     data-movable={movable}
@@ -115,11 +126,12 @@
       data-preload-thread={thread.id}
       data-status={thread.status}
       data-pinned={thread.pinned ? 'true' : undefined}
-      title={thread.branch ? `${thread.title}\n${thread.branch}` : thread.title}
+      title={tip}
       onclick={() => void workspace.select(owner, thread.id)}
       ondblclick={rename}
     >
       <ThreadHeadline {owner} {thread} {now} {open} tile={compact ? project : undefined} {pullRequest} />
+      {#if reason}<span class="reason" class:tiled={!!project} data-testid="thread-reason">{reason}</span>{/if}
       {#if pending}
         <span class="pending" data-testid="thread-pending" title={pending}><FolderInput size={12} /><span class="ui-label">{pending}</span></span>
       {/if}
@@ -183,13 +195,23 @@
     background: transparent;
     container: thread-row / inline-size;
   }
-  /* The title wins: the pin shows on a wide row, or on the one under the pointer. */
-  .row :global(.headline .pin) { display: none; }
-  .thread:hover .row :global(.headline .pin),
-  .thread:focus-within .row :global(.headline .pin) { display: inline-flex; }
-  @container thread-row (min-width: 340px) {
-    .row :global(.headline .pin) { display: inline-flex; }
+  /* The title wins. At rest a row carries one mark at most, its state when it asks for the user or failed; the
+     pin, a draft, the pull request, the time and work's timer show under the pointer, the keyboard or on the open
+     row, and stay in the tooltip. */
+  .thread:not(:hover, :focus-within, .open) .row :global(.headline > :is(.draft, .pin, .pr, .when:not(.waiting, .error, .interrupted))) { display: none; }
+  /* Activity's second line: why the row is there. */
+  .reason {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: start;
+    font-size: var(--text-xs);
+    color: var(--color-subtle);
   }
+  /* Under the title, past the project's tile. */
+  .compact .reason.tiled { padding-left: 26px; }
+  .nested { margin-left: 16px; }
   /* The Recent list: a step wider inside, the project's tile first. */
   .compact .row { padding: 6px 10px; }
   .compact :global(.headline) { gap: 10px; }

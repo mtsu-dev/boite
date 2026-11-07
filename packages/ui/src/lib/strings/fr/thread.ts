@@ -57,6 +57,8 @@ export const fr: Translation = {
     threadSection: 'Cette conversation',
     /** Opens the side panel on whatever it last showed, its cards when empty. */
     allTools: 'Tous les outils',
+    /** A desktop header's project crumb: back to the thread list, at this thread. */
+    backToList: 'Revenir aux conversations de {project}',
     terminalHint: 'Terminal dans le dossier de cette conversation',
     cwd: 'Répertoire de travail',
     model: 'Modèle',

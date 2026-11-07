@@ -75,7 +75,7 @@ test('a contact request stays visible in the rail in Settings and opens the mach
   await vi.waitFor(() => { flushSync(); expect(one('contact-request-notice')).toBeNull(); });
 });
 
-test('a dismissed request keeps its header badge, which refreshes after a reconnect without an update', async () => {
+test('a dismissed request still counts on the rail\'s Activity, which refreshes after a reconnect without an update', async () => {
   const store = await connect();
   store.page = 'settings';
   const client = store.client!;
@@ -88,16 +88,18 @@ test('a dismissed request keeps its header badge, which refreshes after a reconn
     return { ...state, requests: state.requests.filter(request => request.status !== 'pending') };
   }) as typeof client.call);
   components.push(mount(AppRail, { target: document.body, props: { store } }));
+  const waiting = () => Number(one('rail-activity-waiting')?.textContent ?? 0);
   await vi.waitFor(() => { flushSync(); expect(one('contact-request-notice')).not.toBeNull(); });
+  const before = waiting();
   one<HTMLButtonElement>('contact-request-dismiss')!.click();
   await vi.waitFor(() => { flushSync(); expect(one('contact-request-notice')).toBeNull(); });
-  expect(one('contact-request-open')).not.toBeNull();
+  expect(waiting()).toBe(before);
   store.connection = 'connecting';
   flushSync();
   decidedWhileOffline = true;
   store.connection = 'ready';
   flushSync();
-  await vi.waitFor(() => { flushSync(); expect(one('contact-request-open')).toBeNull(); });
+  await vi.waitFor(() => { flushSync(); expect(waiting()).toBeLessThan(before); });
 });
 
 test('a message from a contact outside a shared project pops up to be read: Deliver hands it to its conversation, Refuse answers the sender, Details opens the contact', async () => {

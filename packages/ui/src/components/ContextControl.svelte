@@ -10,7 +10,11 @@
   import { floating } from '../lib/floating';
   import { experimentOn } from '../lib/experiments.svelte';
   import { cacheSpan, promptCacheState, PROMPT_CACHE_TICK_MS } from '../lib/prompt-cache';
-  let { store }: { store: Store } = $props();
+  let { store, anchor }: {
+    store: Store;
+    /** What the popup opens above: the ring, or the composer while an ask is docked in it. */
+    anchor?: () => HTMLElement | null;
+  } = $props();
   let submitting = $state(false);
   let root = $state<HTMLDivElement>();
   const popup = new Closing();
@@ -125,7 +129,9 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="context" bind:this={root} data-testid="context-meter" data-percent={percent ?? ''} data-level={contextLevel(percent)} onmouseenter={show} onmouseleave={hideLater} onfocusin={show} onfocusout={hideLater}>
   <button type="button" class="trigger ghost" data-testid="context-trigger" aria-label={[percent === null ? strings.thread.contextDetails : `${strings.thread.contextDetails} ${Math.round(percent)}%`, cacheLabel].filter(Boolean).join(', ')} aria-expanded={popup.open} aria-haspopup="dialog" onclick={show}>
-    <svg viewBox="0 0 40 40" aria-hidden="true"><circle class="track" cx="20" cy="20" r="17" /><circle class="fill" cx="20" cy="20" r="6.5" pathLength="100" stroke-dasharray="{percent ?? 0} 100" /></svg>
+    <svg viewBox="0 0 40 40" aria-hidden="true"><circle class="track" cx="20" cy="20" r="15" /><circle class="fill" cx="20" cy="20" r="15" pathLength="100" stroke-dasharray="{percent ?? 0} 100" /></svg>
+    <!-- A dash before the first reading: the ring is labelled even when empty, and its popup still holds compact and the agent's shape. -->
+    <span class="percent mono" aria-hidden="true">{percent === null ? '-' : `${Math.round(percent)}%`}</span>
     {#if cacheNow}
       <span class="cache-chip mono" data-testid="prompt-cache" data-state={cacheNow.kind} class:low={cacheNow.kind !== 'cold' && cacheNow.secondsLeft <= 300} aria-hidden="true">
         <Clock size={13} strokeWidth={1.75} /><span class="ui-label">{cacheNow.kind === 'cold' ? strings.thread.cacheCold : remaining(cacheNow.secondsLeft)}</span>
@@ -134,7 +140,7 @@
   </button>
   {#if popup.shown}
     <div class="popup" class:closing={popup.closing} role="dialog" aria-label={strings.thread.contextDetails} tabindex="-1" data-testid="context-popup" use:popup.attach onanimationend={popup.end}
-      use:floating={{ anchor: () => root ?? null, placement: 'top', align: 'end', cap: Infinity, dismiss: () => popup.hide() }}>
+      use:floating={{ anchor: () => anchor?.() ?? root ?? null, placement: 'top', sheet: anchor?.() ? false : undefined, align: 'end', cap: Infinity, dismiss: () => popup.hide() }}>
       <div class="heading"><span class="title">{strings.thread.contextDetails}
         {#if context}<button type="button" class="reading-info ghost icon" data-testid="context-info" aria-label={fill(strings.common.moreInfo, { topic: strings.thread.contextDetails })} aria-expanded={readingExpanded} aria-controls={readingId} onclick={() => { readingExpanded = !readingExpanded; }}><Info size={14} /></button>{/if}
       </span>{#if percent !== null}<span class="mono">{percent}%</span>{/if}</div>
@@ -184,14 +190,18 @@
   .context { position: relative; flex: none; color: var(--color-muted-foreground); }
   .trigger { display: flex; align-items: center; gap: 5px; padding: 4px; }
   @media (max-width: 720px) { .trigger { min-width: var(--touch-target); min-height: var(--touch-target); justify-content: center; } }
-  /* A still gauge, not a spinner: a thin dial and a pie of what the context
-     holds, in neutral ink; it warms only as the window fills. */
-  svg { width: 18px; height: 18px; transform: rotate(-90deg); }
-  circle { fill: none; }
-  .track { stroke: var(--color-subtle); stroke-width: 3; }
-  .fill { stroke: var(--color-muted-foreground); stroke-width: 13; }
+  /* A still gauge, not a spinner: a thin ring filled as far as the context
+     holds, its percent beside it, in neutral ink; it warms only as the window fills. */
+  svg { flex: none; width: 15px; height: 15px; transform: rotate(-90deg); }
+  circle { fill: none; stroke-width: 5; }
+  .track { stroke: var(--color-border); }
+  .fill { stroke: var(--color-muted-foreground); stroke-linecap: round; }
+  [data-percent=''] .fill, [data-percent='0'] .fill { stroke: none; }
+  .percent { font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
   [data-level='high'] .fill { stroke: var(--color-live); }
   [data-level='full'] .fill { stroke: var(--color-danger); }
+  [data-level='high'] .percent { color: var(--color-live); }
+  [data-level='full'] .percent { color: var(--color-danger); }
   .cache-chip { display: flex; align-items: center; gap: 3px; margin-left: 4px; font-size: var(--text-xs); }
   .cache-chip[data-state='warm'] :global(svg) { color: var(--color-success); }
   .cache-chip[data-state='maybe'] :global(svg), .cache-chip.low :global(svg) { color: var(--color-live); }

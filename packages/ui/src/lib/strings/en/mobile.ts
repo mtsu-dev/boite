@@ -36,6 +36,6 @@ export const strings = {
     feed: { asks: 'Asks: {text}', run: 'Wants to run {command}', helperAsks: '{title} asks you' },
     navigation: 'Navigation', activity: 'Activity',
     waitingElsewhere: '{count} waiting for you',
-    search: 'Find a conversation', noActivity: 'No agents need your attention.', noThreads: 'No matching conversations.'
+    search: 'Find a conversation', noThreads: 'No matching conversations.'
   }
 } as const;

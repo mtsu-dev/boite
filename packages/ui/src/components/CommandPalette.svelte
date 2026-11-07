@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick, untrack } from 'svelte';
   import { CornerDownLeft, Search } from '@lucide/svelte';
-  import type { Project, ProjectId, ThreadSummary } from '@boite/contracts';
+  import type { AgentProfile, Project, ProjectId, ThreadSummary } from '@boite/contracts';
   import { Closing } from '../lib/closing.svelte';
   import { minuteClock } from '../lib/clock.svelte';
   import { appCommands, runCommand } from '../lib/commands.svelte';
@@ -16,6 +16,8 @@
   import MachineIcon from './MachineIcon.svelte';
   import ProjectTile from './ProjectTile.svelte';
   import ThreadState from './ThreadState.svelte';
+  import AgentAvatar from './agents/AgentAvatar.svelte';
+  import { agentDirectory } from '../lib/agent-directory.svelte';
 
   let { store }: { store: Store } = $props();
 
@@ -55,7 +57,11 @@
     machine: Machine;
     project: Project | null;
     thread: ThreadSummary | null;
+    /** A bot's thread: its picture leads the row. */
+    bot?: Pick<AgentProfile, 'id' | 'name' | 'avatar'> | null;
   }
+  /** Bots and team chats have no project: they gather under one heading of their own, never under Drafts. */
+  const BOTS = 'bots';
 
   let machines = $derived(workspace.machinesOr(store));
   /** One machine names no machine. */
@@ -70,15 +76,18 @@
         if (thread.archived || thread.incognito) continue;
         const project = machine.store.projects.find(p => p.id === thread.projectId) ?? null;
         const id = `thread:${machine.store.threadKey(thread.id)}`;
-        const section = `in:${machine.id}:${thread.projectId}`;
-        places.set(id, { machine, project, thread });
-        if (!places.has(section)) places.set(section, { machine, project, thread: null });
+        const bot = project ? null : agentDirectory(machine.store).ownerOf(thread);
+        const botThread = !project && (bot !== null || !!thread.agentSessionId || !!thread.teamId);
+        const section = botThread ? BOTS : `in:${machine.id}:${thread.projectId}`;
+        places.set(id, { machine, project, thread, bot });
+        if (!botThread && !places.has(section)) places.set(section, { machine, project, thread: null });
         entries.push({ at: thread.lastUserMessageAt ?? thread.createdAt, item: {
           id,
           kind: 'thread',
-          label: thread.title,
+          // A bot's own conversation goes by the bot's name; its helpers keep their titles.
+          label: bot && thread.agentSessionId ? bot.name : thread.title,
           // What a query may also land on: the project and the machine, never drawn on the row.
-          hint: [project ? projectName(project) : '', several ? machine.label : ''].filter(Boolean).join(' '),
+          hint: [project ? projectName(project) : '', bot ? `${bot.name} ${thread.title}` : '', several ? machine.label : ''].filter(Boolean).join(' '),
           keywords: thread.status,
           section
         } });
@@ -243,7 +252,7 @@
       <div class="list" role="listbox" bind:this={list} data-testid="palette-list">
         {#each sections as section, at (section.id)}
           {@const first = offset(at)}
-          {@const heading = section.kind === 'thread' ? placeOf(section.id) : null}
+          {@const heading = section.kind === 'thread' && section.id !== BOTS ? placeOf(section.id) : null}
           <div class="section" data-testid="palette-section" data-section={section.id}>
             {#if heading}
               <div class="section-label project-label" data-testid="palette-project">
@@ -252,7 +261,7 @@
                 {#if several}<span class="machine ui-label"><MachineIcon icon={heading.machine.icon} os={heading.machine.store.core?.os} size={12} />{heading.machine.label}</span>{/if}
               </div>
             {:else}
-              <div class="section-label">{section.kind === 'project' ? strings.palette.projects : strings.palette.commands}</div>
+              <div class="section-label">{section.id === BOTS ? strings.agents.heading : section.kind === 'project' ? strings.palette.projects : strings.palette.commands}</div>
             {/if}
             {#each section.items as item, n (item.id)}
               {@const index = first + n}
@@ -270,9 +279,11 @@
                 onmousemove={() => (selected = index)}
                 onclick={() => pick(item)}
               >
-                <!-- A thread's slot stays empty: its title lines up under its project's name, and its state reads at the right. -->
+                <!-- A thread's slot stays empty, its title under its project's name; a bot's holds its picture. The state reads at the right. -->
                 <span class="mark-slot">
-                  {#if !place?.thread && item.kind === 'project' && place?.project}<ProjectTile project={place.project} store={place.machine.store} size={16} />{/if}
+                  {#if place?.bot}<AgentAvatar kind="profile" id={place.bot.id} name={place.bot.name} avatar={place.bot.avatar} size={16} />
+                  {:else if place?.thread?.teamId}<AgentAvatar kind="team" id={place.thread.teamId} name={place.thread.title} size={16} />
+                  {:else if !place?.thread && item.kind === 'project' && place?.project}<ProjectTile project={place.project} store={place.machine.store} size={16} />{/if}
                 </span>
                 <span class="label ui-label">{item.label}</span>
                 {#if place?.thread}
@@ -363,11 +374,13 @@
     outline: none;
   }
 
+  /* A row cut by the foot fades into it instead of meeting a line; the end padding keeps the last row whole. */
   .list {
     flex: 1;
     min-height: 0;
     overflow: auto;
-    padding: 6px;
+    padding: 6px 6px 12px;
+    mask-image: linear-gradient(to bottom, black calc(100% - 14px), transparent);
   }
 
   .section + .section {
@@ -477,6 +490,11 @@
     flex: none;
   }
 
+  /* The list's grammar: at rest a thread shows its state only when it asks for the user or failed; the row Enter takes shows the rest. */
+  .row:not(.selected) .state :global(.when:not(.waiting, .error, .interrupted)) {
+    display: none;
+  }
+
   .empty {
     padding: 14px 10px;
     text-align: center;
@@ -484,8 +502,7 @@
   }
 
   .foot {
-    padding: 6px 14px 8px;
-    border-top: 1px solid var(--color-border);
+    padding: 2px 14px 8px;
     font-size: var(--text-xs);
   }
 </style>

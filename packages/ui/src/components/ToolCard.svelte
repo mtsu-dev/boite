@@ -1,7 +1,7 @@
 <script lang="ts">
   import { errorText } from '../lib/errors';
   import { secondClock } from '../lib/clock.svelte';
-  import { Bot, ChevronRight, FilePen, FileText, Globe, Search, ShieldCheck, ShieldX, SquareTerminal, Wrench, X } from '@lucide/svelte';
+  import { Bot, ChevronRight, FilePen, FileText, Globe, Search, ShieldCheck, ShieldX, SquareTerminal, Wrench } from '@lucide/svelte';
   import type { ToolDocument, ToolStatus } from '@boite/contracts';
   import { elapsed, json } from '../lib/format';
   import { fill, strings } from '../lib/strings';
@@ -194,9 +194,6 @@
     {#if took}
       <span class="took ui-label" data-testid="tool-elapsed">{took}</span>
     {/if}
-    {#if exitLabel}
-      <span class="took ui-label" data-testid="tool-exit-code">{exitLabel}</span>
-    {/if}
     {#if permission}
       {@const verdict = permission === 'allow' ? strings.chat.permissionAllowedBy : strings.chat.permissionDeniedBy}
       <span class="verdict" class:denied={permission === 'deny'} data-testid="tool-permission" data-decision={permission} title={verdict} aria-label={verdict}>
@@ -206,7 +203,10 @@
     {#if status === 'running'}
       <span class="status" title={strings.chat.toolStatus.running}><span class="spinner"></span></span>
     {:else if failed && permission !== 'deny'}
-      <span class="status" title={strings.chat.toolStatus[status]}><X size={12} strokeWidth={2.25} /></span>
+      <!-- A dot and a word: a bare cross at a row's end reads as its close button. -->
+      <span class="status failed" data-testid={exitLabel ? 'tool-exit-code' : 'tool-failed'}><span class="dot" aria-hidden="true"></span><span class="ui-label">{exitLabel || strings.chat.toolFailed}</span></span>
+    {:else if exitLabel}
+      <span class="took ui-label" data-testid="tool-exit-code">{exitLabel}</span>
     {/if}
     <span class="fold-caret" class:open={shown} aria-hidden="true"><ChevronRight size={12} /></span>
   </button>
@@ -374,6 +374,9 @@
     flex: none;
     color: var(--color-subtle);
   }
+
+  .status.failed { align-items: center; gap: 5px; color: var(--color-danger); font-size: var(--text-xs); }
+  .status.failed .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 
   /* The user's answer to the agent's ask: the shield in the answer's colour. */
   .verdict {

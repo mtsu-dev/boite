@@ -46,7 +46,8 @@
 .bot-work { display: flex; flex-direction: column; }
 .bot-section { margin: 0; padding: 14px 10px 6px; font-size: var(--text-xs); font-weight: 600; color: var(--color-subtle); }
 .bot-section-count { margin-left: 4px; font-weight: 500; color: var(--color-faint); font-variant-numeric: tabular-nums; }
-.bot-work-empty { margin: 0; padding: 14px 10px; font-size: var(--text-xs); line-height: 1.5; color: var(--color-subtle); }
+.bot-work-empty { margin: 0; padding: 14px 10px 6px; font-size: var(--text-xs); line-height: 1.5; color: var(--color-subtle); }
+.bot-work-start { align-self: flex-start; margin: 0 4px; color: var(--color-muted-foreground); }
 .agent-desk .bot-section { padding: 6px 8px 4px; }
 .agent-desk .bot-work > .bot-section:first-child { padding-top: 2px; }
 .bot-member { display: flex; align-items: center; justify-content: flex-start; gap: 10px; height: auto; min-height: 34px; padding: 6px 10px; border: 0; border-radius: var(--radius-md); background: none; box-shadow: none; text-align: left; color: var(--color-foreground); }
@@ -272,14 +273,14 @@ fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-p
 .agent-brain-root ~ .agent-error { margin: 12px 0 0; }
 
 /*
- * The desk is one calm column: who the bot is on top, then its sections (Now
- * while it works, its routines, its memory) flush on the page, a hairline
- * between them rather than a frame around each.
+ * The desk is the quiet side column beside the bot's chat: who the bot is on
+ * top, then its sections (Now while it works, its routines, its memory) flush
+ * on the page and parted by space, never a frame around each.
  */
 .agent-desk { display: flex; flex-direction: column; height: 100%; min-height: 0; overflow-y: auto; box-sizing: border-box; container-type: inline-size; }
 .agent-desk > * { flex: none; }
 .agent-desk .hint { color: var(--color-muted-foreground); font-size: var(--text-sm); line-height: 1.5; }
-.desk-ident { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 12px 14px; padding: 22px 20px 16px; border-bottom: 1px solid var(--color-border); }
+.desk-ident { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 12px 14px; padding: 22px 20px 8px; }
 .desk-ident .desk-chips { grid-column: 1 / -1; }
 .desk-ident-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .desk-ident-name { font-size: 19px; font-weight: 680; line-height: 1.25; letter-spacing: -0.01em; overflow-wrap: anywhere; }
@@ -289,7 +290,8 @@ fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-p
 .desk-meta > svg { flex: none; }
 .desk-body { display: flex; flex-direction: column; padding: 4px 20px 24px; }
 .desk-card { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 14px 0; }
-.desk-card + .desk-card, .desk-error + .desk-card { border-top: 1px solid var(--color-border); }
+/* Sections part by space, not lines: the chat's edge is the desk's one hairline. */
+.desk-card + .desk-card, .desk-error + .desk-card { margin-top: 6px; }
 .desk-label { display: flex; align-items: center; gap: 6px; min-height: 22px; margin: 0; font-size: var(--text-xs); font-weight: 600; color: var(--color-subtle); }
 .desk-label > svg { flex: none; }
 .desk-label-value { margin-left: auto; font-weight: 500; font-variant-numeric: tabular-nums; }
@@ -323,6 +325,9 @@ fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-p
 .desk-step-text.mono { font-family: var(--font-mono); font-size: var(--text-xs); }
 .agent-desk .desk-error { margin: 0; }
 .desk-empty { margin: 0; padding: 6px 2px; font-size: var(--text-sm); color: var(--color-muted-foreground); line-height: 1.5; }
+.desk-empty-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-block: 2px; }
+.desk-empty-row > span { min-width: 0; }
+.desk-empty-row > button { flex: none; gap: 6px; margin-right: -8px; color: var(--color-muted-foreground); }
 .desk-rows { display: flex; flex-direction: column; }
 /*
  * A thread on its desk, one row: its project's mark, the title, a spinner or
@@ -379,10 +384,9 @@ fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-p
 .desk-routine-actions button { width: 24px; height: 24px; color: var(--color-muted-foreground); }
 .agent-desk .agent-schedule, .agent-desk .agent-schedule.card { margin: 4px 0 8px; padding: 12px; }
 .agent-desk .agent-field textarea { min-height: 96px; }
-/* Its memory: its first three notes on hairline rows. */
+/* Its memory: its first three notes, spaced rows. */
 .desk-notes { list-style: none; margin: 0; padding: 0; }
 .desk-notes li { padding: 5px 0; font-size: var(--text-sm); line-height: 19px; color: var(--color-muted-foreground); overflow-wrap: anywhere; }
-.desk-notes li + li { border-top: 1px solid var(--color-border); }
 .desk-memory-alert { flex: none; display: inline-flex; color: var(--color-danger); }
 /* Reduced motion stills the desk: no pulse, no spin, no entrance. */
 @media (prefers-reduced-motion: reduce) {

@@ -108,6 +108,8 @@
   let empty = $derived(surfaces.length === 0);
   /** A bot's info alone in a docked panel needs no tab strip: its controls float at the top right. */
   let bare = $derived(!phone && !rightPanel.floating && surfaces.length === 1 && surfaces[0]!.kind === 'desk');
+  /** A bot's desk alone stays a side column at any panel width: the chat beside it is the page. */
+  const DESK_MAX = 380;
 
   /** The user's own browser needs the shell's webview, or the iframe a test page paints. */
   function available(kind: SurfaceKind): boolean {
@@ -309,7 +311,7 @@
   class:dragging
   class:closing
   class:entered
-  style="--panel-width: {docked}px"
+  style="--panel-width: {bare ? Math.min(docked, DESK_MAX) : docked}px"
   data-testid="right-panel"
   bind:this={root}
   use:attach

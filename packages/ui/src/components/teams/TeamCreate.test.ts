@@ -78,8 +78,14 @@ function type(selector: string, value: string) {
   flushSync();
 }
 const member = (botId: string) => query<HTMLButtonElement>(`[data-testid=team-dialog-member][data-bot-id="${botId}"]`);
+/** New team: in the one "+" menu of the owner's phone page, or the greyed button a paired phone keeps under Teams. */
+async function newTeam(): Promise<HTMLElement> {
+  const plus = document.querySelector<HTMLButtonElement>('[data-testid=agents-create]');
+  if (plus && !document.querySelector('[data-testid=agents-new-team]')) { plus.click(); await settle(); }
+  return query('[data-testid=agents-new-team]');
+}
 async function openDialog() {
-  query<HTMLButtonElement>('[data-testid=agents-new-team]').click();
+  (await newTeam()).click();
   await settle();
   return query('[data-testid=team-dialog]');
 }
@@ -90,7 +96,7 @@ test('with no team yet the Bots list shows the Teams heading with New team and o
   await vi.waitFor(() => query(`[data-testid="agent-entry-${bots[0]!.id}"]`));
   await settle();
   expect(all('.agents-rail .section-label').map(heading => heading.textContent)).toEqual(['Teams', 'Bots']);
-  expect(query('[data-testid=agents-new-team]').getAttribute('aria-label')).toBe('New team');
+  expect((await newTeam()).textContent?.trim()).toBe('New team');
   expect(text('[data-testid=agents-teams-empty]')).toBe('No team yet: put a few bots in one chat.');
   expect(document.querySelector('[data-testid=agents-teams]')).toBeNull();
 });

@@ -152,7 +152,6 @@
   .seat:focus-visible {
     background: var(--color-hover);
     color: var(--color-foreground);
-    outline: none;
   }
 
   .seat[aria-pressed='true'] { color: var(--color-foreground); }

@@ -40,6 +40,7 @@
   import { minuteClock } from '../lib/clock.svelte';
   import { contactsShown } from '../lib/contacts-rail.svelte';
   import { ScreenSlide } from '../lib/screen-slide.svelte';
+  import { doneFilter, feedPlace, feedThread, inbox } from '../lib/inbox.svelte';
 
   let { store, recover = false, screen = $bindable('chat'), tabbed = $bindable(false) }: { store: Store; recover?: boolean; screen: 'chat' | 'threads' | 'activity'; tabbed?: boolean } = $props();
   const narrow = new MediaQuery('(max-width: 720px)');
@@ -60,10 +61,12 @@
   // The contacts under the projects, loaded with their experiment; a desktop window shows them in the column on the right.
   let SidebarContacts = $state<typeof import('./home/SidebarContacts.svelte').default>();
   let ContactRequestNotice = $state<typeof import('./home/ContactRequestNotice.svelte').default>();
+  let ContactInboxRows = $state<typeof import('./home/ContactInboxRows.svelte').default>();
   $effect(() => {
     if (!contactsShown(store) || SidebarContacts) return;
     void import('./home/SidebarContacts.svelte').then(module => { SidebarContacts = module.default; }).catch(() => {});
     void import('./home/ContactRequestNotice.svelte').then(module => { ContactRequestNotice = module.default; }).catch(() => {});
+    void import('./home/ContactInboxRows.svelte').then(module => { ContactInboxRows = module.default; }).catch(() => {});
   });
   let search = $state('');
   const query = $derived(search.trim().toLocaleLowerCase());
@@ -98,7 +101,7 @@
   let entries = $derived(machines.flatMap(machine => {
     const byId = new Map(machine.store.projects.map(p => [p.id, p]));
     // A team's chat is listed with the bots (`agents/AgentsRail.svelte`), not among the threads.
-    return machine.store.threads.filter(t => !t.archived && !t.incognito && !t.teamId && !t.councilId).map(thread => ({ machine, thread, project: thread.projectId === null ? undefined : byId.get(thread.projectId) }));
+    return machine.store.threads.filter(feedThread).map(thread => ({ machine, thread, project: thread.projectId === null ? undefined : byId.get(thread.projectId) }));
   }));
   let waiting = $derived(entries.filter(e => needsUser(e.thread)));
   /** What waits on the user besides the conversation on screen: Back carries its mark. */
@@ -106,7 +109,7 @@
   const matches = (e: typeof entries[number]) => !query || [e.thread.title, projectName(e.project), e.thread.branch, e.machine.label].some(value => value?.toLocaleLowerCase().includes(query));
   /** Activity: what needs the user, what failed, what finished, each with its reason; sub-agents under their parent. */
   let rows: (typeof entries[number] & { reason?: string; at?: number; nested?: boolean })[] = $derived(listScreen === 'activity'
-    ? activityFeed(entries.filter(matches))
+    ? activityFeed(entries.filter(matches), feedPlace)
     : entries.filter(e => matches(e) && !e.thread.parentThreadId && !e.project?.archived && (workspace.view !== 'recent' || !selected || (e.machine.id === selected.machine.id && e.thread.projectId === selected.project.id)))
       .sort((a, b) => compareThreads(a.thread, b.thread)));
   const inRecent = $derived(listScreen === 'threads' && workspace.view === 'recent');
@@ -224,14 +227,15 @@
   {/if}
   {#if !recover && !chatting && experimentOn('whip')}<WhipButton mobile />{/if}
   {#if narrow.current && ContactRequestNotice && contactsShown(store)}<ContactRequestNotice {store} />{/if}
-  {#if tabbed && !recover && !(searching && searchable)}
+  <!-- One way to create per screen: a page (Bots, Contacts, Settings) owns its own. -->
+  {#if tabbed && !recover && store.page === 'chat' && !(searching && searchable)}
     <!-- A new conversation, neutral at the header's end as on the desktop list. -->
     <button class="ghost icon new" data-testid="mobile-new" aria-label={strings.sidebar.newThread} title={strings.sidebar.newThread} disabled={draftOwner.connection !== 'ready'} onclick={() => void newThread()}><Plus size={20} /></button>
   {/if}
 </header>
 
 {#if tabbed || leaving}
-  <MobileTabs {store} screen={listScreen} waiting={waiting.length} navigate={show} inert={leaving} />
+  <MobileTabs {store} screen={listScreen} waiting={waiting.length + inbox.contacts} navigate={show} inert={leaving} />
 {/if}
 
 {#snippet contacts()}
@@ -243,6 +247,7 @@
     {#if recover && narrow.current}
       <MobileConnect {store} onpaired={() => show('threads')} />
     {:else}
+    {#if listScreen === 'activity' && ContactInboxRows && contactsShown(store) && !query}<ContactInboxRows {store} />{/if}
     <!-- Recent's filters open the list; the search and the display options are the header's. -->
     {#if (inRecent && groups.length) || atWorkRows.length > 0}
       <div class="filters list-heading">
@@ -265,7 +270,7 @@
       {#each projects as group (projectKey(group))}
         {@const groupRows = rows.filter(row => row.machine.id === group.machine.id && row.thread.projectId === group.project.id)}
         {@const workingOpen = projectThreadView.isOpen(group, 'working')}
-        {@const doneOpen = archiveCount(group.project, 'done') > 0 && projectThreadView.isOpen(group, 'done')}
+        {@const doneOpen = archiveCount(group.project, 'done') > 0 && doneFilter.shown}
         {@const archivedOpen = archiveCount(group.project, 'archived') > 0 && (later || projectThreadView.isOpen(group, 'archived'))}
         {@const workingRows = groupRows.filter(row => workingThread(row.machine.store, row.thread))}
         {@const attentionRows = query || !recentPreferences.groupWorking ? groupRows : groupRows.filter(row => workingOpen ? !workingThread(row.machine.store, row.thread) : !groupWorkingThread(group.machine.store, row.thread))}
@@ -307,8 +312,8 @@
             <RecentDone kind="archived" entries={[group]} {scrollRoot} {now} {query} open={archivedOpen && (!later || projectThreadView.laterOpen)} header={false} onopen={() => show('chat')} />
           </div>
           {#if groupRows.length === 0 && !group.project.archivedThreads && drafts.length === 0}<p class="empty">{strings.sidebar.noThreads}</p>{/if}
-          <!-- Done and Archived wait at the group's foot, as on the desktop card: the heading keeps what needs the user now. -->
-          {#if archiveCount(group.project, 'done') > 0 || (archiveCount(group.project, 'archived') > 0 && !later)}
+          <!-- Archived waits at the group's foot, as on the desktop card: the heading keeps what needs the user now. -->
+          {#if archiveCount(group.project, 'archived') > 0 && !later}
             <div class="project-foot"><ProjectThreadCounters entry={group} part="foot" working={0} {controls} searching={!!query} away={group.machine.store.connection !== 'ready'} body={later ? laterLists : undefined} /></div>
           {/if}
         </section>
@@ -333,6 +338,7 @@
         {#snippet row(entry)}{@render threadRow(entry)}{/snippet}
       </WindowList>
       {#if inRecent && !atWorkShown}
+        {#if doneFilter.shown}<div class="recent-done" data-testid="recent-done-rows"><RecentDone entries={recentGroups} {scrollRoot} {now} {query} open header={false} onopen={() => show('chat')} /></div>{/if}
         <div class="recent-folds">
           {#if working.length > 0}
             <RecentGroup kind="working" count={working.length} bind:open={workingOpen}>
@@ -341,17 +347,19 @@
               </WindowList>
             </RecentGroup>
           {/if}
-          <RecentDone entries={recentGroups} {scrollRoot} {now} {query} onopen={() => show('chat')} />
           <RecentDone kind="archived" entries={recentGroups} {scrollRoot} {now} {query} onopen={() => show('chat')} />
         </div>
         {#if !query}{@render contacts()}{/if}
       {/if}
     {/if}
-    {#if rows.length === 0 && (query || listScreen === 'activity' || workspace.view === 'recent' || groups.length === 0) && !(inRecent && !query && recentGroups.some(entry => entry.project.archivedThreads))}
+    {#if listScreen === 'activity' && rows.length === 0 && (query || inbox.contacts === 0)}
+      <!-- Nothing waits: one quiet line. -->
+      <p class="empty activity-empty" data-testid="activity-empty"><Activity size={16} aria-hidden="true" /><span>{strings.mobile.emptyActivity}</span></p>
+    {:else if listScreen !== 'activity' && rows.length === 0 && (query || workspace.view === 'recent' || groups.length === 0) && !(inRecent && !query && recentGroups.some(entry => entry.project.archivedThreads))}
       <div class="empty-state">
-        <span class="empty-icon">{#if listScreen === 'activity'}<Activity size={24} />{:else}<MessageSquare size={24} />{/if}</span>
-        <h2>{listScreen === 'activity' ? strings.mobile.emptyActivity : entries.length ? strings.mobile.noThreads : strings.mobile.emptyTitle}</h2>
-        <p>{listScreen === 'activity' ? strings.mobile.noActivity : entries.length ? strings.mobile.search : strings.mobile.emptyBody}</p>
+        <span class="empty-icon"><MessageSquare size={24} /></span>
+        <h2>{entries.length ? strings.mobile.noThreads : strings.mobile.emptyTitle}</h2>
+        <p>{entries.length ? strings.mobile.search : strings.mobile.emptyBody}</p>
         {#if listScreen === 'threads' && !entries.length}<button class="primary" data-testid="mobile-first-thread" disabled={draftOwner.connection !== 'ready'} onclick={newThread}><Plus size={16} /><span class="ui-label">{strings.sidebar.newThread}</span></button>{/if}
       </div>
     {/if}
@@ -369,8 +377,6 @@
     .chat-heading :global(.thread-header) { gap: 2px; }
     .chat-heading :global(.launcher span) { display: none; }
     .chat-heading :global(.launcher) { width: 44px; padding: 0; justify-content: center; flex: none; }
-    /* In a conversation the bell's count is an entry of the thread's menu; its toast still shows from here. */
-    .mobile-header.chatting > :global(.indicator) { display: none; }
     .mobile-header > .icon { flex: none; color: var(--color-muted-foreground); }
     .search { display: flex; flex: 1; min-width: 0; gap: 8px; align-items: center; padding: 0 0 0 12px; background: var(--color-surface-2); border: 1px solid var(--color-border); border-radius: var(--radius-lg); color: var(--color-muted-foreground); }
     .search > :global(svg) { flex: none; }
@@ -435,5 +441,7 @@
     .mobile-list.recent { display: flex; flex-direction: column; }
     .mobile-list.recent > :global(*) { flex-shrink: 0; }
     .recent-folds { margin-top: auto; padding-top: 16px; }
+    .recent-done { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--color-border); }
+    .activity-empty { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 0; padding: 44px 16px; color: var(--color-muted-foreground); }
   }
 </style>

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy } from 'svelte';
+  import { onDestroy, tick, type Snippet } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import { ChevronDown, ChevronRight, Plug, Sparkles, Star, RefreshCw } from '@lucide/svelte';
   import { isNamedModel, orderedModels, type FavoriteModel } from '../lib/model-order';
@@ -22,6 +22,9 @@
    * Its name heads the column, its accounts sit
    * below the name as chips when there is more than one, and its models fill
    * the rest. A click on a model closes the picker; nothing else does.
+   * The composer's chip adds its effort and permission rows under the models
+   * (`settings`) and its context ring beside the name (`trailing`); a phone
+   * gets the whole thing as one sheet, providers above the models.
    */
   let {
     store,
@@ -29,6 +32,11 @@
     locked = false,
     single = false,
     disabled = false,
+    readonly = false,
+    readonlyHint = '',
+    anchor,
+    settings,
+    trailing,
     onpick
   }: {
     store: Store;
@@ -38,6 +46,13 @@
     /** The choice's provider alone: no provider rail and no favorites, its models straight away. */
     single?: boolean;
     disabled?: boolean;
+    /** The model is set elsewhere (a bot's settings): the chip names it and opens nothing. */
+    readonly?: boolean;
+    readonlyHint?: string;
+    /** What the popover opens above: the chip, or the whole composer while an ask is docked in it, so it never covers the ask. */
+    anchor?: () => HTMLElement | null;
+    settings?: Snippet;
+    trailing?: Snippet;
     onpick: (patch: PickPatch) => void;
   } = $props();
 
@@ -183,13 +198,14 @@
     else if (tileBox.left < railBox.left) rail.scrollLeft -= railBox.left - tileBox.left;
   });
 
-  // The effort has a chip of its own in the composer, so this one names the
-  // model only: the account is picked in the menu, beside the agent's name.
+  // The model's name, or its agent's while the agent picks the model itself;
+  // the login only when the agent has several to tell apart.
   let label = $derived.by(() => {
     if (!choice || !provider) return strings.composer.noProvider;
     const model = store.modelOf(choice);
-    return model && isNamedModel(model) ? model.name : strings.composer.picker;
+    return model && isNamedModel(model) ? model.name : provider.name;
   });
+  let accountLabel = $derived(choice && provider && store.accountsOf(provider.id).length > 1 ? store.accountOf(choice.accountId)?.label ?? null : null);
 
   let currentModels = $derived(shownModels.filter((m) => !m.legacy));
   let legacyModels = $derived(shownModels.filter((m) => m.legacy));
@@ -235,8 +251,17 @@
     focusInitial(searchBox, menu);
   });
 
-  function toggle(event: MouseEvent) {
-    event.stopPropagation();
+  /** Opens the popover, then brings one of its rows (`composer-effort`, `composer-mode`) to the keyboard. */
+  export async function reveal(testid?: string) {
+    if (!popover.open) toggle();
+    await tick();
+    const row = testid ? menu?.querySelector<HTMLElement>(`[data-testid="${testid}"]`) : null;
+    row?.scrollIntoView?.({ block: 'nearest' });
+    row?.click();
+  }
+
+  function toggle(event?: MouseEvent) {
+    event?.stopPropagation();
     popover.toggle();
     if (popover.open) {
       shownProviderId = choice?.providerId ?? null;
@@ -311,20 +336,25 @@
 
 <svelte:window onpointerdown={onWindowPointerdown} />
 
-<div class="picker" bind:this={root}>
+<div class="picker" class:pill={!!trailing} bind:this={root}>
   {#if !choice && store.owner}
     <!-- Nothing to pick from yet: the chip is the way to get something. -->
     <button type="button" class="chip trigger connect" data-testid="composer-connect" onclick={() => store.openConnect()}>
       <Plug size={14} strokeWidth={1.75} />
       <span class="label ui-label">{strings.connect.button}</span>
     </button>
+  {:else if readonly}
+  <span class="chip trigger readonly" data-testid="composer-picker" title={readonlyHint || label}>
+    {#if provider}<ProviderLogo providerId={provider.id} size={14} />{/if}
+    <span class="label ui-label">{label}</span>
+  </span>
   {:else}
   <button
     type="button"
     class="chip trigger"
     aria-haspopup="menu"
     aria-expanded={popover.open}
-    aria-label={strings.composer.picker}
+    aria-label={accountLabel ? `${label}, ${accountLabel}` : label}
     title={locked ? strings.composer.lockedHint : strings.composer.picker}
     data-testid="composer-picker"
     {disabled}
@@ -337,9 +367,11 @@
       <Sparkles size={14} strokeWidth={1.75} />
     {/if}
     <span class="label ui-label">{label}</span>
+    {#if accountLabel}<span class="account ui-label" data-testid="composer-picker-account">{accountLabel}</span>{/if}
     <ChevronDown size={12} strokeWidth={2} />
   </button>
   {/if}
+  {@render trailing?.()}
 
   {#if popover.shown}
     <div
@@ -351,7 +383,7 @@
       aria-label={strings.composer.picker}
         data-testid="composer-picker-menu"
       bind:this={menu}
-      use:floating={{ anchor: () => root ?? null, dismiss: () => popover.hide() }}
+      use:floating={{ anchor: () => anchor?.() ?? root ?? null, placement: 'top', cap: 560, sheet: anchor?.() ? false : undefined, dismiss: () => popover.hide() }}
       use:popover.attach
       onanimationend={popover.end}
       {onkeydown}
@@ -488,6 +520,7 @@
         {/key}
         {/if}
       </div>
+      {#if settings}<div class="settings" data-picker-settings>{@render settings()}</div>{/if}
     </div>
   {/if}
   {#if popover.shown && legacy.shown && !favoritesOpen && !pending && filteredLegacy.length > 0}
@@ -561,16 +594,22 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  .trigger .account { flex: none; color: var(--color-subtle); font-weight: 400; }
+  /* A phone keeps the row for the model's whole name: the sheet's head names the login. */
+  @media (max-width: 720px) { .trigger .account { display: none; } }
+  .trigger.readonly { cursor: default; }
+  .trigger.readonly:hover { background: transparent; color: inherit; }
+  /* The composer's chip: the name and the context ring read as one control. */
+  .picker.pill { align-items: center; border-radius: var(--radius-md); }
 
   .popover {
     position: fixed;
     z-index: 40;
     display: grid;
     grid-template-columns: 136px minmax(0, 1fr);
-    width: min(420px, calc(100vw - 32px));
-    height: 320px;
-    max-height: min(320px, 50dvh);
-    grid-template-rows: minmax(0, 1fr) auto;
+    width: min(440px, calc(100vw - 32px));
+    /* As tall as the longer of the rail and the list, the rows under them; floating caps it to the room above. */
+    grid-template-rows: minmax(0, 1fr) auto auto;
     background: var(--color-surface-2);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
@@ -608,9 +647,12 @@
   .main-models .head .provider-name { flex: 1; min-width: 0; }
   .model-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; padding: 6px; }
   .rail { grid-area: 1 / 1; }
+  .model-list { max-height: 300px; }
+  .settings { grid-area: 3 / 1 / 4 / 3; display: flex; flex-direction: column; gap: 2px; padding: 6px; border-top: 1px solid var(--color-border); }
   /* One provider: its model list is the whole popover, the refresh sits in the list's head. */
   /* No provider to switch to, so no height to hold steady: it is as tall as its models. */
-  .popover.single { grid-template-columns: minmax(0, 1fr); width: min(320px, calc(100vw - 32px)); height: auto; }
+  .popover.single { grid-template-columns: minmax(0, 1fr); width: min(320px, calc(100vw - 32px)); }
+  .single .settings { grid-column: 1 / 2; }
   .single .main-models { grid-area: 1 / 1 / 3 / 2; border-left: none; }
   .single .main-models .head { padding-right: 44px; }
   .single .refresh { position: absolute; top: 6px; right: 6px; margin: 0; width: var(--control-sm); height: var(--control-sm); border: none; background: transparent; }
@@ -669,7 +711,6 @@
   .row:hover:not(:disabled),
   .row:focus-visible {
     background: var(--color-hover);
-    outline: none;
   }
 
   /* A full width row does not shrink under the finger, it fills one step more. */
@@ -709,8 +750,6 @@
   .badge {
     font-size: var(--text-xs);
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
     padding: 1px 5px;
     border-radius: 999px;
     border: 1px solid var(--color-edge);
@@ -750,11 +789,18 @@
   :global(html[data-motion='reduced']) .skeleton { animation: none; }
 
   @media (max-width: 720px) {
-    /* The same two columns, a finger's rows: the sheet stays short. */
-    .popover { grid-template-columns: 120px minmax(0, 1fr); width: calc(100vw - 24px); height: min(380px, 55dvh); max-height: min(380px, 55dvh); }
-    .rail { padding-bottom: calc(var(--touch-target) + 12px); }
+    /* One sheet, read top to bottom: the providers in a row, their models, then
+       the effort and permission rows; the refresh sits at the row's end. */
+    .popover { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto minmax(0, 1fr) auto; width: calc(100vw - 24px); }
+    .rail { grid-area: 1 / 1; flex-direction: row; overflow-x: auto; overflow-y: hidden; touch-action: pan-x; padding: 8px; gap: 4px; scrollbar-width: none; }
+    .rail :global(.tile) { width: auto; padding: 0 12px; }
+    .refresh { grid-area: 1 / 2; align-self: center; margin: 0 6px 0 0; }
+    .main-models { grid-area: 2 / 1 / 3 / 3; border-left: none; border-top: 1px solid var(--color-border); }
+    .model-list { max-height: none; }
+    .settings { grid-area: 3 / 1 / 4 / 3; padding: 8px; }
     .refresh, .single .refresh { width: var(--touch-target); height: var(--touch-target); }
     .single .main-models .head { padding-right: calc(var(--touch-target) + 8px); }
     .single .refresh { top: 0; right: 0; }
+    .single .main-models { grid-area: 1 / 1 / 3 / 3; border-top: none; }
   }
 </style>

@@ -157,11 +157,11 @@ const OWNER_SECTIONS: readonly string[] = ['worktrees', 'privacy', 'execution', 
  * it opens whole, then the cards it has of the others. Keep it in step with
  * that component's `page`.
  */
-const PHONE_PAGES: readonly SettingsPage[] = ['appearance', 'voice', 'usage', 'limits', 'task-manager', 'experiments', 'brain'];
+const PHONE_PAGES: readonly SettingsPage[] = ['appearance', 'accounts', 'voice', 'usage', 'limits', 'task-manager', 'experiments', 'brain'];
 const PHONE_CARDS: Partial<Record<SettingsPage, readonly string[]>> = {
   resources: ['quiet', 'limits', 'tasks'],
   machines: ['machines', 'group'],
-  general: ['archived', 'worktrees'],
+  general: ['archived', 'worktrees', 'conversations'],
   advanced: ['auto-compact'],
 };
 

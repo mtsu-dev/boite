@@ -16,8 +16,8 @@ export const strings = {
     /** The column of buttons down the window's left edge (AppRail.svelte). */
     rail: {
       label: 'Boite',
-      waitingOne: '1 thread needs you',
-      waitingMany: '{count} threads need you',
+      waitingOne: '1 waits for you',
+      waitingMany: '{count} wait for you',
       bots: 'Bots',
       add: 'New bot or team',
       botWaiting: '{name} needs you',

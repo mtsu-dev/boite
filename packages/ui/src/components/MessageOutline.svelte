@@ -232,6 +232,10 @@
 <style>
   /* With a mouse the rail stays tight and never scrolls: fourteen entries fit, and the open rail spills past its edges. */
   .outline { position: absolute; z-index: 5; left: 4px; top: 50%; transform: translateY(-50%); width: 28px; padding: 4px 0; }
+  /* At rest the rail is not drawn: a stray mark in every thread's gutter. The pointer over the
+     gutter or the keyboard on an entry brings it up, and each bar names its prompt there. */
+  .outline:not(.open):not(:focus-within):not(:hover) { opacity: 0; }
+  .outline { transition: opacity var(--dur-2) var(--ease-out-quint); }
   button { display: flex; align-items: center; width: 28px; padding: 0; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--color-muted-foreground); }
   button:active { transform: none; }
   button.step, .track button { translate: 0 var(--offset, 0px); transition: translate var(--dur-3) var(--ease-out-quint), color var(--dur-2), background var(--dur-2); }
@@ -272,6 +276,8 @@
     .outline { max-height: min(60%, 320px); overflow-y: auto; scrollbar-width: none; }
     /* A finger's width and height per entry, flush with the screen edge; the timeline keeps its text clear of it. */
     .outline { left: 0; width: var(--touch-target); }
+    /* A finger has no hover to bring it up. */
+    .outline:not(.open):not(:focus-within):not(:hover) { opacity: 1; }
     .outline button { width: 100%; }
     .step { height: var(--touch-target); min-height: var(--touch-target); }
     .track { --pitch: var(--touch-target); }

@@ -211,7 +211,6 @@
   .row:hover:not(:disabled),
   .row:focus-visible {
     background: var(--color-active);
-    outline: none;
   }
 
   .row:active:not(:disabled) {

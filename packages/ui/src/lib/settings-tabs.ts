@@ -22,9 +22,9 @@ const PAGES: Record<SettingsTab, SettingsPage> = {
   appearance: { phone: 'page' },
   keyboard: { machine: true, phone: 'home' },
   voice: { machine: true, phone: 'page' },
-  // Installing, signing in and plugins stay on the desktop: a phone shows Home,
-  // and the window widened again shows the page the route still names.
-  accounts: { owner: true, machine: true, phone: 'home' },
+  // A phone lists the providers, as the desktop does; plugins stay on the
+  // desktop: a phone shows Home, and the window widened again shows the page.
+  accounts: { owner: true, machine: true, phone: 'page' },
   plugins: { owner: true, machine: true, phone: 'home' },
   brain: { owner: true, machine: true, phone: 'page' },
   usage: { phone: 'page' },
@@ -40,6 +40,7 @@ const PAGES: Record<SettingsTab, SettingsPage> = {
 /** The cards of a long desktop page that a phone shows on a page of their own, and that page. */
 const SECTION_PAGES: Partial<Record<SettingsTab, Record<string, { page: PhoneSectionPage; owner?: true }>>> = {
   general: {
+    conversations: { page: 'conversations' },
     archived: { page: 'archived' },
     worktrees: { page: 'worktrees', owner: true },
     windows: { page: 'windows', owner: true },
@@ -50,7 +51,7 @@ const SECTION_PAGES: Partial<Record<SettingsTab, Record<string, { page: PhoneSec
   advanced: { 'auto-compact': { page: 'auto-compact', owner: true } }
 };
 
-export type PhoneSectionPage = 'archived' | 'worktrees' | 'windows' | 'secrets' | 'browser-profiles' | 'auto-compact';
+export type PhoneSectionPage = 'conversations' | 'archived' | 'worktrees' | 'windows' | 'secrets' | 'browser-profiles' | 'auto-compact';
 
 /**
  * The eight groups Settings shows, desktop and phone alike, each led by the page
@@ -83,8 +84,8 @@ export function machinePage(tab: SettingsTab): boolean {
 }
 
 /**
- * Whether this window shows the desktop settings, the only ones with Providers
- * and Plugins: the app always does, a browser once wider than a phone.
+ * Whether this window shows the desktop settings, the only ones with Plugins
+ * and the keyboard: the app always does, a browser once wider than a phone.
  */
 export function desktopSettings(phoneWidth: boolean): boolean {
   return !phoneWidth || window.__TAURI_INTERNALS__ !== undefined;

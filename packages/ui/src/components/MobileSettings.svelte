@@ -1,12 +1,14 @@
 <script lang="ts">
   import TelemetrySettings from './TelemetrySettings.svelte';
-  import { Activity, AppWindow, ArchiveRestore, ArrowLeft, Bell, Brain, ChevronRight, Coins, FlaskConical, FolderGit2, Gauge, KeyRound, Lock, Monitor, Palette, Mic, Minimize2, Settings2, ShieldCheck, SlidersHorizontal, Stethoscope } from '@lucide/svelte';
+  import { Activity, AppWindow, ArchiveRestore, ArrowLeft, Bell, Brain, ChevronRight, Coins, FlaskConical, FolderGit2, Gauge, KeyRound, Lock, MessagesSquare, Monitor, Palette, Mic, Minimize2, Settings2, ShieldCheck, SlidersHorizontal, Stethoscope, Users } from '@lucide/svelte';
   import type { SettingsTab, Store } from '../lib/store.svelte';
   import { workspace } from '../lib/workspace.svelte';
   import { strings } from '../lib/strings';
   import { mobileOverlay } from '../lib/mobile-history';
   import { ScreenSlide } from '../lib/screen-slide.svelte';
   import AppearancePage from './AppearancePage.svelte';
+  import AccountsPage from './AccountsPage.svelte';
+  import ConversationSwitches from './ConversationSwitches.svelte';
   import ExperimentsPage from './ExperimentsPage.svelte';
   import DiagnosticsPage from './DiagnosticsPage.svelte';
   import LimitsPage from './LimitsPage.svelte';
@@ -38,8 +40,8 @@
    */
   let { store, target = store, bar, onopenthread }: { store: Store; target?: Store; bar?: Snippet; onopenthread?: () => void } = $props();
   /**
-   * Home lists the desktop's groups (`SETTINGS_GROUPS`) a phone has a page
-   * for. General and Advanced open an index of their pages: the cards a phone
+   * Home lists the desktop's groups (`SETTINGS_GROUPS`) in the desktop's order
+   * under the desktop's names, each one a phone has a page for. General and Advanced open an index of their pages: the cards a phone
    * needs from the desktop's long pages, the archive or the keys, get a page
    * of their own, which a jump to the desktop's card (the palette, the project
    * menu) lands on too (`lib/settings-tabs.ts`). Notifications and privacy are
@@ -51,7 +53,7 @@
   let routed = $derived(phonePage(store.settingsTab, store.settingsSection?.id, store.owner));
   let page = $derived(local && local.tab === store.settingsTab && local.section === store.settingsSection ? local.screen : routed);
   const UNDER: Record<string, 'general' | 'advanced'> = {
-    phone: 'general', privacy: 'general', voice: 'general', archived: 'general', secrets: 'general', 'browser-profiles': 'general', windows: 'general', worktrees: 'general',
+    phone: 'general', privacy: 'general', voice: 'general', conversations: 'general', archived: 'general', secrets: 'general', 'browser-profiles': 'general', windows: 'general', worktrees: 'general',
     'auto-compact': 'advanced', 'task-manager': 'advanced', diagnostics: 'advanced', experiments: 'advanced'
   };
   /** Home, a group's screen, or a page of a group's index. */
@@ -61,6 +63,8 @@
     : page === 'general' ? strings.settings.tabs.general
     : page === 'advanced' ? strings.settings.tabs.advanced
     : page === 'privacy' ? strings.mobile.settingsPrivacy
+    : page === 'conversations' ? strings.settings.conversations
+    : page === 'accounts' ? strings.settings.tabs.accounts
     : page === 'archived' ? strings.settings.archived.heading
     : page === 'worktrees' ? strings.settings.worktrees.heading
     : page === 'windows' ? strings.windows.settings.allowedHeading
@@ -144,6 +148,7 @@
       <div class="rows">
         {@render row('settings-tab-general', Settings2, strings.settings.tabs.general, () => store.showSettings('general'))}
         {@render row('settings-tab-appearance', Palette, strings.settings.tabs.appearance, () => store.showSettings('appearance'))}
+        {#if store.owner}{@render row('settings-tab-accounts', Users, strings.settings.tabs.accounts, () => store.showSettings('accounts'))}{/if}
         {#if store.owner}{@render row('settings-tab-brain', Brain, strings.brain.heading, () => store.showSettings('brain'))}{/if}
         {@render row('settings-tab-usage', Coins, strings.settings.tabs.usage, () => store.showSettings('usage'))}
         {#if store.owner}{@render row('settings-tab-resources', ShieldCheck, strings.settings.tabs.resources, () => store.showSettings('resources'))}{/if}
@@ -165,7 +170,7 @@
       <h1>{#if shown === 'limits'}<QuotaMachineScope store={target} fallback={title} />{:else}{title}{/if}{#if info}<InfoTip topic={title} text={info} testid="mobile-settings-info" />{/if}</h1>
     </header>
     <div class="detail" data-testid="mobile-settings-detail">
-      {#if bar && ['brain', 'voice', 'limits', 'resources', 'diagnostics', 'worktrees', 'windows', 'secrets', 'auto-compact', 'archived'].includes(shown)}<div class="bar">{@render bar()}</div>{/if}
+      {#if bar && ['accounts', 'brain', 'voice', 'limits', 'resources', 'diagnostics', 'worktrees', 'windows', 'secrets', 'auto-compact', 'archived'].includes(shown)}<div class="bar">{@render bar()}</div>{/if}
       {#key target}
       {#if quota}
         <div class="tabs" role="tablist" aria-label={strings.usage.heading} data-testid="mobile-usage-tabs">
@@ -176,6 +181,7 @@
       {#if shown === 'general'}
         <div class="page index" data-testid="mobile-settings-general">
           <div class="rows">
+            {@render row('mobile-settings-conversations', MessagesSquare, strings.settings.conversations, () => store.showSettings('general', 'conversations'))}
             {@render row('mobile-settings-phone', Bell, strings.mobile.settingsPhone, () => openLocal('phone'))}
             {@render row('mobile-settings-privacy', Lock, strings.mobile.settingsPrivacy, () => openLocal('privacy'))}
             {@render row('settings-tab-voice', Mic, strings.speech.heading, () => store.showSettings('voice'))}
@@ -198,6 +204,11 @@
             {@render row('settings-tab-experiments', FlaskConical, strings.settings.tabs.experiments, () => store.showSettings('experiments'))}
           </div>
         </div>
+      {:else if shown === 'accounts' && target.owner}
+        <AccountsPage store={target} />
+      {:else if shown === 'conversations'}
+        <!-- General's Conversations card, the switches this phone keeps; the list groups from its own display options. -->
+        <div class="page"><section class="card" id="settings-conversations"><ConversationSwitches phone /></section></div>
       {:else if shown === 'brain' && target.owner}
         <BrainPage store={target} />
       {:else if shown === 'phone'}
@@ -264,38 +275,38 @@
   .settings-screen[data-slide='under-out'] { animation-name: screen-under-out; }
   .home, .detail { animation: fade var(--dur-2) var(--ease-out-quint); min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
   .settings-screen:is([data-slide], .arrived) > :is(.home, .detail) { animation: none; }
-  .home { padding: 16px; }
-  .home > :global(.policy-banner) { margin-bottom: 20px; }
+  .home { padding: var(--space-4); }
+  .home > :global(.policy-banner) { margin-bottom: var(--space-5); }
   /* The group's first row is the machine itself: its name over its connection. */
   .machine-link { min-height: 64px; }
   .machine-link strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
-  .machine-link small { display: block; margin-top: 6px; font-size: var(--text-xs); font-weight: 400; color: var(--color-muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .machine-link small { display: block; margin-top: var(--space-1); font-size: var(--text-xs); font-weight: 400; color: var(--color-muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .machine-link small .ready { color: var(--color-success); }
-  p { font-size: var(--text-sm); color: var(--color-muted-foreground); line-height: 1.5; margin: 8px 0 12px; }
+  p { font-size: var(--text-sm); color: var(--color-muted-foreground); line-height: 1.5; margin: var(--space-2) 0 var(--space-3); }
   .rows { border: 1px solid var(--color-border); border-radius: var(--radius-lg); overflow: hidden; background: var(--color-surface); }
   /* A ghost button is muted; a row title reads like any other settings label. */
-  .row { display: flex; align-items: center; width: 100%; height: auto; min-height: 56px; gap: 12px; padding: 12px 16px; font-size: var(--text-base); font-weight: 500; text-align: left; border-radius: 0; white-space: normal; color: var(--color-foreground); }
+  .row { display: flex; align-items: center; width: 100%; height: auto; min-height: 56px; gap: var(--space-3); padding: var(--space-3) var(--space-4); font-size: var(--text-base); font-weight: 500; text-align: left; border-radius: 0; white-space: normal; color: var(--color-foreground); }
   .row + .row { border-top: 1px solid var(--color-border); }
   .row span { flex: 1; min-width: 0; }
   .row :global(svg) { flex: none; color: var(--color-muted-foreground); }
   /* The screen's one header: the app's own steps aside over a page (App.svelte), so this one takes the top inset. */
-  header { flex: none; display: flex; align-items: center; gap: 10px; min-height: 60px; padding: max(8px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left)); border-bottom: 1px solid var(--color-border); }
+  header { flex: none; display: flex; align-items: center; gap: var(--space-2); min-height: 60px; padding: max(var(--space-2), env(safe-area-inset-top)) max(var(--space-3), env(safe-area-inset-right)) var(--space-2) max(var(--space-3), env(safe-area-inset-left)); border-bottom: 1px solid var(--color-border); }
   header .icon { width: 44px; min-height: 44px; }
   header h1 { margin: 0; font-size: var(--text-md); font-weight: 600; }
   header.limits h1 { flex: 1; min-width: 0; margin-right: 54px; }
-  .phone-page { padding: 16px; }
+  .phone-page { padding: var(--space-4); }
   /* Usage and Limits: two tabs of one screen, in one track, the chosen one filled. */
-  .tabs { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 2px; margin: 16px 16px 0; padding: 2px; border: 1px solid var(--color-edge); border-radius: var(--radius-lg); background: var(--color-surface-2); }
-  .tab { min-width: 0; min-height: var(--touch-target); gap: 8px; border: 1px solid transparent; border-radius: var(--radius-md); background: transparent; color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 500; transition: background var(--dur-2) var(--ease-out-quint), color var(--dur-2) var(--ease-out-quint); }
+  .tabs { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 2px; margin: var(--space-4) var(--space-4) 0; padding: 2px; border: 1px solid var(--color-edge); border-radius: var(--radius-lg); background: var(--color-surface-2); }
+  .tab { min-width: 0; min-height: var(--touch-target); gap: var(--space-2); border: 1px solid transparent; border-radius: var(--radius-md); background: transparent; color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 500; transition: background var(--dur-2) var(--ease-out-quint), color var(--dur-2) var(--ease-out-quint); }
   .tab.on { background: var(--color-foreground); border-color: var(--color-foreground); color: var(--color-on-foreground); }
   .tab :global(svg) { flex: none; }
   /* The bar carries the page's name and its "i": the card's own heading steps aside. */
   .privacy-page :global(.card > h2) { display: none; }
   .scope { overflow-wrap: anywhere; margin-top: 0; }
-  .phone-page :global(.card) { padding: 18px; }
-  .detail :global(.page), .detail :global(.machines-page) { padding: 16px; }
-  .bar { padding: 16px 16px 0; }
-  .bar + :global(.page) { padding-top: 12px; }
+  .phone-page :global(.card) { padding: var(--space-4); }
+  .detail :global(.page), .detail :global(.machines-page) { padding: var(--space-4); }
+  .bar { padding: var(--space-4) var(--space-4) 0; }
+  .bar + :global(.page) { padding-top: var(--space-3); }
   /* The bar above already names the page, so its own title steps aside. */
   .detail :global(.page:not(.machines-page):not(.limits-page):not(.usage) > header),
   .detail :global(.machines-page .head h1),
@@ -306,7 +317,7 @@
   .detail :global(.usage > header) { position: absolute; top: max(8px, env(safe-area-inset-top)); right: 12px; margin: 0; }
   .detail :global(.limits-page > header .refresh),
   .detail :global(.usage > header .refresh) { width: 44px; height: 44px; }
-  .detail :global(.switch-row) { flex-wrap: wrap; gap: 12px; }
+  .detail :global(.switch-row) { flex-wrap: wrap; gap: var(--space-3); }
   /* The bar names the page and the line above says what it holds: the card's own heading and tip step aside. */
   .archived-page :global(#settings-archived > h2) { display: none; }
   .secrets-page :global(#settings-secrets > h2) { display: none; }

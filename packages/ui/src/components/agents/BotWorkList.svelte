@@ -16,7 +16,8 @@
    * machine that holds it, answers its question in place, and its cross takes
    * it off the desk. The snapshot carries the open bot's desk only.
    */
-  let { view, agentId }: { view: AgentsView; agentId: string } = $props();
+  /** `onstart`: an empty desk's one action, the conversation with the composer ready. */
+  let { view, agentId, onstart }: { view: AgentsView; agentId: string; onstart?: () => void } = $props();
   const store = $derived(view.store);
   const t = $derived(strings.agents.deskPanel);
   const now = $derived(minuteClock.now);
@@ -80,5 +81,6 @@
     {/if}
   {:else}
     <p class="bot-work-empty">{t.workEmpty}</p>
+    {#if onstart && store.owner}<button type="button" class="ghost small bot-work-start" data-testid="desk-work-start" onclick={onstart}><span class="ui-label">{t.workStart}</span></button>{/if}
   {/if}
 </div>

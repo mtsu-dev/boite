@@ -143,13 +143,16 @@
           <Brain size={13} strokeWidth={1.75} /><span>{t.memory}</span>
           {#if status?.memory?.status === 'error'}<span class="desk-memory-alert" role="img" aria-label={t.memoryProblem} title={status.memory.summary ?? t.memoryProblem} data-testid="desk-memory-alert"><TriangleAlert size={12} /></span>{/if}
           <span class="desk-label-value">{#if brain && notes.length}{notes.length === 1 ? t.noteOne : fill(t.noteMany, { count: count(notes.length) })}{/if}</span>
-          {#if store.owner && brain && !editing}<button type="button" class="ghost small icon" title={strings.agents.edit} aria-label={strings.agents.edit} onclick={() => { editing = true; }} data-testid="desk-memory-edit"><Pencil size={13} strokeWidth={1.75} /></button>{/if}
+          {#if store.owner && brain && !editing && brain.memory.trim()}<button type="button" class="ghost small icon" title={strings.agents.edit} aria-label={strings.agents.edit} onclick={() => { editing = true; }} data-testid="desk-memory-edit"><Pencil size={13} strokeWidth={1.75} /></button>{/if}
         </p>
         {#if editing}
           <AgentBrainEditor {view} agentId={agent.id} ondone={saved => { brain = saved; editing = false; }} oncancel={() => { editing = false; }} />
         {:else if brain}
           {#if !brain.memory.trim()}
-            <p class="desk-empty">{t.memoryEmpty}</p>
+            <p class="desk-empty desk-empty-row">
+              <span>{t.memoryEmpty}</span>
+              {#if store.owner}<button type="button" class="ghost small" onclick={() => { editing = true; }} data-testid="desk-memory-edit"><Pencil size={13} strokeWidth={1.75} /><span class="ui-label">{t.memoryAdd}</span></button>{/if}
+            </p>
           {:else}
             <ul class="desk-notes" data-testid="desk-memory-text">
               {#each notes.slice(0, 3) as note, index (index)}<li>{note}</li>{/each}

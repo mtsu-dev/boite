@@ -34,6 +34,26 @@
     const machines = workspace.machinesOr(store);
     return [project ? projectName(project) : null, machines.length > 1 ? machines.find(m => m.store === store)?.label : null].filter(Boolean).join(' · ');
   });
+  /** The project's name, the first half of a desktop header's "where": project, then title. */
+  let projectLabel = $derived.by(() => {
+    const id = thread?.projectId;
+    const project = id ? store.projects.find(p => p.id === id) : undefined;
+    return project ? projectName(project) : null;
+  });
+
+  /**
+   * The desktop's way back: the thread list, shown again if a panel had
+   * taken its column, scrolled to this thread's row, which takes the focus.
+   */
+  async function backToList() {
+    const id = store.openThread?.id;
+    if (store.sidebarCollapsed) store.toggleSidebar();
+    await tick();
+    const row = id ? document.querySelector<HTMLElement>(`[data-testid="thread-row"][data-thread-id="${CSS.escape(id)}"]`) : null;
+    row?.scrollIntoView({ block: 'nearest' });
+    row?.focus({ preventScroll: true });
+  }
+
   /** The rename in progress, bound to the thread it began on rather than to whatever is open later. */
   let rename = $state<ThreadRename | null>(null);
   commitOnUnmount(() => rename);
@@ -156,18 +176,18 @@
   }
 
   /**
-   * A phone's one header menu, in two labelled sections: the thread's tools
-   * (its browser, changes, files, subagents, board, find and the panel's
-   * other cards), then the thread itself (its bot, its watches, pin, rename,
-   * entrust, archive, delete). Contact requests live in the Activity tab.
+   * A phone's one header menu, in two labelled sections: where to go (the
+   * thread's main tools, at most six with "All tools", the panel and its
+   * cards, for the rest), then what to do to the thread (its bot, its
+   * watches, pin, rename, hand off, archive, delete). Contact requests live
+   * in the Activity tab.
    */
   let phoneItems = $derived.by((): MenuItem[] => {
     if (!thread) return [];
     return [
       section('sec-tools', strings.thread.toolsSection),
-      { id: 'phone-browser-toggle', label: strings.rightPanel.browser, glyph: Globe, active: shows('agent-browser') },
       { id: 'changes', label: strings.rightPanel.changes, glyph: surfaceGlyph('changes'), active: shows('changes') },
-      { id: 'files', label: strings.rightPanel.files, glyph: surfaceGlyph('files'), active: shows('files') },
+      { id: 'phone-browser-toggle', label: strings.rightPanel.browser, glyph: Globe, active: shows('agent-browser') },
       ...(delegated || agentsOn ? [{ id: 'agents', label: strings.delegation.heading, glyph: UsersRound, active: agentsOn }] : []),
       ...(store.boardAvailable() ? [{ id: 'board', label: strings.board.open, glyph: SquareKanban, active: store.boardShown }] : []),
       { id: 'find', label: strings.palette.find, glyph: Search },
@@ -186,7 +206,7 @@
     else if (action === 'board') store.toggleBoard();
     else if (action === 'agents') store.panel.toggleKind('agents');
     else if (action === 'phone-browser-toggle') store.panel.open('agent-browser');
-    else if (action === 'changes' || action === 'files') store.panel.open(action);
+    else if (action === 'changes') store.panel.open(action);
     else if (action === 'thread-entrusted-chip' && carrier) store.showAgents(carrier.agent.id);
     else if (action === 'thread-resident-chip' && resident) openResident(store, resident.id);
     else if (action === 'thread-branch' && open.branch) void store.copy(open.branch);
@@ -211,6 +231,11 @@
           {@const parentId = thread.parentThreadId}
           <button type="button" class="ghost crumb" data-testid="delegation-back-parent" data-preload-thread={parentId} title={strings.delegation.parent} onclick={() => void store.open(parentId)}>
             <span class="ui-label">{parentTitle}</span>
+          </button>
+          <span class="crumb-sep" aria-hidden="true">/</span>
+        {:else if projectLabel && !mobile.current && !thread.teamId && !thread.councilId}
+          <button type="button" class="ghost crumb" data-testid="thread-project-crumb" title={fill(strings.thread.backToList, { project: projectLabel })} onclick={() => void backToList()}>
+            <span class="ui-label">{projectLabel}</span>
           </button>
           <span class="crumb-sep" aria-hidden="true">/</span>
         {/if}
@@ -247,7 +272,7 @@
           {#if mobile.current}<span class="title-lines"><span class="title-text ui-label">{thread.title}</span>{#if place}<span class="title-place ui-label" data-testid="thread-place">{place}</span>{/if}</span>{/if}
           <!-- A small chevron exposes thread actions on the desktop. -->
           <span class="title-menu">
-            <Menu items={mobile.current ? phoneItems : desktopItems} onpick={titleAction} label={strings.sidebar.threadMenu} placement="bottom" variant={mobile.current ? 'ghost' : 'text'} testid="thread-menu-trigger">
+            <Menu items={mobile.current ? phoneItems : desktopItems} onpick={titleAction} label={strings.sidebar.threadMenu} heading={thread?.title} placement="bottom" variant={mobile.current ? 'ghost' : 'text'} testid="thread-menu-trigger">
               {#if mobile.current}<Ellipsis size={20} />{:else}<ChevronDown size={14} />{/if}
             </Menu>
           </span>

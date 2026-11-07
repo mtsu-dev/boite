@@ -4,6 +4,7 @@
   import { json } from '../lib/format';
   import { fill, strings } from '../lib/strings';
   import { describeTool, permissionSentence } from '../lib/tool-summary';
+  import CodeText from './CodeText.svelte';
   import Deferred, { parts } from './Deferred.svelte';
   import InfoTip from './InfoTip.svelte';
 
@@ -92,7 +93,7 @@
     <Deferred part={parts.DiffView}>{#snippet children(DiffView)}<DiffView path={change.path} oldText={change.oldText} newText={change.newText} doc={change} />{/snippet}</Deferred>
   {/if}
   <div class="foot" aria-busy={sending !== null}>
-    <span class="why" title={why || undefined}>{why}</span>
+    <span class="why" title={why || undefined}><CodeText text={why} /></span>
     <button type="button" class="ghost choice" data-testid="permission-deny" disabled={sending !== null} onclick={() => void choose('deny')}>
       <span class="ui-label">{strings.chat.deny}</span><kbd aria-hidden="true">{strings.chat.keyEscape}</kbd>
     </button>
@@ -130,7 +131,7 @@
       <Deferred part={parts.DiffView}>{#snippet children(DiffView)}<DiffView path={change.path} oldText={change.oldText} newText={change.newText} doc={change} />{/snippet}</Deferred>
     {/if}
     {#if request?.description && request.description !== subjectBlock}
-      <p class="muted description">{request.description}</p>
+      <p class="muted description"><CodeText text={request.description} /></p>
     {/if}
   {/if}
   {#if request}
@@ -212,8 +213,6 @@
     flex: none;
     font-size: var(--text-xs);
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
     color: var(--color-success);
   }
 

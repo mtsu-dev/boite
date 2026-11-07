@@ -176,7 +176,7 @@
   .down { align-self: center; display: grid; place-items: center; height: 26px; color: var(--color-subtle); }
   .node { position: relative; width: 100%; height: auto; min-height: 0; padding: 9px 10px; display: flex; flex-direction: column; align-items: stretch; gap: 5px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-2); box-shadow: var(--shadow-e1); color: var(--color-foreground); text-align: left; font-weight: 400; transition: background var(--dur-2) var(--ease-out-quint), border-color var(--dur-2) var(--ease-out-quint); }
   .node:hover { background: color-mix(in srgb, var(--color-surface-2) 100%, var(--color-foreground) 4%); border-color: var(--color-edge); }
-  .node:focus-visible { outline: none; border-color: var(--color-edge); background: color-mix(in srgb, var(--color-surface-2) 100%, var(--color-foreground) 4%); }
+  .node:focus-visible { border-color: var(--color-edge); background: color-mix(in srgb, var(--color-surface-2) 100%, var(--color-foreground) 4%); }
   .node.selected { border-color: var(--color-foreground); }
   .node.running { border-color: color-mix(in srgb, var(--color-live) 45%, var(--color-border)); }
   .node.failed { border-color: color-mix(in srgb, var(--color-danger) 55%, var(--color-border)); }

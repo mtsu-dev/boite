@@ -1,7 +1,9 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import { MessageSquare } from '@lucide/svelte';
   import type { AgentProfile, Team } from '@boite/contracts';
   import { liveActivity, statusOf, type AgentsView } from '../../lib/agents.svelte';
+  import { focusComposer } from '../../lib/focus';
   import { strings } from '../../lib/strings';
   import AgentAvatar from './AgentAvatar.svelte';
   import BotWorkList from './BotWorkList.svelte';
@@ -39,7 +41,7 @@
     </button>
   {/if}
   {#if agent}
-    <BotWorkList {view} agentId={agent.id} />
+    <BotWorkList {view} agentId={agent.id} onstart={() => { onconversation(); void tick().then(() => focusComposer({ typing: true })); }} />
   {:else if team}
     <h3 class="bot-section">{strings.teamChat.members} <span class="bot-section-count">{team.members.length}</span></h3>
     {#each members as { member, profile, line, working } (member.botId + (member.machine ?? ''))}

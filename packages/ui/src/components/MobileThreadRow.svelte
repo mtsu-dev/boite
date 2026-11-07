@@ -7,14 +7,13 @@
   import { ago, exactTime } from '../lib/format';
   import { closeSwipedRow, swipeRow } from '../lib/swipe-row';
   import { longPress } from '../lib/long-press';
-  import { trackThreadPullRequest } from '../lib/thread-pull-request.svelte';
   import Menu from './Menu.svelte';
   import ThreadHeadline from './ThreadHeadline.svelte';
 
   /**
    * A phone's thread row, the desktop row's grammar at a finger's size: the
-   * title on one line, the pull request and the state at its end, the branch
-   * in the tooltip. `compact` is the flat lists' form (Recent, Activity): the
+   * title on one line and the state at its end. The title gets the width:
+   * the pull request waits in the thread, the pin under the slide. `compact` is the flat lists' form (Recent, Activity): the
    * project's tile first. Activity adds `reason`, what the thread wants and
    * when, under the title, and `nested` steps a sub-agent in under its parent.
    * The row menu has no button of its own: a long press opens it, a slide
@@ -26,9 +25,6 @@
     reason?: string; at?: number; nested?: boolean; onopen: () => void; onaction: (action: string) => void;
   } = $props();
   const owner = $derived(machine.store);
-  // Activity says why the thread is there; its pull request waits in the thread.
-  const pr = trackThreadPullRequest(() => ({ owner, thread, hidden: reason !== undefined }));
-  const pullRequest = $derived(reason !== undefined ? null : pr.value);
   const pin = $derived(items.find(item => item.id === 'pin'));
   const archive = $derived(items.find(item => item.id === 'archive'));
   let menu = $state<HTMLElement>();
@@ -53,10 +49,10 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="body" use:swipeRow oncontextmenu={openMenu}>
     <button class="ghost thread" class:offline={owner.connection !== 'ready'} data-testid="mobile-thread-{thread.id}" title={thread.branch ? `${thread.title}\n${thread.branch}` : thread.title} onclick={onopen} use:longPress>
-      <ThreadHeadline {owner} {thread} {now} tile={compact && !nested ? project : undefined} {pullRequest} />
+      <ThreadHeadline {owner} {thread} {now} tile={compact && !nested ? project : undefined} />
       {#if reason !== undefined}<span class="why" data-testid="mobile-row-reason"><span class="text ui-label">{reason}</span>{#if at !== undefined}<time class="ui-label" title={exactTime(at)}>{ago(at, now)}</time>{/if}</span>{/if}
     </button>
-    <span class="row-menu" bind:this={menu}><Menu {items} onpick={onaction} label={strings.sidebar.threadMenu} placement="bottom" variant="ghost" testid="mobile-thread-menu-{thread.id}"><Ellipsis size={18} /></Menu></span>
+    <span class="row-menu" bind:this={menu}><Menu {items} onpick={onaction} label={strings.sidebar.threadMenu} heading={thread.title} placement="bottom" variant="ghost" testid="mobile-thread-menu-{thread.id}"><Ellipsis size={18} /></Menu></span>
   </div>
 </div>
 
@@ -86,7 +82,7 @@
   .thread :global(.headline .title) { color: var(--color-foreground); font-weight: 400; }
   .thread :global(.headline .when) { font-size: var(--text-sm); }
   .thread.offline { opacity: 0.55; }
-  .thread :global(.headline .pr) { font-size: var(--text-sm); }
+  .thread :global(.headline .pin) { display: none; }
   /* At 360 px a plain time goes before the title is cut; a state keeps its mark and word. */
   @media (max-width: 380px) {
     .thread :global(.headline .when:not(.state)), .thread :global(.headline .when .elapsed) { display: none; }

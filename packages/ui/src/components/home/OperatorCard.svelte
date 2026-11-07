@@ -90,7 +90,7 @@
   .away { margin: 0 0 12px; }
   .group { display: grid; gap: 2px; }
   .group + .group { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--color-border); }
-  h3 { display: flex; align-items: center; gap: 4px; margin: 0 0 4px; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+  h3 { display: flex; align-items: center; gap: 4px; margin: 0 0 4px; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; }
   .row { display: flex; align-items: center; gap: 10px; min-height: var(--row); min-width: 0; }
   .relation > :global(svg) { flex: none; color: var(--color-subtle); }
   .local { flex: 0 1 auto; min-width: 0; max-width: 45%; padding: 0 8px; font-weight: 600; }

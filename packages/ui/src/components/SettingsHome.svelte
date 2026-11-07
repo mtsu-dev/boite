@@ -138,8 +138,8 @@
     gap: 10px;
     max-width: var(--settings-width);
     height: 40px;
-    padding: 0 12px;
-    margin-bottom: 24px;
+    padding: 0 var(--space-3);
+    margin-bottom: var(--space-6);
     border: 1px solid var(--color-edge);
     border-radius: var(--radius-md);
     background: var(--color-surface-2);
@@ -154,15 +154,15 @@
 
   /* Four tiles a row while the longest French label still fits on one line,
      else two, else one: eight groups never leave one tile alone on a line.
-     Every tile is as tall as the others, status line or not. */
+     A row's tiles stretch to its tallest; no row reserves lines it has not. */
   .home { container-type: inline-size; }
 
   .tiles {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 10px;
+    gap: var(--space-3);
     max-width: var(--settings-width);
-    margin-bottom: 28px;
+    margin-bottom: var(--space-8);
   }
 
   /* The glyph sits above the words, so a long French label keeps the tile's
@@ -172,9 +172,9 @@
     flex-direction: column;
     align-items: flex-start;
     justify-content: flex-start;
-    gap: 12px;
+    gap: var(--space-3);
     height: auto;
-    padding: 14px;
+    padding: var(--space-4);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
     background: var(--color-surface);
@@ -185,7 +185,7 @@
     color: var(--color-foreground);
     transition: background var(--dur-2), border-color var(--dur-2);
   }
-  .tile:hover { background: var(--color-hover); border-color: var(--color-edge); }
+  @media (hover: hover) { .tile:hover { background: var(--color-hover); border-color: var(--color-edge); } }
   .tile:active:not(:disabled) { transform: none; }
 
   .glyph {
@@ -201,10 +201,7 @@
   }
   .tile:hover .glyph { color: var(--color-foreground); }
 
-  /* Room for a label and two status lines on every tile ("3 machines · 10
-     paired devices" takes two at a quarter of the column), so a tile with
-     nothing to report stands as tall as one that has. */
-  .text { display: grid; align-content: start; gap: 2px; width: 100%; min-width: 0; min-height: calc(var(--text-base) * 1.3 + 2px + var(--text-sm) * 1.35 * 2); }
+  .text { display: grid; align-content: start; gap: 2px; width: 100%; min-width: 0; }
   .label { font-size: var(--text-base); font-weight: 500; line-height: 1.3; overflow-wrap: break-word; }
   .status { font-size: var(--text-sm); line-height: 1.35; color: var(--color-muted-foreground); overflow-wrap: break-word; }
   .status.call { color: var(--color-foreground); }
@@ -225,10 +222,10 @@
     display: flex;
     align-items: center;
     justify-content: flex-start;
-    gap: 10px;
+    gap: var(--space-3);
     height: auto;
     min-height: var(--row);
-    padding: 8px 14px;
+    padding: var(--space-2) var(--space-4);
     border-radius: 0;
     color: var(--color-foreground);
     text-align: left;

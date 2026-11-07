@@ -42,3 +42,14 @@ test('Activity lists what needs the user, then failures, then news, each with it
   // A failure or news says where it lives, and when it last changed.
   expect(row('failed')).toMatchObject({ reason: 'Drafts', at: NOW - 2_000 });
 });
+
+test('a sub-agent that failed under a parent still at work is the parent\'s business; a thread outside projects says its bot', () => {
+  const threads = [
+    thread('parent', { status: 'running' }),
+    thread('child', { status: 'error', parentThreadId: 'parent' as ThreadSummary['parentThreadId'] }),
+    thread('bot', { status: 'error' })
+  ];
+  const machine = { id: 'local', store: { pendingQuestions: [], pendingPermissions: [], subagents: () => null } };
+  const feed = activityFeed(threads.map(t => ({ machine, thread: t, project: undefined })), entry => entry.thread.id === 'bot' ? 'Scout' : null);
+  expect(feed.map(row => [row.thread.id, row.reason])).toEqual([['bot', 'Scout']]);
+});

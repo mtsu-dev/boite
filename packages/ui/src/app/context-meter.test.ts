@@ -12,7 +12,8 @@ test('the composer wears the context meter, a compaction is a divider, and a tur
   await waitFor(() => document.querySelector('[data-testid=context-meter]') !== null);
   const meter = query('[data-testid=context-meter]');
   expect(meter.closest('[data-testid=composer]')).not.toBeNull();
-  expect(query('[data-testid=context-trigger]').textContent?.trim()).toBe('');
+  // A ring and its percent, never a bare disc.
+  expect(query('[data-testid=context-trigger]').textContent?.trim()).toBe('16%');
   expect(meter.dataset.percent).toBe('16');
   expect(meter.dataset.level).toBe('low');
   query<HTMLButtonElement>('[data-testid=context-trigger]').click();

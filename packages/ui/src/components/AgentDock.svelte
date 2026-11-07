@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import { threadBusy } from '@boite/contracts';
   import type { Store } from '../lib/store.svelte';
   import StatusMark from './StatusMark.svelte';
@@ -35,18 +36,47 @@
   ]);
 
   /*
-   * The entries share the strip's width: a row holds as many as fit at the
-   * narrowest an entry stays readable, each shrinking its name to an ellipsis
-   * inside it, never cut by the edge. Two rows at most; what they cannot hold
-   * is one "+N" that opens the subagents. Unmeasured (no layout yet), one row.
+   * The entries fill the strip in order, each at its whole name's width (a
+   * hidden copy measures them, its timer at its widest): an entry that does
+   * not fit the row's rest starts the next row. Two rows at most; what they
+   * cannot hold is one "+N" that opens the subagents. Only a name wider than
+   * the strip itself ends in an ellipsis. Unmeasured (no layout yet), one row.
    */
-  const NARROWEST = 132, GAP = 8;
+  const GAP = 8, MORE = 48;
   let width = $state(0);
-  let perRow = $derived(width > 0 ? Math.max(1, Math.floor((width + GAP) / (NARROWEST + GAP))) : Math.max(1, entries.length));
-  let fits = $derived(entries.length <= perRow * 2);
-  let shown = $derived(fits ? entries : entries.slice(0, perRow * 2 - 1));
-  let rows = $derived(shown.length > perRow || !fits ? [shown.slice(0, perRow), shown.slice(perRow)] : [shown]);
-  let more = $derived(entries.length - shown.length);
+  let measurer = $state<HTMLDivElement | undefined>(undefined);
+  let natural = $state<number[]>([]);
+  $effect(() => {
+    void entries.length; void entries.map((entry) => entry.name).join('\n'); void width;
+    let current = true;
+    void tick().then(() => {
+      if (!current || !measurer) return;
+      natural = Array.from(measurer.children, (child) => Math.ceil((child as HTMLElement).getBoundingClientRect().width));
+    });
+    return () => { current = false; };
+  });
+  let rows = $derived.by((): Entry[][] => {
+    if (width <= 0 || natural.length !== entries.length) return [entries];
+    const packed: Entry[][] = [[]];
+    let used = 0, at = 0;
+    for (; at < entries.length; at++) {
+      const need = natural[at]!, row = packed[packed.length - 1]!;
+      if (row.length > 0 && used + GAP + need > width) {
+        if (packed.length === 2) break;
+        packed.push([]); used = 0;
+      }
+      used += (packed[packed.length - 1]!.length > 0 ? GAP : 0) + need;
+      packed[packed.length - 1]!.push(entries[at]!);
+    }
+    // The "+N" takes its room on the last row from the entries before it.
+    if (at < entries.length) {
+      const last = packed[packed.length - 1]!;
+      let room = last.reduce((sum, entry) => sum + natural[entries.indexOf(entry)]! + GAP, 0) + MORE;
+      while (last.length > 1 && room > width) room -= natural[entries.indexOf(last.pop()!)]! + GAP;
+    }
+    return packed;
+  });
+  let more = $derived(entries.length - rows.reduce((sum, row) => sum + row.length, 0));
 </script>
 
 {#if entries.length > 0}
@@ -68,12 +98,20 @@
         </div>
       {/each}
     </div>
+    <div class="measure" bind:this={measurer} aria-hidden="true" inert>
+      {#each entries as entry (entry.key)}
+        <span class="entry"><StatusMark {...entry.workflow ? workflowTone('running', true) : threadTone('running')} /><span class="name ui-label">{entry.name}</span><span class="elapsed ui-label">00m 00s</span></span>
+      {/each}
+    </div>
   </div>
 {/if}
 
 <style>
   /* Its own row or two in the strip; the queue and the way back go under it. */
   .dock { display: contents; }
+  .measure { position: absolute; visibility: hidden; pointer-events: none; display: flex; gap: 8px; width: max-content; height: 0; overflow: hidden; }
+  .measure .entry { display: inline-flex; flex: none; align-items: center; gap: 6px; min-width: 0; max-width: none; white-space: nowrap; }
+  .measure .elapsed { flex: none; font-weight: 400; font-variant-numeric: tabular-nums; }
   .entries { display: flex; flex-direction: column; gap: 8px; flex: 1 1 100%; min-width: 0; }
   .row { display: flex; gap: 8px; min-width: 0; }
   .entry { flex: 0 1 auto; min-width: 96px; max-width: 100%; height: 30px; gap: 6px; padding: 0 10px; border: 1px solid var(--color-edge); border-radius: var(--radius-lg); background: var(--color-surface-2); color: var(--color-foreground); font-size: var(--text-sm); font-weight: 550; overflow: hidden; }
@@ -82,5 +120,5 @@
   .name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .entry :global(.elapsed) { flex: none; color: var(--color-muted-foreground); font-weight: 400; font-variant-numeric: tabular-nums; }
   /* A phone gives the names the room: the mark says it runs, the panel says how long. */
-  @media (max-width: 720px) { .entry :global(.elapsed) { display: none; } }
+  @media (max-width: 720px) { .entry :global(.elapsed), .measure .elapsed { display: none; } }
 </style>

@@ -32,6 +32,8 @@
   import ProjectTile from './ProjectTile.svelte';
   import RailFrame from './RailFrame.svelte';
   import { minuteClock } from '../lib/clock.svelte';
+  import { doneFilter, inbox } from '../lib/inbox.svelte';
+  import { needsAnAI } from '../lib/first-run';
   let { store }: { store: Store } = $props();
   const mobile = new MediaQuery('(max-width: 720px)');
   let scrollRoot = $state<HTMLDivElement>();
@@ -137,14 +139,14 @@
       const open = projectThreadView.isOpen(entry, 'working');
       const { lists } = projectLists.get(projectKey(entry))!;
       for (const thread of open ? [...lists.attention, ...lists.working] : lists.attention) rows.push({ store: entry.machine.store, threadId: thread.id });
-      for (const kind of ['done', 'archived'] as const) if ((later && kind === 'archived') || projectThreadView.isOpen(entry, kind)) rows.push(...projectDoneRows[JSON.stringify([kind, projectKey(entry)])] ?? []);
+      for (const kind of ['done', 'archived'] as const) if (kind === 'done' ? doneFilter.shown : later || projectThreadView.isOpen(entry, kind)) rows.push(...projectDoneRows[JSON.stringify([kind, projectKey(entry)])] ?? []);
     }
     return rows;
   }
   // Alt+1 to Alt+9 count the rows as drawn: this view, open projects, then unfolded idle history.
   $effect(() => {
     sidebarRows.list = (workspace.view === 'recent'
-      ? [...split.active, ...split.older, ...(workingOpen ? working : [])].map(({ machine, thread }) => ({ store: machine.store, threadId: thread.id })).concat(doneRows, archivedRows)
+      ? [...split.active, ...split.older].map(({ machine, thread }) => ({ store: machine.store, threadId: thread.id })).concat(doneRows, (workingOpen ? working : []).map(({ machine, thread }) => ({ store: machine.store, threadId: thread.id })), archivedRows)
       : projectRows().concat(idleRows)
     ).slice(0, 9);
   });
@@ -154,6 +156,12 @@
     return owner.threadsOf(entry.project.id).filter(thread => threadState(thread, owner.subagents(thread.id)) === 'waiting').length;
   }
   const canAddProject = $derived(store.owner && work.shows('sidebar.add-project'));
+  /** Desktop Activity takes the list's place while the rail has it open; it loads the first time. */
+  let ActivityList = $state<typeof import('./ActivityList.svelte').default>();
+  $effect(() => {
+    if (!inbox.open || ActivityList) return;
+    void import('./ActivityList.svelte').then(module => { ActivityList = module.default; }).catch(() => {});
+  });
   /** Nothing listed yet: the list says why, and where the projects come from. */
   const loading = $derived(groups.length === 0 && visible.some(machine => machine.store.connection !== 'ready'));
   /** `list` is the section the card sits in: a project moves among its neighbours there, as the sections place it themselves. */
@@ -179,8 +187,10 @@
 
 <RailFrame {store} kind="sidebar" label={strings.sidebar.threads} testid="sidebar" drawer bind:scroller={scrollRoot} onscroll={() => { if (showRows && scrollRoot) savedScroll = scrollRoot.scrollTop; }}>
   {#snippet head()}<ProjectViews entries={groups} {store} />{/snippet}
-    {#if showRows}
-    {#if groups.length === 0}
+    {#if showRows && inbox.open}
+      {#if ActivityList}<ActivityList {store} />{/if}
+    {:else if showRows}
+    {#if groups.length === 0 && !(needsAnAI(store) && !loading)}
       <div class="empty" data-testid="sidebar-empty" role={loading ? 'status' : undefined}>
         {#if loading}<LoaderCircle size={16} class="spinner" aria-hidden="true" /><span class="ui-label">{strings.sidebar.loadingProjects}</span>
         {:else}
@@ -202,6 +212,12 @@
       <WindowList items={split.older} keyOf={entry => JSON.stringify([entry.machine.id, entry.thread.id])} {scrollRoot} estimate={32} measurements={measurements('recent-rest')}>
         {#snippet row(entry)}<ThreadCard {...entry} {now} compact showDone />{/snippet}
       </WindowList>
+      <!-- Done is the display menu's filter: on, the finished threads follow the live ones. -->
+      {#if doneFilter.shown}
+        <div class="recent-done" data-testid="recent-done-rows">
+          <RecentDone entries={recentGroups} {scrollRoot} {now} open header={false} onrows={rows => doneRows = rows} />
+        </div>
+      {/if}
       {#if groups.length > 0 && recent.length === 0 && !recentGroups.some(entry => entry.project.archivedThreads)}<p class="none">
           {strings.sidebar.noThreads}
         </p>{/if}
@@ -213,7 +229,6 @@
             </WindowList>
           </RecentGroup>
         {/if}
-        <RecentDone entries={recentGroups} {scrollRoot} {now} onrows={rows => doneRows = rows} />
         <RecentDone kind="archived" entries={recentGroups} {scrollRoot} {now} onrows={rows => archivedRows = rows} />
       </div>
     {:else}
@@ -227,7 +242,7 @@
         {@const owner = machine.store}
         {@const workingOpen = projectThreadView.isOpen(entry, 'working')}
         {@const later = section === 'later'}
-        {@const doneOpen = archiveCount(project, 'done') > 0 && projectThreadView.isOpen(entry, 'done')}
+        {@const doneOpen = archiveCount(project, 'done') > 0 && doneFilter.shown}
         {@const archivedOpen = archiveCount(project, 'archived') > 0 && (later || projectThreadView.isOpen(entry, 'archived'))}
         {@const { lists } = projectLists.get(projectKey(entry))!}
         {@const controls = `sidebar-project-${encodeURIComponent(projectKey(entry))}`}
@@ -311,8 +326,8 @@
               </SharedProjectThreads>
             </div>
           </div>
-          <!-- Done and Archived wait at the card's foot: the header keeps what needs the user now. -->
-          {#if archiveCount(project, 'done') > 0 || (archiveCount(project, 'archived') > 0 && (!later || collapsed))}
+          <!-- Archived waits at the card's foot: the header keeps what needs the user now. Done is the display menu's filter. -->
+          {#if archiveCount(project, 'archived') > 0 && (!later || collapsed)}
             <div class="card-foot"><ProjectThreadCounters {entry} part="foot" working={0} {controls} {collapsed} {away} body={later ? laterLists : undefined} /></div>
           {/if}
         </section>
@@ -341,6 +356,7 @@
 <style>
   /* `sidebar` is the container RailFrame.svelte declares on the column. */
   .recent-folds { margin-top: auto; padding-top: 12px; }
+  .recent-done { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--color-border); }
   .project-folds { margin-top: auto; }
   /* A card is a quiet surface on the inset panel, with no edge of its own: the panel is the one frame. */
   .project {
@@ -351,7 +367,7 @@
   }
   /* Recent's line between the threads with something to say and the ones at rest. */
   .rest-line { height: 1px; margin: 8px 10px; background: var(--color-border); }
-  /* Done and Archived, quiet at the card's right foot. */
+  /* Archived, quiet at the card's right foot. */
   .card-foot { display: flex; justify-content: flex-end; padding: 2px 2px 0; }
   .empty {
     display: flex;

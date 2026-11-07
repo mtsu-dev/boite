@@ -14,6 +14,8 @@
   let root = $state<HTMLDivElement | undefined>(undefined);
   let left = $state(0);
   let top = $state(0);
+  /** On a phone the menu is the shared bottom sheet (app.css), not a popover at the finger. */
+  let sheet = $state(false);
 
   /** Whether the menu is up, so its close hands the keyboard back once and only then. */
   let opened = false;
@@ -32,11 +34,19 @@
     popover.show();
     left = current.x;
     top = current.y;
+    sheet = window.matchMedia?.('(max-width: 720px)').matches ?? false;
     void tick().then(() => {
       const el = root;
       if (!el) return;
       // Match anchored menus: the top layer stays above the whip and its control.
       if (el.showPopover && !el.matches(':popover-open')) el.showPopover();
+      if (sheet) {
+        // Docked to the bottom edge over the tab bar; no row opens lit under the finger.
+        left = 0;
+        top = Math.max(GAP, window.innerHeight - el.offsetHeight);
+        el.focus({ preventScroll: true });
+        return;
+      }
       left = Math.max(GAP, Math.min(current.x, window.innerWidth - el.offsetWidth - GAP));
       top = Math.max(GAP, Math.min(current.y, window.innerHeight - el.offsetHeight - GAP));
       rows()[0]?.focus({ preventScroll: true });
@@ -134,6 +144,7 @@
     onanimationend={popover.end}
     style="left: {left}px; top: {top}px;"
     data-testid="context-menu"
+    data-mobile-sheet={sheet ? 'true' : undefined}
     oncontextmenu={(event) => event.preventDefault()}
   >
     {#each request.items as item (item.id)}
@@ -178,7 +189,7 @@
     max-height: calc(100dvh - 12px);
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding: 4px;
+    padding: var(--space-1);
     background: var(--color-surface-2);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
@@ -196,15 +207,21 @@
     pointer-events: none;
   }
 
+  .context-menu[data-mobile-sheet='true'] {
+    width: 100vw;
+    max-height: 85dvh;
+    padding-inline: var(--space-2);
+  }
+
   .row {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
+    gap: var(--space-3);
     width: 100%;
     height: auto;
     min-height: var(--control);
-    padding: 6px 8px;
+    padding: var(--space-1) var(--space-2);
     border: none;
     border-radius: var(--radius-sm);
     background: transparent;
@@ -212,10 +229,12 @@
     text-align: left;
   }
 
-  .row:hover:not(:disabled),
-  .row:focus-visible {
-    background: var(--color-hover);
-    outline: none;
+  /* Hover fills only under a hovering pointer, so a touch leaves none behind;
+     keyboard focus wears the shared accent ring (app.css). */
+  @media (hover: hover) {
+    .row:hover:not(:disabled) {
+      background: var(--color-hover);
+    }
   }
 
   /* A full width row does not shrink under the finger, it fills one step more. */
@@ -265,7 +284,7 @@
   .rule {
     flex-shrink: 0;
     height: 1px;
-    margin: 4px 6px;
+    margin: var(--space-1) var(--space-2);
     background: var(--color-border);
   }
 </style>

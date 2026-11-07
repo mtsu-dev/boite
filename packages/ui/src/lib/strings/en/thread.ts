@@ -56,6 +56,8 @@ export const strings = {
     threadSection: 'This thread',
     /** Opens the side panel on whatever it last showed, its cards when empty. */
     allTools: 'All tools',
+    /** A desktop header's project crumb: back to the thread list, at this thread. */
+    backToList: 'Back to the {project} threads',
     terminalHint: "Terminal in this thread's folder",
     cwd: 'Working directory',
     model: 'Model',

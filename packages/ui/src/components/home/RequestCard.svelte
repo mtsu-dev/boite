@@ -99,7 +99,7 @@
   }
   :global(.request) + .request { border-top: 1px solid var(--color-border); }
   :global(h2) + .request { padding-top: 0; }
-  .kicker { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+  .kicker { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; }
   .request:not(.incoming) .kicker { color: var(--color-muted-foreground); }
   .kicker .ui-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .age { margin-left: auto; flex: none; color: var(--color-subtle); font-weight: 500; text-transform: none; letter-spacing: 0; }

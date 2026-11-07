@@ -15,6 +15,7 @@
     switches = false,
     disabled = false,
     label,
+    heading,
     testid,
     children
   }: {
@@ -29,6 +30,8 @@
     switches?: boolean;
     disabled?: boolean;
     label: string;
+    /** What the menu acts on, a thread or a project: a phone sheet's title. The label stands in. */
+    heading?: string;
     testid?: string;
     children: Snippet;
   } = $props();
@@ -36,11 +39,19 @@
   const popover = new Closing();
   let root = $state<HTMLDivElement | undefined>(undefined);
   let trigger = $state<HTMLButtonElement | undefined>(undefined);
+  /** The list opened as a phone sheet (lib/floating.ts marks it), which shows a title. */
+  let sheet = $state(false);
 
-  /** The keyboard lands on the first item the moment the list is there. */
+  /** The keyboard lands on the first item the moment the list is there. A phone
+      sheet holds the focus on itself instead: no row, Delete included, opens lit. */
   $effect(() => {
-    if (!popover.open) return;
-    void tick().then(() => rows()[0]?.focus({ preventScroll: true }));
+    if (!popover.open) { sheet = false; return; }
+    void tick().then(() => {
+      const list = root?.querySelector<HTMLElement>('[role=menu]');
+      sheet = !!list?.dataset['mobileSheet'];
+      if (sheet) list?.focus({ preventScroll: true });
+      else rows()[0]?.focus({ preventScroll: true });
+    });
   });
 
   function rows(): HTMLElement[] {
@@ -139,7 +150,8 @@
       onanimationend={popover.end}
       data-testid={testid ? `${testid}-menu` : undefined}
     >
-      {#if switches}<div class="heading ui-label" aria-hidden="true">{label}</div>{/if}
+      {#if switches}<div class="heading ui-label" aria-hidden="true">{label}</div>
+      {:else if sheet}<div class="sheet-title" aria-hidden="true">{heading ?? label}</div>{/if}
       {#each items as item (item.id)}
         {#if item.separator && item.label}
           <!-- A labelled rule opens a section: its words, no line. -->
@@ -185,19 +197,24 @@
 </div>
 
 <style>
-  .separator { height: 1px; background: var(--color-border); margin: 4px 6px; }
-  .section { padding: 10px 8px 4px; font-size: var(--text-xs); font-weight: 600; color: var(--color-subtle); }
-  .section:first-child { padding-top: 4px; }
-  .label { display: flex; align-items: center; gap: 6px; }
+  .separator { height: 1px; background: var(--color-border); margin: var(--space-1) var(--space-2); }
+  .section { padding: var(--space-3) var(--space-2) var(--space-1); font-size: var(--text-xs); font-weight: 600; color: var(--color-subtle); }
+  .section:first-child, .sheet-title + .section { padding-top: var(--space-1); }
+  /* A phone sheet names what it acts on above its rows; a desktop popover sits at its trigger and needs no title. */
+  .popover[data-mobile-sheet='true'] { padding-inline: var(--space-2); }
+  /* The list holds the focus only to keep the keys; its rows wear the ring. */
+  .popover:focus { outline: none; }
+  .sheet-title { padding: 0 var(--space-4) var(--space-3); color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 600; line-height: 1.35; text-align: center; overflow-wrap: anywhere; }
+  .label { display: flex; align-items: center; gap: var(--space-2); }
   .glyph { display: inline-flex; flex: 0 0 16px; color: var(--color-muted-foreground); margin-right: 2px; }
   .glyph.live { color: var(--color-live); }
   .item.danger .glyph { color: inherit; }
   .item.checkable { display: grid; grid-template-columns: minmax(0, 1fr) 14px; column-gap: 8px; }
   .checkable .hint { grid-column: 1; grid-row: 2; }
   .check { display: flex; grid-column: 2; grid-row: 1 / span 2; align-self: center; }
-  .heading { padding: 8px 10px 10px; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 500; }
-  .popover.switches { width: min(300px, calc(100vw - 24px)); padding: 6px; border-radius: var(--radius-lg); }
-  .switches .item.checkable { grid-template-columns: minmax(0, 1fr) 36px; min-height: 56px; padding: 9px 10px; column-gap: 12px; }
+  .heading { padding: var(--space-2) var(--space-3); color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 500; }
+  .popover.switches { width: min(300px, calc(100vw - 24px)); padding: var(--space-2); border-radius: var(--radius-lg); }
+  .switches .item.checkable { grid-template-columns: minmax(0, 1fr) 36px; min-height: 56px; padding: var(--space-2) var(--space-3); column-gap: var(--space-3); }
   .switches .item.radio .check { justify-self: center; }
   .switches .label { gap: 9px; }
   .switches .glyph { margin-right: 0; }
@@ -232,15 +249,24 @@
     border-radius: var(--radius-md);
   }
 
-  .trigger:hover,
   .trigger[aria-expanded='true'] {
     background: var(--color-surface-3);
     color: var(--color-foreground);
   }
 
-  .trigger:hover:not(.ghost):not(.text),
   .trigger[aria-expanded='true']:not(.ghost):not(.text) {
     background: var(--control-glaze) var(--color-control-hover);
+  }
+
+  @media (hover: hover) {
+    .trigger:hover {
+      background: var(--color-surface-3);
+      color: var(--color-foreground);
+    }
+
+    .trigger:hover:not(.ghost):not(.text) {
+      background: var(--control-glaze) var(--color-control-hover);
+    }
   }
 
   /* A word inside a sentence, not a control parked in one: it takes the type
@@ -256,10 +282,16 @@
     border-radius: var(--radius-md);
   }
 
-  .trigger.text:hover,
   .trigger.text[aria-expanded='true'] {
     background: var(--color-hover);
     color: inherit;
+  }
+
+  @media (hover: hover) {
+    .trigger.text:hover {
+      background: var(--color-hover);
+      color: inherit;
+    }
   }
 
   .popover {
@@ -268,7 +300,7 @@
     left: 0;
     min-width: 200px;
     max-width: 320px;
-    padding: 4px;
+    padding: var(--space-1);
     background: var(--color-surface-2);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
@@ -316,10 +348,10 @@
     flex-direction: column;
     align-items: flex-start;
     justify-content: center;
-    gap: 4px;
+    gap: var(--space-1);
     height: auto;
     min-height: var(--control);
-    padding: 4px 8px;
+    padding: var(--space-1) var(--space-2);
     border: none;
     border-radius: var(--radius-sm);
     background: transparent;
@@ -328,10 +360,13 @@
     white-space: normal;
   }
 
-  .item:hover:not(:disabled),
-  .item:focus-visible {
-    background: var(--color-hover);
-    outline: none;
+  /* Hover fills only where a pointer hovers: under a finger the last row
+     touched kept its fill after the sheet opened or the press ended. Keyboard
+     focus wears the shared accent ring (app.css). */
+  @media (hover: hover) {
+    .item:hover:not(:disabled) {
+      background: var(--color-hover);
+    }
   }
 
   /* A full width row does not shrink under the finger, it fills one step more. */

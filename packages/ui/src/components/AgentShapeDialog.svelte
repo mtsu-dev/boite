@@ -189,7 +189,7 @@
   .blocks li + li, .tools-list li + li { margin-top: 2px; }
   summary { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 8px; border-radius: var(--radius-md); cursor: pointer; list-style: none; font-size: var(--text-sm); }
   summary::-webkit-details-marker { display: none; }
-  summary:hover, summary:focus-visible { background: var(--color-hover); outline: none; }
+  summary:hover, summary:focus-visible { background: var(--color-hover); }
   summary :global(.caret) { flex: none; color: var(--color-muted-foreground); transition: transform var(--dur-2) var(--ease-out-quint); }
   details[open] summary :global(.caret) { transform: rotate(90deg); }
   .label { flex: none; }

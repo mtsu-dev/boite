@@ -19,7 +19,7 @@ afterEach(async () => {
   vi.restoreAllMocks(); document.body.innerHTML = ''; localStorage.clear();
 });
 
-test('phone rows mark linked PRs without a branch, using their owning machine, and the mark opens the PR', async () => {
+test('a phone row gives its title the width: a linked pull request stays in the thread, off the row', async () => {
   vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
     media, matches: true, onchange: null, addListener() {}, removeListener() {}
   }));
@@ -27,20 +27,13 @@ test('phone rows mark linked PRs without a branch, using their owning machine, a
   store = new Store(); store.attach(client); await store.connect();
   const thread = store.threads.find(t => !t.parentThreadId && !t.archived && t.projectId !== null)!;
   thread.branch = null;
-  const url = 'https://github.com/example/repo/pull/9951';
-  await client.call('threads.linkPullRequest', { threadId: thread.id, url });
+  await client.call('threads.linkPullRequest', { threadId: thread.id, url: 'https://github.com/example/repo/pull/9951' });
   workspace.machines = [{ id: 'local', label: 'Local', store }]; workspace.active = store;
   mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'threads' } });
   await settle();
-  const badge = document.querySelector<HTMLElement>(`[data-thread-id="${thread.id}"] [data-testid=thread-pr]`);
-  expect(badge?.textContent).toContain('#9951');
-  // The mark sits on the row's one line; a tap on it opens the pull request, not the conversation.
-  const opened = vi.spyOn(window, 'open').mockReturnValue(null);
-  const before = store.openThread?.id;
-  badge!.click();
-  await settle();
-  expect(opened).toHaveBeenCalledWith(url, '_blank', 'noopener,noreferrer');
-  expect(store.openThread?.id).toBe(before);
+  const row = document.querySelector<HTMLElement>(`[data-testid=mobile-row][data-thread-id="${thread.id}"]`)!;
+  expect(row.querySelector('.title')?.textContent).toBe(thread.title);
+  expect(row.querySelector('[data-testid=thread-pr]')).toBeNull();
 });
 
 test('Activity gives each row its reason and its time, a sub-agent under its parent', async () => {

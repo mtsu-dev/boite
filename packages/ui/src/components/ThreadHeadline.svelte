@@ -1,3 +1,13 @@
+<script module lang="ts">
+  import { fill, strings } from '../lib/strings';
+  import type { ThreadSummary as Summary } from '@boite/contracts';
+
+  /** The pull request in words, for the mark and for the row's tooltip. */
+  export function pullRequestLabel(pullRequest: NonNullable<Summary['pullRequest']>): string {
+    return fill(pullRequest.state === 'MERGED' ? strings.sidebar.prMerged : pullRequest.state === 'CLOSED' ? strings.sidebar.prClosed : strings.sidebar.prOpen, { number: String(pullRequest.number) });
+  }
+</script>
+
 <script lang="ts">
   import { GitMerge, GitPullRequest, GitPullRequestClosed, PencilLine, Pin } from '@lucide/svelte';
   import type { Project, ThreadSummary } from '@boite/contracts';
@@ -5,7 +15,6 @@
   import { hasUnsentDraft } from '../lib/composer-queue';
   import { threadState } from '../lib/thread-state';
   import { openExternal } from '../lib/links';
-  import { fill, strings } from '../lib/strings';
   import ProjectTile from './ProjectTile.svelte';
   import ThreadState from './ThreadState.svelte';
 
@@ -36,7 +45,7 @@
     pullRequest?: ThreadSummary['pullRequest'];
   } = $props();
   let draft = $derived(!open && hasUnsentDraft(owner.composerStates[thread.id]));
-  const prLabel = $derived(pullRequest && fill(pullRequest.state === 'MERGED' ? strings.sidebar.prMerged : pullRequest.state === 'CLOSED' ? strings.sidebar.prClosed : strings.sidebar.prOpen, { number: String(pullRequest.number) }));
+  const prLabel = $derived(pullRequest && pullRequestLabel(pullRequest));
   function openPullRequest(event: MouseEvent) {
     if (!pullRequest) return;
     event.stopPropagation();

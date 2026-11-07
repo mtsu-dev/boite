@@ -1,9 +1,10 @@
 <script lang="ts">
-  import { ChevronRight, CircleAlert } from '@lucide/svelte';
+  import { ChevronRight, CircleAlert, RotateCcw } from '@lucide/svelte';
   import { strings } from '../lib/strings';
   import type { Snippet } from 'svelte';
 
-  let { message, reconnect, history }: { message: string; reconnect?: () => void; history?: Snippet } = $props();
+  /** `retry` sends the turn's prompt again: an error that stopped the work carries the one action that resumes it. */
+  let { message, reconnect, retry, history }: { message: string; reconnect?: () => void; retry?: () => void; history?: Snippet } = $props();
 
   // Prefer the specific refusal over the provider's generic server-error prefix.
   const code = /\b(?:API Error|HTTP(?: status)?|status)[\s:]+([45]\d{2})\b/i;
@@ -26,6 +27,8 @@
     <p class="description" class:detailed data-testid="error-description">{description}</p>
     {#if reconnect}
       <button type="button" class="quiet small reconnect" data-testid="error-reconnect" onclick={reconnect}><span class="ui-label">{strings.connect.reconnect}</span></button>
+    {:else if retry}
+      <button type="button" class="quiet small reconnect" data-testid="error-retry" onclick={retry}><RotateCcw size={13} strokeWidth={1.75} /><span class="ui-label">{strings.chat.retry}</span></button>
     {/if}
     {#if history}
       {@render history()}
@@ -47,7 +50,7 @@
   .code { color: var(--color-muted-foreground); font-family: var(--font-mono); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
   .description { margin: 2px 0 0; color: var(--color-muted-foreground); font-size: var(--text-sm); line-height: 1.6; overflow-wrap: anywhere; }
   .description.detailed { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
-  .reconnect { margin-top: 10px; }
+  .reconnect { margin-top: 10px; gap: 6px; }
   details { margin-top: 6px; }
   summary { display: flex; align-items: center; gap: 5px; width: fit-content; min-height: var(--control-sm); color: var(--color-muted-foreground); font-size: var(--text-xs); cursor: pointer; list-style: none; border-radius: var(--radius-sm); }
   summary::-webkit-details-marker { display: none; }

@@ -90,6 +90,12 @@ test("a phone's header is back, the title and one menu: the thread's tools, then
   // Tools before the thread's own actions: the browser once, rename and archive under the second heading.
   expect(rows.indexOf('phone-browser-toggle')).toBeLessThan(rows.indexOf('This thread'));
   expect(rows.indexOf('rename')).toBeGreaterThan(rows.indexOf('This thread'));
+  // Six places at most before the thread's actions, "All tools" last for the rest, and no row twice.
+  const tools = rows.slice(rows.indexOf('Tools') + 1, rows.indexOf('This thread'));
+  expect(tools.length).toBeLessThanOrEqual(6);
+  expect(tools.at(-1)).toBe('panel');
+  const ids = rows.filter(row => row && !['Tools', 'This thread'].includes(row) && !/^sep-/.test(row));
+  expect(new Set(ids).size).toBe(ids.length);
   expect(menu.textContent).not.toMatch(/contact/i);
   expect([...menu.querySelectorAll('[data-row]')].filter(row => row.textContent?.trim() === 'Browser')).toHaveLength(1);
   menu.querySelector<HTMLButtonElement>('[data-value="phone-browser-toggle"]')!.click(); await settle();
@@ -108,4 +114,14 @@ test("a desktop header's panel button opens the panel and its list holds the pan
   expect([store.panelOpen, store.panel.active?.kind]).toEqual([true, 'changes']);
   document.querySelector<HTMLButtonElement>('[data-testid=panel-toggle]')!.click(); await settle();
   expect(store.panelOpen).toBe(false);
+});
+
+test("a desktop header names its place, project then title, and the project brings the thread list back", async () => {
+  await start();
+  const crumb = document.querySelector<HTMLButtonElement>('[data-testid=thread-project-crumb]')!;
+  expect(crumb.textContent?.trim()).toBeTruthy();
+  expect(crumb.compareDocumentPosition(document.querySelector('[data-testid=thread-title]')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  store.sidebarCollapsed = true;
+  crumb.click(); await settle();
+  expect(store.sidebarCollapsed).toBe(false);
 });

@@ -2,7 +2,6 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import type { EffortLevel } from '@boite/contracts';
 import EffortSlider from './EffortSlider.svelte';
-import ComposerOptions from './ComposerOptions.svelte';
 
 const LEVELS: EffortLevel[] = [
   { id: 'off', label: 'Off' },
@@ -66,21 +65,4 @@ test('the Default switch is absent while the agent already picks, and for a mode
   document.body.innerHTML = '';
   open('high', vi.fn());
   expect(document.querySelector('[data-testid=effort-default]')).toBeNull();
-});
-
-test('on a phone the options sheet offers Default first and sends no level for it', async () => {
-  vi.spyOn(window, 'matchMedia').mockImplementation(query => ({ matches: query === '(max-width: 720px)', media: query, addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList);
-  const oneffort = vi.fn();
-  mounted = mount(ComposerOptions, { target: document.body, props: {
-    levels: LEVELS, effort: 'high', agentDefault: true, speeds: [], speed: null, modes: ['default'], modeLabel: (mode: string) => mode, modeHint: () => '',
-    mode: 'default', worktree: null, canAttach: false, busy: false, onattach() {}, oneffort, onspeed() {}, onmode() {}, onworktree() {}
-  } });
-  flushSync();
-  query<HTMLButtonElement>('[data-testid=composer-options]').click();
-  flushSync();
-  const choices = Array.from(document.querySelectorAll<HTMLInputElement>('input[name=mobile-effort]'));
-  expect(choices.map(input => input.value)).toEqual(['', 'off', 'low', 'high']);
-  choices[0]!.click();
-  expect(oneffort).toHaveBeenCalledWith(null);
-  vi.restoreAllMocks();
 });

@@ -36,7 +36,7 @@
   .mail { display: grid; gap: 6px; padding: 14px 0; animation: rise var(--dur-3) var(--ease-out-quint); }
   :global(.mail) + .mail { border-top: 1px solid var(--color-border); }
   :global(h2) + .mail { padding-top: 0; }
-  .kicker { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+  .kicker { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; }
   .kicker .ui-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .age { margin-left: auto; flex: none; color: var(--color-subtle); font-weight: 500; text-transform: none; letter-spacing: 0; }
   .text { margin: 0; font-size: var(--text-base); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }

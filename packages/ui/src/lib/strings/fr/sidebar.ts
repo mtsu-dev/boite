@@ -27,6 +27,8 @@ export const fr: Translation = {
     displayOrder: 'Trier par',
     groupWorkingRow: 'Conversations en cours',
     groupIdleRow: 'Projets inactifs',
+    showDoneRow: 'Conversations terminées',
+    showDoneHint: 'Affiche les conversations terminées après les autres, dans Projets et Récent. Cet appareil seulement.',
     autoArchiveMergedPrHint: 'Une conversation en worktree quitte la liste pour Terminés une fois sa branche fusionnée. Son historique reste. S’applique à ce projet.',
     autoRemoveWorktreesHint: 'Une heure après que toutes les conversations d’un worktree sont terminées ou archivées, Boite supprime le worktree si rien ne se perd : son dernier commit est sur une autre branche, ou une pull request fusionnée a exactement ce commit. Une branche fusionnée part aussi. Les modifications non commitées restent toujours. S’applique à ce projet.',
     noActiveProjects: 'Aucune conversation à traiter.',
@@ -53,7 +55,7 @@ export const fr: Translation = {
       branchDeleted: 'La branche {branch} a été supprimée.',
       branchKept: 'La branche {branch} existe toujours.',
       archived: 'Remise dans Récent, cette conversation n’a plus de dossier où travailler.',
-      live: 'Un nouveau message ici n’a pas de dossier où s’exécuter. Démarrez une nouvelle conversation pour continuer.'
+      live: 'Un nouveau message ici n’a pas de dossier où s’exécuter.'
     },
     allProjects: 'Tous les projets',
     filterProject: 'Filtrer par projet',

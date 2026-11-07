@@ -215,7 +215,7 @@
   .provider + .provider { border-top: 1px solid var(--color-border); }
   summary { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-height: var(--row); padding: 6px 8px; margin: 0 -8px; cursor: pointer; list-style: none; border-radius: var(--radius-md); font-size: var(--text-sm); transition: background var(--dur-2) var(--ease-out-quint); }
   summary::-webkit-details-marker { display: none; }
-  summary:hover, summary:focus-visible { background: var(--color-hover); outline: none; }
+  summary:hover, summary:focus-visible { background: var(--color-hover); }
   summary :global(svg) { flex: none; }
   .name { font-weight: 500; }
   .found { flex: 1; min-width: 0; color: var(--color-muted-foreground); }
@@ -252,7 +252,7 @@
   .when { flex: none; color: var(--color-subtle); font-variant-numeric: tabular-nums; }
   .what { flex: 1; min-width: 0; }
   .bit { display: inline-block; max-width: 100%; overflow-wrap: anywhere; }
-  .verdict { flex: none; margin-left: auto; font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--color-muted-foreground); }
+  .verdict { flex: none; margin-left: auto; font-size: var(--text-xs); font-weight: 600; color: var(--color-muted-foreground); }
   .verdict.blocked { color: var(--color-foreground); }
   .verdict.failed { color: var(--color-danger); }
   .verdict.skipped { color: var(--color-live); }

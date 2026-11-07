@@ -4,6 +4,7 @@
   import type { QuestionAnswer, QuestionOption } from '@boite/contracts';
   import { keepFocus } from '../lib/focus';
   import { fill, strings } from '../lib/strings';
+  import CodeText from './CodeText.svelte';
 
   let {
     text,
@@ -126,7 +127,7 @@
       <div>
         {#if built}
           <div class="answer-detail">
-            <p class="prompt" data-testid="question-text">{text}</p>
+            <p class="prompt" data-testid="question-text"><CodeText {text} /></p>
             <p>{summary(answer)}</p>
             {#if answer.attachments?.length}
               <p class="muted">{fill(strings.media.answerFiles, { names: fileNames(answer) })}</p>
@@ -146,7 +147,7 @@
   {#if docked}
     <div class="dock-head">
       <span class="tag"><span class="ui-label">{strings.chat.questionAsyncHeading}</span></span>
-      <p class="prompt" class:folded data-testid="question-text">{text}</p>
+      <p class="prompt" class:folded data-testid="question-text"><CodeText {text} /></p>
       {@render head?.()}
       {#if pending && skip}
         <button type="button" class="ghost skip" data-testid="question-skip" disabled={sent} onmousedown={keepFocus} onclick={pass}><span class="ui-label">{strings.chat.questionSkip}</span></button>
@@ -157,7 +158,7 @@
       <span class="glyph"><MessageCircleQuestionMark size={15} strokeWidth={1.75} /></span>
       <span class="muted ui-label">{async ? strings.chat.questionAsyncHeading : strings.chat.questionHeading}</span>
     </div>
-    <p class="prompt" data-testid="question-text">{text}</p>
+    <p class="prompt" data-testid="question-text"><CodeText {text} /></p>
   {/if}
   {#if !folded}
   {#if async && answer === null && pending && !docked}
@@ -189,9 +190,9 @@
             </span>
             {/if}
             <span class="labels">
-              <span class="label">{option.label}</span>
+              <span class="label"><CodeText text={option.label} /></span>
               {#if option.description}
-                <span class="muted description">{option.description}</span>
+                <span class="muted description"><CodeText text={option.description} /></span>
               {/if}
             </span>
           </button>
@@ -390,7 +391,6 @@
   }
 
   .option:focus-visible {
-    outline: none;
     border-color: var(--color-edge);
     background: var(--color-surface-2);
   }

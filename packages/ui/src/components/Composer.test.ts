@@ -441,9 +441,27 @@ test('Ctrl+S folds the sidebar without stashing, and Ctrl+Shift+S stashes and re
   expect(press('s', { ctrlKey: true, shiftKey: true })).toBe(false);
 });
 
-/** The reasoning chip of the composer bar, or null while the model offers no scale. */
+/** Effort and permission are rows of the model chip's popover: open it, then find the row. */
+function inPicker(testid: string): HTMLElement | null {
+  if (!document.querySelector('[data-testid=composer-picker-menu]')) {
+    document.querySelector<HTMLElement>('[data-testid=composer-picker]')?.click();
+    flushSync();
+  }
+  return document.querySelector<HTMLElement>(`[data-testid=${testid}]`);
+}
+
+/** The "+" holds attach, mention, commands and the worktree switch: open it, then find the item. */
+function plusItem(testid: string): HTMLElement | null {
+  if (!document.querySelector('[data-testid=composer-options-sheet]')) {
+    document.querySelector<HTMLElement>('[data-testid=composer-options]')?.click();
+    flushSync();
+  }
+  return document.querySelector<HTMLElement>(`[data-testid=${testid}]`);
+}
+
+/** The reasoning row of the model chip, or null while the model offers no scale. */
 function effortChip(): HTMLElement | null {
-  return document.querySelector<HTMLElement>('[data-testid=composer-effort]');
+  return inPicker('composer-effort');
 }
 
 /** The level names the open reasoning slider writes under its track, in order. */
@@ -546,10 +564,8 @@ test('a model with no reasoning scale gets no chip at all', async ({ app: _app }
   await openDraft();
   await waitFor(() => effortChip() !== null);
 
-  // Haiku 4.5 is the one legacy model the descriptor gives no levels.
-  query<HTMLButtonElement>('[data-testid=composer-picker]').click();
-  await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') !== null);
-  query<HTMLButtonElement>('[data-testid=picker-legacy]').click();
+  // Haiku 4.5 is the one legacy model the descriptor gives no levels; the chip is open on its effort row already.
+  inPicker('picker-legacy')!.click();
   await waitFor(() => document.querySelector('[data-model="claude-haiku-4-5-20251001"]') !== null);
   query<HTMLButtonElement>('[data-model="claude-haiku-4-5-20251001"]').click();
 
@@ -568,8 +584,8 @@ test('a first run shows the reasoning, mode and worktree chips at their defaults
   await waitFor(() => effortChip() !== null);
   // The built-in entry shows the scale at once; the account's catalog adds the fast mode.
   await waitFor(() => store.modelOf(store.defaultChoice())?.speeds !== undefined);
-  query('[data-testid=composer-mode]');
-  expect(query('[data-testid=composer-worktree]').getAttribute('aria-pressed')).toBe('false');
+  expect(inPicker('composer-mode')).not.toBeNull();
+  expect(plusItem('composer-worktree')?.getAttribute('aria-checked')).toBe('false');
   expect(document.querySelector('[data-testid=composer-more]')).toBeNull();
 
   effortChip()!.click();
@@ -579,9 +595,11 @@ test('a first run shows the reasoning, mode and worktree chips at their defaults
   const heading = query('[data-testid=composer-effort-menu] .heading');
   expect(heading.firstElementChild?.getAttribute('data-testid')).toBe('effort-speed');
   expect(document.querySelector('[data-testid=effort-fast-mark]')).toBeNull();
+  // A real click focuses the switch, so the Escape after it lands in the effort popover, not the model list.
+  query<HTMLButtonElement>('[data-testid=effort-speed]').focus();
   query<HTMLButtonElement>('[data-testid=effort-speed]').click();
   await waitFor(() => document.querySelector('[data-testid=effort-speed-label]')?.textContent === 'Fast');
-  // Switched on, the chip carries a bolt, so the choice shows with the popover shut.
+  // Switched on, the effort row carries a bolt, so the choice shows with its popover shut.
   press('Escape');
   await waitFor(() => document.querySelector('[data-testid=composer-effort-menu]') === null);
   query('[data-testid=effort-fast-mark]');
@@ -1171,8 +1189,8 @@ function loaded(): boolean {
 test('a pasted image becomes a chip, comes off again, and rides the prompt', async ({ app: _app }) => {
   await store.open('t-trace');
   await waitFor(() => store.openThread?.id === 't-trace' && !store.busy);
-  // The echo agent reads images, so the chip bar offers the paperclip.
-  await waitFor(() => document.querySelector('[data-testid=composer-attach]') !== null);
+  // The echo agent reads images, so the bar offers its "+" with the paperclip in it.
+  await waitFor(() => document.querySelector('[data-testid=composer-options]') !== null);
 
   paste(pngFile());
   await waitFor(() => chips().length === 1 && loaded());
@@ -1253,7 +1271,7 @@ test('a pasted image becomes a chip, comes off again, and rides the prompt', asy
 test('a picture tile draws a small thumbnail, the preview the bytes by URL, both revoked when it leaves', async ({ app: _app }) => {
   await store.open('t-trace');
   await waitFor(() => store.openThread?.id === 't-trace' && !store.busy);
-  await waitFor(() => document.querySelector('[data-testid=composer-attach]') !== null);
+  await waitFor(() => document.querySelector('[data-testid=composer-options]') !== null);
   let made = 0;
   const created = vi.fn((blob: Blob) => `blob:test/${++made}-${blob.type}`);
   const revoked = vi.fn();
@@ -1765,7 +1783,7 @@ test('a provider that reads no image still takes files and refuses an image past
   await waitFor(() => store.draft !== null);
   await waitFor(() => store.defaultChoice()?.providerId === 'opencode');
 
-  expect(document.querySelector('[data-testid=composer-attach]')).not.toBeNull();
+  expect(plusItem('composer-attach')).not.toBeNull();
 
   paste(pngFile());
   await waitFor(() => store.error !== null);
@@ -1812,19 +1830,19 @@ test('permission menu offers YOLO beside Auto and preserves legacy modes until p
   await waitFor(() => !store.busy);
   for (const legacy of ['plan', 'dontAsk'] as const) {
     store.openThread!.permissionMode = legacy;
-    await waitFor(() => query('[data-testid=composer-mode]').textContent?.trim() === (legacy === 'plan' ? 'Plan' : 'Auto-deny'));
+    await waitFor(() => inPicker('composer-mode')?.textContent?.trim() === (legacy === 'plan' ? 'Plan' : 'Auto-deny'));
     expect(store.openThread?.permissionMode).toBe(legacy);
   }
-  query('[data-testid=composer-mode]').click();
+  inPicker('composer-mode')!.click();
   await waitFor(() => document.querySelector('[data-testid=composer-mode-menu]') !== null);
   const menu = query('[data-testid=composer-mode-menu]');
   expect(Array.from(menu.querySelectorAll('.label')).map(row => row.textContent?.trim())).toEqual(['YOLO', 'Auto', 'Edit freely', 'Ask']);
   for (const [mode, label] of [['yolo', 'YOLO'], ['bypassPermissions', 'Auto'], ['acceptEdits', 'Edit freely'], ['default', 'Ask']]) {
     query(`[data-testid=composer-mode-menu] [data-value="${mode}"]`).click();
     await waitFor(() => store.openThread?.permissionMode === mode);
-    expect(query('[data-testid=composer-mode]').textContent?.trim()).toBe(label);
+    expect(inPicker('composer-mode')?.textContent?.trim()).toBe(label);
     await new Promise(resolve => setTimeout(resolve, 180));
-    query('[data-testid=composer-mode]').click();
+    inPicker('composer-mode')!.click();
     await waitFor(() => document.querySelector('[data-testid=composer-mode-menu]') !== null);
   }
 });

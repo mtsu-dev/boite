@@ -17,6 +17,9 @@
   import NotificationKinds from './NotificationKinds.svelte';
   import SyncMark from './SyncMark.svelte';
   import PolicySettings from './PolicySettings.svelte';
+  import WorkspaceCard from './WorkspaceCard.svelte';
+  import { untrack } from 'svelte';
+  import { readTerminalGpu, setTerminalGpu } from '../lib/terminal-cursor';
 
   /**
    * What the app does for the person in front of it: how a thread
@@ -27,6 +30,7 @@
   let { store, here = store }: { store: Store; here?: Store } = $props();
   const uid = $props.id();
   const inShell = window.__TAURI_INTERNALS__ !== undefined;
+  let terminalGpu = $state(untrack(() => readTerminalGpu()));
 
   /** A switch saves when it flips, as every other switch in Settings does; a refusal puts it back. */
   async function toggle(key: 'asyncQuestions' | 'shortAnswers' | 'toolSummaries', input: HTMLInputElement) {
@@ -77,6 +81,7 @@
     {/if}
   </section>
 
+  <WorkspaceCard />
   <ArchivedThreads {store} />
   <WorktreesCard {store} />
   <WindowAllowlistCard {store} />
@@ -88,6 +93,12 @@
   <section class="card" id="settings-app">
     <h2>{strings.settings.app}</h2>
     {#if inShell}<ShellSettings />{/if}
+    <!-- How this device draws a terminal: a renderer choice, once under Appearance. -->
+    <label for="{uid}-terminal-gpu" class="switch-row">
+      <span class="text ui-label-box"><span class="ui-label" id="{uid}-terminal-gpu-name">{strings.settings.terminalGpu}</span><InfoTip topic={strings.settings.terminalGpu} text={strings.settings.terminalGpuHint} /></span>
+      <input id="{uid}-terminal-gpu" aria-labelledby="{uid}-terminal-gpu-name" type="checkbox" role="switch" checked={terminalGpu} data-testid="terminal-gpu"
+        onchange={(event) => { terminalGpu = event.currentTarget.checked; setTerminalGpu(terminalGpu); }} />
+    </label>
     <div class="switch-row">
       <span class="text">
         <span>{strings.onboarding.label}</span>

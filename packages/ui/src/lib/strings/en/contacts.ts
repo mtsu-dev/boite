@@ -46,7 +46,6 @@ export const strings = {
     requests: {
       title: 'Requests',
       review: 'Review the contact request',
-      pending: '{count} contact requests waiting',
       asks: '{contact} asks',
       asked: 'You asked {contact}',
       remote: 'Git remote',
@@ -95,8 +94,7 @@ export const strings = {
       deliverTip: 'The agent of {thread} reads it as written.',
       refuse: 'Refuse',
       refuseTip: 'The sender reads that you refused it.',
-      details: 'Details',
-      pending: '{count} contact messages waiting'
+      details: 'Details'
     },
     invite: {
       title: 'Invite someone',

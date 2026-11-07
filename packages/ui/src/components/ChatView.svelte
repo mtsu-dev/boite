@@ -188,7 +188,7 @@
 
     {#if thread}<ThreadRecovery {store} /><ThreadRetry {store} />{/if}
     {#if store.openProject?.missing === true && !thread?.agentSessionId}<FolderGoneNotice {store} project={store.openProject} />{/if}
-    {#if thread?.worktreeRemoved}<WorktreeGoneNotice removal={thread.worktreeRemoved} archived={thread.archived} />{/if}
+    {#if thread?.worktreeRemoved}<WorktreeGoneNotice {store} projectId={thread.projectId ?? null} removal={thread.worktreeRemoved} archived={thread.archived} />{/if}
     {#if thread?.contactHold && !thread.archived}<ContactHoldNotice {store} threadId={thread.id} contacts={thread.contactHold.contacts} />{/if}
     {#if locked}<p class="locked" data-testid="chat-locked">{locked}</p>
     {:else if thread?.archived}<DoneThreadNotice {store} threadId={thread.id} />{:else}<Composer {store} centered={!thread && !sending} />{/if}

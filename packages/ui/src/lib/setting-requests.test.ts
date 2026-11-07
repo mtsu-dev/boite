@@ -14,7 +14,7 @@ test('Show and Open are offered only where this client draws the target card', (
   expect(settingsReachable(open('experiments', 'device-stream'), { owner: true, phone: true })).toBe(true);
   // A phone browser lacks the desktop's General, Advanced and pairing cards.
   expect(settingsReachable(open('resources', 'limits'), { owner: true, phone: true })).toBe(true);
-  expect(settingsReachable(open('general', 'conversations'), { owner: true, phone: true })).toBe(false);
+  expect(settingsReachable(open('general', 'conversations'), { owner: true, phone: true })).toBe(true);
   expect(settingsReachable(open('advanced', 'origins'), { owner: true, phone: true })).toBe(false);
   expect(settingsReachable(open('machines', 'devices'), { owner: true, phone: true })).toBe(false);
   expect(settingsReachable(open('advanced', 'origins'), { owner: true, phone: false })).toBe(true);

@@ -37,6 +37,6 @@ export const fr: Translation = {
     feed: { asks: 'Demande : {text}', run: 'Veut lancer {command}', helperAsks: '{title} vous demande' },
     navigation: 'Navigation', activity: 'Activité',
     waitingElsewhere: '{count} en attente de vous',
-    search: 'Trouver une conversation', noActivity: "Aucun agent n'attend votre réponse.", noThreads: 'Aucune conversation ne correspond.'
+    search: 'Trouver une conversation', noThreads: 'Aucune conversation ne correspond.'
   }
 };

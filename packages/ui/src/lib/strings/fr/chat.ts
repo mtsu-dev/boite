@@ -75,6 +75,8 @@ export const fr: Translation = {
     diffRemoved: '-{count}',
     noOutput: 'Aucune sortie',
     toolExitCode: 'Code de sortie {code}',
+    /** A failed step's mark when no exit code says more. */
+    toolFailed: 'Échec',
     toolCommandFailed: 'Aucun diagnostic signalé. Consultez la sortie complète ci-dessous.',
     showAll: 'Tout afficher',
     toolStatus: {

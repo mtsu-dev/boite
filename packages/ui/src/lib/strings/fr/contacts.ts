@@ -45,7 +45,6 @@ export const fr: Translation = {
     requests: {
       title: 'Demandes',
       review: 'Voir la demande du contact',
-      pending: '{count} demandes de contacts en attente',
       asks: '{contact} demande',
       asked: 'Vous avez demandé à {contact}',
       remote: 'Remote git',
@@ -90,8 +89,7 @@ export const fr: Translation = {
       deliverTip: 'L\'agent de {thread} le lit tel quel.',
       refuse: 'Refuser',
       refuseTip: 'L\'expéditeur lit que vous l\'avez refusé.',
-      details: 'Détails',
-      pending: '{count} messages de contacts en attente'
+      details: 'Détails'
     },
     invite: {
       title: 'Inviter quelqu\'un',

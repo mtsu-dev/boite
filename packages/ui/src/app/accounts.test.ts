@@ -108,7 +108,7 @@ test('a thread on a signed-out account offers the sign-in only once no other acc
   await waitFor(() => store.threads.some((entry) => entry.id === thread.id));
   await store.open(thread.id);
   // The signed-in main account takes the next send over, so nothing asks to sign in.
-  await waitFor(() => document.querySelector('[data-testid=composer-attach]') !== null);
+  await waitFor(() => document.querySelector('[data-testid=composer-options]') !== null);
   expect(document.querySelector('[data-testid=composer-reconnect]')).toBeNull();
   for (const entry of store.accounts) if (entry.providerId === 'claude') entry.status = 'unauthenticated';
   await waitFor(() => document.querySelector('[data-testid=composer-reconnect]') !== null);

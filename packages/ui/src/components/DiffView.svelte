@@ -203,7 +203,7 @@
   .rows {
     max-height: 320px;
     overflow-y: auto;
-    /* Long lines wrap inside the row: the page never scrolls sideways. */
+    /* Long lines wrap inside the row on a wide column; a phone scrolls them (below). */
     overflow-x: hidden;
     padding: 4px 0;
   }
@@ -303,5 +303,15 @@
     color: var(--color-subtle);
     background: var(--color-surface-3);
     font-size: var(--text-sm);
+  }
+
+  /* A phone's column is too narrow to wrap code: a line broken mid-token
+     reads as two. Lines keep their shape and the rows scroll sideways
+     together, one track as wide as the longest, so every tint runs full. */
+  @media (max-width: 720px) {
+    .rows { display: grid; grid-template-columns: minmax(100%, max-content); overflow-x: auto; overscroll-behavior-x: contain; }
+    .text { white-space: pre; word-break: normal; }
+    .row.gap .text { white-space: nowrap; }
+    .more { justify-self: start; }
   }
 </style>

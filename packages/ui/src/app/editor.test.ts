@@ -1,5 +1,6 @@
 import { expect, vi } from 'vitest';
 import { flushSync } from 'svelte';
+import type { ThreadId } from '@boite/contracts';
 import { confirm } from '../lib/confirm.svelte';
 import { restoreThread } from '../lib/archive';
 import { store } from '../lib/store.svelte';
@@ -57,7 +58,8 @@ test('the tree of one thread is not shown for the next: a thread switch starts i
   store.panel.openFiles();
   await waitFor(() => treePaths().length > 0);
 
-  query<HTMLButtonElement>('[data-thread-id="t-bench"]').click();
+  // A docked panel takes the thread list's column: the switch goes through the store, as the palette's does.
+  void store.open('t-bench' as ThreadId);
   await waitFor(() => store.openThread?.id === 't-bench');
   store.panel.closeAll();
   store.panel.openFiles();
@@ -65,13 +67,13 @@ test('the tree of one thread is not shown for the next: a thread switch starts i
   query<HTMLButtonElement>('[data-testid=files-row][data-path="docs"]').click();
   await waitFor(() => treePaths().includes('docs/panel.md'));
 
-  query<HTMLButtonElement>('[data-thread-id="t-trace"]').click();
+  void store.open('t-trace' as ThreadId);
   await waitFor(() => store.openThread?.id === 't-trace');
   await waitFor(() => treePaths().length > 0 && !treePaths().includes('docs/panel.md'));
   expect(query('[data-testid=files-row][data-path="docs"]').getAttribute('aria-expanded')).toBe('false');
 
   store.panel.closeAll();
-  query<HTMLButtonElement>('[data-thread-id="t-bench"]').click();
+  void store.open('t-bench' as ThreadId);
   await waitFor(() => store.openThread?.id === 't-bench');
   store.panel.closeAll();
 });

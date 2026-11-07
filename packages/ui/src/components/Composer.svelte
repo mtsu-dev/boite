@@ -69,6 +69,7 @@
   let inputGutter = $state(0), measuredWidth = 0; // The box's scrollbar, which the paint layer leaves out; the width the last fit was for.
   let inputScroll = $state(0);
   let toolbar = $state<ReturnType<typeof ComposerBar> | undefined>(undefined);
+  let shell = $state<HTMLDivElement | undefined>(undefined);
   let attachmentStrip = $state<ReturnType<typeof ComposerAttachments> | undefined>();
   let highlightedImage = $state<Attachment | null>(null);
   /** Where ArrowUp stands in this thread's sent prompts, or null outside recall. */
@@ -322,6 +323,20 @@
     caret = box?.selectionEnd ?? text.length;
     const state = box && stateForInput(), start = box?.selectionStart ?? 0, end = box?.selectionEnd ?? 0;
     if (state && (state.selection?.start !== start || state.selection?.end !== end)) state.selection = { start, end };
+  }
+
+  /** The "+" menu's file mention: an `@` at the caret, a space before it when a word ends there. */
+  function startMention() {
+    const value = stateForInput().text, at = Math.min(caret, value.length);
+    const before = value.slice(0, at), lead = before === '' || /\s$/.test(before) ? '' : ' ';
+    put(before + lead + '@' + value.slice(at), at + lead.length + 1);
+    box?.focus();
+  }
+
+  /** The "+" menu's commands: the slash menu opens on an empty box only, the same way a typed `/` does. */
+  function startCommand() {
+    put('/');
+    box?.focus();
   }
 
   /** Writes a recalled or restored prompt in, caret at its end. One undo step, with whatever else the caller changes. */
@@ -728,7 +743,7 @@
   <div bind:offsetHeight={stripRoom}><ComposerQueueRegion {store} {key} {thread} {composer} main={!target} machine={machineLabel} {sendNow}
     blocked={text.length > 0 || attachments.length > 0 || previewReferences.length > 0} onrestore={restoreQueued} onsendnow={sendQueuedNow} /></div>
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="composer" class:dictating data-testid="composer" tabindex="-1" style:--strip-room="{stripRoom}px" {ondragover} {ondrop} onkeydown={(event) => {
+  <div class="composer" class:dictating data-testid="composer" tabindex="-1" bind:this={shell} style:--strip-room="{stripRoom}px" {ondragover} {ondrop} onkeydown={(event) => {
     if (event.target !== event.currentTarget || event.key !== 'Escape') return;
     // The touch focus target shares the box's Escape handling, including pending questions.
     onkeydown(event);
@@ -800,7 +815,8 @@
 
     <ComposerSpeechPreview status={speechStatus} preview={speechPreview} error={speechError} />
 
-    <ComposerBar bind:this={toolbar} {store} {key} {target} {bot} {provider} canSend={sendable} waiting={sendWhenLoaded !== null} answering={!!reply} sendLabel={reply ? strings.composer.replySend : undefined} bind:choice bind:picking bind:dictating
+    <ComposerBar bind:this={toolbar} {store} {key} {target} {bot} {provider} canSend={sendable} waiting={sendWhenLoaded !== null} answering={!!reply} composer={permission || docked ? shell ?? null : null}
+      onmention={!target && !reply && mentionProject !== null ? startMention : undefined} oncommand={!target && !reply && text.trim() === '' ? startCommand : undefined} sendLabel={reply ? strings.composer.replySend : undefined} bind:choice bind:picking bind:dictating
       onsubmit={() => void submit()}
       onfiles={(files) => void take(files)}
       onpreview={(text, status, error) => { speechPreview = text; speechStatus = status; speechError = error; }}
