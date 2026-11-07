@@ -57,7 +57,8 @@ models` lists the choices.
 | `task` | The brief. `{{step}}`, `{{step.field}}`, `{{item}}` and `{{index}}` are filled in when the step starts |
 | `after` | Steps that must end first. A step named in `forEach`, `when` or the task is added automatically |
 | `forEach` | A path to a list. The step runs once per item |
-| `when` | `{ "path", "equals" }`, `{ "path", "notEmpty": true }` or `{ "path", "empty": true }`. A false condition skips the step |
+| `when` | `{ "path", "equals" }`, `{ "path", "notEquals" }`, `{ "path", "in": [values] }`, `{ "path", "notEmpty": true }` or `{ "path", "empty": true }`, with a string, number, boolean or null. A false condition skips the step |
+| `repeat` | Optional. `{ "from", "until", "max" }` runs the steps from `from` to this one again until `until`, a condition like `when`, holds ([loops](#loops)) |
 | `output` | The JSON shape the step must return: `"string"`, `"number"`, `"boolean"`, `"any"`, `[shape]` or `{ "key": shape }` |
 | `worktree` | Optional. `true` runs the step in a git worktree of its own on a new branch from the conversation's HEAD, as `delegate spawn --worktree` does ([delegation](delegation.md#children-in-their-own-worktree)). The step's `worktree` record, `boite workflow show` and the run's summary name the branch to merge, or say it was removed with nothing in it |
 | `machine` | Optional. Another machine of the group, by name or core id prefix as `delegate spawn --machine` takes it. The step runs there ([below](#steps-on-another-machine)). Not with `compute` |
@@ -118,7 +119,10 @@ owner credential. Restart and cancellation keep the captured host/job identity.
 
 A path reads a step's structured output, or its final answer when it has none.
 On a fanned-out step, `review.bugs` collects the bugs of every item into one
-list. The core checks the whole plan before anything starts: a name that is no profile,
+list. A condition on such a path holds when every item matches: `equals`
+`"APPROVE"` on three reviews needs three approvals and `notEquals` is its exact
+opposite. An empty list holds no `equals`, `in` or `notEmpty`, so it holds
+`notEquals` and `empty`. The core checks the whole plan before anything starts: a name that is no profile,
 a model that is not installed or not allowed, a level the model lacks, cycles, a path to a step that does not exist and a bad shape are refused with
 the field named.
 
@@ -126,6 +130,41 @@ the field named.
 from an earlier step's output. `when` skips a step from one. `boite workflow
 extend <run-id> <steps>` adds steps to a run that is still running or paused,
 so an agent can plan the next phase after reading the first one.
+
+### Loops
+
+`repeat` closes a loop on the step that judges it:
+
+```json
+{ "id": "fix", "task": "Fix the lexer per issue 412." },
+{ "id": "review", "after": ["fix"], "task": "Review the lexer diff.",
+  "output": { "verdict": "string", "notes": "string" },
+  "repeat": { "from": "fix",
+              "until": { "path": "review.verdict", "equals": "APPROVE" },
+              "max": 3 } }
+```
+
+The loop is `from`, this step and every step between them. When this step
+ends and `until` does not hold, each step of the loop waits again and runs one
+more round in its own conversation, so it keeps what it did and read. Its
+prompt says which round it is, which condition failed, and, for the steps
+before the closing one, what that step answered in the last round: `fix` reads
+the review's notes without naming `review`, which comes after it. `max` counts
+the first round and goes from 2 to 10, 3 by default. Every round counts toward
+`maxSteps`.
+
+Once `max` rounds pass without the condition, the closing step fails with
+the condition in its error and the run fails the usual way. `boite workflow
+retry <run-id> <step>` on it runs one round more, so a parent that reads the
+last notes can push the loop on or give up.
+
+The plan check refuses a loop whose `from` is not this step or one it depends
+on, an `until` that reads a step outside the loop (its value would not change
+between rounds), `worktree`, `machine` or `compute` on a step of the loop,
+nested or overlapping loops, and a step outside the loop that reads one of its
+steps other than the closing one: a step that reads the loop reads it through
+the closing step, so it gets the round that held. `extend` may add a loop that starts on
+a step it adds.
 
 ## Structured output on every provider
 
@@ -164,7 +203,8 @@ there. A step's result is collected once its worktree is kept or removed.
 | Limit | Default | Maximum |
 | --- | --- | --- |
 | Steps in a plan | | 32 |
-| Executions in a run, fan-out included (`maxSteps`) | 24 | 64 |
+| Executions in a run, fan-out and loop rounds included (`maxSteps`) | 24 | 64 |
+| Rounds of a loop (`repeat.max`), the first included | 3 | 10 |
 | Executions running at once (`maxConcurrent`) | 3 | 8 |
 | Unfinished runs per conversation | | 3 |
 | Task after substitution | | 12,000 characters |
@@ -288,15 +328,26 @@ with more steps than fit turns the run into a plain list of phases. A card
 shows the step's status, its model, `done/total` and a segmented bar for a
 fan-out, and its elapsed time.
 
+A loop draws a dashed arc in the right margin, from the step that closes it
+back up to the step it starts from, with an arrow into that step and a repeat
+mark on the arc. The arc is amber while a step of the loop runs, green once its
+condition held and red once it ran out of rounds. The closing step's card
+carries the round out of `max`, as `2/3`, and the bare round once a retry went
+past `max`. In the list layout, without the arc, the closing step's card says
+which step the loop goes back to. A step's detail gives the loop's condition
+and the round the step is in.
+
 Clicking a step run by one subagent opens that subagent's conversation in the
 chat, under a "parent / step" header. A step with several executions, or none
-started yet, opens its detail: dependencies, condition, each execution and its
+started yet, opens its detail: dependencies, condition, loop, each execution and its
 structured output, with "Open conversation" for the execution picked. The arrow
 in the run's header goes back to the list. Templates are saved, listed and started from the
 CLI only.
 
 Captures: [the graph on the desktop](images/workflow-desktop.png) · [a step's
-detail](images/workflow-step.png) · [the graph on a phone](images/workflow-phone.png)
+detail](images/workflow-step.png) · [the graph on a phone](images/workflow-phone.png) ·
+[a loop in its second round](images/workflow-loop.png) · [the step that closes
+it](images/workflow-loop-step.png) · [the loop on a phone](images/workflow-loop-phone.png)
 
 ## Commands
 

@@ -74,3 +74,37 @@ test('on a phone the same run keeps its rows and arrows without scrolling sidewa
   await capture('workflow-phone.png');
   expect(page.errors()).toEqual([]);
 }, 30_000);
+
+test('a loop draws its arc from the closing step back to the first, live while its second round runs', async () => {
+  await page.send('Emulation.clearDeviceMetricsOverride', {});
+  // At the panel's default width, where two steps side by side leave the arc the least room.
+  await page.evaluate(`localStorage.removeItem('boite:right-panel-width')`);
+  await page.navigate(`${new URL(await page.evaluate<string>('location.href')).origin}/?fake=1&team=1&loop=1`);
+  await page.waitFor(`document.querySelector('${id('thread-row')}[data-thread-id="t-trace"]')`);
+  await page.click(`${id('thread-row')}[data-thread-id="t-trace"]`);
+  await page.waitFor(`document.querySelector('${id('workflow-activity')}')`);
+  await page.click(id('workflow-activity'));
+  await page.waitFor(`document.querySelector('${id('workflow-graph')}')?.dataset.layout === 'rows' && document.querySelector('${id('workflow-loop')}')`);
+  expect(await page.evaluate(`document.querySelector('${id('workflow-loop')}').dataset.state`)).toBe('live');
+  expect(await page.text('[data-node-id="review"] [data-testid="workflow-round"]')).toBe('2/3');
+  // The arc runs right of every card it passes, inside the graph.
+  expect(await page.evaluate(`(() => {
+    const arc = document.querySelector('${id('workflow-loop')}').getBoundingClientRect();
+    const cards = ['tests', 'fix', 'review'].map(id => document.querySelector('${id('workflow-node')}[data-node-id="' + id + '"]').getBoundingClientRect());
+    const graph = document.querySelector('${id('workflow-graph')}');
+    return arc.right > Math.max(...cards.map(c => c.right)) && arc.right <= graph.getBoundingClientRect().right && graph.scrollWidth <= graph.clientWidth;
+  })()`)).toBe(true);
+  await capture('workflow-loop.png');
+  // The closing step waits on its second round: its detail says where the loop goes back to and until what.
+  await page.evaluate(`document.querySelector('${id('workflow-node')}[data-node-id="review"]').click()`);
+  await page.waitFor(`document.querySelector('${id('workflow-detail-round')}')`);
+  expect(await page.text(id('workflow-detail'))).toContain('Repeats from Fix the lexer until review.verdict = "APPROVE", 3 rounds at most');
+  expect(await page.text(id('workflow-detail-round'))).toBe('Round 2 of 3');
+  await capture('workflow-loop-step.png');
+  await page.click(id('workflow-back'));
+  await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+  await page.waitFor(`document.querySelector('${id('workflow-loop')}')`);
+  expect(await page.evaluate(`document.documentElement.scrollWidth <= window.innerWidth`)).toBe(true);
+  await capture('workflow-loop-phone.png');
+  expect(page.errors()).toEqual([]);
+}, 40_000);

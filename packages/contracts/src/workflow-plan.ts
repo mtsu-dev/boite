@@ -3,7 +3,7 @@
  * plan validation with refusals that name the field, dependency levels,
  * `{{path}}` substitution and output shapes. No runtime imports.
  */
-import type { WorkflowCondition, WorkflowLimits, WorkflowPlan, WorkflowShape, WorkflowStepPlan } from './workflows';
+import type { WorkflowCondition, WorkflowLimits, WorkflowPlan, WorkflowRepeat, WorkflowScalar, WorkflowShape, WorkflowStepPlan } from './workflows';
 import { DEFAULT_WORKFLOW_LIMITS, WORKFLOW_LIMITS } from './workflows';
 import { ContextRequestError, resolveContext } from './context-mode';
 
@@ -58,15 +58,27 @@ function checkShapeDefinition(shape: unknown, field: string, depth = 0): Workflo
   fail(`${field}: expected "string", "number", "boolean", "any", [shape] or { key: shape }`);
 }
 
+const OPS = ['equals', 'notEquals', 'in', 'notEmpty', 'empty'] as const;
+const scalar = (value: unknown): value is WorkflowScalar => value === null || ['string', 'number', 'boolean'].includes(typeof value);
+
 function checkCondition(value: unknown, field: string): WorkflowCondition {
-  if (!isRecord(value)) fail(`${field}: expected { path, equals | notEmpty | empty }`);
+  if (!isRecord(value)) fail(`${field}: expected { path, equals | notEquals | in | notEmpty | empty }`);
   const path = pathSegments(value.path, `${field}.path`).join('.');
-  const ops = ['equals', 'notEmpty', 'empty'].filter(op => op in value);
-  if (ops.length !== 1) fail(`${field}: expected exactly one of equals, notEmpty or empty`);
-  if ('notEmpty' in value && value.notEmpty !== true) fail(`${field}.notEmpty: expected true`);
-  if ('empty' in value && value.empty !== true) fail(`${field}.empty: expected true`);
-  if ('equals' in value && !['string', 'number', 'boolean'].includes(typeof value.equals) && value.equals !== null) fail(`${field}.equals: expected a string, number, boolean or null`);
-  return { path, ...('equals' in value ? { equals: value.equals as WorkflowCondition['equals'] } : {}), ...(value.notEmpty ? { notEmpty: true as const } : {}), ...(value.empty ? { empty: true as const } : {}) };
+  const ops = OPS.filter(op => op in value);
+  if (ops.length !== 1) fail(`${field}: expected exactly one of equals, notEquals, in, notEmpty or empty`);
+  const op = ops[0]!;
+  if ((op === 'notEmpty' || op === 'empty') && value[op] !== true) fail(`${field}.${op}: expected true`);
+  if ((op === 'equals' || op === 'notEquals') && !scalar(value[op])) fail(`${field}.${op}: expected a string, number, boolean or null`);
+  if (op === 'in' && (!Array.isArray(value.in) || value.in.length === 0 || value.in.length > 32 || !value.in.every(scalar))) fail(`${field}.in: expected a list of 1 to 32 strings, numbers, booleans or null`);
+  return { path, [op]: value[op] } as WorkflowCondition;
+}
+
+/** A condition in a few words, such as `review.verdict = "APPROVE"`. */
+export function conditionText(condition: WorkflowCondition): string {
+  if (condition.notEmpty) return `${condition.path} is not empty`;
+  if (condition.empty) return `${condition.path} is empty`;
+  if ('in' in condition) return `${condition.path} in ${JSON.stringify(condition.in)}`;
+  return 'notEquals' in condition ? `${condition.path} != ${JSON.stringify(condition.notEquals)}` : `${condition.path} = ${JSON.stringify(condition.equals)}`;
 }
 
 /** The `{{...}}` references of a brief, as segment lists. */
@@ -87,8 +99,8 @@ export interface CheckedStep extends WorkflowStepPlan {
 export interface CheckOptions {
   /** The thread's delegation profile ids. A step may name one; without, it runs on the conversation's model. */
   profiles: string[];
-  /** Step ids already in the run, for `extend`, with their dependencies. */
-  existing?: { id: string; after: string[] }[];
+  /** Step ids already in the run, for `extend`, with their dependencies and the loops they close. */
+  existing?: { id: string; after: string[]; repeat?: { from: string } }[];
 }
 
 export function checkSteps(value: unknown, options: CheckOptions, field = 'steps'): CheckedStep[] {
@@ -151,13 +163,26 @@ export function checkSteps(value: unknown, options: CheckOptions, field = 'steps
     if (when) needStep(when.path.split('.'), `${at}.when.path`, false);
     for (const ref of templateRefs(task, `${at}.task`)) needStep(ref, `${at}.task`, forEach !== undefined);
     const output = raw.output === undefined ? undefined : checkShapeDefinition(raw.output, `${at}.output`);
+    let repeat: WorkflowRepeat | undefined;
+    if (raw.repeat !== undefined) {
+      const r = raw.repeat;
+      if (!isRecord(r)) fail(`${at}.repeat: expected { from, until, max }`);
+      if (typeof r.from !== 'string' || !ids.has(r.from)) fail(`${at}.repeat.from: expected this step or a step it depends on`);
+      const until = checkCondition(r.until, `${at}.repeat.until`);
+      // The step that closes the loop reads its own output there, the one place it may.
+      const head = until.path.split('.')[0]!;
+      if (head !== id) needStep([head], `${at}.repeat.until.path`, false);
+      const max = r.max ?? WORKFLOW_LIMITS.defaultRounds;
+      if (!Number.isSafeInteger(max) || (max as number) < 2 || (max as number) > WORKFLOW_LIMITS.rounds) fail(`${at}.repeat.max: expected an integer from 2 to ${WORKFLOW_LIMITS.rounds}, the first round included`);
+      repeat = { from: r.from, until, max: max as number };
+    }
     if (raw.worktree !== undefined && raw.worktree !== null && typeof raw.worktree !== 'boolean') fail(`${at}.worktree: expected true or false`);
     const context = raw.context === undefined || raw.context === null ? undefined : raw.context as WorkflowStepPlan['context'];
     // The shape here; whether the step's provider can honour it is checked with its route.
     if (context !== undefined) {
       try { resolveContext(context); } catch (error) { if (error instanceof ContextRequestError) fail(`${at}.${error.message}`); throw error; }
     }
-    return { id, ...(compute ? {compute} : {}), ...(machine ? { machine } : {}), ...(project ? { project } : {}), ...(profile &&(profile !== CONVERSATION_PROFILE || options.profiles.includes(profile)) ? { profile } : {}), ...(model ? { model } : {}), ...(effort ? { effort } : {}), ...(context !== undefined ? { context } : {}), task, deps: [...deps], ...(title ? { title } : {}), ...(raw.after ? { after: raw.after.map(String) } : {}), ...(forEach ? { forEach } : {}), ...(when ? { when } : {}), ...(output ? { output } : {}), ...(raw.worktree === true ? { worktree: true } : {}) };
+    return { id, ...(compute ? {compute} : {}), ...(machine ? { machine } : {}), ...(project ? { project } : {}), ...(profile &&(profile !== CONVERSATION_PROFILE || options.profiles.includes(profile)) ? { profile } : {}), ...(model ? { model } : {}), ...(effort ? { effort } : {}), ...(context !== undefined ? { context } : {}), task, deps: [...deps], ...(title ? { title } : {}), ...(raw.after ? { after: raw.after.map(String) } : {}), ...(forEach ? { forEach } : {}), ...(when ? { when } : {}), ...(output ? { output } : {}), ...(repeat ? { repeat } : {}), ...(raw.worktree === true ? { worktree: true } : {}) };
   });
   // Existing steps cannot depend on new ones, so a cycle can only run through the new ones.
   const graph = new Map<string, string[]>([...existing.map(s => [s.id, s.after] as const), ...steps.map(s => [s.id, s.deps] as const)]);
@@ -170,7 +195,65 @@ export function checkSteps(value: unknown, options: CheckOptions, field = 'steps
     state.set(id, 'closed');
   };
   for (const step of steps) visit(step.id, []);
+  checkLoops(steps, existing, graph, field);
   return steps;
+}
+
+/** Every step `id` depends on, directly or not. */
+function upstream(graph: Map<string, string[]>, id: string): Set<string> {
+  const found = new Set<string>();
+  const stack = [...graph.get(id) ?? []];
+  while (stack.length) {
+    const next = stack.pop()!;
+    if (found.has(next)) continue;
+    found.add(next);
+    stack.push(...graph.get(next) ?? []);
+  }
+  return found;
+}
+
+/** The steps a loop runs again: `from`, the step closing it and every step between them. */
+export function loopBody(steps: { id: string; after: string[] }[], from: string, to: string): Set<string> {
+  const graph = new Map(steps.map(s => [s.id, s.after] as const));
+  const before = upstream(graph, to);
+  return new Set([from, to, ...[...before].filter(id => upstream(graph, id).has(from))]);
+}
+
+/**
+ * A loop goes back to a step its closing step depends on, reads a step it runs
+ * again, and holds no other loop. A step it runs again stays here, in the
+ * shared checkout, so it reuses its conversation. A step outside the loop reads
+ * it only through the step that closes it, which ends once.
+ */
+function checkLoops(steps: CheckedStep[], existing: NonNullable<CheckOptions['existing']>, graph: Map<string, string[]>, field: string): void {
+  const all = [...existing.map(s => ({ id: s.id, after: s.after })), ...steps.map(s => ({ id: s.id, after: s.deps }))];
+  const at = (id: string) => `${field}[${steps.findIndex(s => s.id === id)}]`;
+  const loops: { to: string; body: Set<string> }[] = existing.filter(s => s.repeat).map(s => ({ to: s.id, body: loopBody(all, s.repeat!.from, s.id) }));
+  for (const step of steps) {
+    if (!step.repeat) continue;
+    const { from, until } = step.repeat;
+    if (from !== step.id && !upstream(graph, step.id).has(from)) fail(`${at(step.id)}.repeat.from: "${from}" is not a step ${step.id} depends on; a loop goes back to this step or one before it`);
+    if (existing.some(s => s.id === from)) fail(`${at(step.id)}.repeat.from: "${from}" is already in the run; extend adds a loop with every step it runs again`);
+    const body = loopBody(all, from, step.id);
+    const head = until.path.split('.')[0]!;
+    if (!body.has(head)) fail(`${at(step.id)}.repeat.until.path: ${head} is outside the loop from ${from}, so it would read the same each round`);
+    for (const id of body) {
+      const inner = steps.find(s => s.id === id);
+      if (!inner) continue;
+      if (id !== step.id && inner.repeat) fail(`${at(id)}.repeat: ${id} runs again in the loop of ${step.id}; loops do not nest`);
+      const away = inner.worktree ? 'worktree' : inner.machine !== undefined ? 'machine' : inner.compute ? 'compute' : null;
+      if (away) fail(`${at(id)}.${away}: ${id} runs again in the loop of ${step.id} and reuses its conversation in this checkout; drop ${away}`);
+    }
+    loops.push({ to: step.id, body });
+  }
+  for (const [i, loop] of loops.entries()) {
+    const shared = loops.slice(i + 1).find(other => [...other.body].some(id => loop.body.has(id)));
+    if (shared) fail(`${field}: the loops of ${loop.to} and ${shared.to} share steps; loops do not nest or overlap`);
+    for (const step of all) {
+      const inner = step.after.find(dep => dep !== loop.to && loop.body.has(dep));
+      if (inner && !loop.body.has(step.id)) fail(`${steps.some(s => s.id === step.id) ? at(step.id) : field}: ${step.id} reads ${inner}, which the loop of ${loop.to} runs again; make it wait for ${loop.to}`);
+    }
+  }
 }
 
 export function checkLimits(value: unknown, sharedCompute = false): WorkflowLimits {
@@ -228,7 +311,8 @@ export function workflowLevels(steps: { id: string; after: string[] }[]): string
  * Reads a path through step values. A name applied to a list maps over it and
  * flattens one level, so `review.bugs` is every item's bugs in one list.
  */
-export function resolvePath(root: Record<string, unknown>, segments: string[]): unknown {
+/** `missing` keeps an item of a fan-out that lacks the field as null, so a condition sees every item. */
+export function resolvePath(root: Record<string, unknown>, segments: string[], missing = false): unknown {
   let value: unknown = root;
   for (const segment of segments) {
     if (value === null || value === undefined) return null;
@@ -236,7 +320,7 @@ export function resolvePath(root: Record<string, unknown>, segments: string[]): 
       if (/^\d+$/.test(segment)) value = value[Number(segment)];
       else value = value.flatMap(entry => {
         const inner = isRecord(entry) ? entry[segment] : undefined;
-        return inner === undefined ? [] : Array.isArray(inner) ? inner : [inner];
+        return inner === undefined ? (missing ? [null] : []) : Array.isArray(inner) ? inner : [inner];
       });
     } else if (isRecord(value)) value = value[segment];
     else return null;
@@ -256,11 +340,18 @@ export function renderTask(task: string, root: Record<string, unknown>): string 
 }
 
 export function conditionHolds(condition: WorkflowCondition, root: Record<string, unknown>): boolean {
-  const value = resolvePath(root, condition.path.split('.'));
+  const segments = condition.path.split('.');
+  const value = resolvePath(root, segments);
   const empty = value === null || value === '' || value === false || (Array.isArray(value) && value.length === 0) || (isRecord(value) && Object.keys(value).length === 0);
   if (condition.notEmpty) return !empty;
   if (condition.empty) return empty;
-  return value === condition.equals;
+  // An item without the field is no match: two reviews of three approving is not all of them.
+  const compared = resolvePath(root, segments, true);
+  const target = 'notEquals' in condition ? condition.notEquals : condition.equals;
+  const one = (item: unknown) => condition.in ? condition.in.some(entry => entry === item) : item === target;
+  // A path through a fan-out reads a list: it matches when every item does.
+  const all = Array.isArray(compared) ? compared.length > 0 && compared.every(one) : one(compared);
+  return 'notEquals' in condition ? !all : all;
 }
 
 /** The first mismatch, as `path: expected ...`, or null when the value fits. */
