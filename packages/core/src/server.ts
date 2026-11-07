@@ -376,7 +376,7 @@ export function shutdownResponse(core: Core, request: Request, mode: 'now' | 'id
     const admission = core.requestIdleShutdown();
     if (admission === 'busy') return new Response('active work prevents installation; retry after it finishes', { status: 409 });
     if (admission === 'unsupported') return new Response('this embedded core has no process to stop', { status: 501 });
-  } else if (!core.requestShutdown()) return new Response('this embedded core has no process to stop', { status: 501 });
+  } else if (!core.requestShutdown(true)) return new Response('this embedded core has no process to stop', { status: 501 });
   return Response.json({ ok: true, pid: process.pid }, { status: 202 });
 }
 

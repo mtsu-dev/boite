@@ -155,6 +155,8 @@ after the start at the earliest.
 | Owner script | Same loopback POST with the owner token; returns 202, or 412 for a different PID |
 
 `SIGINT`, `SIGHUP`, `POST /shutdown` and `core.shutdown` stop without handoff.
+With the [keeper](keeper.md) on, thread shells stay running through every
+stop but `POST /shutdown` and `core.shutdown`, and the next core takes them back.
 `POST /shutdown-if-idle` refuses a busy core; the manual Windows installer uses
 that path. See [desktop updates](updates.md) for installer behavior.
 
