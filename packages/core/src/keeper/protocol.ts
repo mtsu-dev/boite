@@ -14,8 +14,8 @@ import { realpathSync } from 'node:fs';
 import { tmpdir, userInfo } from 'node:os';
 import { join } from 'node:path';
 
-/** Bumped by a change a keeper already running could not understand. */
-export const KEEPER_PROTOCOL = 1;
+/** Bumped by a change a keeper already running could not understand. 2: agent processes on pipes. */
+export const KEEPER_PROTOCOL = 2;
 
 /** What the keeper keeps of a PTY's output for the next core, as the core's own history does. */
 export const KEEPER_PTY_HISTORY_BYTES = 256 * 1024;
@@ -39,6 +39,16 @@ export const KEEPER_HELLO_MS = 5_000;
  */
 export const KEEPER_PENDING_BYTES = 16 * 1024 * 1024;
 
+/**
+ * An agent's stdout the core has not acknowledged yet. Past it the keeper
+ * stops reading the pipe, so the agent blocks on its next write: a protocol
+ * stream with a gap is useless, so nothing is dropped.
+ */
+export const KEEPER_OUT_WINDOW_BYTES = 8 * 1024 * 1024;
+
+/** What the keeper keeps of an agent's stderr: the tail the drivers keep too. */
+export const KEEPER_ERR_BYTES = 64 * 1024;
+
 /** The core's own description of a process, which the keeper stores without reading. */
 export type KeptTag = Record<string, unknown>;
 
@@ -49,12 +59,20 @@ export interface KeptProcess {
   /** Wall time the keeper started it. */
   startedAt: number;
   /** Null while it runs. */
-  exit: { code: number | null; at: number } | null;
+  exit: { code: number | null; signal?: string | null; at: number } | null;
+  /** A process on pipes: its stdout's acknowledged end and how much it printed. Absent for a PTY. */
+  out?: { acked: number; end: number };
 }
 
 export type ToKeeper =
   | { op: 'hello'; token: string; protocol: number; pid: number; version: string }
   | { op: 'spawn'; req: number; tag: KeptTag; cmd: string; args: string[]; cwd: string; env: Record<string, string>; cols: number; rows: number }
+  /**
+   * A process on three pipes, in a process group of its own. The core that
+   * asks for it is attached to it at once: its output comes as `out` frames
+   * from the first byte, with no `attach`.
+   */
+  | { op: 'spawnPipe'; req: number; tag: KeptTag; cmd: string; args: string[]; cwd: string; env: Record<string, string> }
   /**
    * Sends the history first, as one `data` frame marked `replay`, then the
    * live output. A core that already had the first `from` bytes gets only
@@ -62,6 +80,11 @@ export type ToKeeper =
    */
   | { op: 'attach'; id: string; from?: number }
   | { op: 'write'; id: string; data: string }
+  | { op: 'closeStdin'; id: string }
+  /** Its stdout up to `offset` is committed: the keeper lets go of those bytes. */
+  | { op: 'ack'; id: string; offset: number }
+  /** What the keeper holds, as `welcome` lists it. */
+  | { op: 'list'; req: number }
   | { op: 'resize'; id: string; cols: number; rows: number }
   | { op: 'signal'; id: string; signal: KeeperSignal }
   /** The core is done with it: ended if it runs, forgotten either way. */
@@ -74,7 +97,12 @@ export type FromKeeper =
   | { op: 'failed'; req: number; message: string }
   /** `at`, on a replay: how many bytes the process printed up to its end. */
   | { op: 'data'; id: string; data: string; replay?: true; at?: number }
-  | { op: 'exit'; id: string; code: number | null }
+  /** A pipe's bytes. `at` is the offset of the first one in that stream. */
+  | { op: 'out'; id: string; stream: 'out' | 'err'; at: number; data: string }
+  /** A pipe reached its end. */
+  | { op: 'eof'; id: string; stream: 'out' | 'err' }
+  | { op: 'exit'; id: string; code: number | null; signal?: string | null }
+  | { op: 'listed'; req: number; processes: KeptProcess[] }
   /** The keeper exits: idle, orphaned or told to. What it still held ends with it. */
   | { op: 'stopping'; reason: string };
 

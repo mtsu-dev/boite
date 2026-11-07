@@ -4,7 +4,6 @@ import type { AgentResourceSnapshot, ProcessRecord, Settings, ThreadId, ThreadLo
 import type { Bus } from './bus.ts';
 import type { Journal } from './journal.ts';
 import { MemoryGuard } from './memory-guard.ts';
-import { currentOs } from './paths.ts';
 import type { MemoryProcess } from './memory-guard-logic.ts';
 import { registryPlatform } from './platform/index.ts';
 import { type KnownProcess, type ProcessIdentity, unseenIdentity } from './process-identity.ts';
@@ -14,6 +13,7 @@ import { bunUsage, ResourceCollection } from './resource-usage.ts';
 import { traceWrite } from './trace-writes.ts';
 import { orphansOf, parentAtStart } from './process-orphans.ts';
 import { forgetOnMissing, resolveSpawnCommand, startResolved } from './spawn-command.ts';
+import { hangUpShell } from './terminal-hangup.ts';
 import { BUSY_CPU_PERCENT, IDLE_LOAD_INTERVAL_MS, LOAD_INTERVAL_MS, LoadPace, worthPushing } from './load-pace.ts';
 import { launchOf } from './git/command.ts';
 import { ExecutionProtections } from './execution-protection.ts';
@@ -320,24 +320,7 @@ export class ProcRegistry {
     const record = this.#register(threadId, proc.pid, cmd, args, {
       root: false,
       running: running(proc),
-      kill: () => {
-        if (process.platform === 'win32') return proc.kill();
-        // Interactive jobs have separate groups: capture their descendants
-        // before the shell exits and reparents jobs that ignore its hang-up.
-        if (currentOs() === 'linux' && this.platform.terminateProcess(threadId, proc.pid)) return;
-        // An interactive shell ignores SIGTERM. A hang-up is what closing a
-        // terminal sends: the shell exits on it and passes it to its jobs.
-        proc.kill('SIGHUP');
-        const hard = setTimeout(() => {
-          try {
-            proc.kill('SIGKILL');
-          } catch {
-            // already exited
-          }
-        }, 2000);
-        hard.unref();
-        void proc.exited.finally(() => clearTimeout(hard));
-      },
+      kill: () => process.platform === 'win32' ? proc.kill() : hangUpShell(this.platform, threadId, proc.pid, (signal) => proc.kill(signal), proc.exited),
       usage: () => bunUsage(proc),
     });
 
@@ -350,12 +333,19 @@ export class ProcRegistry {
     return { record, terminal, exited };
   }
 
-  /** A process another one started for this core (`keeper/kept-terminal.ts`), registered and traced as if spawned here. */
-  adopt(threadId: ThreadId, pid: number, cmd: string, args: string[], control: { running: () => boolean; kill: () => void; exited: Promise<number | null> }): { record: ProcessRecord; exited: Promise<number | null> } {
+  /**
+   * A process the keeper started for this core (`keeper/kept-terminal.ts`, `kept-agents.ts`), registered and traced
+   * as if spawned here. With `child`, the one `spawnChild` returned for it, which `stopChild` then stops.
+   */
+  adopt(threadId: ThreadId, pid: number, cmd: string, args: string[], control: { running: () => boolean; kill: () => Promise<void> | undefined; exited: Promise<number | null>; root?: boolean; startup?: boolean; child?: SpawnedChild }): { record: ProcessRecord; exited: Promise<number | null> } {
     this.#admitted({});
-    const record = this.#register(threadId, pid, cmd, args, { root: false, running: control.running, kill: control.kill, usage: () => null });
+    const record = this.#register(threadId, pid, cmd, args, { root: control.root === true, startup: control.startup === true, running: control.running, kill: control.kill, usage: () => null });
+    if (control.child !== undefined) this.#childStops.set(control.child, this.#managedStop(record.pid, control.running, control.kill, control.exited));
     return { record, exited: control.exited.then((code) => { this.onExit(threadId, record.pid, code, undefined, record); return code; }) };
   }
+
+  /** Set while the keeper holds agent sessions (`keeper/kept-agents.ts`): a launch with `keep` goes to it, null leaves it here. */
+  keptSpawn: ((threadId: ThreadId, cmd: string, executable: string, args: string[], opts: SpawnOptions) => SpawnedChild | null) | null = null;
 
   /** Lets go of a thread's processes, unstopped and with no exit recorded: the keeper holds them for the next core. */
   disown(threadId: ThreadId): void {
@@ -377,6 +367,8 @@ export class ProcRegistry {
     const protectedLaunch = this.protection.launch(threadId, cmd, args, opts);
     const [command, env] = launchOf(protectedLaunch?.command ?? cmd, protectedLaunch?.env ?? opts.env);
     const executable = resolveSpawnCommand(command, env ?? process.env);
+    const kept = opts.keep === undefined || protectedLaunch !== null ? null : this.keptSpawn?.(threadId, cmd, executable, args, { ...opts, env });
+    if (kept != null) return kept;
     const child = spawnNodeChild(executable, protectedLaunch?.args ?? args, {
       cwd: protectedLaunch?.cwd ?? opts.cwd,
       env,

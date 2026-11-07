@@ -23,6 +23,17 @@ const UPSERT_SIDE = `INSERT INTO streaming_parts (message_id, part_index, thread
 /** A delta whose write keeps failing is dropped after this many tries, and the loss reported. */
 const DELTA_ATTEMPTS = 3;
 
+/**
+ * Something that must be committed with the streamed parts it describes: the
+ * offsets of the agent output those parts came from (`keeper/kept-agents.ts`).
+ */
+export interface CommitHook {
+  /** True when it has something to write. */
+  pending(): boolean;
+  /** Writes it inside the commit's transaction. The call it returns runs once that transaction is committed. */
+  write(): () => void;
+}
+
 interface PendingDelta {
   threadId: string;
   messageId: string;
@@ -67,6 +78,7 @@ export class StreamBuffer {
   readonly #open = new Map<string, OpenMessage>();
   #persistTimer: ReturnType<typeof setTimeout> | null = null;
   #persistDelay = PERSIST_MS;
+  #hook: CommitHook | null = null;
 
   readonly #db: Database;
   readonly #journal: Pick<Journal, 'isClosed' | 'markNativeAgents'>;
@@ -113,14 +125,27 @@ export class StreamBuffer {
     }
   }
 
+  /** Writes `hook` with every commit of the streamed parts, in the same transaction. */
+  setCommitHook(hook: CommitHook | null): void { this.#hook = hook; }
+
+  /** A commit soon, even with no part changed: the hook has something to write. */
+  schedulePersist(): void { this.#armPersistTimer(); }
+
+  /**
+   * Commits the parts that changed. With a commit hook pending, the deltas
+   * still in their 16 ms window are folded in first and the hook writes in the
+   * same transaction: what it records covers every event emitted before now.
+   */
   persistMessages(): void {
     if (this.#persistTimer !== null) {
       clearTimeout(this.#persistTimer);
       this.#persistTimer = null;
     }
     if (this.#journal.isClosed()) return;
+    const hook = this.#hook?.pending() === true ? this.#hook : null;
+    if (hook !== null) this.flushDeltas();
     const dirty = [...this.#open.values()].filter((entry) => entry.dirty);
-    if (dirty.length === 0) return;
+    if (dirty.length === 0 && hook === null) return;
     // Under a caller's transaction the write below is only a savepoint, which
     // that caller can still roll back: the parts are written but stay dirty,
     // and the timer writes them again on their own.
@@ -128,6 +153,7 @@ export class StreamBuffer {
     const started = performance.now();
     const now = Date.now();
     const written: [OpenMessage, (string | undefined)[], boolean][] = [];
+    let committed = null as (() => void) | null;
     this.#db.transaction(() => {
       for (const entry of dirty) {
         if (now - entry.rowAt >= ROW_WRITE_MS) {
@@ -143,11 +169,13 @@ export class StreamBuffer {
         });
         written.push([entry, json, false]);
       }
+      if (hook !== null) committed = hook.write();
     })();
     if (nested) {
       this.#armPersistTimer();
       return;
     }
+    committed?.();
     // Clean only once committed: a rolled-back write stays dirty for the next try.
     for (const [entry, json, whole] of written) {
       entry.dirty = false;
@@ -314,7 +342,7 @@ export class StreamBuffer {
       } catch (error) {
         // A quiet stream must retry too; failed writes retain their dirty parts.
         this.#onError(`journal message write: ${messageOfError(error)}`);
-        if ([...this.#open.values()].some((entry) => entry.dirty)) {
+        if ([...this.#open.values()].some((entry) => entry.dirty) || this.#hook?.pending() === true) {
           this.#persistDelay = Math.min(PERSIST_MAX_MS, this.#persistDelay * 2);
           this.#armPersistTimer();
         }

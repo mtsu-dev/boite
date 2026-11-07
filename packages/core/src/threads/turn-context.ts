@@ -563,6 +563,8 @@ export class TurnContexts {
       const child = this.#core.procs.spawnChild(scope, cmd, args, {
         ...opts,
         env: agentEnvOf(this.#core, threadId, opts?.env ?? process.env),
+        // The session's own process, not a shared execution's: the keeper holds it when it is on.
+        ...(session !== undefined && !execution ? { keep: { turnId: session.turnId ?? null, driver: provider.protocol ?? provider.id } } : {}),
       });
       // A diagnostic storage failure must not break a spawn.
       try { if (session !== undefined) watchProviderProcess(this.#core, child, cmd, { threadId, providerId: provider.id, ...session }); } catch { /* the child runs unwatched */ }

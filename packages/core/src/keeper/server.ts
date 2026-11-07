@@ -2,9 +2,10 @@
  * The keeper: a small process that starts what its core asks for and holds
  * it, so a core that restarts, updates or crashes leaves those processes
  * running. It holds each PTY's master end and the last
- * `KEEPER_PTY_HISTORY_BYTES` it printed, reaps exits, and hands all of it to
- * the next core that says `hello` with the token. It runs no driver, reads no
- * journal and loads no SDK.
+ * `KEEPER_PTY_HISTORY_BYTES` it printed, each agent's pipes with the stdout
+ * its core has not acknowledged (`keeper/pipe-process.ts`), reaps exits, and
+ * hands all of it to the next core that says `hello` with the token. It runs
+ * no driver, reads no journal and loads no SDK.
  *
  * One core at a time. With no core attached it waits `KEEPER_ORPHAN_MS` for
  * one, then ends what it holds; with nothing to hold and no core it exits
@@ -18,8 +19,10 @@ import { dirname } from 'node:path';
 import type { Socket } from 'bun';
 import { CORE_VERSION } from '../version.ts';
 import { posixLockFile } from '../platform/posix-file-lock.ts';
+import { ByteRing } from './byte-ring.ts';
 import { endShell } from './end-shell.ts';
 import { FrameSocket } from './frames.ts';
+import { PipeProcess } from './pipe-process.ts';
 import {
   KEEPER_HELLO_MS, KEEPER_IDLE_MS, KEEPER_ORPHAN_MS, KEEPER_PENDING_BYTES, KEEPER_PROTOCOL, KEEPER_PTY_HISTORY_BYTES, KEEPER_SIGNALS,
   LineReader, decodeBytes, encodeBytes, keeperTokenPath,
@@ -30,40 +33,13 @@ import {
 const EXIT_KEPT_MS = 10 * 60_000;
 const TICK_MS = 1_000;
 
-/** The last bytes of a stream, kept as the chunks that came in. */
-export class ByteRing {
-  #chunks: Uint8Array[] = [];
-  #length = 0;
-
-  constructor(private readonly max: number) {}
-
-  push(bytes: Uint8Array): void {
-    this.#chunks.push(bytes);
-    this.#length += bytes.length;
-    while (this.#chunks.length > 1 && this.#length - this.#chunks[0]!.length >= this.max) {
-      this.#length -= this.#chunks.shift()!.length;
-    }
-    // Still too long: the oldest chunk keeps its tail.
-    if (this.#length > this.max) {
-      this.#chunks[0] = this.#chunks[0]!.slice(this.#length - this.max);
-      this.#length = this.max;
-    }
-  }
-
-  bytes(): Uint8Array {
-    const out = new Uint8Array(this.#length);
-    let at = 0;
-    for (const chunk of this.#chunks) { out.set(chunk, at); at += chunk.length; }
-    // A long-lived shell's history stays one chunk instead of thousands.
-    this.#chunks = this.#length > 0 ? [out] : [];
-    return out;
-  }
-}
-
 interface Held {
   info: KeptProcess;
   proc: Bun.Subprocess;
-  terminal: Bun.Terminal;
+  /** A PTY's, null for a process on pipes. */
+  terminal: Bun.Terminal | null;
+  /** A process on pipes, null for a PTY. */
+  pipe: PipeProcess | null;
   history: ByteRing;
   /** Every byte it printed so far: where the history ends in its output. */
   written: number;
@@ -177,12 +153,12 @@ export function startKeeper(options: KeeperOptions): RunningKeeper | null {
       sendCore({ op: 'failed', req: request.req, message: 'this Bun gave the process no terminal' });
       return;
     }
-    entry = { info: { id, pid: proc.pid, tag: request.tag, startedAt: Date.now(), exit: null }, proc, terminal, history, written: 0, attached: false };
+    entry = { info: { id, pid: proc.pid, tag: request.tag, startedAt: Date.now(), exit: null }, proc, terminal, pipe: null, history, written: 0, attached: false };
     held.set(id, entry);
     const own = entry;
     void proc.exited.then((code) => code, () => null).then((code) => {
       own.info.exit = { code, at: Date.now() };
-      try { own.terminal.close(); } catch { /* closed with the process */ }
+      try { own.terminal?.close(); } catch { /* closed with the process */ }
       if (held.get(id) !== own) return;
       sendCore({ op: 'exit', id, code });
       // The attached core has its output and now its exit: nothing is left to hand over.
@@ -190,6 +166,45 @@ export function startKeeper(options: KeeperOptions): RunningKeeper | null {
     });
     log(`started ${id} pid ${proc.pid}: ${request.cmd}`);
     sendCore({ op: 'spawned', req: request.req, process: entry.info });
+  };
+
+  /** What a core is told of a process: a pipe's stdout window as it is now. */
+  const describe = (entry: Held): KeptProcess => entry.pipe === null ? entry.info : { ...entry.info, out: { acked: entry.pipe.out.acked, end: entry.pipe.out.end } };
+
+  const spawnPipe = (request: Extract<ToKeeper, { op: 'spawnPipe' }>): void => {
+    const id = `k${process.pid}-${nextId++}`;
+    let entry: Held | null = null;
+    let pipe: PipeProcess;
+    try {
+      pipe = new PipeProcess(request.cmd, request.args, request.cwd, request.env, {
+        output: (stream, at, bytes) => { if (entry?.attached) sendCore({ op: 'out', id, stream, at, data: encodeBytes(bytes) }); },
+        eof: (stream) => { if (entry?.attached) sendCore({ op: 'eof', id, stream }); },
+      });
+    } catch (error) {
+      sendCore({ op: 'failed', req: request.req, message: error instanceof Error ? error.message : String(error) });
+      return;
+    }
+    const proc = pipe.proc;
+    // The core that asked is attached to it from the first byte.
+    entry = { info: { id, pid: proc.pid, tag: request.tag, startedAt: Date.now(), exit: null }, proc, terminal: null, pipe, history: new ByteRing(0), written: 0, attached: core?.hello === true };
+    held.set(id, entry);
+    const own = entry;
+    void proc.exited.then((code) => code, () => null).then((code) => {
+      const signal = typeof proc.signalCode === 'string' ? proc.signalCode : null;
+      own.info.exit = { code, signal, at: Date.now() };
+      // Kept until the core that read its stdout says it is done with it (`release`).
+      if (held.get(id) === own && own.attached) sendCore({ op: 'exit', id, code, signal });
+    });
+    log(`started ${id} pid ${proc.pid} on pipes: ${request.cmd}`);
+    sendCore({ op: 'spawned', req: request.req, process: describe(entry) });
+  };
+
+  // What this core lacks of a pipe's stdout, from `from` on, then the ends it missed.
+  const attachPipe = (entry: Held, pipe: PipeProcess, from: unknown): void => {
+    const { at, bytes } = pipe.out.since(typeof from === 'number' ? from : 0);
+    if (bytes.length > 0) sendCore({ op: 'out', id: entry.info.id, stream: 'out', at, data: encodeBytes(bytes) });
+    for (const stream of ['out', 'err'] as const) if (pipe.ended[stream]) sendCore({ op: 'eof', id: entry.info.id, stream });
+    if (entry.info.exit !== null) sendCore({ op: 'exit', id: entry.info.id, code: entry.info.exit.code, signal: entry.info.exit.signal ?? null });
   };
 
   const handle = (connection: Connection, frame: ToKeeper): void => {
@@ -203,16 +218,23 @@ export function startKeeper(options: KeeperOptions): RunningKeeper | null {
       lastCoreAt = Date.now();
       for (const entry of held.values()) entry.attached = false;
       log(`core pid ${frame.pid} (${frame.version}) attached, ${held.size} processes held`);
-      connection.frames.send({ op: 'welcome', protocol: KEEPER_PROTOCOL, version: CORE_VERSION, pid: process.pid, processes: [...held.values()].map((entry) => entry.info) });
+      connection.frames.send({ op: 'welcome', protocol: KEEPER_PROTOCOL, version: CORE_VERSION, pid: process.pid, processes: [...held.values()].map(describe) });
       return;
     }
     if (!connection.hello) { connection.frames.send({ op: 'refused', message: 'say hello first' }); connection.frames.close(); return; }
-    if (frame.op === 'spawn') { if (stopping === null) spawn(frame); else sendCore({ op: 'failed', req: frame.req, message: 'the keeper is stopping' }); return; }
+    if (frame.op === 'spawn' || frame.op === 'spawnPipe') {
+      if (stopping !== null) sendCore({ op: 'failed', req: frame.req, message: 'the keeper is stopping' });
+      else if (frame.op === 'spawn') spawn(frame);
+      else spawnPipe(frame);
+      return;
+    }
+    if (frame.op === 'list') { sendCore({ op: 'listed', req: frame.req, processes: [...held.values()].map(describe) }); return; }
     const entry = held.get(frame.id);
     if (entry === undefined) return;
     switch (frame.op) {
       case 'attach':
         entry.attached = true;
+        if (entry.pipe !== null) { attachPipe(entry, entry.pipe, frame.from); return; }
         sendCore({ op: 'data', id: entry.info.id, data: encodeBytes(missed(entry, frame.from)), replay: true, at: entry.written });
         if (entry.info.exit !== null) {
           sendCore({ op: 'exit', id: entry.info.id, code: entry.info.exit.code });
@@ -220,16 +242,25 @@ export function startKeeper(options: KeeperOptions): RunningKeeper | null {
         }
         return;
       case 'write':
-        if (entry.info.exit === null && typeof frame.data === 'string') entry.terminal.write(decodeBytes(frame.data));
+        if (entry.info.exit !== null || typeof frame.data !== 'string') return;
+        if (entry.pipe !== null) entry.pipe.write(decodeBytes(frame.data));
+        else entry.terminal?.write(decodeBytes(frame.data));
+        return;
+      case 'closeStdin':
+        entry.pipe?.closeStdin();
+        return;
+      case 'ack':
+        entry.pipe?.ack(frame.offset);
         return;
       case 'resize':
-        if (entry.info.exit === null && Number.isInteger(frame.cols) && Number.isInteger(frame.rows) && frame.cols > 0 && frame.rows > 0) entry.terminal.resize(frame.cols, frame.rows);
+        if (entry.info.exit === null && Number.isInteger(frame.cols) && Number.isInteger(frame.rows) && frame.cols > 0 && frame.rows > 0) entry.terminal?.resize(frame.cols, frame.rows);
         return;
       case 'signal':
         if (entry.info.exit === null && KEEPER_SIGNALS.includes(frame.signal)) signalGroup(entry.info.pid, frame.signal);
         return;
       case 'release':
         held.delete(frame.id);
+        entry.pipe?.release();
         void end(entry);
         return;
     }

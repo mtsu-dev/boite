@@ -38,6 +38,12 @@ export interface SpawnOptions {
    * the thread's processes, its job's included, alone: they are the user's app.
    */
   showWindow?: boolean;
+  /**
+   * `spawnChild` only: an agent session's process, which the keeper holds
+   * when it is on (`keeper/kept-agents.ts`). Its turn and driver go in its
+   * `kept_processes` row.
+   */
+  keep?: { turnId: string | null; driver: string };
 }
 
 export type ChildProcess = Bun.Subprocess<'ignore', 'pipe', 'pipe'>;
