@@ -62,6 +62,8 @@ export interface CoreInfo {
     botMoveQueue?: boolean;
     /** `threads.listChanges`: a reconnect reads only the threads that changed while it was away. */
     listChanges?: boolean;
+    /** `threads.subscribe` and an opening `threads.get` take `channels`: a client leaves live command output, or more, on the core. */
+    streamChannels?: boolean;
   };
   /** The fingerprint of this core's identity key: the id its group knows it by, and the one a device signs its hello for. */
   coreId?: string;

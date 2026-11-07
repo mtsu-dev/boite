@@ -571,6 +571,8 @@ export class Journal {
   }
 
   hasOpenMessages(): boolean { return this.stream.hasOpen(); }
+  /** The streaming messages a socket reads when its stream channels widen, without the means to change them. */
+  get streaming(): Pick<StreamBuffer, 'openOf' | 'partType'> { return this.stream; }
 
   listMessages(threadId: string): Message[] {
     this.flushDeltas();
