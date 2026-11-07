@@ -361,7 +361,7 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
   ['threads.mergeBack', 'returning bounded conclusions only from this authenticated fork to its recorded origin, under existing coordination permissions'],
   ['collaboration.send', 'authenticated delivery as this thread to a separately authorized recipient'],
   ['collaboration.search', 'contacts it may already reach, found by their title, project, branch, model, resources or chat'],
-  ['collaboration.read', 'the conversation of a contact it may already reach, text and tool names only; the user wants agents to help with each other'],
+  ['collaboration.read', 'the conversation of a contact it may already reach, text and tool names only, and the tool output of its own conversation, which its carried history points to; the user wants agents to help with each other'],
   ['collaboration.wait', 'blocks on its own inbox until a reply arrives'],
   ['collaboration.contacts', 'the contacts it may write to and the project names each opened to this core, never their keys or addresses'],
   ['collaboration.ask', 'a request as this thread to a contact, handed to this core\'s Contacts bot, which forwards it; it opens nothing here'],

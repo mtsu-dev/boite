@@ -359,6 +359,7 @@ boite threads                           # who is reachable, most recently active
 boite threads find login blank screen       # every word in the chat, title, project, branch or model
 boite threads read <thread-id> --last 20        # that agent's conversation, text and tool names
 boite threads read <thread-id> --entry <id> --offset 3000   # the rest of an entry a page cut
+boite threads read <own-thread-id> --entry <id> --tool <call-id>   # your own tool call's output, 16,000 characters a page
 boite threads send <thread-id> "Can the shared test service stop now?" --wait
 boite threads send <machine>/<thread-id> "The parser check fails on main."
 boite threads reply <message-id> "Wait until the current test finishes."
@@ -384,7 +385,10 @@ acting on a secondhand description.
 that 30 entries of 4,000 made. A cut entry carries its whole `length` and the
 `next` offset of the rest, and the output prints the command that reads it:
 `--entry <id> --offset <n>` returns that one entry from the offset, 16,000
-characters at a time, until it carries no `next`. Offsets count UTF-16 code
+characters at a time, until it carries no `next`. `--entry <id> --tool <call-id>`
+reads that one tool call's output the same way, on the caller's own thread only:
+a read of another thread's tool output is refused, here or on a linked machine.
+Offsets count UTF-16 code
 units and a cut never splits a surrogate pair. The same read crosses trusted
 machines, contact routes and shared projects; a machine that runs an older
 Boite answers an entry read with a page, which is refused with a message saying

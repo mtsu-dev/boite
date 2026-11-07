@@ -478,7 +478,7 @@ boite todo list|add <text>|claim <id>
 boite goal track
 boite threads inbox
 boite threads find <words>
-boite threads read <thread> [--last <n>] [--before <ms>] [--entry <id> [--offset <n>]]
+boite threads read <thread> [--last <n>] [--before <ms>] [--entry <id> [--tool <id>] [--offset <n>]]
 boite threads send <thread> <text> [--wait] [--timeout <s>]
 boite threads reply <message-id> <text> [--wait] [--timeout <s>]
 boite threads log <thread>

@@ -175,7 +175,7 @@ ${PLUGIN_HELP}
                                  last prompt (the Automatic goals experiment)
   threads find <words>           locate threads by words of their chat, title,
                                  project, branch or model
-  threads read <thread>          its conversation (--last <n>, --before <ms>; --entry <id> --offset <n>: the rest of a cut entry)
+  threads read <thread>          its conversation (--last <n>, --before <ms>; --entry <id> --offset <n>: the rest of a cut entry; --entry <id> --tool <id> [--offset <n>]: your own thread's tool output)
   threads send <thread> <text>   message it; --wait blocks for its answer
   threads reply <message-id> <text>
   threads log <thread>           what you and that thread said to each other
@@ -496,7 +496,7 @@ async function run(parsed: Parsed, io: CliIo, client: CoreClient, threadId: stri
     // `threads` alone or `threads list` lists (control-cli.ts); the rest talks to other threads.
     threads: async () => {
       try {
-        await agentsCommand(client, threadId, rest, { ...(parsed.requestId === undefined ? {} : { requestId: parsed.requestId }), wait: parsed.wait, ...(parsed.timeout === undefined ? {} : { timeout: parsed.timeout }), ...(parsed.last === undefined ? {} : { last: parsed.last }), ...(parsed.before === undefined ? {} : { before: parsed.before }), ...(parsed.entry === undefined ? {} : { entry: parsed.entry }), ...(parsed.offset === undefined ? {} : { offset: parsed.offset }) }, print);
+        await agentsCommand(client, threadId, rest, { ...(parsed.requestId === undefined ? {} : { requestId: parsed.requestId }), wait: parsed.wait, ...(parsed.timeout === undefined ? {} : { timeout: parsed.timeout }), ...(parsed.last === undefined ? {} : { last: parsed.last }), ...(parsed.before === undefined ? {} : { before: parsed.before }), ...(parsed.entry === undefined ? {} : { entry: parsed.entry }), ...(parsed.offset === undefined ? {} : { offset: parsed.offset }), ...(parsed.tool === undefined ? {} : { tool: parsed.tool }) }, print);
       } catch (error) {
         if (error instanceof AgentsUsage) throw new Usage(error.message);
         throw error;
