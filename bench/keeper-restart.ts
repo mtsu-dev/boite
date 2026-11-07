@@ -68,8 +68,9 @@ try {
     const listed = await client.call('terminals.list', { threadId });
     const state = await client.call('terminals.open', { threadId, cols: 80, rows: 24 });
     const reopenMs = performance.now() - startAt;
+    rmSync(pidFile, { force: true });
     core.terminals.write(id, `echo $$ > ${pidFile}\r`);
-    await waitFor(() => readFileSync(pidFile, 'utf8').trim() !== '', 20_000);
+    await waitFor(() => { try { return readFileSync(pidFile, 'utf8').trim() !== ''; } catch { return false; } }, 20_000);
     await Bun.sleep(200);
     shellPids.add(Number(readFileSync(pidFile, 'utf8').trim()));
     rounds.push({

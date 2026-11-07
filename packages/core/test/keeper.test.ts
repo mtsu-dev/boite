@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
@@ -6,7 +6,8 @@ import type { RpcEvents, ThreadId } from '@boite/contracts';
 import { connect, type CoreClient } from '../src/client.ts';
 import { Core } from '../src/core.ts';
 import { ByteRing } from '../src/keeper/server.ts';
-import { KeeperClient, keeperEnabled, type KeptTerminal } from '../src/keeper/client.ts';
+import { KeeperClient, keeperEnabled, keeperToken, type KeptTerminal } from '../src/keeper/client.ts';
+import { LineReader, keeperTokenPath } from '../src/keeper/protocol.ts';
 import { startServer, type RunningServer } from '../src/server.ts';
 import { threadTerminalId } from '../src/terminals.ts';
 import { echoThread, removeDir, startTestCore, waitFor, type TestCore } from './harness.ts';
@@ -134,6 +135,45 @@ describe.skipIf(!keeperEnabled({ BOITE_KEEPER: '1' }))('keeper', () => {
     }
   }, 60_000);
 
+  test('a kept shell closed before the next core has taken it back stays closed', async () => {
+    const h = await startTestCore({ onShutdown: () => undefined });
+    let next: Next | null = null;
+    try {
+      const client = await h.connect();
+      const { threadId } = await echoThread(h, client);
+      const id = threadTerminalId(threadId);
+      const out = watch(client, id);
+      await client.call('terminals.open', { threadId, cols: 80, rows: 24 });
+      const pidFile = join(h.dataDir, 'shell.pid');
+      h.core.terminals.write(id, `echo $$ > ${pidFile}; echo up-$((2+2))\r`);
+      await waitFor(() => out.text().includes('up-4') && existsSync(pidFile), SHELL_MS);
+      const pid = Number(readFileSync(pidFile, 'utf8').trim());
+      shellPids.push(pid);
+      keeperPids.push(h.core.terminals.keeper!.keeperPid!);
+      sockets.push(h.core.terminals.keeper!.socketPath);
+      await restart(h);
+
+      // Asked while the new core still waits for the keeper's list.
+      const core = new Core({ dataDir: h.dataDir, token: h.token, onShutdown: () => undefined });
+      expect(core.terminals.has(id)).toBe(false);
+      const closed = core.terminals.close(id);
+      const server = startServer({ core, host: '127.0.0.1', port: 0 });
+      next = { core, server, client: await connect(server.url, h.token) };
+      await closed;
+      await core.terminals.ready;
+      expect(core.terminals.has(id)).toBe(false);
+      await waitFor(() => !alive(pid), 5_000);
+    } finally {
+      if (next !== null) {
+        next.client.close();
+        await next.server.stop();
+        await next.core.close();
+      }
+      delete process.env.BOITE_DATA_DIR;
+      await removeDir(h.dataDir);
+    }
+  }, 60_000);
+
   test('an explicit stop ends the shells the keeper holds', async () => {
     const h = await startTestCore({ onShutdown: () => undefined });
     try {
@@ -233,4 +273,21 @@ test('the keeper keeps the last bytes of a shell, whatever the chunks', () => {
   expect(new TextDecoder().decode(ring.bytes())).toBe('mnopqrst');
   ring.push(new TextEncoder().encode('uv'));
   expect(new TextDecoder().decode(ring.bytes())).toBe('opqrstuv');
+});
+
+test('a keeper frame longer than the limit is refused, whole or cut', () => {
+  const encode = (text: string): Uint8Array => new TextEncoder().encode(text);
+  expect(new LineReader(8).push(encode('{"a":1}\n{"b":2}\n'))).toEqual(['{"a":1}', '{"b":2}']);
+  expect(() => new LineReader(8).push(encode('{"a":"0123456789"}\n'))).toThrow('without a line break');
+  expect(() => new LineReader(8).push(encode('{"a":"0123456789'))).toThrow('without a line break');
+});
+
+test('a keeper token file cut short is replaced by a new token', () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'boite-keeper-'));
+  try {
+    writeFileSync(keeperTokenPath(dataDir), '{"tok');
+    const token = keeperToken(dataDir);
+    expect(token.length).toBeGreaterThanOrEqual(32);
+    expect(keeperToken(dataDir)).toBe(token);
+  } finally { rmSync(dataDir, { recursive: true, force: true }); }
 });

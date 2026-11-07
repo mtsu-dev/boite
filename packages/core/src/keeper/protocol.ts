@@ -108,7 +108,7 @@ export function keeperTokenPath(dataDir: string): string {
 
 /**
  * Splits a byte stream into lines. A frame cut between two reads waits for its
- * end; a line longer than `max` is refused rather than buffered forever.
+ * end; a line longer than `max`, whole or not, is refused rather than buffered forever.
  */
 export class LineReader {
   #held = '';
@@ -120,7 +120,7 @@ export class LineReader {
     this.#held += this.#decoder.decode(chunk, { stream: true });
     const lines = this.#held.split('\n');
     this.#held = lines.pop() ?? '';
-    if (this.#held.length > this.max) throw new Error(`a keeper frame passed ${this.max} bytes without a line break`);
+    if (this.#held.length > this.max || lines.some((line) => line.length > this.max)) throw new Error(`a keeper frame passed ${this.max} bytes without a line break`);
     return lines.filter((line) => line.length > 0);
   }
 }

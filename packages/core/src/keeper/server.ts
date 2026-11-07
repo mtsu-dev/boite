@@ -220,10 +220,10 @@ export function startKeeper(options: KeeperOptions): RunningKeeper | null {
         }
         return;
       case 'write':
-        if (entry.info.exit === null) entry.terminal.write(decodeBytes(frame.data));
+        if (entry.info.exit === null && typeof frame.data === 'string') entry.terminal.write(decodeBytes(frame.data));
         return;
       case 'resize':
-        if (entry.info.exit === null && Number.isInteger(frame.cols) && Number.isInteger(frame.rows)) entry.terminal.resize(frame.cols, frame.rows);
+        if (entry.info.exit === null && Number.isInteger(frame.cols) && Number.isInteger(frame.rows) && frame.cols > 0 && frame.rows > 0) entry.terminal.resize(frame.cols, frame.rows);
         return;
       case 'signal':
         if (entry.info.exit === null && KEEPER_SIGNALS.includes(frame.signal)) signalGroup(entry.info.pid, frame.signal);

@@ -232,11 +232,14 @@ export class TerminalStore {
   readonly #opening = new Map<string, Promise<TerminalState>>();
   /** Settled once the shells an earlier core left with the keeper have their sessions back. */
   readonly #restored: Promise<void>;
+  /** True until `#restored` settles: a close in that window waits, or the restore would take the shell back. */
+  #restoring: boolean;
 
   constructor(core: Core) {
     this.#core = core;
     this.#keeper = keeperEnabled() ? new KeeperClient({ dataDir: core.dataDir, log: (level, message) => core.log(level, message) }) : null;
-    this.#restored = this.#keeper === null ? Promise.resolve() : this.#restore(this.#keeper);
+    this.#restoring = this.#keeper !== null;
+    this.#restored = this.#keeper === null ? Promise.resolve() : this.#restore(this.#keeper).finally(() => { this.#restoring = false; });
   }
 
   /** Settled once the shells kept across the last restart are back. */
@@ -332,8 +335,9 @@ export class TerminalStore {
     return this.#core.procs.liveThreads().filter((id) => isThreadTerminal(threadId, id)).reduce((sum, id) => sum + this.#core.procs.liveCount(id), 0);
   }
 
-  /** Settles once the thread's shells the keeper was asked for started or failed. */
+  /** Settles once the shells kept across the restart are back and the thread's shells the keeper was asked for started or failed. */
   async #openingOf(threadId: ThreadId): Promise<void> {
+    if (this.#restoring) await this.#restored;
     await Promise.allSettled([...this.#opening].filter(([id]) => isThreadTerminal(threadId, id)).map(([, opening]) => opening));
   }
 
@@ -610,7 +614,8 @@ export class TerminalStore {
    * keeps its id until the exit so a new shell never shares it.
    */
   async close(id: string): Promise<{ ok: true }> {
-    // A shell the keeper is still starting is closed once it has started; any other is marked closing at once.
+    // A shell kept across the restart, or one the keeper is still starting, is closed once it is back; any other is marked closing at once.
+    if (this.#restoring) await this.#restored;
     const opening = this.#opening.get(id);
     if (opening !== undefined) await opening.catch(() => undefined);
     const session = this.#sessions.get(id);

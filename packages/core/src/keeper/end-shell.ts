@@ -65,7 +65,9 @@ function send(target: number, signal: NodeJS.Signals | 0): boolean {
 export async function endShell(pid: number, exited: Promise<unknown>, graceMs: number = KILL_GRACE_MS): Promise<void> {
   let shellDone = false;
   void exited.then(() => { shellDone = true; }, () => { shellDone = true; });
-  const { members, groups } = familyOf(await processTable(), pid);
+  const first = await processTable();
+  const { members, groups } = familyOf(first, pid);
+  const shellGroup = first.find((row) => row.pid === pid)?.pgid ?? pid;
   // The shell leads its own session and group; a shell that could not is signalled alone.
   if (!send(-pid, 'SIGHUP') && !shellDone) send(pid, 'SIGHUP');
   for (const group of groups) if (group !== pid) send(-group, 'SIGHUP');
@@ -79,5 +81,6 @@ export async function endShell(pid: number, exited: Promise<unknown>, graceMs: n
   const occupied = new Set(now.map((row) => row.pgid));
   for (const group of groups) if (occupied.has(group)) send(-group, 'SIGKILL');
   for (const row of members) if (still.has(`${row.pid}:${row.pgid}`)) send(row.pid, 'SIGKILL');
-  if (!shellDone) send(pid, 'SIGKILL');
+  // An empty table means `ps` failed: the shell, still unreaped, cannot have handed its pid on.
+  if (!shellDone && (now.length === 0 || still.has(`${pid}:${shellGroup}`))) send(pid, 'SIGKILL');
 }

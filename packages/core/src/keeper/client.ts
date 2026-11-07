@@ -33,8 +33,10 @@ export function keeperEnabled(env: Record<string, string | undefined> = process.
 export function keeperToken(dataDir: string): string {
   const file = keeperTokenPath(dataDir);
   if (existsSync(file)) {
-    const parsed = JSON.parse(readFileSync(file, 'utf8')) as { token?: unknown };
-    if (typeof parsed.token === 'string' && parsed.token.length >= 32) return parsed.token;
+    try {
+      const parsed = JSON.parse(readFileSync(file, 'utf8')) as { token?: unknown };
+      if (typeof parsed.token === 'string' && parsed.token.length >= 32) return parsed.token;
+    } catch { /* cut short or edited by hand: a new token replaces it */ }
   }
   const token = newToken();
   writeFileSync(file, `${JSON.stringify({ token })}\n`, { mode: 0o600 });
@@ -201,6 +203,8 @@ export class KeeperClient {
     this.#closed = true;
     this.#frames?.close();
     this.#frames = null;
+    for (const waiting of this.#waiting.values()) { clearTimeout(waiting.timer); waiting.reject(new Error('the keeper client is closed')); }
+    this.#waiting.clear();
   }
 
   async #connect(launch: boolean): Promise<KeptProcess[] | null> {
