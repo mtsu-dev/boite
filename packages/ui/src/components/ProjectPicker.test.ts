@@ -91,6 +91,9 @@ test('a paired device picks the machine in the same menu and adds there; a machi
   const input = document.querySelector<HTMLInputElement>('[data-testid=project-path]')!;
   input.value = '/srv/site'; input.dispatchEvent(new Event('input', { bubbles: true })); await settle();
   expect(add().disabled).toBe(true);
+  // Browsing to the typed folder asks that core nothing either, and the line stays.
+  document.querySelector<HTMLFormElement>('[data-testid=add-project-form]')!.requestSubmit(); await settle();
+  expect(document.querySelector('[data-testid=project-picker] [role=alert]')?.textContent).toBe(strings.firstRun.deviceOlderCore);
   expect(spy.mock.calls.filter(([method]) => method === 'projects.add' || method === 'projects.browse')).toHaveLength(0);
 
   await pick('machine-b');

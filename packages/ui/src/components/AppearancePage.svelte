@@ -30,7 +30,7 @@
   let { store, phone = false }: { store: Store; phone?: boolean } = $props();
   const uid = $props.id();
 
-  // The owner's buttons (the terminal, Add a project) are not a paired device's to hide.
+  // The terminal is the owner's to hide; Add a project is too, unless the device's core lets it add.
   let groups = $derived(controlGroups(store.owner, store.addsProjects));
   let presets = $derived<{ id: Profile; label: string }[]>([
     { id: 'everyday', label: strings.controls.everyday },

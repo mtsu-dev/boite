@@ -93,7 +93,7 @@ export function assertDeviceFile(core: Core, threadId: ThreadId, cwd: string, pa
 /**
  * A folder a paired device adds as a project becomes a root the checks above
  * read from, so it is held to the same two rules first: not boite's data
- * folder or inside it, and not inside a folder that holds keys or tokens.
+ * folder or inside it, and not a folder that holds keys or tokens or one inside it.
  * Its links are followed, as a read follows them.
  */
 export function assertDeviceProjectFolder(core: Core, folder: string): void {

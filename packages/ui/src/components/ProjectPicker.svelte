@@ -39,6 +39,8 @@
   });
 
   async function browse(target?: string) {
+    // A machine too old to take a device's project would refuse its browse too: say why, without asking it.
+    if (!selected.addsProjects) { busy = false; error = strings.firstRun.deviceOlderCore; return; }
     const request = ++revision;
     const owner = selected;
     const client = owner.client;
@@ -66,7 +68,6 @@
     if (!next || next === selected) return;
     ++revision; target = next; busy = true; error = ''; directories = []; path = ''; parent = null;
     if (next.connection !== 'ready') { busy = false; error = strings.connection.unavailable; return; }
-    if (!next.addsProjects) { busy = false; error = strings.firstRun.deviceOlderCore; return; }
     await browse();
   }
   async function open() {

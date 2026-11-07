@@ -331,8 +331,8 @@ an older core offers no button, and the form names it as too old). It browses fo
 names with `projects.browse` and registers one with `projects.add`; nothing in
 a folder is read before then. That core checks the path, absolute and an
 existing directory there, and refuses Boite's data folder, a folder inside it,
-and a folder inside `.git`, `.ssh`, `.gnupg`, `.aws`, `.azure`, `.kube` or
-`.docker`, so a device's reads, which start from its projects, never begin in
+and a folder that is or is inside `.git`, `.ssh`, `.gnupg`, `.aws`, `.azure`,
+`.kube` or `.docker`, so a device's reads, which start from its projects, never begin in
 one of them. It adds no reach the device lacked: it already starts agents that
 run commands in those projects. `settings.set`, `providers.dryRun` and
 `accounts.add` stay the owner's.
