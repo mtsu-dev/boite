@@ -6,6 +6,26 @@ import { refused } from './errors.ts';
 const FIRST_LIMIT = 12_000;
 const RECENT_LIMIT = 64_000;
 const ENTRY_LIMIT = 12_000;
+/**
+ * Tool output has its own, smaller budget, so a large result does not take
+ * the room the conversation's text needs: one call carries the head and tail
+ * of its output up to `TOOL_LIMIT` characters, and one message all its calls'
+ * output up to `TOOL_ENTRY_LIMIT`, its newest calls first. A call left without
+ * room keeps its name and status, and every cut output says how to read it
+ * whole when the caller gives a pointer.
+ */
+export const TOOL_LIMIT = 1_000;
+export const TOOL_ENTRY_LIMIT = 3_000;
+/** Less room than this carries no excerpt: the pointer alone says more. */
+const TOOL_MIN_EXCERPT = 200;
+
+/** How a history line names the command that reads one tool's whole output. */
+export type ToolPointer = (messageId: string, toolId: string) => string;
+
+/** The pointer of a history this core reads back for `threadId`, through `boite threads read`. */
+export function toolPointer(threadId: string): ToolPointer {
+  return (messageId, toolId) => `boite threads read ${threadId} --entry ${messageId} --tool ${toolId}`;
+}
 
 function excerpt(text: string, limit: number): string {
   if (text.length <= limit) return text;
@@ -13,10 +33,38 @@ function excerpt(text: string, limit: number): string {
   return `${text.slice(0, half)}\n[Middle omitted from this history excerpt.]\n${text.slice(-half)}`;
 }
 
+type ToolPart = Extract<MessagePart, { type: 'tool' }>;
+
+/** A tool call as history: name, status and the output within `room` characters, its head and tail when it is longer. */
+function toolText(part: ToolPart, room: number, pointer: string | null): string {
+  const head = `Tool ${part.name}: ${part.status}`;
+  const output = part.output ?? '';
+  if (output.length === 0) return head;
+  if (output.length <= room) return `${head}\n${output}`;
+  const whole = pointer === null ? '' : `; read it whole with: ${pointer}`;
+  if (room < TOOL_MIN_EXCERPT) return `${head}\n[Output of ${output.length} characters not carried${whole}.]`;
+  const half = Math.floor(room / 2);
+  return `${head}\n${output.slice(0, half)}\n[${output.length - 2 * half} of ${output.length} output characters omitted${whole}.]\n${output.slice(-half)}`;
+}
+
+/** The output room of each tool part of `parts`, within `TOOL_ENTRY_LIMIT`, newest first; 0 for the other parts. */
+function toolRooms(parts: MessagePart[]): number[] {
+  const rooms = parts.map(() => 0);
+  let left = TOOL_ENTRY_LIMIT;
+  for (let index = parts.length - 1; index >= 0; index--) {
+    const part = parts[index]!;
+    if (part.type !== 'tool') continue;
+    const room = Math.min(TOOL_LIMIT, left, (part.output ?? '').length);
+    rooms[index] = room;
+    left -= room;
+  }
+  return rooms;
+}
+
 function textPart(part: MessagePart): string {
   switch (part.type) {
     case 'text': return part.moved ? `${part.moved.note}${part.text}` : part.text;
-    case 'tool': return `Tool ${part.name}: ${part.status}\n${JSON.stringify(part.output ?? '')}`;
+    case 'tool': return toolText(part, TOOL_LIMIT, null);
     case 'error': return `Error: ${part.message}`;
     case 'image': return `[Image: ${part.alt ?? 'attachment'}]`;
     // A view names the file it came from, so the next model can open it again and change it.
@@ -26,14 +74,29 @@ function textPart(part: MessagePart): string {
   }
 }
 
+type FileReference = (file: Extract<MessagePart, { type: 'file' }>, place: PartPlace) => string;
+const plainFile: FileReference = file => `[File: ${file.name ?? 'attachment'}]`;
+
+/** The portable parts of `message` from part `from` on, as text, each cut to `ENTRY_LIMIT`; tool output within its own budget. */
+function partsText(message: Message, from: number, fileReference: FileReference, pointer: ToolPointer | null): string {
+  const rooms = toolRooms(message.parts);
+  return message.parts.map((part, partIndex) => {
+    if (partIndex < from) return '';
+    if (part.type === 'file') return fileReference(part, { messageId: message.id, partIndex });
+    if (part.type === 'tool') return toolText(part, rooms[partIndex]!, pointer === null ? null : pointer(message.id, part.toolId));
+    return textPart(part);
+  }).filter(Boolean).map((part) => excerpt(part, ENTRY_LIMIT)).join('\n');
+}
+
 /**
  * A message as a history excerpt carries it: its portable parts as text, each
- * and the whole cut to `ENTRY_LIMIT`, empty when nothing portable is left. A
- * bot moving to another machine carries its last messages this way
- * (`agents/move.ts`).
+ * and the whole cut to `ENTRY_LIMIT`, tool output within `TOOL_ENTRY_LIMIT`,
+ * empty when nothing portable is left. A bot moving to another machine carries
+ * its last messages this way (`agents/move.ts`), without a pointer: the
+ * journal those would read stays behind.
  */
-export function messageExcerpt(message: Message, fileReference: (file: Extract<MessagePart, { type: 'file' }>, place: PartPlace) => string = file => `[File: ${file.name ?? 'attachment'}]`): string {
-  const text = message.parts.map((part, partIndex) => part.type === 'file' ? fileReference(part, { messageId: message.id, partIndex }) : textPart(part)).filter(Boolean).map((part) => excerpt(part, ENTRY_LIMIT)).join('\n');
+export function messageExcerpt(message: Message, fileReference: FileReference = plainFile, pointer: ToolPointer | null = null): string {
+  const text = partsText(message, 0, fileReference, pointer);
   return text ? excerpt(text, ENTRY_LIMIT) : '';
 }
 
@@ -53,7 +116,9 @@ export interface PartPlace { messageId: string; partIndex: number }
  * walk the recent end. Only the kept images are read: the newest ones, as
  * many as the current attachments leave of `ATTACHMENTS_PER_TURN` and of
  * `ATTACHMENTS_TOTAL_MAX_BYTES`, so the request stays within what one turn
- * may carry. `fileReference` must
+ * may carry. Tool output goes within its own budget (`TOOL_LIMIT`), with
+ * the command that reads a cut one whole, so the text of the conversation
+ * keeps the room. `fileReference` must
  * return a non-empty line: the first pass counts every file part as text.
  */
 export function continuationInput(
@@ -82,8 +147,9 @@ export function continuationInput(
     // Large values only fill tool and file fields, which always give text.
     if (message.parts.some(part => part.type === 'file' || part.type === 'tool' || textPart(part) !== '')) entries += 1;
   }
+  const pointer = toolPointer(threadId);
   const entry = (message: Message): string | null => {
-    const text = messageExcerpt(message, fileReference);
+    const text = messageExcerpt(message, fileReference, pointer);
     return text ? `[${message.role}, ${message.state}]\n${text}` : null;
   };
   const first: string[] = [];
@@ -184,6 +250,7 @@ export function tailInput(
 ): { prompt: string; attachments: Attachment[] } {
   const anchor: TailAnchor = typeof after === 'string' ? { turnId: after, afterPart: null } : after;
   if (!anchored(journal, threadId, anchor)) return input;
+  const pointer = toolPointer(threadId);
   let end: number | undefined;
   for (const message of journal.walkTurnMessages(threadId, upTo, { blobs: false })) { end = journal.messageRowid(threadId, message.id) ?? undefined; break; }
   const entries: string[] = [];
@@ -191,7 +258,7 @@ export function tailInput(
   let omitted = 0;
   for (const { message, from } of afterAnchor(journal, threadId, anchor, end)) {
     if (message.turnId === upTo) continue;
-    const text = message.parts.map((part, partIndex) => partIndex < from ? '' : part.type === 'file' ? fileReference(part, { messageId: message.id, partIndex }) : textPart(part)).filter(Boolean).map((part) => excerpt(part, ENTRY_LIMIT)).join('\n');
+    const text = partsText(message, from, fileReference, pointer);
     if (!text) continue;
     const next = `[${message.role}, ${message.state}]\n${excerpt(text, ENTRY_LIMIT)}`;
     if (omitted > 0 || (entries.length > 0 && size + next.length > RECENT_LIMIT)) { omitted += 1; continue; }

@@ -7,7 +7,7 @@
  * Run: bun run bench/continuation.ts [messages=100] [toolKiB=1024] [files=25] [fileKiB=1100]
  */
 import * as attachments from '../packages/core/src/attachments.ts';
-import { continuationInput } from '../packages/core/src/continuation.ts';
+import { continuationInput, messageExcerpt } from '../packages/core/src/continuation.ts';
 import { echoThread, startTestCore } from '../packages/core/test/harness.ts';
 
 const arg = (at: number, fallback: number): number => Number(process.argv[2 + at] ?? fallback);
@@ -48,5 +48,8 @@ try {
     if (run > 0) { samples.push(elapsed); rss.push((process.memoryUsage().rss - before) / 1024 / 1024); }
   }
   const median = (values: number[]): number => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)]!;
-  console.log(JSON.stringify({ messages, toolKiB, files, fileKiB, promptChars: length, runs: samples.length, medianMs: Number(median(samples).toFixed(2)), medianRssMiB: Number(median(rss).toFixed(1)), samplesMs: samples.map(value => Number(value.toFixed(2))) }));
+  // One assistant message, a single large tool result, as the history carries it; and how many messages the history keeps.
+  const toolEntryChars = messageExcerpt(journal.getMessage(`bench-assistant-${messages - 1}`)!, reference as never, (messageId: string, toolId: string) => `boite threads read ${threadId} --entry ${messageId} --tool ${toolId}`).length;
+  const kept = continuationInput(journal, threadId, 'bench-next', { prompt: 'Continue', attachments: [] }, provider, reference as never).prompt.match(/^\[(user|assistant), complete\]$/gm)?.length ?? 0;
+  console.log(JSON.stringify({ messages, toolKiB, files, fileKiB, promptChars: length, toolEntryChars, messagesKept: kept, runs: samples.length, medianMs: Number(median(samples).toFixed(2)), medianRssMiB: Number(median(rss).toFixed(1)), samplesMs: samples.map(value => Number(value.toFixed(2))) }));
 } finally { await harness.stop(); }
