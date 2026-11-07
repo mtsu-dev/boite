@@ -39,7 +39,7 @@ function fields(contact: AgentContact): [Field, string][] {
 }
 
 /** The text a user and an agent wrote in a message, without tool output or reasoning. */
-function spoken(parts: MessagePart[]): string {
+export function spoken(parts: MessagePart[]): string {
   return parts.flatMap(part => part.type === 'text' ? [part.text] : part.type === 'error' ? [`[error] ${part.message}`] : []).join('\n');
 }
 

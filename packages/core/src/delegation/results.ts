@@ -1,7 +1,8 @@
-import type { DelegatedAgent, DelegationResultPage, DelegationWaitResult, RpcParams, ThreadId, Turn, Usage } from '@boite/contracts';
+import type { DelegatedAgent, MessagePart, DelegationResultPage, DelegationWaitResult, RpcParams, ThreadId, Turn, Usage } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import type { Connection } from '../router.ts';
 import { invalidParams, refused } from '../errors.ts';
+import { spoken } from '../coordination-lookup.ts';
 import { usageGroups } from '../journal/usage-sums.ts';
 import { usageTotal } from '../usage.ts';
 
@@ -65,14 +66,15 @@ export function turnResult(core: Core, turn: Turn | null, rest: ResultRest = 'de
       COALESCE(SUM(CASE WHEN position = ?3 THEN length(text) END), 0) + MAX(SUM(position = ?3) - 1, 0) AS own,
       COALESCE(SUM(CASE WHEN position < ?3 THEN length(text) + 1 END), 0) AS before,
       COALESCE(SUM(length(text)), 0) + MAX(COUNT(*) - 1, 0) AS total FROM parts`).get(turn.threadId, turn.id, row.position) as { own: number; before: number; total: number };
-    const raw = row.answer!;
-    if ([...raw].length >= size.own && answer.length <= max) return answer;
+    if ([...row.answer!].length >= size.own && answer.length <= max) return answer;
+    // `delegate` counts characters from the start of the turn's answer; `thread`, UTF-16 units of the
+    // message as `threads read` shows it, errors included, so the cut is taken from that text.
+    const raw = rest === 'delegate' ? row.answer! : spoken(JSON.parse((core.journal.db.query('SELECT parts FROM messages WHERE id = ?').get(row.id) as { parts: string }).parts) as MessagePart[]).slice(0, 4001);
     const lead = raw.length - raw.trimStart().length;
-    // `delegate` counts characters from the start of the turn's answer; `thread`, UTF-16 units from the start of this message.
     const note = (at: number) => rest === 'delegate'
       ? `\n[Cut at character ${at} of ${size.total}. The rest: boite delegate result ${turn.threadId} ${turn.id} ${at}]`
       : `\n[Cut at character ${at} of this message. The rest: boite threads read ${turn.threadId} --entry ${row.id} --offset ${at}]`;
-    let kept = answer.slice(0, Math.max(0, max - note(Number.MAX_SAFE_INTEGER).length));
+    let kept = raw.trim().slice(0, Math.max(0, max - note(Number.MAX_SAFE_INTEGER).length));
     const last = kept.charCodeAt(kept.length - 1);
     if (last >= 0xd800 && last <= 0xdbff) kept = kept.slice(0, -1);
     return `${kept}${note(rest === 'delegate' ? size.before + lead + [...kept].length : lead + kept.length)}`;

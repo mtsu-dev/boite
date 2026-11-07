@@ -80,6 +80,14 @@ test('a final answer cut for its reader names the command and offset that read t
   expect(forParent.length).toBeLessThanOrEqual(3000);
   const at = Number(/\[Cut at character (\d+) of (\d+)\. The rest: boite delegate result /.exec(forParent)![1]);
   expect(at).toBe('Looking at the parser first.\n'.length + [...forParent.slice(0, forParent.lastIndexOf('\n[Cut'))].length);
+  // An error the agent hit is part of the entry `threads read` shows, so the offset counts it too.
+  const failed = crypto.randomUUID();
+  h.core.journal.putMessage({ id: failed, threadId: b, turnId: 'turn-2', role: 'assistant', state: 'complete', createdAt: 3000, parts: [{ type: 'error', message: 'tool crashed' }, { type: 'text', text: answer }] as never });
+  const second = h.core.delegation.result({ ...turn, id: 'turn-2' } as Turn, 'thread')!;
+  const [, start, from] = /^([\s\S]*)\n\[Cut at character (\d+) of this message\. The rest: boite threads read \S+ --entry \S+ --offset \d+\]$/.exec(second)!;
+  const full = `[error] tool crashed\n${answer}`;
+  expect(start).toBe(full.slice(0, Number(from)));
+  expect(await whole((entry, offset) => h.core.coordination.read(a, target, undefined, undefined, entry, offset), { contact: h.core.coordination.describe(b), more: false, entries: [{ id: failed, role: 'assistant', at: 3000, text: start!, tools: [], length: full.length, next: Number(from) }] })).toEqual([full]);
 });
 
 test('a linked core pages an entry, and an older core that answers with a page is named, not trusted', async () => {
