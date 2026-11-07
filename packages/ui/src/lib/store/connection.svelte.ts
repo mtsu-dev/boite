@@ -190,6 +190,7 @@ export class Connection {
             ...(params.get('load') ? { load: Number(params.get('load')) } : {}),
             ...(params.get('loadtick') ? { loadTickMs: Number(params.get('loadtick')) } : {}),
             delegationDemo: params.get('team') === '1',
+            loopDemo: params.get('loop') === '1',
             agentsDemo: params.get('agents') === '1',
             subagentsDemo: params.get('subagents') === '1',
             boardDemo: params.get('board') === '1',

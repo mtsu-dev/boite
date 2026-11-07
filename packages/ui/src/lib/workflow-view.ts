@@ -3,7 +3,7 @@
  * its edges, each step's route and progress. Pure, so the layout rules are
  * tested without a DOM.
  */
-import { workflowLevels, type DelegationProfile, type WorkflowNode, type WorkflowRun, type WorkflowStepPlan, type WorkflowStepStatus } from '@boite/contracts';
+import { loopBody, workflowLevels, type DelegationProfile, type WorkflowCondition, type WorkflowNode, type WorkflowRun, type WorkflowStepPlan, type WorkflowStepStatus } from '@boite/contracts';
 import { totalTokens } from './usage';
 
 /** Under this width per step a phase no longer fits in a row, and the graph reads as a plain list. */
@@ -42,6 +42,37 @@ export function edgesOf(run: WorkflowRun): { from: string; to: string }[] {
     const deps = node.after.filter(dep => byId.has(dep));
     return deps.filter(dep => !deps.some(other => other !== dep && upstream(other).has(dep))).map(dep => ({ from: dep, to: node.id }));
   });
+}
+
+/**
+ * A `repeat` loop as the graph draws it: an arc from the step that closes it
+ * back up to the step it starts from, around every step it runs again.
+ */
+export type WorkflowLoop = {
+  from: string;
+  to: string;
+  body: string[];
+  round: number;
+  max: number;
+  until: WorkflowCondition;
+  /** live while one of its steps runs, failed once its closing step failed, over once it held. */
+  state: 'idle' | 'live' | 'over' | 'failed';
+};
+
+export function loopsOf(run: WorkflowRun): WorkflowLoop[] {
+  const byId = new Map(run.nodes.map(node => [node.id, node]));
+  return run.plan.steps.flatMap(step => {
+    const closing = byId.get(step.id);
+    if (!step.repeat || !closing) return [];
+    const body = [...loopBody(run.nodes, step.repeat.from, step.id)];
+    const state = body.some(id => byId.get(id)?.status === 'running') ? 'live' : closing.status === 'failed' || closing.status === 'stopped' ? 'failed' : closing.status === 'done' ? 'over' : 'idle';
+    return [{ from: step.repeat.from, to: step.id, body, round: closing.round ?? 1, max: step.repeat.max, until: step.repeat.until, state }];
+  });
+}
+
+/** `2/3` while the loop has rounds left, the bare round once a retry went past its last. */
+export function roundLabel(loop: Pick<WorkflowLoop, 'round' | 'max'>): string {
+  return loop.round > loop.max ? String(loop.round) : `${loop.round}/${loop.max}`;
 }
 
 /** Whether a phase of `steps` steps fits side by side in `width` pixels. */

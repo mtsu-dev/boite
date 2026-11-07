@@ -30,7 +30,7 @@ export function runSummary(run: WorkflowRun): string {
     return value === null ? null : clip(typeof value === 'string' ? value : JSON.stringify(value), each);
   };
   const steps = run.nodes.map(node => ({
-    id: node.id, title: node.title, status: node.status, ...(node.error ? { error: node.error } : {}),
+    id: node.id, title: node.title, status: node.status, ...(node.error ? { error: node.error } : {}), ...(node.round ? { round: node.round } : {}),
     ...(node.forEach
       ? { items: node.instances.map(i => ({ item: i.label, status: i.status, value: valueOf(i), ...(i.error ? { error: i.error } : {}), ...(i.worktree ? { worktree: worktreeLine(i.worktree) } : {}) })) }
       : node.instances[0] ? { value: valueOf(node.instances[0]), ...(node.instances[0].worktree ? { worktree: worktreeLine(node.instances[0].worktree) } : {}) } : {}),
@@ -51,7 +51,8 @@ const noticeKey = ({ node, inst }: Failure) => inst ? `${inst.key}@${inst.finish
 export function unnoticed(run: WorkflowRun): Failure[] {
   if (run.status !== 'running') return [];
   const told = new Set(run.failuresNoticed ?? []);
-  return run.nodes.flatMap((node): Failure[] => node.instances.length === 0
+  // A step fails by itself before it has an execution, or after they all ended done (a loop out of rounds).
+  return run.nodes.flatMap((node): Failure[] => node.instances.every(inst => inst.status === 'done')
     ? node.status === 'failed' ? [{ node, inst: null }] : []
     : node.instances.filter(inst => inst.status === 'failed' || (inst.status === 'stopped' && inst.error === 'Stopped')).map(inst => ({ node, inst })))
     .filter(failure => !told.has(noticeKey(failure)));

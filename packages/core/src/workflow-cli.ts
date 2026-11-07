@@ -5,7 +5,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
-import type { WorkflowNode, WorkflowPlan, WorkflowRun, WorkflowStepPlan } from '@boite/contracts';
+import { executionsUsed, type WorkflowNode, type WorkflowPlan, type WorkflowRun, type WorkflowStepPlan } from '@boite/contracts';
 import type { CoreClient } from './client.ts';
 import { worktreeLine } from './delegation/messages.ts';
 
@@ -40,7 +40,14 @@ Fields of a step:
   profile   optional: a profile id from boite delegate profiles
   after     step ids that must end first (steps named anywhere else are added)
   forEach   a path to a list: one execution per item, {{item}} is the item
-  when      { "path": ..., "equals": value | "notEmpty": true | "empty": true }
+  when      { "path": ..., "equals": value | "notEquals": value | "in": [values]
+            | "notEmpty": true | "empty": true }; on a fanned-out step's path,
+            equals and in hold when every item matches
+  repeat    on the step that closes a loop: { "from": step, "until": condition,
+            "max": rounds }. While until does not hold once this step ends,
+            from, this step and every step between them run again (max 2 to 10,
+            3 by default), each in its own conversation, told what this step
+            said; out of rounds the step fails and a retry runs one round more
   output    the JSON shape the step must return: "string", "number",
             "boolean", "any", [shape], or { "key": shape }
   worktree  optional: true runs the step in a git worktree of its own,
@@ -62,7 +69,15 @@ A step with output returns it with boite workflow output '<json>' or a final
 Steps share this checkout unless they set worktree: give parallel steps distinct files. A failed step
 stops new launches and is reported to you at once, while running steps finish;
 boite workflow retry <run-id> <step> runs it again with what it held back, and
-boite workflow retry <run-id> runs every failed step.`;
+boite workflow retry <run-id> runs every failed step.
+
+A fix and review loop: the reviewer closes it, the fixer reads its verdict.
+  { "id": "fix", "task": "Fix what the review asks for, or implement X first." },
+  { "id": "review", "after": ["fix"], "output": { "verdict": "string", "notes": "string" },
+    "task": "Review the diff. verdict is APPROVE or CHANGES.",
+    "repeat": { "from": "fix", "until": { "path": "review.verdict", "equals": "APPROVE" }, "max": 4 } }
+Steps after a loop read it through its closing step; worktree and machine
+steps do not run in a loop.`;
 
 function readPlan(raw: string | undefined, cwd: string, what: string): unknown {
   if (raw === undefined || raw.length === 0) throw new Error(`${what}: pass a JSON file or inline JSON`);
@@ -83,14 +98,14 @@ function readPlan(raw: string | undefined, cwd: string, what: string): unknown {
 const MARK: Record<WorkflowNode['status'], string> = { waiting: '[ ]', running: '[>]', done: '[x]', failed: '[!]', skipped: '[-]', stopped: '[s]' };
 
 function nodeRow(node: WorkflowNode): string {
-  const counts = node.forEach === null ? '' : ` ${node.instances.filter(i => i.status === 'done').length}/${node.instances.length}`;
+  const counts = `${node.forEach === null ? '' : ` ${node.instances.filter(i => i.status === 'done').length}/${node.instances.length}`}${node.round ? ` round=${node.round}` : ''}`;
   const inst = node.instances.find(i => i.model);
   const model = inst ? `${inst.providerId}/${inst.model}${inst.effort ? ` effort=${inst.effort}` : ''}` : '';
   return `${MARK[node.status]} ${node.id}${counts} ${node.status}${model ? ` ${model}` : ''}${node.error ? ` error=${JSON.stringify(node.error)}` : ''}`;
 }
 
 function runHead(run: WorkflowRun): string[] {
-  const steps = run.nodes.reduce((n, node) => n + node.instances.length, 0);
+  const steps = executionsUsed(run);
   return [`run: ${run.id}`, `name: ${run.name}`, `status: ${run.status}${run.error ? ` (${run.error})` : ''}`, `executions: ${steps}/${run.limits.maxSteps}`];
 }
 

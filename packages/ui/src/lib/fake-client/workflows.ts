@@ -6,12 +6,17 @@ import {
   WORKFLOW_LIMITS,
   checkPlan,
   checkSteps,
+  closeLoop,
   conditionHolds,
+  executionsUsed,
   itemLabel,
+  loopAgain,
+  loopSpent,
   renderTask,
   resolvePath,
   shapeMismatch,
   workflowLevels,
+  workflowValues,
   type DelegationConfig,
   type DelegationProfile,
   type DelegationWorktree,
@@ -49,6 +54,8 @@ export interface WorkflowHost {
   child(root: Thread, profile: ChildRoute, title: string, task: string): ThreadId;
   /** The child's answer lands and it goes idle; `ok` false leaves an error instead. */
   answer(threadId: ThreadId, text: string, ok: boolean): void;
+  /** A loop's next round in a child that already ran: the task as a new message, the child at work again. */
+  again(threadId: ThreadId, task: string): void;
   /** A step's `machine` names another member of the group, refused in `delegate spawn --machine`'s words under `field`. */
   member(query: string, field: string): void;
   /** The step's subagent on that member, routed there; throws what that machine or the core refuses. */
@@ -91,6 +98,21 @@ export function sampleOf(shape: WorkflowShape, key = '', depth = 0, index = 0): 
   if (shape === 'boolean') return true;
   if (Array.isArray(shape)) return Array.from({ length: depth === 0 ? 3 : 1 }, (_, i) => sampleOf(shape[0]!, key, depth + 1, depth === 0 ? i : index));
   return Object.fromEntries(Object.entries(shape).map(([name, inner]) => [name, sampleOf(inner, name, depth, index)]));
+}
+
+/**
+ * A fake reviewer approves from the second round of its loop: the sample its shape gives would never
+ * match `until`, so the loop would only ever run out of rounds on `?fake=1`.
+ */
+function approved(run: WorkflowRun, step: WorkflowStepPlan, output: unknown): unknown {
+  const until = step.repeat?.until;
+  const [head, ...rest] = until?.path.split('.') ?? [];
+  const round = run.nodes.find(node => node.id === step.id)?.round ?? 1;
+  if (!until || !('equals' in until) || head !== step.id || round < 2 || !rest.length || typeof output !== 'object' || output === null) return output;
+  let into = output as Record<string, unknown>;
+  for (const key of rest.slice(0, -1)) into = (into[key] ??= {}) as Record<string, unknown>;
+  into[rest.at(-1)!] = until.equals;
+  return output;
 }
 
 /**
@@ -169,7 +191,7 @@ export class FakeWorkflows {
       }
       if (run.status !== 'running' && run.status !== 'paused') throw refusal(`the run is ${run.status}; only a running or paused run takes new steps`);
       const config = this.#team(run.rootThreadId);
-      const steps = planError(() => checkSteps(params.steps, { profiles: config.profiles.map(p => p.id), existing: run.nodes.map(n => ({ id: n.id, after: n.after })) }));
+      const steps = planError(() => checkSteps(params.steps, { profiles: config.profiles.map(p => p.id), existing: run.nodes.map(n => ({ id: n.id, after: n.after, repeat: run.plan.steps.find(s => s.id === n.id)?.repeat })) }));
       this.#members(steps);
       run.plan.steps.push(...steps.map(({ deps: _deps, ...step }) => step));
       run.nodes.push(...steps.map(step => this.#node(step, step.deps)));
@@ -263,7 +285,7 @@ export class FakeWorkflows {
     if (!run || !inst || inst.status !== 'running') return;
     const step = run.plan.steps.find(s => s.id === key.split('#')[0])!;
     const failing = !ok || /\bfail\b/i.test(inst.task ?? '');
-    const output = step.output === undefined || failing ? null : sampleOf(step.output, step.id, 0, inst.index ?? 0);
+    const output = step.output === undefined || failing ? null : approved(run, step, sampleOf(step.output, step.id, 0, inst.index ?? 0));
     const answer = failing ? 'The step could not finish: the task asked it to fail.' : output === null ? `${step.title ?? step.id}: done, nothing else to report.` : `Done.\n\n\`\`\`json\n${JSON.stringify(output, null, 2)}\n\`\`\``;
     if (inst.threadId) this.host.answer(inst.threadId, answer, !failing);
     else if (inst.machine?.childId && inst.machine.coreId) {
@@ -354,16 +376,6 @@ export class FakeWorkflows {
     return undefined;
   }
 
-  #values(run: WorkflowRun): Record<string, unknown> {
-    const values: Record<string, unknown> = {};
-    const valueOf = (inst: WorkflowInstance) => inst.output ?? inst.result;
-    for (const node of run.nodes) {
-      if (node.status === 'skipped') values[node.id] = null;
-      else if (node.status === 'done') values[node.id] = node.forEach ? node.instances.map(valueOf) : node.instances[0] ? valueOf(node.instances[0]) : null;
-    }
-    return values;
-  }
-
   #halted(run: WorkflowRun): boolean {
     return run.nodes.some(node => broken(node.status) || node.instances.some(i => broken(i.status)));
   }
@@ -383,7 +395,7 @@ export class FakeWorkflows {
     }
     for (let progress = true; progress;) {
       progress = false;
-      const values = this.#values(run);
+      const values = workflowValues(run);
       for (const node of run.nodes) {
         if (node.status !== 'waiting' || node.instances.length) continue;
         const deps = node.after.map(id => run.nodes.find(n => n.id === id)!);
@@ -433,19 +445,26 @@ export class FakeWorkflows {
       if (!Array.isArray(list)) return void fail(`forEach: ${step.forEach} is not a list`);
       items = list;
     }
-    const used = run.nodes.reduce((n, other) => n + other.instances.length, 0);
+    const used = executionsUsed(run);
     const count = items ? items.length : 1;
     if (used + count > run.limits.maxSteps) return void fail(`${count} executions would pass this run's limit of ${run.limits.maxSteps} (${used} used); raise limits.maxSteps up to ${WORKFLOW_LIMITS.maxSteps} or narrow the list`);
     if (items && items.length === 0) {
       Object.assign(node, { status: 'done', startedAt: now, finishedAt: now });
+      closeLoop(run, node, now);
       return;
     }
-    node.instances = (items ?? [undefined]).map((item, index) => ({
-      key: items ? `${node.id}#${index}` : node.id, index: items ? index : null, label: items ? itemLabel(item) : '',
-      threadId: null, providerId: null, model: null, status: 'waiting', attempts: 0,
-      task: renderTask(step.task, items ? { ...values, item, index } : values), result: null, output: null,
-      error: null, startedAt: null, finishedAt: null,
-    }));
+    node.instances = (items ?? [undefined]).map((item, index) => {
+      const key = items ? `${node.id}#${index}` : node.id;
+      // A loop's next round reuses the conversation each execution had.
+      const last = node.previous?.find(inst => inst.key === key && inst.threadId !== null && !this.#archived(inst.threadId));
+      return {
+        key, index: items ? index : null, label: items ? itemLabel(item) : '',
+        threadId: last?.threadId ?? null, providerId: last?.providerId ?? null, model: last?.model ?? null, ...(last?.effort === undefined ? {} : { effort: last.effort }),
+        status: 'waiting', attempts: 0,
+        task: renderTask(step.task, items ? { ...values, item, index } : values), result: null, output: null,
+        error: null, startedAt: null, finishedAt: null,
+      };
+    });
     Object.assign(node, { status: 'running', startedAt: now, error: null });
   }
 
@@ -466,7 +485,7 @@ export class FakeWorkflows {
       const threadId = this.host.child(root, { ...profile, effort }, title, inst.task ?? '');
       this.#steps.set(threadId, { runId: run.id, key: inst.key });
       Object.assign(inst, { threadId, providerId: profile.providerId, model: profile.model, effort });
-    }
+    } else if ((node.round ?? 1) > 1 && inst.attempts === 0) this.host.again(inst.threadId, inst.task ?? '');
     Object.assign(inst, { status: 'running', attempts: 1, error: null, result: null, output: null, startedAt: now, finishedAt: null });
     this.#arm(run.id, inst);
   }
@@ -540,6 +559,7 @@ export class FakeWorkflows {
       node.status = failed ? 'failed' : stopped ? 'stopped' : 'done';
       node.error = (failed ?? stopped)?.error ?? null;
       node.finishedAt = now;
+      closeLoop(run, node, now);
     }
   }
 
@@ -571,6 +591,8 @@ export class FakeWorkflows {
         // Work on a copy: a refused retry leaves the run as it was, as the core does.
         const next = structuredClone(run);
         const targets = new Set(nodes.map(node => node.id));
+        // A loop out of rounds goes one round more.
+        for (const node of next.nodes) if (targets.has(node.id) && loopSpent(next, node)) loopAgain(next, node);
         for (const node of next.nodes) {
           const target = targets.has(node.id);
           for (const inst of node.instances) if (target && broken(inst.status)) {
