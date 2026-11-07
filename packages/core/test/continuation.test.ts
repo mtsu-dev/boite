@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, expect, test } from 'bun:test';
 import { ATTACHMENTS_PER_TURN, ATTACHMENTS_TOTAL_MAX_BYTES, decodedBytes, type Attachment, type ImageAttachment, type MessagePart, type ProviderDescriptor } from '@boite/contracts';
-import { FileReferences, fileReference } from '../src/attachments.ts';
-import { continuationInput } from '../src/continuation.ts';
+import { FileReferences, fileReference, plannedFileReference } from '../src/attachments.ts';
+import { continuationInput, switchBackInput, switchGapFits } from '../src/continuation.ts';
 import { Journal } from '../src/journal.ts';
 
 let dir: string;
@@ -128,4 +128,26 @@ test('the bounded walks build the prompt and images the full walk built, byte fo
   expect(long.attachments.length).toBeGreaterThan(5);
   expect(() => continuationInput(journal, 'thr_long', 'turn-3', { prompt: 'x', attachments: [] }, { ...provider, capabilities: { ...provider.capabilities, images: false } })).not.toThrow();
   expect(() => continuationInput(journal, 'thr_long', 'turn-80', { prompt: 'x', attachments: [] }, { ...provider, capabilities: { ...provider.capabilities, images: false } })).toThrow('historical images');
+  // A switch back carries the images of what its session missed, and refuses them like a fresh start where the agent cannot read them.
+  const missed = { turnId: 'turn-155', afterPart: null };
+  expect(switchBackInput(journal, 'thr_long', missed, 'current', { prompt: 'x', attachments: [] }, provider).attachments.map(part => part.name)).toContain('shot-314.png');
+  expect(() => switchBackInput(journal, 'thr_long', missed, 'current', { prompt: 'x', attachments: [] }, { ...provider, capabilities: { ...provider.capabilities, images: false } })).toThrow('historical images');
+});
+
+test('a switch back fits its gap only when the prompt it builds carries all of it, file paths included', () => {
+  const put = (id: string, turnId: string, role: 'user' | 'assistant', parts: MessagePart[]): void => journal.putMessage({ id, threadId: 'thr_gap', turnId, role, state: 'complete', createdAt: 0, parts });
+  put('anchor', 'turn-a', 'assistant', [{ type: 'text', text: 'the session ends here' }]);
+  // 63,950 characters of history entries with a short file placeholder, past 64,000 once the file is its copy's path.
+  put('with-file', 'turn-b', 'user', [{ type: 'text', text: 'see file' }, { type: 'file', name: 'notes.txt', mimeType: 'text/plain', data: Buffer.from('notes').toString('base64') }]);
+  for (let index = 0; index < 5; index++) put(`pad-${index}`, 'turn-b', 'assistant', [{ type: 'text', text: 'x'.repeat(11_000) }]);
+  put('pad-last', 'turn-b', 'assistant', [{ type: 'text', text: 'y'.repeat(8_775) }]);
+  const anchor = { turnId: 'turn-a', afterPart: null };
+  const built = switchBackInput(journal, 'thr_gap', anchor, 'turn-back', { prompt: 'back', attachments: [] }, provider, part => fileReference(dir, part));
+  expect(built.prompt).toContain('earlier messages omitted');
+  expect(plannedFileReference(dir, { type: 'file', name: 'notes.txt', mimeType: 'text/plain', data: Buffer.from('notes').toString('base64') })).toBe(fileReference(dir, { type: 'file', name: 'notes.txt', mimeType: 'text/plain', data: Buffer.from('notes').toString('base64') }));
+  expect(switchGapFits(journal, 'thr_gap', anchor, part => plannedFileReference(dir, part))).toBe(false);
+  // Short placeholders: the same gap fits, and the prompt carries it whole.
+  const placeholder = (part: Extract<MessagePart, { type: 'file' }>): string => `[File: ${part.name}]`;
+  expect(switchGapFits(journal, 'thr_gap', anchor, placeholder)).toBe(true);
+  expect(switchBackInput(journal, 'thr_gap', anchor, 'turn-back', { prompt: 'back', attachments: [] }, provider, placeholder).prompt).not.toContain('omitted');
 });

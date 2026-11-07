@@ -21,10 +21,23 @@ function fieldOf(text: string | null, field: 'accountId' | 'sessionId'): string 
   }
 }
 
+/** The sessions a thread keeps for a switch back to their accounts (`threads/account-sessions.ts`, setting `account-sessions:`). */
+function savedSessions(db: Database, threadId: string): NativeSession[] {
+  const row = db.query('SELECT value FROM settings WHERE key = ?').get(`account-sessions:${threadId}`) as { value: string } | null;
+  if (row === null) return [];
+  try {
+    const saved = (JSON.parse(row.value) as { saved?: Record<string, { sessionId?: unknown }> }).saved ?? {};
+    return Object.entries(saved).flatMap(([accountId, session]) => typeof session?.sessionId === 'string' && session.sessionId.length > 0 ? [{ accountId, sessionId: session.sessionId }] : []);
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Every session the threads ran on, with the account it ran under: the
- * current one, and each turn's frozen execution and checkpoint, which keep
- * the sessions an account change or a fresh retry left behind.
+ * current one, the ones kept for a switch back, and each turn's frozen
+ * execution and checkpoint, which keep the sessions an account change or a
+ * fresh retry left behind.
  */
 export function threadSessions(db: Database, threadIds: readonly string[]): NativeSession[] {
   const out = new Map<string, NativeSession>();
@@ -37,6 +50,7 @@ export function threadSessions(db: Database, threadIds: readonly string[]): Nati
     const thread = threadQuery.get(id) as { account_id: string; session_id: string | null } | null;
     if (thread === null) continue;
     add(thread.account_id, thread.session_id);
+    for (const saved of savedSessions(db, id)) add(saved.accountId, saved.sessionId);
     for (const turn of turnQuery.all(id) as { execution: string | null; checkpoint: string | null }[]) {
       const accountId = fieldOf(turn.execution, 'accountId') ?? thread.account_id;
       add(accountId, fieldOf(turn.execution, 'sessionId'));
@@ -54,6 +68,8 @@ export function threadSessions(db: Database, threadIds: readonly string[]): Nati
  */
 export function sessionReferenced(db: Database, sessionId: string): boolean {
   return db.query(`SELECT 1 FROM threads WHERE session_id = ?1
+    UNION ALL SELECT 1 FROM settings WHERE key LIKE 'account-sessions:%' AND value LIKE '%' || ?1 || '%' AND json_valid(value)
+      AND EXISTS (SELECT 1 FROM json_each(settings.value, '$.saved') AS saved WHERE json_extract(saved.value, '$.sessionId') = ?1)
     UNION ALL SELECT 1 FROM turns WHERE
       (execution LIKE '%' || ?1 || '%' AND json_valid(execution) AND json_extract(execution, '$.sessionId') = ?1)
       OR (checkpoint LIKE '%' || ?1 || '%' AND json_valid(checkpoint) AND json_extract(checkpoint, '$.sessionId') = ?1)

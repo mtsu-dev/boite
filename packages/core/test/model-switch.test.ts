@@ -5,6 +5,7 @@ import { echoDriver } from '../src/drivers/echo.ts';
 import { ModelProbes } from '../src/drivers/model-probes.ts';
 import type { ModelInfo } from '@boite/contracts';
 import { continuationInput } from '../src/continuation.ts';
+import { sessionReferenced } from '../src/threads/native-sessions.ts';
 import { Journal } from '../src/journal.ts';
 import { join } from 'node:path';
 import { holdAccountTurns, echoThread, startTestCore, waitFor, type TestCore } from './harness.ts';
@@ -22,7 +23,7 @@ async function setup() {
   return { client, threadId, accountId };
 }
 
-test('account switching keeps the thread, carries prior exchanges and never reuses the old native session', async () => {
+test('account switching keeps the thread and a switch back resumes the session it left with only what it missed', async () => {
   const { client, threadId, accountId } = await setup();
   const seen: TurnContext[] = [];
   restore = setDriver('echo', {
@@ -30,9 +31,10 @@ test('account switching keeps the thread, carries prior exchanges and never reus
     startTurn(ctx) {
       seen.push(ctx);
       const id = ctx.emit.startMessage('assistant');
-      ctx.emit.part(id, 0, { type: 'text', text: `remember ${ctx.prompt}` });
+      ctx.emit.part(id, 0, { type: 'text', text: `remember turn ${seen.length}` });
       ctx.emit.complete(id, 'complete');
-      return { stop() {}, done: Promise.resolve({ status: 'done', sessionId: `native-${seen.length}`, usage: null }) };
+      const totals = { costUsd: 0.25 * seen.length, tokens: 100 * seen.length };
+      return { stop() {}, done: Promise.resolve<TurnResult>({ status: 'done', sessionId: ctx.sessionId ?? `native-${seen.length}`, usage: null, agentTotals: totals }) };
     },
   });
   const run = async (prompt: string) => {
@@ -48,13 +50,191 @@ test('account switching keeps the thread, carries prior exchanges and never reus
   await run('continue');
   expect(seen[1]?.prompt).toContain('blue widgets');
   expect(seen[1]?.sessionId).toBeNull();
-  await client.call('threads.update', { threadId, accountId, model: 'echo' });
+  // The session left stays on disk for the switch back: transcript purge sees it referenced.
+  expect(sessionReferenced(h.core.journal.db, 'native-1')).toBe(true);
+  const back = await client.call('threads.update', { threadId, accountId, model: 'echo' });
+  expect(back).toMatchObject({ sessionId: 'native-1', sessionGeneration: 2 });
   await run('back again');
-  expect(seen[2]?.sessionId).toBeNull();
+  // The first account's session already holds the opening exchange: it gets only the second account's.
+  expect(seen[2]?.sessionId).toBe('native-1');
+  expect(seen[2]?.prompt).toContain('It then went on with another agent');
   expect(seen[2]?.prompt).toContain('continue');
+  expect(seen[2]?.prompt).toContain('remember turn 2');
+  expect(seen[2]?.prompt).not.toContain('blue widgets');
+  expect(seen[2]?.prompt).not.toContain('remember turn 1');
+  // Its running totals go on from where that session left them.
+  expect(seen[2]?.sessionBefore).toEqual({ costUsd: 0.25, tokens: 100 });
+  // Carried once: the next turn on it is the request alone.
+  await run('and once more');
+  expect(seen[3]?.sessionId).toBe('native-1');
+  expect(seen[3]?.prompt).not.toContain('<recent-history>');
+  // The second account's session waits for the next switch to it.
+  expect(h.core.threads.accountSessions.saved(threadId, 'second-account')).toMatchObject({ sessionId: 'native-2', generations: [1] });
   expect(h.core.threads.list({})).toHaveLength(1);
   const messages = h.core.threads.get(threadId).messages.filter((m) => m.role === 'user');
   expect(messages[1]?.parts).toEqual([{ type: 'text', text: 'continue' }]);
+});
+
+test('a switch back starts fresh with the whole history when what came since is past the bound', async () => {
+  const { client, threadId, accountId } = await setup();
+  const seen: TurnContext[] = [];
+  restore = setDriver('echo', {
+    protocol: 'echo',
+    startTurn(ctx) {
+      seen.push(ctx);
+      const id = ctx.emit.startMessage('assistant');
+      ctx.emit.part(id, 0, { type: 'text', text: `long answer ${seen.length} `.padEnd(11_000, 'x') });
+      ctx.emit.complete(id, 'complete');
+      return { stop() {}, done: Promise.resolve<TurnResult>({ status: 'done', sessionId: ctx.sessionId ?? `native-${seen.length}`, usage: null }) };
+    },
+  });
+  const run = async (prompt: string) => {
+    const turn = await client.call('turns.start', { threadId, prompt });
+    await waitFor(() => h.core.journal.getTurn(turn.id)?.status === 'done');
+  };
+  await run('opening request');
+  await client.call('threads.update', { threadId, accountId: 'second-account', model: 'echo' });
+  for (let index = 0; index < 7; index++) await run(`work ${index}`);
+  expect(await client.call('threads.update', { threadId, accountId, model: 'echo' })).toMatchObject({ sessionId: null });
+  await run('back');
+  expect(seen.at(-1)?.sessionId).toBeNull();
+  expect(seen.at(-1)?.prompt).toContain('Continue this existing conversation');
+  expect(seen.at(-1)?.prompt).toContain('opening request');
+});
+
+for (const compacted of [false, true]) test(`a switch back carries a prompt stopped before the session saved it${compacted ? ', across a compaction' : ''}`, async () => {
+  const { client, threadId, accountId } = await setup();
+  const seen: TurnContext[] = [];
+  restore = setDriver('echo', {
+    protocol: 'echo',
+    startTurn(ctx) {
+      seen.push(ctx);
+      if (seen.length === 2) {
+        let finish!: (result: TurnResult) => void;
+        return { done: new Promise<TurnResult>((resolve) => { finish = resolve; }), stop: () => finish({ status: 'stopped', sessionId: ctx.sessionId, usage: null }) };
+      }
+      const id = ctx.emit.startMessage('assistant');
+      ctx.emit.part(id, 0, { type: 'text', text: `answer ${seen.length}` });
+      ctx.emit.complete(id, 'complete');
+      return { stop() {}, done: Promise.resolve<TurnResult>({ status: 'done', sessionId: ctx.sessionId ?? `native-${seen.length}`, usage: null }) };
+    },
+  });
+  const first = await client.call('turns.start', { threadId, prompt: 'opening request' });
+  await waitFor(() => h.core.journal.getTurn(first.id)?.status === 'done');
+  const stopped = await client.call('turns.start', { threadId, prompt: 'cut short request' });
+  await waitFor(() => seen.length === 2);
+  await client.call('turns.stop', { threadId });
+  await waitFor(() => h.core.journal.getTurn(stopped.id)?.status === 'stopped');
+  // A compaction ends the session's history at its own turn, yet does not answer the stopped prompt.
+  if (compacted) {
+    const compact = await client.call('threads.compact', { threadId });
+    await waitFor(() => h.core.journal.getTurn(compact.id)?.status === 'done');
+  }
+  await client.call('threads.update', { threadId, accountId: 'second-account', model: 'echo' });
+  expect(await client.call('threads.update', { threadId, accountId, model: 'echo' })).toMatchObject({ sessionId: 'native-1' });
+  const back = await client.call('turns.start', { threadId, prompt: 'continue' });
+  await waitFor(() => h.core.journal.getTurn(back.id)?.status === 'done');
+  expect(seen.at(-1)?.sessionId).toBe('native-1');
+  expect(seen.at(-1)?.prompt).toContain('cut short request');
+  expect(seen.at(-1)?.prompt).not.toContain('opening request');
+});
+
+test('a resume after the first turn back was cut carries what the session missed', async () => {
+  const { client, threadId, accountId } = await setup();
+  const seen: TurnContext[] = [];
+  restore = setDriver('echo', {
+    protocol: 'echo',
+    startTurn(ctx) {
+      seen.push(ctx);
+      if (seen.length === 3) {
+        let finish!: (result: TurnResult) => void;
+        return { done: new Promise<TurnResult>((resolve) => { finish = resolve; }), stop: () => finish({ status: 'stopped', sessionId: ctx.sessionId, usage: null }) };
+      }
+      const id = ctx.emit.startMessage('assistant');
+      ctx.emit.part(id, 0, { type: 'text', text: `answer ${seen.length}` });
+      ctx.emit.complete(id, 'complete');
+      return { stop() {}, done: Promise.resolve<TurnResult>({ status: 'done', sessionId: ctx.sessionId ?? `native-${seen.length}`, usage: null }) };
+    },
+  });
+  const run = async (prompt: string) => {
+    const turn = await client.call('turns.start', { threadId, prompt });
+    await waitFor(() => h.core.journal.getTurn(turn.id)?.status === 'done');
+  };
+  await run('opening request');
+  await client.call('threads.update', { threadId, accountId: 'second-account', model: 'echo' });
+  await run('work on the second account');
+  await client.call('threads.update', { threadId, accountId, model: 'echo' });
+  const cut = await client.call('turns.start', { threadId, prompt: 'back request' });
+  await waitFor(() => seen.length === 3);
+  expect(seen[2]?.prompt).toContain('work on the second account');
+  await client.call('turns.stop', { threadId });
+  await waitFor(() => h.core.journal.getTurn(cut.id)?.status === 'stopped');
+  const resumed = h.core.threads.startTurn(threadId, 'carry on', { kind: 'resume', reason: 'carry-on' });
+  await waitFor(() => h.core.journal.getTurn(resumed.id)?.status === 'done');
+  expect(seen[3]?.sessionId).toBe('native-1');
+  expect(seen[3]?.prompt).toContain('work on the second account');
+});
+
+test('a switch back whose session the agent lost runs the same turn fresh with the whole history', async () => {
+  const { client, threadId, accountId } = await setup();
+  const seen: TurnContext[] = [];
+  restore = setDriver('echo', {
+    protocol: 'echo',
+    startTurn(ctx) {
+      seen.push(ctx);
+      if (ctx.sessionId === 'native-1' && seen.length > 1) {
+        return { stop() {}, done: Promise.resolve<TurnResult>({ status: 'error', sessionId: ctx.sessionId, usage: null, error: 'no conversation found', sessionLost: true }) };
+      }
+      const id = ctx.emit.startMessage('assistant');
+      ctx.emit.part(id, 0, { type: 'text', text: `answer ${seen.length}` });
+      ctx.emit.complete(id, 'complete');
+      return { stop() {}, done: Promise.resolve<TurnResult>({ status: 'done', sessionId: ctx.sessionId ?? `native-${seen.length}`, usage: null }) };
+    },
+  });
+  const run = async (prompt: string) => {
+    const turn = await client.call('turns.start', { threadId, prompt });
+    await waitFor(() => h.core.journal.getTurn(turn.id)?.finishedAt != null);
+    return h.core.journal.getTurn(turn.id);
+  };
+  await run('opening request');
+  await client.call('threads.update', { threadId, accountId: 'second-account', model: 'echo' });
+  await run('work on the second account');
+  await client.call('threads.update', { threadId, accountId, model: 'echo' });
+  expect((await run('back'))?.status).toBe('done');
+  expect(seen.map(ctx => ctx.sessionId)).toEqual([null, null, 'native-1', null]);
+  expect(seen[3]?.prompt).toContain('Continue this existing conversation');
+  expect(seen[3]?.prompt).toContain('opening request');
+  expect(h.core.threads.require(threadId)).toMatchObject({ sessionId: 'native-4', sessionGeneration: 3 });
+});
+
+test('a switch back after an edit removed the turn its session ended on starts fresh', async () => {
+  const { client, threadId, accountId } = await setup();
+  const seen: TurnContext[] = [];
+  restore = setDriver('echo', {
+    protocol: 'echo',
+    startTurn(ctx) {
+      seen.push(ctx);
+      const id = ctx.emit.startMessage('assistant');
+      ctx.emit.part(id, 0, { type: 'text', text: `answer ${seen.length}` });
+      ctx.emit.complete(id, 'complete');
+      return { stop() {}, done: Promise.resolve<TurnResult>({ status: 'done', sessionId: ctx.sessionId ?? `native-${seen.length}`, usage: null }) };
+    },
+  });
+  const run = async (prompt: string) => {
+    const turn = await client.call('turns.start', { threadId, prompt });
+    await waitFor(() => h.core.journal.getTurn(turn.id)?.status === 'done');
+  };
+  await run('kept request');
+  await run('edited away');
+  await client.call('threads.update', { threadId, accountId: 'second-account', model: 'echo' });
+  await run('on the second account');
+  const edited = h.core.threads.get(threadId).messages.filter((m) => m.role === 'user')[1]!;
+  await client.call('threads.rewind', { threadId, messageId: edited.id });
+  expect(await client.call('threads.update', { threadId, accountId, model: 'echo' })).toMatchObject({ sessionId: null });
+  await run('back');
+  expect(seen.at(-1)?.sessionId).toBeNull();
+  expect(seen.at(-1)?.prompt).toContain('kept request');
+  expect(seen.at(-1)?.prompt).not.toContain('edited away');
 });
 
 test('a queued turn keeps its original account and late completion cannot attach its session to the new selection', async () => {
@@ -85,6 +265,8 @@ test('a queued turn keeps its original account and late completion cannot attach
   expect(h.core.threads.require(threadId).accountId).toBe('second-account');
   expect(h.core.threads.require(threadId).sessionId).toBeNull();
   expect(h.core.journal.getTurn(queued.id)?.execution?.accountId).toBe(accountId);
+  // The account it ran on keeps that session, ending with the late turn, for a switch back.
+  expect(h.core.threads.accountSessions.saved(threadId, accountId)).toMatchObject({ sessionId: 'old-native', after: { turnId: queued.id, afterPart: null } });
 });
 
 test('a turn stopped while the agent refuses to resume its lost session is not run again on a fresh one', async () => {

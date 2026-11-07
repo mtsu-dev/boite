@@ -89,7 +89,7 @@ export function usageTotal(core: Core, groups: readonly UsageGroup[]): Usage {
 }
 
 /** What an agent session already used: its last reported totals, else its turns (`Journal.sessionUsage`). */
-export function sessionUsage(core: Core, threadId: ThreadId, generation: number, exceptTurnId: string): AgentTotals {
+export function sessionUsage(core: Core, threadId: ThreadId, generation: number | readonly number[], exceptTurnId: string): AgentTotals {
   const { reported, groups } = core.journal.sessionUsage(threadId, generation, exceptTurnId);
   if (reported !== null) return reported;
   const usage = usageTotal(core, groups);

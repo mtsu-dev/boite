@@ -59,9 +59,9 @@ restart. Pending tool approvals follow a mode applied live; business questions
 still require the user's answer.
 
 A compatible model change on the same account follows the driver's existing
-model-switch path. Changing accounts clears the native session. The next turn
-starts a fresh session with context from the journal. Returning to an earlier
-account also starts fresh, so it receives the intervening work. The core
+model-switch path. Changing accounts starts a fresh session on the new
+account, with context from the journal, and keeps the session left: each
+account of a thread holds at most one ([switching back](#switching-back)). The core
 makes the same switch by itself when the thread's account signed out and
 another account of the agent is signed in
 ([accounts.md](accounts.md#a-conversation-follows-its-agent)).
@@ -255,6 +255,43 @@ limit is reached, so a request never carries more image bytes than one turn. Del
 image references lack an attachment. An image-incapable destination refuses
 continuation of an image-bearing history explicitly.
 
+## Switching back
+
+A thread that returns to an account it ran on resumes the native session it
+left there, when that session can come back: same provider, same folder, the
+turn it ended on still in the journal (an edit or rewind before it removes
+it), and the exchanges since then within the 64,000 characters of recent
+history. The next prompt carries only those exchanges, cut like the transfer
+above, then the request; once that turn is done, later prompts carry the
+request alone. The session's history counts as ending at its last answered
+turn: a prompt stopped before that goes with the missed exchanges, or with the
+interrupted messages when a compaction came after it. A resume after a cut
+first turn back carries them again. Images among them go as attachments within
+one turn's limits; an agent that cannot read images refuses them, as a fresh
+start does. Otherwise the thread starts fresh with the whole transfer, and
+the log says why (`thread.session-not-resumed`).
+
+The saved sessions live in one journal setting per thread
+(`account-sessions:<thread>`, `packages/core/src/threads/account-sessions.ts`),
+erased with the thread and not copied by a fork. A resumed session takes a new
+session generation, so a late result from the account left in between cannot
+attach to it. Its cost and token totals add the generations it ran on before.
+A turn accepted on the old account that settles after the switch updates that
+account's saved session. Transcript purge keeps every saved session's files.
+
+Every driver that resumes a session by id takes it back: Claude, Codex, pi,
+Muse and ACP agents that advertise `loadSession`. An agent that no longer holds
+the session (pruned transcript, deleted rollout) answers as a lost session and
+the same turn runs again on a fresh one with the whole history. A driver that
+cannot reopen sessions starts a new one with the whole transfer.
+
+`bun run bench/switch-back.ts [turnsOnA] [turnsOnB] [answerChars] [toolChars]`
+prints the prompt bytes of the turn back on the first account. On 2026-11-07,
+with 4,000-character answers and 8,000-character tool outputs: 10 turns on A
+then 3 on B went from 62,978 bytes on a fresh session to 37,629 on the resumed
+one, 30 then 1 from 62,978 to 12,813, and 10 then 8 stay at 62,978, fresh,
+since the 8 turns are past the bound.
+
 ## Storage and concurrent changes
 
 The composer resolves an old `default` or `auto` model alias to the configured
@@ -295,8 +332,9 @@ composer are not accepted turns; they use the selected model when submitted.
 `packages/core/test/live-settings.test.ts` covers effort and speed changes during
 a turn, and each driver's own test covers its setter. The opt-in live Claude and
 Codex tests change the effort while a real command runs.
-`packages/core/test/model-switch.test.ts` covers account changes and return,
-queued execution ownership, stale selections, long history, images and schema
+`packages/core/test/model-switch.test.ts` covers account changes and a return
+that resumes the session left with only the missed exchanges, the fallbacks
+(gap past the bound, lost session, rewind), queued execution ownership, stale selections, long history, images and schema
 migration. The UI test preserves the thread and draft across picker changes.
 `tests/e2e/model-switch.test.ts` switches Echo to a fixture ACP process through
 real WebSocket and stdio paths and captures desktop and phone layouts.
