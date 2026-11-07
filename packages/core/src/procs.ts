@@ -603,10 +603,17 @@ export class ProcRegistry {
     const at = this.#stopsAsked.get(threadId);
     return at !== undefined && at >= since;
   }
+  #stopCount = 0;
+  readonly #stopNumbers = new Map<ThreadId, number>();
+  /** Which stop of all this core asked was the thread's last: another number means a stop came since. */
+  stopNumber(threadId: ThreadId): number { return this.#stopNumbers.get(threadId) ?? 0; }
 
   killTree(threadId: ThreadId): number {
     this.#stopsAsked.delete(threadId);
     this.#stopsAsked.set(threadId, Date.now());
+    this.#stopNumbers.delete(threadId);
+    this.#stopNumbers.set(threadId, ++this.#stopCount);
+    if (this.#stopNumbers.size > 1024) this.#stopNumbers.delete(this.#stopNumbers.keys().next().value!);
     if (this.#stopsAsked.size > 1024) this.#stopsAsked.delete(this.#stopsAsked.keys().next().value!);
     this.finishStartup(threadId);
     const byPid = this.#live.get(threadId);

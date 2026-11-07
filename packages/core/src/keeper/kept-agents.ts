@@ -83,10 +83,17 @@ export class KeptAgents implements CommitHook {
     };
   }
 
-  /** Core shutdown: no launch comes here any more. The keeper's client closes with the shells'. */
+  /**
+   * Core shutdown: no launch comes here any more, and since no core takes a
+   * turn back yet, the keeper ends what still runs and forgets it all, rather
+   * than hold exit codes for a core that will not ask. Rows stay for the next
+   * core to clear. The keeper's client closes with the shells'.
+   */
   close(): void {
     this.#closed = true;
     if (this.#core.procs.keptSpawn !== null) this.#core.procs.keptSpawn = null;
+    for (const ledger of this.#ledgers.values()) ledger.child.release();
+    this.#ledgers.clear();
   }
 
   async #connect(): Promise<void> {
@@ -102,7 +109,8 @@ export class KeptAgents implements CommitHook {
   #spawn(threadId: ThreadId, cmd: string, executable: string, args: string[], opts: SpawnOptions): SpawnedChild | null {
     const keep = opts.keep;
     if (keep === undefined || this.#closed) return null;
-    if (!this.#client.reachable) {
+    // Connected now, not connecting: a connect that fails would fail the launch with it.
+    if (!this.#client.connected) {
       if (!this.#warned) {
         this.#warned = true;
         this.#core.logs.warn(`The keeper is not reachable: ${cmd} runs on this core's own pipes, and a restart ends it`, { source: 'keeper', event: 'keeper.agent-direct', threadId });
@@ -111,7 +119,7 @@ export class KeptAgents implements CommitHook {
       return null;
     }
     const child = this.#client.spawnPipe({ kind: 'agent', threadId, turnId: keep.turnId, driver: keep.driver }, executable, args, { cwd: opts.cwd ?? process.cwd(), env: opts.env ?? process.env });
-    const asked = Date.now();
+    const asked = this.#core.procs.stopNumber(threadId);
     const exited = new Promise<number | null>((resolve) => {
       child.once('exit', (code: number | null) => resolve(code));
       child.once('error', () => resolve(null));
@@ -122,7 +130,7 @@ export class KeptAgents implements CommitHook {
     return child as unknown as SpawnedChild;
   }
 
-  #started(threadId: ThreadId, cmd: string, args: string[], opts: SpawnOptions, keep: NonNullable<SpawnOptions['keep']>, child: KeptChild, exited: Promise<number | null>, asked: number): void {
+  #started(threadId: ThreadId, cmd: string, args: string[], opts: SpawnOptions, keep: NonNullable<SpawnOptions['keep']>, child: KeptChild, exited: Promise<number | null>, stopsBefore: number): void {
     const pid = child.pid!;
     const running = (): boolean => child.running;
     // Its own group: the keeper starts it detached, as this core starts an agent.
@@ -140,7 +148,7 @@ export class KeptAgents implements CommitHook {
       child.once('close', () => child.release());
     }
     // A stop asked while the keeper started it found nothing registered: it reaches it now.
-    if (this.#core.procs.stopAskedSince(threadId, asked)) void kill();
+    if (this.#core.procs.stopNumber(threadId) !== stopsBefore) void kill();
   }
 
   #progress(child: KeptChild): void {

@@ -109,7 +109,9 @@ those bytes. Stdout that brought no text arms a commit as well, and past
 agent printing fast does not wait for the timer at the 8 MiB window.
 
 Once the process exited and both pipes ended, the next commit deletes its row
-and releases it in the keeper. At startup a core deletes every row an earlier
+and releases it in the keeper. A core that stops releases every agent it
+holds, so the keeper ends those still running rather than keep their exit
+codes for nobody; their rows stay. At startup a core deletes every row an earlier
 core left and the shells' restore releases every kept process that is not a
 shell. `state` stays null: it is for the driver's state at `offset`, which
 taking a turn back after a restart needs.
@@ -218,4 +220,7 @@ is committed; after the turn the row is gone, the keeper no longer lists it
 and the process exited. It fails when the launch is not marked `keep`. The
 same file streams one and a half windows of stdout through a turn, which
 only finishes if commits ack it, and checks that a keeper the core cannot
-reach leaves the agent on the core's pipes with the warning.
+reach leaves the agent on the core's pipes with the warning. Two more cover
+a session launched in the millisecond its predecessor was stopped, which must
+keep running, and a `KeptChild` that emits `close` only after a reader got
+the last line of stdout.

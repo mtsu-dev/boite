@@ -1,9 +1,11 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createInterface } from 'node:readline';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import type { ThreadId } from '@boite/contracts';
 import { KeeperClient, keeperEnabled } from '../src/keeper/client.ts';
+import { KeptChild } from '../src/keeper/kept-child.ts';
 import { KEEPER_OUT_WINDOW_BYTES } from '../src/keeper/protocol.ts';
 import { insertKeptProcess, keptProcesses } from '../src/journal/kept-processes.ts';
 import { echoThread, removeDir, startTestCore, waitFor, type TestCore } from './harness.ts';
@@ -174,4 +176,47 @@ describe.skipIf(!keeperEnabled({ BOITE_KEEPER: '1' }))('agents on the keeper', (
       await removeDir(dataDir);
     }
   }, 30_000);
+
+  test('a session started in the millisecond its predecessor was stopped keeps running', async () => {
+    const h = await keptCore();
+    const client = await h.connect();
+    const { threadId } = await echoThread(h, client);
+    const thread = threadId as ThreadId;
+    // A driver replacing its session: the thread's processes stopped, the next one launched in the same millisecond.
+    const now = Date.now();
+    const clock = Date.now;
+    Date.now = () => now;
+    let child: KeptChild;
+    try {
+      h.core.procs.killTree(thread);
+      child = h.core.procs.spawnChild(thread, 'sleep', ['5'], { cwd: h.dataDir, env: process.env, keep: { turnId: null, driver: 'echo' } }) as unknown as KeptChild;
+    } finally { Date.now = clock; }
+    expect(await child.ready).toBe(true);
+    agentPids.push(child.pid!);
+    await Bun.sleep(300);
+    expect(alive(child.pid!)).toBe(true);
+    client.close();
+
+    // The core stops: the keeper ends what it ran for it and, holding nothing, exits by itself.
+    const keeperPid = h.core.terminals.keeper!.keeperPid!;
+    await h.stop();
+    harness = null;
+    await waitFor(() => !alive(child.pid!) && !alive(keeperPid), 5_000);
+  }, 30_000);
+});
+
+test('a kept child closes only once its readers saw the end of stdout', async () => {
+  const child = new KeptChild({ kind: 'test' }, 'agent', []);
+  const order: string[] = [];
+  createInterface({ input: child.stdout }).on('line', (line) => order.push(`line ${line}`));
+  child.stderr.resume();
+  child.on('close', () => order.push('close'));
+  child.started({ id: 'k1', pid: 999_999, tag: { kind: 'test' }, startedAt: Date.now(), exit: null }, null, () => undefined);
+  // The last record has no line break: a reader gets it at the end of the stream.
+  child.output('out', 0, new TextEncoder().encode('{"id":1}'));
+  child.eof('out');
+  child.eof('err');
+  child.ended(0, null);
+  await waitFor(() => order.includes('close'), 2_000);
+  expect(order).toEqual(['line {"id":1}', 'close']);
 });

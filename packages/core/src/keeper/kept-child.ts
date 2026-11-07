@@ -48,6 +48,8 @@ export class KeptChild extends EventEmitter {
   #exited = false;
   #closed = false;
   readonly #ends = { out: false, err: false };
+  /** Each stream's readers saw its end, or it was destroyed: node's child closes only then. */
+  readonly #drained = { out: false, err: false };
   #errAt = 0;
   #pendingKill: NodeJS.Signals | null = null;
   /** Called after each stdout chunk and once at `close`, for the ledger that commits offsets. */
@@ -61,6 +63,12 @@ export class KeptChild extends EventEmitter {
     this.ready = new Promise<boolean>((resolve) => { this.#ready = resolve; });
     this.stdout = new Readable({ read() { /* pushed as frames arrive */ } });
     this.stderr = new Readable({ read() { /* pushed as frames arrive */ } });
+    for (const [name, stream] of [['out', this.stdout], ['err', this.stderr]] as const) {
+      // After every other `end` listener: a reader such as readline hands over its last line in its own.
+      const drained = (): void => process.nextTick(() => { this.#drained[name] = true; this.#maybeClose(); });
+      stream.once('end', drained);
+      stream.once('close', drained);
+    }
     this.stdin = new Writable({
       write: (chunk: Buffer | string, encoding: BufferEncoding, done: (error?: Error | null) => void) => {
         void this.ready.then((ok) => {
@@ -173,12 +181,15 @@ export class KeptChild extends EventEmitter {
   #end(stream: 'out' | 'err'): void {
     if (this.#ends[stream]) return;
     this.#ends[stream] = true;
-    (stream === 'out' ? this.stdout : this.stderr).push(null);
+    const readable = stream === 'out' ? this.stdout : this.stderr;
+    readable.push(null);
+    // Nothing left in it: it ends now, read or not, as an empty pipe does.
+    if (readable.readableLength === 0) readable.read(0);
     this.#maybeClose();
   }
 
   #maybeClose(): void {
-    if (this.#closed || !this.#exited || !this.#ends.out || !this.#ends.err) return;
+    if (this.#closed || !this.#exited || !this.#drained.out || !this.#drained.err) return;
     this.#closed = true;
     this.emit('close', this.exitCode, this.signalCode);
     this.onProgress?.();
