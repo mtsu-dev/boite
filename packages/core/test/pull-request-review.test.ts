@@ -1,8 +1,9 @@
 import { afterEach, expect, test } from 'bun:test';
 import { PullRequestReviews } from '../src/pull-request-review.ts';
+import { REVIEW_DIFF_BUDGET } from '../src/pull-request-diff-budget.ts';
 import { connect } from '../src/client.ts';
 import { echoThread, startTestCore, type TestCore } from './harness.ts';
-import { thrown } from './settle.ts';
+import { rejection, thrown } from './settle.ts';
 let harness: TestCore | undefined;
 afterEach(async () => { await harness?.stop(); harness = undefined; });
 const url = 'https://github.com/example/repo/pull/1';
@@ -23,10 +24,35 @@ test('reviews combine discussions and inline feedback, reject unsafe URLs and ex
   expect(review.checks[0]).toEqual({ name: 'tests', state: 'FAILURE', url: '' });
   await service.review('t', url); expect(calls.length).toBe(2);
   const files = await service.files('t', url, 2);
-  expect(files.truncated).toBe(true); expect(files.files[0]!.patch!.length).toBe(100000); expect(files.files[1]!.patch).toBeNull();
+  expect(files.truncated).toBe(true); expect(files.files[0]!.patch).toContain('page 2 path "a.ts"'); expect(files.files[1]!.patch).toBeNull();
   expect(calls.at(-1)?.at(-1)).toBe('repos/example/repo/pulls/1/files?per_page=30&page=2');
+  const whole = await service.files('t', url, 2, 'a.ts');
+  expect(whole.files.map(f => [f.path, f.patch!.length, f.omitted])).toEqual([['a.ts', 100000, 1]]); expect(calls.length).toBe(3);
   expect(() => service.files('t', url, 0)).toThrow('page');
+  expect((await rejection(service.files('t', url, 2, 'missing.ts'))).reason).toMatchObject({ message: 'page 2 has no file missing.ts', data: { field: 'path', expected: 'a.ts, image.png' } });
   expect(() => service.review('t', 'https://evil.example/a/b/pull/1')).toThrow('host');
+});
+
+test('one huge patch no longer starves the small files of its page', async () => {
+  const hunk = (at: number, lines: number) => [`@@ -${at},${lines} +${at},${lines} @@ function f${at}()`, ...Array.from({ length: lines }, (_, i) => `+  const value${i} = compute(${i}); // line ${i} of the hunk at ${at}`)].join('\n');
+  const big = [hunk(1, 3), hunk(100, 1500), hunk(2000, 4)].join('\n'), small = (n: number) => hunk(n, 15);
+  const values = [{ filename: 'src/big.ts', status: 'modified', additions: 1507, deletions: 0, patch: big },
+    { filename: 'bun.lock', status: 'modified', additions: 900, deletions: 850, patch: hunk(1, 900) },
+    ...Array.from({ length: 28 }, (_, i) => ({ filename: `src/small-${i}.ts`, status: 'modified', additions: 15, deletions: 0, patch: small(i + 1) }))];
+  const service = new PullRequestReviews(async () => JSON.stringify(values));
+  const page = await service.files('t', url, 3), [first, lock, ...rest] = page.files;
+  expect(page.files.reduce((n, f) => n + (f.patch?.length ?? 0), 0)).toBeLessThanOrEqual(REVIEW_DIFF_BUDGET);
+  expect(rest.map(f => f.patch)).toEqual(values.slice(2).map(v => v.patch));
+  expect(rest.every(f => f.omitted === undefined)).toBe(true);
+  // The big file keeps its two small hunks whole and the head of the long one, then says where the rest is.
+  expect(first!.patch).toContain(hunk(1, 3)); expect(first!.patch).toContain(hunk(2000, 4));
+  expect(first!.patch).toContain(hunk(100, 1500).split('\n').slice(0, 20).join('\n'));
+  expect(first!.patch).toMatch(/more lines of this hunk left out\]/);
+  expect(first!.patch!.split('\n').at(-1)).toBe(`[patch cut to fit the review budget: 1 of 3 hunks shortened, ${big.length} characters in all; read it whole with threads.pullRequestFiles page 3 path "src/big.ts"]`);
+  expect(first!.omitted).toBeGreaterThan(big.length / 2);
+  expect(lock!.patch).toBe(`[generated or lock file: +900 -850, patch of ${hunk(1, 900).length} characters left out; read it whole with threads.pullRequestFiles page 3 path "bun.lock"]`);
+  expect(page.truncated).toBe(true);
+  expect((await service.files('t', url, 3, 'src/big.ts')).files[0]!.patch).toBe(big);
 });
 
 test('paired phones cannot turn review reads into arbitrary GitHub queries', async () => {

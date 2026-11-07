@@ -1612,6 +1612,29 @@ A lower threshold costs a summary and a rewritten cache at each extra
 compaction, which is why the cost falls far less than the context. Automatic
 compaction is the owner's setting ([context](context.md#automatic-compaction)).
 
+### Pull request file pages
+
+`threads.pullRequestFiles` returns 30 changed files a page. Their patches
+share 60,000 characters, about 15,000 tokens: a file under its fair share
+stays whole and leaves the rest to bigger ones, and a bigger file is cut the
+same way across its hunks, so small hunks stay whole and long ones keep their
+first lines. A cut patch ends with a note giving its page and path; the same
+call with that `path` returns the file alone, up to 100,000 characters. Lock
+files and generated files keep one stat line. Before, each patch kept up to
+100,000 characters, so a page could reach 3 MB and one large file could fill
+a reader's context ahead of the small files after it.
+
+`bench/pr-review-context.ts` rebuilds the files API pages of squash commits of
+this repository from git and reads every page through the service, with no
+network. Measured on 2026-11-07, before against the previous
+`pull-request-review.ts` with `BENCH_REVIEW_MODULE`:
+
+| Pull request | Files | All pages before | All pages after | Largest page before | Largest page after |
+| --- | --- | --- | --- | --- | --- |
+| #614, one strings file per part | 185 | 628,053 B | 398,523 B | 271,909 B | 65,769 B |
+| #621, one contracts file per domain | 44 | 413,740 B | 126,757 B | 306,462 B | 63,890 B |
+| #524, with a 51,000-line results file | 62 | 250,241 B | 131,323 B | 174,421 B | 63,810 B |
+
 ## Benches
 
 ```sh
@@ -1635,6 +1658,7 @@ bun run bench/queue-admission.ts 1024 16                  # one scheduler pass o
 bun bench/ui-heap.ts --machines --load 4 --tick 25 --switch 0 --minutes 9   # heap, DOM and private bytes of a page left open on busy agents
 bun bench/process-log-replay.ts <logs directory>          # process records a log directory holds, and what this store writes of them
 bun run bench/checkpoint-store.ts --source <checkpoints>  # store passes and retention on a copy: bytes, inodes, 20 rewinds
+bun bench/pr-review-context.ts [commit ...]               # bytes of each pull request file page, from real commits, no network
 ```
 
 `bench/bandwidth.ts` puts a TCP relay between the client and the core, counts
