@@ -610,6 +610,9 @@ export class TerminalStore {
    * keeps its id until the exit so a new shell never shares it.
    */
   async close(id: string): Promise<{ ok: true }> {
+    // A shell the keeper is still starting is closed once it has started; any other is marked closing at once.
+    const opening = this.#opening.get(id);
+    if (opening !== undefined) await opening.catch(() => undefined);
     const session = this.#sessions.get(id);
     if (session === undefined) return { ok: true };
     session.closing = true;

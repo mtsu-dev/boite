@@ -105,7 +105,8 @@ goes with the shell. The keeper does not exit before that grace is over.
   shells as ended with no exit code; a core that was not attached finds
   nothing to restore.
 - A thread archived or deleted while the keeper starts its shell: the shell is
-  released as soon as it starts, and `terminals.open` refuses.
+  released as soon as it starts, and `terminals.open` refuses. A tab closed
+  then: `terminals.close` waits for the start and closes the shell.
 - A keeper of another protocol version: the socket name carries the version,
   so a core never reaches it. It ends its shells after its orphan delay.
 - A wrong token or a second core: the keeper answers `refused` and closes.
@@ -148,4 +149,5 @@ answers input; then that `POST /shutdown`'s stop ends the shell. The first
 test fails on a core without the keeper: the shell is gone after the restart.
 The same file checks that a core dropped while it did not read takes its
 shell back with the end of 30 MB it missed, that ending a shell ends its
-`nohup` job, and that archiving a thread while its shell starts ends it.
+`nohup` job, and that closing a shell or archiving its thread while it starts
+ends it.

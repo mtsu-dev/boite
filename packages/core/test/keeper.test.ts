@@ -192,20 +192,29 @@ describe.skipIf(!keeperEnabled({ BOITE_KEEPER: '1' }))('keeper', () => {
     }
   }, 60_000);
 
-  test('archiving a thread while the keeper starts its shell ends that shell', async () => {
+  test('closing a shell or archiving its thread while the keeper starts it ends that shell', async () => {
     const h = await startTestCore({ onShutdown: () => undefined });
     try {
       const client = await h.connect();
+      const first = (await echoThread(h, client)).threadId;
+      const closed = threadTerminalId(first);
       const { threadId } = await echoThread(h, client);
       const id = threadTerminalId(threadId);
-      // The first shell starts a keeper, which takes longer than the archive.
-      const opening = client.call('terminals.open', { threadId, cols: 80, rows: 24 }).then(() => 'opened', (error: unknown) => String(error));
+      // The first shells start a keeper, which takes longer than the close and the archive.
+      const settled = (call: Promise<unknown>) => call.then(() => 'opened', (error: unknown) => String(error));
+      const firstOpening = settled(client.call('terminals.open', { threadId: first, cols: 80, rows: 24 }));
+      const opening = settled(client.call('terminals.open', { threadId, cols: 80, rows: 24 }));
+      const closing = client.call('terminals.close', { id: closed });
       await client.call('threads.archive', { threadId, archived: true });
+      await closing;
+      await firstOpening;
+      keeperPids.push(h.core.terminals.keeper!.keeperPid!);
+      sockets.push(h.core.terminals.keeper!.socketPath);
+      expect(h.core.terminals.has(closed)).toBe(false);
+      await waitFor(() => h.core.procs.liveCount(closed as ThreadId) === 0, 5_000);
       expect(await opening).toContain('archived');
       expect(h.core.terminals.has(id)).toBe(false);
       await waitFor(() => h.core.procs.liveCount(id as ThreadId) === 0, 5_000);
-      if (h.core.terminals.keeper?.keeperPid) keeperPids.push(h.core.terminals.keeper.keeperPid);
-      sockets.push(h.core.terminals.keeper!.socketPath);
     } finally {
       await h.core.drain();
       await h.server.stop();
