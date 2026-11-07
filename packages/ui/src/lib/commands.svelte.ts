@@ -36,10 +36,11 @@ export function appCommands(store: Store, phone: boolean): PaletteItem[] {
     return { id, kind: 'command', label, ...(hint === null ? {} : { hint }), ...(keywords === undefined ? {} : { keywords }) };
   };
   if (store.projects.length > 0) items.push(row('new-thread', strings.palette.newThread, 'draft start'));
-  // Opening a folder, reading a transcript, listing processes and everything
-  // Providers and pairing do are the owner's: `packages/core/src/access.ts`
-  // refuses them to a paired device, so they are not offered to one.
-  if (store.owner) items.push(row('add-project', strings.palette.addProject, 'folder open'));
+  // Reading a transcript, listing processes and everything Providers and
+  // pairing do are the owner's: `packages/core/src/access.ts` refuses them to
+  // a paired device, so they are not offered to one. Adding a project is the
+  // device's too once its core says so (`deviceProjects`).
+  if (store.addsProjects) items.push(row('add-project', strings.palette.addProject, 'folder open'));
   if (store.owner && store.projects.length > 0 && experimentOn('session-import')) items.push(row('import-session', strings.palette.importSession, 'transcript history resume'));
   if (open) {
     items.push(row('pin', open.pinned ? strings.palette.unpin : strings.palette.pin, 'favourite top'));

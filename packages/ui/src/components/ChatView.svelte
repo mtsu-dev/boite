@@ -220,7 +220,7 @@
             <VenetianMask size={14} strokeWidth={1.75} />
             {strings.drafts.incognitoOn}
           </p>
-        {:else if store.draftInDrafts && store.owner}
+        {:else if store.draftInDrafts && store.addsProjects}
           <button type="button" class="ghost small open-folder" data-testid="draft-open-folder" onclick={() => (store.projectPickerOpen = true)}>
             <FolderOpen size={14} strokeWidth={1.75} />
             <span class="ui-label">{strings.drafts.openFolder}</span>

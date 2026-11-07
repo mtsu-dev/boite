@@ -434,8 +434,9 @@ boite thread new <project> <brief> [--worktree] [--title <title>] [--machine <na
                                  another of the group; its first answer comes
                                  back as a message
 boite projects                   the projects added to Boite
-boite projects add <folder> [--name <name>]
-                                 add an existing folder as a project
+boite projects add <folder> [--name <name>] [--machine <name>]
+                                 add an existing folder as a project, on this
+                                 machine or another of the group
 boite projects archive|unarchive|remove <project>
                                  the owner's; removing leaves the folder on disk
 boite threads [list] [--project <p>] [--archived]
@@ -691,6 +692,20 @@ they do for `thread new` elsewhere: Off, Pause and a thread restricted to its
 own project refuse it. There is no hourly limit. A thread an agent started
 adds none until the user has written in it, and delegated children, workflow steps and bots'
 threads are refused.
+
+With `--machine <name>`, the folder is one of another machine of the group,
+given by its absolute path there (`/home/me/site` from a Windows machine): it
+is sent as written and that machine checks it, absolute and an existing
+directory, then adds it in its own sidebar. The output gains `machine:`, the
+line in the timeline names the machine, and `thread new <project> --machine
+<name>` then names the project. That machine's **Threads from the other
+machines** switch (`groupThreads`) decides as for `thread new --machine`: off,
+the CLI is refused with `<machine> does not let the other machines of its group
+add projects there; propose the switch to the user with boite settings request
+groupThreads true --machine <machine> --why "<what the project is for>"`. The
+Communication settings treat it as elsewhere, so a thread restricted to its own
+project cannot use it. From a terminal, `--machine` is refused; `projects add
+--core <url>` reaches that machine instead, with the folder as it names it.
 
 `view` publishes one HTML page as an [inline view](chat-files.md#inline-views):
 its local files are embedded, a remote resource or a script error refuses it
