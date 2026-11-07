@@ -1128,16 +1128,15 @@ Drivers translate them according to their protocol capabilities.
 
 YOLO is separate from Auto (`bypassPermissions`). It selects the agent's most
 permissive execution mode and automatically accepts tool approval requests that
-still reach Boite, without a permission card. Claude runs with
-`bypassPermissions` and `disableAllHooks: true`, disabling configured and plugin
-hooks while retaining Boite's SDK callbacks for tool reporting and incoming
-answers. Codex runs with approvals set to `never`, full filesystem access and
-`features.hooks=false`. Claude applies the hook setting live; Codex replaces
-its process,
-so turning it off restores the user's hook configuration. No settings file is
-rewritten. ACP and Muse use their native unrestricted mode and Boite accepts
-remaining approval requests; ACP has no standard hook-disable call. Antigravity
-uses its permission-skip flag. Questions seeking input still ask for real
+still reach Boite, without a permission card. It keeps the user's configured
+and plugin hooks; a context mode without hooks, protected execution and Boite's
+internal runs (probes, Codex titles) still turn them off. Claude runs
+with `bypassPermissions` and applies the mode live; a hook that answers `ask`
+reaches the permission callback, which allows it. Codex runs with approvals
+set to `never` and full filesystem access, and entering or leaving YOLO
+replaces its process. No settings file is rewritten. ACP and Muse use their
+native unrestricted mode and Boite accepts remaining approval requests.
+Antigravity uses its permission-skip flag. Questions seeking input still ask for real
 answers; YOLO does not invent form values or complete a device sign-in.
 
 Protected shared work adds an immutable file/tool capability to the host-selected

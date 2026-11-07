@@ -88,8 +88,11 @@ only adds to its count.
 
 The Claude model probe sets `settings.disableAllHooks`, so discovery does not
 fire `SessionStart`. [Providers](providers.md#the-models-probe) owns the other
-protocol-specific probe restrictions. YOLO also disables configured hooks where
-the driver supports it; ACP has no standard hook-disable operation.
+protocol-specific probe restrictions. YOLO keeps hooks: it skips approvals, not
+the user's hooks. They are off only in a [context mode](context-modes.md)
+without hooks, in protected execution (Claude and Codex remove native tools
+there, and a hook must not bring them back) and in Boite's internal runs (model
+and quota probes, Codex title generation).
 
 ## Limits
 

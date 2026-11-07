@@ -102,7 +102,7 @@ test('permission changes restart the active native turn immediately inside the s
   await waitFor(() => fakeLog().includes('waiting for interrupt'));
   await client.call('threads.update', { threadId, permissionMode: 'yolo' });
   await waitFor(() => fakeLog().split('waiting for interrupt').length === 3);
-  expect((await client.call('trace.get', { threadId })).some(process => process.commandLine?.includes('features.hooks=false'))).toBe(true);
+  expect((await client.call('trace.get', { threadId })).some(process => process.commandLine?.includes('features.hooks=false'))).toBe(false);
   await client.call('threads.update', { threadId, permissionMode: 'default' });
   await waitFor(() => /thread\/resume .* approvalPolicy=on-request sandbox=workspace-write/.test(fakeLog()));
   await waitFor(() => fakeLog().split('waiting for interrupt').length === 4);
@@ -1015,7 +1015,7 @@ describe('codex driver', () => {
 
   test.each([
     ['[approve]', 'allowed'], ['[elicit]', 'elicit accept'], ['[permissions]', 'permissions granted'],
-  ])('YOLO accepts %s without a permission card and disables native hooks', async (prompt, expected) => {
+  ])('YOLO accepts %s without a permission card and keeps native hooks', async (prompt, expected) => {
     const client = await startCore();
     const threadId = await codexThread(client, 'yolo');
     const requested: string[] = [];
@@ -1032,10 +1032,10 @@ describe('codex driver', () => {
     expect(requested).toEqual([]);
     expect(fakeLog()).toContain('approvalPolicy=never sandbox=danger-full-access');
     const trace = await client.call('trace.get', { threadId });
-    expect(trace.some(process => process.commandLine?.includes('features.hooks=false'))).toBe(true);
+    expect(trace.some(process => process.commandLine?.includes('features.hooks=false'))).toBe(false);
   });
 
-  test('leaving YOLO restarts Codex with hooks enabled and restores approval cards', async () => {
+  test('leaving YOLO restarts Codex and restores approval cards, hooks on in both', async () => {
     const client = await startCore();
     const threadId = await codexThread(client, 'yolo');
     await client.call('settings.set', { warmProcessMinutes: 5 });
@@ -1048,8 +1048,7 @@ describe('codex driver', () => {
     const processes = (await client.call('trace.get', { threadId }))
       .filter(process => process.commandLine?.includes(FAKE_SERVER)).sort((a, b) => a.startedAt - b.startedAt);
     expect(processes).toHaveLength(2);
-    expect(processes[0]?.commandLine).toContain('features.hooks=false');
-    expect(processes[1]?.commandLine).not.toContain('features.hooks=false');
+    for (const process of processes) expect(process.commandLine).not.toContain('features.hooks=false');
     // Codex's own subagents stay off in every mode: subagents are Boite conversations.
     for (const process of processes) expect(process.commandLine).toContain('features.multi_agent=false');
   });
@@ -2020,6 +2019,20 @@ describe('codex hooks', () => {
     expect((await again).status).toBe('done');
     await waitFor(() => fakeLog().split('hooks/list').length === 3);
     expect((await client.call('hooks.status', {})).recent).toHaveLength(2);
+  });
+
+  test('a YOLO thread keeps the user hooks: Codex launches with them and the skipped one is reported', async () => {
+    process.env['CODEX_FAKE_HOOKS'] = '1';
+    const client = await startCore();
+    const threadId = await codexThread(client, 'yolo');
+    const finished = client.next('turn.finished', (turn) => turn.threadId === threadId, 10000);
+    await client.call('turns.start', { threadId, prompt: 'hello' });
+    expect((await finished).status).toBe('done');
+    await waitFor(() => fakeLog().includes('hooks/list'));
+    await waitFor(() => harness!.core.hooks.status().recent.length === 1);
+    expect(harness!.core.hooks.status().recent[0]).toMatchObject({ event: 'preToolUse', outcome: 'skipped' });
+    const trace = await client.call('trace.get', { threadId });
+    expect(trace.some(process => process.commandLine?.includes('features.hooks=false'))).toBe(false);
   });
 });
 
