@@ -43,7 +43,7 @@ class ContextMenuStore {
 
   /**
    * Opens at a point with no event behind it: a second menu picked from a
-   * first one (the project picker of "Move to project"), placed where the
+   * first one (the agent picker of "Entrust to"), placed where the
    * first stood, handing the keyboard back to `returnTo` when it closes.
    */
   show(at: { x: number; y: number }, items: MenuItem[], onpick: (id: string) => void, returnTo: HTMLElement | null, anchor: Node | null = returnTo): void {

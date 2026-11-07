@@ -6,7 +6,7 @@ import { workspace } from './lib/workspace.svelte';
 import { writeExperiments } from './lib/experiments';
 import { closeTour } from './lib/onboarding.svelte';
 import { work } from './lib/work-prefs.svelte';
-import { moveThread } from './lib/thread-move.svelte';
+import { moveThread, openMovePicker } from './lib/thread-move.svelte';
 import { projectThreadView } from './lib/project-threads.svelte';
 
 /*
@@ -77,21 +77,116 @@ const card = (threadId: string) => query(`[data-thread-id="${threadId}"]`).close
 const inProject = (threadId: string, projectId: string) =>
   document.querySelector(`section[data-project-id="${projectId}"] [data-thread-id="${threadId}"]`) !== null;
 
-test('the row menu opens a picker of the other projects, and a pick moves the row there', async () => {
-  await mountOnFake();
-  await waitFor(() => inProject('t-descriptors', 'p-notes'));
-  query('[data-thread-id="t-descriptors"]').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 60 }));
+const picker = '[data-testid=move-project-menu]';
+const pickerRows = () => Array.from(document.querySelectorAll<HTMLButtonElement>(`${picker} [data-row]`));
+const rowNamed = (name: string) => pickerRows().find((row) => row.querySelector('.name')?.textContent === name);
+const key = (target: Element, name: string) => target.dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true }));
+
+/** The row menu of a thread, then its "Move to project". */
+async function openPicker(threadId: string): Promise<void> {
+  query(`[data-thread-id="${threadId}"]`).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 60 }));
   await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=move]') !== null);
   query<HTMLButtonElement>('[data-testid=context-menu] [data-value=move]').click();
+  await waitFor(() => document.querySelector(picker) !== null && document.querySelector('[data-testid=context-menu]') === null);
+}
 
-  // The picker replaces the menu where it stood: every project but the thread's own.
-  await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=p-boite]') !== null);
-  const rows = Array.from(document.querySelectorAll('[data-testid=context-menu] [data-row]')).map((el) => el.textContent?.trim());
-  expect(rows).toEqual(['boite C:\\src\\boite']);
-  query<HTMLButtonElement>('[data-testid=context-menu] [data-value=p-boite]').click();
+test('the row menu opens the project search, its own project checked, and a pick moves the row there', async () => {
+  await mountOnFake();
+  await waitFor(() => inProject('t-descriptors', 'p-notes'));
+  await openPicker('t-descriptors');
 
+  // The draft's project search: every project of the machine, the thread's own checked; the folder shortened, in full under the pointer.
+  expect(query(picker).getAttribute('aria-label')).toBe('Move to project');
+  expect(query<HTMLInputElement>('[data-testid=move-project-search]').placeholder).toBe('Search projects');
+  expect(pickerRows().map((row) => [row.querySelector('.name')?.textContent, row.querySelector('.hint')?.textContent, row.getAttribute('aria-selected')]))
+    .toEqual([['boite', 'C:\\src\\boite', 'false'], ['notes', 'C:\\src\\notes', 'true']]);
+  expect(rowNamed('notes')?.querySelector('.check svg')).not.toBeNull();
+  expect(rowNamed('boite')?.title).toBe('C:\\src\\boite');
+  // No machine heads the rows and nothing opens a folder: a move keeps its machine.
+  expect(document.querySelector(`${picker} .group, ${picker} .folder`)).toBeNull();
+
+  // Its own project moves nothing.
+  const move = vi.spyOn(store, 'move');
+  rowNamed('notes')!.click();
+  await waitFor(() => document.querySelector(picker) === null);
+  expect(move).not.toHaveBeenCalled();
+
+  await openPicker('t-descriptors');
+  rowNamed('boite')!.click();
   await waitFor(() => inProject('t-descriptors', 'p-boite'));
   expect(store.threads.find((t) => t.id === 't-descriptors')).toMatchObject({ projectId: 'p-boite', cwd: 'C:\\src\\boite' });
+  expect(document.querySelector(picker)).toBeNull();
+});
+
+test('the move picker filters by name and folder, walks with the arrows, moves on Enter and closes on Escape', async () => {
+  await mountOnFake();
+  await waitFor(() => inProject('t-descriptors', 'p-notes'));
+  const client = store.client!;
+  await client.call('projects.add', { path: 'C:\\Users\\timothe\\Documents\\GitHub\\boite-site', name: 'boite-site' });
+  const asso = await client.call('projects.add', { path: 'D:\\Projets\\clients\\2026\\site-asso', name: 'site-asso' });
+  const old = await client.call('projects.add', { path: 'D:\\Archives\\vieux', name: 'vieux' });
+  await client.call('projects.archive', { projectId: old.id });
+  await waitFor(() => store.projects.some((p) => p.id === old.id && p.archived === true));
+  await openPicker('t-descriptors');
+
+  // A long folder keeps its root and last two folders; an archived project says so.
+  expect(rowNamed('boite-site')?.querySelector('.hint')?.textContent).toBe('~\\…\\GitHub\\boite-site');
+  expect(rowNamed('boite-site')?.title).toBe('C:\\Users\\timothe\\Documents\\GitHub\\boite-site');
+  expect(rowNamed('site-asso')?.querySelector('.hint')?.textContent).toBe('D:\\…\\2026\\site-asso');
+  expect(rowNamed('vieux (archived)')).toBeDefined();
+
+  // The checked row starts highlighted; the search takes words of the name or of the full folder.
+  const search = query<HTMLInputElement>('[data-testid=move-project-search]');
+  const highlighted = () => document.querySelector(`${picker} [data-row].highlight .name`)?.textContent;
+  expect(highlighted()).toBe('notes');
+  search.value = 'clients';
+  search.dispatchEvent(new Event('input', { bubbles: true }));
+  await waitFor(() => pickerRows().length === 1);
+  expect(highlighted()).toBe('site-asso');
+  search.value = 'site';
+  search.dispatchEvent(new Event('input', { bubbles: true }));
+  await waitFor(() => pickerRows().length === 2);
+  // Ranked: the name that starts with the word first.
+  expect(pickerRows().map((row) => row.querySelector('.name')?.textContent)).toEqual(['site-asso', 'boite-site']);
+  search.value = 'zzz';
+  search.dispatchEvent(new Event('input', { bubbles: true }));
+  await waitFor(() => document.querySelector('[data-testid=move-project-empty]') !== null);
+  expect(query('[data-testid=move-project-empty]').textContent).toContain('zzz');
+
+  // A first Escape clears the field, the next one closes and moves nothing.
+  const move = vi.spyOn(store, 'move');
+  key(search, 'Escape');
+  await waitFor(() => search.value === '' && pickerRows().length === 5);
+  key(search, 'Escape');
+  await waitFor(() => document.querySelector(picker) === null);
+  expect(move).not.toHaveBeenCalled();
+
+  // The arrows walk the rows from the checked one, round the ends; Enter moves to the highlighted one.
+  await openPicker('t-descriptors');
+  const field = query<HTMLInputElement>('[data-testid=move-project-search]');
+  key(field, 'ArrowDown');
+  await waitFor(() => highlighted() === 'boite-site');
+  key(field, 'ArrowUp');
+  key(field, 'ArrowUp');
+  await waitFor(() => highlighted() === 'boite');
+  key(field, 'ArrowUp');
+  await waitFor(() => highlighted() === 'vieux (archived)');
+  key(field, 'ArrowUp');
+  await waitFor(() => highlighted() === 'site-asso');
+  key(field, 'Enter');
+  await waitFor(() => inProject('t-descriptors', asso.id));
+  expect(move).toHaveBeenCalledWith('t-descriptors', asso.id, undefined);
+  expect(document.querySelector(picker)).toBeNull();
+});
+
+test('a machine with no other project says so in the move picker', async () => {
+  await mountOnFake();
+  await waitFor(() => inProject('t-descriptors', 'p-notes'));
+  store.projects = store.projects.filter((p) => p.id === 'p-notes');
+  openMovePicker(store, { id: 't-descriptors', projectId: 'p-notes' });
+  await waitFor(() => document.querySelector('[data-testid=move-project-empty]') !== null);
+  expect(query('[data-testid=move-project-empty]').textContent?.trim()).toBe('No other project');
+  expect(pickerRows()).toEqual([]);
 });
 
 test('a row dragged with the mouse onto another project moves there; a short press, its own project and Escape do not', async () => {
