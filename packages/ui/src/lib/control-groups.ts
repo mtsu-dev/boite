@@ -27,10 +27,11 @@ export interface ControlGroup {
 }
 
 /**
- * Every group in the order the page draws them. The terminal and Add a
- * project are the owner's: a paired device never has them to hide.
+ * Every group in the order the page draws them. The terminal is the owner's:
+ * a paired device never has it to hide. Add a project is too, unless the
+ * device's core lets it add (`addsProjects`).
  */
-export function controlGroups(owner: boolean): ControlGroup[] {
+export function controlGroups(owner: boolean, addsProjects = owner): ControlGroup[] {
   const header: ControlEntry[] = [
     { id: 'header.project', label: strings.controls.project, icon: Folder },
     { id: 'header.branch', label: strings.controls.branch, icon: GitBranch },
@@ -38,7 +39,7 @@ export function controlGroups(owner: boolean): ControlGroup[] {
   ];
   const sidebar: ControlEntry[] = [
     { id: 'sidebar.limits', label: strings.usage.limits, icon: Gauge },
-    ...(owner ? [{ id: 'sidebar.add-project' as const, label: strings.sidebar.addProject, icon: FolderPlus }] : [])
+    ...(addsProjects ? [{ id: 'sidebar.add-project' as const, label: strings.sidebar.addProject, icon: FolderPlus }] : [])
   ];
   const panel: ControlEntry[] = CARDS.map((card) => ({ id: `panel.${card.kind}` as ControlId, label: kindName(card.kind), icon: null, kind: card.kind }));
   return [

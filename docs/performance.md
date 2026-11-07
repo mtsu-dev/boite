@@ -62,6 +62,25 @@ CLI 2.1.302 and the real servers against a test core:
 The servers are also connected when the session's `init` arrives, so their
 tools are there on the first turn.
 
+### The `boite mcp` tool list
+
+A client sends the `tools/list` result to the model with every session, so its
+size is paid before the first call. `bun bench/mcp-catalog.ts` prints it in
+bytes, with tokens approximated as bytes / 4. On 2026-11-07, for 24 tools:
+
+| Part | Before | After |
+| --- | --- | --- |
+| Whole result | 22,271 B (~5,568 tokens) | 12,927 B (~3,232 tokens) |
+| Descriptions | 4,022 B | 3,798 B |
+| Input schemas | 7,395 B | 6,027 B |
+| Output schemas | 7,056 B | 0 B |
+| Annotations | 1,608 B | 1,296 B |
+
+Each tool had declared the same result envelope as its output schema, and each
+schema carried a `$schema` line naming JSON Schema 2020-12, the MCP default.
+Both are gone; results still carry `structuredContent`. `test/mcp.test.ts`
+keeps the list under 14,000 bytes.
+
 ## Long threads in the journal
 
 Measured on 2026-10-05 with `bench/rpc-actions.ts --journal` on a copy of a
@@ -293,6 +312,16 @@ It warms up once, then reports six samples. On 2026-09-22, the median fell from
 103.08 ms to 0.26 ms after replacing a full history load with a journal iterator
 that stops after the first user message and nonempty assistant answer.
 This measures local history lookup and title persistence, not provider latency.
+
+## A workflow's completion summary
+
+`bun bench/workflow-notice.ts [--root <checkout>]` builds finished runs in memory
+and prints the UTF-8 size of the summary their conversation reads. On 2026-11-07,
+a run of 64 executions (a scan, 62 reviews of which 3 failed with a
+2,000-character error, a report, every answer 4,000 characters) went from 52,367
+to 19,992 bytes in Japanese and from 23,879 to 19,998 bytes in French once the
+whole summary was held to 20,000 bytes. A three-step run stayed at 637 bytes,
+byte for byte the same. Fitting a large run takes about 2.3 ms, once per run.
 
 ## Persistent-agent history
 
@@ -1612,6 +1641,29 @@ A lower threshold costs a summary and a rewritten cache at each extra
 compaction, which is why the cost falls far less than the context. Automatic
 compaction is the owner's setting ([context](context.md#automatic-compaction)).
 
+### Pull request file pages
+
+`threads.pullRequestFiles` returns 30 changed files a page. Their patches
+share 60,000 characters, about 15,000 tokens: a file under its fair share
+stays whole and leaves the rest to bigger ones, and a bigger file is cut the
+same way across its hunks, so small hunks stay whole and long ones keep their
+first lines. A cut patch ends with a note giving its page and path; the same
+call with that `path` returns the file alone, up to 100,000 characters. Lock
+files and generated files, known by their path, keep one stat line. Before, each patch kept up to
+100,000 characters, so a page could reach 3 MB and one large file could fill
+a reader's context ahead of the small files after it.
+
+`bench/pr-review-context.ts` rebuilds the files API pages of squash commits of
+this repository from git and reads every page through the service, with no
+network. Measured on 2026-11-07, before against the previous
+`pull-request-review.ts` with `BENCH_REVIEW_MODULE`:
+
+| Pull request | Files | All pages before | All pages after | Largest page before | Largest page after |
+| --- | --- | --- | --- | --- | --- |
+| #614, one strings file per part | 185 | 628,053 B | 398,304 B | 271,909 B | 65,752 B |
+| #621, one contracts file per domain | 44 | 413,740 B | 126,800 B | 306,462 B | 64,037 B |
+| #524, with a 51,000-line results file | 62 | 250,241 B | 131,179 B | 174,421 B | 63,469 B |
+
 ## Benches
 
 ```sh
@@ -1635,6 +1687,7 @@ bun run bench/queue-admission.ts 1024 16                  # one scheduler pass o
 bun bench/ui-heap.ts --machines --load 4 --tick 25 --switch 0 --minutes 9   # heap, DOM and private bytes of a page left open on busy agents
 bun bench/process-log-replay.ts <logs directory>          # process records a log directory holds, and what this store writes of them
 bun run bench/checkpoint-store.ts --source <checkpoints>  # store passes and retention on a copy: bytes, inodes, 20 rewinds
+bun bench/pr-review-context.ts [commit ...]               # bytes of each pull request file page, from real commits, no network
 ```
 
 `bench/bandwidth.ts` puts a TCP relay between the client and the core, counts

@@ -387,7 +387,12 @@ export class ActivityStore {
       else if (state.loop.status === 'active') state.loop.nextRunAt = Date.now() + state.loop.intervalMs;
       this.#save(turn.threadId);
     }
-    if (turn.status !== 'done' && (!owned || current)) { this.#stop(turn.threadId, turn.error ?? 'Turn stopped. Resume to continue.'); return; }
+    // The core's own housekeeping turns (a compaction, a cache ping, a coordination
+    // wake) are not the conversation's work: one of them failing pauses no goal or
+    // loop, as `AutoContinues.#eligible` already holds for automatic resumes.
+    const operation = turn.execution?.operation;
+    const housekeeping = operation === 'compact' || operation === 'keepalive' || operation === 'coordination';
+    if (turn.status !== 'done' && !housekeeping && (!owned || current)) { this.#stop(turn.threadId, turn.error ?? 'Turn stopped. Resume to continue.'); return; }
     if (!state) return;
     if (owned?.kind === 'goal' && current && state.goal?.status === 'active') {
       const signal = this.#goalResult(turn);

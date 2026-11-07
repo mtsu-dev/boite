@@ -5,6 +5,7 @@ import type { Core } from '../core.ts';
 import { catalog, chooseModel, readNamed, type RouteRequest } from '../delegation/routes.ts';
 import { invalidParams, messageOf, refused, requiredText, unavailable } from '../errors.ts';
 import { newId } from '../ids.ts';
+import { folderToAdd } from '../projects.ts';
 import type { ProviderProbe } from '../providers/probe.ts';
 import type { ThreadStore } from '../threads.ts';
 import { agentHere, catalogFor, checkGroupStart, GROUP_THREADS_OFF, machineArg, memberModels, memberNamed, peerRefusal, remoteOrigin, type GroupStart, type StartFields } from './group-spawn.ts';
@@ -358,9 +359,11 @@ export class ThreadSpawns {
    * `agent.addProject`: the agent registers a folder as a project, the way
    * the owner does from the sidebar. It reaches outside the caller's project,
    * so it takes the gates `agent.spawn` has across projects. A folder already
-   * registered is answered as it is, whatever the settings.
+   * registered is answered as it is, whatever the settings. With `machine`,
+   * the folder is one of that member of the group, which checks it and adds
+   * it while its owner keeps `groupThreads` on (`addFor`).
    */
-  addProject(params: RpcParams<'agent.addProject'>): AgentProjectAdded {
+  async addProject(params: RpcParams<'agent.addProject'>): Promise<AgentProjectAdded> {
     const method = 'agent.addProject';
     const caller = this.#threads.require(params.threadId);
     const threadId = caller.id;
@@ -372,8 +375,9 @@ export class ThreadSpawns {
     }
     if (caller.archived) throw refused('an archived thread cannot add projects', { threadId, field: 'threadId', expected: 'a thread that is not archived' });
     const path = text(params.path, 'path', 4096, method).trim();
-    if (!isAbsolute(path)) throw invalidParams(`${method}.path: expected an absolute folder, got ${path}`);
     const name = params.name === undefined ? undefined : text(params.name, 'name', 80, method).trim();
+    if (params.machine !== undefined) return this.#addElsewhere(caller, text(params.machine, 'machine', 200, method), path, name);
+    if (!isAbsolute(path)) throw invalidParams(`${method}.path: expected an absolute folder, got ${path}`);
     const own = caller.projectId;
     const answer = (project: ReturnType<Core['projects']['add']>, added: boolean): AgentProjectAdded => ({
       id: project.id, name: project.name, path: project.path, repository: project.repository === true,
@@ -386,6 +390,50 @@ export class ThreadSpawns {
     const project = this.#core.projects.add(path, name);
     this.#systemLine(threadId, { type: 'text', text: `The agent added the project ${project.name} (${project.path}).` });
     return answer(project, true);
+  }
+
+  /**
+   * The caller's side of `projects add --machine`: its own gates, then the
+   * member's answer to `project.add`. The path is that machine's, so it is
+   * checked there, not here: an absolute Linux path is not one on Windows.
+   */
+  async #addElsewhere(caller: ThreadSummary, query: string, path: string, name: string | undefined): Promise<AgentProjectAdded> {
+    const method = 'agent.addProject';
+    const threadId = caller.id;
+    // Another machine is outside this thread's project, as for a thread started there.
+    this.#gate(threadId, true, 'add a project', method);
+    const peer = memberNamed(this.#core, query, method);
+    const ask: { path: string; name?: string } = { path, ...(name ? { name } : {}) };
+    let answer: unknown;
+    try { answer = await this.#core.coordination.request(peer, 'project.add', ask); }
+    catch (error) { throw peerRefusal(this.#core, peer, error, 'add projects for another machine', { lets: 'add projects there', why: 'what the project is for' }); }
+    const there = answer as Partial<AgentProjectAdded> | null;
+    if (typeof there?.id !== 'string' || typeof there.name !== 'string' || typeof there.path !== 'string' || typeof there.added !== 'boolean') {
+      throw unavailable(`${peer.name} gave an answer this machine does not read; update Boite on both machines`, { field: 'machine' });
+    }
+    const machine = machineArg(this.#core, peer);
+    // It was added there, so the setting was on: a card still asking for it is settled.
+    this.#core.threads.cards.settle(request => (request.setting?.kind === 'change' && request.setting.key === 'groupThreads' && request.setting.machine?.coreId === peer.coreId && request.setting.previous !== true
+      ? { optionIds: [request.setting.value === true ? 'applied' : 'changed'], value: true } : null), `${peer.name}'s settings`);
+    if (there.added) this.#systemLine(threadId, { type: 'text', text: `The agent added the project ${there.name} (${there.path}) on ${peer.name}.` });
+    return { id: there.id, name: there.name, path: there.path, repository: there.repository === true, drafts: there.drafts === true, current: false, added: there.added, machine };
+  }
+
+  /**
+   * `project.add`, the member's side: a thread of another machine of the
+   * group adds a folder of this one as a project, while the owner keeps
+   * `groupThreads` on. The path is checked here, where it is one. A folder
+   * already registered is answered as it is.
+   */
+  addFor(payload: unknown): AgentProjectAdded {
+    if (this.#core.settings.get().groupThreads !== true) throw refused(GROUP_THREADS_OFF);
+    const { path, name } = folderToAdd(payload, 'project.add');
+    const answer = (project: ReturnType<Core['projects']['add']>, added: boolean): AgentProjectAdded => ({
+      id: project.id, name: project.name, path: project.path, repository: project.repository === true,
+      drafts: project.kind === 'drafts', current: false, added,
+    });
+    const known = this.#core.projects.registered(path);
+    return known !== null ? answer(known, false) : answer(this.#core.projects.add(path, name), true);
   }
 
   /**

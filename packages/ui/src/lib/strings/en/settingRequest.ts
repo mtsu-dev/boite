@@ -63,7 +63,7 @@ export const strings = {
       autoResumeLimitedThreads: 'Resume threads after a usage limit',
       deviceStream: 'Live device stream',
       backgroundCompaction: 'Background compaction',
-      groupThreads: 'Let the other machines start threads here',
+      groupThreads: 'Let the other machines start threads and add projects here',
       groupBots: 'Let the bots of the other machines look after projects here',
     },
     /** What 0 means for the settings where it is not a number. */

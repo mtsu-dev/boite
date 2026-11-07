@@ -14,8 +14,8 @@ export type Operation = 'directory' | 'deliver' | 'receipt' | 'search' | 'read' 
   | 'contact.hand' | 'contact.move'
   /** Between members of a group, for a contact one of them is linked to (`contacts/members.ts`). */
   | 'relay.project' | 'relay.mirror' | 'relay.in' | 'relay.out'
-  /** Between members of a group: a thread one starts on another, the models it can run on there, and the setting that lets it (`threads/group-spawn.ts`). */
-  | 'thread.start' | 'delegation.catalog' | 'delegation.start' | 'delegation.report' | 'delegation.letter' | 'delegation.read' | 'delegation.stop' | 'setting.read' | 'setting.changed'
+  /** Between members of a group: a thread one starts on another, the models it can run on there, and the setting that lets it (`threads/group-spawn.ts`); a folder of the other machine one adds as a project there, under the same setting. */
+  | 'thread.start' | 'project.add' | 'delegation.catalog' | 'delegation.start' | 'delegation.report' | 'delegation.letter' | 'delegation.read' | 'delegation.stop' | 'setting.read' | 'setting.changed'
   /** Between members of a group: a bot of one looks after projects of another, which hears it while its `groupBots` is on (`agents/group-host.ts`). */
   | BotOperation
   /** Between members of a group: the machine that holds a team and the machines of its members (`teams/peers.ts`). */

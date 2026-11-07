@@ -184,3 +184,20 @@ test('subagents here and on another machine counting from the same seed keep apa
   expect((await desk.call('delegation.models', { threadId: 't-trace' })).anyModel).toBe(false);
   expect((await desk.call('delegation.models', { threadId: 't-trace', machine: 'pc' })).anyModel).toBe(false);
 });
+
+test('projects add --machine adds on that machine once it allows it, checked there, as the core does', async () => {
+  const desk = await machine('desk'), pc = await machine('pc');
+  await desk.call('group.create', { name: 'Home' });
+  await pc.call('group.join', { invite: (await desk.call('group.invite', {})).invite });
+  const add = (path: string) => desk.call('agent.addProject', { threadId: 't-trace', path, name: 'Website', machine: 'pc' });
+
+  await expect(add('/srv/site')).rejects.toThrow('pc does not let the other machines of its group add projects there; propose the switch to the user with boite settings request groupThreads true --machine pc --why "<what the project is for>"');
+  await pc.call('settings.set', { groupThreads: true });
+  const added = await add('/srv/site');
+  expect(added).toMatchObject({ name: 'Website', path: '/srv/site', added: true, current: false, machine: 'pc' });
+  expect((await pc.call('projects.list', {})).find(project => project.id === added.id)?.path).toBe('/srv/site');
+  expect((await desk.call('projects.list', {})).some(project => project.path === '/srv/site')).toBe(false);
+  expect(await add('/srv/site')).toMatchObject({ id: added.id, added: false });
+  await expect(add('site')).rejects.toThrow('pc: project.add.path must be an absolute path to an existing directory on this machine');
+  await expect(desk.call('agent.addProject', { threadId: 't-trace', path: '/srv/site', machine: 'desk' })).rejects.toThrow('desk is this machine; leave --machine out');
+});
