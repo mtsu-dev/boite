@@ -318,11 +318,10 @@ export class TurnContexts {
         progress(phase, detail);
         publishPart(messageId, partIndex, part);
         // The agent compacted by itself: a copy made before is of a context that is gone.
-        if (part.type === 'compaction' && part.background !== true) {
-          this.#threads.backgroundCompact.compactedInTurn(threadId);
-          // The summary keeps no more than a trace of the brain's instructions: the next turn sends them whole.
-          forgetBrainContext(this.#core, threadId);
-        }
+        if (part.type === 'compaction' && part.background !== true) this.#threads.backgroundCompact.compactedInTurn(threadId);
+        // Any compaction, a background one in the agent's own session included (pi): the summary keeps no more
+        // than a trace of the brain's instructions, so the next turn sends them whole.
+        if (part.type === 'compaction') forgetBrainContext(this.#core, threadId);
         if (boundary) this.#core.bus.emit('turn.toolCompleted', { threadId, turnId: turn.id, boundary: `${messageId}:${partIndex}` });
         if (segment && answer && segment !== answer.segments.at(-1)) closeIdle(segment);
       },

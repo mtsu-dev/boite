@@ -9,6 +9,7 @@ import { setDriver } from '../src/drivers/index.ts';
 import { echoDriver } from '../src/drivers/echo.ts';
 import { echoThread, startTestCore, waitFor, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
+import { CAPACITY_CONTINUE_PROMPT, CAPACITY_RETRY } from '../src/threads/turn-attempts.ts';
 
 let h: TestCore;
 let root: string;
@@ -364,13 +365,22 @@ test('the brain goes once a native session: again when it changes, after a compa
   file(join(root, 'AGENTS.md'), 'Convention one');
   await owner.call('brain.configure', { path: root, enabled: true });
   const prompts: string[] = [];
-  let continuation: string | null = null;
+  let continuation = null as string | null;
   let directive = 'Hello';
   const restore = setDriver('echo', { ...echoDriver, startTurn(ctx) {
     prompts.push(ctx.prompt);
     if (ctx.prompt.includes('Continue me')) continuation = ctx.continuation?.().prompt ?? null;
+    if (directive === 'background compaction') {
+      // A compaction the agent ran in its own session, flagged as background, as pi reports one.
+      const id = ctx.emit.startMessage('assistant');
+      ctx.emit.part(id, 0, { type: 'compaction', trigger: 'auto', preTokens: 100, postTokens: null, background: true });
+      ctx.emit.complete(id, 'complete');
+    }
+    // The brain changes while the turn waits for a model at capacity.
+    if (directive.includes('[capacity:1]')) file(join(root, 'AGENTS.md'), 'Convention four');
     // Echo plays the directive of this turn alone: a fresh session's prompt also carries the history.
-    return echoDriver.startTurn({ ...ctx, prompt: ctx.turn.execution?.operation === 'compact' ? ctx.prompt : directive });
+    const play = ctx.turn.execution?.operation === 'compact' || ctx.prompt === CAPACITY_CONTINUE_PROMPT ? ctx.prompt : directive === 'background compaction' ? 'Hello' : directive;
+    return echoDriver.startTurn({ ...ctx, prompt: play });
   } });
   const run = async (prompt: string, play = 'Hello') => {
     directive = play;
@@ -400,6 +410,14 @@ test('the brain goes once a native session: again when it changes, after a compa
     expect(await run('Fails', '[error]')).toContain('Convention three');
     expect(await run('After the failure')).toContain('Convention three');
     expect(brain(await run('Quiet again'))).toBe(false);
+    await run('Compacted in the background', 'background compaction');
+    expect(brain(await run('After a background compaction'))).toBe(true);
+    // The retry continues with a short prompt: the edit the first attempt missed comes with the next turn.
+    const delays = CAPACITY_RETRY.delaysMs;
+    CAPACITY_RETRY.delaysMs = [40, 40, 40];
+    try { await run('Busy model', 'first half [capacity:1] second half'); } finally { CAPACITY_RETRY.delaysMs = delays; }
+    expect(prompts.at(-1)).toBe(CAPACITY_CONTINUE_PROMPT);
+    expect(await run('After the capacity wait')).toContain('Convention four');
     // Another account is another native session.
     const spare = await owner.call('accounts.add', { providerId: 'echo', label: 'Spare' });
     await owner.call('threads.update', { threadId, accountId: spare.id });

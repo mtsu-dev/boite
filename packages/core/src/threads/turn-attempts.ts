@@ -10,6 +10,7 @@ import { LiveSettings } from './live-settings.ts';
 import { saveThread, withLoad } from './records.ts';
 import { markRunning } from './lifecycle.ts';
 import { RESUME_TEXT, modeRestartPrompt } from './resume-text.ts';
+import { forgetBrainContext } from './brain-context.ts';
 import type { CarriedInput } from './turn-context.ts';
 
 /** The current attempt snapshots, shared with live controls and final settlement. */
@@ -248,6 +249,8 @@ export class TurnAttempts {
         // The native session already holds the request and what the agent did with it.
         context.prompt = CAPACITY_CONTINUE_PROMPT;
         context.attachments = [];
+        // The brain this context may have taken stays out of the prompt: the next turn sends it whole.
+        forgetBrainContext(this.#core, threadId);
       } else if (note) {
         // Shown once the context is built, so a fresh session's history does not carry it twice.
         this.threads.noteSystem(threadId, turnId, note.prompt, note.label, 'turn.resumedAfterUpdate');

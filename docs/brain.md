@@ -68,8 +68,9 @@ session already holds it (`packages/core/src/threads/brain-context.ts`). The
 core keeps, per thread, the hash of the text it last sent, the session
 generation it went to and the turn that carried it. A new session (first turn,
 account or provider switch, rewind, a background compaction taken, a
-driver's fresh start or the core's retry on one), a compaction, and a failed
-or stopped turn that carried it all send it whole again. With a 16 KiB
+driver's fresh start or the core's retry on one), any compaction, a failed
+or stopped turn that carried it, and a capacity retry that continues with a
+short prompt all send it whole on the next turn. With a 16 KiB
 AGENTS.md, ten turns of one session send 16,697 prompt bytes instead of
 165,620 (`bun run bench/brain-instructions.ts`, 2026-11-07).
 The user's journalled message remains unchanged. Each normal turn picks up
