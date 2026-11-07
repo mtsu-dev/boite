@@ -55,8 +55,12 @@ export interface KeptProcess {
 export type ToKeeper =
   | { op: 'hello'; token: string; protocol: number; pid: number; version: string }
   | { op: 'spawn'; req: number; tag: KeptTag; cmd: string; args: string[]; cwd: string; env: Record<string, string>; cols: number; rows: number }
-  /** Sends the history first, as one `data` frame marked `replay`, then the live output. */
-  | { op: 'attach'; id: string }
+  /**
+   * Sends the history first, as one `data` frame marked `replay`, then the
+   * live output. A core that already had the first `from` bytes gets only
+   * what came after them, or the whole history when more than it holds.
+   */
+  | { op: 'attach'; id: string; from?: number }
   | { op: 'write'; id: string; data: string }
   | { op: 'resize'; id: string; cols: number; rows: number }
   | { op: 'signal'; id: string; signal: KeeperSignal }
@@ -68,7 +72,8 @@ export type FromKeeper =
   | { op: 'refused'; message: string }
   | { op: 'spawned'; req: number; process: KeptProcess }
   | { op: 'failed'; req: number; message: string }
-  | { op: 'data'; id: string; data: string; replay?: true }
+  /** `at`, on a replay: how many bytes the process printed up to its end. */
+  | { op: 'data'; id: string; data: string; replay?: true; at?: number }
   | { op: 'exit'; id: string; code: number | null }
   /** The keeper exits: idle, orphaned or told to. What it still held ends with it. */
   | { op: 'stopping'; reason: string };

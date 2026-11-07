@@ -18,6 +18,7 @@ import { dirname } from 'node:path';
 import type { Socket } from 'bun';
 import { CORE_VERSION } from '../version.ts';
 import { posixLockFile } from '../platform/posix-file-lock.ts';
+import { endShell } from './end-shell.ts';
 import { FrameSocket } from './frames.ts';
 import {
   KEEPER_HELLO_MS, KEEPER_IDLE_MS, KEEPER_ORPHAN_MS, KEEPER_PENDING_BYTES, KEEPER_PROTOCOL, KEEPER_PTY_HISTORY_BYTES, KEEPER_SIGNALS,
@@ -25,8 +26,6 @@ import {
   type FromKeeper, type KeptProcess, type KeeperSignal, type ToKeeper,
 } from './protocol.ts';
 
-/** How long a group that got a hang-up has before it gets SIGKILL. */
-const KILL_GRACE_MS = 2_000;
 /** How long an exit nobody collected is kept for the next core. */
 const EXIT_KEPT_MS = 10 * 60_000;
 const TICK_MS = 1_000;
@@ -66,6 +65,8 @@ interface Held {
   proc: Bun.Subprocess;
   terminal: Bun.Terminal;
   history: ByteRing;
+  /** Every byte it printed so far: where the history ends in its output. */
+  written: number;
   /** The attached core asked for its output. */
   attached: boolean;
 }
@@ -127,11 +128,22 @@ export function startKeeper(options: KeeperOptions): RunningKeeper | null {
     try { process.kill(-pid, signal); } catch { try { process.kill(pid, signal); } catch { /* gone */ } }
   };
 
+  /** Shells being ended: the keeper does not exit before their grace is over. */
+  const ending = new Set<Promise<void>>();
+  // The shell with what it started, a job in a group of its own included.
   const end = (entry: Held): Promise<void> => {
     if (entry.info.exit !== null) return Promise.resolve();
-    signalGroup(entry.info.pid, 'SIGHUP');
-    const hard = setTimeout(() => signalGroup(entry.info.pid, 'SIGKILL'), KILL_GRACE_MS);
-    return entry.proc.exited.then(() => clearTimeout(hard), () => clearTimeout(hard));
+    const ended = endShell(entry.info.pid, entry.proc.exited).finally(() => ending.delete(ended));
+    ending.add(ended);
+    return ended;
+  };
+
+  // What a core that had `from` bytes lacks; all the history when it had none, or more than the history holds.
+  const missed = (entry: Held, from: unknown): Uint8Array => {
+    const kept = entry.history.bytes();
+    if (typeof from !== 'number' || !Number.isInteger(from) || from < 0) return kept;
+    const lacking = entry.written - from;
+    return lacking <= 0 ? kept.subarray(kept.length) : kept.subarray(Math.max(0, kept.length - lacking));
   };
 
   const spawn = (request: Extract<ToKeeper, { op: 'spawn' }>): void => {
@@ -150,6 +162,7 @@ export function startKeeper(options: KeeperOptions): RunningKeeper | null {
           data: (_terminal, bytes) => {
             const copy = new Uint8Array(bytes);
             history.push(copy);
+            if (entry !== null) entry.written += copy.length;
             if (entry?.attached) sendCore({ op: 'data', id, data: encodeBytes(copy) });
           },
         },
@@ -164,7 +177,7 @@ export function startKeeper(options: KeeperOptions): RunningKeeper | null {
       sendCore({ op: 'failed', req: request.req, message: 'this Bun gave the process no terminal' });
       return;
     }
-    entry = { info: { id, pid: proc.pid, tag: request.tag, startedAt: Date.now(), exit: null }, proc, terminal, history, attached: false };
+    entry = { info: { id, pid: proc.pid, tag: request.tag, startedAt: Date.now(), exit: null }, proc, terminal, history, written: 0, attached: false };
     held.set(id, entry);
     const own = entry;
     void proc.exited.then((code) => code, () => null).then((code) => {
@@ -200,7 +213,7 @@ export function startKeeper(options: KeeperOptions): RunningKeeper | null {
     switch (frame.op) {
       case 'attach':
         entry.attached = true;
-        sendCore({ op: 'data', id: entry.info.id, data: encodeBytes(entry.history.bytes()), replay: true });
+        sendCore({ op: 'data', id: entry.info.id, data: encodeBytes(missed(entry, frame.from)), replay: true, at: entry.written });
         if (entry.info.exit !== null) {
           sendCore({ op: 'exit', id: entry.info.id, code: entry.info.exit.code });
           held.delete(entry.info.id);
@@ -263,7 +276,7 @@ export function startKeeper(options: KeeperOptions): RunningKeeper | null {
     log(`stopping: ${reason}`);
     sendCore({ op: 'stopping', reason });
     clearInterval(tick);
-    stopping = Promise.all([...held.values()].map(end)).then(() => {
+    stopping = Promise.all([...[...held.values()].map(end), ...ending]).then(() => {
       listener.stop(true);
       rmSync(options.socketPath, { force: true });
       lock.release();
@@ -279,7 +292,7 @@ export function startKeeper(options: KeeperOptions): RunningKeeper | null {
     }
     const running = [...held.values()].some((entry) => entry.info.exit === null);
     // An attached core will want it again soon; one that holds nothing detaches.
-    if (held.size > 0 || core !== null) emptySince = now;
+    if (held.size > 0 || ending.size > 0 || core !== null) emptySince = now;
     if (core === null && running && now - lastCoreAt >= orphanMs) { void stop(`no core attached for ${Math.round(orphanMs / 1000)} s`); return; }
     if (held.size === 0 && now - emptySince >= idleMs) void stop('nothing to hold');
   }, TICK_MS);

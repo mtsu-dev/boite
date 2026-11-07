@@ -88,10 +88,24 @@ another.
 A keeper with live shells and no core for 10 min (`KEEPER_ORPHAN_MS`) ends
 them and exits. `SIGTERM` to the keeper ends them at once.
 
+When the keeper ends a shell (released, orphaned, or the keeper told to stop),
+it first reads the shell's descendants and their process groups from `ps`,
+then sends SIGHUP to each group and, 2 s later, SIGKILL to whatever of them is
+left. A job an interactive shell put in a group of its own, `nohup` included,
+goes with the shell. The keeper does not exit before that grace is over.
+
 ## Failure cases
 
-- The keeper dies: the attached core counts its shells as ended with no exit
-  code; a core that was not attached finds no socket and nothing to restore.
+- The connection closes while a core is attached, for instance because the
+  core stopped reading for 16 MiB: the core connects again and attaches what
+  the keeper still lists, asking only for the bytes after the last one it
+  had (`attach.from`, the replay's `at`). More than the 256 KiB history
+  missed leaves a gap before that history.
+- The keeper dies: that reconnection finds no socket, and the core counts its
+  shells as ended with no exit code; a core that was not attached finds
+  nothing to restore.
+- A thread archived or deleted while the keeper starts its shell: the shell is
+  released as soon as it starts, and `terminals.open` refuses.
 - A keeper of another protocol version: the socket name carries the version,
   so a core never reaches it. It ends its shells after its orphan delay.
 - A wrong token or a second core: the keeper answers `refused` and closes.
@@ -118,7 +132,7 @@ attached.
 | Shell pid after each restart | a new shell (4 pids for 3 restarts) | the same pid |
 | Output the next core had | 0 bytes | 65,713, 131,508, 197,303 bytes |
 | Output printed while no core ran | lost | kept |
-| `terminals.open` after a new `Core` | 13 to 14 ms | 13 to 16 ms |
+| `terminals.open` after a new `Core` | 14 to 16 ms | 15 to 17 ms |
 | Keeper RSS holding one shell, from the sources | none | 32 MB |
 
 The compiled binary's keeper, idle: 75 MB RSS, of which 52 MB are pages of
@@ -132,3 +146,6 @@ and checks that the thread shell keeps its pid, that the next core lists it,
 has its earlier output and what it printed between the two cores, and that it
 answers input; then that `POST /shutdown`'s stop ends the shell. The first
 test fails on a core without the keeper: the shell is gone after the restart.
+The same file checks that a core dropped while it did not read takes its
+shell back with the end of 30 MB it missed, that ending a shell ends its
+`nohup` job, and that archiving a thread while its shell starts ends it.

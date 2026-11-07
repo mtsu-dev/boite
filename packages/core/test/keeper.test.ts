@@ -1,11 +1,12 @@
-import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import type { RpcEvents } from '@boite/contracts';
+import type { RpcEvents, ThreadId } from '@boite/contracts';
 import { connect, type CoreClient } from '../src/client.ts';
 import { Core } from '../src/core.ts';
 import { ByteRing } from '../src/keeper/server.ts';
-import { keeperEnabled } from '../src/keeper/client.ts';
+import { KeeperClient, keeperEnabled, type KeptTerminal } from '../src/keeper/client.ts';
 import { startServer, type RunningServer } from '../src/server.ts';
 import { threadTerminalId } from '../src/terminals.ts';
 import { echoThread, removeDir, startTestCore, waitFor, type TestCore } from './harness.ts';
@@ -39,6 +40,20 @@ async function startNext(h: TestCore): Promise<Next> {
   const server = startServer({ core, host: '127.0.0.1', port: 0 });
   const client = await connect(server.url, h.token);
   return { core, server, client };
+}
+
+/** A keeper of its own data directory, and the shell it starts there. */
+async function keptShell(cmd: string, args: string[], logs: string[] = []): Promise<{ client: KeeperClient; kept: KeptTerminal; text: () => string; dataDir: string }> {
+  const dataDir = mkdtempSync(join(tmpdir(), 'boite-keeper-'));
+  const client = new KeeperClient({ dataDir, log: (_level, message) => logs.push(message) });
+  const kept = await client.spawnTerminal({ kind: 'test' }, cmd, args, { cwd: dataDir, env: { ...process.env, PS1: '$ ' }, cols: 80, rows: 24 });
+  shellPids.push(kept.pid);
+  keeperPids.push(client.keeperPid!);
+  sockets.push(client.socketPath);
+  let text = '';
+  kept.onData((bytes) => { text = (text + new TextDecoder().decode(bytes)).slice(-4096); });
+  kept.attach();
+  return { client, kept, text: () => text, dataDir };
 }
 
 const saved = { keeper: process.env.BOITE_KEEPER, idle: process.env.BOITE_KEEPER_IDLE_MS };
@@ -139,6 +154,62 @@ describe.skipIf(!keeperEnabled({ BOITE_KEEPER: '1' }))('keeper', () => {
       await restart(h);
       await waitFor(() => !alive(pid), 5_000);
     } finally {
+      delete process.env.BOITE_DATA_DIR;
+      await removeDir(h.dataDir);
+    }
+  }, 60_000);
+
+  test('a core the keeper dropped for not reading takes its shell back with what it missed', async () => {
+    const logs: string[] = [];
+    // 30 MB while this core does not read: past the 16 MiB the keeper queues for it.
+    const { client, kept, text, dataDir } = await keptShell('/bin/sh', ['-c', 'sleep 0.3; head -c 30000000 /dev/zero | tr "\\0" x; echo; echo end-$((2+3)); exec sleep 300'], logs);
+    try {
+      Bun.sleepSync(5_000);
+      await waitFor(() => text().includes('end-5'), 30_000);
+      expect(logs.some((line) => line.includes('1 kept processes attached again'))).toBe(true);
+      expect(kept.running).toBe(true);
+      expect(alive(kept.pid)).toBe(true);
+    } finally {
+      kept.release();
+      client.close();
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  test('ending a shell ends a job it started in a group of its own', async () => {
+    const { client, kept, text, dataDir } = await keptShell('bash', ['--norc', '--noprofile', '-i']);
+    try {
+      // An interactive shell gives the job its own group, and nohup makes it ignore the hang-up.
+      kept.write('nohup sleep 300 >/dev/null 2>&1 & echo job-$((6*7))-$!\r');
+      await waitFor(() => /job-42-\d+/.test(text()), SHELL_MS);
+      const job = Number(/job-42-(\d+)/.exec(text())![1]);
+      shellPids.push(job);
+      kept.release();
+      await waitFor(() => !alive(kept.pid) && !alive(job), 5_000);
+    } finally {
+      client.close();
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  test('archiving a thread while the keeper starts its shell ends that shell', async () => {
+    const h = await startTestCore({ onShutdown: () => undefined });
+    try {
+      const client = await h.connect();
+      const { threadId } = await echoThread(h, client);
+      const id = threadTerminalId(threadId);
+      // The first shell starts a keeper, which takes longer than the archive.
+      const opening = client.call('terminals.open', { threadId, cols: 80, rows: 24 }).then(() => 'opened', (error: unknown) => String(error));
+      await client.call('threads.archive', { threadId, archived: true });
+      expect(await opening).toContain('archived');
+      expect(h.core.terminals.has(id)).toBe(false);
+      await waitFor(() => h.core.procs.liveCount(id as ThreadId) === 0, 5_000);
+      if (h.core.terminals.keeper?.keeperPid) keeperPids.push(h.core.terminals.keeper.keeperPid);
+      sockets.push(h.core.terminals.keeper!.socketPath);
+    } finally {
+      await h.core.drain();
+      await h.server.stop();
+      await h.core.close();
       delete process.env.BOITE_DATA_DIR;
       await removeDir(h.dataDir);
     }

@@ -311,8 +311,9 @@ export class TerminalStore {
     }));
   }
 
-  /** Closes every shell of the thread. */
+  /** Closes every shell of the thread, one the keeper is still starting included. */
   async closeThread(threadId: ThreadId): Promise<void> {
+    await this.#openingOf(threadId);
     await Promise.all(this.#threadSessions(threadId).map((session) => this.close(session.id)));
   }
 
@@ -321,6 +322,7 @@ export class TerminalStore {
    * leftover whose session went already included: the records go next.
    */
   async stopThread(threadId: ThreadId): Promise<void> {
+    await this.#openingOf(threadId);
     const ids = new Set([...this.#threadSessions(threadId).map((session) => session.id), ...this.#core.procs.liveThreads().filter((id) => isThreadTerminal(threadId, id))]);
     await Promise.all([...ids].map((id) => this.#core.procs.stopAndWait(id as ThreadId)));
   }
@@ -328,6 +330,11 @@ export class TerminalStore {
   /** How many processes the thread's shells run. */
   threadProcesses(threadId: ThreadId): number {
     return this.#core.procs.liveThreads().filter((id) => isThreadTerminal(threadId, id)).reduce((sum, id) => sum + this.#core.procs.liveCount(id), 0);
+  }
+
+  /** Settles once the thread's shells the keeper was asked for started or failed. */
+  async #openingOf(threadId: ThreadId): Promise<void> {
+    await Promise.allSettled([...this.#opening].filter(([id]) => isThreadTerminal(threadId, id)).map(([, opening]) => opening));
   }
 
   #threadSessions(threadId: ThreadId): Session[] {
@@ -399,6 +406,13 @@ export class TerminalStore {
         spawned = await spawnKeptTerminal(this.#core.procs, keeper, id as ThreadId, launch.exe, launch.args, { cwd: options.cwd, env: output.env, cols: options.cols, rows: options.rows, tag: { ...tag } });
       } catch (error) {
         throw refused(`the shell ${launch.exe} did not start: ${messageOf(error)}`, { id, shell: launch.exe });
+      }
+      // Archived or deleted while the keeper started it: the shell goes with its thread.
+      const thread = options.threadId === undefined ? undefined : this.#core.journal.getThread(options.threadId);
+      if (thread === null || thread?.archived === true) {
+        // The keeper ends it with what it started and forgets it; its record closes with no code.
+        spawned.kept.release();
+        throw refused(`the thread ${options.threadId} was archived while its shell started`, { threadId: options.threadId, field: 'archived', expected: false });
       }
       return this.#state(this.#adopt(output, options, spawned));
     });

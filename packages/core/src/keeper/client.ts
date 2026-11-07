@@ -52,6 +52,8 @@ export class KeptTerminal {
   #exit: (code: number | null) => void;
   #done = false;
   #onData: ((bytes: Uint8Array, replay: boolean) => void) | null = null;
+  /** How many of its bytes this core has, once a replay said where they end. */
+  #received: number | null = null;
   readonly #send: (frame: ToKeeper) => void;
 
   constructor(info: KeptProcess, send: (frame: ToKeeper) => void) {
@@ -71,8 +73,14 @@ export class KeptTerminal {
    */
   onData(listener: (bytes: Uint8Array, replay: boolean) => void): void { this.#onData = listener; }
 
-  /** Asks the keeper for the output: what it kept first, then the live bytes. */
-  attach(): void { if (!this.#done) this.#send({ op: 'attach', id: this.id }); }
+  /**
+   * Asks the keeper for the output: what it kept first, then the live bytes.
+   * Attached again after a lost connection, only what this core missed.
+   */
+  attach(): void {
+    if (this.#done) return;
+    this.#send(this.#received === null ? { op: 'attach', id: this.id } : { op: 'attach', id: this.id, from: this.#received });
+  }
 
   write(data: string | Uint8Array): void {
     if (this.#done) return;
@@ -90,7 +98,11 @@ export class KeptTerminal {
   }
 
   /** @internal */
-  data(bytes: Uint8Array, replay: boolean): void { this.#onData?.(bytes, replay); }
+  data(bytes: Uint8Array, replay: boolean, at?: number): void {
+    if (replay && at !== undefined) this.#received = at;
+    else if (this.#received !== null) this.#received += bytes.length;
+    this.#onData?.(bytes, replay);
+  }
 
   /** @internal */
   ended(code: number | null): void {
@@ -264,7 +276,7 @@ export class KeeperClient {
         waiting.reject(new Error(frame.message));
         return;
       }
-      case 'data': this.#kept.get(frame.id)?.data(decodeBytes(frame.data), frame.replay === true); return;
+      case 'data': this.#kept.get(frame.id)?.data(decodeBytes(frame.data), frame.replay === true, frame.at); return;
       case 'exit': this.#kept.get(frame.id)?.ended(frame.code); return;
       // Told to stop while this core is attached: the exits of what it ends follow, then the socket closes.
       case 'stopping': this.#options.log('warn', `the keeper stops: ${frame.reason}`); return;
@@ -273,14 +285,33 @@ export class KeeperClient {
 
   #send(frame: ToKeeper): void { this.#frames?.send(frame); }
 
-  /** The keeper went away while this core was attached: what it held went with it. */
+  /**
+   * The connection closed while this core was attached. The keeper may still
+   * hold everything, having dropped a core that stopped reading: this core
+   * attaches again and takes back what it lists, with the output it missed.
+   * What it does not list, or a keeper that is gone, counts as ended.
+   */
   #lost(): void {
     this.#frames = null;
     if (this.#closed) return;
-    this.#options.log('warn', `the keeper on ${this.socketPath} went away; ${this.#kept.size} kept processes are counted as ended`);
-    for (const waiting of this.#waiting.values()) { clearTimeout(waiting.timer); waiting.reject(new Error('the keeper went away')); }
+    for (const waiting of this.#waiting.values()) { clearTimeout(waiting.timer); waiting.reject(new Error('the keeper connection was lost')); }
     this.#waiting.clear();
-    for (const kept of [...this.#kept.values()]) kept.ended(null);
-    this.#kept.clear();
+    if (this.#kept.size > 0) void this.#reattach();
+  }
+
+  async #reattach(): Promise<void> {
+    let held: KeptProcess[] | null = null;
+    try { held = await this.connect({ launch: false }); } catch (error) {
+      this.#options.log('warn', `the keeper on ${this.socketPath} did not answer again: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    const listed = new Set((held ?? []).map((info) => info.id));
+    let back = 0;
+    for (const kept of [...this.#kept.values()]) {
+      if (listed.has(kept.id)) { kept.attach(); back++; } else kept.ended(null);
+    }
+    // Started for a request this core no longer waits for.
+    for (const info of held ?? []) if (!this.#kept.has(info.id)) this.#send({ op: 'release', id: info.id });
+    this.#options.log(held === null ? 'warn' : 'info', `the keeper connection on ${this.socketPath} was lost; ${back} kept processes attached again`);
+    this.detachWhenIdle();
   }
 }
