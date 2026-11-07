@@ -48,7 +48,6 @@ export interface AgentMatch extends AgentContact {
   /** Up to three short excerpts of the chat around a match. */
   excerpts: string[];
 }
-/** One entry of another agent's conversation as `collaboration.read` returns it. */
 /** Entries a read returns when the reader names no limit. */
 export const TRANSCRIPT_READ_ENTRIES = 10;
 /** Characters of each entry a page of entries carries; the entry's `next` leads to the rest. */
@@ -62,6 +61,7 @@ export function transcriptStretch(text: string, from: number, size: number): { t
   if (end < text.length && end - 1 > from && last >= 0xd800 && last <= 0xdbff) end -= 1;
   return { text: text.slice(from, end), ...(end < text.length ? { next: end } : {}) };
 }
+/** One entry of another agent's conversation as `collaboration.read` returns it. */
 export interface AgentTranscriptEntry {
   id: string;
   role: 'user' | 'assistant' | 'system';
