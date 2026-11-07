@@ -62,7 +62,16 @@ without the Skill tool also gets it whole. Skill bodies stay on disk for the age
 to read when needed. Project instruction
 files still follow each agent's native discovery rules.
 
-The shared driver context carries the prefix, including on warm sessions.
+The shared driver context carries the prefix once per native session: whole
+on the session's first turn, then again only when its text changed, since the
+session already holds it (`packages/core/src/threads/brain-context.ts`). The
+core keeps, per thread, the hash of the text it last sent, the session
+generation it went to and the turn that carried it. A new session (first turn,
+account or provider switch, rewind, a background compaction taken, a
+driver's fresh start or the core's retry on one), a compaction, and a failed
+or stopped turn that carried it all send it whole again. With a 16 KiB
+AGENTS.md, ten turns of one session send 16,697 prompt bytes instead of
+165,620 (`bun run bench/brain-instructions.ts`, 2026-11-07).
 The user's journalled message remains unchanged. Each normal turn picks up
 edits to the entry files and the catalog, so a refresh or process restart is
 unnecessary. The core keeps its last scan and, before each turn, stats every
@@ -84,7 +93,7 @@ and no message carries it.
 The guide covers the CLI, panel, attachments, tasks and project todos. It lives
 in `packages/core/src/agent-guide.ts`; no instruction file is created. A resumed
 session keeps the guide; a replacement session receives it again. The brain's
-own instructions still go every normal turn while sharing is enabled.
+own instructions follow the same rule, and also come again when they change.
 Coordination and delegation add compact feature instructions. Full command
 formats stay behind `boite help` and `boite workflow help`.
 
