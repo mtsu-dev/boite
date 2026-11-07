@@ -1129,7 +1129,8 @@ Drivers translate them according to their protocol capabilities.
 YOLO is separate from Auto (`bypassPermissions`). It selects the agent's most
 permissive execution mode and automatically accepts tool approval requests that
 still reach Boite, without a permission card. It keeps the user's configured
-and plugin hooks; only a context mode without hooks turns them off. Claude runs
+and plugin hooks; a context mode without hooks, protected execution and Boite's
+internal runs (probes, Codex titles) still turn them off. Claude runs
 with `bypassPermissions` and applies the mode live; a hook that answers `ask`
 reaches the permission callback, which allows it. Codex runs with approvals
 set to `never` and full filesystem access, and entering or leaving YOLO
