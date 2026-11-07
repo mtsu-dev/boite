@@ -108,6 +108,29 @@ test('a loop out of rounds fails its closing step, is told to the parent, and a 
   ]);
 });
 
+test('a closing step fanned out over an empty list still checks its condition, and its retry runs another round', async () => {
+  let files: string[] = [];
+  scripted(ctx => {
+    if (!ctx.thread.parentThreadId) return 'noted';
+    const task = taskOf(ctx.prompt);
+    return task === 'List.' ? '```json\n' + JSON.stringify({ files }) + '\n```' : verdict('APPROVE');
+  });
+  const { h, owner, threadId } = await setup();
+  const plan: WorkflowPlan = { name: 'Empty', steps: [
+    { id: 'list', profile: 'fast', task: 'List.', output: { files: ['string'] } },
+    { id: 'review', profile: 'fast', forEach: 'list.files', task: 'Review {{item}}.', output: { verdict: 'string', notes: 'string' },
+      repeat: { from: 'list', until: { path: 'review.verdict', equals: 'APPROVE' }, max: 2 } },
+  ] };
+  const run = await owner.call('workflows.start', { threadId, plan, requestId: 'empty' });
+  const failed = await settled(h, threadId, run.id);
+  const review = failed.nodes.find(n => n.id === 'review')!;
+  expect([failed.status, review.status, review.round, review.instances.length, review.exhausted]).toEqual(['failed', 'failed', 2, 0, true]);
+  files = ['a.ts'];
+  await owner.call('workflows.control', { threadId, runId: run.id, action: 'retry', stepId: 'review' });
+  const done = await settled(h, threadId, run.id);
+  expect([done.status, done.nodes.find(n => n.id === 'review')!.round, done.nodes.find(n => n.id === 'review')!.exhausted]).toEqual(['done', 3, undefined]);
+});
+
 test('every round counts toward the run\'s execution limit', async () => {
   scripted(ctx => !ctx.thread.parentThreadId ? 'noted' : taskOf(ctx.prompt) === 'Review.' ? verdict('CHANGES') : 'ok');
   const { h, owner, threadId } = await setup();
@@ -149,4 +172,7 @@ test('a condition on a fanned-out path holds when every item matches, and notEqu
   // An empty list matches nothing, so no reviewer is not every reviewer approving.
   expect(conditionHolds({ path: 'none', equals: 'APPROVE' }, values)).toBe(false);
   expect(conditionHolds({ path: 'none', notEquals: 'APPROVE' }, values)).toBe(true);
+  // A review that returned no verdict is not an approval.
+  expect(conditionHolds({ path: 'partial.verdict', equals: 'APPROVE' }, { partial: [{ verdict: 'APPROVE' }, {}] })).toBe(false);
+  expect(conditionHolds({ path: 'partial.verdict', notEmpty: true }, { partial: [{ verdict: 'APPROVE' }, {}] })).toBe(true);
 });

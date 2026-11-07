@@ -311,7 +311,8 @@ export function workflowLevels(steps: { id: string; after: string[] }[]): string
  * Reads a path through step values. A name applied to a list maps over it and
  * flattens one level, so `review.bugs` is every item's bugs in one list.
  */
-export function resolvePath(root: Record<string, unknown>, segments: string[]): unknown {
+/** `missing` keeps an item of a fan-out that lacks the field as null, so a condition sees every item. */
+export function resolvePath(root: Record<string, unknown>, segments: string[], missing = false): unknown {
   let value: unknown = root;
   for (const segment of segments) {
     if (value === null || value === undefined) return null;
@@ -319,7 +320,7 @@ export function resolvePath(root: Record<string, unknown>, segments: string[]): 
       if (/^\d+$/.test(segment)) value = value[Number(segment)];
       else value = value.flatMap(entry => {
         const inner = isRecord(entry) ? entry[segment] : undefined;
-        return inner === undefined ? [] : Array.isArray(inner) ? inner : [inner];
+        return inner === undefined ? (missing ? [null] : []) : Array.isArray(inner) ? inner : [inner];
       });
     } else if (isRecord(value)) value = value[segment];
     else return null;
@@ -339,14 +340,17 @@ export function renderTask(task: string, root: Record<string, unknown>): string 
 }
 
 export function conditionHolds(condition: WorkflowCondition, root: Record<string, unknown>): boolean {
-  const value = resolvePath(root, condition.path.split('.'));
+  const segments = condition.path.split('.');
+  const value = resolvePath(root, segments);
   const empty = value === null || value === '' || value === false || (Array.isArray(value) && value.length === 0) || (isRecord(value) && Object.keys(value).length === 0);
   if (condition.notEmpty) return !empty;
   if (condition.empty) return empty;
+  // An item without the field is no match: two reviews of three approving is not all of them.
+  const compared = resolvePath(root, segments, true);
   const target = 'notEquals' in condition ? condition.notEquals : condition.equals;
   const one = (item: unknown) => condition.in ? condition.in.some(entry => entry === item) : item === target;
   // A path through a fan-out reads a list: it matches when every item does.
-  const all = Array.isArray(value) ? value.length > 0 && value.every(one) : one(value);
+  const all = Array.isArray(compared) ? compared.length > 0 && compared.every(one) : one(compared);
   return 'notEquals' in condition ? !all : all;
 }
 

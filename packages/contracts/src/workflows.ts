@@ -176,6 +176,8 @@ export interface WorkflowNode {
   spent?: number;
   /** In a loop: the executions of its last round, whose conversations the next round reuses. */
   previous?: WorkflowInstance[];
+  /** Closes a loop that ran out of rounds: a retry runs one round more. */
+  exhausted?: boolean;
 }
 
 export interface WorkflowRun {

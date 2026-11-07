@@ -450,6 +450,7 @@ export class FakeWorkflows {
     if (used + count > run.limits.maxSteps) return void fail(`${count} executions would pass this run's limit of ${run.limits.maxSteps} (${used} used); raise limits.maxSteps up to ${WORKFLOW_LIMITS.maxSteps} or narrow the list`);
     if (items && items.length === 0) {
       Object.assign(node, { status: 'done', startedAt: now, finishedAt: now });
+      closeLoop(run, node, now);
       return;
     }
     node.instances = (items ?? [undefined]).map((item, index) => {

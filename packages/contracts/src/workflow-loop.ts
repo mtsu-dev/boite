@@ -46,6 +46,7 @@ function rewind(run: WorkflowRun, body: Set<string>): void {
   for (const node of run.nodes) {
     if (!body.has(node.id)) continue;
     if (node.instances.length) node.previous = node.instances;
+    delete node.exhausted;
     Object.assign(node, { spent: (node.spent ?? 0) + node.instances.length, round: (node.round ?? 1) + 1, instances: [], status: 'waiting', error: null, startedAt: null, finishedAt: null });
   }
 }
@@ -64,14 +65,13 @@ export function closeLoop(run: WorkflowRun, node: WorkflowNode, now: number): 'o
     rewind(run, loopBody(run.nodes, step.repeat.from, step.id));
     return 'again';
   }
-  Object.assign(node, { status: 'failed', error: `${conditionText(step.repeat.until)} still did not hold after ${round} rounds of the loop from ${step.repeat.from}; a retry runs one more round`, finishedAt: now });
+  Object.assign(node, { status: 'failed', exhausted: true, error: `${conditionText(step.repeat.until)} still did not hold after ${round} rounds of the loop from ${step.repeat.from}; a retry runs one more round`, finishedAt: now });
   return 'spent';
 }
 
-/** A loop that ran out of rounds: its closing step failed though every execution of it ended done. */
+/** A loop that ran out of rounds: its closing step failed though every execution of it, if any, ended done. */
 export function loopSpent(run: WorkflowRun, node: WorkflowNode): boolean {
-  const step = run.plan.steps.find(s => s.id === node.id);
-  return !!step?.repeat && node.status === 'failed' && node.instances.length > 0 && node.instances.every(inst => inst.status === 'done');
+  return node.exhausted === true && node.status === 'failed' && !!run.plan.steps.find(s => s.id === node.id)?.repeat;
 }
 
 /** A retry of a loop that ran out of rounds: one round more. */
