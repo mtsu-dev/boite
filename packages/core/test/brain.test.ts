@@ -9,6 +9,7 @@ import { setDriver } from '../src/drivers/index.ts';
 import { echoDriver } from '../src/drivers/echo.ts';
 import { echoThread, startTestCore, waitFor, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
+import { CAPACITY_CONTINUE_PROMPT, CAPACITY_RETRY } from '../src/threads/turn-attempts.ts';
 
 let h: TestCore;
 let root: string;
@@ -287,7 +288,8 @@ test.each(['connected', 'disabled', 'disconnected'] as const)('Boite guide reach
   expect(readFileSync(join(root, 'AGENTS.md'), 'utf8')).toBe('Shared convention');
   expect(h.core.journal.listMessages(threadId).filter(m => m.role === 'user')[0]?.parts).toEqual([{ type: 'text', text: 'Hello' }]);
   const second = await run('Again');
-  if (state === 'connected') expect(second).toContain('Shared convention');
+  // The session holds the brain like the guide: neither comes again unchanged.
+  expect(second).not.toContain('Shared convention');
   expect(second).not.toContain('boite where');
   expect(second).not.toContain('boite delegate spawn');
 });
@@ -354,6 +356,73 @@ test('short answers ride every turn until switched off, and the first lists the 
     h.core.settings.set({ shortAnswers: true });
     await owner.call('brain.configure', { path: null, enabled: false, boiteGuide: false });
     expect(await run('Fourth')).not.toContain('Answer style');
+  } finally { restore(); }
+});
+
+test('the brain goes once a native session: again when it changes, after a compaction, a failed turn or a new account, and in a continuation', async () => {
+  const owner = await h.connect();
+  const { threadId } = await echoThread(h, owner);
+  file(join(root, 'AGENTS.md'), 'Convention one');
+  await owner.call('brain.configure', { path: root, enabled: true });
+  const prompts: string[] = [];
+  let continuation = null as string | null;
+  let directive = 'Hello';
+  const restore = setDriver('echo', { ...echoDriver, startTurn(ctx) {
+    prompts.push(ctx.prompt);
+    if (ctx.prompt.includes('Continue me')) continuation = ctx.continuation?.().prompt ?? null;
+    if (directive === 'background compaction') {
+      // A compaction the agent ran in its own session, flagged as background, as pi reports one.
+      const id = ctx.emit.startMessage('assistant');
+      ctx.emit.part(id, 0, { type: 'compaction', trigger: 'auto', preTokens: 100, postTokens: null, background: true });
+      ctx.emit.complete(id, 'complete');
+    }
+    // The brain changes while the turn waits for a model at capacity.
+    if (directive.includes('[capacity:1]')) file(join(root, 'AGENTS.md'), 'Convention four');
+    // Echo plays the directive of this turn alone: a fresh session's prompt also carries the history.
+    const play = ctx.turn.execution?.operation === 'compact' || ctx.prompt === CAPACITY_CONTINUE_PROMPT ? ctx.prompt : directive === 'background compaction' ? 'Hello' : directive;
+    return echoDriver.startTurn({ ...ctx, prompt: play });
+  } });
+  const run = async (prompt: string, play = 'Hello') => {
+    directive = play;
+    const turn = await owner.call('turns.start', { threadId, prompt });
+    await waitFor(() => ['done', 'error'].includes(h.core.journal.listTurns(threadId).find(t => t.id === turn.id)?.status ?? ''));
+    return prompts.at(-1)!;
+  };
+  const brain = (prompt: string) => prompt.includes('Shared agent brain:');
+  try {
+    expect(brain(await run('First'))).toBe(true);
+    expect(await run('Second')).not.toContain('Shared agent brain:');
+    // The native session holds it, so a driver's fresh start is the one that must carry it.
+    const held = await run('Continue me');
+    expect(brain(held)).toBe(false);
+    expect(continuation).toContain('Convention one');
+    file(join(root, 'AGENTS.md'), 'Convention two');
+    expect(await run('Edited')).toContain('Convention two');
+    expect(brain(await run('Unchanged'))).toBe(false);
+    // The agent compacted by itself during the turn: the summary does not hold the brain.
+    await run('Long work', '[compact]');
+    expect(brain(await run('After auto compaction'))).toBe(true);
+    await owner.call('threads.compact', { threadId });
+    await waitFor(() => h.core.journal.listTurns(threadId).some(t => t.execution?.operation === 'compact' && t.status === 'done'));
+    expect(brain(await run('After compaction'))).toBe(true);
+    // A failed turn that carried it may never have handed it over.
+    file(join(root, 'AGENTS.md'), 'Convention three');
+    expect(await run('Fails', '[error]')).toContain('Convention three');
+    expect(await run('After the failure')).toContain('Convention three');
+    expect(brain(await run('Quiet again'))).toBe(false);
+    await run('Compacted in the background', 'background compaction');
+    expect(brain(await run('After a background compaction'))).toBe(true);
+    // The retry continues with a short prompt: the edit the first attempt missed comes with the next turn.
+    const delays = CAPACITY_RETRY.delaysMs;
+    CAPACITY_RETRY.delaysMs = [40, 40, 40];
+    try { await run('Busy model', 'first half [capacity:1] second half'); } finally { CAPACITY_RETRY.delaysMs = delays; }
+    expect(prompts.at(-1)).toBe(CAPACITY_CONTINUE_PROMPT);
+    expect(await run('After the capacity wait')).toContain('Convention four');
+    // Another account is another native session.
+    const spare = await owner.call('accounts.add', { providerId: 'echo', label: 'Spare' });
+    await owner.call('threads.update', { threadId, accountId: spare.id });
+    expect(brain(await run('On the spare account'))).toBe(true);
+    expect(brain(await run('Settled on the spare'))).toBe(false);
   } finally { restore(); }
 });
 
