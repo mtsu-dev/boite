@@ -6,6 +6,7 @@ import ProjectPicker from './ProjectPicker.svelte';
 import type { FakeClient, FakeClientOptions } from '../lib/fake-client';
 import type { Store } from '../lib/store.svelte';
 import { workspace } from '../lib/workspace.svelte';
+import { strings } from '../lib/strings';
 
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open: vi.fn() }));
 let component: Record<string, unknown> | undefined;
@@ -66,4 +67,38 @@ test('cancel and reopen invalidates a pending native folder picker before projec
   document.querySelector<HTMLButtonElement>('[data-testid=project-cancel]')!.click(); await settle(); a.projectPickerOpen = true; await settle();
   released.resolve('/A-native'); await settle();
   expect(a.projectPickerOpen).toBe(true); expect(spy.mock.calls.filter(([method]) => method === 'projects.add')).toHaveLength(0);
+});
+
+test('a paired device picks the machine in the same menu and adds there; a machine too old to let it says so', async ({ createStore }) => {
+  const { store: a, client: ca } = createStore({ principal: 'session' }), { store: b, client: cb } = createStore({ delayMs: 0, coreId: 'machine-b', principal: 'session' });
+  a.machineId = 'machine-a'; b.machineId = 'machine-b'; a.attach(ca); b.attach(cb);
+  await Promise.all([a.connect(), b.connect()]);
+  // Machine A runs a Boite from before deviceProjects: it would refuse the device.
+  a.core = { ...a.core!, features: { ...a.core!.features, deviceProjects: false } };
+  expect([a.owner, a.addsProjects, b.owner, b.addsProjects]).toEqual([false, false, false, true]);
+  workspace.machines = [{ id: 'machine-a', label: 'Machine A', store: a }, { id: 'machine-b', label: 'Machine B', store: b }]; workspace.active = b;
+  b.projectPickerOpen = true;
+  component = mount(ProjectPicker, { target: document.body, props: { store: b } }); await settle();
+  const add = () => document.querySelector<HTMLButtonElement>('[data-testid=project-add]')!;
+  const pick = async (id: string) => {
+    document.querySelector<HTMLButtonElement>('[data-testid=project-machine]')!.click(); await settle();
+    document.querySelector<HTMLButtonElement>(`[data-value=${id}]`)!.click(); await settle();
+  };
+  const spy = vi.spyOn(ca, 'call');
+
+  await pick('machine-a');
+  expect(document.querySelector('[data-testid=project-picker] [role=alert]')?.textContent).toBe(strings.firstRun.deviceOlderCore);
+  const input = document.querySelector<HTMLInputElement>('[data-testid=project-path]')!;
+  input.value = '/srv/site'; input.dispatchEvent(new Event('input', { bubbles: true })); await settle();
+  expect(add().disabled).toBe(true);
+  expect(spy.mock.calls.filter(([method]) => method === 'projects.add' || method === 'projects.browse')).toHaveLength(0);
+
+  await pick('machine-b');
+  expect(document.querySelector('[data-testid=project-picker] [role=alert]')).toBeNull();
+  input.value = '/srv/site'; input.dispatchEvent(new Event('input', { bubbles: true })); await settle();
+  expect(add().disabled).toBe(false);
+  add().click(); await settle();
+  await vi.waitFor(() => expect(b.projects.some(project => project.path === '/srv/site')).toBe(true));
+  expect(a.projects.some(project => project.path === '/srv/site')).toBe(false);
+  expect(b.projectPickerOpen).toBe(false);
 });

@@ -39,7 +39,7 @@ export function appCommands(store: Store, phone: boolean): PaletteItem[] {
   // Opening a folder, reading a transcript, listing processes and everything
   // Providers and pairing do are the owner's: `packages/core/src/access.ts`
   // refuses them to a paired device, so they are not offered to one.
-  if (store.owner) items.push(row('add-project', strings.palette.addProject, 'folder open'));
+  if (store.addsProjects) items.push(row('add-project', strings.palette.addProject, 'folder open'));
   if (store.owner && store.projects.length > 0 && experimentOn('session-import')) items.push(row('import-session', strings.palette.importSession, 'transcript history resume'));
   if (open) {
     items.push(row('pin', open.pinned ? strings.palette.unpin : strings.palette.pin, 'favourite top'));

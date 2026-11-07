@@ -66,7 +66,7 @@
     if (!next || next === selected) return;
     ++revision; target = next; busy = true; error = ''; directories = []; path = ''; parent = null;
     if (next.connection !== 'ready') { busy = false; error = strings.connection.unavailable; return; }
-    if (!next.owner) { busy = false; error = strings.firstRun.deviceBody; return; }
+    if (!next.addsProjects) { busy = false; error = strings.firstRun.deviceOlderCore; return; }
     await browse();
   }
   async function open() {
@@ -129,7 +129,7 @@
         </div>
         {#if error}<p class="error" role="alert">{error}</p>{/if}
       </div>
-      <footer><button type="button" class="ghost" data-testid="project-cancel" onclick={close}><span class="ui-label">{strings.common.cancel}</span></button><button type="button" class="primary" data-testid="project-add" disabled={busy || !path.trim() || !selected.owner || selected.connection !== 'ready'} onclick={() => void open()}><FolderOpen size={15} /><span class="ui-label">{strings.common.open}</span></button></footer>
+      <footer><button type="button" class="ghost" data-testid="project-cancel" onclick={close}><span class="ui-label">{strings.common.cancel}</span></button><button type="button" class="primary" data-testid="project-add" disabled={busy || !path.trim() || !selected.addsProjects || selected.connection !== 'ready'} onclick={() => void open()}><FolderOpen size={15} /><span class="ui-label">{strings.common.open}</span></button></footer>
     </div>
   </div>
 {/if}

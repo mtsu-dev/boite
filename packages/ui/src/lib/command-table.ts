@@ -36,7 +36,8 @@ export const commandTable: readonly CommandDefinition[] = [
   { id: 'settings', label: () => strings.palette.settings, run: (store) => { store.showSettings(); } },
   { id: 'stash', label: () => strings.keyboard.commands.stash },
   { id: 'send-and-draft', label: () => strings.keyboard.commands.sendAndDraft },
-  { id: 'add-project', label: () => strings.palette.addProject, ownerOnly: true, run: (store) => { store.projectPickerOpen = true; } },
+  // A paired device adds too once its core allows it (`deviceProjects`).
+  { id: 'add-project', label: () => strings.palette.addProject, run: (store) => { if (store.addsProjects) store.projectPickerOpen = true; } },
   { id: 'pin', label: () => strings.keyboard.commands.pin, run: (store) => { const open = store.openThread; if (open) void store.pin(open.id, !open.pinned); } },
   { id: 'rename', label: () => strings.palette.rename, run: (store) => { store.showChat(); store.renameRequested = true; } },
   { id: 'retitle', label: () => strings.palette.retitle, run: (store) => { const open = store.openThread; if (open) void store.retitle(open.id); } },
