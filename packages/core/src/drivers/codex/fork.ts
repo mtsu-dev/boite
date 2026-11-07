@@ -19,7 +19,7 @@ export async function forkSession(ctx: SessionContext, checkpoint: { sessionId: 
   if (executable === null) throw unavailable(`no ${ctx.provider.id} executable on this machine`, { providerId: ctx.provider.id });
   // The fork's rollout records the provider of this process, and Codex resumes it only under that one.
   const launch = subscriptionProxyCodexArgs(profile?.launch?.args ?? [], ctx.accountEnv);
-  const args = [...launch, ...(ctx.thread.permissionMode === 'yolo' ? ['--config', 'features.hooks=false'] : []), ...NO_NATIVE_SUBAGENTS, ...NO_PLUGINS];
+  const args = [...launch, ...(ctx.thread.contextMode?.hooks === false ? ['--config', 'features.hooks=false'] : []), ...NO_NATIVE_SUBAGENTS, ...NO_PLUGINS];
   const child = ctx.spawnChild(executable, args, { startup: true, cwd: ctx.thread.cwd, env: { ...process.env, ...ctx.accountEnv } });
   const exited = new Promise<number | null>(resolve => { child.once('exit', resolve); child.once('error', () => resolve(null)); });
   const rpc = new CodexRpc(child, {

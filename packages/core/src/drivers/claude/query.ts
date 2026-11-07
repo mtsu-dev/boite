@@ -46,8 +46,9 @@ export function liveSetup(thread: { model: string | null; effort: string | null;
     effortLevel: effort !== null && SDK_EFFORTS.includes(effort) ? (effort as EffortLevel) : null,
     fastMode: thread.speed === 'fast',
     permissionMode: thread.permissionMode === 'yolo' ? 'bypassPermissions' : thread.permissionMode,
-    // A context mode without hooks keeps them off whatever the permission mode.
-    disableHooks: protectedExecution || thread.permissionMode === 'yolo' || thread.contextMode?.hooks === false,
+    // Only a context mode without hooks turns them off. YOLO keeps them: a hook
+    // that answers `ask` reaches `canUseTool`, which allows it in YOLO.
+    disableHooks: protectedExecution || thread.contextMode?.hooks === false,
   };
 }
 

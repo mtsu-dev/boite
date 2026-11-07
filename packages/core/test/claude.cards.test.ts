@@ -115,7 +115,7 @@ test('an async answer falls back to PostToolUse while Claude native input is una
 });
 
 describe('claude driver', () => {
-  test('YOLO disables configured hooks and accepts a tool request without a permission card', async () => {
+  test('YOLO keeps configured hooks and accepts a tool request without a permission card', async () => {
     const client = await harness.connect();
     const threadId = await claudeThread(client);
     await client.call('threads.update', { threadId, permissionMode: 'yolo' });
@@ -127,6 +127,7 @@ describe('claude driver', () => {
     const answers: (PermissionResult | null)[] = [];
     scripted((fake, options) => {
       fake.emit(init('sess-yolo'));
+      // What the CLI does when a configured PreToolUse hook answers `ask`.
       void options.canUseTool!('Bash', { command: 'agent-browser --profile ./browser snapshot' }, {
         signal: new AbortController().signal, toolUseID: 'toolu_yolo', requestId: 'req_yolo',
       }).then(answer => {
@@ -142,10 +143,11 @@ describe('claude driver', () => {
     expect(requested).toEqual([]);
     expect(calls[0]?.options).toMatchObject({
       permissionMode: 'bypassPermissions', allowDangerouslySkipPermissions: true,
-      settings: { disableAllHooks: true },
-      // Subagents are Boite conversations even when every hook is off.
+      // Subagents are Boite conversations in every mode.
       disallowedTools: ['Agent', 'Task', 'Workflow'],
     });
+    // YOLO only skips approvals: the user's hooks still run, and still guard the turn.
+    expect(calls[0]?.options.settings).not.toHaveProperty('disableAllHooks');
     expect((await client.call('threads.get', { threadId })).messages.flatMap(message => message.parts)
       .filter(part => part.type === 'permission')).toEqual([]);
   });

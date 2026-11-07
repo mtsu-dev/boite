@@ -420,7 +420,6 @@ export class CodexSession {
   #spawn(ctx: SessionContext, executable: string, args: string[]): CodexRpc {
     args = subscriptionProxyCodexArgs(args, ctx.accountEnv);
     const context = contextArgs(ctx.thread.contextMode);
-    if (ctx.thread.permissionMode === 'yolo' && !context.includes('features.hooks=false')) args = [...args, '--config', 'features.hooks=false'];
     args = [...args, ...context, ...NO_NATIVE_SUBAGENTS, ...LIVE_TURN_SETTINGS];
     if (ctx.protectedExecution) {ctx.protectedExecution.check(); args = [...args, ...PROTECTED_CODEX_ARGS];}
     const child = ctx.spawnChild(executable, args, {
@@ -698,7 +697,7 @@ export class CodexSession {
    * is one line in the log.
    */
   async #reportSkippedHooks(rpc: CodexRpc, ctx: SessionContext): Promise<void> {
-    if (ctx.thread.permissionMode === 'yolo') return;
+    if (ctx.thread.contextMode?.hooks === false) return;
     try {
       const listed = await rpc.request<CodexHooksListed>('hooks/list', { cwds: [ctx.thread.cwd] });
       for (const entry of listed.data ?? []) {

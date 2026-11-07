@@ -36,7 +36,7 @@ describe('permission modes', () => {
     expect(modeLabel('bypassPermissions', provider('claude-sdk'))).toBe('Auto');
     expect(modeHint('bypassPermissions', null)).toContain('anywhere on this computer');
     expect(modeLabel('yolo', provider('claude-sdk'))).toBe('YOLO');
-    expect(modeHint('yolo', null)).toContain('skips Claude and Codex hooks');
+    expect(modeHint('yolo', null)).toContain('your hooks still run');
   });
 
   it('remembers YOLO across reloads', () => {

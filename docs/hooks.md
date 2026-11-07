@@ -88,8 +88,9 @@ only adds to its count.
 
 The Claude model probe sets `settings.disableAllHooks`, so discovery does not
 fire `SessionStart`. [Providers](providers.md#the-models-probe) owns the other
-protocol-specific probe restrictions. YOLO also disables configured hooks where
-the driver supports it; ACP has no standard hook-disable operation.
+protocol-specific probe restrictions. Outside probes, only a
+[context mode](context-modes.md) without hooks turns them off. YOLO keeps them:
+it skips approvals, not the user's hooks.
 
 ## Limits
 
