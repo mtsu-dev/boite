@@ -196,9 +196,9 @@ Bun 1.4.2: the echo driver's child started by `procs.spawnChild` with `keep`
 
 | | Core's pipes | Keeper |
 | --- | --- | --- |
-| First stdout byte after `spawnChild`, median of 20 | 13.46 ms | 13.72 ms |
-| 64 MiB of stdout, median of 3 | 216.5 MiB/s | 215.1 MiB/s |
-| An echo turn `[flood]` of 8 MiB to idle, median of 3 | 155 ms | 185 ms |
+| First stdout byte after `spawnChild`, median of 20 | 13.95 ms | 13.89 ms |
+| 64 MiB of stdout, median of 3 | 217.3 MiB/s | 214.8 MiB/s |
+| An echo turn `[flood]` of 8 MiB to idle, median of 3 | 145 ms | 191 ms |
 
 ## Verification
 
@@ -220,7 +220,8 @@ is committed; after the turn the row is gone, the keeper no longer lists it
 and the process exited. It fails when the launch is not marked `keep`. The
 same file streams one and a half windows of stdout through a turn, which
 only finishes if commits ack it, and checks that a keeper the core cannot
-reach leaves the agent on the core's pipes with the warning. Two more cover
-a session launched in the millisecond its predecessor was stopped, which must
-keep running, and a `KeptChild` that emits `close` only after a reader got
-the last line of stdout.
+reach leaves the agent on the core's pipes with the warning. Others cover a
+session launched in the millisecond its predecessor was stopped, which must
+keep running, one the keeper starts after the core closed, which it ends, and
+a `KeptChild` that emits `close` only after a reader got the last line of
+stdout.

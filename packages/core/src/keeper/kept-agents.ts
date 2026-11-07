@@ -131,6 +131,8 @@ export class KeptAgents implements CommitHook {
   }
 
   #started(threadId: ThreadId, cmd: string, args: string[], opts: SpawnOptions, keep: NonNullable<SpawnOptions['keep']>, child: KeptChild, exited: Promise<number | null>, stopsBefore: number): void {
+    // Started after this core's close let go of the rest: it goes the same way.
+    if (this.#closed) { child.release(); return; }
     const pid = child.pid!;
     const running = (): boolean => child.running;
     // Its own group: the keeper starts it detached, as this core starts an agent.

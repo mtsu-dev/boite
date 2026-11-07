@@ -203,6 +203,22 @@ describe.skipIf(!keeperEnabled({ BOITE_KEEPER: '1' }))('agents on the keeper', (
     harness = null;
     await waitFor(() => !alive(child.pid!) && !alive(keeperPid), 5_000);
   }, 30_000);
+
+  test('a session the keeper starts after the core closed is let go of too', async () => {
+    const h = await keptCore();
+    const client = await h.connect();
+    const { threadId } = await echoThread(h, client);
+    const thread = threadId as ThreadId;
+    const child = h.core.procs.spawnChild(thread, 'sleep', ['30'], { cwd: h.dataDir, env: process.env, keep: { turnId: null, driver: 'echo' } }) as unknown as KeptChild;
+    // Before the keeper's answer.
+    h.core.keptAgents!.close();
+    expect(await child.ready).toBe(true);
+    agentPids.push(child.pid!);
+    await waitFor(() => !alive(child.pid!), 5_000);
+    expect(h.core.keptAgents!.size).toBe(0);
+    expect(h.core.procs.liveOf(thread).map((record) => record.pid)).not.toContain(child.pid!);
+    client.close();
+  }, 30_000);
 });
 
 test('a kept child closes only once its readers saw the end of stdout', async () => {
