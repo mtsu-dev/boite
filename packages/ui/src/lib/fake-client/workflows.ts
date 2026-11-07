@@ -110,7 +110,11 @@ function approved(run: WorkflowRun, step: WorkflowStepPlan, output: unknown): un
   const round = run.nodes.find(node => node.id === step.id)?.round ?? 1;
   if (!until || !('equals' in until) || head !== step.id || round < 2 || !rest.length || typeof output !== 'object' || output === null) return output;
   let into = output as Record<string, unknown>;
-  for (const key of rest.slice(0, -1)) into = (into[key] ??= {}) as Record<string, unknown>;
+  for (const key of rest.slice(0, -1)) {
+    // A path through a plain value never matches in the core either: the loop runs out of rounds.
+    if (into[key] !== undefined && (typeof into[key] !== 'object' || into[key] === null)) return output;
+    into = (into[key] ??= {}) as Record<string, unknown>;
+  }
   into[rest.at(-1)!] = until.equals;
   return output;
 }

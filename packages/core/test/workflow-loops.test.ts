@@ -76,7 +76,8 @@ test('a loop runs its steps again in their own conversations, told why, until it
   const fixPrompts = prompts.filter(p => p.threadId === fixThread);
   expect(fixPrompts).toHaveLength(2);
   expect(fixPrompts[1]!.prompt).toStartWith('This workflow loop runs another round, round 2 of 4, because review.verdict = "APPROVE" did not hold');
-  expect(fixPrompts[1]!.prompt).toContain('notes CHANGES');
+  // A structured answer reads as JSON once, not as a JSON string of it.
+  expect(fixPrompts[1]!.prompt).toContain('{"verdict":"CHANGES","notes":"notes CHANGES"}');
   expect(prompts.filter(p => p.threadId === node('review').instances[0]!.threadId)).toHaveLength(2);
   expect(node('report').instances[0]!.task).toBe('Report APPROVE.');
   // Usage of both rounds stays with each step, and the summary says which round ended the loop.
@@ -109,26 +110,32 @@ test('a loop out of rounds fails its closing step, is told to the parent, and a 
 });
 
 test('a closing step fanned out over an empty list still checks its condition, and its retry runs another round', async () => {
+  // Round 1 reviews one file and asks for changes, rounds 2 and 3 list nothing.
+  const rounds = [['a.ts'], [], []];
   let files: string[] = [];
-  scripted(ctx => {
+  const prompts = scripted(ctx => {
     if (!ctx.thread.parentThreadId) return 'noted';
     const task = taskOf(ctx.prompt);
-    return task === 'List.' ? '```json\n' + JSON.stringify({ files }) + '\n```' : verdict('APPROVE');
+    if (task === 'List.') { files = rounds.shift() ?? files; return '```json\n' + JSON.stringify({ files }) + '\n```'; }
+    return verdict(rounds.length ? 'CHANGES' : 'APPROVE');
   });
   const { h, owner, threadId } = await setup();
   const plan: WorkflowPlan = { name: 'Empty', steps: [
     { id: 'list', profile: 'fast', task: 'List.', output: { files: ['string'] } },
     { id: 'review', profile: 'fast', forEach: 'list.files', task: 'Review {{item}}.', output: { verdict: 'string', notes: 'string' },
-      repeat: { from: 'list', until: { path: 'review.verdict', equals: 'APPROVE' }, max: 2 } },
+      repeat: { from: 'list', until: { path: 'review.verdict', equals: 'APPROVE' }, max: 3 } },
   ] };
   const run = await owner.call('workflows.start', { threadId, plan, requestId: 'empty' });
   const failed = await settled(h, threadId, run.id);
   const review = failed.nodes.find(n => n.id === 'review')!;
-  expect([failed.status, review.status, review.round, review.instances.length, review.exhausted]).toEqual(['failed', 'failed', 2, 0, true]);
+  expect([failed.status, review.status, review.round, review.instances.length, review.exhausted]).toEqual(['failed', 'failed', 3, 0, true]);
+  // Round 2 hears what round 1's review said; round 3 follows an empty round and hears nothing older.
+  const listPrompts = prompts.filter(p => p.threadId === failed.nodes.find(n => n.id === 'list')!.instances[0]!.threadId).map(p => p.prompt);
+  expect(listPrompts.map(p => p.includes('notes CHANGES'))).toEqual([false, true, false]);
   files = ['a.ts'];
   await owner.call('workflows.control', { threadId, runId: run.id, action: 'retry', stepId: 'review' });
   const done = await settled(h, threadId, run.id);
-  expect([done.status, done.nodes.find(n => n.id === 'review')!.round, done.nodes.find(n => n.id === 'review')!.exhausted]).toEqual(['done', 3, undefined]);
+  expect([done.status, done.nodes.find(n => n.id === 'review')!.round, done.nodes.find(n => n.id === 'review')!.exhausted]).toEqual(['done', 4, undefined]);
 });
 
 test('every round counts toward the run\'s execution limit', async () => {

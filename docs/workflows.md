@@ -120,8 +120,9 @@ owner credential. Restart and cancellation keep the captured host/job identity.
 A path reads a step's structured output, or its final answer when it has none.
 On a fanned-out step, `review.bugs` collects the bugs of every item into one
 list. A condition on such a path holds when every item matches: `equals`
-`"APPROVE"` on three reviews needs three approvals, `notEquals` is its exact
-opposite, and an empty list matches nothing. The core checks the whole plan before anything starts: a name that is no profile,
+`"APPROVE"` on three reviews needs three approvals and `notEquals` is its exact
+opposite. An empty list holds no `equals`, `in` or `notEmpty`, so it holds
+`notEquals` and `empty`. The core checks the whole plan before anything starts: a name that is no profile,
 a model that is not installed or not allowed, a level the model lacks, cycles, a path to a step that does not exist and a bad shape are refused with
 the field named.
 

@@ -45,7 +45,7 @@ export function lastRound(run: WorkflowRun, closing: string): unknown {
 function rewind(run: WorkflowRun, body: Set<string>): void {
   for (const node of run.nodes) {
     if (!body.has(node.id)) continue;
-    if (node.instances.length) node.previous = node.instances;
+    node.previous = node.instances;
     delete node.exhausted;
     Object.assign(node, { spent: (node.spent ?? 0) + node.instances.length, round: (node.round ?? 1) + 1, instances: [], status: 'waiting', error: null, startedAt: null, finishedAt: null });
   }
