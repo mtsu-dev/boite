@@ -1,4 +1,4 @@
-import type { AgentContact, AgentMatch, AgentTranscriptEntry, CoordinationPeer, Message, MessagePart } from '@boite/contracts';
+import { TRANSCRIPT_ENTRY_PAGE, TRANSCRIPT_ENTRY_TEXT, TRANSCRIPT_READ_ENTRIES, transcriptStretch as stretch, type AgentContact, type AgentMatch, type AgentTranscriptEntry, type CoordinationPeer, type Message, type MessagePart } from '@boite/contracts';
 import type { Database } from 'bun:sqlite';
 import { address, text } from './coordination-letter.ts';
 import { invalidParams } from './errors.ts';
@@ -8,12 +8,7 @@ import { threadRef } from './contacts/project-policy.ts';
 export const SEARCH_WORDS = 8;
 /** Matches returned by one core. */
 export const SEARCH_RESULTS = 20;
-/** Entries a read returns when the reader names no limit. */
-export const READ_ENTRIES = 10;
-/** Characters of each entry a page of entries carries; the entry's `next` leads to the rest. */
-export const ENTRY_TEXT = 3000;
-/** Characters a read of one entry carries from its offset. */
-export const ENTRY_PAGE = 16_000;
+export { TRANSCRIPT_READ_ENTRIES as READ_ENTRIES, TRANSCRIPT_ENTRY_TEXT as ENTRY_TEXT, TRANSCRIPT_ENTRY_PAGE as ENTRY_PAGE };
 /** The longest entry text an older core sends in a page: 4,000 characters and " ...". */
 const OLDER_ENTRY_TEXT = 4004;
 const EXCERPT_SIDE = 90;
@@ -96,7 +91,7 @@ export interface TranscriptQuery { limit: number; before?: number; entry?: strin
 /** A read's parameters, checked field by field; `field` prefixes the names a refusal gives. */
 export function transcriptQuery(value: unknown, field = ''): TranscriptQuery {
   const raw = (value ?? {}) as { limit?: unknown; before?: unknown; entry?: unknown; offset?: unknown };
-  const limit = raw.limit === undefined ? READ_ENTRIES : raw.limit;
+  const limit = raw.limit === undefined ? TRANSCRIPT_READ_ENTRIES : raw.limit;
   if (!Number.isSafeInteger(limit) || (limit as number) < 1 || (limit as number) > 100) throw invalidParams(`${field}limit: expected 1 to 100`);
   if (raw.before !== undefined && !Number.isSafeInteger(raw.before)) throw invalidParams(`${field}before: expected a timestamp`);
   if (raw.entry !== undefined && (typeof raw.entry !== 'string' || raw.entry.length === 0 || raw.entry.length > 100)) throw invalidParams(`${field}entry: expected an entry id of 1 to 100 characters`);
@@ -111,14 +106,6 @@ export function transcriptQuery(value: unknown, field = ''): TranscriptQuery {
 /** The query as a request payload: only the fields set, so an older core reads the same page. */
 export function queryPayload(query: TranscriptQuery): { limit: number; before?: number; entry?: string; offset?: number } {
   return { limit: query.limit, ...(query.before === undefined ? {} : { before: query.before }), ...(query.entry === undefined ? {} : { entry: query.entry, offset: query.offset ?? 0 }) };
-}
-
-/** `size` characters of `text` from `from`, never ending halfway through a surrogate pair, and where the rest starts. */
-function stretch(text: string, from: number, size: number): { text: string; next?: number } {
-  let end = Math.min(text.length, from + size);
-  const last = text.charCodeAt(end - 1);
-  if (end < text.length && end - 1 > from && last >= 0xd800 && last <= 0xdbff) end -= 1;
-  return { text: text.slice(from, end), ...(end < text.length ? { next: end } : {}) };
 }
 
 type Row = { id: string; role: Message['role']; parts: string; created_at: number };
@@ -159,7 +146,7 @@ export function transcript(db: Database, threadId: string, limit: number, before
       if (row.created_at >= (before ?? Number.MAX_SAFE_INTEGER)) continue;
       const { text, tools } = said(row, held, sanitize);
       if (text.length === 0 && tools.length === 0) continue;
-      const page = stretch(text, 0, ENTRY_TEXT);
+      const page = stretch(text, 0, TRANSCRIPT_ENTRY_TEXT);
       entries.push({ id: row.id, role: row.role, at: row.created_at, text: page.text, tools, ...(page.next === undefined ? {} : { length: text.length, next: page.next }) });
     }
     if (entries.length === limit || rows.length < limit) break;
@@ -174,7 +161,7 @@ function transcriptEntry(db: Database, threadId: string, id: string, offset: num
   if (!row) throw invalidParams(`entry: ${id} is not an entry of this thread`);
   const { text } = said(row, held, sanitize);
   if (offset > text.length) throw invalidParams(`offset: expected 0 to ${text.length}, the length of entry ${id}`);
-  const page = stretch(text, offset, ENTRY_PAGE);
+  const page = stretch(text, offset, TRANSCRIPT_ENTRY_PAGE);
   return { entries: [{ id: row.id, role: row.role, at: row.created_at, text: page.text, tools: [], length: text.length, offset, ...(page.next === undefined ? {} : { next: page.next }) }], more: false };
 }
 
@@ -188,7 +175,7 @@ export function checkTranscript(value: unknown, entry?: { entry?: string; offset
   const raw = value as { entries?: unknown; more?: unknown } | null;
   if (!raw || !Array.isArray(raw.entries) || raw.entries.length > 100 || typeof raw.more !== 'boolean') throw invalidParams('transcript: expected at most 100 entries and a more flag');
   const single = entry?.entry !== undefined;
-  const most = single ? ENTRY_PAGE : OLDER_ENTRY_TEXT;
+  const most = single ? TRANSCRIPT_ENTRY_PAGE : OLDER_ENTRY_TEXT;
   const count = (number: unknown) => number === undefined || (Number.isSafeInteger(number) && (number as number) >= 0);
   const entries = raw.entries.map((item: Partial<AgentTranscriptEntry>, index) => {
     if (!item || typeof item.id !== 'string' || !['user', 'assistant', 'system'].includes(item.role as string) || !Number.isSafeInteger(item.at)
@@ -258,8 +245,7 @@ export function partialList(answer: unknown, max = 100): PartialList {
  */
 export function toolOutputEntry(entry: Pick<AgentTranscriptEntry, 'id' | 'role' | 'at'>, tool: string, output: string, offset: number): AgentTranscriptEntry {
   if (offset > output.length) throw invalidParams(`offset: expected 0 to ${output.length}, the length of that tool call's output`);
-  const page = stretch(output, offset, ENTRY_PAGE);
-  return { ...entry, text: page.text, tools: [tool], length: output.length, offset, ...(page.next === undefined ? {} : { next: page.next }) };
+  return { ...entry, ...stretch(output, offset, TRANSCRIPT_ENTRY_PAGE), tools: [tool], length: output.length, offset };
 }
 
 /** The name a lookup reports for a source that answered without some of its machines. */

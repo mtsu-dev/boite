@@ -24,7 +24,9 @@ export type ToolPointer = (messageId: string, toolId: string) => string;
 
 /** The pointer of a history this core reads back for `threadId`, through `boite threads read`. */
 export function toolPointer(threadId: string): ToolPointer {
-  return (messageId, toolId) => `boite threads read ${threadId} --entry ${messageId} --tool ${toolId}`;
+  // A provider's call id may hold any character; quote it as the read's own "the rest:" line does.
+  const word = (text: string) => /^[\w.:-]+$/.test(text) ? text : `'${text.replace(/'/g, `'\\''`)}'`;
+  return (messageId, toolId) => `boite threads read ${threadId} --entry ${word(messageId)} --tool ${word(toolId)}`;
 }
 
 function excerpt(text: string, limit: number): string {

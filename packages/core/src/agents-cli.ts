@@ -41,6 +41,10 @@ export function ago(at: number | undefined, now = Date.now()): string {
   return `${Math.round(s / 86_400)}d ago`;
 }
 
+/** An entry id as one shell word: another machine chooses it, and the hint is run as printed. */
+function shellWord(text: string): string {
+  return /^[\w.:-]+$/.test(text) ? text : `'${text.replace(/'/g, `'\\''`)}'`;
+}
 function clock(at: number): string {
   return new Date(at).toISOString().slice(0, 16).replace('T', ' ');
 }
@@ -198,7 +202,7 @@ export async function agentsCommand(client: CoreClient, threadId: string, rest: 
       const span = entry.offset === undefined ? '' : ` [characters ${entry.offset} to ${entry.offset + entry.text.length} of ${entry.length}]`;
       lines.push(`${clock(entry.at)} ${entry.role}:${tools}${span}${entry.text ? `\n    ${entry.text.replace(/\n/g, '\n    ')}` : ''}`);
       // The id and offset of the rest: a cut entry is never lost.
-      if (entry.next !== undefined) lines.push(`    (cut at ${entry.next} of ${entry.length} characters; the rest: boite threads read ${typed} --entry ${entry.id}${options.tool === undefined ? '' : ` --tool ${options.tool}`} --offset ${entry.next})`);
+      if (entry.next !== undefined) lines.push(`    (cut at ${entry.next} of ${entry.length} characters; the rest: boite threads read ${typed} --entry ${shellWord(entry.id)}${options.tool === undefined ? '' : ` --tool ${shellWord(options.tool)}`} --offset ${entry.next})`);
     }
     print(lines, result);
   } else if (action === 'send' || action === 'reply') {

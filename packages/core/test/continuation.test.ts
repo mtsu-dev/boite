@@ -143,6 +143,8 @@ test('tool output keeps to its own budget, with a pointer to the whole of it, an
     expect(prompt).toContain(`[Output of ${output(1100 + call).length} characters not carried; read it whole with: boite threads read thr_tools --entry a-11 --tool call-11-${call}.]`);
   }
   const last = messageExcerpt(journal.getMessage('a-11')!, undefined, toolPointer('thr_tools'));
+  // A call id the shell would split stays one word in the pointer.
+  expect(toolPointer('thr_tools')('a-11', "call 1's")).toBe("boite threads read thr_tools --entry a-11 --tool 'call 1'\\''s'");
   expect(last.length).toBeLessThan(1_510 + TOOL_ENTRY_LIMIT + 6 * 160);
   // A move carries no pointer: the journal it would read stays on the other machine.
   expect(messageExcerpt(journal.getMessage('a-0')!)).toContain(`[${output(0).length - TOOL_LIMIT} of ${output(0).length} output characters omitted.]`);

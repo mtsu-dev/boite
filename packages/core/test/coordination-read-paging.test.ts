@@ -106,5 +106,8 @@ test('a linked core pages an entry, and an older core that answers with a page i
     const { entry: _entry, offset: _offset, ...older } = payload as Record<string, unknown>;
     return request(peer, operation, operation === 'read' ? older : payload);
   };
-  expect(await thrown(one.h.core.coordination.read(one.a, target, undefined, undefined, page.entries[0]!.id, 2999))).toThrow('older Boite');
+  const older = await thrown(one.h.core.coordination.read(one.a, target, undefined, undefined, page.entries[0]!.id, 2999));
+  expect(older).toThrow('older Boite');
+  // It answered: the refusal names the mismatch, not a machine that did not answer.
+  expect(older).not.toThrow('did not answer');
 }, 25000);

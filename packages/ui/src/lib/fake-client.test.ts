@@ -861,7 +861,13 @@ test('coordination stays scoped to its core and paired devices can only inspect 
   expect(await first.call('collaboration.peers', {})).toEqual([]);
   expect(await second.call('collaboration.peers', {})).toEqual([]);
   expect((await first.call('collaboration.directory', { threadId: 't-trace' })).agents).toContainEqual(expect.objectContaining({ coreId: b.coreId, threadId: 't-trace' }));
-  expect((await first.call('collaboration.read', { threadId: 't-trace', target: { coreId: b.coreId, threadId: 't-trace' } })).entries.length).toBeGreaterThan(0);
+  const page = await first.call('collaboration.read', { threadId: 't-trace', target: { coreId: b.coreId, threadId: 't-trace' } });
+  expect(page.entries.length).toBeGreaterThan(0);
+  // As the core: one entry from an offset within it, and no offset without an entry.
+  const last = page.entries.at(-1)!;
+  expect((await first.call('collaboration.read', { threadId: 't-trace', target: { coreId: b.coreId, threadId: 't-trace' }, entry: last.id })).entries).toEqual([expect.objectContaining({ id: last.id, offset: 0, length: last.text.length, text: last.text })]);
+  await expect(first.call('collaboration.read', { threadId: 't-trace', target: { coreId: b.coreId, threadId: 't-trace' }, entry: last.id, offset: last.text.length + 1 })).rejects.toMatchObject({ code: RpcErrorCode.InvalidParams });
+  await expect(first.call('collaboration.read', { threadId: 't-trace', target: { coreId: b.coreId, threadId: 't-trace' }, offset: 1 })).rejects.toMatchObject({ code: RpcErrorCode.InvalidParams });
   await expect(phone.call('collaboration.bridge.register', { coreId: a.coreId, enabled: true })).rejects.toMatchObject({ code: RpcErrorCode.Refused });
   await second.call('projects.archive', { projectId: 'p-boite', archived: true });
   const remoteContact = (await first.call('collaboration.directory', { threadId: 't-trace' })).agents.find(contact => contact.coreId === b.coreId && contact.threadId === 't-trace')!;
