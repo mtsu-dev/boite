@@ -54,7 +54,7 @@
 - [Plugins](plugins.md): install recommended plugins or a Git URL, and write your own.
 - [Task manager](trace.md#agent-task-manager): CPU, GPU, memory and storage across connected machines.
 - [Restart handoff](restart-handoff.md): how an update stops running agents and resumes them.
-- [Keeper](keeper.md): thread shells that outlive a core restart or update, behind `BOITE_KEEPER=1`.
+- [Keeper](keeper.md): thread shells that outlive a core restart or update, and agent sessions on its pipes with committed offsets, behind `BOITE_KEEPER=1`.
 
 ## Technical reference
 

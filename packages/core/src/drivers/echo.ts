@@ -2,6 +2,7 @@ import type { ImageAttachment, AgentCommand, MessageId, ToolDocument, Usage } fr
 import { newId } from '../ids.ts';
 import { answerText } from '../attachments.ts';
 import type { Driver, TitleContext, TurnContext, TurnHandle, TurnResult } from './types.ts';
+import { EchoProcess } from './echo-process.ts';
 
 const CHUNK_SIZE = 16;
 const CHUNK_DELAY_MS = 5;
@@ -80,6 +81,10 @@ type Segment =
   | { kind: 'think' }
   | { kind: 'compact' }
   | { kind: 'spawn'; command: string }
+  /** `[process]`: the turn's text from here on comes through a child, as a real agent's does (`echo-process.ts`). */
+  | { kind: 'process' }
+  /** `[flood:N]`: N characters from that child as fast as its pipe goes. */
+  | { kind: 'flood'; chars: number }
   | { kind: 'error' }
   /** `[notice]`: an error part the turn goes on after, the way pi's error notifications are. */
   | { kind: 'notice' }
@@ -120,7 +125,7 @@ const TOOL_CONTEXT_TOKENS = 25;
  * one whenever a prompt mentions it, which is what the end to end run types.
  */
 const DIRECTIVE =
-  /\[(?:sleep:\d+|tool-stream|tool(?::\d+)?|command:\d+|diff|doc|image|permission(?::\d+)?|question|think|compact|spawn:[^\]]*|error|notice|capacity:\d+|usage-limit:-?\d+)\]|\bquestion\b/g;
+  /\[(?:sleep:\d+|tool-stream|tool(?::\d+)?|command:\d+|diff|doc|image|permission(?::\d+)?|question|think|compact|spawn:[^\]]*|process|flood:\d+|error|notice|capacity:\d+|usage-limit:-?\d+)\]|\bquestion\b/g;
 
 export function parsePrompt(prompt: string): Segment[] {
   const segments: Segment[] = [];
@@ -135,6 +140,8 @@ export function parsePrompt(prompt: string): Segment[] {
     const body = match[0].startsWith('[') ? match[0].slice(1, -1) : match[0];
     if (body.startsWith('sleep:')) segments.push({ kind: 'sleep', ms: Number(body.slice('sleep:'.length)) });
     else if (body.startsWith('spawn:')) segments.push({ kind: 'spawn', command: body.slice('spawn:'.length) });
+    else if (body === 'process') segments.push({ kind: 'process' });
+    else if (body.startsWith('flood:')) segments.push({ kind: 'flood', chars: Number(body.slice('flood:'.length)) });
     else if (body === 'tool-stream') segments.push({ kind: 'tool-stream' });
     else if (body.startsWith('command:')) segments.push({ kind: 'command', ms: Number(body.slice('command:'.length)) });
     else if (body === 'tool' || body.startsWith('tool:')) segments.push({ kind: 'tool', ms: body === 'tool' ? TOOL_DELAY_MS : Number(body.slice('tool:'.length)) });
@@ -173,6 +180,8 @@ interface RunState {
   ended: boolean;
   input: { text: string; attachments: ImageAttachment[] }[];
   waiters: Set<() => void>;
+  /** The child `[process]` started, which the turn's text goes through. */
+  agent: EchoProcess | null;
 }
 
 function sleep(ms: number, state: RunState): Promise<void> {
@@ -230,8 +239,8 @@ export const echoDriver: Driver = {
   // A step boundary follows each `[tool]`, where the core may swap in a copy compacted in the background.
   capabilities: { stepSwap: true },
   startTurn(ctx: TurnContext): TurnHandle {
-    const state: RunState = { stopped: false, ended: false, input: [], waiters: new Set() };
-    const done = run(ctx, state);
+    const state: RunState = { stopped: false, ended: false, input: [], waiters: new Set(), agent: null };
+    const done = run(ctx, state).finally(() => state.agent?.end(state.stopped));
     return {
       done,
       async setPermissionMode(mode) {
@@ -281,18 +290,25 @@ async function run(ctx: TurnContext, state: RunState): Promise<TurnResult> {
     costUsdEquivalent: null,
   });
 
-  const writeText = async (text: string): Promise<void> => {
-    if (text.length === 0) return;
+  const delta = (chunk: string): void => {
     if (textIndex === null) {
       textIndex = nextIndex;
       nextIndex += 1;
       ctx.emit.part(messageId, textIndex, { type: 'text', text: '' });
     }
+    streamed += chunk;
+    ctx.emit.delta(messageId, textIndex, chunk);
+  };
+
+  const writeText = async (text: string): Promise<void> => {
+    if (text.length === 0) return;
+    if (state.agent !== null) {
+      await Promise.race([state.agent.stream({ text }, delta), untilStopped(state)]);
+      return;
+    }
     for (let at = 0; at < text.length; at += CHUNK_SIZE) {
       if (state.stopped) return;
-      const chunk = text.slice(at, at + CHUNK_SIZE);
-      streamed += chunk;
-      ctx.emit.delta(messageId, textIndex, chunk);
+      delta(text.slice(at, at + CHUNK_SIZE));
       await sleep(CHUNK_DELAY_MS, state);
     }
   };
@@ -577,6 +593,13 @@ async function run(ctx: TurnContext, state: RunState): Promise<TurnResult> {
         await writeText(output);
         break;
       }
+      case 'process':
+        state.agent ??= new EchoProcess(ctx, ctx.thread.cwd);
+        break;
+      case 'flood':
+        state.agent ??= new EchoProcess(ctx, ctx.thread.cwd);
+        await Promise.race([state.agent.stream({ flood: segment.chars }, delta), untilStopped(state)]);
+        break;
       case 'notice':
         ctx.emit.part(messageId, takeIndex(), { type: 'error', message: NOTICE_MESSAGE });
         break;
