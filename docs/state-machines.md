@@ -62,12 +62,12 @@ Invariants:
 | `queued` with `queueHold` | `turns.recover` discard | none | `stopped` | scheduler entry removed | `packages/core/src/threads/recovery.ts:107` |
 | `running` | driver settles `done` | settlement still owns the row (`ownsTurn`) | `done` | usage and checkpoint stored, thread rests, after-finish work runs (moves, spawns, resumes, compaction, keepalive) | `packages/core/src/threads/turn-settlement.ts:133` `settleTurn`, `packages/core/src/threads/turn-runner.ts:149` |
 | `running` | driver settles `error` | as above | `error` | still-running tool parts closed as failed, thread rests in `error`, resume planning may start | `packages/core/src/threads/turn-settlement.ts:33` `finishTurn`, `packages/core/src/threads/turn-settlement.ts:79` `closeTools` |
-| `running` | user stop, driver answers | stop deadline not reached | `stopped` | open cards cleared first so the driver is not parked on one | `packages/core/src/threads/turn-attempts.ts:569` `stopRunning` |
-| `running` | user stop, driver never answers | 10 s, then processes ended, then 2 s (`STOP_DEADLINE`) | `stopped` with `STOP_DEADLINE_ERROR` | process tree killed, session released, result forced locally | `packages/core/src/threads/turn-attempts.ts:611` `#armStopDeadline` |
-| `running` | provider refusal at capacity | fewer than 3 tries spent, core not stopping | `running` (retry wait sub-state) | thread row shows the retry and its time; slot kept | `packages/core/src/threads/turn-attempts.ts:413` `#waitToRetry` |
-| `running` (retry wait) | timer, stop, or user cancel | none | next attempt, `stopped`, or `error` with the refusal | a cancel keeps the refusal as the turn's error | `packages/core/src/threads/turn-attempts.ts:401` `cancelRetry`, `packages/core/src/threads/turn-attempts.ts:569` |
-| `running` | agent update wants the process | no tool call running, no blocking card | `running` (paused-for-update sub-state), then a new attempt | the agent is told it paused; same session resumes | `packages/core/src/threads/turn-attempts.ts:503` `#toolBoundary`, `packages/core/src/threads/turn-attempts.ts:527` `#pause` |
-| `running` | native session lost | first time only, turn is not a keepalive | `running`, new attempt on a fresh session | session generation increments, history is carried in the prompt | `packages/core/src/threads/turn-attempts.ts:558` `#dropLostSession` |
+| `running` | user stop, driver answers | stop deadline not reached | `stopped` | open cards cleared first so the driver is not parked on one | `packages/core/src/threads/turn-attempts.ts:589` `stopRunning` |
+| `running` | user stop, driver never answers | 10 s, then processes ended, then 2 s (`STOP_DEADLINE`) | `stopped` with `STOP_DEADLINE_ERROR` | process tree killed, session released, result forced locally | `packages/core/src/threads/turn-attempts.ts:631` `#armStopDeadline` |
+| `running` | provider refusal at capacity | fewer than 3 tries spent, core not stopping | `running` (retry wait sub-state) | thread row shows the retry and its time; slot kept | `packages/core/src/threads/turn-attempts.ts:433` `#waitToRetry` |
+| `running` (retry wait) | timer, stop, or user cancel | none | next attempt, `stopped`, or `error` with the refusal | a cancel keeps the refusal as the turn's error | `packages/core/src/threads/turn-attempts.ts:421` `cancelRetry`, `packages/core/src/threads/turn-attempts.ts:589` |
+| `running` | agent update wants the process | no tool call running, no blocking card | `running` (paused-for-update sub-state), then a new attempt | the agent is told it paused; same session resumes | `packages/core/src/threads/turn-attempts.ts:523` `#toolBoundary`, `packages/core/src/threads/turn-attempts.ts:547` `#pause` |
+| `running` | native session lost | first time only, turn is not a keepalive | `running`, new attempt on a fresh session | session generation increments, history is carried in the prompt | `packages/core/src/threads/turn-attempts.ts:578` `#dropLostSession` |
 | `queued` or `running` | core stops (crash, kill, shutdown past drain) | next core's recovery, before it accepts connections | see section 6 | never replayed blindly | `packages/core/src/threads/recovery.ts:37` `recoverStuckTurns` |
 
 Settlement retries only the local write, with backoff, holding the scheduler
@@ -78,10 +78,15 @@ never written over the newer one
 (`packages/core/src/threads/turn-settlement.ts:149`).
 
 Driver output after the core stops awaiting an attempt is dropped at the
-attempt's emit wrapper (`packages/core/src/threads/turn-attempts.ts:216`
-`listening`, closed at `packages/core/src/threads/turn-attempts.ts:287`).
-Before this audit it was written into messages of a turn already settled;
-see finding F2.
+attempt's emit wrapper (`packages/core/src/threads/turn-attempts.ts:217`
+`listening`, closed in a `finally` around the driver start and its race at
+`packages/core/src/threads/turn-attempts.ts:301`, so a rejected `done` or a
+start that throws closes it too). Messages an attempt opened are closed with
+the attempt, after its held errors go out
+(`packages/core/src/threads/turn-attempts.ts:323` `closeBegan`), so none is
+left `streaming` past settlement. Before this audit late output was written
+into messages of a turn already settled and an open message was never
+closed; see finding F2.
 
 ## 2. Thread status, archive and deletion
 
@@ -193,7 +198,7 @@ Invariants:
   `markRunning`).
 - Cards never outlive their turn. Settlement clears them, a stop clears them
   before stopping the driver (an unanswered card would park it forever,
-  `packages/core/src/threads/turn-attempts.ts:595`), and an archive clears
+  `packages/core/src/threads/turn-attempts.ts:615`), and an archive clears
   them. A card left over by a closed turn moves nothing
   (`packages/core/src/threads/lifecycle.ts:42`).
 - A secret request settles exactly once: the pending map entry is the claim,
@@ -551,19 +556,34 @@ core had already closed: new message rows under a finished turn, messages
 left `streaming` for good, progress events for a turn that no longer runs.
 Interleaving: user stops; the driver never settles; the deadline kills its
 processes and forces a `stopped` result
-(`packages/core/src/threads/turn-attempts.ts:611`); settlement closes the
+(`packages/core/src/threads/turn-attempts.ts:631`); settlement closes the
 turn; the still-live driver later calls its emit, which wrote straight to
 the journal and the bus with no turn-state check
-(`packages/core/src/threads/turn-context.ts:161` `publishPart`). Fix: the
-attempt's emit wrapper closes the moment the core stops awaiting that
-attempt (`packages/core/src/threads/turn-attempts.ts:216`,
-`packages/core/src/threads/turn-attempts.ts:287`); late parts, deltas,
-patches, completions and step decisions are dropped. The held-error flush at
-attempt end still uses the sink directly, so nothing a well-behaved driver
-wrote in time is lost. Regression test: "output a wedged driver writes after
-its forced stop reaches no message" in
-`packages/core/test/stop-deadline.test.ts`. RED before the fix: a second
-message appeared in the thread.
+(`packages/core/src/threads/turn-context.ts:161` `publishPart`). Two holes
+in the first version of this fix were caught in review and are fixed with
+it: a message the driver had opened before the forced stop was left
+`streaming` for good (its late completion is dropped, and settlement closed
+tools, not messages), and a `done` that rejected, or a `startTurn` that
+threw, skipped the gate's close, so writes still landed after the turn
+settled as `error`. Fix: the attempt's emit wrapper closes in a `finally`
+around the driver start and the race against the forced result
+(`packages/core/src/threads/turn-attempts.ts:217`,
+`packages/core/src/threads/turn-attempts.ts:301`); late parts, deltas,
+patches, completions and step decisions are dropped. Every message the
+attempt opened is tracked (`packages/core/src/threads/turn-attempts.ts:221`)
+and closed with the attempt, after the held-error flush
+(`packages/core/src/threads/turn-attempts.ts:323`), or as `error` when the
+attempt itself failed (`packages/core/src/threads/turn-attempts.ts:299`);
+closing one already closed changes nothing at the sink. The held-error
+flush still uses the sink directly, so nothing a well-behaved driver wrote
+in time is lost. Regression tests: "output a wedged driver writes after its
+forced stop reaches no message" (with partial output written before the
+stop) and "output written after a driver failure reaches no message"
+(rejected `done` and throwing `startTurn`) in
+`packages/core/test/stop-deadline.test.ts`. RED before the fixes: a second
+message appeared in the thread; the partial message stayed `streaming`;
+after a rejection or a throwing start, a late write created a third
+message.
 
 **F3. The queued-stop writer rewrote terminal turns.** Impact: any caller
 that reached it with a turn no longer `queued` transitioned a closed turn
@@ -610,7 +630,7 @@ scheduler registers its running entry after calling `runTurn`
 a listener finds neither a queue entry (deleted just before) nor a running
 entry, returns false, and the turn runs on. No current listener stops from
 `turn.started`; `stopRunning` also covers the preparing window once attempts
-open (`packages/core/src/threads/turn-attempts.ts:586`). Registering the
+open (`packages/core/src/threads/turn-attempts.ts:606`). Registering the
 running entry before the call closes it.
 
 **S4. Held async answers can be delivered twice if `startTurn` throws after

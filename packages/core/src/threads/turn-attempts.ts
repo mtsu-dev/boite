@@ -210,10 +210,18 @@ export class TurnAttempts {
       // Whether this attempt writes anything but an error: the agent's session then holds work a new try must not repeat.
       let wrote = false;
       const sink = context.emit;
-      // Closed once the core stops awaiting this attempt (its result, or the stop
-      // deadline's forced one): output a wedged driver writes after that belongs
-      // to no turn the journal still holds open, so it reaches no message.
+      // Closed once the core stops awaiting this attempt (its result, the stop
+      // deadline's forced one, or its failure): output a wedged driver writes
+      // after that belongs to no turn the journal still holds open, so it
+      // reaches no message.
       let listening = true;
+      // Messages this attempt opened: its end closes any the driver left open
+      // (a driver cut off by its forced stop completes nothing). Completing one
+      // already closed through the sink changes nothing.
+      const began: MessageId[] = [];
+      const closeBegan = (state: 'complete' | 'error'): void => {
+        for (const messageId of began.splice(0)) sink.complete(messageId, state);
+      };
       // While the core hands its turns over, a service manager may signal every agent with it: an agent
       // that dies then reports the restart as its error. That error waits for the attempt's end; one the
       // agent writes past (a pi error notice) did not end it and goes out then. Redrawing an earlier part
@@ -225,7 +233,7 @@ export class TurnAttempts {
         for (const failed of held.failed.splice(0)) sink.complete(failed, 'error');
       };
       context.emit = {
-        startMessage: role => { if (!listening) return 'msg_abandoned' as MessageId; release(null, 0); return sink.startMessage(role); },
+        startMessage: role => { if (!listening) return 'msg_abandoned' as MessageId; release(null, 0); const id = sink.startMessage(role); began.push(id); return id; },
         delta: (messageId, partIndex, text) => { if (!listening) return; release(messageId, partIndex); wrote = true; sink.delta(messageId, partIndex, text); },
         part: (messageId, partIndex, part) => {
           if (!listening) return;
@@ -272,19 +280,27 @@ export class TurnAttempts {
         data: { attempt, why, protocol: provider.protocol, accountId: account.id, resume: state.thread.sessionId !== null, permissionMode: permissions.mode, effort: state.thread.effort ?? null, speed: state.thread.speed ?? null },
       }));
       assertDriverRunnable(provider.protocol, this.#core.providers.summary(provider.id), account);
-      const handle = driver.startTurn(context);
-      this.handles.set(threadId, handle);
-      this.#core.composer.inputReady(threadId);
-      permissions.attach(handle);
       const settings = this.#liveSettings.get(threadId)?.settings;
-      settings?.attach(handle);
-      const forced = Promise.withResolvers<TurnResult>();
-      this.#stopDeadlines.set(threadId, { handle, forced, timer: null });
-      // A turn that starts while its agent waits to update pauses at its first tool boundary too.
-      if (this.#core.updates.wantsPause(provider.id)) this.#pauseWanted.set(threadId, provider.id);
-      if (!resumed && !retriedLostSession && capacityTries === 0 && !queued.execution?.operation) this.threads.titles.autoTitle(threadId, turnId);
-      result = await Promise.race([handle.done, forced.promise]);
-      listening = false;
+      try {
+        const handle = driver.startTurn(context);
+        this.handles.set(threadId, handle);
+        this.#core.composer.inputReady(threadId);
+        permissions.attach(handle);
+        settings?.attach(handle);
+        const forced = Promise.withResolvers<TurnResult>();
+        this.#stopDeadlines.set(threadId, { handle, forced, timer: null });
+        // A turn that starts while its agent waits to update pauses at its first tool boundary too.
+        if (this.#core.updates.wantsPause(provider.id)) this.#pauseWanted.set(threadId, provider.id);
+        if (!resumed && !retriedLostSession && capacityTries === 0 && !queued.execution?.operation) this.threads.titles.autoTitle(threadId, turnId);
+        result = await Promise.race([handle.done, forced.promise]);
+      } catch (error) {
+        // A driver that failed to start or blew up mid-attempt: what it had
+        // begun ends as an error with the turn, and the gate below closes.
+        closeBegan('error');
+        throw error;
+      } finally {
+        listening = false;
+      }
       totals = result.agentTotals ?? totals;
       logAttemptEnd(this.#core, threadId, turnId, attempt, result, performance.now() - attemptAt);
       permissions.detach();
@@ -301,6 +317,10 @@ export class TurnAttempts {
       // Drained: a later attempt writes through this wrapper too, and must not release them again.
       for (const args of held.errors.splice(0)) if (!cut) sink.part(...args);
       for (const messageId of held.failed.splice(0)) sink.complete(messageId, cut ? 'complete' : 'error');
+      // Anything else this attempt left open (a driver cut off by its forced
+      // stop completes nothing) ends with the attempt, the way the driver
+      // itself would have ended it, before the turn settles.
+      closeBegan(cut || result.status !== 'error' ? 'complete' : 'error');
       if (stopped) {
         result = { ...result, status: 'stopped', ...(fresh || cut ? { error: undefined } : {}) };
         break;
