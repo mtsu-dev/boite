@@ -53,6 +53,10 @@ test('one huge patch no longer starves the small files of its page', async () =>
   expect(lock!.patch).toBe(`[generated or lock file: +900 -850, patch of ${hunk(1, 900).length} characters left out; read it whole with threads.pullRequestFiles page 3 path "bun.lock"]`);
   expect(page.truncated).toBe(true);
   expect((await service.files('t', url, 3, 'src/big.ts')).files[0]!.patch).toBe(big);
+  // Notes are paid for before the split: 30 cut files with the longest paths still fit.
+  const long = (i: number) => `${'d'.repeat(1990)}/${i}.ts`;
+  const crowded = new PullRequestReviews(async () => JSON.stringify(Array.from({ length: 30 }, (_, i) => ({ filename: i % 2 ? long(i) : `${long(i)}.lock`, status: 'modified', additions: 1, deletions: 1, patch: big }))));
+  expect((await crowded.files('t', url, 1)).files.reduce((n, f) => n + f.patch!.length, 0)).toBeLessThanOrEqual(REVIEW_DIFF_BUDGET);
 });
 
 test('paired phones cannot turn review reads into arbitrary GitHub queries', async () => {

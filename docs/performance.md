@@ -1620,7 +1620,7 @@ stays whole and leaves the rest to bigger ones, and a bigger file is cut the
 same way across its hunks, so small hunks stay whole and long ones keep their
 first lines. A cut patch ends with a note giving its page and path; the same
 call with that `path` returns the file alone, up to 100,000 characters. Lock
-files and generated files keep one stat line. Before, each patch kept up to
+files and generated files, known by their path, keep one stat line. Before, each patch kept up to
 100,000 characters, so a page could reach 3 MB and one large file could fill
 a reader's context ahead of the small files after it.
 
@@ -1631,9 +1631,9 @@ network. Measured on 2026-11-07, before against the previous
 
 | Pull request | Files | All pages before | All pages after | Largest page before | Largest page after |
 | --- | --- | --- | --- | --- | --- |
-| #614, one strings file per part | 185 | 628,053 B | 398,523 B | 271,909 B | 65,769 B |
-| #621, one contracts file per domain | 44 | 413,740 B | 126,757 B | 306,462 B | 63,890 B |
-| #524, with a 51,000-line results file | 62 | 250,241 B | 131,323 B | 174,421 B | 63,810 B |
+| #614, one strings file per part | 185 | 628,053 B | 398,471 B | 271,909 B | 65,769 B |
+| #621, one contracts file per domain | 44 | 413,740 B | 126,739 B | 306,462 B | 63,872 B |
+| #524, with a 51,000-line results file | 62 | 250,241 B | 131,256 B | 174,421 B | 63,556 B |
 
 ## Benches
 
