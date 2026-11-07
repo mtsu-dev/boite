@@ -327,7 +327,8 @@ test('the parent learns dynamic workflows and coordination within a compact prom
   // Then 78 for naming the Mermaid headers chat draws, so a chart or a schema needs no `boite view help` (8 KB) before it (4479 measured 2026-10-26).
   // Then 130 for the ```view fence: an interactive or animated piece is drawn from the answer, with no command and no help (4609 measured 2026-10-26).
   // Then 46 on Linux for `boite desktop help`: GUI apps the agent runs and clicks on a private desktop (4643 measured 2026-10-31).
-  expect(Buffer.byteLength(prompt.replaceAll(h.dataDir, '<data>'))).toBeLessThan(process.platform === 'linux' ? 4644 : 4610);
+  // Then 47 for "repeat": a parent that never hears of loops chains review and fix rounds by hand, one turn each (4690 measured on Linux 2026-11-07).
+  expect(Buffer.byteLength(prompt.replaceAll(h.dataDir, '<data>'))).toBeLessThan(process.platform === 'linux' ? 4691 : 4657);
   runs.get(threadId)!.finish();
   await waitFor(() => h.core.threads.require(threadId).status === 'idle');
   await owner.call('turns.start', { threadId, prompt: 'Continue' });
@@ -701,6 +702,7 @@ test('a checkpoint letter with a long head keeps its note on the rest of a long 
   await waitFor(() => lettersFrom(h, threadId, childId).length === 1);
   const [letter] = lettersFrom(h, threadId, childId);
   expect(letter!.text.length).toBeLessThanOrEqual(4000);
+  expect(letter).toMatchObject({ origin: 'result', checkpoint: true });
   // Unbounded, this head left the answer its 1,000-character floor and the letter's final cut dropped the note.
   const cut = /\n([^\n]*\n[\s\S]*)\n\[Cut at character (\d+) of (\d+)\. The rest: boite delegate result \S+ (\S+) (\d+)\]$/.exec(letter!.text)!;
   expect(cut).not.toBeNull();
@@ -710,6 +712,8 @@ test('a checkpoint letter with a long head keeps its note on the rest of a long 
     rest += page.text;
     next = page.nextOffset;
   }
+  const head = cut[1]!.slice(0, cut[1]!.indexOf('Started'));
+  expect(head).toContain('Checkpoint, not its final result');
   expect(answer.startsWith(cut[1]!.slice(cut[1]!.indexOf('Started')))).toBe(true);
   expect(cut[1]!.slice(cut[1]!.indexOf('Started')) + rest).toBe(answer);
 });

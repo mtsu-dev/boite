@@ -2,6 +2,7 @@ import { afterEach, expect, test } from 'bun:test';
 import type { AgentAddress, AgentTranscript, Turn } from '@boite/contracts';
 import { echoThread, startTestCore, type TestCore } from './harness.ts';
 import { thrown } from './settle.ts';
+import { resultPageOf } from '../src/delegation/results.ts';
 
 const cores: TestCore[] = [];
 afterEach(async () => { for (const core of cores.splice(0)) await core.stop(); });
@@ -67,7 +68,8 @@ test('a final answer cut for its reader names the command and offset that read t
   const answer = long(7, 20_000);
   say(h, b, 'Looking at the parser first.', 1000, 'turn-1');
   const id = say(h, b, answer, 2000, 'turn-1');
-  const turn = { id: 'turn-1', threadId: b, status: 'done', error: null } as unknown as Turn;
+  const turn: Turn = { id: 'turn-1', threadId: b, status: 'done', queuedAt: 1000, startedAt: 1000, finishedAt: 2000, usage: null, error: null };
+  h.core.journal.putTurn(turn);
   const shown = h.core.delegation.result(turn, 'thread')!;
   expect(shown.length).toBeLessThanOrEqual(4000);
   const [, kept, offset] = /^([\s\S]*)\n\[Cut at character (\d+) of this message\. The rest: boite threads read \S+ --entry (?:\S+) --offset \d+\]$/.exec(shown)!;
@@ -78,8 +80,17 @@ test('a final answer cut for its reader names the command and offset that read t
   // For a parent, the offset counts from the start of the turn's answer, as `delegation.result` pages it.
   const forParent = h.core.delegation.result(turn, 'delegate', 3000)!;
   expect(forParent.length).toBeLessThanOrEqual(3000);
-  const at = Number(/\[Cut at character (\d+) of (\d+)\. The rest: boite delegate result /.exec(forParent)![1]);
-  expect(at).toBe('Looking at the parser first.\n'.length + [...forParent.slice(0, forParent.lastIndexOf('\n[Cut'))].length);
+  const [, at, total, turnId] = /\[Cut at character (\d+) of (\d+)\. The rest: boite delegate result \S+ (\S+) \d+\]$/.exec(forParent)!;
+  const before = 'Looking at the parser first.\n';
+  expect(Number(total)).toBe([...before, ...answer].length);
+  // The page from that offset, as `delegation.result` reads it, completes the last message from what the parent was shown.
+  let tail = '';
+  for (let next: number | null = Number(at); next !== null;) {
+    const page = resultPageOf(h.core, b, turnId, next);
+    tail += page.text;
+    next = page.nextOffset;
+  }
+  expect(forParent.slice(0, forParent.lastIndexOf('\n[Cut')) + tail).toBe(answer);
   // An error the agent hit is part of the entry `threads read` shows, so the offset counts it too.
   const failed = crypto.randomUUID();
   h.core.journal.putMessage({ id: failed, threadId: b, turnId: 'turn-2', role: 'assistant', state: 'complete', createdAt: 3000, parts: [{ type: 'error', message: 'tool crashed' }, { type: 'text', text: answer }] as never });
