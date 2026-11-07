@@ -2,7 +2,7 @@
   import { tick, untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import WindowList from './WindowList.svelte';
-  import { ChevronRight, Ellipsis, FolderX, GripVertical, LoaderCircle, FolderPlus } from '@lucide/svelte';
+  import { ChevronRight, Ellipsis, FolderX, GripVertical, FolderPlus } from '@lucide/svelte';
   import type { Project, ThreadId } from '@boite/contracts';
   import type { Store } from '../lib/store.svelte';
   import { workspace, type Machine } from '../lib/workspace.svelte';
@@ -34,6 +34,7 @@
   import GroupLabel from './GroupLabel.svelte';
   import MachineIcon from './MachineIcon.svelte';
   import ProjectTile from './ProjectTile.svelte';
+  import ProjectRollup from './ProjectRollup.svelte';
   import RailFrame from './RailFrame.svelte';
   import { minuteClock } from '../lib/clock.svelte';
   let { store }: { store: Store } = $props();
@@ -243,16 +244,14 @@
               onpointerdown={(event) => dragProject(event, entry, list)}
               ondragstart={(event) => event.preventDefault()}
               aria-expanded={!collapsed}
+              aria-controls="{controls}-body"
               title={multi ? `${project.path} · ${machine.label}` : project.path}
               onclick={() => projectThreadView.toggleProject(entry, lists, draftsHere.length)}
             >
               {#if projectView.order === 'manual'}<GripVertical size={12} />{/if}<span class="mark"><ProjectTile {project} store={owner} /><span class="fold-caret" class:open={!collapsed} aria-hidden="true"><ChevronRight size={16} /></span></span
               >{#if multi}<span class="host" data-testid="project-host" class:offline={owner.connection !== 'ready'}
                 title={`${machine.label} · ${strings.connection[owner.connection]}`} aria-label={machine.label}><MachineIcon icon={machine.icon} os={owner.core?.os} size={14} /></span>{/if}<span class="name ui-label" class:gone={project.missing === true}>{projectName(project)}</span
-              >{#if project.missing === true}<span class="missing" data-testid="project-missing" title={strings.sidebar.projectMissing} aria-label={strings.sidebar.projectMissing}><FolderX size={13} aria-hidden="true" /></span>{/if}{#if rollup}{@const label = fill(rollup.count === 1 ? strings.sidebar.rollupOne : strings.sidebar.rollupMany, { count: String(rollup.count), state: strings.sidebar.state[rollup.kind] })}<span
-                  class="rollup {rollup.kind}" data-testid="project-rollup" data-state={rollup.kind} title={label} aria-label={label}
-                  >{#if rollup.kind === 'working'}<LoaderCircle size={11} class="spinner" aria-hidden="true" />{:else}<span class="dot" aria-hidden="true"></span>{/if}{#if rollup.count > 1}<span class="ui-label">{rollup.count}</span>{/if}</span
-                >{/if}
+              >{#if project.missing === true}<span class="missing" data-testid="project-missing" title={strings.sidebar.projectMissing} aria-label={strings.sidebar.projectMissing}><FolderX size={13} aria-hidden="true" /></span>{/if}{#if rollup}<ProjectRollup {rollup} />{/if}
             </button>
             {#each residentsOf(owner, project.id).slice(0, 2) as resident (resident.id)}
               <!-- An agent the owner entrusted this project to: its robot, and the way to its conversation. -->
@@ -270,7 +269,7 @@
               onclick={(e) => openProjectMenu(e, machine, project, list)}><Ellipsis size={15} /></button
             >
           </div>
-          <div class="disclosure-fold" class:open={!collapsed} inert={collapsed}>
+          <div id="{controls}-body" class="disclosure-fold" class:open={!collapsed} inert={collapsed}>
             <div>
               <SharedProjectThreads store={owner} projectId={project.id} active={!collapsed && !away}>
               {#each draftsHere as draft (draft.id)}<DraftRow {owner} entry={draft} />{/each}
@@ -425,27 +424,6 @@
   /* Its folder left the disk: the name steps back and a mark says why. */
   .name.gone { color: var(--color-muted-foreground); }
   .missing { display: flex; flex: none; color: var(--color-danger); }
-  /* A folded project still says what its threads do: the most urgent state, the count beside it. */
-  .rollup {
-    display: inline-flex;
-    flex: none;
-    align-items: center;
-    gap: 4px;
-    font-size: var(--text-xs);
-    font-weight: 500;
-    font-variant-numeric: tabular-nums;
-  }
-  .rollup .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-  .rollup.working, .rollup.delegating, .rollup.monitoring, .rollup.background, .rollup.watching { color: var(--color-accent); }
-  .rollup.waiting { color: var(--color-live); }
-  .rollup.error { color: var(--color-danger); }
-  .rollup.done { color: var(--color-success); }
-  .rollup.queued { color: var(--color-muted-foreground); }
-  .rollup.delegating .dot, .rollup.monitoring .dot, .rollup.background .dot, .rollup.watching .dot { animation: pulse 1.6s var(--loop-ease-out-quint-48) infinite var(--loops); }
-  .rollup :global(.spinner) { animation: spin 1s steps(60) infinite var(--loops); }
-  @media (prefers-reduced-motion: reduce) { .rollup .dot, .rollup :global(.spinner) { animation: none; } }
-  :global(html[data-motion='reduced']) .rollup .dot,
-  :global(html[data-motion='reduced']) .rollup :global(.spinner) { animation: none; }
   /* The project's mark and its fold chevron share one slot: the mark gives way
      to the chevron while a pointer or the keyboard is on the header. */
   .mark {

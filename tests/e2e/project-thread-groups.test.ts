@@ -171,13 +171,15 @@ for (const width of [1280, 390]) {
       expect(await page.evaluate(`!!document.querySelector('${row(first, 't-scheduler')}')`)).toBe(true);
       await shot('expanded');
       if (width < 720) {
-        // Phone counters do not inherit a collapsed desktop project.
+        // The phone shares the desktop's fold: folded there, it is folded here, and a counter unfolds it onto its list as the sidebar's does.
         await page.evaluate(`globalThis.__boiteTest.workspace.machines[0].store.toggleProject('p-boite')`);
+        await page.waitFor(`document.querySelector('${first} ${id('mobile-project-toggle')}').getAttribute('aria-expanded') === 'false'`);
+        expect(await page.evaluate(`!!document.querySelector('${first} ${id('mobile-project-toggle')} ${id('project-rollup')}')`)).toBe(true);
         await click(`${first} ${id('project-working-toggle')}`);
-        expect(await page.evaluate(`document.querySelector('${first} ${id('project-working-toggle')}').getAttribute('aria-expanded')`)).toBe('false');
-        expect(await page.evaluate(`globalThis.__boiteTest.workspace.machines[0].store.isCollapsed('p-boite')`)).toBe(true);
+        await page.waitFor(`document.querySelector('${first} ${id('mobile-project-toggle')}').getAttribute('aria-expanded') === 'true'`);
+        expect(await page.evaluate(`globalThis.__boiteTest.workspace.machines[0].store.isCollapsed('p-boite')`)).toBe(false);
+        expect(await page.evaluate(`document.querySelector('${first} ${id('project-working-toggle')}').getAttribute('aria-expanded')`)).toBe('true');
         expect(await page.evaluate(`document.querySelector('${first} ${id('project-archived-toggle')}').getAttribute('aria-expanded')`)).toBe('true');
-        await click(`${first} ${id('project-working-toggle')}`);
         await page.waitFor(`document.querySelector('${row(first, 't-scheduler')}')`);
       }
       const trace = row(first, 't-trace');

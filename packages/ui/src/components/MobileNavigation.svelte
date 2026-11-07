@@ -3,7 +3,7 @@
   import WindowList from './WindowList.svelte';
   import MobileTabs from './MobileTabs.svelte';
   import ThreadHeader from './ThreadHeader.svelte';
-  import { Activity, Archive, ArrowLeft, ArrowUpDown, ChevronDown, Ellipsis, Folder, FolderOpen, FolderPlus, MessageSquare, Pin, PinOff, Plus, Search, Radar, X } from '@lucide/svelte';
+  import { Activity, Archive, ArrowLeft, ArrowUpDown, ChevronDown, ChevronRight, Ellipsis, Folder, FolderOpen, FolderPlus, MessageSquare, Pin, PinOff, Plus, Search, Radar, X } from '@lucide/svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import MobileConnect from './MobileConnect.svelte';
   import type { Store } from '../lib/store.svelte';
@@ -34,11 +34,12 @@
   import DraftRow from './DraftRow.svelte';
   import GroupLabel from './GroupLabel.svelte';
   import ProjectTile from './ProjectTile.svelte';
+  import ProjectRollup from './ProjectRollup.svelte';
   import { projectKey, projectView, type ProjectEntry } from '../lib/project-view.svelte';
   import { activeProject, archiveCount, projectSections, projectThreadView } from '../lib/project-threads.svelte';
   import { workingThread } from '../lib/recent.svelte';
   import { compareThreads } from '../lib/thread-order';
-  import { needsUser } from '../lib/thread-state';
+  import { needsUser, projectRollup } from '../lib/thread-state';
   import { minuteClock } from '../lib/clock.svelte';
   import { contactsShown } from '../lib/contacts-rail.svelte';
   import { ScreenSlide } from '../lib/screen-slide.svelte';
@@ -296,11 +297,19 @@
         {@const attentionRows = query || !recentPreferences.groupWorking ? groupRows : groupRows.filter(row => workingOpen ? !workingThread(row.machine.store, row.thread) : !groupWorkingThread(group.machine.store, row.thread))}
         {@const controls = `mobile-project-${encodeURIComponent(projectKey(group))}`}
         {@const drafts = group.machine.store.draftEntries.filter(entry => entry.projectId === group.project.id)}
+        {@const folded = !query && group.machine.store.isCollapsed(group.project.id)}
+        {@const rollup = folded && group.machine.store.connection === 'ready' ? projectRollup(group.machine.store.threadsOf(group.project.id), thread => group.machine.store.subagents(thread.id)) : null}
         {#if !query || groupRows.length > 0 || doneOpen || archivedOpen}
-        <section class="project-group" class:inactive={!activeProject(group)} data-testid="mobile-project-group" data-project-id={group.project.id} data-machine-id={group.machine.id}>
+        <section class="project-group" class:inactive={!activeProject(group)} class:folded data-testid="mobile-project-group" data-project-id={group.project.id} data-machine-id={group.machine.id}>
           <div class="project-heading">
-            <ProjectTile project={group.project} store={group.machine.store} /><h2>{projectName(group.project)}{#if several}<span>{group.machine.label}</span>{/if}</h2>
-            <ProjectThreadCounters entry={group} working={group.machine.store.threadsOf(group.project.id).filter(thread => workingThread(group.machine.store, thread)).length} {controls} searching={!!query} away={group.machine.store.connection !== 'ready'} body={later ? laterLists : undefined} />
+            <!-- The tile and the name fold the project, as its header does on the desktop; the pills and menus beside them keep their own action.
+                 A search lists every match, folded or not, as the desktop's search does: the header folds again once it is cleared. -->
+            <h2><button type="button" class="ghost project-toggle" data-testid="mobile-project-toggle" aria-expanded={!folded} aria-controls="{controls}-body" disabled={!!query}
+              onclick={() => projectThreadView.toggleProject(group, { working: workingRows.map(row => row.thread), attention: attentionRows.map(row => row.thread) }, drafts.length)}>
+              <ProjectTile project={group.project} store={group.machine.store} />
+              <span class="title"><span class="name-line"><span class="name">{projectName(group.project)}</span><span class="fold-caret" class:open={!folded} aria-hidden="true"><ChevronRight size={16} /></span>{#if rollup}<ProjectRollup {rollup} />{/if}</span>{#if several}<span class="machine">{group.machine.label}</span>{/if}</span>
+            </button></h2>
+            <ProjectThreadCounters entry={group} working={group.machine.store.threadsOf(group.project.id).filter(thread => workingThread(group.machine.store, thread)).length} {controls} collapsed={folded} searching={!!query} away={group.machine.store.connection !== 'ready'} body={later ? laterLists : undefined} />
             {#if projectView.order === 'manual'}
               <Menu items={[
                 { id: 'up', label: strings.sidebar.moveProjectUp, disabled: projectKey(foldOf(group)[0]!) === projectKey(group) },
@@ -311,27 +320,30 @@
             <button type="button" class="ghost icon project-actions" data-testid="mobile-project-menu" title={strings.sidebar.projectMenu} aria-label={strings.sidebar.projectMenu}
               onclick={(event) => projectMenu(event, group.machine.store, group.project, undefined, () => show('chat'))}><Ellipsis size={18} /></button>
           </div>
+          <!-- Folded, the project keeps its header alone: drafts, conversations and their done and archived lists wait under the fold. -->
+          <div id="{controls}-body" class="disclosure-fold" class:open={!folded} inert={folded}><div>
           {#if !query}{#each drafts as draft (draft.id)}<DraftRow owner={group.machine.store} entry={draft} onopen={() => show('chat')} />{/each}{/if}
-          <WindowList items={attentionRows} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} estimate={77} measurements={measurements(projectKey(group))}>
+          <WindowList items={attentionRows} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} active={!folded} estimate={77} measurements={measurements(projectKey(group))}>
             {#snippet row(entry)}{@render threadRow(entry, true)}{/snippet}
           </WindowList>
           <div id="{controls}-working" hidden={!workingOpen || !!query || workingRows.length === 0} data-testid="project-working">
             {#if workingOpen && !query && workingRows.length > 0}
               <GroupLabel kind="working" count={workingRows.length} />
-              <WindowList items={workingRows} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} estimate={77} measurements={measurements(`${projectKey(group)}:working`)}>
+              <WindowList items={workingRows} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} active={!folded} estimate={77} measurements={measurements(`${projectKey(group)}:working`)}>
                 {#snippet row(entry)}{@render threadRow(entry, true)}{/snippet}
               </WindowList>
             {/if}
           </div>
           <div id="{controls}-done" hidden={!doneOpen} data-testid="project-done">
             {#if doneOpen}<GroupLabel kind="done" count={query ? undefined : archiveCount(group.project, 'done')} />{/if}
-            <RecentDone entries={[group]} {scrollRoot} {now} {query} open={doneOpen} header={false} onopen={() => show('chat')} />
+            <RecentDone entries={[group]} {scrollRoot} {now} {query} open={doneOpen && !folded} header={false} onopen={() => show('chat')} />
           </div>
           <div id="{controls}-archived" hidden={!archivedOpen} data-testid="project-archived">
             {#if archivedOpen && !later}<GroupLabel kind="archived" count={query ? undefined : archiveCount(group.project, 'archived')} />{/if}
-            <RecentDone kind="archived" entries={[group]} {scrollRoot} {now} {query} open={archivedOpen && (!later || projectThreadView.laterOpen)} header={false} onopen={() => show('chat')} />
+            <RecentDone kind="archived" entries={[group]} {scrollRoot} {now} {query} open={archivedOpen && !folded && (!later || projectThreadView.laterOpen)} header={false} onopen={() => show('chat')} />
           </div>
           {#if groupRows.length === 0 && !group.project.archivedThreads && drafts.length === 0}<p class="empty">{strings.sidebar.noThreads}</p>{/if}
+          </div></div>
         </section>
         {/if}
       {/each}
@@ -427,8 +439,17 @@
     p { font-size: var(--text-sm); }
     .project-group { border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); margin-bottom: 12px; overflow: hidden; }
     .project-heading { display: flex; align-items: center; padding: 8px 12px; gap: 8px; background: var(--color-surface-2); color: var(--color-muted-foreground); border-bottom: 1px solid var(--color-border); }
-    .project-heading h2 { margin: 0; flex: 1; min-width: 0; font-size: var(--text-sm); overflow-wrap: anywhere; }
-    .project-heading span { display: block; font-size: var(--text-xs); font-weight: 400; color: var(--color-muted-foreground); }
+    /* Folded, the header is the whole card: no line under it. */
+    .project-group.folded .project-heading { border-bottom-color: transparent; }
+    .project-heading h2 { margin: 0; flex: 1; min-width: 0; font-size: var(--text-sm); }
+    /* The fold's target: tile, name and chevron, a finger's height that eats the heading's padding rather than making it taller. */
+    .project-toggle { width: 100%; height: auto; min-height: var(--touch-target); margin: -8px 0; padding: 0; gap: 8px; justify-content: flex-start; border: 0; border-radius: var(--radius-md); font: inherit; color: inherit; text-align: left; white-space: normal; }
+    .project-toggle:hover:not(:disabled) { background: transparent; color: inherit; }
+    .project-toggle:disabled { opacity: 1; }
+    .project-toggle .title { display: flex; flex-direction: column; min-width: 0; }
+    .project-toggle .name-line { display: flex; align-items: center; gap: 4px; min-width: 0; }
+    .project-toggle .name { min-width: 0; overflow-wrap: anywhere; }
+    .project-heading .machine { font-size: var(--text-xs); font-weight: 400; color: var(--color-muted-foreground); }
     /* A whole touch target that eats the heading's padding rather than making it taller. */
     .project-heading .project-actions { flex: none; margin: -8px -8px -8px 0; color: var(--color-muted-foreground); }
     .row { position: relative; display: block; overflow: hidden; border-bottom: 1px solid var(--color-border); }
