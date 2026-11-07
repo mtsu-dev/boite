@@ -367,31 +367,10 @@ export class ThreadStore {
     if (switched || next.model !== thread.model || next.effort !== thread.effort || next.speed !== thread.speed || next.permissionMode !== thread.permissionMode) {
       next.selectionVersion = (thread.selectionVersion ?? 0) + 1;
     }
-    if (switched) {
-      // The session left is kept; the one this account left before comes back when it can (`threads/account-sessions.ts`).
-      this.#afterSwitch(thread);
-      const saved = this.#core.bus.afterCommit(() => this.#core.journal.db.transaction(() => {
-        const restored = this.accountSessions.switching(thread, { providerId: provider.id, accountId: account.id }, next.sessionGeneration ?? 0);
-        if (restored !== null) Object.assign(next, { sessionId: restored.sessionId, sessionResumeAt: restored.resumeAt, context: restored.context });
-        return this.#save(next, 'thread.updated');
-      })());
-      this.runner.selectionChanged(thread, next);
-      return saved;
-    }
-    const saved = this.#save(next, 'thread.updated');
+    // The session left is kept; the one this account left before comes back when it can (`threads/account-sessions.ts`).
+    const saved = switched ? this.accountSessions.switched(thread, next, () => this.#save(next, 'thread.updated')) : this.#save(next, 'thread.updated');
     this.runner.selectionChanged(thread, next);
     return saved;
-  }
-
-  /** What the account a thread left still runs for it stops; its commands go. */
-  #afterSwitch(thread: ThreadSummary): void {
-    this.agentState.cancelBackground(thread.id);
-    if (!threadActive(thread.status)) {
-      this.releaseAgent(thread.id);
-      this.agentState.noteBackground(thread.id, []);
-    }
-    this.agentState.commands.delete(thread.id);
-    this.#core.bus.emit('thread.commands', { threadId: thread.id, commands: [] });
   }
 
   #checkSelection(thread: ThreadSummary, expected?: number): void {

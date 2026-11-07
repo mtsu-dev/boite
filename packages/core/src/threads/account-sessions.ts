@@ -20,7 +20,7 @@
  * `continuation`, the same whole history.
  */
 
-import type { AccountId, ContextUse, ProviderId, ThreadId, ThreadSummary, Turn, TurnId } from '@boite/contracts';
+import { threadActive, type AccountId, type ContextUse, type ProviderId, type ThreadId, type ThreadSummary, type Turn, type TurnId } from '@boite/contracts';
 import { switchGapFits, type TailAnchor } from '../continuation.ts';
 import type { Core } from '../core.ts';
 import type { TurnResult } from '../drivers/types.ts';
@@ -115,6 +115,28 @@ export class AccountSessions {
       AND json_extract(execution, '$.accountId') = ? AND json_extract(execution, '$.sessionGeneration') = ?
       ORDER BY rowid DESC LIMIT 1`).get(thread.id, thread.accountId, thread.sessionGeneration ?? 0) as { id: TurnId } | null;
     return row === null ? null : { turnId: row.id, afterPart: null };
+  }
+
+  /**
+   * `thread` moves to the account `next` names: what the account left still
+   * runs for it stops, its commands go, and `save` writes `next` in the
+   * transaction that saves the session left and takes back the one the new
+   * account left before, when it can be resumed.
+   */
+  switched(thread: ThreadSummary, next: ThreadSummary, save: () => ThreadSummary): ThreadSummary {
+    const threads = this.#core.threads;
+    threads.agentState.cancelBackground(thread.id);
+    if (!threadActive(thread.status)) {
+      threads.releaseAgent(thread.id);
+      threads.agentState.noteBackground(thread.id, []);
+    }
+    threads.agentState.commands.delete(thread.id);
+    this.#core.bus.emit('thread.commands', { threadId: thread.id, commands: [] });
+    return this.#core.bus.afterCommit(() => this.#core.journal.db.transaction(() => {
+      const restored = this.switching(thread, { providerId: next.providerId, accountId: next.accountId }, next.sessionGeneration ?? 0);
+      if (restored !== null) Object.assign(next, { sessionId: restored.sessionId, sessionResumeAt: restored.resumeAt, context: restored.context });
+      return save();
+    })());
   }
 
   /**
