@@ -304,6 +304,11 @@ export function main(argv: string[]): void {
     void import('./desktop/launcher.ts').then(launcher => launcher.runDesktopExec(argv.slice(1)));
     return;
   }
+  // The process that holds agents and terminals across core restarts (keeper/server.ts).
+  if (argv[0] === '--keeper') {
+    void import('./keeper/server.ts').then(keeper => keeper.runKeeper(argv.slice(1)));
+    return;
+  }
   withUtf8Locale(process.env, process.platform);
   // The update worker, and the recovery its unit runs however the worker ended.
   if (argv[0] === 'update-apply' || argv[0] === 'update-recover') {

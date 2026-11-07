@@ -20,8 +20,8 @@ import { ExecutionProtections } from './execution-protection.ts';
 import { closeProcessResources, protectionRunner } from './protection-runner.ts';
 import { processEventDiagnostic } from './process-event-diagnostics.ts';
 
-import type { ChildProcess, ManagedStop, ProcessEntry as Entry, SpawnedChild, SpawnedPipedProcess, SpawnedProcess, SpawnedTerminal, SpawnOptions, TerminalSpawnOptions } from './process-spawn-types.ts';
-export type { ChildProcess, ManagedStop, PipedChildProcess, SpawnedChild, SpawnedPipedProcess, SpawnedProcess, SpawnedTerminal, SpawnOptions, TerminalSpawnOptions } from './process-spawn-types.ts';
+import type { ChildProcess, ManagedStop, ProcessEntry as Entry, SpawnedChild, SpawnedPipedProcess, SpawnedProcess, SpawnedTerminal, SpawnOptions, TerminalSpawnOptions, ProcRegistryOptions } from './process-spawn-types.ts';
+export type { ProcRegistryOptions, ChildProcess, ManagedStop, PipedChildProcess, SpawnedChild, SpawnedPipedProcess, SpawnedProcess, SpawnedTerminal, SpawnOptions, TerminalSpawnOptions } from './process-spawn-types.ts';
 
 export const STARTUP_PRIORITY = { ms: 30_000 };
 /** How long an exited pid stays in its thread's history, for a late job event. */
@@ -37,17 +37,6 @@ const ORPHAN_GRACE_MS = 10_000;
  * what it started (platform/posix-kill.ts). On Windows the thread's job does that.
  */
 const OWN_GROUP = process.platform !== 'win32';
-
-export interface ProcRegistryOptions {
-  orphanGraceMs?: number;
-  /** How long an idle thread, or an exited pid of a busy one, is kept before it is forgotten. Tests shorten it. */
-  forgetDelayMs?: number;
-  /** The load tick while something works, and while everything is idle. Tests shorten them. */
-  loadIntervalMs?: number;
-  idleLoadIntervalMs?: number;
-  /** Persists what the platform and the guards say, which the live log only names. */
-  diagnostic?: (message: string, context: { event: string; threadId?: ThreadId; data?: Record<string, string | number | null> }) => void;
-}
 
 /**
  * The one launcher. Nothing in the core reaches `Bun.spawn` directly: a child
@@ -359,6 +348,22 @@ export class ProcRegistry {
     });
 
     return { record, terminal, exited };
+  }
+
+  /** A process another one started for this core (`keeper/kept-terminal.ts`), registered and traced as if spawned here. */
+  adopt(threadId: ThreadId, pid: number, cmd: string, args: string[], control: { running: () => boolean; kill: () => void; exited: Promise<number | null> }): { record: ProcessRecord; exited: Promise<number | null> } {
+    this.#admitted({});
+    const record = this.#register(threadId, pid, cmd, args, { root: false, running: control.running, kill: control.kill, usage: () => null });
+    return { record, exited: control.exited.then((code) => { this.onExit(threadId, record.pid, code, undefined, record); return code; }) };
+  }
+
+  /** Lets go of a thread's processes, unstopped and with no exit recorded: the keeper holds them for the next core. */
+  disown(threadId: ThreadId): void {
+    const byPid = this.#live.get(threadId);
+    if (byPid === undefined) return;
+    for (const pid of byPid.keys()) this.platform.pidRemoved(threadId, pid, !this.#shown.has(threadId));
+    this.#live.delete(threadId);
+    this.known.delete(threadId);
   }
 
   /**

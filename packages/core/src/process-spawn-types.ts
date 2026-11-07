@@ -1,7 +1,8 @@
 import type { ChildProcessByStdio } from 'node:child_process';
 import type { Readable, Writable } from 'node:stream';
-import type { ProcessRecord } from '@boite/contracts';
+import type { ProcessRecord, ThreadId } from '@boite/contracts';
 import type { ProcessIdentity } from './process-identity.ts';
+import type { KeptTerminal } from './keeper/client.ts';
 
 /** A traced process and the captured controls its registry keeps until exit. */
 export interface ProcessEntry {
@@ -85,4 +86,23 @@ export interface SpawnedTerminal {
   record: ProcessRecord;
   terminal: Bun.Terminal;
   exited: Promise<number>;
+}
+
+/** A terminal the keeper holds (`keeper/client.ts`): its PTY is the keeper's, the record this core's. */
+export interface SpawnedKeptTerminal {
+  record: ProcessRecord;
+  kept: KeptTerminal;
+  /** Null when the keeper went away with it. */
+  exited: Promise<number | null>;
+}
+
+export interface ProcRegistryOptions {
+  orphanGraceMs?: number;
+  /** How long an idle thread, or an exited pid of a busy one, is kept before it is forgotten. Tests shorten it. */
+  forgetDelayMs?: number;
+  /** The load tick while something works, and while everything is idle. Tests shorten them. */
+  loadIntervalMs?: number;
+  idleLoadIntervalMs?: number;
+  /** Persists what the platform and the guards say, which the live log only names. */
+  diagnostic?: (message: string, context: { event: string; threadId?: ThreadId; data?: Record<string, string | number | null> }) => void;
 }
