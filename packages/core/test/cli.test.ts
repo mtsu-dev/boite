@@ -165,6 +165,14 @@ test('threads reach each other by a short address, find by chat, read and wait f
   expect(found.out).toContain('> the staging database keeps timing out');
   const read = await boite(['threads', 'read', other, '--last', '5']);
   expect(read.out).toContain('user:\n    the staging database keeps timing out');
+  // A cut entry prints the command that reads its rest, and running it does.
+  const report = `${'r'.repeat(3000)}the rest of the report`;
+  harness.core.journal.putMessage({ id: 'report', threadId: other, turnId: 'history', role: 'assistant', state: 'complete', createdAt: Date.now() + 1, parts: [{ type: 'text', text: report }] });
+  const cut = await boite(['threads', 'read', other, '--last', '1']);
+  const command = /the rest: boite (threads read \S+ --entry report --offset 3000)\)/.exec(cut.out)?.[1];
+  expect(command).toBe(`threads read ${other} --entry report --offset 3000`);
+  const rest = await boite(command!.split(' '));
+  expect(rest.out).toContain('[characters 3000 to 3022 of 3022]\n    the rest of the report');
   const self = harness.core.coordination.get(threadId).self;
   // The answer goes out once the CLI waits for it: one that came first would wake this idle thread
   // with a turn instead. The CLI reaches its wait late here, as it did on a loaded macOS runner.

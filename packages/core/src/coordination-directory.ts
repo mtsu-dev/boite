@@ -1,12 +1,12 @@
 import type { AgentAddress, AgentContact, AgentMatch, AgentTranscript, CoordinationConfig, CoordinationPeer } from '@boite/contracts';
 import type { Core } from './core.ts';
-import { checkMatchExtras, checkRemoteContact, checkTranscript, PARTIAL, partialList, partialName, searchContacts, searchWords, transcript } from './coordination-lookup.ts';
+import { checkMatchExtras, checkRemoteContact, checkTranscript, PARTIAL, partialList, partialName, queryPayload, readTranscript, searchContacts, searchWords, transcriptQuery } from './coordination-lookup.ts';
 import { address, same } from './coordination-letter.ts';
 import { PeerRefusal } from './coordination-wire.ts';
 import { contactsBot } from './contacts/bot.ts';
 import type { ContactMailboxes } from './contacts/mailboxes.ts';
 import { projectCoordination } from './contacts/project-coordination.ts';
-import { invalidParams, refused } from './errors.ts';
+import { messageOf, refused } from './errors.ts';
 
 /** What the lookups read from the coordination that owns them. */
 export interface LookupSide {
@@ -139,28 +139,32 @@ export class CoordinationLookups {
       unavailable: [...new Set([...remote.unavailable, ...partial, ...routed.unavailable, ...remoteMatches.filter(match => !trusted.has(match.coreId)).map(match => match.machine)])],
     };
   }
-  /** Another reachable contact's conversation, text and tool names only. */
-  async read(threadId: string, target: AgentAddress, limit = 30, before?: number): Promise<AgentTranscript> {
+  /**
+   * Another reachable contact's conversation, text and tool names only: a page
+   * of entries, or with `entry` the rest of one entry's text from `offset`.
+   */
+  async read(threadId: string, target: AgentAddress, limit?: number, before?: number, entry?: string, offset?: number): Promise<AgentTranscript> {
     const to = address(target, 'target');
-    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw invalidParams('limit: expected 1 to 100');
-    if (before !== undefined && !Number.isSafeInteger(before)) throw invalidParams('before: expected a timestamp');
+    const query = transcriptQuery({ limit, before, entry, offset });
     const config = this.side.config(threadId);
     const resident = to.coreId === this.side.selfId() && this.core.workforce.projects.over(threadId, to.threadId) !== null;
     if (this.core.threads.require(threadId).archived || (config.mode === 'off' && !resident)) throw refused('coordination is disabled for this thread');
     if (to.coreId === this.side.selfId()) {
       const contact = (resident ? this.side.contact(to.threadId, true) : undefined) ?? this.side.localReach(threadId).find(a => same(a, to)) ?? (to.threadId === threadId ? this.side.contact(threadId) : undefined);
       if (!contact) throw refused(`target: ${to.threadId} is not a contact this thread may reach; see boite threads`);
-      return { contact, ...transcript(this.core.journal.db, to.threadId, limit, before, id => this.core.journal.streamingMessage(id)) };
+      return { contact, ...readTranscript(this.core.journal.db, to.threadId, query, id => this.core.journal.streamingMessage(id)) };
     }
     const peer = this.side.trusted().find(p => p.coreId === to.coreId);
     if (!config.remote) throw refused('cross-machine coordination is disabled for this thread');
     if (this.hidden(threadId)(to.coreId)) throw refused('target: only the Contacts bot reads a contact\'s threads; ask it with boite threads ask', { field: 'target' });
-    if (!peer) return this.side.mailboxes.read(threadId, to.coreId, { threadId: to.threadId, limit, ...(before === undefined ? {} : { before }) });
-    const collect = await this.remoteAll(threadId, 'read', { threadId: to.threadId, limit, ...(before === undefined ? {} : { before }) }, (answer, from) => {
+    const payload = { threadId: to.threadId, ...queryPayload(query) };
+    if (!peer) return this.side.mailboxes.read(threadId, to.coreId, payload);
+    const collect = await this.remoteAll(threadId, 'read', payload, (answer, from) => {
       const raw = answer as { contact?: AgentContact } | null;
       const contact = checkRemoteContact(raw?.contact as AgentContact, from);
       if (contact.threadId !== to.threadId) throw new Error('transcript of another thread');
-      return { contact, ...checkTranscript(answer) };
+      // An older machine sends a page for a read of one entry: say so rather than "did not answer".
+      try { return { contact, ...checkTranscript(answer, query) }; } catch (error) { throw new PeerRefusal(messageOf(error)); }
     }, [peer]);
     const { results, unavailable } = collect();
     if (!this.side.trusted().some(current => current.coreId === peer.coreId)) throw refused('target.coreId: machine permission revoked');

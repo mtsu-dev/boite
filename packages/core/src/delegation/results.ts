@@ -34,15 +34,48 @@ export function delegatedResultPage(core: Core, params: RpcParams<'delegation.re
   return resultPageOf(core, params.agentId, params.turnId, params.offset, params.limit);
 }
 
-/** The bounded final answer of a finished turn, or its error. */
-export function turnResult(core: Core, turn: Turn | null): string | null {
+/** The most characters of a final answer automatic mail and views carry, the note on the rest included. */
+export const RESULT_TEXT = 4000;
+
+/**
+ * How a reader of a cut answer reaches the rest: `delegate`, the child's
+ * parent with `boite delegate result`; `thread`, any thread allowed to read
+ * the child with `boite threads read --entry`.
+ */
+export type ResultRest = 'delegate' | 'thread';
+
+/**
+ * The final answer of a finished turn, or its error, in at most `max`
+ * characters. A longer answer ends on a note that names its length and the
+ * exact command and offset of the rest, so nothing past the cut is lost.
+ */
+export function turnResult(core: Core, turn: Turn | null, rest: ResultRest = 'delegate', max = RESULT_TEXT): string | null {
   if (!turn || turn.status === 'queued' || turn.status === 'running') return null;
-  const rows = core.journal.db.query(`SELECT substr((SELECT group_concat(substr(json_extract(value, '$.text'), 1, 4001), char(10))
+  // Each message's first 4,001 characters: the answer shown is the last message that says something.
+  const rows = core.journal.db.query(`SELECT id, rowid AS position, substr((SELECT group_concat(substr(json_extract(value, '$.text'), 1, 4001), char(10))
     FROM json_each(messages.parts) WHERE json_extract(value, '$.type') = 'text'), 1, 4001) AS answer
-    FROM messages WHERE thread_id = ? AND turn_id = ? AND role = 'assistant' ORDER BY rowid DESC LIMIT 8`).all(turn.threadId, turn.id) as { answer: string | null }[];
+    FROM messages WHERE thread_id = ? AND turn_id = ? AND role = 'assistant' ORDER BY rowid DESC LIMIT 8`).all(turn.threadId, turn.id) as { id: string; position: number; answer: string | null }[];
   for (const row of rows) {
     const answer = row.answer?.trim();
-    if (answer) return answer.length > 4000 ? `${answer.slice(0, 3900)}\n[Truncated. Open the agent conversation for the complete answer.]` : answer;
+    if (!answer) continue;
+    // Lengths in characters (code points), as `delegation.result` counts them, summed in SQLite: the whole text never reaches here.
+    const text = `SELECT m.rowid AS position, json_extract(p.value, '$.text') AS text FROM messages m, json_each(m.parts) p
+      WHERE m.thread_id = ?1 AND m.turn_id = ?2 AND m.role = 'assistant' AND json_extract(p.value, '$.type') = 'text'`;
+    const size = core.journal.db.query(`WITH parts AS (${text}) SELECT
+      COALESCE(SUM(CASE WHEN position = ?3 THEN length(text) END), 0) + MAX(SUM(position = ?3) - 1, 0) AS own,
+      COALESCE(SUM(CASE WHEN position < ?3 THEN length(text) + 1 END), 0) AS before,
+      COALESCE(SUM(length(text)), 0) + MAX(COUNT(*) - 1, 0) AS total FROM parts`).get(turn.threadId, turn.id, row.position) as { own: number; before: number; total: number };
+    const raw = row.answer!;
+    if ([...raw].length >= size.own && answer.length <= max) return answer;
+    const lead = raw.length - raw.trimStart().length;
+    // `delegate` counts characters from the start of the turn's answer; `thread`, UTF-16 units from the start of this message.
+    const note = (at: number) => rest === 'delegate'
+      ? `\n[Cut at character ${at} of ${size.total}. The rest: boite delegate result ${turn.threadId} ${turn.id} ${at}]`
+      : `\n[Cut at character ${at} of this message. The rest: boite threads read ${turn.threadId} --entry ${row.id} --offset ${at}]`;
+    let kept = answer.slice(0, Math.max(0, max - note(Number.MAX_SAFE_INTEGER).length));
+    const last = kept.charCodeAt(kept.length - 1);
+    if (last >= 0xd800 && last <= 0xdbff) kept = kept.slice(0, -1);
+    return `${kept}${note(rest === 'delegate' ? size.before + lead + [...kept].length : lead + kept.length)}`;
   }
   return turn.error ?? null;
 }

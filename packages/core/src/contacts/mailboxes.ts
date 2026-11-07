@@ -161,7 +161,7 @@ export class ContactMailboxes {
     this.#source(threadId);
     const contact = checkRemoteContact(result.contact, { coreId, name: route.name, url: '', publicKey: '' });
     if (contact.threadId !== (payload as { threadId: string }).threadId) throw refused('transcript of another thread');
-    return { contact, ...checkTranscript(result) };
+    return { contact, ...checkTranscript(result, payload as { entry?: string; offset?: number }) };
   }
   search(threadId: string, words: string[]): Promise<{ entries: RpcResult<'collaboration.search'>['matches']; unavailable: string[] }> {
     return this.#lookup(threadId, 'search', { words, partial: PARTIAL }, (entry, peer) => ({ ...checkRemoteContact(entry as AgentContact, peer), ...checkMatchExtras(entry as { matched?: unknown; excerpts?: unknown }) }));

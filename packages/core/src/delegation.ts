@@ -11,7 +11,7 @@ import type { ProviderProbe } from './providers/probe.ts';
 import { assertDriverRunnable } from './drivers/index.ts';
 import { withLoad } from './threads/records.ts';
 import { nativeAgents } from './native-agents.ts';
-import { delegatedResultPage, DelegationWaits, teamUsage, turnResult } from './delegation/results.ts';
+import { delegatedResultPage, DelegationWaits, RESULT_TEXT, teamUsage, turnResult, type ResultRest } from './delegation/results.ts';
 import { INTERRUPTION_TEXT, parentListens, tellInterrupted } from './delegation/interruption.ts';
 import { askFinal, childEnd, closeQuestions, taskTurn, unwoken } from './delegation/completion.ts';
 import { permissionWake, questionWake, worktreeLine } from './delegation/messages.ts';
@@ -212,7 +212,7 @@ export class Delegation {
   }
   #lastTurn(threadId: string): Turn | null { return taskTurn(this.#core, threadId); }
   /** The bounded final answer of a finished turn, or its error. */
-  result(turn: Turn | null): string | null { return turnResult(this.#core, turn); }
+  result(turn: Turn | null, rest?: ResultRest, max?: number): string | null { return turnResult(this.#core, turn, rest, max); }
   #member(row: AgentRow): DelegatedAgent {
     const { thread, lastTurn, result, needsInput, worktree } = this.#snapshot(row.thread_id);
     const terminal = lastTurn !== null && !['queued', 'running'].includes(lastTurn.status);
@@ -604,17 +604,17 @@ export class Delegation {
       const config = this.config(root.id);
       if (!config.enabled || config.paused || root.archived) return;
     }
-    const result = this.result(turn);
     // Ended to wait on its own background work: what it says is a checkpoint, the result follows.
     if (live.length > 0) this.#wakeDeadlines.delete(thread.id);
     const head = live.length > 0
       ? `${thread.title}: waiting on its background work (${[...new Set(live.map(task => task.description.trim() || task.kind))].join(', ')})\nCheckpoint, not its final result: that work wakes it and its final result follows.`
       : `${thread.title}: ${turn.status}`;
     const deliver = () => {
-      // The worktree line is never cut: the parent needs the branch to merge.
+      // The worktree line is never cut (the parent needs the branch to merge); the answer is, so its note on the rest survives. A followed-up step is read as a thread.
       const worktree = live.length > 0 ? undefined : this.worktrees.get(thread.id);
       const tail = worktree ? `\n${worktreeLine(worktree)}${link ? ` It is on ${this.#core.coordination.identity().name}, where the branch stays.` : ''}` : '';
-      const body = `${`${head}\n${result ?? 'No text result was returned.'}`.slice(0, 4000 - tail.length)}${tail}`;
+      const result = this.result(turn, followUp && !this.delegated(thread.id) ? 'thread' : 'delegate', Math.max(1000, RESULT_TEXT - head.length - 1 - tail.length));
+      const body = `${`${head}\n${result ?? 'No text result was returned.'}`.slice(0, RESULT_TEXT - tail.length)}${tail}`;
       if (link) { this.remote.letter(thread.id, { origin: 'result', requestId: `result:${turn.id}`, text: body, ...(live.length > 0 ? { checkpoint: true as const } : {}) }); return; }
       try {
         this.send({ threadId: thread.id, toThreadId: parentId, requestId: `result:${turn.id}`, text: body }, 'result', live.length > 0 ? { checkpoint: true } : {});

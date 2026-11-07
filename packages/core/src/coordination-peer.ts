@@ -7,7 +7,7 @@
 import { verify } from 'node:crypto';
 import type { AgentContact, AgentLetter, CoordinationPeer } from '@boite/contracts';
 import { text } from './coordination-letter.ts';
-import { checkRemoteContact, PARTIAL, searchContacts, searchWords, transcript } from './coordination-lookup.ts';
+import { checkRemoteContact, PARTIAL, readTranscript, searchContacts, searchWords, transcriptQuery, type TranscriptQuery } from './coordination-lookup.ts';
 import { boundedBody, BOT_OPERATIONS, TEAM_OPERATIONS, type BotOperation, type Envelope, type TeamOperation } from './coordination-wire.ts';
 import { pack, SEALED, sealResponse, unpack, type Sealing } from './group/seal.ts';
 import type { Core } from './core.ts';
@@ -34,13 +34,9 @@ export interface PeerSide {
 }
 
 /** A transcript request, checked field by field. */
-function readParams(value: unknown): { threadId: string; limit: number; before: number | undefined } {
-  const payload = value as { threadId?: unknown; limit?: unknown; before?: unknown } | null;
-  const threadId = text(payload?.threadId, 'read.threadId', 128);
-  const limit = payload?.limit === undefined ? 30 : payload.limit;
-  if (!Number.isSafeInteger(limit) || (limit as number) < 1 || (limit as number) > 100) throw invalidParams('read.limit: expected 1 to 100');
-  if (payload?.before !== undefined && !Number.isSafeInteger(payload.before)) throw invalidParams('read.before: expected a timestamp');
-  return { threadId, limit: limit as number, before: payload?.before as number | undefined };
+function readParams(value: unknown): TranscriptQuery & { threadId: string } {
+  const payload = value as { threadId?: unknown } | null;
+  return { threadId: text(payload?.threadId, 'read.threadId', 128), ...transcriptQuery(payload, 'read.') };
 }
 
 export class PeerDesk {
@@ -143,10 +139,10 @@ export class PeerDesk {
           result = searchContacts(this.#core.journal.db, this.#side.directory(), words, currentPeer.readThreads === true);
         } else if (envelope.operation === 'read') {
           if (!currentPeer.readThreads) throw refused('agents on this machine are not allowed to read conversations; enable their access in Machines on the destination');
-          const { threadId, limit, before } = readParams(envelope.payload);
+          const { threadId, ...query } = readParams(envelope.payload);
           const entry = this.#side.directory().find(a => a.threadId === threadId);
           if (!entry) throw refused('read.threadId: not a thread open to other machines');
-          result = { contact: entry, ...transcript(this.#core.journal.db, threadId, limit, before, id => this.#core.journal.streamingMessage(id)) };
+          result = { contact: entry, ...readTranscript(this.#core.journal.db, threadId, query, id => this.#core.journal.streamingMessage(id)) };
         } else if (envelope.operation === 'receipt') result = this.receipt(peer.coreId, envelope.payload);
         else if (envelope.operation === 'group.sync') result = this.#core.group.receive(peer, envelope.payload);
         else if (envelope.operation === 'group.push') result = this.#core.push.relayed(peer, envelope.payload);
@@ -227,13 +223,13 @@ export class PeerDesk {
       return listed([...local, ...held.entries], held.unavailable);
     }
     if (operation === 'read') {
-      const { threadId, limit, before } = readParams(payload);
+      const { threadId, ...query } = readParams(payload);
       const at = relayed ? null : members.locate(peer.coreId, threadId);
-      if (at) return members.read(peer.coreId, at, { limit, before });
+      if (at) return members.read(peer.coreId, at, query);
       const entry = this.#side.contactDirectory(peer.coreId).find(a => a.threadId === threadId);
       if (!entry) throw refused('read.threadId: not a thread of a project opened to you');
       if (!this.#core.contacts.reach.mayRead(peer.coreId, threadId)) throw refused('read.threadId: this owner has not let you read the conversations of that project (readThreads)');
-      return { contact: redactSharedContact(entry), ...transcript(this.#core.journal.db, threadId, limit, before, id => this.#core.journal.streamingMessage(id), redactSharedText) };
+      return { contact: redactSharedContact(entry), ...readTranscript(this.#core.journal.db, threadId, query, id => this.#core.journal.streamingMessage(id), redactSharedText) };
     }
     if (operation === 'receipt') {
       // A malformed receipt is refused here, before any member is asked.

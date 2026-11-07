@@ -323,7 +323,7 @@ export class Coordination {
   /** Contacts here and on trusted machines whose fields or chat contain every word of the query. */
   search(threadId: string, query: string): Promise<{ matches: AgentMatch[]; unavailable: string[] }> { return this.#lookups.search(threadId, query); }
   /** Another reachable contact's conversation, text and tool names only. */
-  read(threadId: string, target: AgentAddress, limit = 30, before?: number): Promise<AgentTranscript> { return this.#lookups.read(threadId, target, limit, before); }
+  read(threadId: string, target: AgentAddress, limit?: number, before?: number, entry?: string, offset?: number): Promise<AgentTranscript> { return this.#lookups.read(threadId, target, limit, before, entry, offset); }
   /**
    * Blocks until an incoming message (from `from` when given) arrives or the
    * timeout passes. What it returns counts as delivered: the agent read it in

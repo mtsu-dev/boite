@@ -502,8 +502,18 @@ export function coordinationMethods(ctx: FakeContext) {
       if (!found) throw new RpcFailure({ code: RpcErrorCode.Refused, message: `target: ${params.target.threadId} is not a contact this thread may reach; see boite threads` });
       const route = routeTo(ctx, found.core.identity.coreId);
       if (found.core !== ctx && !(route ? openedTo(found.core, route.gateway, found.core.thread(found.contact.threadId), true) : reads(found.core, ctx.identity.coreId))) throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'agents on this machine are not allowed to read conversations; enable their access in Machines on the destination' });
-      const limit = params.limit ?? 30;
-      const entries = chatOf(found.core.thread(found.contact.threadId)).filter(entry => (params.before === undefined || entry.at < params.before) && (entry.text.length > 0 || entry.tools.length > 0));
+      const chat = chatOf(found.core.thread(found.contact.threadId));
+      // As the core: one entry's text from an offset, or a page whose long entries name where the rest starts.
+      if (params.entry !== undefined) {
+        const entry = chat.find(item => item.id === params.entry);
+        if (!entry) throw new RpcFailure({ code: RpcErrorCode.InvalidParams, message: `entry: ${params.entry} is not an entry of this thread` });
+        const offset = params.offset ?? 0;
+        const end = Math.min(entry.text.length, offset + 16_000);
+        return { contact: found.contact, entries: [{ ...entry, text: entry.text.slice(offset, end), tools: [], length: entry.text.length, offset, ...(end < entry.text.length ? { next: end } : {}) }], more: false };
+      }
+      const limit = params.limit ?? 10;
+      const entries = chat.filter(entry => (params.before === undefined || entry.at < params.before) && (entry.text.length > 0 || entry.tools.length > 0))
+        .map(entry => entry.text.length > 3000 ? { ...entry, text: entry.text.slice(0, 3000), length: entry.text.length, next: 3000 } : entry);
       return { contact: found.contact, entries: entries.slice(-limit), more: entries.length > limit };
     },
     'collaboration.wait': async (params) => {

@@ -53,10 +53,19 @@ export interface AgentTranscriptEntry {
   id: string;
   role: 'user' | 'assistant' | 'system';
   at: Timestamp;
-  /** Text only, cut at 4,000 characters. */
+  /**
+   * Text only. A page of entries carries the first 3,000 characters of each;
+   * a read of one entry (`entry`, `offset`) carries up to 16,000 from `offset`.
+   */
   text: string;
-  /** The tools the agent called in this message, by name, in order. */
+  /** The tools the agent called in this message, by name, in order. Empty on a read of one entry. */
   tools: string[];
+  /** Characters of the whole text, when `text` is not all of it. */
+  length?: number;
+  /** Where `text` starts in the whole text, on a read of one entry. */
+  offset?: number;
+  /** Where the rest starts: read this entry again with `entry` set to its id and this `offset`. */
+  next?: number;
 }
 export interface AgentTranscript {
   contact: AgentContact;
@@ -513,8 +522,11 @@ export interface CoordinationRpcMethods {
   'collaboration.send': { params: { threadId: ThreadId; to: AgentAddress; text: string; replyTo?: string; requestId: string }; result: AgentLetter };
   /** Contacts on this core and linked cores whose title, project, branch, model, resources or chat contain every word of `query`. */
   'collaboration.search': { params: { threadId: ThreadId; query: string }; result: { matches: AgentMatch[]; unavailable: string[] } };
-  /** Another contact's conversation, newest `limit` entries (default 30, at most 100) before `before`. */
-  'collaboration.read': { params: { threadId: ThreadId; target: AgentAddress; limit?: number; before?: Timestamp }; result: AgentTranscript };
+  /**
+   * Another contact's conversation, newest `limit` entries (default 10, at most 100) before `before`.
+   * With `entry`, that one entry from `offset` instead: the rest of a text a page cut.
+   */
+  'collaboration.read': { params: { threadId: ThreadId; target: AgentAddress; limit?: number; before?: Timestamp; entry?: string; offset?: number }; result: AgentTranscript };
   /**
    * Waits up to `timeoutMs` (at most 300,000) for incoming messages, from `from` only when given,
    * and hands them over as delivered: they are not injected into the turn a second time.

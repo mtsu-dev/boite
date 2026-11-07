@@ -530,7 +530,8 @@ export class AgentProjects {
       thread: this.row(target),
       questions: this.#core.threads.listQuestions(target.id),
       permissions: this.#core.threads.listPermissions(target.id),
-      lastAnswer: this.#core.delegation.result(last),
+      // A resident agent is not the thread's parent: it reads the rest as a thread.
+      lastAnswer: this.#core.delegation.result(last, 'thread'),
       wake: this.#core.wakes.of(target.id),
     };
   }
