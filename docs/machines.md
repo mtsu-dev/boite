@@ -226,8 +226,9 @@ header, draws the QR code and offers the link ([groups](groups.md#using-it)).
 Once the group has two machines, each machine's row this window controls
 carries a **Threads from the other machines** switch (`groupThreads`), off by
 default: on, the agents of the other machines may start threads in its
-projects with `boite thread new --machine` ([CLI](cli.md#commands)) and read
-the models such a thread can run on with `boite delegate models --machine`. The
+projects with `boite thread new --machine` ([CLI](cli.md#commands)), add its
+folders as projects with `boite projects add --machine`, and read the models
+such a thread can run on with `boite delegate models --machine`. The
 setting belongs to that machine and is saved there, so the PC with the printer
 can accept them while the server does not. Beside it, **Bots from the other
 machines** (`groupBots`, off by default) lets a bot of another machine look

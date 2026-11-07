@@ -467,3 +467,23 @@ test.each(['remove', 'complete'] as const)('%s invalidates a running goal before
   await waitFor(() => h.core.activity.get(threadId).loop?.status === 'complete');
   expect(count).toBe(2);
 });
+
+test('a failed compaction between loop iterations pauses nothing', async () => {
+  const client = await h.connect();
+  const { threadId } = await echoThread(h, client);
+  let iterations = 0;
+  restore = setDriver('echo', { protocol: 'echo', startTurn(ctx) {
+    if (ctx.prompt === '[compact]') return { stop() {}, done: Promise.resolve({ status: 'error', error: 'compact failed', sessionId: 'echo-1', usage: null }) };
+    iterations++;
+    return { stop() {}, done: Promise.resolve({ status: 'done', sessionId: 'echo-1', usage: null }) };
+  } });
+  await client.call('threads.activity.set', { threadId, loop: { prompt: 'check', intervalMs: 2000 } });
+  await waitFor(() => iterations >= 1 && h.core.threads.get(threadId).status === 'idle');
+  const compacted = client.next('turn.finished', t => t.threadId === threadId && t.execution?.operation === 'compact');
+  await client.call('threads.compact', { threadId });
+  expect((await compacted).status).toBe('error');
+  await waitFor(() => h.core.threads.get(threadId).status === 'error');
+  expect(h.core.activity.get(threadId).loop?.status).toBe('active');
+  expect(h.core.activity.get(threadId).loop?.nextRunAt).not.toBeNull();
+  await waitFor(() => iterations >= 2, 8000);
+}, 15_000);

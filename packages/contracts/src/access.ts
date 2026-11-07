@@ -15,8 +15,9 @@ import { PLUGIN_PERMISSIONS, type PluginPermission } from './plugins.ts';
  * displays. Model discovery may start the configured agent without a prompt.
  * Nothing here changes what the core trusts, with one routing exception: it
  * may turn the owner's saved subscription gateway on or off, never its kind,
- * URLs or key. The only paths a device names are read-only, inside a thread's
- * working tree.
+ * URLs or key. The paths a device names are read-only, inside a thread's
+ * working tree, except in the Add a project form: the folders it browses to
+ * and the one it adds, a project the owner sees appear and can remove.
  * Reserved shared-project methods stay owner-only until their handlers and
  * association scope checks are installed; see docs/contacts.md for permissions.
  */
@@ -87,6 +88,11 @@ export const DEVICE_METHODS: ReadonlySet<RpcMethodName> = new Set<RpcMethodName>
   'projects.archive',
   // Renaming changes only a listed project's display name; it never moves or writes to its folder.
   'projects.rename',
+  // The Add a project form, from a phone or another computer of the owner's: browsing lists folder names, never a
+  // file, and adding registers a folder this core checks is absolute and an existing directory, nothing written in
+  // it. A device already starts agents that run commands in projects, so it reaches nothing it could not before.
+  'projects.browse',
+  'projects.add',
   // What a thread needs to name its agent.
   'providers.list',
   // Read or refresh the configured account's native catalog, including ACP
@@ -386,7 +392,7 @@ export const AGENT_METHODS: ReadonlyMap<RpcMethodName, string> = new Map<RpcMeth
   ['plugins.command', 'run a `boite <name>` command an installed plugin provides, in its own working directory'],
   ['agent.where', 'the thread, its project, its working directory and its branch: what the CLI prints first'],
   ['agent.projects', 'the names and folders of the projects the owner added, so it can name one to delegation.spawn or agent.move; reading them opens nothing'],
-  ['agent.addProject', 'registering an existing folder as a project, which the owner sees appear and can remove; it opens no file access the agent\'s process lacks, and it stays within the communication settings and one agent generation, like agent.spawn'],
+  ['agent.addProject', 'registering an existing folder as a project, which the owner sees appear and can remove; it opens no file access the agent\'s process lacks, and it stays within the communication settings and one agent generation, like agent.spawn; on another machine of the group, only while its owner keeps groupThreads on there, like a thread started there'],
   ['agent.spawn', 'a new top-level thread in a project the owner added, on its own model, account and permission mode, within its communication settings and an hourly budget; a thread an agent started cannot start another until the user writes in it'],
   ['agent.move', 'its own thread into a project the owner already registered, applied when its turn ends; never another thread, never a folder the owner did not add'],
   ['panel.open', 'showing the user a file, a diff or a page instead of pasting it into the transcript'],

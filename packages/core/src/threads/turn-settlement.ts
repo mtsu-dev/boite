@@ -53,10 +53,10 @@ export function announceFinished(core: Core, finished: Turn, { thread, owned }: 
   if (owned && thread) core.bus.emit('thread.updated', withLoad(core, thread));
 }
 
-/** Finish an admitted turn before provider execution, including a held prompt. */
+/** Finish an admitted turn before provider execution, including a held prompt. A turn that already left the queue is not this writer's to close: a closed turn never transitions again. */
 export function markQueuedStopped(core: Core, turnId: TurnId): void {
   const turn = core.journal.getTurn(turnId);
-  if (turn === null) return;
+  if (turn === null || turn.status !== 'queued') return;
   const next: Turn = { ...turn, status: 'stopped', queueHold: null, finishedAt: Date.now() };
   core.bus.afterCommit(() => {
     // The stop and the wake's letters going back to the inbox commit together.

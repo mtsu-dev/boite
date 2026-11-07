@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setDriver } from '../src/drivers/index.ts';
-import type { Driver, TurnResult } from '../src/drivers/types.ts';
+import type { Driver, TurnContext, TurnResult } from '../src/drivers/types.ts';
 import type { SpawnedProcess } from '../src/procs.ts';
 import type { NativeProcessExit } from '../src/platform/types.ts';
 import type { ProcessRecord } from '@boite/contracts';
@@ -58,6 +58,86 @@ test('a driver that never settles its stop is ended by the core', async () => {
     const second = await client.call('turns.start', { threadId, prompt: 'again' });
     await waitFor(() => harness.core.journal.getTurn(second.id)?.status === 'done', 3000);
     await client.call('projects.remove', { projectId });
+  } finally {
+    restore();
+  }
+}, 15_000);
+
+test('output a wedged driver writes after its forced stop reaches no message', async () => {
+  let emit: ((text: string) => void) | undefined;
+  let writePartial: ((text: string) => void) | undefined;
+  const restore = setDriver('echo', {
+    protocol: 'echo',
+    startTurn(ctx: TurnContext) {
+      emit = (text) => {
+        const id = ctx.emit.startMessage('assistant');
+        ctx.emit.part(id, 0, { type: 'text', text });
+        ctx.emit.complete(id, 'complete');
+      };
+      // Output begun before the stop, never completed: the turn's end must
+      // close it too, or it stays `streaming` with nobody left to finish it.
+      writePartial = (text) => {
+        const id = ctx.emit.startMessage('assistant');
+        ctx.emit.part(id, 0, { type: 'text', text });
+      };
+      return { stop() {}, done: new Promise<TurnResult>(() => {}) };
+    },
+  } as unknown as Driver);
+  try {
+    const client = await harness.connect();
+    const { threadId } = await echoThread(harness, client);
+    const { id: turnId } = await client.call('turns.start', { threadId, prompt: 'hi' });
+    await waitFor(() => harness.core.threads.get(threadId).status === 'running');
+    writePartial!('written before the stop');
+    await client.call('turns.stop', { threadId });
+    await waitFor(() => harness.core.journal.getTurn(turnId)?.status === 'stopped', 3000);
+    await waitFor(() => harness.core.threads.get(threadId).status === 'idle', 3000);
+    const before = harness.core.journal.listMessages(threadId).length;
+    emit!('written after the turn ended');
+    await Bun.sleep(50);
+    const messages = harness.core.journal.listMessages(threadId);
+    expect(messages).toHaveLength(before);
+    expect(messages.some(message => message.state === 'streaming')).toBe(false);
+    const partial = messages.find(message => message.parts.some(part => part.type === 'text' && part.text.includes('written before')));
+    expect(partial?.state).toBe('complete');
+    expect(messages.flatMap(message => message.parts).some(part => part.type === 'text' && part.text.includes('written after'))).toBe(false);
+  } finally {
+    restore();
+  }
+}, 15_000);
+
+test.each(['reject', 'throw'] as const)('output written after a driver failure (%s) reaches no message', async failure => {
+  let emit: ((text: string) => void) | undefined;
+  const restore = setDriver('echo', {
+    protocol: 'echo',
+    startTurn(ctx: TurnContext) {
+      emit = (text) => {
+        const id = ctx.emit.startMessage('assistant');
+        ctx.emit.part(id, 0, { type: 'text', text });
+        ctx.emit.complete(id, 'complete');
+      };
+      // Output begun before the failure, never completed.
+      const id = ctx.emit.startMessage('assistant');
+      ctx.emit.part(id, 0, { type: 'text', text: 'written before the failure' });
+      if (failure === 'throw') throw new Error('the driver could not start');
+      return { stop() {}, done: Promise.reject(new Error('the driver blew up')) };
+    },
+  } as unknown as Driver);
+  try {
+    const client = await harness.connect();
+    const { threadId } = await echoThread(harness, client);
+    const { id: turnId } = await client.call('turns.start', { threadId, prompt: 'hi' });
+    await waitFor(() => harness.core.journal.getTurn(turnId)?.status === 'error', 3000);
+    await waitFor(() => harness.core.threads.get(threadId).status === 'error', 3000);
+    const before = harness.core.journal.listMessages(threadId).length;
+    emit!('written after the failure');
+    await Bun.sleep(50);
+    const messages = harness.core.journal.listMessages(threadId);
+    expect(messages).toHaveLength(before);
+    expect(messages.some(message => message.state === 'streaming')).toBe(false);
+    const partial = messages.find(message => message.parts.some(part => part.type === 'text' && part.text.includes('written before')));
+    expect(partial?.state).toBe('error');
+    expect(messages.flatMap(message => message.parts).some(part => part.type === 'text' && part.text.includes('written after'))).toBe(false);
   } finally {
     restore();
   }

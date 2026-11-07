@@ -207,11 +207,13 @@ opened to it, and that member's requests back
 ([contacts](contacts.md#projects-of-the-other-machines-of-the-group)); a
 contact never sends them.
 
-Three more operations are sealed and group-only. `thread.start` asks a member
+Four more operations are sealed and group-only. `thread.start` asks a member
 to start a top-level thread in one of its projects for `boite thread new
 --machine`; the member refuses it while its own `groupThreads` setting is off,
 and keeps a ledger per starting thread so a retried request returns the same
-thread. `setting.read` returns that member's value of a setting it holds about
+thread. `project.add` asks it to register one of its folders as a project for
+`boite projects add --machine`, under the same setting; it checks the path
+itself and answers a folder that is already a project as it is. `setting.read` returns that member's value of a setting it holds about
 the others (`groupThreads`, `groupBots`), for a settings card, and `setting.changed` tells
 the other members that it changed, which settles their open cards.
 
@@ -399,7 +401,7 @@ Communication settings decide whether the agent may start one. With
 `--machine <name>` it starts it on another machine of the group, when that
 machine's owner allowed it there.
 `boite projects add <folder>` registers a folder as a project first, under the
-same settings.
+same settings, and `--machine <name>` one of another machine of the group.
 
 The CLI uses the authenticated current conversation as sender. Agents cannot
 impersonate a different local conversation, link machines or change
