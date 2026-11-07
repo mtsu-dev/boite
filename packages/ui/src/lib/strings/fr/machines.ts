@@ -35,7 +35,7 @@ export const fr: Translation = {
     browserOriginsHint: "Les machines du groupe, et les adresses où elles sont servies, sont autorisées toutes seules. N'ajoutez ici qu'une page servie par quelque chose hors du groupe. Une origine http(s) exacte par ligne.",
     you: '{machine} (vous)', youTag: '(vous)',
     groupThreads: 'Conversations des autres machines',
-    groupThreadsHint: "Les agents des autres machines du groupe peuvent lancer des conversations sur cette machine, dans ses projets, avec leur propre agent (boite thread new --machine). Désactivé par défaut.",
+    groupThreadsHint: "Les agents des autres machines du groupe peuvent lancer des conversations sur cette machine, dans ses projets, avec leur propre agent (boite thread new --machine), et ajouter ses dossiers comme projets (boite projects add --machine). Désactivé par défaut.",
     groupBots: 'Bots des autres machines',
     groupBotsHint: "Un bot d'une autre machine du groupe peut s'occuper des projets de cette machine que leur propriétaire lui a confiés : lister, lire et piloter leurs conversations et répondre à leurs questions. Il ne peut ni gérer les autorisations d'outils, ni supprimer des conversations, ni modifier les réglages de cette machine. Désactiver ce réglage coupe immédiatement son accès. Désactivé par défaut.",
     pick: 'Machine dont ce sont les réglages',

@@ -13,7 +13,12 @@ export interface LinkedPullRequest {
 }
 export interface PullRequestsRpcMethods {
   'threads.pullRequestReview': { params: { threadId: string; url: string }; result: PullRequestReview };
-  'threads.pullRequestFiles': { params: { threadId: string; url: string; page: number }; result: PullRequestFiles };
+  /**
+   * One page of up to 30 changed files. Their patches share a fixed budget, so
+   * a big patch comes back cut with a note; `path` returns that file of the
+   * page alone with up to 100,000 characters of its patch.
+   */
+  'threads.pullRequestFiles': { params: { threadId: string; url: string; page: number; path?: string }; result: PullRequestFiles };
   'threads.pullRequests': { params: { threadId: string; refresh?: boolean }; result: LinkedPullRequest[] };
   'threads.linkPullRequest': { params: { threadId: string; url: string }; result: LinkedPullRequest[] };
   'threads.unlinkPullRequest': { params: { threadId: string; url: string }; result: LinkedPullRequest[] };
@@ -81,7 +86,11 @@ export interface PullRequestReview {
   url: string; title: string; body: string; state: string; head: string; base: string; checkedAt: number;
   checks: PullRequestCheck[]; comments: PullRequestComment[]; reviews: PullRequestComment[]; truncated: boolean;
 }
-export interface PullRequestFile { path: string; previousPath?: string; status: string; additions: number; deletions: number; patch: string | null }
+export interface PullRequestFile {
+  path: string; previousPath?: string; status: string; additions: number; deletions: number; patch: string | null;
+  /** Characters of the patch left out to fit the page's budget; absent when the patch is whole. */
+  omitted?: number;
+}
 export interface PullRequestFiles { files: PullRequestFile[]; page: number; hasMore: boolean; truncated: boolean }
 export interface PullRequestsRpcEvents {
   'threads.pullRequestsChanged': { threadId: string; pullRequests: LinkedPullRequest[] };

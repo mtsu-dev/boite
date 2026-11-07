@@ -64,6 +64,8 @@ export interface AgentProject {
 export interface AgentProjectAdded extends AgentProject {
   /** False when the folder was already a project; nothing changed then. */
   added: boolean;
+  /** The other machine of the group it is a project of, as `--machine` names it, when it is not this one. */
+  machine?: string;
 }
 
 /**
@@ -155,8 +157,14 @@ export interface AgentDoorRpcMethods {
    * delegated child or a persistent agent session, and for a thread an agent
    * started until the user has written in it. The caller's timeline gets a
    * system line naming the project.
+   *
+   * `machine` (a member's name or core id prefix) adds a folder of another
+   * machine of the caller's group there, once that machine's owner turned on
+   * `groupThreads`. `path` is then that machine's, absolute and checked
+   * there; the caller's gates apply as across projects, and a folder already
+   * a project there is answered only while the switch is on.
    */
-  'agent.addProject': { params: { threadId: ThreadId; path: string; name?: string }; result: AgentProjectAdded };
+  'agent.addProject': { params: { threadId: ThreadId; path: string; name?: string; machine?: string }; result: AgentProjectAdded };
   /**
    * The agent starts a new top-level thread in a project the owner added
    * (id, name or absolute folder), on its own provider, account, model,

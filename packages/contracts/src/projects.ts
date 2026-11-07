@@ -98,10 +98,17 @@ export interface ProjectsRpcMethods {
   'projects.setAutoRemoveWorktrees': { params: { projectId: ProjectId; enabled: boolean }; result: Project };
 
   'projects.list': { params: Record<string, never>; result: Project[] };
+  /**
+   * Registers an existing folder of the machine running this core as a
+   * project. `path` is absolute on that machine, checked there, and must be a
+   * directory; `name` (1 to PROJECT_NAME_MAX after trimming) defaults to the
+   * folder's name. A folder already registered answers that project. Paired
+   * devices may add too (`CoreInfo.features.deviceProjects`).
+   */
   'projects.add': { params: { path: string; name?: string }; result: Project };
   /** Change a project's display name without moving its folder. Trimmed names hold 1 to PROJECT_NAME_MAX code units. Paired devices may rename too. Refused for the system drafts project. */
   'projects.rename': { params: { projectId: ProjectId; name: string }; result: Project };
-  /** Owner-only folder navigation on the machine running this core. */
+  /** Folder navigation on the machine running this core, for the Add a project form: folder names only, never a file. Paired devices may browse too. */
   'projects.browse': {
     params: { path?: string };
     result: { path: string; parent: string | null; directories: { name: string; path: string }[] };

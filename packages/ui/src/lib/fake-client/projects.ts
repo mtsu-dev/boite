@@ -4,7 +4,7 @@ import { RpcFailure } from '../client';
 import { missingFolder, pathKey } from './checks';
 import { FAKE_FILES, scoreFakeFile } from './files';
 import { IMPORT_LIST_MS } from './providers';
-import { FAKE_DRAFTS_PATH, toSummary } from './shared';
+import { DATA_DIR, FAKE_DRAFTS_PATH, toSummary } from './shared';
 import { putAway } from './threads';
 import { archiveProject, describedProject, requireFakeFolder } from './project-archive';
 import type { FakeContext, FakeMethods } from './context';
@@ -15,6 +15,60 @@ function importAccounts(ctx: FakeContext, session: ImportableSession): string[] 
   const owner = ctx.accounts.find(account => account.id === session.accountId);
   if (!owner) return [session.accountId];
   return ctx.accounts.filter(account => account.providerId === owner.providerId && account.isolationDir === owner.isolationDir).map(account => account.id);
+}
+
+const ABSOLUTE = /^([A-Za-z]:[\\/]|[\\/])/;
+const DEVICE_SECRET_DIRS = new Set(['.git', '.ssh', '.gnupg', '.aws', '.azure', '.kube', '.docker']);
+
+/** The core's `folderToAdd`: an absolute path up to 4096 characters, and a name that fits; an empty one is the folder's. */
+export function folderToAdd(value: unknown, method: string): { path: string; name?: string } {
+  const raw = (value ?? {}) as Record<string, unknown>;
+  const path = typeof raw.path === 'string' ? raw.path.trim() : '';
+  const where = 'an absolute path to an existing directory on this machine';
+  if (!path || path.length > 4096 || !ABSOLUTE.test(path)) {
+    throw new RpcFailure({ code: RpcErrorCode.Refused, message: `${method}.path must be ${where}${path ? `, got ${path.slice(0, 200)}` : ''}`, data: { field: 'path', expected: where } });
+  }
+  if (raw.name === undefined) return { path };
+  const name = typeof raw.name === 'string' ? raw.name.trim() : null;
+  if (name === null || name.length > PROJECT_NAME_MAX) {
+    const expected = `a string of up to ${PROJECT_NAME_MAX} characters after trimming`;
+    throw new RpcFailure({ code: RpcErrorCode.Refused, message: `${method}.name must be ${expected}`, data: { field: 'name', expected } });
+  }
+  return name === '' ? { path } : { path, name };
+}
+
+/** The core's `assertDeviceProjectFolder`, without links to follow: not boite's data folder, not under a folder of keys. */
+function deviceProjectFolder(path: string): void {
+  const key = pathKey(path), data = pathKey(DATA_DIR);
+  if (key === data || key.startsWith(`${data}/`)) {
+    throw new RpcFailure({ code: RpcErrorCode.Refused, message: `a paired device does not add boite's data folder, or a folder inside it, as a project: ${path}`, data: { field: 'path', path, expected: 'a folder outside boite\'s data folder' } });
+  }
+  if (key.split('/').some(part => DEVICE_SECRET_DIRS.has(part))) {
+    throw new RpcFailure({ code: RpcErrorCode.Refused, message: `a paired device does not add a folder that holds keys or tokens as a project; add ${path} on the owner's machine`, data: { field: 'path', path, expected: `a folder outside ${[...DEVICE_SECRET_DIRS].join(', ')}` } });
+  }
+}
+
+/** A checked folder registered on `ctx`, as the core's `ProjectStore.add`: the project already there answers as it is. */
+export function addFakeProject(ctx: FakeContext, folder: { path: string; name?: string }): { project: Project; added: boolean } {
+  const { path } = folder;
+  if (missingFolder(path)) {
+    throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'a project path must be an existing directory', data: { path } });
+  }
+  // As the core on Windows: the same folder in another case is the project already there.
+  const existing = ctx.projects.find((p) => pathKey(p.path) === pathKey(path));
+  if (existing) return { project: describedProject(ctx, existing), added: false };
+  const project: Project = {
+    id: `p-${++ctx.seq}`,
+    name: folder.name ?? path.split(/[\\/]/).filter(Boolean).pop() ?? path,
+    path,
+    createdAt: ctx.now(),
+    // No disk here: a folder the fake is handed counts as a repository.
+    repository: true
+  };
+  ctx.projects.push(project);
+  const summary = describedProject(ctx, project);
+  ctx.emit('project.added', summary);
+  return { project: summary, added: true };
 }
 
 export function projectMethods(ctx: FakeContext) {
@@ -92,24 +146,9 @@ export function projectMethods(ctx: FakeContext) {
       };
     },
     'projects.add': async (params) => {
-      if (missingFolder(params.path)) {
-        throw new RpcFailure({ code: RpcErrorCode.Refused, message: 'a project path must be an existing directory', data: { path: params.path } });
-      }
-      // As the core on Windows: the same folder in another case is the project already there.
-      const existing = ctx.projects.find((p) => pathKey(p.path) === pathKey(params.path));
-      if (existing) return describedProject(ctx, existing);
-      const project: Project = {
-        id: `p-${++ctx.seq}`,
-        name: params.name ?? params.path.split(/[\\/]/).filter(Boolean).pop() ?? params.path,
-        path: params.path,
-        createdAt: ctx.now(),
-        // No disk here: a folder the fake is handed counts as a repository.
-        repository: true
-      };
-      ctx.projects.push(project);
-      const summary = describedProject(ctx, project);
-      ctx.emit('project.added', summary);
-      return summary;
+      const folder = folderToAdd(params, 'projects.add');
+      if (ctx.bus.principal === 'session') deviceProjectFolder(folder.path);
+      return addFakeProject(ctx, folder).project;
     },
     'projects.drafts': async () => {
       const existing = ctx.projects.find((p) => p.kind === 'drafts');

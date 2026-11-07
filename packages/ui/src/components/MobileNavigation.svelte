@@ -115,7 +115,7 @@
   let projects = $derived([...machines.flatMap(m => m.store.projects.filter(p => p.archived !== true).map(p => ({
     id: JSON.stringify([m.id, p.id]), label: projectName(p), hint: several ? m.label : '', projectTile: { project: p, store: m.store },
     active: m.store === store && p.id === project?.id
-  }))), ...(store.owner ? [separator('add-sep'), { id: 'add-project', label: strings.sidebar.addProject, hint: '', active: false, glyph: FolderPlus }] : [])]);
+  }))), ...(store.addsProjects ? [separator('add-sep'), { id: 'add-project', label: strings.sidebar.addProject, hint: '', active: false, glyph: FolderPlus }] : [])]);
   const inRecent = $derived(listScreen === 'threads' && workspace.view === 'recent');
   /** Recent shows one project or all of them: the filter's choices. */
   const filterItems = $derived([

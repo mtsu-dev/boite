@@ -216,7 +216,8 @@ export interface Settings {
   /**
    * Agents on the other machines of this machine's group may start threads
    * here (`boite thread new --machine`), in its projects, as their own agent
-   * would from this machine. Each machine decides for itself. Missing reads as off.
+   * would from this machine, and add its folders as projects (`boite projects
+   * add --machine`). Each machine decides for itself. Missing reads as off.
    */
   groupThreads?: boolean;
   /**

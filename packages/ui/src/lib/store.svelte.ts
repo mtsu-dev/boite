@@ -244,6 +244,7 @@ export class Store {
   get booted() { return this.#ctx.connection.booted; }
   set booted(value) { this.#ctx.connection.booted = value; }
   get owner(): boolean { return this.#ctx.connection.owner; }
+  get addsProjects(): boolean { return this.#ctx.connection.addsProjects; }
   get pickerAvailable(): boolean { return this.#ctx.connection.pickerAvailable; }
 
   suspend(...args: Parameters<Connection['suspend']>) { return this.#ctx.connection.suspend(...args); }

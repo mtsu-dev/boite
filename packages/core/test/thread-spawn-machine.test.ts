@@ -1,7 +1,8 @@
 import { afterEach, expect, test } from 'bun:test';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
-import type { AgentSpawn, ModelInfo } from '@boite/contracts';
+import type { AgentProjectAdded, AgentSpawn, ModelInfo } from '@boite/contracts';
 import { runCli } from '../src/cli.ts';
 import type { CoreClient } from '../src/client.ts';
 import { setDriver } from '../src/drivers/index.ts';
@@ -125,8 +126,8 @@ test('another machine stays within the caller\'s communication settings and the 
   expect((await cli(['settings', 'request', 'muteAgents', 'false', '--machine', machine, '--why', 'x'])).err).toContain('is this machine\'s own');
   expect((await cli(['settings', 'request', 'groupThreads', 'true', '--machine', machine, '--why', 'x'])).err).toContain('already true on');
 
-  // A member's thread.start and setting operations arrive sealed or not at all, as the roster does.
-  for (const operation of ['thread.start', 'setting.read', 'setting.changed']) {
+  // A member's thread.start, project.add and setting operations arrive sealed or not at all, as the roster does.
+  for (const operation of ['thread.start', 'project.add', 'setting.read', 'setting.changed']) {
     const body = JSON.stringify({ from: desk.core.coordination.card().coreId, to: pc.core.coordination.card().coreId, at: Date.now(), nonce: crypto.randomUUID(), operation, payload: {} });
     const clear = await fetch(`${pc.url}/agent-messages`, { method: 'POST', body, headers: { 'x-boite-peer': desk.core.coordination.card().coreId, 'x-boite-signature': desk.core.coordination.signature(Buffer.from(body)).toString('base64') } });
     expect(clear.status).toBe(400);
@@ -145,6 +146,105 @@ test('a machine outside any group has no other machine to start a thread on', as
   let err = '';
   await runCli(['thread', 'new', 'test', 'Brief', '--machine', 'pc'], { out: () => {}, err: s => { err += s; }, env: { BOITE_THREAD_ID: threadId, BOITE_CORE_URL: h.url, BOITE_AGENT_TOKEN: h.core.agents.tokenFor(threadId) }, cwd: h.dataDir });
   expect(err).toContain('this machine is in no group');
+});
+
+test('projects add --machine adds a folder of another machine there once it allows it, and a thread can then start in it', async () => {
+  answering();
+  const { desk, pc, owner, pcOwner, threadId, machine, cli } = await setup();
+  const sitePath = join(pc.dataDir, 'site');
+  mkdirSync(sitePath, { recursive: true });
+  const added: string[] = [];
+  pcOwner.on('project.added', (project) => { added.push(project.path); });
+
+  // Off by default on the machine that would hold it: the agent is told how to ask, nothing is added.
+  const refused = await cli(['projects', 'add', sitePath, '--machine', machine, '--name', 'Website']);
+  expect(refused.code).toBe(1);
+  expect(refused.err).toContain('does not let the other machines of its group add projects there');
+  expect(refused.err).toContain(`boite settings request groupThreads true --machine ${machine} --why "<what the project is for>"`);
+  expect(pc.core.projects.registered(sitePath)).toBeNull();
+
+  // On there: the folder is added on that machine, and the line says where.
+  await pcOwner.call('settings.set', { groupThreads: true });
+  const first = await cli(['projects', 'add', sitePath, '--machine', machine, '--name', 'Website', '--json']);
+  expect(first.err).toBe('');
+  const site = JSON.parse(first.out) as AgentProjectAdded;
+  expect(site).toMatchObject({ name: 'Website', path: sitePath, added: true, current: false, machine });
+  expect(pc.core.projects.registered(sitePath)?.id).toBe(site.id);
+  expect(desk.core.projects.registered(sitePath)).toBeNull();
+  expect(added).toEqual([sitePath]);
+  const lines = () => desk.core.journal.listMessages(threadId).filter(m => m.role === 'system' && m.parts.some(p => p.type === 'text' && p.text.startsWith('The agent added the project')));
+  expect(lines().map(m => m.parts[0])).toEqual([expect.objectContaining({ text: `The agent added the project Website (${sitePath}) on ${pc.core.coordination.identity().name}.` })]);
+
+  // Again: answered as it is there, nothing added, no new line.
+  const again = await cli(['projects', 'add', sitePath, '--machine', machine]);
+  expect(again.out).toContain(`machine: ${machine}`);
+  expect(again.out).toContain(`Already a project on ${machine}; nothing changed.`);
+  expect(added).toHaveLength(1);
+  expect(lines()).toHaveLength(1);
+
+  const spawned = JSON.parse((await cli(['thread', 'new', 'Website', 'Draft the landing page', '--machine', machine, '--json'])).out) as AgentSpawn;
+  expect(pc.core.threads.require(spawned.thread.id)).toMatchObject({ projectId: site.id, cwd: sitePath });
+
+  // The path is that machine's, checked there: absolute, an existing directory.
+  expect((await cli(['projects', 'add', 'site', '--machine', machine])).err).toContain('project.add.path must be an absolute path to an existing directory on this machine');
+  expect((await cli(['projects', 'add', join(pc.dataDir, 'nowhere'), '--machine', machine])).err).toContain('a project path must be an existing directory');
+  expect(added).toHaveLength(1);
+  expect((await owner.call('projects.list', {})).some(project => project.path === sitePath)).toBe(false);
+});
+
+test('projects add --machine stays within the caller\'s communication settings, its generation and the group', async () => {
+  answering();
+  const { desk, pc, owner, pcOwner, threadId, machine, cli } = await setup();
+  await pc.core.settings.set({ groupThreads: true });
+  const folder = join(pc.dataDir, 'gated');
+  mkdirSync(folder, { recursive: true });
+  const config = await owner.call('collaboration.get', { threadId }).then(view => view.config);
+  await owner.call('collaboration.configure', { threadId, config: { ...config, remote: false } });
+  expect((await cli(['projects', 'add', folder, '--machine', machine])).err).toContain('may only reach its own project');
+  await owner.call('collaboration.configure', { threadId, config: { ...config, mode: 'off' } });
+  expect((await cli(['projects', 'add', folder, '--machine', machine])).err).toContain('communication is off');
+  await owner.call('collaboration.configure', { threadId, config: { ...config, paused: true } });
+  expect((await cli(['projects', 'add', folder, '--machine', machine])).err).toContain('communication is paused');
+  await owner.call('collaboration.configure', { threadId, config });
+  expect((await cli(['projects', 'add', folder, '--machine', 'nowhere'])).err).toContain('no machine nowhere in this group');
+  expect((await cli(['projects', 'add', folder, '--machine', desk.core.coordination.card().coreId])).err).toContain('is this machine; leave --machine out');
+  expect(pc.core.projects.registered(folder)).toBeNull();
+
+  // A thread an agent started, here from the other machine, adds none until the user writes in it.
+  const started = JSON.parse((await cli(['thread', 'new', 'notes', 'One', '--machine', machine, '--json'])).out) as AgentSpawn;
+  await waitFor(() => pc.core.threads.require(started.thread.id).status === 'idle');
+  await desk.core.settings.set({ groupThreads: true });
+  const deskFolder = join(desk.dataDir, 'from-pc');
+  mkdirSync(deskFolder, { recursive: true });
+  expect((await cli(['projects', 'add', deskFolder, '--machine', desk.core.coordination.card().coreId.slice(0, 8)], pc, started.thread.id)).err).toContain('cannot add a project until the user writes in it');
+  expect(desk.core.projects.registered(deskFolder)).toBeNull();
+
+  // From a terminal the owner reaches that machine with --core, as for thread new.
+  const terminal = async (args: string[]) => {
+    let out = '', err = '';
+    const code = await runCli([...args, '--core', desk.url], { out: s => { out += s; }, err: s => { err += s; }, env: { BOITE_TOKEN: desk.token }, cwd: desk.dataDir });
+    return { code, out, err };
+  };
+  const machineFlag = await terminal(['projects', 'add', folder, '--machine', machine]);
+  expect(machineFlag.code).toBe(2);
+  expect(machineFlag.err).toContain('projects add --machine is for an agent in a thread; from a terminal, reach that machine with --core');
+  // A paired device's terminal adds there by --core, the folder as that machine names it.
+  const { grant } = await pcOwner.call('pairing.grant', {});
+  const { token } = pc.core.sessions.exchange(grant, { name: 'cli', version: 'test' });
+  const device = async (args: string[]) => {
+    let out = '', err = '';
+    const code = await runCli([...args, '--core', pc.url], { out: s => { out += s; }, err: s => { err += s; }, env: { BOITE_TOKEN: token }, cwd: desk.dataDir });
+    return { code, out, err };
+  };
+  expect((await device(['projects', 'add', folder])).err).toContain('a paired device does not add boite\'s data folder');
+  const outside = mkdtempSync(join(tmpdir(), 'boite-device-add-'));
+  restores.push(() => rmSync(outside, { recursive: true, force: true }));
+  const viaCore = await device(['projects', 'add', outside, '--name', 'Gated']);
+  expect([viaCore.code, viaCore.err]).toEqual([0, '']);
+  expect(viaCore.out).toContain(`path: ${outside}`);
+  expect(pc.core.projects.registered(outside)?.name).toBe('Gated');
+  // A relative folder is not resolved here, on another machine's terms: that core refuses it.
+  expect((await device(['projects', 'add', 'gated'])).err).toContain('projects.add.path must be an absolute path to an existing directory on this machine');
 });
 
 test('the owner turning the switch off while the worktree is prepared stops the thread before its first turn', async () => {

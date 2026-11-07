@@ -323,7 +323,7 @@
     <MachineStatus {store} filter={shownFilter} onfilter={id => { if (id && selected && selected.machine.id !== id) projectView.pick('all'); filter = id; }} />
   {/snippet}
   {#snippet foot()}
-    {#if store.owner && work.shows('sidebar.add-project')}
+    {#if store.addsProjects && work.shows('sidebar.add-project')}
       <button class="ghost icon" data-testid="add-project" bind:this={projectButton} onclick={addProject}
         title={strings.sidebar.addProject} aria-label={strings.sidebar.addProject}
         oncontextmenu={(event) => controlMenu(event, store, 'sidebar.add-project')}><FolderPlus size={16} /></button>

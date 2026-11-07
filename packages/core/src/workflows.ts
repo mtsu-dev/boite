@@ -36,7 +36,6 @@ interface RequestRow { fingerprint: string; run_id: string }
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const ACTIVE_RUNS = 3;
 const LIST_LIMIT = 20;
-const SUMMARY_CHARS = 10000;
 const ended = (status: WorkflowStepStatus) => status === 'done' || status === 'failed' || status === 'skipped' || status === 'stopped';
 const broken = (status: WorkflowStepStatus) => status === 'failed' || status === 'stopped';
 const INTERRUPTED = 'Interrupted by a core restart';
