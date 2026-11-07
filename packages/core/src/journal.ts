@@ -379,7 +379,7 @@ export class Journal {
         this.db.query('DELETE FROM workflow_requests WHERE run_id IN (SELECT id FROM workflow_runs WHERE root_id = ?)').run(id);
         this.db.query('DELETE FROM workflow_runs WHERE root_id = ?').run(id);
         deleteComposerInput(this.db, id, this.collectComposerAssets);
-        for (const prefix of ['merged-pr-archive:', 'linked-pull-requests:', 'pr-watches:', 'activity:', 'activity-input:', 'activity-choice:', 'move-note:', 'compaction-tail:', 'brain-sent:', 'memory-notices:', 'coordination:', 'coordination-autopause:', 'delegation:', 'delegation-turns:', 'delegation-episode:', 'delegation-worktree:', 'spawn-origin:', 'spawns:', 'worktree-removed:', 'remote-parent:']) this.deleteSetting(`${prefix}${id}`);
+        for (const prefix of ['merged-pr-archive:', 'linked-pull-requests:', 'pr-watches:', 'activity:', 'activity-input:', 'activity-choice:', 'move-note:', 'compaction-tail:', 'brain-sent:', 'account-sessions:', 'memory-notices:', 'coordination:', 'coordination-autopause:', 'delegation:', 'delegation-turns:', 'delegation-episode:', 'delegation-worktree:', 'spawn-origin:', 'spawns:', 'worktree-removed:', 'remote-parent:']) this.deleteSetting(`${prefix}${id}`);
         this.db.query('DELETE FROM threads WHERE id = ?').run(id);
         this.db.query('DELETE FROM thread_deletions WHERE thread_id = ?').run(id);
       }
@@ -458,7 +458,7 @@ export class Journal {
   lastEndedTurn(threadId: string): Turn | null { return oneTurn(this.db, 'ended', threadId); }
   /** The oldest queued turn that runs `operation`. */
   queuedTurn(threadId: string, operation: string): Turn | null { return oneTurn(this.db, 'queued', threadId, operation); }
-  sessionUsage(threadId: string, generation: number, exceptTurnId: string): SessionUsage { return sumSessionUsage(this.db, threadId, generation, exceptTurnId); }
+  sessionUsage(threadId: string, generation: number | readonly number[], exceptTurnId: string): SessionUsage { return sumSessionUsage(this.db, threadId, generation, exceptTurnId); }
 
   /** A coordination contact needs one completion timestamp, without loading its turn history. */
   lastCompletedAt(threadId: string): number | null {
@@ -571,6 +571,8 @@ export class Journal {
   }
 
   hasOpenMessages(): boolean { return this.stream.hasOpen(); }
+  /** The streaming messages a socket reads when its stream channels widen, without the means to change them. */
+  get streaming(): Pick<StreamBuffer, 'openOf' | 'partType'> { return this.stream; }
 
   listMessages(threadId: string): Message[] {
     this.flushDeltas();

@@ -338,9 +338,19 @@ export class Core {
    * which has no process of its own to stop. `POST /shutdown` calls it too,
    * which is how the desktop shell and its installer stop a resident core.
    */
-  requestShutdown(): boolean {
+  /**
+   * `end` is an explicit stop, the desktop's Quit: the shells the keeper holds
+   * end with this core. Any other stop, a restart or an update, leaves them
+   * running for the next core.
+   */
+  /** Set by an explicit stop: what the keeper holds for this core ends with it. */
+  get endsKept(): boolean { return this.#endKept; }
+  #endKept = false;
+
+  requestShutdown(end = false): boolean {
     const stop = this.#onShutdown;
     if (!stop) return false;
+    if (end) this.#endKept = true;
     if (!this.#shutdownRequested) {
       this.#shutdownRequested = true;
       // Leave time for the acknowledgement before the socket is closed.
@@ -456,7 +466,7 @@ export class Core {
     phase('startup.stores-ready', 'Stores and RPC handlers ready', { methods: this.router.methods().length });
     this.#onShutdown = options.onShutdown;
     this.router.register('core.shutdown', () => {
-      if (!this.requestShutdown()) throw new Error('This embedded core does not support process shutdown.');
+      if (!this.requestShutdown(true)) throw new Error('This embedded core does not support process shutdown.');
       return { ok: true as const };
     });
     this.router.register('core.restart', () => {
@@ -544,7 +554,7 @@ export class Core {
       version: this.version,
       ...(this.bundleHash ? { bundleHash: this.bundleHash } : {}),
       protocolVersion: PROTOCOL_VERSION,
-      features: { threadSnapshots: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, draftPreparation: true, attachmentUploads: true, composerPersistence: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, projectBoard: true, deviceProjects: true, settingsHome: true, botsHome: true, botMove: true, botMoveQueue: true, listChanges: true },
+      features: { threadSnapshots: true, chunkedAnswers: true, readingPages: true, messagePositions: true, deferredToolParts: true, deviceKeys: true, draftPreparation: true, attachmentUploads: true, composerPersistence: true, revealMachines: true, loadEvents: true, desktopUpdates: true, gatewayMove: true, projectBoard: true, deviceProjects: true, settingsHome: true, botsHome: true, botMove: true, botMoveQueue: true, listChanges: true, streamChannels: true },
       coreId: this.coordination.card().coreId,
       hostname: machineName(),
       os: currentOs(),

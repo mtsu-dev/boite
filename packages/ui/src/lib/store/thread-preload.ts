@@ -55,7 +55,8 @@ export interface Opener {
 export function askPage(ctx: StoreContext, opener: Opener, client: Client, threadId: ThreadId, held: Thread | undefined, open: { previous?: ThreadId; requests?: boolean; markRead?: boolean }, current: () => boolean): PageAsk {
   const features = ctx.store.core?.features;
   const bundled = features?.threadSnapshots === true;
-  const subscribed = bundled ? null : client.call('threads.subscribe', { threadId });
+  const channels = ctx.streams.params(threadId);
+  const subscribed = bundled ? null : client.call('threads.subscribe', { threadId, ...channels });
   // A thread already in hand, open or among the recent ones, asks only for
   // what it cannot vouch for: a reconnect on a long conversation used to
   // download its last 120 messages again for the two that were new.
@@ -66,7 +67,7 @@ export function askPage(ctx: StoreContext, opener: Opener, client: Client, threa
   const around = saved && !saved.pinned ? saved.anchor?.id : undefined;
   // A page holds about one screen; the rest comes as the reader scrolls. A resume tail is never cut.
   const fetched = client.call('threads.get', { ...resume, limit: held ? MESSAGE_PAGE_MAX : INITIAL_MESSAGE_PAGE, maxBytes: INITIAL_PAGE_BYTES, ...lightPage(ctx), ...(around ? { around } : {}),
-    ...(bundled ? { sync: held?.messagesSync && held.messagesSync.from === resume.after ? held.messagesSync : true, open } : {})
+    ...(bundled ? { sync: held?.messagesSync && held.messagesSync.from === resume.after ? held.messagesSync : true, open, ...channels } : {})
   }, held || !features?.chunkedAnswers ? {} : {
     // The loading view counts the page in as the core slices it.
     onProgress: (received, total) => { if (current() && opener.loadingThreadId === threadId) opener.loadingBytes = { threadId, received, total }; }

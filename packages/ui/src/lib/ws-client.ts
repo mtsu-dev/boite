@@ -5,7 +5,7 @@ import { signedUngrouped, type DeviceKey } from './device-key';
 import {
   PROTOCOL_VERSION, RPC_CHUNK_BYTES, RPC_MAX_FRAME_BYTES, RpcCloseCode, RpcErrorCode,
   type ClientName, type CoreInfo, type DeviceHello, type Principal, type UngroupedData,
-  type RpcEventName, type RpcMethodName, type RpcParams, type RpcResult, type ThreadId
+  type RpcEventName, type RpcMethodName, type RpcParams, type RpcResult, type StreamChannel, type ThreadId
 } from '@boite/contracts';
 import type { CallOptions, ClientState, EventHandler, ObservableClient, Session, SocketLike, WsClientOptions } from './client';
 import { RpcFailure, closedFailure, droppedFailure, transportFailure, unansweredFailure } from './rpc-error';
@@ -52,7 +52,8 @@ export class WsClient implements ObservableClient {
   #handlers = new Map<string, Set<(payload: unknown) => void>>();
   #stateHandlers = new Set<(state: ClientState) => void>();
   #clockHandlers = new Set<(offset: number) => void>();
-  #subscribed = new Set<ThreadId>();
+  /** The threads this socket follows, with the stream channels it last asked for each: a reconnect asks the same. */
+  #subscribed = new Map<ThreadId, StreamChannel[] | undefined>();
   #attempt = 0;
   #recovered = false;
   #retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -231,10 +232,11 @@ export class WsClient implements ObservableClient {
     }
     return this.#send(socket, method, params, options.onProgress).then((value) => {
       if (method === 'threads.subscribe') {
-        this.#subscribed.add((params as RpcParams<'threads.subscribe'>).threadId);
+        const request = params as RpcParams<'threads.subscribe'>;
+        this.#subscribed.set(request.threadId, request.channels);
       } else if (method === 'threads.get' && (value as RpcResult<'threads.get'>).opened) {
         const request = params as RpcParams<'threads.get'>;
-        this.#subscribed.add(request.threadId);
+        this.#subscribed.set(request.threadId, request.channels);
         if (request.open?.previous && request.open.previous !== request.threadId) this.#subscribed.delete(request.open.previous);
       }
       return value;
@@ -598,8 +600,8 @@ export class WsClient implements ObservableClient {
   }
 
   #resubscribe(socket: SocketLike): void {
-    for (const threadId of this.#subscribed) {
-      void this.#send(socket, 'threads.subscribe', { threadId }).catch(() => undefined);
+    for (const [threadId, channels] of this.#subscribed) {
+      void this.#send(socket, 'threads.subscribe', { threadId, ...(channels ? { channels } : {}) }).catch(() => undefined);
     }
   }
 

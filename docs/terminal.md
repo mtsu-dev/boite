@@ -36,6 +36,8 @@ its own, and the desktop split comes back on a wider screen.
 The shell is a process of the core, in a pseudo-terminal from Bun's
 `Bun.spawn({ terminal })` (ConPTY on Windows), and the UI draws it with
 xterm.js. xterm loads the first time a terminal opens, never at startup.
+With `BOITE_KEEPER=1` on Linux and macOS, a thread's shell runs under the
+[keeper](keeper.md) instead and survives a restart or an update of the core.
 
 - `terminals.open` starts a shell of the thread at the client's size, or attaches
   to the one already running and resizes it. The answer carries the last

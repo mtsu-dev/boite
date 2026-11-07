@@ -201,6 +201,21 @@ export class StreamBuffer {
     return undefined;
   }
 
+  /** Copies of `threadId`'s messages still streaming, oldest first, the deltas handed over folded in. */
+  openOf(threadId: string): Message[] {
+    this.flushDeltas();
+    const found: Message[] = [];
+    for (const open of this.#open.values()) {
+      if (open.message.threadId === threadId) found.push({ ...open.message, parts: [...open.message.parts] });
+    }
+    return found;
+  }
+
+  /** The type of a held message's part, without copying the message. */
+  partType(messageId: string, partIndex: number): MessagePart['type'] | undefined {
+    return this.#open.get(messageId)?.message.parts[partIndex]?.type;
+  }
+
   /** True while any message is streaming. */
   hasOpen(): boolean {
     return this.#open.size > 0;

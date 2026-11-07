@@ -216,6 +216,7 @@ export class TurnRunner {
     // Compaction plans from the conversation's own turns; a keepalive is not one.
     if (sameSession && !keepalive) this.threads.autoCompact.turnFinished(next, finished);
     if (sameSession) this.threads.cacheKeepalive.turnFinished(next, finished);
+    if (sameSession) this.threads.accountSessions.turnFinished(next, finished);
     const woke = this.threads.deferred.pendingWakes.get(threadId);
     if (woke !== undefined) {
       this.threads.deferred.pendingWakes.delete(threadId);

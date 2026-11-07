@@ -23,7 +23,7 @@ import { nativeSkillFiles } from '../brain.ts';
 import { takesSystemGuide } from '../drivers/index.ts';
 import { effectiveCompaction, contextRulesBlock, type CompactionPolicy } from '@boite/contracts';
 import { prepareAttachments, FileReferences } from '../attachments.ts';
-import { continuationInput, tailInput, type PartPlace } from '../continuation.ts';
+import { continuationInput, switchBackInput, tailInput, type PartPlace } from '../continuation.ts';
 import type { Core } from '../core.ts';
 import type { BackgroundCompactionSetting, EmitSink, PermissionTicket, ToolPatch, QuestionAsk, QuestionTicket, SessionContext, StepBoundary, StepDecision, TurnContext } from '../drivers/types.ts';
 import { newId } from '../ids.ts';
@@ -347,20 +347,26 @@ export class TurnContexts {
     const input = resumePrompt !== undefined ? { prompt: resumePrompt, attachments: [] } : this.#lastUserInput(threadId, turn.id);
     const carry = carrier(this.#core, this.#files, threadId, resumePrompt !== undefined ? null : turn.id, input, provider);
     const fresh = thread.sessionId === null && ((thread.sessionGeneration ?? 0) > 0 || resumePrompt !== undefined);
+    // A session resumed by a switch back to its account: what it missed goes with its first prompt (`threads/account-sessions.ts`).
+    const kind = turn.execution?.operation;
+    // A resume carries it too, since the cut turn may have stopped before the session saved its prompt, but not a restart inside the turn that carried it.
+    const missed = fresh || kind === 'compact' || kind === 'keepalive' || kind === 'background' || nativeCommandPrompt(input.prompt)
+      || (resumePrompt !== undefined && this.#threads.accountSessions.carrying(threadId) === turn.id)
+      ? null : this.#threads.accountSessions.gap(thread);
     let continued = input;
     if (fresh) continued = carry();
+    // After a switch back, the prompts a stop cut before the resumed session's last turn: the missed exchanges hold the later ones.
     else if (resumePrompt === undefined && !turn.execution?.operation && !turn.execution?.automatic && !nativeCommandPrompt(input.prompt)) {
-      const interrupted = stoppedInput(this.#core.journal, threadId, turn.id, input, (part, place) => {
+      const interrupted = stoppedInput(this.#core.journal, threadId, missed?.turnId ?? turn.id, input, (part, place) => {
         this.#core.sharedAccess.uploads(threadId, [part]);
         return this.#files.of(threadId, part, place);
-      });
+      }, missed !== null);
       // The first stopped prompt may never have created a native session or
       // advanced its generation. That fresh start still needs journal history.
       continued = thread.sessionId === null && interrupted !== input ? carry() : interrupted;
     }
     // A session swapped in by a background compaction summarizes up to its fork:
     // the turns since then go with the next prompt the agent reads as such.
-    const kind = turn.execution?.operation;
     const fileReference = (part: Extract<MessagePart, { type: 'file' }>, place: PartPlace): string => {
       this.#core.sharedAccess.uploads(threadId, [part]);
       return this.#files.of(threadId, part, place);
@@ -372,6 +378,10 @@ export class TurnContexts {
         continued = tailInput(this.#core.journal, threadId, { turnId: tail.after, afterPart: tail.afterPart ?? null }, turn.id, continued, fileReference);
         this.#threads.backgroundCompact.carried(threadId, turn.id);
       }
+    }
+    if (missed !== null) {
+      continued = switchBackInput(this.#core.journal, threadId, missed, turn.id, continued, provider, fileReference);
+      this.#threads.accountSessions.carried(threadId, turn.id);
     }
     this.#core.sharedAccess.uploads(threadId, continued.attachments);
     const prepared = prepareAttachments(this.#core.dataDir, continued, provider);
@@ -573,7 +583,7 @@ export class TurnContexts {
   /** What the agent session this turn resumes already used (`usage.ts` `sessionUsage`). */
   #sessionBefore(thread: ThreadSummary, turnId: TurnId): AgentTotals {
     if (thread.sessionId === null) return { costUsd: 0, tokens: 0 };
-    return sessionUsage(this.#core, thread.id, thread.sessionGeneration ?? 0, turnId);
+    return sessionUsage(this.#core, thread.id, this.#threads.accountSessions.generations(thread), turnId);
   }
 
   /**
