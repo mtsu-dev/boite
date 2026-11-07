@@ -19,6 +19,7 @@ export * from './agents';
 export { nextAgentOccurrence } from './agent-schedule';
 export * from './workflows';
 export * from './workflow-plan';
+export * from './workflow-loop';
 export * from './thread-focus';
 export * from './context-mode';
 export * from './delegation-input';

@@ -9,12 +9,35 @@ import type { SharedComputeResult, SharedProjectRef, SharedThreadRef } from './s
  */
 export type WorkflowShape = 'string' | 'number' | 'boolean' | 'any' | WorkflowShape[] | { [key: string]: WorkflowShape };
 
-/** Exactly one of `equals`, `notEmpty` or `empty`, on a path such as `triage.severity`. */
+export type WorkflowScalar = string | number | boolean | null;
+
+/**
+ * Exactly one of `equals`, `notEquals`, `in`, `notEmpty` or `empty`, on a path
+ * such as `triage.severity`. A path through a fan-out reads a list: `equals`
+ * and `in` hold when it is not empty and every item matches, and `notEquals`
+ * holds whenever `equals` would not.
+ */
 export interface WorkflowCondition {
   path: string;
-  equals?: string | number | boolean | null;
+  equals?: WorkflowScalar;
+  notEquals?: WorkflowScalar;
+  in?: WorkflowScalar[];
   notEmpty?: true;
   empty?: true;
+}
+
+/**
+ * Set on the step that closes a loop. Once it ends, `until` is checked; while
+ * it does not hold, `from`, this step and every step between them run again,
+ * each in the conversation it had, up to `max` rounds in all.
+ */
+export interface WorkflowRepeat {
+  /** This step, or a step it depends on, directly or not. */
+  from: string;
+  /** Reads a step of the loop. */
+  until: WorkflowCondition;
+  /** Rounds in all, the first included: 2 to `WORKFLOW_LIMITS.rounds`. */
+  max: number;
 }
 
 export interface WorkflowStepPlan {
@@ -39,6 +62,8 @@ export interface WorkflowStepPlan {
   when?: WorkflowCondition;
   /** Structured output the step must return, validated by the core. */
   output?: WorkflowShape;
+  /** Closes a loop: the steps from `repeat.from` to this one run again until `repeat.until` holds. */
+  repeat?: WorkflowRepeat;
   /**
    * Run the step in a git worktree of its own, on a new branch from the
    * conversation's current HEAD, instead of the shared checkout. Uncommitted
@@ -79,6 +104,10 @@ export const WORKFLOW_LIMITS = {
   outputChars: 16000,
   /** A structured output that does not match gets this many turns in total. */
   attempts: 2,
+  /** Rounds of one loop, the first included. */
+  rounds: 10,
+  /** Rounds of a loop that leaves `max` out. */
+  defaultRounds: 3,
 } as const;
 
 export const DEFAULT_WORKFLOW_LIMITS: WorkflowLimits = { maxConcurrent: 3, maxSteps: 24 };
@@ -141,6 +170,12 @@ export interface WorkflowNode {
   error: string | null;
   startedAt: Timestamp | null;
   finishedAt: Timestamp | null;
+  /** In a loop: the round it is at, from 1. Absent outside loops and before a second round. */
+  round?: number;
+  /** In a loop: executions of its earlier rounds, which still count toward `maxSteps`. */
+  spent?: number;
+  /** In a loop: the executions of its last round, whose conversations the next round reuses. */
+  previous?: WorkflowInstance[];
 }
 
 export interface WorkflowRun {
