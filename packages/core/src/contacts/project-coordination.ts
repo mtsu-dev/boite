@@ -3,6 +3,7 @@ import type { AgentTranscript, CoordinationPeer } from '@boite/contracts';
 import type { Core } from '../core.ts';
 import type { Operation } from '../coordination-wire.ts';
 import { refused } from '../errors.ts';
+import { queryPayload, transcriptQuery } from '../coordination-lookup.ts';
 
 /**
  * Rereads a lookup's answer as the associations standing now allow it. The
@@ -34,12 +35,12 @@ export async function projectCoordination(core: Core, threadId: string, peer: Co
     if (results.some(r => r.unavailable.length)) throw refused('shared project endpoint is unavailable');
     return () => live(results).flatMap(r => r.matches.filter(t => t.coreId === peer.coreId)).slice(0, 100);
   }
-  const p = payload as { threadId: string; limit?: number; before?: number };
+  const p = payload as { threadId: string; limit?: number; before?: number; entry?: string; offset?: number };
   for (const scope of scopes) {
     const { threads } = await service.threads(scope);
     const target = threads.find(t => t.ref.project.ownerCoreId === peer.coreId && t.ref.address.threadId === p.threadId)?.ref;
     if (!target) continue;
-    const answer: AgentTranscript = await service.read({ ...scope, target, ...(p.limit === undefined ? {} : { limit: p.limit }), ...(p.before === undefined ? {} : { before: p.before }) });
+    const answer: AgentTranscript = await service.read({ ...scope, target, ...queryPayload(transcriptQuery(p)) });
     return () => {
       if (!standing().has(scope.sharedProjectId)) throw refused('target.threadId: the source project association was revoked');
       return answer;

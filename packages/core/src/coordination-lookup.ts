@@ -1,4 +1,4 @@
-import type { AgentContact, AgentMatch, AgentTranscriptEntry, CoordinationPeer, Message, MessagePart } from '@boite/contracts';
+import { TRANSCRIPT_ENTRY_PAGE, TRANSCRIPT_ENTRY_TEXT, TRANSCRIPT_READ_ENTRIES, transcriptStretch as stretch, type AgentContact, type AgentMatch, type AgentTranscriptEntry, type CoordinationPeer, type Message, type MessagePart } from '@boite/contracts';
 import type { Database } from 'bun:sqlite';
 import { address, text } from './coordination-letter.ts';
 import { invalidParams } from './errors.ts';
@@ -8,7 +8,9 @@ import { threadRef } from './contacts/project-policy.ts';
 export const SEARCH_WORDS = 8;
 /** Matches returned by one core. */
 export const SEARCH_RESULTS = 20;
-const ENTRY_TEXT = 4000;
+export { TRANSCRIPT_READ_ENTRIES as READ_ENTRIES, TRANSCRIPT_ENTRY_TEXT as ENTRY_TEXT, TRANSCRIPT_ENTRY_PAGE as ENTRY_PAGE };
+/** The longest entry text an older core sends in a page: 4,000 characters and " ...". */
+const OLDER_ENTRY_TEXT = 4004;
 const EXCERPT_SIDE = 90;
 
 /** Lower-cased words of at least two characters, deduplicated, or a refusal naming the field. */
@@ -32,7 +34,7 @@ function fields(contact: AgentContact): [Field, string][] {
 }
 
 /** The text a user and an agent wrote in a message, without tool output or reasoning. */
-function spoken(parts: MessagePart[]): string {
+export function spoken(parts: MessagePart[]): string {
   return parts.flatMap(part => part.type === 'text' ? [part.text] : part.type === 'error' ? [`[error] ${part.message}`] : []).join('\n');
 }
 
@@ -83,29 +85,69 @@ function excerpts(db: Database, threadId: string, words: string[], sanitize?: (v
   return rows.filter(row => !sanitize || sanitize(row.text) === row.text).map(row => excerpt(row.text, words.find(word => row.text.toLowerCase().includes(word)) ?? words[0]!));
 }
 
+/** What a read asks: a page of the newest entries before `before`, or one entry's text from `offset`. */
+export interface TranscriptQuery { limit: number; before?: number; entry?: string; offset?: number }
+
+/** A read's parameters, checked field by field; `field` prefixes the names a refusal gives. */
+export function transcriptQuery(value: unknown, field = ''): TranscriptQuery {
+  const raw = (value ?? {}) as { limit?: unknown; before?: unknown; entry?: unknown; offset?: unknown };
+  const limit = raw.limit === undefined ? TRANSCRIPT_READ_ENTRIES : raw.limit;
+  if (!Number.isSafeInteger(limit) || (limit as number) < 1 || (limit as number) > 100) throw invalidParams(`${field}limit: expected 1 to 100`);
+  if (raw.before !== undefined && !Number.isSafeInteger(raw.before)) throw invalidParams(`${field}before: expected a timestamp`);
+  if (raw.entry !== undefined && (typeof raw.entry !== 'string' || raw.entry.length === 0 || raw.entry.length > 100)) throw invalidParams(`${field}entry: expected an entry id of 1 to 100 characters`);
+  if (raw.offset !== undefined && (raw.entry === undefined || !Number.isSafeInteger(raw.offset) || (raw.offset as number) < 0)) throw invalidParams(`${field}offset: expected a nonnegative integer beside entry`);
+  return {
+    limit: limit as number,
+    ...(raw.before === undefined ? {} : { before: raw.before as number }),
+    ...(raw.entry === undefined ? {} : { entry: raw.entry as string, offset: (raw.offset as number | undefined) ?? 0 }),
+  };
+}
+
+/** The query as a request payload: only the fields set, so an older core reads the same page. */
+export function queryPayload(query: TranscriptQuery): { limit: number; before?: number; entry?: string; offset?: number } {
+  return { limit: query.limit, ...(query.before === undefined ? {} : { before: query.before }), ...(query.entry === undefined ? {} : { entry: query.entry, offset: query.offset ?? 0 }) };
+}
+
+type Row = { id: string; role: Message['role']; parts: string; created_at: number };
+type Held = (messageId: string) => Message | undefined;
+
+/** A message's spoken text and tool names, as a reader may see them. */
+function said(row: Row, held?: Held, sanitize?: (value: string) => string): { text: string; tools: string[] } {
+  const parts = held?.(row.id)?.parts ?? JSON.parse(row.parts) as MessagePart[];
+  const raw = spoken(parts);
+  return { text: sanitize ? sanitize(raw) : raw, tools: parts.flatMap(part => part.type === 'tool' ? [sanitize ? sanitize(part.name) : part.name] : []) };
+}
+
+/**
+ * A page of entries or one entry's text, as `query` asks. Only the rows read
+ * are loaded: a long thread's tool output is never loaded whole. `held` gives
+ * the current parts of a message still streaming, whose row can be up to 30
+ * seconds behind.
+ */
+export function readTranscript(db: Database, threadId: string, query: TranscriptQuery, held?: Held, sanitize?: (value: string) => string): { entries: AgentTranscriptEntry[]; more: boolean } {
+  return query.entry === undefined ? transcript(db, threadId, query.limit, query.before, held, sanitize) : transcriptEntry(db, threadId, query.entry, query.offset ?? 0, held, sanitize);
+}
+
 /**
  * The newest `limit` entries before `before`, oldest first, and whether older
- * ones remain. Only those rows are read: a long thread's tool output is never
- * loaded whole. `held` gives the current parts of a message still streaming,
- * whose row can be up to 30 seconds behind.
+ * ones remain. Each carries the first `ENTRY_TEXT` characters of its text; a
+ * longer one names its whole `length` and the `next` offset of the rest.
  */
-export function transcript(db: Database, threadId: string, limit: number, before: number | undefined, held?: (messageId: string) => Message | undefined, sanitize?: (value: string) => string): { entries: AgentTranscriptEntry[]; more: boolean } {
+export function transcript(db: Database, threadId: string, limit: number, before: number | undefined, held?: Held, sanitize?: (value: string) => string): { entries: AgentTranscriptEntry[]; more: boolean } {
   const entries: AgentTranscriptEntry[] = [];
   const cursor = before ?? Number.MAX_SAFE_INTEGER;
   let skip = 0;
   // A message with neither text nor a tool (reasoning alone) is skipped, so a page may take another read.
   for (;;) {
-    const rows = db.query('SELECT id, role, parts, created_at FROM messages WHERE thread_id = ? AND created_at <= ? ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?').all(threadId, cursor, limit, skip) as { id: string; role: Message['role']; parts: string; created_at: number }[];
+    const rows = db.query('SELECT id, role, parts, created_at FROM messages WHERE thread_id = ? AND created_at <= ? ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?').all(threadId, cursor, limit, skip) as Row[];
     for (const row of rows) {
       if (entries.length === limit) break;
       skip += 1;
       if (row.created_at >= (before ?? Number.MAX_SAFE_INTEGER)) continue;
-      const parts = held?.(row.id)?.parts ?? JSON.parse(row.parts) as MessagePart[];
-      const raw = spoken(parts);
-      const text = sanitize ? sanitize(raw) : raw;
-      const tools = parts.flatMap(part => part.type === 'tool' ? [sanitize ? sanitize(part.name) : part.name] : []);
+      const { text, tools } = said(row, held, sanitize);
       if (text.length === 0 && tools.length === 0) continue;
-      entries.push({ id: row.id, role: row.role, at: row.created_at, text: text.length > ENTRY_TEXT ? `${text.slice(0, ENTRY_TEXT)} ...` : text, tools });
+      const page = stretch(text, 0, TRANSCRIPT_ENTRY_TEXT);
+      entries.push({ id: row.id, role: row.role, at: row.created_at, text: page.text, tools, ...(page.next === undefined ? {} : { length: text.length, next: page.next }) });
     }
     if (entries.length === limit || rows.length < limit) break;
   }
@@ -113,18 +155,43 @@ export function transcript(db: Database, threadId: string, limit: number, before
   return { entries: entries.reverse(), more };
 }
 
-/** A transcript from another core, checked field by field before it reaches an agent. */
-export function checkTranscript(value: unknown): { entries: AgentTranscriptEntry[]; more: boolean } {
+/** Up to `ENTRY_PAGE` characters of one entry's text from `offset`, its whole `length`, and `next` while some remain. */
+function transcriptEntry(db: Database, threadId: string, id: string, offset: number, held?: Held, sanitize?: (value: string) => string): { entries: AgentTranscriptEntry[]; more: boolean } {
+  const row = db.query('SELECT id, role, parts, created_at FROM messages WHERE id = ? AND thread_id = ?').get(id, threadId) as Row | null;
+  if (!row) throw invalidParams(`entry: ${id} is not an entry of this thread`);
+  const { text } = said(row, held, sanitize);
+  if (offset > text.length) throw invalidParams(`offset: expected 0 to ${text.length}, the length of entry ${id}`);
+  const page = stretch(text, offset, TRANSCRIPT_ENTRY_PAGE);
+  return { entries: [{ id: row.id, role: row.role, at: row.created_at, text: page.text, tools: [], length: text.length, offset, ...(page.next === undefined ? {} : { next: page.next }) }], more: false };
+}
+
+/**
+ * A transcript from another core, checked field by field before it reaches an
+ * agent. With `entry`, the answer must be that one entry from that offset: an
+ * older core ignores the request and sends a page, which is refused rather
+ * than shown as the text asked for.
+ */
+export function checkTranscript(value: unknown, entry?: { entry?: string; offset?: number }): { entries: AgentTranscriptEntry[]; more: boolean } {
   const raw = value as { entries?: unknown; more?: unknown } | null;
   if (!raw || !Array.isArray(raw.entries) || raw.entries.length > 100 || typeof raw.more !== 'boolean') throw invalidParams('transcript: expected at most 100 entries and a more flag');
-  const entries = raw.entries.map((entry: Partial<AgentTranscriptEntry>, index) => {
-    if (!entry || typeof entry.id !== 'string' || !['user', 'assistant', 'system'].includes(entry.role as string) || !Number.isSafeInteger(entry.at)
-      || typeof entry.text !== 'string' || entry.text.length > ENTRY_TEXT + 4 || !Array.isArray(entry.tools) || entry.tools.some(tool => typeof tool !== 'string' || tool.length > 200)) {
-      throw invalidParams(`transcript.entries[${index}]: expected id, role, at, text up to ${ENTRY_TEXT} characters and tool names`);
+  const single = entry?.entry !== undefined;
+  const most = single ? TRANSCRIPT_ENTRY_PAGE : OLDER_ENTRY_TEXT;
+  const count = (number: unknown) => number === undefined || (Number.isSafeInteger(number) && (number as number) >= 0);
+  const entries = raw.entries.map((item: Partial<AgentTranscriptEntry>, index) => {
+    if (!item || typeof item.id !== 'string' || !['user', 'assistant', 'system'].includes(item.role as string) || !Number.isSafeInteger(item.at)
+      || typeof item.text !== 'string' || item.text.length > most || !Array.isArray(item.tools) || item.tools.some(tool => typeof tool !== 'string' || tool.length > 200)
+      || !count(item.length) || !count(item.offset) || !count(item.next) || (item.next !== undefined && (item.length === undefined || item.next > item.length || item.next <= (item.offset ?? 0)))) {
+      throw invalidParams(`transcript.entries[${index}]: expected id, role, at, text up to ${most} characters, tool names and offsets within its length`);
     }
-    return { id: entry.id.slice(0, 100), role: entry.role!, at: entry.at!, text: entry.text, tools: entry.tools.slice(0, 50) };
+    return {
+      id: item.id.slice(0, 100), role: item.role!, at: item.at!, text: item.text, tools: item.tools.slice(0, 50),
+      ...(item.length === undefined ? {} : { length: item.length }), ...(item.offset === undefined ? {} : { offset: item.offset }), ...(item.next === undefined ? {} : { next: item.next }),
+    };
   });
-  return { entries, more: raw.more };
+  if (single && (entries.length !== 1 || entries[0]!.id !== entry.entry || entries[0]!.offset !== (entry.offset ?? 0))) {
+    throw invalidParams(`transcript: expected entry ${entry.entry} from offset ${entry.offset ?? 0}; that machine may run an older Boite that reads pages only`);
+  }
+  return { entries, more: single ? false : raw.more };
 }
 
 /** A search result from another core, checked before it reaches an agent. */

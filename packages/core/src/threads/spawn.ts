@@ -452,7 +452,9 @@ export class ThreadSpawns {
     if (thread === null) return;
     // A persistent agent hears it as an event: the threads it started are on its desk, here or on another machine.
     if (saved.bot === true || (saved.coreId === undefined && this.#core.journal.getThread(saved.origin.threadId)?.agentSessionId)) return;
-    const body = `${thread.title}: ${turn.status}\n${this.#core.delegation.result(turn) ?? 'No text result was returned.'}`;
+    const head = `${thread.title}: ${turn.status}`;
+    // The thread that started it reads the rest of a cut answer with `boite threads read`.
+    const body = `${head}\n${this.#core.delegation.result(turn, 'thread', Math.max(1000, 4000 - head.length - 1)) ?? 'No text result was returned.'}`;
     try {
       await this.#core.coordination.send({
         threadId: thread.id,

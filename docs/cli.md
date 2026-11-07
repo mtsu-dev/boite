@@ -478,7 +478,7 @@ boite todo list|add <text>|claim <id>
 boite goal track
 boite threads inbox
 boite threads find <words>
-boite threads read <thread> [--last <n>] [--before <ms>]
+boite threads read <thread> [--last <n>] [--before <ms>] [--entry <id> [--offset <n>]]
 boite threads send <thread> <text> [--wait] [--timeout <s>]
 boite threads reply <message-id> <text> [--wait] [--timeout <s>]
 boite threads log <thread>
@@ -606,7 +606,8 @@ The agent there reads a note before the brief: which thread's agent started
 it, that the user did not type it, and that it grants no approval the user
 did not give. When that first turn ends, its final answer, or its failure,
 goes back to the starter as an [agent coordination](coordination.md) message
-from the new thread, capped at 4,000 characters, and wakes an idle starter. Later turns
+from the new thread, capped at 4,000 characters with the `threads read --entry`
+command that reads the rest of a longer one, and wakes an idle starter. Later turns
 report nothing by themselves; the two agents
 use `threads send` and `threads reply` like any pair of conversations. Both
 timelines show a line linking the other thread: "Started by the agent of ..."

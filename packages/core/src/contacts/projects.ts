@@ -5,7 +5,7 @@ import type { AgentMatch, AgentTranscript, RpcParams, SharedComputePolicy, Share
 import type { Core } from '../core.ts';
 import type { Connection } from '../router.ts';
 import { text } from '../coordination-letter.ts';
-import { checkMatchExtras, checkRemoteContact, checkTranscript, searchContacts, searchWords, transcript } from '../coordination-lookup.ts';
+import { checkMatchExtras, checkRemoteContact, checkTranscript, queryPayload, readTranscript, searchContacts, searchWords, transcriptQuery } from '../coordination-lookup.ts';
 import { PeerRefusal } from '../coordination-wire.ts';
 import { invalidParams, refused, RpcFailure } from '../errors.ts';
 import { SharedProjectJournal, fingerprint } from './project-journal.ts';
@@ -440,24 +440,22 @@ export class SharedProjects {
     const entry = this.localThreads(ctx).find(t => t.ref.threadId === target.threadId);
     if (!entry) throw refused('target.threadId: expected an available thread of this shared project');
     if (!entry.readThreads) throw refused('target.threadId: destination project requires readThreads');
-    const limit = p.limit ?? 30;
-    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw invalidParams('limit: expected 1 to 100');
-    if (p.before !== undefined && !Number.isSafeInteger(p.before)) throw invalidParams('before: expected a timestamp');
-    return { contact: entry.agent, ...transcript(this.core.journal.db, target.threadId, limit, p.before, id => this.core.journal.streamingMessage(id), redactSharedText) };
+    return { contact: entry.agent, ...readTranscript(this.core.journal.db, target.threadId, transcriptQuery(p), id => this.core.journal.streamingMessage(id), redactSharedText) };
   }
   async read(p: RpcParams<'sharedProjects.read'>, connection?: Connection): Promise<AgentTranscript> {
     const ctx = this.scope(p, connection);
     const target = threadRef(p.target);
     if (sameProject(target.project, ctx.local)) return this.#localRead(ctx, p);
     if (!sameProject(target.project, ctx.remote)) throw refused('target.project: expected one of the two associated endpoints');
-    const raw = await this.request(ctx, 'read', { target, ...(p.limit === undefined ? {} : { limit: p.limit }), ...(p.before === undefined ? {} : { before: p.before }) });
+    const query = transcriptQuery(p);
+    const raw = await this.request(ctx, 'read', { target, ...queryPayload(query) });
     // A read buffered by the network cannot outlive a destination readThreads change.
     await this.request(ctx, 'view', {});
     this.scope(p, connection);
     const peer = this.core.contacts.peers().find(p => p.coreId === ctx.peerId)!;
     const contact = checkRemoteContact(raw?.contact, peer);
     if (contact.threadId !== target.address.threadId) throw refused('transcript.contact: expected the requested thread');
-    return { contact: { ...contact, sharedThread: target }, ...checkTranscript(raw) };
+    return { contact: { ...contact, sharedThread: target }, ...checkTranscript(raw, query) };
   }
   notify(id: string, kinds: ('threads' | 'board' | 'compute' | 'access')[] = ['threads', 'board', 'compute', 'access']): void {
     if (kinds.includes('access')) for (const listener of this.#policyListeners) listener(id);
