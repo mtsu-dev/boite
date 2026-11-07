@@ -68,14 +68,18 @@ Unicode code points; returned pages also stay within 16000 UTF-16 units.
 and `limit` (1 to 100, default 20). Their result has `items` and `page`, including
 `nextOffset`. `boite_contact_read` accepts a limit and `before`; when its result
 has `more: true`, use the oldest returned entry's `at` to read older messages.
-Results include both text and `structuredContent`. The complete result is
+Results include both text and `structuredContent`. Tools declare no
+`outputSchema`: every result has the same envelope (`result`, `truncated` and,
+when truncated, `bytes`, `maxBytes`, `preview`, `next`), and declaring it on
+each tool made up a third of the tool list
+([performance](performance.md#the-boite-mcp-tool-list)). The complete result is
 bounded to 256 KiB; larger values return `truncated: true`, measured bytes and
 an explicit preview instead of pretending the output is complete. Read smaller
 pages to recover transcript output. Do not repeat a mutation to recover a
 truncated response. The stdio input frame is limited to 64 KiB.
 
 Implementation: `packages/core/src/mcp/`, pinned
-`@modelcontextprotocol/server` 2.3.1 and Zod 4.6.7 in `packages/core/package.json`.
+`@modelcontextprotocol/server` 2.4.0 and Zod 4.6.7 in `packages/core/package.json`.
 The source CLI dispatch is included in the normal core build and sidecar, so
 no extra executable or staging path is required. See the official SDK
 [stdio guide](https://github.com/modelcontextprotocol/typescript-sdk/blob/main/docs/serving/stdio.md)

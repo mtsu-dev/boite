@@ -62,6 +62,25 @@ CLI 2.1.302 and the real servers against a test core:
 The servers are also connected when the session's `init` arrives, so their
 tools are there on the first turn.
 
+### The `boite mcp` tool list
+
+A client sends the `tools/list` result to the model with every session, so its
+size is paid before the first call. `bun bench/mcp-catalog.ts` prints it in
+bytes, with tokens approximated as bytes / 4. On 2026-11-07, for 24 tools:
+
+| Part | Before | After |
+| --- | --- | --- |
+| Whole result | 22,271 B (~5,568 tokens) | 12,927 B (~3,232 tokens) |
+| Descriptions | 4,022 B | 3,798 B |
+| Input schemas | 7,395 B | 6,027 B |
+| Output schemas | 7,056 B | 0 B |
+| Annotations | 1,608 B | 1,296 B |
+
+Each tool had declared the same result envelope as its output schema, and each
+schema carried a `$schema` line naming JSON Schema 2020-12, the MCP default.
+Both are gone; results still carry `structuredContent`. `test/mcp.test.ts`
+keeps the list under 14,000 bytes.
+
 ## Long threads in the journal
 
 Measured on 2026-10-05 with `bench/rpc-actions.ts --journal` on a copy of a
