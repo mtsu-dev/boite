@@ -232,7 +232,7 @@ and one message all its calls' output up to 3,000, newest call first. A call
 past that keeps its name and status. A cut output names the command that reads
 it whole, `boite threads read <thread> --entry <message> --tool <call>`, which
 pages 16,000 characters at a time and reads only the thread's own tool calls.
-On a 100-message bench thread with one 64 KiB tool result per answer, one
+On a 100-turn (200-message) bench thread with one 64 KiB tool result per answer, one
 answer goes from 11,965 to 1,168 characters and the history keeps 123 messages
 instead of 11 (`bench/continuation.ts`, 2026-11-07).
 

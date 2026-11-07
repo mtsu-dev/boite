@@ -175,7 +175,7 @@ ${PLUGIN_HELP}
                                  last prompt (the Automatic goals experiment)
   threads find <words>           locate threads by words of their chat, title,
                                  project, branch or model
-  threads read <thread>          its conversation (--last <n>, --before <ms>; --entry <id> --offset <n>: the rest of a cut entry; --entry <id> --tool <id>: your own thread's whole tool output)
+  threads read <thread>          its conversation (--last <n>, --before <ms>; --entry <id> --offset <n>: the rest of a cut entry; --entry <id> --tool <id> [--offset <n>]: your own thread's tool output)
   threads send <thread> <text>   message it; --wait blocks for its answer
   threads reply <message-id> <text>
   threads log <thread>           what you and that thread said to each other

@@ -140,7 +140,7 @@ export class CoordinationLookups {
     };
   }
   /**
-   * One tool call's whole output, read by the thread that ran it: its carried
+   * One tool call's output, paged, read by the thread that ran it: its carried
    * history (`continuation.ts`) keeps a head and tail and points here. It
    * reads nothing beyond that thread's own journal, so it does not wait for
    * coordination to be on; another thread's tool output stays unread.
