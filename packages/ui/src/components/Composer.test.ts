@@ -1,6 +1,6 @@
 import { afterEach, expect, vi } from 'vitest';
 import { test as fixtureTest } from '../test/fake-client';
-import { mount, unmount } from 'svelte';
+import { flushSync, mount, unmount } from 'svelte';
 import { RpcErrorCode } from '@boite/contracts';
 import App from '../App.svelte';
 import { FakeClient } from '../lib/fake-client';
@@ -651,12 +651,15 @@ test('the picker keeps row, account and legacy keyboard navigation separate', as
   expect(press('ArrowDown')).toBe(false);
   expect(document.activeElement).toBe(query('[data-provider=echo]'));
 
+  // The accounts are a small dropdown beside the provider's name: its arrows walk the accounts alone.
+  query<HTMLButtonElement>('[data-testid=picker-account]').click();
+  flushSync();
   const firstSeat = query<HTMLButtonElement>('[data-instance="claude::a-claude-main"]');
   const secondSeat = query<HTMLButtonElement>('[data-instance="claude::a-claude-side"]');
   firstSeat.focus();
-  expect(press('ArrowRight')).toBe(false);
+  expect(press('ArrowDown')).toBe(false);
   expect(document.activeElement).toBe(secondSeat);
-  expect(press('ArrowLeft')).toBe(false);
+  expect(press('ArrowUp')).toBe(false);
   expect(document.activeElement).toBe(firstSeat);
 
   await waitFor(() => document.querySelector('[data-testid=picker-legacy]') !== null);
@@ -849,7 +852,9 @@ test('Enter in the emptied composer allows the docked permission, then the input
   expect(input().placeholder).toBe('Or tell Echo what to do instead');
   // The timeline keeps one line for it; the decision lives in the composer.
   expect(document.querySelectorAll('[data-testid=permission-card]')).toHaveLength(1);
-  expect(query('[data-testid=permission-waiting]').textContent).toContain('Needs you');
+  // A plain tool line with a quiet mark: no second label, no second copy of the ask.
+  expect(query('[data-testid=permission-waiting]').textContent).not.toContain('Needs you');
+  expect(query('[data-testid=permission-waiting] [aria-label="Needs you"]')).not.toBeNull();
   const rpc = vi.spyOn(store.client!, 'call');
   await type('Now please');
   press('Enter');
@@ -1306,7 +1311,7 @@ test('a waiting question takes the composer as its free answer, with the card pi
   expect(query('[data-testid=composer-send]').getAttribute('aria-label')).toBe('Send the answer');
   // The question is written once, in the dock: the timeline keeps a line that points down to it.
   expect(document.querySelectorAll('[data-testid=thread-activity] [data-testid=question-text]')).toHaveLength(1);
-  expect(query('[data-testid=question-waiting]').textContent).toContain('Answer below');
+  expect(query<HTMLElement>('[data-testid=question-waiting]').title).toBe('Answer below');
   expect(document.querySelector('[data-testid=question-reply-hint]')).toBeNull();
 
   // Ignore gives the composer back to ordinary messages; the card offers it again.

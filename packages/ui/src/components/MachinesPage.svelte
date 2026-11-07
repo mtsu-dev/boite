@@ -390,7 +390,7 @@
     color: var(--color-success);
   }
   .version {
-    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
     color: var(--color-muted-foreground);
     overflow: hidden;
     text-overflow: ellipsis;

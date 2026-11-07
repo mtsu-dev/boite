@@ -23,7 +23,8 @@ export const strings = {
       botWaiting: '{name} needs you',
       botFailed: '{name} failed',
       botWorking: '{name} is at work',
-      botPaused: '{name} is paused'
+      botPaused: '{name} is paused',
+      utilities: 'Machines and limits'
     }
   }
 } as const;

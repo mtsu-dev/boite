@@ -8,8 +8,9 @@
    * Work the agent started, as one row of the chat where it started, drawn
    * like a tool group's head (ToolGroup.svelte) so the timeline reads as one
    * list: a mark, a heading, its progress, how long it has run, then the
-   * chevron to the panel that follows it. It wraps on a narrow column rather
-   * than cutting its words. The button's own attributes pass through.
+   * chevron to the panel that follows it. A live row wraps on a narrow column
+   * rather than cutting its words; a finished one stays one quiet line, its
+   * heading whole in the title. The button's own attributes pass through.
    */
   let { live, heading, timing, mark, progress, extra, progressTestId, ...button }: Omit<HTMLButtonAttributes, 'children'> & {
     live: boolean;
@@ -25,7 +26,7 @@
   } = $props();
 </script>
 
-<button type="button" class="ghost activity" class:live {...button}>
+<button type="button" class="ghost activity" class:live title={live ? undefined : heading} {...button}>
   <span class="glyph" aria-hidden="true">{@render mark()}</span>
   <span class="line">
     <span class="heading">{heading}</span>
@@ -59,6 +60,9 @@
   .live .glyph { color: var(--color-muted-foreground); }
   .line { display: flex; flex: 0 1 auto; flex-wrap: wrap; align-items: center; gap: 2px 6px; min-width: 0; }
   .heading { overflow-wrap: anywhere; }
+  .activity:not(.live) .line { flex-wrap: nowrap; }
+  .activity:not(.live) .heading { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .activity:not(.live) .progress { flex: none; flex-wrap: nowrap; white-space: nowrap; }
   .activity:hover .heading { color: var(--color-foreground); }
   .progress { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; font-size: var(--text-xs); color: var(--color-subtle); }
   .progress::before { content: '·'; }

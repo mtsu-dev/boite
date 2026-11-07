@@ -1,19 +1,20 @@
 <script lang="ts">
-  import AgentAvatar from './agents/AgentAvatar.svelte';
   import { openResident, residentOfThread } from '../lib/resident';
   import { agentDirectory } from '../lib/agent-directory.svelte';
-  import { entrust } from '../lib/thread-entrust';
   import { tick } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
-  import { Bell, Bot, ChevronDown, Ellipsis, FolderInput, GitBranch, GitPullRequest, Globe, MessagesSquare, Network, PanelRight, Search, SquareKanban, SquareTerminal, UsersRound, VenetianMask } from '@lucide/svelte';
+  import { Bot, ChevronDown, Ellipsis, FolderInput, GitBranch, GitPullRequest, Globe, MessagesSquare, Network, PanelRight, Search, SquareKanban, SquareTerminal, UsersRound, VenetianMask } from '@lucide/svelte';
   import { focusOnMount } from '../lib/actions';
+  import { needsAnAI } from '../lib/first-run';
   import { contextMenu } from '../lib/context-menu.svelte';
   import { pendingLine } from '../lib/thread-move.svelte';
   import { pickThreadAction, threadMenuItems } from '../lib/thread-menu';
   import { separator, type MenuItem } from '../lib/menu';
   import { fill, strings } from '../lib/strings';
   import { work } from '../lib/work-prefs.svelte';
-  import { controlMenu } from '../lib/controls';
+  import type { SurfaceKind } from '../lib/right-panel.svelte';
+  import { available, kindName, offeredCards } from '../lib/surface-labels';
+  import { surfaceGlyph } from '../lib/surface-glyphs';
   import type { Store } from '../lib/store.svelte';
   import { projectName } from '../lib/format';
   import { workspace } from '../lib/workspace.svelte';
@@ -22,8 +23,8 @@
   import { watchStatus } from '../lib/pull-request-watch';
   import ContextModeBadge from './ContextModeBadge.svelte';
   import CoordinationDialog from './CoordinationDialog.svelte';
-  /** `bell`: on a phone the header's contact bell gives way to an entry of this menu, which the list's header passes in. */
-  let { store, bell = null }: { store: Store; bell?: { label: string; open: () => void } | null } = $props();
+  let { store }: { store: Store } = $props();
+  const inShell = window.__TAURI_INTERNALS__ !== undefined;
   let thread = $derived(store.openThread);
   const mobile = new MediaQuery('(max-width: 720px)');
   /** Under a phone's title: where the conversation lives, its machine once there are two. */
@@ -84,6 +85,32 @@
   }
 
   let agentsOn = $derived(store.panelOpen && store.panel.active?.kind === 'agents');
+  /** The agent this thread was entrusted to, if any. */
+  let carrier = $derived(thread ? agentDirectory(store).entrustmentOf(thread.id) : null);
+  /** A subagent's header starts with the conversation that started it: "parent / subagent". */
+  let parentTitle = $derived(thread?.parentThreadId ? store.threads.find(entry => entry.id === thread!.parentThreadId)?.title ?? strings.delegation.parent : null);
+  /** The agent the owner entrusted this thread's project to, when the thread itself is not entrusted. */
+  let resident = $derived(thread ? residentOfThread(store, thread) : null);
+
+  /** A labelled rule: the menu draws its words as the start of a section. */
+  const section = (id: string, label: string): MenuItem => ({ ...separator(id), label });
+
+  /**
+   * What the thread is, first in its menu: the bot that holds or looks after
+   * it, its pull request watches and its branch. Each keeps the id of the
+   * header chip it replaces.
+   */
+  let identity = $derived.by((): MenuItem[] => {
+    if (!thread) return [];
+    const watches = thread.pullRequestWatches ?? [];
+    return [
+      ...(carrier ? [{ id: 'thread-entrusted-chip', label: fill(strings.agents.openAgent, { name: carrier.agent.name }), title: fill(strings.agents.entrustedTo, { name: carrier.agent.name }), glyph: Bot }] : []),
+      ...(resident ? [{ id: 'thread-resident-chip', label: fill(strings.agents.openAgent, { name: resident.name }), title: fill(strings.resident.lookedAfterBy, { name: resident.name }), glyph: Bot }] : []),
+      ...(mobile.current ? watches.map((watch): MenuItem => ({ id: `watch:${watch.url}`, label: fill(strings.tasks.stopWatchOf, { number: String(watch.number) }), hint: watchStatus(watch), title: watch.url, glyph: GitPullRequest })) : []),
+      ...(thread.branch && work.shows('header.branch') && !mobile.current ? [{ id: 'thread-branch', label: thread.branch, title: `${thread.branch}: ${strings.thread.branchHint}: ${thread.cwd}`, glyph: GitBranch }] : [])
+    ];
+  });
+
   let tools = $derived.by((): MenuItem[] => {
     if (!thread) return [];
     return [
@@ -93,37 +120,61 @@
       ...(!thread.agentSessionId ? [{ id: 'coordination', label: strings.coordination.heading, glyph: Network }] : [])
     ];
   });
-  let desktopItems = $derived(thread ? threadMenuItems(store, thread, { tools }) : []);
+  let desktopItems = $derived(thread ? [...identity, ...(identity.length ? [separator('sep-identity')] : []), ...threadMenuItems(store, thread, { tools })] : []);
 
   /** Children delegated from this thread, at work or done, its CLI's own agents included: the phone offers Subagents only then. */
   let delegated = $derived(!!thread && (store.subagents(thread.id) !== null || store.threads.some(row => row.parentThreadId === thread!.id)
     || (store.delegation?.agents.length ?? 0) > 0 || (store.delegation?.nativeAgents?.length ?? 0) > 0));
+  const shows = (kind: SurfaceKind) => store.panelOpen && store.panel.active?.kind === kind;
+
   /**
-   * A phone's one header menu: what waits from contacts, the panel, the
-   * browser and the project board, ticked when open, the bot that holds or
-   * looks after the thread and its pull request watches, then the thread's own
-   * actions. Each entry keeps the id of the header button it replaces. The
-   * terminal, the coordination and what only the desktop does with a thread stay there.
+   * The panels this thread opens beside it, in the header's panel menu: the
+   * bot's desk on its own thread, the cards this device offers, then the
+   * drawers under the chat (the owner's terminal, the project board).
+   */
+  let panelItems = $derived.by((): MenuItem[] => {
+    if (!thread) return [];
+    const kinds: SurfaceKind[] = [...(thread.agentSessionId ? ['desk' as const] : []), ...offeredCards().map(card => card.kind)];
+    const terminalKey = store.keyLabel('terminal');
+    const drawers: MenuItem[] = [
+      ...(store.owner && !thread.teamId && !thread.councilId && work.shows('header.terminal') ? [{
+        id: 'terminal-toggle', label: strings.terminal.title, glyph: SquareTerminal, active: store.terminalShown(thread.id),
+        title: terminalKey ? `${strings.thread.terminalHint} (${terminalKey})` : strings.thread.terminalHint
+      }] : []),
+      ...(store.boardAvailable() ? [{ id: 'board-toggle', label: strings.board.open, glyph: SquareKanban, active: store.boardShown }] : [])
+    ];
+    return [
+      ...kinds.filter(kind => available(kind, inShell, store.owner)).map((kind): MenuItem => ({ id: `kind:${kind}`, label: kindName(kind), glyph: surfaceGlyph(kind), active: shows(kind) })),
+      ...(drawers.length ? [separator('sep-drawers'), ...drawers] : [])
+    ];
+  });
+
+  function panelPick(id: string) {
+    if (id === 'terminal-toggle') store.toggleTerminal();
+    else if (id === 'board-toggle') store.toggleBoard();
+    else if (id.startsWith('kind:')) store.panel.open(id.slice('kind:'.length) as SurfaceKind);
+  }
+
+  /**
+   * A phone's one header menu, in two labelled sections: the thread's tools
+   * (its browser, changes, files, subagents, board, find and the panel's
+   * other cards), then the thread itself (its bot, its watches, pin, rename,
+   * entrust, archive, delete). Contact requests live in the Activity tab.
    */
   let phoneItems = $derived.by((): MenuItem[] => {
     if (!thread) return [];
-    const watches = thread.pullRequestWatches ?? [];
-    const bots: MenuItem[] = [
-      ...(carrier ? [{ id: 'thread-entrusted-chip', label: fill(strings.agents.openAgent, { name: carrier.agent.name }), title: fill(strings.agents.entrustedTo, { name: carrier.agent.name }), glyph: Bot }] : []),
-      ...(resident ? [{ id: 'thread-resident-chip', label: fill(strings.agents.openAgent, { name: resident.name }), title: fill(strings.resident.lookedAfterBy, { name: resident.name }), glyph: Bot }] : []),
-      ...watches.map((watch): MenuItem => ({ id: `watch:${watch.url}`, label: fill(strings.tasks.stopWatchOf, { number: String(watch.number) }), hint: watchStatus(watch), title: watch.url, glyph: GitPullRequest }))
-    ];
     return [
-      ...(bell ? [{ id: 'contact-request-open', label: bell.label, glyph: Bell }, separator('sep-bell')] : []),
-      { id: 'panel', label: strings.thread.panelMenu, glyph: PanelRight, active: store.panelOpen },
-      { id: 'phone-browser-toggle', label: strings.rightPanel.browser, glyph: Globe, active: store.panelOpen && store.panel.active?.kind === 'agent-browser' },
+      section('sec-tools', strings.thread.toolsSection),
+      { id: 'phone-browser-toggle', label: strings.rightPanel.browser, glyph: Globe, active: shows('agent-browser') },
+      { id: 'changes', label: strings.rightPanel.changes, glyph: surfaceGlyph('changes'), active: shows('changes') },
+      { id: 'files', label: strings.rightPanel.files, glyph: surfaceGlyph('files'), active: shows('files') },
+      ...(delegated || agentsOn ? [{ id: 'agents', label: strings.delegation.heading, glyph: UsersRound, active: agentsOn }] : []),
       ...(store.boardAvailable() ? [{ id: 'board', label: strings.board.open, glyph: SquareKanban, active: store.boardShown }] : []),
-      separator('sep-panel'),
-      ...(bots.length ? [...bots, separator('sep-bots')] : []),
-      ...threadMenuItems(store, thread, { phone: true, tools: [
-        { id: 'find', label: strings.palette.find, glyph: Search },
-        ...(delegated || agentsOn ? [{ id: 'agents', label: strings.delegation.heading, glyph: UsersRound, active: agentsOn }] : [])
-      ] })
+      { id: 'find', label: strings.palette.find, glyph: Search },
+      { id: 'panel', label: strings.thread.allTools, glyph: PanelRight, active: store.panelOpen },
+      section('sec-thread', strings.thread.threadSection),
+      ...identity,
+      ...threadMenuItems(store, thread, { phone: true })
     ];
   });
 
@@ -135,9 +186,10 @@
     else if (action === 'board') store.toggleBoard();
     else if (action === 'agents') store.panel.toggleKind('agents');
     else if (action === 'phone-browser-toggle') store.panel.open('agent-browser');
-    else if (action === 'contact-request-open') bell?.open();
+    else if (action === 'changes' || action === 'files') store.panel.open(action);
     else if (action === 'thread-entrusted-chip' && carrier) store.showAgents(carrier.agent.id);
     else if (action === 'thread-resident-chip' && resident) openResident(store, resident.id);
+    else if (action === 'thread-branch' && open.branch) void store.copy(open.branch);
     else if (action.startsWith('watch:')) void store.unwatchPullRequest(open.id, action.slice('watch:'.length));
     else if (action === 'find') {
       store.findOpen = true;
@@ -151,22 +203,6 @@
     if (!store.openThread) return;
     contextMenu.open(event, desktopItems, titleAction);
   }
-
-  function carrierMenu(anchor: HTMLElement) {
-    const held = carrier, open = store.openThread;
-    if (!held || !open) return;
-    const rect = anchor.getBoundingClientRect();
-    contextMenu.show({ x: rect.left, y: rect.bottom }, [
-      { id: 'open', label: fill(strings.agents.openAgent, { name: held.agent.name }) },
-      ...(store.owner ? [{ id: 'back', label: strings.agents.takeBack }] : [])
-    ], id => { if (id === 'open') store.showAgents(held.agent.id); else void entrust(store, open.id, null); }, anchor);
-  }
-  /** The agent this thread was entrusted to, if any. */
-  let carrier = $derived(thread ? agentDirectory(store).entrustmentOf(thread.id) : null);
-  /** A subagent's header starts with the conversation that started it: "parent / subagent". */
-  let parentTitle = $derived(thread?.parentThreadId ? store.threads.find(entry => entry.id === thread!.parentThreadId)?.title ?? strings.delegation.parent : null);
-  /** The agent the owner entrusted this thread's project to, when the thread itself is not entrusted. */
-  let resident = $derived(thread ? residentOfThread(store, thread) : null);
 </script>
 
 <div class="thread-header" data-testid="thread-header" data-status={thread?.status}>
@@ -231,7 +267,7 @@
       <span class="spacer"></span>
 
       <!-- Incognito is chosen before the first send, in the drafts only. -->
-      {#if !thread && store.draftInDrafts}
+      {#if !thread && store.draftInDrafts && !needsAnAI(store)}
         {@const on = store.draft?.incognito === true}
         <button
           type="button"
@@ -257,26 +293,9 @@
         <span class="context-chip"><ContextModeBadge mode={thread.contextMode} testid="thread-context-mode" /></span>
       {/if}
 
-      {#if carrier}
-        <!-- The agent this thread was entrusted to: its menu opens the agent or takes the thread back. -->
-        <button type="button" class="chip entrusted" title={fill(strings.agents.entrustedTo, { name: carrier.agent.name })} data-testid="thread-entrusted-chip"
-          onclick={(event) => carrierMenu(event.currentTarget)}>
-          <AgentAvatar kind="profile" id={carrier.agent.id} name={carrier.agent.name} avatar={carrier.agent.avatar} size={16} />
-          <span class="chip-name ui-label">{carrier.agent.name}</span>
-        </button>
-      {/if}
-      {#if resident}
-        <!-- The agent that looks after this thread's project: a click opens its conversation. -->
-        <button type="button" class="chip resident" title={fill(strings.resident.lookedAfterBy, { name: resident.name })}
-          aria-label={fill(strings.resident.lookedAfterBy, { name: resident.name })} data-testid="thread-resident-chip" data-agent-id={resident.id}
-          onclick={() => openResident(store, resident!.id)}>
-          <AgentAvatar kind="profile" id={resident.id} name={resident.name} avatar={resident.avatar} size={16} />
-          <span class="chip-name ui-label">{resident.name}</span>
-        </button>
-      {/if}
       {#if thread && (thread.pullRequestWatches?.length ?? 0) > 0}
         {@const watches = thread.pullRequestWatches ?? []}
-        <!-- What a watch saw and its Stop, on a phone too: a paired phone has no Tasks panel. -->
+        <!-- What a watch saw and its Stop; a phone finds them in its menu. -->
         <span class="watch-chip" data-testid="thread-watches">
           <Menu
             items={watches.map((watch): MenuItem => ({ id: watch.url, label: fill(strings.tasks.stopWatchOf, { number: String(watch.number) }), hint: watchStatus(watch), title: watch.url, glyph: GitPullRequest }))}
@@ -289,68 +308,29 @@
           </Menu>
         </span>
       {/if}
-      {#if thread?.branch && work.shows('header.branch')}
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <span class="chip path branch mono" title="{thread.branch}: {strings.thread.branchHint}: {thread.cwd}" data-testid="thread-branch" oncontextmenu={(event) => controlMenu(event, store, 'header.branch')}>
-          <GitBranch size={13} strokeWidth={1.75} />
-          <span class="branch-name ui-label">{thread.branch}</span>
-        </span>
-      {/if}
-      {#if thread && (carrier || resident || (thread.pullRequestWatches?.length ?? 0) > 0 || (thread.branch && work.shows('header.branch')))}
-        <!-- A hairline between what the thread is (its bot, its branch) and the tools it opens. -->
-        <span class="vsep" aria-hidden="true"></span>
-      {/if}
-      <!-- The shell is the owner's: a phone reaches it by this button, not by Ctrl+J. -->
-      {#if thread && store.owner && !thread.teamId && !thread.councilId}
-        {@const terminalKey = store.keyLabel('terminal')}
-        {#if work.shows('header.terminal')}
-        <button
-          type="button"
-          class="ghost trace in-title-menu"
-          class:on={store.terminalShown(thread.id)}
-          title={terminalKey ? `${strings.thread.terminalHint} (${terminalKey})` : strings.thread.terminalHint}
-          aria-label={strings.thread.terminalHint}
-          aria-pressed={store.terminalShown(thread.id)}
-          data-testid="terminal-toggle"
-          onclick={() => store.toggleTerminal()}
-          oncontextmenu={(event) => controlMenu(event, store, 'header.terminal')}
-        >
-          <SquareTerminal size={16} strokeWidth={1.75} />
-        </button>
-        {/if}
-      {/if}
-      <!-- The project board, in the drawer under the chat: a phone's way to it, and the owner's beside Ctrl+J. -->
-      {#if thread && store.boardAvailable()}
-        <button
-          type="button"
-          class="ghost trace in-title-menu"
-          class:on={store.boardShown}
-          title={store.keyLabel('terminal') ? `${strings.board.open} (${store.keyLabel('terminal')})` : strings.board.open}
-          aria-label={strings.board.open}
-          aria-pressed={store.boardShown}
-          data-testid="board-toggle"
-          onclick={() => store.toggleBoard()}
-        >
-          <SquareKanban size={16} strokeWidth={1.75} />
-        </button>
-      {/if}
-      <!-- A paired device opens the panel too: the Agents and Workflows surfaces are
-           its to follow, and the panel's menu offers only what available() allows.
+      <!-- One panel control: the button shows or hides the side panel, its
+           chevron lists the panels and the drawers under the chat. A paired
+           device opens it too; the list offers only what available() allows.
            A team's chat has no title menu: a phone keeps this button, its one way to the panel. -->
       {#if thread}
-        <button
-          type="button"
-          class="ghost icon"
-          class:in-title-menu={!thread.teamId && !thread.councilId}
-          class:on={store.panelOpen}
-          title={`${strings.thread.panelHint}${store.keyHint('panel')}`}
-          aria-label={strings.thread.panelHint}
-          aria-pressed={store.panelOpen}
-          data-testid="panel-toggle"
-          onclick={() => store.togglePanel()}
-        >
-          <PanelRight size={16} strokeWidth={1.75} />
-        </button>
+        <span class="panel-switch" class:in-title-menu={!thread.teamId && !thread.councilId} class:on={store.panelOpen}>
+          <button
+            type="button"
+            class="ghost icon"
+            title={`${strings.thread.panelHint}${store.keyHint('panel')}`}
+            aria-label={strings.thread.panelHint}
+            aria-pressed={store.panelOpen}
+            data-testid="panel-toggle"
+            onclick={() => store.togglePanel()}
+          >
+            <PanelRight size={16} strokeWidth={1.75} />
+          </button>
+          {#if panelItems.length}
+            <Menu items={panelItems} onpick={panelPick} label={strings.thread.panelMenu} placement="bottom" align="end" variant="ghost" testid="panel-menu">
+              <ChevronDown size={12} strokeWidth={1.75} />
+            </Menu>
+          {/if}
+        </span>
       {/if}
 </div>
 
@@ -364,9 +344,9 @@
     height: var(--control);
     padding: 0 6px;
     margin-left: -6px;
-    font-weight: 600;
+    font-weight: 550;
     color: var(--color-foreground);
-    max-width: 50%;
+    max-width: 60%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -405,22 +385,13 @@
   }
 
 
-  .path {
-    flex: 0 1 auto;
-    min-width: 0;
-    max-width: min(240px, 35%);
-    font-size: var(--text-sm);
-  }
-
-  /* The bot that carries or looks after the thread: its picture and its name on a
-     neutral chip; the tooltip says which of the two it is. */
-  .resident, .entrusted { flex: 0 1 auto; min-width: 0; max-width: 200px; gap: 6px; padding-left: 3px; border-color: var(--color-border); background: var(--color-surface-2); color: var(--color-foreground); font-weight: 500; cursor: pointer; }
-  .resident:hover, .entrusted:hover { background: var(--color-surface-3); border-color: var(--color-edge); }
-  .branch { color: var(--color-muted-foreground); background: transparent; border-color: var(--color-border); }
-  .vsep { flex: none; width: 1px; height: 16px; margin: 0 2px; background: var(--color-edge); }
-  .chip-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .branch-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .branch :global(svg) { flex: none; }
+  /* The panel button and its list read as one control: one hover, one fill when the panel is open. */
+  .panel-switch { display: inline-flex; flex: none; align-items: center; border-radius: var(--radius-md); }
+  .panel-switch > button { width: var(--control-sm); height: var(--control-sm); border-radius: var(--radius-md) 0 0 var(--radius-md); }
+  .panel-switch :global(.trigger.ghost) { width: 18px; border-radius: 0 var(--radius-md) var(--radius-md) 0; }
+  .panel-switch:not(:has(.menu)) > button { border-radius: var(--radius-md); }
+  .panel-switch.on { background: var(--color-active); }
+  .panel-switch.on > button { color: var(--color-foreground); }
   .watch-chip { flex: none; display: inline-flex; color: var(--color-muted-foreground); }
   .watch-chip :global(svg) { flex: none; }
 
@@ -470,14 +441,15 @@
     /* The title is what tells one conversation from another: the buttons give
        up their words for it, and keep a finger-sized square. */
     .thread-header { gap: 4px; }
-    .path, .vsep { display: none; }
     .pending { flex: none; min-width: var(--touch-target); justify-content: center; }
     .pending-text { display: none; }
     .trace { padding: 0; min-width: var(--touch-target); justify-content: center; }
     .trace .label, .incognito .label, .context-chip :global(.label) { display: none; }
     .context-chip :global(.chip) { min-width: var(--touch-target); justify-content: center; }
     /* The header's one menu holds these on a phone. */
-    .in-title-menu, .resident, .entrusted, .watch-chip { display: none; }
+    .in-title-menu, .watch-chip { display: none; }
+    .panel-switch :global(.menu) { display: none; }
+    .panel-switch > button { width: var(--touch-target); height: var(--touch-target); }
     .rename { width: 100%; }
     /* The thread's title button gives way to its menu; a draft's label and a team's name have no menu and stay. */
     .title:not(.draft):not(.team) { display: none; }

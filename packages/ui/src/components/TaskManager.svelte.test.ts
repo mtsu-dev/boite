@@ -99,6 +99,9 @@ test('a paired phone sent to the task manager by a link has no process-stop cont
   expect(store.openThread?.id).toBe(threadId);
   expect(store.page).toBe('chat');
   store.showSettings('task-manager');
+  // Back climbs to its group, Advanced, then Home.
+  await click(element('[data-testid="mobile-settings-back"]'));
+  expect(document.querySelector('[data-testid="mobile-settings-advanced"]')).not.toBeNull();
   await click(element('[data-testid="mobile-settings-back"]'));
   expect(document.querySelector('[data-testid="mobile-settings-home"]')).not.toBeNull();
   expect(document.querySelector('[data-testid="task-manager"]')).toBeNull();

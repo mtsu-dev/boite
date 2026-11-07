@@ -258,7 +258,7 @@ test('a device whose clock runs behind its core still counts a compaction from i
 });
 
 test.each([
-  ['done', 'Context compacted', 'Compacted in 4m 41s'],
+  ['done', 'Older messages summarized to make room', 'Compacted in 4m 41s'],
   ['error', 'Compaction failed', 'Elapsed: 4m 41s'],
   ['stopped', 'Compaction stopped', 'Elapsed: 4m 41s'],
 ] as const)('a %s compaction reports its outcome without calling it work', (status, label, elapsed) => {

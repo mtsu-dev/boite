@@ -86,14 +86,14 @@ export function pickerKeydown(picker: PickerKeyState): (event: KeyboardEvent) =>
   }
 
   function handleAccountNavigation(event: KeyboardEvent, active: HTMLElement | null): boolean {
-    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return false;
-    // The account chips are a segmented control: the arrows walk them.
+    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return false;
+    // The accounts are a small dropdown list: the arrows walk it, apart from the rows.
     const root = picker.root();
     const chips = root ? Array.from(root.querySelectorAll<HTMLElement>('.popover [data-seat]:not(:disabled)')) : [];
     const here = active ? chips.indexOf(active) : -1;
     if (here === -1) return false;
     event.preventDefault();
-    const step = event.key === 'ArrowRight' ? 1 : -1;
+    const step = event.key === 'ArrowDown' ? 1 : -1;
     chips[(here + step + chips.length) % chips.length]?.focus();
     return true;
   }

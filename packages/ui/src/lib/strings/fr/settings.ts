@@ -32,7 +32,6 @@ export const fr: Translation = {
     back: 'Retour aux conversations',
     search: 'Rechercher un réglage',
     searchEmpty: 'Aucun réglage ne correspond',
-    homeGroups: ['Application', 'Agents', 'Consommation et limites', 'Système'],
     providersReady: '{count} connectés',
     providersOne: '1 connecté',
     machinesCount: '{count} machines',

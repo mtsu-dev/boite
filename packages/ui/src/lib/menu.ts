@@ -21,6 +21,8 @@ export interface MenuItem {
   /** With `checked`: one choice of several, marked with a check instead of a switch. */
   radio?: boolean;
   hideActiveMark?: boolean;
+  /** A row that took over a button keeps that button's test id. */
+  testid?: string;
   icon?: 'settings';
   danger?: boolean;
   disabled?: boolean;

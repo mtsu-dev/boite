@@ -30,11 +30,11 @@ export const fr: Translation = {
     emptyActivity: 'Tout est à jour',
     computer: 'Ordinateur connecté',
     pairAgain: 'Rajouter',
-    settingsDevice: 'Ce téléphone',
     settingsPhone: 'Notifications',
     settingsPrivacy: 'Confidentialité',
-    settingsMachine: 'Machine',
     settingsBack: 'Retour aux réglages',
+    /** Activity's second line: why the thread is listed. */
+    feed: { asks: 'Demande : {text}', run: 'Veut lancer {command}', helperAsks: '{title} vous demande' },
     navigation: 'Navigation', activity: 'Activité',
     waitingElsewhere: '{count} en attente de vous',
     search: 'Trouver une conversation', noActivity: "Aucun agent n'attend votre réponse.", noThreads: 'Aucune conversation ne correspond.'

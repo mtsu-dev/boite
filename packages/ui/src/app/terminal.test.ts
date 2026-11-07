@@ -17,8 +17,6 @@ test('Ctrl+J opens the shell of the thread under the chat, hides it again, and i
   await waitFor(() => document.querySelector(`[data-testid=terminal][data-terminal-id="terminal:${threadId}"]`) !== null);
   // xterm draws what the fake shell printed: its prompt, in the thread's folder.
   await waitFor(() => document.querySelector('[data-testid=terminal-drawer]')?.textContent?.includes('PS ') === true);
-  expect(query('[data-testid=terminal-toggle]').classList.contains('on')).toBe(true);
-  expect(query<HTMLButtonElement>('[data-testid=terminal-toggle]').title).toContain('Ctrl+J');
   await store.open(threadId);
   await waitFor(() => document.activeElement?.classList.contains('xterm-helper-textarea') === true);
 
@@ -53,8 +51,19 @@ test('Ctrl+J opens the shell of the thread under the chat, hides it again, and i
   await waitFor(() => document.querySelector('[data-testid=terminal-drawer]') === null);
   expect(store.terminalShown(threadId)).toBe(false);
 
-  query<HTMLButtonElement>('[data-testid=terminal-toggle]').click();
+  // The terminal is also a line of the header's panel menu, under its old button's id, lit while shown.
+  const terminalItem = async () => {
+    query<HTMLButtonElement>('[data-testid=panel-menu]').click();
+    await waitFor(() => document.querySelector('[data-testid=panel-menu-menu] [data-value=terminal-toggle]') !== null);
+    return query<HTMLButtonElement>('[data-testid=panel-menu-menu] [data-value=terminal-toggle]');
+  };
+  const hidden = await terminalItem();
+  expect(hidden.classList.contains('active')).toBe(false);
+  expect(hidden.title).toContain('Ctrl+J');
+  hidden.click();
   await waitFor(() => document.querySelector('[data-testid=terminal-drawer]') !== null);
+  expect((await terminalItem()).classList.contains('active')).toBe(true);
+  query<HTMLButtonElement>('[data-testid=panel-menu]').click();
   query<HTMLButtonElement>('[data-testid=terminal-close]').click();
   await waitFor(() => document.querySelector('[data-testid=terminal-drawer]') === null);
   expect(store.terminalShown(threadId)).toBe(false);

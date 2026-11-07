@@ -101,7 +101,6 @@ export const fr: Translation = {
       since: 'Depuis le {date}', noteOne: '1 note', noteMany: '{count} notes',
       stepOne: '1 étape pour l’instant', stepMany: '{count} étapes pour l’instant',
       waitingHint: 'Répondez dans la conversation et il reprend.',
-      nextIn: 'dans {time}',
       pausedHint: 'Aucune routine ni aucun événement ne le réveille. Vos messages passent toujours.',
       workEmpty: 'Rien sur son bureau. Les fils qu’il lance, qu’on lui confie ou qu’il suit arrivent ici.',
       open: 'Ouvrir {title}', drop: 'Retirer {title} de son bureau',

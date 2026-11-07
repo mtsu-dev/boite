@@ -25,7 +25,7 @@ export type ActivityPart = ToolPart | ThinkingStep | PermissionStep;
 /** A compaction of the context, which rides on the activity run it fell in. */
 export type CompactionPart = Extract<MessagePart, { type: 'compaction' }>;
 
-/** The whole sentence of a compaction: "Context compacted, 201K to 13K tokens (by hand)". */
+/** The whole sentence of a compaction: "Older messages summarized to make room, 201K to 13K tokens (by hand)". */
 export function compactionText(part: CompactionPart): string {
   const t = strings.chat;
   const said = part.preTokens === null ? t.compactionUnknown : part.postTokens === null
@@ -34,7 +34,7 @@ export function compactionText(part: CompactionPart): string {
   return [said, ...(part.trigger === 'manual' ? [`(${t.compactionManual})`] : []), ...(part.background ? [`(${t.compactionBackground})`] : [])].join(' ');
 }
 
-/** The few words a compaction adds to its run's line: "compacted 201K → 13K". */
+/** The few words a compaction adds to its run's line: "summarized 201K → 13K". */
 export function compactionMark(part: CompactionPart): string {
   const t = strings.chat;
   return part.preTokens === null || part.postTokens === null ? t.compactedMarkBare : fill(t.compactedMark, { pre: formatTokens(part.preTokens), post: formatTokens(part.postTokens) });

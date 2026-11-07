@@ -1,0 +1,44 @@
+import { expect, test } from 'vitest';
+import type { PermissionRequest, QuestionRequest, ThreadSummary } from '@boite/contracts';
+import { activityFeed } from './activity-feed';
+
+const NOW = Date.UTC(2026, 10, 7, 12);
+
+function thread(id: string, fields: Partial<ThreadSummary>): ThreadSummary {
+  return { id, title: id, status: 'idle', unread: false, parentThreadId: null, projectId: null, updatedAt: NOW - 60_000, ...fields } as ThreadSummary;
+}
+
+test('Activity lists what needs the user, then failures, then news, each with its reason; sub-agents sit under their parent', () => {
+  const questions = [{ id: 'q', threadId: 'asks', text: 'Which retry policy?\nThe second line stays out.', options: [], createdAt: NOW - 5 * 60_000 }] as unknown as QuestionRequest[];
+  const permissions = [{ id: 'p', threadId: 'push', toolName: 'Bash', input: { command: 'git push' }, description: null, createdAt: NOW - 60_000 }] as unknown as PermissionRequest[];
+  const threads = [
+    thread('done', { unread: true, updatedAt: NOW - 1_000 }),
+    thread('failed', { status: 'error', updatedAt: NOW - 2_000 }),
+    thread('asks', { status: 'waiting', openQuestions: 1, updatedAt: NOW - 30_000 }),
+    thread('push', { status: 'waiting', updatedAt: NOW - 3_000 }),
+    thread('busy', { status: 'running' }),
+    thread('quiet', {}),
+    // A parent at work comes in for its sub-agent, which asks.
+    thread('parent', { status: 'running', updatedAt: NOW - 90_000 }),
+    thread('child', { status: 'waiting', parentThreadId: 'parent' as ThreadSummary['parentThreadId'], updatedAt: NOW - 4_000 })
+  ];
+  const store = { pendingQuestions: questions, pendingPermissions: permissions, subagents: () => null };
+  const machine = { id: 'local', store };
+  const feed = activityFeed(threads.map(t => ({ machine, thread: t, project: undefined })));
+
+  // The user's turn first, newest first; a parent pulled in by an asking child ranks with it, the child right under it.
+  expect(feed.map(row => row.thread.id)).toEqual(['push', 'asks', 'parent', 'child', 'failed', 'done']);
+  expect(feed.find(row => row.thread.id === 'child')?.nested).toBe(true);
+  expect(feed.filter(row => row.nested)).toHaveLength(1);
+  // Work in progress and threads at rest are not news.
+  expect(feed.some(row => row.thread.id === 'busy' || row.thread.id === 'quiet')).toBe(false);
+
+  const row = (id: string) => feed.find(row => row.thread.id === id)!;
+  expect(row('asks').reason).toBe('Asks: Which retry policy?');
+  expect(row('push').reason).toBe('Wants to run git push');
+  // Since when: the request's own time, not the thread's last change.
+  expect(row('asks').at).toBe(NOW - 5 * 60_000);
+  expect(row('push').at).toBe(NOW - 60_000);
+  // A failure or news says where it lives, and when it last changed.
+  expect(row('failed')).toMatchObject({ reason: 'Drafts', at: NOW - 2_000 });
+});

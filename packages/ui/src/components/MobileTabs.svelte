@@ -84,7 +84,7 @@
       border-radius: var(--radius-full); background: var(--color-live); color: var(--color-accent-ink);
       box-shadow: 0 0 0 2px var(--color-background); font-size: 10px; font-weight: 700; line-height: 17px; text-align: center;
     }
-    /* Bots at work and none asking: the accent, as the rail's arc draws it. */
-    .badge.working { background: var(--color-accent); }
+    /* Bots at work and none asking: a neutral count, the accent stays on actions. */
+    .badge.working { background: var(--color-surface-3); color: var(--color-foreground); }
   }
 </style>

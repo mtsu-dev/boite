@@ -19,7 +19,7 @@ afterEach(async () => {
   vi.restoreAllMocks(); document.body.innerHTML = ''; localStorage.clear();
 });
 
-test('phone rows show linked PRs without a branch, using their owning machine', async () => {
+test('phone rows mark linked PRs without a branch, using their owning machine, and the mark opens the PR', async () => {
   vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
     media, matches: true, onchange: null, addListener() {}, removeListener() {}
   }));
@@ -32,10 +32,36 @@ test('phone rows show linked PRs without a branch, using their owning machine', 
   workspace.machines = [{ id: 'local', label: 'Local', store }]; workspace.active = store;
   mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'threads' } });
   await settle();
-  const badge = document.querySelector<HTMLAnchorElement>(`[data-thread-id="${thread.id}"] [data-testid=thread-pr]`);
-  expect(badge?.href).toBe(url);
+  const badge = document.querySelector<HTMLElement>(`[data-thread-id="${thread.id}"] [data-testid=thread-pr]`);
   expect(badge?.textContent).toContain('#9951');
-  expect(badge?.closest('button')).toBeNull();
+  // The mark sits on the row's one line; a tap on it opens the pull request, not the conversation.
+  const opened = vi.spyOn(window, 'open').mockReturnValue(null);
+  const before = store.openThread?.id;
+  badge!.click();
+  await settle();
+  expect(opened).toHaveBeenCalledWith(url, '_blank', 'noopener,noreferrer');
+  expect(store.openThread?.id).toBe(before);
+});
+
+test('Activity gives each row its reason and its time, a sub-agent under its parent', async () => {
+  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
+    media, matches: true, onchange: null, addListener() {}, removeListener() {}
+  }));
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  workspace.machines = [{ id: 'local', label: 'Local', store }]; workspace.active = store;
+  mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'activity' } });
+  await settle();
+  const rows = Array.from(document.querySelectorAll<HTMLElement>('[data-testid=mobile-row]'));
+  expect(rows.length).toBeGreaterThan(0);
+  for (const row of rows) expect(row.querySelector('[data-testid=mobile-row-reason] time')?.textContent?.trim()).toBeTruthy();
+  const reasons = rows.map(row => row.querySelector('[data-testid=mobile-row-reason] .text')?.textContent ?? '');
+  expect(reasons.some(reason => /^(Asks: |Wants to run )/.test(reason))).toBe(true);
+  for (const row of rows.filter(row => row.classList.contains('nested'))) {
+    const child = store.threads.find(t => t.id === row.dataset['threadId'])!;
+    const above = rows.slice(0, rows.indexOf(row)).reverse().find(other => !other.classList.contains('nested'))!;
+    expect(above.dataset['threadId']).toBe(child.parentThreadId);
+  }
 });
 
 test('selecting a conversation beyond the first mobile window finishes loading its history', async () => {

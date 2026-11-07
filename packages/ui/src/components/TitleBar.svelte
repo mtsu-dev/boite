@@ -239,8 +239,10 @@
   .ctl:focus-visible {
     background: var(--color-hover);
     color: var(--color-foreground);
-    outline: none;
   }
+
+  /* Inside the frame's edge: the ring would be clipped by the window border. */
+  .ctl:focus-visible { outline-offset: -2px; }
 
   /* A window control is part of the frame: it darkens under the finger rather
      than moving, because the frame itself never moves. */

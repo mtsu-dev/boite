@@ -27,7 +27,9 @@ test('the draft worktree chip puts the first send on its own branch, and the hea
     store.draftChoice = null;
     flushSync();
     expect(store.defaultChoice()).toBeNull();
-    expect(query('[data-testid=draft-sentence]').textContent).toContain('in a worktree');
+    // The chip says it; the heading no longer repeats the chips' facts.
+    expect(query('[data-testid=composer-worktree]').getAttribute('aria-pressed')).toBe('true');
+    expect(query('[data-testid=draft-sentence]').textContent).not.toContain('in a worktree');
   } finally {
     store.providers = providers;
     store.draftChoice = draftChoice;
@@ -44,14 +46,24 @@ test('the draft worktree chip puts the first send on its own branch, and the hea
   const branch = store.openThread!.branch!;
   expect(branch).toMatch(/^boite\/wt-[a-z0-9]{8}$/);
   expect(store.openThread?.cwd).toBe(`C:\\src\\notes\\.boite\\worktrees\\${branch.slice(6)}`);
-  await waitFor(() => document.querySelector('[data-testid=thread-branch]') !== null);
-  expect(query('[data-testid=thread-branch]').textContent?.trim()).toBe(branch);
-  expect(query('[data-testid=thread-branch]').title).toContain(branch.slice(6));
+  // The branch is a line of the title's menu, under the chip's id.
+  const branchItem = async () => {
+    const item = '[data-testid=thread-menu-trigger-menu] [data-value=thread-branch]';
+    query<HTMLButtonElement>('[data-testid=thread-menu-trigger]').click();
+    await waitFor(() => document.querySelector(item) !== null);
+    const read = { text: query(item).textContent?.trim(), title: query(item).title };
+    query<HTMLButtonElement>('[data-testid=thread-menu-trigger]').click();
+    return read;
+  };
+  const shown = await branchItem();
+  expect(shown.text).toBe(branch);
+  expect(shown.title).toContain(branch.slice(6));
   // The chip went with the draft.
   expect(document.querySelector('[data-testid=composer-worktree]')).toBeNull();
   const cwd = store.openThread!.cwd;
   await waitFor(() => store.openThread?.turns.some(turn => turn.status === 'done') === true);
-  await waitFor(() => query('[data-testid=thread-branch]').textContent?.trim() === 'boite/fix-the-login');
+  await waitFor(() => store.openThread?.branch === 'boite/fix-the-login');
+  expect((await branchItem()).text).toBe('boite/fix-the-login');
   expect(store.openThread?.cwd).toBe(cwd);
 });
 
@@ -70,15 +82,14 @@ test('a draft offers the worktree switch only on a folder where git was found', 
   await waitFor(() => document.querySelector('[data-testid=composer-worktree]') !== null);
 });
 
-test('a machine with no AI offers to connect one, and the composer keeps its text and lands on it', async () => {
+test('a machine with no AI shows one action, Connect an AI, and the draft opens on the AI it connected', async () => {
   await mountOnFake('/?fake=1&uninstalled=1');
   if (!store.draft) query<HTMLButtonElement>('[data-testid=new-thread]').click();
-  await waitFor(() => document.querySelector('[data-testid=composer-connect]') !== null);
-  const input = query<HTMLTextAreaElement>('[data-testid=composer-input]');
-  input.value = 'Sort my holiday photos';
-  input.dispatchEvent(new Event('input', { bubbles: true }));
+  await waitFor(() => document.querySelector('[data-testid=first-run-connect]') !== null);
+  // One action: the folder, the drafts and the composer come after it.
+  for (const id of ['composer', 'draft-project', 'draft-open-folder']) expect(document.querySelector(`[data-testid=${id}]`)).toBeNull();
 
-  query<HTMLButtonElement>('[data-testid=composer-connect]').click();
+  query<HTMLButtonElement>('[data-testid=first-run-connect]').click();
   await waitFor(() => document.querySelector('[data-testid=connect-dialog]') !== null);
   // The two services most people already pay for come first, each saying which plan it uses.
   const services = Array.from(document.querySelectorAll('[data-testid=connect-service]')).map((row) => row.getAttribute('data-provider'));
@@ -111,16 +122,17 @@ test('a machine with no AI offers to connect one, and the composer keeps its tex
   query<HTMLButtonElement>('[data-testid=connect-use]').click();
 
   await waitFor(() => document.querySelector('[data-testid=connect-dialog]') === null);
-  await waitFor(() => document.querySelector('[data-testid=composer-connect]') === null);
+  await waitFor(() => document.querySelector('[data-testid=first-run]') === null && document.querySelector('[data-testid=composer-input]') !== null);
+  expect(document.querySelector('[data-testid=composer-connect]')).toBeNull();
   expect(query('[data-testid=composer-picker]').textContent).not.toContain('No AI connected');
-  expect(query<HTMLTextAreaElement>('[data-testid=composer-input]').value).toBe('Sort my holiday photos');
+  expect(document.querySelector('[data-testid=draft-project]')).not.toBeNull();
 });
 
 test('the keyboard stays in the connect dialog while its steps replace the button it pressed', async () => {
   await mountOnFake('/?fake=1&uninstalled=1');
   if (!store.draft) query<HTMLButtonElement>('[data-testid=new-thread]').click();
-  await waitFor(() => document.querySelector('[data-testid=composer-connect]') !== null);
-  query<HTMLButtonElement>('[data-testid=composer-connect]').click();
+  await waitFor(() => document.querySelector('[data-testid=first-run-connect]') !== null);
+  query<HTMLButtonElement>('[data-testid=first-run-connect]').click();
   await waitFor(() => document.querySelector('[data-testid=connect-service]') !== null);
   query<HTMLButtonElement>('[data-testid=connect-service][data-provider=claude]').click();
   await waitFor(() => document.querySelector('[data-testid=connect-install]') !== null);
@@ -178,7 +190,8 @@ test('a draft names its project in the heading and the dropdown moves it to anot
   await waitFor(() => store.draft !== null);
 
   const heading = query('[data-testid=draft-sentence]');
-  expect(heading.querySelector('p')?.textContent).toContain('with approval requests');
+  // The mode, the model and the effort are the chips' to say, once.
+  expect(heading.textContent).not.toContain('with approval requests');
   expect(heading.querySelector('h1')?.textContent).toContain('notes');
   // The heading says the project, so the header chip no longer repeats it.
   expect(query('[data-testid=thread-header]').textContent).not.toContain('notes');

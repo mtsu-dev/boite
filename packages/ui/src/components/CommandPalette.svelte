@@ -15,9 +15,7 @@
   import { workspace, type Machine } from '../lib/workspace.svelte';
   import MachineIcon from './MachineIcon.svelte';
   import ProjectTile from './ProjectTile.svelte';
-  import StatusMark from './StatusMark.svelte';
   import ThreadState from './ThreadState.svelte';
-  import { threadTone } from '../lib/thread-state';
 
   let { store }: { store: Store } = $props();
 
@@ -272,9 +270,9 @@
                 onmousemove={() => (selected = index)}
                 onclick={() => pick(item)}
               >
+                <!-- A thread's slot stays empty: its title lines up under its project's name, and its state reads at the right. -->
                 <span class="mark-slot">
-                  {#if place?.thread}<StatusMark {...threadTone(place.thread.status, place.thread.unread)} />
-                  {:else if item.kind === 'project' && place?.project}<ProjectTile project={place.project} store={place.machine.store} size={16} />{/if}
+                  {#if !place?.thread && item.kind === 'project' && place?.project}<ProjectTile project={place.project} store={place.machine.store} size={16} />{/if}
                 </span>
                 <span class="label ui-label">{item.label}</span>
                 {#if place?.thread}

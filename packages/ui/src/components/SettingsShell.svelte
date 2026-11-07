@@ -22,7 +22,7 @@
   import MachinesPage from './MachinesPage.svelte';
   import ResourcesPage from './ResourcesPage.svelte';
   import TaskManagerLoader from './TaskManagerLoader.svelte';
-  import SettingsHome, { type SettingsEntry, type SettingsTile } from './SettingsHome.svelte';
+  import SettingsHome, { type SettingsEntry, type SettingsGroup, type SettingsTile } from './SettingsHome.svelte';
   import UsagePage from './UsagePage.svelte';
   import VoiceSettings from './VoiceSettings.svelte';
   import { providerGroups } from '../lib/provider-family';
@@ -30,7 +30,7 @@
   import SettingsMachineBar from './SettingsMachineBar.svelte';
   import { untrack } from 'svelte';
   import { revealSettingsCard } from '../lib/settings-flash';
-  import { desktopPage, desktopSettings, machinePage, ownerOnly } from '../lib/settings-tabs';
+  import { desktopPage, desktopSettings, groupOf, machinePage, ownerOnly, SETTINGS_GROUPS } from '../lib/settings-tabs';
   import { titleSlot } from '../lib/title-slot.svelte';
 
   let { store, onopenthread }: { store: Store; onopenthread?: () => void } = $props();
@@ -76,25 +76,23 @@
   type Tab = SettingsTile;
 
   // Derived, not built once: the nav is written in the language the app is
-  // speaking, and the language changes without a reload. Four groups: the
-  // app itself, the agents, what they cost, where they run.
+  // speaking, and the language changes without a reload.
   let all = $derived<Tab[]>([
-    { id: 'home', label: strings.settings.tabs.home, icon: House, group: 0 },
-    { id: 'general', label: strings.settings.tabs.general, icon: Settings2, group: 0 },
-    { id: 'appearance', label: strings.settings.tabs.appearance, icon: Palette, group: 0 },
-    { id: 'keyboard', label: strings.settings.tabs.keyboard, icon: Keyboard, group: 0 },
-    { id: 'voice', label: strings.speech.heading, icon: Mic, group: 0 },
-    { id: 'accounts', label: strings.settings.tabs.accounts, icon: Users, group: 1 },
-    { id: 'plugins', label: strings.settings.tabs.plugins, icon: Puzzle, group: 1 },
-    { id: 'brain', label: strings.brain.heading, icon: Brain, group: 1 },
-    { id: 'usage', label: strings.settings.tabs.usage, icon: Coins, group: 2 },
-    { id: 'limits', label: strings.usage.limits, icon: Gauge, group: 2 },
-    { id: 'task-manager', label: strings.taskManager.title, icon: Activity, group: 2 },
-    { id: 'resources', label: strings.settings.tabs.resources, icon: ShieldCheck, group: 2 },
-    { id: 'machines', label: strings.settings.tabs.machines, icon: Monitor, group: 3 },
-    { id: 'advanced', label: strings.settings.tabs.advanced, icon: SlidersHorizontal, group: 3 },
-    { id: 'diagnostics', label: strings.settings.tabs.diagnostics, icon: Stethoscope, group: 3 },
-    { id: 'experiments', label: strings.settings.tabs.experiments, icon: FlaskConical, group: 3 }
+    { id: 'general', label: strings.settings.tabs.general, icon: Settings2 },
+    { id: 'appearance', label: strings.settings.tabs.appearance, icon: Palette },
+    { id: 'keyboard', label: strings.settings.tabs.keyboard, icon: Keyboard },
+    { id: 'voice', label: strings.speech.heading, icon: Mic },
+    { id: 'accounts', label: strings.settings.tabs.accounts, icon: Users },
+    { id: 'plugins', label: strings.settings.tabs.plugins, icon: Puzzle },
+    { id: 'brain', label: strings.brain.heading, icon: Brain },
+    { id: 'usage', label: strings.settings.tabs.usage, icon: Coins },
+    { id: 'limits', label: strings.usage.limits, icon: Gauge },
+    { id: 'task-manager', label: strings.taskManager.title, icon: Activity },
+    { id: 'resources', label: strings.settings.tabs.resources, icon: ShieldCheck },
+    { id: 'machines', label: strings.settings.tabs.machines, icon: Monitor },
+    { id: 'advanced', label: strings.settings.tabs.advanced, icon: SlidersHorizontal },
+    { id: 'diagnostics', label: strings.settings.tabs.diagnostics, icon: Stethoscope },
+    { id: 'experiments', label: strings.settings.tabs.experiments, icon: FlaskConical }
   ]);
 
   let providerList = $derived(providerGroups(store.providers, store.shownAccounts()));
@@ -150,21 +148,21 @@
     ]
   });
 
-  /**
-   * The pages whose sections the nav lists under their name: the ones several
-   * screens long. Every other page fits on about one screen, or lists rows
-   * whose names are already in view, and a sub-entry there only repeats a
-   * heading. The search still finds every section above.
-   */
-  const LONG_PAGES: SettingsTab[] = ['keyboard', 'usage'];
-  let toc = $derived<Partial<Record<SettingsTab, { id: string; label: string }[]>>>(
-    Object.fromEntries(LONG_PAGES.map((id) => [id, children[id] ?? []]))
-  );
-
   let tabs = $derived(all.filter((tab) => store.owner || !ownerOnly(tab.id)));
+  /**
+   * The nav's eight entries (`SETTINGS_GROUPS`): each opens the first page of
+   * its group this window may open, and lists the group's other pages under it
+   * while one of them is shown. The search still finds every card of every page.
+   */
+  let groups = $derived(SETTINGS_GROUPS
+    .map((ids) => ids.flatMap((id) => tabs.filter((entry) => entry.id === id)))
+    .filter((members) => members.length > 0)
+    .map(([lead, ...rest]): SettingsGroup => ({ ...lead!, members: rest })));
   /** A page only the owner may open lands on Home on a paired device, as it does on a phone. */
   let tab = $derived(desktopPage(store.settingsTab, store.owner));
   let tabLabel = $derived(tabs.find((entry) => entry.id === tab)?.label ?? '');
+  /** The group the shown page sits in, by its first page this window lists. */
+  let group = $derived(groups.find((entry) => entry.id === tab || entry.members.some((member) => member.id === tab)));
 
   /**
    * On a desktop the bar above the page says where it is, Settings then the
@@ -240,8 +238,9 @@
   let entries = $derived<SettingsEntry[]>(tabs.flatMap((entry) => {
     const sections = children[entry.id] ?? [];
     const words = settingsWords.filter(([tab, section]) => tab === entry.id && (section === null || sections.some((child) => child.id === section)));
+    const lead = groupOf(entry.id);
     return [
-      { tab: entry.id, section: null, label: entry.label, trail: '' },
+      { tab: entry.id, section: null, label: entry.label, trail: lead === entry.id ? '' : tabs.find((other) => other.id === lead)?.label ?? '' },
       ...sections.map((child) => ({ tab: entry.id, section: child.id, label: child.label, trail: entry.label })),
       ...words.map(([, section, label]) => ({
         tab: entry.id,
@@ -252,52 +251,10 @@
     ];
   }));
 
-  let selectedSection = $state('');
-  let chosenSection = $derived(store.settingsSection?.id ?? selectedSection);
-  /** While a click scrolls to a card, the spy waits: the scroll passes other cards on its way. */
-  let jumping = 0;
-
   const motion = (): ScrollBehavior => (window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth');
 
-  function jump(id: string) {
-    store.settingsSection = null;
-    selectedSection = id;
-    const target = document.getElementById(`settings-${id}`);
-    if (!target) return;
-    jumping = Date.now();
-    target.scrollIntoView({ behavior: motion(), block: 'start' });
-  }
-
   function open(entry: SettingsEntry) {
-    selectedSection = '';
     store.showSettings(entry.tab, entry.section);
-  }
-
-  /**
-   * Scroll spy: the section whose top has passed the top of the scrolling
-   * page is the one being read. At the very bottom the last one wins, since a
-   * short card there never reaches the top. The page scrolls, not the panel,
-   * and a scroll does not bubble, so the panel listens in the capture phase.
-   */
-  function spy(event: Event) {
-    const page = event.target;
-    if (!(page instanceof HTMLElement) || Date.now() - jumping < 900) return;
-    const sections = toc[tab] ?? [];
-    if (sections.length === 0) return;
-    const top = page.getBoundingClientRect().top + 24;
-    let current = '';
-    for (const section of sections) {
-      const element = document.getElementById(`settings-${section.id}`);
-      if (element && element.getBoundingClientRect().top <= top) current = section.id;
-    }
-    if (page.scrollTop + page.clientHeight >= page.scrollHeight - 2) {
-      const last = sections.findLast((section) => document.getElementById(`settings-${section.id}`));
-      if (last) current = last.id;
-    }
-    if (current !== chosenSection) {
-      store.settingsSection = null;
-      selectedSection = current;
-    }
   }
 
   // A caller can name a card before this lazy settings subtree is mounted.
@@ -308,7 +265,7 @@
     if (!section || tab !== store.settingsTab) return;
     void section.request;
     void tick().then(() => {
-      if (revealSettingsCard(section.id, section.flash === true, motion())) jumping = Date.now();
+      revealSettingsCard(section.id, section.flash === true, motion());
     });
   });
 </script>
@@ -318,8 +275,12 @@
     {#if tab === 'home'}
       <span class="here ui-label">{strings.settings.heading}</span>
     {:else}
-      <button type="button" class="ghost root" onclick={() => { selectedSection = ''; store.showSettings('home'); }}><span class="ui-label">{strings.settings.heading}</span></button>
+      <button type="button" class="ghost root" onclick={() => store.showSettings('home')}><span class="ui-label">{strings.settings.heading}</span></button>
       <ChevronRight size={14} strokeWidth={1.75} aria-hidden="true" />
+      {#if group && group.id !== tab}
+        <button type="button" class="ghost root" onclick={() => store.showSettings(group.id)}><span class="ui-label">{group.label}</span></button>
+        <ChevronRight size={14} strokeWidth={1.75} aria-hidden="true" />
+      {/if}
       <span class="here ui-label">{tabLabel}</span>
     {/if}
   </span>
@@ -335,28 +296,34 @@
 <div class="settings" data-testid="settings">
   <nav aria-label={strings.settings.heading} style:--list-width={`${store.sidebarWidth}px`}>
     <h2 class="title">{strings.settings.heading}</h2>
-    {#each tabs as entry, index (entry.id)}
+    <button type="button" class="ghost tab" class:active={tab === 'home'} data-testid="settings-tab-home" aria-current={tab === 'home' ? 'page' : undefined} onclick={() => store.showSettings('home')}>
+      <House size={16} strokeWidth={1.75} />
+      <span class="ui-label">{strings.settings.tabs.home}</span>
+    </button>
+    {#each groups as entry (entry.id)}
       {@const Icon = entry.icon}
-      {#if index > 0 && tabs[index - 1]?.group !== entry.group}<div class="rule" role="separator"></div>{/if}
+      {@const open = group?.id === entry.id}
+      {#if entry.id === 'appearance' || entry.id === 'accounts' || entry.id === 'machines'}<div class="rule" role="separator"></div>{/if}
       <div class="category">
       <button
         type="button"
         class="ghost tab"
         class:active={tab === entry.id}
+        class:open={open && tab !== entry.id}
         data-testid="settings-tab-{entry.id}"
         aria-current={tab === entry.id ? 'page' : undefined}
-        aria-expanded={toc[entry.id] ? tab === entry.id : undefined}
-        onclick={() => { selectedSection = ''; store.showSettings(entry.id); }}
+        aria-expanded={entry.members.length > 0 ? open : undefined}
+        onclick={() => store.showSettings(entry.id)}
       >
-        <Icon size={15} strokeWidth={1.75} />
+        <Icon size={16} strokeWidth={1.75} />
         <span class="ui-label">{entry.label}</span>
-        {#if toc[entry.id]}<ChevronRight size={14} class={tab === entry.id ? 'fold-caret open' : 'fold-caret'} />{/if}
+        {#if entry.members.length > 0}<ChevronRight size={14} class={open ? 'fold-caret open' : 'fold-caret'} />{/if}
       </button>
-      {#if toc[entry.id]}
-        <div class="subcategories disclosure-fold" class:open={tab === entry.id} inert={tab !== entry.id}>
+      {#if entry.members.length > 0}
+        <div class="subcategories disclosure-fold" class:open inert={!open}>
           <div>
-            {#each toc[entry.id] ?? [] as child (child.id)}
-              <button class="ghost subsection" class:chosen={chosenSection === child.id} data-settings-section={child.id} title={child.label} onclick={() => jump(child.id)}><span class="ui-label">{child.label}</span></button>
+            {#each entry.members as member (member.id)}
+              <button type="button" class="ghost subsection" class:chosen={tab === member.id} data-testid="settings-tab-{member.id}" aria-current={tab === member.id ? 'page' : undefined} onclick={() => store.showSettings(member.id)}><span class="ui-label">{member.label}</span></button>
             {/each}
           </div>
         </div>
@@ -365,23 +332,15 @@
     {/each}
   </nav>
 
-  {#if toc[tab]}
-    <div class="mobile-subcategories">
-      {#each toc[tab] ?? [] as child (child.id)}
-        <button class="ghost" class:active={chosenSection === child.id} data-settings-section={child.id} onclick={() => jump(child.id)}><span class="ui-label">{child.label}</span></button>
-      {/each}
-    </div>
-  {/if}
-
   <!-- The panel is keyed on the tab, so switching tabs fades the new page in
        rather than swapping it in one frame. -->
   {#key tab}
-    <section class="framed" class:with-bar={bar || banner} onscrollcapture={spy}>
+    <section class="framed" class:with-bar={bar || banner}>
       {#if bar && tab !== 'experiments'}{@render machineBar()}{/if}
       {#key target}
       <PolicyBanner store={target} />
       {#if tab === 'home'}
-        <SettingsHome {store} tiles={tabs} {entries} onopen={open} />
+        <SettingsHome {store} tiles={groups} {entries} onopen={open} />
       {:else if tab === 'brain'}
         <BrainPage store={target} />
       {:else if tab === 'voice'}
@@ -420,7 +379,6 @@
 {/if}
 
 <style>
-  .mobile-subcategories { display: none; }
   /* With the machine bar, the panel scrolls bar and page together, on one column. */
   .framed.with-bar { scrollbar-gutter: stable both-edges; }
   .framed.with-bar > :global(.machine-bar) { padding: 24px clamp(20px, 4vw, 64px) 0; }
@@ -496,6 +454,9 @@
     color: var(--color-foreground);
   }
 
+  /* The group of the page shown under it: its name lit, the fill on the page's own row. */
+  .tab.open { color: var(--color-foreground); }
+
   section {
     flex: 1;
     min-width: 0;
@@ -530,8 +491,6 @@
     .title { display: none; }
     .rule { width: 1px; height: auto; align-self: stretch; margin: 6px 4px; }
     .subcategories { display: none; }
-    .mobile-subcategories { display: flex; gap: 4px; padding: 8px 14px; overflow-x: auto; flex: none; border-bottom: 1px solid var(--color-border); }
-    .mobile-subcategories button { flex: none; font-size: var(--text-sm); }
     .category { min-width: 0; }
   }
 </style>

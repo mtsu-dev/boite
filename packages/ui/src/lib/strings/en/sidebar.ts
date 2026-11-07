@@ -55,7 +55,7 @@ export const strings = {
       ownerOnly: 'Trust it from the computer that runs this Boite.'
     },
     worktreeGone: {
-      title: 'Worktree removed',
+      title: 'This thread\'s folder was cleaned up',
       merged: 'Boite removed this thread\'s worktree {when}, after #{number} was merged.',
       clean: 'Boite removed this thread\'s worktree {when}: every commit in it was already on another branch.',
       branchDeleted: 'Branch {branch} was deleted.',

@@ -141,10 +141,9 @@ test('moving a thread clears its PR and ignores the previous checkout lookup', a
   await settle();
   answer(previous); await settle();
   expect(document.querySelector('[data-testid=thread-pr]')).toBeNull();
-  expect(document.querySelector('.metadata')).toBeNull();
 });
 
-test('a reconnect keeps the PR line on screen while the core is asked again', async () => {
+test('a reconnect keeps the PR mark on screen while the core is asked again', async () => {
   client = new FakeClient({ delayMs: 0 });
   store = new Store(); store.attach(client); await store.connect();
   const thread = store.threads.find(thread => thread.branch)!;
@@ -160,10 +159,9 @@ test('a reconnect keeps the PR line on screen while the core is asked again', as
   expect(document.querySelector('[data-testid=thread-pr]')?.textContent).toContain('#181');
   store.connection = 'ready';
   await settle();
-  // The second lookup is out and unanswered: the line it will confirm never left.
+  // The second lookup is out and unanswered: the mark it will confirm never left.
   expect(call).toHaveBeenCalledTimes(2);
   expect(document.querySelector('[data-testid=thread-pr]')?.textContent).toContain('#181');
-  expect(document.querySelector('.metadata')).not.toBeNull();
 });
 
 test('a turn left running on a machine that went away stops spinning until the machine is back', async () => {

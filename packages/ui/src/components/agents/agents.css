@@ -30,10 +30,11 @@
 .bot-head > .agent-avatar { flex: none; }
 .bot-head-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .bot-head-name { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--text-md); font-weight: 650; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* What the bot does reads in full: it wraps under the name, and only past three lines gives way. */
-.bot-head-live { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; min-width: 0; font-size: var(--text-xs); line-height: 1.45; color: var(--color-muted-foreground); overflow-wrap: anywhere; }
-/* The dot clings to the step, so a timer that wraps starts its own line clean. */
-.bot-head-time { white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* One status line under the name: it cuts at the column's edge, the timer stays whole and the title holds the rest. */
+.bot-head-live { display: flex; align-items: center; min-width: 0; font-size: var(--text-xs); line-height: 1.45; color: var(--color-muted-foreground); white-space: nowrap; }
+.bot-head-line { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.bot-head-sep, .bot-head-time { flex: none; }
+.bot-head-time { font-variant-numeric: tabular-nums; }
 .bot-head-live[data-state='waiting'] { color: var(--color-live); }
 .bot-head-live[data-state='error'] { color: var(--color-danger); }
 .bot-spin { flex: none; margin-right: 5px; vertical-align: -2px; color: var(--color-accent); animation: spin 1s linear infinite var(--loops); }
@@ -271,8 +272,9 @@ fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-p
 .agent-brain-root ~ .agent-error { margin: 12px 0 0; }
 
 /*
- * The desk is one calm column: who the bot is on top, then cards (Now while
- * it works, its routines, its memory) on the raised fill, a hairline around.
+ * The desk is one calm column: who the bot is on top, then its sections (Now
+ * while it works, its routines, its memory) flush on the page, a hairline
+ * between them rather than a frame around each.
  */
 .agent-desk { display: flex; flex-direction: column; height: 100%; min-height: 0; overflow-y: auto; box-sizing: border-box; container-type: inline-size; }
 .agent-desk > * { flex: none; }
@@ -285,8 +287,9 @@ fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-p
 .desk-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .desk-meta { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border-radius: var(--radius-md); background: var(--color-surface-2); box-shadow: inset 0 0 0 1px var(--color-border); font-size: var(--text-xs); font-weight: 500; color: var(--color-muted-foreground); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .desk-meta > svg { flex: none; }
-.desk-body { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px 24px; }
-.desk-card { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 12px 14px; border-radius: var(--radius-lg); background: var(--color-surface-2); box-shadow: inset 0 0 0 1px var(--color-border); }
+.desk-body { display: flex; flex-direction: column; padding: 4px 20px 24px; }
+.desk-card { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 14px 0; }
+.desk-card + .desk-card, .desk-error + .desk-card { border-top: 1px solid var(--color-border); }
 .desk-label { display: flex; align-items: center; gap: 6px; min-height: 22px; margin: 0; font-size: var(--text-xs); font-weight: 600; color: var(--color-subtle); }
 .desk-label > svg { flex: none; }
 .desk-label-value { margin-left: auto; font-weight: 500; font-variant-numeric: tabular-nums; }
@@ -301,8 +304,7 @@ fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-p
 .desk-progress { position: relative; display: block; height: 3px; margin-top: 4px; border-radius: 2px; background: var(--color-surface-3); overflow: hidden; }
 .desk-progress > span { position: absolute; inset: 0 auto 0 0; width: 40%; border-radius: inherit; background: var(--color-accent); animation: desk-sweep 1.8s var(--loop-ease-in-out-48) infinite var(--loops); }
 @keyframes desk-sweep { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
-.desk-next { margin: 0; padding: 0 2px; font-size: var(--text-xs); color: var(--color-subtle); }
-.desk-work-card { padding: 6px; }
+.desk-work-card { padding: 8px 0; }
 .desk-activity { border-top: 1px solid var(--color-border); padding-top: 4px; }
 .desk-activity > summary { display: flex; align-items: center; gap: 6px; min-height: var(--control-sm); color: var(--color-muted-foreground); font-size: var(--text-xs); cursor: pointer; list-style: none; }
 .desk-activity > summary:hover { color: var(--color-foreground); }

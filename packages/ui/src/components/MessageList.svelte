@@ -745,7 +745,7 @@
     hasOlder={store.messagesBefore !== null} loading={store.loadingOlder} loadOlder={() => { if (viewport) { releaseNavigation(); viewport.scrollTop = rows[0]?.gap ? Math.max(0, (totals(rows)[1] ?? 0) - viewport.clientHeight) : 0; pinned = false; loadAbove(viewport); } }} />{/if}
   <!-- Input releases restored and navigation anchors; programmatic corrections keep them. A tap on a phone shows a message's buttons. -->
   <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
-  <div class="timeline" bind:this={viewport} use:watchWheel={onwheel} use:selectionClicks onclick={reveal.tap} {onscroll} ontouchstart={press} onpointerdown={press} onpointerover={(event) => { pointed = pointedTurn(event); }} onpointerleave={() => { pointed = null; }} onkeydown={releaseNavigation} style:padding-top="{20 + promptLead}px" style:overflow-anchor={timeline.at(-1)?.state === 'streaming' ? 'none' : undefined} data-testid="timeline" data-media-gallery data-scroll-root>
+  <div class="timeline" class:behind bind:this={viewport} use:watchWheel={onwheel} use:selectionClicks onclick={reveal.tap} {onscroll} ontouchstart={press} onpointerdown={press} onpointerover={(event) => { pointed = pointedTurn(event); }} onpointerleave={() => { pointed = null; }} onkeydown={releaseNavigation} style:padding-top="{20 + promptLead}px" style:overflow-anchor={timeline.at(-1)?.state === 'streaming' ? 'none' : undefined} data-testid="timeline" data-media-gallery data-scroll-root>
     <div class="column" bind:this={column}>
       <!-- paging: the one line the top of the list shows while a page is in flight. -->
       {#if store.loadingOlder}<p class="loading-older" data-testid="loading-older">{strings.chat.loadingOlder}</p>{/if}
@@ -842,6 +842,12 @@
     /* Balance the outline rail on both sides; keep room below for the activity overlay. */
     padding: 20px var(--outline-room) calc(var(--dock-room, 0px) + 20px);
     overscroll-behavior: contain;
+  }
+
+  /* Scrolled up, what continues below fades into the strip instead of
+     stopping on a hard edge, so a table or a card never reads as sliced. */
+  .timeline.behind {
+    mask-image: linear-gradient(to bottom, currentColor calc(100% - 28px), transparent);
   }
 
   .column {

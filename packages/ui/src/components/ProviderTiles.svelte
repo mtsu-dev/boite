@@ -7,8 +7,9 @@
   import type { Choice, Store } from '../lib/store.svelte';
 
   /**
-   * The model picker's rail: the favorites tile, then one tile per provider in
-   * the order the core listed them. A tile only moves the column beside it.
+   * The model picker's rail, a compact list: favorites, then one row per
+   * provider in the order the core listed them, its mark in monochrome beside
+   * its name. A row only moves the column beside it.
    */
   let {
     store,
@@ -75,7 +76,7 @@
   }
 </script>
 
-<button type="button" class="tile" class:current={favoritesOpen} role="menuitem" data-row data-provider="favorites" title={strings.composer.favorites} aria-label={strings.composer.favorites} onclick={onfavorites}><Star size={24} /></button>
+<button type="button" class="tile" class:current={favoritesOpen} role="menuitem" data-row data-provider="favorites" title={strings.composer.favorites} onclick={onfavorites}><Star size={14} /><span class="tile-name ui-label">{strings.composer.favorites}</span></button>
 {#each tiles as tile (tile.provider.id)}
   <button
     type="button"
@@ -87,33 +88,41 @@
     data-row
     data-provider={tile.provider.id}
     title={tileTitle(tile)}
-    aria-label={tile.provider.name}
     onclick={() => pickTile(tile)}
   >
-    <ProviderLogo providerId={tile.provider.id} size={28} />
+    <ProviderLogo providerId={tile.provider.id} size={14} />
+    <span class="tile-name ui-label">{tile.provider.name}</span>
   </button>
 {/each}
 {#if onmore && listed.length < store.providers.length}
-  <button type="button" class="tile more" role="menuitem" data-row data-provider="more" data-testid="picker-more-providers" title={strings.settings.connectProvider} aria-label={strings.settings.connectProvider} onclick={onmore}><Plus size={20} /></button>
+  <button type="button" class="tile more" role="menuitem" data-row data-provider="more" data-testid="picker-more-providers" title={strings.settings.connectProvider} aria-label={strings.settings.connectProvider} onclick={onmore}><Plus size={14} /></button>
 {/if}
 
 <style>
   .tile {
-    display: inline-flex;
+    display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
+    gap: 8px;
     flex: none;
-    width: var(--control-lg);
-    height: var(--control-lg);
-    padding: 0;
+    width: 100%;
+    height: var(--control-sm);
+    padding: 0 8px;
     border: none;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-sm);
     background: transparent;
     color: var(--color-muted-foreground);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    text-align: left;
     transition:
       background var(--dur-2) var(--ease-out-quint),
       color var(--dur-2) var(--ease-out-quint);
   }
+
+  /* Every mark in one ink: the names tell the providers apart. */
+  .tile :global(.logo) { flex: none; filter: grayscale(1); }
+  .tile-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   .tile:hover:not(:disabled),
   .tile:focus-visible {
@@ -127,7 +136,7 @@
     color: var(--color-foreground);
   }
 
-  .tile.more { color: var(--color-subtle); }
+  .tile.more { width: auto; color: var(--color-subtle); }
 
   /* Nothing runs on it: still pickable, so its column can say why. */
   .tile.dim {
@@ -135,12 +144,7 @@
   }
 
   @media (max-width: 720px) {
-    /* The rail is the finger's first stop on a phone, so its tiles take a
-       full touch target like every other control. */
-    .tile { justify-content: center; padding: 0; }
-    .tile {
-      width: var(--touch-target);
-      height: var(--touch-target);
-    }
+    /* A finger's row, like every other control on a phone. */
+    .tile { height: var(--touch-target); }
   }
 </style>

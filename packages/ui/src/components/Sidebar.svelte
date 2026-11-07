@@ -2,7 +2,7 @@
   import { tick, untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import WindowList from './WindowList.svelte';
-  import { ChevronRight, Ellipsis, FolderPlus, FolderX, GripVertical, LoaderCircle } from '@lucide/svelte';
+  import { Check, ChevronRight, CircleAlert, Ellipsis, FolderPlus, FolderX, GripVertical, LoaderCircle, MessageCircleQuestionMark } from '@lucide/svelte';
   import type { Project, ThreadId } from '@boite/contracts';
   import type { Store } from '../lib/store.svelte';
   import { workspace, type Machine } from '../lib/workspace.svelte';
@@ -29,7 +29,6 @@
   import ThreadCard from './ThreadCard.svelte';
   import DraftRow from './DraftRow.svelte';
   import GroupLabel from './GroupLabel.svelte';
-  import MachineIcon from './MachineIcon.svelte';
   import ProjectTile from './ProjectTile.svelte';
   import RailFrame from './RailFrame.svelte';
   import { minuteClock } from '../lib/clock.svelte';
@@ -270,9 +269,9 @@
               {#if projectView.order === 'manual'}<GripVertical size={12} />{/if}<span class="mark"><ProjectTile {project} store={owner} size={18} /><span class="fold-caret" class:open={!collapsed} aria-hidden="true"><ChevronRight size={16} /></span></span
               ><span class="name ui-label" class:gone={project.missing === true}>{projectName(project)}</span
               >{#if multi}<span class="host" data-testid="project-host" class:offline={owner.connection !== 'ready'}
-                title={`${machine.label} · ${strings.connection[owner.connection]}`} aria-label={machine.label}><MachineIcon icon={machine.icon} os={owner.core?.os} size={13} /></span>{/if}{#if project.missing === true}<span class="missing" data-testid="project-missing" title={strings.sidebar.projectMissing} aria-label={strings.sidebar.projectMissing}><FolderX size={13} aria-hidden="true" /></span>{/if}{#if rollup}{@const label = fill(rollup.count === 1 ? strings.sidebar.rollupOne : strings.sidebar.rollupMany, { count: String(rollup.count), state: strings.sidebar.state[rollup.kind] })}<span
+                title={`${machine.label} · ${strings.connection[owner.connection]}`} aria-label={machine.label}>{machine.label}</span>{/if}{#if project.missing === true}<span class="missing" data-testid="project-missing" title={strings.sidebar.projectMissing} aria-label={strings.sidebar.projectMissing}><FolderX size={13} aria-hidden="true" /></span>{/if}{#if rollup}{@const label = fill(rollup.count === 1 ? strings.sidebar.rollupOne : strings.sidebar.rollupMany, { count: String(rollup.count), state: strings.sidebar.state[rollup.kind] })}<span
                   class="rollup {rollup.kind}" data-testid="project-rollup" data-state={rollup.kind} title={label} aria-label={label}
-                  >{#if rollup.kind === 'working'}<LoaderCircle size={11} class="spinner" aria-hidden="true" />{:else}<span class="dot" aria-hidden="true"></span>{/if}{#if rollup.count > 1}<span class="ui-label">{rollup.count}</span>{/if}</span
+                  >{#if rollup.kind === 'waiting'}<MessageCircleQuestionMark size={12} aria-hidden="true" />{:else if rollup.kind === 'error' || rollup.kind === 'interrupted'}<CircleAlert size={12} aria-hidden="true" />{:else if rollup.kind === 'done'}<Check size={12} aria-hidden="true" />{:else}<LoaderCircle size={11} class={rollup.kind === 'working' ? 'spinner' : 'pulse'} aria-hidden="true" />{/if}{#if rollup.count > 1}<span class="ui-label">{rollup.count}</span>{/if}</span
                 >{/if}
             </button>
             <ProjectThreadCounters {entry} part="head" working={lists.working.length} waiting={away || rollup ? 0 : waitingCount(entry)} {controls} {collapsed} {away} />
@@ -289,12 +288,12 @@
               <SharedProjectThreads store={owner} projectId={project.id} active={!collapsed && !away}>
               {#each draftsHere as draft (draft.id)}<DraftRow {owner} entry={draft} />{/each}
               <WindowList items={lists.attention} keyOf={thread => JSON.stringify([machine.id, thread.id])} {scrollRoot} active={!collapsed} estimate={34} measurements={measurements(JSON.stringify([machine.id, project.id]))}>
-                {#snippet row(thread)}<ThreadCard {machine} {project} {thread} {now} showMachine={false} showDone />{/snippet}
+                {#snippet row(thread)}<ThreadCard {machine} {project} {thread} {now} showDone />{/snippet}
               </WindowList>
               <div id="{controls}-working" hidden={!workingOpen || lists.working.length === 0} data-testid="project-working">
                 {#if workingOpen && lists.working.length > 0}
                   <WindowList items={lists.working} keyOf={thread => JSON.stringify([machine.id, thread.id])} {scrollRoot} active={!collapsed} estimate={34} measurements={measurements(JSON.stringify([machine.id, project.id, 'working']))}>
-                    {#snippet row(thread)}<ThreadCard {machine} {project} {thread} {now} showMachine={false} showDone />{/snippet}
+                    {#snippet row(thread)}<ThreadCard {machine} {project} {thread} {now} showDone />{/snippet}
                   </WindowList>
                 {/if}
               </div>
@@ -343,11 +342,10 @@
   /* `sidebar` is the container RailFrame.svelte declares on the column. */
   .recent-folds { margin-top: auto; padding-top: 12px; }
   .project-folds { margin-top: auto; }
-  /* A card on the inset panel's surface, edged by a hairline. */
+  /* A card is a quiet surface on the inset panel, with no edge of its own: the panel is the one frame. */
   .project {
     margin-bottom: 8px;
     padding: 4px;
-    border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
     background: var(--color-surface);
   }
@@ -371,7 +369,7 @@
   @media (prefers-reduced-motion: reduce) { .empty :global(.spinner) { animation: none; } }
   .project {
     transition:
-      border-color var(--dur-2) var(--ease-out-quint),
+      outline-color var(--dur-2) var(--ease-out-quint),
       background var(--dur-2) var(--ease-out-quint),
       box-shadow var(--dur-2) var(--ease-out-quint),
       opacity var(--dur-2) var(--ease-out-quint);
@@ -381,13 +379,12 @@
     opacity: 0.6;
   }
   .project.candidate {
-    border-style: dashed;
-    border-color: var(--color-edge);
+    outline: 1px dashed var(--color-edge);
+    outline-offset: -1px;
   }
   /* The one under the mouse takes the row: a solid edge and the selection fill. */
   .project.drop {
-    border-style: solid;
-    border-color: var(--color-muted-foreground);
+    outline: 1px solid var(--color-muted-foreground);
     background: var(--color-active);
   }
   /* A project on the move leaves a faded slot; a line between two sections says where it lands. */
@@ -405,7 +402,7 @@
     pointer-events: none;
     animation: insert-in var(--dur-2) var(--ease-out-quint);
   }
-  /* Centred in the 10px gap outside the 1px border. */
+  /* Centred in the gap between two cards. */
   .project.insert-before::before { top: -7px; }
   .project.insert-after::after { bottom: -7px; }
   @keyframes insert-in { from { opacity: 0; transform: scaleX(0.6); } }
@@ -459,16 +456,15 @@
     font-weight: 500;
     font-variant-numeric: tabular-nums;
   }
-  .rollup .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
   .rollup.working, .rollup.delegating, .rollup.monitoring, .rollup.background, .rollup.watching { color: var(--color-muted-foreground); }
   .rollup.waiting { color: var(--color-live); }
   .rollup.error { color: var(--color-danger); }
   .rollup.done { color: var(--color-success); }
   .rollup.queued { color: var(--color-muted-foreground); }
-  .rollup.delegating .dot, .rollup.monitoring .dot, .rollup.background .dot, .rollup.watching .dot { animation: pulse 1.6s var(--loop-ease-out-quint-48) infinite var(--loops); }
+  .rollup :global(.pulse) { animation: pulse 1.6s var(--loop-ease-out-quint-48) infinite var(--loops); }
   .rollup :global(.spinner) { animation: spin 1s steps(60) infinite var(--loops); }
-  @media (prefers-reduced-motion: reduce) { .rollup .dot, .rollup :global(.spinner) { animation: none; } }
-  :global(html[data-motion='reduced']) .rollup .dot,
+  @media (prefers-reduced-motion: reduce) { .rollup :global(.pulse), .rollup :global(.spinner) { animation: none; } }
+  :global(html[data-motion='reduced']) .rollup :global(.pulse),
   :global(html[data-motion='reduced']) .rollup :global(.spinner) { animation: none; }
   /* The project's mark and its fold chevron share one slot: the mark gives way
      to the chevron while a pointer or the keyboard is on the header. */
@@ -496,9 +492,15 @@
   @media (prefers-reduced-motion: reduce) {
     .mark > :global(*) { transition: none; }
   }
+  /* The machine, after the name in quiet ink; it gives way before the name does. */
   .host {
-    display: flex;
-    flex: none;
+    flex: 0 1000 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--text-xs);
+    font-weight: 400;
     color: var(--color-subtle);
   }
   /* The rows under it carry no machine icon, so the header says the machine is unreachable. */

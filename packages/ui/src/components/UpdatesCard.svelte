@@ -201,7 +201,8 @@
   p { margin: 0; }
   .version { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; color: var(--color-muted-foreground); }
   .name { color: var(--color-foreground); font-weight: 600; font-size: var(--text-md); }
-  .number { font-family: var(--font-mono); font-size: var(--text-sm); overflow-wrap: anywhere; }
+  /* A version is a label here, not code: the UI face, with figures that line up. */
+  .number { font-size: var(--text-sm); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
   .target { color: var(--color-foreground); }
   .status { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; color: var(--color-muted-foreground); font-size: var(--text-sm); overflow-wrap: anywhere; }
   .status.offer > span:first-child { color: var(--color-foreground); }

@@ -107,7 +107,8 @@
     font-size: var(--text-sm);
     color: var(--color-muted-foreground);
   }
-  .firewall :global(.mark) { flex: none; color: var(--color-live); }
+  .firewall :global(.mark) { flex: none; align-self: flex-start; margin-top: 2px; color: var(--color-live); }
+  /* The mark stays on the first line's height however the sentence wraps. */
   .firewall p { margin: 0; }
   .problem { flex: 1 1 16em; min-width: 0; line-height: 1.4; }
   .firewall button { flex: none; margin-left: auto; }

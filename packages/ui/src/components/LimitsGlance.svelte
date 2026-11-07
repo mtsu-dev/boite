@@ -1,7 +1,6 @@
 <script lang="ts">
   import { errorText } from '../lib/errors';
   import { untrack } from 'svelte';
-  import { Gauge } from '@lucide/svelte';
   import { Closing } from '../lib/closing.svelte';
   import { floating } from '../lib/floating';
   import { gatewayReader, quotaReader, shownQuotas } from '../lib/quota-reader.svelte';
@@ -14,19 +13,22 @@
   import QuotaPin from './QuotaPin.svelte';
 
   /**
-   * The app rail's gauge: the tray's glance at every account's subscription
+   * The app rail's Limits: the tray's glance at every account's subscription
    * windows, without leaving the conversation. It reads the core it belongs
    * to while open, keeps the last reading on screen while the next loads, and
    * sends monitoring and accounts to the Limits page.
    */
-  /** `right`: the glance opens beside the trigger, from the app rail. */
-  let { store, side }: { store: Store; side?: 'right' } = $props();
+  /**
+   * No button of its own: the rail's one menu of machines and limits calls
+   * `open()`, and the glance opens beside `anchor`, the menu's button, on its
+   * `side`.
+   */
+  let { store, side, anchor: near }: { store: Store; side?: 'right'; anchor: () => HTMLElement | null } = $props();
   /** Providers is a desktop settings page and the owner's: a phone is offered no way to it. */
   const phoneWidth = new MediaQuery('(max-width: 720px)');
   let providersReachable = $derived(store.owner && desktopSettings(phoneWidth.current));
 
   const popover = new Closing();
-  let trigger = $state<HTMLButtonElement>();
   let content = $state<HTMLDivElement>();
   let reader = $derived(quotaReader(store.endpointUrl ?? 'here', store.core));
   let gateway = $derived(gatewayReader(store.endpointUrl ?? 'here'));
@@ -79,7 +81,7 @@
     if (!popover.open) return;
     const onpress = (event: PointerEvent) => {
       const target = event.target as Node | null;
-      if (target && (trigger?.contains(target) || content?.contains(target))) return;
+      if (target && content?.contains(target)) return;
       popover.hide();
     };
     document.addEventListener('pointerdown', onpress, true);
@@ -88,7 +90,7 @@
 
   function close() {
     popover.hide();
-    trigger?.focus({ preventScroll: true });
+    near()?.focus({ preventScroll: true });
   }
 
   /**
@@ -101,7 +103,7 @@
   function closeOnEscape(event: KeyboardEvent) {
     if (event.key !== 'Escape' || !popover.open) return;
     const target = event.target;
-    if (target !== document.body && target !== trigger && !(target instanceof Node && content?.contains(target))) return;
+    if (target !== document.body && target !== near() && !(target instanceof Node && content?.contains(target))) return;
     event.preventDefault();
     event.stopPropagation();
     close();
@@ -114,7 +116,7 @@
   }
 
   /** A gateway without native quotas has only its dashboard, on the Limits page. */
-  async function open() {
+  export async function open() {
     if (popover.open) { close(); return; }
     const proxy = store.settings?.subscriptionProxy;
     const client = store.client;
@@ -128,11 +130,9 @@
 
 <svelte:window onkeydowncapture={closeOnEscape} />
 
-<button type="button" class="ghost icon" bind:this={trigger} aria-label={strings.quotas.glance} title={strings.quotas.glance} aria-haspopup="dialog" aria-expanded={popover.open} data-testid="nav-limits" onclick={() => void open()}><Gauge size={16} /></button>
-
 {#if popover.shown}
   <div class="glance" class:closing={popover.closing} bind:this={content} role="dialog" tabindex="-1" aria-label={strings.quotas.glance} data-testid="limits-glance"
-    use:popover.attach onanimationend={popover.end} use:floating={{ anchor: () => trigger ?? null, side, dismiss: close, cap: 460 }}>
+    use:popover.attach onanimationend={popover.end} use:floating={{ anchor: near, side, dismiss: close, cap: 460 }}>
     <QuotaPopup {rows} loading={reader.busy} completed={reader.landed} error={failed} outdated={reader.outdated} owner={store.owner}
       order={store.settings?.quotaOrder ?? []} reorder={store.owner ? (quotaOrder) => store.saveSettings({ quotaOrder }) : undefined}
       refresh={() => read(true)} connect={providersReachable ? () => page('accounts') : undefined} settings={() => page('limits')} {close} testPrefix="limits-glance">

@@ -301,7 +301,9 @@
 ></button>
 
 <aside
-  class="panel framed"
+  class="panel"
+  class:framed={!bare}
+  class:flush={bare}
   class:maximized={rightPanel.maximized}
   class:floating={rightPanel.floating}
   class:dragging
@@ -745,7 +747,9 @@
       border-radius: 0 0 calc(var(--radius-frame) - 1px) calc(var(--radius-frame) - 1px);
     }
 
-    .strip.bare + .body { border-radius: calc(var(--radius-frame) - 1px); }
+    /* A bot's desk alone sits flush on the window beside the framed chat: the
+       chat's own edge is the one line between them, no second card. */
+    .panel.flush .body { border-radius: 0; }
   }
 
   .sheet-scrim {

@@ -99,11 +99,11 @@ export const strings = {
     thinkingShow: 'Show the reasoning',
     thinkingHide: 'Hide the reasoning',
     /** The divider a compaction draws: `{pre}` and `{post}` formatted token counts. */
-    compaction: 'Context compacted, {pre} to {post} tokens',
-    compactionNoPost: 'Context compacted from {pre} tokens',
-    compactionUnknown: 'Context compacted',
+    compaction: 'Older messages summarized to make room, {pre} to {post} tokens',
+    compactionNoPost: 'Older messages summarized to make room, from {pre} tokens',
+    compactionUnknown: 'Older messages summarized to make room',
     /** On the line of the run a compaction fell in. */
-    compactedMark: 'compacted {pre} → {post}', compactedMarkBare: 'context compacted',
+    compactedMark: 'summarized {pre} → {post}', compactedMarkBare: 'older messages summarized',
     compactionManual: 'by hand',
     /** Beside a compaction a copy of the session made while the conversation went on. */
     compactionBackground: 'in the background',

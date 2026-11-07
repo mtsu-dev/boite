@@ -1,32 +1,34 @@
 <script lang="ts">
-  import { Archive, Ellipsis, GitBranch, Pin, PinOff } from '@lucide/svelte';
+  import { Archive, Ellipsis, Pin, PinOff } from '@lucide/svelte';
   import type { Project, ThreadSummary } from '@boite/contracts';
   import type { Machine } from '../lib/workspace.svelte';
   import type { MenuItem } from '../lib/menu';
   import { strings } from '../lib/strings';
+  import { ago, exactTime } from '../lib/format';
   import { closeSwipedRow, swipeRow } from '../lib/swipe-row';
   import { longPress } from '../lib/long-press';
   import { trackThreadPullRequest } from '../lib/thread-pull-request.svelte';
   import Menu from './Menu.svelte';
-  import PullRequestBadge from './PullRequestBadge.svelte';
   import ThreadHeadline from './ThreadHeadline.svelte';
 
   /**
    * A phone's thread row, the desktop row's grammar at a finger's size: the
-   * title on one line, the state at its end, the pull request and its branch
-   * under it only when there is one. `compact` is the flat lists' form
-   * (Recent, Activity): the project's tile and one marker, no second line.
+   * title on one line, the pull request and the state at its end, the branch
+   * in the tooltip. `compact` is the flat lists' form (Recent, Activity): the
+   * project's tile first. Activity adds `reason`, what the thread wants and
+   * when, under the title, and `nested` steps a sub-agent in under its parent.
    * The row menu has no button of its own: a long press opens it, a slide
    * left shows pin and archive. Its trigger stays for the keyboard, drawn
    * only while focused.
    */
-  let { machine, thread, project, now, items, compact = false, onopen, onaction }: {
+  let { machine, thread, project, now, items, compact = false, reason, at, nested = false, onopen, onaction }: {
     machine: Machine; thread: ThreadSummary; project: Project | undefined; now: number; items: MenuItem[]; compact?: boolean;
-    onopen: () => void; onaction: (action: string) => void;
+    reason?: string; at?: number; nested?: boolean; onopen: () => void; onaction: (action: string) => void;
   } = $props();
   const owner = $derived(machine.store);
-  const pr = trackThreadPullRequest(() => ({ owner, thread, hidden: compact }));
-  const pullRequest = $derived(compact ? null : pr.value);
+  // Activity says why the thread is there; its pull request waits in the thread.
+  const pr = trackThreadPullRequest(() => ({ owner, thread, hidden: reason !== undefined }));
+  const pullRequest = $derived(reason !== undefined ? null : pr.value);
   const pin = $derived(items.find(item => item.id === 'pin'));
   const archive = $derived(items.find(item => item.id === 'archive'));
   let menu = $state<HTMLElement>();
@@ -39,7 +41,7 @@
   function swiped(action: string) { closeSwipedRow(); onaction(action); }
 </script>
 
-<div class="row" class:meta={pullRequest} data-testid="mobile-row" data-thread-id={thread.id} data-machine-id={machine.id}>
+<div class="row" class:reason={reason !== undefined} class:nested class:tiled={compact && !nested && project !== undefined} data-testid="mobile-row" data-thread-id={thread.id} data-machine-id={machine.id}>
   <!-- Under the row, for a finger that slides it left; the long press offers the same to everyone else. -->
   {#if pin || archive}
     <div class="swipe-actions" data-swipe-actions aria-hidden="true">
@@ -50,12 +52,10 @@
   <!-- The row's contextmenu (a long press, Android's, a right click) opens the menu wherever it lands; the button inside stays the keyboard's target. -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="body" use:swipeRow oncontextmenu={openMenu}>
-    <button class="ghost thread" class:offline={owner.connection !== 'ready'} data-testid="mobile-thread-{thread.id}" title={thread.title} onclick={onopen} use:longPress>
-      <ThreadHeadline {owner} {thread} {now} tile={compact ? project : undefined} mark={compact} />
+    <button class="ghost thread" class:offline={owner.connection !== 'ready'} data-testid="mobile-thread-{thread.id}" title={thread.branch ? `${thread.title}\n${thread.branch}` : thread.title} onclick={onopen} use:longPress>
+      <ThreadHeadline {owner} {thread} {now} tile={compact && !nested ? project : undefined} {pullRequest} />
+      {#if reason !== undefined}<span class="why" data-testid="mobile-row-reason"><span class="text ui-label">{reason}</span>{#if at !== undefined}<time class="ui-label" title={exactTime(at)}>{ago(at, now)}</time>{/if}</span>{/if}
     </button>
-    {#if pullRequest}
-      <span class="metadata"><PullRequestBadge {pullRequest} />{#if thread.branch}<span class="branch" title={thread.branch}><GitBranch size={12} /><span class="ui-label">{thread.branch}</span></span>{/if}</span>
-    {/if}
     <span class="row-menu" bind:this={menu}><Menu {items} onpick={onaction} label={strings.sidebar.threadMenu} placement="bottom" variant="ghost" testid="mobile-thread-menu-{thread.id}"><Ellipsis size={18} /></Menu></span>
   </div>
 </div>
@@ -69,24 +69,28 @@
   .swipe .ui-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .body { position: relative; touch-action: pan-y; transform: translateX(var(--swipe, 0px)); transition: transform var(--dur-3) var(--ease-out-quint); background: var(--row-background, var(--color-background)); }
   .body:global(.dragging) { transition: none; }
-  /* One line of 44 px, a finger's height; the pull request line sits in the padding under it, so the whole row stays one target. */
+  /* One line of 44 px, a finger's height. */
   .thread { display: block; width: 100%; min-height: var(--touch-target); height: auto; padding: 12px 12px; border-radius: 0; text-align: left; font-size: var(--text-reading); color: var(--color-foreground); }
-  .meta .thread { padding-bottom: 32px; }
+  /* Activity's reason under the title, from the title's edge; the reason gives way, its time does not. */
+  .why { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: var(--text-sm); line-height: 1.4; color: var(--color-muted-foreground); }
+  .tiled .why { margin-left: 26px; }
+  .why .text { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* The time under the state, at the row's end. */
+  .why time { flex: none; margin-left: auto; font-size: inherit; color: var(--color-subtle); font-variant-numeric: tabular-nums; }
+  .reason .thread { padding: 10px 12px; }
+  /* A sub-agent under its parent: stepped in, a hairline where the tile was. */
+  .nested .thread { padding-left: 40px; }
+  .nested .body::before { content: ''; position: absolute; left: 20px; top: 0; bottom: 0; width: 1px; background: var(--color-border); }
   .thread :global(.headline) { gap: 10px; }
   /* A phone reads every title at full ink: the state at the end says which rows need the user. */
   .thread :global(.headline .title) { color: var(--color-foreground); font-weight: 400; }
   .thread :global(.headline .when) { font-size: var(--text-sm); }
   .thread.offline { opacity: 0.55; }
-  /* Under the title, from its edge: the pull request, then its branch in mono. */
-  .metadata { position: absolute; left: 36px; right: 12px; bottom: 11px; display: flex; align-items: center; gap: 10px; min-width: 0; height: 16px; pointer-events: none; font-size: var(--text-xs); color: var(--color-subtle); }
-  .metadata :global(.pr-link) { position: relative; color: var(--color-muted-foreground); text-decoration: none; font-size: inherit; }
-  /* The badge stays small; a finger gets the row's bottom 44px under it. */
-  .metadata :global(.pr-link)::after { content: ''; position: absolute; inset: -11px -6px; }
-  .metadata :global(.pr-link.merged svg) { color: var(--color-success); }
-  .metadata :global(.pr-link.closed svg) { color: var(--color-danger); }
-  .branch { display: flex; align-items: center; gap: 4px; min-width: 0; font-family: var(--font-mono); font-size: 11.5px; }
-  .branch :global(svg) { flex: none; }
-  .branch .ui-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .thread :global(.headline .pr) { font-size: var(--text-sm); }
+  /* At 360 px a plain time goes before the title is cut; a state keeps its mark and word. */
+  @media (max-width: 380px) {
+    .thread :global(.headline .when:not(.state)), .thread :global(.headline .when .elapsed) { display: none; }
+  }
   /* The menu's trigger, out of sight until the keyboard reaches it; the popover hangs under the row's end. */
   .row-menu { position: absolute; top: 0; right: 4px; bottom: 0; display: flex; align-items: center; pointer-events: none; }
   .row-menu :global(.trigger) { opacity: 0; background: var(--row-background, var(--color-background)); }

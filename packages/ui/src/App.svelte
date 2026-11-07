@@ -38,6 +38,7 @@
   import { workspace } from './lib/workspace.svelte';
   import { hostLocalAgentBrowser } from './lib/agent-browser-host.svelte';
   import { tourRequested, tourSeen } from './lib/onboarding.svelte';
+  import { needsAnAI } from './lib/first-run';
   import { whenIdle } from './lib/idle';
   import { prefetchAllowed, prefetchNames, warmPages } from './lib/prefetch';
   import { parts, prefetchParts } from './lib/deferred-parts';
@@ -477,7 +478,8 @@
   let listFolded = $derived(store.sidebarCollapsed && store.page !== 'settings');
   let barLeft = $derived(!railShown ? '0px' : listFolded ? 'var(--frame-gap)' : `calc(${store.sidebarWidth}px + var(--frame-gap))`);
   let sidebarFolded = $derived(listFolded && store.booted);
-  let tour = $derived(store.booted && store.connection === 'ready' && (tourRequested() || !tourSeen()));
+  // A machine with no AI shows its one action first: the tour waits for something to show.
+  let tour = $derived(store.booted && store.connection === 'ready' && (tourRequested() || (!tourSeen() && !needsAnAI(store))));
 
   /**
    * Whether something modal is up, waiting on the user: no app chord fires under
@@ -802,6 +804,8 @@
     .app:not(.shell) { position: fixed; left: 0; right: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; grid-template-columns: minmax(0, 1fr); height: var(--app-height, 100dvh); top: var(--app-top, 0px); overflow: hidden; }
     .app:not(.shell) :global(.titlebar) { display: none; grid-row: 2; grid-column: 1; }
     .app:not(.shell) .body { grid-row: 2; grid-column: 1; }
+    /* A settings page brings its own header, with the way back: one header a screen, never two stacked. */
+    .app:not(.shell):has(:global(.mobile-settings[data-detail])) > :global(.mobile-header) { display: none; }
     /* The header owns the top safe area; pages keep clear of the home indicator, unless the bottom bar (tabbed) does. */
     .app.off-chat:not(.tabbed) .body { padding-bottom: env(safe-area-inset-bottom, 0px); box-sizing: border-box; }
     /* Skips layout and paint of the chat streaming behind the list; its DOM, state and scroll stay as they were.

@@ -5,9 +5,9 @@
   import { pinnedQuotas, PINNED_QUOTA_WIDTH } from '../lib/pinned-quotas.svelte';
   import Deferred, { parts } from './Deferred.svelte';
   import { ChevronDown, FolderOpen, VenetianMask } from '@lucide/svelte';
-  import { fill, strings } from '../lib/strings';
+  import { strings } from '../lib/strings';
   import { modePhrase } from '../lib/permission-modes';
-  import { effortName, projectName } from '../lib/format';
+  import { projectName } from '../lib/format';
   import type { Store } from '../lib/store.svelte';
   import { DRAFT_STASH_KEY } from '../lib/prefs';
   import { lastIndexById } from '../lib/thread-rows';
@@ -26,6 +26,7 @@
   import DoneThreadNotice from './DoneThreadNotice.svelte';
   import WorktreeGoneNotice from './WorktreeGoneNotice.svelte';
   import ContactHoldNotice from './ContactHoldNotice.svelte';
+  import { firstRunScreen, needsAnAI } from '../lib/first-run';
 
   /** `locked`: the conversation reads but takes nothing more, said in place of the composer (an archived agent's). */
   let { store, locked = null }: { store: Store; locked?: string | null } = $props();
@@ -94,11 +95,7 @@
   });
   let project = $derived(store.openProject);
   let draftChoice = $derived(store.defaultChoice());
-  let draftModel = $derived(store.modelOf(draftChoice));
   let draftProvider = $derived(draftChoice ? store.providerOf(draftChoice.providerId) : null);
-  let draftEffort = $derived(draftChoice?.effort ?? draftModel?.effort?.default ?? null);
-  let effortLabel = $derived(draftEffort ? effortName(draftModel, draftEffort) : null);
-  let modelLabel = $derived(draftModel?.name ?? draftChoice?.model ?? draftProvider?.name ?? '');
   /** The machine the draft's project is on: the heading ends with it, one machine or several. */
   let machine = $derived(workspace.machinesOr(store).find((entry) => entry.store === store) ?? null);
 
@@ -127,6 +124,9 @@
   </div>
 {:else if thread?.teamId}
   {#if TeamChat}{#key thread.id}<TeamChat {store} {thread} />{/key}{/if}
+{:else if !thread && !sending && needsAnAI(store)}
+  <!-- Nothing to start a thread on yet: one action first, the folder and the composer after it. -->
+  <Deferred part={firstRunScreen}>{#snippet children(FirstRun)}<FirstRun {store} />{/snippet}</Deferred>
 {:else if thread?.councilId}
   {#if CouncilSalon}{#key thread.id}<div class="salon-page"><CouncilSalon {store} councilId={thread.councilId} threadId={thread.id} /></div>{/key}{/if}
 {:else}
@@ -178,16 +178,6 @@
               <span class="machine" data-testid="draft-machine"><MachineIcon icon={machine.icon} os={store.core?.os} size={20} /><span class="ui-label">{machine.label}</span></span>
             {/if}
           </h1>
-          {#if draftChoice || store.draft?.worktree}
-            <p class="draft-details">
-              {#if store.draft?.worktree}<span>{strings.thread.inWorktree}</span>{/if}
-              {#if draftChoice}
-                <span>{modePhrase(draftChoice.permissionMode, draftProvider)}</span>
-                <span>{strings.thread.using} {modelLabel}</span>
-                {#if effortLabel}<span>{fill(strings.thread.onEffort, { effort: effortLabel })}</span>{/if}
-              {/if}
-            </p>
-          {/if}
         </div>
     {/if}
 
@@ -328,17 +318,6 @@
     width: 100%;
     max-width: var(--content);
     text-align: center;
-  }
-
-  /* One sentence cut in phrases that wrap whole: the gap between two is a word space, not 6 px. */
-  .draft-details {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 4px 0.28em;
-    color: var(--color-muted-foreground);
-    font-size: var(--text-base);
-    line-height: 1.6;
   }
 
   .start {

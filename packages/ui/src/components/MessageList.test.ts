@@ -262,7 +262,7 @@ test('an agent thread folds a finished turn\'s steps behind the count on its sum
   const quiet = folds().find(fold => fold.dataset.kind === 'quiet' && fold.textContent?.includes('4 issues'))!;
   expect(quiet.textContent).toContain('Checked: 4 issues, 2 pull requests, nothing new · 2 steps');
   // The automatic compaction after each is a mark on its line, not a row of its own.
-  expect(folds().filter(fold => fold.dataset.kind === 'quiet').map(fold => fold.querySelector('[data-testid="turn-fold-compaction"]')?.textContent)).toEqual(['compacted 51.1K → 10.8K', 'compacted 48.9K → 11.2K']);
+  expect(folds().filter(fold => fold.dataset.kind === 'quiet').map(fold => fold.querySelector('[data-testid="turn-fold-compaction"]')?.textContent)).toEqual(['summarized 51.1K → 10.8K', 'summarized 48.9K → 11.2K']);
   expect(document.querySelector('[data-testid="compaction-part"]')).toBeNull();
   expect(timeline()).not.toContain('Automatic compaction');
   expect(document.querySelector('[data-testid="wake-marker"]')).toBeNull();
@@ -1625,8 +1625,8 @@ test('a thread over several days reads by day, its wakes on a line each, its com
   expect(document.querySelector('[data-testid="message-system"]')).toBeNull();
   // Neither compaction takes a row: the mid-turn one rides on its run, the automatic one on the line of the turn before.
   expect(document.querySelector('[data-testid="compaction-part"]')).toBeNull();
-  expect(all('tool-group-compaction')).toEqual(['compacted 201.2K → 13.4K']);
-  expect(all('turn-compaction')).toEqual(['compacted 76K → 9.7K']);
+  expect(all('tool-group-compaction')).toEqual(['summarized 201.2K → 13.4K']);
+  expect(all('turn-compaction')).toEqual(['summarized 76K → 9.7K']);
   // The narration between calls is not an answer.
   expect(all('narration')).toContain('Tests pass. Sol reviews it before I open the pull request.');
   // The wakes fold their steps. The request's time adds each turn's own and the hour the delegated review ran, never the night the watch waited.

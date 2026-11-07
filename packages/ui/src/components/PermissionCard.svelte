@@ -57,6 +57,8 @@
       ? described.subject
       : ''
   );
+  /** The agent's reason, when it says more than the subject shown. */
+  let why = $derived(request?.description && request.description !== subjectBlock ? request.description : '');
   // A change is approved on what it shows: Allow waits for the diff's chunk, which says
   // it is loading or offers a retry meanwhile (Deferred.svelte). Deny never waits.
   let previewMissing = $derived(described.change !== null && parts.DiffView.current === undefined);
@@ -79,7 +81,7 @@
   <div class="dock-head">
     <span class="tag"><span class="ui-label">{strings.chat.permissionNeedsYou}</span></span>
     <span class="sentence ui-label" data-testid="permission-sentence" title={described.subject || toolName}>{sentence}</span>
-    {#if request}<InfoTip text={`${toolName}\n${json(request.input)}`} topic={sentence} testid="permission-input" />{/if}
+    {#if request}<InfoTip text={`${why ? `${why}\n\n` : ''}${toolName}\n${json(request.input)}`} topic={sentence} testid="permission-input" />{/if}
     {#if total > 1}<span class="count ui-label" data-testid="permission-count">{fill(strings.chat.permissionOf, { index: String(index), total: String(total) })}</span>{/if}
   </div>
   {#if subjectBlock}
@@ -90,7 +92,7 @@
     <Deferred part={parts.DiffView}>{#snippet children(DiffView)}<DiffView path={change.path} oldText={change.oldText} newText={change.newText} doc={change} />{/snippet}</Deferred>
   {/if}
   <div class="foot" aria-busy={sending !== null}>
-    <span class="why" title={request?.description && request.description !== subjectBlock ? request.description : undefined}>{request?.description && request.description !== subjectBlock ? request.description : ''}</span>
+    <span class="why" title={why || undefined}>{why}</span>
     <button type="button" class="ghost choice" data-testid="permission-deny" disabled={sending !== null} onclick={() => void choose('deny')}>
       <span class="ui-label">{strings.chat.deny}</span><kbd aria-hidden="true">{strings.chat.keyEscape}</kbd>
     </button>
@@ -254,8 +256,8 @@
     border-radius: 0;
     background: transparent;
     box-shadow: none;
-    padding: 12px 12px 10px 14px;
-    gap: 9px;
+    padding: 10px 12px;
+    gap: 8px;
     outline: none;
   }
   .docked:focus-visible { box-shadow: inset 0 0 0 2px var(--color-accent); }
@@ -263,7 +265,9 @@
   .dock-head .sentence { flex: 0 1 auto; min-width: 0; font-size: var(--text-base); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .dock-head :global(.info-tip) { flex: none; margin: 0; }
   .docked :global(.info-bubble) { font-family: var(--font-mono); font-size: var(--text-xs); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 50vh; overflow: auto; }
-  .tag { flex: none; height: 20px; padding: 0 7px; border-radius: var(--radius-sm); background: var(--color-live-soft); color: var(--color-live); font-size: 11px; font-weight: 650; display: inline-flex; align-items: center; }
+  /* What waits on the owner, quietly: a small live dot and a muted word, no fill. */
+  .tag { flex: none; height: 22px; gap: 6px; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; display: inline-flex; align-items: center; }
+  .tag::before { content: ''; width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--color-live); }
   .count { flex: none; margin-left: auto; color: var(--color-muted-foreground); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
   .docked pre { max-height: 120px; padding: 9px 12px; border-radius: var(--radius-md); background: var(--color-surface); font-size: 12.5px; }
   .foot { display: flex; align-items: center; gap: 6px; min-width: 0; }
@@ -275,9 +279,14 @@
   .choice kbd { display: inline-flex; align-items: center; font-family: var(--font-mono); font-size: 10.5px; opacity: .55; }
   @media (max-width: 720px) {
     .choice kbd { display: none; }
-    .choice { height: var(--touch-target); padding: 0 16px; }
-    /* The reason keeps its own line above the two choices, read whole. */
-    .foot { flex-wrap: wrap; justify-content: flex-end; }
-    .why { flex: 1 0 100%; white-space: normal; }
+    .choice { height: var(--touch-target); padding: 0 12px; }
+    /* A phone puts the choices on the head's row and the reason one "i" away
+       in the head, so the ask takes two rows over the field, not four. */
+    .permission.docked { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 8px; }
+    .docked > :global(:not(.dock-head, .foot)) { grid-column: 1 / -1; }
+    .docked .dock-head { grid-area: 1 / 1; }
+    .docked .foot { grid-area: 1 / 2; }
+    .docked .tag > .ui-label { display: none; }
+    .why { display: none; }
   }
 </style>

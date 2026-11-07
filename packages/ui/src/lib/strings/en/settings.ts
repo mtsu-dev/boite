@@ -30,7 +30,6 @@ export const strings = {
     back: 'Back to threads',
     search: 'Search settings',
     searchEmpty: 'No setting matches',
-    homeGroups: ['App', 'Agents', 'Usage and limits', 'System'],
     providersReady: '{count} connected',
     providersOne: '1 connected',
     machinesCount: '{count} machines',

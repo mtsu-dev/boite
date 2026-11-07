@@ -14,6 +14,9 @@ export const strings = {
     subagentPermission: '{title} waits for your permission',
     openSubagent: 'Open',
     openSubagentHint: 'Open {title}',
+    /** The strip's last entry when its two rows cannot hold every running subagent and workflow. */
+    moreRunning: '+{count}',
+    moreRunningHint: '{count} more running: open the subagents',
     loop: 'Loop',
     tasks: 'Tasks',
     taskCount: '{done}/{total} tasks',

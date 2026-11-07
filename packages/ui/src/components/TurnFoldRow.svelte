@@ -44,7 +44,7 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    margin: 4px 0;
+    /* The slot's own gap places it on the column's scale: no margin of its own. */
     min-width: 0;
     font-size: var(--text-xs);
     color: var(--color-muted-foreground);

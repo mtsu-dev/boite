@@ -1,7 +1,7 @@
 <script lang="ts">
   import TelemetrySettings from './TelemetrySettings.svelte';
-  import { AppWindow, ArchiveRestore, ArrowLeft, Bell, ChevronRight, Coins, FlaskConical, Gauge, KeyRound, Lock, Monitor, Palette, Mic, Minimize2 } from '@lucide/svelte';
-  import type { Store } from '../lib/store.svelte';
+  import { Activity, AppWindow, ArchiveRestore, ArrowLeft, Bell, Brain, ChevronRight, Coins, FlaskConical, FolderGit2, Gauge, KeyRound, Lock, Monitor, Palette, Mic, Minimize2, Settings2, ShieldCheck, SlidersHorizontal, Stethoscope } from '@lucide/svelte';
+  import type { SettingsTab, Store } from '../lib/store.svelte';
   import { workspace } from '../lib/workspace.svelte';
   import { strings } from '../lib/strings';
   import { mobileOverlay } from '../lib/mobile-history';
@@ -28,7 +28,7 @@
   import InfoTip from './InfoTip.svelte';
   import PolicyBanner from './PolicyBanner.svelte';
   import PolicySettings from './PolicySettings.svelte';
-  import { tick, type Snippet } from 'svelte';
+  import { tick, type Component, type Snippet } from 'svelte';
   import { revealSettingsCard } from '../lib/settings-flash';
   import { phonePage } from '../lib/settings-tabs';
 
@@ -37,20 +37,29 @@
    * the pages of one machine show the target, under the bar.
    */
   let { store, target = store, bar, onopenthread }: { store: Store; target?: Store; bar?: Snippet; onopenthread?: () => void } = $props();
-  let phone = $state(false);
-  /** The analytics switches, on a screen of their own beside the notifications. */
-  let privacy = $state(false);
   /**
-   * The phone has no General or Advanced page: the cards a phone needs from
-   * them, the archive or the keys, get a page of their own, which a jump to the
-   * desktop's card (the palette, the project menu) lands on too
-   * (`lib/settings-tabs.ts`). Phone and privacy are this phone's own screens,
-   * opened from Home.
+   * Home lists the desktop's groups (`SETTINGS_GROUPS`) a phone has a page
+   * for. General and Advanced open an index of their pages: the cards a phone
+   * needs from the desktop's long pages, the archive or the keys, get a page
+   * of their own, which a jump to the desktop's card (the palette, the project
+   * menu) lands on too (`lib/settings-tabs.ts`). Notifications and privacy are
+   * this phone's own screens, opened from General: they hold while the route
+   * that showed them does.
    */
+  let local = $state.raw<{ screen: 'phone' | 'privacy'; tab: SettingsTab; section: unknown } | null>(null);
+  const openLocal = (screen: 'phone' | 'privacy') => { local = { screen, tab: store.settingsTab, section: store.settingsSection }; };
   let routed = $derived(phonePage(store.settingsTab, store.settingsSection?.id, store.owner));
-  let page = $derived(routed !== 'home' && routed === store.settingsTab ? routed : phone ? 'phone' : privacy ? 'privacy' : routed);
+  let page = $derived(local && local.tab === store.settingsTab && local.section === store.settingsSection ? local.screen : routed);
+  const UNDER: Record<string, 'general' | 'advanced'> = {
+    phone: 'general', privacy: 'general', voice: 'general', archived: 'general', secrets: 'general', 'browser-profiles': 'general', windows: 'general', worktrees: 'general',
+    'auto-compact': 'advanced', 'task-manager': 'advanced', diagnostics: 'advanced', experiments: 'advanced'
+  };
+  /** Home, a group's screen, or a page of a group's index. */
+  const depthOf = (screen: string): number => screen === 'home' ? 0 : UNDER[screen] ? 2 : 1;
   let machine = $derived(workspace.machines.find(machine => machine.store === store));
   const titleOf = (page: string): string => page === 'brain' ? strings.brain.heading : page === 'phone' ? strings.mobile.settingsPhone
+    : page === 'general' ? strings.settings.tabs.general
+    : page === 'advanced' ? strings.settings.tabs.advanced
     : page === 'privacy' ? strings.mobile.settingsPrivacy
     : page === 'archived' ? strings.settings.archived.heading
     : page === 'worktrees' ? strings.settings.worktrees.heading
@@ -72,20 +81,22 @@
   let detail = $derived(page !== 'home');
 
   /**
-   * A page slides in over the home and back off it, as the conversation does
-   * over the list (MobileNavigation). From one page to another, the two tabs
-   * of Usage included, the page is simply replaced.
+   * A page slides in over the screen it opens from and back off it, as the
+   * conversation does over the list (MobileNavigation). From one page to
+   * another at the same depth, the two tabs of Usage included, the page is
+   * simply replaced.
    */
   const slide = new ScreenSlide();
   /**
-   * The screen a move to or from the home brought in, slid or not: it shows
+   * The screen a move deeper or back brought in, slid or not: it shows
    * without the fade a replaced page plays, which after Safari's own swipe
    * back would be a second animation.
    */
   let arrived = $state<string | null>(null);
   slide.follow(() => page, (from, to) => {
-    arrived = from === 'home' || to === 'home' ? to : null;
-    return from === 'home' ? 'push' : to === 'home' ? 'pop' : null;
+    const way = depthOf(to) > depthOf(from) ? 'push' : depthOf(to) < depthOf(from) ? 'pop' : null;
+    arrived = way ? to : null;
+    return way;
   });
   /** During a slide the screen it leaves stays drawn; the one on top comes last, so it paints over the other. */
   let screens = $derived(slide.direction && slide.from ? (slide.direction === 'push' ? [slide.from, page] : [page, slide.from]) : [page]);
@@ -95,12 +106,19 @@
     if (slide.direction === 'push') return shown === page ? 'in' : 'under-out';
     return shown === page ? 'under-in' : 'out';
   }
-  $effect(() => { if (detail) return mobileOverlay(back); });
+  /** One history entry a level, so Back climbs from a page to its group, then Home. */
+  let deeper = $derived(depthOf(page) >= 2);
+  $effect(() => { if (detail) return mobileOverlay(() => { local = null; store.showSettings(); }); });
+  $effect(() => { if (deeper) return mobileOverlay(back); });
 
   $effect(() => {
     if (page === 'phone' && store.connection === 'ready') void store.loadSessions();
   });
-  function back() { phone = false; privacy = false; store.showSettings(); }
+  function back() {
+    const group = UNDER[page];
+    local = null;
+    store.showSettings(group);
+  }
 
   // A settings card in a conversation opened this page to show one card: scroll to it and light it up.
   $effect(() => {
@@ -110,66 +128,31 @@
   });
 </script>
 
-<!-- `settings` gives the detail pages the same grammar as the desktop ones. -->
-<div class="mobile-settings settings" class:sliding={screens.length > 1} data-testid="settings" use:slide.attach>
+{#snippet row(testid: string, Icon: Component<{ size?: number }>, label: string, go: () => void)}
+  <button class="ghost row" data-testid={testid} onclick={go}><Icon size={20} /><span class="ui-label">{label}</span><ChevronRight size={18} /></button>
+{/snippet}
+
+<!-- `settings` gives the detail pages the same grammar as the desktop ones. `data-detail` lets the app drop
+     its own header over a page, which carries its own with the way back (App.svelte). -->
+<div class="mobile-settings settings" class:sliding={screens.length > 1} data-testid="settings" data-detail={detail || undefined} use:slide.attach>
   {#each screens as shown (shown)}
   <div class="settings-screen" class:left={shown !== page} class:arrived={shown === arrived} data-slide={motionOf(shown)} inert={shown !== page || slide.direction === 'pop'}>
   {#if shown === 'home'}
-    <!-- The header already says Settings: the screen opens on its two groups, what this phone keeps and what the machine runs. -->
+    <!-- The header already says Settings: the screen opens on the groups, as the desktop's nav lists them. -->
     <div class="home" data-testid="mobile-settings-home">
       <PolicyBanner store={target} />
-      <section aria-labelledby="phone-preferences">
-        <h2 id="phone-preferences">{strings.mobile.settingsDevice}</h2>
-        <div class="rows">
-          <button class="ghost row" data-testid="mobile-settings-phone" onclick={() => { phone = true; }}>
-            <Bell size={20} /><span class="ui-label">{strings.mobile.settingsPhone}</span><ChevronRight size={18} />
-          </button>
-          <button class="ghost row" data-testid="settings-tab-appearance" onclick={() => store.showSettings('appearance')}>
-            <Palette size={20} /><span class="ui-label">{strings.settings.tabs.appearance}</span><ChevronRight size={18} />
-          </button>
-          <button class="ghost row" data-testid="mobile-settings-privacy" onclick={() => { privacy = true; }}>
-            <Lock size={20} /><span class="ui-label">{strings.mobile.settingsPrivacy}</span><ChevronRight size={18} />
-          </button>
-          <!-- The phone follows the desktop app's experiments until it flips one here, and can follow it again from this page. -->
-          <button class="ghost row" data-testid="settings-tab-experiments" onclick={() => store.showSettings('experiments')}>
-            <FlaskConical size={20} /><span class="ui-label">{strings.settings.tabs.experiments}</span><ChevronRight size={18} />
-          </button>
-        </div>
-      </section>
-      <section aria-labelledby="remote-machine">
-        <h2 id="remote-machine">{strings.mobile.settingsMachine}</h2>
-        <div class="rows">
-          <!-- The machine itself leads to the group's machines and their updates. -->
-          <button class="ghost row machine-link" data-testid="mobile-settings-connection" onclick={() => store.showSettings('machines')}>
-            <Monitor size={20} /><span><strong class="ui-label">{machine?.label ?? strings.machines.heading}</strong><small class:ready={store.connection === 'ready'}>{store.pairingRequired ? strings.mobile.pairingRequired : strings.connection[store.connection]}</small></span><ChevronRight size={18} />
-          </button>
-          <button class="ghost row" data-testid="settings-tab-usage" onclick={() => store.showSettings('usage')}>
-            <Coins size={20} /><span class="ui-label">{strings.usage.heading}</span><ChevronRight size={18} />
-          </button>
-          <button class="ghost row" data-testid="settings-tab-voice" onclick={() => store.showSettings('voice')}>
-            <Mic size={20} /><span class="ui-label">{strings.speech.heading}</span><ChevronRight size={18} />
-          </button>
-          {#if store.owner}
-            <button class="ghost row" data-testid="mobile-settings-browser-profiles" onclick={() => store.showSettings('general', 'browser-profiles')}>
-              <Monitor size={20} /><span class="ui-label">{strings.browserProfiles.heading}</span><ChevronRight size={18} />
-            </button>
-          {/if}
-          {#if store.owner}
-            <button class="ghost row" data-testid="mobile-settings-compaction" onclick={() => store.showSettings('advanced', 'auto-compact')}>
-              <Minimize2 size={20} /><span class="ui-label">{strings.settings.autoCompact}</span><ChevronRight size={18} />
-            </button>
-            <button class="ghost row" data-testid="mobile-settings-windows" onclick={() => store.showSettings('general', 'windows')}>
-              <AppWindow size={20} /><span class="ui-label">{strings.windows.settings.allowedHeading}</span><ChevronRight size={18} />
-            </button>
-          {/if}
-          <button class="ghost row" data-testid="mobile-settings-archived" onclick={() => store.showSettings('general', 'archived')}>
-            <ArchiveRestore size={20} /><span class="ui-label">{strings.settings.archived.heading}</span><ChevronRight size={18} />
-          </button>
-          <button class="ghost row" data-testid="mobile-settings-secrets" onclick={() => store.showSettings('general', 'secrets')}>
-            <KeyRound size={20} /><span class="ui-label">{strings.secrets.heading}</span><ChevronRight size={18} />
-          </button>
-        </div>
-      </section>
+      <div class="rows">
+        {@render row('settings-tab-general', Settings2, strings.settings.tabs.general, () => store.showSettings('general'))}
+        {@render row('settings-tab-appearance', Palette, strings.settings.tabs.appearance, () => store.showSettings('appearance'))}
+        {#if store.owner}{@render row('settings-tab-brain', Brain, strings.brain.heading, () => store.showSettings('brain'))}{/if}
+        {@render row('settings-tab-usage', Coins, strings.settings.tabs.usage, () => store.showSettings('usage'))}
+        {#if store.owner}{@render row('settings-tab-resources', ShieldCheck, strings.settings.tabs.resources, () => store.showSettings('resources'))}{/if}
+        <!-- Machines carries the machine this phone reaches and how. -->
+        <button class="ghost row machine-link" data-testid="mobile-settings-connection" onclick={() => store.showSettings('machines')}>
+          <Monitor size={20} /><span><strong class="ui-label">{strings.settings.tabs.machines}</strong><small>{#if machine}{`${machine.label} · `}{/if}<span class:ready={store.connection === 'ready'}>{store.pairingRequired ? strings.mobile.pairingRequired : strings.connection[store.connection]}</span></small></span><ChevronRight size={18} />
+        </button>
+        {@render row('settings-tab-advanced', SlidersHorizontal, strings.settings.tabs.advanced, () => store.showSettings('advanced'))}
+      </div>
       <PolicySettings store={target} />
     </div>
   {:else}
@@ -190,7 +173,32 @@
           <button type="button" role="tab" class="tab" class:on={shown === 'limits'} aria-selected={shown === 'limits'} data-testid="mobile-usage-tab-limits" onclick={() => store.showSettings('limits')}><Gauge size={15} /><span class="ui-label">{strings.usage.limits}</span></button>
         </div>
       {/if}
-      {#if shown === 'brain' && target.owner}
+      {#if shown === 'general'}
+        <div class="page index" data-testid="mobile-settings-general">
+          <div class="rows">
+            {@render row('mobile-settings-phone', Bell, strings.mobile.settingsPhone, () => openLocal('phone'))}
+            {@render row('mobile-settings-privacy', Lock, strings.mobile.settingsPrivacy, () => openLocal('privacy'))}
+            {@render row('settings-tab-voice', Mic, strings.speech.heading, () => store.showSettings('voice'))}
+            {@render row('mobile-settings-archived', ArchiveRestore, strings.settings.archived.heading, () => store.showSettings('general', 'archived'))}
+            {@render row('mobile-settings-secrets', KeyRound, strings.secrets.heading, () => store.showSettings('general', 'secrets'))}
+            {#if store.owner}
+              {@render row('mobile-settings-browser-profiles', Monitor, strings.browserProfiles.heading, () => store.showSettings('general', 'browser-profiles'))}
+              {@render row('mobile-settings-windows', AppWindow, strings.windows.settings.allowedHeading, () => store.showSettings('general', 'windows'))}
+              {@render row('mobile-settings-worktrees', FolderGit2, strings.settings.worktrees.heading, () => store.showSettings('general', 'worktrees'))}
+            {/if}
+          </div>
+        </div>
+      {:else if shown === 'advanced'}
+        <div class="page index" data-testid="mobile-settings-advanced">
+          <div class="rows">
+            {#if store.owner}{@render row('mobile-settings-compaction', Minimize2, strings.settings.autoCompact, () => store.showSettings('advanced', 'auto-compact'))}{/if}
+            {@render row('settings-tab-task-manager', Activity, strings.taskManager.title, () => store.showSettings('task-manager'))}
+            {#if store.owner}{@render row('settings-tab-diagnostics', Stethoscope, strings.diagnostics.heading, () => store.showSettings('diagnostics'))}{/if}
+            <!-- The phone follows the desktop app's experiments until it flips one here, and can follow it again from this page. -->
+            {@render row('settings-tab-experiments', FlaskConical, strings.settings.tabs.experiments, () => store.showSettings('experiments'))}
+          </div>
+        </div>
+      {:else if shown === 'brain' && target.owner}
         <BrainPage store={target} />
       {:else if shown === 'phone'}
         <div class="page phone-page">
@@ -261,10 +269,8 @@
   /* The group's first row is the machine itself: its name over its connection. */
   .machine-link { min-height: 64px; }
   .machine-link strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
-  .machine-link small { display: block; margin-top: 6px; font-size: var(--text-xs); font-weight: 400; color: var(--color-muted-foreground); }
-  .machine-link small.ready { color: var(--color-success); }
-  section + section { margin-top: 28px; }
-  h2 { font-size: var(--text-sm); font-weight: 500; color: var(--color-muted-foreground); margin: 0 0 8px; }
+  .machine-link small { display: block; margin-top: 6px; font-size: var(--text-xs); font-weight: 400; color: var(--color-muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .machine-link small .ready { color: var(--color-success); }
   p { font-size: var(--text-sm); color: var(--color-muted-foreground); line-height: 1.5; margin: 8px 0 12px; }
   .rows { border: 1px solid var(--color-border); border-radius: var(--radius-lg); overflow: hidden; background: var(--color-surface); }
   /* A ghost button is muted; a row title reads like any other settings label. */
@@ -272,7 +278,8 @@
   .row + .row { border-top: 1px solid var(--color-border); }
   .row span { flex: 1; min-width: 0; }
   .row :global(svg) { flex: none; color: var(--color-muted-foreground); }
-  header { flex: none; display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--color-border); }
+  /* The screen's one header: the app's own steps aside over a page (App.svelte), so this one takes the top inset. */
+  header { flex: none; display: flex; align-items: center; gap: 10px; min-height: 60px; padding: max(8px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left)); border-bottom: 1px solid var(--color-border); }
   header .icon { width: 44px; min-height: 44px; }
   header h1 { margin: 0; font-size: var(--text-md); font-weight: 600; }
   header.limits h1 { flex: 1; min-width: 0; margin-right: 54px; }
@@ -296,7 +303,7 @@
   .detail :global(.usage > header h1) { display: none; }
   /* Their refresh joins the bar, at the right end: alone on a row it pushed the cards down. */
   .detail :global(.limits-page > header),
-  .detail :global(.usage > header) { position: absolute; top: 8px; right: 12px; margin: 0; }
+  .detail :global(.usage > header) { position: absolute; top: max(8px, env(safe-area-inset-top)); right: 12px; margin: 0; }
   .detail :global(.limits-page > header .refresh),
   .detail :global(.usage > header .refresh) { width: 44px; height: 44px; }
   .detail :global(.switch-row) { flex-wrap: wrap; gap: 12px; }

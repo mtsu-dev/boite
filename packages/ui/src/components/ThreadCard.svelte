@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte';
-  import { Check, Ellipsis, FolderInput, GitBranch } from '@lucide/svelte';
+  import { Check, Ellipsis, FolderInput } from '@lucide/svelte';
   import { type Project, type ThreadSummary } from '@boite/contracts';
   import type { Machine } from '../lib/workspace.svelte';
   import { workspace } from '../lib/workspace.svelte';
@@ -11,7 +11,6 @@
   import { strings } from '../lib/strings';
   import ThreadHeadline from './ThreadHeadline.svelte';
   import { trackThreadPullRequest } from '../lib/thread-pull-request.svelte';
-  import PullRequestBadge from './PullRequestBadge.svelte';
   import { canMarkDone, markDone } from '../lib/recent.svelte';
   import { ThreadRename, commitOnUnmount } from '../lib/thread-rename.svelte';
   let {
@@ -21,8 +20,7 @@
     now,
     hidden = false,
     showDone = false,
-    compact = false,
-    showMachine = true
+    compact = false
   }: {
     machine: Machine;
     project: Project;
@@ -32,13 +30,8 @@
     hidden?: boolean;
     /** The quick action puts finished work in Done. */
     showDone?: boolean;
-    /**
-     * The Recent list's one line: the project's tile, the title and one
-     * marker. No second line and no machine: the thread opens to say the rest.
-     */
+    /** Recent's flat list: the project's tile leads the row, since no card names it. */
     compact?: boolean;
-    /** Off while only one machine is connected, and under a project header, which already shows it. */
-    showMachine?: boolean;
   } = $props();
   let owner = $derived(machine.store);
   let open = $derived(workspace.active === owner && owner.openThread?.id === thread.id);
@@ -47,8 +40,6 @@
   commitOnUnmount(() => renaming);
   const pr = trackThreadPullRequest(() => ({ owner, thread, hidden }));
   const pullRequest = $derived(pr.value);
-  /** Only a pull request earns a second line, its branch beside it, and never in the Recent list: a branch alone would double every worktree row. */
-  let meta = $derived(!compact && pullRequest !== null);
   // A move asked for while the turn runs, until the turn ends and applies it.
   let pending = $derived(pendingLine(thread));
   let doneAllowed = $derived(canMarkDone(owner, thread));
@@ -106,7 +97,6 @@
     class:open
     class:unread={thread.unread}
     class:pinned={thread.pinned}
-    class:meta
     class:compact
     class:offline={owner.connection !== 'ready'}
     class:dragging={threadDrag.current?.threadId === thread.id && threadDrag.current.machineId === machine.id}
@@ -125,23 +115,15 @@
       data-preload-thread={thread.id}
       data-status={thread.status}
       data-pinned={thread.pinned ? 'true' : undefined}
-      title={thread.title}
+      title={thread.branch ? `${thread.title}\n${thread.branch}` : thread.title}
       onclick={() => void workspace.select(owner, thread.id)}
       ondblclick={rename}
     >
-      <ThreadHeadline {owner} {thread} {now} {open} machine={showMachine && !compact ? machine : undefined} tile={compact ? project : undefined} mark={compact} />
+      <ThreadHeadline {owner} {thread} {now} {open} tile={compact ? project : undefined} {pullRequest} />
       {#if pending}
         <span class="pending" data-testid="thread-pending" title={pending}><FolderInput size={12} /><span class="ui-label">{pending}</span></span>
       {/if}
     </button>
-    {#if meta}
-    <div class="metadata">
-      {#if pullRequest}
-        <PullRequestBadge {pullRequest} />
-      {/if}
-      {#if thread.branch}<span class="branch" data-testid="thread-branch" title={thread.branch}><GitBranch size={12} /><span class="ui-label">{thread.branch}</span></span>{/if}
-    </div>
-    {/if}
     {#if showDone && doneAllowed}<button type="button" class="ghost small icon done" data-testid="thread-done"
       aria-label={strings.sidebar.markDone} title={strings.sidebar.markDone} onclick={() => void markDone(owner, thread)}><Check size={14} /></button>{/if}
     <button
@@ -184,8 +166,7 @@
     user-select: none;
   }
   /* Its machine dropped: the row still opens, to read what is held and queue a prompt. */
-  .thread.offline .row,
-  .thread.offline .metadata {
+  .thread.offline .row {
     opacity: 0.55;
   }
   /* One line of 32 px: the title's 20 px line in 6 px of padding. */
@@ -209,12 +190,7 @@
   @container thread-row (min-width: 340px) {
     .row :global(.headline .pin) { display: inline-flex; }
   }
-  /* The PR line sits over the row's bottom padding, so the whole card stays one target. */
-  .meta .row {
-    min-height: 50px;
-    padding: 6px 8px 24px;
-  }
-  /* The Recent list: one line, a step wider inside, the tile in the picture's place. */
+  /* The Recent list: a step wider inside, the project's tile first. */
   .compact .row { padding: 6px 10px; }
   .compact :global(.headline) { gap: 10px; }
   .row:hover:not(:disabled) {
@@ -239,47 +215,6 @@
   }
   .pending :global(svg) {
     flex: none;
-  }
-  /* Under the title, from the title's edge: the pull request, then its branch in mono. */
-  .metadata {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    position: absolute;
-    bottom: 6px;
-    left: 30px;
-    right: 8px;
-    height: 16px;
-    pointer-events: none;
-    min-width: 0;
-    font-size: 11.5px;
-    color: var(--color-subtle);
-  }
-  .metadata > span {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    min-width: 0;
-  }
-  .metadata span span {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .metadata :global(svg) {
-    flex: none;
-  }
-  /* The number in the row's quiet ink, its state in the icon's tone only: no underline, no badge. */
-  .metadata :global(.pr-link) { color: var(--color-muted-foreground); text-decoration: none; font-size: inherit; }
-  .metadata :global(.pr-link:hover) { color: var(--color-foreground); }
-  .metadata :global(.pr-link.merged svg) { color: var(--color-success); }
-  .metadata :global(.pr-link.closed svg) { color: var(--color-danger); }
-  .metadata .branch {
-    flex: 0 1 auto;
-    font-family: var(--font-mono);
-    font-size: 11px;
-    letter-spacing: 0;
   }
   /* Centred on the title's line, 21 px under the row's 1 px border and top padding: 26 px buttons at 5 px
      sat 1.5 px above it. A whole pixel keeps the icons sharp, so they stay half a pixel high. */

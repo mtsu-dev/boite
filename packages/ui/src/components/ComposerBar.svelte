@@ -315,14 +315,14 @@
     <div class="context-control" oncontextmenu={(event) => controlMenu(event, store, 'header.context')}><ContextControl {store} /></div>
   {/if}
   {#if target ? target.busy && target.stop : store.busy}
-    <button type="button" class="icon stop" data-testid="composer-stop" title={strings.composer.stop} aria-label={strings.composer.stop} onmousedown={keepFocus} onclick={() => { if (target) target.stop?.(); else void store.stop(); }}>
+    <button type="button" class="icon quiet stop" data-testid="composer-stop" title={strings.composer.stop} aria-label={strings.composer.stop} onmousedown={keepFocus} onclick={() => { if (target) target.stop?.(); else void store.stop(); }}>
       <Square size={12} strokeWidth={2.5} />
     </button>
   {/if}
     {#if canAttach}
       <button
         type="button"
-        class="icon attach"
+        class="icon quiet attach"
         data-testid="composer-attach"
         title={strings.composer.attach}
         aria-label={strings.composer.attach}
@@ -383,9 +383,9 @@
   .context-control { flex: none; }
 
   .mode-icon { display: inline-flex; }
-  .chip.signed-out { color: var(--color-live); }
+  .chips .chip.signed-out { color: var(--color-live); }
 
-  .worktree.on {
+  .bar .chips .worktree.on {
     background: var(--control-glaze) var(--color-active);
     border-color: var(--color-active);
     color: var(--color-foreground);
@@ -419,35 +419,28 @@
     font-weight: 500;
   }
 
-  .chips :global(.trigger) {
-    border-color: var(--color-edge);
-    background: var(--control-glaze) var(--color-control-surface);
-    color: var(--color-foreground);
-  }
-
-  .chips :global(.trigger.ghost) {
+  /* One quiet chip for the model, the effort, the worktree and the mode: no
+     frame, muted ink, a fill only under the pointer or while its menu is open. */
+  .bar .chips :global(.trigger), .bar .chips .worktree {
     width: auto;
     border-color: transparent;
     background: transparent;
+    box-shadow: none;
     color: var(--color-muted-foreground);
-    font-weight: 400;
   }
 
-  .chips :global(.trigger.ghost:hover),
-  .chips :global(.trigger.ghost[aria-expanded='true']) {
+  .bar .chips :global(.trigger:hover), .bar .chips .worktree:hover,
+  .bar .chips :global(.trigger[aria-expanded='true']) {
+    border-color: transparent;
     background: var(--color-hover);
     color: var(--color-foreground);
   }
 
   /* Nothing to pick yet: the one chip that gets somewhere reads at full ink. */
-  .chips :global(.trigger.connect) {
+  .bar .chips :global(.trigger.connect) {
     border-color: transparent;
     background: var(--color-active);
     color: var(--color-foreground);
-  }
-
-  .chips :global(.trigger:hover) {
-    background: var(--control-glaze) var(--color-control-hover);
   }
 
 
@@ -469,9 +462,12 @@
   .answering .stop, .answering .send { margin-left: 0; }
   .answering .attach, .direct .attach { display: inline-flex; }
 
-  .stop {
-    color: var(--color-foreground);
-  }
+  /* The tools beside send are quiet and round like the chips, so send stays
+     the one solid control of the row. */
+  .bar .stop { color: var(--color-foreground); }
+  .bar .attach, .bar :global(.microphone:not(.listening)) { border-radius: var(--radius-full); }
+  .bar :global(.microphone:not(.listening)) { border-color: transparent; box-shadow: none; }
+  .bar :global(.microphone:not(.listening):not(:hover)) { background: transparent; }
 
   /* A composer the side panel narrowed keeps its tools on one row: the effort,
      worktree and mode chips keep only their icons and tooltips. */
@@ -489,11 +485,11 @@
     .desktop-options, .attach { display: none; }
     .chips { flex: 1; flex-wrap: nowrap; }
     .chips :global(.picker) { min-width: 0; max-width: 100%; }
-    .chips :global(.picker > .trigger) { max-width: 100%; height: var(--touch-target); padding: 0 6px; border: none; background: transparent; font-weight: 500; color: var(--color-muted-foreground); }
+    .chips :global(.picker > .trigger) { max-width: 100%; height: var(--touch-target); padding: 0 6px; }
     /* The model's name alone, and whole words of it: one line high, a name too long for the row
        wraps its last words onto a second line nobody sees, never half of one. */
     .chips :global(.picker > .trigger > .label) { min-width: 0; max-width: none; height: 1lh; padding-block: 0; margin-block: 0; text-box: normal; overflow: hidden; white-space: normal; overflow-wrap: normal; }
-    .chips :global(.picker > .trigger.connect) { padding: 0 12px; border-radius: var(--radius-md); background: var(--color-active); color: var(--color-foreground); }
+    .bar .chips :global(.picker > .trigger.connect) { padding: 0 12px; border-radius: var(--radius-md); background: var(--color-active); color: var(--color-foreground); }
     .send, .stop { margin-left: 2px; }
   }
   /* A 360 px phone gives the model's whole name the room of the chevron, of the gaps

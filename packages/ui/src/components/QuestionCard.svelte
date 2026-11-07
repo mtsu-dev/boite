@@ -104,7 +104,7 @@
 
 <div
   class="question"
-  class:resolved={answer !== null}
+  class:resolved={answer !== null || (!docked && !async && pending)}
   class:async
   class:docked
   data-testid="question-card"
@@ -136,11 +136,11 @@
       </div>
     </div>
   {:else if !docked && !async && pending}
-    <!-- The agent stopped for it: the question waits at the top of the composer, here only its line. -->
-    <button type="button" class="ghost answered-row waiting-row" data-testid="question-waiting" disabled={!onwrite} onclick={() => onwrite?.()}>
+    <!-- The agent stopped for it: the question is written once, in the composer's dock; here a plain line and a quiet mark. -->
+    <button type="button" class="ghost answered-row waiting-row" data-testid="question-waiting" title={strings.chat.questionDocked} disabled={!onwrite} onclick={() => onwrite?.()}>
       <span class="glyph"><MessageCircleQuestionMark size={15} strokeWidth={1.75} /></span>
-      <span class="given ui-label" data-testid="question-text">{text}</span>
-      <span class="verdict ui-label">{strings.chat.questionDocked}</span>
+      <span class="given ui-label">{strings.chat.questionHeading}</span>
+      <span class="waiting-mark" role="img" aria-label={strings.chat.questionDocked}></span>
     </button>
   {:else}
   {#if docked}
@@ -254,7 +254,7 @@
     border-radius: 0;
     background: transparent;
     box-shadow: none;
-    padding: 12px 12px 10px 14px;
+    padding: 10px 12px;
     gap: 8px;
   }
 
@@ -262,7 +262,9 @@
   .dock-head :global(button) { flex: none; }
   .dock-head .prompt { flex: 1; min-width: 0; font-size: var(--text-base); font-weight: 600; line-height: 22px; }
   .dock-head .prompt.folded { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-  .tag { flex: none; height: 20px; padding: 0 7px; border-radius: var(--radius-sm); background: var(--color-live-soft); color: var(--color-live); font-size: 11px; font-weight: 650; display: inline-flex; align-items: center; }
+  /* What waits on the owner, quietly: a small live dot and a muted word, no fill. */
+  .tag { flex: none; height: 22px; gap: 6px; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; display: inline-flex; align-items: center; }
+  .tag::before { content: ''; width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--color-live); }
   /* A phone puts the question under its tag and controls, full width; the controls keep
      their touch height on narrower sides, so a pager and Skip still fit one row at 360 px. */
   @media (max-width: 720px) {
@@ -285,7 +287,8 @@
   .docked .actions { justify-content: flex-end; }
 
   .waiting-row:disabled { opacity: 1; cursor: default; }
-  .waiting-row .verdict { margin-left: auto; }
+  /* Waiting on the owner: a small live dot, where to answer is in its tooltip. */
+  .waiting-mark { flex: none; width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--color-live); }
 
   /* Resolved questions use the same inset and touch target as tool disclosures. */
   .question.resolved {

@@ -71,24 +71,41 @@ test('a header unmounted with its rename open, as a machine switch does, still w
   expect(rename.mock.calls).toEqual([['t-trace', 'Typed before the switch']]);
 });
 
-test("a phone's header is back, the title and one menu: the browser and the contacts' bell are entries of it, under their buttons' ids", async () => {
+test("a phone's header is back, the title and one menu: the thread's tools, then the thread, with one browser entry and no contact requests", async () => {
   vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
     media, matches: true, onchange: null, addListener() {}, removeListener() {}
   }));
   client = new FakeClient({ delayMs: 0 });
   store = new Store(); store.attach(client); await store.connect();
   await store.open('t-trace');
-  const open = vi.fn();
-  mounted = mount(ThreadHeader, { target: document.body, props: { store, bell: { label: '1 contact requests waiting', open } } });
+  mounted = mount(ThreadHeader, { target: document.body, props: { store } });
   await settle();
   expect(document.querySelector('[data-testid=thread-place]')?.closest('[data-testid=thread-menu-trigger]')).toBeNull();
   expect(document.querySelector('[data-testid=phone-browser-toggle]')).toBeNull();
-  const pick = async (value: string) => {
-    document.querySelector<HTMLButtonElement>('[data-testid=thread-menu-trigger]')!.click(); await settle();
-    document.querySelector<HTMLButtonElement>(`[data-testid=thread-menu-trigger-menu] [data-value="${value}"]`)!.click(); await settle();
-  };
-  await pick('contact-request-open');
-  expect(open).toHaveBeenCalledOnce();
-  await pick('phone-browser-toggle');
+  document.querySelector<HTMLButtonElement>('[data-testid=thread-menu-trigger]')!.click(); await settle();
+  const menu = document.querySelector<HTMLElement>('[data-testid=thread-menu-trigger-menu]')!;
+  const sections = [...menu.querySelectorAll('.section')].map(node => node.textContent);
+  expect(sections).toEqual(['Tools', 'This thread']);
+  const rows = [...menu.children].map(node => (node as HTMLElement).dataset['value'] ?? node.textContent);
+  // Tools before the thread's own actions: the browser once, rename and archive under the second heading.
+  expect(rows.indexOf('phone-browser-toggle')).toBeLessThan(rows.indexOf('This thread'));
+  expect(rows.indexOf('rename')).toBeGreaterThan(rows.indexOf('This thread'));
+  expect(menu.textContent).not.toMatch(/contact/i);
+  expect([...menu.querySelectorAll('[data-row]')].filter(row => row.textContent?.trim() === 'Browser')).toHaveLength(1);
+  menu.querySelector<HTMLButtonElement>('[data-value="phone-browser-toggle"]')!.click(); await settle();
   expect([store.panelOpen, store.panel.active?.kind]).toEqual([true, 'agent-browser']);
+});
+
+test("a desktop header's panel button opens the panel and its list holds the panels, the terminal and the board", async () => {
+  await start();
+  expect(document.querySelector('[data-testid=terminal-toggle]')).toBeNull();
+  expect(document.querySelector('[data-testid=board-toggle]')).toBeNull();
+  document.querySelector<HTMLButtonElement>('[data-testid=panel-menu]')!.click(); await settle();
+  const menu = document.querySelector<HTMLElement>('[data-testid=panel-menu-menu]')!;
+  expect(menu.querySelector('[data-value="kind:changes"]')).not.toBeNull();
+  expect(menu.querySelector('[data-value="terminal-toggle"]')).not.toBeNull();
+  menu.querySelector<HTMLButtonElement>('[data-value="kind:changes"]')!.click(); await settle();
+  expect([store.panelOpen, store.panel.active?.kind]).toEqual([true, 'changes']);
+  document.querySelector<HTMLButtonElement>('[data-testid=panel-toggle]')!.click(); await settle();
+  expect(store.panelOpen).toBe(false);
 });

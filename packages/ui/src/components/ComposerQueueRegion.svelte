@@ -1,17 +1,16 @@
 <script lang="ts">
   import { textEntries, type ComposerState } from '../lib/composer-queue';
-  import { errorText } from '../lib/errors';
   import type { Store } from '../lib/store.svelte';
   import AgentDock from './AgentDock.svelte';
   import ComposerQueue from './ComposerQueue.svelte';
   import JumpLatest from './JumpLatest.svelte';
-  import UndoToast from './UndoToast.svelte';
 
   /**
    * The strip above the box, one band in the flow so it never covers a line
-   * of the timeline: the thread's subagents and workflows, each by name, the
-   * answers held for the turn, the queued prompts, then at its right the way
-   * back to the latest message and, in a thread, the archive's undo. An
+   * of the timeline: the thread's subagents and workflows, each by name, on
+   * their own row or two, then the answers held for the turn, the queued
+   * prompts and at the right the way back to the latest message. The
+   * archive's undo is not here: it takes the shared bottom-right corner. An
    * agent's own box (`main` false) keeps its queue alone.
    */
   let { store, key, thread, composer, main = true, blocked, machine, sendNow, onrestore, onsendnow }: {
@@ -49,14 +48,14 @@
   {#if main}
     <span class="spacer"></span>
     <JumpLatest />
-    {#if thread}<UndoToast inline onerror={(error) => (store.error = errorText(error))} />{/if}
   {/if}
 </div>
 
 <style>
-  /* Anything in it stands on a 30 px row. A thread keeps the row reserved, so
-     the way back coming and going never moves the timeline; elsewhere an
-     empty strip takes no room. */
+  /* Anything in it stands on a 30 px row, 8 px apart, and 8 px above the box:
+     the same step as the rows. A thread keeps one row reserved, so the way
+     back coming and going never moves the timeline; elsewhere an empty strip
+     takes no room. */
   .strip {
     display: flex;
     flex-wrap: wrap;
@@ -70,4 +69,7 @@
   .strip.reserved, .strip:has(> :not(.spacer)) { min-height: 38px; padding-bottom: 8px; }
   .spacer { flex: 1 0 0; }
   .answers { display: flex; min-width: 0; }
+  /* The queue shares its row with the way back: it takes what is left, its
+     text cut in the chip, so the way back never drops to a row of its own. */
+  .strip > :global(.queued) { flex: 100 1 0; }
 </style>

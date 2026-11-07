@@ -9,8 +9,8 @@ interface SettingsPage {
   machine?: true;
   /**
    * What a phone shows for it: the page itself, a phone page for some of its
-   * cards (`SECTION_PAGES`, the rest landing on Home), or Home, where the
-   * phone has no such page.
+   * cards (`SECTION_PAGES`, the rest landing on the group's index), or Home,
+   * where the phone has no such page.
    */
   phone: 'page' | 'sections' | 'home';
 }
@@ -52,6 +52,28 @@ const SECTION_PAGES: Partial<Record<SettingsTab, Record<string, { page: PhoneSec
 
 export type PhoneSectionPage = 'archived' | 'worktrees' | 'windows' | 'secrets' | 'browser-profiles' | 'auto-compact';
 
+/**
+ * The eight groups Settings shows, desktop and phone alike, each led by the page
+ * its entry opens. A page keeps its id, its route and its test ids: the group
+ * only says where it is listed, so an old link lands on the same page, inside
+ * its group.
+ */
+export const SETTINGS_GROUPS = [
+  ['general', 'keyboard', 'voice'],
+  ['appearance'],
+  ['accounts', 'plugins'],
+  ['brain'],
+  ['usage', 'limits'],
+  ['resources'],
+  ['machines'],
+  ['advanced', 'task-manager', 'diagnostics', 'experiments']
+] as const satisfies readonly (readonly SettingsTab[])[];
+
+/** The page that leads a page's group: what the group's entry opens and marks. */
+export function groupOf(tab: SettingsTab): SettingsTab {
+  return SETTINGS_GROUPS.find((group) => (group as readonly SettingsTab[]).includes(tab))?.[0] ?? tab;
+}
+
 export function ownerOnly(tab: SettingsTab): boolean {
   return PAGES[tab].owner === true;
 }
@@ -78,6 +100,9 @@ export function phonePage(tab: SettingsTab, section: string | null | undefined, 
   const page = PAGES[tab];
   if (page.owner && !owner) return 'home';
   if (page.phone === 'page') return tab;
-  const card = page.phone === 'sections' && section ? SECTION_PAGES[tab]?.[section] : undefined;
-  return card && (owner || !card.owner) ? card.page : 'home';
+  if (page.phone === 'home') return 'home';
+  // A card with a page of its own opens it; any other card lands on the group's index, a card it may not open on Home.
+  const card = section ? SECTION_PAGES[tab]?.[section] : undefined;
+  if (!card) return tab;
+  return owner || !card.owner ? card.page : 'home';
 }

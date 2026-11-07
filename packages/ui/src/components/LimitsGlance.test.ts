@@ -9,6 +9,15 @@ import { phoneWidth } from '../test/phone-width';
 let mounted: ReturnType<typeof mount> | undefined;
 afterEach(async () => { if (mounted) await unmount(mounted); mounted = undefined; document.body.innerHTML = ''; });
 
+/** The rail menu's Limits row stands in for the anchor: pressing it opens the glance beside it. */
+function glance(store: Store): HTMLButtonElement {
+  const anchor = document.body.appendChild(Object.assign(document.createElement('button'), { type: 'button' }));
+  anchor.dataset.testid = 'nav-limits';
+  const component = mount(LimitsGlance, { target: document.body, props: { store, side: 'right', anchor: () => anchor } }) as unknown as { open(): Promise<void> };
+  anchor.onclick = () => void component.open();
+  mounted = component;
+  return anchor;
+}
 const settle = async () => { for (let i = 0; i < 20; i++) { await Promise.resolve(); flushSync(); } };
 const quota: AccountQuota = {
   accountId: 'claude-account', providerId: 'claude', providerName: 'Claude', label: 'Default', enabled: true,
@@ -20,7 +29,7 @@ test('on a phone, which leaves Providers to the desktop, an empty glance offers 
   try {
     const call = vi.fn(async () => []);
     const store = { client: { call, on: () => () => {} }, owner: true, endpointUrl: 'glance-phone-core', accounts: [] } as unknown as Store;
-    mounted = mount(LimitsGlance, { target: document.body, props: { store } });
+    glance(store);
     document.querySelector<HTMLButtonElement>('[data-testid="nav-limits"]')!.click();
     await settle();
     expect(document.querySelector('[data-testid="quota-empty"]')).not.toBeNull();
@@ -34,7 +43,7 @@ test('a failed first read says so and offers a retry instead of asking to connec
   let fail = true;
   const call = vi.fn(async () => { if (fail) throw new Error('core unreachable'); return [quota]; });
   const store = { client: { call, on: () => () => {} }, owner: true, endpointUrl: 'glance-failing-core', accounts: [{ id: 'claude-account', status: 'ok' }] } as unknown as Store;
-  mounted = mount(LimitsGlance, { target: document.body, props: { store } });
+  glance(store);
   document.querySelector<HTMLButtonElement>('[data-testid="nav-limits"]')!.click();
   await settle();
 
@@ -49,9 +58,9 @@ test('a failed first read says so and offers a retry instead of asking to connec
   expect(document.querySelectorAll('[data-testid="quota-provider"]')).toHaveLength(1);
 });
 
-test('Escape closes the glance and gives the focus back to its trigger', async () => {
+test('Escape closes the glance and gives the focus back to the button it opened beside', async () => {
   const store = { client: { call: async () => [quota], on: () => () => {} }, owner: true, endpointUrl: 'glance-escape-core', accounts: [] } as unknown as Store;
-  mounted = mount(LimitsGlance, { target: document.body, props: { store } });
+  glance(store);
   const trigger = document.querySelector<HTMLButtonElement>('[data-testid="nav-limits"]')!;
   trigger.focus();
   trigger.click();
@@ -63,13 +72,12 @@ test('Escape closes the glance and gives the focus back to its trigger', async (
   await settle();
   expect(escape.defaultPrevented).toBe(true);
   expect(document.querySelector('[data-testid="limits-glance"]')).toBeNull();
-  expect(trigger.getAttribute('aria-expanded')).toBe('false');
   expect(document.activeElement).toBe(trigger);
 });
 
 test('an Escape in a dialog opened over the glance is that dialog\'s, and the glance stays', async () => {
   const store = { client: { call: async () => [quota], on: () => () => {} }, owner: true, endpointUrl: 'glance-palette-core', accounts: [] } as unknown as Store;
-  mounted = mount(LimitsGlance, { target: document.body, props: { store } });
+  glance(store);
   const trigger = document.querySelector<HTMLButtonElement>('[data-testid="nav-limits"]')!;
   trigger.focus();
   trigger.click();
@@ -91,7 +99,7 @@ test('a failed refresh keeps the rows already read on screen under the error', a
   let fail = false;
   const call = vi.fn(async () => { if (fail) throw new Error('timed out'); return [quota]; });
   const store = { client: { call, on: () => () => {} }, owner: true, endpointUrl: 'glance-refresh-core', accounts: [{ id: 'claude-account', status: 'ok' }] } as unknown as Store;
-  mounted = mount(LimitsGlance, { target: document.body, props: { store } });
+  glance(store);
   document.querySelector<HTMLButtonElement>('[data-testid="nav-limits"]')!.click();
   await settle();
   expect(document.querySelectorAll('[data-testid="quota-provider"]')).toHaveLength(1);
@@ -106,7 +114,7 @@ test('a failed refresh keeps the rows already read on screen under the error', a
 test('an individual quota failure shows its reason beside the provider', async () => {
   const row = { ...quota, providerId: 'grok', providerName: 'Grok', windows: [], status: 'unavailable', error: 'Grok login is missing or expired. Run grok login, then refresh.' };
   const store = { client: { call: async () => [row], on: () => () => {} }, owner: true, endpointUrl: 'glance-grok-error', accounts: [] } as unknown as Store;
-  mounted = mount(LimitsGlance, { target: document.body, props: { store } });
+  glance(store);
   document.querySelector<HTMLButtonElement>('[data-testid="nav-limits"]')!.click();
   await settle();
   const provider = document.querySelector('[data-testid="quota-provider"][data-provider="grok"]')!;
@@ -119,7 +127,7 @@ test('the glance shows fallback allowances without expanding and dates cached Mu
     credits: { kind: 'balance', enabled: true, remaining: 0.04, limit: null, unlimited: false } };
   const observed: AccountQuota = { ...quota, accountId: 'muse-account', providerId: 'muse', providerName: 'Muse Code', source: 'observation', checkedAt: Date.now() - 600_000 };
   const store = { client: { call: async () => [row, observed], on: () => () => {} }, owner: true, endpointUrl: 'glance-observed-core', accounts: [] } as unknown as Store;
-  mounted = mount(LimitsGlance, { target: document.body, props: { store } });
+  glance(store);
   document.querySelector<HTMLButtonElement>('[data-testid="nav-limits"]')!.click();
   await settle();
   expect(document.body.textContent).toContain('Observed');
@@ -135,7 +143,7 @@ function proxied(owner: boolean, status: 'ready' | 'unsupported' | (() => Promis
     : [quota]);
   const showSettings = vi.fn();
   const store = { client: { call, on: () => () => {} }, owner, endpointUrl: key, accounts: [], settings: { subscriptionProxy: douane }, showSettings } as unknown as Store;
-  mounted = mount(LimitsGlance, { target: document.body, props: { store } });
+  glance(store);
   return { call, showSettings };
 }
 
@@ -204,12 +212,12 @@ test('a gateway that hangs does not hold the press: the glance opens within a fe
 test('a replacement core at the same URL never shows the previous core quotas after a failed read', async () => {
   const endpointUrl = 'glance-reused-address';
   const first = { client: { call: async () => [quota], on: () => () => {} }, owner: true, endpointUrl, core: { dataDir: '/first' }, accounts: [] } as unknown as Store;
-  mounted = mount(LimitsGlance, { target: document.body, props: { store: first } });
+  glance(first);
   press(); await settle();
   expect(document.querySelectorAll('[data-testid="quota-provider"]')).toHaveLength(1);
-  await unmount(mounted); mounted = undefined; document.body.innerHTML = '';
+  await unmount(mounted!); mounted = undefined; document.body.innerHTML = '';
   const second = { ...first, core: { dataDir: '/second' }, client: { call: async () => { throw new Error('offline'); }, on: () => () => {} } } as unknown as Store;
-  mounted = mount(LimitsGlance, { target: document.body, props: { store: second } });
+  glance(second);
   press(); await settle();
   expect(document.querySelectorAll('[data-testid="quota-provider"]')).toHaveLength(0);
   expect(document.querySelector('[data-testid="limits-glance-error"]')!.textContent).toContain('offline');

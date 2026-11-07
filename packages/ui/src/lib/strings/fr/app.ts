@@ -21,7 +21,8 @@ export const fr: Translation = {
       botWaiting: '{name} a besoin de vous',
       botFailed: '{name} a échoué',
       botWorking: '{name} travaille',
-      botPaused: '{name} est en pause'
+      botPaused: '{name} est en pause',
+      utilities: 'Machines et limites'
     }
   }
 };

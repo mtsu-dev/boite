@@ -25,6 +25,10 @@ function place(): void {
         const box = owner.getBoundingClientRect();
         if (box.height && box.right > left && box.left < right && box.bottom > innerHeight - 160) lift = Math.max(lift, innerHeight - box.top);
       }
+      // The strip above the composer (subagents, queue, the way back) sits on
+      // that floor: a card rises over it too, never onto its last button.
+      const strip = document.querySelector('[data-testid=composer-strip]')?.getBoundingClientRect();
+      if (lift > 0 && strip?.height && strip.right > left && strip.left < right && strip.bottom >= innerHeight - lift - 1) lift = Math.max(lift, innerHeight - strip.top);
     }
     card.style.setProperty('--corner-lift', `${lift}px`);
     lift += card.offsetHeight + 8;

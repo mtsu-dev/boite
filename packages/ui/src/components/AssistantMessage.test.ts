@@ -70,7 +70,7 @@ test('a compaction a background copy made says so beside its counts', async () =
     const message: Message = { ...last, id: 'm-background', role: 'system', parts: [{ type: 'compaction', trigger: 'auto', preTokens: 184_000, postTokens: 31_000, background: true }] };
     mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: message.threadId, message, signedOut: null, showModel: false } });
     flushSync();
-    expect(document.querySelector('[data-testid=compaction-part]')?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Context compacted, 184K to 31K tokens (in the background)');
+    expect(document.querySelector('[data-testid=compaction-part]')?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Older messages summarized to make room, 184K to 31K tokens (in the background)');
   } finally { store.detach(); client.close(); }
 });
 
@@ -279,8 +279,8 @@ test('a compaction between calls rides on their line instead of taking a row', a
     expect(document.querySelector('[data-testid=compaction-part]')).toBeNull();
     expect(document.querySelectorAll('[data-testid=tool-group]')).toHaveLength(1);
     const mark = document.querySelector('[data-testid=tool-group-compaction]');
-    expect(mark?.textContent?.trim()).toBe('compacted 201.2K → 13.4K');
-    expect(mark?.getAttribute('title')).toBe('Context compacted, 201.2K to 13.4K tokens');
+    expect(mark?.textContent?.trim()).toBe('summarized 201.2K → 13.4K');
+    expect(mark?.getAttribute('title')).toBe('Older messages summarized to make room, 201.2K to 13.4K tokens');
   } finally { store.detach(); client.close(); }
 });
 

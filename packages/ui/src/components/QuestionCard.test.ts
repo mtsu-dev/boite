@@ -143,8 +143,9 @@ test('in the timeline a waiting question is one line that points down to the doc
   expect(options()).toHaveLength(0);
   expect(document.querySelector('[data-testid=question-submit]')).toBeNull();
   const row = query<HTMLButtonElement>('[data-testid=question-waiting]');
-  expect(row.textContent).toContain('Which shape?');
-  expect(row.textContent).toContain('Answer below');
+  // The question is written once, in the dock: the line only says one asks.
+  expect(row.textContent).not.toContain('Which shape?');
+  expect(row.title).toBe('Answer below');
   row.click();
   expect(onwrite).toHaveBeenCalledTimes(1);
 });

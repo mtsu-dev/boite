@@ -50,8 +50,13 @@ export const fr: Translation = {
     noneBody: 'Choisissez-en une à gauche, ou lancez-en une nouvelle.',
     trace: 'Trace',
     panel: 'Panneau',
-    panelHint: 'Navigateur, fichiers et outils de cette conversation',
-    panelMenu: 'Navigateur, fichiers et outils',
+    panelHint: 'Afficher ou masquer le panneau',
+    panelMenu: 'Panneaux',
+    /** The phone's thread menu: its tools, then the thread itself. */
+    toolsSection: 'Outils',
+    threadSection: 'Cette conversation',
+    /** Opens the side panel on whatever it last showed, its cards when empty. */
+    allTools: 'Tous les outils',
     terminalHint: 'Terminal dans le dossier de cette conversation',
     cwd: 'Répertoire de travail',
     model: 'Modèle',
@@ -61,8 +66,6 @@ export const fr: Translation = {
     inWorktree: 'dans un worktree',
     inProject: 'dans',
     onMachine: 'sur',
-    using: 'avec',
-    onEffort: 'en raisonnement {effort}',
     draftMode: {
       default: 'avec demandes d\'autorisation',
       acceptEdits: 'avec les modifications autorisées',
@@ -74,6 +77,6 @@ export const fr: Translation = {
     changeProject: 'Changer de projet',
     searchProjects: 'Rechercher un projet',
     noProjectMatch: 'Aucun projet ne correspond à « {query} »',
-    branchHint: 'Travaille dans un worktree sur cette branche',
+    branchHint: 'Travaille sur cette branche dans son propre dossier',
   }
 };

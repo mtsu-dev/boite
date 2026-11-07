@@ -375,25 +375,21 @@ test('the sidebar floats a thread that waits on the user, in both views, and Rec
   store.threads.find((t) => t.id === last)!.status = 'waiting';
   await waitFor(() => rowsOf()[0] === last);
   expect(document.querySelector('[data-testid=thread-project]')).toBeNull();
-  // Every row names its provider; a branch waits for a second line, which a project row lacks without a PR.
+  // One line per row: no provider glyph and no branch line; the branch rides in the row's tooltip.
   const branched = store.threadsOf(project.id).find((t) => !t.pullRequest)!;
   branched.branch = 'boite/port-the-scheduler';
-  const providers = () => Array.from(document.querySelectorAll('[data-testid=thread-provider]'));
-  await waitFor(() => providers().length === document.querySelectorAll('[data-testid=thread-row]').length);
-  const provider = document.querySelector(`[data-thread-id="${branched.id}"] [data-testid=thread-provider]`)!;
-  expect(provider.getAttribute('title')).toContain(store.providers.find((p) => p.id === branched.providerId)!.name);
-  const card = () => document.querySelector(`[data-thread-id="${branched.id}"]`)!.closest('.thread')!;
-  expect(card().querySelector('[data-testid=thread-pr]')).toBeNull();
-  expect(card().querySelector('[data-testid=thread-branch]')).toBeNull();
-  // The seeded trace thread has a PR, so its second line carries its branch too.
-  for (const branch of document.querySelectorAll('[data-testid=thread-branch]')) expect(branch.closest('.thread')!.querySelector('[data-testid=thread-pr]')).not.toBeNull();
+  const row = () => document.querySelector<HTMLElement>(`[data-testid=thread-row][data-thread-id="${branched.id}"]`)!;
+  await waitFor(() => row()?.title === `${branched.title}\nboite/port-the-scheduler`);
+  expect(document.querySelectorAll('[data-testid=thread-provider], [data-testid=thread-branch]')).toHaveLength(0);
+  expect(row().closest('.thread')!.querySelector('[data-testid=thread-pr]')).toBeNull();
+  // Only a thread with a pull request shows the mark, its number at the row's end.
+  for (const mark of document.querySelectorAll('[data-testid=thread-pr]')) expect(mark.textContent).toMatch(/^#\d+$/);
 
   workspace.view = 'recent';
   await waitFor(() => rows()[0] === last);
-  // Recent: the project's tile in the picture's place, one marker, no second line.
+  // Recent: the project's tile leads each row, still one line with no provider glyph or branch.
   await waitFor(() => document.querySelectorAll('[data-testid=thread-row] [data-testid=project-tile]').length === rows().length);
-  expect(document.querySelectorAll('[data-testid=thread-row] [data-testid=thread-provider]')).toHaveLength(0);
-  expect(document.querySelectorAll('[data-testid=thread-branch], [data-testid=thread-pr]')).toHaveLength(0);
+  expect(document.querySelectorAll('[data-testid=thread-provider], [data-testid=thread-branch]')).toHaveLength(0);
   expect(document.querySelector(`[data-thread-id="${last}"] [data-testid=thread-state]`)?.getAttribute('data-state')).toBe('waiting');
 });
 

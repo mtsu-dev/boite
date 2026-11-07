@@ -1,20 +1,21 @@
 <script lang="ts">
   import { machineName, listedName, isThisPC, machineHealth, workspace } from '../lib/workspace.svelte';
-  import { Monitor, TriangleAlert } from '@lucide/svelte';
+  import { Gauge, Monitor, TriangleAlert } from '@lucide/svelte';
   import { strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import Menu from './Menu.svelte';
   import { separator, type MenuItem } from '../lib/menu';
 
   /**
-   * The footer's machine button. One machine that is connected says nothing, so
-   * nothing is drawn; a second machine, a filter or a connection in trouble
-   * brings back one icon, the count or the chosen machine's name beside it
-   * only while it filters the list. A remote machine that is merely switched
-   * off is grey in the menu and raises no warning (`machineHealth`). The
-   * thread list and the agents list both carry it.
+   * The rail's one utility button: the machines and, with `limits`, the
+   * glance at the subscription limits, in one menu. Without `limits`, one
+   * machine that is connected says nothing, so nothing is drawn; a second
+   * machine, a filter or a connection in trouble brings back one icon, the
+   * chosen machine's name beside it only while it filters the list. A remote
+   * machine that is merely switched off is grey in the menu and raises no
+   * warning (`machineHealth`).
    */
-  let { store, filter = null, onfilter, testid = 'machine-status' }: { store: Store; filter?: string | null; onfilter?: (id: string | null) => void; testid?: string } = $props();
+  let { store, filter = null, onfilter, limits, testid = 'machine-status' }: { store: Store; filter?: string | null; onfilter?: (id: string | null) => void; limits?: () => void; testid?: string } = $props();
 
   const machines = $derived([...workspace.machinesOr(store)]
     .sort((a, b) => Number(isThisPC(b)) - Number(isThisPC(a))));
@@ -22,18 +23,21 @@
   const issues = $derived(machines.filter(m => health.get(m) === 'lost').length);
   const tones = { ready: 'success', connecting: 'warning', offline: 'neutral', lost: 'danger' } as const;
   const chosen = $derived(filter === null ? null : machines.find(m => m.id === filter) ?? null);
-  const shown = $derived(machines.length > 1 || issues > 0 || chosen !== null);
-  const label = $derived(issues > 0 ? `${strings.machines.filter} · ${issues} ${strings.connection.issues}` : strings.machines.filter);
+  const shown = $derived(limits !== undefined || machines.length > 1 || issues > 0 || chosen !== null);
+  const name = $derived(limits ? strings.app.rail.utilities : strings.machines.filter);
+  const label = $derived(issues > 0 ? `${name} · ${issues} ${strings.connection.issues}` : name);
   const items = $derived<MenuItem[]>([
     ...(machines.length > 1 ? [
       { id: 'all', label: strings.machines.all, active: filter === null, hideActiveMark: true },
       ...machines.map(m => ({ id: m.id, label: listedName(m), status: { tone: tones[health.get(m)!], label: health.get(m) === 'offline' ? strings.connection.offline : strings.connection[m.store.connection] }, active: m.id === filter })),
       separator('manage-separator')
     ] : []),
+    ...(limits ? [{ id: 'limits', label: strings.quotas.glance, glyph: Gauge, testid: 'nav-limits' }] : []),
     { id: 'manage', label: strings.connection.manage, icon: 'settings' }
   ]);
   function choose(id: string) {
     if (id === 'manage') store.showSettings('machines');
+    else if (id === 'limits') limits?.();
     else onfilter?.(id === 'all' ? null : id);
   }
 </script>
@@ -42,7 +46,7 @@
 <div class="machines" class:problem={issues > 0} class:filtered={chosen !== null} data-testid={testid === 'machine-status' ? 'status-connection' : `${testid}-status`} data-state={store.connection} aria-live="polite">
   {#if shown}
     <Menu {items} onpick={choose} {label} variant="ghost" {testid}>
-      {#if issues}<TriangleAlert size={16} />{:else}<Monitor size={16} />{/if}
+      {#if issues}<TriangleAlert size={16} />{:else if limits && chosen === null}<Gauge size={16} />{:else}<Monitor size={16} />{/if}
       {#if chosen}<span class="name ui-label">{machineName(chosen)}</span>{/if}
     </Menu>
   {/if}

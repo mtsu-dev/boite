@@ -4,11 +4,9 @@
   import { agentMenuItems, pickAgentAction } from '../../lib/agent-menu';
   import { botLeaving } from '../../lib/agent-move-flow';
   import { liveState, liveStep, waitingOn, type AgentsView } from '../../lib/agents.svelte';
-  import { minuteClock } from '../../lib/clock.svelte';
   import { separator, type MenuItem } from '../../lib/menu';
-  import { dateTime } from '../../lib/schedule';
   import type { AgentPane } from '../../lib/store/layout.svelte';
-  import { fill, strings } from '../../lib/strings';
+  import { strings } from '../../lib/strings';
   import { listNames } from '../../lib/teams.svelte';
   import Menu from '../Menu.svelte';
   import Elapsed from '../Elapsed.svelte';
@@ -18,7 +16,7 @@
   /**
    * The top of the selected bot's column: its picture, its name and one line
    * of what it does now (the step it is on and for how long, what it waits
-   * on, why it failed, when it next wakes, else what it is for), and its menu:
+   * on, why it failed, else what it is for), and its menu:
    * the row menu of the bot lists (`agentMenuItems`), its brain, and the
    * settings all bots share. A team shows its picture, its name and who is in
    * it; its menu stays over its chat.
@@ -37,11 +35,16 @@
 
   const labels = $derived(strings.agents);
   const store = $derived(view.store);
-  const now = $derived(minuteClock.now);
   const pending = $derived(waitingOn(store, thread?.id));
   const state = $derived(agent ? liveState(agent, status, thread, !!pending) : 'idle');
   const step = $derived(liveStep(status, thread));
   const since = $derived(thread?.status === 'running' ? thread.runningSince ?? thread.progress?.since ?? null : null);
+  /** The one status line, cut at the column's width; its title keeps it whole. The next routine is the desk's to show. */
+  const line = $derived(state === 'working' ? step ?? labels.state.working
+    : state === 'waiting' ? pending ?? labels.state.waiting
+    : state === 'error' ? status?.problem ?? labels.state.error
+    : state === 'queued' || state === 'paused' || state === 'archived' ? labels.state[state]
+    : agent?.domain || labels.state.idle);
   const pictures = $derived((team?.members ?? []).map(member => view.snapshot?.profiles.find(profile => profile.id === member.botId) ?? { id: member.botId, name: member.name, avatar: '' }));
 
   const items = $derived.by((): MenuItem[] => {
@@ -67,20 +70,10 @@
     <AgentAvatar kind="profile" id={agent.id} name={agent.name} avatar={agent.avatar} size={40} squircle />
     <div class="bot-head-text">
       <strong class="bot-head-name">{agent.name}{#if agent.builtin}<BuiltinBadge />{/if}</strong>
-      <span class="bot-head-live" data-state={state} aria-live="polite" data-testid="bot-column-live">
-        {#if state === 'working'}
-          <LoaderCircle size={12} strokeWidth={2} class="bot-spin" />
-          <span class="bot-head-line">{step ?? labels.state.working}</span>
-          {#if since !== null}<span class="bot-head-sep" aria-hidden="true">&nbsp;·</span> <span class="bot-head-time"><Elapsed startedAt={since} finishedAt={null} active /></span>{/if}
-        {:else if state === 'waiting'}
-          <span class="bot-head-line">{pending ?? labels.state.waiting}</span>
-        {:else if state === 'queued' || state === 'error' || state === 'paused' || state === 'archived'}
-          <span class="bot-head-line">{state === 'error' ? status?.problem ?? labels.state.error : labels.state[state]}</span>
-        {:else if status?.nextWake}
-          <span class="bot-head-line">{fill(labels.nextWake, { name: status.nextWake.label, when: dateTime(status.nextWake.at, now) })}</span>
-        {:else}
-          <span class="bot-head-line">{agent.domain || labels.state.idle}</span>
-        {/if}
+      <span class="bot-head-live" data-state={state} title={line} aria-live="polite" data-testid="bot-column-live">
+        {#if state === 'working'}<LoaderCircle size={12} strokeWidth={2} class="bot-spin" />{/if}
+        <span class="bot-head-line">{line}</span>
+        {#if state === 'working' && since !== null}<span class="bot-head-sep" aria-hidden="true">&nbsp;·&nbsp;</span><span class="bot-head-time"><Elapsed startedAt={since} finishedAt={null} active /></span>{/if}
       </span>
     </div>
     {#if items.length}

@@ -141,7 +141,10 @@
     >
       {#if switches}<div class="heading ui-label" aria-hidden="true">{label}</div>{/if}
       {#each items as item (item.id)}
-        {#if item.separator}
+        {#if item.separator && item.label}
+          <!-- A labelled rule opens a section: its words, no line. -->
+          <div class="section ui-label" role="presentation">{item.label}</div>
+        {:else if item.separator}
           <div class="separator" role="separator"></div>
         {:else}
         <button
@@ -157,6 +160,7 @@
           disabled={item.disabled}
           data-row
           data-value={item.id}
+          data-testid={item.testid}
           title={item.title}
           onclick={() => pick(item)}
         >
@@ -182,6 +186,8 @@
 
 <style>
   .separator { height: 1px; background: var(--color-border); margin: 4px 6px; }
+  .section { padding: 10px 8px 4px; font-size: var(--text-xs); font-weight: 600; color: var(--color-subtle); }
+  .section:first-child { padding-top: 4px; }
   .label { display: flex; align-items: center; gap: 6px; }
   .glyph { display: inline-flex; flex: 0 0 16px; color: var(--color-muted-foreground); margin-right: 2px; }
   .glyph.live { color: var(--color-live); }

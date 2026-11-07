@@ -14,11 +14,11 @@
    * count stays in the tooltip, the thread view shows them.
    * `away`: its machine is not connected, so a turn it last saw at work may have
    * ended long ago. The row says so instead of spinning and counting time.
-   * `mark`: the Recent list's one marker instead of words: a dot for the
-   * user's turn or a failure, a spinner for work, a check for news, else the
-   * time. The words stay in its tooltip.
+   * One grammar in every list (rows, Recent, the palette, the phone,
+   * Activity): the user's turn and a failure as words, work as a moving mark
+   * and its time, news as a check and its word. No dot stands alone.
    */
-  let { thread, now, subagents = null, away = false, mark = false }: { thread: Pick<ThreadSummary, 'status' | 'unread' | 'runningSince' | 'requestSince' | 'backgroundWork' | 'openQuestions' | 'lastUserMessageAt' | 'createdAt'> & Partial<Pick<ThreadSummary, 'backgroundWait' | 'pullRequestWatches'>>; now: number; subagents?: WorkingChildren | null; away?: boolean; mark?: boolean } = $props();
+  let { thread, now, subagents = null, away = false }: { thread: Pick<ThreadSummary, 'status' | 'unread' | 'runningSince' | 'requestSince' | 'backgroundWork' | 'openQuestions' | 'lastUserMessageAt' | 'createdAt'> & Partial<Pick<ThreadSummary, 'backgroundWait' | 'pullRequestWatches'>>; now: number; subagents?: WorkingChildren | null; away?: boolean } = $props();
 
   function earliest(a: number | null | undefined, b: number | null | undefined): number | null {
     return a == null ? b ?? null : b == null ? a : Math.min(a, b);
@@ -80,20 +80,15 @@
   </span>
 {:else if kind === null}
   <span class="when" title={exactTime(thread.lastUserMessageAt ?? thread.createdAt)}>{ago(thread.lastUserMessageAt ?? thread.createdAt, now)}</span>
-{:else if mark}
-  <span class="when state mark {kind}" data-testid="thread-state" data-state={kind} title={label} aria-label={label} role="img">
-    {#if kind === 'waiting' || kind === 'error' || kind === 'interrupted' || kind === 'queued'}<span class="dot" aria-hidden="true"></span>
-    {:else if kind === 'done'}<Check size={13} aria-hidden="true" />
-    {:else}<LoaderCircle size={13} class="spinner" aria-hidden="true" />{/if}
-  </span>
 {:else}
   <span class="when state {kind}" data-testid="thread-state" data-state={kind} title={label} aria-label={label}>
-    {#if kind === 'working'}<LoaderCircle size={11} class="spinner" aria-hidden="true" /><span class="ui-label">{spent ?? strings.sidebar.state.working}</span>
-    {:else if kind === 'delegating'}<span class="dot pulse" aria-hidden="true"></span><span class="ui-label" data-testid="thread-state-text">{spent ?? strings.sidebar.state.delegating}</span>
-    {:else if kind === 'monitoring'}<Radar size={11} class="pulse" aria-hidden="true" /><span class="ui-label">{spent ?? strings.sidebar.state.monitoring}</span>
-    {:else if kind === 'background'}<span class="dot pulse" aria-hidden="true"></span><span class="ui-label">{spent ?? strings.sidebar.state.background}</span>
-    {:else if kind === 'watching'}<GitPullRequest size={11} class="pulse" aria-hidden="true" /><span class="ui-label">{spent ?? strings.sidebar.state.watching}</span>
+    {#if kind === 'working'}<LoaderCircle size={11} class="spinner" aria-hidden="true" /><span class="ui-label elapsed">{spent ?? strings.sidebar.state.working}</span>
+    {:else if kind === 'delegating'}<LoaderCircle size={11} class="pulse" aria-hidden="true" /><span class="ui-label elapsed" data-testid="thread-state-text">{spent ?? strings.sidebar.state.delegating}</span>
+    {:else if kind === 'monitoring'}<Radar size={11} class="pulse" aria-hidden="true" /><span class="ui-label elapsed">{spent ?? strings.sidebar.state.monitoring}</span>
+    {:else if kind === 'background'}<LoaderCircle size={11} class="pulse" aria-hidden="true" /><span class="ui-label elapsed">{spent ?? strings.sidebar.state.background}</span>
+    {:else if kind === 'watching'}<GitPullRequest size={11} class="pulse" aria-hidden="true" /><span class="ui-label elapsed">{spent ?? strings.sidebar.state.watching}</span>
     {:else if kind === 'interrupted'}<CircleAlert size={11} aria-hidden="true" /><span class="ui-label">{strings.sidebar.state.interrupted}</span>
+    {:else if kind === 'done'}<Check size={12} aria-hidden="true" /><span class="ui-label">{label}</span>
     {:else}<span class="ui-label">{label}</span>{/if}
   </span>
 {/if}
@@ -143,20 +138,7 @@
   .watching {
     color: var(--color-muted-foreground);
   }
-  .delegating :global(svg), .monitoring :global(svg), .background :global(svg), .watching :global(svg), .background .dot { color: var(--color-accent); }
-  .background .dot, .delegating .dot { background: var(--color-accent); }
-  .dot {
-    flex: none;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: currentColor;
-  }
-  /* The marker: one glyph in a fixed slot, so the titles above and below end at one edge. */
-  .mark { justify-content: center; min-width: 14px; height: 14px; }
-  .mark .dot { width: 7px; height: 7px; box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 16%, transparent); }
-  .mark.queued .dot { background: transparent; box-shadow: inset 0 0 0 1.5px currentColor; }
-  .mark.working, .mark.delegating, .mark.monitoring, .mark.background, .mark.watching { color: var(--color-accent); }
+  .delegating :global(svg), .monitoring :global(svg), .background :global(svg), .watching :global(svg) { color: var(--color-accent); }
   .state :global(.spinner) {
     flex: none;
     animation: spin 1s steps(60) infinite var(--loops);

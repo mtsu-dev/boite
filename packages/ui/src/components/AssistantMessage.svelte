@@ -170,8 +170,8 @@
         <!-- Waiting in the dock above the composer: here only a line that brings it up. -->
         <button type="button" class="ghost docked-question" data-testid="question-docked" title={strings.chat.questionOpen} onclick={() => showDockedQuestion(part.questionId)}>
           {#if part.setting}<Settings2 size={15} strokeWidth={1.75} />{:else if part.agentSetting}<Bot size={15} strokeWidth={1.75} />{:else if part.team}<Users size={15} strokeWidth={1.75} />{:else}<MessageCircleQuestionMark size={15} strokeWidth={1.75} />{/if}
-          <span class="docked-text ui-label">{part.text}</span>
-          <span class="docked-hint ui-label">{strings.chat.questionDocked}</span>
+          <span class="docked-text ui-label">{strings.chat.questionHeading}</span>
+          <span class="waiting-mark" role="img" aria-label={strings.chat.questionDocked}></span>
         </button>
       {:else if part.type === 'question' && part.agentSetting}
         <AgentSettingCard
@@ -255,7 +255,7 @@
 
 <style>
   /* On the same 4 px rest as the parts it names. */
-  .model-attribution { color: var(--color-muted-foreground); font-size: var(--text-xs); margin-bottom: 8px; padding-left: var(--activity-padding); opacity: 0; transition: opacity var(--dur-2); }
+  .model-attribution { color: var(--color-muted-foreground); font-size: var(--text-xs); margin-bottom: calc(var(--chat-block-gap) - var(--chat-part-gap)); padding-left: var(--activity-padding); opacity: 0; transition: opacity var(--dur-2); }
   /* Read on demand, as a message's time and buttons are. */
   :global(.message:hover) .model-attribution, :global(.message:focus-within) .model-attribution { opacity: 1; }
   @media (hover: none) { .model-attribution { opacity: 1; } }
@@ -310,7 +310,8 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    margin: 6px 0;
+    /* With the parts' gap, a block's rest on either side, like a paragraph. */
+    margin: calc(var(--chat-block-gap) - var(--chat-part-gap)) 0;
     font-size: var(--text-xs);
     color: var(--color-muted-foreground);
   }
@@ -330,7 +331,7 @@
   .docked-question:hover:not(:disabled) { background: var(--color-surface-2); color: var(--color-foreground); }
   .docked-question :global(svg) { flex: none; width: var(--activity-glyph); color: var(--color-live); }
   .docked-text { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--color-foreground); }
-  .docked-hint { flex: none; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--text-xs); color: var(--color-subtle); }
+  .waiting-mark { flex: none; width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--color-live); }
 
   /* One muted line, the words wrapping under their own start, the event name last and quieter. */
   .hook {

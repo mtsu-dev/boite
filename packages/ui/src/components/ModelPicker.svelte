@@ -351,7 +351,7 @@
       aria-label={strings.composer.picker}
         data-testid="composer-picker-menu"
       bind:this={menu}
-      use:floating={{ anchor: () => root?.closest<HTMLElement>("[data-testid=composer]") ?? root ?? null, dismiss: () => popover.hide() }}
+      use:floating={{ anchor: () => root ?? null, dismiss: () => popover.hide() }}
       use:popover.attach
       onanimationend={popover.end}
       {onkeydown}
@@ -553,6 +553,9 @@
     color: var(--color-foreground);
   }
 
+  /* Provider marks in one ink, here and in the popover: the names carry them. */
+  .picker :global(.logo) { filter: grayscale(1); }
+
   .trigger .label {
     overflow: hidden;
     text-overflow: ellipsis;
@@ -563,10 +566,10 @@
     position: fixed;
     z-index: 40;
     display: grid;
-    grid-template-columns: calc(var(--control-lg) + 20px) minmax(0, 1fr);
-    width: min(440px, calc(100vw - 32px));
-    height: 360px;
-    max-height: min(360px, 45dvh);
+    grid-template-columns: 136px minmax(0, 1fr);
+    width: min(420px, calc(100vw - 32px));
+    height: 320px;
+    max-height: min(320px, 50dvh);
     grid-template-rows: minmax(0, 1fr) auto;
     background: var(--color-surface-2);
     border: 1px solid var(--color-border);
@@ -594,15 +597,15 @@
   }
 
   .rail {
-    align-items: center;
-    gap: 2px;
-    padding: 4px;
-    background: var(--color-surface);
+    align-items: stretch;
+    gap: 1px;
+    padding: 6px 6px 40px;
   }
 
   .models > * { flex-shrink: 0; }
   .main-models { grid-area: 1 / 2 / 3 / 3; overflow: hidden; padding: 0; gap: 0; border-left: 1px solid var(--color-border); }
-  .main-models .head { flex-direction: column; align-items: stretch; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--color-border); }
+  .main-models .head { gap: 8px; padding: 6px 6px 6px 12px; border-bottom: 1px solid var(--color-border); }
+  .main-models .head .provider-name { flex: 1; min-width: 0; }
   .model-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; padding: 6px; }
   .rail { grid-area: 1 / 1; }
   /* One provider: its model list is the whole popover, the refresh sits in the list's head. */
@@ -611,8 +614,8 @@
   .single .main-models { grid-area: 1 / 1 / 3 / 2; border-left: none; }
   .single .main-models .head { padding-right: 44px; }
   .single .refresh { position: absolute; top: 6px; right: 6px; margin: 0; width: var(--control-sm); height: var(--control-sm); border: none; background: transparent; }
-  .refresh { grid-area: 2 / 1; align-self: end; justify-self: center; margin: 6px; position: relative; z-index: 3; display: grid; place-items: center; width: var(--control-lg); height: var(--control-lg); padding: 0; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); color: var(--color-muted-foreground); }
-  .refresh:hover:not(:disabled) { background: linear-gradient(var(--color-hover) 0 0), var(--color-surface); color: var(--color-foreground); }
+  .refresh { grid-area: 2 / 1; align-self: end; justify-self: start; margin: 6px; position: relative; z-index: 3; display: grid; place-items: center; width: var(--control-sm); height: var(--control-sm); padding: 0; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--color-muted-foreground); }
+  .refresh:hover:not(:disabled) { background: var(--color-hover); color: var(--color-foreground); }
   .head {
     display: flex;
     align-items: center;
@@ -747,35 +750,10 @@
   :global(html[data-motion='reduced']) .skeleton { animation: none; }
 
   @media (max-width: 720px) {
-    .popover {
-      grid-template-columns: minmax(0, 1fr) auto;
-      grid-template-rows: auto minmax(0, 1fr);
-      width: calc(100vw - 24px);
-      height: min(420px, 60dvh);
-    }
-
-    .rail {
-      flex-direction: row;
-      flex-wrap: nowrap;
-      padding-bottom: 6px;
-      align-items: center;
-      touch-action: pan-x;
-      overflow-x: auto;
-      justify-content: flex-start;
-      border-right: none;
-      border-bottom: 1px solid var(--color-border);
-    }
-
-    /* The rail is the finger's first stop on a phone, so its tiles (ProviderTiles)
-       and the refresh button take a full touch target like every other control. */
-    .main-models { grid-area: 2 / 1 / 3 / 3; border-left: none; }
-    .refresh { grid-area: 1 / 2; align-self: center; justify-self: end; justify-content: center; width: var(--touch-target); padding: 0; border: none; }
-    .refresh {
-      width: var(--touch-target);
-      height: var(--touch-target);
-    }
-    .popover.single { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
-    .single .main-models { grid-area: 1 / 1 / 2 / 2; }
+    /* The same two columns, a finger's rows: the sheet stays short. */
+    .popover { grid-template-columns: 120px minmax(0, 1fr); width: calc(100vw - 24px); height: min(380px, 55dvh); max-height: min(380px, 55dvh); }
+    .rail { padding-bottom: calc(var(--touch-target) + 12px); }
+    .refresh, .single .refresh { width: var(--touch-target); height: var(--touch-target); }
     .single .main-models .head { padding-right: calc(var(--touch-target) + 8px); }
     .single .refresh { top: 0; right: 0; }
   }

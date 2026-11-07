@@ -5,9 +5,7 @@
   import type { AgentBrain } from '@boite/contracts';
   import { AgentsView, agentOfThread, liveState, liveStep, statusOf, waitingOn } from '../../lib/agents.svelte';
   import { calendarDay, memoryNotes, runningTurn, turnSteps } from '../../lib/agent-desk';
-  import { workedTime } from '../../lib/agent-turns';
   import { minuteClock } from '../../lib/clock.svelte';
-  import { dateTime } from '../../lib/schedule';
   import { count } from '../../lib/format';
   import type { Store } from '../../lib/store.svelte';
   import { machineName, workspace } from '../../lib/workspace.svelte';
@@ -132,8 +130,6 @@
             </details>
           {/if}
         </section>
-      {:else if status?.nextWake && standing === 'idle'}
-        <p class="desk-next" data-testid="desk-next">{fill(strings.agents.nextWake, { name: status.nextWake.label, when: dateTime(status.nextWake.at, now) })} · {fill(t.nextIn, { time: workedTime(Math.max(60_000, status.nextWake.at - now)) })}</p>
       {/if}
 
       {#if view.error}<p class="agent-error desk-error" role="alert">{view.error}</p>{/if}

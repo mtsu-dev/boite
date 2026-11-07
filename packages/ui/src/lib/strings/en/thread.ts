@@ -49,8 +49,13 @@ export const strings = {
     trace: 'Trace',
     /** The header's button: it shows or hides the panel, whatever surface is in it. */
     panel: 'Panel',
-    panelHint: 'Browser, files and tools beside this conversation',
-    panelMenu: 'Browser, files and tools',
+    panelHint: 'Show or hide the side panel',
+    panelMenu: 'Panels',
+    /** The phone's thread menu: its tools, then the thread itself. */
+    toolsSection: 'Tools',
+    threadSection: 'This thread',
+    /** Opens the side panel on whatever it last showed, its cards when empty. */
+    allTools: 'All tools',
     terminalHint: "Terminal in this thread's folder",
     cwd: 'Working directory',
     model: 'Model',
@@ -62,8 +67,6 @@ export const strings = {
     inProject: 'in',
     /** Before the machine the draft's project is on, which ends the heading. */
     onMachine: 'on',
-    using: 'using',
-    onEffort: 'on {effort} effort',
     draftMode: {
       default: 'with approval requests',
       acceptEdits: 'with edits allowed',
@@ -77,6 +80,6 @@ export const strings = {
     searchProjects: 'Search projects',
     noProjectMatch: 'No project matches "{query}"',
     /** The header badge of a thread working in its own worktree; the title says where. */
-    branchHint: 'Working in a worktree on this branch',
+    branchHint: 'Working on this branch in its own folder',
   }
 } as const;

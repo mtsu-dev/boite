@@ -282,30 +282,22 @@
     word-break: break-word;
   }
 
-  /* The family has no green or red surface token, so both tints are the status
+  /* A changed line keeps its code's own colours on a light tint, marked by a
+     bar in its gutter and its sign: no saturated block to read through. The
+     family has no green or red surface token, so the tint is the status
      colour mixed into the well's own fill rather than a new hex. */
   .row.add {
-    color: var(--color-success);
-    background: color-mix(in srgb, var(--color-success) 14%, var(--color-surface-2));
-  }
-
-  .row.add .gutter {
-    color: var(--color-success);
+    background: color-mix(in srgb, var(--color-success) 7%, var(--color-surface-2));
+    box-shadow: inset 2px 0 0 var(--color-success);
   }
 
   .row.remove {
-    color: var(--color-danger);
-    background: color-mix(in srgb, var(--color-danger) 14%, var(--color-surface-2));
+    background: color-mix(in srgb, var(--color-danger) 7%, var(--color-surface-2));
+    box-shadow: inset 2px 0 0 var(--color-danger);
   }
 
-  .row.remove .gutter {
-    color: var(--color-danger);
-  }
-
-  .row.add .num,
-  .row.remove .num { color: inherit; opacity: 0.75; }
-  .row.add :global(.text span),
-  .row.remove :global(.text span) { color: inherit; }
+  .row.add .gutter { color: var(--color-success); }
+  .row.remove .gutter { color: var(--color-danger); }
 
   .row.gap {
     color: var(--color-subtle);

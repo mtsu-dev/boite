@@ -29,11 +29,11 @@ export const strings = {
     emptyActivity: 'All caught up',
     computer: 'Connected computer',
     pairAgain: 'Add again',
-    settingsDevice: 'This phone',
     settingsPhone: 'Notifications',
     settingsPrivacy: 'Privacy',
-    settingsMachine: 'Machine',
     settingsBack: 'Back to settings',
+    /** Activity's second line: why the thread is listed. */
+    feed: { asks: 'Asks: {text}', run: 'Wants to run {command}', helperAsks: '{title} asks you' },
     navigation: 'Navigation', activity: 'Activity',
     waitingElsewhere: '{count} waiting for you',
     search: 'Find a conversation', noActivity: 'No agents need your attention.', noThreads: 'No matching conversations.'

@@ -4,7 +4,9 @@
 
   /** One place the search can land: a page, or a card on it. */
   export type SettingsEntry = { tab: SettingsTab; section: string | null; label: string; trail: string };
-  export type SettingsTile = { id: SettingsTab; label: string; icon: Component<{ size?: number; strokeWidth?: number }>; group: number };
+  export type SettingsTile = { id: SettingsTab; label: string; icon: Component<{ size?: number; strokeWidth?: number }> };
+  /** A group of the nav and of Home: its first page, then the others it holds. */
+  export type SettingsGroup = SettingsTile & { members: SettingsTile[] };
 </script>
 
 <script lang="ts">
@@ -17,12 +19,12 @@
 
   /**
    * Where Settings opens: a search over every page and card, then one tile
-   * per page. A tile says something only when there is a state worth reading
-   * from here, how many providers answer and how many machines are paired.
+   * per group. A tile names the pages it holds beyond its own, or a state
+   * worth reading from here: how many providers answer, how many machines.
    */
   let { store, tiles, entries, onopen }: {
     store: Store;
-    tiles: SettingsTile[];
+    tiles: SettingsGroup[];
     entries: SettingsEntry[];
     onopen: (entry: SettingsEntry) => void;
   } = $props();
@@ -61,12 +63,6 @@
     return null;
   }
 
-  let groups = $derived(tiles.filter((tile) => tile.id !== 'home').reduce<SettingsTile[][]>((all, tile) => {
-    const last = all.at(-1);
-    if (last && last[0]!.group === tile.group) last.push(tile);
-    else all.push([tile]);
-    return all;
-  }, []));
 
   $effect(() => {
     if (store.connection === 'ready') void store.loadSessions();
@@ -119,12 +115,10 @@
       </div>
     {/if}
   {:else}
-    {#each groups as group, index (index)}
-      <h2>{strings.settings.homeGroups[group[0]!.group]}</h2>
       <div class="tiles">
-        {#each group as tile (tile.id)}
+        {#each tiles as tile (tile.id)}
           {@const Icon = tile.icon}
-          {@const line = status(tile.id)}
+          {@const line = status(tile.id) ?? (tile.members.length > 0 ? { text: tile.members.map((member) => member.label).join(' · ') } : null)}
           <button type="button" class="tile" data-testid="settings-home-{tile.id}" onclick={() => onopen({ tab: tile.id, section: null, label: tile.label, trail: '' })}>
             <span class="glyph"><Icon size={18} strokeWidth={1.75} /></span>
             <span class="text">
@@ -134,7 +128,6 @@
           </button>
         {/each}
       </div>
-    {/each}
   {/if}
 </div>
 
@@ -154,11 +147,13 @@
     transition: border-color var(--dur-2);
   }
   .search:focus-within { border-color: var(--color-foreground); }
+  /* The input draws no ring of its own: the field carries it. */
+  .search:has(input:focus-visible) { outline: 2px solid var(--color-accent); outline-offset: 2px; }
   .search input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; box-shadow: none; outline: none; font-size: var(--text-base); }
   .search input::-webkit-search-cancel-button { display: none; }
 
   /* Four tiles a row while the longest French label still fits on one line,
-     else two, else one: a group of four never leaves one tile alone on a line.
+     else two, else one: eight groups never leave one tile alone on a line.
      Every tile is as tall as the others, status line or not. */
   .home { container-type: inline-size; }
 
@@ -168,13 +163,6 @@
     gap: 10px;
     max-width: var(--settings-width);
     margin-bottom: 28px;
-  }
-
-  h2 {
-    margin-bottom: 10px;
-    font-size: var(--text-sm);
-    font-weight: 500;
-    color: var(--color-muted-foreground);
   }
 
   /* The glyph sits above the words, so a long French label keeps the tile's

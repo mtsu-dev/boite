@@ -22,8 +22,9 @@ test.each([['en', 'thread-quota'], ['en', 'budget'], ['en', 'machine'], ['fr', '
   mounted = mount(MemoryRow, { target: document.body, props: { event: { threadId: 't', kind: 'killed', reason, limitBytes: 9728 * 1048576, state: 'critical', exe: 'C:\\bin\\cargo.exe', bytes: 2147483648, at: 1 } } });
   flushSync();
   const row = document.querySelector('[data-testid=memory-row]')!;
-  expect(row.querySelector('.title')?.textContent).toBe(strings.resources.killedOne('cargo.exe'));
-  expect(row.querySelector('.detail')?.textContent).toBe(locale === 'fr' ? '2,0 Go' : '2.0 GB');
+  // What happened in plain words first, the process and its size second.
+  expect(row.querySelector('.title')?.textContent).toBe(strings.resources.killTitle);
+  expect(row.querySelector('.detail')?.textContent).toBe(locale === 'fr' ? 'cargo.exe, 2,0 Go' : 'cargo.exe, 2.0 GB');
   expect(row.textContent).not.toContain('C:\\bin');
   expect(tipText(row)).toBe(strings.resources.killReason[reason](locale === 'fr' ? '9,5 Go' : '9.5 GB'));
 });
@@ -63,7 +64,7 @@ test('a memory notice stays between the interrupted tool and later output in the
     mounted = mount(MessageList, { target: document.body, props: { store, threadId: thread.id, messages: thread.messages } });
     flushSync();
     const text = document.querySelector('[data-testid=timeline]')!.textContent!;
-    const stopped = strings.resources.killedOne('cargo.exe');
+    const stopped = strings.resources.killTitle;
     expect(text.indexOf(stopped)).toBeGreaterThan(text.indexOf('Before the interruption'));
     expect(text.indexOf(stopped)).toBeLessThan(text.indexOf('After the interruption'));
   } finally { store.detach(); client.close(); }
@@ -140,6 +141,7 @@ test('back-to-back stops share one card until a message or another limit comes b
     store.openThread!.messages.push({ id: 'between-stops', threadId: 't-trace', turnId: 'between-stops', role: 'user', parts: [{ type: 'text', text: 'Build again' }], state: 'complete', createdAt: at + 140_000 });
     stop('link.exe', 150_000);
     flushSync(); expect(rows()).toHaveLength(before + 3);
-    expect(rows().at(-1)!.querySelector('.title')?.textContent).toBe(strings.resources.killedOne('link.exe'));
+    expect(rows().at(-1)!.querySelector('.title')?.textContent).toBe(strings.resources.killTitle);
+    expect(rows().at(-1)!.querySelector('.detail')?.textContent).toBe('link.exe, 700 MB');
   } finally { store.detach(); client.close(); }
 });

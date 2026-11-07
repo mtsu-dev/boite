@@ -39,8 +39,9 @@ test('a parent whose turn ended waits on its working sub-agents, their count in 
 
   const state = draw({ status: 'idle', unread: true, backgroundWork: { kinds: ['shell'], since: NOW } }, working.get('parent' as ThreadId)!);
   expect(state.dataset['state']).toBe('delegating');
-  // The row reads only the time beside a breathing dot: the count leaves it, so the title keeps its room.
-  expect(state.querySelector('.dot.pulse')).not.toBeNull();
+  // The row reads only the time beside a breathing ring, never a bare dot: the count leaves it, so the title keeps its room.
+  expect(state.querySelector('svg.pulse')).not.toBeNull();
+  expect(state.querySelector('.dot')).toBeNull();
   expect(state.textContent?.replace(/\s+/g, ' ').trim()).toBe('1m 30s');
   expect(state.getAttribute('title')).toBe('Waiting on 2 sub-agents\n1m 30s');
   // Its own turn or a question for the user still come first.
@@ -168,12 +169,12 @@ test('monitoring and the turn that resumes after it keep counting from the user 
   expect(shell.textContent?.trim()).toBe('5s');
 });
 
-test('a shell left running reads as background work, with a pulse rather than a spinner', () => {
+test('a shell left running reads as background work, with a breathing ring rather than a spinning one', () => {
   vi.useFakeTimers({ now: NOW });
   const state = draw({ status: 'idle', backgroundWork: { kinds: ['shell', 'monitor'], since: NOW - 5_000 } });
   expect(state.dataset['state']).toBe('background');
-  expect(state.querySelector('svg')).toBeNull();
-  expect(state.querySelector('.dot.pulse')).not.toBeNull();
+  expect(state.querySelector('svg.spinner')).toBeNull();
+  expect(state.querySelector('svg.pulse')).not.toBeNull();
   expect(state.getAttribute('title')).toBe(`In background for ${state.textContent?.trim()}\n1 shell, 1 monitor still running`);
 });
 
@@ -190,7 +191,7 @@ test('a working thread spins and counts from its turn start, second by second', 
   expect(state.textContent?.trim()).toBe('1m 07s');
 });
 
-test('the other states are words in their own colour class, with no spinner', () => {
+test('the other states are words in their own colour class, with no spinner; news adds its check', () => {
   for (const [thread, kind, word] of [
     [{ status: 'waiting' }, 'waiting', 'Needs you'],
     [{ status: 'error' }, 'error', 'Failed'],
@@ -200,7 +201,9 @@ test('the other states are words in their own colour class, with no spinner', ()
     const state = draw(thread);
     expect(state.dataset['state']).toBe(kind);
     expect(state.classList.contains(kind)).toBe(true);
-    expect(state.querySelector('svg')).toBeNull();
+    // Done carries its check; the user's turn, a failure and a queue read as their word alone.
+    expect(state.querySelector('svg') !== null).toBe(kind === 'done');
+    expect(state.querySelector('.spinner')).toBeNull();
     expect(state.textContent?.trim()).toBe(word);
     unmount(running!, { outro: false });
     running = null;

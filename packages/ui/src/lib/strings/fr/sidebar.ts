@@ -47,7 +47,7 @@ export const fr: Translation = {
       ownerOnly: 'Faites-lui confiance depuis l’ordinateur qui fait tourner cette Boite.'
     },
     worktreeGone: {
-      title: 'Worktree supprimé',
+      title: 'Le dossier de cette conversation a été nettoyé',
       merged: 'Boite a supprimé le worktree de cette conversation {when}, après la fusion de #{number}.',
       clean: 'Boite a supprimé le worktree de cette conversation {when} : chacun de ses commits était déjà sur une autre branche.',
       branchDeleted: 'La branche {branch} a été supprimée.',

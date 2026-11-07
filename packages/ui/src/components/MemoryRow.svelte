@@ -21,13 +21,15 @@
   const processOf = (stopped: MemoryEvent) => stopped.exe?.split(/[\\/]/).pop() ?? null;
   const reason = $derived(describeNotice(event));
   const killed = $derived(event.kind === 'killed');
-  const name = $derived(processOf(event));
-  const title = $derived(!killed ? undefined : events.length > 1 ? strings.resources.killCount(events.length) : name ? strings.resources.killedOne(name) : strings.resources.killTitle);
-  const size = $derived(killed && events.length === 1 && event.bytes !== undefined ? bytes(event.bytes) : undefined);
+  /** A plain first line says what happened to the user's work; the process and its size follow, quieter. */
+  const title = $derived(!killed ? undefined : events.length > 1 ? strings.resources.killCount(events.length) : strings.resources.killTitle);
+  /** One stop names its process and size; several keep their list behind the "i". */
+  const detail = $derived(!killed ? reason : events.length > 1 ? undefined
+    : [processOf(event), event.bytes !== undefined ? bytes(event.bytes) : null].filter(Boolean).join(', ') || undefined);
   /** Several stops list each process and its size after the reason. */
   const info = $derived(!killed ? undefined : events.length === 1 ? reason
     : `${reason} ${events.map((stopped) => `${processOf(stopped) ?? strings.resources.unknown}${stopped.bytes !== undefined ? ` (${bytes(stopped.bytes)})` : ''}`).join(', ')}`);
 </script>
 
 {#snippet configure()}<button type="button" class="small configure" onclick={onconfigure}><span class="ui-label">{strings.resources.memorySettings}</span></button>{/snippet}
-<ThreadNotice icon={TriangleAlert} testid="memory-row" kind={event.kind} {title} detail={killed ? size : reason} {info} actions={onconfigure ? configure : undefined} />
+<ThreadNotice icon={TriangleAlert} testid="memory-row" kind={event.kind} {title} {detail} {info} actions={onconfigure ? configure : undefined} />

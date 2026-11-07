@@ -28,7 +28,8 @@
   /**
    * The column down the window's left edge, on a desktop: where to be (the
    * threads, the contacts, what asks), then one picture per bot of every
-   * machine and the teams, then the machine, the limits and Settings. It
+   * machine and the teams, then one menu for the machines and the limits,
+   * and Settings. It
    * stands on the window's chrome from top to bottom; a phone keeps its own
    * navigation and never draws it.
    */
@@ -124,6 +125,13 @@
     machineFilter.set(id);
   }
 
+  let foot = $state<HTMLElement>();
+  let glance = $state<ReturnType<typeof LimitsGlance>>();
+  /** The glance opens beside the one button it was picked from. */
+  const footButton = (): HTMLElement | null => foot?.querySelector<HTMLElement>('[data-testid=machine-status]') ?? null;
+  const showLimits = () => void glance?.open();
+  let limits = $derived(work.shows('sidebar.limits'));
+
   let ContactRequestNotice = $state<typeof import('./home/ContactRequestNotice.svelte').default>();
   $effect(() => {
     if (!contactsOn || ContactRequestNotice) return;
@@ -194,13 +202,12 @@
 
   <span class="grow"></span>
 
-  <div class="foot">
-    <MachineStatus {store} filter={machineFilter.shown(machines)} onfilter={pickMachine} />
+  <!-- The machines and the limits share one button and its menu; its right click still hides Limits from it. -->
+  <div class="foot" bind:this={foot}>
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <span class="control" oncontextmenu={(event) => limits && controlMenu(event, store, 'sidebar.limits')}><MachineStatus {store} filter={machineFilter.shown(machines)} onfilter={pickMachine} limits={limits ? showLimits : undefined} /></span>
+    {#if limits}<LimitsGlance bind:this={glance} {store} side="right" anchor={footButton} />{/if}
     <Deferred part={parts.UpdatesNotice} quiet>{#snippet children(UpdatesNotice)}<UpdatesNotice />{/snippet}</Deferred>
-    {#if work.shows('sidebar.limits')}
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <span class="control" oncontextmenu={(event) => controlMenu(event, store, 'sidebar.limits')}><LimitsGlance {store} side="right" /></span>
-    {/if}
     {#if experimentOn('whip')}<WhipButton />{/if}
     <div class="slot" class:selected={store.page === 'settings'}>
       <span class="pip" aria-hidden="true"></span>

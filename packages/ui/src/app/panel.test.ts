@@ -35,31 +35,30 @@ test('a floating panel can dock after leaving or closing its browser tab and cha
   expect(rightPanel.maximized).toBe(false);
 });
 
-test("a header button's right click hides it, and the Appearance page brings it back", async () => {
+test("the panel menu lists the terminal, and a control's right click leads to the Appearance page that hides it and brings it back", async () => {
   work.showPreset('developer');
   // With a team on the thread, since Team shows only where there is one.
   await mountOnFake('/?fake=1&team=1');
   await waitFor(() => document.querySelector('[data-thread-id="t-trace"]') !== null);
   query<HTMLButtonElement>('[data-thread-id="t-trace"]').click();
-  await waitFor(() => document.querySelector('[data-testid=terminal-toggle]') !== null);
+  // The terminal moved from its own header button into the panel menu, under the button's id.
+  await waitFor(() => document.querySelector('[data-testid=panel-menu]') !== null);
+  query<HTMLButtonElement>('[data-testid=panel-menu]').click();
+  await waitFor(() => document.querySelector('[data-testid=panel-menu-menu] [data-value=terminal-toggle]') !== null);
+  query<HTMLButtonElement>('[data-testid=panel-menu]').click();
 
-  query('[data-testid=terminal-toggle]').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 30 }));
-  await waitFor(() => document.querySelector('[data-testid=context-menu]') !== null);
-  query<HTMLButtonElement>('[data-testid=context-menu] [data-value=hide]').click();
-  await waitFor(() => document.querySelector('[data-testid=terminal-toggle]') === null);
-  expect(work.current.hidden).toEqual(['header.terminal']);
-
-  // The same menu, on another button, leads to the page that lists them all.
   await waitFor(() => document.querySelector('.context-control') !== null);
   query('.context-control').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 30 }));
   await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=customize]') !== null);
   query<HTMLButtonElement>('[data-testid=context-menu] [data-value=customize]').click();
   await waitFor(() => document.querySelector('[data-testid=settings-buttons]') !== null);
   expect(store.settingsTab).toBe('appearance');
+  query<HTMLInputElement>('[data-testid="control-header.terminal"]').click();
+  expect(work.current.hidden).toEqual(['header.terminal']);
   const terminal = query<HTMLInputElement>('[data-testid="control-header.terminal"]');
   expect(terminal.checked).toBe(false);
   // Neither preset is lit once the buttons are the device's own.
-  expect(query('[data-testid=controls-preset-developer]').getAttribute('aria-pressed')).toBe('false');
+  await waitFor(() => query('[data-testid=controls-preset-developer]').getAttribute('aria-pressed') === 'false');
   terminal.click();
   expect(work.current.hidden).toEqual([]);
   await waitFor(() => query('[data-testid=controls-preset-developer]').getAttribute('aria-pressed') === 'true');
