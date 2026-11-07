@@ -1,11 +1,13 @@
 <script lang="ts">
   import { secondClock } from '../lib/clock.svelte';
-  import { Bot, Brain, ChevronRight, FoldVertical, FilePen, FileText, Globe, Search, ShieldCheck, ShieldX, SquareTerminal, TriangleAlert, Wrench } from '@lucide/svelte';
+  import { Bot, Brain, ChevronRight, FoldVertical, FilePen, FileText, Globe, Search, ShieldCheck, ShieldQuestion, ShieldX, SquareTerminal, TriangleAlert, Wrench } from '@lucide/svelte';
   import type { PermissionRequest, RequestId } from '@boite/contracts';
   import { fill, strings } from '../lib/strings';
   import { elapsed } from '../lib/format';
   import { agentSummary, compactionMark, compactionText, familyOf, liveLabel, pairPermissions, runSpan, runSummary, thinkingShown, ThoughtTitleScan, type ActivityPart, type CompactionPart, type PermissionStep, type ThinkingStep, type ToolPart } from '../lib/tool-groups';
-  import PermissionCard from './PermissionCard.svelte';
+  import Deferred from './Deferred.svelte';
+  import { permissionCard } from '../lib/composer-dock';
+  import { permissionSentence } from '../lib/tool-summary';
   import ThinkingPart from './ThinkingPart.svelte';
   import ToolCard from './ToolCard.svelte';
   import type { Store } from '../lib/store.svelte';
@@ -132,12 +134,12 @@
 {/snippet}
 
 {#snippet ask(part: PermissionStep)}
-  <PermissionCard
+  <Deferred part={permissionCard}>{#snippet children(PermissionCard)}<PermissionCard
     toolName={part.toolName}
     decision={part.decision}
     request={permissionRequest(part.requestId)}
     answer={(decision) => answerPermission(part.requestId, decision)}
-  />
+  />{/snippet}</Deferred>
 {/snippet}
 
 {#if steps.length === 1 && steps[0] && compactions.length === 0}
@@ -189,7 +191,17 @@
   </div>
 {/if}
 {#each waiting as part (part.requestId)}
-  <div class="waiting" class:after={steps.length > 0}>{@render ask(part)}</div>
+  {@const request = permissionRequest(part.requestId)}
+  <div class="waiting" class:after={steps.length > 0}>
+    {#if request}
+      <!-- The ask waits at the top of the composer, where it is answered: here only its line. -->
+      <div class="asked" data-testid="permission-waiting" data-request={part.requestId}>
+        <span class="glyph"><ShieldQuestion size={15} strokeWidth={1.75} /></span>
+        <span class="asked-text ui-label" title={permissionSentence(part.toolName, request.input)}>{permissionSentence(part.toolName, request.input)}</span>
+        <span class="asked-state ui-label">{strings.chat.permissionNeedsYou}</span>
+      </div>
+    {:else}{@render ask(part)}{/if}
+  </div>
 {/each}
 
 <style>
@@ -249,6 +261,10 @@
   .verdict.denied { color: var(--color-danger); }
 
   .waiting.after { margin-top: var(--chat-part-gap); }
+  .asked { display: flex; align-items: center; gap: var(--activity-gap); min-height: var(--control); padding: var(--activity-padding); font-size: var(--text-sm); color: var(--color-muted-foreground); }
+  .asked .glyph { display: inline-flex; flex: none; width: var(--activity-glyph); justify-content: center; color: var(--color-live); }
+  .asked-text { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--color-foreground); }
+  .asked-state { flex: none; margin-left: auto; }
 
   .label {
     flex: 0 1 auto;

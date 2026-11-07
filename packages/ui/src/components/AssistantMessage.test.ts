@@ -296,6 +296,8 @@ test('a short text between calls reads as narration, what follows the last call 
     mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: message.threadId, message, signedOut: null, showModel: false } });
     flushSync();
     expect([...document.querySelectorAll('[data-testid=narration]')].map(node => node.textContent?.trim())).toEqual(['Now the tests.']);
-    expect([...document.querySelectorAll('.answer-bubble')].map(node => node.textContent?.trim().slice(0, 6))).toEqual(['A long', 'Fixed.']);
+    // Only the user's messages are bubbles: the answers are free text in full ink.
+    expect(document.querySelector('.answer-bubble')).toBeNull();
+    expect([...document.querySelectorAll('[data-kind=text]:not([data-testid=narration])')].map(node => node.textContent?.trim().slice(0, 6))).toEqual(['A long', 'Fixed.']);
   } finally { store.detach(); client.close(); }
 });

@@ -202,9 +202,12 @@
       <span class="control" oncontextmenu={(event) => controlMenu(event, store, 'sidebar.limits')}><LimitsGlance {store} side="right" /></span>
     {/if}
     {#if experimentOn('whip')}<WhipButton />{/if}
-    <button type="button" class="ghost icon"
-      title={`${strings.sidebar.settings}${store.keyHint('settings')}`} aria-label={strings.sidebar.settings}
-      data-testid="nav-settings" data-preload-view="settings" onclick={() => store.showSettings()}><Settings size={18} strokeWidth={1.75} /></button>
+    <div class="slot" class:selected={store.page === 'settings'}>
+      <span class="pip" aria-hidden="true"></span>
+      <button type="button" class="ghost icon" class:on={store.page === 'settings'} aria-current={store.page === 'settings' ? 'page' : undefined}
+        title={`${strings.sidebar.settings}${store.keyHint('settings')}`} aria-label={strings.sidebar.settings}
+        data-testid="nav-settings" data-preload-view="settings" onclick={() => store.showSettings()}><Settings size={18} strokeWidth={1.75} /></button>
+    </div>
   </div>
 </nav>
 
@@ -265,7 +268,13 @@
 
   .bot { background: none; border-radius: var(--radius-full); }
   .bot:hover:not(:disabled) { background: none; }
-  .bot.dim :global(.agent-avatar) { opacity: 0.55; filter: grayscale(1); }
+  /* At rest a bot's picture is grey; the open one and the one under the pointer
+     take their colours, so the rail stays quiet and the eye finds where it is. */
+  .bot :global(.agent-avatar) { filter: grayscale(1) brightness(0.92) contrast(0.95); transition: filter var(--dur-2) var(--ease-out-quint); }
+  .bot:hover :global(.agent-avatar), .bot:focus-visible :global(.agent-avatar), .selected .bot :global(.agent-avatar) { filter: none; }
+  .bot.dim :global(.agent-avatar) { opacity: 0.55; }
+  @media (prefers-reduced-motion: reduce) { .bot :global(.agent-avatar) { transition: none; } }
+  :global(html[data-motion='reduced']) .bot :global(.agent-avatar) { transition: none; }
   .bot:active:not(:disabled) { transform: translateY(1px); }
   .team :global(.agent-avatar) { background: var(--color-surface-3); }
 
@@ -312,7 +321,10 @@
   @media (prefers-reduced-motion: reduce) { .work .arc { animation: none; } }
   :global(html[data-motion='reduced']) .work .arc { animation: none; }
 
-  .foot { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .foot { display: flex; flex-direction: column; align-items: center; gap: 4px; align-self: stretch; }
+  /* Settings marks itself selected like the buttons above, but its hover stays quiet like its neighbours. */
+  .foot .slot:not(.selected):hover .pip { height: 0; }
+  .foot :global(button.icon.on) { background: var(--color-surface-3); color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-edge); border-radius: var(--radius-rail); }
   .control { display: contents; }
   .foot :global(button.icon) { width: var(--control-touch); height: var(--control-touch); color: var(--color-subtle); }
   .foot :global(button.icon:hover:not(:disabled)) { color: var(--color-foreground); }

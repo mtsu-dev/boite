@@ -3,7 +3,7 @@
   import { tick } from 'svelte';
   import MobileSettings from './MobileSettings.svelte';
   import BrainPage from './BrainPage.svelte';
-  import { Activity, ArrowLeft, Brain, ChevronRight, Coins, FlaskConical, Gauge, House, Keyboard, Mic, Monitor, Palette, Puzzle, Settings2, ShieldCheck, SlidersHorizontal, Stethoscope, Users } from '@lucide/svelte';
+  import { Activity, Brain, ChevronRight, Coins, FlaskConical, Gauge, House, Keyboard, Mic, Monitor, Palette, Puzzle, Settings2, ShieldCheck, SlidersHorizontal, Stethoscope, Users } from '@lucide/svelte';
   import KeyboardPage from './KeyboardPage.svelte';
   import LimitsPage from './LimitsPage.svelte';
   import PluginsPage from './PluginsPage.svelte';
@@ -31,6 +31,7 @@
   import { untrack } from 'svelte';
   import { revealSettingsCard } from '../lib/settings-flash';
   import { desktopPage, desktopSettings, machinePage, ownerOnly } from '../lib/settings-tabs';
+  import { titleSlot } from '../lib/title-slot.svelte';
 
   let { store, onopenthread }: { store: Store; onopenthread?: () => void } = $props();
 
@@ -163,6 +164,18 @@
   let tabs = $derived(all.filter((tab) => store.owner || !ownerOnly(tab.id)));
   /** A page only the owner may open lands on Home on a paired device, as it does on a phone. */
   let tab = $derived(desktopPage(store.settingsTab, store.owner));
+  let tabLabel = $derived(tabs.find((entry) => entry.id === tab)?.label ?? '');
+
+  /**
+   * On a desktop the bar above the page says where it is, Settings then the
+   * page, and Settings leads back to Home. The rail and this trail are the way
+   * out: no Back button.
+   */
+  $effect(() => {
+    if (!desktopSettings(narrow.current)) return;
+    titleSlot.current = crumb;
+    return () => { if (titleSlot.current === crumb) titleSlot.current = null; };
+  });
 
   /**
    * Single settings the search also finds, each with the card it sits on:
@@ -300,6 +313,18 @@
   });
 </script>
 
+{#snippet crumb()}
+  <span class="crumb" data-testid="settings-crumb">
+    {#if tab === 'home'}
+      <span class="here ui-label">{strings.settings.heading}</span>
+    {:else}
+      <button type="button" class="ghost root" onclick={() => { selectedSection = ''; store.showSettings('home'); }}><span class="ui-label">{strings.settings.heading}</span></button>
+      <ChevronRight size={14} strokeWidth={1.75} aria-hidden="true" />
+      <span class="here ui-label">{tabLabel}</span>
+    {/if}
+  </span>
+{/snippet}
+
 {#snippet machineBar()}
   {#if chosen}<SettingsMachineBar machine={chosen} machines={choices} onpick={(id) => { picked = id; }} />{/if}
 {/snippet}
@@ -308,11 +333,8 @@
   <MobileSettings {store} {target} bar={bar ? machineBar : undefined} {onopenthread} />
 {:else}
 <div class="settings" data-testid="settings">
-  <nav aria-label={strings.settings.heading}>
-    <button type="button" class="ghost back" data-testid="settings-back" onclick={() => store.showChat()}>
-      <ArrowLeft size={15} strokeWidth={1.75} />
-      <span class="ui-label">{strings.settings.back}</span>
-    </button>
+  <nav aria-label={strings.settings.heading} style:--list-width={`${store.sidebarWidth}px`}>
+    <h2 class="title">{strings.settings.heading}</h2>
     {#each tabs as entry, index (entry.id)}
       {@const Icon = entry.icon}
       {#if index > 0 && tabs[index - 1]?.group !== entry.group}<div class="rule" role="separator"></div>{/if}
@@ -423,30 +445,34 @@
   .subsection { display: block; text-align: left; white-space: normal; text-wrap: pretty; height: auto; min-height: var(--control); padding-block: 5px; line-height: 1.3; width: calc(100% - 24px); margin-left: 24px; padding-left: 15px; border-left: 1px solid var(--color-edge); border-radius: 0; color: var(--color-muted-foreground); font-size: var(--text-sm); transition: color var(--dur-2), border-color var(--dur-2), background var(--dur-2); }
   .subsection.chosen { color: var(--color-foreground); border-left-color: var(--color-foreground); background: var(--color-hover); }
 
+  /* The pages' list stands in the thread list's column, on the chrome, and
+     the page in the inset card beside it, as in the rest of the frame. */
   .settings {
     display: flex;
     flex: 1;
+    gap: var(--frame-gap);
     min-height: 0;
     min-width: 0;
-    animation: rise var(--dur-3) var(--ease-out-quint);
   }
 
   nav {
-    width: 240px;
+    width: var(--list-width);
     flex: none;
     display: flex;
     flex-direction: column;
     gap: 2px;
-    padding: 20px 14px;
+    padding: 0 6px 12px;
     overflow-y: auto;
   }
 
+  /* The thread list's head: same height, size and inset, so the switch reads as one column changing. */
+  .title { flex: none; height: 36px; margin: 16px 4px 4px; padding-left: 8px; display: flex; align-items: center; font-size: 15px; font-weight: 650; letter-spacing: -0.015em; color: var(--color-foreground); }
 
-  .back {
-    flex: none;
-    justify-content: flex-start;
-    margin-bottom: 10px;
-  }
+  .crumb { display: flex; align-items: center; gap: 4px; min-width: 0; padding-left: 10px; color: var(--color-subtle); font-size: var(--text-sm); }
+  .crumb :global(svg) { flex: none; }
+  .crumb .root { height: var(--control-sm); padding: 0 6px; color: var(--color-muted-foreground); font-weight: 500; }
+  .crumb .root:hover:not(:disabled) { color: var(--color-foreground); }
+  .crumb .here { min-width: 0; padding: 0 6px; color: var(--color-foreground); font-weight: 600; }
 
   .tab {
     justify-content: flex-start;
@@ -478,6 +504,11 @@
     animation: fade var(--dur-2) var(--ease-out-quint);
   }
 
+  /* Up to the window's top, like the thread list (App.svelte's bar starts right of it). */
+  @media (min-width: 721px) {
+    nav { margin-top: calc(-1 * var(--titlebar)); }
+  }
+
   @media (max-width: 720px) {
     .settings {
       flex-direction: column;
@@ -495,11 +526,12 @@
       border-bottom: 1px solid var(--color-border);
     }
 
+    .settings { gap: 0; }
+    .title { display: none; }
     .rule { width: 1px; height: auto; align-self: stretch; margin: 6px 4px; }
     .subcategories { display: none; }
     .mobile-subcategories { display: flex; gap: 4px; padding: 8px 14px; overflow-x: auto; flex: none; border-bottom: 1px solid var(--color-border); }
     .mobile-subcategories button { flex: none; font-size: var(--text-sm); }
-    .back { display: none; }
     .category { min-width: 0; }
   }
 </style>

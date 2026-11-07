@@ -34,7 +34,7 @@ test('the plan reads as a document and copies whole', async () => {
   card.querySelector<HTMLButtonElement>('[data-testid=plan-copy]')!.click();
   await settle();
   expect(writeText).toHaveBeenCalledWith(PLAN);
-  expect(card.querySelector('[data-testid=plan-copy]')?.textContent).toContain('Copied');
+  expect(card.querySelector('[data-testid=plan-copy]')?.getAttribute('title')).toBe('Copied');
 });
 
 test('saving writes the next free plan file at the root of the thread folder', async () => {
@@ -47,8 +47,18 @@ test('saving writes the next free plan file at the root of the thread folder', a
   await settle();
   expect(call).toHaveBeenCalledWith('files.list', { threadId: 't-1' });
   expect(call).toHaveBeenCalledWith('files.write', { threadId: 't-1', path: 'plan-trace-tab-2.md', text: PLAN });
-  expect(save.textContent).toContain('Saved as plan-trace-tab-2.md');
+  expect(save.getAttribute('aria-label')).toBe('Saved as plan-trace-tab-2.md');
+  expect(card.querySelector('.head')?.textContent).toContain('Saved as plan-trace-tab-2.md');
   expect(save.disabled).toBe(true);
+});
+
+test('ticked steps count in the head', () => {
+  const store = { owner: false, connection: 'ready', error: null, client: { call: vi.fn() } };
+  running = mount(PlanCard, { target: document.body, props: { store: store as never, threadId: 't-1', plan: '## Plan\n\n- [x] Read\n- [ ] Write\n- [ ] Test' } });
+  flushSync();
+  const card = document.body.querySelector<HTMLElement>('[data-testid=plan-card]')!;
+  expect(card.querySelector('.count')?.textContent).toBe('1 of 3');
+  expect(card.classList.contains('lead')).toBe(true);
 });
 
 test('a paired device can copy and download but not write into the folder', () => {

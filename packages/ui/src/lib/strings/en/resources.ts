@@ -10,7 +10,7 @@ export const strings = {
     states: { ok: 'Enough memory', critical: 'Memory limit crossed' },
     killTitle: 'Process stopped to free memory',
     killCount: (count: number) => `${count} processes stopped to free memory`,
-    stoppedProcesses: (count: number) => `Show ${count} stopped processes`,
+    killedOne: (process: string) => `${process} was stopped`,
     memorySettings: 'Memory settings',
     protectionOff: 'Memory protection is off',
     killReason: {

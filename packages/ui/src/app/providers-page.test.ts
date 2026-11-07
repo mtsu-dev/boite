@@ -93,6 +93,6 @@ test('Providers keeps installation details and updates the managed copy that run
   expect(document.querySelector('[data-testid=install-update]')).toBeNull();
 
   // The store is one module-level singleton: leave the next test on the chat.
-  query<HTMLButtonElement>('[data-testid=settings-back]').click();
+  query<HTMLButtonElement>('[data-testid=view-threads]').click();
   await waitFor(() => store.page === 'chat');
 });

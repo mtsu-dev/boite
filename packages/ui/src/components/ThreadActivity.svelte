@@ -1,6 +1,7 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { errorText } from '../lib/errors';
-  import { Bot, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleCheck, CircleDot, Hand, KeyRound, ListChecks, ListTodo, MessageCircleQuestionMark, PanelRight, Pause, Play, Repeat, Reply, Settings2, ShieldQuestion, Target, Users, X } from '@lucide/svelte';
+  import { Bot, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleCheck, CircleDot, Hand, KeyRound, ListChecks, ListTodo, MessageCircleQuestionMark, PanelRight, PencilLine, Pause, Play, Repeat, Reply, Settings2, ShieldQuestion, Target, Users, X } from '@lucide/svelte';
   import type { MessagePart, QuestionRequest, SecretRequest, ThreadSummary } from '@boite/contracts';
   import { focusComposer } from '../lib/focus';
   import type { Store } from '../lib/store.svelte';
@@ -18,20 +19,17 @@
   import GoalChecklist from './GoalChecklistLoader.svelte';
   import SubagentQuestions from './SubagentQuestions.svelte';
 
-  let { store, reserveInComposer = false, onroom }: {
-    store: Store;
-    reserveInComposer?: boolean;
-    onroom?: (height: number) => void;
-  } = $props();
+  let { store }: { store: Store } = $props();
   let activity = $derived(store.openThread?.activity);
   let expanded = $state(false);
   let saving = $state(false);
 
   /*
-   * The questions an agent asked without stopping (`boite ask`) wait here, on
-   * top of the goal, the loop and the tasks, rather than in the timeline where
-   * a running turn would push them out of sight. Several stack behind a pager;
-   * each keeps what was picked or typed while another is on screen.
+   * The questions of this thread wait here, at the top of the composer and
+   * above the goal, the loop and the tasks: the ones the agent stopped for
+   * first, then the ones it asked without stopping (`boite ask`), which a
+   * running turn would push out of sight in the timeline. Several stack behind
+   * a pager; each keeps what was picked or typed while another is on screen.
    *
    * A subagent's questions link to its conversation from this chatbar. Only
    * this thread's questions use this composer's answers. Child permissions
@@ -43,11 +41,13 @@
   let asked: DockRequest[] = $derived.by(() => {
     const threadId = store.openThread?.id;
     if (!threadId) return [];
-    const questions: DockRequest[] = store.pendingQuestions.filter((question) => question.async === true && question.threadId === threadId);
+    // A setting, an agent's setting or a team request the agent stopped for keeps its card in the timeline.
+    const questions: DockRequest[] = store.pendingQuestions.filter((question) => question.threadId === threadId
+      && (question.async === true || !(question.setting || question.agentSetting || question.team)));
     const secrets: DockRequest[] = store.pendingSecrets
       .filter((request) => request.threadId === threadId || children.has(request.threadId))
       .map((secret) => ({ id: secret.id, threadId: secret.threadId, turnId: secret.turnId, text: secret.reason, options: [], allowText: false, multiple: false, createdAt: secret.createdAt, secret }));
-    return [...questions, ...secrets].sort((a, b) => a.createdAt - b.createdAt);
+    return [...questions, ...secrets].sort((a, b) => Number(a.async === true || !!a.secret) - Number(b.async === true || !!b.secret) || a.createdAt - b.createdAt);
   });
 
   function secretPart(request: SecretRequest): Extract<MessagePart, { type: 'secret_request' }> {
@@ -71,6 +71,13 @@
     }
     seenThread = thread;
   });
+  /** A plain question draws its own head (`QuestionCard`): the pager and the fold sit in it. */
+  const plain = (question: DockRequest) => !question.secret && !question.setting && !question.agentSetting && !question.team;
+  // A card's "Answer in writing", in the timeline or here, brings that question up.
+  $effect(() => {
+    const chosen = repliesOf(store).chosen;
+    if (chosen && untrack(() => asked.some((question) => question.id === chosen))) { shownId = chosen; questionOpen = true; }
+  });
   // The timeline's line for a docked question brings that one up.
   $effect(() => {
     if (questionDock.nonce === 0 || questionDock.focus === null) return;
@@ -83,7 +90,10 @@
   $effect(() => releaseWaiting(store));
   function page(step: -1 | 1) {
     const next = asked[(at + step + asked.length) % asked.length];
-    if (next) shownId = next.id;
+    if (!next) return;
+    shownId = next.id;
+    // The composer answers the question on screen.
+    if (next.allowText && !next.secret && !repliesOf(store).ignored[next.id]) repliesOf(store).chosen = next.id;
   }
 
   let visible = $derived(Boolean(asked.length > 0 || waits.length > 0 || childQuestions.length > 0 || activity?.goal && !activity.goal.dismissed || activity?.loop || activity?.tasks.length && !activity.tasksDismissed));
@@ -128,14 +138,12 @@
   });
   const detailsId = $props.id();
 
-  // Task details overlay the timeline. Queued prompts reserve the full dock
-  // above the input so neither tasks nor questions cover them.
+  // Task details overlay the timeline; the strip above the box stays clear of them.
   let height = $state(0);
   let readingHeight = $state(0);
   $effect(() => {
-    onroom?.(visible && !inline ? height : 0);
-    dockRoom.height = visible && !reserveInComposer && !inline ? readingHeight : 0;
-    dockRoom.clearance = visible && !reserveInComposer && !inline ? height : 0;
+    dockRoom.height = visible && !inline ? readingHeight : 0;
+    dockRoom.clearance = visible && !inline ? height : 0;
   });
   $effect(() => () => {
     dockRoom.height = 0;
@@ -196,6 +204,16 @@
   <button type="button" class="ghost small open-child" title={hint} aria-label={hint} data-testid="activity-open-subagent" onclick={() => void store.open(child.id)}>{strings.activity.openSubagent}</button>
 {/snippet}
 
+{#snippet pager()}
+  {#if asked.length > 1}
+    <span class="pager">
+      <button type="button" class="ghost small icon" aria-label={strings.activity.questionPrev} title={strings.activity.questionPrev} data-testid="activity-question-prev" onclick={() => page(-1)}><ChevronLeft size={16} /></button>
+      <span class="meta ui-label" data-testid="activity-question-index">{fill(strings.activity.questionOf, { index: String(at + 1), total: String(asked.length) })}</span>
+      <button type="button" class="ghost small icon" aria-label={strings.activity.questionNext} title={strings.activity.questionNext} data-testid="activity-question-next" onclick={() => page(1)}><ChevronRight size={16} /></button>
+    </span>
+  {/if}
+{/snippet}
+
 {#snippet fromChild(child: ThreadSummary, testid: string)}
   <div class="from-child" data-testid={testid}>
     <Bot size={14} />
@@ -205,12 +223,13 @@
 {/snippet}
 
 {#if activity || asked.length > 0 || waits.length > 0 || childQuestions.length > 0}
-  <section class="activity" class:inline class:reserved={reserveInComposer} class:hidden={!visible} use:measure data-testid="thread-activity" aria-label={shown || childQuestions.length ? strings.activity.question : strings.activity.tasks} inert={!visible}>
+  <section class="activity" class:inline class:hidden={!visible} use:measure data-testid="thread-activity" aria-label={shown || childQuestions.length ? strings.activity.question : strings.activity.tasks} inert={!visible}>
     {#if childQuestions.length > 0 && store.openThread}
       <div class="child-questions"><SubagentQuestions {store} threadId={store.openThread.id} /></div>
     {/if}
     {#if shown}
-      <div class="questions" data-testid="activity-questions" data-count={asked.length}>
+      <div class="questions" class:plain={plain(shown)} data-testid="activity-questions" data-count={asked.length}>
+        {#if !plain(shown)}
         <div class="activity-row question-row">
           {#if shown.secret}<KeyRound size={16} />{:else if shown.setting}<Settings2 size={16} />{:else if shown.agentSetting}<Bot size={16} />{:else if shown.team}<Users size={16} />{:else}<MessageCircleQuestionMark size={16} />{/if}
           <button type="button" class="ghost objective question-toggle" aria-expanded={questionOpen}
@@ -227,15 +246,10 @@
               <button type="button" class="ghost small" data-testid="composer-reply-ignore" title={strings.composer.replyIgnoreHint} onclick={() => ignoreQuestions(store)}>{strings.composer.replyIgnore}</button>
             </span>
           {/if}
-          {#if asked.length > 1}
-            <span class="pager">
-              <button type="button" class="ghost small icon" aria-label={strings.activity.questionPrev} title={strings.activity.questionPrev} data-testid="activity-question-prev" onclick={() => page(-1)}><ChevronLeft size={16} /></button>
-              <span class="meta ui-label" data-testid="activity-question-index">{fill(strings.activity.questionOf, { index: String(at + 1), total: String(asked.length) })}</span>
-              <button type="button" class="ghost small icon" aria-label={strings.activity.questionNext} title={strings.activity.questionNext} data-testid="activity-question-next" onclick={() => page(1)}><ChevronRight size={16} /></button>
-            </span>
-          {/if}
+          {@render pager()}
         </div>
-        <div class="disclosure-fold" class:open={questionOpen} inert={!questionOpen}>
+        {/if}
+        <div class="disclosure-fold" class:open={questionOpen || plain(shown)} inert={!questionOpen && !plain(shown)}>
           <div>
             {#each asked as question (question.id)}
               {@const reply = replyOf(store, question.id)}
@@ -289,6 +303,7 @@
                   multiple={question.multiple}
                   async={question.async === true}
                   docked
+                  folded={!questionOpen}
                   answer={null}
                   pending
                   bind:picked={() => repliesOf(store).picks[question.id] ?? [], (ids) => (repliesOf(store).picks[question.id] = ids)}
@@ -299,7 +314,19 @@
                   onwrite={child ? undefined : () => writeAnswer(store, question.id)}
                   page={question.open?.url}
                   onopen={() => openQuestionPage(store, question.threadId, question.id)}
-                />{/snippet}</Deferred>
+                >{#snippet head()}
+                  {#if question.id === shown?.id}
+                  {#if reply.replying}
+                    <span data-testid="composer-reply" data-question={question.id}>
+                      <button type="button" class="ghost small icon" data-testid="composer-reply-ignore" aria-label={strings.composer.replyIgnoreHint} title={strings.composer.replyIgnoreHint} onclick={() => ignoreQuestions(store)}><PencilLine size={14} /></button>
+                    </span>
+                  {/if}
+                  {@render pager()}
+                  <button type="button" class="ghost small icon fold-toggle" aria-expanded={questionOpen} aria-label={questionOpen ? strings.activity.questionFold : strings.activity.questionUnfold}
+                    title={questionOpen ? strings.activity.questionFold : strings.activity.questionUnfold} data-testid="activity-question-toggle"
+                    onclick={() => (questionOpen = !questionOpen)}><ChevronDown size={16} class={questionOpen ? 'turned' : ''} /></button>
+                  {/if}
+                {/snippet}</QuestionCard>{/snippet}</Deferred>
                 {/if}
               </div>
             {/each}
@@ -446,9 +473,8 @@
      rises by the bar's height, which ChatView sets, into the air the bar keeps
      above itself, and covers no more of the timeline than the reading room
      reserves. Over queued prompts it stays in the room they leave it. */
-  .activity { position: absolute; bottom: calc(100% + 4px + var(--agent-dock-room, 0px)); inset-inline: 0; z-index: 5; width: 100%; margin-inline: auto; max-height: 45vh; overflow-y: auto; padding: 4px; border: 1px solid var(--color-border); border-top-color: var(--color-edge); border-radius: var(--radius-lg); background: var(--composer-glaze) var(--color-activity-surface); backdrop-filter: blur(16px) saturate(1.2); -webkit-backdrop-filter: blur(16px) saturate(1.2); box-shadow: var(--shadow-e1); font-size: var(--text-sm); transition: opacity var(--dur-3), transform var(--dur-3); }
+  .activity { position: absolute; bottom: calc(100% + 4px + var(--strip-room, 0px)); inset-inline: 0; z-index: 5; width: 100%; margin-inline: auto; max-height: 45vh; overflow-y: auto; padding: 4px; border: 1px solid var(--color-border); border-top-color: var(--color-edge); border-radius: var(--radius-lg); background: var(--composer-glaze) var(--color-activity-surface); backdrop-filter: blur(16px) saturate(1.2); -webkit-backdrop-filter: blur(16px) saturate(1.2); box-shadow: var(--shadow-e1); font-size: var(--text-sm); transition: opacity var(--dur-3), transform var(--dur-3); }
   .activity.hidden { opacity: 0; transform: translateY(8px); pointer-events: none; }
-  .activity.reserved { bottom: calc(100% + 4px); }
   .activity.inline { position: relative; bottom: auto; inset-inline: auto; z-index: auto; background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; border: none; border-bottom: 1px solid var(--color-border); border-radius: 0; box-shadow: none; padding: 8px 4px 4px; }
   .activity-row { display: flex; align-items: center; gap: 8px; min-height: var(--control); min-width: 0; padding: 0 2px 0 8px; }
   /* The questions sit above the goal, the loop and the tasks, a hairline between. */
@@ -466,7 +492,8 @@
   .question-row > :global(svg) { color: var(--color-live); }
   .question-toggle { display: flex; align-items: center; gap: 6px; height: var(--control-sm); padding: 0 6px; font-weight: 400; color: var(--color-foreground); justify-content: flex-start; }
   .question-toggle > :global(svg) { flex: none; color: var(--color-muted-foreground); transition: transform var(--dur-2) var(--ease-out-quint); }
-  .question-toggle > :global(.turned) { transform: rotate(180deg); }
+  .question-toggle > :global(.turned), .fold-toggle > :global(.turned) { transform: rotate(180deg); }
+  .questions.plain { margin: -8px -4px 0; }
   .question-line { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: left; }
   .pager { display: inline-flex; align-items: center; gap: 2px; flex: none; }
   .pager .meta { font-variant-numeric: tabular-nums; }

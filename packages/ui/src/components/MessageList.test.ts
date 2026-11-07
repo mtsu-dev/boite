@@ -1,8 +1,9 @@
-import { afterEach, expect, onTestFinished, vi } from 'vitest';
+import { afterEach, beforeEach, expect, onTestFinished, vi } from 'vitest';
 import { test } from '../test/fake-client';
 import { flushSync, mount, unmount } from 'svelte';
 import { DEFAULT_DELEGATION_CONFIG, type AgentLetter, type Message } from '@boite/contracts';
 import MessageList from './MessageList.svelte';
+import JumpLatest from './JumpLatest.svelte';
 import { windowStats } from '../lib/message-window';
 import { TurnFileCache } from '../lib/turn-files';
 import { turnProgressStats } from '../lib/turn-progress.svelte';
@@ -114,9 +115,20 @@ test('the parent timeline retains one team row, updates completion counts and op
   expect(document.querySelector('[data-testid=delegation-activity]')).toBeNull();
 });
 
+// The way back to the latest message lives in the strip above the composer;
+// the list only says when it is needed.
+let jumpHost: ReturnType<typeof mount> | null = null;
+beforeEach(() => {
+  const target = document.createElement('div');
+  document.body.appendChild(target);
+  jumpHost = mount(JumpLatest, { target });
+});
+
 afterEach(async () => {
   if (running) await unmount(running, { outro: false });
   running = null;
+  if (jumpHost) await unmount(jumpHost, { outro: false });
+  jumpHost = null;
   restoreLayout();
   document.body.innerHTML = '';
 });
@@ -837,7 +849,7 @@ test('a viewport clamp keeps the list pinned but a reader scroll during growth r
   expect(timeline.scrollTop).toBe(1080);
 });
 
-test('a window opened around the reader pages down as they reach its bottom, and "Jump to latest" reads the last page', async ({ ready }) => {
+test('a window opened around the reader pages down as they reach its bottom, and "Latest" reads the last page', async ({ ready }) => {
   window.localStorage.clear();
   const { store: live } = await ready({ delayMs: 0, long: true });
   live.readingPositions.set('t-long', { top: 0, pinned: false, heights: new Map(), anchor: { id: 'm-long-100', offset: 0 } });
@@ -879,7 +891,7 @@ test('what arrives while the reader is scrolled up is counted on the way back, a
   timeline.dispatchEvent(new Event('scroll'));
   await settle();
   const jumpButton = () => document.querySelector<HTMLButtonElement>('[data-testid=jump-to-latest]');
-  expect(jumpButton()?.textContent?.trim()).toBe('Jump to latest');
+  expect(jumpButton()?.textContent?.trim()).toBe('Latest');
 
   const last = messages.at(-1)!;
   messages.push({ ...JSON.parse(JSON.stringify(last)), id: 'm-new-1' }, { ...JSON.parse(JSON.stringify(last)), id: 'm-new-2' });
@@ -902,7 +914,7 @@ test('a thread reopened where the reader left it, above the bottom, counts what 
   running = mount(MessageList, { target: document.body, props: { store: live, threadId: 't-long', messages } });
   await settle();
   const jumpButton = () => document.querySelector<HTMLButtonElement>('[data-testid=jump-to-latest]');
-  expect(jumpButton()?.textContent?.trim()).toBe('Jump to latest');
+  expect(jumpButton()?.textContent?.trim()).toBe('Latest');
 
   messages.push({ ...JSON.parse(JSON.stringify(messages.at(-1)!)), id: 'm-new-1' });
   scrollHeight = messages.length * ESTIMATE;

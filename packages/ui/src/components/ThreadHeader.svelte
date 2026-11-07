@@ -5,7 +5,7 @@
   import { entrust } from '../lib/thread-entrust';
   import { tick } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
-  import { ChevronDown, FolderInput, GitBranch, GitPullRequest, Globe, MessagesSquare, Network, PanelRight, Search, SquareKanban, SquareTerminal, UsersRound, VenetianMask } from '@lucide/svelte';
+  import { Bell, Bot, ChevronDown, Ellipsis, FolderInput, GitBranch, GitPullRequest, Globe, MessagesSquare, Network, PanelRight, Search, SquareKanban, SquareTerminal, UsersRound, VenetianMask } from '@lucide/svelte';
   import { focusOnMount } from '../lib/actions';
   import { contextMenu } from '../lib/context-menu.svelte';
   import { pendingLine } from '../lib/thread-move.svelte';
@@ -22,7 +22,8 @@
   import { watchStatus } from '../lib/pull-request-watch';
   import ContextModeBadge from './ContextModeBadge.svelte';
   import CoordinationDialog from './CoordinationDialog.svelte';
-  let { store }: { store: Store } = $props();
+  /** `bell`: on a phone the header's contact bell gives way to an entry of this menu, which the list's header passes in. */
+  let { store, bell = null }: { store: Store; bell?: { label: string; open: () => void } | null } = $props();
   let thread = $derived(store.openThread);
   const mobile = new MediaQuery('(max-width: 720px)');
   /** Under a phone's title: where the conversation lives, its machine once there are two. */
@@ -98,16 +99,27 @@
   let delegated = $derived(!!thread && (store.subagents(thread.id) !== null || store.threads.some(row => row.parentThreadId === thread!.id)
     || (store.delegation?.agents.length ?? 0) > 0 || (store.delegation?.nativeAgents?.length ?? 0) > 0));
   /**
-   * A phone's title menu holds the panel and the
-   * project board, ticked when open, then the thread's own actions. The
+   * A phone's one header menu: what waits from contacts, the panel, the
+   * browser and the project board, ticked when open, the bot that holds or
+   * looks after the thread and its pull request watches, then the thread's own
+   * actions. Each entry keeps the id of the header button it replaces. The
    * terminal, the coordination and what only the desktop does with a thread stay there.
    */
   let phoneItems = $derived.by((): MenuItem[] => {
     if (!thread) return [];
+    const watches = thread.pullRequestWatches ?? [];
+    const bots: MenuItem[] = [
+      ...(carrier ? [{ id: 'thread-entrusted-chip', label: fill(strings.agents.openAgent, { name: carrier.agent.name }), title: fill(strings.agents.entrustedTo, { name: carrier.agent.name }), glyph: Bot }] : []),
+      ...(resident ? [{ id: 'thread-resident-chip', label: fill(strings.agents.openAgent, { name: resident.name }), title: fill(strings.resident.lookedAfterBy, { name: resident.name }), glyph: Bot }] : []),
+      ...watches.map((watch): MenuItem => ({ id: `watch:${watch.url}`, label: fill(strings.tasks.stopWatchOf, { number: String(watch.number) }), hint: watchStatus(watch), title: watch.url, glyph: GitPullRequest }))
+    ];
     return [
+      ...(bell ? [{ id: 'contact-request-open', label: bell.label, glyph: Bell }, separator('sep-bell')] : []),
       { id: 'panel', label: strings.thread.panelMenu, glyph: PanelRight, active: store.panelOpen },
+      { id: 'phone-browser-toggle', label: strings.rightPanel.browser, glyph: Globe, active: store.panelOpen && store.panel.active?.kind === 'agent-browser' },
       ...(store.boardAvailable() ? [{ id: 'board', label: strings.board.open, glyph: SquareKanban, active: store.boardShown }] : []),
       separator('sep-panel'),
+      ...(bots.length ? [...bots, separator('sep-bots')] : []),
       ...threadMenuItems(store, thread, { phone: true, tools: [
         { id: 'find', label: strings.palette.find, glyph: Search },
         ...(delegated || agentsOn ? [{ id: 'agents', label: strings.delegation.heading, glyph: UsersRound, active: agentsOn }] : [])
@@ -122,6 +134,11 @@
     else if (action === 'panel') store.togglePanel();
     else if (action === 'board') store.toggleBoard();
     else if (action === 'agents') store.panel.toggleKind('agents');
+    else if (action === 'phone-browser-toggle') store.panel.open('agent-browser');
+    else if (action === 'contact-request-open') bell?.open();
+    else if (action === 'thread-entrusted-chip' && carrier) store.showAgents(carrier.agent.id);
+    else if (action === 'thread-resident-chip' && resident) openResident(store, resident.id);
+    else if (action.startsWith('watch:')) void store.unwatchPullRequest(open.id, action.slice('watch:'.length));
     else if (action === 'find') {
       store.findOpen = true;
       store.findRequest += 1;
@@ -190,10 +207,12 @@
           >
             <span class="ui-label">{thread.title}</span>
           </button>
-          <!-- A small chevron exposes thread actions; on phones it also holds the title. -->
+          <!-- On a phone the title reads as text over its place, and the one menu closes the header's row. -->
+          {#if mobile.current}<span class="title-lines"><span class="title-text ui-label">{thread.title}</span>{#if place}<span class="title-place ui-label" data-testid="thread-place">{place}</span>{/if}</span>{/if}
+          <!-- A small chevron exposes thread actions on the desktop. -->
           <span class="title-menu">
-            <Menu items={mobile.current ? phoneItems : desktopItems} onpick={titleAction} label={strings.sidebar.threadMenu} placement="bottom" variant="text" testid="thread-menu-trigger">
-              <span class="title-lines"><span class="title-text ui-label">{thread.title}</span>{#if place}<span class="title-place ui-label" data-testid="thread-place">{place}</span>{/if}</span><ChevronDown size={14} />
+            <Menu items={mobile.current ? phoneItems : desktopItems} onpick={titleAction} label={strings.sidebar.threadMenu} placement="bottom" variant={mobile.current ? 'ghost' : 'text'} testid="thread-menu-trigger">
+              {#if mobile.current}<Ellipsis size={20} />{:else}<ChevronDown size={14} />{/if}
             </Menu>
           </span>
         {/if}
@@ -319,13 +338,6 @@
            its to follow, and the panel's menu offers only what available() allows.
            A team's chat has no title menu: a phone keeps this button, its one way to the panel. -->
       {#if thread}
-        {#if mobile.current && !thread.teamId && !thread.councilId}
-          <button type="button" class="ghost phone-browser" data-testid="phone-browser-toggle"
-            aria-label={strings.rightPanel.browser} aria-pressed={store.panelOpen && store.panel.active?.kind === 'agent-browser'}
-            onclick={() => store.panel.open('agent-browser')}>
-            <Globe size={18} strokeWidth={1.75} />
-          </button>
-        {/if}
         <button
           type="button"
           class="ghost icon"
@@ -392,7 +404,6 @@
     flex: 1;
   }
 
-  .phone-browser { flex: none; width: var(--touch-target); min-height: var(--touch-target); padding: 0; justify-content: center; }
 
   .path {
     flex: 0 1 auto;
@@ -455,7 +466,6 @@
 
   .title { min-width: 0; }
   .title-menu { display: flex; flex: none; }
-  .title-text, .title-lines { display: none; }
   @media (max-width: 720px) {
     /* The title is what tells one conversation from another: the buttons give
        up their words for it, and keep a finger-sized square. */
@@ -466,26 +476,23 @@
     .trace { padding: 0; min-width: var(--touch-target); justify-content: center; }
     .trace .label, .incognito .label, .context-chip :global(.label) { display: none; }
     .context-chip :global(.chip) { min-width: var(--touch-target); justify-content: center; }
-    .resident { flex: none; padding: 0; min-width: var(--touch-target); justify-content: center; }
-    .resident .chip-name { display: none; }
-    /* The title's sheet holds these on a phone. */
-    .in-title-menu { display: none; }
+    /* The header's one menu holds these on a phone. */
+    .in-title-menu, .resident, .entrusted, .watch-chip { display: none; }
     .rename { width: 100%; }
     /* The thread's title button gives way to its menu; a draft's label and a team's name have no menu and stay. */
     .title:not(.draft):not(.team) { display: none; }
     .title.draft, .title.team { max-width: none; }
     .draft-mark { margin: 0 4px 0 6px; }
-    .title-menu { display: flex; min-width: 0; flex: 0 1 auto; margin-left: -6px; }
-    .title-menu :global(.menu) { min-width: 0; max-width: 100%; }
-    .title-menu :global(.trigger) { min-width: 0; max-width: 100%; min-height: var(--touch-target); font-weight: 600; color: var(--color-foreground); }
-    .title-lines { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; min-width: 0; line-height: 1.25; }
+    /* Back, the title, then the menu at the row's end, whatever the header draws between. */
+    .title-menu { order: 1; }
+    .title-menu :global(.trigger) { width: var(--touch-target); height: var(--touch-target); padding: 0; justify-content: center; color: var(--color-muted-foreground); }
+    .title-lines { display: flex; flex: 1; flex-direction: column; align-items: flex-start; gap: 1px; min-width: 0; line-height: 1.25; font-weight: 600; color: var(--color-foreground); }
+    .title-lines ~ .spacer { display: none; }
     /* Two lines stacked: a label's ascender room and its trim to the capitals would pull the second over the first. */
     .title-lines > .ui-label { margin-block: 0; padding-block: 0; text-box: normal; }
     .title-text { display: block; max-width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .title-place { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); font-weight: 400; color: var(--color-muted-foreground); }
-    .title-menu :global(.trigger svg) { flex: none; color: var(--color-muted-foreground); }
     .crumb { min-height: var(--touch-target); }
     .crumb-sep { margin: 0; }
-    .crumb-sep ~ .title-menu { margin-left: 0; }
   }
 </style>

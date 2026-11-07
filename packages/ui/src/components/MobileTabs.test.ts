@@ -13,16 +13,16 @@ beforeEach(async () => {
 afterEach(async () => { setExperiment('contacts', false); if (app) await unmount(app); app = undefined; store.detach(); client.close(); vi.restoreAllMocks(); document.body.innerHTML = ''; localStorage.clear(); });
 const tab = (id: string) => document.querySelector<HTMLButtonElement>(`[data-testid="${id}"]`);
 
-test('the bar reaches every place, marks the current one and starts a conversation from the middle', async () => {
-  const navigate = vi.fn(), onnew = vi.fn();
-  app = mount(MobileTabs, { target: document.body, props: { store, screen: 'threads', waiting: 0, navigate, onnew } }); await settle();
+test('the bar reaches every place and marks the current one; a new conversation is the header\'s, not a place', async () => {
+  const navigate = vi.fn();
+  app = mount(MobileTabs, { target: document.body, props: { store, screen: 'threads', waiting: 0, navigate } }); await settle();
+  expect(tab('mobile-conversations')!.textContent).toBe('Threads');
+  expect(tab('mobile-new')).toBeNull();
   expect(tab('mobile-conversations')!.getAttribute('aria-current')).toBe('page');
   for (const [id, destination] of [['mobile-conversations', 'threads'], ['mobile-activity', 'activity']]) {
     tab(id!)!.click(); await settle();
     expect(navigate).toHaveBeenLastCalledWith(destination);
   }
-  tab('mobile-new')!.click();
-  expect(onnew).toHaveBeenCalledOnce();
   tab('mobile-settings')!.click(); await settle();
   expect(store.page).toBe('settings');
   expect(tab('mobile-settings')!.getAttribute('aria-current')).toBe('page');
@@ -30,10 +30,10 @@ test('the bar reaches every place, marks the current one and starts a conversati
 });
 
 test('Activity carries the count of conversations waiting on the user, capped so the badge stays round', async () => {
-  app = mount(MobileTabs, { target: document.body, props: { store, screen: 'threads', waiting: 0, navigate: () => {}, onnew: () => {} } }); await settle();
+  app = mount(MobileTabs, { target: document.body, props: { store, screen: 'threads', waiting: 0, navigate: () => {} } }); await settle();
   expect(tab('mobile-activity-waiting')).toBeNull();
   await unmount(app);
-  app = mount(MobileTabs, { target: document.body, props: { store, screen: 'threads', waiting: 140, navigate: () => {}, onnew: () => {} } }); await settle();
+  app = mount(MobileTabs, { target: document.body, props: { store, screen: 'threads', waiting: 140, navigate: () => {} } }); await settle();
   expect(tab('mobile-activity-waiting')!.textContent).toBe('99+');
   expect(tab('mobile-activity')!.getAttribute('aria-label')).toContain('140');
 });
@@ -42,7 +42,7 @@ test('Bots carries the count of bots at work, in the waiting colour once one ask
   setExperiment('resident-agents', true);
   onTestFinished(() => setExperiment('resident-agents', false));
   const { agentDirectory } = await import('../lib/agent-directory.svelte');
-  app = mount(MobileTabs, { target: document.body, props: { store, screen: 'threads', waiting: 0, navigate: () => {}, onnew: () => {} } }); await settle();
+  app = mount(MobileTabs, { target: document.body, props: { store, screen: 'threads', waiting: 0, navigate: () => {} } }); await settle();
   const rest = { status: 'idle', openQuestions: 0, backgroundWork: null, unread: false } as const;
   store.threads = store.threads.map(thread => ({ ...thread, ...rest, ...(thread.id === 't-trace' ? { agentSessionId: 'session-1' } : {}) }));
   agentDirectory(store).snapshot = { profiles: [{ id: 'agent-1', name: 'Mira', status: 'active' }], sessions: [{ id: 'session-1', agentId: 'agent-1' }], work: [], runs: [], entrusted: [] } as never;
@@ -58,12 +58,12 @@ test('Bots carries the count of bots at work, in the waiting colour once one ask
 
 test('a paired device, which may call no contacts method, is offered no way into Contacts; the owner is', async () => {
   setExperiment('contacts', true);
-  app = mount(MobileTabs, { target: document.body, props: { store, screen: 'threads', waiting: 0, navigate: () => {}, onnew: () => {} } }); await settle();
+  app = mount(MobileTabs, { target: document.body, props: { store, screen: 'threads', waiting: 0, navigate: () => {} } }); await settle();
   expect(tab('mobile-contacts')).toBeNull();
   await unmount(app); app = undefined; store.detach(); client.close();
 
   client = new FakeClient({ delayMs: 0 }); store = new Store(); store.attach(client); await store.connect();
-  app = mount(MobileTabs, { target: document.body, props: { store, screen: 'threads', waiting: 0, navigate: () => {}, onnew: () => {} } }); await settle();
+  app = mount(MobileTabs, { target: document.body, props: { store, screen: 'threads', waiting: 0, navigate: () => {} } }); await settle();
   tab('mobile-contacts')!.click(); await settle();
   expect(store.page).toBe('home');
 });

@@ -71,7 +71,7 @@
         {#if state === 'working'}
           <LoaderCircle size={12} strokeWidth={2} class="bot-spin" />
           <span class="bot-head-line">{step ?? labels.state.working}</span>
-          {#if since !== null}<span class="bot-head-time"><span aria-hidden="true">·</span><Elapsed startedAt={since} finishedAt={null} active /></span>{/if}
+          {#if since !== null}<span class="bot-head-sep" aria-hidden="true">&nbsp;·</span> <span class="bot-head-time"><Elapsed startedAt={since} finishedAt={null} active /></span>{/if}
         {:else if state === 'waiting'}
           <span class="bot-head-line">{pending ?? labels.state.waiting}</span>
         {:else if state === 'queued' || state === 'error' || state === 'paused' || state === 'archived'}

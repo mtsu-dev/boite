@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { ArchiveRestore } from '@lucide/svelte';
+  import { Archive, ArchiveRestore } from '@lucide/svelte';
   import type { ThreadId } from '@boite/contracts';
   import type { Store } from '../lib/store.svelte';
   import { ThreadRestore } from '../lib/thread-restore.svelte';
   import { strings } from '../lib/strings';
   import { patchFields } from '../lib/thread-rows';
+  import ThreadNotice from './ThreadNotice.svelte';
 
   let { store, threadId }: { store: Store; threadId: ThreadId } = $props();
   const lock = new ThreadRestore();
@@ -17,13 +18,15 @@
   }
 </script>
 
-<div class="done-notice" data-testid="done-thread-notice">
-  <span class="ui-label">{strings.sidebar.doneNotice}</span>
-  <button type="button" class="small" data-testid="done-thread-reopen" disabled={lock.busy || store.connection !== 'ready'} onclick={() => void reopen()}><ArchiveRestore size={14} /><span class="ui-label">{strings.sidebar.reopenThread}</span></button>
+<div class="done-notice">
+  <ThreadNotice icon={Archive} tone="quiet" testid="done-thread-notice" detail={strings.sidebar.doneNotice} docked>
+    {#snippet actions()}
+      <button type="button" class="small" data-testid="done-thread-reopen" disabled={lock.busy || store.connection !== 'ready'} onclick={() => void reopen()}><ArchiveRestore size={14} /><span class="ui-label">{strings.sidebar.reopenThread}</span></button>
+    {/snippet}
+  </ThreadNotice>
 </div>
 
 <style>
-  .done-notice { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--color-border); color: var(--color-muted-foreground); font-size: var(--text-sm); }
-  button { gap: 6px; }
-  @media (max-width: 720px) { button { min-height: var(--touch-target); } }
+  /* In the composer's place: the same gap under it as the composer keeps. */
+  .done-notice { display: flex; flex-direction: column; padding: 4px 0 8px; }
 </style>

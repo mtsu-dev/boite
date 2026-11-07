@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Snippet } from 'svelte';
   import { Check, ChevronRight, MessageCircleQuestionMark, Paperclip } from '@lucide/svelte';
   import type { QuestionAnswer, QuestionOption } from '@boite/contracts';
   import { keepFocus } from '../lib/focus';
@@ -11,6 +12,8 @@
     multiple,
     async = false,
     docked = false,
+    folded = false,
+    head,
     answer,
     pending,
     picked = $bindable([]),
@@ -28,8 +31,16 @@
     multiple: boolean;
     /** Asked with `boite ask`: the agent did not stop for it and the answer reaches it later. */
     async?: boolean;
-    /** Drawn inside the dock above the composer, whose own row names it: no frame, no heading. */
+    /**
+     * Drawn at the top of the composer: the question once, in bold beside its
+     * tag, Skip at the right, the options as rows numbered for the keyboard
+     * (the composer's 1 to 9), and no second send while the box answers it.
+     */
     docked?: boolean;
+    /** Docked and folded: the head alone, the question on one line. */
+    folded?: boolean;
+    /** What the dock adds to the head, before Skip: its pager and fold. */
+    head?: Snippet;
     answer: QuestionAnswer | null;
     /** False on a card whose turn ended before anyone answered: nothing to press. */
     pending: boolean;
@@ -124,22 +135,38 @@
         {/if}
       </div>
     </div>
+  {:else if !docked && !async && pending}
+    <!-- The agent stopped for it: the question waits at the top of the composer, here only its line. -->
+    <button type="button" class="ghost answered-row waiting-row" data-testid="question-waiting" disabled={!onwrite} onclick={() => onwrite?.()}>
+      <span class="glyph"><MessageCircleQuestionMark size={15} strokeWidth={1.75} /></span>
+      <span class="given ui-label" data-testid="question-text">{text}</span>
+      <span class="verdict ui-label">{strings.chat.questionDocked}</span>
+    </button>
   {:else}
-  {#if !docked}
+  {#if docked}
+    <div class="dock-head">
+      <span class="tag"><span class="ui-label">{strings.chat.questionAsyncHeading}</span></span>
+      <p class="prompt" class:folded data-testid="question-text">{text}</p>
+      {@render head?.()}
+      {#if pending && skip}
+        <button type="button" class="ghost skip" data-testid="question-skip" disabled={sent} onmousedown={keepFocus} onclick={pass}><span class="ui-label">{strings.chat.questionSkip}</span></button>
+      {/if}
+    </div>
+  {:else}
     <div class="head">
       <span class="glyph"><MessageCircleQuestionMark size={15} strokeWidth={1.75} /></span>
       <span class="muted ui-label">{async ? strings.chat.questionAsyncHeading : strings.chat.questionHeading}</span>
     </div>
+    <p class="prompt" data-testid="question-text">{text}</p>
   {/if}
-
-  <p class="prompt" data-testid="question-text">{text}</p>
+  {#if !folded}
   {#if async && answer === null && pending && !docked}
     <p class="muted description" data-testid="question-async-hint">{strings.chat.questionAsyncHint}</p>
   {/if}
 
     {#if options.length > 0}
       <div class="options" role={multiple ? 'group' : 'radiogroup'}>
-        {#each options as option (option.id)}
+        {#each options as option, index (option.id)}
           <button
             type="button"
             class="option"
@@ -152,11 +179,15 @@
             onmousedown={keepFocus}
             onclick={() => toggle(option.id)}
           >
+            {#if docked && index < 9}
+              <kbd aria-hidden="true">{#if multiple && picked.includes(option.id)}<Check size={11} strokeWidth={2.5} />{:else}{index + 1}{/if}</kbd>
+            {:else}
             <span class="box" class:round={!multiple} aria-hidden="true">
               {#if multiple && picked.includes(option.id)}
                 <Check size={10} strokeWidth={3} />
               {/if}
             </span>
+            {/if}
             <span class="labels">
               <span class="label">{option.label}</span>
               {#if option.description}
@@ -168,16 +199,12 @@
       </div>
     {/if}
 
-    {#if pending && replying && !docked}
-      <p class="muted description" data-testid="question-reply-hint">{strings.chat.questionReplying}</p>
-    {/if}
-
-    {#if pending}
+    {#if pending && !(docked && replying && !page)}
       <div class="actions">
         {#if page && onopen}
           <button type="button" class="ghost" data-testid="question-open" title={page} onmousedown={keepFocus} onclick={onopen}><span class="ui-label">{strings.chat.questionOpenPage}</span></button>
         {/if}
-        {#if skip}
+        {#if skip && !docked}
           <button type="button" class="ghost" data-testid="question-skip" disabled={sent} onmousedown={keepFocus} onclick={pass}><span class="ui-label">{strings.chat.questionSkip}</span></button>
         {/if}
         {#if allowText && !replying && onwrite}
@@ -196,9 +223,10 @@
         </button>
         {/if}
       </div>
-    {:else}
+    {:else if !pending}
       <p class="muted description" data-testid="question-cancelled">{strings.chat.questionCancelled}</p>
     {/if}
+  {/if}
   {/if}
 </div>
 
@@ -219,13 +247,45 @@
     border-left-style: dashed;
   }
 
-  /* In the dock the dock is the frame. */
+  /* At the top of the composer the composer is the frame; a hairline parts it from the field. */
   .question.docked {
     border: none;
+    border-bottom: 1px solid var(--color-border);
+    border-radius: 0;
     background: transparent;
     box-shadow: none;
-    padding: 4px 10px 8px;
+    padding: 12px 12px 10px 14px;
+    gap: 8px;
   }
+
+  .dock-head { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+  .dock-head :global(button) { flex: none; }
+  .dock-head .prompt { flex: 1; min-width: 0; font-size: var(--text-base); font-weight: 600; line-height: 22px; }
+  .dock-head .prompt.folded { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .tag { flex: none; height: 20px; padding: 0 7px; border-radius: var(--radius-sm); background: var(--color-live-soft); color: var(--color-live); font-size: 11px; font-weight: 650; display: inline-flex; align-items: center; }
+  /* A phone puts the question under its tag and controls, full width; the controls keep
+     their touch height on narrower sides, so a pager and Skip still fit one row at 360 px. */
+  @media (max-width: 720px) {
+    .dock-head { flex-wrap: wrap; align-items: center; gap: 0; }
+    .dock-head .tag { margin-right: auto; }
+    .dock-head .prompt { order: 1; flex: 1 0 100%; }
+    .dock-head :global(button.icon) { min-width: 36px; }
+    .dock-head .skip { min-height: var(--touch-target); padding: 0 6px; }
+  }
+  .skip { height: 24px; padding: 0 8px; border-radius: var(--radius-sm); color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 550; }
+
+  .docked .options { gap: 2px; }
+  .docked .option { align-items: center; gap: 12px; padding: 8px 10px; border-color: transparent; border-radius: var(--radius-lg); background: transparent; }
+  .docked .option:hover:not(:disabled), .docked .option:focus-visible { transform: none; background: var(--color-hover); border-color: var(--color-border); }
+  .docked .option.picked { background: var(--color-hover); border-color: var(--color-edge); }
+  .docked .option:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -1px; }
+  .docked .label { font-weight: 550; }
+  kbd { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 20px; height: 20px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface-3); color: var(--color-muted-foreground); font-family: var(--font-mono); font-size: 11px; }
+  .option.picked kbd { color: var(--color-foreground); border-color: var(--color-edge); }
+  .docked .actions { justify-content: flex-end; }
+
+  .waiting-row:disabled { opacity: 1; cursor: default; }
+  .waiting-row .verdict { margin-left: auto; }
 
   /* Resolved questions use the same inset and touch target as tool disclosures. */
   .question.resolved {

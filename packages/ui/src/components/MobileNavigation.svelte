@@ -3,28 +3,25 @@
   import WindowList from './WindowList.svelte';
   import MobileTabs from './MobileTabs.svelte';
   import ThreadHeader from './ThreadHeader.svelte';
-  import { Activity, Archive, ArrowLeft, ArrowUpDown, ChevronDown, Ellipsis, Folder, FolderOpen, FolderPlus, MessageSquare, Pin, PinOff, Plus, Search, Radar, X } from '@lucide/svelte';
+  import { Activity, ArrowLeft, ArrowUpDown, ChevronDown, Ellipsis, Folder, MessageSquare, Plus, Search, Radar, X } from '@lucide/svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import MobileConnect from './MobileConnect.svelte';
   import type { Store } from '../lib/store.svelte';
   import { workspace } from '../lib/workspace.svelte';
   import { fill, strings } from '../lib/strings';
-  import { projectName } from '../lib/format';
+  import { count, projectName } from '../lib/format';
   import { mobileOverlay } from '../lib/mobile-history';
   import { groupWorkingThread, recentPreferences } from '../lib/recent.svelte';
   import { pickThreadAction, threadMenuItems } from '../lib/thread-menu';
   import { projectMenu } from '../lib/project-menu';
-  import { separator, type MenuItem } from '../lib/menu';
+  import type { MenuItem } from '../lib/menu';
   import type { ThreadSummary } from '@boite/contracts';
   import Menu from './Menu.svelte';
-  import ThreadState from './ThreadState.svelte';
-  import ThreadPicture from './ThreadPicture.svelte';
   import WhipButton from './WhipButton.svelte';
   import { experimentOn } from '../lib/experiments.svelte';
   import { mobileChrome } from '../lib/mobile-chrome.svelte';
-  import { closeSwipedRow, swipeRow } from '../lib/swipe-row';
-  import ThreadPullRequest from './ThreadPullRequest.svelte';
-  import ThreadHeadline from './ThreadHeadline.svelte';
+  import { focusOnMount } from '../lib/actions';
+  import MobileThreadRow from './MobileThreadRow.svelte';
   import DisplayOptions from './DisplayOptions.svelte';
   import RecentGroup from './RecentGroup.svelte';
   import RecentDone from './RecentDone.svelte';
@@ -38,7 +35,7 @@
   import { activeProject, archiveCount, projectSections, projectThreadView } from '../lib/project-threads.svelte';
   import { workingThread } from '../lib/recent.svelte';
   import { compareThreads } from '../lib/thread-order';
-  import { needsUser } from '../lib/thread-state';
+  import { needsUser, threadState } from '../lib/thread-state';
   import { minuteClock } from '../lib/clock.svelte';
   import { contactsShown } from '../lib/contacts-rail.svelte';
   import { ScreenSlide } from '../lib/screen-slide.svelte';
@@ -62,10 +59,33 @@
   // The contacts under the projects, loaded with their experiment; a desktop window shows them in the column on the right.
   let SidebarContacts = $state<typeof import('./home/SidebarContacts.svelte').default>();
   let ContactRequestNotice = $state<typeof import('./home/ContactRequestNotice.svelte').default>();
+  let contactsLib = $state<typeof import('../lib/contacts.svelte')>();
   $effect(() => {
     if (!contactsShown(store) || SidebarContacts) return;
     void import('./home/SidebarContacts.svelte').then(module => { SidebarContacts = module.default; }).catch(() => {});
     void import('./home/ContactRequestNotice.svelte').then(module => { ContactRequestNotice = module.default; }).catch(() => {});
+    void import('../lib/contacts.svelte').then(module => { contactsLib = module; }).catch(() => {});
+  });
+  /**
+   * In a conversation the bell leaves the header for the thread's menu: what waits from contacts, read from the
+   * views the bell's own notice keeps watched, and the oldest of it to open.
+   */
+  const contactBell = $derived.by(() => {
+    if (!contactsLib || !ContactRequestNotice) return null;
+    const lib = contactsLib;
+    const waiting = machines.filter(m => contactsShown(m.store) && m.store.connection === 'ready').flatMap(m => {
+      const state = lib.contactsOf(m.store).state;
+      return [
+        ...(state?.requests ?? []).filter(r => r.direction === 'in' && r.status === 'pending').map(r => ({ store: m.store, coreId: r.coreId, createdAt: r.createdAt, letter: false })),
+        ...(state?.mail ?? []).map(l => ({ store: m.store, coreId: l.coreId, createdAt: l.createdAt, letter: true }))
+      ];
+    }).sort((a, b) => a.createdAt - b.createdAt);
+    const first = waiting[0];
+    if (!first) return null;
+    const letters = waiting.filter(entry => entry.letter).length;
+    const label = ([[strings.contacts.requests.pending, waiting.length - letters], [strings.contacts.mail.pending, letters]] as const)
+      .filter(([, total]) => total > 0).map(([text, total]) => fill(text, { count: count(total) })).join(', ');
+    return { label, open: () => void lib.openContact(first.store, first.coreId) };
   });
   let search = $state('');
   const query = $derived(search.trim().toLocaleLowerCase());
@@ -74,7 +94,7 @@
   $effect.pre(() => { tabbed = !chatting && !(store.page === 'agents' && mobileChrome.detail); });
   /** What the header names: the page, or the list on screen. */
   const title = $derived(store.page === 'settings' ? strings.settings.heading : store.page === 'agents' ? strings.agents.heading : store.page === 'home' ? strings.contacts.heading
-    : recover ? 'Boite' : screen === 'activity' ? strings.mobile.activity : strings.mobile.threads);
+    : recover ? 'Boite' : screen === 'activity' ? strings.mobile.activity : strings.sidebar.threads);
   let scrollRoot = $state<HTMLElement>();
   const scrollPositions = new Map<string, number>();
   const measuredRows = new Map<string, Map<string, number>>();
@@ -112,10 +132,6 @@
     .sort((a, b) => listScreen === 'activity'
       ? (Number(needsUser(b.thread)) - Number(needsUser(a.thread))) || b.thread.updatedAt - a.thread.updatedAt
       : compareThreads(a.thread, b.thread)));
-  let projects = $derived([...machines.flatMap(m => m.store.projects.filter(p => p.archived !== true).map(p => ({
-    id: JSON.stringify([m.id, p.id]), label: projectName(p), hint: several ? m.label : '', projectTile: { project: p, store: m.store },
-    active: m.store === store && p.id === project?.id
-  }))), ...(store.owner ? [separator('add-sep'), { id: 'add-project', label: strings.sidebar.addProject, hint: '', active: false, glyph: FolderPlus }] : [])]);
   const inRecent = $derived(listScreen === 'threads' && workspace.view === 'recent');
   /** Recent shows one project or all of them: the filter's choices. */
   const filterItems = $derived([
@@ -155,6 +171,11 @@
     from = next === 'chat' && screen !== 'chat' ? screen : null;
     screen = next;
   }
+  /** The threads of a project that wait on the user, its heading's amber count, as on the desktop card. */
+  function waitingCount(entry: ProjectEntry): number {
+    const owner = entry.machine.store;
+    return owner.threadsOf(entry.project.id).filter(thread => threadState(thread, owner.subagents(thread.id)) === 'waiting').length;
+  }
   /** A phone's row menu: the thread's lifecycle, as in its header (`threadMenuItems`' phone set). */
   function rowItems(owner: Store, thread: ThreadSummary): MenuItem[] {
     return threadMenuItems(owner, thread, { showDone: listScreen === 'threads', phone: true });
@@ -172,7 +193,7 @@
         ?.querySelector<HTMLElement>('[aria-haspopup=menu]')
     });
   }
-  /** Adding a project from the picker starts a draft in it: the phone opens that draft, as the desktop does. */
+  /** Adding a project from the display options starts a draft in it: the phone opens that draft, as the desktop does. */
   let known = $state<Set<string> | null>(null);
   $effect(() => {
     if (!known || store.projectPickerOpen) return;
@@ -180,14 +201,11 @@
     known = null;
     if (store.draft?.projectId && !before.has(store.draft.projectId)) show('chat');
   });
-  async function pickProject(key: string) {
-    if (key === 'add-project') { known = new Set(store.projects.map(p => p.id)); store.projectPickerOpen = true; return; }
-    const [id, projectId] = JSON.parse(key) as [string, string];
-    const target = machines.find(m => m.id === id);
-    if (!target) return;
-    await workspace.select(target.store, undefined, projectId);
-    show('chat');
-  }
+  function addProject() { known = new Set(store.projects.map(p => p.id)); store.projectPickerOpen = true; }
+  /** The search field takes the header's place from the magnifier; closing it clears what it filtered. */
+  let searching = $state(false);
+  const searchable = $derived(!recover && !chatting && store.page === 'chat');
+  function closeSearch() { searching = false; search = ''; }
   async function newThread() {
     // Always a new draft: one already written stays in the list, where it was.
     if (screen === 'threads' && workspace.view === 'recent' && selected) await workspace.select(selected.machine.store, undefined, selected.project.id, { fresh: true });
@@ -207,32 +225,36 @@
 <header class="mobile-header" class:chatting class:settings={store.page !== 'chat'} data-testid="mobile-header" data-slide={slide.direction} bind:this={header}>
   {#if chatting}
     <!-- The only way out of a conversation on a phone: it carries the mark of a thread that waits on the user elsewhere. -->
-    <button class="ghost icon back" data-testid="mobile-back" aria-label={elsewhere ? `${strings.mobile.threads}, ${fill(strings.mobile.waitingElsewhere, { count: String(elsewhere) })}` : strings.mobile.threads} onclick={() => show('threads')}><ArrowLeft size={20} />{#if elsewhere}<span class="waiting-mark" data-testid="mobile-back-waiting"></span>{/if}</button>
+    <button class="ghost icon back" data-testid="mobile-back" aria-label={elsewhere ? `${strings.sidebar.threads}, ${fill(strings.mobile.waitingElsewhere, { count: String(elsewhere) })}` : strings.sidebar.threads} onclick={() => show('threads')}><ArrowLeft size={20} />{#if elsewhere}<span class="waiting-mark" data-testid="mobile-back-waiting"></span>{/if}</button>
   {:else if recover}
     <img class="brand-icon" src="./icons/icon.svg" alt="" width="30" height="30" />
-  {:else}
-    <!-- The logo stands where Back does in a conversation, and goes to the same list. -->
-    <button class="ghost icon home" data-testid="mobile-home" aria-label={strings.mobile.threads} onclick={() => show('threads')}><img class="brand-icon" src="./icons/icon.svg" alt="" width="30" height="30" /></button>
   {/if}
   {#if chatting && narrow.current}
-    <div class="chat-heading">{#key store}<ThreadHeader {store} />{/key}</div>
+    <div class="chat-heading">{#key store}<ThreadHeader {store} bell={contactBell} />{/key}</div>
+  {:else if searching && searchable}
+    <!-- The magnifier opened the field in the title's place; the display options close its row, as on the desktop list. -->
+    <div class="search"><Search size={17} /><input type="search" bind:value={search} aria-label={strings.mobile.search} placeholder={strings.mobile.search} data-testid="mobile-search" use:focusOnMount onkeydown={event => { if (event.key === 'Escape') closeSearch(); }} />
+      {#if listScreen === 'threads' && groups.length}<span class="display"><DisplayOptions entries={groups} target={undefined} owner={store} prefix="mobile-" compact onaddproject={store.owner ? addProject : undefined} /></span>{/if}
+    </div>
+    <button class="ghost icon" data-testid="mobile-search-close" aria-label={strings.mobile.clearSearch} onclick={closeSearch}><X size={20} /></button>
   {:else}
   <!-- The machine over the page's name; the places themselves are the bottom bar's. -->
   <div class="identity brand">
     <button class="ghost connection" data-testid="mobile-connection" onclick={() => store.showSettings('machines')}><span class="dot" class:ready={store.connection === 'ready'}></span><span class="ui-label">{place}</span><ChevronDown size={12} /></button>
     <strong data-testid="mobile-title">{title}</strong>
   </div>
-  {/if}
-  <!-- The project the bar's + starts in, by its picture: the sheet names them all, and adds one. -->
-  {#if !recover && screen === 'threads' && store.page === 'chat'}
-    <Menu items={projects} onpick={pickProject} label={project ? `${strings.mobile.project} · ${projectName(project)}` : strings.mobile.project} placement="bottom" variant="ghost" testid="mobile-project">{#if project}<ProjectTile {project} {store} size={24} />{:else}<FolderOpen size={20} />{/if}</Menu>
+  {#if searchable}<button class="ghost icon" data-testid="mobile-search-open" aria-label={strings.mobile.search} title={strings.mobile.search} onclick={() => searching = true}><Search size={20} /></button>{/if}
   {/if}
   {#if !recover && !chatting && experimentOn('whip')}<WhipButton mobile />{/if}
   {#if narrow.current && ContactRequestNotice && contactsShown(store)}<ContactRequestNotice {store} />{/if}
+  {#if tabbed && !recover && !(searching && searchable)}
+    <!-- A new conversation, neutral at the header's end as on the desktop list. -->
+    <button class="ghost icon new" data-testid="mobile-new" aria-label={strings.sidebar.newThread} title={strings.sidebar.newThread} disabled={draftOwner.connection !== 'ready'} onclick={() => void newThread()}><Plus size={20} /></button>
+  {/if}
 </header>
 
 {#if tabbed || leaving}
-  <MobileTabs {store} screen={listScreen} waiting={waiting.length} navigate={show} onnew={() => void newThread()} newDisabled={draftOwner.connection !== 'ready'} inert={leaving} />
+  <MobileTabs {store} screen={listScreen} waiting={waiting.length} navigate={show} inert={leaving} />
 {/if}
 
 {#snippet contacts()}
@@ -240,50 +262,26 @@
 {/snippet}
 
 {#if narrow.current && store.page === 'chat' && (screen !== 'chat' || recover || leaving)}
-  <section class="mobile-list" class:recent={inRecent} class:tabbed={tabbed || leaving} inert={leaving} bind:this={scrollRoot} onscroll={() => { if (scrollRoot) scrollPositions.set(listKey, scrollRoot.scrollTop); }} data-testid="mobile-list" aria-label={listScreen === 'activity' ? strings.mobile.activity : strings.mobile.threads}>
+  <section class="mobile-list" class:recent={inRecent} class:tabbed={tabbed || leaving} inert={leaving} bind:this={scrollRoot} onscroll={() => { if (scrollRoot) scrollPositions.set(listKey, scrollRoot.scrollTop); }} data-testid="mobile-list" aria-label={listScreen === 'activity' ? strings.mobile.activity : strings.sidebar.threads}>
     {#if recover && narrow.current}
       <MobileConnect {store} onpaired={() => show('threads')} />
     {:else}
-    <!-- The header says where this is: the list opens on its search, the display options at its end. -->
-    <div class="list-heading">
-      <div class="search"><Search size={17} /><input type="search" bind:value={search} aria-label={strings.mobile.search} placeholder={strings.mobile.search} data-testid="mobile-search" />{#if search}<button class="ghost icon" aria-label={strings.mobile.clearSearch} onclick={() => search = ''}><X size={16} /></button>{/if}
-        {#if listScreen === 'threads' && groups.length}<span class="display"><DisplayOptions entries={groups} target={undefined} owner={store} prefix="mobile-" compact /></span>{/if}
-      </div>
-      {#if (inRecent && groups.length) || atWorkRows.length > 0}
-        <div class="filters">
-          {#if inRecent && groups.length}
-            <Menu items={filterItems} onpick={key => projectView.pick(key)} label={strings.sidebar.filterProject} placement="bottom" variant="ghost" testid="mobile-project-filter">
-              {#if selected}<ProjectTile project={selected.project} store={selected.machine.store} size={16} />{:else}<Folder size={14} />{/if}<span class="ui-label">{selected ? projectName(selected.project) : strings.sidebar.allProjects}</span>{#if selected && several}<span class="filter-machine ui-label">{selected.machine.label}</span>{/if}<ChevronDown size={13} />
-            </Menu>
-          {/if}
-          {#if atWorkRows.length > 0}
-            <button class="ghost at-work" class:on={atWorkShown} aria-pressed={atWorkShown} title={strings.mobile.atWorkFilter} data-testid="mobile-at-work" onclick={() => atWorkOnly = !atWorkShown}><Radar size={14} aria-hidden="true" /><span class="ui-label">{fill(strings.mobile.atWork, { count: String(atWorkRows.length) })}</span></button>
-          {/if}
-        </div>
-      {/if}
-    </div>
-    {#snippet threadRow(row: typeof rows[number], grouped = false)}
-      {@const items = rowItems(row.machine.store, row.thread)}
-      {@const pin = items.find(item => item.id === 'pin')}
-      {@const archive = items.find(item => item.id === 'archive')}
-      <div class="row" data-thread-id={row.thread.id} data-machine-id={row.machine.id}>
-        <!-- Under the row, for a finger that slides it left; the row's menu offers the same to everyone else. -->
-        {#if pin || archive}
-          <div class="swipe-actions" data-swipe-actions aria-hidden="true">
-            {#if pin}<button type="button" class="swipe pin" tabindex="-1" data-testid="mobile-swipe-pin-{row.thread.id}" onclick={() => { closeSwipedRow(); rowAction(row.machine.store, row.thread, 'pin', row.machine.id); }}>{#if row.thread.pinned}<PinOff size={18} />{:else}<Pin size={18} />{/if}<span class="ui-label">{pin.label}</span></button>{/if}
-            {#if archive}<button type="button" class="swipe archive" tabindex="-1" data-testid="mobile-swipe-archive-{row.thread.id}" onclick={() => { closeSwipedRow(); rowAction(row.machine.store, row.thread, 'archive', row.machine.id); }}><Archive size={18} /><span class="ui-label">{archive.label}</span></button>{/if}
-          </div>
+    <!-- Recent's filters open the list; the search and the display options are the header's. -->
+    {#if (inRecent && groups.length) || atWorkRows.length > 0}
+      <div class="filters list-heading">
+        {#if inRecent && groups.length}
+          <Menu items={filterItems} onpick={key => projectView.pick(key)} label={strings.sidebar.filterProject} placement="bottom" variant="ghost" testid="mobile-project-filter">
+            {#if selected}<ProjectTile project={selected.project} store={selected.machine.store} size={16} />{:else}<Folder size={14} />{/if}<span class="ui-label">{selected ? projectName(selected.project) : strings.sidebar.allProjects}</span>{#if selected && several}<span class="filter-machine ui-label">{selected.machine.label}</span>{/if}<ChevronDown size={13} />
+          </Menu>
         {/if}
-        <div class="row-body" use:swipeRow>
-          <button class="ghost thread" class:offline={row.machine.store.connection !== 'ready'} data-testid="mobile-thread-{row.thread.id}" onclick={() => { show('chat'); void workspace.select(row.machine.store, row.thread.id); }}>
-            <span class="tile"><ThreadPicture owner={row.machine.store} thread={row.thread} size={18} /></span>
-            <span class="summary"><ThreadHeadline owner={row.machine.store} thread={row.thread} wrap picture={false} /><span class="detail" title={row.thread.branch ?? undefined}>{[grouped ? null : projectName(row.project), several ? row.machine.label : null, row.thread.branch].filter(Boolean).join(' · ')}</span></span>
-            <ThreadState thread={row.thread} {now} subagents={row.machine.store.subagents(row.thread.id)} away={row.machine.store.connection !== 'ready'} />
-          </button>
-          <ThreadPullRequest owner={row.machine.store} thread={row.thread} />
-          <Menu items={items} onpick={(action) => rowAction(row.machine.store, row.thread, action, row.machine.id)} label={strings.sidebar.threadMenu} placement="bottom" variant="ghost" testid="mobile-thread-menu-{row.thread.id}"><Ellipsis size={18} /></Menu>
-        </div>
+        {#if atWorkRows.length > 0}
+          <button class="ghost at-work" class:on={atWorkShown} aria-pressed={atWorkShown} title={strings.mobile.atWorkFilter} data-testid="mobile-at-work" onclick={() => atWorkOnly = !atWorkShown}><Radar size={14} aria-hidden="true" /><span class="ui-label">{fill(strings.mobile.atWork, { count: String(atWorkRows.length) })}</span></button>
+        {/if}
       </div>
+    {/if}
+    {#snippet threadRow(row: typeof rows[number], grouped = false)}
+      <MobileThreadRow machine={row.machine} thread={row.thread} project={row.project} {now} compact={!grouped} items={rowItems(row.machine.store, row.thread)}
+        onopen={() => { show('chat'); void workspace.select(row.machine.store, row.thread.id); }} onaction={action => rowAction(row.machine.store, row.thread, action, row.machine.id)} />
     {/snippet}
     {#if listScreen === 'threads' && workspace.view === 'projects'}
       {#snippet projectRows(projects: ProjectEntry[], later = false)}
@@ -300,7 +298,7 @@
         <section class="project-group" class:inactive={!activeProject(group)} data-testid="mobile-project-group" data-project-id={group.project.id} data-machine-id={group.machine.id}>
           <div class="project-heading">
             <ProjectTile project={group.project} store={group.machine.store} /><h2>{projectName(group.project)}{#if several}<span>{group.machine.label}</span>{/if}</h2>
-            <ProjectThreadCounters entry={group} working={group.machine.store.threadsOf(group.project.id).filter(thread => workingThread(group.machine.store, thread)).length} {controls} searching={!!query} away={group.machine.store.connection !== 'ready'} body={later ? laterLists : undefined} />
+            <ProjectThreadCounters entry={group} part="head" working={group.machine.store.threadsOf(group.project.id).filter(thread => workingThread(group.machine.store, thread)).length} waiting={group.machine.store.connection === 'ready' ? waitingCount(group) : 0} {controls} searching={!!query} away={group.machine.store.connection !== 'ready'} />
             {#if projectView.order === 'manual'}
               <Menu items={[
                 { id: 'up', label: strings.sidebar.moveProjectUp, disabled: projectKey(foldOf(group)[0]!) === projectKey(group) },
@@ -312,13 +310,13 @@
               onclick={(event) => projectMenu(event, group.machine.store, group.project, undefined, () => show('chat'))}><Ellipsis size={18} /></button>
           </div>
           {#if !query}{#each drafts as draft (draft.id)}<DraftRow owner={group.machine.store} entry={draft} onopen={() => show('chat')} />{/each}{/if}
-          <WindowList items={attentionRows} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} estimate={77} measurements={measurements(projectKey(group))}>
+          <WindowList items={attentionRows} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} estimate={46} measurements={measurements(projectKey(group))}>
             {#snippet row(entry)}{@render threadRow(entry, true)}{/snippet}
           </WindowList>
           <div id="{controls}-working" hidden={!workingOpen || !!query || workingRows.length === 0} data-testid="project-working">
             {#if workingOpen && !query && workingRows.length > 0}
               <GroupLabel kind="working" count={workingRows.length} />
-              <WindowList items={workingRows} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} estimate={77} measurements={measurements(`${projectKey(group)}:working`)}>
+              <WindowList items={workingRows} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} estimate={46} measurements={measurements(`${projectKey(group)}:working`)}>
                 {#snippet row(entry)}{@render threadRow(entry, true)}{/snippet}
               </WindowList>
             {/if}
@@ -332,6 +330,10 @@
             <RecentDone kind="archived" entries={[group]} {scrollRoot} {now} {query} open={archivedOpen && (!later || projectThreadView.laterOpen)} header={false} onopen={() => show('chat')} />
           </div>
           {#if groupRows.length === 0 && !group.project.archivedThreads && drafts.length === 0}<p class="empty">{strings.sidebar.noThreads}</p>{/if}
+          <!-- Done and Archived wait at the group's foot, as on the desktop card: the heading keeps what needs the user now. -->
+          {#if archiveCount(group.project, 'done') > 0 || (archiveCount(group.project, 'archived') > 0 && !later)}
+            <div class="project-foot"><ProjectThreadCounters entry={group} part="foot" working={0} {controls} searching={!!query} away={group.machine.store.connection !== 'ready'} body={later ? laterLists : undefined} /></div>
+          {/if}
         </section>
         {/if}
       {/each}
@@ -346,18 +348,18 @@
         <ProjectShelf kind="archived" projects={shelved} multi={several} {now} {scrollRoot} onopen={() => show('chat')} />
         {@render contacts()}
       {/if}
-      <WindowList items={rows.filter(row => row.thread.projectId === null)} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} estimate={77} measurements={measurements('unassigned')}>
+      <WindowList items={rows.filter(row => row.thread.projectId === null)} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} estimate={46} measurements={measurements('unassigned')}>
         {#snippet row(entry)}{@render threadRow(entry)}{/snippet}
       </WindowList>
     {:else}
-      <WindowList items={attention} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} estimate={77} measurements={measurements(atWorkShown ? 'at-work' : listScreen)}>
+      <WindowList items={attention} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} estimate={46} measurements={measurements(atWorkShown ? 'at-work' : listScreen)}>
         {#snippet row(entry)}{@render threadRow(entry)}{/snippet}
       </WindowList>
       {#if inRecent && !atWorkShown}
         <div class="recent-folds">
           {#if working.length > 0}
             <RecentGroup kind="working" count={working.length} bind:open={workingOpen}>
-              <WindowList items={working} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} estimate={77} measurements={measurements('recent-working')}>
+              <WindowList items={working} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} estimate={46} measurements={measurements('recent-working')}>
                 {#snippet row(entry)}{@render threadRow(entry)}{/snippet}
               </WindowList>
             </RecentGroup>
@@ -390,7 +392,10 @@
     .chat-heading :global(.thread-header) { gap: 2px; }
     .chat-heading :global(.launcher span) { display: none; }
     .chat-heading :global(.launcher) { width: 44px; padding: 0; justify-content: center; flex: none; }
-    .search { display: flex; gap: 8px; align-items: center; padding: 0 0 0 12px; background: var(--color-surface-2); border: 1px solid var(--color-border); border-radius: var(--radius-lg); color: var(--color-muted-foreground); }
+    /* In a conversation the bell's count is an entry of the thread's menu; its toast still shows from here. */
+    .mobile-header.chatting > :global(.indicator) { display: none; }
+    .mobile-header > .icon { flex: none; color: var(--color-muted-foreground); }
+    .search { display: flex; flex: 1; min-width: 0; gap: 8px; align-items: center; padding: 0 0 0 12px; background: var(--color-surface-2); border: 1px solid var(--color-border); border-radius: var(--radius-lg); color: var(--color-muted-foreground); }
     .search > :global(svg) { flex: none; }
     /* The display options close the field's row, after a hairline. */
     .display { display: flex; align-self: stretch; align-items: center; flex: none; border-left: 1px solid var(--color-border); }
@@ -398,7 +403,7 @@
     .search input { flex: 1; min-width: 0; border: 0; background: transparent; min-height: 44px; font-size: 16px; padding: 8px 0; }
     .search:focus-within { border-color: var(--color-muted-foreground); }
     .search input:focus { outline: none; }
-    .filters { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .filters { display: flex; flex-wrap: wrap; gap: 8px; }
     .filters :global(.menu) { min-width: 0; max-width: 100%; }
     .at-work, .filters :global(.trigger) { display: inline-flex; gap: 6px; align-items: center; height: auto; min-height: var(--touch-target); max-width: 100%; padding: 0 12px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface-2); font-size: var(--text-sm); font-weight: 500; }
     .at-work { color: var(--color-foreground); }
@@ -410,7 +415,6 @@
     .brand-icon { flex: none; border-radius: var(--radius-md); }
     .back { position: relative; flex: none; }
     .waiting-mark { position: absolute; top: 9px; right: 8px; width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--color-live); box-shadow: 0 0 0 2px var(--color-background); }
-    .home { flex: none; padding: 0; }
     /* The page's name, under the machine it reads. */
     .brand strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-lg); font-weight: 600; letter-spacing: -0.4px; line-height: 1.15; }
     /* A finger-sized target without growing the header: the line reaches into the header's padding. */
@@ -423,34 +427,16 @@
     .mobile-list { display: block; position: absolute; inset: 0; overflow-y: auto; overscroll-behavior: contain; background: var(--color-background); padding: 8px max(16px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
     /* The bottom bar owns the home indicator's inset. */
     .mobile-list.tabbed { padding-bottom: 20px; }
-    .list-heading { padding: 8px 0 14px; }
+    .list-heading { padding: 8px 0 12px; }
     p { font-size: var(--text-sm); }
-    .project-group { border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); margin-bottom: 12px; overflow: hidden; }
+    .project-group { --row-background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); margin-bottom: 12px; overflow: hidden; }
     .project-heading { display: flex; align-items: center; padding: 8px 12px; gap: 8px; background: var(--color-surface-2); color: var(--color-muted-foreground); border-bottom: 1px solid var(--color-border); }
     .project-heading h2 { margin: 0; flex: 1; min-width: 0; font-size: var(--text-sm); overflow-wrap: anywhere; }
     .project-heading span { display: block; font-size: var(--text-xs); font-weight: 400; color: var(--color-muted-foreground); }
     /* A whole touch target that eats the heading's padding rather than making it taller. */
     .project-heading .project-actions { flex: none; margin: -8px -8px -8px 0; color: var(--color-muted-foreground); }
-    .row { position: relative; display: block; overflow: hidden; border-bottom: 1px solid var(--color-border); }
-    .row:last-child { border-bottom: 0; }
-    /* What a slide uncovers: pin, then archive at the edge, as mail apps lay them. */
-    .swipe-actions { position: absolute; inset: 0 0 0 auto; display: flex; }
-    .swipe { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; width: 76px; height: 100%; padding: 0 6px; border: 0; border-radius: 0; font-size: 11px; font-weight: 500; }
-    .swipe .ui-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .swipe.pin { background: var(--color-surface-3); color: var(--color-foreground); }
-    .swipe.archive { background: var(--color-surface-3); color: var(--color-foreground); }
-    .row-body { position: relative; display: flex; align-items: center; padding-right: 4px; touch-action: pan-y; transform: translateX(var(--swipe, 0px)); transition: transform var(--dur-3) var(--ease-out-quint); background: var(--color-background); }
-    .project-group .row-body { background: var(--color-surface); }
-    .row-body:global(.dragging) { transition: none; }
-    .row-body :global(.menu) { flex: none; }
-    .thread { display: flex; flex: 1; min-width: 0; gap: 12px; align-items: center; min-height: 68px; height: auto; text-align: left; border-radius: var(--radius-md); padding: 12px 8px 12px 12px; color: var(--color-foreground); }
-    /* Who runs the thread, as a contact's picture leads a message app's row. */
-    .tile { display: grid; place-items: center; flex: none; width: 40px; height: 40px; border-radius: var(--radius-md); border: 1px solid var(--color-border); background: var(--color-surface-2); }
-    .thread.offline .tile { opacity: 0.55; }
-    .summary { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 5px; }
-    /* Its machine dropped: the row still opens, to read what is held and queue a prompt. */
-    .thread.offline .summary { opacity: 0.55; }
-    .detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); color: var(--color-muted-foreground); }
+    .project-heading :global(.counters) { margin: -8px 0; }
+    .project-foot { display: flex; justify-content: flex-end; margin-top: -6px; padding: 0 6px; }
     .empty-state { display: flex; align-items: center; flex-direction: column; text-align: center; padding: 44px 16px; }
     .empty-icon { display: grid; place-items: center; width: 52px; height: 52px; border-radius: var(--radius-xl); border: 1px solid var(--color-edge); background: var(--color-surface-2); color: var(--color-muted-foreground); margin-bottom: 18px; }
     .empty-state h2 { font-size: var(--text-base); font-weight: 600; margin: 0 0 8px; }

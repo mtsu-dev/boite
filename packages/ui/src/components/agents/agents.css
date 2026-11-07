@@ -30,13 +30,13 @@
 .bot-head > .agent-avatar { flex: none; }
 .bot-head-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .bot-head-name { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--text-md); font-weight: 650; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bot-head-live { display: flex; align-items: center; gap: 0; min-width: 0; font-size: var(--text-xs); color: var(--color-muted-foreground); }
-.bot-head-line { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* The timer stays whole after a middle dot; only the step gives way. */
-.bot-head-time { flex: none; display: inline-flex; gap: 4px; margin-left: 4px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* What the bot does reads in full: it wraps under the name, and only past three lines gives way. */
+.bot-head-live { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; min-width: 0; font-size: var(--text-xs); line-height: 1.45; color: var(--color-muted-foreground); overflow-wrap: anywhere; }
+/* The dot clings to the step, so a timer that wraps starts its own line clean. */
+.bot-head-time { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .bot-head-live[data-state='waiting'] { color: var(--color-live); }
 .bot-head-live[data-state='error'] { color: var(--color-danger); }
-.bot-spin { flex: none; margin-right: 5px; color: var(--color-accent); animation: spin 1s linear infinite var(--loops); }
+.bot-spin { flex: none; margin-right: 5px; vertical-align: -2px; color: var(--color-accent); animation: spin 1s linear infinite var(--loops); }
 .bot-head .menu .trigger.ghost { width: 28px; height: 28px; padding: 0; color: var(--color-subtle); }
 .bot-column { display: flex; flex-direction: column; padding: 0 8px 12px; }
 .bot-nav { display: flex; align-items: center; justify-content: flex-start; gap: 10px; height: 34px; padding: 0 10px; border: 0; border-radius: var(--radius-md); background: none; box-shadow: none; color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 500; text-align: left; }

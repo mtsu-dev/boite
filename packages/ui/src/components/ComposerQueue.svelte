@@ -3,13 +3,15 @@
   import type { Attachment, PreviewReference } from '@boite/contracts';
   import type { OutboxRequest } from '../lib/store/composer.svelte';
   import { fill, strings } from '../lib/strings';
+  import InfoTip from './InfoTip.svelte';
 
   /**
-   * The prompts waiting behind the running turn, drawn where they will land: a
-   * user bubble on the right, outline only and dashed, since it has not gone
-   * yet. A click takes one back into the box; Send now sends them together.
-   * One written while the machine was away says so under it, or says why the
-   * core refused it, with Send again; any of them can be removed.
+   * The prompts waiting behind the running turn, one line each in the strip
+   * above the composer: what it waits for, then its text cut to the line. A
+   * click on the text takes it back into the box; Send now sends them all.
+   * One written while the machine was away says so in place of "Queued", or
+   * says why the core refused it, with Send again; the x removes it. Why they
+   * wait is one "i" away.
    */
   let {
     queued,
@@ -49,156 +51,110 @@
   } = $props();
 
   let outbox = $derived(queued.length > 0 && queued.every((entry) => entry.request));
+  let why = $derived(outbox && starts ? fill(strings.composer.outboxStarts, { machine }) : outbox ? strings.composer.outboxKept : paused ? strings.composer.queuedPaused : strings.composer.queued);
 </script>
 
 <div class="queued" data-testid="composer-queued">
   {#each queued as entry, at (entry)}
-    <div class="queued-item" class:failed={entry.request?.failed !== undefined} data-testid="composer-queued-item">
-      <button type="button" class="queued-bubble"
+    {@const failed = entry.request?.failed}
+    <div class="chip" class:failed={failed !== undefined} data-testid="composer-queued-item">
+      {#if failed !== undefined}
+        <span class="state error" data-testid="composer-outbox-failed" title={fill(strings.composer.outboxFailed, { reason: failed })}>{fill(strings.composer.outboxFailed, { reason: failed })}</span>
+      {:else if entry.request}
+        <span class="state" data-testid="composer-outbox-pending"><Clock size={13} />{at < outgoing ? strings.composer.outboxSending
+          : connected ? strings.composer.outboxNext : fill(strings.composer.outboxWaiting, { machine })}</span>
+      {:else}
+        <span class="state"><Clock size={13} />{strings.composer.queuedLabel}</span>
+      {/if}
+      <button type="button" class="text"
         title={strings.composer.editQueued}
         disabled={disabled || !!entry.request?.start}
-        onclick={() => onrestore(at)}>
-        <span class="queued-text">{entry.text || strings.composer.attachAlt}</span>
-        {#if entry.attachments.length || entry.previewReferences?.length}
-          <span class="queued-extras">
-            {#if entry.attachments.length}<span><span class="ui-label">{entry.attachments.length}</span> <Paperclip size={12} /></span>{/if}
-            {#if entry.previewReferences?.length}<span>@{entry.previewReferences.length}</span>{/if}
-          </span>
-        {/if}
-      </button>
-      {#if entry.request || onremove}
-        <div class="queued-state">
-          {#if entry.request?.failed !== undefined}
-            <span class="queued-error" data-testid="composer-outbox-failed">{fill(strings.composer.outboxFailed, { reason: entry.request.failed })}</span>
-            {#if onretry}
-              <button type="button" class="ghost small" data-testid="composer-outbox-retry" disabled={sending} onclick={() => onretry(at)}><span class="ui-label">{strings.composer.outboxRetry}</span></button>
-            {/if}
-          {:else if entry.request}
-            <span class="queued-pending" data-testid="composer-outbox-pending"><Clock size={12} />{at < outgoing ? strings.composer.outboxSending
-              : connected ? strings.composer.outboxNext : fill(strings.composer.outboxWaiting, { machine })}</span>
-          {/if}
-          {#if onremove}
-            <button type="button" class="ghost small icon" data-testid="composer-queued-remove"
-              title={strings.composer.removeQueued} aria-label={strings.composer.removeQueued}
-              disabled={at < outgoing || !!entry.request?.start} onclick={() => onremove(at)}><X size={14} /></button>
-          {/if}
-        </div>
+        onclick={() => onrestore(at)}>{entry.text || strings.composer.attachAlt}</button>
+      {#if entry.attachments.length}<span class="extra"><Paperclip size={12} />{entry.attachments.length}</span>{/if}
+      {#if entry.previewReferences?.length}<span class="extra">@{entry.previewReferences.length}</span>{/if}
+      {#if at === 0}<InfoTip text={why} topic={strings.composer.queuedLabel} testid="composer-queued-why" />{/if}
+      {#if failed !== undefined && onretry}
+        <button type="button" class="ghost small" data-testid="composer-outbox-retry" disabled={sending} onclick={() => onretry(at)}><span class="ui-label">{strings.composer.outboxRetry}</span></button>
+      {/if}
+      {#if onremove}
+        <button type="button" class="ghost icon remove" data-testid="composer-queued-remove"
+          title={strings.composer.removeQueued} aria-label={strings.composer.removeQueued}
+          disabled={at < outgoing || !!entry.request?.start} onclick={() => onremove(at)}><X size={13} /></button>
       {/if}
     </div>
   {/each}
-  <div class="queued-foot">
-    <span class="ui-label">{outbox && starts ? fill(strings.composer.outboxStarts, { machine }) : outbox ? strings.composer.outboxKept : paused ? strings.composer.queuedPaused : strings.composer.queued}</span>
-    {#if sendNow}
-      <button type="button" class="ghost small" data-testid="composer-send-now"
-        title={sendNow === 'steer' ? strings.composer.sendNowHint : strings.composer.retryQueuedHint}
-        onclick={onsendnow}><span class="ui-label">{strings.composer.sendNow}</span></button>
-    {/if}
-  </div>
+  {#if sendNow}
+    <button type="button" class="ghost send-now" data-testid="composer-send-now"
+      title={sendNow === 'steer' ? strings.composer.sendNowHint : strings.composer.retryQueuedHint}
+      onclick={onsendnow}><span class="ui-label">{strings.composer.sendNow}</span></button>
+  {/if}
 </div>
 
 <style>
   .queued {
     display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 6px;
-    width: 100%;
-    max-width: var(--content);
-    max-height: 35vh;
-    margin: 0 auto 8px;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-width: 0;
+    max-width: 100%;
+    max-height: 30vh;
     overflow-y: auto;
   }
 
-  /* The user bubble of the timeline, minus its fill and shadow: the dashes say
-     it is written but not sent. */
-  .queued-bubble {
+  /* One line, the height of every row of the strip. */
+  .chip {
     display: flex;
-    flex-direction: column;
-    align-items: flex-start;
+    align-items: center;
     gap: 6px;
-    flex: none;
-    max-width: 75%;
-    height: auto;
-    padding: 10px 14px;
-    border: 1px dashed var(--color-edge);
+    min-width: 0;
+    max-width: min(420px, 100%);
+    height: 30px;
+    padding: 0 4px 0 10px;
+    border: 1px solid var(--color-edge);
     border-radius: var(--radius-lg);
-    border-bottom-right-radius: var(--radius-sm);
-    background: transparent;
-    color: var(--color-foreground);
-    font-weight: 400;
-    font-size: var(--text-base);
-    line-height: 1.5;
-    text-align: left;
-    white-space: normal;
+    background: var(--color-surface-2);
+    font-size: var(--text-sm);
     animation: rise var(--dur-3) var(--ease-out-quint);
   }
 
-  .queued-bubble:hover:not(:disabled) {
-    background: transparent;
-    border-color: var(--color-subtle);
+  .chip.failed { border-color: var(--color-danger); }
+
+  .state {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    flex: none;
+    color: var(--color-muted-foreground);
+    font-weight: 550;
+    white-space: nowrap;
   }
 
-  /* Still waiting to go while the box holds other text: the bubble stays legible. */
-  .queued-bubble:disabled { opacity: 1; }
+  .state.error { flex: 0 1 auto; min-width: 0; max-width: 50%; overflow: hidden; text-overflow: ellipsis; color: var(--color-danger); }
 
-  .queued-text {
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 3;
-    line-clamp: 3;
+  .text {
+    display: block;
+    flex: 0 1 auto;
+    min-width: 0;
+    height: 100%;
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--color-foreground);
+    font-weight: 400;
+    text-align: left;
     overflow: hidden;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  .queued-item {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 2px;
-    flex: none;
-    max-width: 75%;
-  }
+  .text:hover:not(:disabled) { background: none; text-decoration: underline; text-decoration-color: var(--color-subtle); }
+  /* Still waiting to go while the box holds other text: the line stays legible. */
+  .text:disabled { opacity: 1; }
 
-  .queued-item > .queued-bubble { max-width: 100%; }
+  .extra { display: inline-flex; align-items: center; gap: 3px; flex: none; color: var(--color-muted-foreground); font-size: var(--text-xs); }
+  .chip :global(.info-tip) { flex: none; margin: 0; }
+  .remove { flex: none; width: 22px; height: 22px; }
+  .chip .ghost.small { flex: none; height: 22px; font-size: var(--text-xs); }
 
-  .queued-item.failed > .queued-bubble { border-color: var(--color-danger); }
-
-  .queued-state {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    flex-wrap: wrap;
-    gap: 4px;
-    color: var(--color-muted-foreground);
-    font-size: var(--text-xs);
-  }
-
-  .queued-pending { display: inline-flex; align-items: center; gap: 4px; }
-
-  .queued-error {
-    color: var(--color-danger);
-    overflow-wrap: anywhere;
-    text-align: right;
-  }
-
-  .queued-state button { font-size: var(--text-xs); }
-
-  .queued-extras { display: flex; gap: 8px; color: var(--color-muted-foreground); font-size: var(--text-sm); }
-  .queued-extras > span { display: inline-flex; align-items: center; gap: 4px; }
-
-  /* As tall as the Send now button, present or not: the row does not jump when
-     it comes, and its label's ink room stays inside the scrolling list instead
-     of overflowing it into a scrollbar. */
-  .queued-foot {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    flex: none;
-    min-height: var(--control-sm);
-    color: var(--color-muted-foreground);
-    font-size: var(--text-xs);
-  }
-
-  .queued-foot button { font-size: var(--text-xs); }
+  .send-now { height: 30px; padding: 0 10px; border-radius: var(--radius-lg); font-size: var(--text-sm); font-weight: 550; }
 </style>

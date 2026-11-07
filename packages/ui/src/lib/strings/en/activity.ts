@@ -4,7 +4,7 @@ export const strings = {
     goal: 'Goal',
     /** An agent's question it did not stop for (`boite ask`), docked above the composer like a goal. */
     question: 'Question',
-    questionOf: '{index} of {total}',
+    questionOf: '{index}/{total}',
     questionPrev: 'Previous question',
     questionNext: 'Next question',
     questionFold: 'Fold the question',

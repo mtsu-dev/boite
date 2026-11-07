@@ -1,7 +1,9 @@
 <script lang="ts">
-  import { ArrowRight, X } from '@lucide/svelte';
+  import { ArrowRight, CircleAlert, X } from '@lucide/svelte';
   import { strings } from '../lib/strings';
+  import '../lib/notify-corner.css';
 
+  /** The card of the notification corner, here the error toast's: what failed, the way to its thread, a dismiss. */
   let { title, message, dismiss, action }: {
     title: string;
     message: string;
@@ -10,58 +12,30 @@
   } = $props();
 </script>
 
-<div class="notification-card">
-  <span class="dot" aria-hidden="true"></span>
-  <div class="lines">
-    <span class="heading">{title}</span>
-    <p class:thread-title={!!action} title={action ? message : undefined}>{message}</p>
+<div class="notify-card notification-card" data-tone="danger">
+  <span class="notify-mark" aria-hidden="true"><CircleAlert size={16} strokeWidth={1.75} /></span>
+  <div class="notify-lines">
+    <span class="notify-title">{title}</span>
+    <p class="notify-text" class:thread-title={!!action} title={action ? message : undefined}>{message}</p>
     {#if action}
-      <button type="button" class="ghost open-thread" onclick={action.run}>
-        <span class="ui-label">{action.label}</span><ArrowRight size={14} />
-      </button>
+      <div class="notify-actions">
+        <button type="button" class="small open-thread" onclick={action.run}>
+          <span class="ui-label">{action.label}</span><ArrowRight size={14} />
+        </button>
+      </div>
     {/if}
   </div>
-  <button type="button" class="ghost icon dismiss" onclick={dismiss} aria-label={strings.common.dismiss} title={strings.common.dismiss}>
-    <X size={16} />
+  <button type="button" class="ghost icon notify-dismiss" onclick={dismiss} aria-label={strings.common.dismiss} title={strings.common.dismiss}>
+    <X size={14} />
   </button>
 </div>
 
 <style>
-  .notification-card {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    align-items: start;
-    gap: 12px;
-    padding: 14px;
-    border-radius: var(--radius-lg);
-    background: color-mix(in srgb, var(--color-surface-2) 96%, transparent);
-    background-image: linear-gradient(110deg, color-mix(in srgb, var(--color-danger) 10%, transparent), transparent 55%);
-    backdrop-filter: blur(10px);
-    box-shadow: var(--shadow-e3);
-  }
-  .dot {
-    width: 6px;
-    height: 6px;
-    margin-top: 7px;
-    border-radius: var(--radius-sm);
-    background: var(--color-danger);
-    box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-danger) 12%, transparent);
-  }
-  .lines { min-width: 0; }
-  .open-thread { margin-top: 8px; }
-  .heading { font-size: var(--text-sm); font-weight: 600; }
   p {
-    margin: 4px 0 0;
-    color: var(--color-muted-foreground);
-    font-size: var(--text-sm);
-    line-height: 1.5;
-    overflow-wrap: anywhere;
     white-space: pre-wrap;
     max-height: min(40vh, 320px);
     overflow-y: auto;
     user-select: text;
   }
-  .dismiss { margin: -6px -6px 0 0; color: var(--color-muted-foreground); }
   .thread-title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-  .dismiss:hover { color: var(--color-foreground); }
 </style>

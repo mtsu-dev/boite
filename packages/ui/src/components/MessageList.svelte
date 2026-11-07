@@ -1,8 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount, tick, untrack } from 'svelte';
-  import { ArrowDown } from '@lucide/svelte';
   import { MESSAGE_PAGE, type MemoryEvent, type Message, type Turn } from '@boite/contracts';
-  import { fill, strings } from '../lib/strings';
+  import { strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import MessageTurnSummary from './MessageTurnSummary.svelte';
   import TurnFiles from './TurnFilesLoader.svelte';
@@ -39,6 +38,7 @@
   import { GapRows, NO_GAPS, READ_AHEAD, RangeAsk, gapHeight, heldNear, loadKeepingReader, wantedRange } from '../lib/history-gaps';
   import TimelineGap from './TimelineGap.svelte';
   import { dockRoom } from '../lib/question-dock.svelte';
+  import { latest } from '../lib/latest.svelte';
   import { glides } from '../lib/motion';
   import { BottomEdge, BottomGlide, PointerHold, keysUp, pointedTurn, typingKey, watchWheel, wheelsUp } from '../lib/timeline-follow';
   import { selectionClicks } from '../lib/selection-clicks';
@@ -124,6 +124,9 @@
     return at < 0 ? 0 : timeline.length - 1 - at;
   });
   function markSeen() { seenLast = timeline.at(-1)?.id ?? null; }
+  // The strip above the composer draws the way back (`JumpLatest.svelte`).
+  $effect(() => { latest.behind = behind; latest.unseen = unseen; });
+  onMount(() => { latest.jump = jump; return () => { if (latest.jump === jump) { latest.jump = null; latest.behind = false; latest.unseen = 0; } }; });
   let shown = savedReading ? untrack(() => threadId) : '';
 
   /** Measured slot heights by message id. What is not in here is worth its estimate. */
@@ -819,12 +822,6 @@
     {/if}
   </div>
 
-  {#if behind}
-    <button type="button" class="small jump" onclick={jump} data-testid="jump-to-latest">
-      <ArrowDown size={14} strokeWidth={2} />
-      <span class="ui-label">{unseen > 0 ? fill(unseen === 1 ? strings.chat.newMessage : strings.chat.newMessages, { count: String(unseen) }) : strings.chat.jumpToLatest}</span>
-    </button>
-  {/if}
 </div>
 {#if viewing}{@const view = viewing}<Deferred part={parts.ImageViewer} floating>{#snippet children(ImageViewer)}<ImageViewer items={view.items} index={view.index} onclose={() => { viewing = null; releaseHeld(); }} />{/snippet}</Deferred>{/if}
 
@@ -874,20 +871,5 @@
   .message.rest {
     margin-top: calc(var(--chat-block-gap) - var(--chat-message-gap));
     animation: none;
-  }
-
-  .jump {
-    position: absolute;
-    left: 50%;
-    bottom: calc(var(--dock-clearance, 0px) + 12px);
-    /* The entrance animates transform; centering must survive every frame. */
-    translate: -50% 0;
-    max-width: calc(100% - 24px);
-    padding: 0 10px 0 8px;
-    border-radius: 999px;
-    background: var(--color-surface-2);
-    box-shadow: var(--shadow-e2);
-    font-size: var(--text-sm);
-    animation: rise var(--dur-2) var(--ease-out-quint);
   }
 </style>

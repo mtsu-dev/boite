@@ -1,6 +1,6 @@
 <script lang="ts">
   import { errorText } from '../lib/errors';
-  import { Check, Copy, Download, FolderDown, NotebookPen } from '@lucide/svelte';
+  import { Check, Copy, Download, FolderDown } from '@lucide/svelte';
   import { planFileName } from '../lib/plan';
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
@@ -13,6 +13,13 @@
    */
   let { store, threadId, plan }: { store: Store; threadId: string; plan: string } = $props();
 
+  /** Its ticked steps (`- [x]`) over all of them; a plan with no ticks counts none. */
+  const tasks = $derived.by(() => {
+    const marks = [...plan.matchAll(/^\s*(?:[-*+]|\d+[.)])\s+\[( |x|X)\]/gm)];
+    return { done: marks.filter((mark) => mark[1] !== ' ').length, total: marks.length };
+  });
+  /** A plan headed "Plan" says it once, in the head. */
+  const leadIsLabel = $derived(/^\s*#{1,6}\s+plan\s*\n/i.test(plan));
   let copied = $state(false);
   let saving = $state(false);
   let saved = $state<string | null>(null);
@@ -57,82 +64,76 @@
   }
 </script>
 
-<section class="plan" data-testid="plan-card">
+<section class="plan" class:lead={leadIsLabel} data-testid="plan-card">
   <div class="head">
-    <NotebookPen size={15} strokeWidth={1.75} />
-    <span class="title ui-label">{strings.chat.plan}</span>
+    <span class="title">{strings.chat.plan}</span>
+    {#if tasks.total > 0}<span class="count">{fill(strings.chat.planProgress, { done: String(tasks.done), total: String(tasks.total) })}</span>{/if}
+    {#if saved}<span class="saved" title={fill(strings.chat.planSaved, { name: saved })}>{fill(strings.chat.planSaved, { name: saved })}</span>{/if}
+    <span class="actions">
+      <button type="button" class="ghost icon small" data-testid="plan-copy" title={copied ? strings.chat.copied : strings.common.copy} onclick={() => void copy()}>
+        {#if copied}<Check size={14} />{:else}<Copy size={14} />{/if}
+      </button>
+      <button type="button" class="ghost icon small" data-testid="plan-download" title={strings.chat.planDownload} onclick={download}><Download size={14} /></button>
+      {#if store.owner}
+        {@const label = saved ? fill(strings.chat.planSaved, { name: saved }) : strings.chat.planSave}
+        <button type="button" class="ghost icon small" data-testid="plan-save" disabled={saving || saved !== null || store.connection !== 'ready'}
+          title={saved ? label : strings.chat.planSaveHint} aria-label={label} onclick={() => void save()}>
+          {#if saved}<Check size={14} />{:else}<FolderDown size={14} />{/if}
+        </button>
+      {/if}
+    </span>
   </div>
   <div class="body"><Prose text={plan} {store} {threadId} /></div>
-  <div class="actions">
-    <button type="button" class="ghost small" data-testid="plan-copy" onclick={() => void copy()}>
-      {#if copied}<Check size={14} /><span class="ui-label">{strings.chat.copied}</span>{:else}<Copy size={14} /><span class="ui-label">{strings.common.copy}</span>{/if}
-    </button>
-    <button type="button" class="ghost small" data-testid="plan-download" onclick={download}>
-      <Download size={14} /><span class="ui-label">{strings.chat.planDownload}</span>
-    </button>
-    {#if store.owner}
-      <button type="button" class="ghost small" data-testid="plan-save" disabled={saving || saved !== null || store.connection !== 'ready'}
-        title={saved ? fill(strings.chat.planSaved, { name: saved }) : strings.chat.planSaveHint} onclick={() => void save()}>
-        {#if saved}<Check size={14} /><span class="saved ui-label">{fill(strings.chat.planSaved, { name: saved })}</span>{:else}<FolderDown size={14} /><span class="ui-label">{strings.chat.planSave}</span>{/if}
-      </button>
-    {/if}
-  </div>
 </section>
 
 <style>
+  /* A fine outline on the page, no fill: the plan is read, not pressed. */
   .plan {
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-surface);
-    box-shadow: var(--shadow-e1);
     display: flex;
     flex-direction: column;
+    gap: 4px;
     min-width: 0;
+    padding: 8px 10px 10px 14px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
   }
 
   .head {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
-    border-bottom: 1px solid var(--color-border);
-    color: var(--color-muted-foreground);
-  }
-
-  .title {
+    gap: 10px;
+    min-width: 0;
+    min-height: var(--control-sm);
     font-size: var(--text-xs);
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
+    color: var(--color-subtle);
   }
 
-  .body {
-    padding: 4px 12px;
-    min-width: 0;
-  }
+  .title { color: var(--color-muted-foreground); font-weight: 550; }
+  .count { font-variant-numeric: tabular-nums; }
+  .saved { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-  .actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    padding: 6px 8px;
-    border-top: 1px solid var(--color-border);
-  }
+  /* The buttons stay quiet until the plan is pointed at; a finger always has them. */
+  .actions { display: flex; gap: 2px; margin-left: auto; opacity: 0; transition: opacity var(--dur-2); }
+  .plan:hover .actions, .plan:focus-within .actions { opacity: 1; }
+  .actions button { color: var(--color-subtle); }
+  .actions button:hover:not(:disabled) { color: var(--color-foreground); }
+  @media (hover: none) { .actions { opacity: 1; } }
 
-  .actions button {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    min-width: 0;
-  }
-
-  .saved {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
+  .body { min-width: 0; padding-right: 4px; color: var(--color-foreground); }
+  .body :global(.prose) { font-size: var(--text-sm); line-height: 1.55; }
+  /* Normal weight: the agent's bold lead words read as the step, not as a shout. */
+  .body :global(strong) { font-weight: inherit; }
+  .body :global(:is(h1, h2, h3, h4, h5, h6)) { font-size: var(--text-sm); font-weight: 600; margin: 10px 0 4px; }
+  /* A plan headed "Plan" says it once, in the head above. */
+  .lead .body :global(.paragraph:first-child > :is(h1, h2, h3, h4, h5, h6):first-child) { display: none; }
+  .lead .body :global(.paragraph:first-child:has(> :is(h1, h2, h3, h4, h5, h6):only-child)) { display: none; }
+  /* Steps the agent ticked are struck and grey; the next one is in full ink, the rest wait in grey. */
+  .body :global(li.task) { color: var(--color-muted-foreground); }
+  .body :global(li.task:has(> input:checked)) { color: var(--color-subtle); text-decoration: line-through; text-decoration-color: var(--color-edge); }
+  .body :global(li.task:first-child:not(:has(> input:checked))),
+  .body :global(li.task:has(> input:checked) + li.task:not(:has(> input:checked))) { color: var(--color-foreground); }
 
   @media (max-width: 720px) {
-    .actions button { min-height: var(--touch-target); }
+    .actions button { width: var(--touch-target); height: var(--touch-target); }
   }
 </style>

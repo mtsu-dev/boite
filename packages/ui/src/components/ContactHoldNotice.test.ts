@@ -26,7 +26,11 @@ test('a thread held by contact mail names the contact and runs again once the ow
   // The hold reaches a thread already open.
   client.holdForContactMail(thread.id, ['Chris']);
   await vi.waitFor(() => expect(notice()).not.toBeNull());
-  expect(notice()!.textContent).toContain('messages from Chris');
+  expect(notice()!.textContent).toContain('Chris');
+  // The why sits behind the notice's "i".
+  notice()!.querySelector<HTMLButtonElement>('[data-testid=contact-hold-info]')!.click();
+  flushSync();
+  expect(document.querySelector('[data-testid=contact-hold-info-text]')?.textContent).toContain('messages from Chris');
   await expect(client.call('turns.start', { threadId: thread.id, prompt: 'next round' })).rejects.toThrow('shared file policy');
 
   document.querySelector<HTMLButtonElement>('[data-testid=contact-hold-trust]')!.click();

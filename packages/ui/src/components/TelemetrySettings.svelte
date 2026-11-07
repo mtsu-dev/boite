@@ -77,15 +77,10 @@
 {/if}
 
 <style>
-  .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 16px 0; }
+  .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 12px 0; }
   .switch-row + .switch-row { border-top: 1px solid var(--color-border); }
   .text { color: var(--color-foreground); font-size: var(--text-base); margin: 0; }
   .hint { display: block; color: var(--color-muted-foreground); font-size: var(--text-sm); line-height: 1.5; margin-top: 4px; }
-  input[type=checkbox] { appearance: none; position: relative; flex: 0 0 40px; width: 40px; height: 24px; padding: 0; margin: 0; border: 1px solid var(--color-edge); border-radius: 999px; background: var(--color-surface-3); cursor: pointer; }
-  input::after { content: ''; position: absolute; width: 16px; height: 16px; top: 3px; left: 3px; border-radius: 50%; background: var(--color-muted-foreground); transition: transform var(--dur-2) var(--ease-out-quint); }
-  input:checked { background: var(--color-foreground); }
-  input:checked::after { background: var(--color-background); transform: translateX(16px); }
-  input:focus-visible { outline-offset: 3px; }
   .actions { display: flex; gap: 8px; flex-wrap: wrap; }
   [role=alert] { color: var(--color-danger); overflow-wrap: anywhere; }
 </style>

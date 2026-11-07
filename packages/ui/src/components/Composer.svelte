@@ -17,12 +17,12 @@
   import { isLoading, unresolvedAssetId } from '../lib/draft-attachments';
   import { focusInitial, focusWithin } from '../lib/focus';
   import { touchScreen } from '../lib/device';
-  import { ignoreQuestions, noteTyping, repliesOf, replyTarget, sendAnswer } from '../lib/question-reply.svelte';
+  import { noteTyping, repliesOf, replyTarget, sendAnswer } from '../lib/question-reply.svelte';
   import { emptyBox, returnPrompt, sendNowAction, sentPrompts, type ComposerState, type SentPrompt } from '../lib/composer-queue';
   import { rankItems, type PaletteItem } from '../lib/palette';
   import { clearStash, DRAFT_STASH_KEY, readStash, writeStash } from '../lib/prefs';
   import { claudeKeywords, promptSegments } from '../lib/message-display';
-  import { strings } from '../lib/strings';
+  import { fill, strings } from '../lib/strings';
   import type { Choice, Store } from '../lib/store.svelte';
   import { machineName, workspace } from '../lib/workspace.svelte';
   import ComposerAttachments from './ComposerAttachments.svelte';
@@ -34,6 +34,8 @@
   import MentionMenu from './MentionMenu.svelte';
   import SlashMenu from './SlashMenu.svelte';
   import ThreadActivity from './ThreadActivity.svelte';
+  import Deferred from './Deferred.svelte';
+  import { permissionCard, pickOption, prefetchPermissionCard } from '../lib/composer-dock';
   import SideAnswer from './SideAnswer.svelte';
   import { ComposerSide } from '../lib/composer-side.svelte';
   import PreviewReferences from './PreviewReferences.svelte';
@@ -50,8 +52,8 @@
   /** The thread this box sends to: none when it speaks to an agent, whatever thread is open behind it. */
   let thread = $derived(target ? null : store.openThread);
   let composer = $derived(store.composerStates[key]);
-  let hasQueue = $derived(!!(composer?.queued.length || thread?.pendingAnswers?.length));
-  let activityRoom = $state(0);
+  /** How tall the strip above the box stands: the band of tasks floats above it, not over it. */
+  let stripRoom = $state(0);
   let text = $derived(composer?.text ?? '');
   let attachments = $derived<Attachment[]>(composer?.attachments ?? []);
   let previewReferences = $derived(composer?.previewReferences ?? []);
@@ -160,8 +162,16 @@
   /** A persistent agent's own thread: the box is addressed to it by name, and its model, effort and mode live in its settings, not on chips. */
   const bot = $derived(thread?.agentSessionId ? agentOfThread(AgentsView.of(store).snapshot, thread.id)?.name ?? null : null);
 
-  let placeholder = $derived(composerPlaceholder({ target, replying: !!reply, bot, offline, onThread: !!thread, draft: !!store.draft,
-    machine: machineLabel, project: store.openProject?.name ?? null, provider: provider?.name ?? null }));
+  /** The thread's asks to run a tool dock at the top of the box, the oldest first; a message sent meanwhile is queued. */
+  let permissions = $derived(target || !thread ? [] : store.pendingPermissions.filter((request) => request.threadId === thread.id));
+  let permission = $derived(permissions[0] ?? null);
+  /** The question on screen at the top of the box, whose options 1 to 9 pick while the field is empty. */
+  let docked = $derived(target ? undefined : store.pendingQuestions.find((question) => question.id === repliesOf(store).docked && question.threadId === thread?.id));
+  $effect(prefetchPermissionCard);
+
+  let placeholder = $derived(permission && !reply ? fill(strings.composer.permissionPlaceholder, { agent: bot ?? provider?.name ?? strings.composer.theAgent })
+    : composerPlaceholder({ target, replying: !!reply, bot, offline, onThread: !!thread, draft: !!store.draft,
+      machine: machineLabel, project: store.openProject?.name ?? null, provider: provider?.name ?? null }));
 
   // -- the slash menu -----------------------------------------------------------
   // `/` on an empty box, then the word being typed: nothing else opens it, and a
@@ -679,9 +689,18 @@
       event.preventDefault();
       return;
     }
+    // An empty field lends the keyboard to what docks above it; typing is never taken.
+    if (boxEmpty && permission && !composer?.editing && (event.key === 'Enter' && !event.shiftKey && !touchScreen() || event.key === 'Escape')) {
+      event.preventDefault();
+      void store.answer(permission.id, event.key === 'Enter' ? 'allow' : 'deny');
+      return;
+    }
+    if (boxEmpty && docked && !event.shiftKey && pickOption(store, docked, event.key)) { event.preventDefault(); return; }
     if (event.key === 'Enter' && !event.shiftKey && !touchScreen()) {
       event.preventDefault();
       if (boxEmpty && sendNow && !reply) sendQueuedNow();
+      // A question the box does not answer goes with its picks.
+      else if (boxEmpty && docked && docked.id !== reply?.id && repliesOf(store).picks[docked.id]?.length) void sendAnswer(store, docked);
       else void submit();
     } else if (event.key === 'ArrowUp' && !event.shiftKey) {
       if (older()) event.preventDefault();
@@ -706,17 +725,18 @@
     event.preventDefault(); event.stopPropagation();
   }
 }}>
-  <ComposerQueueRegion {store} {key} {thread} {composer} room={hasQueue ? activityRoom : null} machine={machineLabel} {sendNow}
-    blocked={text.length > 0 || attachments.length > 0 || previewReferences.length > 0} onrestore={restoreQueued} onsendnow={sendQueuedNow} />
+  <div bind:offsetHeight={stripRoom}><ComposerQueueRegion {store} {key} {thread} {composer} main={!target} machine={machineLabel} {sendNow}
+    blocked={text.length > 0 || attachments.length > 0 || previewReferences.length > 0} onrestore={restoreQueued} onsendnow={sendQueuedNow} /></div>
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="composer" class:dictating data-testid="composer" tabindex="-1" {ondragover} {ondrop} onkeydown={(event) => {
+  <div class="composer" class:dictating data-testid="composer" tabindex="-1" style:--strip-room="{stripRoom}px" {ondragover} {ondrop} onkeydown={(event) => {
     if (event.target !== event.currentTarget || event.key !== 'Escape') return;
     // The touch focus target shares the box's Escape handling, including pending questions.
     onkeydown(event);
     event.stopPropagation();
   }}>
-    {#if !target}<ThreadActivity {store} reserveInComposer={hasQueue} onroom={(height) => (activityRoom = height)} />{/if}
-    <ComposerIntent editing={!!composer?.editing} reply={reply?.async && reply.id === repliesOf(store).docked ? null : reply} oncancel={cancelEdit} onignore={() => ignoreQuestions(store)} />
+    {#if permission}{#key permission.id}<Deferred part={permissionCard}>{#snippet children(PermissionCard)}<PermissionCard docked toolName={permission.toolName} decision={null} request={permission} answer={(decision) => store.answer(permission.id, decision)} index={1} total={permissions.length} />{/snippet}</Deferred>{/key}{/if}
+    {#if !target}<ThreadActivity {store} />{/if}
+    <ComposerIntent editing={!!composer?.editing} oncancel={cancelEdit} />
 
     {#if side.current && side.current.threadId === thread?.id}<SideAnswer {...side.current} {store} onclose={() => { side.clear(); focusInitial(box, box?.closest<HTMLElement>('[data-testid=composer]')); }} />{/if}
     {#if attachments.length > 0}

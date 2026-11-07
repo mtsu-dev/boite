@@ -4,6 +4,7 @@
   import type { Store } from '../lib/store.svelte';
   import { confirmRemoveProject } from '../lib/project-menu';
   import { fill, strings } from '../lib/strings';
+  import ThreadNotice from './ThreadNotice.svelte';
 
   /*
    * Above the composer of a project whose folder was deleted, moved or renamed
@@ -19,38 +20,10 @@
   }
 </script>
 
-<article class="folder-gone" data-testid="folder-gone" role="status">
-  <span class="mark"><FolderX size={16} aria-hidden="true" /></span>
-  <div class="text">
-    <strong>{strings.sidebar.projectMissing}</strong>
-    <p>{fill(strings.sidebar.projectMissingBody, { path: project.path })}</p>
-  </div>
-  <div class="actions">
+<ThreadNotice icon={FolderX} tone="danger" testid="folder-gone" title={strings.sidebar.projectMissing} detail={project.path}
+  info={fill(strings.sidebar.projectMissingBody, { path: project.path })} docked>
+  {#snippet actions()}
     <button type="button" class="ghost small" data-testid="folder-gone-check" disabled={checking} onclick={check}><span class="ui-label">{strings.sidebar.projectMissingCheck}</span></button>
     {#if store.owner}<button type="button" class="ghost small danger" data-testid="folder-gone-remove" onclick={() => confirmRemoveProject(store, project)}><span class="ui-label">{strings.sidebar.removeProject}</span></button>{/if}
-  </div>
-</article>
-
-<style>
-  .folder-gone {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-start;
-    gap: 10px;
-    /* The composer's own column, so the notice sits on it rather than across the pane. */
-    flex: none;
-    box-sizing: border-box;
-    width: min(calc(100% - 40px), var(--content));
-    margin: 0 auto;
-    padding: 10px 12px;
-    border: 1px solid var(--color-danger);
-    border-radius: var(--radius-lg);
-    background: var(--color-surface-2);
-    font-size: var(--text-sm);
-  }
-  .mark { display: flex; flex: none; padding-top: 2px; color: var(--color-danger); }
-  .text { flex: 1 1 240px; min-width: 0; }
-  p { margin: 2px 0 0; color: var(--color-muted-foreground); line-height: 1.5; overflow-wrap: anywhere; }
-  .actions { display: flex; flex: none; flex-wrap: wrap; gap: 6px; margin-left: auto; }
-  @media (max-width: 720px) { .folder-gone { width: calc(100% - 20px); } }
-</style>
+  {/snippet}
+</ThreadNotice>

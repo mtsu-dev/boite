@@ -127,7 +127,7 @@ test('OpenCode signs in from a terminal with its login command typed in, and clo
   await waitFor(() => document.querySelector('[data-testid=account-login-terminal]') === null);
   await waitFor(() => query('[data-provider-id=opencode]').getAttribute('data-step') === 'ready');
 
-  query<HTMLButtonElement>('[data-testid=settings-back]').click();
+  query<HTMLButtonElement>('[data-testid=view-threads]').click();
   await waitFor(() => document.querySelector('[data-testid=settings]') === null);
 });
 

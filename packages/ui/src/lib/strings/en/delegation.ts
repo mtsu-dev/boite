@@ -11,8 +11,6 @@ export const strings = {
     processResult: 'Progress and results are in the command output.',
     nativeStatus: { running: 'Working', done: 'Completed', error: 'Failed', stopped: 'Stopped', unknown: 'Status unknown' },
     parent: 'Parent thread',
-    activeOne: '1 active subagent',
-    activeMany: '{count} active subagents',
     configure: 'Settings',
     enabled: 'Let this conversation start subagents',
     enabledHint: 'The agent can hand parts of a task to other agents. Each one works in its own conversation and reports back here.',

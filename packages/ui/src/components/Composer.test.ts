@@ -732,11 +732,12 @@ test('ArrowUp removes the latest queued prompt and restores its images for editi
   expect(store.composerStates['t-trace']!.queued.map((entry) => entry.text)).toEqual(['first pending', 'edited pending prompt']);
 });
 
-test('Escape stops the running turn and sends pending input next', async ({ app: _app }) => {
+test('Escape stops the running turn and sends pending input next', async () => {
+  // A turn at work: with a permission docked instead, Escape is its Deny.
+  await mountOnFake(40);
   await store.open('t-trace');
-  await type('Wait for me [permission]');
-  press('Enter');
-  await waitFor(() => store.openThread?.status === 'waiting');
+  await store.client!.call('turns.start', { threadId: 't-trace', prompt: 'Keep reading [tools]' });
+  await waitFor(() => store.openThread?.status === 'running');
   await type('Read this immediately');
   press('Enter');
   await waitFor(() => input().value === '');
@@ -835,11 +836,20 @@ test('an outbox prompt the core refuses shows why, holds the next one, and goes 
   expect(sent.some(parts => parts.includes('Third while away'))).toBe(false);
 });
 
-test('Enter in the emptied composer holds pending input behind an approval', async ({ app: _app }) => {
+/** The asks of the open thread; the fixture keeps others waiting elsewhere. */
+function asks(): typeof store.pendingPermissions {
+  return store.pendingPermissions.filter((request) => request.threadId === 't-trace');
+}
+
+test('Enter in the emptied composer allows the docked permission, then the input queued behind it goes', async ({ app: _app }) => {
   await store.open('t-trace');
   await type('Hold on [permission]');
   press('Enter');
-  await waitFor(() => store.openThread?.status === 'waiting');
+  await waitFor(() => store.openThread?.status === 'waiting' && document.querySelector('[data-testid=composer] [data-testid=permission-card]') !== null);
+  expect(input().placeholder).toBe('Or tell Echo what to do instead');
+  // The timeline keeps one line for it; the decision lives in the composer.
+  expect(document.querySelectorAll('[data-testid=permission-card]')).toHaveLength(1);
+  expect(query('[data-testid=permission-waiting]').textContent).toContain('Needs you');
   const rpc = vi.spyOn(store.client!, 'call');
   await type('Now please');
   press('Enter');
@@ -847,15 +857,39 @@ test('Enter in the emptied composer holds pending input behind an approval', asy
   press('Enter');
   await waitFor(() => input().value === '' && store.composerStates['t-trace']?.queued.length === 2);
   expect(query('[data-testid=composer-queued]').textContent).toContain('Now please');
+  // Shift+Enter starts a line, never a decision.
+  input().focus();
+  press('Enter', { shiftKey: true });
+  expect(asks()).toHaveLength(1);
+  input().focus();
   press('Enter');
-  expect(store.openThread?.status).toBe('waiting');
-  expect(store.composerStates['t-trace']?.queued).toHaveLength(2);
-  await store.client!.call('permissions.answer', { requestId: store.pendingPermissions[0]!.id, decision: 'allow' });
+  await waitFor(() => asks().length === 0);
+  expect(rpc.mock.calls.filter(([method]) => method === 'permissions.answer').map(([, params]) => (params as { decision: string }).decision)).toEqual(['allow']);
   await waitFor(() => !store.busy && store.composerStates['t-trace']?.queued.length === 0 && !store.composerStates['t-trace']?.sending);
   const prompts = store.openThread!.messages.filter((message) => message.role === 'user').slice(-1)
     .map((message) => message.parts.map((part) => (part.type === 'text' ? part.text : '')).join(''));
   expect(prompts).toEqual(['Now please\n\nAfter that']);
   expect(rpc.mock.calls.filter(([method]) => method === 'turns.stop')).toHaveLength(0);
+});
+
+test('Escape in the emptied composer denies the docked permission, and text typed over it waits behind the decision', async ({ app: _app }) => {
+  await store.open('t-trace');
+  await type('Hold on [permission]');
+  press('Enter');
+  await waitFor(() => asks().length > 0);
+  await type('Write it somewhere else');
+  press('Enter');
+  await waitFor(() => input().value === '' && store.composerStates['t-trace']?.queued.length === 1);
+  // Typing is never a decision: the ask still waits for one.
+  expect(asks()).toHaveLength(1);
+  const rpc = vi.spyOn(store.client!, 'call');
+  input().focus();
+  press('Escape');
+  await waitFor(() => asks().length === 0);
+  expect(rpc.mock.calls.filter(([method]) => method === 'permissions.answer').map(([, params]) => (params as { decision: string }).decision)).toEqual(['deny']);
+  expect(rpc.mock.calls.filter(([method]) => method === 'turns.stop')).toHaveLength(0);
+  // The note goes once the turn has the denial.
+  await waitFor(() => !store.busy && store.openThread!.messages.some((message) => message.role === 'user' && message.parts.some((part) => part.type === 'text' && part.text === 'Write it somewhere else')));
 });
 
 test('Send now interrupts a turn on the default model, though the chips show the model it resolves to', async () => {
@@ -1253,8 +1287,11 @@ test('a picture tile draws a small thumbnail, the preview the bytes by URL, both
   }
 });
 
+const REPLY_PLACEHOLDER = strings.composer.replyPlaceholder;
+
+/** The question docked in the composer; the timeline keeps only its one-line row. */
 function pendingCard(): HTMLElement {
-  return query('[data-testid=question-card][data-state=pending]');
+  return query('[data-testid=thread-activity] [data-testid=question-card][data-state=pending]');
 }
 
 test('a waiting question takes the composer as its free answer, with the card pick and a photo', async ({ app: _app }) => {
@@ -1265,14 +1302,17 @@ test('a waiting question takes the composer as its free answer, with the card pi
   // The question takes the composer only once the typing pause has run out:
   // a budget counted in attempts of at least 2 ms each, well past that pause.
   await waitFor(() => document.querySelector('[data-testid=composer-reply]') !== null, TYPING_PAUSE_MS);
-  expect(input().placeholder).toBe('Write your answer');
+  expect(input().placeholder).toBe(REPLY_PLACEHOLDER);
   expect(query('[data-testid=composer-send]').getAttribute('aria-label')).toBe('Send the answer');
-  expect(pendingCard().querySelector('[data-testid=question-reply-hint]')).not.toBeNull();
+  // The question is written once, in the dock: the timeline keeps a line that points down to it.
+  expect(document.querySelectorAll('[data-testid=thread-activity] [data-testid=question-text]')).toHaveLength(1);
+  expect(query('[data-testid=question-waiting]').textContent).toContain('Answer below');
+  expect(document.querySelector('[data-testid=question-reply-hint]')).toBeNull();
 
   // Ignore gives the composer back to ordinary messages; the card offers it again.
   query<HTMLButtonElement>('[data-testid=composer-reply-ignore]').click();
   await waitFor(() => document.querySelector('[data-testid=composer-reply]') === null);
-  expect(input().placeholder).not.toBe('Write your answer');
+  expect(input().placeholder).not.toBe(REPLY_PLACEHOLDER);
   pendingCard().querySelector<HTMLButtonElement>('[data-testid=question-write]')!.click();
   await waitFor(() => document.querySelector('[data-testid=composer-reply]') !== null);
 
@@ -1293,7 +1333,7 @@ test('a waiting question takes the composer as its free answer, with the card pi
   expect(input().value).toBe('');
   expect(chips()).toHaveLength(0);
   await waitFor(() => !store.busy && document.querySelector('[data-testid=composer-reply]') === null);
-  expect(input().placeholder).not.toBe('Write your answer');
+  expect(input().placeholder).not.toBe(REPLY_PLACEHOLDER);
   expect(call.mock.calls.filter(([method]) => method === 'turns.start')).toHaveLength(0);
 });
 
@@ -1323,7 +1363,7 @@ test('a question asked over a draft leaves it an ordinary message until its card
   await new Promise((resolve) => setTimeout(resolve, TYPING_PAUSE_MS + 50));
   // The pause passed, but the draft predates the question: the box still writes messages.
   expect(document.querySelector('[data-testid=composer-reply]')).toBeNull();
-  expect(input().placeholder).not.toBe('Write your answer');
+  expect(input().placeholder).not.toBe(REPLY_PLACEHOLDER);
   expect(input().value).toBe('my own steering message');
   // The card's "Answer in writing" hands the question the box, draft included.
   query<HTMLButtonElement>('[data-testid=question-write]').click();
@@ -1349,7 +1389,7 @@ test('a question asked while the user types takes the emptied composer only afte
   await waitFor(() => store.openThread?.id === 't-trace');
   expect(document.querySelector('[data-testid=composer-reply]')).toBeNull();
   await waitFor(() => document.querySelector<HTMLElement>('[data-testid=composer-reply]')?.dataset.question === asked.id, 2000);
-  expect(input().placeholder).toBe('Write your answer');
+  expect(input().placeholder).toBe(REPLY_PLACEHOLDER);
   // Once released, typing again does not hand the box back to messages.
   await type('my answer');
   expect(query('[data-testid=composer-reply]').dataset.question).toBe(asked.id);

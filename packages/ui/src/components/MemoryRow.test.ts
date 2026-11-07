@@ -8,6 +8,13 @@ import MemoryRow from './MemoryRow.svelte';
 import MessageList from './MessageList.svelte';
 
 let mounted: ReturnType<typeof mount> | undefined;
+/** The reason and stopped processes sit behind the row's "i". */
+function tipText(row: Element): string {
+  row.querySelector<HTMLButtonElement>('[data-testid=memory-row-info]')!.click();
+  flushSync();
+  return document.querySelector('[data-testid=memory-row-info-text]')?.textContent ?? '';
+}
+
 afterEach(async () => { if (mounted) await unmount(mounted); mounted = undefined; await setLocaleSetting('en'); document.body.innerHTML = ''; localStorage.clear(); });
 
 test.each([['en', 'thread-quota'], ['en', 'budget'], ['en', 'machine'], ['fr', 'thread-quota'], ['fr', 'budget'], ['fr', 'machine']] as const)('renders a %s %s kill with its process, size and crossed limit', async (locale, reason) => {
@@ -15,16 +22,19 @@ test.each([['en', 'thread-quota'], ['en', 'budget'], ['en', 'machine'], ['fr', '
   mounted = mount(MemoryRow, { target: document.body, props: { event: { threadId: 't', kind: 'killed', reason, limitBytes: 9728 * 1048576, state: 'critical', exe: 'C:\\bin\\cargo.exe', bytes: 2147483648, at: 1 } } });
   flushSync();
   const row = document.querySelector('[data-testid=memory-row]')!;
-  expect(row.querySelector('.title')?.textContent).toBe(strings.resources.killTitle);
-  expect(row.querySelector('p')?.textContent).toBe(strings.resources.killReason[reason](locale === 'fr' ? '9,5 Go' : '9.5 GB'));
-  expect(row.querySelector('.process')?.textContent).toBe('cargo.exe');
-  expect(row.querySelector('.size')?.textContent).toBe(locale === 'fr' ? '2,0 Go' : '2.0 GB');
+  expect(row.querySelector('.title')?.textContent).toBe(strings.resources.killedOne('cargo.exe'));
+  expect(row.querySelector('.detail')?.textContent).toBe(locale === 'fr' ? '2,0 Go' : '2.0 GB');
   expect(row.textContent).not.toContain('C:\\bin');
+  expect(tipText(row)).toBe(strings.resources.killReason[reason](locale === 'fr' ? '9,5 Go' : '9.5 GB'));
 });
 
 test('unknown process and size are omitted', () => {
   mounted = mount(MemoryRow, { target: document.body, props: { event: { threadId: 't', kind: 'thread-cap', state: 'ok', at: 1 } } });
-  flushSync(); expect(document.querySelector('.details')).toBeNull();
+  flushSync();
+  const row = document.querySelector('[data-testid=memory-row]')!;
+  expect(row.querySelector('.detail')?.textContent).toBe(strings.resources.threadCap);
+  expect(row.querySelector('.title')).toBeNull();
+  expect(row.querySelector('[data-testid=memory-row-info]')).toBeNull();
 });
 
 test.each(['en', 'fr'] as const)('renders a %s throttling notice with its limit and no stopped process', async (locale) => {
@@ -33,9 +43,9 @@ test.each(['en', 'fr'] as const)('renders a %s throttling notice with its limit 
   flushSync();
   const row = document.querySelector('[data-testid=memory-row]')!;
   expect(row.getAttribute('data-kind')).toBe('throttled');
-  expect(row.querySelector('p')?.textContent).toBe(strings.resources.throttled(locale === 'fr' ? '5,0 Go' : '5.0 GB'));
+  expect(row.querySelector('.detail')?.textContent).toBe(strings.resources.throttled(locale === 'fr' ? '5,0 Go' : '5.0 GB'));
   expect(row.querySelector('.title')).toBeNull();
-  expect(row.querySelector('.details')).toBeNull();
+  expect(row.querySelector('[data-testid=memory-row-info]')).toBeNull();
 });
 
 test('a memory notice stays between the interrupted tool and later output in the same message', async () => {
@@ -53,12 +63,13 @@ test('a memory notice stays between the interrupted tool and later output in the
     mounted = mount(MessageList, { target: document.body, props: { store, threadId: thread.id, messages: thread.messages } });
     flushSync();
     const text = document.querySelector('[data-testid=timeline]')!.textContent!;
-    expect(text.indexOf(strings.resources.killTitle)).toBeGreaterThan(text.indexOf('Before the interruption'));
-    expect(text.indexOf(strings.resources.killTitle)).toBeLessThan(text.indexOf('After the interruption'));
+    const stopped = strings.resources.killedOne('cargo.exe');
+    expect(text.indexOf(stopped)).toBeGreaterThan(text.indexOf('Before the interruption'));
+    expect(text.indexOf(stopped)).toBeLessThan(text.indexOf('After the interruption'));
   } finally { store.detach(); client.close(); }
 });
 
-test('live stops share a compact disclosure and stay at their boundary as the answer grows and reopens', async () => {
+test('live stops share one line and stay at their boundary as the answer grows and reopens', async () => {
   const client = new FakeClient({ delayMs: 0 }); const store = new Store(); store.attach(client);
   try {
     await store.connect(); await store.open('t-trace');
@@ -74,8 +85,8 @@ test('live stops share a compact disclosure and stay at their boundary as the an
     const row = document.querySelector('[data-testid=memory-row]')!;
     expect(document.querySelectorAll('[data-testid=memory-row]')).toHaveLength(1);
     expect(row.textContent).toContain(strings.resources.killCount(3));
-    expect(row.querySelector('details')!.open).toBe(false);
-    expect([...row.querySelectorAll('.process')].map(node => node.textContent)).toEqual(['cargo.exe', 'rustc.exe', 'node.exe']);
+    expect(row.textContent).not.toContain('rustc.exe');
+    expect(tipText(row)).toContain('cargo.exe (100 MB), rustc.exe (100 MB), node.exe (100 MB)');
     const text = document.querySelector('[data-testid=timeline]')!.textContent!;
     expect(text.indexOf(strings.resources.killCount(3))).toBeLessThan(text.indexOf('Build retried'));
     row.querySelector<HTMLButtonElement>('.configure')!.click();
@@ -122,13 +133,13 @@ test('back-to-back stops share one card until a message or another limit comes b
     const rows = () => [...document.querySelectorAll('[data-testid=memory-row]')];
     expect(rows()).toHaveLength(before + 1);
     expect(rows().at(-1)!.querySelector('.title')?.textContent).toBe(strings.resources.killCount(3));
-    expect([...rows().at(-1)!.querySelectorAll('.process')].map(node => node.textContent)).toEqual(['link.exe', 'rust-lld.exe', 'rust-lld.exe']);
+    expect(tipText(rows().at(-1)!)).toContain('link.exe (700 MB), rust-lld.exe (700 MB), rust-lld.exe (700 MB)');
     // Another limit reads differently: its own card.
     stop('cargo.exe', 130_000, 9728 * 1048576);
     flushSync(); expect(rows()).toHaveLength(before + 2);
     store.openThread!.messages.push({ id: 'between-stops', threadId: 't-trace', turnId: 'between-stops', role: 'user', parts: [{ type: 'text', text: 'Build again' }], state: 'complete', createdAt: at + 140_000 });
     stop('link.exe', 150_000);
     flushSync(); expect(rows()).toHaveLength(before + 3);
-    expect(rows().at(-1)!.querySelector('.title')?.textContent).toBe(strings.resources.killTitle);
+    expect(rows().at(-1)!.querySelector('.title')?.textContent).toBe(strings.resources.killedOne('link.exe'));
   } finally { store.detach(); client.close(); }
 });

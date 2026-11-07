@@ -57,16 +57,18 @@ test('browser Add project keeps refused paths and Escape returns to its button',
   }
 });
 
-test('the phone list header holds the project picker, the bottom bar the new thread, and neither manages a project', async ({ app: _app }) => {
+test('the phone list header holds the search and the new thread, its display options add a project, and nothing there manages one', async ({ app: _app }) => {
   store.startDraft('p-boite');
   await showMobileThreads();
-  await waitFor(() => query('[data-testid=mobile-project]').getAttribute('aria-label')?.includes('boite') === true);
-  expect(document.querySelector('[data-testid=mobile-tabs] [data-testid=mobile-new]')).not.toBeNull();
+  expect(document.querySelector('[data-testid=mobile-header] [data-testid=mobile-new]')).not.toBeNull();
+  expect(document.querySelector('[data-testid=mobile-tabs] [data-testid=mobile-new]')).toBeNull();
   expect(document.querySelector('[data-testid=mobile-project-actions]')).toBeNull();
-  // Adding a project is the picker's last row.
-  query<HTMLButtonElement>('[data-testid=mobile-project]').click();
-  await waitFor(() => document.querySelector('[data-value=add-project]') !== null);
-  query<HTMLButtonElement>('[data-value=add-project]').click();
+  // Adding a project is the display options' last row, beside the search the magnifier opens.
+  query<HTMLButtonElement>('[data-testid=mobile-search-open]').click();
+  await waitFor(() => document.querySelector('[data-testid=mobile-grouping-options]') !== null);
+  query<HTMLButtonElement>('[data-testid=mobile-grouping-options]').click();
+  await waitFor(() => document.querySelector('[data-testid=add-project]') !== null);
+  query<HTMLButtonElement>('[data-testid=add-project]').click();
   await waitFor(() => store.projectPickerOpen);
 });
 

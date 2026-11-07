@@ -34,8 +34,8 @@
    * together. On a phone the Agents list is the screen itself, with no drawer
    * to open.
    */
-  /** Settings has no app rail: what waits from contacts keeps its bell and its pop-ups in the bar there. */
-  let contactNotice = $derived(store.page === 'settings' && contactsShown(store) && (inShell || !mobile.current));
+  /** On the phone Settings has no rail: what waits from contacts keeps its bell in the bar there. */
+  let contactNotice = $derived(store.page === 'settings' && contactsShown(store) && inShell && mobile.current);
   let ContactRequestNotice = $state<typeof import('./home/ContactRequestNotice.svelte').default>();
   $effect(() => {
     if (!contactNotice || ContactRequestNotice) return;
@@ -117,7 +117,7 @@
   {/if}
   {#if threadHeader && (inShell || !mobile.current)}
     {#key store}<ThreadHeader {store} />{/key}
-  {:else if store.page === 'agents' && titleSlot.current && !mobile.current}
+  {:else if (store.page === 'agents' || store.page === 'settings') && titleSlot.current && !mobile.current}
     {@render titleSlot.current()}
   {:else}
     <span class="name ui-label">{store.page === 'agents' ? strings.agents.heading : store.page === 'home' ? strings.contacts.heading : heading}</span>

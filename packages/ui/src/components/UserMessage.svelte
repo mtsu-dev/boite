@@ -226,14 +226,12 @@
     border: 1px solid var(--color-border);
     border-radius: var(--radius-bubble);
     border-bottom-right-radius: var(--radius-sm);
-    box-shadow: var(--shadow-e1);
   }
 
-  .bubble.agent { align-self: flex-start; }
+  /* A prompt another agent sent: outlined on the agent's side, so it never reads as the user's own bubble. */
   .bubble.agent {
-    background: var(--color-surface-2);
-    border-color: var(--color-border);
-    border-left: 2px solid var(--color-edge);
+    align-self: flex-start;
+    background: transparent;
     border-radius: var(--radius-lg);
     border-bottom-left-radius: var(--radius-sm);
   }

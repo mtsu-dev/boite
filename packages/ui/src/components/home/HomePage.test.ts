@@ -13,7 +13,7 @@ import { fill, strings } from '../../lib/strings';
 import { workspace } from '../../lib/workspace.svelte';
 import HomePage from './HomePage.svelte';
 import SidebarContacts from './SidebarContacts.svelte';
-import TitleBar from '../TitleBar.svelte';
+import AppRail from '../AppRail.svelte';
 
 let components: ReturnType<typeof mount>[] = [];
 let opened: Store | undefined;
@@ -56,7 +56,7 @@ async function draw(contact: string | null = null): Promise<Store> {
 const one = <T extends HTMLElement>(testid: string) => document.querySelector<T>(`[data-testid="${testid}"]`);
 const contacts = async (store: Store) => store.client!.call('contacts.get', {});
 
-test('a contact request stays visible at the top in Settings and opens the machine that received it', async () => {
+test('a contact request stays visible in the rail in Settings and opens the machine that received it', async () => {
   const remote = await connect();
   const local = new Store();
   local.machineId = 'local';
@@ -64,7 +64,7 @@ test('a contact request stays visible at the top in Settings and opens the machi
   local.page = 'settings';
   workspace.machines = [{ id: 'local', label: 'Local', store: local }, { id: 'home', label: 'Workstation', store: remote }];
   workspace.active = local;
-  components.push(mount(TitleBar, { target: document.body, props: { store: local } }));
+  components.push(mount(AppRail, { target: document.body, props: { store: local } }));
   await vi.waitFor(() => { flushSync(); expect(one('contact-request-notice')).not.toBeNull(); });
   expect(one('contact-request-notice')!.textContent).toContain('Chris');
   expect(one('contact-request-notice')!.textContent).toContain('Workstation');
@@ -87,7 +87,7 @@ test('a dismissed request keeps its header badge, which refreshes after a reconn
     const state = value as Awaited<ReturnType<typeof contacts>>;
     return { ...state, requests: state.requests.filter(request => request.status !== 'pending') };
   }) as typeof client.call);
-  components.push(mount(TitleBar, { target: document.body, props: { store } }));
+  components.push(mount(AppRail, { target: document.body, props: { store } }));
   await vi.waitFor(() => { flushSync(); expect(one('contact-request-notice')).not.toBeNull(); });
   one<HTMLButtonElement>('contact-request-dismiss')!.click();
   await vi.waitFor(() => { flushSync(); expect(one('contact-request-notice')).toBeNull(); });
@@ -125,7 +125,7 @@ test('a message from a contact outside a shared project pops up to be read: Deli
       return (await client.call('contacts.get', {})).mail!.at(-1)!;
     };
     const status = async (id: string) => (await client.call('collaboration.get', { threadId: 't-trace' })).messages.find(letter => letter.id === id)?.status;
-    components.push(mount(TitleBar, { target: document.body, props: { store } }));
+    components.push(mount(AppRail, { target: document.body, props: { store } }));
 
     const first = await answered('Which tool schedules your posts?');
     expect(one('contact-request-notice')!.textContent).toContain(fill(strings.contacts.mail.writes, { contact: 'Sam', thread: 'Finish the trace tab' }));

@@ -61,7 +61,7 @@
     views?: readonly Message[];
   } = $props();
 
-  /** Longer than this, a text before a step is a report of its own and keeps its bubble. */
+  /** Longer than this, a text before a step is a report of its own and reads in full ink. */
   const NARRATION_MAX = 320;
 
   function lastTextIndex(message: Message): number {
@@ -78,11 +78,13 @@
   const caretAt = $derived(message.state === 'streaming' ? lastTextIndex(message) : -1);
   /**
    * The agent's last step in this message. A short text before it is
-   * narration between calls ("Now the tests"), drawn muted without a bubble:
+   * narration between calls ("Now the tests"), drawn muted and smaller:
    * only what it says after its last step reads as an answer.
    */
   const lastStepAt = $derived(message.role === 'assistant' ? message.parts.findLastIndex(part => part.type === 'tool' || part.type === 'thinking') : -1);
   const narrates = (index: number, text: string) => index < lastStepAt && text.length <= NARRATION_MAX;
+  /** An answer headed "Plan" is a plan written out rather than handed over: once said, it reads in the plan's outline. */
+  const writtenPlan = (text: string) => message.role === 'assistant' && /^\s*#{1,6}\s+plan\s*\n/i.test(text);
   const end = $derived(to ?? message.parts.length);
   // A run over the same parts stays the same object, so a new part does not redraw the groups above it.
   const runList = new MessageRuns();
@@ -149,8 +151,10 @@
             <Activity size={14} strokeWidth={1.75} aria-hidden="true" />
             <div class="system-copy"><Prose text={shownText} {store} {threadId} /></div>
           </div>
+        {:else if writtenPlan(shownText) && !(index === caretAt && part.complete !== true)}
+          <PlanCard {store} {threadId} plan={shownText} />
         {:else}
-        <Prose text={shownText} live={index === caretAt && part.complete !== true} bubble={message.role === 'assistant' && !narrated}
+        <Prose text={shownText} live={index === caretAt && part.complete !== true}
           typing={!compacting && latestInTurn && !toolRunning && message.role === 'assistant' && store.connection === 'ready' && store.openThread?.status === 'running' && index === message.parts.length - 1 && index === caretAt && part.complete !== true} {store} {threadId}
           views={message.role === 'assistant' ? views : undefined} />
         {/if}
@@ -326,7 +330,7 @@
   .docked-question:hover:not(:disabled) { background: var(--color-surface-2); color: var(--color-foreground); }
   .docked-question :global(svg) { flex: none; width: var(--activity-glyph); color: var(--color-live); }
   .docked-text { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--color-foreground); }
-  .docked-hint { flex: 0 10 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--text-xs); color: var(--color-subtle); }
+  .docked-hint { flex: none; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--text-xs); color: var(--color-subtle); }
 
   /* One muted line, the words wrapping under their own start, the event name last and quieter. */
   .hook {

@@ -368,7 +368,6 @@
     onclick={() => onsubmit()}
   >
     {#if waiting}<LoaderCircle size={16} strokeWidth={2.25} class="spinner" />{:else}<ArrowUp size={16} strokeWidth={2.25} />{/if}
-    {#if answering}<span class="ui-label">{sendLabel}</span>{/if}
   </button>
 </div>
 
@@ -468,19 +467,16 @@
   /* No chips to fill the row: the tools sit beside the send button on the right. */
   .answering { justify-content: flex-end; }
   .answering .stop, .answering .send { margin-left: 0; }
-  .answering .send { width: auto; padding-inline: 12px; border-radius: var(--radius-md); }
   .answering .attach, .direct .attach { display: inline-flex; }
 
   .stop {
     color: var(--color-foreground);
   }
 
-  /* A composer the side panel narrowed keeps its tools on one row: the account
-     goes first, then the effort, worktree and mode chips keep only their icons and
-     tooltips. */
+  /* A composer the side panel narrowed keeps its tools on one row: the effort,
+     worktree and mode chips keep only their icons and tooltips. */
   @container composer (max-width: 600px) {
     .chips :global(.picker) { min-width: 0; }
-    .chips :global(.picker > .trigger .account-name) { display: none; }
   }
   @container composer (max-width: 480px) {
     .bar { gap: 6px; }
@@ -497,8 +493,15 @@
     /* The model's name alone, and whole words of it: one line high, a name too long for the row
        wraps its last words onto a second line nobody sees, never half of one. */
     .chips :global(.picker > .trigger > .label) { min-width: 0; max-width: none; height: 1lh; padding-block: 0; margin-block: 0; text-box: normal; overflow: hidden; white-space: normal; overflow-wrap: normal; }
-    .chips :global(.picker > .trigger .account-name) { display: none; }
     .chips :global(.picker > .trigger.connect) { padding: 0 12px; border-radius: var(--radius-md); background: var(--color-active); color: var(--color-foreground); }
     .send, .stop { margin-left: 2px; }
+  }
+  /* A 360 px phone gives the model's whole name the room of the chevron, of the gaps
+     and of the context ring's side margin; every control keeps its full height. */
+  @media (max-width: 400px) {
+    .bar { gap: 0; }
+    .chips :global(.picker > .trigger) { padding: 0 2px; }
+    .chips :global(.picker > .trigger > .lucide-chevron-down) { display: none; }
+    .context-control :global(.trigger) { min-width: 34px; }
   }
 </style>

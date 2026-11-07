@@ -1,8 +1,6 @@
 export const strings = {
 
   workflow: {
-    activeOne: '1 workflow',
-    activeMany: '{count} workflows',
     status: { running: 'Running', paused: 'Paused', done: 'Done', failed: 'Failed', stopped: 'Stopped' },
     stepStatus: { waiting: 'Waiting', running: 'Running', done: 'Done', failed: 'Failed', skipped: 'Skipped', stopped: 'Stopped' },
     steps: '{done}/{total} steps',

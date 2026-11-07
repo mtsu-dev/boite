@@ -16,7 +16,7 @@ afterEach(async () => {
   document.body.innerHTML = '';
 });
 
-test('a workflow without active children shows a timer and opens the team overview', async () => {
+test('a running workflow keeps its own entry by name, with a timer, and opens its panel', async () => {
   client = new FakeClient({ delayMs: 0, delegationDemo: true });
   store = new Store();
   store.attach(client);
@@ -30,16 +30,13 @@ test('a workflow without active children shows a timer and opens the team overvi
 
   store.workflows = [{ ...run!, rootThreadId: 't-native', status: 'running', createdAt: Date.now() - 62_000, nodes: [] }];
   await tick();
-  const button = document.querySelector<HTMLButtonElement>('[data-testid=agent-dock] button');
-  expect(button?.textContent).toContain('1 workflow');
+  const button = document.querySelector<HTMLButtonElement>('[data-testid=active-subagent][data-kind=workflow]');
+  expect(button?.textContent).toContain(run!.name);
   expect(button?.querySelector('[data-testid=agent-elapsed]')?.textContent).toContain('1m');
-  const surface = store.panel.openWorkflow(run!.id);
-  store.panel.close(surface.id);
   button!.click();
   await tick();
   expect(store.panel.isOpen).toBe(true);
-  expect(store.panel.active?.kind).toBe('agents');
-  expect(store.panel.active?.runId).toBeUndefined();
+  expect(store.panel.active?.runId).toBe(run!.id);
 
   store.workflows[0]!.status = 'done';
   await tick();
@@ -54,8 +51,8 @@ test('a memory pass another machine names leaves this machine\'s subagent of the
   const child = store.threads.find(thread => thread.id === 't-team-running')!;
   await store.open(child.parentThreadId!);
   component = mount(AgentDock, { target: document.body, props: { store, threadId: child.parentThreadId! } });
-  const count = () => document.querySelector('[data-testid=active-subagents]')?.textContent?.match(/\d+/)?.[0];
-  // The running child and the one waiting on its background run.
+  const count = () => document.querySelector<HTMLElement>('[data-testid=active-subagents]')?.dataset.count;
+  // The running child and the one waiting on its background run, each its own entry.
   await vi.waitFor(() => expect(count()).toBe('2'));
   // Another machine's snapshot: its agent's memory pass happens to carry the same thread id.
   const snapshot = new FakeAgents(() => {}).snapshot();
@@ -65,5 +62,6 @@ test('a memory pass another machine names leaves this machine\'s subagent of the
     await view.refresh();
     await tick();
     expect(count()).toBe('2');
+    expect(document.querySelectorAll('[data-testid=active-subagent][data-kind=agent]')).toHaveLength(2);
   } finally { view.close(); }
 });

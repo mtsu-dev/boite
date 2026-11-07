@@ -165,6 +165,10 @@ export const strings = {
       other: 'Use its {tool} tool'
     },
     permissionTechnical: 'Technical details',
+    /** The tag of an ask docked at the top of the composer, and its line in the timeline. */
+    permissionNeedsYou: 'Needs you',
+    permissionOf: '{index} of {total}',
+    keyEscape: 'Esc',
     turnFiles: 'Changed files',
     showTurnDiff: 'Show diff',
     hideTurnDiff: 'Hide diff',
@@ -193,14 +197,12 @@ export const strings = {
     questionCancelled: 'No longer waiting for an answer',
     questionSkip: 'Skip',
     questionOpenPage: 'Open',
-    /** The composer is the free field of the question; the card points there. */
-    questionReplying: 'Write your answer in the message box below, with any photos or files.',
     questionWrite: 'Answer in writing',
-    /** The timeline's line for a question waiting in the dock above the composer. */
-    questionDocked: 'Waiting for your answer above the message box',
+    /** The timeline's line for a question waiting in the dock at the top of the composer, where it is answered. */
+    questionDocked: 'Answer below',
     questionOpen: 'Answer it',
     streaming: 'writing',
-    jumpToLatest: 'Jump to latest',
+    jumpToLatest: 'Latest',
     /** The one line at the top of the timeline while an older page is being fetched. */
     loadingOlder: 'Loading earlier messages',
     loadingNewer: 'Loading later messages',
@@ -224,6 +226,7 @@ export const strings = {
     planSave: 'Save to folder',
     planSaveHint: "Write the plan as a markdown file at the root of this thread's folder",
     planSaved: 'Saved as {name}',
+    planProgress: '{done} of {total}',
     copyMessage: 'Copy message',
     /** The menu of a file, folder or thread link in an answer, opened by a right click or a long press. */
     openLink: 'Open',

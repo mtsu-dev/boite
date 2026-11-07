@@ -192,7 +192,7 @@ export async function loginLink(): Promise<HTMLAnchorElement> {
 
 /** The store is one module-level singleton: leave the next test on the chat. */
 export async function backToChat(): Promise<void> {
-  query<HTMLButtonElement>('[data-testid=settings-back]').click();
+  query<HTMLButtonElement>('[data-testid=view-threads]').click();
   await waitFor(() => document.querySelector('[data-testid=settings]') === null);
 }
 
@@ -227,7 +227,7 @@ export async function showMobileThreads(): Promise<void> {
     await waitFor(() => document.querySelector('[data-testid=mobile-tabs]') !== null);
   }
   query<HTMLButtonElement>('[data-testid=mobile-conversations]').click();
-  await waitFor(() => document.querySelector('[data-testid=mobile-project]') !== null);
+  await waitFor(() => document.querySelector('[data-testid=mobile-search-open]') !== null);
 }
 
 /** Everything owner-only that is drawn without leaving the chat. The panel is not: its Agents and Workflows surfaces are the device's to follow. */

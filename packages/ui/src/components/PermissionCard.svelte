@@ -1,22 +1,35 @@
 <script lang="ts">
-  import { ShieldCheck, ShieldQuestion, ShieldX } from '@lucide/svelte';
+  import { CornerDownLeft, ShieldCheck, ShieldQuestion, ShieldX } from '@lucide/svelte';
   import type { PermissionRequest } from '@boite/contracts';
   import { json } from '../lib/format';
-  import { strings } from '../lib/strings';
+  import { fill, strings } from '../lib/strings';
   import { describeTool, permissionSentence } from '../lib/tool-summary';
   import Deferred, { parts } from './Deferred.svelte';
+  import InfoTip from './InfoTip.svelte';
 
   let {
     toolName,
     decision,
     request,
-    answer
+    answer,
+    docked = false,
+    index = 1,
+    total = 1
   }: {
     toolName: string;
     decision: 'allow' | 'deny' | null;
     request: PermissionRequest | null;
     /** False, or a promise of false, gives the buttons back: the answer did not reach the core. */
     answer: (decision: 'allow' | 'deny') => unknown;
+    /**
+     * Drawn at the top of the composer, where the field below stays free:
+     * the ask on one line with its raw input behind an "i", the thing itself
+     * in mono, the reason, then Deny (Esc) and Allow (Enter).
+     */
+    docked?: boolean;
+    /** Its place among the thread's pending asks, said only when there are several. */
+    index?: number;
+    total?: number;
   } = $props();
 
   /**
@@ -47,8 +60,46 @@
   // A change is approved on what it shows: Allow waits for the diff's chunk, which says
   // it is loading or offers a retry meanwhile (Deferred.svelte). Deny never waits.
   let previewMissing = $derived(described.change !== null && parts.DiffView.current === undefined);
+
+  /** With the card itself focused, Enter allows and Escape denies, as the key hints say. */
+  function keys(node: HTMLElement): () => void {
+    const onkey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); void choose('deny'); }
+      else if (event.key === 'Enter' && event.target === node) { event.preventDefault(); void choose('allow'); }
+    };
+    node.addEventListener('keydown', onkey);
+    return () => node.removeEventListener('keydown', onkey);
+  }
 </script>
 
+{#if docked}
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+<div class="permission docked" data-testid="permission-card" data-decision="pending" data-family={described.family} role="group" aria-label={sentence} tabindex="-1" {@attach keys}>
+  <div class="dock-head">
+    <span class="tag"><span class="ui-label">{strings.chat.permissionNeedsYou}</span></span>
+    <span class="sentence ui-label" data-testid="permission-sentence" title={described.subject || toolName}>{sentence}</span>
+    {#if request}<InfoTip text={`${toolName}\n${json(request.input)}`} topic={sentence} testid="permission-input" />{/if}
+    {#if total > 1}<span class="count ui-label" data-testid="permission-count">{fill(strings.chat.permissionOf, { index: String(index), total: String(total) })}</span>{/if}
+  </div>
+  {#if subjectBlock}
+    <pre class="mono subject" data-testid="permission-subject">{subjectBlock}</pre>
+  {/if}
+  {#if described.change}
+    {@const change = described.change}
+    <Deferred part={parts.DiffView}>{#snippet children(DiffView)}<DiffView path={change.path} oldText={change.oldText} newText={change.newText} doc={change} />{/snippet}</Deferred>
+  {/if}
+  <div class="foot" aria-busy={sending !== null}>
+    <span class="why" title={request?.description && request.description !== subjectBlock ? request.description : undefined}>{request?.description && request.description !== subjectBlock ? request.description : ''}</span>
+    <button type="button" class="ghost choice" data-testid="permission-deny" disabled={sending !== null} onclick={() => void choose('deny')}>
+      <span class="ui-label">{strings.chat.deny}</span><kbd aria-hidden="true">{strings.chat.keyEscape}</kbd>
+    </button>
+    <button type="button" class="choice allow" data-testid="permission-allow" disabled={sending !== null || previewMissing} onclick={() => void choose('allow')}>
+      <span class="ui-label">{strings.chat.allow}</span><kbd aria-hidden="true"><CornerDownLeft size={11} strokeWidth={2} /></kbd>
+    </button>
+  </div>
+</div>
+{:else}
 <div
   class="permission"
   class:resolved={decision !== null}
@@ -99,6 +150,7 @@
     </div>
   {/if}
 </div>
+{/if}
 
 <style>
   .permission {
@@ -193,5 +245,39 @@
   .actions {
     display: flex;
     gap: 6px;
+  }
+
+  /* At the top of the composer the composer is the frame; a hairline parts it from the field. */
+  .permission.docked {
+    border: none;
+    border-bottom: 1px solid var(--color-border);
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    padding: 12px 12px 10px 14px;
+    gap: 9px;
+    outline: none;
+  }
+  .docked:focus-visible { box-shadow: inset 0 0 0 2px var(--color-accent); }
+  .dock-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .dock-head .sentence { flex: 0 1 auto; min-width: 0; font-size: var(--text-base); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .dock-head :global(.info-tip) { flex: none; margin: 0; }
+  .docked :global(.info-bubble) { font-family: var(--font-mono); font-size: var(--text-xs); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 50vh; overflow: auto; }
+  .tag { flex: none; height: 20px; padding: 0 7px; border-radius: var(--radius-sm); background: var(--color-live-soft); color: var(--color-live); font-size: 11px; font-weight: 650; display: inline-flex; align-items: center; }
+  .count { flex: none; margin-left: auto; color: var(--color-muted-foreground); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+  .docked pre { max-height: 120px; padding: 9px 12px; border-radius: var(--radius-md); background: var(--color-surface); font-size: 12.5px; }
+  .foot { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .why { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--color-muted-foreground); font-size: var(--text-sm); }
+  .choice { flex: none; height: 30px; gap: 8px; padding: 0 12px; border-radius: var(--radius-md); font-size: var(--text-sm); font-weight: 600; }
+  /* Neutral ink, never the accent: the accent stays for send. */
+  .choice.allow { background: var(--color-foreground); color: var(--color-background); }
+  .choice.allow:hover:not(:disabled) { background: var(--color-foreground); opacity: .9; }
+  .choice kbd { display: inline-flex; align-items: center; font-family: var(--font-mono); font-size: 10.5px; opacity: .55; }
+  @media (max-width: 720px) {
+    .choice kbd { display: none; }
+    .choice { height: var(--touch-target); padding: 0 16px; }
+    /* The reason keeps its own line above the two choices, read whole. */
+    .foot { flex-wrap: wrap; justify-content: flex-end; }
+    .why { flex: 1 0 100%; white-space: normal; }
   }
 </style>

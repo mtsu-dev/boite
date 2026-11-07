@@ -69,20 +69,23 @@
 <div class="colors" data-testid="theme-colors">
   <div class="heading">
     <h3><span class="ui-label">{strings.settings.colors.title}</span><InfoTip topic={strings.settings.colors.title} text={strings.settings.colors.hint} /></h3>
+    <!-- Undo and Reset only once there is something to take back. -->
     <div class="actions">
-      <button type="button" class="small ghost" disabled={!canUndo} onclick={undoEdit} data-testid="colors-undo"><span class="ui-label">{strings.settings.colors.undo}</span></button>
-      <button type="button" class="small ghost" disabled={!custom} onclick={reset} data-testid="colors-reset"><RotateCcw size={13} /><span class="ui-label">{strings.settings.colors.reset}</span></button>
+      {#if canUndo}<button type="button" class="small ghost" onclick={undoEdit} data-testid="colors-undo"><span class="ui-label">{strings.settings.colors.undo}</span></button>{/if}
+      {#if custom}<button type="button" class="small ghost" onclick={reset} data-testid="colors-reset"><RotateCcw size={13} /><span class="ui-label">{strings.settings.colors.reset}</span></button>{/if}
+      <button type="button" class="ghost small customize" aria-expanded={customizing} aria-controls={editorId} onclick={() => { customizing = !customizing; }} data-testid="colors-customize"><SlidersHorizontal size={14} /><span class="ui-label">{strings.settings.colors.customize}</span></button>
     </div>
   </div>
+  <!-- Each palette as a small window drawn in its own colours: the chrome, the
+       page with three lines of text, and its accent. -->
   <div class="presets" role="group" aria-label={strings.settings.colors.palette}>
     {#each presets as preset (preset.id)}
-      <button type="button" class="preset" aria-pressed={matching === preset.id} onclick={() => pick(preset.id)} data-testid="palette-{preset.id}">
-        <span class="ui-label">{strings.settings.colors.palettes[preset.id]}</span>{#if matching === preset.id}<Check size={14} />{/if}
+      <button type="button" class="preset" aria-pressed={matching === preset.id} onclick={() => pick(preset.id)} data-testid="palette-{preset.id}"
+        style:--tile-frame={preset.palette.frame} style:--tile-page={preset.palette.background} style:--tile-ink={preset.palette.foreground} style:--tile-accent={preset.palette.accent}>
+        <span class="preview" aria-hidden="true"><span class="chrome"></span><span class="lines"><i></i><i></i><i></i></span><span class="accent"></span></span>
+        <span class="name"><span class="ui-label">{strings.settings.colors.palettes[preset.id]}</span>{#if matching === preset.id}<Check size={13} strokeWidth={2.25} />{/if}</span>
       </button>
     {/each}
-  </div>
-  <div class="selection">
-    <button type="button" class="ghost small customize" aria-expanded={customizing} aria-controls={editorId} onclick={() => { customizing = !customizing; }} data-testid="colors-customize"><SlidersHorizontal size={14} /><span class="ui-label">{strings.settings.colors.customize}</span></button>
   </div>
   <div class="editor" class:customizing id={editorId}>
     {#if customizing}
@@ -119,11 +122,23 @@
   h3 { display: flex; align-items: center; gap: 4px; font-size: var(--text-base); }
   .actions { display: flex; gap: 4px; }
   .actions button { display: inline-flex; align-items: center; gap: 6px; }
-  .presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
-  .preset { display: flex; justify-content: space-between; align-items: center; padding: 0 10px; gap: 8px; height: var(--control); border: 1px solid var(--color-border); background: transparent; border-radius: var(--radius-md); min-width: 0; text-align: left; color: var(--color-foreground); font-size: var(--text-sm); }
-  .preset:hover { border-color: var(--color-edge); }
-  .preset[aria-pressed='true'] { border-color: var(--color-muted-foreground); color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-muted-foreground); }
-  .selection { display: flex; }
+  .presets { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px 10px; }
+  .preset { display: flex; flex-direction: column; align-items: stretch; gap: 6px; height: auto; min-height: 0; padding: 0; border: 0; background: none; box-shadow: none; min-width: 0; text-align: left; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 550; }
+  .preset:hover:not(:disabled) { background: none; color: var(--color-foreground); }
+  .preview { position: relative; display: flex; height: 56px; overflow: hidden; border-radius: var(--radius-md); background: var(--tile-page); box-shadow: inset 0 0 0 1px var(--color-edge); transition: box-shadow var(--dur-2) var(--ease-out-quint); }
+  .preset:hover .preview { box-shadow: inset 0 0 0 1px var(--color-muted-foreground); }
+  .chrome { width: 26%; background: var(--tile-frame); }
+  .lines { flex: 1; display: flex; flex-direction: column; gap: 5px; padding: 9px 8px; }
+  .lines i { display: block; height: 5px; border-radius: var(--radius-full); background: color-mix(in oklab, var(--tile-ink) 22%, transparent); }
+  .lines i:nth-child(2) { width: 60%; }
+  .lines i:nth-child(3) { width: 80%; }
+  .preview .accent { position: absolute; right: 7px; bottom: 7px; width: 9px; height: 9px; border-radius: 50%; background: var(--tile-accent); }
+  /* The chosen one: the focus ring's 2 px outline round its picture, and a check by its name. */
+  .preset[aria-pressed='true'] { color: var(--color-foreground); }
+  .preset[aria-pressed='true'] .preview { box-shadow: 0 0 0 2px var(--color-foreground); }
+  .name { display: flex; align-items: center; gap: 4px; min-width: 0; }
+  .name .ui-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .name :global(svg) { flex: none; }
   .customize { display: inline-flex; align-items: center; gap: 7px; flex: none; }
   .editor { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; }
   .editor.customizing { grid-template-columns: minmax(150px, .8fr) minmax(0, 1.6fr); margin-top: 16px; }
@@ -143,8 +158,7 @@
   .contrast > span:first-child { color: var(--color-danger); }
   .contrast > span:first-child { display: flex; align-items: center; }
   @media (max-width: 720px) {
-    .presets { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-    .preset { height: var(--touch-target); }
+    .presets { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 10px; }
     .editor, .editor.customizing { grid-template-columns: minmax(0, 1fr); gap: 16px; }
     .customize { min-height: var(--touch-target); }
     .role-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }

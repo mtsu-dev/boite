@@ -45,7 +45,7 @@ test('selecting a conversation beyond the first mobile window finishes loading i
   vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(400);
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
     const root = document.querySelector<HTMLElement>('[data-testid=mobile-list]');
-    return new DOMRect(0, this === root ? 0 : -(root?.scrollTop ?? 0), 390, this.dataset.windowKey ? 77 : 400);
+    return new DOMRect(0, this === root ? 0 : -(root?.scrollTop ?? 0), 390, this.dataset.windowKey ? 46 : 400);
   });
   client = new FakeClient({ delayMs: 0 });
   store = new Store(); store.attach(client); await store.connect();
@@ -59,7 +59,7 @@ test('selecting a conversation beyond the first mobile window finishes loading i
   const selector = `[data-testid="mobile-thread-${summary.id}"]`;
   expect(document.querySelector(selector)).toBeNull();
   const root = document.querySelector<HTMLElement>('[data-testid=mobile-list]')!;
-  root.scrollTop = 76_600; root.dispatchEvent(new Event('scroll')); await settle();
+  root.scrollTop = 45_700; root.dispatchEvent(new Event('scroll')); await settle();
   expect(document.querySelectorAll('[data-testid^=mobile-thread-]').length).toBeLessThan(50);
   const row = document.querySelector<HTMLButtonElement>(selector)!;
   expect(row).not.toBeNull(); row.click(); await settle();
@@ -68,7 +68,7 @@ test('selecting a conversation beyond the first mobile window finishes loading i
   expect(store.loadingThreadId).toBeNull();
 });
 
-test('the logo goes back to the conversations, as Back does in a conversation', async () => {
+test('the header holds the search, opened in place, and the new thread; the bar goes back to the threads', async () => {
   vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
     media, matches: true, onchange: null, addListener() {}, removeListener() {}
   }));
@@ -78,18 +78,47 @@ test('the logo goes back to the conversations, as Back does in a conversation', 
   mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'activity' } });
   await settle();
   const list = () => document.querySelector('[data-testid=mobile-list]')?.getAttribute('aria-label');
+  const id = (testid: string) => document.querySelector<HTMLElement>(`[data-testid=${testid}]`);
   expect(list()).toBe('Activity');
-  document.querySelector<HTMLButtonElement>('[data-testid=mobile-home]')!.click(); await settle();
-  expect(list()).toBe('Conversations');
+  id('mobile-conversations')!.click(); await settle();
+  expect(list()).toBe('Threads');
+  expect(id('mobile-title')?.textContent).toBe('Threads');
   store.showSettings('machines'); await settle();
   expect(list()).toBeUndefined();
-  document.querySelector<HTMLButtonElement>('[data-testid=mobile-home]')!.click(); await settle();
+  expect(id('mobile-search-open')).toBeNull();
+  id('mobile-conversations')!.click(); await settle();
   expect(store.page).toBe('chat');
-  expect(list()).toBe('Conversations');
-  await unmount(mounted); document.body.innerHTML = '';
-  mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'chat' } }); await settle();
-  expect(document.querySelector('[data-testid=mobile-home]')).toBeNull();
-  expect(document.querySelector('[data-testid=mobile-back]')).not.toBeNull();
+  expect(list()).toBe('Threads');
+
+  // The magnifier swaps the title for the field; closing it clears the filter.
+  expect(id('mobile-search')).toBeNull();
+  const rows = () => document.querySelectorAll('.mobile-list [data-thread-id]').length;
+  const everything = rows();
+  id('mobile-search-open')!.click(); await settle();
+  await new Promise(resolve => requestAnimationFrame(resolve));
+  const field = id('mobile-search') as HTMLInputElement;
+  expect(document.activeElement).toBe(field);
+  expect(id('mobile-title')).toBeNull();
+  expect(id('mobile-new')).toBeNull();
+  field.value = 'no thread is called this'; field.dispatchEvent(new Event('input')); await settle();
+  expect(rows()).toBe(0);
+  id('mobile-search-close')!.click(); await settle();
+  expect(id('mobile-search')).toBeNull();
+  expect(rows()).toBe(everything);
+
+  // A row has no menu button to see: a long press, Android's contextmenu, opens its menu.
+  const row = document.querySelector<HTMLElement>('.mobile-list [data-thread-id]')!;
+  const threadId = row.dataset['threadId'];
+  row.querySelector('[data-testid^=mobile-thread-]')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })); await settle();
+  expect(id(`mobile-thread-menu-${threadId}-menu`)?.querySelector('[data-value=rename]')).not.toBeNull();
+
+  // The new thread is the header's neutral "+", out of the bottom bar.
+  expect(document.querySelector('[data-testid=mobile-tabs] [data-testid=mobile-new]')).toBeNull();
+  id('mobile-new')!.click(); await settle();
+  expect(store.draft).not.toBeNull();
+  expect(document.querySelector('.mobile-list')).toBeNull();
+  expect(id('mobile-back')).not.toBeNull();
+  expect(id('mobile-new')).toBeNull();
 });
 
 test('a parent on another machine shows its working sub-agents, counted, and Recent filters what is at work', async () => {
@@ -116,9 +145,8 @@ test('a parent on another machine shows its working sub-agents, counted, and Rec
     mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'threads' } });
     await settle();
     const state = () => document.querySelector<HTMLElement>(`[data-machine-id="${remote.machineId}"][data-thread-id="${parent.id}"] [data-testid=thread-state]`);
+    // Recent marks the state, as a computer's Recent row does; the count stays in the tooltip, never written out.
     expect(state()?.dataset['state']).toBe('delegating');
-    expect(state()?.querySelector('[data-testid=thread-state-text]')?.textContent).toMatch(/^1m/);
-    // The count stays in the tooltip, as on a computer's row: never written out.
     expect(state()?.textContent).not.toContain('sub-agents');
     expect(state()?.getAttribute('title')).toMatch(/^Waiting on 2 sub-agents/);
     // A child is never a row of its own.
@@ -144,6 +172,7 @@ test('a parent on another machine shows its working sub-agents, counted, and Rec
     // The Projects list reads the same store: the same radar there. Back in Recent, the filter holds.
     workspace.view = 'projects'; await settle();
     expect(state()?.dataset['state']).toBe('delegating');
+    expect(state()?.querySelector('[data-testid=thread-state-text]')?.textContent).toMatch(/^1m/);
     workspace.view = 'recent'; await settle();
     expect(chip()?.getAttribute('aria-pressed')).toBe('true');
     expect(rows()).toEqual([parent.id]);

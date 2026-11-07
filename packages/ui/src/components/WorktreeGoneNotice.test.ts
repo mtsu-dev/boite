@@ -11,6 +11,15 @@ afterEach(() => {
 });
 
 const notice = () => document.querySelector('[data-testid=worktree-gone]');
+/** Why, and what became of the branch, sit behind the notice's "i". */
+function tipText(): string {
+  document.querySelector<HTMLButtonElement>('[data-testid=worktree-gone-info]')!.click();
+  flushSync();
+  const text = document.querySelector('[data-testid=worktree-gone-info-text]')?.textContent ?? '';
+  document.querySelector<HTMLButtonElement>('[data-testid=worktree-gone-info]')!.click();
+  flushSync();
+  return text;
+}
 
 test('a thread whose worktree was removed says so while done, and after it is moved back to Recent', async ({ ready }) => {
   const { store, client } = await ready();
@@ -23,8 +32,7 @@ test('a thread whose worktree was removed says so while done, and after it is mo
   flushSync();
 
   await vi.waitFor(() => expect(notice()).not.toBeNull());
-  expect(notice()!.textContent).toContain('after #12 was merged');
-  expect(notice()!.textContent).toContain('Branch boite/merged-work was deleted.');
+  expect(tipText()).toContain('after #12 was merged. Branch boite/merged-work was deleted.');
   expect(notice()!.textContent).toContain('Moved to Recent, this thread has no folder to work in.');
   expect(notice()!.querySelector('a')?.getAttribute('href')).toBe('https://github.com/example/repo/pull/12');
   expect(document.querySelector('[data-testid=done-thread-notice]')).not.toBeNull();
@@ -46,7 +54,6 @@ test('a clean removal names no pull request and says when the branch stayed', as
   flushSync();
 
   await vi.waitFor(() => expect(notice()).not.toBeNull());
-  expect(notice()!.textContent).toContain('every commit in it was already on another branch');
-  expect(notice()!.textContent).toContain('Branch boite/clean-work is still there.');
+  expect(tipText()).toContain('every commit in it was already on another branch. Branch boite/clean-work is still there.');
   expect(notice()!.querySelector('a')).toBeNull();
 });

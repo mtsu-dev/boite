@@ -3,8 +3,6 @@ import type { Translation } from '../../i18n.svelte';
 export const fr: Translation = {
 
   workflow: {
-    activeOne: '1 workflow',
-    activeMany: '{count} workflows',
     status: { running: 'En cours', paused: 'En pause', done: 'Terminé', failed: 'En échec', stopped: 'Arrêté' },
     stepStatus: { waiting: 'En attente', running: 'En cours', done: 'Terminée', failed: 'En échec', skipped: 'Sautée', stopped: 'Arrêtée' },
     steps: '{done}/{total} étapes',

@@ -450,15 +450,15 @@
     .monos button { flex: 1 1 auto; min-width: auto; padding: 0 6px; font-size: var(--text-xs); }
     .card-head .segmented { flex: 1 1 100%; }
   }
-  /* The options in one track, the chosen one filled like a primary button. */
+  /* The options in one dark track, the chosen one raised on it: a grey step, never a white block. */
   .segmented {
     display: inline-flex;
     flex: none;
     gap: 2px;
     padding: 2px;
-    border: 1px solid var(--color-edge);
+    border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
-    background: var(--color-surface-2);
+    background: var(--color-frame);
   }
 
   .segmented button {
@@ -477,8 +477,9 @@
   }
 
   .segmented button.on {
-    background: var(--color-foreground);
-    border-color: var(--color-foreground);
-    color: var(--color-on-foreground);
+    background: var(--color-surface-3);
+    border-color: var(--color-edge);
+    color: var(--color-foreground);
+    box-shadow: var(--shadow-e1);
   }
 </style>

@@ -9,6 +9,7 @@
   import type { Store } from '../../lib/store.svelte';
   import { fill, strings } from '../../lib/strings';
   import { machineName, workspace, type Machine } from '../../lib/workspace.svelte';
+  import { notifyCorner } from '../../lib/notify-corner';
 
   /**
    * What waits for the owner from contacts, on every listed machine, oldest
@@ -66,17 +67,17 @@
   </button>
 {/if}
 {#if displayed && toast.shown}
-  <div class="notice" class:closing={toast.closing} use:toast.attach onanimationend={toast.end} role="status" data-testid="contact-request-notice" data-kind={displayed.letter ? 'mail' : 'request'}>
-    {#if displayed.letter}
-      {@const letter = displayed.letter}
-      {@const busy = displayed.view.isBusy(`mail:${letter.id}`) || toast.closing}
-      <div class="row letter">
-        <span class="bell"><Mail size={18} strokeWidth={1.75} /></span>
-        <span class="copy">
-          <span class="heading"><span>{fill(strings.contacts.mail.writes, { contact: letter.contact, thread: letter.thread })}</span><span class="machine">{machineName(displayed.machine)}</span></span>
-          <span class="excerpt full" data-testid="contact-mail-notice-text">{letter.text}</span>
+  <div class="notice notify-corner" class:closing={toast.closing} use:toast.attach use:notifyCorner onanimationend={toast.end} role="status" data-testid="contact-request-notice" data-kind={displayed.letter ? 'mail' : 'request'}>
+    <div class="notify-card">
+      {#if displayed.letter}
+        {@const letter = displayed.letter}
+        {@const busy = displayed.view.isBusy(`mail:${letter.id}`) || toast.closing}
+        <span class="notify-mark"><Mail size={16} strokeWidth={1.75} /></span>
+        <span class="notify-lines">
+          {@render heading(fill(strings.contacts.mail.writes, { contact: letter.contact, thread: letter.thread }))}
+          <span class="notify-text excerpt" data-testid="contact-mail-notice-text">{letter.text}</span>
           {#if failed}<span class="failed" role="alert">{failed}</span>{/if}
-          <span class="actions">
+          <span class="notify-actions">
             <button type="button" class="primary small" disabled={busy} title={fill(strings.contacts.mail.deliverTip, { thread: letter.thread })}
               onclick={() => void decide(displayed!, true)} data-testid="contact-mail-notice-deliver"><Check size={14} strokeWidth={2.25} /><span class="ui-label">{strings.contacts.mail.deliver}</span></button>
             <button type="button" class="ghost small" disabled={busy} title={strings.contacts.mail.refuseTip}
@@ -84,23 +85,22 @@
             <button type="button" class="ghost small details" onclick={() => review(displayed!)} data-testid="contact-mail-notice-details"><span class="ui-label">{strings.contacts.mail.details}</span><ArrowRight size={14} strokeWidth={1.75} /></button>
           </span>
         </span>
-        {#if pending.length > 1}<span class="count">{count(pending.length)}</span>{/if}
-      </div>
-    {:else}
-      <button type="button" class="row request" data-testid="contact-request-review"
-        title={strings.contacts.requests.review} onclick={() => review(displayed!)}>
-        <span class="bell"><Bell size={18} strokeWidth={1.75} /></span>
-        <span class="copy">
-          <span class="heading"><span>{fill(strings.contacts.requests.asks, { contact: displayed.request.contact })}</span><span class="machine">{machineName(displayed.machine)}</span></span>
-          <span class="excerpt">{displayed.request.text}</span>
+      {:else}
+        <span class="notify-mark"><Bell size={16} strokeWidth={1.75} /></span>
+        <span class="notify-lines">
+          {@render heading(fill(strings.contacts.requests.asks, { contact: displayed.request.contact }))}
+          <span class="notify-text excerpt short">{displayed.request.text}</span>
         </span>
-        {#if pending.length > 1}<span class="count">{count(pending.length)}</span>{/if}
-        <ArrowRight size={16} strokeWidth={1.75} />
-      </button>
-    {/if}
-    <button type="button" class="ghost icon dismiss" aria-label={strings.common.dismiss} title={strings.common.dismiss} onclick={dismiss} data-testid="contact-request-dismiss"><X size={14} /></button>
+        <button type="button" class="small open" data-testid="contact-request-review" title={strings.contacts.requests.review} onclick={() => review(displayed!)}><span class="ui-label">{strings.common.open}</span></button>
+      {/if}
+      <button type="button" class="ghost icon notify-dismiss" aria-label={strings.common.dismiss} title={strings.common.dismiss} onclick={dismiss} data-testid="contact-request-dismiss"><X size={14} /></button>
+    </div>
   </div>
 {/if}
+
+{#snippet heading(text: string)}
+  <span class="notify-title"><span class="who">{text}</span><span class="notify-meta">{machineName(displayed!.machine)}{#if pending.length > 1}<span class="count"> · {count(pending.length)}</span>{/if}</span></span>
+{/snippet}
 
 <style>
   /* The count is something that waits on the user: the waiting colour, never the accent. */
@@ -112,32 +112,17 @@
     .indicator.rail:hover:not(:disabled) { background: var(--color-surface-3); color: var(--color-foreground); }
     .rail .badge { top: auto; right: -4px; bottom: -3px; min-width: 18px; height: 18px; box-sizing: border-box; padding: 0 5px; display: grid; place-items: center; font-weight: 700; line-height: 1; box-shadow: 0 0 0 3px var(--color-frame); }
   }
-  .notice { position: fixed; z-index: 80; top: calc(var(--titlebar) + 12px); left: 50%; transform: translateX(-50%); width: min(440px, calc(100vw - 32px)); animation: fade var(--dur-2) var(--ease-out-quint); }
-  .notice.closing { animation: fade-out var(--dur-2) var(--ease-out-quint) forwards; }
-  .dismiss { position: absolute; top: 2px; right: 2px; width: 24px; height: 24px; color: var(--color-subtle); }
-  .row { display: flex; align-items: center; gap: 12px; width: 100%; height: auto; min-height: 64px; padding: 12px 30px 12px 14px; text-align: left; background: var(--color-surface-2); border: 1px solid var(--color-edge); border-radius: var(--radius-lg); box-shadow: var(--shadow-e3); color: var(--color-foreground); }
-  .request:hover { background: var(--color-hover); }
-  /* No arrow closes this row: keep the machine name clear of the dismiss button. */
-  .letter { align-items: flex-start; padding-right: 40px; }
-  .bell { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: var(--radius-md); background: var(--color-live-soft); color: var(--color-live); }
-  .copy { display: grid; flex: 1; gap: 4px; min-width: 0; }
-  .heading { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: var(--text-sm); font-weight: 600; }
-  .heading > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .machine { margin-left: auto; font-size: var(--text-xs); font-weight: 400; color: var(--color-subtle); }
-  .excerpt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); font-weight: 400; color: var(--color-muted-foreground); }
+  .notice { animation: rise var(--dur-3) var(--ease-out-quint); }
+  .notice.closing { animation: fade-out var(--dur-2) var(--ease-out-quint) forwards; pointer-events: none; }
+  .who { min-width: 0; }
   /* A message is read here before it is delivered: a few lines of it, the rest on its contact's page. */
-  .excerpt.full { display: -webkit-box; -webkit-line-clamp: 4; line-clamp: 4; -webkit-box-orient: vertical; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--color-foreground); }
+  .excerpt { display: -webkit-box; -webkit-line-clamp: 4; line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-wrap; }
+  .excerpt.short { -webkit-line-clamp: 2; line-clamp: 2; }
   .failed { font-size: var(--text-xs); color: var(--color-danger); overflow-wrap: anywhere; }
-  .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; }
   .details { margin-left: auto; color: var(--color-muted-foreground); }
-  .count { flex: none; font-size: var(--text-xs); color: var(--color-live); }
-  .letter .count { margin-top: 2px; }
-  .request > :global(svg) { flex: none; color: var(--color-muted-foreground); }
-  @media (max-width: 720px) {
-    .notice { top: calc(68px + env(safe-area-inset-top)); width: calc(100vw - 24px); }
-    .machine { max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .actions > button { min-height: var(--touch-target); }
-  }
+  .open { flex: none; align-self: center; }
+  .count { color: var(--color-live); }
+  @media (max-width: 720px) { .open { min-height: var(--touch-target); } }
   @media (prefers-reduced-motion: reduce) { .notice { animation-duration: 1ms; } }
   :global(html[data-motion='reduced']) .notice { animation-duration: 1ms; }
 </style>

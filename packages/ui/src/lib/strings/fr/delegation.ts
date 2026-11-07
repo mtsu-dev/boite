@@ -13,8 +13,6 @@ export const fr: Translation = {
     processResult: 'La progression et le résultat sont dans la sortie de la commande.',
     nativeStatus: { running: 'En cours', done: 'Terminé', error: 'Échec', stopped: 'Arrêté', unknown: 'État inconnu' },
     parent: 'Fil principal',
-    activeOne: '1 sous-agent actif',
-    activeMany: '{count} sous-agents actifs',
     configure: 'Réglages',
     enabled: 'Autoriser cette conversation à lancer des sous-agents',
     enabledHint: "L'agent peut confier des parties d'une tâche à d'autres agents. Chacun travaille dans sa propre conversation et rend compte ici.",

@@ -184,6 +184,11 @@
   --color-subtle: #89898f;
   /* Below reading contrast: a disabled mark, a placeholder glyph, never words that must be read. */
   --color-faint: #4a4a50;
+  /* A switch's greys, for the one switch rule below: a dark track off, a light neutral one on, never white. */
+  --switch-off: var(--color-surface-3);
+  --switch-knob: var(--color-subtle);
+  --switch-on: var(--color-muted-foreground);
+  --switch-knob-on: var(--color-frame);
   --color-selection: rgba(228, 228, 231, 0.18);
   --accent-hue: 295;
   --color-accent: oklch(75.5% 0.141 var(--accent-hue));
@@ -670,15 +675,6 @@
   --palette-light-amethyst-live: #866325;
 }
 
-.answer-bubble {
-  background: var(--color-surface-2);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-bubble);
-  border-bottom-left-radius: var(--radius-sm);
-}
-
-.answer-bubble { width: fit-content; max-width: 100%; padding: 12px 16px; }
-@media (max-width: 720px) { .answer-bubble { padding: 10px 14px; } }
 .typing { display: inline-flex; align-items: center; gap: 4px; min-height: 24px; color: var(--color-muted-foreground); }
 .typing > span { width: 5px; height: 5px; border-radius: var(--radius-full); background: currentColor; animation: typing var(--dur-typing) ease-in-out infinite var(--loops); }
 .typing > span:nth-child(2) { animation-delay: var(--dur-typing-step); }
@@ -1584,8 +1580,8 @@ tr:last-child td {
   align-items: center;
   justify-content: space-between;
   gap: 20px;
-  min-height: 66px;
-  padding: 16px 0;
+  min-height: 56px;
+  padding: 12px 0;
 }
 
 .settings .page .switch-row + .switch-row {
@@ -1596,12 +1592,12 @@ tr:last-child td {
    or following the title drops that side of its own. */
 .settings .page .card > .switch-row:first-child,
 .settings .page .card > h2 + .switch-row {
-  min-height: 50px;
+  min-height: 44px;
   padding-top: 0;
 }
 
 .settings .page .card > .switch-row:last-child {
-  min-height: 50px;
+  min-height: 44px;
   padding-bottom: 0;
 }
 
@@ -2122,12 +2118,13 @@ html[data-glass] #app {
 
 [data-accent-swatch] { --color-accent: oklch(75.5% 0.141 var(--accent-hue)); }
 /* One switch: the native checkbox with role=switch, or the `.switch` span a menu row or a button draws (`.on` when set).
-   `--switch-width` and `--switch-height` size it; the knob keeps 3px of air inside the 1px rim. */
-input[type=checkbox][role=switch], .switch { appearance: none; position: relative; flex: 0 0 var(--switch-width, 40px); width: var(--switch-width, 40px); height: var(--switch-height, 24px); min-height: var(--switch-height, 24px); padding: 0; margin: 0; border: 1px solid var(--color-edge); border-radius: 999px; background: var(--color-surface-3); transition: background var(--dur-2), border-color var(--dur-2); }
+   `--switch-width` and `--switch-height` size it; the knob keeps 3px of air inside the 1px rim. Neutral greys
+   in every theme: off is a dark track, on a light one, never a white block beside the text. */
+input[type=checkbox][role=switch], .switch { appearance: none; position: relative; flex: 0 0 var(--switch-width, 40px); width: var(--switch-width, 40px); height: var(--switch-height, 24px); min-height: var(--switch-height, 24px); padding: 0; margin: 0; border: 1px solid var(--color-edge); border-radius: 999px; background: var(--switch-off); transition: background var(--dur-2), border-color var(--dur-2); }
 input[type=checkbox][role=switch] { cursor: pointer; }
-input[type=checkbox][role=switch]::after, .switch::after { content: ''; position: absolute; width: calc(var(--switch-height, 24px) - 8px); height: calc(var(--switch-height, 24px) - 8px); top: 3px; left: 3px; border-radius: 50%; background: var(--color-muted-foreground); transition: transform var(--dur-2) var(--ease-out-quint); }
-input[type=checkbox][role=switch]:checked, .switch.on { background: var(--color-foreground); border-color: var(--color-foreground); }
-input[type=checkbox][role=switch]:checked::after, .switch.on::after { transform: translateX(calc(var(--switch-width, 40px) - var(--switch-height, 24px))); background: var(--color-background); }
+input[type=checkbox][role=switch]::after, .switch::after { content: ''; position: absolute; width: calc(var(--switch-height, 24px) - 8px); height: calc(var(--switch-height, 24px) - 8px); top: 3px; left: 3px; border-radius: 50%; background: var(--switch-knob); transition: transform var(--dur-2) var(--ease-out-quint), background var(--dur-2); }
+input[type=checkbox][role=switch]:checked, .switch.on { background: var(--switch-on); border-color: transparent; }
+input[type=checkbox][role=switch]:checked::after, .switch.on::after { transform: translateX(calc(var(--switch-width, 40px) - var(--switch-height, 24px))); background: var(--switch-knob-on); }
 input[type=checkbox][role=switch]:focus-visible { outline: 2px solid var(--color-foreground); outline-offset: 4px; }
 input[type=checkbox][role=switch]:disabled { opacity: .45; cursor: not-allowed; }
 /* Under a finger the outline rail is a touch target wide (MessageOutline.svelte): the text starts past it. */

@@ -1,0 +1,45 @@
+/* The corner arriving cards share (notify-corner.ts lifts them). */
+.notify-corner {
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right, 0px));
+  bottom: calc(12px + max(var(--corner-lift, 0px), env(safe-area-inset-bottom, 0px)));
+  z-index: 80;
+  width: min(340px, calc(100vw - 24px));
+  transition: bottom var(--dur-2) var(--ease-out-quint);
+}
+
+/* One card for every notification: a mark, a bold line, its text, one way to act. */
+.notify-card {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  box-sizing: border-box;
+  width: 100%;
+  height: auto;
+  padding: 10px 10px 10px 12px;
+  border: 1px solid var(--color-edge);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-2);
+  box-shadow: var(--shadow-e3);
+  color: var(--color-muted-foreground);
+  font-size: var(--text-xs);
+  font-weight: 400;
+  line-height: 1.45;
+  text-align: left;
+}
+.notify-mark { display: flex; flex: none; margin-top: 1px; color: var(--color-live); }
+.notify-card[data-tone='danger'] .notify-mark { color: var(--color-danger); }
+.notify-card[data-tone='quiet'] .notify-mark { color: var(--color-subtle); }
+.notify-lines { display: grid; flex: 1; gap: 2px; min-width: 0; }
+.notify-title { display: flex; align-items: baseline; gap: 8px; min-width: 0; color: var(--color-foreground); font-size: var(--text-sm); font-weight: 600; overflow-wrap: anywhere; }
+.notify-meta { flex: none; margin-left: auto; color: var(--color-subtle); font-size: var(--text-xs); font-weight: 400; }
+.notify-text { margin: 0; overflow-wrap: anywhere; }
+.notify-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.notify-dismiss.ghost.icon { flex: none; width: 24px; height: 24px; margin: -4px -4px 0 0; color: var(--color-subtle); }
+.notify-dismiss.ghost.icon:hover { color: var(--color-foreground); }
+
+@media (max-width: 720px) {
+  .notify-corner { right: 12px; }
+  .notify-actions > button { min-height: var(--touch-target); }
+}

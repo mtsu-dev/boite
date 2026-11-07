@@ -115,7 +115,6 @@
   }
 
   let provider = $derived(choice ? store.providerOf(choice.providerId) : null);
-  let account = $derived(choice ? store.accountOf(choice.accountId) : null);
   /** A provider turned off has no column: the rail's first one shows instead. */
   const offered = (id: string | null | undefined) => (id && store.providerOn(id) ? store.providerOf(id) : null);
   let shown = $derived(offered(shownProviderId) ?? offered(provider?.id) ?? store.offeredProviders[0] ?? null);
@@ -185,13 +184,12 @@
   });
 
   // The effort has a chip of its own in the composer, so this one names the
-  // model and the account only: one place says the level. A phone drops the account.
+  // model only: the account is picked in the menu, beside the agent's name.
   let label = $derived.by(() => {
     if (!choice || !provider) return strings.composer.noProvider;
     const model = store.modelOf(choice);
     return model && isNamedModel(model) ? model.name : strings.composer.picker;
   });
-  let accountLabel = $derived(provider && account && store.accountsOf(provider.id).length > 1 ? account.label : '');
 
   let currentModels = $derived(shownModels.filter((m) => !m.legacy));
   let legacyModels = $derived(shownModels.filter((m) => m.legacy));
@@ -338,7 +336,7 @@
     {:else}
       <Sparkles size={14} strokeWidth={1.75} />
     {/if}
-    <span class="label ui-label"><span class="model-name">{label}</span>{#if accountLabel}<span class="account-name">{` · ${accountLabel}`}</span>{/if}</span>
+    <span class="label ui-label">{label}</span>
     <ChevronDown size={12} strokeWidth={2} />
   </button>
   {/if}

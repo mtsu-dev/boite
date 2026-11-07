@@ -10,9 +10,11 @@ export const strings = {
     filesUnavailable: 'The messages were rewound, but this edit has no complete file backup. The code could not be restored.',
     filesBusy: 'The messages were rewound. Another agent is still working in this folder, so the files were left as they are.',
     editingCancel: 'Stop editing (Esc)',
-    /** A question waits for a written answer: the box writes it, the row above names the question. */
-    replying: 'Answering: {question}',
-    replyPlaceholder: 'Write your answer',
+    /** A question waits for a written answer: the box writes it, the card above names the question. */
+    replyPlaceholder: 'Or write another answer, with photos or files',
+    /** An ask to run a tool waits above the box: what is written instead refuses it. */
+    permissionPlaceholder: 'Or tell {agent} what to do instead',
+    theAgent: 'the agent',
     replySend: 'Send the answer',
     replyIgnore: 'Write a message',
     replyIgnoreHint: 'Leave the question waiting and write an ordinary message',
@@ -36,6 +38,7 @@ export const strings = {
     sendWhenLoaded: 'Sends once the files are ready',
     stop: 'Stop',
     queued: 'Sent after the next tool, or when the turn ends',
+    queuedLabel: 'Queued',
     /** A refused send held the pending messages until the user sends again. */
     queuedPaused: 'Held after a refused send',
     sendNow: 'Send now',

@@ -23,7 +23,7 @@ test('the theme setting stamps the light palette and remembers the choice', asyn
   expect(query('[data-testid=theme-dark]').getAttribute('aria-pressed')).toBe('true');
 
   // The store is one module-level singleton: leave the next test on the chat.
-  query<HTMLButtonElement>('[data-testid=settings-back]').click();
+  query<HTMLButtonElement>('[data-testid=view-threads]').click();
   await waitFor(() => document.querySelector('[data-testid=settings]') === null);
 });
 
@@ -58,7 +58,7 @@ test('the keybindings file moves a chord, takes one away, and the Keyboard page 
   expect(query('[data-testid=keybindings-path]').textContent).toBe('C:\\Users\\you\\AppData\\Local\\boite2\\keybindings.json');
   expect(query('[data-testid=keybinding-error]').textContent).toContain('"trace": "t" has no modifier');
 
-  query<HTMLButtonElement>('[data-testid=settings-back]').click();
+  query<HTMLButtonElement>('[data-testid=view-threads]').click();
   await waitFor(() => document.querySelector('[data-testid=settings]') === null);
 });
 
@@ -116,6 +116,6 @@ test('the checklist model sits with the conversation settings on General, with n
   const tracker = query('[data-testid=goal-tracker]');
   expect(tracker.closest('#settings-conversations')?.querySelector('[data-testid=setting-title-model]')).not.toBeNull();
   expect(query('[data-testid=goal-tracker-model]').textContent).toContain('Automatic');
-  query<HTMLButtonElement>('[data-testid=settings-back]').click();
+  query<HTMLButtonElement>('[data-testid=view-threads]').click();
   await waitFor(() => document.querySelector('[data-testid=settings]') === null);
 });

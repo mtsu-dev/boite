@@ -35,7 +35,7 @@ test('an isolated account that is not logged in logs in from the Accounts page',
   expect(document.querySelector('[data-testid=account-login]')?.textContent).toContain('Sign in again');
 
   // The store is one module-level singleton: leave the next test on the chat.
-  query<HTMLButtonElement>('[data-testid=settings-back]').click();
+  query<HTMLButtonElement>('[data-testid=view-threads]').click();
   await waitFor(() => document.querySelector('[data-testid=settings]') === null);
 });
 

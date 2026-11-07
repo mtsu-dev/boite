@@ -171,7 +171,7 @@ test('new requests keep each secret input isolated; the timeline link reopens it
   second.catch(() => undefined);
   await settle();
   expect(query<HTMLInputElement>('[data-testid=activity-question]:not([hidden]) [data-testid=secret-field]').value).toBe(SECRET);
-  expect(query('[data-testid=activity-question-index]').textContent).toBe('1 of 2');
+  expect(query('[data-testid=activity-question-index]').textContent).toBe('1/2');
   query<HTMLButtonElement>('[data-testid=activity-question-next]').click();
   await settle();
   expect(query('[data-testid=activity-question]:not([hidden]) [data-testid=secret-reason]').textContent).toBe('Deploy the preview.');

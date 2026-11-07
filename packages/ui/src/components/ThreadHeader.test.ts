@@ -70,3 +70,25 @@ test('a header unmounted with its rename open, as a machine switch does, still w
   await settle();
   expect(rename.mock.calls).toEqual([['t-trace', 'Typed before the switch']]);
 });
+
+test("a phone's header is back, the title and one menu: the browser and the contacts' bell are entries of it, under their buttons' ids", async () => {
+  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
+    media, matches: true, onchange: null, addListener() {}, removeListener() {}
+  }));
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  await store.open('t-trace');
+  const open = vi.fn();
+  mounted = mount(ThreadHeader, { target: document.body, props: { store, bell: { label: '1 contact requests waiting', open } } });
+  await settle();
+  expect(document.querySelector('[data-testid=thread-place]')?.closest('[data-testid=thread-menu-trigger]')).toBeNull();
+  expect(document.querySelector('[data-testid=phone-browser-toggle]')).toBeNull();
+  const pick = async (value: string) => {
+    document.querySelector<HTMLButtonElement>('[data-testid=thread-menu-trigger]')!.click(); await settle();
+    document.querySelector<HTMLButtonElement>(`[data-testid=thread-menu-trigger-menu] [data-value="${value}"]`)!.click(); await settle();
+  };
+  await pick('contact-request-open');
+  expect(open).toHaveBeenCalledOnce();
+  await pick('phone-browser-toggle');
+  expect([store.panelOpen, store.panel.active?.kind]).toEqual([true, 'agent-browser']);
+});

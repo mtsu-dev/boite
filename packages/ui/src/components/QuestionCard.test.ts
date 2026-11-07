@@ -41,6 +41,7 @@ test('an option turns Answer on, and what was picked goes out once', () => {
       multiple: false,
       answer: null,
       pending: true,
+      docked: true,
       submit: (optionIds: string[]) => sent.push(optionIds)
     }
   });
@@ -80,7 +81,7 @@ test('Skip sends no answer, prevents duplicate presses and allows retry after fa
   const skip = vi.fn(() => new Promise<boolean>(resolve => { settle = resolve; }));
   running = mount(QuestionCard, {
     target: document.body,
-    props: { text: 'Which shape?', options: OPTIONS, allowText: true, multiple: false, answer: null, pending: true, submit, skip }
+    props: { text: 'Which shape?', options: OPTIONS, allowText: true, multiple: false, answer: null, pending: true, docked: true, submit, skip }
   });
   flushSync();
   const button = query<HTMLButtonElement>('[data-testid=question-skip]');
@@ -104,40 +105,50 @@ test('Skip sends no answer, prevents duplicate presses and allows retry after fa
   settle(true);
 });
 
-test('what the composer holds is enough to answer, and the card points to it', () => {
-  const sent: string[][] = [];
+test('the docked card offers the composer, whose send arrow is then the only submit', () => {
   const onwrite = vi.fn();
-  const card = (replying: boolean, drafted: boolean) => {
+  const card = (replying: boolean) => {
     if (running) unmount(running, { outro: false });
     running = mount(QuestionCard, {
       target: document.body,
       props: {
         text: 'What should the branch be called?', options: [], allowText: true, multiple: false,
-        answer: null, pending: true, replying, drafted, onwrite,
-        submit: (optionIds: string[]) => sent.push(optionIds)
+        answer: null, pending: true, docked: true, replying, drafted: false, onwrite, submit: () => undefined
       }
     });
     flushSync();
   };
 
   // Another question or an ordinary message has the composer: the card offers to take it.
-  card(false, false);
+  card(false);
   expect(submit().disabled).toBe(true);
-  expect(document.querySelector('[data-testid=question-reply-hint]')).toBeNull();
   query<HTMLButtonElement>('[data-testid=question-write]').click();
   expect(onwrite).toHaveBeenCalledTimes(1);
 
-  card(true, false);
+  // Once it has the composer, the question is written once and nothing repeats the send.
+  card(true);
   expect(document.querySelector('[data-testid=question-write]')).toBeNull();
-  expect(query('[data-testid=question-reply-hint]').textContent).toContain('message box below');
-  expect(submit().disabled).toBe(true);
-
-  card(true, true);
-  expect(submit().disabled).toBe(false);
-  submit().click();
-  flushSync();
-  expect(sent).toEqual([[]]);
+  expect(document.querySelector('[data-testid=question-submit]')).toBeNull();
+  expect(document.querySelector('[data-testid=question-reply-hint]')).toBeNull();
+  expect(document.querySelectorAll('[data-testid=question-text]')).toHaveLength(1);
 });
+
+test('in the timeline a waiting question is one line that points down to the dock', () => {
+  const onwrite = vi.fn();
+  running = mount(QuestionCard, {
+    target: document.body,
+    props: { text: 'Which shape?', options: OPTIONS, allowText: true, multiple: false, answer: null, pending: true, onwrite, submit: () => undefined }
+  });
+  flushSync();
+  expect(options()).toHaveLength(0);
+  expect(document.querySelector('[data-testid=question-submit]')).toBeNull();
+  const row = query<HTMLButtonElement>('[data-testid=question-waiting]');
+  expect(row.textContent).toContain('Which shape?');
+  expect(row.textContent).toContain('Answer below');
+  row.click();
+  expect(onwrite).toHaveBeenCalledTimes(1);
+});
+
 test('a question without free text never offers the composer', () => {
   running = mount(QuestionCard, {
     target: document.body,
@@ -159,22 +170,25 @@ test('several options are kept at once when the question takes several', () => {
       multiple: true,
       answer: null,
       pending: true,
+      docked: true,
       submit: (optionIds: string[]) => sent.push(optionIds)
     }
   });
   flushSync();
 
   expect(options().every(option => option.getAttribute('role') === 'checkbox')).toBe(true);
-  expect(document.querySelector('.box svg')).toBeNull();
+  // Docked, each row shows its key until it is picked, then a check.
+  expect(document.querySelector('kbd svg')).toBeNull();
+  expect(options().map(option => option.querySelector('kbd')?.textContent)).toEqual(['1', '2']);
   options()[0]?.click();
   options()[1]?.click();
   flushSync();
-  expect(document.querySelectorAll('[aria-checked=true] .box svg')).toHaveLength(2);
+  expect(document.querySelectorAll('[aria-checked=true] kbd svg')).toHaveLength(2);
   options()[0]?.click();
   flushSync();
   expect(options()[0]?.getAttribute('aria-checked')).toBe('false');
-  expect(options()[0]?.querySelector('.box svg')).toBeNull();
-  expect(options()[1]?.querySelector('.box svg')).not.toBeNull();
+  expect(options()[0]?.querySelector('kbd svg')).toBeNull();
+  expect(options()[1]?.querySelector('kbd svg')).not.toBeNull();
   options()[0]?.click();
   flushSync();
   submit().click();
@@ -260,6 +274,7 @@ test('a send that failed gives the card back, and a second press sends again', a
       multiple: false,
       answer: null,
       pending: true,
+      docked: true,
       submit: (optionIds: string[]) => {
         sent.push(optionIds);
         return new Promise<boolean>((resolve) => { answer = resolve; });

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import type { FirewallStatus, NetworkCategory } from '@boite/contracts';
+  import { TriangleAlert } from '@lucide/svelte';
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
 
@@ -76,16 +77,16 @@
 
 {#if listening && store.owner}
   {#if problem}
+    <!-- One row: what blocks the phone, and the one button that fixes it. The outcome of a refused try is the only second line. -->
     <div class="firewall" data-testid="firewall-notice" data-state={status?.state}>
-      <p class="hint warn">{problem}</p>
-      {#if outcome}<p class="hint" data-testid="firewall-outcome">{outcome}</p>{/if}
+      <TriangleAlert class="mark" size={15} strokeWidth={1.75} aria-hidden="true" />
+      <p class="problem">{problem}</p>
       {#if status?.state !== 'error' && status?.state !== 'public'}
-        <div class="actions">
-          <button type="button" class="primary" data-testid="firewall-allow" disabled={busy || store.connection !== 'ready'} onclick={() => void allow()}>
-            <span class="ui-label">{busy ? text.allowing : text.allow}</span>
-          </button>
-        </div>
+        <button type="button" class="small" data-testid="firewall-allow" disabled={busy || store.connection !== 'ready'} onclick={() => void allow()}>
+          <span class="ui-label">{busy ? text.allowing : text.allow}</span>
+        </button>
       {/if}
+      {#if outcome}<p class="hint outcome" data-testid="firewall-outcome">{outcome}</p>{/if}
     </div>
   {:else if done}
     <p class="hint allowed" data-testid="firewall-allowed">{text.allowed}</p>
@@ -93,9 +94,24 @@
 {/if}
 
 <style>
-  .firewall { display: grid; gap: 8px; margin-top: 14px; }
+  .firewall {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    margin-top: 14px;
+    padding: 6px 6px 6px 12px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface-2);
+    font-size: var(--text-sm);
+    color: var(--color-muted-foreground);
+  }
+  .firewall :global(.mark) { flex: none; color: var(--color-live); }
   .firewall p { margin: 0; }
-  .warn { color: var(--color-live); }
-  .actions { margin: 0; }
+  .problem { flex: 1 1 16em; min-width: 0; line-height: 1.4; }
+  .firewall button { flex: none; margin-left: auto; }
+  .outcome { flex-basis: 100%; padding-left: 25px; }
   .allowed { margin: 14px 0 0; }
+  @media (max-width: 720px) { .firewall button { min-height: var(--touch-target); } }
 </style>

@@ -469,14 +469,14 @@
    * anywhere below restyle the body, right before the list read its layout.
    */
   /**
-   * The desktop's left edge: the app rail on every page but Settings, which
-   * has its own nav, then the list column (threads or bots). Both reach the
+   * The desktop's left edge: the app rail on every page, then the list column
+   * (threads, bots, or the Settings pages, which never fold). Both reach the
    * window's top, so the main column's bar starts right of them.
    */
-  let railShown = $derived(booted && !wideRecovery && store.page !== 'settings');
-  let listShown = $derived(booted && !wideRecovery && (store.page !== 'settings' || (store.connection === 'closed' && !store.core)));
-  let barLeft = $derived(!listShown ? '0px' : store.sidebarCollapsed ? 'var(--frame-gap)' : `calc(${store.sidebarWidth}px + var(--frame-gap))`);
-  let sidebarFolded = $derived(store.sidebarCollapsed && store.booted && ((store.connection === 'closed' && !store.core) || store.page !== 'settings'));
+  let railShown = $derived(booted && !wideRecovery);
+  let listFolded = $derived(store.sidebarCollapsed && store.page !== 'settings');
+  let barLeft = $derived(!railShown ? '0px' : listFolded ? 'var(--frame-gap)' : `calc(${store.sidebarWidth}px + var(--frame-gap))`);
+  let sidebarFolded = $derived(listFolded && store.booted);
   let tour = $derived(store.booted && store.connection === 'ready' && (tourRequested() || !tourSeen()));
 
   /**
@@ -520,32 +520,27 @@
       </p>
     {/if}
   {/if}
-  <TitleBar {store} edge={!railShown && !listShown} />
+  <TitleBar {store} edge={!railShown} />
 
   <div class="body" class:mobile-covered={!inShell && store.page === 'chat' && (mobileScreen !== 'chat' || mobileRecovery)} class:panel-maximized={(store.page === 'chat' || store.page === 'agents') && rightPanel.maximized && !rightPanel.floating && store.panelOpen} class:sidebar-folded={sidebarFolded}>
     {#if !booted}
       <p class="empty boot" class:long={compacting}>{compacting ? strings.app.compacting : strings.app.loading}</p>
     {:else if wideRecovery}
       <div class="wide-recovery" data-testid="wide-recovery"><MobileConnect {store} onpaired={() => {}} /></div>
+    {:else if store.page === 'settings'}
+      <!-- Its pages' list takes the thread list's column, connected or not. -->
+      {#if SettingsShell}<SettingsShell {store} onopenthread={() => { mobileScreen = 'chat'; }} />{:else}<p class="empty">{settingsLoadError || strings.app.loading}</p>{/if}
     {:else if store.connection === 'closed' && !store.core}
       <Sidebar {store} />
-      <!-- The notice gives way to Settings: the two cards side by side left
-           Settings too narrow for its nav and its page. -->
-      {#if store.page === 'settings'}
-        {#if SettingsShell}<SettingsShell {store} onopenthread={() => { mobileScreen = 'chat'; }} />{:else}<p class="empty">{settingsLoadError || strings.app.loading}</p>{/if}
-      {:else}
-        <div class="notice framed">
-          <h1>{strings.app.noEndpointTitle}</h1>
-          <p class="muted">{strings.app.noEndpointBody}</p>
-          <button type="button" class="primary" data-preload-view="settings" onclick={() => store.showSettings()}>
-            {strings.app.openSettings}
-          </button>
-        </div>
-      {/if}
+      <div class="notice framed">
+        <h1>{strings.app.noEndpointTitle}</h1>
+        <p class="muted">{strings.app.noEndpointBody}</p>
+        <button type="button" class="primary" data-preload-view="settings" onclick={() => store.showSettings()}>
+          {strings.app.openSettings}
+        </button>
+      </div>
     {:else if store.page === 'agents' && experimentOn('resident-agents')}
       <AgentsLayout {store} panel={panelSlot} showPanel={panelSlot.shown && panelThread !== null} RightPanel={deferred.RightPanel} />
-    {:else if store.page === 'settings'}
-      {#if SettingsShell}<SettingsShell {store} onopenthread={() => { mobileScreen = 'chat'; }} />{:else}<p class="empty">{settingsLoadError || strings.app.loading}</p>{/if}
     {:else}
       <Sidebar {store} />
       {#if scrim.shown}
