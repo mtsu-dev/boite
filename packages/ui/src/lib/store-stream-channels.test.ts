@@ -52,6 +52,27 @@ test('a phone leaves a running command\'s output on the core until a card watche
   calls.mockRestore();
 });
 
+test('a phone window widened past the phone layout gets the output of a card it opens', async ({ ready }) => {
+  screen(true);
+  const { store, client } = await ready({ delayMs: 0 });
+  const calls = vi.spyOn(client, 'call');
+  await store.open('t-trace');
+  const at = client.redrawCommand('t-trace', 'compiling 1/40\n');
+  await vi.waitFor(() => expect(card(store, at).outputDeferred).toBe(true));
+
+  // The window grows past 720px: the core still holds the phone's narrow subscription.
+  screen(false);
+  const release = store.watchLiveOutput('t-trace');
+  await vi.waitFor(() => expect(card(store, at).output).toBe('compiling 1/40\n'));
+  expect(asked(calls.mock.calls).at(-1)).toBeUndefined();
+  // Once wide, closing the card keeps every channel: a desktop window does not narrow.
+  release();
+  client.redrawCommand('t-trace', 'compiling 2/40\n');
+  await vi.waitFor(() => expect(card(store, at).output).toBe('compiling 2/40\n'));
+  expect(asked(calls.mock.calls)).toEqual([['text', 'tools'], undefined]);
+  calls.mockRestore();
+});
+
 test('a desktop window asks for every channel and gets every redraw', async ({ ready }) => {
   screen(false);
   const { store, client } = await ready({ delayMs: 0 });
