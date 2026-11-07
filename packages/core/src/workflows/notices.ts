@@ -6,7 +6,7 @@ export const NOT_STARTED = 'Not started: another step of the run failed';
 const SUMMARY_CHARS = 10000;
 /** The whole completion notice, header and envelope included, in UTF-8 bytes. */
 export const SUMMARY_BYTES = 20000;
-/** The opening of a value every execution keeps however many there are. */
+/** The opening of a value every execution keeps, shrunk only when every text's floor together passes the budget. */
 const ESSENTIAL_BYTES = 120;
 /** The part of an error kept before failures and final answers share what is left. */
 const ERROR_BYTES = 240;

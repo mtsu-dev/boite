@@ -211,9 +211,10 @@ still hold the run, and nothing changes.
 The summary gives each step its status, error, worktree and value. A run whose
 summary fits in 20,000 UTF-8 bytes, header and envelope included, gets each value
 cut to an equal share of 10,000 characters. A larger one is held to those
-20,000 bytes: every execution keeps its status and the first 120 bytes of its
-value, errors and the answers of the last steps (those no other step reads) then
-grow evenly, then the other values. Each shortened text ends in `[cut]`, and the
+20,000 bytes: every execution keeps its status and up to 120 bytes of its
+value (less only when the floors of every text together pass the budget, all of
+them shrinking alike), errors and the answers of the last steps (those no other
+step reads) then grow evenly, then the other values. Each shortened text ends in `[cut]`, and the
 summary's first line counts them and points to `boite workflow show <run-id>`
 and the steps' conversations for the whole text.
 
