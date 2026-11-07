@@ -447,6 +447,43 @@ returned 0 (dropped) for a 31 MB frame with 29.8 MB already buffered on
 call's 120 s timeout. The UI asks for progress on a first open's `threads.get`
 when the core advertises `chunkedAnswers`.
 
+### Stream channels
+
+A socket picks, per thread, what it receives of the streaming messages:
+`text` (text and thinking parts and their deltas), `tools` (the tool cards,
+their streamed input and status) and `liveOutput` (what a running call printed
+so far). `threads.subscribe` and an opening `threads.get` carry `channels`;
+none named means all three, a later call replaces them, and an unknown name is
+refused with `InvalidParams` on `channels[<i>]`. A core that narrows advertises
+`features.streamChannels`; an older core ignores the field. Every other event
+of the thread (a message starting or ending, permissions, questions, a
+finished call) is sent whatever the channels.
+
+Without `liveOutput`, a running call reaches the socket once with its output
+emptied and `outputDeferred` set, and a redraw that changed only the output is
+not sent again (the core remembers the last such frame of up to 1,024 running
+calls per socket). The finished call is sent as before and stays readable with
+`messages.toolPart`. A channel turned back on is caught up before the
+subscribe answer: the core sends the parts its streaming messages hold on
+it, the running output included for `liveOutput`. Parts of messages that
+already ended are not replayed; the next page carries them.
+
+The desktop window names no channels, so it receives what it did before. A
+phone window (`onPhone`, 720 px or narrower outside the shell) subscribes with
+`text` and `tools`, and asks for `liveOutput` on a thread while at least one
+card of a running call is open there (`StreamChannels` in
+`packages/ui/src/lib/store/stream-channels.ts`); a reconnect asks the channels
+it last asked. A `threads.get` page still carries a running call's output,
+bounded by the driver's 4,000 characters.
+
+For a 20 s command whose card is redrawn every second with its last 4,000
+characters, then a short answer, a remote phone received 51,108 bytes after
+deflate with every channel and 28,731 without `liveOutput` (44 % less), its
+`message.part` frames carrying 85,677 bytes of JSON against 2,159
+(`bun run bench/live-output-channels.ts`,
+[results](../bench/results/2026-11-07-live-output-channels.md)). The rest is
+the turn's other events, which no channel holds back.
+
 ## What the UI asks for
 
 - Returning to a recent thread selects its cached history synchronously. The
@@ -1681,6 +1718,7 @@ bun bench/ui-at-rest.ts --runs 2                                   # renderer an
 bun bench/rpc-actions.ts --journal <journal.db> --runs 6   # latency, core CPU, bytes and RSS per RPC (Linux)
 bun bench/claude-turn-heap.ts                  # heap a scripted Claude turn leaves; STEER=1 IMAGE_MIB=0 for a follow-up cut
 bun bench/codex-live-output.ts                 # redraws and characters of one running Codex command's live output
+bun run bench/live-output-channels.ts --seconds 20   # bytes a remote phone receives for a long command, with and without liveOutput
 bun bench/provider-list.ts                     # time per providers list() and summary(); ONLY=1 under strace -c
 bun run bench/continuation.ts 100 1024 25 1100            # history a fresh session carries: messages, tool KiB, files, file KiB
 bun run bench/queue-admission.ts 1024 16                  # one scheduler pass over held child turns: turns, teams

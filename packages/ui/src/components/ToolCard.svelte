@@ -38,6 +38,7 @@
     finishedAt = null,
     background = false,
     nested = false,
+    folded = false,
     permission = null,
     store,
     threadId
@@ -63,6 +64,8 @@
     background?: boolean;
     /** Inside an expanded group, show the individual command rather than another summary. */
     nested?: boolean;
+    /** Its group is folded: the card stays built but nobody sees it. */
+    folded?: boolean;
     /** What the user answered when the agent asked to make this call, null when it did not ask. */
     permission?: 'allow' | 'deny' | null;
     /** Where a thread link in a document starts from. */
@@ -143,7 +146,13 @@
   let toggled = $state<boolean | null>(null);
   let shown = $derived(toggled ?? (chatPrefs.expandDiffs && diffs.length > 0 && !failed));
   let chip = $derived(shown ? '' : documentsDeferred ? chipFor(documents) : others.length > 0 ? chipFor(others) : '');
-  let deferred = $derived(outputDeferred || inputDeferred || documentsDeferred);
+  /**
+   * A running call whose output this phone left on the core: an open card asks
+   * the core for it (`watchLiveOutput`), which sends the output at once and
+   * every redraw after, so nothing is fetched for it.
+   */
+  let watched = $derived(status === 'running' && !!store && !!threadId);
+  let deferred = $derived((outputDeferred && !watched) || inputDeferred || documentsDeferred);
 
   let inputJson = $derived(streaming ? '' : json(input));
   /**
@@ -158,6 +167,10 @@
   let attempted = false;
   let loading = $state(false);
   let loadError = $state<string | null>(null);
+  $effect(() => {
+    if (!shown || folded || !watched || !store || !threadId) return;
+    return store.watchLiveOutput(threadId);
+  });
   $effect(() => {
     if (!deferred) attempted = false;
     if (shown) built = true;
