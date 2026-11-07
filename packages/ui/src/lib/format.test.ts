@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { bytes, clockTime, dayClock, effortName, elapsed, formatTokens, levelName, longDay, millis, quotaResetTime, quotaWindowName, relativeTime } from './format';
+import { bytes, clockTime, dayClock, effortName, elapsed, formatTokens, levelName, longDay, millis, quotaResetTime, quotaWindowName, relativeTime, shortPath } from './format';
 import { setLocaleSetting } from './i18n.svelte';
 
 test('elapsed reads like a stopwatch', () => {
@@ -94,4 +94,22 @@ test('quota reset dates use local calendar boundaries, including across daylight
   expect(quotaResetTime(thisWeek, now)).toMatch(/^Friday /);
   expect(quotaResetTime(nextWeek, now)).toBe(`Oct 31 ${dayClock(nextWeek)}`);
   expect(quotaResetTime(past, now)).toBe(`Oct 17 ${dayClock(past)}`);
+});
+
+test('a project folder keeps its root and last two folders, the home folded to ~, on Windows and POSIX', () => {
+  // Windows: the home, then a drive, then a network share stay; the middle goes.
+  expect(shortPath('C:\\Users\\timothe\\Documents\\GitHub\\boite')).toBe('~\\…\\GitHub\\boite');
+  expect(shortPath('D:\\Projets\\clients\\2026\\site-asso')).toBe('D:\\…\\2026\\site-asso');
+  expect(shortPath('\\\\nas\\work\\clients\\2026\\site-asso')).toBe('\\\\nas\\work\\…\\2026\\site-asso');
+  // POSIX: Linux and macOS homes, and a folder from `/`.
+  expect(shortPath('/home/chris/Dev/Unity/game')).toBe('~/…/Unity/game');
+  expect(shortPath('/Users/chris/Code/apps/site/')).toBe('~/…/apps/site');
+  expect(shortPath('/srv/projects/2026/site')).toBe('/…/2026/site');
+  // A root and two folders or fewer is already short: it stays as it is, the home still folded.
+  expect(shortPath('C:\\Users\\timothe\\Documents\\notes')).toBe('~\\Documents\\notes');
+  expect(shortPath('D:\\Perso\\compta-2026')).toBe('D:\\Perso\\compta-2026');
+  expect(shortPath('C:\\src\\boite')).toBe('C:\\src\\boite');
+  expect(shortPath('/srv/app')).toBe('/srv/app');
+  expect(shortPath('/home/chris')).toBe('~');
+  expect(shortPath('C:\\')).toBe('C:\\');
 });

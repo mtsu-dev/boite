@@ -509,7 +509,10 @@ Manual archive and deletion keep their explicit clearing behavior.
 
 `threads.move { threadId, projectId, stopBackground? }` moves a root and its
 children to another project on the same machine. Desktop drag and the desktop
-or phone menu call the same RPC. Sub-threads and bot sessions cannot
+or phone menu call the same RPC. The menus' "Move to project" opens the draft's
+project search (`ProjectSearch.svelte`) over the thread's machine, with its own
+project checked; a folder there keeps its root and last two folders
+(`shortPath`). Sub-threads and bot sessions cannot
 move independently. Unknown, unchanged, archived or missing targets are refused.
 A target project that was archived becomes visible again.
 
