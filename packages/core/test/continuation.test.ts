@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, expect, test } from 'bun:test';
 import { ATTACHMENTS_PER_TURN, ATTACHMENTS_TOTAL_MAX_BYTES, decodedBytes, type Attachment, type ImageAttachment, type MessagePart, type ProviderDescriptor } from '@boite/contracts';
 import { FileReferences, fileReference } from '../src/attachments.ts';
-import { continuationInput } from '../src/continuation.ts';
+import { continuationInput, switchBackInput } from '../src/continuation.ts';
 import { Journal } from '../src/journal.ts';
 
 let dir: string;
@@ -128,4 +128,8 @@ test('the bounded walks build the prompt and images the full walk built, byte fo
   expect(long.attachments.length).toBeGreaterThan(5);
   expect(() => continuationInput(journal, 'thr_long', 'turn-3', { prompt: 'x', attachments: [] }, { ...provider, capabilities: { ...provider.capabilities, images: false } })).not.toThrow();
   expect(() => continuationInput(journal, 'thr_long', 'turn-80', { prompt: 'x', attachments: [] }, { ...provider, capabilities: { ...provider.capabilities, images: false } })).toThrow('historical images');
+  // A switch back carries the images of what its session missed, and refuses them like a fresh start where the agent cannot read them.
+  const missed = { turnId: 'turn-155', afterPart: null };
+  expect(switchBackInput(journal, 'thr_long', missed, 'current', { prompt: 'x', attachments: [] }, provider).attachments.map(part => part.name)).toContain('shot-314.png');
+  expect(() => switchBackInput(journal, 'thr_long', missed, 'current', { prompt: 'x', attachments: [] }, { ...provider, capabilities: { ...provider.capabilities, images: false } })).toThrow('historical images');
 });

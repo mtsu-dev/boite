@@ -59,6 +59,7 @@ import { ThreadFocus } from './threads/focus.ts';
 import { ThreadListLog } from './threads/list-changes.ts';
 import { ProgressState } from './threads/progress.ts';
 import { eraseIncognito } from './threads/incognito.ts';
+import { AccountSessions } from './threads/account-sessions.ts';
 import { removeTranscripts, threadSessions, type NativeSession } from './threads/transcript-purge.ts';
 import { ThreadCreation } from './threads/creation.ts';
 import { accountRemoved, followAgent } from './threads/account-fallback.ts';
@@ -114,6 +115,8 @@ export class ThreadStore {
   readonly autoCompact: AutoCompaction;
   /** The experimental `backgroundCompaction` setting: copies compacted ahead of the limit. */
   readonly backgroundCompact: BackgroundCompaction;
+  /** The native session each account of a thread left, for a switch back (`threads/account-sessions.ts`). */
+  readonly accountSessions: AccountSessions;
   /** The `cacheKeepalive` setting: pings that keep a waiting thread's prompt cache warm. */
   readonly cacheKeepalive: CacheKeepalive;
   /** Every resume the core plans by itself, whatever stopped the turn (`threads/resume.ts`). */
@@ -150,6 +153,7 @@ export class ThreadStore {
     this.spawns = new ThreadSpawns(core, this);
     this.autoCompact = new AutoCompaction(core, this);
     this.backgroundCompact = new BackgroundCompaction(core, this);
+    this.accountSessions = new AccountSessions(core);
     this.cacheKeepalive = new CacheKeepalive(core, this);
     this.resumes = new ResumePlanner(core, this);
     this.limitResumes = new LimitResumes(core, this.resumes);
@@ -364,17 +368,30 @@ export class ThreadStore {
       next.selectionVersion = (thread.selectionVersion ?? 0) + 1;
     }
     if (switched) {
-      this.agentState.cancelBackground(thread.id);
-      if (!threadActive(thread.status)) {
-        this.releaseAgent(thread.id);
-        this.agentState.noteBackground(thread.id, []);
-      }
-      this.agentState.commands.delete(thread.id);
-      this.#core.bus.emit('thread.commands', { threadId: thread.id, commands: [] });
+      // The session left is kept; the one this account left before comes back when it can (`threads/account-sessions.ts`).
+      this.#afterSwitch(thread);
+      const saved = this.#core.bus.afterCommit(() => this.#core.journal.db.transaction(() => {
+        const restored = this.accountSessions.switching(thread, { providerId: provider.id, accountId: account.id }, next.sessionGeneration ?? 0);
+        if (restored !== null) Object.assign(next, { sessionId: restored.sessionId, sessionResumeAt: restored.resumeAt, context: restored.context });
+        return this.#save(next, 'thread.updated');
+      })());
+      this.runner.selectionChanged(thread, next);
+      return saved;
     }
     const saved = this.#save(next, 'thread.updated');
     this.runner.selectionChanged(thread, next);
     return saved;
+  }
+
+  /** What the account a thread left still runs for it stops; its commands go. */
+  #afterSwitch(thread: ThreadSummary): void {
+    this.agentState.cancelBackground(thread.id);
+    if (!threadActive(thread.status)) {
+      this.releaseAgent(thread.id);
+      this.agentState.noteBackground(thread.id, []);
+    }
+    this.agentState.commands.delete(thread.id);
+    this.#core.bus.emit('thread.commands', { threadId: thread.id, commands: [] });
   }
 
   #checkSelection(thread: ThreadSummary, expected?: number): void {
