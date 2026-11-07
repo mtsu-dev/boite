@@ -121,6 +121,10 @@ test('actual CLI stdio negotiates, lists schemas, reads scoped tools and rejects
     const listed = await transport.rpc('tools/list', {});
     expect(listed.result.tools.length).toBe(24);
     expect(listed.result.tools.find((tool: any) => tool.name === 'boite_where').inputSchema).toMatchObject({ type: 'object', additionalProperties: false });
+    // The tool list reaches the model in every session: no per-tool output schema or dialect line,
+    // and the whole list under a budget (12927 bytes on 2026-11-07, `bun bench/mcp-catalog.ts`).
+    expect(listed.result.tools.filter((tool: any) => 'outputSchema' in tool || '$schema' in tool.inputSchema).map((tool: any) => tool.name)).toEqual([]);
+    expect(Buffer.byteLength(JSON.stringify(listed.result))).toBeLessThan(14_000);
     const where = await transport.rpc('tools/call', { name: 'boite_where', arguments: {} });
     expect(where.result.structuredContent.result.threadId).toBe(threadId);
     const capabilities = await transport.rpc('tools/call', { name: 'boite_capabilities', arguments: {} });

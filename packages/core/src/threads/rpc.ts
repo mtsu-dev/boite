@@ -107,7 +107,7 @@ export function registerThreadMethods(core: Core, probe: ProviderProbe): void {
     linked.requireLink(p.threadId, url); return result;
   });
   core.router.register('threads.pullRequestFiles', async p => {
-    const url = linked.requireLink(p.threadId, p.url), result = await pullRequests.reviews.files(p.threadId, url, p.page);
+    const url = linked.requireLink(p.threadId, p.url), result = await pullRequests.reviews.files(p.threadId, url, p.page, p.path);
     linked.requireLink(p.threadId, url); return result;
   });
   core.router.register('threads.pullRequests', p => linked.list(p.threadId, p.refresh === true));

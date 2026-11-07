@@ -82,10 +82,12 @@ export function pullRequestMethods(ctx: FakeContext): Methods {
       return { url: pr.url, title: pr.title, body: 'Preview review for the in-memory client.', state: pr.state, head: pr.head, base: pr.base, checkedAt: Date.now(), truncated: false,
         checks: [{ name: 'UI tests', state: 'SUCCESS', url: pr.url }], comments: [{ author: 'reviewer', body: 'Check the layout on a phone.', at: new Date().toISOString(), url: pr.url }], reviews: [] };
     },
-    'threads.pullRequestFiles': async ({ threadId, url, page }) => {
+    'threads.pullRequestFiles': async ({ threadId, url, page, path }) => {
       linked(threadId, url);
       if (!Number.isSafeInteger(page) || page < 1 || page > 100) throw refusal('pull request files page must be between 1 and 100');
-      return { page, hasMore: false, truncated: false, files: page === 1 ? [{ path: 'src/preview.ts', status: 'modified', additions: 1, deletions: 1, patch: '@@ -1 +1 @@\n-const width = 720;\n+const width = 390;' }] : [] };
+      const files = page === 1 ? [{ path: 'src/preview.ts', status: 'modified', additions: 1, deletions: 1, patch: '@@ -1 +1 @@\n-const width = 720;\n+const width = 390;' }] : [];
+      if (path !== undefined && !files.some(f => f.path === path)) throw refusal(`page ${page} has no file ${path}`);
+      return { page, hasMore: false, truncated: false, files: path === undefined ? files : files.filter(f => f.path === path) };
     },
     'threads.pullRequests': async ({ threadId }) => structuredClone(read(threadId)),
     'threads.linkPullRequest': async ({ threadId, url }) => {
