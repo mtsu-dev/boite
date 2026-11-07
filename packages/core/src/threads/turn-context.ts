@@ -35,6 +35,7 @@ import type { ThreadStore } from '../threads.ts';
 import { BACKGROUND_COMPACT, compactionTail } from './background-compact.ts';
 import { nativeCommandPrompt, systemOperation } from './operations.ts';
 import { stoppedInput } from './stopped-input.ts';
+import { brainContextFor, forgetBrainContext } from './brain-context.ts';
 import { sessionUsage } from '../usage.ts';
 import { pluginGuideLines } from '../plugins/extensions.ts';
 
@@ -318,6 +319,9 @@ export class TurnContexts {
         publishPart(messageId, partIndex, part);
         // The agent compacted by itself: a copy made before is of a context that is gone.
         if (part.type === 'compaction' && part.background !== true) this.#threads.backgroundCompact.compactedInTurn(threadId);
+        // Any compaction, a background one in the agent's own session included (pi): the summary keeps no more
+        // than a trace of the brain's instructions, so the next turn sends them whole.
+        if (part.type === 'compaction') forgetBrainContext(this.#core, threadId);
         if (boundary) this.#core.bus.emit('turn.toolCompleted', { threadId, turnId: turn.id, boundary: `${messageId}:${partIndex}` });
         if (segment && answer && segment !== answer.segments.at(-1)) closeIdle(segment);
       },
@@ -420,7 +424,9 @@ export class TurnContexts {
       const style = inject && guideEnabled && !bare && this.#core.settings.get().shortAnswers !== false ? `${SHORT_ANSWERS}\n\n` : '';
       // A persistent agent's identity: whole on a fresh session or once it changed, else nothing (`agents/context.ts`).
       const agent = bare || nativeCommandPrompt(body) ? '' : this.#core.workforce.contextFor(thread, sessionId, turn.id);
-      const prefix = rules + (inject && !noGuides ? this.#core.brain.instructions(provider.id, listedSkills) : '') + guide + agent + style;
+      // The brain's instructions: whole on a fresh session or once they changed, else nothing (`brain-context.ts`).
+      const brain = inject && !noGuides ? brainContextFor(this.#core, thread, sessionId, turn.id, this.#core.brain.instructions(provider.id, listedSkills)) : '';
+      const prefix = rules + brain + guide + agent + style;
       return carried.memory + prefix + (prefix ? 'User request:\n' : '') + said + deferred + body + coordinationGuide + tail(inject && sessionId === null && guideEnabled) + this.#threads.cards.askInstructions({ ...thread, sessionId }, provider, turn, body);
     };
     return {

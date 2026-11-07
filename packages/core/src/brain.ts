@@ -282,7 +282,8 @@ export class BrainStore {
   }
 
   /**
-   * Included in normal turns across all drivers, including already warm sessions.
+   * Built for every normal turn across all drivers; a turn sends it only when
+   * its native session does not hold this text yet (`threads/brain-context.ts`).
    * `listed` holds the SKILL.md files, resolved through links, that the agent's
    * harness already lists to its model (`nativeSkillFiles`): the catalog leaves
    * them out so no skill reaches the model twice.
@@ -291,7 +292,7 @@ export class BrainStore {
     const { path, enabled } = this.config();
     if (!enabled || !path) return '';
     const { entries, texts } = this.current(path);
-    const blocks = [`Shared agent brain: ${path}. Instructions below apply to this turn. Project instructions still apply.`];
+    const blocks = [`Shared agent brain: ${path}. Instructions below apply to every turn of this session and come again only when they change. Project instructions still apply.`];
     for (const entry of entries.filter(entry => entry.kind === 'instructions' && (entry.path.endsWith('AGENTS.md') || (entry.path === 'CLAUDE.md' && providerId === 'claude') || (entry.path === 'GEMINI.md' && providerId === 'antigravity')))) {
       if (entry.error) throw refused(entry.error);
       blocks.push(`Instructions from ${entry.path}:\n${texts.get(entry.path) ?? read(path, join(path, entry.path))}`);
