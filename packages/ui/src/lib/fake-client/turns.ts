@@ -1,5 +1,5 @@
 /** The turn engine: start, stream and stop a turn, the way the echo driver answers. */
-import { effectiveCompaction, previewPrompt, RpcErrorCode, threadActive, type AgentLetter, type Attachment, type Message, type MessagePart, type PreviewReference, type Thread, type ThreadId, type Turn, type TurnInFlightData, type Usage } from '@boite/contracts';
+import { effectiveCompaction, previewPrompt, RpcErrorCode, threadActive, turnIsNews, type AgentLetter, type Attachment, type Message, type MessagePart, type PreviewReference, type Thread, type ThreadId, type Turn, type TurnInFlightData, type Usage } from '@boite/contracts';
 import { decodedBytes } from '../attachments';
 import { RpcFailure } from '../client';
 import { DIFF_NEW, DIFF_OLD, DIFF_PATH, DOC_TEXT, DOC_TITLE, IMAGE_BASE64, ASYNC_QUESTION_OPTIONS, ASYNC_QUESTION_TEXT, SETTING_MARKERS, SPAWN_MARKER, AGENT_SETTING_MARKER, AGENT_SETTING_REASON, AGENT_MODEL_MARKER, AGENT_MODEL_REASON } from './conversation';
@@ -383,7 +383,8 @@ function finishTurn(ctx: FakeContext, thread: Thread, turn: Turn, message: Messa
   ctx.inFlight.delete(thread.id);
   thread.status = 'idle';
   thread.progress = null;
-  thread.unread = !ctx.bus.subscribed.has(thread.id);
+  // As the core's settlement: a compaction or a stop leaves the thread as read as it was.
+  if (turnIsNews(turn)) thread.unread = !ctx.bus.subscribed.has(thread.id);
   // The context meter grows with every turn, the way a real session's does.
   thread.context = {
     tokens: prompt === '[compact]' && !record.cancelled ? compactAfter : (thread.context?.tokens ?? FAKE_CONTEXT_FLOOR) + FAKE_CONTEXT_PER_TURN + modelPrompt.length * 4,

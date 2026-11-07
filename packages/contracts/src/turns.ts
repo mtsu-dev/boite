@@ -164,6 +164,18 @@ export function threadActive(status: ThreadStatus): boolean {
 }
 
 /**
+ * Whether a settled turn left something to read: an answer or a failure. A
+ * stop is the user's own doing or the core's restart, compacting the context
+ * and a cache keepalive are housekeeping, and a persistent agent's quiet wake
+ * had nothing to say. Only news marks a thread unread.
+ */
+export function turnIsNews(turn: Pick<Turn, 'status' | 'execution' | 'quiet'>): boolean {
+  if (turn.status !== 'done' && turn.status !== 'error') return false;
+  if (turn.execution?.operation === 'compact' || turn.execution?.operation === 'keepalive') return false;
+  return turn.status === 'error' || turn.quiet !== true;
+}
+
+/**
  * Whether a finished turn is worth a notification, for the core's Web Push and
  * a client's own toast alike. A delegated agent's result goes to its parent,
  * whose next turn reports it; a parent's turn that ends while `activeChildren`
@@ -177,12 +189,8 @@ export function notifiesOnFinish(
   turn: Pick<Turn, 'status' | 'execution' | 'quiet'>,
   activeChildren: number,
 ): boolean {
-  if (turn.status !== 'done' && turn.status !== 'error') return false;
-  if (thread.parentThreadId) return false;
-  if (turn.execution?.operation === 'compact' || turn.execution?.operation === 'keepalive') return false;
-  if (turn.status === 'error') return true;
-  if (turn.quiet) return false;
-  return activeChildren === 0;
+  if (!turnIsNews(turn) || thread.parentThreadId) return false;
+  return turn.status === 'error' || activeChildren === 0;
 }
 
 export interface TurnsRpcMethods {
