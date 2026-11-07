@@ -125,6 +125,7 @@
       background={isBackground(part.toolId)}
       permission={asked.get(index)?.decision ?? null}
       {nested}
+      folded={nested && !open}
       {store}
       {threadId}
     />

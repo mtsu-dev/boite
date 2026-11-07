@@ -576,6 +576,8 @@ export class Store {
   open(...args: Parameters<Threads['open']>) { return this.#ctx.threads.open(...args); }
   preload(threadId: ThreadId) { return this.#ctx.threads.preloads.preload(threadId); }
   loadToolOutput(...args: Parameters<Threads['loadToolOutput']>) { return this.#ctx.threads.loadToolOutput(...args); }
+  /** A card shows a running call of `threadId`: a phone streams its live output until the release (`store/stream-channels.ts`). */
+  watchLiveOutput(threadId: ThreadId): () => void { return this.#ctx.streams.watch(threadId); }
   loadMessageAttachment(...args: Parameters<Threads['loadMessageAttachment']>) { return this.#ctx.threads.loadMessageAttachment(...args); }
   /** The light copy of a deferred picture the timeline draws (`store/display-images.ts`); the original stays with `loadMessageAttachment`. */
   loadDisplayImage(...args: Parameters<DisplayImages['load']>) { return this.#ctx.displayImages.load(...args); }

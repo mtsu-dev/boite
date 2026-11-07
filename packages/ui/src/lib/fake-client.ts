@@ -13,6 +13,7 @@ import { sweepMergedPrFixtures, type MergedPrFixture } from './fake-client/merge
 import {
   RPC_CHUNK_BYTES,
   RpcErrorCode,
+  StreamGate,
   accessRefusal,
   checkRpcParams,
   type CoreInfo,
@@ -20,6 +21,8 @@ import {
   type ExperimentId,
   type HookRun,
   type MemoryEvent,
+  type Message,
+  type MessageId,
   type PolicyState,
   type ProcessRecord,
   type Principal,
@@ -124,7 +127,7 @@ export class FakeClient implements ObservableClient {
     this.#ctx = ctx;
     this.#methods = this.#answer(ctx);
     this.#missing = new Set(options.missing ?? []);
-    ctx.core.features = { ...ctx.core.features, composerPersistence: !this.#missing.has('composer.list'), listChanges: !this.#missing.has('threads.listChanges') };
+    ctx.core.features = { ...ctx.core.features, composerPersistence: !this.#missing.has('composer.list'), listChanges: !this.#missing.has('threads.listChanges'), streamChannels: true };
     this.#agentSettings = agentSettingMethods(ctx);
     registerCore(ctx);
     seed(ctx);
@@ -326,8 +329,12 @@ export class FakeClient implements ObservableClient {
     bus.setState('connecting');
     await this.#ctx.tick();
     bus.setState('ready');
-    // `WsClient.#resubscribe` sends one `threads.subscribe` per id it kept.
-    for (const threadId of bus.clientSubscribed) bus.subscribed.add(threadId);
+    // `WsClient.#resubscribe` sends one `threads.subscribe` per id it kept, with the channels it last asked.
+    bus.streams = new StreamGate();
+    for (const threadId of bus.clientSubscribed) {
+      bus.subscribed.add(threadId);
+      bus.streams.set(threadId, bus.clientChannels.get(threadId));
+    }
     return this.#ctx.core;
   }
 
@@ -384,13 +391,20 @@ export class FakeClient implements ObservableClient {
     if (method === 'threads.create' && (params as RpcParams<'threads.create'>).subscribe) {
       bus.clientSubscribed.add((result as RpcResult<'threads.create'>).id);
     } else if (method === 'threads.subscribe') {
-      bus.clientSubscribed.add((params as RpcParams<'threads.subscribe'>).threadId);
+      const request = params as RpcParams<'threads.subscribe'>;
+      bus.clientSubscribed.add(request.threadId);
+      bus.clientChannels.set(request.threadId, request.channels);
     } else if (method === 'threads.get' && (result as RpcResult<'threads.get'>).opened) {
       const request = params as RpcParams<'threads.get'>;
       bus.clientSubscribed.add(request.threadId);
-      if (request.open?.previous && request.open.previous !== request.threadId) bus.clientSubscribed.delete(request.open.previous);
+      bus.clientChannels.set(request.threadId, request.channels);
+      if (request.open?.previous && request.open.previous !== request.threadId) {
+        bus.clientSubscribed.delete(request.open.previous);
+        bus.clientChannels.delete(request.open.previous);
+      }
     } else if (method === 'threads.unsubscribe') {
       bus.clientSubscribed.delete((params as RpcParams<'threads.unsubscribe'>).threadId);
+      bus.clientChannels.delete((params as RpcParams<'threads.unsubscribe'>).threadId);
     }
     return result;
   }
@@ -460,6 +474,30 @@ export class FakeClient implements ObservableClient {
   /** A traced process starting, or ending once `exitedAt` is set, as the core's `procs.ts` announces it to the thread's subscribers. */
   traceProcess(record: ProcessRecord): void {
     this.#ctx.emitToThread(record.threadId, record.exitedAt === null ? 'process.started' : 'process.exited', structuredClone(record));
+  }
+
+  /**
+   * A command still running in `threadId` redrawn with `output`, the way a
+   * driver repaints a long command's card: the first call opens a streaming
+   * answer holding the running call. Returns where the card is.
+   */
+  redrawCommand(threadId: ThreadId, output: string): { messageId: MessageId; partIndex: number } {
+    const ctx = this.#ctx;
+    const thread = ctx.thread(threadId);
+    let message: Message | undefined = thread.messages.at(-1);
+    if (message?.state !== 'streaming' || message.parts.at(-1)?.type !== 'tool') {
+      const turnId = thread.turns.at(-1)?.id ?? `turn-${++ctx.seq}`;
+      message = { id: `m-${++ctx.seq}`, threadId, turnId, role: 'assistant', state: 'streaming', createdAt: ctx.now(), parts: [
+        { type: 'tool', toolId: `tool-${ctx.seq}-command`, name: 'Bash', input: { command: 'bun run build' }, output: null, status: 'running', startedAt: ctx.now() },
+      ] };
+      thread.messages.push(message);
+      ctx.emitToThread(threadId, 'message.started', structuredClone(message));
+    }
+    const partIndex = message.parts.length - 1;
+    const part = message.parts[partIndex]!;
+    if (part.type === 'tool') part.output = output;
+    ctx.emitToThread(threadId, 'message.part', { threadId, messageId: message.id, partIndex, part: structuredClone(part) });
+    return { messageId: message.id, partIndex };
   }
 
   emitMemory(event: MemoryEvent): void {
