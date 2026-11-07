@@ -4,7 +4,7 @@
  * leaves the rest to bigger ones. Inside a file over its share the hunks share
  * that file's part the same way: small hunks stay whole, big ones keep their
  * first lines. Each cut patch ends with a note naming what it lost and the page
- * and path that return it whole. Lock files and generated files, known by
+ * and path that return it alone, up to REVIEW_FILE_LIMIT characters. Lock files and generated files, known by
  * their path, keep only a stat line. Notes and stat lines are paid for before
  * the split, so a page never exceeds the budget.
  */
@@ -26,7 +26,7 @@ export function generatedFile(path: string): boolean {
 }
 
 /** A path past 200 characters is not repeated: the file entry carries it, and the note stays short. */
-const where = (page: number, path: string) => `read it whole with threads.pullRequestFiles page ${page} path ${path.length > 200 ? 'of this file' : JSON.stringify(path)}`;
+const where = (page: number, path: string) => `read it alone, up to ${REVIEW_FILE_LIMIT} characters, with threads.pullRequestFiles page ${page} path ${path.length > 200 ? 'of this file' : JSON.stringify(path)}`;
 
 /**
  * Max-min fair split: the smallest asks are served whole and what they leave

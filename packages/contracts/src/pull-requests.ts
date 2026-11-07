@@ -16,7 +16,7 @@ export interface PullRequestsRpcMethods {
   /**
    * One page of up to 30 changed files. Their patches share a fixed budget, so
    * a big patch comes back cut with a note; `path` returns that file of the
-   * page alone with its whole patch.
+   * page alone with up to 100,000 characters of its patch.
    */
   'threads.pullRequestFiles': { params: { threadId: string; url: string; page: number; path?: string }; result: PullRequestFiles };
   'threads.pullRequests': { params: { threadId: string; refresh?: boolean }; result: LinkedPullRequest[] };

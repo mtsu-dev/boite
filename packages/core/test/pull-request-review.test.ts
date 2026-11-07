@@ -48,9 +48,9 @@ test('one huge patch no longer starves the small files of its page', async () =>
   expect(first!.patch).toContain(hunk(1, 3)); expect(first!.patch).toContain(hunk(2000, 4));
   expect(first!.patch).toContain(hunk(100, 1500).split('\n').slice(0, 20).join('\n'));
   expect(first!.patch).toMatch(/more lines of this hunk left out\]/);
-  expect(first!.patch!.split('\n').at(-1)).toBe(`[patch cut to fit the review budget: 1 of 3 hunks shortened, ${big.length} characters in all; read it whole with threads.pullRequestFiles page 3 path "src/big.ts"]`);
+  expect(first!.patch!.split('\n').at(-1)).toBe(`[patch cut to fit the review budget: 1 of 3 hunks shortened, ${big.length} characters in all; read it alone, up to 100000 characters, with threads.pullRequestFiles page 3 path "src/big.ts"]`);
   expect(first!.omitted).toBeGreaterThan(big.length / 2);
-  expect(lock!.patch).toBe(`[generated or lock file: +900 -850, patch of ${hunk(1, 900).length} characters left out; read it whole with threads.pullRequestFiles page 3 path "bun.lock"]`);
+  expect(lock!.patch).toBe(`[generated or lock file: +900 -850, patch of ${hunk(1, 900).length} characters left out; read it alone, up to 100000 characters, with threads.pullRequestFiles page 3 path "bun.lock"]`);
   expect(page.truncated).toBe(true);
   expect((await service.files('t', url, 3, 'src/big.ts')).files[0]!.patch).toBe(big);
   // Notes are paid for before the split: 30 cut files with the longest paths still fit.

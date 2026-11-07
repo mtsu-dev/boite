@@ -47,7 +47,7 @@ export class PullRequestReviews {
         truncated: comments.length > 150 || reviews.length >= 100 || checks.length >= 100 || inline.length >= 100 || list(item.comments).length >= 100 || text(item.body, 40001).length > 40000 || [...comments, ...reviews].some(c => text(row(c).body, 12001).length > 12000) };
     });
   }
-  /** A page of files whose patches share one budget, or with `path`, that file of the page with its whole patch. */
+  /** A page of files whose patches share one budget, or with `path`, that file of the page alone with up to REVIEW_FILE_LIMIT characters of its patch. */
   files(threadId: string, url: string, page: number, path?: string): Promise<PullRequestFiles> {
     const a = this.address(url);
     if (!Number.isSafeInteger(page) || page < 1 || page > 100) throw refused('pull request files page must be between 1 and 100');
@@ -67,7 +67,7 @@ function filesPage(values: unknown[], page: number, path: string | undefined): P
     const file = all.find(f => f.path === path);
     if (!file) throw refused(`page ${page} has no file ${path}`, { field: 'path', expected: all.map(f => f.path).join(', ') || 'a page with files' });
     const omitted = Math.max(0, (file.patch?.length ?? 0) - REVIEW_FILE_LIMIT);
-    return { page, hasMore, truncated: omitted > 0, files: [{ ...file, patch: file.patch?.slice(0, REVIEW_FILE_LIMIT) ?? null, ...(omitted ? { omitted } : {}) }] };
+    return { page, hasMore, truncated: omitted > 0 || (page === 100 && values.length === 30), files: [{ ...file, patch: file.patch?.slice(0, REVIEW_FILE_LIMIT) ?? null, ...(omitted ? { omitted } : {}) }] };
   }
   const patches = budgetPatches(all, page);
   return { page, hasMore, truncated: (page === 100 && values.length === 30) || patches.some(p => p.omitted > 0),

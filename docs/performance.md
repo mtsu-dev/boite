@@ -1631,9 +1631,9 @@ network. Measured on 2026-11-07, before against the previous
 
 | Pull request | Files | All pages before | All pages after | Largest page before | Largest page after |
 | --- | --- | --- | --- | --- | --- |
-| #614, one strings file per part | 185 | 628,053 B | 398,471 B | 271,909 B | 65,769 B |
-| #621, one contracts file per domain | 44 | 413,740 B | 126,739 B | 306,462 B | 63,872 B |
-| #524, with a 51,000-line results file | 62 | 250,241 B | 131,256 B | 174,421 B | 63,556 B |
+| #614, one strings file per part | 185 | 628,053 B | 398,304 B | 271,909 B | 65,752 B |
+| #621, one contracts file per domain | 44 | 413,740 B | 126,800 B | 306,462 B | 64,037 B |
+| #524, with a 51,000-line results file | 62 | 250,241 B | 131,179 B | 174,421 B | 63,469 B |
 
 ## Benches
 
