@@ -212,6 +212,13 @@
     overflow-y: visible;
   }
 
+  /* The whole panel is the diff: no card inside the card, the code to the edges and the bottom. */
+  .diff.grow {
+    border: none;
+    border-radius: 0;
+    flex: 1 0 auto;
+  }
+
   .row {
     display: flex;
     align-items: flex-start;

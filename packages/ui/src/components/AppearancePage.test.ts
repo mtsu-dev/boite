@@ -4,6 +4,7 @@ import AppearancePage from './AppearancePage.svelte';
 import { FONT_KEY, MONO_KEY } from '../lib/fonts';
 import type { Store } from '../lib/store.svelte';
 import { chatPrefs, readChatPrefs } from '../lib/chat-prefs.svelte';
+import { phoneWidth } from '../test/phone-width';
 
 let running: Record<string, unknown> | null = null;
 
@@ -55,4 +56,22 @@ test('the palette tiles stand in one row sized to their count, so no row ends wi
   // Four columns once left seven tiles as four and three.
   expect(tiles).toBeGreaterThan(4);
   expect(group.style.getPropertyValue('--count')).toBe(String(tiles));
+});
+
+test('a phone opens its palette list on the current palette once: the head turns into the list title', () => {
+  const restore = phoneWidth();
+  try {
+    running = mount(AppearancePage, { target: document.body, props: { store: { owner: true } as Store } });
+    flushSync();
+    const head = document.querySelector<HTMLButtonElement>('[data-testid=palette-current]')!;
+    const current = head.textContent!.trim();
+    expect(document.querySelector('.presets')).toBeNull();
+    head.click();
+    flushSync();
+    const colors = document.querySelector('[data-testid=theme-colors]')!.textContent!;
+    // The palette in use, by name, once: in the list, checked, not again in the head row.
+    expect(colors.split(current).length - 1).toBe(1);
+    expect(document.querySelector('[data-testid=palette-current] .preview')).toBeNull();
+    expect(document.querySelector('.presets [aria-pressed=true]')?.textContent).toContain(current);
+  } finally { restore(); }
 });

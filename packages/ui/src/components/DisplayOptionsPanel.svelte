@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick, type Component } from 'svelte';
-  import { Check, ChevronDown, Clock, Folder, FolderPlus, Kanban } from '@lucide/svelte';
+  import { Check, ChevronDown, Folder, FolderPlus } from '@lucide/svelte';
   import type { Closing } from '../lib/closing.svelte';
   import { floating } from '../lib/floating';
   import { listedName, workspace } from '../lib/workspace.svelte';
@@ -120,15 +120,7 @@
   use:floating={{ anchor, placement: 'bottom', align: 'end', cap: 640, dismiss: () => onclose() }}
   onanimationend={popover.end}
 >
-  <!-- The view, a two-state switch: both sides in sight, the one on filled. -->
-  <div role="radiogroup" class="views" aria-label={strings.sidebar.displayView} data-testid={`${prefix}view-switch`} data-view={projects ? 'projects' : 'recent'}>
-    {#each [['projects', strings.sidebar.projectsView, Kanban], ['recent', strings.sidebar.recentView, Clock]] as const as [view, label, Glyph] (view)}
-      {@const checked = (view === 'projects') === projects}
-      <button type="button" role="radio" class="side" class:on={checked} aria-checked={checked} tabindex={checked ? 0 : -1} data-value="view:{view}" onclick={() => workspace.setView(view)}>
-        <Glyph size={14} aria-hidden="true" /><span class="ui-label">{label}</span>
-      </button>
-    {/each}
-  </div>
+  <!-- No view switch here: both views are named in the list's own head (ViewSwitch.svelte). -->
   {#if !projects && !compact && entries.length}
     <!-- The project Recent lists: its own menu, so a long list of projects scrolls there and not here. -->
     <div class="filter">
@@ -242,15 +234,8 @@
   .check { color: var(--color-foreground); }
   /* The app's one switch (app.css), a size down for a menu row. */
   .switch { --switch-width: 26px; --switch-height: 16px; pointer-events: none; }
-  /* The view switch: two halves of one track, the one on raised in it. */
-  .views { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; margin: 2px 2px 4px; padding: 2px; border-radius: var(--radius-md); background: var(--color-background); box-shadow: inset 0 0 0 1px var(--color-border); }
-  .side { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; height: 26px; padding: 0 6px; border: none; border-radius: var(--radius-sm);
-    background: transparent; color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 500; }
-  .side .ui-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .side :global(svg) { flex: none; }
-  .side:hover:not(.on), .side:focus-visible { color: var(--color-foreground); }
-  .side:active { transform: none; }
-  .side.on { background: var(--color-surface-3); color: var(--color-foreground); box-shadow: var(--shadow-e1); }
+  /* The first group needs no rule above it. */
+  .panel > .separator:first-child { display: none; }
   .filter { padding: 2px 0 0; }
   .filter :global(.menu) { display: flex; min-width: 0; }
   .filter :global(.trigger) { width: 100%; min-width: 0; height: 30px; padding: 0 8px; justify-content: flex-start; gap: 9px; border-radius: var(--radius-sm); font-size: var(--text-sm); font-weight: 500; color: var(--color-muted-foreground); }

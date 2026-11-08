@@ -46,7 +46,7 @@
 {/if}
 
 <style>
-  /* Chips on the box's own surface, over the field: no band of their own. */
-  .held { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 10px 12px 0; }
+  /* Dimmed lines on the box's own surface, over the field: no band of their own. */
+  .held { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 6px 12px 0; }
   .answers { display: flex; min-width: 0; }
 </style>

@@ -228,7 +228,7 @@
   .summary[data-status='error'] > :global(svg) { color: var(--color-danger); }
   .summary.compacting { align-self: flex-start; align-items: flex-start; flex-wrap: nowrap; gap: 10px; max-width: 520px; box-sizing: border-box; padding: 12px 14px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-2); }
   .compaction-copy { min-width: 0; }
-  .compaction-title { display: block; color: var(--color-foreground); font-size: var(--text-sm); font-weight: 500; }
+  .compaction-title { display: block; color: var(--color-foreground); font-size: var(--text-sm); font-weight: 400; }
   .compaction-elapsed { display: block; margin-top: 8px; color: var(--color-muted-foreground); }
   .compaction-icon { display: inline-flex; flex: none; margin-top: 2px; }
   .dot { display: inline-block; width: calc(var(--lead) - 6px); text-align: center; opacity: .6; }

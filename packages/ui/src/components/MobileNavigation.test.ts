@@ -86,6 +86,9 @@ test('selecting a conversation beyond the first mobile window finishes loading i
   workspace.machines = [{ id: 'local', label: 'Local', store }]; workspace.active = store;
   mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'threads' } });
   await settle();
+  // A big project opens folded to a few rows; its "N more" line unfolds it in place, into the window below.
+  expect(document.querySelectorAll('[data-testid^=mobile-thread-]').length).toBeLessThan(10);
+  document.querySelector<HTMLButtonElement>('[data-testid=project-more]')!.click(); await settle();
   const selector = `[data-testid="mobile-thread-${summary.id}"]`;
   expect(document.querySelector(selector)).toBeNull();
   const root = document.querySelector<HTMLElement>('[data-testid=mobile-list]')!;
@@ -112,9 +115,14 @@ test('the header holds the search, opened in place, and the new thread; the bar 
   expect(list()).toBe('Activity');
   id('mobile-conversations')!.click(); await settle();
   expect(list()).toBe('Threads');
-  // The header names the list by its view, Projects or Recent, and that name is the switch between them.
-  expect(id('mobile-title')?.textContent?.trim()).toBe('Projects');
-  expect(id('mobile-title')?.querySelector('[data-testid=mobile-grouping-options]')?.getAttribute('aria-label')).toBe('Projects, Display options');
+  // The header names the list's two views, the one on marked, a press switching them; the display menu is beside them.
+  const views = () => [...id('mobile-view-switch')!.querySelectorAll('[role=radio]')].map(side => `${side.textContent?.trim()}:${side.getAttribute('aria-checked')}`);
+  expect(views()).toEqual(['Projects:true', 'Recent:false']);
+  id('mobile-view-switch')!.querySelector<HTMLButtonElement>('[data-value=recent]')!.click(); await settle();
+  expect([workspace.view, ...views()]).toEqual(['recent', 'Projects:false', 'Recent:true']);
+  workspace.setView('projects'); await settle();
+  expect(id('mobile-title')?.querySelector('[data-testid=mobile-grouping-options]')).toBeNull();
+  expect(id('mobile-grouping-options')).not.toBeNull();
   store.showSettings('machines'); await settle();
   expect(list()).toBeUndefined();
   expect(id('mobile-search-open')).toBeNull();
@@ -143,26 +151,17 @@ test('the header holds the search, opened in place, and the new thread; the bar 
   const threadId = row.dataset['threadId'];
   row.querySelector('[data-testid^=mobile-thread-]')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })); await settle();
   expect(id(`mobile-thread-menu-${threadId}-menu`)?.querySelector('[data-value=rename]')).not.toBeNull();
-  // Common actions first; a new title and the rest behind Tools, which opens in place and comes back.
+  // Common actions first; a new title and the rest behind More, which opens in place and comes back.
   const menuValues = () => Array.from(id(`mobile-thread-menu-${threadId}-menu`)?.querySelectorAll<HTMLElement>('[data-value]') ?? []).map(item => item.dataset['value']);
   expect(menuValues()).not.toContain('retitle');
   id(`mobile-thread-menu-${threadId}-menu`)!.querySelector<HTMLElement>('[data-value=more]')!.click(); await settle();
   expect(menuValues()[0]).toBe('back');
   expect(menuValues()).toContain('retitle');
   expect(menuValues()).not.toContain('copy');
-  // Tools lists the thread's panels, as its header does.
-  const panel = menuValues().find(value => value?.startsWith('kind:'));
-  expect(panel).toBeDefined();
+  // No panel in a row's menu: the panels have their own selector, in the panel.
+  expect(menuValues().filter(value => value?.startsWith('kind:') || value === 'board-toggle')).toEqual([]);
   id(`mobile-thread-menu-${threadId}-menu`)!.querySelector<HTMLElement>('[data-value=back]')!.click(); await settle();
   expect(menuValues()).toContain('rename');
-  // A panel picked from a row leaves the list for its thread, where the panel shows.
-  id(`mobile-thread-menu-${threadId}-menu`)!.querySelector<HTMLElement>('[data-value=more]')!.click(); await settle();
-  id(`mobile-thread-menu-${threadId}-menu`)!.querySelector<HTMLElement>(`[data-value="${panel}"]`)!.click(); await settle();
-  expect(document.querySelector('.mobile-list')).toBeNull();
-  expect(store.openThread?.id).toBe(threadId);
-  expect(store.panel.active?.kind).toBe(panel!.slice('kind:'.length));
-  id('mobile-back')!.click(); await settle();
-  expect(document.querySelector('.mobile-list')).not.toBeNull();
 
   // The new thread is the header's neutral "+", out of the bottom bar.
   expect(document.querySelector('[data-testid=mobile-tabs] [data-testid=mobile-new]')).toBeNull();
@@ -281,4 +280,20 @@ test("a project header's menu starts a thread there and leaves the list for its 
   // The draft was made, yet the list stayed over it.
   expect(store.draft?.projectId).toBe('p-boite');
   expect(document.querySelector('.mobile-list')).toBeNull();
+});
+
+test('with two machines the machine line shows on the threads list only: Activity gathers every machine', async () => {
+  vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
+    media, matches: true, onchange: null, addListener() {}, removeListener() {}
+  }));
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  workspace.machines = [{ id: 'local', label: 'Local', store }, { id: 'pc', label: 'PC', store: new Store() }]; workspace.active = store;
+  mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'threads' } });
+  await settle();
+  expect(document.querySelector('[data-testid=mobile-connection]')?.textContent).toContain('Local');
+  await unmount(mounted);
+  mounted = mount(MobileNavigation, { target: document.body, props: { store, screen: 'activity' } });
+  await settle();
+  expect(document.querySelector('[data-testid=mobile-connection]')).toBeNull();
 });

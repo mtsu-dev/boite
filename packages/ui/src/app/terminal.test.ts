@@ -51,11 +51,13 @@ test('Ctrl+J opens the shell of the thread under the chat, hides it again, and i
   await waitFor(() => document.querySelector('[data-testid=terminal-drawer]') === null);
   expect(store.terminalShown(threadId)).toBe(false);
 
-  // The terminal is also a line of the header's panel menu, under its old button's id, lit while shown.
+  // The terminal is also a line of the panel selector, under its old button's id, lit while shown.
   const terminalItem = async () => {
-    query<HTMLButtonElement>('[data-testid=panel-menu]').click();
-    await waitFor(() => document.querySelector('[data-testid=panel-menu-menu] [data-value=terminal-toggle]') !== null);
-    return query<HTMLButtonElement>('[data-testid=panel-menu-menu] [data-value=terminal-toggle]');
+    if (!store.panelOpen) query<HTMLButtonElement>('[data-testid=panel-toggle]').click();
+    await waitFor(() => document.querySelector('[data-testid=panel-add]') !== null);
+    query<HTMLButtonElement>('[data-testid=panel-add]').click();
+    await waitFor(() => document.querySelector('[data-testid=panel-add-menu] [data-value=terminal-toggle]') !== null);
+    return query<HTMLButtonElement>('[data-testid=panel-add-menu] [data-value=terminal-toggle]');
   };
   const hidden = await terminalItem();
   expect(hidden.classList.contains('active')).toBe(false);
@@ -63,7 +65,7 @@ test('Ctrl+J opens the shell of the thread under the chat, hides it again, and i
   hidden.click();
   await waitFor(() => document.querySelector('[data-testid=terminal-drawer]') !== null);
   expect((await terminalItem()).classList.contains('active')).toBe(true);
-  query<HTMLButtonElement>('[data-testid=panel-menu]').click();
+  query<HTMLButtonElement>('[data-testid=panel-add]').click();
   query<HTMLButtonElement>('[data-testid=terminal-close]').click();
   await waitFor(() => document.querySelector('[data-testid=terminal-drawer]') === null);
   expect(store.terminalShown(threadId)).toBe(false);

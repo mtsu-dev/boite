@@ -283,7 +283,7 @@
   .link-row code, .link-row p, .link-row .link-error { grid-column: 1 / -1; margin: 0; }
   .link-row > span:nth-child(2):not(.error) { color: var(--color-muted-foreground); }
   .automation { display: grid; gap: 14px; padding: 20px 24px; border-top: 1px solid var(--color-border); }
-  .automation h3 { margin: 0; font-size: var(--text-sm); font-weight: 500; color: var(--color-muted-foreground); }
+  .automation h3 { margin: 0; font-size: var(--text-sm); font-weight: 400; color: var(--color-muted-foreground); }
   .interval-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: var(--control); }
   .interval-value { display: flex; align-items: center; gap: 8px; font-size: var(--text-sm); color: var(--color-muted-foreground); }
   .interval-value input { width: 78px; }

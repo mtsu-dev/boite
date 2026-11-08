@@ -11,6 +11,7 @@
   import { machineName, workspace, type Machine } from '../../lib/workspace.svelte';
   import { notifyCorner } from '../../lib/notify-corner';
   import { inbox } from '../../lib/inbox.svelte';
+  import { mergeAsks } from '../../lib/contact-inbox';
 
   /**
    * What waits for the owner from contacts, on every listed machine, oldest
@@ -29,7 +30,8 @@
   ]).sort((a, b) => a.createdAt - b.createdAt));
   const pending = $derived(waiting.filter(row => row.machine.store.connection === 'ready'));
   $effect(() => {
-    inbox.contacts = pending.length;
+    // One per fact, as Activity lists them: identical asks merge into one row.
+    inbox.contacts = mergeAsks(pending).length;
     return () => { inbox.contacts = 0; };
   });
   let seen = $state<string[]>([]);

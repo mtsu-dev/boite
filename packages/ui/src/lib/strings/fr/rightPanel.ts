@@ -8,7 +8,6 @@ export const fr: Translation = {
     resize: 'Redimensionner le panneau, double-clic pour réinitialiser',
     maximize: 'Agrandir le panneau',
     restore: 'Restaurer le panneau',
-    newSurface: 'Autres panneaux',
     scrollLeft: 'Faire défiler les onglets vers la gauche',
     scrollRight: 'Faire défiler les onglets vers la droite',
     closeTab: 'Fermer {title}',

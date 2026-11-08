@@ -11,8 +11,6 @@ export const fr: Translation = {
     terminal: 'Afficher ou masquer le terminal',
     commands: 'Commandes',
     empty: 'Rien ne correspond.',
-    hint: 'Entrée pour ouvrir, Échap pour fermer',
-    hintEmpty: 'Échap pour fermer',
     newThread: 'Nouvelle conversation',
     addProject: 'Ajouter un projet',
     importSession: 'Importer une session Claude Code',

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { errorText } from '../lib/errors';
   import InfoTip from './InfoTip.svelte';
-  import { Minus, Plus } from '@lucide/svelte';
+  import { ChevronDown, Minus, Plus } from '@lucide/svelte';
   import { onMount, untrack } from 'svelte';
   import { FONT_KEY, FONTS, MONO_KEY, MONOS, readFont, readMono, setFont, setMono, type Font, type Mono } from '../lib/fonts';
   import { percent } from '../lib/format';
@@ -12,21 +12,19 @@
   import { readTheme, setTheme, THEME_STORAGE_KEY, type Theme } from '../lib/theme';
   import { COLORS_EVENT } from '../lib/theme-colors';
   import { readChatWidth, setChatWidth, type ChatWidth } from '../lib/chat-width';
-  import { readTerminalCursor, setTerminalCursor, type TerminalCursor } from '../lib/terminal-cursor';
   import { matchingPreset, work, type Profile } from '../lib/work-prefs.svelte';
   import ThemeColors from './ThemeColors.svelte';
   import { controlGroups } from '../lib/control-groups';
   import type { Store } from '../lib/store.svelte';
   import SurfaceIcon from './SurfaceIcon.svelte';
-  import { featureOn } from '../lib/features.svelte';
-  import { setFeature } from '../lib/features';
 
   /**
    * Visual choices only: language, theme, colours, widths, faces, zoom and the
    * buttons shown. What the app does (how a turn's changes show, where a window
-   * starts, the terminal's renderer) lives under General. `phone`: what a phone
-   * reads and looks like; the column width, the terminal and the header's
-   * buttons are the desktop's.
+   * starts, the terminal's renderer) lives under General, and the terminal's
+   * cursor and the edge scrollbars under Advanced. `phone`: what a phone reads
+   * and looks like; the column width and the header's buttons are the desktop's.
+   * A phone shows each choice as one row, the current one, that opens its tiles.
    */
   let { store, phone = false }: { store: Store; phone?: boolean } = $props();
   const uid = $props.id();
@@ -57,7 +55,7 @@
   let mono = $state<Mono>(untrack(() => readMono()));
   let faces = $derived(FONTS.map((id) => ({ id, name: id === 'system' ? strings.settings.fontSystem : FONT_NAMES[id] })));
   let monos = $derived(MONOS.map((id) => ({ id, name: id === 'system' ? strings.settings.monoSystem : MONO_NAMES[id] })));
-  function pickFont(next: Font) { font = next; setFont(next); }
+  function pickFont(next: Font) { font = next; setFont(next); facesOpen = false; }
   function pickMono(next: Mono) { mono = next; setMono(next); }
 
   // The zoom is the shell webview's own; a browser tab has its own Ctrl+= already.
@@ -99,16 +97,9 @@
     setChatWidth(next);
   }
 
-  let terminalCursor = $state<TerminalCursor>(untrack(() => readTerminalCursor()));
-  let cursors = $derived<{ id: TerminalCursor; label: string }[]>([
-    { id: 'bar', label: strings.settings.terminalCursorBar },
-    { id: 'block', label: strings.settings.terminalCursorBlock },
-    { id: 'underline', label: strings.settings.terminalCursorUnderline }
-  ]);
-  function pickTerminalCursor(next: TerminalCursor) {
-    terminalCursor = next;
-    setTerminalCursor(next);
-  }
+  /** A phone's text font row, open on its tiles. */
+  let facesOpen = $state(false);
+  let current = $derived(faces.find((face) => face.id === font) ?? faces[0]!);
 
   function pickTheme(next: Theme) {
     theme = next;
@@ -173,7 +164,7 @@
   </header>
 
   <section class="card" id="settings-theme">
-    <h2>{strings.settings.display}</h2>
+    <h2 class="ui-label-box"><span class="ui-label">{strings.settings.display}</span><InfoTip gather topic={strings.settings.display} text="" testid="section-info" /></h2>
     <div class="switch-row">
       <span class="text ui-label">{strings.settings.language}</span>
       <div class="segmented" role="group" aria-label={strings.settings.language}>
@@ -213,19 +204,6 @@
         {/each}
       </div>
     </div>
-    <div class="switch-row">
-      <span class="text ui-label">{strings.settings.terminalCursor}</span>
-      <div class="segmented" role="group" aria-label={strings.settings.terminalCursor}>
-        {#each cursors as option (option.id)}
-          <button type="button" class:on={terminalCursor === option.id} aria-pressed={terminalCursor === option.id} data-testid="terminal-cursor-{option.id}" onclick={() => pickTerminalCursor(option.id)}><span class="ui-label">{option.label}</span></button>
-        {/each}
-      </div>
-    </div>
-    <label class="switch-row" for="{uid}-edge-scrollbars">
-      <span class="text ui-label-box"><span class="ui-label" id="{uid}-edge-scrollbars-name">{strings.features.edgeScrollbars.title}</span><InfoTip topic={strings.features.edgeScrollbars.title} text={strings.features.edgeScrollbars.hint} /></span>
-      <input id="{uid}-edge-scrollbars" aria-labelledby="{uid}-edge-scrollbars-name" type="checkbox" role="switch" checked={featureOn('edge-scrollbars')} data-testid="setting-edge-scrollbars"
-        onchange={event => setFeature('edge-scrollbars', event.currentTarget.checked)} />
-    </label>
     {/if}
     {#if hasMaterial}
       <div class="switch-row">
@@ -250,9 +228,18 @@
   </section>
 
   <section class="card" id="settings-reading">
-    <h2>{strings.settings.reading}</h2>
+    <h2 class="ui-label-box"><span class="ui-label">{strings.settings.reading}</span><InfoTip gather topic={strings.settings.reading} text="" testid="section-info" /></h2>
     <div class="switch-row faces-row">
       <span class="text ui-label-box"><span class="ui-label">{strings.settings.font}</span><InfoTip topic={strings.settings.font} text={strings.settings.fontHint} /></span>
+      {#if phone}
+        <!-- The face in use, drawn in itself; the others behind it. -->
+        <button type="button" class="current" style:font-family="var(--face-{current.id})" aria-expanded={facesOpen} data-testid="font-current" onclick={() => { facesOpen = !facesOpen; }}>
+          <span class="face-name">{current.name}</span>
+          <span class="face-sample">{strings.settings.fontSample}</span>
+          <ChevronDown size={18} strokeWidth={1.75} />
+        </button>
+      {/if}
+      {#if !phone || facesOpen}
       <div class="faces" role="group" aria-label={strings.settings.font}>
         {#each faces as face (face.id)}
           <button type="button" class="face" style:font-family="var(--face-{face.id})" aria-pressed={font === face.id} data-testid="font-{face.id}" onclick={() => pickFont(face.id)}>
@@ -261,6 +248,7 @@
           </button>
         {/each}
       </div>
+      {/if}
     </div>
     <div class="switch-row">
       <span class="text ui-label">{strings.settings.monoFont}</span>
@@ -288,7 +276,7 @@
        own right click hides it and leads here; this is the only way back. -->
   <section class="card" id="settings-buttons" data-testid="settings-buttons">
     <div class="card-head">
-      <h2 class="ui-label-box"><span class="ui-label">{strings.controls.heading}</span><InfoTip topic={strings.controls.heading} text={strings.controls.headingHint} /></h2>
+      <h2 class="ui-label-box"><span class="ui-label">{strings.controls.heading}</span><InfoTip gather topic={strings.controls.heading} text={strings.controls.headingHint} testid="section-info" /></h2>
       <div class="segmented" role="group" aria-label={strings.controls.preset}>
         {#each presets as option (option.id)}
           <button type="button" class:on={preset === option.id} aria-pressed={preset === option.id} data-testid="controls-preset-{option.id}" onclick={() => work.showPreset(option.id)}><span class="ui-label">{option.label}</span></button>
@@ -347,6 +335,10 @@
   /* Plain text, not trimmed labels: a name that wraps keeps its whole line height, so no tile clips its own words. */
   .face-name { font-size: var(--text-sm); font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
   .face-sample { font-size: var(--text-md); line-height: 1.3; color: var(--color-muted-foreground); white-space: nowrap; }
+  /* A phone's current face: one row, its name and sample in the face, a chevron that opens the tiles. */
+  .current { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto; column-gap: var(--space-3); align-items: center; width: 100%; height: auto; min-height: var(--touch-target); padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-2); color: var(--color-foreground); text-align: left; white-space: normal; }
+  .current :global(svg) { grid-column: 2; grid-row: 1 / 3; color: var(--color-muted-foreground); transition: transform var(--dur-2) var(--ease-out-quint); }
+  .current[aria-expanded='true'] :global(svg) { transform: rotate(180deg); }
   .zoom button { display: inline-flex; align-items: center; justify-content: center; padding: 0 8px; }
   .zoom-error { margin: 0; color: var(--color-danger); font-size: var(--text-xs); overflow-wrap: anywhere; }
   .zoom .zoom-value { min-width: 56px; font-variant-numeric: tabular-nums; color: var(--color-foreground); }
@@ -369,7 +361,7 @@
     background: var(--color-surface-2);
     color: var(--color-foreground);
     font-size: var(--text-sm);
-    font-weight: 500;
+    font-weight: 400;
     cursor: pointer;
     transition: background var(--dur-2), border-color var(--dur-2);
   }
@@ -394,39 +386,5 @@
     /* Two classes: the base .segmented button rule comes later and set its size back, so the track ran past the card at 360. */
     .segmented.monos button { flex: 1 1 auto; min-width: auto; padding: 0 6px; font-size: var(--text-xs); }
     .card-head .segmented { flex: 1 1 100%; }
-  }
-  /* The options in one dark track, the chosen one raised on it: a grey step, never a white block. */
-  .segmented {
-    display: inline-flex;
-    flex: none;
-    gap: 2px;
-    padding: 2px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-frame);
-  }
-
-  .segmented button {
-    height: var(--control-sm);
-    padding: 0 10px;
-    border: 1px solid transparent;
-    border-radius: var(--radius-sm);
-    background: transparent;
-    color: var(--color-muted-foreground);
-    font-size: var(--text-sm);
-  }
-
-  @media (hover: hover) {
-    .segmented button:hover:not(.on) {
-      background: var(--color-surface-3);
-      color: var(--color-foreground);
-    }
-  }
-
-  .segmented button.on {
-    background: var(--color-surface-3);
-    border-color: var(--color-edge);
-    color: var(--color-foreground);
-    box-shadow: var(--shadow-e1);
   }
 </style>

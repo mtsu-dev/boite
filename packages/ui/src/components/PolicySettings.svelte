@@ -105,7 +105,7 @@
     background: var(--color-surface-2);
     color: var(--color-muted-foreground);
     font-size: var(--text-xs);
-    font-weight: 500;
+    font-weight: 400;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
@@ -127,7 +127,7 @@
   }
   .row + .row { border-top: 1px solid var(--color-border); }
   dt { min-width: 0; color: var(--color-foreground); font-size: var(--text-sm); }
-  dd { min-width: 0; margin: 0 0 0 auto; color: var(--color-foreground); font-size: var(--text-sm); font-weight: 500; text-align: right; overflow-wrap: anywhere; }
+  dd { min-width: 0; margin: 0 0 0 auto; color: var(--color-foreground); font-size: var(--text-sm); font-weight: 400; text-align: right; overflow-wrap: anywhere; }
   dd.off { color: var(--color-subtle); font-weight: 400; }
   .source {
     display: flex;

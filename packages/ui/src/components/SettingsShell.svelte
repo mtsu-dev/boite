@@ -4,7 +4,7 @@
   import MobileSettings from './MobileSettings.svelte';
   import BrainPage from './BrainPage.svelte';
   import InfoTip from './InfoTip.svelte';
-  import { Activity, Brain, Coins, FlaskConical, Gauge, Keyboard, Mic, Monitor, Palette, Puzzle, Settings2, ShieldCheck, SlidersHorizontal, Stethoscope, Users } from '@lucide/svelte';
+  import { Activity, Brain, Coins, FlaskConical, Gauge, Keyboard, Mic, Monitor, Palette, Puzzle, Plug, Settings, ShieldCheck, Stethoscope, Wrench } from '@lucide/svelte';
   import KeyboardPage from './KeyboardPage.svelte';
   import LimitsPage from './LimitsPage.svelte';
   import PluginsPage from './PluginsPage.svelte';
@@ -86,11 +86,11 @@
   // Derived, not built once: the nav is written in the language the app is
   // speaking, and the language changes without a reload.
   let all = $derived<Tab[]>([
-    { id: 'general', label: strings.settings.tabs.general, icon: Settings2 },
+    { id: 'general', label: strings.settings.tabs.general, icon: Settings },
     { id: 'appearance', label: strings.settings.tabs.appearance, icon: Palette },
     { id: 'keyboard', label: strings.settings.tabs.keyboard, icon: Keyboard },
     { id: 'voice', label: strings.speech.heading, icon: Mic },
-    { id: 'accounts', label: strings.settings.tabs.accounts, icon: Users },
+    { id: 'accounts', label: strings.settings.tabs.accounts, icon: Plug },
     { id: 'plugins', label: strings.settings.tabs.plugins, icon: Puzzle },
     { id: 'brain', label: strings.brain.heading, icon: Brain },
     { id: 'usage', label: strings.settings.tabs.usage, icon: Coins },
@@ -98,7 +98,7 @@
     { id: 'task-manager', label: strings.taskManager.title, icon: Activity },
     { id: 'resources', label: strings.settings.tabs.resources, icon: ShieldCheck },
     { id: 'machines', label: strings.settings.tabs.machines, icon: Monitor },
-    { id: 'advanced', label: strings.settings.tabs.advanced, icon: SlidersHorizontal },
+    { id: 'advanced', label: strings.settings.tabs.advanced, icon: Wrench },
     { id: 'diagnostics', label: strings.settings.tabs.diagnostics, icon: Stethoscope },
     { id: 'experiments', label: strings.settings.tabs.experiments, icon: FlaskConical }
   ]);
@@ -146,6 +146,7 @@
     ],
     advanced: [
       ...(store.owner ? [{ id: 'execution', label: strings.settings.execution }, { id: 'phone', label: strings.phone.heading }, { id: 'origins', label: strings.machines.browserOrigins }] : []),
+      ...(desktopSettings(narrow.current) ? [{ id: 'details', label: strings.settings.terminalAndScrollbars }] : []),
       { id: 'core', label: strings.settings.core }
     ],
     experiments: [...EXPERIMENT_IDS.map((id) => ({ id, label: experimentCopy()[id].title })), ...(store.owner ? [{ id: 'background-compaction', label: strings.settings.backgroundCompaction }, { id: 'device-stream', label: strings.settings.deviceStream }] : [])],
@@ -176,8 +177,8 @@
 
   /**
    * What each page is for, said once behind the "i" beside the screen's title
-   * in the bar: the page's own title steps aside, so its card starts with
-   * its settings (app.css's `.page > header`).
+   * at the top of its card: the page's own title steps aside, so its card
+   * starts with its settings (app.css's `.page > header`).
    */
   function infoOf(page: SettingsTab): string {
     switch (page) {
@@ -194,19 +195,20 @@
       default: return '';
     }
   }
-  /** One title per screen, in the bar: Settings on Home, else the group the page sits in. */
+  /** One title per screen, at the top of its card: the group the page sits in. Home has the list's head. */
   let title = $derived(tab === 'home' ? strings.settings.heading : group?.label ?? tabs.find((entry) => entry.id === tab)?.label ?? '');
   let info = $derived(tab === 'home' ? '' : infoOf(tab));
 
   /**
-   * On a desktop the bar above the card carries the screen's one title; the
-   * list's head leads back to Home, and the rail is the way out: no Back
-   * button and no second heading in the card.
+   * On a desktop the card carries the screen's one title, a step over the
+   * cards' own, as a phone's screen does; the bar above stays empty but for a
+   * page's buttons (UsagePage.svelte). The list's head leads back to Home and
+   * the rail is the way out: no Back button.
    */
   $effect(() => {
     if (!desktopSettings(narrow.current)) return;
-    titleSlot.current = crumb;
-    return () => { if (titleSlot.current === crumb) titleSlot.current = null; };
+    titleSlot.current = blank;
+    return () => { if (titleSlot.current === blank) titleSlot.current = null; };
   });
 
   /**
@@ -235,7 +237,8 @@
     ['appearance', 'theme', strings.settings.accent],
     ['appearance', 'theme', strings.settings.material],
     ['appearance', 'theme', strings.settings.language],
-    ['appearance', 'theme', strings.features.edgeScrollbars.title],
+    ['advanced', 'details', strings.features.edgeScrollbars.title],
+    ['advanced', 'details', strings.settings.terminalCursor],
     ['appearance', 'reading', strings.settings.font],
     ['appearance', 'reading', strings.settings.monoFont],
     ...(inShell ? [['appearance', 'reading', strings.settings.zoom] as [SettingsTab, string, string]] : []),
@@ -313,12 +316,7 @@
   });
 </script>
 
-{#snippet crumb()}
-  <span class="crumb" data-testid="settings-crumb">
-    <span class="here ui-label">{title}</span>
-    {#if info}<InfoTip topic={tabs.find((entry) => entry.id === tab)?.label ?? title} text={info} testid="settings-info" />{/if}
-  </span>
-{/snippet}
+{#snippet blank()}<span class="crumb" aria-hidden="true"></span>{/snippet}
 
 {#snippet machineBar()}
   {#if chosen}<SettingsMachineBar machine={chosen} machines={choices} onpick={(id) => { picked = id; }} />{/if}
@@ -354,7 +352,12 @@
   <!-- The panel is keyed on the tab, so switching tabs fades the new page in
        rather than swapping it in one frame. -->
   {#key tab}
-    <section class="framed" class:with-bar={bar || banner || strip || merged.length > 0}>
+    <section class="framed" class:with-bar={tab !== 'home' || bar || banner || strip || merged.length > 0}>
+      {#if tab !== 'home'}
+        <header class="screen" data-testid="settings-crumb">
+          <h1 class="ui-label-box"><span class="ui-label">{title}</span>{#if info}<InfoTip topic={tabs.find((entry) => entry.id === tab)?.label ?? title} text={info} testid="settings-info" />{/if}</h1>
+        </header>
+      {/if}
       {#if strip && group}
         <!-- The group's pages, the shown one filled. The group's own entry keeps the nav's test id; a moved page keeps its own. -->
         <div class="pages" role="group" aria-label={group.label} data-testid="settings-pages">
@@ -448,7 +451,7 @@
     border-radius: var(--radius-sm);
     color: var(--color-muted-foreground);
     font-size: var(--text-sm);
-    font-weight: 500;
+    font-weight: 400;
     transition: background var(--dur-2) var(--ease-out-quint), color var(--dur-2) var(--ease-out-quint);
   }
   @media (hover: hover) { .page-tab:hover:not(.on) { background: var(--color-hover); color: var(--color-foreground); } }
@@ -494,12 +497,15 @@
 
   /* The thread list's head: same height, size and inset, so the switch reads as one column changing.
      It is a button too, to Settings' home, so it only lights under the pointer. */
-  .title { flex: none; justify-content: flex-start; height: 36px; margin: 16px 4px 4px; padding: 0 8px; font-size: 15px; font-weight: 650; letter-spacing: -0.015em; color: var(--color-foreground); }
+  .title { flex: none; justify-content: flex-start; height: 36px; margin: 16px 4px 4px; padding: 0 8px; font-size: 15px; font-weight: 600; letter-spacing: -0.015em; color: var(--color-foreground); }
   .title:hover:not(:disabled) { background: var(--color-hover); }
 
-    /* The screen's one title, in the bar at the thread title's size and weight. */
-  .crumb { display: flex; align-items: center; gap: 2px; min-width: 0; padding-left: 16px; }
-  .crumb .here { min-width: 0; color: var(--color-foreground); font-size: var(--text-base); font-weight: 600; }
+  .crumb { flex: 1; min-width: 0; }
+  /* The screen's one title, at the top of its card in the settings column, one step over a card's. */
+  .screen { padding: var(--space-8) max(clamp(20px, 4vw, 64px), calc((100% - var(--settings-width)) / 2)) 0; }
+  .screen h1 { min-width: 0; margin: 0; color: var(--color-foreground); font-size: var(--text-lg); font-weight: 600; line-height: 1.3; letter-spacing: -0.01em; }
+  .screen + .pages { margin-top: var(--space-4); }
+  .screen + :global(.page) { padding-top: var(--space-5); }
 
   .tab {
     justify-content: flex-start;

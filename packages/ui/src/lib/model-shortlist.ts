@@ -3,9 +3,9 @@ import type { FavoriteModel } from './model-order';
 
 /**
  * The model picker's first level: the models a person uses, so today's pick
- * takes one click. The starred ones first, in their order, then the models of
- * the latest threads, the current choice leading them. Everything else waits
- * behind "All models".
+ * takes one click. The current choice first, then the starred ones in their
+ * order, then the models of the latest threads. Everything else waits behind
+ * "All models".
  */
 export interface ShortModel {
   providerId: string;
@@ -63,5 +63,15 @@ export function shortlist(
     seen.add(key);
     rows.push({ providerId: used.providerId, accountId: used.accountId, model, favorite: false });
   }
+  // The choice in force leads, starred or not: the row a reopened picker is read from.
+  const lead = current?.model ? leading(rows, current) : -1;
+  if (lead > 0) rows.unshift(...rows.splice(lead, 1));
   return rows;
+}
+
+/** The row of the current choice: its own login's first, else the same model on another one, which stands for it. */
+function leading(rows: readonly ShortModel[], current: { providerId: string; accountId: string; model: string | null }): number {
+  const same = (row: ShortModel) => row.providerId === current.providerId && row.model.id === current.model;
+  const own = rows.findIndex((row) => same(row) && row.accountId === current.accountId);
+  return own >= 0 ? own : rows.findIndex(same);
 }

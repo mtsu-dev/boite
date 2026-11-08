@@ -151,7 +151,7 @@
     if (tone === 'error') return { text: row.status?.problem ?? labels.state.error, icon: TriangleAlert };
     return { text: row.status?.last ? previewOf(row.status.last.text) : row.profile.domain };
   }
-  /** What the ring says: the tone, with answers not read yet over a rest. */
+  /** How the face looks: the tone, with answers not read yet over a rest. The row's mark says the state (AgentRow.svelte). */
   function moodOf(tone: Tone, unread: number): AgentMood {
     return tone === 'idle' && unread > 0 ? 'unread' : tone;
   }
@@ -234,7 +234,11 @@
         {/each}
       </section>
     {:else}
-      <p class="agents-teams-note" data-testid="agents-teams-empty">{strings.teamChat.noTeams}</p>
+      <!-- The empty state's one action, where the eye already is: the header's "+" holds it too, among the bot's. -->
+      <div class="agents-teams-note agents-teams-empty" data-testid="agents-teams-empty">
+        <p>{strings.teamChat.noTeams}</p>
+        {#if onnewteam && view.store.owner}<button type="button" class="ghost small" onclick={newTeam} data-testid="agents-teams-empty-action"><Plus size={14} /><span class="ui-label">{strings.teamChat.newTeam}</span></button>{/if}
+      </div>
     {/if}
     {#if rows.length}<h2 class="agents-section section-label" data-testid="agents-bots-heading">{labels.heading}</h2>{/if}
   {/if}
@@ -252,7 +256,7 @@
           machine={elsewhere(machine)} testid="agent-entry-{row.profile.id}" onclick={() => onopen(machine, row.profile.id)}
           pending={leavingLine(owner, row.profile.id)} pinned={row.profile.pinned === true} onmenu={event => menu(event, machine, owner, row.profile.id)}
           renaming={renaming === rowKey(machine, row.profile.id)} onrename={name => rename(owner, row.profile.id, name)}>
-          {#snippet picture()}<AgentAvatar kind="profile" id={row.profile.id} name={row.profile.name} avatar={row.profile.avatar} mood={moodOf(tone, unread)} size={34} ring />{/snippet}
+          {#snippet picture()}<AgentAvatar kind="profile" id={row.profile.id} name={row.profile.name} avatar={row.profile.avatar} mood={moodOf(tone, unread)} size={34} />{/snippet}
         </AgentRow>
       {/each}
     </section>

@@ -199,6 +199,7 @@ export const strings = {
     questionAnswer: 'Answer',
     questionAnswered: 'Answered',
     questionCancelled: 'No longer waiting for an answer',
+    questionMore: '{count} more',
     questionSkip: 'Skip',
     questionOpenPage: 'Open',
     questionWrite: 'Answer in writing',

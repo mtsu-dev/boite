@@ -45,7 +45,7 @@
   </header>
 
   <section class="card" id="settings-conversations">
-    <h2>{strings.settings.conversations}</h2>
+    <h2 class="ui-label-box"><span class="ui-label">{strings.settings.conversations}</span><InfoTip gather topic={strings.settings.conversations} text="" testid="section-info" /></h2>
     <ConversationSwitches />
     <label for="{uid}-notifications" class="switch-row">
       <span class="text ui-label-box">

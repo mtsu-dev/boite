@@ -24,7 +24,9 @@ export const strings = {
       botFailed: '{name} failed',
       botWorking: '{name} is at work',
       botPaused: '{name} is paused',
-      utilities: 'Account limits and machines'
+      utilities: 'Account limits and machines',
+      /** The Limits gauge's card (MachineStatus.svelte): the least left, the window and the account it is on. */
+      limitsLeft: '{percent}% left: {window}, {account}',
     }
   }
 } as const;

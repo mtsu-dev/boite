@@ -87,7 +87,7 @@ test('one list holds the workflow runs and the subagents, and a run opens its gr
     const interrupted = document.querySelector<HTMLElement>('[data-agent-id=t-team-interrupted]')!;
     expect(interrupted.dataset.status).toBe('interrupted');
     expect(interrupted.querySelector('.outcome')!.textContent).toBe('Interrupted');
-    expect(interrupted.querySelector('[data-testid=delegation-member-wait]')!.textContent).toBe('release build ended without waking it: the agent was stopped');
+    expect(interrupted.querySelector('[data-testid=delegation-member-wait]')!.textContent).toBe('release build ended without reporting back: the agent was stopped');
     expect(document.querySelectorAll('[data-testid=delegation-resume]')).toHaveLength(1);
     // A row leads with the model's mark and name; the task it was given is not repeated there.
     const done = document.querySelector<HTMLElement>('[data-agent-id=t-team-done]')!;

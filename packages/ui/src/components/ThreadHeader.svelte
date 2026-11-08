@@ -3,16 +3,16 @@
   import { agentDirectory } from '../lib/agent-directory.svelte';
   import { tick } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
-  import { Bot, ChevronDown, Ellipsis, FolderInput, GitBranch, GitPullRequest, MessagesSquare, Network, PanelRight, Search, UsersRound, VenetianMask } from '@lucide/svelte';
+  import { Bot, ChevronDown, Ellipsis, FolderInput, GitBranch, GitPullRequest, MessagesSquare, PanelRight, Search, UsersRound, VenetianMask } from '@lucide/svelte';
   import { focusOnMount } from '../lib/actions';
   import { needsAnAI } from '../lib/first-run';
   import { contextMenu } from '../lib/context-menu.svelte';
   import { pendingLine } from '../lib/thread-move.svelte';
-  import { panelItems as sharedPanelItems, pickThreadAction, threadMenuItems, threadToolItems } from '../lib/thread-menu';
+  import { pickThreadAction, threadMenuItems, threadToolItems } from '../lib/thread-menu';
+  import { closeCoordination, coordinationRequest } from '../lib/coordination-request.svelte';
   import { separator, type MenuItem } from '../lib/menu';
   import { fill, strings } from '../lib/strings';
   import { work } from '../lib/work-prefs.svelte';
-  import type { SurfaceKind } from '../lib/right-panel.svelte';
   import type { Store } from '../lib/store.svelte';
   import { projectName } from '../lib/format';
   import { workspace } from '../lib/workspace.svelte';
@@ -55,9 +55,9 @@
   /** The rename in progress, bound to the thread it began on rather than to whatever is open later. */
   let rename = $state<ThreadRename | null>(null);
   commitOnUnmount(() => rename);
-  let coordinationThreadId = $state<string | null>(null);
+  // The panel selector asks for the dialog; leaving the thread drops it.
   $effect(() => {
-    if (thread?.id !== coordinationThreadId) coordinationThreadId = null;
+    if (coordinationRequest.threadId && (coordinationRequest.store !== store || thread?.id !== coordinationRequest.threadId)) closeCoordination();
   });
 
   function beginRename() {
@@ -125,35 +125,15 @@
     ];
   });
 
-  /** The view's own tools, listed in Tools after the panels. A phone has no Ctrl+F: this list is its way to the find bar. */
-  let tools = $derived.by((): MenuItem[] => {
-    if (!thread) return [];
-    return [
-      { id: 'find', label: strings.palette.find, glyph: Search },
-      ...(!thread.agentSessionId ? [{ id: 'coordination', label: strings.coordination.heading, glyph: Network }] : []),
-      // A phone's way back to the panel as it was left, a file or a page included.
-      ...(mobile.current ? [{ id: 'panel', label: strings.thread.panelHint, glyph: PanelRight, active: store.panelOpen }] : [])
-    ];
-  });
+  /** The view's own tool, first in More. A phone has no Ctrl+F: this row is its way to the find bar. */
+  let tools = $derived.by((): MenuItem[] => thread ? [{ id: 'find', label: strings.palette.find, glyph: Search }] : []);
   let desktopItems = $derived(thread ? [...identity, ...(identity.length ? [separator('sep-identity')] : []), ...threadMenuItems(store, thread, {})] : []);
-  /** The header's rows keep the ids its tests and the phone always knew them by. */
-  const headerIds = $derived<Record<string, string>>(mobile.current
-    ? { 'kind:agents': 'agents', 'kind:changes': 'changes', 'kind:agent-browser': 'phone-browser-toggle', 'board-toggle': 'board' }
-    : { 'kind:agents': 'agents' });
-  /** Tools: every panel and tool of this thread in one list, the same on a desktop, a phone and a row. */
-  let toolItems = $derived(thread ? threadToolItems(store, thread, { tools, phone: mobile.current, panels: true, ids: headerIds }) : []);
-
-  /** The panel button's own list: the panels and the drawers, the head of Tools. */
-  let panelList = $derived(thread ? sharedPanelItems(store, thread) : []);
-  function panelPick(id: string) {
-    if (id === 'terminal-toggle') store.toggleTerminal();
-    else if (id === 'board-toggle') store.toggleBoard();
-    else if (id.startsWith('kind:')) store.panel.open(id.slice('kind:'.length) as SurfaceKind);
-  }
+  /** More: the thread's less frequent actions, the same on a desktop, a phone and a row. The panels have their own selector. */
+  let toolItems = $derived(thread ? threadToolItems(store, thread, { tools, phone: mobile.current }) : []);
 
   /**
    * A phone's header menu is a desktop's: the thread's bot and watches, what
-   * is done to the thread, then Tools, which shows its one list in place
+   * is done to the thread, then More, which shows its one list in place
    * until Back, a pick or a fresh open. Contact requests live in Activity.
    */
   let phoneItems = $derived(thread ? [...identity, ...(identity.length ? [separator('sep-identity')] : []), ...threadMenuItems(store, thread, { phone: true })] : []);
@@ -176,13 +156,7 @@
   function titleAction(action: string) {
     const open = store.openThread;
     if (!open) return;
-    if (action === 'coordination') coordinationThreadId = open.id;
-    else if (action === 'panel') store.togglePanel();
-    else if (action === 'board') store.toggleBoard();
-    else if (action === 'agents') store.panel.toggleKind('agents');
-    else if (action === 'phone-browser-toggle') store.panel.open('agent-browser');
-    else if (action === 'changes') store.panel.open(action);
-    else if (action === 'thread-entrusted-chip' && carrier) store.showAgents(carrier.agent.id);
+    if (action === 'thread-entrusted-chip' && carrier) store.showAgents(carrier.agent.id);
     else if (action === 'thread-resident-chip' && resident) openResident(store, resident.id);
     else if (action === 'thread-branch' && open.branch) void store.copy(open.branch);
     else if (action.startsWith('watch:')) void store.unwatchPullRequest(open.id, action.slice('watch:'.length));
@@ -312,12 +286,10 @@
           </Menu>
         </span>
       {/if}
-      <!-- One panel control: the button shows or hides the side panel, its
-           chevron lists the panels and the drawers under the chat. A paired
-           device opens it too; the list offers only what available() allows.
-           A team's chat has no title menu: a phone keeps this button, its one way to the panel. -->
+      <!-- The button shows or hides the side panel, on a phone too; the panel's
+           own selector lists every panel and tool once it is open. -->
       {#if thread}
-        <span class="panel-switch" class:in-title-menu={!thread.teamId && !thread.councilId} class:on={store.panelOpen}>
+        <span class="panel-switch" class:on={store.panelOpen}>
           <button
             type="button"
             class="ghost icon"
@@ -329,17 +301,12 @@
           >
             <PanelRight size={16} strokeWidth={1.75} />
           </button>
-          {#if panelList.length}
-            <Menu items={panelList} onpick={panelPick} label={strings.thread.panelMenu} placement="bottom" align="end" variant="ghost" testid="panel-menu">
-              <ChevronDown size={12} strokeWidth={1.75} />
-            </Menu>
-          {/if}
         </span>
       {/if}
 </div>
 
-{#if coordinationThreadId && thread?.id === coordinationThreadId}
-  <CoordinationDialog {store} threadId={coordinationThreadId} onclose={() => coordinationThreadId = null} />
+{#if coordinationRequest.threadId && coordinationRequest.store === store && thread?.id === coordinationRequest.threadId}
+  <CoordinationDialog {store} threadId={coordinationRequest.threadId} onclose={closeCoordination} />
 {/if}
 
 <style>
@@ -375,12 +342,9 @@
   }
 
 
-  /* The panel button and its list read as one control: one hover, one fill when the panel is open. */
+  /* One fill when the panel is open. */
   .panel-switch { display: inline-flex; flex: none; align-items: center; border-radius: var(--radius-md); }
-  .panel-switch > button { width: var(--control-sm); height: var(--control-sm); border-radius: var(--radius-md) 0 0 var(--radius-md); }
-  /* The list's chevron is a pointer's 28 px wide, as tall as the button it extends. */
-  .panel-switch :global(.trigger.ghost) { width: 28px; height: 32px; border-radius: 0 var(--radius-md) var(--radius-md) 0; }
-  .panel-switch:not(:has(.menu)) > button { border-radius: var(--radius-md); }
+  .panel-switch > button { width: var(--control-sm); height: var(--control-sm); border-radius: var(--radius-md); }
   .panel-switch.on { background: var(--color-active); }
   .panel-switch.on > button { color: var(--color-foreground); }
   .watch-chip { flex: none; display: inline-flex; color: var(--color-muted-foreground); }
@@ -439,8 +403,7 @@
     .trace .label, .incognito .label, .context-chip :global(.label) { display: none; }
     .context-chip :global(.chip) { min-width: var(--touch-target); justify-content: center; }
     /* The header's one menu holds these on a phone. */
-    .in-title-menu, .watch-chip { display: none; }
-    .panel-switch :global(.menu) { display: none; }
+    .watch-chip { display: none; }
     .panel-switch > button { width: var(--touch-target); height: var(--touch-target); }
     .rename { width: 100%; }
     /* The thread's title button gives way to its menu; a team's name has no menu and stays. */

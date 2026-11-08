@@ -43,7 +43,7 @@ test('a card about a graduated experiment is never settled by a core setting mov
 });
 
 test('a graduated experiment keeps its name, and one with no switch left says it is always on', () => {
-  expect(settingLabel('experiment.edge-scrollbars' as RequestableKey)).toBe('Edge scrollbars');
+  expect(settingLabel('experiment.edge-scrollbars' as RequestableKey)).toBe('Hide scrollbars until the pointer is near');
   expect(settingLabel('experiment.press-preload' as RequestableKey)).toBe('Load on press');
   expect(retiredHint('experiment.press-preload')).toBe('This experiment is now always on.');
   expect(retiredHint('experiment.preview-comments')).toBe('This experiment has its own switch in Settings now.');

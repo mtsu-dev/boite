@@ -19,7 +19,7 @@ function press(key: string): boolean {
 test('the row shows the current choice, unfolds one checked row per choice and folds back on a pick or Escape', async () => {
   const picks: string[] = [];
   let active = $state('high');
-  running = mount(PickerChoices, { target: document.body, props: { label: 'Effort', testid: 'effort-menu', items, get active() { return active; }, onpick: (id: string) => { picks.push(id); active = id; } } });
+  running = mount(PickerChoices, { target: document.body, props: { label: 'Effort', testid: 'effort-menu', items, segmented: false, get active() { return active; }, onpick: (id: string) => { picks.push(id); active = id; } } });
   flushSync();
   const trigger = document.querySelector<HTMLButtonElement>('[data-choices-trigger]')!;
   const list = document.querySelector<HTMLElement>('[data-testid=effort-menu]')!;
@@ -58,4 +58,36 @@ test('the row shows the current choice, unfolds one checked row per choice and f
   expect(list.hidden).toBe(true);
   expect(trigger.textContent?.trim()).toBe('Ultra');
   expect(trigger.title).toBe('ultrathink');
+});
+
+test('short choices are one segmented row: every choice in view, no fold, the arrows pick in place', () => {
+  const picks: string[] = [];
+  let active = $state('high');
+  running = mount(PickerChoices, { target: document.body, props: { label: 'Effort', testid: 'effort-menu', items, get active() { return active; }, onpick: (id: string) => { picks.push(id); active = id; } } });
+  flushSync();
+  // No list nested in the popover: nothing to unfold, every choice drawn.
+  expect(document.querySelector('[data-choices-trigger]')).toBeNull();
+  const group = document.querySelector<HTMLElement>('[data-testid=effort-menu]')!;
+  expect(group.hidden).toBe(false);
+  expect(Array.from(group.querySelectorAll<HTMLElement>('[role=radio]')).map((el) => el.textContent?.trim())).toEqual(['Low', 'High', 'Ultra']);
+  // The live one is the row the picker's keys stop on, once.
+  const live = group.querySelector<HTMLElement>('[aria-checked=true]')!;
+  expect(live.dataset.value).toBe('high');
+  expect(group.querySelectorAll('[data-row]')).toHaveLength(1);
+  live.focus();
+  expect(press('ArrowRight')).toBe(false);
+  flushSync();
+  expect(picks).toEqual(['ultrathink']);
+  expect((document.activeElement as HTMLElement).dataset.value).toBe('ultrathink');
+  group.querySelector<HTMLButtonElement>('[data-value=low]')!.click();
+  flushSync();
+  expect(picks).toEqual(['ultrathink', 'low']);
+  expect(group.querySelector('[aria-checked=true]')?.textContent?.trim()).toBe('Low');
+});
+
+test('a choice too long for a segment keeps the fold', () => {
+  running = mount(PickerChoices, { target: document.body, props: { label: 'Permission', testid: 'mode-menu', items: [{ id: 'ask', label: 'Ask before edits and commands' }, { id: 'auto', label: 'Auto' }], active: 'ask', onpick: () => {} } });
+  flushSync();
+  expect(document.querySelector('[data-choices-trigger]')).not.toBeNull();
+  expect(document.querySelector<HTMLElement>('[data-testid=mode-menu]')!.hidden).toBe(true);
 });

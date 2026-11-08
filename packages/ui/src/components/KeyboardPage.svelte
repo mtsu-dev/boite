@@ -486,7 +486,7 @@
   .file-name {
     display: inline-flex;
     align-items: center;
-    font-weight: 500;
+    font-weight: 400;
   }
   .path {
     word-break: break-all;

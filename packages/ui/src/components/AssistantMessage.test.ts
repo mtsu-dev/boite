@@ -317,3 +317,24 @@ test('a paragraph still being written shows its closed code spans as code, never
     expect(pending.textContent).toBe('Reading src/app.ts then `lib');
   } finally { store.detach(); client.close(); }
 });
+
+test('a run that stopped on a failed command says the stop once: the exit code sits in the error card fold, not on the call', async () => {
+  const client = new FakeClient({ delayMs: 0 });
+  const store = new Store(); store.attach(client);
+  try {
+    await store.connect(); await store.open('t-trace');
+    const message = store.openThread!.messages.at(-1)!;
+    const turn = store.openThread!.turns.find((entry) => entry.id === message.turnId)!;
+    turn.status = 'error';
+    message.parts = [
+      { type: 'tool', toolId: 'ok', name: 'Bash', input: { command: 'ls' }, output: 'a', status: 'done', exitCode: 0 },
+      { type: 'tool', toolId: 'stop', name: 'Bash', input: { command: 'bun test' }, output: 'boom', status: 'error', exitCode: 2 },
+      { type: 'error', message: 'Stopped: the tests failed.' }
+    ];
+    mounted = mount(AssistantMessage, { target: document.body, props: { store, threadId: message.threadId, message, signedOut: null, showModel: false } });
+    flushSync();
+    expect(document.querySelector('[data-testid=tool-exit-code]')).toBeNull();
+    expect(document.querySelector('[data-testid=tool-group-issues]')).toBeNull();
+    expect(document.querySelector('[data-testid=error-diagnostic]')?.textContent).toContain('Exit code 2\nboom');
+  } finally { store.detach(); client.close(); }
+});

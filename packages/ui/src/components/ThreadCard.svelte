@@ -60,7 +60,7 @@
   /** Activity's section already says the user's turn: the reason line names any other state after the reason, as every row reads title, context, state, time. */
   let feedState = $derived(reason === undefined ? null : threadState(thread, owner.subagents(thread.id)));
   /** The details the row only shows under the pointer or the keyboard, in its tooltip at rest: the pull request, the branch, the time. */
-  let tip = $derived([thread.title, pullRequest && pullRequestLabel(pullRequest), thread.branch, ago(thread.lastUserMessageAt ?? thread.createdAt, now)].filter(Boolean).join('\n'));
+  let tip = $derived([thread.title, reason, pullRequest && pullRequestLabel(pullRequest), thread.branch, ago(thread.lastUserMessageAt ?? thread.createdAt, now)].filter(Boolean).join('\n'));
 
   function rename() {
     renaming = new ThreadRename(owner, thread.id, thread.title);
@@ -144,8 +144,9 @@
       ondblclick={rename}
     >
       {#if reason !== undefined}
-        <span class="feed-head"><ThreadHeadline {owner} {thread} {open} tile={compact && !nested ? project : undefined} {pullRequest} />{#if at !== undefined}<time title={exactTime(at)}>{ago(at, now)}</time>{/if}</span>
-        <span class="reason" data-testid="thread-reason"><span class="text">{reason}</span>{#if feedState !== null && feedState !== 'waiting'}<span class="sep" aria-hidden="true">·</span><ThreadState {thread} {now} subagents={owner.subagents(thread.id)} away={owner.connection !== 'ready'} />{/if}</span>
+        <!-- One line per fact: who (the tile and the title), what (the reason, cut, whole in the tooltip), the state
+             when the section does not say it, then since when, the last two on one right edge down the page. -->
+        <span class="feed-head"><ThreadHeadline {owner} {thread} {open} tile={compact && !nested ? project : undefined} {pullRequest} /><span class="reason" data-testid="thread-reason"><span class="text">{reason}</span></span>{#if feedState !== null && feedState !== 'waiting'}<ThreadState {thread} {now} subagents={owner.subagents(thread.id)} away={owner.connection !== 'ready'} />{/if}{#if at !== undefined}<time title={exactTime(at)}>{ago(at, now)}</time>{/if}</span>
       {:else}
         <ThreadHeadline {owner} {thread} {now} {open} tile={compact && !nested ? project : undefined} {pullRequest} mark />
         {#if where}<span class="where ui-label" data-testid="thread-where">{where}</span>{/if}
@@ -223,17 +224,15 @@
      the tooltip; how long work has run lives in the thread. */
   .thread:not(:hover, :has(:focus-visible)) .row :global(.headline > :is(.draft, .pin, .pr)),
   .thread:not(:hover, :has(:focus-visible)) .row :global(.headline > .when:not(.waiting, .error, .interrupted, .working, .delegating, .monitoring, .background, .watching)) { display: none; }
-  /* Activity's row, as the phone's: the title and since when on one line, then the state when the section does
-     not say it, and the reason, whole. */
-  .feed-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
-  .feed-head :global(.headline) { flex: 1; }
-  .feed-head time { flex: none; font-size: var(--text-xs); color: var(--color-subtle); font-variant-numeric: tabular-nums; }
-  .reason { display: flex; align-items: baseline; gap: 6px; min-width: 0; font-size: var(--text-sm); color: var(--color-muted-foreground); text-align: start; }
-  .reason .text { flex: 0 1 auto; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
-  .reason .sep { flex: none; color: var(--color-subtle); }
-  .compact.feed:not(.nested) .reason { padding-left: 26px; }
+  /* Activity's row: one line, the title first and whole when it can be, the reason giving way, then the state and
+     since when in a column of their own (the time's width fixed, so every state ends on one edge). */
+  .feed-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .feed-head :global(.headline) { flex: 0 1 auto; max-width: 60%; }
+  .feed-head time { flex: none; min-width: 6ch; font-size: var(--text-xs); color: var(--color-subtle); text-align: end; font-variant-numeric: tabular-nums; }
+  .reason { display: flex; flex: 1 1 0; min-width: 0; font-size: var(--text-sm); color: var(--color-muted-foreground); text-align: start; }
+  .reason .text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* Recent's second line, on the title's edge: where the row lives, when the tile alone may not say it. */
-  .where { margin-top: -3px; padding-left: 26px; overflow: hidden; font-size: var(--text-xs); color: var(--color-subtle); text-align: start; text-overflow: ellipsis; white-space: nowrap; }
+  .where { margin-top: -3px; padding-left: 26px; overflow: hidden; font-size: var(--text-xs); color: var(--color-muted-foreground); text-align: start; text-overflow: ellipsis; white-space: nowrap; }
   .nested { margin-left: 26px; }
   /* The Recent list: a step wider inside, the project's tile first. */
   .compact { --pad-x: 10px; }

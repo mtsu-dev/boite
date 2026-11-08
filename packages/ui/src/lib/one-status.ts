@@ -62,3 +62,27 @@ export function settledCards(store: Store, threadId: string, cards: Map<string, 
 export function failureCarded(turn: Turn, messages: readonly Message[]): boolean {
   return turn.status === 'error' && messages.some((message) => message.turnId === turn.id && message.role !== 'user' && message.parts.some((part) => part.type === 'error'));
 }
+
+/** The command a stopped run ended on: its exit code and log go behind the error card's fold. */
+export type FailedCall = { exitCode: number | null; output: string | null };
+
+/**
+ * The last call of an answer that failed, when the answer ends in an error:
+ * the error card shows its exit code and log in its details, so the stop,
+ * its code and the way back read in one notice.
+ */
+export function failedCall(message: Message): FailedCall | null {
+  if (!message.parts.some((part) => part.type === 'error')) return null;
+  const call = message.parts.findLast((part) => part.type === 'tool');
+  return call?.type === 'tool' && call.status === 'error' ? { exitCode: call.exitCode ?? null, output: call.output } : null;
+}
+
+/**
+ * The call whose stop the turn's error card holds (`failedCall`): its own line
+ * drops the red exit code, so the stop is said once, in the card.
+ */
+export function cardedCall(turn: Turn | undefined, messages: readonly Message[], message: Message): string | null {
+  if (!turn || !failureCarded(turn, messages) || !failedCall(message)) return null;
+  const call = message.parts.findLast((part) => part.type === 'tool');
+  return call?.type === 'tool' ? call.toolId : null;
+}

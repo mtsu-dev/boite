@@ -168,6 +168,7 @@ export const fr: Translation = {
     questionAnswer: 'Répondre',
     questionAnswered: 'Répondu',
     questionCancelled: 'Cette question n’attend plus de réponse',
+    questionMore: 'Encore {count}',
     questionSkip: 'Passer',
     questionOpenPage: 'Ouvrir',
     questionWrite: 'Répondre par écrit',

@@ -728,7 +728,7 @@
 
   /* Providers still to add: lower, smaller, quieter, so the connected list leads. */
   .provider.secondary { padding: 8px var(--settings-padding); gap: 8px; }
-  .secondary .name { font-size: var(--text-sm); font-weight: 500; color: var(--color-muted-foreground); }
+  .secondary .name { font-size: var(--text-sm); font-weight: 400; color: var(--color-muted-foreground); }
   .secondary .summary:hover .name { color: var(--color-foreground); }
   .secondary-list { background: transparent; }
 
@@ -798,7 +798,7 @@
     border: 1px solid var(--color-edge);
     border-radius: var(--radius-sm);
     font-size: var(--text-sm);
-    font-weight: 500;
+    font-weight: 400;
     color: var(--color-foreground);
     text-decoration: none;
     transition: background var(--dur-2) var(--ease-out-quint);

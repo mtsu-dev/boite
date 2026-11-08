@@ -36,3 +36,16 @@ test('the rail folds the limits into the machine menu: one button even with one 
   document.querySelector<HTMLElement>('[data-testid=machine-status-menu] [data-testid=nav-limits]')!.click();
   expect(limits).toHaveBeenCalledOnce();
 });
+
+test('with limits read, the rail button wears the lowest window as a figure and names it in its tooltip', async () => {
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  mounted = mount(MachineStatus, { target: document.body, props: { store, limits: () => {}, meter: { left: 12, tone: 'low', account: 'Home', window: 'Weekly' } } });
+  await settle();
+  const gauge = document.querySelector<HTMLElement>('[data-testid=limits-gauge]')!;
+  expect(gauge.dataset.left).toBe('12');
+  expect(gauge.classList.contains('low')).toBe(true);
+  expect(gauge.textContent?.trim()).toBe('12');
+  const button = document.querySelector<HTMLElement>('[data-testid=machine-status]')!;
+  expect(button.getAttribute('aria-label') ?? button.title).toContain('12% left: Weekly, Home');
+});

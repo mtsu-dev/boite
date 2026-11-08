@@ -48,13 +48,13 @@ test('a pick from any thread menu, the phone list included, reaches the entrust 
   expect(pickThreadAction(store, thread(), 'coordination', { rename })).toBe(false);
 });
 
-test('a phone menu keeps the thread\'s actions on its first level and every tool behind Tools', () => {
+test('a phone menu keeps the thread\'s actions on its first level and the rest behind More', () => {
   const store = stub();
   const t = thread({ branch: 'boite/port' });
   const options = { phone: true, showDone: true, prLoading: false, tools: [{ id: 'find', label: 'Find' }] };
   const ids = (items: MenuItem[]) => items.filter(item => !item.separator).map(item => item.id);
   expect(ids(threadMenuItems(store, t, options))).toEqual(['rename', 'pin', 'done', 'archive', 'more', 'delete']);
-  // The path and the pull request stay on the desktop; the view's find moves into Tools.
+  // The path and the pull request stay on the desktop; the view's find moves into More.
   expect(ids(threadToolItems(store, t, options))).toEqual(['back', 'find', 'retitle', 'move']);
 });
 
@@ -73,7 +73,7 @@ test('the row, header and phone menus share one order and grouping for what they
   expect(grouped).toBe(row);
 });
 
-test('a desktop menu keeps the thread\'s actions apart and opens one Tools list with the panels, the view\'s tools and the rest', () => {
+test('a desktop menu holds only what is done to the thread, its More the view\'s tools and the rest, no panel', () => {
   const store = stub();
   agentDirectory(store).snapshot = { profiles: [{ id: 'mira', name: 'Mira', status: 'active', domain: '', avatar: '' }], entrusted: [] } as unknown as AgentsSnapshot;
   const options = { open: false, showDone: true, prLoading: false, tools: [{ id: 'find', label: 'Find' }] };
@@ -82,22 +82,21 @@ test('a desktop menu keeps the thread\'s actions apart and opens one Tools list 
   const main = threadMenuItems(store, t, options);
   // Hand off is something done to the thread: it stays beside rename and pin.
   expect(ids(main)).toEqual(['open', 'rename', 'pin', 'entrust', 'done', 'archive', 'more', 'delete']);
-  expect(main.find(item => item.id === 'more')).toMatchObject({ submenu: true, label: 'Tools' });
+  expect(main.find(item => item.id === 'more')).toMatchObject({ submenu: true, label: 'More' });
   const tools = threadToolItems(store, t, options);
   expect(tools[0]?.back).toBe(true);
   const list = ids(tools);
-  // The panels first, one row each, then the drawers, the view's own tools, then the thread's place and name.
-  expect(list.slice(0, 3)).toEqual(['back', 'kind:changes', 'kind:agent-browser']);
-  expect(list).toEqual(expect.arrayContaining(['kind:agents', 'kind:files', 'kind:tasks']));
-  expect(list.slice(-5)).toEqual(['find', 'retitle', 'move', 'copy', 'pr']);
-  expect(new Set(list).size).toBe(list.length);
+  // The view's own tools, then the thread's place and name; the panels have their own selector.
+  expect(list).toEqual(['back', 'find', 'retitle', 'move', 'copy', 'pr']);
 });
 
-test('a panel picked from a row\'s Tools opens beside that thread', async () => {
+test('no thread menu opens a panel or a drawer: the panel selector is their one door', async () => {
   const store = stub();
   const open = vi.fn();
-  Object.assign(store, { openThread: thread(), panel: { open } });
-  expect(pickThreadAction(store, thread(), 'kind:changes', { rename: vi.fn() })).toBe(true);
+  Object.assign(store, { openThread: thread(), panel: { open }, boardAvailable: () => true });
+  const all = [...threadMenuItems(store, thread(), { phone: true }), ...threadToolItems(store, thread(), { phone: true }), ...threadToolItems(store, thread(), {})];
+  expect(all.filter(item => item.id.startsWith('kind:') || item.id === 'terminal-toggle' || item.id === 'board-toggle')).toEqual([]);
+  expect(pickThreadAction(store, thread(), 'kind:changes', { rename: vi.fn() })).toBe(false);
   await Promise.resolve();
-  expect(open).toHaveBeenCalledWith('changes');
+  expect(open).not.toHaveBeenCalled();
 });

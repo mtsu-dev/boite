@@ -54,8 +54,13 @@
   }
   let rail = $state<HTMLElement>();
   let track = $state<HTMLElement>();
-  /** Px per entry once the rail opens: what a pointer can aim at comfortably. */
-  const OPEN = 14;
+  /**
+   * Px per entry once the rail opens: what a pointer can aim at comfortably,
+   * the 28 px of any lone control. Each entry's hit area is its slot, so the
+   * slots tile the rail: a taller area than the slot would hand a click to a
+   * neighbour.
+   */
+  const OPEN = 28;
   /**
    * The rail opens around the point it was entered at, in px from its top at
    * rest, and holds that layout until the pointer leaves: a bar never slides

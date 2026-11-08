@@ -1,7 +1,6 @@
 /*
- * The panel's strip shows the open panels, all alike, and keeps every other
- * kind behind More panels, so each stays one or two presses away and none is
- * listed twice.
+ * The panel's strip shows the open panels, all alike; the active one's name
+ * is the panel selector, the one door to every panel and tool.
  */
 import { afterEach, beforeEach, expect, test } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
@@ -10,6 +9,7 @@ import { rightPanel } from '../lib/right-panel.svelte';
 import { Store } from '../lib/store.svelte';
 import { offeredCards } from '../lib/surface-labels';
 import { work } from '../lib/work-prefs.svelte';
+import { closeCoordination, coordinationRequest } from '../lib/coordination-request.svelte';
 import RightPanel from './RightPanel.svelte';
 
 let app: ReturnType<typeof mount> | undefined, store: Store, client: FakeClient;
@@ -22,7 +22,7 @@ afterEach(async () => {
   store?.detach(); client?.close(); document.body.innerHTML = '';
 });
 
-test('the strip offers no tab that is not open, and More panels lists every other kind once', async () => {
+test('the active tab is the panel selector: every panel and tool listed once, a pick that lands and stays, an open kind gone back to', async () => {
   client = new FakeClient({ delayMs: 0 });
   store = new Store(); store.attach(client); await store.connect();
   await store.open('t-trace');
@@ -32,18 +32,47 @@ test('the strip offers no tab that is not open, and More panels lists every othe
   app = mount(RightPanel, { target: document.body, props: { store, panel: store.panel, attach: () => ({ destroy() {} }), onexit() {} } });
   await settle();
 
-  // One treatment: every tab in the strip is an open panel.
+  // One treatment: every tab in the strip is an open panel, and the selector is the showing one's name.
   expect(document.querySelectorAll('[data-testid=panel-tabs] .tab:not([data-testid=panel-tab])')).toHaveLength(0);
-  expect(query('[data-testid=panel-add]')?.textContent).toContain('More panels');
-  query<HTMLButtonElement>('[data-testid=panel-add]')!.click(); await settle();
-  const listed = Array.from(document.querySelectorAll<HTMLElement>('[data-testid=panel-add-menu] [data-value]')).map((row) => row.dataset['value']);
-  // Every kind is reachable: a tab or a row behind More panels, exactly one of them.
-  const open = (kind: string) => document.querySelector(`[data-testid=panel-tab][data-kind=${kind}]`) !== null;
-  for (const card of offeredCards()) expect([listed.includes(card.kind), open(card.kind)].filter(Boolean)).toHaveLength(1);
+  const selector = () => query<HTMLButtonElement>('[data-testid=panel-add]')!;
+  expect(selector().closest('[data-testid=panel-tab]')?.getAttribute('data-kind')).toBe('files');
+  expect(selector().textContent?.trim()).toBe('Files');
+  selector().click(); await settle();
+  const listed = () => Array.from(document.querySelectorAll<HTMLElement>('[data-testid=panel-add-menu] [data-value]')).map((row) => row.dataset['value']);
+  // Every kind, open or not, once; then the coordination and the way to hide some.
+  for (const card of offeredCards()) expect(listed().filter((id) => id === card.kind)).toHaveLength(1);
+  expect(listed()).toEqual(expect.arrayContaining(['coordination', 'customize']));
+  expect(new Set(listed()).size).toBe(listed().length);
+  expect(query('[data-testid=panel-add-menu] [data-value=files]')?.classList.contains('active')).toBe(true);
+
+  // The pick lands: its click does not bubble into the old tab and bring it back.
   query<HTMLButtonElement>('[data-testid=panel-add-menu] [data-value=changes]')!.click(); await settle();
   expect(store.panel.active?.kind).toBe('changes');
-  // Open now, it is a tab like the others and no longer listed.
-  expect(query('[data-testid=panel-tab][data-kind=changes]')).not.toBeNull();
+  expect(selector().closest('[data-testid=panel-tab]')?.getAttribute('data-kind')).toBe('changes');
+  expect(query('[data-testid=panel-tab][data-kind=files]')).not.toBeNull();
+
+  // An open kind picked again is gone back to, not opened a second time.
+  selector().click(); await settle();
+  query<HTMLButtonElement>('[data-testid=panel-add-menu] [data-value=files]')!.click(); await settle();
+  expect(store.panel.active?.kind).toBe('files');
+  expect(document.querySelectorAll('[data-testid=panel-tab][data-kind=files]')).toHaveLength(1);
+
+  // The conversations' coordination opens from the same list.
+  selector().click(); await settle();
+  query<HTMLButtonElement>('[data-testid=panel-add-menu] [data-value=coordination]')!.click(); await settle();
+  expect([coordinationRequest.store === store, coordinationRequest.threadId]).toEqual([true, 't-trace']);
+  closeCoordination();
+});
+
+test('an empty panel keeps the selector as its title', async () => {
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  await store.open('t-trace');
+  store.panel.closeAll();
+  app = mount(RightPanel, { target: document.body, props: { store, panel: store.panel, attach: () => ({ destroy() {} }), onexit() {} } });
+  await settle();
+  expect(document.querySelectorAll('[data-testid=panel-tab]')).toHaveLength(0);
   query<HTMLButtonElement>('[data-testid=panel-add]')!.click(); await settle();
-  expect(document.querySelector('[data-testid=panel-add-menu] [data-value=changes]')).toBeNull();
+  query<HTMLButtonElement>('[data-testid=panel-add-menu] [data-value=changes]')!.click(); await settle();
+  expect(store.panel.active?.kind).toBe('changes');
 });

@@ -23,7 +23,7 @@ export const strings = {
       accounts: 'Providers',
       plugins: 'Plugins',
       usage: 'Usage',
-      resources: 'Quiet and memory',
+      resources: 'Windows, sound and memory',
       experiments: 'Experiments',
       diagnostics: 'Diagnostics'
     },
@@ -98,7 +98,9 @@ export const strings = {
       contrast: 'Text contrast',
       contrastHint: 'The lowest text contrast across the background, frame and panels. The target is 4.5:1.',
       contrastLow: 'Low text contrast {ratio}:1',
-      improveContrast: 'Improve contrast'
+      improveContrast: 'Improve contrast',
+      /** The palette in use when it is none of the presets. */
+      custom: 'Custom'
     },
     themeSystem: 'System',
     themeDark: 'Dark',
@@ -156,6 +158,8 @@ export const strings = {
     terminalCursorBar: 'Bar',
     terminalCursorBlock: 'Block',
     terminalCursorUnderline: 'Underline',
+    /** Advanced: the two pointer and terminal details few people change. */
+    terminalAndScrollbars: 'Terminal and scrollbars',
     terminalGpu: 'Draw terminals on the GPU',
     terminalGpuHint: 'Smoother scrolling and output. Turn it off if a terminal draws badly on this device; it applies to terminals opened next.',
     connection: 'Connection',

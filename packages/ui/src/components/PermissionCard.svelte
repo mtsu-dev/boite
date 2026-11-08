@@ -8,6 +8,7 @@
   import Deferred, { parts } from './Deferred.svelte';
   import InfoTip from './InfoTip.svelte';
   import DecisionHead from './DecisionHead.svelte';
+  import { arrive } from '../lib/arrival';
 
   let {
     toolName,
@@ -79,7 +80,7 @@
 
 {#if docked}
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-<div class="permission docked" data-testid="permission-card" data-decision="pending" data-family={described.family} role="group" aria-label={sentence} tabindex="-1" {@attach keys}>
+<div class="permission docked" data-testid="permission-card" data-decision="pending" data-family={described.family} role="group" aria-label={sentence} tabindex="-1" {@attach keys} {@attach arrive}>
   <DecisionHead>
     <span class="sentence ui-label" data-testid="permission-sentence" title={described.subject || toolName}>{sentence}</span>
     {#if request}<InfoTip text={`${why ? `${why}\n\n` : ''}${toolName}\n${json(request.input)}`} topic={sentence} testid="permission-input" />{/if}
@@ -259,8 +260,6 @@
     padding: 10px 12px;
     gap: 8px;
     outline: none;
-    /* It arrives with a short rise; reduced motion keeps only the fade (`--motion`). */
-    animation: rise var(--motion-in) both;
   }
   .docked:focus-visible { box-shadow: inset 0 0 0 2px var(--color-accent); }
   .docked .sentence { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

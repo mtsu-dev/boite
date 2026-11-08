@@ -836,8 +836,8 @@
        so the timeline ends where it starts and nothing runs under it. */
     padding: 20px var(--outline-room);
     overscroll-behavior: contain;
-    /* The toasts sit in room taken from the timeline's top, or its bottom
-       on a phone (notify-corner.ts and .css), so they cover no line of it. */
+    /* The toasts sit in room taken from the timeline's bottom, right above
+       the composer (notify-corner.ts and .css), so they cover no line of it. */
     transition: margin var(--dur-2) var(--ease-out-quint);
   }
 

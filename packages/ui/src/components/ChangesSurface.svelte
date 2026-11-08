@@ -70,18 +70,25 @@
     panel.update(surface.id, { path: change.path });
   }
 
-  /** Under this width the list and a diff do not share the panel: a phone sees one, then the other. */
+  /** Under this width a row's targets are a finger's. */
   const NARROW_MAX = 600;
+  /**
+   * Under this width the list and a diff do not share the panel: the list
+   * fills it until a file is picked, then the diff does, and the file chip's
+   * menu is the list. From it the list is a narrow column beside the diff.
+   */
+  const STACKED_MAX = 900;
   let width = $state(0);
   let narrow = $derived(width > 0 && width < NARROW_MAX);
+  let stacked = $derived(width > 0 && width < STACKED_MAX);
   /** At a 360 px phone the bar keeps the file's name whole; its line counts stay on its row in the list under the diff. */
   let tight = $derived(width > 0 && width < 380);
   let changes = $derived(status?.changes ?? []);
   /** Where the selected file stands in the list, -1 when it is not (or no longer) in it. */
   let at = $derived(selected === null ? -1 : changes.findIndex((change) => change.path === selected));
 
-  /** A phone's width with a file open: the diff fills the panel and the bar trades the count for the file choice. */
-  let oneFile = $derived(narrow && selected !== null);
+  /** A file open in a stacked panel: the diff fills it and the bar trades the count for the file choice. */
+  let oneFile = $derived(stacked && selected !== null);
   let picked = $derived(at < 0 ? null : changes[at]!);
   /** The status dot's tone in the file menu, the same reading as the list's badge. */
   const TONES: Record<GitChange['status'], NonNullable<MenuItem['status']>['tone']> = {
@@ -175,7 +182,7 @@
   });
 </script>
 
-<div class="changes-surface" class:narrow class:reading={oneFile} class:has-file={selected !== null} data-testid="changes-panel" bind:clientWidth={width}>
+<div class="changes-surface" class:narrow class:stacked class:reading={oneFile} class:has-file={selected !== null} data-testid="changes-panel" bind:clientWidth={width}>
   <!-- One bar: the way back and the file choice when one file fills the panel, the branch, the count or the file's lines, the diff's switches. -->
   <div class="panel-toolbar">
     {#if oneFile}
@@ -280,7 +287,7 @@
           <p class="notice" data-testid="changes-truncated">{strings.changes.truncated}</p>
         {/if}
         <!-- The bar above names the file and holds the switches: the code starts right under it. -->
-        <div use:boxWidth={(value) => (codeWidth = value)}>
+        <div class="code" use:boxWidth={(value) => (codeWidth = value)}>
           <DiffView path={diff.path} oldText={diff.oldText ?? ''} newText={diff.newText ?? ''} doc={source ?? undefined} headless grow />
         </div>
       {/if}
@@ -340,59 +347,47 @@
     padding: 2px 6px 6px;
   }
 
+  /* The diff runs to the panel's edges and bottom: its own scroll, no card around it. */
   .detail {
     flex: 1;
     min-height: 0;
     overflow: auto;
-    padding: 12px;
     border-top: 1px solid var(--color-border);
   }
+  .detail > .empty, .detail > .notice { padding: 10px 12px; margin: 0; }
+  /* The diff's own fill reaches the bottom however short the file. */
+  .code { display: flex; flex-direction: column; min-height: 100%; }
 
-  /* Wide enough for two columns: the diff sits beside the list instead of under it. */
+  /* Wide enough for two columns: the list is a narrow column beside the diff. */
   @container (min-width: 900px) {
     .split {
       flex-direction: row;
     }
 
     .list {
-      width: 320px;
+      width: 240px;
       max-height: none;
       flex: none;
       border-right: 1px solid var(--color-border);
     }
 
     .detail {
-      padding-top: 6px;
+      border-top: none;
     }
   }
 
-  /* A phone's width: the list fills the panel until a row is picked. Then the
-     bar names the file and its counts, the diff follows, and the other files
-     come under it in the same scroll, one tap from the next diff. */
-  .narrow .list {
+  /* Stacked: the list fills the panel until a row is picked; then the diff
+     does, the bar names the file, and its chip's menu holds the other files.
+     The list stays in the page, hidden, so its rows keep their state. */
+  .stacked .list {
     flex: 1;
     max-height: none;
   }
-
-  .narrow .detail {
-    display: none;
-    padding: 8px 8px 12px;
-    border-top: none;
-  }
-
-  .narrow.reading .split { overflow-y: auto; }
-  .narrow.reading .detail { display: block; flex: none; overflow: visible; }
-  .narrow.reading .list { flex: none; max-height: none; overflow: visible; }
-
-  /* A file open in a stacked panel: the diff first, sized to its rows, and the
-     list right under it, so the panel holds both instead of a short diff over
-     an empty half. Beside each other from 900 px, as above. */
-  @container (max-width: 899px) {
-    .has-file .detail { order: 1; flex: 0 1 auto; border-top: none; }
-    .has-file .list { order: 2; flex: 0 0 auto; max-height: 40%; padding-top: 6px; border-top: 1px solid var(--color-border); }
-  }
-  /* Beside a desktop chat the list under the diff is the way back: no arrow for it. */
-  @media (min-width: 721px) { .narrow.reading .back { display: none; } }
+  .stacked .detail { display: none; }
+  .stacked.reading .list { display: none; }
+  .stacked.reading .detail { display: block; border-top: none; }
+  /* Beside a desktop chat the chip is the way to the other files: the arrow back is a phone's. */
+  @media (min-width: 721px) { .reading .back { display: none; } }
 
   /* The back arrow pulls into the bar's edge so its glyph lines up with the rows under it. */
   .back { flex: none; margin-left: -6px; }

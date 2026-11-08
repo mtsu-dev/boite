@@ -71,7 +71,7 @@ test('a header unmounted with its rename open, as a machine switch does, still w
   expect(rename.mock.calls).toEqual([['t-trace', 'Typed before the switch']]);
 });
 
-test("a phone's header is back, the title and one menu: the thread's actions, then one Tools list with every panel, one browser and no contact requests", async () => {
+test("a phone's header is back, the title, one menu of the thread's actions and the panel button; no panel in the menu, no contact requests", async () => {
   vi.spyOn(window, 'matchMedia').mockImplementation(media => Object.assign(new EventTarget(), {
     media, matches: true, onchange: null, addListener() {}, removeListener() {}
   }));
@@ -86,7 +86,7 @@ test("a phone's header is back, the title and one menu: the thread's actions, th
   const menu = document.querySelector<HTMLElement>('[data-testid=thread-menu-trigger-menu]')!;
   const values = (root: HTMLElement) => [...root.querySelectorAll<HTMLElement>('[data-value]')].map(node => node.dataset['value']);
   const rows = values(menu);
-  // One door: the thread's own actions, Tools, then Delete; no section of panels beside them.
+  // The thread's own actions, More, then Delete; no section of panels beside them.
   expect(menu.querySelectorAll('.section')).toHaveLength(0);
   expect(rows).toContain('rename');
   expect(rows.at(-1)).toBe('delete');
@@ -95,40 +95,38 @@ test("a phone's header is back, the title and one menu: the thread's actions, th
   menu.querySelector<HTMLButtonElement>('[data-value="more"]')!.click(); await settle();
   const list = document.querySelector<HTMLElement>('[data-testid=thread-menu-trigger-menu]')!;
   const tools = values(list);
-  expect(tools.slice(0, 3)).toEqual(['back', 'changes', 'phone-browser-toggle']);
-  expect(tools).toEqual(expect.arrayContaining(['agents', 'find', 'panel', 'retitle']));
-  expect(new Set(tools).size).toBe(tools.length);
+  // More: the find bar a phone has no Ctrl+F for, then the thread's place and name. The panels are the panel selector's.
+  expect(tools.slice(0, 3)).toEqual(['back', 'find', 'retitle']);
+  for (const panel of ['changes', 'phone-browser-toggle', 'agents', 'panel', 'board', 'coordination']) expect(tools).not.toContain(panel);
   expect(list.textContent).not.toMatch(/contact/i);
-  expect([...list.querySelectorAll('[data-row]')].filter(row => row.textContent?.trim() === 'Browser')).toHaveLength(1);
-  list.querySelector<HTMLButtonElement>('[data-value="phone-browser-toggle"]')!.click(); await settle();
-  expect([store.panelOpen, store.panel.active?.kind]).toEqual([true, 'agent-browser']);
+  // The phone's way to the panels is the header's panel button, as on a desktop.
+  const was = store.panelOpen;
+  document.querySelector<HTMLButtonElement>('[data-testid=panel-toggle]')!.click(); await settle();
+  expect(store.panelOpen).toBe(!was);
 });
 
-test("a desktop header's menu opens the same Tools list, whose panels open beside the thread", async () => {
+test("a desktop header's More holds the thread's less frequent actions and no panel", async () => {
   await start();
   document.querySelector<HTMLButtonElement>('[data-testid=thread-menu-trigger]')!.click(); await settle();
   const menu = document.querySelector<HTMLElement>('[data-testid=thread-menu-trigger-menu]')!;
   expect(menu.querySelector('[data-value="kind:changes"]')).toBeNull();
   menu.querySelector<HTMLButtonElement>('[data-value="more"]')!.click(); await settle();
   const list = document.querySelector<HTMLElement>('[data-testid=thread-menu-trigger-menu]')!;
-  for (const id of ['back', 'kind:changes', 'agents', 'terminal-toggle', 'find', 'coordination', 'retitle', 'copy'])
-    expect(list.querySelector(`[data-value="${id}"]`)).not.toBeNull();
-  list.querySelector<HTMLButtonElement>('[data-value="kind:changes"]')!.click(); await settle();
-  expect([store.panelOpen, store.panel.active?.kind]).toEqual([true, 'changes']);
+  for (const id of ['back', 'find', 'retitle', 'copy']) expect(list.querySelector(`[data-value="${id}"]`)).not.toBeNull();
+  for (const id of ['kind:changes', 'agents', 'terminal-toggle', 'coordination']) expect(list.querySelector(`[data-value="${id}"]`)).toBeNull();
 });
 
-test("a desktop header's panel button opens the panel and its list holds the panels, the terminal and the board", async () => {
+test("a desktop header's panel button shows and hides the panel, with no list of its own beside it", async () => {
   await start();
   expect(document.querySelector('[data-testid=terminal-toggle]')).toBeNull();
   expect(document.querySelector('[data-testid=board-toggle]')).toBeNull();
-  document.querySelector<HTMLButtonElement>('[data-testid=panel-menu]')!.click(); await settle();
-  const menu = document.querySelector<HTMLElement>('[data-testid=panel-menu-menu]')!;
-  expect(menu.querySelector('[data-value="kind:changes"]')).not.toBeNull();
-  expect(menu.querySelector('[data-value="terminal-toggle"]')).not.toBeNull();
-  menu.querySelector<HTMLButtonElement>('[data-value="kind:changes"]')!.click(); await settle();
-  expect([store.panelOpen, store.panel.active?.kind]).toEqual([true, 'changes']);
+  // Its chevron's list moved into the panel, as the panel selector.
+  expect(document.querySelector('[data-testid=panel-menu]')).toBeNull();
+  const was = store.panelOpen;
   document.querySelector<HTMLButtonElement>('[data-testid=panel-toggle]')!.click(); await settle();
-  expect(store.panelOpen).toBe(false);
+  expect(store.panelOpen).toBe(!was);
+  document.querySelector<HTMLButtonElement>('[data-testid=panel-toggle]')!.click(); await settle();
+  expect(store.panelOpen).toBe(was);
 });
 
 test("a desktop header names its place, project then title, and the project brings the thread list back", async () => {

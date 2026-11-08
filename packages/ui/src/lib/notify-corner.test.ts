@@ -13,7 +13,8 @@ function box(testid: string, rect: Partial<DOMRect>): HTMLElement {
 
 afterEach(() => { document.body.replaceChildren(); window.innerWidth = 1024; });
 
-test('a toast sits under the thread header, centred on the timeline, never in the strip over the composer', () => {
+test('on a desktop a toast sits in room at the bottom of the timeline, right above the composer, never over a line or in the strip', () => {
+  window.innerWidth = 1440;
   box('thread-header', { top: 0, bottom: 48, left: 300, right: 1440, height: 48, width: 1140 });
   const timeline = box('timeline', { top: 48, bottom: 700, left: 300, right: 1300, height: 652, width: 1000 });
   const strip = box('composer-strip', { top: 700, bottom: 734, left: 400, right: 1200, height: 34, width: 800 });
@@ -21,13 +22,13 @@ test('a toast sits under the thread header, centred on the timeline, never in th
   Object.defineProperty(toast, 'offsetHeight', { value: 40 });
   document.body.append(toast);
   const slot = toastSlot(toast);
-  expect(toast.dataset.slot).toBe('top');
-  expect(toast.style.getPropertyValue('--toast-top')).toBe('56px');
-  expect(toast.style.getPropertyValue('--toast-left')).toBe('800px');
-  // The timeline keeps the toast's room at its top; the strip keeps none.
-  expect(timeline.style.getPropertyValue('--corner-room')).toBe('48px');
-  expect(timeline.dataset.cornerRoom).toBe('top');
+  expect(toast.dataset.slot).toBe('bottom');
+  // The timeline gives way at its bottom: 8 above the toast, the toast, 8 under it, then the strip.
+  expect(timeline.style.getPropertyValue('--corner-room')).toBe('56px');
+  expect(timeline.dataset.cornerRoom).toBe('bottom');
   expect(strip.style.getPropertyValue('--corner-room')).toBe('');
+  expect(toast.style.getPropertyValue('--toast-top')).toBe('652px');
+  expect(toast.style.getPropertyValue('--toast-left')).toBe('800px');
   slot.destroy();
   expect(timeline.style.getPropertyValue('--corner-room')).toBe('');
 });

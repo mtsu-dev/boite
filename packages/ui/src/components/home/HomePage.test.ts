@@ -275,7 +275,7 @@ test("a board asked for from a contact's page stays hidden when another page is 
   expect([store.page, store.boardShown]).toEqual(['settings', false]);
 });
 
-test('accept shares the project picked in the menu; refuse waits for a reason; remove asks first and goes back to the page that adds one', async () => {
+test('accept shares the project picked in the row menu; refuse waits for a reason; remove asks first and goes back to the page that adds one', async () => {
   const store = await draw();
   expect(one('home-waiting')).not.toBeNull();
   // The decided one is folded under its count, with who decided.
@@ -288,9 +288,11 @@ test('accept shares the project picked in the menu; refuse waits for a reason; r
   // Escape leaves the reason and gives Accept back.
   one('contact-refuse-reason')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   flushSync();
-  one<HTMLButtonElement>('contact-accept-creq-pending')!.click();
-  await vi.waitFor(() => { flushSync(); expect(one('contact-accept-creq-pending-menu')).not.toBeNull(); });
-  one('contact-accept-creq-pending-menu')!.querySelector<HTMLButtonElement>('[data-value="p-notes"]')!.click();
+  // Accept is a plain button; another project is picked in the row's menu.
+  expect(one('contact-accept-creq-pending')!.getAttribute('aria-haspopup')).toBeNull();
+  one<HTMLButtonElement>('contact-accept-into-creq-pending')!.click();
+  await vi.waitFor(() => { flushSync(); expect(one('contact-accept-into-creq-pending-menu')).not.toBeNull(); });
+  one('contact-accept-into-creq-pending-menu')!.querySelector<HTMLButtonElement>('[data-value="p-notes"]')!.click();
   await vi.waitFor(async () => {
     const request = (await contacts(store)).requests.find(entry => entry.id === 'creq-pending')!;
     expect([request.status, request.project?.id]).toEqual(['accepted', 'p-notes']);

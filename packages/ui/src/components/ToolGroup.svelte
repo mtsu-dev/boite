@@ -35,7 +35,8 @@
     permissionRequest = () => null,
     answerPermission = () => false,
     store,
-    threadId
+    threadId,
+    carded = null
   }: {
     parts: ActivityPart[];
     /** The compactions that fell in this run: a mark on its line, no row of their own. */
@@ -52,6 +53,8 @@
     /** The machine and thread the run belongs to, where a thread link in it starts from. */
     store?: Store;
     threadId?: string;
+    /** The failed call the turn's error card says: no second red mark for it here (`cardedCall`). */
+    carded?: string | null;
   } = $props();
 
   const ICONS = { command: SquareTerminal, read: FileText, edit: FilePen, write: FilePen, search: Search, fetch: Globe, web: Globe, agent: Bot, other: Wrench };
@@ -80,7 +83,7 @@
   let running = $derived(tools.findLast((part) => part.status === 'running'));
   let thinking = $derived(running === undefined && thinkingLive);
   let live = $derived(running !== undefined || thinking);
-  let issues = $derived(tools.filter(part => part.status === 'error' || part.status === 'denied').length);
+  let issues = $derived(tools.filter(part => (part.status === 'error' || part.status === 'denied') && part.toolId !== carded).length);
   let said = $derived(verdict === 'allow' ? strings.chat.permissionAllowedBy : verdict === 'deny' ? strings.chat.permissionDeniedBy : null);
   let issueLabel = $derived(fill(issues === 1 ? strings.chat.toolIssueOne : strings.chat.toolIssueMany, { count: String(issues) }));
   // Live, the thought being written; otherwise the last one that has words.
@@ -130,6 +133,7 @@
       finishedAt={part.finishedAt ?? null}
       background={isBackground(part.toolId)}
       permission={asked.get(index)?.decision ?? null}
+      carded={part.toolId === carded}
       {nested}
       {store}
       {threadId}

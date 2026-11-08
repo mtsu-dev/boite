@@ -35,17 +35,21 @@ test('a floating panel can dock after leaving or closing its browser tab and cha
   expect(rightPanel.maximized).toBe(false);
 });
 
-test("the panel menu lists the terminal, and a control's right click leads to the Appearance page that hides it and brings it back", async () => {
+test("the panel selector lists the terminal, and a control's right click leads to the Appearance page that hides it and brings it back", async () => {
   work.showPreset('developer');
   // With a team on the thread, since Team shows only where there is one.
   await mountOnFake('/?fake=1&team=1');
   await waitFor(() => document.querySelector('[data-thread-id="t-trace"]') !== null);
   query<HTMLButtonElement>('[data-thread-id="t-trace"]').click();
-  // The terminal moved from its own header button into the panel menu, under the button's id.
-  await waitFor(() => document.querySelector('[data-testid=panel-menu]') !== null);
-  query<HTMLButtonElement>('[data-testid=panel-menu]').click();
-  await waitFor(() => document.querySelector('[data-testid=panel-menu-menu] [data-value=terminal-toggle]') !== null);
-  query<HTMLButtonElement>('[data-testid=panel-menu]').click();
+  // The terminal moved from its own header button into the panel selector, under the button's id.
+  await waitFor(() => document.querySelector('[data-testid=panel-toggle]') !== null);
+  const wasOpen = store.panelOpen;
+  if (!wasOpen) query<HTMLButtonElement>('[data-testid=panel-toggle]').click();
+  await waitFor(() => document.querySelector('[data-testid=panel-add]') !== null);
+  query<HTMLButtonElement>('[data-testid=panel-add]').click();
+  await waitFor(() => document.querySelector('[data-testid=panel-add-menu] [data-value=terminal-toggle]') !== null);
+  query<HTMLButtonElement>('[data-testid=panel-add]').click();
+  if (!wasOpen) query<HTMLButtonElement>('[data-testid=panel-toggle]').click();
 
   // The ring sits beside the model chip once half the context is used.
   store.openThread!.context = { tokens: 120_000, window: 200_000, at: Date.now() };
@@ -191,6 +195,7 @@ test('what the agent asks for through panel.open opens on the thread it named', 
   });
   await waitFor(() => document.querySelector('[data-testid=file-panel]') !== null);
   expect(store.panel.active?.line).toBe(42);
-  expect(query('[data-testid=panel-tab][data-kind=file]').getAttribute('title')).toBe('src/lib/store.svelte.ts');
+  // Showing, its name is the panel selector, which carries the path.
+  expect(query('[data-testid=panel-tab][data-kind=file] [data-testid=panel-add]').getAttribute('title')).toBe('src/lib/store.svelte.ts');
   expect(query('[data-testid=panel-tab][data-kind=file] .name').textContent).toBe('store.svelte.ts');
 });

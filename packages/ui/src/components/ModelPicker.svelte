@@ -26,7 +26,6 @@
     disabled = false,
     readonly = false,
     readonlyHint = '',
-    compact = false,
     anchor,
     settings,
     trailing,
@@ -42,8 +41,6 @@
     /** The model is set elsewhere (a bot's settings): the chip names it and opens nothing. */
     readonly?: boolean;
     readonlyHint?: string;
-    /** Stepped back behind a decision: the provider's mark alone, its name said on hover. */
-    compact?: boolean;
     /** What the desktop popover opens above: the chip, or the whole composer while an ask is docked in it, on the chip's side, so it never covers the ask. */
     anchor?: () => HTMLElement | null;
     /** The rows under the models; the menu hands them its More row, which loads with it. */
@@ -145,11 +142,10 @@
   <button
     type="button"
     class="chip trigger"
-    class:compact
     aria-haspopup="menu"
     aria-expanded={popover.open}
     aria-label={[label, effortLabel, accountLabel].filter(Boolean).join(', ')}
-    title={locked ? strings.composer.lockedHint : compact ? [label, effortLabel].filter(Boolean).join(' · ') : strings.composer.picker}
+    title={locked ? strings.composer.lockedHint : strings.composer.picker}
     data-testid="composer-picker"
     {disabled}
     onclick={toggle}
@@ -160,12 +156,10 @@
     {:else}
       <Sparkles size={14} strokeWidth={1.75} />
     {/if}
-    {#if !compact}
     <span class="label ui-label">{label}</span>
     {#if effortLabel}<span class="effort ui-label" data-testid="composer-picker-effort">· {effortLabel}</span>{/if}
     {#if accountLabel}<span class="account ui-label" data-testid="composer-picker-account">{accountLabel}</span>{/if}
     <ChevronDown size={12} strokeWidth={2} />
-    {/if}
   </button>
   {/if}
   {@render trailing?.()}

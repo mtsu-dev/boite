@@ -23,6 +23,8 @@ export const fr: Translation = {
     surfaceWaiting: '{count} au travail, quelque chose vous attend',
     projectsView: 'Projets',
     recentView: 'Récent',
+    /** A project card's quiet threads folded under one line (Sidebar.svelte); a press shows them in place. */
+    moreThreads: '{count} autres',
     displayView: 'Affichage',
     displayOrder: 'Trier par',
     groupWorkingRow: 'Conversations en cours',
@@ -125,7 +127,7 @@ export const fr: Translation = {
       interrupted: 'Interrompu',
       unreachable: 'Injoignable',
       unreachableWas: 'Machine injoignable. Dernier état connu : {state}',
-      interruptedBy: '{what} s’est arrêté sans le réveiller : {reason}',
+      interruptedBy: '{what} s’est terminé sans rendre de résultat : {reason}',
       interruption: {
         'error': 'la tâche a échoué',
         'cancelled': 'la tâche a été annulée',

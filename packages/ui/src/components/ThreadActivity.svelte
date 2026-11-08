@@ -10,6 +10,7 @@
   import { questionDock } from '../lib/question-dock.svelte';
   import { ignoreQuestions, releaseWaiting, replyOf, repliesOf, sendAnswer, writeAnswer } from '../lib/question-reply.svelte';
   import Deferred, { parts } from './Deferred.svelte';
+  import { growsOnArrival } from '../lib/arrival';
   import InfoTip from './InfoTip.svelte';
   import { openQuestionPage } from '../lib/question-page';
   import SettingRequestCard from './SettingRequestCardLoader.svelte';
@@ -198,7 +199,7 @@
 {/snippet}
 
 {#if activity || asked.length > 0 || waits.length > 0 || childQuestions.length > 0}
-  <section class="activity" class:hidden={!visible} data-testid="thread-activity" aria-label={shown || childQuestions.length ? strings.activity.question : strings.activity.tasks} inert={!visible}>
+  <section class="activity" class:hidden={!visible} {@attach growsOnArrival(() => asked.length + waits.length + childQuestions.length)} data-testid="thread-activity" aria-label={shown || childQuestions.length ? strings.activity.question : strings.activity.tasks} inert={!visible}>
     {#if childQuestions.length > 0 && store.openThread}
       <div class="child-questions"><SubagentQuestions {store} threadId={store.openThread.id} /></div>
     {/if}
@@ -445,8 +446,8 @@
      so a hover fill sits inset by the same four pixels on every side. */
   .activity { max-height: 45vh; overflow-y: auto; padding: 8px 4px 4px; border-bottom: 1px solid var(--color-border); font-size: var(--text-sm); }
   .activity.hidden { display: none; }
-  /* A decision arrives with a short rise; reduced motion keeps only the fade (`--motion`). */
-  .asked, .child-questions { animation: rise var(--motion-in) both; }
+  /* A decision arrives by growing the dock from its last height, content and
+     box together (`lib/arrival.ts`); reduced motion shows it at once. */
   .activity-row { display: flex; align-items: center; gap: 8px; min-height: var(--control); min-width: 0; padding: 0 2px 0 8px; }
   /* The questions sit above the goal, the loop and the tasks, a hairline between. */
   .child-questions + :is(.questions, .entry, .tasks-toggle, .waits), .questions + :is(.entry, .tasks-toggle, .waits), .waits + :is(.entry, .tasks-toggle) { margin-top: 4px; border-top: 1px solid var(--color-border); padding-top: 4px; }

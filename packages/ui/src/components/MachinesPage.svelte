@@ -373,7 +373,7 @@
     background: var(--color-active);
     color: var(--color-foreground);
     font-size: var(--text-xs);
-    font-weight: 500;
+    font-weight: 400;
   }
   .meta {
     display: flex;

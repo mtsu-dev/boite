@@ -322,6 +322,8 @@
   /* A framed card's corner, and the frame between two cards and the window edge. */
   --radius-frame: 12px;
   --frame-gap: 8px;
+  /* How far a scroll area fades its edge while content runs past it (`.scroll-edges`). */
+  --scroll-edge: 16px;
 
   --shadow-e1: 0 1px 2px rgb(0 0 0 / 0.35), inset 0 1px 0 rgb(255 255 255 / 0.05);
   --shadow-e2: 0 8px 24px rgb(0 0 0 / 0.45), 0 0 0 1px rgb(255 255 255 / 0.05);
@@ -337,8 +339,9 @@
   --overlay-row: max(32px, var(--control));
   --overlay-row-pad: var(--space-2);
   --radius-overlay-row: var(--radius-sm);
-  /* The panel's border draws its hairline; then a top light and two shadows that set it in the chrome. */
-  --shadow-frame: inset 0 1px 0 rgb(255 255 255 / 0.035), 0 1px 2px rgb(0 0 0 / 0.6), 0 12px 40px rgb(0 0 0 / 0.35);
+  /* The panel's border draws its hairline; then a top light and a contact shadow.
+     No wide blur: 40 px of it read as a darker band on the chrome beside the card. */
+  --shadow-frame: inset 0 1px 0 rgb(255 255 255 / 0.035), 0 1px 2px rgb(0 0 0 / 0.6);
   /* The left edge of a phone's screen sliding over another (`lib/screen-slide.svelte.ts`). */
   --shadow-screen: -8px 0 24px -6px rgb(0 0 0 / 0.5);
 
@@ -518,8 +521,9 @@
   /* One motion set for whatever opens and closes: a menu, a popover, a dialog, a
      sheet, a toast, a fold. It enters in --dur-enter on --ease-enter and leaves
      quicker on --ease-exit; `--motion-in` and `--motion-out` are the pairs to put
-     after an animation's name. `--motion` scales every move in their keyframes:
-     reduced motion sets it to 0, so the same entrance plays as a short fade. */
+     after an animation's name. `--motion` scales every move in their keyframes.
+     Reduced motion is a cut: every duration below drops to 0.01 ms (not 0, so
+     `animationend` still fires for `lib/closing.svelte.ts`). */
   --dur-enter: 200ms;
   --dur-exit: 140ms;
   --ease-enter: cubic-bezier(0.22, 1, 0.36, 1);
@@ -534,6 +538,12 @@
   --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
 
   color-scheme: dark;
+}
+
+/* A 360 px phone takes its large titles one step down, so a screen's name holds
+   on one line. Text that is typed stays at 16 px: less makes iOS zoom in. */
+@media (max-width: 380px) {
+  :root { --text-lg: 18px; }
 }
 
 /* Theme families own their surface hierarchy, selection, code and status colours.
@@ -919,7 +929,7 @@ html[data-chat-width='full'] {
   --shadow-e2: 0 8px 24px rgb(0 0 0 / 0.12), 0 0 0 1px rgb(0 0 0 / 0.06);
   --shadow-e3: 0 20px 60px rgb(0 0 0 / 0.18), 0 0 0 1px rgb(0 0 0 / 0.08);
   --shadow-overlay: 0 12px 36px rgb(0 0 0 / 0.14), 0 1px 2px rgb(0 0 0 / 0.08);
-  --shadow-frame: inset 0 1px 0 rgb(255 255 255 / 0.6), 0 1px 2px rgb(0 0 0 / 0.06), 0 12px 40px rgb(0 0 0 / 0.06);
+  --shadow-frame: inset 0 1px 0 rgb(255 255 255 / 0.6), 0 1px 2px rgb(0 0 0 / 0.06);
   --shadow-screen: -8px 0 24px -6px rgb(0 0 0 / 0.14);
   --color-composer-focus: rgba(0, 0, 0, 0.24);
   --shadow-composer: inset 0 1px 0 rgb(255 255 255 / 0.8), 0 10px 30px rgb(0 0 0 / 0.07);
@@ -954,10 +964,10 @@ html[data-chat-width='full'] {
     --dur-3: 0.01ms;
     --dur-slide: 0.01ms;
     --dur-slide-out: 0.01ms;
-    /* Nothing moves; what opens and closes still fades, briefly, so it never pops in a frame. */
+    /* A cut: nothing moves and nothing fades, so no frame ever shows two states at once. */
     --motion: 0;
-    --dur-enter: 120ms;
-    --dur-exit: 90ms;
+    --dur-enter: 0.01ms;
+    --dur-exit: 0ms;
   }
 }
 
@@ -970,8 +980,31 @@ html[data-motion='reduced'] {
   --dur-slide: 0.01ms;
   --dur-slide-out: 0.01ms;
   --motion: 0;
-  --dur-enter: 120ms;
-  --dur-exit: 90ms;
+  --dur-enter: 0.01ms;
+  --dur-exit: 0ms;
+}
+
+/* The same cut for every animation and transition a component wrote with its own
+   duration: reduced motion asked for no in-between frames, not for shorter ones.
+   The tour's pictures keep playing (they are the content, `--dur-demo-*`); loops
+   stand still through `--loops` below. */
+@media (prefers-reduced-motion: reduce) {
+  *:not([data-testid='onboarding-animation'], [data-testid='onboarding-animation'] *),
+  *:not([data-testid='onboarding-animation'] *)::before,
+  *:not([data-testid='onboarding-animation'] *)::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
+  }
+}
+html[data-motion='reduced'] *:not([data-testid='onboarding-animation'], [data-testid='onboarding-animation'] *),
+html[data-motion='reduced'] *:not([data-testid='onboarding-animation'] *)::before,
+html[data-motion='reduced'] *:not([data-testid='onboarding-animation'] *)::after {
+  animation-duration: 0.01ms !important;
+  animation-delay: 0s !important;
+  transition-duration: 0.01ms !important;
+  transition-delay: 0s !important;
 }
 
 /* Every endless animation but a tour picture's plays `var(--loops)`
@@ -1579,7 +1612,7 @@ button.chip {
   /* A key's name is a word, not code: the sans, one step above the muted hints around it. */
   font-family: var(--font-sans);
   font-size: var(--text-xs);
-  font-weight: 500;
+  font-weight: 400;
   line-height: 18px;
   color: var(--color-foreground);
 }
@@ -1708,6 +1741,46 @@ tr:last-child td {
   overflow: visible;
   margin-bottom: var(--space-8);
 }
+
+/* A settings choice: the options in one dark track, the chosen one raised on it,
+   a grey step, never a white block. Weak (`:where`), so a page may size it. */
+:where(.settings .page) .segmented {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-frame);
+}
+
+:where(.settings .page) .segmented button {
+  height: var(--control-sm);
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-muted-foreground);
+  font-size: var(--text-sm);
+}
+
+@media (hover: hover) {
+  :where(.settings .page) .segmented button:hover:not(.on) {
+    background: var(--color-surface-3);
+    color: var(--color-foreground);
+  }
+}
+
+:where(.settings .page) .segmented button.on {
+  background: var(--color-surface-3);
+  border-color: var(--color-edge);
+  color: var(--color-foreground);
+  box-shadow: var(--shadow-e1);
+}
+
+/* One "i" a section: once its title carries the gathering one (`InfoTip` `gather`),
+   its rows' own step aside; that one says what they said. */
+.card:has(.info-tip[data-gather]) .info-tip[data-tip-text] { display: none; }
 
 .settings .page .card h2 {
   margin-bottom: var(--space-4);
@@ -2003,6 +2076,62 @@ tr:last-child td {
 }
 
 /* ------------------------------------------------------------------------- */
+/* Soft scroll edges                                                          */
+/* ------------------------------------------------------------------------- */
+
+/*
+ * A scroll area fades its top edge only once content has scrolled under it,
+ * and its bottom edge only while more lies below, so a line or a card is never
+ * cut hard by the card's edge, and nothing fades at rest at either end. Two
+ * sticky pseudo-elements of the area's ground, their opacity driven by its
+ * scroll position: no mask, so a popover or a tooltip drawn from inside the
+ * area is never clipped by it. A sticky child stops at the area's padding, so
+ * an area with padding names it (`--scroll-edge-top`, `--scroll-edge-bottom`)
+ * and the fade sits on the real edge. A browser without scroll timelines
+ * shows no fade.
+ */
+@supports (animation-timeline: scroll()) {
+  :is(.scroll-edges, [data-scroll-root], .settings .framed, .settings .framed > .page)::before,
+  :is(.scroll-edges, [data-scroll-root], .settings .framed, .settings .framed > .page)::after {
+    content: '';
+    position: sticky;
+    z-index: 3;
+    display: block;
+    flex: none;
+    align-self: stretch;
+    height: var(--scroll-edge);
+    pointer-events: none;
+    opacity: 0;
+    animation-duration: auto;
+    animation-timing-function: linear;
+    animation-fill-mode: both;
+    animation-timeline: scroll(nearest block);
+  }
+  :is(.scroll-edges, [data-scroll-root], .settings .framed, .settings .framed > .page)::before {
+    top: calc(-1 * var(--scroll-edge-top, 0px));
+    margin-bottom: calc(-1 * var(--scroll-edge));
+    background: linear-gradient(to bottom, var(--scroll-edge-ground, var(--color-background)), transparent);
+    animation-name: scroll-edge-in;
+    animation-range: var(--scroll-edge-top, 0px) calc(var(--scroll-edge-top, 0px) + var(--scroll-edge));
+  }
+  :is(.scroll-edges, [data-scroll-root], .settings .framed, .settings .framed > .page)::after {
+    bottom: calc(-1 * var(--scroll-edge-bottom, 0px));
+    margin-top: calc(-1 * var(--scroll-edge));
+    background: linear-gradient(to top, var(--scroll-edge-ground, var(--color-background)), transparent);
+    animation-name: scroll-edge-out;
+    animation-range: calc(100% - var(--scroll-edge-bottom, 0px) - var(--scroll-edge)) calc(100% - var(--scroll-edge-bottom, 0px));
+  }
+  /* The timeline's own padding (MessageList.svelte). */
+  [data-scroll-root] { --scroll-edge-top: 20px; --scroll-edge-bottom: 20px; }
+  /* A settings page scrolls itself, or the card scrolls it under the machine bar. */
+  .settings .framed > .page { --scroll-edge-top: var(--space-8); --scroll-edge-bottom: var(--space-8); }
+  .settings .framed.with-bar > .page::before, .settings .framed.with-bar > .page::after { content: none; }
+}
+
+@keyframes scroll-edge-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes scroll-edge-out { from { opacity: 1; } to { opacity: 0; } }
+
+/* ------------------------------------------------------------------------- */
 /* The Grain theme, behind the `theme-grain` experiment                       */
 /* ------------------------------------------------------------------------- */
 
@@ -2294,12 +2423,13 @@ html[data-glass] #app {
 }
 
 /* A phone's bottom sheet rises from below the screen and goes back down. */
+/* Only the sheet moves: it stays opaque the whole way, so no frame shows the page through it; the scrim does the fading. */
 @keyframes sheet-up {
-  from { transform: translateY(calc((100% + 40px) * var(--motion))); opacity: calc(1 - var(--motion)); }
+  from { transform: translateY(calc((100% + 40px) * var(--motion))); }
 }
 
 @keyframes sheet-down {
-  to { transform: translateY(calc((100% + 40px) * var(--motion))); opacity: calc(1 - var(--motion)); }
+  to { transform: translateY(calc((100% + 40px) * var(--motion))); }
 }
 
 @keyframes pulse {
@@ -2389,6 +2519,13 @@ input[type=checkbox][role=switch]:disabled { opacity: .45; cursor: not-allowed; 
 
 @media (prefers-reduced-motion: reduce) {
   input[type=checkbox][role=switch], input[type=checkbox][role=switch]::after, .switch, .switch::after { transition: none; }
+}
+/* Reduced motion: the sheet is simply there and simply gone (lib/closing.svelte.ts unmounts a node with no animation). */
+@media (max-width: 720px) and (prefers-reduced-motion: reduce) {
+  [data-mobile-sheet='true'], [data-mobile-sheet='true'].closing { animation: none !important; }
+}
+@media (max-width: 720px) {
+  html[data-motion='reduced'] [data-mobile-sheet='true'], html[data-motion='reduced'] [data-mobile-sheet='true'].closing { animation: none !important; }
 }
 
 /* The page instead of the app when no catalogue could load (`lib/boot-failure.ts`). */

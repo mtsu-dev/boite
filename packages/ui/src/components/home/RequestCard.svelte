@@ -1,18 +1,19 @@
 <script lang="ts">
   import { tick } from 'svelte';
-  import { ArrowDownLeft, ArrowUpRight, Check, ChevronDown, GitBranch, X } from '@lucide/svelte';
+  import { ArrowDownLeft, ArrowUpRight, Check, Ellipsis, GitBranch, X } from '@lucide/svelte';
   import type { ContactRequest } from '@boite/contracts';
   import type { ContactsView } from '../../lib/contacts.svelte';
   import { ago, projectName } from '../../lib/format';
-  import type { MenuItem } from '../../lib/menu';
+  import { acceptItems, acceptProject } from '../../lib/contact-accept';
   import { fill, strings } from '../../lib/strings';
   import Menu from '../Menu.svelte';
 
   /**
    * One request between contacts, a row of a Requests card. Waiting on this
-   * owner, it carries Accept, which shares a project picked in the app's menu,
-   * and Refuse, which asks for the reason the asking agent will read. Decided, it folds to one line with
-   * what came of it and who decided.
+   * owner, it carries Accept, which shares the project it points at
+   * (lib/contact-accept.ts), Refuse, which asks for the reason the asking
+   * agent will read, and a menu to share another project instead. Decided, it
+   * folds to one line with what came of it and who decided.
    */
   let { view, request, now }: { view: ContactsView; request: ContactRequest; now: number } = $props();
   const labels = $derived(strings.contacts.requests);
@@ -20,9 +21,9 @@
   const pending = $derived(request.status === 'pending');
   const mine = $derived(request.direction === 'in');
   const busy = $derived(view.isBusy(`decide:${request.id}`));
-  const items = $derived<MenuItem[]>(view.store.projects
-    .filter(project => project.kind !== 'drafts' && !project.archived)
-    .map(project => ({ id: project.id, label: projectName(project), projectTile: { project, store: view.store } })));
+  const chosen = $derived(acceptProject(view.store, request));
+  const items = $derived(acceptItems(view.store, chosen));
+  const acceptTip = $derived(chosen ? fill(labels.acceptInto, { project: projectName(chosen) }) : labels.accept);
   /** What came of it: the project shared, or the thread put in touch with the asking one. */
   const outcome = $derived(request.status !== 'accepted' ? labels.refused
     : request.relation && !request.project ? fill(labels.inTouch, { thread: mine ? request.relation.local.title : request.relation.remote.title })
@@ -68,12 +69,15 @@
         </form>
       {:else}
         <div class="buttons">
-          <span class="accept">
-            <Menu {items} onpick={id => void view.decide(request.id, { accept: true, projectId: id })} label={labels.acceptLabel} placement="bottom" variant="chip" testid="contact-accept-{request.id}">
-              <Check size={14} strokeWidth={2.25} /><span class="ui-label">{labels.accept}</span><ChevronDown size={13} />
+          <button type="button" class="primary" disabled={busy || !chosen} title={acceptTip} aria-label={acceptTip}
+            onclick={() => chosen && void view.decide(request.id, { accept: true, projectId: chosen.id })} data-testid="contact-accept-{request.id}"><Check size={14} strokeWidth={2.25} /><span class="ui-label">{labels.accept}</span></button>
+          <button type="button" class="ghost" disabled={busy} onclick={() => void openRefusal()} data-testid="contact-refuse-{request.id}"><X size={14} /><span class="ui-label">{labels.refuse}</span></button>
+          <!-- The project choice behind the row's menu: Accept itself takes the one the request points at. -->
+          <span class="more">
+            <Menu {items} onpick={id => void view.decide(request.id, { accept: true, projectId: id })} label={labels.acceptOther} placement="bottom" align="end" variant="ghost" disabled={busy} testid="contact-accept-into-{request.id}">
+              <Ellipsis size={15} />
             </Menu>
           </span>
-          <button type="button" class="ghost" disabled={busy} onclick={() => void openRefusal()} data-testid="contact-refuse-{request.id}"><X size={14} /><span class="ui-label">{labels.refuse}</span></button>
         </div>
       {/if}
     {/if}
@@ -109,8 +113,8 @@
   .remote span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .remote :global(svg) { flex: none; }
   .buttons { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 2px; }
-  .accept :global(.trigger) { height: var(--control); padding: 0 12px; border-color: var(--color-accent); background: var(--color-accent); color: var(--color-accent-ink); font-weight: 600; }
-  .accept :global(.trigger:hover) { background: var(--color-control-primary-hover); }
+  .buttons > button { gap: 6px; }
+  .more { margin-left: auto; }
   .refusal { display: grid; gap: 8px; }
   .refusal input { width: 100%; min-width: 0; }
   .decided { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--radius-md); }
@@ -127,6 +131,6 @@
   @media (prefers-reduced-motion: reduce) { .request { animation: none; } }
   :global(html[data-motion='reduced']) .request { animation: none; }
   @media (max-width: 720px) {
-    .buttons > button, .accept :global(.trigger) { min-height: var(--touch-target); }
+    .buttons > button, .more :global(.trigger) { min-height: var(--touch-target); min-width: var(--touch-target); }
   }
 </style>

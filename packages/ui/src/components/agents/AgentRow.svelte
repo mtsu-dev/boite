@@ -20,6 +20,8 @@
    * wake as a small clock while it rests. A row with a menu opens it on a
    * right click or a long press, and renames in place like a thread's row.
    * A move waiting for the turn's end adds a line, as on a thread's row.
+   * One signal per state: a coloured mark leads the line under the name (the
+   * thread rows' shapes, StatusMark.svelte) and the words stay neutral ink.
    */
   let { title, builtin = false, open = false, unread = 0, marked = false, away = false, at, now, detail = '', tone = 'idle', icon, since = null, wake = null, machine, testid, onclick, picture, aside, pinned = false, onmenu, renaming = false, onrename, pending = null }: {
     title: string;
@@ -66,6 +68,9 @@
   /** The wake's hour today, its day and hour further out. */
   const wakeText = $derived(wake ? clockTime(wake.at, now) : '');
   /** Counting time reads the second clock, only while it works: the list's clock ticks far slower. */
+  /** The one coloured mark a state wears; rest and sleep wear none. */
+  const mark = $derived(tone === 'working' ? 'running' as const : tone === 'waiting' || tone === 'error' ? tone : null);
+  const markLabel = $derived(tone === 'working' ? strings.agents.state.working : tone === 'waiting' ? strings.agents.state.waiting : strings.agents.state.error);
   const spent = $derived(tone === 'working' && since !== null ? elapsed(Math.max(secondClock.now, now) - since) : null);
 
   let row = $state<HTMLButtonElement>();
@@ -112,7 +117,8 @@
     </span>
     {#if detail || wake}
       <span class="detail-line">
-        {#if icon}{@const Glyph = icon}<span class="glyph" data-testid="agent-row-glyph"><Glyph size={13} strokeWidth={2} /></span>{/if}
+        {#if mark}<span class="state-mark" data-testid="agent-row-mark"><StatusMark tone={mark} label={markLabel} /></span>
+        {:else if icon}{@const Glyph = icon}<span class="glyph" data-testid="agent-row-glyph"><Glyph size={13} strokeWidth={2} /></span>{/if}
         <span class="detail" data-testid="agent-row-detail">{detail}</span>
         {#if wake}<span class="wake" title={fill(strings.agents.nextWake, { name: wake.label, when: exactTime(wake.at) })} data-testid="agent-row-wake"><Clock3 size={11} strokeWidth={2} />{wakeText}</span>{/if}
       </span>
@@ -172,15 +178,11 @@
   .detail { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* An answer not read yet reads like an unread message, in the foreground; a state's own colour wins over it. */
   .unread[data-tone='idle'] .detail { color: var(--color-foreground); font-weight: 500; }
-  /* Hue says status: work in muted ink, its glyph breathing; the user's turn in the live colour; a failure in danger. */
-  [data-tone='working'] .detail-line { color: var(--color-muted-foreground); }
-  [data-tone='working'] .detail { font-weight: 500; }
-  [data-tone='waiting'] .detail-line { color: var(--color-live); }
-  [data-tone='waiting'] .detail { font-weight: 500; }
-  [data-tone='error'] .detail-line { color: var(--color-danger); }
+  /* The mark alone carries the hue: the words beside it stay in the line's neutral ink. */
+  .state-mark { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 13px; height: 13px; }
   /* A failure's line says its cause and the way out: it wraps whole rather than lose the action at a phone's width. */
   [data-tone='error'] .detail-line { align-items: flex-start; }
-  [data-tone='error'] .detail-line .glyph { margin-top: 2px; }
+  [data-tone='error'] .detail-line .state-mark { margin-top: 2px; }
   [data-tone='error'] .detail { white-space: normal; overflow-wrap: anywhere; line-height: 1.4; }
   [data-tone='asleep'] .detail-line { color: var(--color-subtle); }
   [data-tone='asleep'] .title { color: var(--color-muted-foreground); }

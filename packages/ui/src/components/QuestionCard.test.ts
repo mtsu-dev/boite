@@ -342,3 +342,47 @@ test('code an agent quotes in backticks reads as code in the question and its op
   expect(prompt.textContent).toBe('Retry src/lib/sync/queue.ts on *every* failure?');
   expect(Array.from(options()[0]!.querySelectorAll('code')).map(code => code.textContent)).toEqual(['retry()', 'bun test']);
 });
+
+test('a docked list cut by its height counts the choices under its edge, and the line scrolls to the first of them', () => {
+  // jsdom has no layout: the list shows 100 px of five 40 px rows, so the third is cut and two more are under it.
+  const restore = [
+    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function (this: HTMLElement) { return this.classList.contains('options') ? 200 : 0; }),
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function (this: HTMLElement) { return this.classList.contains('options') ? 100 : 0; }),
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      const at = this.parentElement ? Array.from(this.parentElement.children).indexOf(this) : 0;
+      const bottom = this.classList.contains('options') ? 100 : (at + 1) * 40;
+      return { top: bottom - 40, bottom, left: 0, right: 300, width: 300, height: 40, x: 0, y: bottom - 40, toJSON() {} } as DOMRect;
+    })
+  ];
+  const scrolled: string[] = [];
+  const original = Element.prototype.scrollIntoView;
+  Element.prototype.scrollIntoView = function (this: Element) { scrolled.push((this as HTMLElement).dataset.option ?? ''); };
+  try {
+    running = mount(QuestionCard, {
+      target: document.body,
+      props: {
+        text: 'Which retry policy?',
+        options: ['a', 'b', 'c', 'd', 'e'].map((id) => ({ id, label: id.toUpperCase() })),
+        allowText: true, multiple: false, answer: null, pending: true, docked: true,
+        submit: () => true
+      }
+    });
+    flushSync();
+    expect(query('[data-testid=question-more]').textContent).toBe('3 more');
+    expect(query('.options').classList.contains('clipped')).toBe(true);
+    query<HTMLButtonElement>('[data-testid=question-more]').click();
+    expect(scrolled).toEqual(['c']);
+  } finally {
+    for (const spy of restore) spy.mockRestore();
+    Element.prototype.scrollIntoView = original;
+  }
+});
+
+test('a docked list that shows every choice draws no count line', () => {
+  running = mount(QuestionCard, {
+    target: document.body,
+    props: { text: 'Which shape?', options: OPTIONS, allowText: true, multiple: false, answer: null, pending: true, docked: true, submit: () => true }
+  });
+  flushSync();
+  expect(document.querySelector('[data-testid=question-more]')).toBeNull();
+});

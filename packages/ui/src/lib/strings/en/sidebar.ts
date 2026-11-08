@@ -29,6 +29,8 @@ export const strings = {
     projectsView: 'Projects',
     recentView: 'Recent',
     /** The display options panel: its sections, and the short names its rows use under them. */
+    /** A project card's quiet threads folded under one line (Sidebar.svelte); a press shows them in place. */
+    moreThreads: '{count} more',
     displayView: 'View',
     displayOrder: 'Sort by',
     groupWorkingRow: 'Working threads',
@@ -144,7 +146,7 @@ export const strings = {
       /** Its machine stopped answering while it worked: what it does now is unknown until the machine is back. */
       unreachable: 'Unreachable',
       unreachableWas: 'Machine unreachable. Last known state: {state}',
-      interruptedBy: '{what} ended without waking it: {reason}',
+      interruptedBy: '{what} ended without reporting back: {reason}',
       interruption: {
         'error': 'the task failed',
         'cancelled': 'the task was cancelled',

@@ -25,7 +25,7 @@ export const fr: Translation = {
       accounts: 'Fournisseurs',
       plugins: 'Extensions',
       usage: 'Consommation',
-      resources: 'Discrétion et mémoire',
+      resources: 'Fenêtres, son et mémoire',
       experiments: 'Expérimentations',
       diagnostics: 'Diagnostic'
     },
@@ -99,7 +99,8 @@ export const fr: Translation = {
       contrast: 'Contraste du texte',
       contrastHint: 'Le contraste le plus faible du texte sur le fond, le cadre et les panneaux. La cible est de 4,5:1.',
       contrastLow: 'Contraste faible du texte {ratio}:1',
-      improveContrast: 'Améliorer le contraste'
+      improveContrast: 'Améliorer le contraste',
+      custom: 'Personnalisée'
     },
     themeSystem: 'Système',
     themeDark: 'Sombre',
@@ -155,6 +156,7 @@ export const fr: Translation = {
     terminalCursorBar: 'Barre',
     terminalCursorBlock: 'Bloc',
     terminalCursorUnderline: 'Soulignement',
+    terminalAndScrollbars: 'Terminal et barres de défilement',
     terminalGpuHint: "Défilement et affichage plus fluides. Désactivez-le si un terminal s'affiche mal sur cet appareil ; le changement vaut pour les terminaux ouverts ensuite.",
     terminalGpu: 'Dessiner les terminaux avec le GPU',
     connection: 'Connexion',

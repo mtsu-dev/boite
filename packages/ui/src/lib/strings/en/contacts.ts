@@ -44,13 +44,18 @@ export const strings = {
     removeTitle: 'Remove {name}?',
     removeBody: 'Every project you share with it closes, letters waiting both ways are rejected and the link closes. The Tailscale share stays until you remove it in the admin console.',
     requests: {
+      /** Identical asks merged into one Activity row, and the reason their copies get once one is accepted. */
+      same: '{count} identical requests',
+      duplicate: 'Same request as one already accepted',
       title: 'Requests',
       review: 'Review the contact request',
       asks: '{contact} asks',
       asked: 'You asked {contact}',
       remote: 'Git remote',
       accept: 'Accept',
-      acceptLabel: 'Accept: pick the project to share',
+      /** Accept's tooltip, naming the project it shares; the row's menu picks another. */
+      acceptInto: 'Accept: share {project}',
+      acceptOther: 'Accept into another project',
       refuse: 'Refuse',
       reason: 'Reason',
       reasonPlaceholder: 'Why, in a sentence the asking agent reads',

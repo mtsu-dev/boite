@@ -202,7 +202,7 @@
   .option.on { border-color: var(--color-muted-foreground); background: var(--color-active); }
   .icon { display: grid; place-items: center; grid-column: 1; grid-row: 1; width: 34px; height: 34px; border-radius: var(--radius-sm); background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-muted-foreground); transition: color var(--dur-2); }
   .option.on .icon { color: var(--color-foreground); }
-  .name { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; grid-column: 2; grid-row: 1; color: var(--color-foreground); font-size: var(--text-base); font-weight: 500; }
+  .name { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; grid-column: 2; grid-row: 1; color: var(--color-foreground); font-size: var(--text-base); font-weight: 400; }
   .badge { padding: 1px 7px; border-radius: var(--radius-sm); background: var(--color-active); color: var(--color-foreground); font-size: var(--text-xs); font-weight: 600; white-space: nowrap; }
   .option > input { grid-column: 3; grid-row: 1; }
   .size, .field-error { grid-column: 2; }

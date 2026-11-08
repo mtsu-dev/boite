@@ -28,7 +28,7 @@
   import { keepaliveRun } from '../lib/message-order';
   import { AgentsView, agentOfThread } from '../lib/agents.svelte';
   import { experimentOn } from '../lib/experiments.svelte';
-  import { asksDocked, dockedRun, questionDocked } from '../lib/one-status';
+  import { asksDocked, cardedCall, dockedRun, failedCall, questionDocked } from '../lib/one-status';
 
   /**
    * An assistant or system message in the timeline: the model that wrote it,
@@ -67,13 +67,16 @@
     return message.parts.findLastIndex(part => part.type === 'text');
   }
 
-  const execution = $derived(store.openThread?.turns.find((turn) => turn.id === message.turnId)?.execution);
+  const turn = $derived(store.openThread?.turns.find((turn) => turn.id === message.turnId));
+  const execution = $derived(turn?.execution);
+  /** The failed call the error card already says: its line drops its exit code (`cardedCall`). */
+  const carded = $derived(cardedCall(turn, store.openThread?.messages ?? [], message));
   /** An ask docked in the composer is its one copy: the stream draws no line for it meanwhile (`lib/one-status.ts`). */
   const asking = $derived(asksDocked(store, threadId));
   /** The persistent agent whose own thread this is: its answers carry its name. */
   const agentName = $derived(store.openThread?.id === threadId && store.openThread.agentSessionId ? agentOfThread(AgentsView.of(store).snapshot, threadId)?.name ?? null : null);
   /** Boite's ping of the prompt cache: one line in place of its message (`quietKeepalives`). */
-  const ping = $derived(execution?.operation === 'keepalive' ? store.openThread?.turns.find((turn) => turn.id === message.turnId) : undefined);
+  const ping = $derived(execution?.operation === 'keepalive' ? turn : undefined);
   const compacting = $derived(execution?.operation === 'compact' ||
     store.openThread?.progress?.turnId === message.turnId && store.openThread.progress.phase === 'compacting');
   const caretAt = $derived(message.state === 'streaming' ? lastTextIndex(message) : -1);
@@ -136,7 +139,7 @@
       {@const thinkingLive = message.state === 'streaming' && lastAt === message.parts.length - 1 && tail?.type === 'thinking' && tail.finishedAt == null}
       {#if activityShown(activity, thinkingLive) && !(asking && dockedRun(activity, thinkingLive, (requestId) => store.permissionRequests[requestId] !== undefined))}
       <div class="part" data-kind={activity.every((part) => part.type === 'thinking') ? 'thinking' : 'tool'}>
-        <ToolGroup parts={activity} {compactions} {thinkingLive} {isBackground} {store} {threadId}
+        <ToolGroup parts={activity} {compactions} {thinkingLive} {isBackground} {store} {threadId} {carded}
           loadOutput={toolId => store.loadToolOutput(threadId, message.id, toolId)}
           permissionRequest={requestId => store.permissionRequests[requestId] ?? null}
           answerPermission={(requestId, decision) => store.answer(requestId, decision)} />
@@ -253,7 +256,7 @@
       {:else if part.type === 'error'}
         {@const account = store.owner ? signedOut : null}
         {@const prompt = !account && retryable ? store.openThread?.messages.find(entry => entry.turnId === message.turnId && entry.role === 'user') : undefined}
-        <ErrorCard message={part.message} reconnect={account ? () => store.openConnect(account.providerId, account.id) : undefined}
+        <ErrorCard message={part.message} call={failedCall(message)} reconnect={account ? () => store.openConnect(account.providerId, account.id) : undefined}
           retry={prompt ? () => void retryTurn(store, threadId, prompt) : undefined} />
       {/if}
     </div>

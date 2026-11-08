@@ -51,8 +51,8 @@ export const strings = {
     panel: 'Panel',
     panelHint: 'Show or hide the side panel',
     panelMenu: 'Panels',
-    /** Every thread menu's one entry for the thread's panels and tools. */
-    toolsSection: 'Tools',
+    /** Every thread menu's entry for its less frequent actions (a new title, a move, the path). */
+    moreActions: 'More',
     /** A desktop header's project crumb: back to the thread list, at this thread. */
     backToList: 'Back to the {project} threads',
     terminalHint: "Terminal in this thread's folder",

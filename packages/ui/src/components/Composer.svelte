@@ -522,13 +522,6 @@
 
   /** Nothing in the box and nothing on its way into it: what a second Enter needs. */
   let boxEmpty = $derived(text.trim().length === 0 && attachments.length === 0 && previewReferences.length === 0 && !dictating);
-  /**
-   * A permission or a question holds the box and nothing is written yet: the
-   * ask is its head, its choices the primary actions, and the field folds to
-   * one line with the tools at its end while "+" and the model chip step back.
-   * The first letter typed brings them back.
-   */
-  let folded = $derived(!target && !!(permission || docked) && boxEmpty && !composer?.editing);
 
   /** What Send now does to the queue: interrupt the running turn, resume a held one, or nothing. */
   let sendNow = $derived(sendNowAction(composer, thread, store));
@@ -778,7 +771,6 @@
       {#key composer}<ComposerAttachments bind:this={attachmentStrip} {attachments} highlighted={highlightedImage} onremove={removeAttachment} onfocus={() => focusInitial(box, box?.closest<HTMLElement>('[data-testid=composer]'))} />{/key}
     {/if}
 
-    <div class="entry" class:folded>
     <div class="input-wrap">
     {#if highlighted}
       <div class="input-highlight" aria-hidden={previewReferences.length || attachments.length ? undefined : true} data-testid="composer-highlight" style:right={`${inputGutter}px`}>
@@ -837,7 +829,7 @@
 
     <ComposerSpeechPreview status={speechStatus} preview={speechPreview} error={speechError} />
 
-    <ComposerBar bind:this={toolbar} {store} {key} {target} {bot} {provider} canSend={sendable && !stopped} waiting={sendWhenLoaded !== null} answering={!!reply} {folded} composer={permission || docked ? shell ?? null : null}
+    <ComposerBar bind:this={toolbar} {store} {key} {target} {bot} {provider} canSend={sendable && !stopped} waiting={sendWhenLoaded !== null} answering={!!reply} composer={permission || docked ? shell ?? null : null}
       onmention={!target && !reply && mentionProject !== null ? startMention : undefined} oncommand={!target && !reply && text.trim() === '' ? startCommand : undefined} sendLabel={reply ? strings.composer.replySend : undefined} bind:choice bind:picking bind:dictating
       onsubmit={() => void submit()}
       onfiles={(files) => void take(files)}
@@ -846,7 +838,6 @@
         const current = stateForInput().text;
         put(current + (current && !/\s$/.test(current) ? ' ' : '') + transcript);
       }} />
-    </div>
   </div>
   {#if stopped}{@render notice?.()}{/if}
 </div>
@@ -892,12 +883,6 @@
 
   /* The bottom gap sits under the box: a textarea scrolls its text through its own padding, up to the bar. */
   .input-wrap { position: relative; margin-bottom: var(--composer-input-gap, 6px); }
-  /* Unfolded, the field and the bar stack as the box's own rows. Folded under
-     a decision, they share one line: the field, then stop, dictation and send. */
-  .entry { display: contents; }
-  .entry.folded { display: flex; align-items: flex-end; min-width: 0; }
-  .entry.folded .input-wrap { flex: 1 1 auto; min-width: 0; }
-
   .input-highlight {
     position: absolute;
     inset: 0; /* Stretched by CSS: clientWidth is rounded, and 0.4 px off broke lines a word apart, the caret trailing the paint. */

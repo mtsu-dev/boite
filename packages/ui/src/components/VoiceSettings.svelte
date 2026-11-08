@@ -328,7 +328,7 @@
 
   /* The one line that answers "can I dictate now", with the single action that gets there. */
   .status-line { display: flex; align-items: center; gap: 12px; }
-  .status-line .text { flex: 1; min-width: 0; font-weight: 500; }
+  .status-line .text { flex: 1; min-width: 0; font-weight: 400; }
   .status-line .hint, .model .hint, .key .hint { display: block; margin-top: 2px; color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 400; }
   .status-line > button { flex: none; }
   .dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--color-subtle); }
@@ -347,7 +347,7 @@
   .model { gap: 12px; }
   .pick { flex: 1; min-width: 0; height: auto; display: flex; align-items: center; gap: 12px; padding: 0; text-align: left; white-space: normal; font: inherit; color: inherit; background: none; border: none; box-shadow: none; }
   .pick:disabled { opacity: 1; }
-  .pick .text { font-weight: 500; }
+  .pick .text { font-weight: 400; }
   .radio { flex: none; width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid var(--color-edge); transition: border-color var(--dur-2) var(--ease-out-quint), border-width var(--dur-2) var(--ease-out-quint); }
   .pick:hover:not(:disabled) .radio { border-color: var(--color-muted-foreground); }
   .pick[aria-checked='true'] .radio { border: 5px solid var(--color-foreground); }

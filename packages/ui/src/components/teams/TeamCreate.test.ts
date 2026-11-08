@@ -99,8 +99,14 @@ test('with no team yet the Bots list shows the Teams heading with New team and o
   await settle();
   expect(all('.agents-rail .section-label').map(heading => heading.textContent)).toEqual(['Teams', 'Bots']);
   expect((await newTeam()).textContent?.trim()).toBe('New team');
-  expect(text('[data-testid=agents-teams-empty]')).toBe('No team yet: put a few bots in one chat.');
+  expect(text('[data-testid=agents-teams-empty] p')).toBe('No team yet: put a few bots in one chat.');
   expect(document.querySelector('[data-testid=agents-teams]')).toBeNull();
+  // The empty line carries its one action: New team, right under it.
+  document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle();
+  const action = query<HTMLButtonElement>('[data-testid=agents-teams-empty-action]');
+  expect(action.textContent?.trim()).toBe('New team');
+  action.click(); await settle();
+  expect(document.querySelector('[data-testid=team-dialog]')).not.toBeNull();
 });
 
 test('the dialog asks for a name and a bot, then creates the team on this machine and opens its chat', async () => {

@@ -57,8 +57,8 @@ test('the desktop menu has the thread menu\'s groups, words and glyphs, cut to w
   // Where a thread has the same action, the bot's row reads and looks the same.
   const owner = { owner: true, retitling: [], composerStates: {}, threads: [], moveBlocked: () => false } as unknown as Store;
   const row = { id: 't1', title: 'Port', cwd: '/w', projectId: null, parentThreadId: null, agentSessionId: null, archived: false, incognito: false, pinned: false, status: 'idle' } as never;
-  // A thread's Copy path waits in its Tools list.
-  const thread = [...threadMenuItems(owner, row, { open: false }), ...threadToolItems(owner, row, { open: false, panels: false })];
+  // A thread's Copy path waits in its More list.
+  const thread = [...threadMenuItems(owner, row, { open: false }), ...threadToolItems(owner, row, { open: false })];
   for (const id of ['open', 'pin', 'rename', 'copy']) {
     const mine = items.find(item => item.id === id)!, theirs = thread.find(item => item.id === id)!;
     expect([mine.label, mine.glyph]).toEqual([theirs.label, theirs.glyph]);

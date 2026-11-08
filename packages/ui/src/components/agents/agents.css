@@ -15,8 +15,15 @@
 .agents-rail .agents-section-head .section-label { margin: 0; }
 .agents-rail .agents-section-head [aria-disabled='true'] { opacity: 0.5; }
 .agents-rail .agents-teams-note { margin: 0 10px 12px; font-size: var(--text-xs); line-height: 1.5; color: var(--color-muted-foreground); }
+/* No team yet: the line, then the one button that makes one, on the line's edge. */
+.agents-rail .agents-teams-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.agents-rail .agents-teams-empty p { margin: 0; }
+.agents-rail .agents-teams-empty button { gap: 5px; margin-left: -8px; }
 
 /* A desktop's column: the selected bot's head, its conversation, then the threads it handles and the ones it is done with. */
+/* It holds a head and a short list: it keeps to that width when the thread list beside other pages is dragged wider,
+   so the conversation keeps its reading width. */
+@media (min-width: 721px) { .rail.agents-rail:not(.drawer) { width: min(var(--sidebar-width), 280px); } }
 .bot-head { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 6px 8px 14px; }
 .bot-head > .agent-avatar { flex: none; }
 .bot-head-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
@@ -26,8 +33,6 @@
 .bot-head-line { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .bot-head-sep, .bot-head-time { flex: none; }
 .bot-head-time { font-variant-numeric: tabular-nums; }
-.bot-head-live[data-state='waiting'] { color: var(--color-live); }
-.bot-head-live[data-state='error'] { color: var(--color-danger); }
 .bot-spin { flex: none; display: inline-flex; margin-right: 6px; }
 .bot-head .menu .trigger.ghost { width: 28px; height: 28px; padding: 0; color: var(--color-subtle); }
 .bot-column { flex: 1 0 auto; display: flex; flex-direction: column; padding: 0 8px 12px; }
@@ -74,10 +79,8 @@
 .agent-live { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--text-sm); color: var(--color-muted-foreground); }
 .agent-live-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agent-live-time { flex: none; display: inline-flex; align-items: baseline; gap: 4px; white-space: nowrap; color: var(--color-subtle); font-variant-numeric: tabular-nums; }
-/* Hue says status only: what waits on the user in the live colour, a failure in danger; work reads in the foreground, the robot's ring breathing beside it. */
+/* Hue says status only, in the mark before the words (StatusMark.svelte); work reads in the foreground. */
 .agent-live[data-state='working'] .agent-live-text { color: var(--color-foreground); }
-.agent-live[data-state='waiting'] .agent-live-text { color: var(--color-live); }
-.agent-live[data-state='error'] .agent-live-text { color: var(--color-danger); }
 /* A desktop draws it in the window's top bar: the name and "Conversation" from the left, the buttons at the far right. */
 .agent-head.compact { flex: 1; min-width: 0; min-height: 0; height: 100%; padding: 0 6px 0 0; border-bottom: none; }
 .agent-head.compact .agent-head-identity { flex: 0 1 auto; height: var(--control); margin-left: 0; padding: 0 8px; border-radius: var(--radius-md); }

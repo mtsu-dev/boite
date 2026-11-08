@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick, untrack } from 'svelte';
-  import { CornerDownLeft, Search } from '@lucide/svelte';
+  import { Search } from '@lucide/svelte';
   import type { AgentProfile, Project, ProjectId, ThreadSummary } from '@boite/contracts';
   import { Closing } from '../lib/closing.svelte';
   import { minuteClock } from '../lib/clock.svelte';
@@ -296,7 +296,6 @@
                 {:else if item.hint}
                   <span class="kbd ui-label-box"><span class="ui-label">{item.hint}</span></span>
                 {/if}
-                <span class="enter" aria-hidden="true"><CornerDownLeft size={13} strokeWidth={2} /></span>
               </button>
             {/each}
           </div>
@@ -305,8 +304,6 @@
           <p class="empty subtle">{strings.palette.empty}</p>
         {/if}
       </div>
-      <!-- With nothing to open, Enter does nothing: the foot names only the way out. -->
-      <div class="foot subtle">{rows.length === 0 ? strings.palette.hintEmpty : strings.palette.hint}</div>
     </div>
   </div>
 {/if}
@@ -347,9 +344,8 @@
     animation-name: pop-out;
   }
 
-  /* The list scrolls, the field and the foot keep their height. */
-  .field,
-  .foot {
+  /* The list scrolls, the field keeps its height. */
+  .field {
     flex: none;
   }
 
@@ -358,7 +354,11 @@
     align-items: center;
     gap: 10px;
     height: 48px;
-    padding: 0 14px;
+    /* The rows' text edges on both sides: the list's padding plus a row's, and the same scrollbar gutter, so the Esc
+       key and every row's state end on one right edge whether the list scrolls or not. */
+    padding: 0 calc(var(--overlay-pad) + var(--overlay-row-pad));
+    overflow: hidden;
+    scrollbar-gutter: stable;
     border-bottom: 1px solid var(--color-border);
     color: var(--color-subtle);
   }
@@ -378,14 +378,14 @@
     outline: none;
   }
 
-  /* The foot is its own band under a hairline, like the field above. A row
-     the list's end cuts fades out before the line, so it reads as more below,
-     and the end padding is as tall as the fade: scrolled down, the last row
-     sits whole above it. */
+  /* A row the list's end cuts fades out at the card's edge, so it reads as more
+     below, and the end padding is as tall as the fade: scrolled down, the last
+     row sits whole above it. */
   .list {
     flex: 1;
     min-height: 0;
     overflow: auto;
+    scrollbar-gutter: stable;
     padding: var(--overlay-pad) var(--overlay-pad) var(--space-6);
     scroll-padding-block: var(--overlay-pad) var(--space-6);
     mask-image: linear-gradient(to bottom, black calc(100% - var(--space-6)), transparent);
@@ -448,23 +448,13 @@
     background: transparent;
   }
 
-  /* The row Enter takes: the selection wash, a bar on its edge and the Enter glyph, readable in both themes. */
+  /* The row Enter takes: the selection wash and a bar on its edge, readable in both themes. No Enter glyph: it
+     would push the state column off the right edge the field's Esc and every other row end on. */
   .row.selected {
     background: var(--color-accent-soft);
     box-shadow: inset 2px 0 0 var(--color-muted-foreground);
   }
 
-  .enter {
-    display: inline-flex;
-    flex: none;
-    width: 13px;
-    color: var(--color-foreground);
-    opacity: 0;
-  }
-
-  .row.selected .enter {
-    opacity: 1;
-  }
 
   .row:active:not(:disabled) {
     transform: none;
@@ -511,10 +501,4 @@
     font-size: var(--text-sm);
   }
 
-  .foot {
-    padding: var(--space-2) var(--space-4);
-    border-top: 1px solid var(--color-border);
-    font-size: var(--text-xs);
-    color: var(--color-subtle);
-  }
 </style>

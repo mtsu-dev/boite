@@ -91,7 +91,7 @@ test('a delegated agent waiting on its own background work says what and since w
   const interrupted = draw({ unread: true, backgroundWait: { state: 'interrupted', for: 'test_emotes', reason: 'core-restarted', at: NOW } });
   expect(interrupted.dataset['state']).toBe('interrupted');
   expect(interrupted.textContent?.trim()).toBe('Interrupted');
-  expect(interrupted.getAttribute('title')).toBe('Interrupted\ntest_emotes ended without waking it: Boite or the PC restarted');
+  expect(interrupted.getAttribute('title')).toBe('Interrupted\ntest_emotes ended without reporting back: Boite or the PC restarted');
   expect(projectRollup([{ status: 'idle', unread: true }, { status: 'idle', unread: false, backgroundWait: { state: 'interrupted', for: 'x', reason: 'error', at: NOW } }])).toEqual({ kind: 'interrupted', count: 1 });
 });
 

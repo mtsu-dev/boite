@@ -241,8 +241,8 @@ test('the picker opens on the models in use, one row each, with every provider b
   query<HTMLButtonElement>('[data-testid=composer-picker]').click();
   const short = () => [...document.querySelectorAll<HTMLElement>('[data-testid=picker-shortlist] .row.model')].map((row) => [row.dataset.testid, row.title]);
   await waitFor(() => short().length === 3);
-  // The star first, then the current choice, then the latest threads' model; no provider rail on this level, the effort row under it.
-  expect(short()).toEqual([['favorite-model', 'claude-sonnet-5-5'], ['recent-model', 'claude-opus-5-5'], ['recent-model', 'echo-1']]);
+  // The current choice first, then the star, then the latest threads' model; no provider rail on this level, the effort row under it.
+  expect(short()).toEqual([['recent-model', 'claude-opus-5-5'], ['favorite-model', 'claude-sonnet-5-5'], ['recent-model', 'echo-1']]);
   expect(query('[data-testid=picker-shortlist] .row.current .source').textContent).toContain(store.providerOf('claude')!.name);
   // The provider's own login is not printed on its rows, even beside another seat of it.
   expect(store.accountsOf('claude').length).toBeGreaterThan(1);

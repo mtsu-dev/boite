@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
-  import { Check, RotateCcw, SlidersHorizontal } from '@lucide/svelte';
+  import { MediaQuery } from 'svelte/reactivity';
+  import { Check, ChevronDown, RotateCcw, SlidersHorizontal } from '@lucide/svelte';
   import { ACCENT_PRESETS, readAccent, setAccent } from '../lib/accent';
   import { accentHex, contrast, editPalette, paletteTokens, improvePaletteContrast, type ColorRole, type Palette } from '../lib/color-math';
   import { setTheme } from '../lib/theme';
@@ -25,6 +26,10 @@
   let grounds = $derived(['--color-background', '--color-frame', '--color-surface', '--color-surface-2', '--color-surface-3'].map(key => tokens[key]!));
   let ratio = $derived(Math.min(...grounds.map(ground => contrast(palette.foreground, ground))));
   let matching = $derived(presets.find(p => roles.every(key => p.palette[key] === palette[key]) && JSON.stringify(p.palette.details ?? {}) === JSON.stringify(palette.details ?? {}))?.id);
+  /** A phone shows the palette in use as one row that opens the others: seven rows were a screen of choices. */
+  const narrow = new MediaQuery('(max-width: 720px)');
+  let listOpen = $state(false);
+  let shown = $derived(presets.find((preset) => preset.id === matching));
   let canUndo = $derived(!!undo && JSON.stringify(undo) !== JSON.stringify(palette));
   function follow() {
     const nextMode = colorMode();
@@ -39,6 +44,7 @@
     return () => window.removeEventListener(COLORS_EVENT, follow);
   });
   function pick(id: PaletteId) {
+    listOpen = false;
     if (id === 'oled') { setTheme('dark'); follow(); }
     editingRole = undefined;
     undo = { ...palette };
@@ -79,6 +85,16 @@
   <!-- Each palette as a small window drawn in its own colors: the chrome, the
        page with three lines of text, and its accent. One row sized to the
        count, so no row is left with a hole. -->
+  {#if narrow.current}
+    <button type="button" class="preset current" aria-expanded={listOpen} onclick={() => { listOpen = !listOpen; }} data-testid="palette-current"
+      style:--tile-frame={palette.frame} style:--tile-page={palette.background} style:--tile-ink={palette.foreground} style:--tile-accent={palette.accent}>
+      <!-- Open, the list below names and checks the palette in use: the head turns into the list's title, so it shows once. -->
+      {#if listOpen}<span class="name"><span class="ui-label">{strings.settings.colors.palette}</span><ChevronDown size={18} strokeWidth={1.75} /></span>
+      {:else}<span class="preview" aria-hidden="true"><span class="chrome"></span><span class="lines"><i></i><i></i><i></i></span><span class="accent"></span></span>
+      <span class="name"><span class="ui-label">{shown ? strings.settings.colors.palettes[shown.id] : strings.settings.colors.custom}</span><ChevronDown size={18} strokeWidth={1.75} /></span>{/if}
+    </button>
+  {/if}
+  {#if !narrow.current || listOpen}
   <div class="presets" role="group" aria-label={strings.settings.colors.palette} style:--count={presets.length}>
     {#each presets as preset (preset.id)}
       <button type="button" class="preset" aria-pressed={matching === preset.id} onclick={() => pick(preset.id)} data-testid="palette-{preset.id}"
@@ -88,6 +104,7 @@
       </button>
     {/each}
   </div>
+  {/if}
   <div class="editor" class:customizing id={editorId}>
     {#if customizing}
     <div class="role-list" role="group" aria-label={strings.settings.colors.edit}>
@@ -119,12 +136,14 @@
 
 <style>
   .colors { padding: 20px 0; border-bottom: 1px solid var(--color-border); container-type: inline-size; }
+  /* Last in its card (a phone has no width row under it): the card's edge closes it. */
+  .colors:last-child { padding-bottom: 0; border-bottom: 0; }
   .heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
   h3 { display: flex; align-items: center; gap: 4px; font-size: var(--text-base); }
   .actions { display: flex; gap: 4px; }
   .actions button { display: inline-flex; align-items: center; gap: 6px; }
   .presets { display: grid; grid-template-columns: repeat(var(--count), minmax(0, 1fr)); gap: 12px 10px; }
-  .preset { display: flex; flex-direction: column; align-items: stretch; gap: 6px; height: auto; min-height: 0; padding: 0; border: 0; background: none; box-shadow: none; min-width: 0; text-align: left; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 550; }
+  .preset { display: flex; flex-direction: column; align-items: stretch; gap: 6px; height: auto; min-height: 0; padding: 0; border: 0; background: none; box-shadow: none; min-width: 0; text-align: left; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; }
   .preset:hover:not(:disabled) { background: none; color: var(--color-foreground); }
   .preview { position: relative; display: flex; height: 56px; overflow: hidden; border-radius: var(--radius-md); background: var(--tile-page); box-shadow: inset 0 0 0 1px var(--color-edge); transition: box-shadow var(--dur-2) var(--ease-out-quint); }
   .preset:hover .preview { box-shadow: inset 0 0 0 1px var(--color-muted-foreground); }
@@ -169,6 +188,10 @@
     .name { flex: 1; justify-content: space-between; }
   }
   @media (max-width: 720px) {
+    .current { flex-direction: row; align-items: center; gap: 12px; width: 100%; min-height: var(--touch-target); padding: 4px 6px; border-radius: var(--radius-md); color: var(--color-foreground); font-size: var(--text-sm); }
+    .current + .presets { margin-top: var(--space-1); }
+    .current .name :global(svg) { color: var(--color-muted-foreground); transition: transform var(--dur-2) var(--ease-out-quint); }
+    .current[aria-expanded='true'] .name :global(svg) { transform: rotate(180deg); }
     .editor, .editor.customizing { grid-template-columns: minmax(0, 1fr); gap: 16px; }
     .customize { min-height: var(--touch-target); }
     .role-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }

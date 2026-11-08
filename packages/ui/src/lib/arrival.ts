@@ -1,0 +1,50 @@
+import { glides } from './motion';
+
+/**
+ * Grows an element that just got taller from the height it had, its content
+ * fading in with it, over `--dur-enter`: a decision docked at the composer's
+ * head and the box around it move as one piece, with no frame drawn at the
+ * final size before the content is there. Reduced motion shows it at once.
+ */
+export function growFrom(element: HTMLElement, from: number): void {
+  const to = element.getBoundingClientRect().height;
+  if (to - from < 1 || !glides() || typeof element.animate !== 'function') return;
+  const style = getComputedStyle(element);
+  const token = style.getPropertyValue('--dur-enter').trim();
+  const duration = parseFloat(token) * (token.endsWith('ms') ? 1 : 1000) || 0;
+  if (duration <= 0) return;
+  element.animate(
+    [{ height: `${from}px`, opacity: from > 0 ? 1 : 0, overflow: 'hidden' }, { height: `${to}px`, opacity: 1, overflow: 'hidden' }],
+    { duration, easing: style.getPropertyValue('--ease-enter').trim() || 'ease-out' }
+  );
+}
+
+/** An attachment for a decision that mounts with its content: it grows in from nothing. */
+export function arrive(element: HTMLElement): void {
+  growFrom(element, 0);
+}
+
+/**
+ * Watches a dock whose decisions come and go: when `count` rises and the dock
+ * got taller, it grows from its last height. Other growth (a fold opened, a
+ * page turned) keeps its own motion.
+ */
+export function growsOnArrival(count: () => number): (element: HTMLElement) => () => void {
+  return (element) => {
+    if (typeof ResizeObserver !== 'function') return () => {};
+    let tall = 0;
+    let seen = 0;
+    const watch = new ResizeObserver(() => {
+      const now = count();
+      const height = element.getBoundingClientRect().height;
+      const from = tall;
+      const arrived = now > seen && height > from + 1;
+      seen = now;
+      // An animation in flight reports its frames: keep the height it ends on.
+      if (arrived || !element.getAnimations?.().length) tall = height;
+      if (arrived) growFrom(element, from);
+    });
+    watch.observe(element);
+    return () => watch.disconnect();
+  };
+}

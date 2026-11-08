@@ -147,7 +147,7 @@
 </script>
 
 <section class="card" id="settings-phone" data-testid="phone-settings">
-  <h2>{strings.phone.heading}<SaveStatus save={urlSave} /></h2>
+  <h2 class="ui-label-box"><span class="ui-label">{strings.phone.heading}</span><InfoTip gather topic={strings.phone.heading} text="" testid="section-info" /><SaveStatus save={urlSave} /></h2>
   {#if store.owner && showServerSettings}
     <div class="block"><TailscaleAccess {store} /></div>
     <div class="block">

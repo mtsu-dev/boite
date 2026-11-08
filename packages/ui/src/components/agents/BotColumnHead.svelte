@@ -11,6 +11,7 @@
   import Menu from '../Menu.svelte';
   import Elapsed from '../Elapsed.svelte';
   import Spinner from '../Spinner.svelte';
+  import StatusMark from '../StatusMark.svelte';
   import AgentAvatar from './AgentAvatar.svelte';
   import BuiltinBadge from './BuiltinBadge.svelte';
 
@@ -72,7 +73,9 @@
     <div class="bot-head-text">
       <strong class="bot-head-name">{agent.name}{#if agent.builtin}<BuiltinBadge />{/if}</strong>
       <span class="bot-head-live" data-state={state} title={line} aria-live="polite" data-testid="bot-column-live">
-        {#if state === 'working'}<span class="bot-spin"><Spinner size={11} /></span>{/if}
+        <!-- One signal per state: the spinner or the mark carries the hue, the words stay neutral. -->
+        {#if state === 'working'}<span class="bot-spin"><Spinner size={11} /></span>
+        {:else if state === 'waiting' || state === 'error'}<span class="bot-spin"><StatusMark tone={state} label={labels.state[state]} /></span>{/if}
         <span class="bot-head-line">{line}</span>
         {#if state === 'working' && since !== null}<span class="bot-head-sep" aria-hidden="true">&nbsp;·&nbsp;</span><span class="bot-head-time"><Elapsed startedAt={since} finishedAt={null} active /></span>{/if}
       </span>

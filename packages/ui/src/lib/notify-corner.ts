@@ -13,25 +13,23 @@ import './notify-corner.css';
  */
 /** Bottom-edge owners. A composer centred in an empty thread is not one. */
 const FLOORS = '[data-testid=composer],[data-testid=thread-activity],[data-testid=mobile-tabs]';
-/** The headers the toasts sit under. */
-const HEADERS = '[data-testid=mobile-header],[data-testid=thread-header],[data-testid=mobile-settings-header],[data-testid=agent-header],[data-testid=team-header]';
 const cards: HTMLElement[] = [];
 const toasts: HTMLElement[] = [];
 let timer = 0;
 let roomed: HTMLElement | null = null;
 
 /**
- * Room for the toasts at one edge of `at` (`--corner-room`, drawn by
+ * Room for the toasts at the bottom of `at` (`--corner-room`, drawn by
  * notify-corner.css), so the page under them gives way and nothing sits
  * under them.
  */
-function reserve(at: HTMLElement | null, room: number, edge: 'top' | 'bottom' = 'top'): void {
+function reserve(at: HTMLElement | null, room: number): void {
   // Cleared then set in one task: an unchanged room is no style change.
   roomed?.style.removeProperty('--corner-room');
   delete roomed?.dataset.cornerRoom;
   roomed = room > 0 ? at : null;
   roomed?.style.setProperty('--corner-room', `${room}px`);
-  if (roomed) roomed.dataset.cornerRoom = edge;
+  if (roomed) roomed.dataset.cornerRoom = 'bottom';
 }
 
 function shown(selector: string): HTMLElement | null {
@@ -41,10 +39,10 @@ function shown(selector: string): HTMLElement | null {
 
 /**
  * The toasts' home, in room the page keeps for them so they cover no line,
- * row or title. On a desktop thread: under the header, centred on the
- * timeline, which gives way at its top. On a phone: at the bottom of what
- * scrolls, the thread or the list over it, right above the composer or the
- * tab bar, near the thumb that made the change. A desktop page with no
+ * row or title: at the bottom of what scrolls, the thread or the phone's list
+ * over it, right above the composer (its strip included) or the tab bar,
+ * centred on it, where the eye and the hand that made the change are. The
+ * timeline gives way at its bottom on every width. A desktop page with no
  * timeline keeps the bottom-right corner.
  */
 function placeToasts(): void {
@@ -53,24 +51,12 @@ function placeToasts(): void {
   const phone = innerWidth <= 720;
   // On a phone the list screen lies over the thread, which still lays out under it.
   const over = (phone && shown('[data-testid=mobile-list]')) || shown('[data-testid=timeline]');
-  const bottom = phone && over !== null;
-  reserve(over, bottom ? room + 8 : room, bottom ? 'bottom' : 'top');
+  reserve(over, room > 0 ? room + 8 : 0);
   let top: number, centre: number | null;
   if (over) {
     const box = over.getBoundingClientRect();
-    const style = getComputedStyle(over);
-    if (bottom) {
-      // The scroller's own bottom, before the room it keeps (its margin, even mid-transition).
-      top = box.bottom + (parseFloat(style.marginBottom) || 0) - room;
-    } else {
-      let under = 0;
-      for (const header of document.querySelectorAll<HTMLElement>(HEADERS)) {
-        const head = header.getBoundingClientRect();
-        if (head.height && head.top < 120 && head.right > box.left && head.left < box.right) under = Math.max(under, head.bottom);
-      }
-      // The timeline's own top, less the room it keeps.
-      top = Math.max(under, box.top - (parseFloat(style.marginTop) || 0)) + 8;
-    }
+    // The scroller's own bottom, before the room it keeps (its margin, even mid-transition).
+    top = box.bottom + (parseFloat(getComputedStyle(over).marginBottom) || 0) - room;
     centre = box.left + box.width / 2;
   } else {
     top = innerHeight - 12 - room + 8;
@@ -80,7 +66,7 @@ function placeToasts(): void {
     toast.style.setProperty('--toast-top', `${Math.round(top)}px`);
     if (centre === null) toast.style.removeProperty('--toast-left');
     else toast.style.setProperty('--toast-left', `${Math.round(centre)}px`);
-    toast.dataset.slot = centre === null ? 'end' : bottom ? 'bottom' : 'top';
+    toast.dataset.slot = centre === null ? 'end' : 'bottom';
     top += toast.offsetHeight + 8;
   }
 }

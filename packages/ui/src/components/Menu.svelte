@@ -17,6 +17,7 @@
     label,
     titled = true,
     heading,
+    cap,
     testid,
     children
   }: {
@@ -35,6 +36,8 @@
     titled?: boolean;
     /** What the menu acts on, a thread or a project: a phone sheet's title. The label stands in. */
     heading?: string;
+    /** The list's tallest desktop height in px, where the room exists for a long list to show whole (lib/floating.ts). */
+    cap?: number;
     testid?: string;
     children: Snippet;
   } = $props();
@@ -151,7 +154,7 @@
       tabindex="-1"
       {onkeydown}
       use:popover.attach
-      use:floating={{ anchor: () => trigger ?? null, placement, align, dismiss: () => popover.hide() }}
+      use:floating={{ anchor: () => trigger ?? null, placement, align, cap, dismiss: () => popover.hide() }}
       onanimationend={popover.end}
       data-testid={testid ? `${testid}-menu` : undefined}
     >
@@ -171,6 +174,7 @@
           class:danger={item.danger}
           class:hide-mark={item.hideActiveMark}
           class:checkable={item.checked !== undefined}
+          class:inline-hint={!switches && !!item.status && !!item.hint}
           class:radio={item.radio}
           role={item.checked === undefined ? 'menuitem' : item.radio ? 'menuitemradio' : 'menuitemcheckbox'}
           aria-checked={item.checked}
@@ -221,6 +225,10 @@
   .item.checkable { display: grid; grid-template-columns: minmax(0, 1fr) 14px; column-gap: 8px; }
   .checkable .hint { grid-column: 1; grid-row: 2; }
   .check { display: flex; grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+  /* A row with a status dot (a changed file) keeps its counts on the label's line, at the right. */
+  .item.checkable.inline-hint { grid-template-columns: minmax(0, 1fr) auto 14px; align-items: center; }
+  .inline-hint .hint { grid-column: 2; grid-row: 1; }
+  .inline-hint .check { grid-column: 3; grid-row: 1; }
   /* One head form for every overlay: the section's (above), the ContextMenu's and the palette's groups. */
   .heading { padding: var(--space-2) var(--overlay-row-pad) var(--space-1); color: var(--color-subtle); font-size: var(--text-xs); font-weight: 600; }
   .popover.switches { width: min(300px, calc(100vw - 24px)); padding: var(--space-2); }
@@ -252,6 +260,9 @@
 
   .trigger.ghost {
     width: var(--control-sm);
+    /* An icon alone still gets a 28 px target. */
+    min-width: 28px;
+    min-height: 28px;
     padding: 0;
     border-color: transparent;
     background: transparent;

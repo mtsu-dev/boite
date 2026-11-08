@@ -13,7 +13,6 @@
   import { longPress } from '../lib/long-press';
   import { archiveKindOf } from '../lib/project-threads.svelte';
   import MachineIcon from './MachineIcon.svelte';
-  import ProviderLogo from './ProviderLogo.svelte';
   import ThreadState from './ThreadState.svelte';
 
   /**
@@ -84,12 +83,11 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="done-thread" class:open class:meta class:pending data-testid="done-thread" data-thread-id={thread.id} data-machine-id={entry.machine.id} oncontextmenu={menu} use:longPress>
-  <button type="button" class="ghost row" data-testid="done-thread-open" title={thread.title} disabled={deleting} onclick={select}>
+  <button type="button" class="ghost row" data-testid="done-thread-open" title="{thread.title} · {agent}" disabled={deleting} onclick={select}>
     <span class="headline">
       {#if showMachine}
         <span class="machine" title={entry.machine.label} aria-label={entry.machine.label}><MachineIcon icon={entry.machine.icon} os={owner.core?.os} /></span>
       {/if}
-      <span class="provider" title={agent} aria-label={agent}><ProviderLogo providerId={thread.providerId} size={12} /></span>
       <span class="title ui-label">{thread.title}</span>
       <!-- The project shows below, outside the button: named here too, so two same-titled threads read apart. -->
       {#if showProject}<span class="visually-hidden">{projectName(entry.project)}</span>{/if}
@@ -136,9 +134,8 @@
   .row:hover:not(:disabled) { background: transparent; }
   .row:active:not(:disabled) { transform: none; }
   .headline { display: flex; align-items: center; min-width: 0; min-height: 1lh; gap: 8px; }
-  .provider, .machine { display: inline-flex; align-items: center; flex: none; color: var(--color-muted-foreground); }
+  .machine { display: inline-flex; align-items: center; flex: none; color: var(--color-muted-foreground); }
   /* Finished work reads a step quieter than the live rows above it, and wakes under the pointer. */
-  .provider { opacity: .7; }
   .title {
     flex: 1;
     min-width: 0;
@@ -151,7 +148,6 @@
     transition: color var(--dur-2) var(--ease-out-quint);
   }
   .done-thread:hover .title, .done-thread:focus-within .title, .done-thread.open .title { color: var(--color-foreground); }
-  .done-thread:hover .provider, .done-thread:focus-within .provider, .pending .provider { opacity: 1; }
   .pending .title { color: var(--color-foreground); }
   time { flex: none; color: var(--color-subtle); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
   .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

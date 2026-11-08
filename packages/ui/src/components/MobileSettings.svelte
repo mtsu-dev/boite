@@ -1,6 +1,6 @@
 <script lang="ts">
   import TelemetrySettings from './TelemetrySettings.svelte';
-  import { Activity, AppWindow, ArchiveRestore, ArrowLeft, Bell, Brain, ChevronRight, Coins, FlaskConical, FolderGit2, Gauge, KeyRound, Lock, MessagesSquare, Monitor, Palette, Mic, Minimize2, Settings2, ShieldCheck, SlidersHorizontal, Stethoscope, Users } from '@lucide/svelte';
+  import { Activity, AppWindow, ArchiveRestore, ArrowLeft, Bell, Brain, ChevronRight, Coins, FlaskConical, FolderGit2, Gauge, KeyRound, Lock, MessagesSquare, Monitor, Palette, Mic, Minimize2, Plug, Settings, ShieldCheck, Stethoscope, Wrench } from '@lucide/svelte';
   import type { SettingsTab, Store } from '../lib/store.svelte';
   import { workspace } from '../lib/workspace.svelte';
   import { strings } from '../lib/strings';
@@ -155,9 +155,9 @@
     <div class="home" data-testid="mobile-settings-home">
       <PolicyBanner store={target} />
       <div class="rows">
-        {@render row('settings-tab-general', Settings2, strings.settings.tabs.general, () => store.showSettings('general'))}
+        {@render row('settings-tab-general', Settings, strings.settings.tabs.general, () => store.showSettings('general'))}
         {@render row('settings-tab-appearance', Palette, strings.settings.tabs.appearance, () => store.showSettings('appearance'))}
-        {#if store.owner}{@render row('settings-tab-accounts', Users, strings.settings.tabs.accounts, () => store.showSettings('accounts'))}{/if}
+        {#if store.owner}{@render row('settings-tab-accounts', Plug, strings.settings.tabs.accounts, () => store.showSettings('accounts'))}{/if}
         {#if store.owner}{@render row('settings-tab-brain', Brain, strings.brain.heading, () => store.showSettings('brain'))}{/if}
         <!-- Usage is a page of Limits, as on the desktop: the entry wears the rail's gauge and opens on the limits. -->
         {@render row('settings-tab-limits', Gauge, strings.usage.limits, () => store.showSettings('limits'))}
@@ -166,7 +166,7 @@
         <button class="ghost row machine-link" data-testid="mobile-settings-connection" onclick={() => store.showSettings('machines')}>
           <Monitor size={20} /><span><strong class="ui-label">{strings.settings.tabs.machines}</strong><small>{#if machine}{`${machine.label} · `}{/if}<span class:ready={store.connection === 'ready'}>{store.pairingRequired ? strings.mobile.pairingRequired : strings.connection[store.connection]}</span></small></span><ChevronRight size={18} />
         </button>
-        {@render row('settings-tab-advanced', SlidersHorizontal, strings.settings.tabs.advanced, () => store.showSettings('advanced'))}
+        {@render row('settings-tab-advanced', Wrench, strings.settings.tabs.advanced, () => store.showSettings('advanced'))}
       </div>
       <PolicySettings store={target} />
     </div>
@@ -293,13 +293,13 @@
   .home > :global(.policy-banner) { margin-bottom: var(--space-5); }
   /* The group's first row is the machine itself: its name over its connection. */
   .machine-link { min-height: 64px; }
-  .machine-link strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+  .machine-link strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; }
   .machine-link small { display: block; margin-top: var(--space-1); font-size: var(--text-xs); font-weight: 400; color: var(--color-muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .machine-link small .ready { color: var(--color-success); }
   p { font-size: var(--text-sm); color: var(--color-muted-foreground); line-height: 1.5; margin: var(--space-2) 0 var(--space-3); }
   .rows { border: 1px solid var(--color-border); border-radius: var(--radius-lg); overflow: hidden; background: var(--color-surface); }
   /* A ghost button is muted; a row title reads like any other settings label. */
-  .row { display: flex; align-items: center; width: 100%; height: auto; min-height: 56px; gap: var(--space-3); padding: var(--space-3) var(--space-4); font-size: var(--text-base); font-weight: 500; text-align: left; border-radius: 0; white-space: normal; color: var(--color-foreground); }
+  .row { display: flex; align-items: center; width: 100%; height: auto; min-height: 56px; gap: var(--space-3); padding: var(--space-3) var(--space-4); font-size: var(--text-base); font-weight: 400; text-align: left; border-radius: 0; white-space: normal; color: var(--color-foreground); }
   .row + .row { border-top: 1px solid var(--color-border); }
   .row span { flex: 1; min-width: 0; }
   .row :global(svg) { flex: none; color: var(--color-muted-foreground); }
@@ -311,7 +311,7 @@
   .phone-page { padding: var(--space-4); }
   /* Usage and Limits: two tabs of one screen, in one track, the chosen one filled. */
   .tabs { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 2px; margin: var(--space-4) var(--space-4) 0; padding: 2px; border: 1px solid var(--color-edge); border-radius: var(--radius-lg); background: var(--color-surface-2); }
-  .tab { min-width: 0; min-height: var(--touch-target); gap: var(--space-2); border: 1px solid transparent; border-radius: var(--radius-md); background: transparent; color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 500; transition: background var(--dur-2) var(--ease-out-quint), color var(--dur-2) var(--ease-out-quint); }
+  .tab { min-width: 0; min-height: var(--touch-target); gap: var(--space-2); border: 1px solid transparent; border-radius: var(--radius-md); background: transparent; color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 400; transition: background var(--dur-2) var(--ease-out-quint), color var(--dur-2) var(--ease-out-quint); }
   .tab.on { background: var(--color-foreground); border-color: var(--color-foreground); color: var(--color-on-foreground); }
   .tab :global(svg) { flex: none; }
   /* The bar carries the page's name and its "i": the card's own heading steps aside. */

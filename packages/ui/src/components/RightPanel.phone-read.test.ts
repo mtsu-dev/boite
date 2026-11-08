@@ -88,6 +88,23 @@ test('a wide panel keeps the list beside the diff, with no pager', async () => {
   expect(query('[data-testid=changes-panel]')!.classList.contains('narrow')).toBe(false);
 });
 
+test('a docked panel too narrow for two columns gives the diff the whole panel and the file chip the list', async () => {
+  await phone(700);
+  button('launch-changes').click(); await settle();
+  const panel = query('[data-testid=changes-panel]')!;
+  // No file yet: the list is the panel's page.
+  expect([panel.classList.contains('stacked'), panel.classList.contains('reading')]).toEqual([true, false]);
+  const rows = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-testid=changes-row]'));
+  rows[0]!.click(); await settle();
+  // A file open: the list leaves the page (still there, hidden) and the chip holds every file.
+  expect(panel.classList.contains('reading')).toBe(true);
+  expect(query('[data-testid=diff-view]')?.getAttribute('data-path')).toBe(rows[0]!.dataset.path);
+  button('changes-pager').click(); await settle();
+  expect(Array.from(document.querySelectorAll<HTMLButtonElement>('[data-testid=changes-outline-file]')).map((file) => file.dataset.value)).toEqual(rows.map((row) => row.dataset.path));
+  // Not a phone's width: the picker is the narrow layout's only, a finger's rows stay a phone's.
+  expect(panel.classList.contains('narrow')).toBe(false);
+});
+
 test('a phone reads a file as wrapped lines and is offered no save', async () => {
   const client = await phone(390);
   button('launch-files').click(); await settle();

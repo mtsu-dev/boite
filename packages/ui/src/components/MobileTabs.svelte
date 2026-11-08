@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Activity, Bot, MessageSquare, Settings, Users } from '@lucide/svelte';
+  import { Activity, Bot, Contact, MessageSquare, Settings } from '@lucide/svelte';
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
   import { experimentOn } from '../lib/experiments.svelte';
@@ -12,7 +12,9 @@
    * The phone's places, along the bottom edge where a thumb rests, the
    * desktop rail's in the same order. A new conversation is the list header's
    * "+". A conversation, a draft and an open keyboard hide the bar; the list's
-   * header names the machine.
+   * header names the machine. Four places: with the bots on, Contacts lives
+   * in the Bots tab, behind the two-way switch at the top of its page
+   * (MobileNavigation.svelte), so the tab stands for both.
    */
   let { store, screen, waiting, navigate, inert = false }: {
     store: Store;
@@ -23,11 +25,11 @@
     /** Out of reach, to the keyboard and assistive tech too: under a conversation sliding in over it. */
     inert?: boolean;
   } = $props();
-  const current = $derived(store.page === 'settings' ? 'settings' : store.page === 'agents' ? 'agents' : store.page === 'home' ? 'contacts' : screen === 'activity' ? 'activity' : 'threads');
+  const bots = $derived(experimentOn('resident-agents'));
+  const current = $derived(store.page === 'settings' ? 'settings' : store.page === 'agents' || (bots && store.page === 'home') ? 'agents' : store.page === 'home' ? 'contacts' : screen === 'activity' ? 'activity' : 'threads');
   const page = (place: string) => current === place ? 'page' as const : undefined;
 
   /** The bots at work on every machine, as the desktop's switch counts them: the waiting colour once one needs the user. */
-  const bots = $derived(experimentOn('resident-agents'));
   const stores = $derived(workspace.machines.length ? workspace.machines.map(machine => machine.store) : [store]);
   const atWork = $derived(bots ? agentsAtWork(stores) : { count: 0, waiting: false });
   followAgentDirectories(() => stores, () => bots);
@@ -45,9 +47,9 @@
       <span class="glyph"><Bot size={20} />{#if atWork.count}<span class="badge" class:working={!atWork.waiting} data-testid="mobile-agents-at-work" data-waiting={atWork.waiting}>{atWork.count > 99 ? '99+' : atWork.count}</span>{/if}</span><span class="name ui-label">{strings.agents.heading}</span>
     </button>
   {/if}
-  {#if contactsShown(store)}
+  {#if contactsShown(store) && !bots}
     <button type="button" class="tab" data-testid="mobile-contacts" data-preload-view="home" aria-current={page('contacts')} onclick={() => store.showHome()}>
-      <span class="glyph"><Users size={20} /></span><span class="name ui-label">{strings.contacts.heading}</span>
+      <span class="glyph"><Contact size={20} /></span><span class="name ui-label">{strings.contacts.heading}</span>
     </button>
   {/if}
   <button type="button" class="tab" data-testid="mobile-settings" data-preload-view="settings" aria-current={page('settings')} onclick={() => store.showSettings()}>

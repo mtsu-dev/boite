@@ -3,7 +3,7 @@
   import { MediaQuery } from 'svelte/reactivity';
   import WindowList from './WindowList.svelte';
   import { Check, ChevronRight, CircleAlert, Ellipsis, FolderPlus, FolderX, GripVertical, LoaderCircle } from '@lucide/svelte';
-  import type { Project, ThreadId } from '@boite/contracts';
+  import type { Project, ThreadId, ThreadSummary } from '@boite/contracts';
   import type { Store } from '../lib/store.svelte';
   import { workspace, type Machine } from '../lib/workspace.svelte';
   import { fill, strings } from '../lib/strings';
@@ -11,6 +11,7 @@
   import { compareEntries } from '../lib/thread-order';
   import { rowPlaces } from '../lib/row-place';
   import { projectRollup, threadState } from '../lib/thread-state';
+  import { foldQuiet } from '../lib/card-fold';
   import { storeNeedsYou } from '../lib/activity-feed';
   import { needsYou } from '../lib/status-order';
   import { groupWorkingThread, recentPreferences } from '../lib/recent.svelte';
@@ -131,6 +132,15 @@
     return { active, older };
   });
   const listsFor = projectListMap();
+  /** The cards whose quiet threads the user unfolded, by project key, for this session. */
+  let unfolded = $state<Record<string, true>>({});
+  /** A card's rows as drawn: what has something to say, then its quiet threads, folded on a big card until asked for. */
+  function cardRows(entry: ProjectEntry, attention: ThreadSummary[]): { shown: ThreadSummary[]; folded: ThreadSummary[] } {
+    const owner = entry.machine.store;
+    if (unfolded[projectKey(entry)]) return { shown: attention, folded: [] };
+    return foldQuiet(attention, thread => thread.pinned === true || threadState(thread, owner.subagents(thread.id)) !== null
+      || (owner === workspace.active && owner.openThread?.id === thread.id));
+  }
   /** Each listed project's sorted rows, shared by its section and by Alt+digit. */
   let projectLists = $derived(listsFor(activeGroups));
   /** The rows of the listed projects in drawn order, read only as far as the ninth: projects below it cost nothing. */
@@ -143,7 +153,8 @@
       if (later ? !projectThreadView.laterOpen : sections.working.includes(entry) && !projectThreadView.workingOpen) continue;
       const open = projectThreadView.isOpen(entry, 'working');
       const { lists } = projectLists.get(projectKey(entry))!;
-      for (const thread of open ? [...lists.attention, ...lists.working] : lists.attention) rows.push({ store: entry.machine.store, threadId: thread.id });
+      const { shown } = cardRows(entry, lists.attention);
+      for (const thread of open ? [...shown, ...lists.working] : shown) rows.push({ store: entry.machine.store, threadId: thread.id });
       for (const kind of ['done', 'archived'] as const) if (kind === 'done' ? doneFilter.shown : later || projectThreadView.isOpen(entry, kind)) rows.push(...projectDoneRows[JSON.stringify([kind, projectKey(entry)])] ?? []);
     }
     return rows;
@@ -254,6 +265,7 @@
         {@const doneOpen = archiveCount(project, 'done') > 0 && doneFilter.shown}
         {@const archivedOpen = archiveCount(project, 'archived') > 0 && (later || projectThreadView.isOpen(entry, 'archived'))}
         {@const { lists } = projectLists.get(projectKey(entry))!}
+        {@const fold = cardRows(entry, lists.attention)}
         {@const controls = `sidebar-project-${encodeURIComponent(projectKey(entry))}`}
         {@const collapsed = owner.isCollapsed(project.id)}
         {@const away = owner.connection !== 'ready'}
@@ -311,9 +323,15 @@
             <div>
               <SharedProjectThreads store={owner} projectId={project.id} active={!collapsed && !away}>
               {#each draftsHere as draft (draft.id)}<DraftRow {owner} entry={draft} />{/each}
-              <WindowList items={lists.attention} keyOf={thread => JSON.stringify([machine.id, thread.id])} {scrollRoot} active={!collapsed} estimate={34} measurements={measurements(JSON.stringify([machine.id, project.id]))}>
+              <WindowList items={fold.shown} keyOf={thread => JSON.stringify([machine.id, thread.id])} {scrollRoot} active={!collapsed} estimate={34} measurements={measurements(JSON.stringify([machine.id, project.id]))}>
                 {#snippet row(thread)}<ThreadCard {machine} {project} {thread} {now} showDone />{/snippet}
               </WindowList>
+              {#if fold.folded.length}
+                <!-- The quiet threads of a big card, one line: a press shows them in place, in the list's order. -->
+                <button type="button" class="ghost more-threads" data-testid="project-more" onclick={() => { unfolded = { ...unfolded, [key]: true }; }}>
+                  <span class="ui-label">{fill(strings.sidebar.moreThreads, { count: String(fold.folded.length) })}</span>
+                </button>
+              {/if}
               <div id="{controls}-working" hidden={!workingOpen || lists.working.length === 0} data-testid="project-working">
                 {#if workingOpen && lists.working.length > 0}
                   <WindowList items={lists.working} keyOf={thread => JSON.stringify([machine.id, thread.id])} {scrollRoot} active={!collapsed} estimate={34} measurements={measurements(JSON.stringify([machine.id, project.id, 'working']))}>
@@ -539,6 +557,20 @@
   .head:focus-within :global(.counters) {
     margin-right: 28px;
   }
+  /* The folded quiet threads' one line: a row's height, the subtle ink of what is not news, on the titles' edge. */
+  .more-threads {
+    display: flex;
+    width: 100%;
+    height: auto;
+    min-height: 30px;
+    padding: 0 10px;
+    justify-content: flex-start;
+    border-radius: var(--radius-md);
+    color: var(--color-subtle);
+    font-size: var(--text-sm);
+    font-weight: 400;
+  }
+  .more-threads:hover:not(:disabled) { color: var(--color-muted-foreground); }
   .none {
     padding: 4px 10px;
     color: var(--color-subtle);

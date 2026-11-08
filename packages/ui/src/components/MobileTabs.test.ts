@@ -67,3 +67,15 @@ test('a paired device, which may call no contacts method, is offered no way into
   tab('mobile-contacts')!.click(); await settle();
   expect(store.page).toBe('home');
 });
+
+test('with the bots on, the bar keeps four places: Contacts is the Bots tab\'s other side, which stays marked on it', async () => {
+  setExperiment('contacts', true); setExperiment('resident-agents', true);
+  onTestFinished(() => setExperiment('resident-agents', false));
+  client.close(); store.detach();
+  client = new FakeClient({ delayMs: 0 }); store = new Store(); store.attach(client); await store.connect();
+  app = mount(MobileTabs, { target: document.body, props: { store, screen: 'threads', waiting: 0, navigate: () => {} } }); await settle();
+  expect(document.querySelectorAll('.mobile-tabs .tab')).toHaveLength(4);
+  expect(tab('mobile-contacts')).toBeNull();
+  store.showHome(); await settle();
+  expect(tab('mobile-agents')!.getAttribute('aria-current')).toBe('page');
+});

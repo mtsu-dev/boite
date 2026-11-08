@@ -3,6 +3,7 @@
   import { Check, ChevronRight, MessageCircleQuestionMark, Paperclip } from '@lucide/svelte';
   import type { QuestionAnswer, QuestionOption } from '@boite/contracts';
   import { keepFocus } from '../lib/focus';
+  import { glides } from '../lib/motion';
   import { fill, strings } from '../lib/strings';
   import CodeText from './CodeText.svelte';
   import DecisionHead from './DecisionHead.svelte';
@@ -69,6 +70,30 @@
   $effect(() => { if (open) built = true; });
 
   const ready = $derived(picked.length > 0 || drafted);
+
+  /**
+   * A phone gives the docked choices a bounded height: the ones under its
+   * edge are counted on a line of their own, so the first view says how many
+   * remain even when the cut falls between two rows.
+   */
+  let list = $state<HTMLDivElement | undefined>(undefined);
+  let below = $state(0);
+  function measure(): void {
+    if (!list || list.scrollHeight <= list.clientHeight + 1) { below = 0; return; }
+    const edge = list.getBoundingClientRect().bottom;
+    below = Array.from(list.children).filter((option) => option.getBoundingClientRect().bottom > edge + 1).length;
+  }
+  $effect(() => {
+    if (!list || !docked || typeof ResizeObserver !== 'function') return;
+    const watch = new ResizeObserver(measure);
+    watch.observe(list);
+    measure();
+    return () => watch.disconnect();
+  });
+  function more(): void {
+    const next = Array.from(list?.children ?? []).find((option) => option.getBoundingClientRect().bottom > list!.getBoundingClientRect().bottom + 1);
+    next?.scrollIntoView({ block: 'nearest', behavior: glides() ? 'smooth' : 'auto' });
+  }
 
   function toggle(id: string): void {
     if (multiple) {
@@ -168,7 +193,7 @@
   {/if}
 
     {#if options.length > 0}
-      <div class="options" role={multiple ? 'group' : 'radiogroup'}>
+      <div class="options" class:clipped={below > 0} role={multiple ? 'group' : 'radiogroup'} bind:this={list} onscroll={measure}>
         {#each options as option, index (option.id)}
           <button
             type="button"
@@ -200,6 +225,9 @@
           </button>
         {/each}
       </div>
+      {#if below > 0}
+        <button type="button" class="ghost more" data-testid="question-more" onmousedown={keepFocus} onclick={more}><span class="ui-label">{fill(strings.chat.questionMore, { count: String(below) })}</span></button>
+      {/if}
     {/if}
 
     {#if pending && !(docked && replying && !page)}
@@ -265,10 +293,14 @@
   .docked .prompt.folded { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   @media (max-width: 720px) {
     .docked .skip { min-height: var(--touch-target); padding: 0 6px; }
-    /* A phone keeps the whole dock under half the screen: past two answers or
-       so the list scrolls in place, the field under it always in sight. */
-    .docked .options { max-height: 20dvh; overflow-y: auto; overscroll-behavior: contain; }
+    /* A phone keeps the whole dock under half the screen: the choices take
+       the room first, about four short rows, then scroll in place, the field
+       under them always in sight. A cut row fades and a line counts the rest. */
+    .question.docked { padding: 8px 10px; gap: 4px; }
+    .docked .options { max-height: 30dvh; overflow-y: auto; overscroll-behavior: contain; }
+    .docked .options.clipped { mask-image: linear-gradient(to bottom, var(--color-foreground) calc(100% - 24px), transparent); }
   }
+  .more { align-self: flex-start; height: 24px; padding: 0 8px; color: var(--color-muted-foreground); font-size: var(--text-sm); }
   .skip { height: 24px; padding: 0 8px; border-radius: var(--radius-sm); color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 550; }
 
   .docked .options { gap: 2px; }
@@ -281,6 +313,8 @@
   .kbd { flex: none; width: 20px; height: 20px; padding: 0; color: var(--color-muted-foreground); }
   .option.picked .kbd { color: var(--color-foreground); }
   .docked .actions { justify-content: flex-end; }
+  /* After the rows' own padding, so the phone's tighter one wins. */
+  @media (max-width: 720px) { .docked .option { min-height: var(--touch-target); padding: 4px 8px; } }
 
   .waiting-row:disabled { opacity: 1; cursor: default; }
   /* Waiting on the owner: a small live dot, where to answer is in its tooltip. */

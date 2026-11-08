@@ -538,8 +538,9 @@ test('the reasoning row names one choice per level and the arrows move it', asyn
   const live = query<HTMLButtonElement>('[data-testid=composer-effort-menu] [aria-checked=true]');
   expect(live.dataset.value).toBe('high');
   expect(live.tabIndex).toBe(0);
-  // A folded list's radios take no focus: unfolding the row hands it to the live one.
-  query<HTMLButtonElement>('[data-testid=composer-effort] [data-choices-trigger]').click();
+  // The levels are one segmented row: no fold to open, the live one takes the focus directly.
+  expect(document.querySelector('[data-testid=composer-effort] [data-choices-trigger]')).toBeNull();
+  live.focus();
   await waitFor(() => document.activeElement === live);
 
   const update = vi.spyOn(store, 'update');
@@ -725,6 +726,24 @@ test('reconnecting queues a send instead of sending it, and a new thread queues 
   expect(store.draftEntries.find(entry => entry.active)).toMatchObject({ text: 'a new thread', queued: 'waiting' });
 });
 
+test('a queued prompt is a dimmed line in the box with its own edit and remove, not a pill', async ({ queueApp: _app }) => {
+  await store.open('t-trace');
+  await store.client!.call('turns.start', { threadId: 't-trace', prompt: 'Wait [permission]' });
+  await waitFor(() => store.openThread?.status === 'waiting');
+  await type('first pending');
+  press('Enter');
+  await type('second pending');
+  press('Enter');
+  await waitFor(() => input().value === '' && store.composerStates['t-trace']?.queued.length === 2);
+  const lines = Array.from(document.querySelectorAll<HTMLElement>('[data-testid=composer-queued-item]'));
+  expect(lines.map((line) => line.classList.contains('line'))).toEqual([true, true]);
+  expect(lines.every((line) => line.querySelector('[data-testid=composer-queued-edit]') && line.querySelector('[data-testid=composer-queued-remove]'))).toBe(true);
+  // Edit takes that prompt, and only it, back into the box.
+  lines[0]!.querySelector<HTMLButtonElement>('[data-testid=composer-queued-edit]')!.click();
+  await waitFor(() => input().value === 'first pending');
+  expect(store.composerStates['t-trace']!.queued.map((entry) => entry.text)).toEqual(['second pending']);
+});
+
 test('ArrowUp removes the latest queued prompt and restores its images for editing', async ({ queueApp: _app }) => {
   await store.open('t-trace');
   await store.client!.call('turns.start', { threadId: 't-trace', prompt: 'Wait [permission]' });
@@ -901,18 +920,15 @@ test('Enter in the emptied composer allows the docked permission, then the input
   expect(document.querySelector('[data-testid=timeline] [data-testid=permission-waiting]')).toBeNull();
   // A run that held only that ask leaves no empty row behind it.
   expect(Array.from(document.querySelectorAll('[data-testid=timeline] .part')).filter((part) => part.children.length === 0)).toHaveLength(0);
-  // The decision is the box's head and reads alone: the "+" and the context ring
-  // step back, the model chip keeps only its mark, send and the microphone stay.
-  await waitFor(() => document.querySelector('[data-testid=composer] .entry.folded') !== null);
-  expect(document.querySelector('[data-testid=composer-options]')).toBeNull();
-  expect(document.querySelector('[data-testid=composer] .bar [data-testid=context-meter]')).toBeNull();
-  expect(query('[data-testid=composer-picker]').querySelector('.label')).toBeNull();
-  expect(query('[data-testid=composer-picker]').getAttribute('aria-label')).toBeTruthy();
-  query('[data-testid=composer-send]');
+  // The decision takes the box's head and the row under the field stays whole:
+  // the "+", the named model chip, then one round button, Stop or Send, never both.
+  const row = () => Array.from(query('[data-testid=composer] .bar').querySelectorAll<HTMLElement>('[data-testid=composer-options], [data-testid=composer-picker], [data-testid=composer-stop], [data-testid=composer-send]:not(.resting)')).map((node) => node.dataset.testid);
+  expect(row()).toEqual(['composer-options', 'composer-picker', 'composer-stop']);
+  expect(query('[data-testid=composer-picker]').querySelector('.label')?.textContent?.trim()).toBeTruthy();
   const rpc = vi.spyOn(store.client!, 'call');
   await type('Now please');
-  // A letter written unfolds the box: its tools are back while there is text to send.
-  await waitFor(() => document.querySelector('[data-testid=composer] .entry.folded') === null && document.querySelector('[data-testid=composer-options]') !== null);
+  // A letter written turns Stop into Send in the same place; nothing else in the row moves.
+  await waitFor(() => row().join() === 'composer-options,composer-picker,composer-send');
   press('Enter');
   await type('After that');
   press('Enter');

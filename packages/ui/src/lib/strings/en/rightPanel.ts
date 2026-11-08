@@ -7,7 +7,6 @@ export const strings = {
     resize: 'Resize the panel, double-click to reset',
     maximize: 'Maximize the panel',
     restore: 'Restore the panel',
-    newSurface: 'More panels',
     scrollLeft: 'Scroll the tabs left',
     scrollRight: 'Scroll the tabs right',
     closeTab: 'Close {title}',

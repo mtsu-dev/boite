@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
-  import { ArrowLeft, ArrowRightToLine, ChevronLeft, ChevronRight, ListX, Plus, Maximize2, Minimize2, SquareX, X, GripHorizontal, PanelsTopLeft } from '@lucide/svelte';
+  import { ArrowLeft, ArrowRightToLine, ChevronDown, ChevronLeft, ChevronRight, ListX, Maximize2, Minimize2, SquareX, X, GripHorizontal, PanelsTopLeft } from '@lucide/svelte';
   import { floatingPanel, RESIZE_DIRECTIONS } from '../lib/floating-panel';
   import { browserBridge } from '../lib/browser-bridge';
   import { stripOverflows } from '../lib/strip-overflow';
@@ -15,7 +15,10 @@
   import type { BoundPanel, Surface, SurfaceKind } from '../lib/right-panel.svelte';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
-  import { offeredCards, available as availableTo, kindName, label, tooltip, unavailable } from '../lib/surface-labels';
+  import { offeredCards, available as availableTo, label, tooltip } from '../lib/surface-labels';
+  import { CUSTOMIZE, panelChoices } from '../lib/panel-choices';
+  import { openCoordination } from '../lib/coordination-request.svelte';
+  import { arriveSurface, leaveSurface } from '../lib/surface-swap';
   import BrowserSurface from './BrowserSurface.svelte';
   import AgentBrowserSurface from './AgentBrowserSurface.svelte';
   import DelegationSurface from './DelegationSurface.svelte';
@@ -28,7 +31,6 @@
   import Menu from './Menu.svelte';
   import PanelResizeHandle from './PanelResizeHandle.svelte';
   import SurfaceIcon from './SurfaceIcon.svelte';
-  import { surfaceGlyph } from '../lib/surface-glyphs';
   import SurfaceLauncher from './SurfaceLauncher.svelte';
   import TasksSurface from './TasksSurface.svelte';
   import TraceSurface from './TraceSurface.svelte';
@@ -58,8 +60,6 @@
    * stored for when the room comes back.
    */
   const docked = $derived(clampPanel(rightPanel.width, innerWidth.current ?? window.innerWidth, panelSibling(store, innerWidth.current ?? window.innerWidth)));
-  /** The new-surface menu's last row, which no surface kind can be called. */
-  const CUSTOMIZE = 'customize';
 
   let tabs = $state<HTMLDivElement | undefined>(undefined);
   let root = $state<HTMLElement | undefined>(undefined);
@@ -103,21 +103,9 @@
     if (untrack(() => entered)) node.dataset.arriving = '';
   }
 
-  /**
-   * `out:` on a surface a tab switch replaces: it fades over the new one on
-   * `--dur-exit` while that one fades in, so no frame shows an empty panel.
-   * Out of the flow, it keeps the body's box; the new surface takes its place.
-   */
-  function leave(node: HTMLElement): { duration: number; css?: (t: number) => string } {
-    const body = node.parentElement;
-    const token = getComputedStyle(node).getPropertyValue('--dur-exit').trim();
-    const duration = parseFloat(token) * (token.endsWith('ms') ? 1 : 1000) || 0;
-    if (!body || duration === 0) return { duration: 0 };
-    Object.assign(node.style, {
-      position: 'absolute', top: `${body.offsetTop}px`, left: `${body.offsetLeft}px`,
-      width: `${body.clientWidth}px`, height: `${body.clientHeight}px`, zIndex: '1', pointerEvents: 'none',
-    });
-    return { duration, css: (t) => `opacity: ${t}` };
+  /** A surface a tab switch brings: it waits for the old one to fade out, then fades in (`lib/surface-swap.ts`). */
+  function arriveAfter(node: HTMLElement): void {
+    if (untrack(() => entered)) arriveSurface(node);
   }
 
   let surfaces = $derived(panel.surfaces);
@@ -210,6 +198,7 @@
   }
 
   function openTabMenu(event: MouseEvent, surface: Surface): void {
+    if (fromSelector(event)) return;
     const index = surfaces.findIndex((one) => one.id === surface.id);
     contextMenu.open(
       event,
@@ -234,13 +223,24 @@
   }
 
   function onTabPointerDown(event: MouseEvent, surface: Surface): void {
-    if (event.button !== 1) return;
+    if (event.button !== 1 || fromSelector(event)) return;
     // The middle button scrolls by default; the tab closes instead.
     event.preventDefault();
     void closeTabs(panel, 'close', surface.id);
   }
 
+  /**
+   * The selector's trigger and its list live in the active tab: their clicks,
+   * keys and presses are theirs, not the tab's. A pick bubbling up as a tab
+   * click would bring the old panel back.
+   */
+  function fromSelector(event: Event): boolean {
+    return event.target instanceof Element && event.target.closest('.selector') !== null;
+  }
+
   function onTabKey(event: KeyboardEvent, surface: Surface): void {
+    // The tab's own key only: Enter on its close button or the selector does what that control says.
+    if (event.target !== event.currentTarget) return;
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
       panel.activate(surface.id);
@@ -286,26 +286,26 @@
   }
 
 
-  /** A persistent agent's own thread has a desk, offered first. */
-  const agentThread = $derived(!!store.openThread?.agentSessionId);
-  let menuItems = $derived([
-    ...(agentThread && !surfaces.some((surface) => surface.kind === 'desk') ? [{ id: 'desk', label: kindName('desk'), glyph: surfaceGlyph('desk') }] : []),
-    // The strip shows the open panels only; every other kind waits here, once.
-    ...offeredCards().filter((card) => !surfaces.some((surface) => surface.kind === card.kind)).map((card) => ({
-      id: card.kind,
-      label: kindName(card.kind),
-      glyph: surfaceGlyph(card.kind),
-      disabled: !available(card.kind),
-      ...(available(card.kind) ? {} : { hint: unavailable() })
-    })),
-    // The way back to a kind this device put away.
-    separator('sep-customize'),
-    { id: CUSTOMIZE, label: strings.controls.customize }
-  ]);
+  /** Every panel kind at once: about 13 rows of 33 px, so the default 360 px cap cut the last one at 900 px tall. */
+  const SELECTOR_CAP = 560;
+  /** The panel selector's list: every panel and tool, the one showing marked. */
+  let choices = $derived(panelChoices(store, store.openThread, { phone, available, showing: active?.kind }));
 
-  function pickNew(id: string): void {
+  function pickPanel(id: string): void {
+    const thread = store.openThread;
     if (id === CUSTOMIZE) store.showSettings('appearance', CONTROLS_SECTION);
-    else launch(id as SurfaceKind);
+    else if (id === 'terminal-toggle') store.toggleTerminal();
+    else if (id === 'board-toggle' || id === 'coordination') {
+      // A phone's sheet covers the chat the board and the dialog belong to.
+      if (phone) panel.hide();
+      if (id === 'board-toggle') store.toggleBoard();
+      else if (thread) openCoordination(store, thread.id);
+    } else {
+      // A kind already open is gone back to, not opened twice.
+      const open = surfaces.find((surface) => surface.kind === id);
+      if (open) panel.activate(open.id);
+      else launch(id as SurfaceKind);
+    }
   }
 </script>
 
@@ -385,12 +385,12 @@
           data-surface-id={surface.id}
           data-kind={surface.kind}
           data-testid="panel-tab"
-          title={tooltip(surface)}
-          onclick={() => panel.activate(surface.id)}
+          title={surface.id === panel.activeSurfaceId ? undefined : tooltip(surface)}
+          onclick={(event) => { if (!fromSelector(event)) panel.activate(surface.id); }}
           onkeydown={(event) => onTabKey(event, surface)}
           onmousedown={(event) => onTabPointerDown(event, surface)}
           oncontextmenu={(event) => openTabMenu(event, surface)}
-          use:longPress
+          use:longPress={(target) => !target.closest('.selector')}
         >
           <button
             type="button"
@@ -407,9 +407,27 @@
             </span>
             <span class="cross"><X size={14} strokeWidth={2} /></span>
           </button>
-          <span class="name ui-label">{label(surface)}</span>
+          {#if surface.id === panel.activeSurfaceId}
+            <!-- The panel selector: the showing panel's name opens the list of every panel and tool. -->
+            <!-- The tooltip on the trigger, not the tab: the list lives inside the tab and a native tooltip would cover its rows. -->
+            <span class="selector">
+              <Menu items={choices} onpick={pickPanel} cap={SELECTOR_CAP} placement="bottom" variant="ghost" label={tooltip(surface)} heading={strings.thread.panelMenu} testid="panel-add">
+                <span class="name ui-label">{label(surface)}</span><ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
+              </Menu>
+            </span>
+          {:else}
+            <span class="name ui-label">{label(surface)}</span>
+          {/if}
         </div>
       {/each}
+      {#if empty}
+        <!-- No panel yet: the selector stands alone, the launcher's title. -->
+        <span class="selector alone">
+          <Menu items={choices} onpick={pickPanel} cap={SELECTOR_CAP} placement="bottom" variant="ghost" label={strings.thread.panelMenu} heading={strings.thread.panelMenu} titled={false} testid="panel-add">
+            <span class="name ui-label">{strings.thread.panelMenu}</span><ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
+          </Menu>
+        </span>
+      {/if}
     </div>
 
     {#if overflowing}
@@ -423,22 +441,6 @@
       >
         <ChevronRight size={14} strokeWidth={1.75} />
       </button>
-    {/if}
-
-    <!-- Its words are on the button: no native tooltip repeating them over the tab beside it. -->
-    {#if !empty}
-      <Menu
-        items={menuItems}
-        onpick={pickNew}
-        placement="bottom"
-        align="end"
-        variant="ghost"
-        label={strings.rightPanel.newSurface}
-        titled={false}
-        testid="panel-add"
-      >
-        <span class="more"><Plus size={14} strokeWidth={1.75} /><span class="ui-label">{strings.rightPanel.newSurface}</span></span>
-      </Menu>
     {/if}
 
     <span class="spacer"></span>
@@ -483,10 +485,10 @@
   </header>
 
   <div class="body">
-    <!-- Keyed on the tab, so picking another one cross-fades the two surfaces
-         rather than swapping them in one frame. -->
+    <!-- Keyed on the tab, so picking another one fades the old surface out,
+         then the new one in, rather than swapping them in one frame. -->
     {#key active?.id}
-    <div class="surface" use:arrive out:leave>
+    <div class="surface" use:arriveAfter out:leaveSurface>
     {#if active?.kind === 'desk'}
       {#if store.openThread?.agentSessionId}
         {#key store.threadKey(store.openThread.id)}<AgentDesk {store} />{/key}
@@ -598,11 +600,21 @@
     height: var(--control-sm);
     width: var(--control-sm);
   }
-  /* More panels carries its name, so it takes the width of it. */
-  .strip :global(.trigger.ghost[data-testid='panel-add']) {
+  /* The selector is the active tab's name: the tab's type and fill, a chevron after the words. */
+  .strip .selector :global(.trigger.ghost) {
     width: auto;
-    padding: 0 8px;
+    min-width: 0;
+    max-width: 100%;
+    height: var(--control-sm);
+    padding: 0 2px 0 0;
+    gap: 3px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
   }
+  .selector { display: flex; min-width: 0; }
+  .selector :global(.menu) { display: flex; min-width: 0; }
+  .selector.alone { padding-left: 6px; color: var(--color-foreground); font-size: var(--text-xs); }
 
   /* Only the tabs give way. A control that shrank too took part of the room the
      chevrons cost, so the tabs lost less than `measure` counted and the
@@ -670,10 +682,10 @@
   .tab.active {
     background: var(--color-active);
     color: var(--color-foreground);
+    /* The selector holds the tab's whole name and its chevron. */
+    max-width: 176px;
+    padding-right: 4px;
   }
-
-  /* The way to every panel not open: its words beside the plus, quiet like the strip's buttons. */
-  .more { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; color: var(--color-muted-foreground); }
 
   .name {
     overflow: hidden;
@@ -721,14 +733,17 @@
 
   /* The surface's own icon is the close target: it turns into an X under the
      pointer, and under the keyboard too as soon as the tab holds the focus. */
-  .tab:hover .glyph,
-  .tab:focus-within .glyph,
+  /* The active tab's name opens the selector: its icon turns only under the pointer on the icon itself. */
+  .tab:not(.active):hover .glyph,
+  .tab:not(.active):focus .glyph,
+  .closer:hover .glyph,
   .closer:focus-visible .glyph {
     display: none;
   }
 
-  .tab:hover .cross,
-  .tab:focus-within .cross,
+  .tab:not(.active):hover .cross,
+  .tab:not(.active):focus .cross,
+  .closer:hover .cross,
   .closer:focus-visible .cross {
     display: inline-flex;
   }
@@ -764,6 +779,9 @@
   .surface:global([data-arriving]) {
     animation: fade var(--motion-in) both;
   }
+  /* A cut under reduced motion, whatever the duration tokens say. */
+  @media (prefers-reduced-motion: reduce) { .surface:global([data-arriving]) { animation: none; } }
+  :global(html[data-motion='reduced']) .surface:global([data-arriving]) { animation: none; }
 
   @media (min-width: 721px) {
     .body {

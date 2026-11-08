@@ -27,17 +27,17 @@
   import { desktopSettings } from '../lib/settings-tabs';
 
   /**
-   * The row under the composer's box, the same on every width: one "+" for
-   * what adds to the message, one model chip naming the model (its effort,
-   * speed, permission and context rows inside; the ring beside it once the
-   * context is half used), then stop, dictation and send. While a decision
-   * holds the box and its field is empty (`folded`), the "+" and the ring step
-   * back, the chip shrinks to the provider's mark, and the tools sit at the
-   * field's end. A pick on a thread is saved at once, after the switch warnings; on a
-   * draft the whole choice is remembered. `choice`, `picking` and `dictating`
-   * are the composer's, bound here. An agent's box (`target`) keeps stop,
-   * attach, dictation and send; its model chips save the agent's own setting,
-   * and a group's box shows its recipients in their place.
+   * The row under the composer's box, the same in every state and on every
+   * width: one "+" for what adds to the message, one model chip naming the
+   * model (its effort, speed, permission and context rows inside; the ring
+   * beside it once the context is half used), then dictation and one round
+   * button that is Send, or Stop while a turn runs and nothing waits to go.
+   * Nothing comes or goes with a decision docked above: the row keeps its
+   * place and its controls. A pick on a thread is saved at once, after the
+   * switch warnings; on a draft the whole choice is remembered. `choice`,
+   * `picking` and `dictating` are the composer's, bound here. An agent's box
+   * (`target`) keeps stop, attach, dictation and send; its model chips save
+   * the agent's own setting, and a group's box shows its recipients in their place.
    */
   let {
     store,
@@ -48,7 +48,6 @@
     canSend,
     waiting = false,
     answering = false,
-    folded = false,
     composer = null,
     sendLabel = strings.composer.send,
     choice = $bindable(),
@@ -72,8 +71,6 @@
     /** Send was pressed while files were still being read: it goes once they are ready. */
     waiting?: boolean;
     answering?: boolean;
-    /** A permission or a question holds the box and nothing is written: the decision reads alone. */
-    folded?: boolean;
     /** The composer while an ask is docked in it: menus open above it, so the ask stays readable. */
     composer?: HTMLElement | null;
     /** What Send does, when it answers a question rather than sending a message. */
@@ -92,6 +89,8 @@
   let chip = $state<ModelPicker | undefined>(undefined);
   const askAnchor = () => composer;
   let stopping = $derived(!!(target ? target.busy && target.stop : store.busy));
+  /** One round button at the row's end: Stop while a turn runs and nothing waits to go, Send otherwise. */
+  let stopShown = $derived(stopping && !canSend && !waiting);
 
   let picker = $state<HTMLInputElement | undefined>(undefined);
   let bar = $state<HTMLDivElement | undefined>(undefined);
@@ -275,19 +274,18 @@
 
 <svelte:window onstorage={(event) => { if (event.key === VOICE_STORAGE_KEY || event.key === null) voice.load(); }} />
 
-<div class="bar" class:folded bind:this={bar}>
+<div class="bar" bind:this={bar}>
   <!-- One "+" at the start: files, a file mention, a command and the draft's worktree. -->
-  {#if !folded}
   {#key `${key}:${store.draft?.projectId ?? ''}`}
   <ComposerOptions worktree={!answering && store.draft && draftRepository ? store.draft.worktree : null} {canAttach} anchor={askAnchor} onattach={() => picker?.click()} onworktree={() => store.setDraftWorktree(!store.draft?.worktree)} {onmention} {oncommand} />
   {/key}
-  {/if}
   {#if target && !target.selection}
   <div class="chips">{#if target.chips}{@render target.chips()}{/if}</div>
-  {:else if !answering}
+  {:else}
+  <!-- The model chip stays named while the box answers a question: the next turn runs on it. -->
   <div class="chips">
     {#snippet ring()}
-      {#if bound && showContext && !folded}
+      {#if bound && showContext}
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div class="context-control" oncontextmenu={(event) => controlMenu(event, store, 'header.context')}><ContextControl {store} anchor={askAnchor} /></div>
       {/if}
@@ -316,7 +314,7 @@
       {/if}
     {/snippet}
     <!-- A bot's model is its own setting: its chip names it and changes nothing here. -->
-    <ModelPicker bind:this={chip} {store} {choice} disabled={picking} readonly={bot !== null} compact={folded} readonlyHint={bot ? fill(strings.composer.botModel, { name: bot }) : ''} anchor={askAnchor} settings={bot === null ? rows : undefined} trailing={ring} onpick={pick} />
+    <ModelPicker bind:this={chip} {store} {choice} disabled={picking} readonly={bot !== null} readonlyHint={bot ? fill(strings.composer.botModel, { name: bot }) : ''} anchor={askAnchor} settings={bot === null ? rows : undefined} trailing={ring} onpick={pick} />
     {#if signedOut && store.owner}
       <button type="button" class="chip signed-out" data-testid="composer-reconnect" title={fill(strings.connect.signedOut, { provider: provider?.name ?? '' })} onclick={() => store.openConnect(signedOut.providerId, signedOut.id)}><span class="ui-label">{strings.connect.reconnect}</span></button>
     {/if}
@@ -332,14 +330,6 @@
       <button type="button" class="chip signed-out" data-testid="composer-account-removed" title={strings.accounts.removedHint} onclick={() => void openChip('composer-picker')}><span class="ui-label">{strings.accounts.removed}</span></button>
     {/if}
   </div>
-  {:else}
-  <!-- An answer picks nothing: the row's room still puts the tools at its end. -->
-  <div class="chips"></div>
-  {/if}
-  {#if stopping}
-    <button type="button" class="icon quiet stop" data-testid="composer-stop" title={strings.composer.stop} aria-label={strings.composer.stop} onmousedown={keepFocus} onclick={() => { if (target) target.stop?.(); else void store.stop(); }}>
-      <Square size={12} strokeWidth={2.5} />
-    </button>
   {/if}
   {#if canAttach}
     <input
@@ -367,11 +357,16 @@
     {/key}
   {/key}
   {/if}
-  <!-- While a turn runs on an empty box, Stop takes Send's place; typing brings Send back. -->
+  <!-- While a turn runs on an empty box, Stop takes Send's place; typing brings Send back (Escape still stops). -->
+  {#if stopShown}
+    <button type="button" class="icon quiet stop" data-testid="composer-stop" title={strings.composer.stop} aria-label={strings.composer.stop} onmousedown={keepFocus} onclick={() => { if (target) target.stop?.(); else void store.stop(); }}>
+      <Square size={12} strokeWidth={2.5} />
+    </button>
+  {/if}
   <button
     type="button"
     class="primary icon send"
-    class:resting={stopping && !canSend && !waiting}
+    class:resting={stopShown}
     data-testid="composer-send"
     data-waiting={waiting || undefined}
     title={waiting ? strings.composer.sendWhenLoaded : sendLabel}
@@ -453,11 +448,6 @@
     color: var(--color-foreground);
   }
 
-
-  /* Folded beside the field: the model's mark and the tools, centred on its line. */
-  .bar.folded { align-items: center; padding: 0 8px 0 0; }
-  .bar.folded .chips { flex: none; }
-  .bar.folded .chips :global(.picker > .trigger.compact) { width: var(--control); padding: 0; justify-content: center; }
 
   .send,
   .stop {

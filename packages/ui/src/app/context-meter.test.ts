@@ -43,13 +43,9 @@ test('the composer wears the context meter, a compaction is a divider, and a tur
   await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') === null);
   query<HTMLButtonElement>('[data-thread-id="t-bench"]').click();
   await waitFor(() => store.openThread?.id === 't-bench');
-  // Its pending permission folds the chip to its mark until something is written.
-  await waitFor(() => document.querySelector('[data-testid=composer] .entry.folded') !== null);
-  expect(query('[data-testid=composer-picker]').querySelector('.label')).toBeNull();
-  const field = query<HTMLTextAreaElement>('[data-testid=composer-input]');
-  field.value = 'x';
-  field.dispatchEvent(new Event('input', { bubbles: true }));
-  await waitFor(() => query('[data-testid=composer-picker]').querySelector('.label') !== null);
+  // Its pending permission leaves the chip named: the row is the same in every state.
+  await waitFor(() => document.querySelector('[data-testid=composer] [data-testid=permission-card]') !== null);
+  expect(query('[data-testid=composer-picker]').querySelector('.label')).not.toBeNull();
   query<HTMLButtonElement>('[data-testid=composer-picker]').click();
   await waitFor(() => document.querySelector('[data-testid=composer-picker-more]') !== null);
   query<HTMLButtonElement>('[data-testid=composer-picker-more]').click();

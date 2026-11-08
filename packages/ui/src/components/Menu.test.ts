@@ -182,3 +182,46 @@ test('a second open during the close cancels it, and the late animationend is ig
   expect(document.querySelector('[data-testid=mode-menu]')).not.toBeNull();
   expect(query<HTMLElement>('[data-testid=mode-menu]').classList.contains('closing')).toBe(false);
 });
+
+test('a long list given a cap takes that height where the room exists, the default stopping at 45 % of the window', async () => {
+  const mountWith = (cap?: number) => {
+    running = mount(Menu, {
+      target: document.body,
+      props: {
+        items: ITEMS, onpick: () => {}, label: 'Panels', testid: 'panels', placement: 'bottom', cap,
+        children: createRawSnippet(() => ({ render: () => '<span>Panels</span>' }))
+      }
+    });
+    flushSync();
+    query<HTMLButtonElement>('[data-testid=panels]').click();
+  };
+  mountWith(560);
+  await settle();
+  // The panel selector's 13 rows: the default cut its last one in half at 900 px tall.
+  expect(query<HTMLElement>('[data-testid=panels-menu]').style.maxHeight).toBe('560px');
+  unmount(running!, { outro: false });
+  document.body.innerHTML = '';
+  mountWith();
+  await settle();
+  expect(query<HTMLElement>('[data-testid=panels-menu]').style.maxHeight).toBe(`${Math.min(360, window.innerHeight * .45)}px`);
+});
+
+test('a checkable row with a status dot keeps its hint on the label line', async () => {
+  running = mount(Menu, {
+    target: document.body,
+    props: {
+      items: [
+        { id: 'a.ts', label: 'a.ts', checked: true, hint: '+64 -3', status: { tone: 'success', label: 'Added' } },
+        { id: 'wrap', label: 'Wrap lines', checked: false, hint: 'Long lines fold' }
+      ],
+      onpick: () => {}, label: 'Files', testid: 'files',
+      children: createRawSnippet(() => ({ render: () => '<span>Files</span>' }))
+    }
+  });
+  flushSync();
+  query<HTMLButtonElement>('[data-testid=files]').click();
+  await settle();
+  expect(query('[data-value="a.ts"]').classList.contains('inline-hint')).toBe(true);
+  // A plain checkable row keeps its description under the label.
+  expect(query('[data-value=wrap]').classList.contains('inline-hint')).toBe(false);
+});

@@ -9,14 +9,13 @@
 }
 
 /* The room a page keeps for the toasts (notify-corner.ts sets it), so they
-   cover nothing: the timeline or the phone's list gives way at one edge. */
-[data-corner-room='top'] { margin-top: var(--corner-room); }
+   cover nothing: the timeline or the phone's list gives way at its bottom. */
 [data-corner-room='bottom'] { margin-bottom: var(--corner-room); }
 [data-testid=mobile-list] { transition: margin var(--dur-2) var(--ease-out-quint); }
 
 /* The undo and error toasts' one home (notify-corner.ts places it): in that
-   room, centred on what gave way; with no thread on a desktop, the
-   bottom-right corner. */
+   room, right above the composer, centred on what gave way; with no thread
+   on a desktop, the bottom-right corner. */
 .toast-slot {
   position: fixed;
   top: var(--toast-top, 12px);
@@ -25,9 +24,9 @@
   width: max-content;
   max-width: min(440px, calc(100vw - 24px));
 }
-.toast-slot:is([data-slot='top'], [data-slot='bottom']) { right: auto; left: var(--toast-left, 50%); translate: -50% 0; }
+.toast-slot[data-slot='bottom'] { right: auto; left: var(--toast-left, 50%); translate: -50% 0; }
 /* In room of its own, not over the page: a floating card's deep shadow would only dim what is near. */
-.toast-slot:is([data-slot='top'], [data-slot='bottom']) > :is([role], .notify-card) { box-shadow: var(--shadow-e1); }
+.toast-slot[data-slot='bottom'] > :is([role], .notify-card) { box-shadow: var(--shadow-e1); }
 
 /* One card for every notification: a mark, a bold line, its text, one way to act. */
 .notify-card {

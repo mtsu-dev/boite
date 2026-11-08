@@ -8,12 +8,13 @@
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import DisplayOptions from './DisplayOptions.svelte';
+  import ViewSwitch from './ViewSwitch.svelte';
   import { inbox } from '../lib/inbox.svelte';
 
   /**
-   * The thread list's head: the view it shows (Projects or Recent), so the
-   * list says which one is on; that name opens the display menu, which
-   * switches it. Then search and a new thread.
+   * The thread list's head: its two views, Projects and Recent, both named,
+   * the one on marked, a press away from each other. Then the display menu,
+   * search and a new thread.
    * Recent's project filter and the machine filter live in the display menu,
    * which marks its button while one of them hides threads.
    */
@@ -37,8 +38,10 @@
 <p class="list-head quiet" data-testid="list-first-run">{strings.sidebar.firstRunList}</p>
 {:else}
 <div class="list-head">
-  <h2 class="title" data-testid="list-view-name"><DisplayOptions {entries} {target} owner={targetOwner} {filtered} labelled onaddproject={addProject} /></h2>
+  <h2 class="title" data-testid="list-view-name"><ViewSwitch label={strings.sidebar.displayView} current={workspace.view} onpick={view => workspace.setView(view as 'projects' | 'recent')}
+    options={[{ id: 'projects', label: strings.sidebar.projectsView }, { id: 'recent', label: strings.sidebar.recentView }]} testid="view-switch" /></h2>
   <div class="actions">
+    <DisplayOptions {entries} {target} owner={targetOwner} {filtered} onaddproject={addProject} />
     {#if entries.length}
       <button class="ghost icon small" title={`${strings.sidebar.search}${store.keyHint('palette')}`} aria-label={strings.sidebar.search} data-testid="sidebar-search-open" onclick={() => store.paletteOpen = true}><Search size={16} /></button>
       <button class="ghost icon small new" title={`${newLabel}${store.keyHint('new-thread')}`} aria-label={newLabel} data-testid="new-thread" onclick={create}><Plus size={16} /></button>

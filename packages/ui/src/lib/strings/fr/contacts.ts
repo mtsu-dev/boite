@@ -43,13 +43,17 @@ export const fr: Translation = {
     removeTitle: 'Retirer {name} ?',
     removeBody: 'Chaque projet que vous lui partagez se ferme, les lettres en attente dans les deux sens sont rejetées et le lien se ferme. Le partage Tailscale reste jusqu\'à ce que vous le retiriez dans la console d\'administration.',
     requests: {
+      /** Identical asks merged into one Activity row, and the reason their copies get once one is accepted. */
+      same: '{count} demandes identiques',
+      duplicate: 'Même demande qu\'une autre déjà acceptée',
       title: 'Demandes',
       review: 'Voir la demande du contact',
       asks: '{contact} demande',
       asked: 'Vous avez demandé à {contact}',
       remote: 'Remote git',
       accept: 'Accepter',
-      acceptLabel: 'Accepter : choisir le projet à partager',
+      acceptInto: 'Accepter : partager {project}',
+      acceptOther: 'Accepter dans un autre projet',
       refuse: 'Refuser',
       reason: 'Raison',
       reasonPlaceholder: 'Pourquoi, en une phrase que l\'agent lira',

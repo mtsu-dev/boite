@@ -254,7 +254,7 @@
   {#if failure}<p class="hint alert" role="alert">{failure}</p>{/if}
 
   <section class="card" id="settings-diagnostics-status" data-testid="diagnostics-status">
-    <h2>{s.status}</h2>
+    <h2 class="ui-label-box"><span class="ui-label">{s.status}</span><InfoTip gather topic={s.status} text="" testid="section-info" /></h2>
     {#if environment && summary}
       <dl class="facts">
         <div><dt>{s.version}</dt><dd>{environment.version} · {environment.channel}</dd></div>

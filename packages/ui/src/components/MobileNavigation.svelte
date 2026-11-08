@@ -23,6 +23,7 @@
   import { focusOnMount } from '../lib/actions';
   import MobileThreadRow from './MobileThreadRow.svelte';
   import DisplayOptions from './DisplayOptions.svelte';
+  import ViewSwitch from './ViewSwitch.svelte';
   import RecentGroup from './RecentGroup.svelte';
   import RecentDone from './RecentDone.svelte';
   import ProjectThreadCounters from './ProjectThreadCounters.svelte';
@@ -40,7 +41,8 @@
   import { tabHeader } from '../lib/tab-header.svelte';
   import EmptyState from './EmptyState.svelte';
   import { threadsNeedingYou } from '../lib/app-rail';
-  import { needsUser } from '../lib/thread-state';
+  import { needsUser, threadState } from '../lib/thread-state';
+  import { foldQuiet } from '../lib/card-fold';
   import { minuteClock } from '../lib/clock.svelte';
   import { needsAnAI } from '../lib/first-run';
   import { contactsShown } from '../lib/contacts-rail.svelte';
@@ -97,9 +99,21 @@
   let machines = $derived(workspace.machinesOr(store));
   let machine = $derived(machines.find(m => m.store === store));
   let several = $derived(machines.length > 1);
+  /** The project cards whose quiet threads were asked for, by project key, for this session. */
+  let unfolded = $state<Record<string, true>>({});
+  /**
+   * The machine line names where the page reads: worth a line only once there is another to pick, or this one is not
+   * there. Activity, Bots and Contacts gather every machine's rows, so there it only says trouble.
+   */
+  let gathered = $derived(store.page === 'agents' || store.page === 'home' || (store.page === 'chat' && listScreen === 'activity'));
+  let placeShown = $derived((several && !gathered) || store.connection !== 'ready' || store.pairingRequired);
+  /** With the bots on, Contacts is the Bots tab's other side (MobileTabs.svelte): its page's name is the switch between them. */
+  let botsAndContacts = $derived((store.page === 'agents' || store.page === 'home') && !recover && experimentOn('resident-agents') && contactsShown(store));
   let place = $derived(store.pairingRequired ? strings.mobile.pairingRequired : store.connection === 'ready' ? machine?.label ?? strings.mobile.computer : strings.connection[store.connection]);
   let project = $derived(store.openProject ?? store.projects.find(p => p.archived !== true));
   let groups = $derived(projectView.sorted(machines.flatMap(machine => machine.store.projects.filter(project => !project.archived).map(project => ({ machine, project })))));
+  /** The thread list on screen, with projects to show: its header names its two views. */
+  let threadViews = $derived(listScreen === 'threads' && store.page === 'chat' && !recover && groups.length > 0);
   /** At work on top when working grouping is on, open, then set aside; idle projects go to their fold, as on the desktop. */
   let sections = $derived(projectSections(groups, recentPreferences.groupOtherProjects, recentPreferences.groupWorking));
   let shelved = $derived(machines.flatMap(machine => machine.store.projects.filter(project => project.archived === true).map(project => ({ machine, project }))));
@@ -168,18 +182,16 @@
     // Activity's own count over the project's threads: the card and the rail's badge never disagree.
     return storeNeedsYou(owner, owner.threadsOf(entry.project.id));
   }
-  /** A phone's row menu: the thread's lifecycle first, the rest behind Tools, as on a desktop row. */
+  /** A phone's row menu: the thread's lifecycle first, the rest behind More, as on a desktop row. */
   function rowItems(owner: Store, thread: ThreadSummary): MenuItem[] {
     return threadMenuItems(owner, thread, { showDone: listScreen === 'threads', phone: true, grouped: true });
   }
-  /** What the row menu's Tools opens: the thread's panels, as in its header, then a new title, a move and a way back. */
+  /** What the row menu's More opens: a way back, a new title and a move. The panels have their own selector. */
   function rowTools(owner: Store, thread: ThreadSummary): MenuItem[] {
-    return threadToolItems(owner, thread, { phone: true, panels: true });
+    return threadToolItems(owner, thread, { phone: true });
   }
   /** Thread ids can collide between machines: the row's own store acts, and its pickers hang under the row's own trigger. */
   function rowAction(owner: Store, thread: ThreadSummary, action: string, machineId: string) {
-    // A panel or drawer shows over its thread: the list screen leaves for the chat first.
-    if (action.startsWith('kind:') || action === 'terminal-toggle' || action === 'board-toggle') show('chat');
     pickThreadAction(owner, thread, action, {
       rename: async () => {
         show('chat');
@@ -247,11 +259,14 @@
   {:else}
   <!-- The machine over the page's name; the places themselves are the bottom bar's. -->
   <div class="identity brand">
-    <button class="ghost connection" data-testid="mobile-connection" onclick={() => store.showSettings('machines')}><span class="dot" class:ready={store.connection === 'ready'}></span><span class="ui-label">{place}</span><ChevronDown size={12} /></button>
+    {#if placeShown || firstRun}<button class="ghost connection" data-testid="mobile-connection" onclick={() => store.showSettings('machines')}><span class="dot" class:ready={store.connection === 'ready'}></span><span class="ui-label">{place}</span><ChevronDown size={12} /></button>{/if}
     <!-- The first run's screen says what Boite is: the header keeps the machine alone, the way to its settings. -->
-    <!-- The thread list's name is its view switch: the word says which view is on, a press opens the display menu. -->
-    {#if !firstRun}<strong data-testid="mobile-title">{#if listScreen === 'threads' && store.page === 'chat' && !recover && groups.length}<DisplayOptions entries={groups} target={undefined} owner={store} prefix="mobile-" compact labelled onaddproject={store.owner ? addProject : undefined} />{:else}{title}{/if}</strong>{/if}
+    <!-- The thread list's name is its two views, both in sight, the one on marked; the display menu sits beside the magnifier. -->
+    {#if !firstRun}<strong data-testid="mobile-title">{#if threadViews}<ViewSwitch size="title" label={strings.sidebar.displayView} current={workspace.view} onpick={view => workspace.setView(view as 'projects' | 'recent')}
+      options={[{ id: 'projects', label: strings.sidebar.projectsView }, { id: 'recent', label: strings.sidebar.recentView }]} testid="mobile-view-switch" />{:else if botsAndContacts}<ViewSwitch size="title" label={strings.agents.heading} current={store.page === 'home' ? 'home' : 'agents'}
+      onpick={id => id === 'home' ? store.showHome() : store.showAgents()} options={[{ id: 'agents', label: strings.agents.heading, testid: 'mobile-bots-view', preload: 'agents' }, { id: 'home', label: strings.contacts.heading, testid: 'mobile-contacts', preload: 'home' }]} />{:else}{title}{/if}</strong>{/if}
   </div>
+  {#if threadViews}<span class="header-display"><DisplayOptions entries={groups} target={undefined} owner={store} prefix="mobile-" compact onaddproject={store.owner ? addProject : undefined} /></span>{/if}
   {#if searchable}<button class="ghost icon" data-testid={lent?.searchTestid ?? 'mobile-search-open'} aria-label={lent?.searchLabel ?? strings.mobile.search} title={lent?.searchLabel ?? strings.mobile.search} onclick={() => searching = true}><Search size={20} /></button>{/if}
   {/if}
   {#if !recover && !chatting && experimentOn('whip')}<WhipButton mobile />{/if}
@@ -305,7 +320,9 @@
         {@const doneOpen = archiveCount(group.project, 'done') > 0 && doneFilter.shown}
         {@const archivedOpen = archiveCount(group.project, 'archived') > 0 && (later || projectThreadView.isOpen(group, 'archived'))}
         {@const workingRows = groupRows.filter(row => workingThread(row.machine.store, row.thread))}
-        {@const attentionRows = query || !recentPreferences.groupWorking ? groupRows : groupRows.filter(row => workingOpen ? !workingThread(row.machine.store, row.thread) : !groupWorkingThread(group.machine.store, row.thread))}
+        {@const attentionAll = query || !recentPreferences.groupWorking ? groupRows : groupRows.filter(row => workingOpen ? !workingThread(row.machine.store, row.thread) : !groupWorkingThread(group.machine.store, row.thread))}
+        {@const fold = query || unfolded[projectKey(group)] ? { shown: attentionAll, folded: [] } : foldQuiet(attentionAll, row => row.thread.pinned === true || threadState(row.thread, row.machine.store.subagents(row.thread.id)) !== null)}
+        {@const attentionRows = fold.shown}
         {@const controls = `mobile-project-${encodeURIComponent(projectKey(group))}`}
         {@const drafts = group.machine.store.draftEntries.filter(entry => entry.projectId === group.project.id)}
         {#if !query || groupRows.length > 0 || doneOpen || archivedOpen}
@@ -329,6 +346,12 @@
           <WindowList items={attentionRows} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} estimate={66} measurements={measurements(projectKey(group))}>
             {#snippet row(entry)}{@render threadRow(entry, true)}{/snippet}
           </WindowList>
+          {#if fold.folded.length}
+            <!-- A big card's quiet threads, one line: a press shows them in place (Sidebar.svelte does the same). -->
+            <button type="button" class="ghost more-threads" data-testid="project-more" onclick={() => { unfolded = { ...unfolded, [projectKey(group)]: true }; }}>
+              <span class="ui-label">{fill(strings.sidebar.moreThreads, { count: String(fold.folded.length) })}</span>
+            </button>
+          {/if}
           <div id="{controls}-working" hidden={!workingOpen || !!query || workingRows.length === 0} data-testid="project-working">
             {#if workingOpen && !query && workingRows.length > 0}
               <GroupLabel kind="working" count={workingRows.length} />
@@ -445,10 +468,8 @@
     .back { position: relative; flex: none; }
     /* The page's name, under the machine it reads. */
     .brand strong { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-lg); font-weight: 600; letter-spacing: -0.4px; line-height: 1.15; }
-    /* The view switch's finger-sized target reaches past the line. */
-    .brand strong:has(:global(.named)) { overflow: visible; }
-    /* The place line above overlaps the title's top, so the hit area grows into the free band below it. */
-    .brand strong :global(.named::before) { content: ''; position: absolute; inset: -8px -4px -14px; }
+    /* The view switch's finger-sized targets reach past the line. */
+    .brand strong:has(:global(.view-switch)) { overflow: visible; }
     /* A finger-sized target without growing the header: the line reaches into the header's padding. */
     .connection { position: relative; z-index: 1; display: flex; gap: 5px; height: auto; min-height: var(--touch-target); min-width: var(--touch-target); max-width: 100%; margin: -14px 0 -12px; padding: 0; font-size: var(--text-xs); font-weight: 500; color: var(--color-muted-foreground); }
     .connection > span:not(.dot) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -456,6 +477,8 @@
     .dot.ready { background: var(--color-success); }
     .identity { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; flex: 1; }
     .mobile-header > :global(.menu) { flex: none; }
+    .header-display { display: flex; flex: none; }
+    .header-display :global(.trigger) { width: var(--touch-target); height: var(--touch-target); color: var(--color-muted-foreground); }
     .mobile-list { display: block; position: absolute; inset: 0; overflow-y: auto; overscroll-behavior: contain; background: var(--color-background); padding: 8px max(16px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
     /* The bottom bar owns the home indicator's inset. */
     .mobile-list.tabbed { padding-bottom: 20px; }
@@ -469,6 +492,8 @@
     .project-heading .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .project-heading .host { flex: 0 1000 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); font-weight: 400; color: var(--color-subtle); }
     /* A whole touch target that eats the heading's padding rather than making it taller. */
+    /* The folded quiet threads' line: a finger's height, subtle ink, on the rows' text edge. */
+    .more-threads { display: flex; width: 100%; height: auto; min-height: var(--touch-target); padding: 0 12px; justify-content: flex-start; border-radius: 0; color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 400; }
     .project-heading .project-actions { flex: none; margin: -8px -8px -8px 0; color: var(--color-muted-foreground); }
     .project-heading :global(.counters) { margin: -8px 0; }
     /* The list's content box, the empty view a little above its centre, where the eye lands. */

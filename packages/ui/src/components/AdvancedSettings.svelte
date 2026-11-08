@@ -1,5 +1,9 @@
 <script lang="ts">
   import { untrack } from 'svelte';
+  import { MediaQuery } from 'svelte/reactivity';
+  import { readTerminalCursor, setTerminalCursor, type TerminalCursor } from '../lib/terminal-cursor';
+  import { featureOn } from '../lib/features.svelte';
+  import { setFeature } from '../lib/features';
   import { checkSettingsPatch } from '@boite/contracts';
   import InfoTip from './InfoTip.svelte';
   import SaveStatus from './SaveStatus.svelte';
@@ -13,9 +17,23 @@
   /**
    * What most people never touch: how many turns run at once, how a phone
    * reaches this machine without a server of the group in between, which
-   * browser origins may reach this core, and the core this window talks to.
+   * browser origins may reach this core, the core this window talks to, and
+   * on a desktop the terminal's cursor and the scrollbars' manner.
    */
   let { store }: { store: Store } = $props();
+  const uid = $props.id();
+  const narrow = new MediaQuery('(max-width: 720px)');
+
+  let terminalCursor = $state<TerminalCursor>(untrack(() => readTerminalCursor()));
+  let cursors = $derived<{ id: TerminalCursor; label: string }[]>([
+    { id: 'bar', label: strings.settings.terminalCursorBar },
+    { id: 'block', label: strings.settings.terminalCursorBlock },
+    { id: 'underline', label: strings.settings.terminalCursorUnderline }
+  ]);
+  function pickTerminalCursor(next: TerminalCursor) {
+    terminalCursor = next;
+    setTerminalCursor(next);
+  }
 
   let origins = $state('');
   /** A draft being typed survives a settings update from elsewhere; a save lets the saved list back in. */
@@ -49,6 +67,26 @@
     <section class="card" id="settings-origins" data-testid="browser-origins">
       <h2 class="ui-label-box"><span class="ui-label">{strings.machines.browserOrigins}</span><InfoTip topic={strings.machines.browserOrigins} text={strings.machines.browserOriginsHint} /><SaveStatus {save} /></h2>
       <textarea bind:value={origins} oninput={() => { dirty = true; typed(save).oninput(); }} onchange={() => void save.flush()} disabled={!store.settings} aria-label={strings.machines.browserOrigins} rows="3" spellcheck="false" placeholder="https://boite.example.com"></textarea>
+    </section>
+  {/if}
+
+  {#if !narrow.current}
+    <!-- Desktop details few people change, once under Appearance. -->
+    <section class="card" id="settings-details">
+      <h2>{strings.settings.terminalAndScrollbars}</h2>
+      <div class="switch-row">
+        <span class="text ui-label">{strings.settings.terminalCursor}</span>
+        <div class="segmented" role="group" aria-label={strings.settings.terminalCursor}>
+          {#each cursors as option (option.id)}
+            <button type="button" class:on={terminalCursor === option.id} aria-pressed={terminalCursor === option.id} data-testid="terminal-cursor-{option.id}" onclick={() => pickTerminalCursor(option.id)}><span class="ui-label">{option.label}</span></button>
+          {/each}
+        </div>
+      </div>
+      <label class="switch-row" for="{uid}-edge-scrollbars">
+        <span class="text ui-label-box"><span class="ui-label" id="{uid}-edge-scrollbars-name">{strings.features.edgeScrollbars.title}</span><InfoTip topic={strings.features.edgeScrollbars.title} text={strings.features.edgeScrollbars.hint} /></span>
+        <input id="{uid}-edge-scrollbars" aria-labelledby="{uid}-edge-scrollbars-name" type="checkbox" role="switch" checked={featureOn('edge-scrollbars')} data-testid="setting-edge-scrollbars"
+          onchange={event => setFeature('edge-scrollbars', event.currentTarget.checked)} />
+      </label>
     </section>
   {/if}
 

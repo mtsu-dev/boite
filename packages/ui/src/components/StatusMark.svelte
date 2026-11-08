@@ -27,16 +27,13 @@
     transition: background var(--dur-2) var(--ease-out-quint);
   }
   .mark.unread { background: var(--color-foreground); border-color: var(--color-foreground); }
-  /* Working is the accent everywhere, the sidebar's rows included; yellow is for the user's turn. */
+  /* One shape per state, as the thread rows draw them (ThreadState.svelte): work is an accent ring, the user's
+     turn a filled amber dot, so the two never read alike at a glance. */
   .mark.running {
-    background: var(--color-accent);
     border-color: var(--color-accent);
     animation: pulse 1.6s var(--loop-ease-in-out-48) infinite var(--loops);
   }
-  .mark.waiting {
-    border-color: var(--color-live);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-live) 35%, transparent);
-  }
+  .mark.waiting { background: var(--color-live); border-color: var(--color-live); }
   .mark.paused { border-color: var(--color-live); }
   .mark.queued { border-color: var(--color-muted-foreground); border-style: dashed; }
   .mark.skipped { border-color: var(--color-subtle); border-style: dashed; }

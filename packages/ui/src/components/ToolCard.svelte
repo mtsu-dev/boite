@@ -40,6 +40,7 @@
     background = false,
     nested = false,
     permission = null,
+    carded = false,
     store,
     threadId
   }: {
@@ -66,6 +67,8 @@
     nested?: boolean;
     /** What the user answered when the agent asked to make this call, null when it did not ask. */
     permission?: 'allow' | 'deny' | null;
+    /** The turn's error card says this call's stop and exit code: its line marks nothing. */
+    carded?: boolean;
     /** Where a thread link in a document starts from. */
     store?: Store;
     threadId?: string;
@@ -203,6 +206,8 @@
     {/if}
     {#if status === 'running'}
       <span class="status" title={strings.chat.toolStatus.running}><Spinner size={11} /></span>
+    {:else if carded}
+      <!-- The error card under the answer says this stop, its code and its log. -->
     {:else if failed && permission !== 'deny'}
       <!-- A dot and a word: a bare cross at a row's end reads as its close button. -->
       <span class="status failed" data-testid={exitLabel ? 'tool-exit-code' : 'tool-failed'}><span class="dot" aria-hidden="true"></span><span class="ui-label">{exitLabel || strings.chat.toolFailed}</span></span>

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Activity, MessageSquare, Plus, Settings, Users } from '@lucide/svelte';
+  import { Activity, Contact, MessageSquare, Plus, Settings } from '@lucide/svelte';
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
   import { count } from '../lib/format';
@@ -23,6 +23,9 @@
   import AgentAvatar from './agents/AgentAvatar.svelte';
   import MachineStatus from './MachineStatus.svelte';
   import LimitsGlance from './LimitsGlance.svelte';
+  import { quotaReader, shownQuotas } from '../lib/quota-reader.svelte';
+  import { lowestLimit } from '../lib/limits-meter';
+  import { untrack } from 'svelte';
   import WhipButton from './WhipButton.svelte';
   import Deferred, { parts } from './Deferred.svelte';
 
@@ -145,6 +148,17 @@
   const footButton = (): HTMLElement | null => foot?.querySelector<HTMLElement>('[data-testid=machine-status]') ?? null;
   const showLimits = () => void glance?.open();
   let limits = $derived(work.shows('sidebar.limits'));
+  /** The gauge's number, from the reading every limits view shares: kept from the last run, read once when none is, kept current. */
+  const quotas = $derived(quotaReader(store.endpointUrl ?? 'here', store.core));
+  const meter = $derived(limits ? lowestLimit(shownQuotas(quotas.rows ?? [], store.accounts, store.providers)) : null);
+  $effect(() => {
+    const client = store.client;
+    const current = quotas;
+    if (!limits || !client || store.connection !== 'ready') return;
+    const off = client.on('quotas.updated', value => current.accept(value));
+    untrack(() => { if (current.rows === null && !current.loading) void current.read(client, false).catch(() => {}); });
+    return off;
+  });
   /** Settings' shortcut, from the keybindings table: its name card shows it and the button's description reads it. */
   const settingsKey = $derived(store.keyLabel('settings'));
 
@@ -189,7 +203,7 @@
       <button type="button" class="rail-button" class:on={open}
         aria-label={contactsRail.folded ? strings.contacts.rail.show : strings.contacts.rail.hide}
         aria-expanded={open} data-testid="contacts-toggle" onclick={showContacts}>
-        <Users size={19} strokeWidth={1.75} />
+        <Contact size={19} strokeWidth={1.75} />
         {#if contactsRail.folded && contactsRail.waiting}<span class="dot" data-testid="contacts-toggle-waiting"></span>{/if}
       </button>
       {@render railName(contactsRail.folded ? strings.contacts.rail.show : strings.contacts.rail.hide)}
@@ -243,7 +257,7 @@
   <div class="foot" bind:this={foot}>
     <div class="slot status">
       <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <span class="control" oncontextmenu={(event) => limits && controlMenu(event, store, 'sidebar.limits')}><MachineStatus {store} filter={machineFilter.shown(machines)} onfilter={pickMachine} limits={limits ? showLimits : undefined} card={statusName} /></span>
+      <span class="control" oncontextmenu={(event) => limits && controlMenu(event, store, 'sidebar.limits')}><MachineStatus {store} filter={machineFilter.shown(machines)} onfilter={pickMachine} limits={limits ? showLimits : undefined} {meter} card={statusName} /></span>
     </div>
     {#if limits}<LimitsGlance bind:this={glance} {store} side="right" anchor={footButton} />{/if}
     <Deferred part={parts.UpdatesNotice} quiet>{#snippet children(UpdatesNotice)}<UpdatesNotice />{/snippet}</Deferred>

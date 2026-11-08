@@ -11,6 +11,7 @@
   import Menu from '../Menu.svelte';
   import Elapsed from '../Elapsed.svelte';
   import AgentAvatar from './AgentAvatar.svelte';
+  import StatusMark from '../StatusMark.svelte';
   import BuiltinBadge from './BuiltinBadge.svelte';
 
   /**
@@ -75,11 +76,13 @@
     <button type="button" class="ghost icon agent-mobile-back" aria-label={labels.list} title={labels.list} onclick={onback} data-testid="agent-back"><ArrowLeft size={18} strokeWidth={1.75} /></button>
   {/if}
   <button type="button" class="ghost agent-head-identity" onclick={() => onpane('settings')} aria-label={fill(labels.settingsOf, { name: agent.name })}>
-    {#if onback}<span class="agent-head-robot"><AgentAvatar kind="profile" id={agent.id} name={agent.name} avatar={agent.avatar} mood={moodOf(state)} size={32} ring live /></span>{/if}
+    {#if onback}<span class="agent-head-robot"><AgentAvatar kind="profile" id={agent.id} name={agent.name} avatar={agent.avatar} mood={moodOf(state)} size={32} /></span>{/if}
     <span class="agent-head-text">
       <span class="agent-head-name"><strong>{agent.name}</strong>{#if agent.builtin}<BuiltinBadge word />{/if}{#if !onback}<span class="agent-head-crumb">{labels.deskPanel.conversation}</span>{/if}</span>
       {#if onback}
         <span class="agent-live" data-state={state} aria-live="polite" data-testid="agent-live">
+          <!-- One signal per state: the mark carries the hue, the words stay neutral (AgentRow.svelte). -->
+          {#if state === 'working' || state === 'waiting' || state === 'error'}<StatusMark tone={state === 'working' ? 'running' : state} label={labels.state[state]} />{/if}
           {#if state === 'working'}
             <span class="agent-live-text">{step ?? labels.state.working}</span>
             {#if since !== null}<span class="agent-live-time">· <Elapsed startedAt={since} finishedAt={null} active /></span>{/if}

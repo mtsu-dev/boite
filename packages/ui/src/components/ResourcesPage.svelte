@@ -74,7 +74,7 @@
   </section>
   {/if}
   <section class="card" id="settings-limits">
-    <h2>{strings.protection.limits}<SaveStatus save={limitsSave} /></h2>
+    <h2 class="ui-label-box"><span class="ui-label">{strings.protection.limits}</span><InfoTip gather topic={strings.protection.limits} text="" testid="section-info" /><SaveStatus save={limitsSave} /></h2>
     <label for="{uid}-memory-protection" class="switch-row">
       <span class="text ui-label-box"><span class="ui-label" id="{uid}-memory-protection-name">{strings.settings.memoryProtection}</span><InfoTip topic={strings.settings.memoryProtection} text={strings.settings.memoryProtectionHint} /></span>
       <input id="{uid}-memory-protection" aria-labelledby="{uid}-memory-protection-name" type="checkbox" role="switch" data-testid="setting-memory-protection" checked={memoryEnabled} onchange={async (event) => {

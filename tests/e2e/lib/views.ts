@@ -1,17 +1,14 @@
 import type { BrowserPage } from './cdp.ts';
 
 /**
- * Lists the sidebar's threads by project or by recency. The choice sits in the
- * display options menu, which stays open on a choice, so this closes it again.
- * `prefix` is `mobile-` for the phone's thread list.
+ * Lists the sidebar's threads by project or by recency: the two words in the
+ * list's head (ViewSwitch.svelte). `prefix` is `mobile-` for the phone's thread list.
  */
 export async function showThreadView(page: BrowserPage, view: 'projects' | 'recent', prefix = ''): Promise<void> {
-  const trigger = `[data-testid=${prefix}grouping-options]`, menu = `[data-testid=${prefix}grouping-options-menu]`;
-  if (await page.evaluate(`document.querySelector('${trigger}')?.getAttribute('aria-expanded') !== 'true'`)) await page.click(trigger);
-  await page.click(`${menu} [data-value="view:${view}"]`);
-  await page.waitFor(`document.querySelector('${menu} [data-value="view:${view}"]')?.getAttribute('aria-checked') === 'true'`);
-  await page.click(trigger);
-  await page.waitFor(`!document.querySelector('${menu}')`);
+  const side = `[data-testid=${prefix}view-switch] [data-value=${view}]`;
+  await page.waitFor(`document.querySelector('${side}')`);
+  if (await page.evaluate(`document.querySelector('${side}').getAttribute('aria-checked') !== 'true'`)) await page.click(side);
+  await page.waitFor(`document.querySelector('${side}')?.getAttribute('aria-checked') === 'true'`);
 }
 
 /** Orders the projects by recent activity or by the user's own arrangement, from the same panel. */
@@ -25,7 +22,7 @@ export async function setProjectOrder(page: BrowserPage, order: 'recent' | 'manu
 }
 
 /**
- * Opens the thread list's display menu, which holds the view, the project and
+ * Opens the thread list's display menu, which holds the project and
  * machine filters and Add a project since the redesign. A choice leaves it open.
  */
 export async function openDisplayOptions(page: BrowserPage, prefix = ''): Promise<void> {

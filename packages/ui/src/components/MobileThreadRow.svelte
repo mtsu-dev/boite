@@ -19,7 +19,7 @@
    * and its time on the line under it, so neither cuts the title. The pull
    * request waits in the thread, the pin under the slide. `compact` is the flat lists' form (Recent, Activity): the
    * project's tile first. Activity (the phone's screen and the desktop's page) is one title line with since when at its
-   * end, then `reason`, what the thread wants, its state after it when the section does not say it; `nested` steps a
+   * end, then its state when the section does not say it and `reason`, what the thread wants, cut to that one line; `nested` steps a
    * sub-agent in under its parent.
    * The row menu has no button of its own: a long press opens it, a slide
    * left shows pin and archive. Its trigger stays for the keyboard, drawn
@@ -75,10 +75,12 @@
   <!-- The row's contextmenu (a long press, Android's, a right click) opens the menu wherever it lands; the button inside stays the keyboard's target. -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="body" use:swipeRow oncontextmenu={openMenu}>
-    <button class="ghost thread" class:offline={away} class:stated={kind !== null} data-testid="mobile-thread-{thread.id}" title={thread.branch ? `${thread.title}\n${thread.branch}` : thread.title} onclick={onopen} use:longPress>
+    <button class="ghost thread" class:offline={away} class:stated={kind !== null} data-testid="mobile-thread-{thread.id}" title={[thread.title, reason, thread.branch].filter(Boolean).join('\n')} onclick={onopen} use:longPress>
       {#if reason !== undefined}
         <span class="feed-head"><ThreadHeadline {owner} {thread} tile={compact && !nested ? project : undefined} />{#if at !== undefined}<time class="ui-label" title={exactTime(at)}>{ago(at, now)}</time>{/if}</span>
-        <span class="why" data-testid="mobile-row-reason"><span class="text">{reason}</span>{#if kind !== null && kind !== 'waiting'}<span class="sep" aria-hidden="true">·</span><ThreadState {thread} {now} subagents={owner.subagents(thread.id)} {away} />{/if}</span>
+        <!-- The state leads the line under the title, whole; the reason follows on that one line, cut: the state never
+             floats beside wrapped words. -->
+        <span class="why" data-testid="mobile-row-reason">{#if kind !== null && kind !== 'waiting'}<ThreadState {thread} {now} subagents={owner.subagents(thread.id)} {away} /><span class="sep" aria-hidden="true">·</span>{/if}<span class="text">{reason}</span></span>
       {:else}
         <ThreadHeadline {owner} {thread} tile={compact && !nested ? project : undefined} />
         <!-- The state, then the time; a thread at rest has its time alone. -->
@@ -111,11 +113,11 @@
   .meta .where { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .meta :global(.when), .why :global(.when) { font-size: inherit; }
   .meta > :global(.when:not(.state)) { font-weight: 400; }
-  /* Activity: since when ends the title's line; the reason reads whole under it. */
+  /* Activity: since when ends the title's line; the state, then the reason cut to one line, under it. */
   .feed-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .feed-head :global(.headline) { flex: 1; }
   .feed-head time { flex: none; font-size: var(--text-sm); color: var(--color-subtle); font-variant-numeric: tabular-nums; }
-  .why .text { flex: 0 1 auto; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+  .why .text { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* A sub-agent under its parent: stepped in, a hairline where the tile was. */
   /* Its words on the parent's text edge: 12 px in, the 16 px tile and its 10 px gap. */
   .nested .thread { padding-left: 38px; }
