@@ -56,8 +56,9 @@ export const TEAM_SCENARIOS: Record<string, Scenario> = {
       same([first.seq, first.author, first.to, first.routedBy], [1, 'owner', [adaKey], 'mention'], 'a post naming a bot');
       same((await env.call('teams.post', { teamId: team.id, id: `p1-${tag}`, text: `@Ada${tag} check the build` })).seq, 1, 'a retried post');
       same((await refused(env.call('teams.post', { teamId: team.id, id: `p1-${tag}`, text: 'other' }), RpcErrorCode.Refused)).field, 'id', 'a reused id with other text');
-      const nobody = await env.call('teams.post', { teamId: team.id, id: `p2-${tag}`, text: 'status' });
-      check(nobody.routedBy === 'none' && nobody.to.length === 0 && typeof nobody.notice === 'string', `an owner post naming nobody: ${JSON.stringify(nobody)}`);
+      // A post that names nobody wakes the whole team, as @tous would.
+      const unnamed = await env.call('teams.post', { teamId: team.id, id: `p2-${tag}`, text: 'status' });
+      same([unnamed.routedBy, unnamed.to.toSorted(), unnamed.notice], ['everyone', [adaKey, bobKey].toSorted(), undefined], 'an owner post naming nobody');
 
       // A bot's methods name its thread: the owner may call them for it, an agent token only for its own.
       same((await env.call('teams.list', { threadId: ada.threadId })).teams.map(entry => entry.id), [team.id], 'a bot\'s teams');
