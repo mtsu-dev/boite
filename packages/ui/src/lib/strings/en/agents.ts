@@ -67,7 +67,6 @@ export const strings = {
     search: 'Search',
     name: 'Name', domain: 'Role', instructions: 'Instructions', identityHint: 'The identity and memory stay when you change its model.',
     model: 'Model and account', noAccount: 'Add a provider account in Settings before creating a bot.', permissions: 'Permissions',
-    ask: 'Ask before actions', edits: 'Allow edits', plan: 'Plan only', full: 'Full access', deny: 'Do not ask',
     noApprovals: 'This provider has no interactive tool approval channel. Its launch permissions apply.',
     paused: 'Paused', pause: 'Pause', resume: 'Resume', archive: 'Archive', active: 'Active', archived: 'Archived',
     archiveTitle: 'Archive "{name}"?', archiveBody: 'Archiving stops this bot and removes it from the list. Its conversation stays readable through search. Type its current name exactly to confirm.', archiveName: 'Bot name',

@@ -102,6 +102,6 @@
 <style>
   .reach { display: grid; gap: 8px; }
   .reach p { margin: 0; }
-  .warn { color: var(--color-live); }
+  .warn { color: var(--color-caution); }
   .actions { margin: 0; }
 </style>

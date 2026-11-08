@@ -14,12 +14,13 @@ export interface DiffPrefs {
 
 export const DIFF_PREFS_STORAGE_KEY = 'boite.diffView';
 
-const DEFAULTS: DiffPrefs = { split: false, wrap: false, ignoreWhitespace: false };
+/* Long lines wrap by default (round 17): code cut at the panel's edge read as broken. No wrap stays a choice. */
+const DEFAULTS: DiffPrefs = { split: false, wrap: true, ignoreWhitespace: false };
 
 function read(): DiffPrefs {
   try {
     const raw = JSON.parse(window.localStorage.getItem(DIFF_PREFS_STORAGE_KEY) ?? 'null') as Partial<DiffPrefs> | null;
-    return { split: raw?.split === true, wrap: raw?.wrap === true, ignoreWhitespace: raw?.ignoreWhitespace === true };
+    return { split: raw?.split === true, wrap: typeof raw?.wrap === 'boolean' ? raw.wrap : DEFAULTS.wrap, ignoreWhitespace: raw?.ignoreWhitespace === true };
   } catch {
     return { ...DEFAULTS };
   }

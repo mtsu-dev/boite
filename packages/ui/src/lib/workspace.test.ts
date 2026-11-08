@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest';
-import { machineHealth, PRIMARY_PATIENCE_MS, SETTLE_WAIT_MS, Workspace } from './workspace.svelte';
+import { listedName, machineHealth, machineName, PRIMARY_PATIENCE_MS, SETTLE_WAIT_MS, Workspace } from './workspace.svelte';
 import { reveal } from './reveal';
 import { Store, store as primary } from './store.svelte';
 import { FakeClient } from './fake-client';
@@ -30,6 +30,17 @@ test('old local labels become This computer while custom names stay intact', asy
   machine.label = 'Studio';
   w.restoreProfile(machine);
   expect(machine.label).toBe('Studio');
+});
+
+test('"This computer" is never what a device that reaches another machine calls it: the machine says its own name', () => {
+  const remote = { connection: 'ready', localCore: false, endpointUrl: 'https://studio.tail.test', core: { hostname: 'studio' } } as unknown as Store;
+  // A phone or a browser holds the computer's default name: it is not that computer.
+  expect(machineName({ id: 'https://studio.tail.test', label: 'This computer', store: remote })).toBe('studio');
+  expect(listedName({ id: 'https://studio.tail.test', label: 'This computer', store: remote })).toBe('studio');
+  // A name the user gave stays, and a core that says nothing keeps the label it has.
+  expect(machineName({ id: 'https://studio.tail.test', label: 'Desk', store: remote })).toBe('Desk');
+  const silent = { ...remote, core: null } as unknown as Store;
+  expect(machineName({ id: 'local', label: 'This computer', store: silent })).toBe('This computer');
 });
 
 test('restoring a remote selection also connects the shell local core', async () => {

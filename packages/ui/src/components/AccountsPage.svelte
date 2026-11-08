@@ -780,10 +780,10 @@
   .bad { color: var(--color-danger); }
   .hint { margin: 0; font-size: var(--text-sm); color: var(--color-muted-foreground); }
 
-  /* Hue is for status only: green once an account is signed in, amber while Boite works. */
+  /* Hue is for status only: green once an account is signed in, the accent while Boite works. */
   .dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--color-subtle); }
   .dot.ok { background: var(--color-success); }
-  .dot.live { background: var(--color-live); }
+  .dot.live { background: var(--color-accent); }
 
   .act { display: flex; align-items: center; gap: 6px; flex: none; flex-wrap: wrap; justify-content: flex-end; }
   .switch-slot { flex: 0 0 var(--switch-width, 40px); }

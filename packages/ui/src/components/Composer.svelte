@@ -976,6 +976,8 @@
     .composer { --composer-rest: var(--shadow-e1); --composer-cap: 45dvh; border-radius: var(--radius-xl); max-height: var(--composer-cap); }
     /* A docked question with its choices may take a little more, so four of them show whole at 390. */
     .composer:has(:global(.question.docked)) { --composer-cap: 55dvh; }
+    /* So does a permission: at 360 its choices wrap under the ask, and the command they approve must stay in sight. */
+    .composer:has(:global(.permission.docked)) { --composer-cap: 52dvh; }
     .composer > :global(*) { flex: none; }
     .composer > .deck { flex: 0 1 auto; min-height: 0; --dock-cap: calc(var(--composer-cap) - 120px - var(--deck-room, 0px)); }
     textarea, .input-mirror { font-size: var(--text-md); }

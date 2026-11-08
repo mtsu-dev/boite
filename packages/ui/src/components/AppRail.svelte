@@ -3,7 +3,7 @@
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
   import { count } from '../lib/format';
-  import { workspace, type Machine } from '../lib/workspace.svelte';
+  import { machineName, workspace, type Machine } from '../lib/workspace.svelte';
   import { experimentOn } from '../lib/experiments.svelte';
   import { agentDirectory, followAgentDirectories } from '../lib/agent-directory.svelte';
   import { agentRows, waitingOn, type AgentRowData } from '../lib/agents.svelte';
@@ -194,7 +194,7 @@
             {:else if state === 'working'}<span class="badge work" aria-hidden="true"><svg viewBox="0 0 14 14"><circle class="track" cx="7" cy="7" r="5" /></svg></span>
             {:else if unread && !selected}<span class="badge" data-testid="rail-bot-unread" aria-hidden="true"><span class="news"></span></span>{/if}
           </button>
-          {@render railName(bot.row.profile.name, null, several ? bot.machine.label : null)}
+          {@render railName(bot.row.profile.name, null, several ? machineName(bot.machine) : null)}
         </div>
       {/each}
       {#each teams as row (`${row.machine.id}:${row.team.id}`)}

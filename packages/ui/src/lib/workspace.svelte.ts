@@ -50,11 +50,12 @@ export function isThisPC(machine: Machine): boolean {
 }
 
 /**
- * A machine's name on screen. This computer under the default name goes by
- * its own: in a group every PC is "this PC" to itself, which tells nobody apart.
+ * A machine's name on screen. One under the default name goes by its own:
+ * in a group every PC is "this PC" to itself, which tells nobody apart, and a
+ * phone or a browser that reaches a computer is not that computer.
  */
 export function machineName(machine: Machine): string {
-  return isThisPC(machine) && localDefault(machine.label) && machine.store.core?.hostname ? machine.store.core.hostname : machine.label;
+  return localDefault(machine.label) && machine.store.core?.hostname ? machine.store.core.hostname : machine.label;
 }
 
 /**

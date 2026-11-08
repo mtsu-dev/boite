@@ -44,7 +44,7 @@
 
 <style>
   /* Under the title's edge: what is asked, one secondary line; its tooltip and the thread hold the whole. */
-  .ask { display: block; min-width: 0; font-size: var(--text-sm); line-height: 1.45; color: var(--color-muted-foreground); text-align: start; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ask { display: block; min-width: 0; font-size: var(--text-sm); line-height: 1.45; color: var(--color-subtle); text-align: start; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   /* A sub-agent's line, under the title's text edge (the 16 px tile and its 10 px gap). */
   .helper { display: block; flex: none; padding-left: 26px; }
   .who { color: var(--color-foreground); font-weight: 500; }

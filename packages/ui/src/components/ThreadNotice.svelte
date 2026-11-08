@@ -14,10 +14,10 @@
    * `replaces` sizes it for the composer's slot (`Composer`'s `notice`),
    * where it stands when the thread cannot run.
    */
-  let { icon: Icon, tone = 'live', title, detail, info, docked = false, replaces = false, testid, kind, actions, children }: {
+  let { icon: Icon, tone = 'caution', title, detail, info, docked = false, replaces = false, testid, kind, actions, children }: {
     icon: typeof Info;
     /** The colour of the mark: waiting on the user, broken, or only said. */
-    tone?: 'live' | 'danger' | 'quiet';
+    tone?: 'live' | 'caution' | 'danger' | 'quiet';
     title?: string;
     detail?: string;
     info?: string;
@@ -70,6 +70,7 @@
   /* The mark sits on the first line's height, whatever wraps under it. */
   .mark { display: flex; flex: none; align-self: flex-start; align-items: center; height: 1.4em; }
   [data-tone='live'] .mark { color: var(--color-live); }
+  [data-tone='caution'] .mark { color: var(--color-caution); }
   [data-tone='danger'] .mark { color: var(--color-danger); }
   [data-tone='quiet'] .mark { color: var(--color-subtle); }
   /* The words take their own width, so the buttons follow them inline; a long sentence takes the row and the buttons wrap under it. */

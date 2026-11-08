@@ -6,7 +6,7 @@ export const fr: Translation = {
     default: 'Demander',
     acceptEdits: 'Modifier librement',
     bypassPermissions: 'Auto',
-    yolo: 'YOLO',
+    yolo: 'Sans limite',
     plan: 'Plan',
     dontAsk: 'Tout refuser',
     codexDefault: 'Ce dossier'

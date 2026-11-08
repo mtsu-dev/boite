@@ -14,6 +14,7 @@ import { freshWork, work, WORK_STORAGE_KEY } from '../lib/work-prefs.svelte';
 import { retryTurn } from '../lib/composer-edit';
 import { fill, strings } from '../lib/strings';
 import { phoneWidth } from '../test/phone-width';
+import { AgentsView } from '../lib/agents.svelte';
 
 /**
  * The three composer keys, on the whole app over the in-memory fake: Ctrl+Enter
@@ -566,7 +567,7 @@ test('the reasoning chip remembers the level a draft picks', async ({ app: _app 
   await waitFor(() => chipText('composer-effort') === 'Extra high');
 });
 
-test('the reasoning slider draws one dot per level, the arrows move it and a hovered dot names its level first', async ({ app: _app }) => {
+test('the reasoning slider draws one dot per level, the arrows move it and a hovered dot previews its level under it', async ({ app: _app }) => {
   await store.open('t-trace');
   await waitFor(() => store.openThread?.id === 't-trace' && !store.busy);
   await waitFor(() => effortChip() !== null);
@@ -595,15 +596,16 @@ test('the reasoning slider draws one dot per level, the arrows move it and a hov
   expect(document.querySelector('[data-testid=composer-effort-menu]')).not.toBeNull();
   await waitFor(() => chipText('composer-effort') === 'High');
 
-  // A mouse over the low dot names it in the heading before any pick; leaving puts the live level back.
+  // A mouse over the low dot names it under its ring before any pick, the heading keeping the live level; leaving drops the preview.
   const line = query('[data-testid=effort-track] .line');
   line.getBoundingClientRect = () => ({ left: 0, width: 100, top: 0, height: 24, right: 100, bottom: 24, x: 0, y: 0, toJSON() {} });
   track().dispatchEvent(new PointerEvent('pointermove', { clientX: 2, pointerType: 'mouse', bubbles: true }));
-  await waitFor(() => query('[data-testid=effort-level]').textContent === 'Low');
-  expect(query('[data-testid=effort-level]').classList.contains('previewing')).toBe(true);
+  await waitFor(() => document.querySelector('[data-testid=effort-preview]')?.textContent === 'Low');
+  expect(query('[data-testid=effort-level]').textContent).toBe('High');
   expect(store.openThread?.effort).toBe('high');
   track().dispatchEvent(new PointerEvent('pointerleave', { pointerType: 'mouse' }));
-  await waitFor(() => query('[data-testid=effort-level]').textContent === 'High');
+  await waitFor(() => document.querySelector('[data-testid=effort-preview]') === null);
+  expect(query('[data-testid=effort-level]').textContent).toBe('High');
 
   press('Home');
   await waitFor(() => track().getAttribute('aria-valuenow') === '0');
@@ -651,8 +653,9 @@ test('a first run shows the model, reasoning and permission chips at their defau
   const heading = query('[data-testid=composer-effort-menu] .heading');
   expect(heading.firstElementChild?.getAttribute('data-testid')).toBe('effort-speed');
   expect(document.querySelector('[data-testid=effort-fast-mark]')).toBeNull();
+  expect(query('[data-testid=effort-speed-label]').textContent).toBe('Fast');
   query<HTMLButtonElement>('[data-testid=effort-speed]').click();
-  await waitFor(() => document.querySelector('[data-testid=effort-speed-label]')?.textContent === 'Fast');
+  await waitFor(() => query('[data-testid=effort-speed]').getAttribute('aria-pressed') === 'true');
   // Switched on, the chip carries a bolt, so the choice shows with the popover shut.
   press('Escape');
   await waitFor(() => document.querySelector('[data-testid=composer-effort-menu]') === null);
@@ -671,7 +674,9 @@ test('the bolt cycles fast, ultrafast and standard in a draft and saves each nat
   for (const speed of ['fast', 'ultrafast', null]) {
     query<HTMLButtonElement>('[data-testid=effort-speed]').click();
     await waitFor(() => store.draftChoice?.speed === speed);
-    expect(document.querySelector('[data-testid=effort-speed-label]')?.textContent ?? null).toBe(speed === null ? null : speed === 'fast' ? 'Fast' : 'Ultrafast');
+    // The switch names the tier that runs, and the first one while off.
+    expect(query('[data-testid=effort-speed-label]').textContent).toBe(speed === 'ultrafast' ? 'Ultrafast' : 'Fast');
+    expect(query('[data-testid=effort-speed]').getAttribute('aria-pressed')).toBe(String(speed !== null));
   }
   press('Escape');
   await waitFor(() => document.querySelector('[data-testid=composer-effort-menu]') === null);
@@ -1984,9 +1989,9 @@ test('the permission chip reads its mode in a word, offers No limits beside Auto
   query<HTMLButtonElement>('[data-testid=composer-mode]').click();
   await waitFor(() => document.querySelector('[data-testid=composer-mode-menu]') !== null);
   // Each mode is a word and one plain line; the live legacy mode keeps a row of its own at the end until another is picked.
-  expect(modeRows()).toEqual([['YOLO', 'No limits'], ['Auto', 'Run without asking'], ['Edit freely', 'Ask before running commands'], ['Ask', 'Ask before edits and commands'], ['Auto-deny', 'Deny what needs asking']]);
+  expect(modeRows()).toEqual([['No limits', 'Runs everything and skips your hooks'], ['Auto', 'Runs everything without asking'], ['Edit freely', 'Edits files on its own, asks before commands'], ['Ask', 'Asks before it edits a file or runs a command'], ['Auto-deny', 'Refuses anything that needs asking']]);
   expect(query('[data-testid=composer-mode-menu] [aria-checked=true]').getAttribute('data-value')).toBe('dontAsk');
-  for (const [mode, word] of [['yolo', 'YOLO'], ['bypassPermissions', 'Auto'], ['acceptEdits', 'Edit freely'], ['default', 'Ask']]) {
+  for (const [mode, word] of [['yolo', 'No limits'], ['bypassPermissions', 'Auto'], ['acceptEdits', 'Edit freely'], ['default', 'Ask']]) {
     if (!document.querySelector('[data-testid=composer-mode-menu]')) query<HTMLButtonElement>('[data-testid=composer-mode]').click();
     await waitFor(() => document.querySelector('[data-testid=composer-mode-menu]') !== null);
     query(`[data-testid=composer-mode-menu] [data-value="${mode}"]`).click();
@@ -1996,37 +2001,53 @@ test('the permission chip reads its mode in a word, offers No limits beside Auto
   }
   query<HTMLButtonElement>('[data-testid=composer-mode]').click();
   await waitFor(() => document.querySelector('[data-testid=composer-mode-menu]') !== null);
-  expect(modeRows().map(([word]) => word)).toEqual(['YOLO', 'Auto', 'Edit freely', 'Ask']);
+  expect(modeRows().map(([word]) => word)).toEqual(['No limits', 'Auto', 'Edit freely', 'Ask']);
 });
 
-test('a phone keeps the model and effort chips and reads the permission first in the "+", where its modes open in place', async () => {
+test('a phone shows the model, effort and permission chips in one row, the permission opening its own sheet, and the "+" holds no mode', async () => {
   const restore = phoneWidth();
   try {
     await mountOnFake();
     await waitFor(() => !store.busy && effortChip() !== null);
-    // No permission chip on the row at 360 px: the model and the effort keep it.
-    expect(document.querySelector('.chips [data-testid=composer-mode]')).toBeNull();
-    expect(document.querySelector('[data-testid=composer-picker]')).not.toBeNull();
-    // The "+" opens on the permission with its value, before every way to add to the message.
-    const first = plusItem('composer-mode')!;
-    expect(query('[data-testid=composer-options-sheet]').querySelector('[role=menuitem]')).toBe(first);
-    expect(query('[data-testid=composer-mode-value]').textContent).toBe('Ask');
-    first.click(); flushSync();
-    await waitFor(() => document.querySelector('[data-testid=composer-mode-menu]') !== null);
-    expect(modeRows().map(([word]) => word)).toEqual(['YOLO', 'Auto', 'Edit freely', 'Ask']);
-    expect(document.querySelector('[data-testid=composer-attach]')).toBeNull();
-    // Escape steps back to the first level, as a back row does; a pick saves and closes.
-    await waitFor(() => document.activeElement?.closest('[data-testid=composer-mode-menu]') != null);
-    expect(document.activeElement?.getAttribute('data-value')).toBe('default');
+    // The same three chips as a desktop, in the same order: the "+" no longer hides the permission.
+    const chips = Array.from(query('.chips').querySelectorAll('[data-testid=composer-picker], [data-testid=composer-effort], [data-testid=composer-mode]')).map((el) => el.getAttribute('data-testid'));
+    expect(chips).toEqual(['composer-picker', 'composer-effort', 'composer-mode']);
+    expect(chipText('composer-mode')).toBe('Ask');
+    expect(plusItem('composer-attach')).not.toBeNull();
+    expect(query('[data-testid=composer-options-sheet]').querySelector('[data-testid=composer-mode]')).toBeNull();
+    await waitFor(() => document.activeElement?.closest('[data-testid=composer-options-sheet]') != null);
     press('Escape'); flushSync();
-    await waitFor(() => document.querySelector('[data-testid=composer-mode-menu]') === null && document.querySelector('[data-testid=composer-attach]') !== null);
-    query<HTMLButtonElement>('[data-testid=composer-mode]').click(); flushSync();
+    await waitFor(() => document.querySelector('[data-testid=composer-options-sheet]') === null);
+    query<HTMLButtonElement>('.chips [data-testid=composer-mode]').click(); flushSync();
     await waitFor(() => document.querySelector('[data-testid=composer-mode-menu]') !== null);
+    expect(query<HTMLElement>('[data-testid=composer-mode-menu]').dataset.mobileSheet).toBe('true');
+    expect(modeRows().map(([word]) => word)).toEqual(['No limits', 'Auto', 'Edit freely', 'Ask']);
+    await waitFor(() => document.activeElement?.getAttribute('data-value') === 'default');
     query('[data-testid=composer-mode-menu] [data-value=acceptEdits]').click();
     await waitFor(() => store.openThread?.permissionMode === 'acceptEdits');
-    await waitFor(() => query('[data-testid=composer-options]').getAttribute('aria-expanded') === 'false');
-    expect(plusItem('composer-mode-value')?.textContent).toBe('Edit freely');
+    await waitFor(() => document.querySelector('[data-testid=composer-mode-menu]') === null);
+    expect(chipText('composer-mode')).toBe('Edit freely');
   } finally { restore(); }
+});
+
+test("a bot's composer shows the same three chips as a thread, each reading its value and opening nothing", async ({ app: _app }) => {
+  const selection = { providerId: 'echo', accountId: 'a-echo', model: 'echo-1', effort: 'low', permissionMode: 'bypassPermissions' as const };
+  const agent = await store.client!.call('agents.profile.save', { value: { name: 'Ada', domain: '', instructions: '', avatar: '', selection, status: 'active' } });
+  const { threadId } = await store.client!.call('agents.open', { agentId: agent.id });
+  await AgentsView.of(store).refresh();
+  await store.open(threadId);
+  await waitFor(() => store.openThread?.id === threadId && effortChip() !== null && document.querySelector('[data-testid=composer-mode]') !== null);
+  const chips = Array.from(query('.chips').querySelectorAll('[data-testid=composer-picker], [data-testid=composer-effort], [data-testid=composer-mode]'));
+  // One chip per setting, not "model · effort" merged into one: the same order and form as a thread's.
+  expect(chips.map((el) => el.getAttribute('data-testid'))).toEqual(['composer-picker', 'composer-effort', 'composer-mode']);
+  expect(chips.map((el) => el.tagName)).toEqual(['SPAN', 'SPAN', 'SPAN']);
+  expect(chipText('composer-effort')).toBe('Low');
+  expect(chipText('composer-mode')).toBe('Auto');
+  expect(chips.every((el) => el.getAttribute('title') === "Set in Ada's settings")).toBe(true);
+  query<HTMLElement>('[data-testid=composer-mode]').click();
+  query<HTMLElement>('[data-testid=composer-effort]').click();
+  flushSync();
+  expect(document.querySelector('[data-testid=composer-mode-menu], [data-testid=composer-effort-menu]')).toBeNull();
 });
 
 test('a slash lists the agent commands first, filters, and completes the box', async ({ app: _app }) => {

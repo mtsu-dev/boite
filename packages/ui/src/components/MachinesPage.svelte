@@ -5,7 +5,7 @@
   import { GroupLinks } from '../lib/group-links.svelte';
   import InfoTip from './InfoTip.svelte';
   import PolicyLock from './PolicyLock.svelte';
-  import { ArrowUpRight, Ellipsis, RefreshCw, Trash2, ScanLine } from '@lucide/svelte';
+  import { ArrowUpRight, Check, Ellipsis, RefreshCw, Trash2, ScanLine } from '@lucide/svelte';
   import Menu from './Menu.svelte';
   import { separator, type MenuItem } from '../lib/menu';
   import { listedName, machineHealth, machineName, workspace, machineIcons, type Machine } from '../lib/workspace.svelte';
@@ -97,6 +97,8 @@
       agents: store.owner ? store.harnessUpdates : []
     });
   }
+  /** The version the updates card heads with: a row repeats it only where it differs (round 16 read it three times). */
+  const headVersion = $derived(showAppUpdateUi() && appUpdater.snapshot.supported ? appUpdater.snapshot.currentVersion : workspace.active.core?.version ?? '');
   const updateLabels: Record<MachineUpdateState, string> = {
     failed: strings.machines.updateFailed,
     updating: strings.providerSettings.updating,
@@ -214,8 +216,11 @@
               <span class="meta" title={machine.store.localCore ? undefined : carrier !== undefined ? fill(strings.group.through, { machine: machineName(carrier) }) : machine.id}>
                 <span class="dot" class:ready={machine.store.connection === 'ready'} aria-hidden="true"></span>
                 <span class="status ui-label" class:ready={machine.store.connection === 'ready'} data-testid="machine-card-status">{machine.store.pairingRequired ? strings.mobile.pairingRequired : gone ? strings.connection.offline : carrier !== undefined && machine.store.connection === 'ready' ? fill(strings.group.relayed, { machine: machineName(carrier) }) : strings.connection[machine.store.connection]}</span>
-                {#if machine.store.connection === 'ready' && machine.store.core?.version}<span class="version" data-testid="machine-version">{machine.store.core.version}</span>{/if}
-                {#if state}<span class="updates ui-label" data-testid="machine-updates-state" data-state={state}>{updateLabels[state]}</span>{/if}
+                {#if machine.store.connection === 'ready' && machine.store.core?.version && machine.store.core.version !== headVersion}<span class="version" data-testid="machine-version">{machine.store.core.version}</span>{/if}
+                <!-- A current machine shows a quiet check, its words for a screen reader: the card above already says
+                     "Up to date", and a word on every row repeated it. Other states say themselves. -->
+                {#if state === 'current'}<span class="updates" data-testid="machine-updates-state" data-state={state} title={strings.serverUpdate.current}><Check size={14} aria-hidden="true" /><span class="visually-hidden">{updateLabels[state]}</span></span>
+                {:else if state}<span class="updates ui-label" data-testid="machine-updates-state" data-state={state}>{updateLabels[state]}</span>{/if}
                 {#if manual}<InfoTip topic={strings.serverUpdate.manualTitle} text={manual} />{/if}
               </span>
             </div>
@@ -387,14 +392,14 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: var(--color-live);
+    background: var(--color-caution);
     flex: none;
   }
   .dot.ready {
     background: var(--color-success);
   }
   .status {
-    color: var(--color-live);
+    color: var(--color-caution);
     flex: none;
   }
   .status.ready {
@@ -419,6 +424,7 @@
   .lost .status { color: var(--color-danger); }
   /* What the machine has to say about its updates, after its connection. */
   .updates { color: var(--color-muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: none; }
+  .updates[data-state='current'] { display: inline-flex; align-items: center; overflow: visible; }
   .updates[data-state='available'] { color: var(--color-foreground); }
   .updates[data-state='failed'] { color: var(--color-danger); }
   .actions {

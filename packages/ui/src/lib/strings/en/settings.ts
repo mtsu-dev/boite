@@ -102,6 +102,8 @@ export const strings = {
     themeDark: 'Dark',
     themeLight: 'Light',
     themeGrain: 'Grain',
+    /** One plain line under the theme row: what the chosen one does. */
+    themeResult: { system: 'Follows this computer, light or dark as it is set.', dark: 'Light text on dark grounds, easier at night.', light: 'Dark text on light grounds, easier in daylight.', grain: 'Dark, over a soft grain from light to black.' },
     reading: 'Reading',
     font: 'Text font',
     /** What the reading studies found, behind the label's "i": why there is a choice at all. */
@@ -143,12 +145,16 @@ export const strings = {
     materialAcrylic: 'Acrylic',
     materialMica: 'Mica',
     materialSolid: 'Solid',
+    /** One plain line under the window material row: what the chosen one looks like. */
+    materialResult: { acrylic: 'The desktop shows through the window, blurred.', mica: 'The window takes a tint of your wallpaper.', solid: 'One flat color, the lightest on the computer.' },
     chatWidth: 'Chat width',
     groupChanges: 'Group modified files in the conversation',
     expandDiffs: 'Expand change previews by default',
     chatWidthComfortable: 'Comfortable',
     chatWidthWide: 'Wide',
     chatWidthFull: 'Full',
+    /** One plain line under the chat width row: what the chosen width does. */
+    chatWidthResult: { comfortable: 'Lines stop at an easy reading width.', wide: 'Lines run wider, for code and tables.', full: 'Lines fill the whole window.' },
     terminalCursor: 'Terminal cursor',
     terminalCursorBar: 'Bar',
     terminalCursorBlock: 'Block',

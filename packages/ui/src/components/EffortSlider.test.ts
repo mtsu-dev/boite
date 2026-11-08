@@ -67,30 +67,72 @@ test('the Default switch is absent while the agent already picks, and for a mode
   expect(document.querySelector('[data-testid=effort-default]')).toBeNull();
 });
 
-test('a hovered dot names its level in the heading and its cost under the track before any click, and leaving puts the live one back', () => {
+test('the heading keeps the picked level while a hovered dot gets a ring, its own name and its cost in a lighter ink, and leaving puts the ends back', () => {
   const onpick = vi.fn();
   open('low', onpick);
   const level = () => query('[data-testid=effort-level]');
-  const cost = () => query('[data-testid=effort-cost]').textContent;
-  // At rest: the live level, in the middle of the scale, costs the balanced line.
+  const cost = () => query('[data-testid=effort-cost]');
+  const preview = () => document.querySelector('[data-testid=effort-preview]');
+  const ends = () => [...document.querySelectorAll('[data-testid=effort-ends] .end')].map((end) => end.textContent);
+  // At rest: the live level, the scale's two ends by name, and the balanced line for the middle of the scale.
   expect(level().textContent).toBe('Low');
-  expect(level().classList.contains('previewing')).toBe(false);
-  expect(cost()).toBe('Balanced depth and speed');
+  expect(ends()).toEqual(['Off', 'High']);
+  expect(preview()).toBeNull();
+  expect(cost().textContent).toBe('Balanced depth and speed');
+  expect(cost().classList.contains('previewing')).toBe(false);
   // jsdom lays nothing out: give the line a width so the pointer lands on the last dot.
   const line = query('[data-testid=effort-track] .line');
   line.getBoundingClientRect = () => ({ left: 0, width: 200, top: 0, height: 4, right: 200, bottom: 4, x: 0, y: 0, toJSON() {} }) as DOMRect;
   const track = query('[data-testid=effort-track]');
   track.dispatchEvent(Object.assign(new MouseEvent('pointermove', { bubbles: true, clientX: 199 }), { pointerType: 'mouse' }));
   flushSync();
-  expect(level().textContent).toBe('High');
-  expect(level().classList.contains('previewing')).toBe(true);
-  expect(cost()).toBe('Deepest thinking, slowest and costliest');
+  // The pick stays named and filled; the preview is a ring on its dot and a name under it.
+  expect(level().textContent).toBe('Low');
+  expect(preview()?.textContent).toBe('High');
+  expect(query('[data-dot=high]').classList.contains('hovered')).toBe(true);
+  expect(query('[data-testid=effort-ends]').classList.contains('previewing')).toBe(true);
+  expect(Array.from(document.querySelectorAll('.dot.on')).map((dot) => dot.getAttribute('data-dot'))).toEqual(['off', 'low']);
+  expect(cost().textContent).toBe('Deepest thinking, slowest and costliest');
+  expect(cost().classList.contains('previewing')).toBe(true);
   // A finger has no hover: it previews nothing.
   track.dispatchEvent(new MouseEvent('pointerleave'));
   flushSync();
-  track.dispatchEvent(Object.assign(new MouseEvent('pointermove', { bubbles: true, clientX: 0 }), { pointerType: 'touch' }));
+  track.dispatchEvent(Object.assign(new MouseEvent('pointermove', { bubbles: true, clientX: 199 }), { pointerType: 'touch' }));
   flushSync();
-  expect(level().textContent).toBe('Low');
-  expect(cost()).toBe('Balanced depth and speed');
+  expect(preview()).toBeNull();
+  expect(cost().textContent).toBe('Balanced depth and speed');
   expect(onpick).not.toHaveBeenCalled();
+});
+
+test('the fast switch reads its name beside the bolt whether it is on or off', async () => {
+  const onspeed = vi.fn();
+  mounted = mount(EffortSlider, { target: document.body, props: { levels: LEVELS, active: 'low', onpick() {}, speeds: [{ id: 'fast', label: 'Fast' }], speed: null, onspeed } });
+  flushSync();
+  query<HTMLButtonElement>('[data-testid=composer-effort]').click();
+  flushSync();
+  // Off is a switch to turn on, named, not a bare outline.
+  expect(query('[data-testid=effort-speed-label]').textContent).toBe('Fast');
+  expect(query('[data-testid=effort-speed] .switch').classList.contains('on')).toBe(false);
+  query<HTMLButtonElement>('[data-testid=effort-speed]').click();
+  expect(onspeed).toHaveBeenCalledWith('fast');
+  await unmount(mounted);
+  document.body.innerHTML = '';
+  mounted = mount(EffortSlider, { target: document.body, props: { levels: LEVELS, active: 'low', onpick() {}, speeds: [{ id: 'fast', label: 'Fast' }], speed: 'fast', onspeed } });
+  flushSync();
+  query<HTMLButtonElement>('[data-testid=composer-effort]').click();
+  flushSync();
+  expect(query('[data-testid=effort-speed-label]').textContent).toBe('Fast');
+  expect(query('[data-testid=effort-speed] .switch').classList.contains('on')).toBe(true);
+});
+
+test("a bot's effort chip names its level and opens nothing", () => {
+  mounted = mount(EffortSlider, { target: document.body, props: { levels: LEVELS, active: 'high', onpick() {}, readonly: true, readonlyHint: "Set in Ada's settings" } });
+  flushSync();
+  const chip = query<HTMLElement>('[data-testid=composer-effort]');
+  expect(chip.tagName).toBe('SPAN');
+  expect(chip.textContent?.trim()).toBe('High');
+  expect(chip.getAttribute('title')).toBe("Set in Ada's settings");
+  chip.click();
+  flushSync();
+  expect(document.querySelector('[data-testid=composer-effort-menu]')).toBeNull();
 });

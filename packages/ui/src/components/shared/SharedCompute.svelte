@@ -7,6 +7,7 @@
   import { secureId } from '../../lib/secure-id';
   import { sameSharedProject } from '../../lib/shared-ui';
   import { strings } from '../../lib/strings';
+  import { modeLabel, modeWord } from '../../lib/permission-modes';
   import InfoTip from '../InfoTip.svelte';
   import Menu from '../Menu.svelte';
   import ProviderLogo from '../ProviderLogo.svelte';
@@ -78,7 +79,7 @@
     {#if store.owner}<form oninput={() => { composing = true; }} onsubmit={e => { e.preventDefault(); void start(); }}>
       <label>{strings.shared.task}<textarea bind:value={task} rows="3" required maxlength="12000" placeholder={strings.shared.taskPlaceholder} data-testid="shared-compute-task"></textarea></label>
       <div class="route-picker"><ProviderLogo providerId={routes.find(r => r.profileId === profileId)?.providerId ?? ''} size={14} />
-        <Menu items={routes.map(route => ({id: route.profileId, label: `${route.model ?? route.providerId} · ${strings.permissionMode[route.permissionMode]}`, disabled: !route.protection.supported}))} onpick={id => { profileId = id; }} label={strings.shared.profiles} testid="shared-compute-route"><span>{routes.find(r => r.profileId === profileId)?.model ?? strings.shared.profiles}</span></Menu>
+        <Menu items={routes.map(route => ({id: route.profileId, label: `${route.model ?? route.providerId} · ${modeWord(route.permissionMode, null)}`, disabled: !route.protection.supported}))} onpick={id => { profileId = id; }} label={strings.shared.profiles} testid="shared-compute-route"><span>{routes.find(r => r.profileId === profileId)?.model ?? strings.shared.profiles}</span></Menu>
       </div>
       {#each routes as route (route.profileId)}{#if !route.protection.supported}<p class="hint" data-testid="shared-route-unavailable">{route.model ?? route.providerId}: {route.protection.reason}</p>{/if}{/each}
       <label><span>{strings.shared.base}<InfoTip topic={strings.shared.base} text={strings.shared.baseTip} /></span><input bind:value={base} pattern={'(?:[a-f0-9]{40}|[a-f0-9]{64})'} required spellcheck="false" data-testid="shared-compute-base" /></label>

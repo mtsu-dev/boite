@@ -48,7 +48,7 @@ import { strings as slash } from './strings/en/slash';
 import { strings as activity } from './strings/en/activity';
 import { strings as mention } from './strings/en/mention';
 import { strings as notify } from './strings/en/notify';
-import { strings as permissionMode } from './strings/en/permissionMode';
+import { strings as permissionModeLine } from './strings/en/permissionModeLine';
 import { strings as permissionModeLong } from './strings/en/permissionModeLong';
 import { strings as permissionModeCodex } from './strings/en/permissionModeCodex';
 import { strings as permissionModeShort } from './strings/en/permissionModeShort';
@@ -148,7 +148,7 @@ export const strings = {
   ...activity,
   ...mention,
   ...notify,
-  ...permissionMode,
+  ...permissionModeLine,
   ...permissionModeLong,
   ...permissionModeCodex,
   ...permissionModeShort,

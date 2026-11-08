@@ -8,6 +8,7 @@
   import { Autosave, TYPING_MS, typed } from '../../lib/autosave.svelte';
   import type { PickPatch } from '../../lib/store.svelte';
   import { strings } from '../../lib/strings';
+  import { modeLabel, modeWord } from '../../lib/permission-modes';
   import ModelPicker from '../ModelPicker.svelte';
   import EffortSlider from '../EffortSlider.svelte';
   import Menu from '../Menu.svelte';
@@ -47,8 +48,8 @@
     return names && (budget === null || Number.isFinite(budget) && budget > 0) ? null : strings.settings.autosave.invalid;
   }
   const labels = $derived(strings.agents);
+  const defaultProvider = $derived(config ? view.store.providerOf(config.defaultRoute.providerId) : null);
   const PERMISSIONS = ['default', 'acceptEdits', 'plan', 'bypassPermissions', 'yolo', 'dontAsk'] as const;
-  const permissionLabels = $derived<Record<AgentSelection['permissionMode'], string>>({ default: labels.ask, acceptEdits: labels.edits, plan: labels.plan, bypassPermissions: labels.full, yolo: strings.permissionMode.yolo, dontAsk: labels.deny });
   const effort = $derived(config ? view.store.modelOf(config.defaultRoute)?.effort : undefined);
   // Saving never disables the form: a field being typed in keeps its focus.
   const locked = $derived(!view.store.owner);
@@ -169,7 +170,7 @@
       <div class="agent-inline">
         <ModelPicker store={view.store} choice={config.defaultRoute} onpick={patch => pickDefault({ effort: null, ...patch })} />
         {#if effort?.levels.length}<EffortSlider levels={effort.levels} active={config.defaultRoute.effort ?? effort.default ?? null} onpick={id => pickDefault({ effort: id })} />{/if}
-        <Menu placement="bottom" label={labels.permissions} items={PERMISSIONS.map(id => ({ id, label: permissionLabels[id], checked: config?.defaultRoute.permissionMode === id, radio: true }))} onpick={id => pickDefault({ permissionMode: id as AgentSelection['permissionMode'] })}><span class="ui-label">{permissionLabels[config.defaultRoute.permissionMode]}</span></Menu>
+        <Menu placement="bottom" label={labels.permissions} items={PERMISSIONS.map(id => ({ id, label: modeWord(id, defaultProvider), hint: modeLabel(id, defaultProvider), checked: config?.defaultRoute.permissionMode === id, radio: true }))} onpick={id => pickDefault({ permissionMode: id as AgentSelection['permissionMode'] })}><span class="ui-label">{modeWord(config.defaultRoute.permissionMode, defaultProvider)}</span></Menu>
       </div>
       {#if view.store.providerOf(config.defaultRoute.providerId)?.capabilities.approvals === false}<p class="hint">{labels.noApprovals}</p>{/if}
     </fieldset>

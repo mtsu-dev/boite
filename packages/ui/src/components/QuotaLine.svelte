@@ -39,7 +39,7 @@
 
 {#if shown}
   <div class="quota-line">
-    <button type="button" class="ghost line" bind:this={button} data-testid="nav-limits" title={tip} aria-label={tip} aria-haspopup="dialog"
+    <button type="button" class="ghost line" class:low={meter?.tone === 'low'} bind:this={button} data-testid="nav-limits" title={tip} aria-label={tip} aria-haspopup="dialog"
       onclick={() => void glance?.open()} oncontextmenu={(event) => controlMenu(event, store, 'sidebar.limits')}>
       <Gauge size={14} class={meter ? meter.tone : undefined} aria-hidden="true" />
       <span class="ui-label" data-testid={meter ? 'limits-gauge' : undefined} data-left={meter?.left}>{text}</span>
@@ -50,12 +50,13 @@
 
 <style>
   .quota-line { flex: none; padding: 4px 6px 8px; }
-  /* A quiet line, the rows' grey: the glyph alone takes the limits' tone once an account runs low. */
+  /* A quiet line, the rows' grey. Running low, the line takes the full ink (amber is only for what needs the user);
+     run out, its glyph turns red. */
   .line { display: flex; align-items: center; gap: 8px; width: 100%; height: var(--control-sm); padding: 0 var(--pad-x, 8px); justify-content: flex-start;
     color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 500; font-variant-numeric: tabular-nums; }
   .line:hover:not(:disabled) { color: var(--color-foreground); }
   .line .ui-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .line :global(svg) { flex: none; }
-  .line :global(svg.low) { color: var(--color-live); }
+  .line.low { color: var(--color-caution); }
   .line :global(svg.out) { color: var(--color-danger); }
 </style>

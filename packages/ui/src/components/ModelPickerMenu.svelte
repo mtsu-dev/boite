@@ -5,6 +5,7 @@
   import { isNamedModel, orderedModels } from '../lib/model-order';
   import { shortlist, type ShortModel } from '../lib/model-shortlist';
   import type { Account, ModelInfo, ProviderSummary } from '@boite/contracts';
+  import SheetHead from './SheetHead.svelte';
   import AccountSeats from './AccountSeats.svelte';
   import ModelSearch from './ModelSearch.svelte';
   import ProviderLogo from './ProviderLogo.svelte';
@@ -463,7 +464,7 @@
   {/snippet}
 
   <!-- A phone sheet's one title, as on its other sheets; the chip names the model on desktop. -->
-  <span class="sheet-title">{strings.composer.model}</span>
+  <SheetHead title={strings.composer.model} />
   <!-- One row on top: the search across providers, the list's source, and its refresh while a catalogue shows. -->
   <div class="find">
     {#if !(single && needsInstall)}<ModelSearch bind:value={modelQuery} bind:input={searchBox} />{/if}
@@ -651,7 +652,6 @@
   /** A paired device reads the owner's stars without changing them. */
   .favorite-mark { display: inline-flex; align-items: center; justify-content: center; color: var(--color-foreground); }
   .source { flex: 0 1 auto; min-width: 0; text-align: right; font-size: var(--text-sm); color: var(--color-subtle); }
-  .sheet-title { display: none; }
   .popover.legacy-menu { width: min(320px, calc(100vw - 24px)); height: auto; z-index: 41; }
   /* One column on every width, read top to bottom: the title (a phone's),
      the search row, the list, then the effort, the permission and the one
@@ -866,7 +866,6 @@
   @media (max-width: 720px) {
     /* The phone's bottom sheet: its one title, then the same rows, a finger tall. */
     .popover { width: calc(100vw - 24px); }
-    .sheet-title { display: block; flex: none; padding-bottom: var(--space-1); text-align: center; font-weight: 600; }
     .find { padding: 0 var(--space-2); }
     .source, .refresh { height: var(--touch-target); }
     .refresh { width: var(--touch-target); }

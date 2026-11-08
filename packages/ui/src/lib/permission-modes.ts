@@ -35,7 +35,7 @@ export function shownMode(mode: PermissionMode, provider: ProviderSummary | null
 /** The plain line under the mode's word in its menu, as this agent actually applies it. */
 export function modeLabel(mode: PermissionMode, provider: ProviderSummary | null | undefined): string {
   if (mode === 'default' && provider?.protocol === 'codex-appserver') return strings.permissionModeCodex.default;
-  return strings.permissionMode[mode];
+  return strings.permissionModeLine[mode];
 }
 
 /** The chip's one word for the mode at rest ("Ask"), as this agent actually applies it. */

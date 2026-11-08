@@ -135,6 +135,12 @@ test("a desktop header's menu has find first, seven rows at most and names its g
 
 test("a desktop header's panel button shows and hides the panel, with no list of its own beside it", async () => {
   await start();
+  // A door with its name, not a glyph to guess: "Panels", then how many it holds once one is open.
+  const door = document.querySelector<HTMLButtonElement>('[data-testid=panel-toggle]')!;
+  expect(door.textContent?.trim()).toBe(strings.thread.panelMenu);
+  expect(door.querySelector('[data-testid=panel-toggle-count]')).toBeNull();
+  store.panel.openChanges(); store.panel.open('files'); await settle();
+  expect(door.querySelector('[data-testid=panel-toggle-count]')?.textContent).toBe('2');
   expect(document.querySelector('[data-testid=terminal-toggle]')).toBeNull();
   expect(document.querySelector('[data-testid=board-toggle]')).toBeNull();
   // Its chevron's list moved into the panel, as the panel selector.

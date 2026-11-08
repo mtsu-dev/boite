@@ -147,6 +147,8 @@ describe('text in the components stays at or above the subtle tier', () => {
     '--color-foreground', '--color-muted-foreground', '--color-subtle', '--color-code-foreground',
     '--color-danger', '--color-live', '--color-success', '--color-accent', '--color-resident',
     '--color-accent-ink', '--color-on-danger', '--color-on-foreground', '--primary-ink', '--color-background', '--color-surface',
+    // Code's inks and the warning that asks nothing, each set in app.css at reading contrast.
+    '--syntax-keyword', '--syntax-string', '--syntax-comment', '--color-caution',
     // Set by a component to one of the above.
     '--tone', '--verdict', '--mark', '--tint'
   ]);
@@ -213,5 +215,50 @@ describe('text in the components stays at or above the subtle tier', () => {
     expect(allowed('var(--color-faint)', 'input::placeholder')).toBe(true);
     expect(allowed('var(--color-subtle)', '.meta')).toBe(true);
     expect(files.length).toBeGreaterThan(100);
+  });
+});
+
+/**
+ * One segmented control everywhere, its chosen option a raised neutral: a
+ * step over the frame its track sits on, with the edge hairline, never the
+ * full ink (round 16 drew it white, louder than the accent and every primary
+ * button on the page). A component that restyles the chosen segment brings a
+ * second look back.
+ */
+describe('the chosen segment', () => {
+  const rule = /\.segmented button:is\(\.on, \[aria-pressed='true'\]\) \{([^}]*)\}/.exec(css)?.[1] ?? '';
+
+  test('is drawn once in app.css, raised on the segment token with the edge, in the ink', () => {
+    expect(rule).toMatch(/background:\s*var\(--segment-on\)/);
+    expect(rule).toMatch(/border-color:\s*var\(--color-edge\)/);
+    expect(rule).toMatch(/(?:^|;)\s*color:\s*var\(--color-foreground\)/);
+    expect(rule).not.toMatch(/--color-on-foreground/);
+  });
+
+  test('sits a visible step over the frame in dark and is the white card over the grey frame in light', () => {
+    const dark = block(':root');
+    // `--segment-on` mixes surface-3 toward the ink in oklab; for a neutral grey oklab's L is the cube root of luminance.
+    const mix = /--segment-on:\s*color-mix\(in oklab, var\(--color-surface-3\), var\(--color-foreground\) (\d+)%\);/.exec(dark);
+    expect(mix, 'dark --segment-on').not.toBeNull();
+    const share = Number(mix![1]) / 100;
+    const oklabL = (1 - share) * Math.cbrt(luminance(token(dark, '--color-surface-3'))) + share * Math.cbrt(luminance(token(dark, '--color-foreground')));
+    const y = oklabL ** 3;
+    const cie = y > 216 / 24389 ? 116 * Math.cbrt(y) - 16 : (24389 / 27) * y;
+    expect(cie - lightness(token(dark, '--color-frame')), 'raise over the frame').toBeGreaterThanOrEqual(15);
+    expect(lightness(token(dark, '--color-foreground')) - cie, 'still far under the ink').toBeGreaterThanOrEqual(60);
+    expect(block("[data-theme='light']")).toMatch(/--segment-on:\s*var\(--color-surface-2\);/);
+    const light = block("[data-theme='light']");
+    expect(lightness(token(light, '--color-surface-2'))).toBeGreaterThan(lightness(token(light, '--color-frame')));
+  });
+
+  test('no component draws its own chosen segment', () => {
+    const own: string[] = [];
+    for (const file of readdirSync(resolve('src/components'), { recursive: true, encoding: 'utf8' })) {
+      if (!file.endsWith('.svelte')) continue;
+      const text = readFileSync(join(resolve('src/components'), file), 'utf8');
+      const style = [...text.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map((match) => match[1]).join('\n');
+      if (/\.segmented button(?:\.on|\[aria-pressed='true'\])[^{]*\{[^}]*background/.test(style)) own.push(file);
+    }
+    expect(own).toEqual([]);
   });
 });

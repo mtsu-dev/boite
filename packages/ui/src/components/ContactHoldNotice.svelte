@@ -20,7 +20,7 @@
   }
 </script>
 
-<ThreadNotice icon={MailWarning} testid="contact-hold" title={t.title} detail={store.owner ? undefined : t.ownerOnly}
+<ThreadNotice icon={MailWarning} tone="live" testid="contact-hold" title={t.title} detail={store.owner ? undefined : t.ownerOnly}
   info={`${fill(t.body, { contacts: contacts.join(', ') })} ${store.owner ? t.trustTip : ''}`.trim()} docked replaces>
   {#snippet actions()}
     {#if store.owner}<button type="button" class="small" data-testid="contact-hold-trust" disabled={trusting} onclick={trust}><span class="ui-label">{t.trust}</span></button>{/if}

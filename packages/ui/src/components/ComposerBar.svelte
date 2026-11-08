@@ -11,9 +11,9 @@
   import type { Choice, PickPatch, Store } from '../lib/store.svelte';
   import ModelPicker from './ModelPicker.svelte';
   import EffortSlider from './EffortSlider.svelte';
-  import Menu from './Menu.svelte';
   import Deferred, { parts } from './Deferred.svelte';
-  import ComposerOptions, { type ModeChoice } from './ComposerOptions.svelte';
+  import ComposerOptions from './ComposerOptions.svelte';
+  import PermissionChip, { type ModeChoice } from './PermissionChip.svelte';
   import ContextControl from './ContextControl.svelte';
   import { work } from '../lib/work-prefs.svelte';
   import { voice, VOICE_STORAGE_KEY } from '../lib/voice-prefs.svelte';
@@ -31,8 +31,8 @@
    * what adds to the message (and the context's details), then a chip per
    * setting reading its value at rest: the model (the context's number beside
    * it once it matters), the effort (a slider, the bolt while fast is on) and
-   * the permission (an icon and a word; on a phone it is the "+"'s first row,
-   * since three chips do not fit 360 px), then dictation and one round
+   * the permission (an icon and a word, its icon alone on a phone under
+   * 380 px), the same three on a thread, a bot and a phone, then dictation and one round
    * button that is Send, or Stop while a turn runs and nothing waits to go
    * (not while it stands on a decision of the owner's).
    * Nothing comes or goes with a decision docked above: the row keeps its
@@ -151,12 +151,8 @@
   // A legacy mode still live (`plan`) keeps its own choice until another is picked.
   let modeChoices = $derived<ModeChoice[]>([...modes, ...modes.includes(displayedMode) ? [] : [displayedMode]]
     .map((mode) => ({ id: mode, label: modeWord(mode, provider), hint: modeLabel(mode, provider), title: modeHint(mode, provider), icon: modeIcon(mode) })));
-  let modeItems = $derived(modeChoices.map((item) => ({ id: item.id, label: item.label, hint: item.hint, title: item.title, checked: item.id === displayedMode, radio: true })));
-  let ModeGlyph = $derived(modeIcon(displayedMode));
-  /** A bot keeps its effort and mode in its settings: its row shows neither. */
-  let ownSettings = $derived(bot === null);
-  /** A phone's row holds the model and the effort at 360 px: the permission moves to the "+". */
-  let modeInPlus = $derived(ownSettings && modes.length > 0 && phoneWidth.current);
+  /** A bot keeps its model, effort and mode in its settings: its chips read them and open nothing. */
+  let botHint = $derived(bot ? fill(strings.composer.botSettings, { name: bot }) : '');
   // The worktree switch exists where the core can honour it: a draft on a
   // folder the core found a `.git` in. No answer yet, or an older core that
   // never gives one, is no repository: a switch the core would refuse is noise.
@@ -278,7 +274,6 @@
   export async function openChip(testid: string) {
     await tick();
     if (testid === 'composer-picker') { await chip?.reveal(); return; }
-    if (testid === 'composer-mode' && modeInPlus) { options?.openModes(); return; }
     const id = testid === 'effort-speed' ? 'composer-effort' : testid;
     bar?.closest('[data-testid="composer"]')?.querySelector<HTMLElement>(`[data-testid="${id}"]`)?.click();
   }
@@ -290,8 +285,7 @@
   <!-- One "+" at the start: files, a file mention, a command and the draft's worktree. -->
   {#key `${key}:${store.draft?.projectId ?? ''}`}
   <ComposerOptions bind:this={options} worktree={!answering && store.draft && draftRepository ? store.draft.worktree : null} {canAttach} anchor={askAnchor} onattach={() => picker?.click()} onworktree={() => store.setDraftWorktree(!store.draft?.worktree)} {onmention} {oncommand}
-    context={bound ? contextWords : null} oncontext={() => meter?.open()}
-    mode={modeInPlus && !(target && !target.selection) ? { active: displayedMode, items: modeChoices, onpick: pickMode } : null} />
+    context={bound ? contextWords : null} oncontext={() => meter?.open()} />
   {/key}
   {#if target && !target.selection}
   <div class="chips">{#if target.chips}{@render target.chips()}{/if}</div>
@@ -305,16 +299,13 @@
       {/if}
     {/snippet}
     <!-- A bot's model is its own setting: its chip names it and changes nothing here. -->
-    <ModelPicker bind:this={chip} {store} {choice} disabled={picking} readonly={bot !== null} readonlyHint={bot ? fill(strings.composer.botModel, { name: bot }) : ''} anchor={askAnchor} trailing={ring} onpick={pick} />
-    {#if ownSettings && choice && (effortLevels.length > 0 || speeds.length > 0)}
+    <ModelPicker bind:this={chip} {store} {choice} disabled={picking} readonly={bot !== null} readonlyHint={botHint} anchor={askAnchor} trailing={ring} onpick={pick} />
+    {#if choice && (effortLevels.length > 0 || speeds.length > 0)}
       <!-- The effort is a slider of its own, read at rest: its level, the bolt while fast is on. -->
-      <EffortSlider bind:this={slider} levels={effortLevels} active={activeEffort} onpick={pickEffort} ondefault={agentDefault ? () => pickEffort(null) : undefined} {speeds} speed={speedOptions.speed} onspeed={(id) => void pick(speedOptions.pick(id))} />
+      <EffortSlider bind:this={slider} levels={effortLevels} active={activeEffort} onpick={pickEffort} ondefault={agentDefault ? () => pickEffort(null) : undefined} {speeds} speed={speedOptions.speed} onspeed={(id) => void pick(speedOptions.pick(id))} readonly={bot !== null} readonlyHint={botHint} />
     {/if}
-    {#if ownSettings && choice && modes.length > 0 && !modeInPlus}
-      <Menu items={modeItems} onpick={pickMode} label={strings.composer.mode} testid="composer-mode">
-        <ModeGlyph size={14} strokeWidth={1.75} />
-        <span class="ui-label" data-testid="composer-mode-value">{modeWord(displayedMode, provider)}</span>
-      </Menu>
+    {#if choice && modes.length > 0}
+      <PermissionChip items={modeChoices} active={displayedMode} onpick={pickMode} readonly={bot !== null} readonlyHint={botHint} />
     {/if}
     {#if signedOut && store.owner}
       <button type="button" class="ui-chip signed-out" data-testid="composer-reconnect" title={fill(strings.connect.signedOut, { provider: provider?.name ?? '' })} onclick={() => store.openConnect(signedOut.providerId, signedOut.id)}><span class="ui-label">{strings.connect.reconnect}</span></button>
@@ -407,9 +398,6 @@
     padding: var(--composer-bar-padding, 4px 8px 8px 10px);
   }
 
-  /* Each mode is a word over its plain line: the row's own air keeps one pair from the next. */
-  .chips :global([data-testid='composer-mode-menu'] .item) { padding-block: var(--space-2); }
-
   .chips {
     flex: 1;
     display: flex;
@@ -496,7 +484,7 @@
     .chips { flex: 1; flex-wrap: nowrap; }
     .chips :global(.picker) { min-width: 0; max-width: 100%; }
     .chips :global(.picker > .trigger) { max-width: 100%; height: var(--touch-target); padding: 0 6px; }
-    .chips :global(.effort > .trigger) { flex: none; height: var(--touch-target); padding: 0 6px; gap: 5px; }
+    .chips :global(:is(.effort, .permission) > .trigger) { flex: none; height: var(--touch-target); padding: 0 6px; gap: 5px; }
     /* The model's name alone, and whole words of it: one line high, a name too long for the row
        wraps its last words onto a second line nobody sees, never half of one. */
     .chips :global(.picker > .trigger > .label) { min-width: 0; max-width: none; height: 1lh; padding-block: 0; margin-block: 0; text-box: normal; overflow: hidden; white-space: normal; overflow-wrap: normal; }
@@ -512,9 +500,21 @@
     /* The name says whose model it is: its logo gives the room to a whole name ("GPT 6.1 Sol"). */
     .chips :global(.picker > .trigger:not(.connect) > :is([data-logo], [data-initial], .lucide-sparkles)) { display: none; }
     .chips :global(.effort > .trigger) { padding: 0 4px; }
+    .chips :global(.permission > .trigger) { width: 36px; padding: 0; }
     /* At 360 the model's whole name and its effort keep the row: the meter
-       is its glyph alone, amber once nearly spent, its number in its label and its details. */
+       is its glyph alone, at full ink once nearly spent, its number in its label and its details. */
     .context-control :global(.trigger) { min-width: 34px; }
     .context-control :global(.percent) { display: none; }
+  }
+  /* Under 380 the permission chip joins the row: the side controls narrow (never shorter)
+     so a name like "GPT 6.1 Sol" stays whole beside the context ring. */
+  @media (max-width: 379px) {
+    .bar :global(.opener) { position: relative; width: 34px; }
+    /* A 44 px touch target without widening the row: the hit zone takes the bar's
+       8 px left padding and the model chip's 2 px inner padding. */
+    .bar :global(.opener)::after { content: ''; position: absolute; inset: 0 -2px 0 -8px; }
+    .chips :global(.permission > .trigger) { width: 30px; }
+    .chips :global(.effort > .trigger) { padding: 0 2px; }
+    .context-control :global(.trigger) { min-width: 26px; padding: 0; }
   }
 </style>

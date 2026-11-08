@@ -69,6 +69,8 @@ export const strings = {
     inProject: 'in',
     /** Before the machine the draft's project is on, which ends the heading. */
     onMachine: 'on',
+    /** Under a desktop draft's heading: what starting here does. The mode, model and effort are the chips' to say. */
+    startHint: 'Describe a task below: the agent works in this folder, and the thread joins your list.',
     draftMode: {
       default: 'with approval requests',
       acceptEdits: 'with edits allowed',

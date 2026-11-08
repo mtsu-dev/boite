@@ -223,7 +223,7 @@
   .counters .dot { color: var(--color-subtle); }
   .counters .blocked { color: var(--color-foreground); }
   .counters .failed { color: var(--color-danger); }
-  .counters .skipped { color: var(--color-live); }
+  .counters .skipped { color: var(--color-caution); }
   summary :global(.fold-caret) { color: var(--color-muted-foreground); }
   /* A phone gives the counters their own line under the name, the chevron staying on the first. */
   @container (max-width: 480px) {
@@ -255,7 +255,7 @@
   .verdict { flex: none; margin-left: auto; font-size: var(--text-xs); font-weight: 600; color: var(--color-muted-foreground); }
   .verdict.blocked { color: var(--color-foreground); }
   .verdict.failed { color: var(--color-danger); }
-  .verdict.skipped { color: var(--color-live); }
+  .verdict.skipped { color: var(--color-caution); }
   .message { margin-top: 2px; color: var(--color-muted-foreground); white-space: pre-wrap; overflow-wrap: anywhere; }
   .more { margin-top: 4px; }
   .more .runs { margin-top: 4px; }

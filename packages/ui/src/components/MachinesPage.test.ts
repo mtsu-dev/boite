@@ -168,6 +168,12 @@ test('each row says where its updates stand and one button checks every machine'
   const said = (id: string) => query(`[data-machine-id="${id}"] [data-testid="machine-updates-state"]`);
   expect([said('target').dataset.state, said('target').textContent]).toEqual(['available', strings.harnessUpdates.availableShort]);
   expect([said('source').dataset.state, said('source').textContent]).toEqual(['current', strings.serverUpdate.current]);
+  // A version is read once: the card heads with this machine's, so a row repeats it only where it differs.
+  const version = (id: string) => document.querySelector(`[data-machine-id="${id}"] [data-testid="machine-version"]`)?.textContent ?? null;
+  expect([version('source'), version('target')]).toEqual([null, null]);
+  target.store.core = { ...target.store.core!, version: '0.9.0' };
+  flushSync();
+  expect([version('source'), version('target')]).toEqual([null, '0.9.0']);
 
   const checks = [source, target].map(machine => vi.spyOn(machine.store, 'loadHarnessUpdates').mockResolvedValue());
   const server = vi.spyOn(target.store.serverUpdater, 'load').mockResolvedValue();

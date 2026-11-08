@@ -15,7 +15,7 @@
   import { work } from '../lib/work-prefs.svelte';
   import type { Store } from '../lib/store.svelte';
   import { projectName } from '../lib/format';
-  import { workspace } from '../lib/workspace.svelte';
+  import { machineName, workspace } from '../lib/workspace.svelte';
   import Menu from './Menu.svelte';
   import { ThreadRename, commitOnUnmount } from '../lib/thread-rename.svelte';
   import { watchStatus } from '../lib/pull-request-watch';
@@ -29,9 +29,13 @@
     if (!thread) return null;
     const project = thread.projectId ? store.projects.find(p => p.id === thread!.projectId) : undefined;
     const machines = workspace.machinesOr(store);
-    const where = { project: project ? projectName(project) : '', machine: machines.length > 1 ? machines.find(m => m.store === store)?.label ?? '' : '' };
+    // The machine's own name: "This computer" says nothing on a phone that reaches a remote one.
+    const found = machines.length > 1 ? machines.find(m => m.store === store) : undefined;
+    const where = { project: project ? projectName(project) : '', machine: found ? machineName(found) : '' };
     return where.project || where.machine ? where : null;
   });
+  /** How many panels the door holds, read beside its name. */
+  let panelCount = $derived(thread ? store.panel.surfaces.length : 0);
   /** The project's name, the first half of a desktop header's "where": project, then title. */
   let projectLabel = $derived.by(() => {
     const id = thread?.projectId;
@@ -271,20 +275,23 @@
           </Menu>
         </span>
       {/if}
-      <!-- The button shows or hides the side panel, on a phone too; the panel's
-           own selector lists every panel and tool once it is open. -->
+      <!-- The door to the side panel, named in words with how many it holds, on a phone too;
+           the panel's own selector lists every panel and tool once it is open. -->
       {#if thread}
         <span class="panel-switch" class:on={store.panelOpen}>
           <button
             type="button"
-            class="ghost icon"
+            class="ghost door"
             title={`${strings.thread.panelHint}${store.keyHint('panel')}`}
-            aria-label={strings.thread.panelHint}
             aria-pressed={store.panelOpen}
             data-testid="panel-toggle"
             onclick={() => store.togglePanel()}
           >
-            <PanelRight size={16} strokeWidth={1.75} />
+            <span class="door-face">
+              {#if !mobile.current}<PanelRight size={16} strokeWidth={1.75} aria-hidden="true" />{/if}
+              <span class="ui-label">{strings.thread.panelMenu}</span>
+              {#if panelCount > 0}<span class="door-count" data-testid="panel-toggle-count">{panelCount}</span>{/if}
+            </span>
           </button>
         </span>
       {/if}
@@ -327,12 +334,18 @@
   }
 
 
-  /* One fill when the panel is open. */
-  .panel-switch { display: inline-flex; flex: none; align-items: center; border-radius: var(--radius-md); }
-  /* 32 px, as the title's menu and the sidebar fold: one square for every header icon. */
-  .panel-switch > button { width: 32px; height: 32px; border-radius: var(--radius-md); }
-  .panel-switch.on { background: var(--color-active); }
-  .panel-switch.on > button { color: var(--color-foreground); }
+  /* Off the window's edge by the gap the crumb keeps on the left. */
+  .panel-switch { display: inline-flex; flex: none; align-items: center; margin-right: 4px; }
+  /* The door's face is outlined so its word reads as a button, 32 px high as the title's menu and the
+     sidebar fold; on a phone the button around it keeps the touch height. One fill when the panel is open. */
+  .panel-switch > .door { display: inline-flex; align-items: center; height: 32px; padding: 0; background: none; border: none; }
+  .door-face { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; box-sizing: border-box; border: 1px solid var(--color-edge); border-radius: var(--radius-md); font-size: var(--text-meta); white-space: nowrap; }
+  @media (hover: hover) {
+    .panel-switch > .door:hover:not(:disabled) { background: none; }
+    .door:hover .door-face { background: var(--color-surface-3); color: var(--color-foreground); }
+  }
+  .panel-switch.on .door-face { background: var(--color-active); color: var(--color-foreground); }
+  .door-count { min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box; display: grid; place-items: center; border-radius: var(--radius-full); background: var(--color-surface-3); color: var(--color-foreground); font-variant-numeric: tabular-nums; }
   .watch-chip { flex: none; display: inline-flex; color: var(--color-muted-foreground); }
   .watch-chip :global(svg) { flex: none; }
 
@@ -390,7 +403,7 @@
     .context-chip :global(.ui-chip) { min-width: var(--touch-target); justify-content: center; }
     /* The header's one menu holds these on a phone. */
     .watch-chip { display: none; }
-    .panel-switch > button { width: var(--touch-target); height: var(--touch-target); }
+    .panel-switch > .door { height: var(--touch-target); }
     .rename { width: 100%; }
     /* The thread's title button gives way to its menu; a team's name has no menu and stays. */
     .title:not(.team) { display: none; }

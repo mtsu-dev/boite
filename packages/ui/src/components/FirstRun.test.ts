@@ -24,6 +24,12 @@ test('a first run lists the agents as rows that each connect in one click, then 
   mounted = mount(FirstRun, { target: document.body, props: { store } });
   flushSync();
 
+  // A visible path: three numbered steps, the first the one to take now, with the agents as its buttons.
+  const steps = [...document.querySelectorAll<HTMLElement>('[data-testid="first-run-steps"] > .step')];
+  expect(steps.map((step) => step.textContent!.replace(/^\d/, '').trim())).toEqual([strings.firstRun.stepConnect, strings.firstRun.stepProject, strings.firstRun.stepTask]);
+  expect(steps.map((step) => step.getAttribute('aria-current'))).toEqual(['step', null, null]);
+  expect(steps[0]!.nextElementSibling!.querySelectorAll('[data-testid="first-run-agent"]').length).toBe(rows().length);
+
   // The two services most people pay for first, each row its own button: no choice to make, then a second action.
   expect(rows().map((row) => row.dataset.provider)).toEqual(['claude', 'codex']);
   expect(rows().some((row) => row.hasAttribute('aria-checked'))).toBe(false);

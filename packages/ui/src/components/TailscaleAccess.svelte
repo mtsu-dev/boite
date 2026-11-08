@@ -123,7 +123,7 @@
   .title { display: inline-flex; align-items: center; font-weight: 600; font-size: var(--text-sm); }
   .hint { margin: 0; overflow-wrap: anywhere; }
   .ok { color: var(--color-foreground); }
-  .warn { color: var(--color-live); }
+  .warn { color: var(--color-caution); }
   .error { color: var(--color-danger); }
   .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   .danger { color: var(--color-danger); }

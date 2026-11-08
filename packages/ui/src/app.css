@@ -271,6 +271,9 @@
   --switch-knob: var(--color-subtle);
   --switch-on: var(--color-foreground);
   --switch-knob-on: var(--color-on-foreground);
+  /* A chosen segment: one raise over the frame its track is drawn on, lighter than surface-3 so it
+     reads beside a hover, far under the full ink of a primary button. */
+  --segment-on: color-mix(in oklab, var(--color-surface-3), var(--color-foreground) 9%);
   --color-selection: rgba(228, 228, 231, 0.18);
   --accent-hue: 295;
   --color-accent: oklch(75.5% 0.141 var(--accent-hue));
@@ -291,6 +294,15 @@
   /* Needs you: the one warm colour, and its soft fill behind a count. */
   --color-live: #f5b84a;
   --color-live-soft: rgba(245, 184, 74, 0.12);
+  /* A warning that asks nothing of the user (a quota running low, a setting left open): the full ink and its own
+     glyph, never the amber, which means only that something needs the user (round 17). */
+  --color-caution: var(--color-foreground);
+  /* Code in the diff and the file viewer: keywords in the accent's hue, strings in a cool blue, a step more
+     saturated than the round 14 greys so a line's parts read apart; names keep the text colour and comments
+     the subtle tier, so the added and removed tints stay what the eye finds first. */
+  --syntax-keyword: color-mix(in oklch, var(--color-accent) 80%, var(--color-foreground));
+  --syntax-string: oklch(80% 0.1 225);
+  --syntax-comment: var(--color-subtle);
   --color-success: #4cc38a;
   --color-danger: #f2555a;
   --color-danger-hover: #d36060;
@@ -401,7 +413,12 @@
      screen's own large title on a phone. Prose reads at `--text-reading`. */
   --text-meta: 13px;
   --text-body: 14px;
+  /* A list's own titles on the desktop (a project card's name, the list's view switch): one size over the rows
+     under them and the one weight over the body, so title, row, label and meta read as four steps (round 17). */
+  --text-head: 15px;
   --text-title: 16px;
+  /* Weight is for titles only: a row, a label and meta stay at the body's 400. */
+  --weight-title: 600;
   --text-xs: var(--text-meta);
   --text-sm: var(--text-meta);
   --text-base: var(--text-body);
@@ -886,6 +903,8 @@ html[data-chat-width='full'] {
   --color-surface: #fafafb;
   --color-surface-2: #ffffff;
   --color-surface-3: #ebebef;
+  /* In light the raise is the white card over the grey frame. */
+  --segment-on: var(--color-surface-2);
   --color-border: rgba(0, 0, 0, 0.095);
   --color-edge: rgba(0, 0, 0, 0.19);
   --color-hover: rgba(0, 0, 0, 0.04);
@@ -914,6 +933,8 @@ html[data-chat-width='full'] {
   --ansi-bright-white: #a5a5a5;
   --color-live: #b97806;
   --color-live-soft: rgba(185, 120, 6, 0.12);
+  --syntax-keyword: color-mix(in oklch, var(--color-accent) 55%, var(--color-foreground));
+  --syntax-string: oklch(50% 0.13 240);
   --color-success: #16a34a;
   --color-danger: #dc2626;
   --color-danger-hover: #bb2020;
@@ -1084,13 +1105,11 @@ time { font-variant-numeric: tabular-nums; }
   background: var(--color-selection);
 }
 
-/* One quiet palette for code in the diff and the file viewer: two hues at low
-   chroma, names in the text colour, so added and removed tints stay what the
-   eye finds first. */
-.code-syntax :is(.hljs-keyword, .hljs-selector-tag, .hljs-built_in) { color: color-mix(in oklch, var(--color-accent) 55%, var(--color-muted-foreground)); }
+/* One palette for code in the diff and the file viewer (the --syntax-* tokens). */
+.code-syntax :is(.hljs-keyword, .hljs-selector-tag, .hljs-built_in) { color: var(--syntax-keyword); }
 .code-syntax :is(.hljs-title, .hljs-type, .hljs-name, .hljs-attr, .hljs-attribute) { color: var(--color-foreground); }
-.code-syntax :is(.hljs-string, .hljs-regexp, .hljs-number, .hljs-literal) { color: color-mix(in oklch, var(--color-live) 45%, var(--color-muted-foreground)); }
-.code-syntax :is(.hljs-comment, .hljs-meta) { color: var(--color-muted-foreground); }
+.code-syntax :is(.hljs-string, .hljs-regexp, .hljs-number, .hljs-literal) { color: var(--syntax-string); }
+.code-syntax :is(.hljs-comment, .hljs-meta) { color: var(--syntax-comment); font-style: italic; }
 .code-syntax .hljs-addition { color: var(--color-success); }
 .code-syntax .hljs-deletion { color: var(--color-danger); }
 
@@ -1755,11 +1774,14 @@ tr:last-child td {
   overflow: hidden;
 }
 
-/* A settings choice: every option in one dark track, the chosen one lit in the
-   text's own colour so the value in use reads at a glance, as the phone's tabs
-   do (round 16: a grey step was too close to its neighbours to tell). Neutral,
-   never the accent. Weak (`:where`), so a page may size it. */
-:where(.settings .page) .segmented {
+/* One segmented control everywhere (settings, onboarding, a contact's
+   sharing): every option in one dark track, the chosen one raised a step
+   above it with a hairline edge and the text at full ink. Round 17: a
+   full-white segment outshouted the accent and the primary button of the
+   page; the raise still reads as chosen at a glance in both themes
+   (lib/contrast.test.ts). Neutral, never the accent; a page sizes it with
+   its own scoped rule. */
+.segmented {
   display: inline-flex;
   flex: none;
   gap: 2px;
@@ -1769,7 +1791,7 @@ tr:last-child td {
   background: var(--color-frame);
 }
 
-:where(.settings .page) .segmented button {
+.segmented button {
   height: var(--control-sm);
   padding: 0 10px;
   border: 1px solid transparent;
@@ -1777,20 +1799,20 @@ tr:last-child td {
   background: transparent;
   color: var(--color-muted-foreground);
   font-size: var(--text-sm);
-  transition: background var(--motion-duration) var(--motion-curve), color var(--motion-duration) var(--motion-curve);
+  transition: background var(--motion-duration) var(--motion-curve), color var(--motion-duration) var(--motion-curve), border-color var(--motion-duration) var(--motion-curve);
 }
 
 @media (hover: hover) {
-  :where(.settings .page) .segmented button:hover:not(.on) {
-    background: var(--color-surface-3);
+  .segmented button:hover:not(.on, [aria-pressed='true'], :disabled) {
+    background: var(--color-hover);
     color: var(--color-foreground);
   }
 }
 
-:where(.settings .page) .segmented button.on {
-  background: var(--color-foreground);
-  border-color: var(--color-foreground);
-  color: var(--color-on-foreground);
+.segmented button:is(.on, [aria-pressed='true']) {
+  background: var(--segment-on);
+  border-color: var(--color-edge);
+  color: var(--color-foreground);
   box-shadow: var(--shadow-e1);
 }
 

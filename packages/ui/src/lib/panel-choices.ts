@@ -22,6 +22,9 @@ const GROUPS: { name: () => string; ids: string[] }[] = [
   { name: () => strings.rightPanel.groups.tools, ids: ['terminal-toggle', 'board-toggle', 'tasks', 'trace'] }
 ];
 
+/** Always on the short list, ahead of the panels in use. */
+const FIRST = ['changes', 'files'];
+
 /** A renamed row says its old name on hover, for the hands that knew it. */
 const FORMERLY: Record<string, () => string> = {
   trace: () => strings.rightPanel.formerly.trace,
@@ -51,8 +54,8 @@ export function usedPanels(store: Store, thread: ThreadSummary | null, open: Sur
 
 /**
  * The panel selector's list (`RightPanel.svelte`), the same on a desktop and
- * a phone. Short: the panels in `used`, then one row to every panel. Full
- * (`full`, or when the short one would hold nothing or everything): every
+ * a phone. Short: Changes, Files and the panels in `used`, then one row to
+ * every panel. Full (`full`, or when the short one would hold nothing or everything): every
  * panel and tool in named groups, then the Appearance page that hides some.
  * Ids are the kinds, plus the drawers (`terminal-toggle`, `board-toggle`) and
  * `coordination`. The panel showing is marked; a kind this device cannot show
@@ -90,7 +93,8 @@ export function panelChoices(store: Store, thread: ThreadSummary | null, options
     ids: [...group.ids, ...(index === GROUPS.length - 1 ? [...rows.keys()].filter((id) => !GROUPS.some((one) => one.ids.includes(id))) : [])].filter((id) => rows.has(id))
   }));
   const used = options.used ?? new Set<string>();
-  const short = grouped.flatMap((group) => group.ids).filter((id) => used.has(id) || rows.get(id)?.active);
+  // Changes and Files are what a first look at a thread wants: they stay on the first level, used or not.
+  const short = grouped.flatMap((group) => group.ids).filter((id) => FIRST.includes(id) || used.has(id) || rows.get(id)?.active);
   if (!options.full && short.length > 0 && short.length < rows.size) {
     return [...short.map((id) => rows.get(id)!), separator('sep-all'), { id: ALL_PANELS, label: strings.rightPanel.allPanels, glyph: LayoutGrid, submenu: true }];
   }

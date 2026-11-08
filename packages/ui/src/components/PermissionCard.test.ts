@@ -48,3 +48,16 @@ test('both buttons hold while an answer is out, and come back when it fails', as
   button('permission-deny').click();
   expect(sent).toEqual(['allow', 'deny']);
 });
+
+test('Allow says its scope, one call, and the keys live in the titles, not as keycaps', () => {
+  running = mount(PermissionCard, {
+    target: document.body,
+    props: { toolName: 'Bash', decision: null, request: { id: 'r1', toolName: 'Bash', input: { command: 'git push' } } as never, answer: () => undefined, docked: true }
+  });
+  flushSync();
+  expect(button('permission-allow').textContent?.trim()).toBe('Allow once');
+  expect(button('permission-allow').title).toBe('Lets this one call run (Enter)');
+  expect(button('permission-deny').textContent?.trim()).toBe('Deny');
+  expect(button('permission-deny').title).toBe('Deny (Esc)');
+  expect(document.querySelector('[data-testid=permission-card] kbd')).toBeNull();
+});

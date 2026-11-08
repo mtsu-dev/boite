@@ -2,7 +2,6 @@
   import { tick, type Snippet } from 'svelte';
   import { ChevronDown, Plug, Sparkles } from '@lucide/svelte';
   import { isNamedModel } from '../lib/model-order';
-  import { levelName } from '../lib/format';
   import ProviderLogo from './ProviderLogo.svelte';
   import Deferred, { parts } from './Deferred.svelte';
   import type ModelPickerMenu from './ModelPickerMenu.svelte';
@@ -64,18 +63,6 @@
     return account && account.isolationDir !== null ? account.label : null;
   });
 
-  /**
-   * A bot's chip opens nothing, so it names the effort its settings run
-   * beside the model: "Opus 5.5 · High". Elsewhere the effort is its own chip.
-   */
-  let effortLabel = $derived.by(() => {
-    if (!choice || !readonly) return null;
-    const model = store.modelOf(choice);
-    const id = choice.effort ?? model?.effort?.default;
-    const level = id ? model?.effort?.levels.find((entry) => entry.id === id) : undefined;
-    return level ? levelName(level) : null;
-  });
-
   /** Opens the popover once its chunk is there (a slash command, a removed account's chip). */
   export async function reveal() {
     if (!popover.open) toggle();
@@ -116,7 +103,6 @@
   <span class="ui-chip trigger readonly" data-testid="composer-picker" title={readonlyHint || label}>
     {#if provider}<ProviderLogo providerId={provider.id} size={14} />{/if}
     <span class="label ui-label">{label}</span>
-    {#if effortLabel}<span class="effort ui-label" data-testid="composer-picker-effort">· {effortLabel}</span>{/if}
   </span>
   {:else}
   <button
@@ -124,7 +110,7 @@
     class="ui-chip trigger"
     aria-haspopup="menu"
     aria-expanded={popover.open}
-    aria-label={[label, effortLabel, accountLabel].filter(Boolean).join(', ')}
+    aria-label={[label, accountLabel].filter(Boolean).join(', ')}
     title={locked ? strings.composer.lockedHint : strings.composer.picker}
     data-testid="composer-picker"
     {disabled}
@@ -137,7 +123,6 @@
       <Sparkles size={14} strokeWidth={1.75} />
     {/if}
     <span class="label ui-label">{label}</span>
-    {#if effortLabel}<span class="effort ui-label" data-testid="composer-picker-effort">· {effortLabel}</span>{/if}
     {#if accountLabel}<span class="account ui-label" data-testid="composer-picker-account">{accountLabel}</span>{/if}
     <ChevronDown size={12} strokeWidth={2} />
   </button>
@@ -190,7 +175,6 @@
     white-space: nowrap;
   }
   .trigger .account { flex: none; color: var(--color-subtle); font-weight: 400; }
-  .trigger .effort { flex: none; color: var(--color-muted-foreground); font-weight: 400; white-space: nowrap; }
   /* A phone keeps the row for the model's whole name: the sheet's head names the login. */
   @media (max-width: 720px) { .trigger .account { display: none; } }
   .trigger.readonly { cursor: default; }

@@ -110,7 +110,7 @@
     white-space: nowrap;
   }
   .closed { display: flex; align-items: flex-start; gap: 8px; margin: -6px 0 16px; color: var(--color-foreground); font-size: var(--text-sm); line-height: 1.5; }
-  .closed :global(svg) { flex: none; margin-top: 0.2em; color: var(--color-live); }
+  .closed :global(svg) { flex: none; margin-top: 0.2em; color: var(--color-caution); }
   .hint { color: var(--color-muted-foreground); font-size: var(--text-sm); line-height: 1.5; margin: 0 0 8px; }
   /* Two columns where the card has the room, one on a phone; a group never splits across them. */
   .groups { columns: 2 260px; column-gap: 32px; }

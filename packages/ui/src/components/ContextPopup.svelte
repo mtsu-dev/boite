@@ -142,7 +142,7 @@
   .cache-detail dl { margin-bottom: 0; }
   .state { font-weight: 400; }
   .state[data-state='warm'] { color: var(--color-success); }
-  .state[data-state='maybe'] { color: var(--color-live); }
+  .state[data-state='maybe'] { color: var(--color-caution); }
   .state[data-state='cold'] { color: var(--color-muted-foreground); }
   .popup { position: fixed; width: min(320px, calc(100vw - 24px)); z-index: 60; padding: 16px; border: 1px solid var(--color-edge); border-radius: var(--radius-lg); background: var(--color-surface-2); box-shadow: var(--shadow-e3); animation: pop var(--dur-2) var(--ease-out-quint); color: var(--color-foreground); overflow-y: auto; overscroll-behavior: contain; }
   .popup.closing { animation: pop-out var(--dur-2) var(--ease-out-quint); pointer-events: none; }
@@ -158,7 +158,8 @@
   /* The input share in neutral ink: the accent stays on send. */
   .input { background: var(--color-subtle); }
   .cache { background: var(--color-success); }
-  .output { background: var(--color-live); }
+  /* A series, not a state: amber stays for what needs you. */
+  .output { background: var(--series-2); }
   dl { margin: 12px 0; font-size: var(--text-xs); }
   dl div { display: flex; justify-content: space-between; gap: 16px; margin: 6px 0; }
   dt { display: flex; align-items: center; gap: 7px; color: var(--color-muted-foreground); }

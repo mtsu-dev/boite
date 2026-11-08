@@ -271,7 +271,7 @@ test('a new bot is free to act: it is created with full access unless the owner 
   const editor = mount(AgentEditor, { target: document.body, props: { view, ondone: (agent: AgentProfile) => { created = agent; }, oncancel: () => {} } });
   cleanup = async () => { await unmount(editor); view.close(); store.detach(); client.close(); };
   await idle();
-  expect(document.querySelector('[data-testid=agent-runtime]')?.textContent).toContain('Full access');
+  expect(document.querySelector('[data-testid=agent-runtime]')?.textContent).toContain('Auto');
   const name = document.querySelector<HTMLInputElement>('[data-testid=agent-name]')!;
   name.value = 'Nova';
   name.dispatchEvent(new Event('input', { bubbles: true }));

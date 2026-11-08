@@ -102,9 +102,10 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    /* In the list, a row at rest reads a step back; one with a state to show reads at full strength. */
+    /* In the list, a row at rest reads a step back; one with a state to show reads at full strength. The body's
+       weight: bold is for the card's title above it (round 17's four steps). */
     color: var(--color-muted-foreground);
-    font-weight: 500;
+    font-weight: 400;
   }
   /* Activity: the title first, on the row's width, and what is asked as one line under its edge. */
   .lead {
@@ -118,10 +119,11 @@
   .lead > .title {
     flex: none;
   }
-  /* The row's time and quiet marks read one step above the subtle ink: small type needs the contrast. */
+  /* The row's time and quiet marks: meta, a size under the title and in the subtle ink (11:1 still), so title,
+     place and time part at a glance. */
   .at,
   .headline > :global(.when:not(.state)) {
-    color: var(--color-muted-foreground);
+    color: var(--color-subtle);
   }
   .at {
     flex: none;
@@ -151,9 +153,8 @@
   .pr {
     gap: 3px;
     font-size: var(--text-xs);
-    font-weight: 500;
     font-variant-numeric: tabular-nums;
-    color: var(--color-muted-foreground);
+    color: var(--color-subtle);
     cursor: pointer;
   }
   .pr:hover { color: var(--color-foreground); }

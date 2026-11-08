@@ -30,21 +30,21 @@ describe('permission modes', () => {
   });
 
   it('says Codex writes in the folder on its default, and the open mode reaches the whole computer', () => {
-    expect(modeLabel('default', provider('codex-appserver'))).toBe('Ask before working outside this folder');
+    expect(modeLabel('default', provider('codex-appserver'))).toBe('Works in this folder, asks to go beyond it');
     expect(modeHint('default', provider('codex-appserver'))).toContain('in this folder without asking');
-    // Each mode named by what the agent does, so "Permission: Ask before running commands" reads at once.
-    expect(modeLabel('default', provider('claude-sdk'))).toBe('Ask before edits and commands');
-    expect(modeLabel('acceptEdits', provider('claude-sdk'))).toBe('Ask before running commands');
-    expect(modeLabel('bypassPermissions', provider('claude-sdk'))).toBe('Run without asking');
+    // Each line says what the agent then does, as a consequence.
+    expect(modeLabel('default', provider('claude-sdk'))).toBe('Asks before it edits a file or runs a command');
+    expect(modeLabel('acceptEdits', provider('claude-sdk'))).toBe('Edits files on its own, asks before commands');
+    expect(modeLabel('bypassPermissions', provider('claude-sdk'))).toBe('Runs everything without asking');
     expect(modeHint('bypassPermissions', null)).toContain('anywhere on this computer');
     // A plain name; the technical one stays in the hint.
-    expect(modeLabel('yolo', provider('claude-sdk'))).toBe('No limits');
+    expect(modeLabel('yolo', provider('claude-sdk'))).toBe('Runs everything and skips your hooks');
     expect(modeHint('yolo', null)).toContain('(YOLO)');
     expect(modeHint('yolo', null)).toContain('skips Claude and Codex hooks');
   });
 
   it('reads each mode at rest in one short word, Codex\'s default as the folder it keeps to', () => {
-    expect(modesFor(provider('claude-sdk')).map((mode) => modeWord(mode, provider('claude-sdk')))).toEqual(['YOLO', 'Auto', 'Edit freely', 'Ask']);
+    expect(modesFor(provider('claude-sdk')).map((mode) => modeWord(mode, provider('claude-sdk')))).toEqual(['No limits', 'Auto', 'Edit freely', 'Ask']);
     expect(modeWord('default', provider('codex-appserver'))).toBe('This folder');
     expect(modeWord('plan', null)).toBe('Plan');
     expect(modeWord('dontAsk', null)).toBe('Auto-deny');

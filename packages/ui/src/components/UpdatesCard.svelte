@@ -56,7 +56,13 @@
     if (!local || !await local.saveSettings({ autoInstallUpdates: input.checked })) input.checked = local?.settings?.autoInstallUpdates === true;
   }
 
+  /*
+   * One state in words and buttons: "Up to date" never sits beside an Update
+   * it cannot start (round 16), and another machine's pending update reads as
+   * one available here, where its button is.
+   */
   function status(): string {
+    if (othersStartable && (!app || !app.supported || app.phase === 'current' || app.phase === 'idle')) return strings.harnessUpdates.availableShort;
     if (!app) return strings.serverUpdate.current;
     if (!app.supported) return strings.appUpdate.unsupported;
     switch (app.phase) {
@@ -121,7 +127,7 @@
       {#if found}<ArrowRight size={13} aria-hidden="true" /><span class="number target" data-testid="updates-found">{found}</span>{/if}
     </p>
     {#if supported}
-      <div class="channel" role="group" aria-label={strings.appUpdate.channel}>
+      <div class="segmented channel" role="group" aria-label={strings.appUpdate.channel}>
         <button type="button" class:on={app!.channel === 'nightly'} aria-pressed={app!.channel === 'nightly'} data-testid="app-update-nightly"
           disabled={app!.phase === 'waiting' || app!.phase === 'installing'} onclick={() => choose('nightly')}><span class="ui-label">{strings.appUpdate.nightlyShort}</span></button>
         <button type="button" class:on={app!.channel === 'stable'} aria-pressed={app!.channel === 'stable'} data-testid="app-update-stable"
@@ -131,7 +137,7 @@
     {/if}
   </div>
   <div class="line">
-    <p class="status" class:offer={app?.phase === 'available' || app?.phase === 'ready'} class:error={app?.phase === 'error'} role="status" aria-live="polite" data-testid="app-update-status">
+    <p class="status" class:offer={app?.phase === 'available' || app?.phase === 'ready' || othersStartable} class:error={app?.phase === 'error'} role="status" aria-live="polite" data-testid="app-update-status">
       <span>{status()}</span>
       {#if appPolicy === 'off'}<PolicyLock store={local!} keys={['updates.app']} />{/if}
       {#if supported && updater.lastCheckedAt !== null && app!.phase !== 'checking'}<span class="subtle">{fill(strings.appUpdate.lastChecked, { time: time(updater.lastCheckedAt) })}</span>{/if}
@@ -145,7 +151,7 @@
         <button type="button" class="small" data-testid="app-update-cancel" disabled={updater.cancelling} aria-busy={updater.cancelling} onclick={() => void updater.cancelInstall()}>
           <span class="ui-label">{strings.common.cancel}</span>
         </button>
-      {:else}
+      {:else if canUpdate || busy}
         <button type="button" class="primary small" data-testid="updates-run-all" disabled={!canUpdate} aria-busy={busy} onclick={update}>
           {#if restarts}<RotateCw size={13} />{:else}<CircleArrowDown size={13} />{/if}
           <span class="ui-label">{busy ? strings.updateAll.busy : restarts ? strings.updateAll.restart : strings.appUpdate.readyAction}</span>
@@ -211,10 +217,6 @@
   .changelog { display: inline-flex; align-items: center; gap: 5px; color: var(--color-muted-foreground); text-decoration: none; }
   .changelog:hover { color: var(--color-foreground); text-decoration: underline; }
   .actions { display: flex; flex: none; gap: 6px; }
-  .channel { display: flex; flex: none; gap: 2px; padding: 2px; border: 1px solid var(--color-border); border-radius: var(--radius-md); }
-  .channel button { height: var(--control-sm); padding: 0 12px; border-color: transparent; background: transparent; color: var(--color-muted-foreground); }
-  .channel button.on { background: var(--color-active); color: var(--color-foreground); }
-  .channel button:disabled:not(.on) { opacity: 0.45; }
   .track { height: 3px; overflow: hidden; border-radius: var(--radius-sm); background: var(--color-surface-3); }
   .track span { display: block; height: 100%; border-radius: inherit; background: var(--color-accent); transition: width var(--dur-2) var(--ease-out-quint); }
   .track.indeterminate span { opacity: 0.4; }

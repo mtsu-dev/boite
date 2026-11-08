@@ -7,6 +7,7 @@
   import { agentPictures, pictureDataUrl } from '../../lib/agent-pictures.svelte';
   import { Autosave, TYPING_MS } from '../../lib/autosave.svelte';
   import { fill, strings } from '../../lib/strings';
+  import { modeLabel, modeWord } from '../../lib/permission-modes';
   import { confirmArchive } from '../../lib/agent-menu';
   import { openAgent, resetBuiltin, type AgentsView } from '../../lib/agents.svelte';
   import type { Store } from '../../lib/store.svelte';
@@ -85,7 +86,6 @@
 
   const labels = $derived(strings.agents);
   const creating = !initial.record;
-  const permissionLabels = $derived<Record<ExecutionSelection['permissionMode'], string>>({ default: labels.ask, acceptEdits: labels.edits, plan: labels.plan, bypassPermissions: labels.full, yolo: strings.permissionMode.yolo, dontAsk: labels.deny });
   const provider = $derived(host.providerOf(selection.providerId));
   const effort = $derived(host.modelOf(selection)?.effort);
   const hostMachine = $derived(workspace.machines.find(m => m.store === host));
@@ -391,7 +391,7 @@
           <div class="agent-row-field">
             <span class="agent-row-label">{labels.permissions}</span>
             <div class="agent-row-value">
-              <Menu placement="bottom" label={labels.permissions} items={PERMISSIONS.map(id => ({ id, label: permissionLabels[id], checked: selection.permissionMode === id, radio: true }))} onpick={id => { selection.permissionMode = id as ExecutionSelection['permissionMode']; }}><span class="ui-label">{permissionLabels[selection.permissionMode]}</span></Menu>
+              <Menu placement="bottom" label={labels.permissions} items={PERMISSIONS.map(id => ({ id, label: modeWord(id, provider), hint: modeLabel(id, provider), checked: selection.permissionMode === id, radio: true }))} onpick={id => { selection.permissionMode = id as ExecutionSelection['permissionMode']; }}><span class="ui-label">{modeWord(selection.permissionMode, provider)}</span></Menu>
               {#if provider?.capabilities.approvals === false}<span class="hint">{labels.noApprovals}</span>{/if}
             </div>
           </div>

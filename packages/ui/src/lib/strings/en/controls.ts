@@ -7,6 +7,8 @@ export const strings = {
     preset: 'Show',
     everyday: 'Essentials',
     developer: 'Every button',
+    /** One plain line under the preset row: what the chosen preset shows. */
+    presetResult: { everyday: 'The buttons most people use; the others wait in menus and the palette.', developer: 'Every optional button in the header, the message bar and the sidebar.' },
     header: 'Conversation header',
     composer: 'Message bar',
     sidebar: 'Sidebar',

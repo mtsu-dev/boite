@@ -92,7 +92,8 @@ test('the diff and the file viewer share one quiet syntax palette from app.css',
   const diff = readFileSync(resolve('src/components/DiffView.svelte'), 'utf8');
   // Names read in the text colour; keywords and strings are low-chroma mixes, not the raw accent.
   expect(css).toMatch(/\.code-syntax :is\(\.hljs-title,[^)]*\) \{ color: var\(--color-foreground\); \}/);
-  expect(css).toMatch(/\.code-syntax :is\(\.hljs-keyword,[^)]*\) \{ color: color-mix\(in oklch, var\(--color-accent\) 55%/);
+  expect(css).toMatch(/\.code-syntax :is\(\.hljs-keyword,[^)]*\) \{ color: var\(--syntax-keyword\); \}/);
+  expect(css).toMatch(/--syntax-keyword: color-mix\(in oklch, var\(--color-accent\) \d+%, var\(--color-foreground\)\)/);
   expect(css).not.toMatch(/\.code-syntax \.hljs-keyword[^{]*\{ color: var\(--color-accent\); \}/);
   // No scoped copy left in the diff to drift from the shared one.
   expect(diff.slice(diff.indexOf('<style'))).not.toContain('hljs');

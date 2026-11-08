@@ -47,7 +47,10 @@ for (const width of [1280, 390]) {
       expect(await page.evaluate(`Array.from(document.querySelectorAll('${archives} li')).every(row => {
         const title = row.querySelector('.title');
         const action = row.querySelector('[data-testid=archived-restore]');
-        return title.getBoundingClientRect().bottom <= action.getBoundingClientRect().top && title.scrollWidth <= title.clientWidth;
+        // The action sits beside the title (its own column), never over it.
+        const t = title.getBoundingClientRect(), a = action.getBoundingClientRect();
+        const apart = t.right <= a.left || a.right <= t.left || t.bottom <= a.top || a.bottom <= t.top;
+        return apart && title.scrollWidth <= title.clientWidth;
       })`)).toBe(true);
       expect(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`)).toBe(true);
       if (width >= 720) {

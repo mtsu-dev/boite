@@ -172,7 +172,6 @@ export const strings = {
     /** The tag of an ask docked at the top of the composer, and its line in the timeline. */
     permissionNeedsYou: 'Needs you',
     permissionOf: '{index} of {total}',
-    keyEscape: 'Esc',
     turnFiles: 'Changed files',
     showTurnDiff: 'Show diff',
     hideTurnDiff: 'Hide diff',
@@ -186,8 +185,12 @@ export const strings = {
     openFile: 'Open {name}',
     revealFile: 'Show in folder',
     revealFailed: 'The folder could not be opened: {reason}',
-    allow: 'Allow',
+    /** An answer covers this one call only: the agent asks again for the next one. */
+    allowOnce: 'Allow once',
+    allowOnceHint: 'Lets this one call run; the agent asks again next time',
+    allowOnceKey: 'Lets this one call run (Enter)',
     deny: 'Deny',
+    denyKey: 'Deny (Esc)',
     /** A decided ask with no call to carry it: one line in the run, the verdict then what it was about. */
     allowedReceipt: 'Allowed: {subject}',
     deniedReceipt: 'Denied: {subject}',
@@ -203,6 +206,9 @@ export const strings = {
     questionCancelled: 'Not answered: {question}',
     questionMore: '{count} more',
     questionSkip: 'Skip',
+    /** Over a docked question's choices: a pick marks the row, the composer's Send answers. */
+    questionPickOne: 'Pick one, then send it',
+    questionPickMany: 'Pick any, then send them',
     questionOpenPage: 'Open',
     questionWrite: 'Answer in writing',
     /** The timeline's line for a question waiting in the dock at the top of the composer, where it is answered. */

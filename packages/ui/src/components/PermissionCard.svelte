@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { CornerDownLeft, ShieldCheck, ShieldQuestion, ShieldX } from '@lucide/svelte';
+  import { ShieldCheck, ShieldQuestion, ShieldX } from '@lucide/svelte';
   import type { PermissionRequest } from '@boite/contracts';
   import { json } from '../lib/format';
   import { fill, strings } from '../lib/strings';
@@ -28,7 +28,8 @@
     /**
      * Drawn at the top of the composer, where the field below stays free:
      * the ask on one line with its raw input behind an "i", the thing itself
-     * in mono, the reason, then Deny (Esc) and Allow (Enter).
+     * in mono, the reason, then Deny (Esc) and Allow once (Enter), the keys
+     * in their titles.
      */
     docked?: boolean;
     /** Its place among the thread's pending asks, said only when there are several. */
@@ -88,11 +89,12 @@
     {#snippet end()}
       <span class="choices" aria-busy={sending !== null}>
         {#if total > 1}<span class="count ui-label" data-testid="permission-count">{fill(strings.chat.permissionOf, { index: String(index), total: String(total) })}</span>{/if}
-        <button type="button" class="ghost choice" data-testid="permission-deny" disabled={sending !== null} onclick={() => void choose('deny')}>
-          <span class="ui-label">{strings.chat.deny}</span><kbd class="kbd" aria-hidden="true">{strings.chat.keyEscape}</kbd>
+        <button type="button" class="ghost choice" data-testid="permission-deny" title={strings.chat.denyKey} disabled={sending !== null} onclick={() => void choose('deny')}>
+          <span class="ui-label">{strings.chat.deny}</span>
         </button>
-        <button type="button" class="choice allow" data-testid="permission-allow" disabled={sending !== null || previewMissing} onclick={() => void choose('allow')}>
-          <span class="ui-label">{strings.chat.allow}</span><kbd class="kbd" aria-hidden="true"><CornerDownLeft size={11} strokeWidth={2} /></kbd>
+        <!-- An answer covers this one call: the button says so, the agent asks again next time. -->
+        <button type="button" class="choice allow" data-testid="permission-allow" title={strings.chat.allowOnceKey} disabled={sending !== null || previewMissing} onclick={() => void choose('allow')}>
+          <span class="ui-label">{strings.chat.allowOnce}</span>
         </button>
       </span>
     {/snippet}
@@ -148,8 +150,8 @@
 
   {#if decision === null}
     <div class="actions" aria-busy={sending !== null}>
-      <button type="button" class="primary" data-testid="permission-allow" disabled={sending !== null || previewMissing} onclick={() => void choose('allow')}>
-        <span class="ui-label">{strings.chat.allow}</span>
+      <button type="button" class="primary" data-testid="permission-allow" title={strings.chat.allowOnceHint} disabled={sending !== null || previewMissing} onclick={() => void choose('allow')}>
+        <span class="ui-label">{strings.chat.allowOnce}</span>
       </button>
       <button type="button" class="danger" data-testid="permission-deny" disabled={sending !== null} onclick={() => void choose('deny')}>
         <span class="ui-label">{strings.chat.deny}</span>
@@ -273,17 +275,18 @@
      where the title's words do (past the dot), with no fill and no edge of
      its own. A long one scrolls sideways, its whole text behind the "i". */
   .docked pre { --scroll-edge-ground: var(--decision-fill, var(--color-composer-surface)); max-height: 120px; margin-top: -6px; padding: 0 0 0 14px; border: none; border-radius: 0; background: none; font-size: var(--text-meta); line-height: 20px; white-space: pre; word-break: normal; overflow: auto; scrollbar-width: none; }
+  /* The dock's budget may squeeze the card, never below the command's first
+     line: what Allow approves stays in sight (at 360 the choices wrap and the
+     budget runs out before the subject). */
+  .permission.docked > pre.subject { min-height: 20px; flex-shrink: 0; }
   .choice { flex: none; height: 30px; gap: 8px; padding: 0 12px; border-radius: var(--radius-md); font-size: var(--text-sm); font-weight: 600; }
   /* Neutral ink, never the accent: the accent stays for send. */
   .choice.allow { background: var(--color-foreground); color: var(--color-background); }
   .choice.allow:hover:not(:disabled) { background: var(--color-foreground); opacity: .9; }
-  /* The shared keycap; on the filled Allow it takes the button's ink. */
-  .choice .kbd { padding: 0 4px; line-height: 16px; }
-  .choice.allow .kbd { border-color: color-mix(in srgb, currentColor 30%, transparent); background: transparent; color: inherit; }
   @media (max-width: 720px) {
-    /* The ask is one short sentence: it keeps Deny and Allow on its line at 360. */
-    .permission.docked { --decision-title: 6rem; padding: 8px var(--dock-inset, 8px); }
-    .choice .kbd { display: none; }
-    .choice { height: var(--touch-target); padding: 0 12px; }
+    /* The sentence asks for its whole width: when it and the two choices do not fit one
+       line, the choices wrap under it rather than cutting the ask. */
+    .permission.docked { --decision-title: auto; padding: 8px var(--dock-inset, 8px); }
+    .choice { height: var(--touch-target); padding: 0 10px; }
   }
 </style>

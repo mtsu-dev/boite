@@ -239,10 +239,8 @@
   .preferences { display: grid; gap: 12px; }
   .preference { display: flex; align-items: center; gap: 10px; }
   .preference > span { margin-right: auto; }
-  .segmented { display: flex; gap: 4px; }
-  .segmented { padding: 3px; border: 1px solid var(--color-border); border-radius: var(--radius-md); }
-  .segmented button { border: 0; background: transparent; color: var(--color-muted-foreground); font-size: var(--text-sm); }
-  .segmented button.on { background: var(--color-accent-soft); color: var(--color-foreground); }
+  /* The shared track (app.css), as wide as its row. */
+  .segmented { display: flex; }
   .examples { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
   .examples button { position: relative; display: flex; align-items: center; justify-content: center; gap: 6px; height: auto; min-height: 48px; padding: 8px 20px 8px 10px; white-space: normal; line-height: 1.3; border: 1px solid var(--color-edge); border-radius: var(--radius-lg); background: var(--color-surface-2); color: var(--color-muted-foreground); font-size: var(--text-sm); cursor: pointer; }
   .examples button:hover { color: var(--color-foreground); background: var(--color-hover); border-color: var(--color-muted-foreground); }

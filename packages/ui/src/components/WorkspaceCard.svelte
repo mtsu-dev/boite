@@ -37,11 +37,3 @@
     </div>
   </div>
 </section>
-
-<style>
-  /* The segmented track Appearance draws: the chosen option raised on a dark track. */
-  .segmented { display: inline-flex; flex: none; gap: 2px; padding: 2px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-frame); }
-  .segmented button { height: var(--control-sm); padding: 0 10px; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: var(--color-muted-foreground); font-size: var(--text-sm); }
-  @media (hover: hover) { .segmented button:hover:not(.on) { background: var(--color-surface-3); color: var(--color-foreground); } }
-  .segmented button.on { background: var(--color-surface-3); border-color: var(--color-edge); color: var(--color-foreground); box-shadow: var(--shadow-e1); }
-</style>

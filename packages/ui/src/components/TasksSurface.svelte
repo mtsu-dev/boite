@@ -387,7 +387,7 @@
   }
 
   [data-verdict='pass'] { --verdict: var(--color-success); }
-  [data-verdict='partial'] { --verdict: var(--color-live); }
+  [data-verdict='partial'] { --verdict: var(--color-caution); }
   [data-verdict='fail'], [data-verdict='missing'] { --verdict: var(--color-danger); }
 
   .open-review {
@@ -443,7 +443,7 @@
   }
 
   .meta-text.paused {
-    color: var(--color-live);
+    color: var(--color-caution);
   }
 
   .watch + .watch { border-top: 1px solid var(--color-border); }
@@ -611,7 +611,11 @@
     color: var(--color-success);
   }
 
-  .mark[data-status='in_progress'],
+  /* Working wears the accent; a claimed card waits on the user, so it keeps the amber. */
+  .mark[data-status='in_progress'] {
+    color: var(--color-accent);
+  }
+
   .mark[data-status='claimed'] {
     color: var(--color-live);
   }

@@ -179,8 +179,9 @@
         {/each}
       </div>
     </div>
+    <!-- Each theme carries a swatch of its own ground, and the row says what the chosen one does. -->
     <div class="switch-row">
-      <span class="text ui-label">{strings.settings.theme}</span>
+      <span class="text"><span class="ui-label">{strings.settings.theme}</span><span class="hint" data-testid="theme-result">{strings.settings.themeResult[theme]}</span></span>
       <div class="segmented" role="group" aria-label={strings.settings.theme} data-testid="theme-current">
         {#each themes as option (option.id)}
           <button
@@ -190,7 +191,7 @@
             data-testid="theme-{option.id}"
             onclick={() => pickTheme(option.id)}
           >
-            <span class="ui-label">{option.label}</span>
+            <span class="swatch {option.id}" aria-hidden="true"></span><span class="ui-label">{option.label}</span>
           </button>
         {/each}
       </div>
@@ -199,7 +200,7 @@
     <ThemeColors />
     {#if !phone}
     <div class="switch-row">
-      <span class="text ui-label">{strings.settings.chatWidth}</span>
+      <span class="text"><span class="ui-label">{strings.settings.chatWidth}</span><span class="hint">{strings.settings.chatWidthResult[chatWidth]}</span></span>
       <div class="segmented" role="group" aria-label={strings.settings.chatWidth}>
         {#each widths as option (option.id)}
           <button type="button" class:on={chatWidth === option.id} aria-pressed={chatWidth === option.id} data-testid="chat-width-{option.id}" onclick={() => pickChatWidth(option.id)}><span class="ui-label">{option.label}</span></button>
@@ -209,9 +210,7 @@
     {/if}
     {#if hasMaterial}
       <div class="switch-row">
-        <span class="text ui-label">
-          {strings.settings.material}
-        </span>
+        <span class="text"><span class="ui-label">{strings.settings.material}</span><span class="hint">{strings.settings.materialResult[glass]}</span></span>
         <div class="segmented" role="group" aria-label={strings.settings.material}>
           {#each materials as option (option.id)}
             <button
@@ -262,7 +261,7 @@
       <h2 class="ui-label-box"><span class="ui-label">{strings.controls.heading}</span><InfoTip gather topic={strings.controls.heading} text={strings.controls.headingHint} testid="section-info" /></h2>
       <!-- The two presets as a row like the others, the "i" saying what each keeps. -->
       <div class="switch-row">
-        <span class="text ui-label">{strings.controls.preset}</span>
+        <span class="text"><span class="ui-label">{strings.controls.preset}</span>{#if preset}<span class="hint">{strings.controls.presetResult[preset]}</span>{/if}</span>
         <div class="segmented" role="group" aria-label={strings.controls.preset}>
           {#each presets as option (option.id)}
             <button type="button" class:on={preset === option.id} aria-pressed={preset === option.id} data-testid="controls-preset-{option.id}" onclick={() => work.showPreset(option.id)}><span class="ui-label">{option.label}</span></button>
@@ -295,6 +294,13 @@
 </div>
 
 <style>
+  /* A theme's own ground in its button, the way the palettes show theirs: dark, light, and both for System. */
+  .segmented .swatch { flex: none; width: 12px; height: 12px; border-radius: calc(var(--radius-sm) / 2); box-shadow: inset 0 0 0 1px var(--color-edge); }
+  .swatch.dark { background: var(--palette-dark-default-background); }
+  .swatch.light { background: var(--palette-light-default-background); }
+  .swatch.system { background: linear-gradient(135deg, var(--palette-light-default-background) 50%, var(--palette-dark-default-background) 50%); }
+  .swatch.grain { background: linear-gradient(135deg, var(--palette-light-default-frame), var(--palette-dark-default-frame)); }
+  .segmented button:has(.swatch) { gap: 6px; }
   .zoom button { display: inline-flex; align-items: center; justify-content: center; padding: 0 8px; }
   .zoom-error { margin: 0; color: var(--color-danger); font-size: var(--text-xs); overflow-wrap: anywhere; }
   .zoom .zoom-value { min-width: 56px; font-variant-numeric: tabular-nums; color: var(--color-foreground); }

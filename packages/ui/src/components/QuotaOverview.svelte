@@ -221,7 +221,7 @@
   .headline { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 20px; }
   .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-base); font-weight: 600; color: var(--color-foreground); }
   .amount { flex: none; color: var(--color-foreground); font-size: var(--text-md); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .amount.low { color: var(--color-live); }
+  .amount.low { color: var(--color-caution); }
   .headline > :global(svg) { flex: none; color: var(--color-subtle); transition: transform var(--dur-2); }
   .expanded .headline > :global(svg) { transform: rotate(180deg); }
   .summary.reorderable { cursor: grab; }
@@ -237,7 +237,7 @@
   .mini-window.lead .mini-label { color: var(--color-foreground); font-weight: 500; }
   .track { display: block; width: 100%; min-width: 0; height: 7px; border-radius: var(--radius-sm); overflow: hidden; background: var(--color-surface-3); filter: saturate(1); transition: filter var(--dur-3) var(--ease-out-quint); }
   .fill { display: block; height: 100%; background: var(--color-success); border-radius: var(--radius-sm); transition: width var(--dur-3) var(--ease-out-quint), background-color var(--dur-3) var(--ease-out-quint); }
-  .track[data-tone='low'] .fill { background: var(--color-live); }
+  .track[data-tone='low'] .fill { background: var(--color-caution); }
   .track[data-tone='out'] { background: color-mix(in srgb, var(--color-danger) 35%, var(--color-surface-3)); }
   .caption { display: block; margin: 0; font-size: var(--text-xs); color: var(--color-muted-foreground); font-weight: 400; overflow-wrap: anywhere; }
   article > .caption { margin: 4px 4px 0 32px; }

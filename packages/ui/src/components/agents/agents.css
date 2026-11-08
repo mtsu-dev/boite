@@ -196,9 +196,8 @@ fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-p
 .agent-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 
 /* Planning: the form that plans a task, and each routine in words. */
-.agent-schedule .segmented { display: flex; flex-wrap: wrap; gap: 2px; padding: 3px; border-radius: var(--radius-md); background: var(--color-surface-2); align-self: flex-start; }
-.agent-schedule .segmented button { height: var(--control-sm); padding: 0 12px; border: 0; background: none; color: var(--color-muted-foreground); font-weight: 500; }
-.agent-schedule .segmented button.on { background: var(--color-active); color: var(--color-foreground); box-shadow: var(--shadow-e1); }
+/* The shared segmented look (app.css); only its layout here. */
+.agent-schedule .segmented { display: flex; flex-wrap: wrap; align-self: flex-start; }
 .schedule-detail { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
 .schedule-detail .ui-chip { cursor: pointer; }
 .schedule-detail .ui-chip.on { border-color: var(--color-muted-foreground); background: var(--color-active); color: var(--color-foreground); }
@@ -211,8 +210,9 @@ fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-p
 .schedule-summary > svg { flex: none; margin-top: 2px; color: var(--color-muted-foreground); }
 .schedule-summary strong { font-weight: 600; }
 .schedule-summary .muted { color: var(--color-muted-foreground); }
-.schedule-summary.warn { background: color-mix(in srgb, var(--color-live) 14%, transparent); }
-.schedule-summary.warn > svg { color: var(--color-live); }
+/* A routine that will not run: a warning, not a request, so the neutral raise and the full-ink glyph, never amber. */
+.schedule-summary.warn { background: var(--color-surface-3); }
+.schedule-summary.warn > svg { color: var(--color-caution); }
 .agent-more-inline > summary { cursor: pointer; font-size: var(--text-sm); color: var(--color-muted-foreground); }
 .agent-more-inline[open] > summary { margin-bottom: 10px; color: var(--color-foreground); }
 .agent-routines { display: flex; flex-direction: column; max-width: var(--settings-width); }

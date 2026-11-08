@@ -243,11 +243,11 @@
   /* The mark centred on the title's first 20 px line, like the time and the action beside it. */
   .feed .row :global(.headline > .when) { height: 20px; }
   .feed-side { position: absolute; top: 0; right: 0; display: flex; align-items: center; gap: 8px; height: calc(20px + 2 * var(--feed-pad)); padding-right: var(--pad-x); }
-  .feed-side time { min-width: var(--feed-time); line-height: 20px; font-size: var(--text-xs); color: var(--color-muted-foreground); text-align: end; font-variant-numeric: tabular-nums; }
+  .feed-side time { min-width: var(--feed-time); line-height: 20px; font-size: var(--text-xs); color: var(--color-subtle); text-align: end; font-variant-numeric: tabular-nums; }
   /* The menu takes the time's place, never the action's. */
   .feed .actions { top: calc(var(--feed-pad) + 10px - var(--act) / 2); right: calc(var(--pad-x) + var(--feed-verb) + 8px); }
   /* Recent's second line, on the title's edge: where the row lives, in words, so no tile repeats it. */
-  .where { margin-top: -3px; overflow: hidden; font-size: var(--text-xs); color: var(--color-muted-foreground); text-align: start; text-overflow: ellipsis; white-space: nowrap; }
+  .where { margin-top: -3px; overflow: hidden; font-size: var(--text-xs); color: var(--color-subtle); text-align: start; text-overflow: ellipsis; white-space: nowrap; }
   /* The Recent list: a step wider inside, the project's tile first. */
   .compact { --pad-x: 10px; }
   .compact :global(.headline) { gap: 10px; }

@@ -6,6 +6,7 @@ export const fr: Translation = {
     doneThreads: 'Terminés',
     archivedGroup: 'Archivés',
     workingThreads: 'En cours',
+    earlierThreads: 'Plus tôt',
     projectWorkingThreads: '{project} : {count} en cours',
     projectWaitingThreads: '{project} : {count} vous attendent',
     loadingProjects: 'Chargement des projets',

@@ -119,7 +119,7 @@
     line-height: 1.5;
     color: var(--color-muted-foreground);
   }
-  .warn { color: var(--color-live); }
+  .warn { color: var(--color-caution); }
   .actions { display: flex; align-items: center; }
   .mobile button { min-height: var(--touch-target); }
   @media (max-width: 720px) {

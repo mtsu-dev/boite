@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import ComposerOptions from './ComposerOptions.svelte';
+import { phoneWidth } from '../test/phone-width';
 
 let mounted: ReturnType<typeof mount> | undefined;
 afterEach(async () => {
@@ -61,22 +62,19 @@ test('a "+" closed before its rows drew leaves the focus on the "+", not on a ro
   expect(document.activeElement).toBe(plus);
 });
 
-test('a phone reads the permission first with its value and opens its modes in place, each with its plain line', async () => {
-  const onpick = vi.fn();
-  const icon = (() => null) as never;
-  const items = [{ id: 'default', label: 'Ask', hint: 'Ask before edits and commands', title: '', icon }, { id: 'yolo', label: 'YOLO', hint: 'No limits', title: '', icon }];
-  mounted = mount(ComposerOptions, { target: document.body, props: { worktree: null, canAttach: true, onattach() {}, onworktree() {}, mode: { active: 'default', items, onpick } } });
-  flushSync();
-  document.querySelector<HTMLButtonElement>('[data-testid=composer-options]')!.click();
-  flushSync();
-  expect(document.querySelector('[data-testid=composer-options-sheet] [role=menuitem]')?.getAttribute('data-testid')).toBe('composer-mode');
-  expect(document.querySelector('[data-testid=composer-mode-value]')?.textContent).toBe('Ask');
-  document.querySelector<HTMLButtonElement>('[data-testid=composer-mode]')!.click();
-  flushSync();
-  const rows = [...document.querySelectorAll('[data-testid=composer-mode-menu] [data-value]')].map((row) => row.textContent?.trim());
-  expect(rows).toEqual(['AskAsk before edits and commands', 'YOLONo limits']);
-  document.querySelector<HTMLButtonElement>('[data-testid=composer-mode-menu] [data-value=yolo]')!.click();
-  flushSync();
-  expect(onpick).toHaveBeenCalledWith('yolo');
-  expect(document.querySelector<HTMLButtonElement>('[data-testid=composer-options]')!.getAttribute('aria-expanded')).toBe('false');
+test('a phone opens the "+" as a bottom sheet with its title, even while a docked ask anchors it to the whole composer', () => {
+  const restore = phoneWidth();
+  try {
+    const composer = document.createElement('div');
+    document.body.append(composer);
+    mounted = mount(ComposerOptions, { target: document.body, props: { worktree: null, canAttach: true, anchor: () => composer, onattach() {}, onworktree() {} } });
+    flushSync();
+    document.querySelector<HTMLButtonElement>('[data-testid=composer-options]')!.click();
+    flushSync();
+    // A floating popover under the other sheets read as a second kind of menu.
+    expect(document.querySelector<HTMLElement>('[data-testid=composer-options-sheet]')!.dataset.mobileSheet).toBe('true');
+    expect(document.querySelector('[data-testid=composer-options-sheet] .sheet-head')?.textContent).toBe('Add to the message');
+    // The permission is a chip of its own: the "+" holds no mode.
+    expect(items()).toEqual(['composer-attach']);
+  } finally { restore(); }
 });

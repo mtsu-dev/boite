@@ -55,11 +55,14 @@ test('the short list holds the panels in use, then one row to all of them; the f
   expect(short.at(-1)).toMatchObject({ submenu: true });
   const full = panelChoices(store, thread(), { available: () => true, used, full: true });
   expect(full[0]).toMatchObject({ id: IN_USE, back: true });
-  // Nothing in use: the full list at once, with no way back to an empty one.
+  // Nothing in use: Changes and Files still lead, a click from the header, then the way to the rest.
   const fresh = panelChoices(stub({ panel: { active: null } }), thread(), { available: () => true, showing: undefined });
-  expect(ids(fresh)).not.toContain(ALL_PANELS);
-  expect(ids(fresh)).not.toContain(IN_USE);
-  expect(sections(fresh)).toHaveLength(3);
+  expect(ids(fresh)).toEqual(['changes', 'files', ALL_PANELS]);
+  // A short list that would hold every row is the full list at once, with no way back to itself.
+  const all = panelChoices(stub({ panel: { active: null } }), thread(), { available: () => true, showing: undefined, used: new Set(ids(panelChoices(stub(), thread(), { available: () => true, full: true }))) });
+  expect(ids(all)).not.toContain(ALL_PANELS);
+  expect(ids(all)).not.toContain(IN_USE);
+  expect(sections(all)).toHaveLength(3);
 });
 
 test('a thread uses its subagents, its letters and its changes; none of them when it has none', () => {

@@ -5,7 +5,7 @@ export const strings = {
     default: 'Ask',
     acceptEdits: 'Edit freely',
     bypassPermissions: 'Auto',
-    yolo: 'YOLO',
+    yolo: 'No limits',
     plan: 'Plan',
     dontAsk: 'Auto-deny',
     /** Codex writes inside the folder on its default mode: the chip says so instead of "Ask". */

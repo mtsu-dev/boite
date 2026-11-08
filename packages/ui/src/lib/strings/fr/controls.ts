@@ -8,6 +8,7 @@ export const fr: Translation = {
     preset: 'Afficher',
     everyday: 'L\'essentiel',
     developer: 'Tous les boutons',
+    presetResult: { everyday: 'Les boutons les plus utilisés ; les autres restent dans les menus et la palette.', developer: 'Chaque bouton optionnel dans l\'en-tête, la barre de message et la barre latérale.' },
     header: 'En-tête de la conversation',
     composer: 'Barre de saisie',
     sidebar: 'Barre latérale',

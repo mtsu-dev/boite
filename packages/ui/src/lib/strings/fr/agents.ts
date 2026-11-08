@@ -57,7 +57,6 @@ export const fr: Translation = {
     search: 'Rechercher',
     name: 'Nom', domain: 'Rôle', instructions: 'Instructions', identityHint: 'Changer de modèle conserve son identité et sa mémoire.',
     model: 'Modèle et compte', noAccount: 'Ajoutez un compte fournisseur dans les réglages avant de créer un bot.', permissions: 'Permissions',
-    ask: 'Demander avant les actions', edits: 'Autoriser les modifications', plan: 'Planifier uniquement', full: 'Accès complet', deny: 'Ne pas demander',
     noApprovals: 'Ce fournisseur ne permet pas de valider les outils en direct. Ses permissions de lancement s’appliquent.',
     paused: 'En pause', pause: 'Mettre en pause', resume: 'Reprendre', archive: 'Archiver', active: 'Actif', archived: 'Archivé',
     archiveTitle: 'Archiver "{name}" ?', archiveBody: 'L’archivage arrête ce bot et le retire de la liste. Sa conversation reste lisible par la recherche. Saisissez son nom actuel exactement pour confirmer.', archiveName: 'Nom du bot',

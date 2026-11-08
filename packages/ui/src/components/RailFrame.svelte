@@ -95,6 +95,8 @@
   $effect(() => unmark);
 
   let resizeFrom = 0;
+  /** Rows scrolled under the head: it takes a hairline and the fade deepens, so no sliced row shows below it. */
+  let scrolled = $state(false);
 </script>
 
 <aside
@@ -111,9 +113,10 @@
   data-testid={testid}
   data-quota-dock-target=""
 >
-  <div class="views">{@render head()}</div>
+  <div class="views" class:scrolled={scrolled && !subhead}>{@render head()}</div>
   {@render subhead?.()}
-  <div class="scroll" data-project-list={kind === 'sidebar' ? '' : undefined} bind:this={scroller} {onscroll}>
+  <div class="scroll" class:scrolled data-project-list={kind === 'sidebar' ? '' : undefined} bind:this={scroller}
+    onscroll={() => { scrolled = (scroller?.scrollTop ?? 0) > 0; onscroll?.(); }}>
     {@render children()}
   </div>
   {#if (store.page === 'chat' || store.page === 'agents') && dockVisible && experimentOn('pinned-quotas') && pinnedQuotas.current.pinned && pinnedQuotas.wantsDock(store)}
@@ -151,7 +154,7 @@
     min-height: 0;
   }
 
-  .views { margin: 0 10px; }
+  .views { margin: 0 10px; border-bottom: 1px solid transparent; transition: border-color var(--motion-duration) var(--motion-curve); }
   .scroll {
     flex: 1;
     min-height: 0;
@@ -171,8 +174,12 @@
     scroll-padding-block: calc(var(--fade-top) + 4px) calc(var(--fade) + 4px);
     display: flex;
     flex-direction: column;
-    mask-image: linear-gradient(to bottom, transparent, black var(--fade-top), black calc(100% - var(--fade)), transparent);
+    --mask-top: var(--fade-top);
+    mask-image: linear-gradient(to bottom, transparent, black var(--mask-top), black calc(100% - var(--fade)), transparent);
   }
+  /* Scrolled: the head reads as an opaque edge the rows pass under (round 17: a sliced card title showed through
+     the 3 px fade), the top fade as deep as the foot's. */
+  .scroll.scrolled { --mask-top: var(--fade); }
   .scroll > :global(*) { flex-shrink: 0; }
 
   /* The edge that drags the width, centred in the frame gap (ResizeHandle). */
@@ -185,6 +192,7 @@
     /* Up to the window's top (App.svelte pulls it over the bar's band), its
        head in that band, level with the main column's title. */
     .rail { padding-top: 6px; }
+    .views.scrolled { border-bottom-color: var(--color-border); }
     .rail {
       --slide-room: calc(var(--sidebar-width) + var(--frame-gap));
       transition: margin-left var(--motion-duration) var(--motion-curve), opacity var(--dur-3) var(--ease-out-quint), display var(--motion-duration) allow-discrete;

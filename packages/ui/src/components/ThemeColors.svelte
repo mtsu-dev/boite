@@ -85,13 +85,14 @@
   function pickAccent(hue: number) { editingRole = undefined; undo = { ...palette }; setAccent(hue); follow(); }
 </script>
 
-<!-- A palette as a small window drawn in its own five colours: the chrome, the page with lines of its text,
-     a composer on its surface with its accent's send button. Edited colours draw what is in use. -->
+<!-- A palette as a tiny thread in its own five colours: the chrome, your message as a bubble on its
+     surface, the agent's answer as lines of its text, and the composer with its accent's send button.
+     Edited colours draw what is in use. -->
 {#snippet tile(id: PaletteId)}
   {@const colors = presets.find((preset) => preset.id === id)?.palette ?? palette}
   <span class="tile" style:--tile-frame={colors.frame} style:--tile-page={colors.background} style:--tile-surface={colors.surface} style:--tile-ink={colors.foreground} style:--tile-accent={colors.accent}>
     <span class="chrome"></span>
-    <span class="body"><span class="lines"><i></i><i></i><i></i></span><span class="composer"><span class="accent"></span></span></span>
+    <span class="body"><span class="bubble"><i></i></span><span class="lines"><i></i><i></i></span><span class="composer"><i></i><span class="accent"></span></span></span>
   </span>
 {/snippet}
 
@@ -159,8 +160,8 @@
   /* auto-fit: the pictures share the row's whole width, none of it left as an empty right half. */
   .palettes { display: grid; grid-template-columns: repeat(auto-fit, minmax(88px, 1fr)); gap: var(--space-2); margin-top: var(--space-1); }
   .palette { position: relative; display: flex; flex-direction: column; align-items: stretch; gap: 6px; height: auto; min-width: 0; padding: var(--space-1); border: 1px solid transparent; border-radius: var(--radius-md); background: transparent; color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 400; transition: transform var(--motion-duration) var(--motion-curve); }
-  /* The picture keeps its proportions as the row widens: 44 px tall at the narrowest. */
-  .palette .tile { width: 100%; height: auto; aspect-ratio: 2.1; }
+  /* The picture keeps its proportions as the row widens: 46 px tall at the narrowest. */
+  .palette .tile { width: 100%; height: auto; aspect-ratio: 1.8; }
   .palette .ui-label { text-align: center; }
   /* A tile lifts under the pointer: a picture invites the click. */
   @media (hover: hover) { .palette:hover { background: var(--color-hover); color: var(--color-foreground); transform: translateY(-1px); } }
@@ -178,16 +179,18 @@
   .tile { position: relative; display: flex; overflow: hidden; border-radius: var(--radius-sm); background: var(--tile-page); box-shadow: inset 0 0 0 1px var(--color-edge); }
   .chrome { width: 22%; background: var(--tile-frame); }
   /* Sized off the tile's width, so the composer still fits a 84 px tile at 360 px. */
-  .body { flex: 1; display: flex; flex-direction: column; justify-content: space-between; min-width: 0; padding: 8% 8% 7%; }
+  .body { flex: 1; display: flex; flex-direction: column; justify-content: space-between; gap: 3px; min-width: 0; padding: 7% 8% 7%; }
+  /* Your message: a bubble on the palette's surface, right-aligned as in a thread, its words in the ink. */
+  .bubble { align-self: flex-end; display: flex; align-items: center; width: 48%; height: 9px; padding: 0 3px; border-radius: var(--radius-full); background: var(--tile-surface); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--tile-ink) 18%, transparent); }
+  .bubble i { display: block; width: 80%; height: 2px; border-radius: var(--radius-full); background: color-mix(in oklab, var(--tile-ink) 70%, transparent); }
   .lines { display: flex; flex-direction: column; gap: 2px; }
-  /* The text in its own ink, read strong enough to tell a warm palette from a cold one. */
-  .lines i { display: block; height: 3px; border-radius: var(--radius-full); background: color-mix(in oklab, var(--tile-ink) 70%, transparent); }
-  .lines i:nth-child(n + 2) { background: color-mix(in oklab, var(--tile-ink) 40%, transparent); }
-  .lines i:nth-child(2) { width: 60%; }
-  .lines i:nth-child(3) { width: 80%; }
+  /* The answer in its own ink, read strong enough to tell a warm palette from a cold one. */
+  .lines i { display: block; height: 3px; border-radius: var(--radius-full); background: color-mix(in oklab, var(--tile-ink) 75%, transparent); }
+  .lines i:nth-child(2) { width: 64%; background: color-mix(in oklab, var(--tile-ink) 45%, transparent); }
   /* The composer on the palette's surface, its send button in the palette's accent. */
-  .composer { display: flex; justify-content: flex-end; align-items: center; height: 10px; padding: 0 2px; border-radius: var(--radius-full); background: var(--tile-surface); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--tile-ink) 14%, transparent); }
-  .tile .accent { width: 6px; height: 6px; border-radius: 50%; background: var(--tile-accent); }
+  .composer { display: flex; justify-content: space-between; align-items: center; gap: 3px; height: 10px; padding: 0 2px 0 4px; border-radius: var(--radius-full); background: var(--tile-surface); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--tile-ink) 14%, transparent); }
+  .composer i { display: block; width: 40%; height: 2px; border-radius: var(--radius-full); background: color-mix(in oklab, var(--tile-ink) 30%, transparent); }
+  .tile .accent { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--tile-accent); }
   .customize { flex: none; }
   .editor { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; }
   .editor.customizing { grid-template-columns: minmax(150px, .8fr) minmax(0, 1.6fr); margin-top: 16px; }

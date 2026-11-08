@@ -115,7 +115,9 @@ test("another machine's update is listed under the app's, starts with the same b
   const row = one('updates-other')!;
   expect(row.textContent).toContain('builder');
   expect(row.textContent).toContain('2.0.0-beta.2');
-  expect(one('app-update-status')!.textContent).toContain(strings.serverUpdate.current);
+  // One state: the app is current but builder is not, so the card offers the update and never says "Up to date" beside its button (round 16 said both).
+  expect(one('app-update-status')!.textContent).toContain(strings.harnessUpdates.availableShort);
+  expect(one('app-update-status')!.textContent).not.toContain(strings.serverUpdate.current);
   one<HTMLButtonElement>('updates-run-all')!.click();
   await vi.waitFor(() => expect(call).toHaveBeenCalledWith('core.updateEverything', expect.objectContaining({ server: '2.0.0-beta.2' })));
   expect(otherCall).not.toHaveBeenCalledWith('core.updateEverything', expect.anything());
@@ -130,7 +132,8 @@ test('a browser has no app updater: it shows the version of the machine it is on
   flushSync();
   expect(one('updates-version')!.textContent).toContain(workspace.active.core!.version);
   expect(one('app-update-nightly')).toBeNull();
-  expect(one<HTMLButtonElement>('updates-run-all')!.disabled).toBe(true);
+  // Nothing to start: no Update button at all, rather than a grey one beside "Up to date".
+  expect(one('updates-run-all')).toBeNull();
 });
 
 test('an Android controller check failure explains why and retries the check without an offered version', async () => {

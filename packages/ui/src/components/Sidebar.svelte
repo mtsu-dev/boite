@@ -260,7 +260,7 @@
       <WindowList items={split.active} keyOf={entry => JSON.stringify([entry.machine.id, entry.thread.id])} {scrollRoot} estimate={32} measurements={measurements('recent')}>
         {#snippet row(entry)}<ThreadCard {...entry} {now} compact showDone where={places(entry)} />{/snippet}
       </WindowList>
-      {#if split.active.length > 0 && split.older.length > 0}<div class="rest-line" role="separator"></div>{/if}
+      {#if split.active.length > 0 && split.older.length > 0}<p class="rest-line" data-testid="recent-earlier"><span class="ui-label">{strings.sidebar.earlierThreads}</span></p>{/if}
       <WindowList items={split.older} keyOf={entry => JSON.stringify([entry.machine.id, entry.thread.id])} {scrollRoot} estimate={32} measurements={measurements('recent-rest')}>
         {#snippet row(entry)}<ThreadCard {...entry} {now} compact showDone where={places(entry)} />{/snippet}
       </WindowList>
@@ -421,8 +421,10 @@
     border-radius: var(--radius-lg);
     background: var(--color-surface);
   }
-  /* Recent's line between the threads with something to say and the ones at rest. */
-  .rest-line { height: 1px; margin: 8px 10px; background: var(--color-border); }
+  /* Recent's label between the threads with something to say and the ones at rest: a word, not a bare rule, on
+     the titles' edge in the label's ink, a hairline running on to the row's end. */
+  .rest-line { display: flex; align-items: center; gap: 8px; margin: 10px 0 4px; padding: 0 10px; color: var(--color-muted-foreground); font-size: var(--text-meta); }
+  .rest-line::after { content: ''; flex: 1; height: 1px; background: var(--color-border); }
   .empty {
     display: flex;
     flex-direction: column;
@@ -511,8 +513,8 @@
     text-overflow: ellipsis;
     text-align: left;
     white-space: nowrap;
-    font-size: var(--text-body);
-    font-weight: 620;
+    font-size: var(--text-head);
+    font-weight: var(--weight-title);
     letter-spacing: -0.01em;
     color: var(--color-foreground);
   }
@@ -527,7 +529,6 @@
     align-items: center;
     gap: 4px;
     font-size: var(--text-xs);
-    font-weight: 500;
     font-variant-numeric: tabular-nums;
   }
   .rollup { color: var(--color-muted-foreground); }
@@ -567,7 +568,7 @@
     white-space: nowrap;
     font-size: var(--text-xs);
     font-weight: 400;
-    color: var(--color-muted-foreground);
+    color: var(--color-subtle);
   }
   /* The rows under it carry no machine icon, so the header says the machine is unreachable in words ("Builder
      offline"), a step brighter than a plain machine name; its rows read dimmed (ThreadCard.svelte). */

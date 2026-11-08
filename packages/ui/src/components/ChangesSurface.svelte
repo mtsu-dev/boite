@@ -443,43 +443,43 @@
     --mark: var(--color-success);
   }
 
-  .mark[data-status='modified'] {
-    --mark: var(--color-live);
-  }
-
   .mark[data-status='deleted'],
   .mark[data-status='conflict'] {
     --mark: var(--color-danger);
   }
 
+  /* Modified, renamed, untracked: the neutral ink. Amber means only that something needs the user, and the
+     header's green and red counts already say how the file changed. */
+  .mark[data-status='modified'],
   .mark[data-status='renamed'],
   .mark[data-status='untracked'] {
     --mark: var(--color-muted-foreground);
   }
 
+  /* Cut in the middle: the folders give way first, so the path's start and the whole file name stay. */
   .path {
+    display: flex;
     flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+  }
+
+  .dir,
+  .base {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
-    direction: rtl;
-    text-align: left;
-  }
-
-  /* `direction: rtl` keeps the file name in view when the path is cut; each
-     span reads left to right again so the text itself is not reversed. */
-  .dir,
-  .base {
-    direction: ltr;
-    unicode-bidi: embed;
   }
 
   .dir {
+    flex: 0 1000 auto;
+    min-width: 3ch;
     color: var(--color-subtle);
   }
+  .dir:empty { min-width: 0; }
 
   .base {
+    flex: 0 1 auto;
     color: var(--color-foreground);
     font-weight: 500;
   }

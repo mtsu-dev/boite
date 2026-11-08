@@ -227,6 +227,10 @@
   {/if}
 
     {#if options.length > 0}
+      {#if docked && pending && !sent}
+        <!-- A pick only marks the row: the composer's Send answers, with whatever is typed. -->
+        <p class="how" data-testid="question-how">{multiple ? strings.chat.questionPickMany : strings.chat.questionPickOne}</p>
+      {/if}
       <div class="options" class:clipped={below > 0} role={multiple ? 'group' : 'radiogroup'} bind:this={list} onscroll={measure}>
         {#each options as option, index (option.id)}
           <button
@@ -341,10 +345,16 @@
   .more { align-self: flex-start; height: 24px; padding: 0 8px; color: var(--color-muted-foreground); font-size: var(--text-sm); }
   .skip { height: var(--control); padding: 0 8px; border-radius: var(--radius-sm); color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 550; }
 
-  .docked .options { gap: 2px; }
-  .docked .option { align-items: center; gap: 12px; padding: 8px 10px; border-color: transparent; border-radius: var(--radius-lg); background: transparent; }
-  .docked .option:hover:not(:disabled), .docked .option:focus-visible { transform: none; background: var(--color-hover); border-color: var(--color-border); }
-  .docked .option.picked { background: var(--color-hover); border-color: var(--color-edge); }
+  .how { margin: 0; color: var(--color-muted-foreground); font-size: var(--text-xs); line-height: 16px; }
+  /* Each choice a tappable row: its own fill and edge at rest, a lift under a mouse, the picked one ringed. */
+  .docked .options { gap: 4px; }
+  .docked .option { align-items: center; gap: 12px; padding: 7px 10px; border-color: var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface-2); box-shadow: var(--shadow-e1); }
+  @media (hover: hover) {
+    .docked .option:hover:not(:disabled) { transform: translateY(-1px); background: var(--color-surface-3); border-color: var(--color-edge); }
+  }
+  .docked .option:focus-visible { transform: none; background: var(--color-surface-3); border-color: var(--color-edge); }
+  .docked .option.picked { background: var(--color-surface-3); border-color: var(--color-foreground); }
+  .docked .option.picked .kbd { border-color: transparent; background: var(--color-foreground); color: var(--color-background); }
   .docked .option:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -1px; }
   .docked .label { font-weight: 550; }
   /* The shared keycap, one square per option; muted until its option is picked. */

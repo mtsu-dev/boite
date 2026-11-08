@@ -449,7 +449,9 @@
   .muted { color: var(--color-muted-foreground); font-size: var(--text-sm); }
   .link { height: auto; padding: 0; gap: 6px; color: var(--color-foreground); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--color-edge); }
 
-  .level { flex: none; display: inline-block; min-width: 44px; font-family: var(--font-mono); font-size: var(--text-xs); text-transform: uppercase; color: var(--color-muted-foreground); }
+  /* A level is a word, in sentence case like every label (round 17: no small capitals). */
+  .level { flex: none; display: inline-block; min-width: 44px; font-size: var(--text-xs); color: var(--color-muted-foreground); }
+  .level::first-letter { text-transform: uppercase; }
   .level[data-level='error'] { color: var(--color-danger); font-weight: 600; }
   .level[data-level='warn'] { color: color-mix(in srgb, var(--color-danger) 55%, var(--color-muted-foreground)); font-weight: 600; }
   .level[data-level='debug'] { color: var(--color-subtle); }

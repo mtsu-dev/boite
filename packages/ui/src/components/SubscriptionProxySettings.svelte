@@ -146,22 +146,14 @@
   form input:not([type='checkbox']) { width: 100%; min-width: 0; }
   .clear-key { min-height: var(--row); }
   .error { color: var(--color-danger); }
-  [aria-pressed='true'] { background: var(--color-active); }
+  .quiet[aria-pressed='true'] { background: var(--color-active); }
   .actions { display: flex; flex-wrap: wrap; gap: 6px; }
   .mode { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; font-size: var(--text-sm); }
-  .segmented { display: inline-flex; padding: 2px; gap: 2px; border-radius: var(--radius-md); background: var(--color-surface-2); }
-  .segmented button {
-    min-height: var(--control-sm); padding: 2px 12px; border: 0; border-radius: var(--radius-sm); background: transparent;
-    color: var(--color-muted-foreground); font-size: var(--text-sm);
-    transition: background var(--dur-2) var(--ease-out-quint), color var(--dur-2) var(--ease-out-quint);
-  }
-  .segmented button:hover { color: var(--color-foreground); }
-  .segmented button[aria-pressed='true'] { background: var(--color-active); color: var(--color-foreground); }
   .plugin { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-2); font-size: var(--text-sm); }
   .plugin .line { flex: 1; min-width: 0; color: var(--color-muted-foreground); font-variant-numeric: tabular-nums; }
   .dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--color-subtle); }
   .dot.ok { background: var(--color-success); }
-  .dot.live { background: var(--color-live); }
+  .dot.live { background: var(--color-accent); }
   .dot.bad { background: var(--color-danger); }
   .move { display: flex; align-items: center; gap: 4px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--color-border); }
 </style>

@@ -177,9 +177,10 @@
   /* A built-in bot's name keeps its badge right after it, the time still on the far right. */
   .name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
   .name .title { flex: 0 1 auto; }
-  .when { flex: none; color: var(--color-muted-foreground); font-size: var(--text-xs); }
-  .spent { flex: none; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; font-variant-numeric: tabular-nums; }
-  .detail-line { display: flex; align-items: center; gap: 5px; min-width: 0; font-size: var(--text-xs); color: var(--color-muted-foreground); }
+  /* Meta under and after the bot's name: a size under it, in the subtle ink, at the body's weight (round 17). */
+  .when { flex: none; color: var(--color-subtle); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+  .spent { flex: none; color: var(--color-subtle); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+  .detail-line { display: flex; align-items: center; gap: 5px; min-width: 0; font-size: var(--text-xs); color: var(--color-subtle); }
   .glyph { display: inline-flex; flex: none; }
   .detail { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* An answer not read yet reads like an unread message, in the foreground; a state's own colour wins over it. */

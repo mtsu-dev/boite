@@ -8,7 +8,7 @@
   import { MediaQuery } from 'svelte/reactivity';
   import MobileConnect from './MobileConnect.svelte';
   import type { Store } from '../lib/store.svelte';
-  import { workspace } from '../lib/workspace.svelte';
+  import { machineName, workspace } from '../lib/workspace.svelte';
   import { fill, strings } from '../lib/strings';
   import { count, projectName } from '../lib/format';
   import { mobileOverlay } from '../lib/mobile-history';
@@ -112,7 +112,7 @@
   let placeShown = $derived((several && !gathered) || store.connection !== 'ready' || store.pairingRequired);
   /** With the bots on, Contacts is the Bots tab's other side (MobileTabs.svelte): its page's name is the switch between them. */
   let botsAndContacts = $derived((store.page === 'agents' || store.page === 'home') && !recover && experimentOn('resident-agents') && contactsShown(store));
-  let place = $derived(store.pairingRequired ? strings.mobile.pairingRequired : store.connection === 'ready' ? machine?.label ?? strings.mobile.computer : strings.connection[store.connection]);
+  let place = $derived(store.pairingRequired ? strings.mobile.pairingRequired : store.connection === 'ready' ? (machine ? machineName(machine) : strings.mobile.computer) : strings.connection[store.connection]);
   let project = $derived(store.openProject ?? store.projects.find(p => p.archived !== true));
   let groups = $derived(projectView.sorted(machines.flatMap(machine => machine.store.projects.filter(project => !project.archived).map(project => ({ machine, project })))));
   /** The thread list on screen, with projects to show: its header names its two views. */

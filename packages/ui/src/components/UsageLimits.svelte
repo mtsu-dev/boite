@@ -124,7 +124,7 @@
   .checked :global(svg) { flex: none; opacity: 0.7; }
   .badges { display: flex; flex-wrap: wrap; gap: 5px; }
   .badge { padding: 2px 7px; border-radius: var(--radius-sm); background: var(--color-surface-3); color: var(--color-muted-foreground); font-size: var(--text-xs); }
-  .status-cooldown { color: var(--color-live); }
+  .status-cooldown { color: var(--color-caution); }
   .status-error { color: var(--color-danger); }
   .credit { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: var(--text-sm); }
   .credit .heading { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--color-muted-foreground); }
@@ -136,7 +136,7 @@
   .primary-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 500; }
   .primary-left { font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 650; font-size: var(--text-lg); line-height: 1; }
   .primary-left .unit { margin-left: 1px; font-size: var(--text-sm); font-weight: 500; color: var(--color-muted-foreground); }
-  .primary[data-tone='low'] .primary-left { color: var(--color-live); }
+  .primary[data-tone='low'] .primary-left { color: var(--color-caution); }
   .primary[data-tone='out'] .primary-left { color: var(--color-danger); }
   .primary-reset { display: flex; align-items: center; gap: 6px; color: var(--color-foreground); font-size: var(--text-sm); }
   .primary-reset :global(svg) { flex: none; color: var(--color-muted-foreground); }
@@ -145,7 +145,7 @@
   .track { height: 10px; border-radius: var(--radius-sm); background: var(--color-surface-3); overflow: hidden; filter: saturate(1); transition: filter var(--dur-3) var(--ease-out-quint); }
   .fill { height: 100%; border-radius: var(--radius-sm); background: var(--color-success); transition: width var(--dur-3) var(--ease-out-quint), background-color var(--dur-3) var(--ease-out-quint); }
   .primary[data-tone='out'] .track { background: color-mix(in srgb, var(--color-danger) 15%, var(--color-surface-3)); }
-  .primary[data-tone='low'] .fill { background: var(--color-live); }
+  .primary[data-tone='low'] .fill { background: var(--color-caution); }
   small, .muted { color: var(--color-muted-foreground); font-size: var(--text-xs); }
   p { margin: 0; }
   .muted { font-size: var(--text-sm); }

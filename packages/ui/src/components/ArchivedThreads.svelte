@@ -191,13 +191,12 @@
 <DeletedThreads {store} {eager} />
 
 <style>
-  /* One bordered group, rows parted by hairlines, as Recent's and Activity's rows are one list. */
+  /* One group, rows parted by hairlines, as Recent's and Activity's rows are one list. The settings card around it
+     is its frame, so the list draws no second border inside it. */
   .archived {
     list-style: none;
     margin: 0;
     padding: 0;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
   }
 
   /* The row is its own button: the main action's box covers it; the merge link and the menu stand above. */
@@ -208,7 +207,7 @@
     align-items: center;
     gap: 2px 10px;
     min-height: var(--row);
-    padding: 8px 10px;
+    padding: 6px 10px;
     transition: background var(--dur-2) var(--ease-out-quint);
   }
   .archived li + li { border-top: 1px solid var(--color-border); }
@@ -219,7 +218,8 @@
     grid-row: 1;
     min-width: 0;
     overflow-wrap: anywhere;
-    line-height: 1.5;
+    line-height: 1.45;
+    font-size: var(--text-body);
   }
   /* Since when, at the title line's end, the live rows' place; the row's action takes it under the pointer. */
   .at {
@@ -227,7 +227,7 @@
     grid-row: 1;
     justify-self: end;
     font-size: var(--text-xs);
-    color: var(--color-muted-foreground);
+    color: var(--color-subtle);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
@@ -241,7 +241,8 @@
     gap: 2px 6px;
     min-width: 0;
     font-size: var(--text-sm);
-    color: var(--color-muted-foreground);
+    line-height: 1.4;
+    color: var(--color-subtle);
   }
   .part { min-width: 0; overflow-wrap: anywhere; }
   /* The dot between two parts, whichever are there. */
@@ -268,13 +269,18 @@
   .archived li:not(.back):not(:hover, :focus-within) .main,
   .archived li:not(:hover, :focus-within) .actions :global(.trigger) { opacity: 0; }
   /* A phone has no pointer to wait for: a tap on the row restores, its menu (Restore, Delete) always shows. The
-     settings card already frames the list there, so the rows lose their own border and line up with its edge. */
+     rows line up with the settings card's edge there. */
   @media (max-width: 720px) {
     .archived li:not(:hover, :focus-within) .actions :global(.trigger) { opacity: 1; }
-    /* The menu always shows there, so it takes the second line's end and the time keeps the first's. */
-    .actions { grid-row: 2; }
+    /* The menu always shows there, so it takes the second line's end and the time keeps the first's; its target
+       overhangs the line rather than growing it, so the rows keep the live list's rhythm (title, place, time). */
+    .actions { grid-row: 2; margin-block: -12px; }
+    /* The tap on the row restores there, so its unseen Restore word gives its width back to the title; its box
+       still covers the row, since that box belongs to the row, not to the button. */
+    .archived li:not(.back) .main { width: 0; min-width: 0; padding: 0; border: 0; margin: 0; overflow: hidden; }
+    .archived li { padding-block: 10px; row-gap: 4px; }
+    .title { font-size: var(--text-reading); line-height: 1.35; }
     .archived li:is(:hover, :focus-within):not(.back) .at { visibility: visible; }
-    .archived { border: none; border-radius: 0; }
     .archived li { padding-inline: 0; }
     /* Brought into view (Settings opened at the archive), the phone page's machine bar above stays whole rather than
        cut. An id: the settings cards' own margin (app.css) is more specific than a class. */

@@ -178,6 +178,8 @@ test('several options are kept at once when the question takes several', () => {
   flushSync();
 
   expect(options().every(option => option.getAttribute('role') === 'checkbox')).toBe(true);
+  // The card says what a pick does: it marks rows, the send answers.
+  expect(document.querySelector('[data-testid=question-how]')?.textContent).toBe('Pick any, then send them');
   // Docked, each row shows its key until it is picked, then a check.
   expect(document.querySelector('kbd svg')).toBeNull();
   expect(options().map(option => option.querySelector('kbd')?.textContent)).toEqual(['1', '2']);

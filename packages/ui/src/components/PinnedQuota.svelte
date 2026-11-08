@@ -159,10 +159,11 @@
   .window { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1fr) 3.3em; align-items: center; gap: 8px; font-size: var(--text-xs); }
   .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-muted-foreground); }
   .amount { text-align: right; font-variant-numeric: tabular-nums; }
-  .amount[data-tone='low'], .amount[data-tone='out'] { color: var(--color-live); }
+  .amount[data-tone='low'] { color: var(--color-caution); }
+  .amount[data-tone='out'] { color: var(--color-danger); }
   .track { height: 4px; overflow: hidden; background: var(--color-surface-3); border-radius: var(--radius-sm); }
   .fill { display: block; height: 100%; background: var(--color-success); border-radius: inherit; transition: width var(--dur-3); }
-  .track[data-tone='low'] .fill { background: var(--color-live); }
+  .track[data-tone='low'] .fill { background: var(--color-caution); }
   .track[data-tone='out'] { background: color-mix(in srgb, var(--color-danger) 35%, var(--color-surface-3)); }
   .track[aria-busy='true'] { filter: saturate(0.15); }
   .stale .track { opacity: 0.45; }

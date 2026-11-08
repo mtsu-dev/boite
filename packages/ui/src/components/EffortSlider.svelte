@@ -7,18 +7,21 @@
   import { glides } from '../lib/motion';
   import { strings } from '../lib/strings';
   import { levelName } from '../lib/format';
+  import SheetHead from './SheetHead.svelte';
 
   /**
    * The reasoning chip and its popover: one dot per level of the model's scale,
    * filled up to the active one. A click on a dot or its name, a drag along the
    * track, or the arrows move it, and none of them close the popover: the level
    * is a setting of the model the composer already runs. The filled part glows
-   * brighter as the level rises. A dot under the pointer names its level in
-   * the heading before it is picked, and one line under the track says what
-   * the level gives and costs. A model with a fast mode puts its switch at
-   * the top left of the popover, and the chip carries a bolt while it is on;
-   * switching a speed on sends streaks across the popover, more and faster for
-   * the second tier.
+   * brighter as the level rises. The heading always names the picked level;
+   * the scale's two ends are named under the track. A dot under a mouse gets
+   * a hollow ring and its own name under it, and the line under the track
+   * reads that level's cost in a lighter ink until a click picks it. A model
+   * with a fast mode puts its switch at the top left of the popover (the bolt,
+   * its name and a small switch, on or off), and the chip carries a bolt while
+   * it is on; switching a speed on sends streaks across the popover, more and
+   * faster for the second tier. `readonly` names a bot's level and opens nothing.
    */
   let {
     levels,
@@ -27,7 +30,9 @@
     speeds = [],
     speed = null,
     onspeed = () => {},
-    ondefault
+    ondefault,
+    readonly = false,
+    readonlyHint = ''
   }: {
     levels: EffortLevel[];
     /**
@@ -45,6 +50,9 @@
      * shows a Default switch that hands the level back to the agent.
      */
     ondefault?: () => void;
+    /** The level is set elsewhere (a bot's settings): the chip names it and opens nothing. */
+    readonly?: boolean;
+    readonlyHint?: string;
   } = $props();
 
   const popover = new Closing();
@@ -54,7 +62,7 @@
   let line = $state<HTMLDivElement | undefined>(undefined);
   let dragging = $state(false);
   let preview = $state<number | null>(null);
-  /** The dot under a hovering pointer: the heading reads its level, the fill stays where it is. */
+  /** The dot under a hovering pointer: it gets a ring and its name, the heading and the fill stay on the pick. */
   let hovered = $state<number | null>(null);
 
   /** -1 while the agent keeps its own level: nothing picked and no default known. */
@@ -63,9 +71,12 @@
   let current = $derived(levels[index] ?? null);
   const selectedSpeed = $derived(speeds.find(entry => entry.id === speed));
   const levelLabel = $derived(current ? levelName(current) : levels.length > 0 ? strings.composer.effortDefault : strings.composer.standardSpeed);
-  /** What the heading and the line under the track read: the hovered dot's level, else the live one. */
-  let shown = $derived(hovered ?? index);
-  let shownLabel = $derived(levels[shown] ? levelName(levels[shown]!) : levelLabel);
+  /** A hovered dot other than the picked one: the preview, never the pick. */
+  let ghost = $derived(hovered !== null && hovered !== index && !dragging ? hovered : null);
+  /** What the line under the track costs: the previewed level, else the live one. */
+  let shown = $derived(ghost ?? index);
+  /** The fast switch's own name, on or off: the tier that runs, else the first one a click turns on. */
+  const fastLabel = $derived(selectedSpeed ?? speeds[0] ? levelName((selectedSpeed ?? speeds[0])!) : '');
   const label = $derived(current || levels.length > 0 ? levelLabel : selectedSpeed ? levelName(selectedSpeed) : strings.composer.standardSpeed);
   // An accent above a leading capital raises the label's visible centre.
   const accentedCap = $derived(/^\p{Lu}[\u0300-\u0314]/u.test(label.normalize('NFD')));
@@ -207,6 +218,13 @@
 <svelte:window onpointerdown={onWindowPointerdown} />
 
 <div class="effort" bind:this={root}>
+  {#if readonly}
+  <span class="ui-chip trigger readonly" data-testid="composer-effort" title={readonlyHint || strings.composer.effortTitle} aria-label={`${strings.composer.effortTitle}: ${label}`}>
+    <Brain size={14} strokeWidth={1.75} />
+    <span class="ui-label" class:accented-cap={accentedCap}>{label}</span>
+    {#if levels.length > 0 && selectedSpeed}<span class="fast-mark" data-testid="effort-fast-mark" title={levelName(selectedSpeed)}><Zap size={12} fill="currentColor" /></span>{/if}
+  </span>
+  {:else}
   <button
     type="button"
     class="ui-chip trigger"
@@ -224,8 +242,9 @@
     <!-- A fast mode switched on stays in sight with the popover closed. -->
     {#if levels.length > 0 && selectedSpeed}<span class="fast-mark" data-testid="effort-fast-mark" title={levelName(selectedSpeed)}><Zap size={12} fill="currentColor" /></span>{/if}
   </button>
+  {/if}
 
-  {#if popover.shown}
+  {#if popover.shown && !readonly}
     <div
       class="popover"
       class:closing={popover.closing}
@@ -247,14 +266,17 @@
           </div>
         {/key}
       {/if}
+      <SheetHead title={strings.composer.effortTitle} />
       <div class="heading">
         {#if speeds.length > 0}
           <button type="button" class="speed" class:active={!!selectedSpeed} data-testid="effort-speed" aria-label={strings.composer.speed} aria-pressed={!!selectedSpeed} title={selectedSpeed?.description ?? (selectedSpeed ? levelName(selectedSpeed) : strings.composer.standardSpeed)} onclick={cycleSpeed}>
             {#key rush?.id}<span class="bolt" class:dash={!!rush} class:strong={(rush?.power ?? 0) > 1}><Zap size={14} fill={selectedSpeed ? 'currentColor' : 'none'} /></span>{/key}
-            {#if selectedSpeed}<span class="ui-label" data-testid="effort-speed-label">{levelName(selectedSpeed)}</span>{/if}
+            <span class="ui-label" data-testid="effort-speed-label">{fastLabel}</span>
+            <!-- Off reads as a switch to turn on, not as a missing bolt. -->
+            <span class="switch mini" class:on={!!selectedSpeed} aria-hidden="true"></span>
           </button>
         {/if}
-        {#key rush?.id}<span class="level ui-label" class:dash={!!rush} class:strong={(rush?.power ?? 0) > 1} class:previewing={hovered !== null && hovered !== index} data-testid="effort-level">{shownLabel}</span>{/key}
+        {#key rush?.id}<span class="level ui-label" class:dash={!!rush} class:strong={(rush?.power ?? 0) > 1} data-testid="effort-level">{levelLabel}</span>{/key}
         {#if ondefault && current}
           <button type="button" class="speed agent-default ui-label" data-testid="effort-default" title={strings.composer.effortDefaultHint} onclick={ondefault}>{strings.composer.effortDefault}</button>
         {/if}
@@ -289,11 +311,19 @@
             <span class="thumb" style="left: {offset(index)}"></span>
           {/if}
           {#each levels as level, at (level.id)}
-            <button type="button" class="dot" class:on={at <= index} class:hovered={at === hovered} data-dot={level.id} data-value={level.id} title={levelName(level)} aria-label={levelName(level)} tabindex="-1" style="left: {offset(at)}" onclick={() => pick(at)}></button>
+            <button type="button" class="dot" class:on={at <= index} class:hovered={at === ghost} data-dot={level.id} data-value={level.id} title={levelName(level)} aria-label={levelName(level)} tabindex="-1" style="left: {offset(at)}" onclick={() => pick(at)}></button>
           {/each}
         </div>
       </div>
-      {#if cost}<p class="cost" data-testid="effort-cost">{cost}</p>{/if}
+      {#if levels.length > 1}
+        <!-- The scale's two ends by name; a previewed dot's name takes their place under it. -->
+        <div class="ends" class:previewing={ghost !== null} aria-hidden="true" data-testid="effort-ends">
+          <span class="end" data-end="low" style:--at={0} style:left="0%">{levelName(levels[0]!)}</span>
+          <span class="end" data-end="high" style:--at={1} style:left="100%">{levelName(levels[last]!)}</span>
+          {#if ghost !== null}<span class="ghost" data-testid="effort-preview" style:--at={last === 0 ? 0.5 : ghost / last} style:left={offset(ghost)}>{levelName(levels[ghost]!)}</span>{/if}
+        </div>
+      {/if}
+      {#if cost}<p class="cost" class:previewing={ghost !== null} data-testid="effort-cost">{cost}</p>{/if}
       {/if}
 
     </div>
@@ -303,21 +333,20 @@
 <style>
 .effort { position: relative; display: inline-flex; }
 .trigger { cursor: pointer; height: var(--control-sm); }
+.trigger.readonly { cursor: default; }
 @supports (text-box: trim-both cap alphabetic) {
   .trigger .accented-cap { translate: 0 0.1em; }
 }
 .trigger[aria-expanded='true'] { background: var(--control-glaze) var(--color-control-hover); color: var(--color-foreground); }
 /* A tap leaves :hover behind on a touch screen: the chip would stay pressed once its popover closed. */
-@media (hover: hover) { .trigger:hover { background: var(--control-glaze) var(--color-control-hover); color: var(--color-foreground); } }
+@media (hover: hover) { .trigger:not(.readonly):hover { background: var(--control-glaze) var(--color-control-hover); color: var(--color-foreground); } }
 .fast-mark { display: inline-flex; margin-left: -2px; color: var(--color-accent); filter: drop-shadow(0 0 4px var(--color-accent-soft)); }
 /* Every menu's one edge, radius and shadow. */
-.popover { position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 40; width: 288px; padding: 10px 12px 12px; background: var(--overlay-surface); border: 1px solid var(--overlay-edge); border-radius: var(--radius-overlay); box-shadow: var(--shadow-overlay); animation: pop var(--dur-2) var(--ease-out-quint); transform-origin: bottom left; }
+.popover { --track-pad: 12px; position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 40; width: 288px; padding: 10px 12px 12px; background: var(--overlay-surface); border: 1px solid var(--overlay-edge); border-radius: var(--radius-overlay); box-shadow: var(--shadow-overlay); animation: pop var(--dur-2) var(--ease-out-quint); transform-origin: bottom left; }
 .popover.closing { animation-name: pop-out; pointer-events: none; }
 /* Three columns: the fast switch on the left, the level in the middle whatever the switch's width. */
 .heading { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; min-height: 24px; margin-bottom: 8px; color: var(--color-foreground); font-size: var(--text-sm); font-weight: 600; }
 .level { grid-column: 2; white-space: nowrap; transition: color var(--dur-1); }
-/* A hovered dot's level reads lighter until it is picked. */
-.level.previewing { color: var(--color-muted-foreground); }
 .speed { grid-column: 1; justify-self: start; display: inline-flex; align-items: center; gap: 5px; height: 24px; margin-left: -4px; padding: 0 6px; border: none; border-radius: var(--radius-md); background: transparent; font-size: var(--text-xs); font-weight: 500; color: var(--color-muted-foreground); transition: color var(--dur-2), background var(--dur-2), box-shadow var(--dur-2); }
 .speed :global(svg) { transition: transform var(--dur-2) var(--ease-out-quint); }
 /* The bolt is a live control: the one accent-soft fill (owner's decision), with accent ink and a glow, under the pointer and while on. */
@@ -327,10 +356,14 @@
 }
 .speed.active { color: var(--color-accent); background: var(--color-accent-soft); }
 .speed.active .bolt { filter: drop-shadow(0 0 5px var(--color-accent-soft)); }
+/* The app's switch at a chip's scale. */
+.switch.mini { --switch-width: 24px; --switch-height: 14px; }
+.switch.mini::after { top: 2px; left: 2px; width: 8px; height: 8px; }
+.switch.mini.on::after { transform: translateX(10px); }
 .agent-default.speed:hover { color: var(--color-foreground); background: var(--color-hover); box-shadow: none; }
 .speed:active :global(svg) { transform: scale(.9); }
 .agent-default { grid-column: 3; justify-self: end; margin: 0 -4px 0 0; }
-.track { --track-pad: 12px; padding: 3px var(--track-pad); cursor: pointer; touch-action: none; height: 30px; background: var(--color-edge); border-radius: 999px; box-shadow: inset 0 0 0 1px var(--color-border); }
+.track { padding: 3px var(--track-pad); cursor: pointer; touch-action: none; height: 30px; background: var(--color-edge); border-radius: 999px; box-shadow: inset 0 0 0 1px var(--color-border); }
 .track:focus-visible { outline: 1px solid var(--color-reasoning); outline-offset: 3px; }
 .line { position: relative; height: 24px; }
 /* The filled part lights up with the level: more accent, a brighter end at the thumb and a wider halo. */
@@ -344,9 +377,18 @@
 .dot::after { content: ""; display: block; width: 4px; height: 4px; margin: auto; border-radius: 50%; background: var(--color-muted-foreground); }
 .dot::after { transition: transform var(--dur-1) var(--ease-out-quint); }
 .dot.on::after { background: var(--color-reasoning-on); opacity: calc(.35 + var(--effort-glow) * .4); }
-.dot.hovered::after { transform: scale(1.75); }
+/* The previewed dot: a hollow ring, unlike the filled thumb of the pick. */
+.dot.hovered::after { width: 12px; height: 12px; background: transparent; box-shadow: inset 0 0 0 1.5px var(--color-reasoning-on); opacity: 1; }
 /* The thumb sits inside the track with an even gap and a hairline edge, so it reads sharp on any surface. */
 .thumb { position: absolute; top: 50%; width: 24px; height: 24px; transform: translate(-50%, -50%); border-radius: 50%; background: var(--color-reasoning-on); box-shadow: 0 0 0 1px color-mix(in oklch, var(--color-foreground) 14%, transparent), var(--shadow-e1), 0 0 calc(var(--effort-blur) * .8) color-mix(in oklch, var(--color-accent) var(--effort-halo), transparent); z-index: 1; transition: box-shadow var(--dur-3); }
+/* The ends sit under the first and last dots, inside the track's own inset. */
+.ends { position: relative; height: 16px; margin: 6px var(--track-pad) 0; color: var(--color-muted-foreground); font-size: var(--text-xs); line-height: 16px; }
+.ends > span { position: absolute; top: 0; white-space: nowrap; transform: translateX(calc(var(--at) * -100%)); transition: opacity var(--dur-1); }
+/* Named per class: reduced motion fades them, never slides their script placement. */
+  .end { transition: opacity var(--dur-1); }
+  .ends.previewing .end { opacity: 0; }
+.ghost { color: var(--color-foreground); font-weight: 500; transition: opacity var(--dur-1); }
+.cost.previewing { color: var(--color-subtle); }
 .cost { margin: 8px 0 0; color: var(--color-muted-foreground); font-size: var(--text-xs); line-height: 1.35; text-align: center; }
 /* Speed lines: each one crosses the whole popover from right to left, its bright head first. */
 .streaks { position: absolute; inset: 0; z-index: 2; overflow: hidden; border-radius: inherit; pointer-events: none; }
@@ -390,11 +432,14 @@
   .popover { padding: 12px 16px 16px; }
   .heading { min-height: var(--touch-target); }
   .speed { height: var(--touch-target); padding: 0 10px; }
-  .track { --track-pad: 18px; height: var(--touch-target); padding-block: 8px; }
+  .popover { --track-pad: 18px; }
+  .track { height: var(--touch-target); padding-block: 8px; }
   .line { height: 28px; }
   .dot { width: var(--touch-target); height: var(--touch-target); }
   .thumb { width: 28px; height: 28px; }
   .cost { font-size: var(--text-sm); }
+  .ends { height: 20px; line-height: 20px; font-size: var(--text-sm); }
+  .speed { gap: 8px; }
 }
 @media (prefers-reduced-motion: reduce) { .streaks { display: none; } .level.dash, .bolt.dash { animation: none; } }
 </style>

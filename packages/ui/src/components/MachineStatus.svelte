@@ -71,6 +71,6 @@
   .machines :global(.trigger) { position: relative; }
   /* The rail's overlay slot (AppRail.svelte's `.badge`): a grey dot cut out of the chrome. */
   .off { position: absolute; right: 4px; bottom: 4px; width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--color-subtle); box-shadow: 0 0 0 2px var(--color-frame); }
-  .problem { color: var(--color-live); }
-  .problem :global(.trigger) { color: var(--color-live); }
+  .problem { color: var(--color-caution); }
+  .problem :global(.trigger) { color: var(--color-caution); }
 </style>

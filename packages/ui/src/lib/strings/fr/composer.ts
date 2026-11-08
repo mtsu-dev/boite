@@ -24,7 +24,7 @@ export const fr: Translation = {
     options: 'Ajouter au message',
     mentionFile: 'Mentionner un fichier',
     commands: 'Commandes',
-    botModel: "Modèle de {name}, réglé dans ses paramètres",
+    botSettings: 'Réglé dans les paramètres de {name}',
     placeholder: 'Message à {name}',
     placeholderAgent: "l'agent",
     placeholderOffline: '{machine} est hors ligne : les messages attendent ici et partent à sa reconnexion',

@@ -24,7 +24,8 @@ export const strings = {
     options: 'Add to the message',
     mentionFile: 'Mention a file',
     commands: 'Commands',
-    botModel: "{name}'s model, set in its settings",
+    /** A bot's model, effort and permission chips: read at rest, changed in its settings. */
+    botSettings: "Set in {name}'s settings",
     /** The box at rest, on a new conversation or one under way: who reads the message. */
     placeholder: 'Message {name}',
     /** `{name}` in the two placeholders when the provider is unknown. */

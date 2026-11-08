@@ -64,7 +64,7 @@
 
 <style>
   .policy-banner {
-    --tone: var(--color-live);
+    --tone: var(--color-caution);
     max-width: var(--settings-width);
     padding: 8px 8px 8px 14px;
     box-shadow: none;

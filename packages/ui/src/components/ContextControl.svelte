@@ -107,8 +107,8 @@
   /* The percent names its measure: the word on a desktop; on a phone, where the model's name needs the row, the meter's glyph. */
   .trigger :global(.measure) { display: none; }
   @media (max-width: 720px) { .trigger :global(.measure) { display: block; } .word { display: none; } }
-  [data-level='full'] :is(.percent, .trigger :global(.measure)) { color: var(--color-live); }
+  [data-level='full'] :is(.percent, .trigger :global(.measure)) { color: var(--color-caution); }
   .cache-chip { display: flex; align-items: center; gap: 3px; margin-left: 4px; font-size: var(--text-xs); }
   .cache-chip[data-state='warm'] :global(svg) { color: var(--color-success); }
-  .cache-chip[data-state='maybe'] :global(svg), .cache-chip.low :global(svg) { color: var(--color-live); }
+  .cache-chip[data-state='maybe'] :global(svg), .cache-chip.low :global(svg) { color: var(--color-caution); }
 </style>

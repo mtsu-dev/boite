@@ -6,6 +6,11 @@ export const strings = {
     pathPlaceholder: 'Absolute path of the folder',
     /** The agents a first run offers, as one choice. */
     agents: 'Agents',
+    /** The three steps a first run shows, the first one to take now. */
+    steps: 'Getting started',
+    stepConnect: 'Connect an AI you already use',
+    stepProject: 'Open a project folder',
+    stepTask: 'Describe a task, the agent does it',
     /** An agent whose program is already on this machine. */
     installed: 'Installed',
     /** The last row of the first run's agents: the connect dialog's whole list. */

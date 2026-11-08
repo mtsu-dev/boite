@@ -178,6 +178,8 @@
               <span class="machine" data-testid="draft-machine"><MachineIcon icon={machine.icon} os={store.core?.os} size={20} /><span class="ui-label">{machine.label}</span></span>
             {/if}
           </h1>
+          <!-- What this pane is for, said once: the task goes in the box, the agent works there, the thread lands in the list. -->
+          <p class="start-hint" data-testid="draft-hint">{strings.thread.startHint}</p>
         </div>
     {/if}
 
@@ -341,6 +343,15 @@
     color: var(--color-foreground);
     text-align: center;
     line-height: 1.6;
+  }
+
+  .start-hint {
+    max-width: 52ch;
+    margin: 0;
+    color: var(--color-muted-foreground);
+    font-size: var(--text-base);
+    line-height: 1.5;
+    text-wrap: balance;
   }
 
   @media (max-width: 720px) {
