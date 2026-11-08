@@ -40,8 +40,13 @@ test('the keybindings file moves a chord, takes one away, and the Keyboard page 
   expect(document.body.dispatchEvent(panel)).toBe(true);
   expect(store.panelOpen).toBe(false);
 
-  // A default still stands, and the tooltip and the palette hint read the table too.
-  expect(query<HTMLButtonElement>('[data-testid=nav-settings]').title).toBe('Settings (Ctrl+,)');
+  // A default still stands, and the rail's name card, the button's description and the palette hint read the table too.
+  const gear = query<HTMLButtonElement>('[data-testid=nav-settings]');
+  expect(gear.getAttribute('aria-label')).toBe('Settings');
+  expect(gear.title).toBe('');
+  const card = gear.parentElement!.querySelector('.rail-name')!;
+  expect(card.textContent).toBe('SettingsCtrl+,');
+  expect(document.getElementById(gear.getAttribute('aria-describedby')!)?.textContent).toBe('Ctrl+,');
   const settings = new KeyboardEvent('keydown', { key: ',', ctrlKey: true, bubbles: true, cancelable: true });
   expect(document.body.dispatchEvent(settings)).toBe(false);
   await waitFor(() => document.querySelector('[data-testid=settings-tab-keyboard]') !== null);

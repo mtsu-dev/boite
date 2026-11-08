@@ -5,12 +5,8 @@
  * Forms and settings speak the settings grammar of app.css.
  */
 
-/* The column stands in the thread list's frame (RailFrame); on a phone it is the list of bots under the page's own head. */
+/* The column stands in the thread list's frame (RailFrame); on a phone it is the list of bots under the phone header. */
 .agents-rail { --ring: var(--color-frame); }
-.agents-search { display: flex; align-items: center; gap: 8px; margin: 8px 10px 0; padding: 0 4px 0 10px; height: var(--control); border-radius: var(--radius-md); background: var(--color-surface-2); color: var(--color-muted-foreground); }
-.agents-search input { flex: 1; min-width: 0; height: 100%; background: none; border: 0; padding: 0; font-size: var(--text-sm); box-shadow: none; }
-.agents-search input:focus { outline: none; }
-.agents-rail .agents-search { margin: 8px 10px 0; }
 .agents-rail .agents-card { margin-bottom: 10px; padding: 4px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--color-surface-2) 55%, transparent); }
 /* With teams listed, each card stands under its heading: Teams, then Bots. */
 .agents-rail .agents-section { margin: 4px 10px 6px; }
@@ -19,11 +15,6 @@
 .agents-rail .agents-section-head .section-label { margin: 0; }
 .agents-rail .agents-section-head [aria-disabled='true'] { opacity: 0.5; }
 .agents-rail .agents-teams-note { margin: 0 10px 12px; font-size: var(--text-xs); line-height: 1.5; color: var(--color-muted-foreground); }
-
-/* The phone's top bar already names the page: the heading stays for readers only and the row keeps its two buttons. */
-.agents-phone-head { position: relative; display: flex; align-items: center; justify-content: flex-end; gap: 2px; padding: 4px 8px 0 16px; }
-.agents-phone-title { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; margin: 0; }
-.agents-phone-head .ghost.icon { width: var(--control-touch); height: var(--control-touch); }
 
 /* A desktop's column: the selected bot's head, its conversation, then the threads it handles and the ones it is done with. */
 .bot-head { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 6px 8px 14px; }
@@ -37,7 +28,7 @@
 .bot-head-time { font-variant-numeric: tabular-nums; }
 .bot-head-live[data-state='waiting'] { color: var(--color-live); }
 .bot-head-live[data-state='error'] { color: var(--color-danger); }
-.bot-spin { flex: none; margin-right: 5px; vertical-align: -2px; color: var(--color-accent); animation: spin 1s linear infinite var(--loops); }
+.bot-spin { flex: none; display: inline-flex; margin-right: 6px; }
 .bot-head .menu .trigger.ghost { width: 28px; height: 28px; padding: 0; color: var(--color-subtle); }
 .bot-column { display: flex; flex-direction: column; padding: 0 8px 12px; }
 .bot-nav { display: flex; align-items: center; justify-content: flex-start; gap: 10px; height: 34px; padding: 0 10px; border: 0; border-radius: var(--radius-md); background: none; box-shadow: none; color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 500; text-align: left; }
@@ -319,7 +310,6 @@ fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-p
 .desk-steps li[data-status='running'] { color: var(--color-foreground); }
 .desk-step-mark { flex: none; z-index: 1; width: 15px; height: 15px; display: grid; place-items: center; border-radius: 50%; background: var(--color-surface); color: var(--color-success); }
 .desk-steps li[data-status='running'] .desk-step-mark { color: var(--color-foreground); }
-.desk-steps li[data-status='running'] .desk-step-mark svg { animation: spin 1s linear infinite var(--loops); }
 .desk-steps li[data-status='error'] .desk-step-mark { color: var(--color-danger); }
 .desk-step-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .desk-step-text.mono { font-family: var(--font-mono); font-size: var(--text-xs); }
@@ -347,7 +337,6 @@ fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-p
 .desk-row-head { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 20px; }
 .desk-card-title { flex: 1; min-width: 0; font-size: var(--text-sm); font-weight: 500; line-height: 1.45; color: var(--color-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .desk-row.done .desk-card-title { color: var(--color-muted-foreground); font-weight: 400; }
-.desk-row .desk-row-spin { flex: none; color: var(--color-accent); animation: spin 1s linear infinite var(--loops); }
 .desk-row-mark { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--color-live); }
 .desk-row-mark[data-tone='danger'] { background: var(--color-danger); }
 .desk-card-when { flex: none; font-size: var(--text-xs); color: var(--color-subtle); font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -363,7 +352,6 @@ fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-p
 .desk-card-pr { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
 .desk-card-pr[data-pr='merged'], .desk-card-pr[data-checks='passing'] { color: var(--color-success); }
 .desk-card-pr:is([data-pr='closed'], [data-checks='failing']):not([data-pr='merged']) { color: var(--color-danger); }
-.desk-card-pr[data-checks='pending'] .spin { animation: spin 1s linear infinite var(--loops); }
 .desk-row.done .desk-card-pr:not([data-pr='merged']) { color: var(--color-subtle); }
 /* The question a thread asks, under its line: the words, then its options; no box of its own. */
 .desk-question { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 2px; }
@@ -390,10 +378,10 @@ fieldset.card { border: 1px solid var(--color-border); padding: var(--settings-p
 .desk-memory-alert { flex: none; display: inline-flex; color: var(--color-danger); }
 /* Reduced motion stills the desk: no pulse, no spin, no entrance. */
 @media (prefers-reduced-motion: reduce) {
-  .desk-row-spin, .desk-progress > span, .desk-step-mark svg, .desk-card-pr svg { animation: none !important; }
+  .desk-progress > span { animation: none !important; }
   .desk-now-line, .desk-steps li, .desk-row, .desk-chip { animation: none; }
 }
-html[data-motion='reduced'] :is(.desk-row-spin, .desk-progress > span, .desk-step-mark svg, .desk-card-pr svg) { animation: none !important; }
+html[data-motion='reduced'] .desk-progress > span { animation: none !important; }
 html[data-motion='reduced'] :is(.desk-now-line, .desk-steps li, .desk-row, .desk-chip) { animation: none; }
 @media (max-width: 720px) {
   .desk-activity > summary { min-height: var(--control-touch); }

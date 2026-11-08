@@ -5,7 +5,9 @@
   import { GroupLinks } from '../lib/group-links.svelte';
   import InfoTip from './InfoTip.svelte';
   import PolicyLock from './PolicyLock.svelte';
-  import { ArrowUpRight, RefreshCw, Trash2, ScanLine } from '@lucide/svelte';
+  import { ArrowUpRight, Ellipsis, RefreshCw, Trash2, ScanLine } from '@lucide/svelte';
+  import Menu from './Menu.svelte';
+  import { separator, type MenuItem } from '../lib/menu';
   import { listedName, machineHealth, machineName, workspace, machineIcons, type Machine } from '../lib/workspace.svelte';
   import { store as primary } from '../lib/store.svelte';
   import { confirm } from '../lib/confirm.svelte';
@@ -121,6 +123,29 @@
     pairingForm?.startAdding();
   }
 
+  /**
+   * A machine's row menu: the two switches it holds for the group, each named
+   * in full with its explanation on hover, then its removal. One menu per row
+   * rather than a column of unnamed switches per machine.
+   */
+  function optionsOf(machine: Machine, shared: boolean): MenuItem[] {
+    const settings = machine.store.settings;
+    const locked = lockedBy(machine.store.policy, 'network.groups') !== null;
+    const items: MenuItem[] = shared ? [
+      { id: 'threads', label: strings.machines.groupThreads, title: strings.machines.groupThreadsHint, checked: settings?.groupThreads === true, disabled: locked, testid: 'machine-group-threads-switch' },
+      { id: 'bots', label: strings.machines.groupBots, title: strings.machines.groupBotsHint, checked: settings?.groupBots === true, disabled: locked, testid: 'machine-group-bots-switch' }
+    ] : [];
+    if (machine.store !== primary) items.push(...(items.length ? [separator()] : []), { id: 'remove', label: strings.machines.remove, glyph: Trash2, danger: true, testid: 'machine-remove' });
+    return items;
+  }
+
+  function pickOption(machine: Machine, owner: Store, id: string) {
+    const settings = machine.store.settings;
+    if (id === 'threads') void machine.store.saveSettings({ groupThreads: settings?.groupThreads !== true });
+    else if (id === 'bots') void machine.store.saveSettings({ groupBots: settings?.groupBots !== true });
+    else if (id === 'remove') void removeMachine(machine, owner);
+  }
+
   /** Removing a member ends its group membership and forgets its connection on this client. */
   async function removeMachine(machine: Machine, owner: Store) {
     const groupId = owner.group?.id;
@@ -157,13 +182,6 @@
     {#if topForm}<PairMachine {mobile} bind:this={pairingForm} />{/if}
     {#each groupStores as owner (owner.group?.id ?? 'ungrouped')}
     <GroupCard store={owner} {mobile} migration={owner === groupStores[0] ? migration : undefined}>
-    {#if machinesOf(owner).some((machine) => groupThreadsShown(machine, owner, GroupLinks.coreOf(machine)))}
-      <div class="switch-head" data-testid="machine-switch-head">
-        <span class="ui-label">{strings.machines.fromOthers}</span>
-        <span class="column ui-label-box"><span class="ui-label">{strings.machines.threadsColumn}</span><InfoTip topic={strings.machines.groupThreads} text={strings.machines.groupThreadsHint} /></span>
-        <span class="column ui-label-box"><span class="ui-label">{strings.machines.botsColumn}</span><InfoTip topic={strings.machines.groupBots} text={strings.machines.groupBotsHint} /></span>
-      </div>
-    {/if}
     <ul class="machines">
       {#each machinesOf(owner) as machine (machine.id)}
         {@const coreId = GroupLinks.coreOf(machine)}
@@ -173,6 +191,8 @@
         {@const home = coreId !== undefined && owner.group?.settingsHome === coreId}
         {@const bots = coreId !== undefined && owner.group?.botsHome === coreId}
         {@const manual = byHand(machine)}
+        {@const shared = groupThreadsShown(machine, owner, coreId)}
+        {@const options = optionsOf(machine, shared && !gone)}
         <li data-core-id={coreId} class="machine-card" class:away={gone} class:lost={away(machine) === 'lost'} data-testid="machine-card" data-group-member={coreId && owner.group?.cores.some(core => core.coreId === coreId) ? "true" : undefined} data-machine-id={machine.id} data-away={away(machine) ?? undefined}>
           <div class="main">
             <button
@@ -211,27 +231,16 @@
                   ><span class="ui-label">{strings.machines.open}</span><ArrowUpRight size={13} /></button
                 >
               {/if}
-              {#if machine.store !== primary}
-                <button class="ghost icon-only remove" data-testid="machine-remove" aria-label={strings.machines.remove} title={strings.machines.remove} onclick={() => void removeMachine(machine, owner)}><Trash2 size={15} /></button>
-              {/if}
             </div>
-            <!-- The two switches sit under the list's one head (Threads, Bots): no label repeated per machine. Each keeps its full name for a screen reader. -->
-            {#if groupThreadsShown(machine, owner, coreId)}
-              {@const locked = lockedBy(machine.store.policy, 'network.groups') !== null}
-              <div class="switches">
-                <PolicyLock store={machine.store} keys={['network.groups']} />
-                <label class="switch-cell" data-testid="machine-group-threads">
-                  <span class="visually-hidden">{strings.machines.groupThreads}, {machineName(machine)}</span>
-                  <span class="ghost" aria-hidden="true">{strings.machines.threadsColumn}</span>
-                  <input type="checkbox" role="switch" data-testid="machine-group-threads-switch" checked={machine.store.settings?.groupThreads === true} disabled={locked}
-                    onchange={async (event) => { const input = event.currentTarget; if (!(await machine.store.saveSettings({ groupThreads: input.checked }))) input.checked = machine.store.settings?.groupThreads === true; }} />
-                </label>
-                <label class="switch-cell" data-testid="machine-group-bots">
-                  <span class="visually-hidden">{strings.machines.groupBots}, {machineName(machine)}</span>
-                  <span class="ghost" aria-hidden="true">{strings.machines.botsColumn}</span>
-                  <input type="checkbox" role="switch" data-testid="machine-group-bots-switch" checked={machine.store.settings?.groupBots === true} disabled={locked}
-                    onchange={async (event) => { const input = event.currentTarget; if (!(await machine.store.saveSettings({ groupBots: input.checked }))) input.checked = machine.store.settings?.groupBots === true; }} />
-                </label>
+            <!-- The row's menu keeps the name's line on a phone too, where the actions wrap under it. -->
+            {#if shared || options.length > 0}
+              <div class="row-end">
+                {#if shared}<PolicyLock store={machine.store} keys={['network.groups']} />{/if}
+                {#if options.length > 0}
+                  <Menu items={options} onpick={(id) => pickOption(machine, owner, id)} label={fill(strings.machines.options, { machine: machineName(machine) })} heading={machineName(machine)} placement="bottom" align="end" variant="ghost" switches={shared && !gone} testid="machine-menu">
+                    <Ellipsis size={16} />
+                  </Menu>
+                {/if}
               </div>
             {/if}
           </div>
@@ -300,28 +309,7 @@
     gap: 12px;
     min-height: 40px;
   }
-  /* One head names the two switch columns every machine row ends on. A column
-     is as wide as its word and its "i", the switch centred under it. */
-  .switch-head {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: var(--space-2);
-    padding: var(--space-2) 0 var(--space-1);
-    border-bottom: 1px solid var(--color-border);
-    font-size: var(--text-sm);
-    color: var(--color-muted-foreground);
-  }
-  .switch-head > .ui-label { flex: 1; min-width: 0; }
-  /* A column is as wide as its head (the word and its 22 px "i" with its 4 px
-     margin and 2 px gap): each cell holds an unseen copy of the word with that
-     room, so the switches line up under the heads in either language. */
-  .switch-head .column { justify-content: center; gap: 2px; min-width: 44px; }
-  .switches { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); flex: none; margin-left: auto; }
-  .switch-cell { display: grid; justify-items: center; align-items: center; min-width: 44px; cursor: pointer; }
-  .switch-cell > * { grid-area: 1 / 1; }
-  .switch-cell .ghost { height: 0; padding-right: 28px; overflow: hidden; visibility: hidden; font-size: var(--text-sm); white-space: nowrap; }
-  .machine-card.away .switches { visibility: hidden; }
+  .row-end { flex: none; display: flex; align-items: center; gap: 4px; }
   .logo {
     display: grid;
     place-items: center;
@@ -431,7 +419,6 @@
   .updates { color: var(--color-muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: none; }
   .updates[data-state='available'] { color: var(--color-foreground); }
   .updates[data-state='failed'] { color: var(--color-danger); }
-  .remove { color: var(--color-danger); }
   .actions {
     display: flex;
     align-items: center;
@@ -443,8 +430,6 @@
     padding: 0;
     color: var(--color-muted-foreground);
   }
-  .icon-only.remove { color: var(--color-muted-foreground); }
-  .icon-only.remove:hover { color: var(--color-danger); }
   .icon-choices {
     display: flex;
     flex-wrap: wrap;
@@ -480,15 +465,10 @@
     .main {
       flex-wrap: wrap;
     }
-    /* The switches keep the name's line while it has room, else wrap under it, still under their heads. */
     .identity { flex: 1 1 140px; }
-    .switch-head > .ui-label { display: none; }
     .meta { flex-wrap: wrap; gap: 2px 10px; }
     .version::before,
     .updates::before { content: none; }
-    /* The label is the tap target: a finger gets 44 px around the 24 px switch. */
-    .switches { order: 2; }
-    .switch-cell { min-height: 44px; }
     .actions {
       order: 3;
       width: 100%;
@@ -500,7 +480,8 @@
     .actions button {
       min-height: var(--touch-target);
     }
-    .actions .icon-only { min-width: var(--touch-target); }
+    .actions .icon-only, .row-end :global(.trigger) { min-width: var(--touch-target); min-height: var(--touch-target); }
+    .row-end { order: 2; }
     .icon-choices,
     .error {
       padding-left: 0;

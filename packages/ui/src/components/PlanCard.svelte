@@ -104,7 +104,7 @@
     gap: 10px;
     min-width: 0;
     min-height: var(--control-sm);
-    font-size: var(--text-xs);
+    font-size: var(--text-sm);
     color: var(--color-subtle);
   }
 
@@ -121,7 +121,7 @@
 
   .body { min-width: 0; padding-right: 4px; color: var(--color-foreground); }
   /* The plan is content: a step under the answer's size, above the tool rows. */
-  .body :global(.prose) { font-size: var(--text-reading); line-height: 1.55; }
+  .body :global(.prose) { font-size: var(--text-reading); line-height: var(--leading-reading); }
   /* Normal weight: the agent's bold lead words read as the step, not as a shout. */
   .body :global(strong) { font-weight: inherit; }
   .body :global(:is(h1, h2, h3, h4, h5, h6)) { font-size: var(--text-sm); font-weight: 600; margin: 10px 0 4px; }

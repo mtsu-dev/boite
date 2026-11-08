@@ -10,6 +10,8 @@
   import { fill, strings } from '../lib/strings';
   import type { Choice, PickPatch, Store } from '../lib/store.svelte';
   import PickerChoices from './PickerChoices.svelte';
+  // Its body loads with the picker's menu, which hands it to `rows`.
+  import type PickerMore from './PickerMore.svelte';
   import ModelPicker from './ModelPicker.svelte';
   import Deferred, { parts } from './Deferred.svelte';
   import ComposerOptions from './ComposerOptions.svelte';
@@ -20,7 +22,7 @@
   import { keepFocus } from '../lib/focus';
   import { contextLevel, contextPercent } from '../lib/tokens';
   import { speedControl } from '../lib/model-speeds';
-  import { levelName } from '../lib/format';
+  import { levelName, levelTitle } from '../lib/format';
   import type { ComposerTarget } from '../lib/composer-target';
   import { desktopSettings } from '../lib/settings-tabs';
 
@@ -158,8 +160,11 @@
   let agentDefault = $derived(effortLevels.length > 0 && store.modelOf(choice)?.effort?.default === undefined);
   /** The empty id is the agent's own level, offered first while the model names no default. */
   let effortItems = $derived([...agentDefault ? [{ id: '', label: strings.composer.effortDefault, title: strings.composer.effortDefaultHint }] : [],
-    ...effortLevels.map((level) => ({ id: level.id, label: levelName(level), title: level.description }))]);
-  let speedItems = $derived([{ id: '', label: strings.composer.standardSpeed }, ...speeds.map((entry) => ({ id: entry.id, label: levelName(entry), title: entry.description }))]);
+    ...effortLevels.map((level) => ({ id: level.id, label: levelName(level), title: levelTitle(level) }))]);
+  let speedItems = $derived([{ id: '', label: strings.composer.standardSpeed }, ...speeds.map((entry) => ({ id: entry.id, label: levelName(entry), title: levelTitle(entry) }))]);
+  /** What the picker's More row holds, by its current values: a speed other than the standard one, then the mode. */
+  let moreSummary = $derived([speedItems.find((item) => item.id !== '' && item.id === speedOptions.speed)?.label, modes.length > 0 ? modeItems.find((item) => item.id === displayedMode)?.label : undefined]
+    .filter(Boolean).join(' · '));
 
   /** A null effort runs at the model's own default, not at a preset the client configured. */
   function cacheKey(selection: Choice): CacheKey {
@@ -258,10 +263,10 @@
     onfiles(files);
   }
 
-  /** The chip's own trigger opens its menu: one popover, owned by one component. Effort and mode are rows of the model chip's. */
+  /** The chip's own trigger opens its menu: one popover, owned by one component. Effort, speed and mode are rows of the model chip's. */
   export async function openChip(testid: string) {
     await tick();
-    if (testid === 'composer-picker' || testid === 'composer-effort' || testid === 'composer-mode') {
+    if (testid === 'composer-picker' || testid === 'composer-effort' || testid === 'composer-mode' || testid === 'effort-speed') {
       await chip?.reveal(testid === 'composer-picker' ? undefined : testid);
       return;
     }
@@ -288,22 +293,27 @@
         <div class="context-control" oncontextmenu={(event) => controlMenu(event, store, 'header.context')}><ContextControl {store} anchor={askAnchor} /></div>
       {/if}
     {/snippet}
-    {#snippet rows()}
+    {#snippet rows(More: typeof PickerMore)}
       <!-- Each row names its setting and lays its choices out by name: the same order and words on every width. -->
       {#if effortLevels.length > 0}
         <div class="setting" data-testid="composer-effort" tabindex="-1"><span class="setting-name ui-label">{strings.composer.effortTitle}</span>
           <PickerChoices label={strings.composer.effortTitle} testid="composer-effort-menu" items={effortItems} active={activeEffort ?? (agentDefault ? '' : null)} onpick={pickEffort} /></div>
       {/if}
-      {#if speeds.length > 0}
-        <div class="setting" data-testid="effort-speed" tabindex="-1"><span class="setting-name ui-label">{strings.composer.speed}</span>
-          <PickerChoices label={strings.composer.speed} testid="effort-speed-menu" items={speedItems} active={speedOptions.speed ?? ''} onpick={(id) => void pick(speedOptions.pick(id || null))} /></div>
-      {/if}
-      {#if modes.length > 0}
-        <div class="setting" data-testid="composer-mode" tabindex="-1"><span class="setting-name ui-label">{strings.composer.mode}</span>
-          <PickerChoices label={strings.composer.mode} testid="composer-mode-menu" items={modeItems} active={displayedMode} onpick={pickMode} /></div>
-      {/if}
-      {#if bound}
-        <div class="setting context-row"><span class="setting-name ui-label">{strings.thread.contextDetails}</span><ContextControl {store} /></div>
+      {#if speeds.length > 0 || modes.length > 0 || bound}
+        <!-- The rest waits behind one quiet row that reads its values: the first level is the model and its effort. -->
+        <More summary={moreSummary}>
+          {#if speeds.length > 0}
+            <div class="setting" data-testid="effort-speed" tabindex="-1"><span class="setting-name ui-label">{strings.composer.speed}</span>
+              <PickerChoices label={strings.composer.speed} testid="effort-speed-menu" items={speedItems} active={speedOptions.speed ?? ''} onpick={(id) => void pick(speedOptions.pick(id || null))} /></div>
+          {/if}
+          {#if modes.length > 0}
+            <div class="setting" data-testid="composer-mode" tabindex="-1"><span class="setting-name ui-label">{strings.composer.mode}</span>
+              <PickerChoices label={strings.composer.mode} testid="composer-mode-menu" items={modeItems} active={displayedMode} onpick={pickMode} /></div>
+          {/if}
+          {#if bound}
+            <div class="setting context-row"><span class="setting-name ui-label">{strings.thread.contextDetails}</span><ContextControl {store} /></div>
+          {/if}
+        </More>
       {/if}
     {/snippet}
     <!-- A bot's model is its own setting: its chip names it and changes nothing here. -->
@@ -393,6 +403,8 @@
      under it when the picker is too narrow for both on one line. */
   .setting { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; min-height: var(--row); padding: 2px 2px 2px 8px; outline: none; }
   .setting > :global(.choices) { flex: 0 1 auto; }
+  /* A phone gives the choices their own full line under the name, on its grid. */
+  @media (max-width: 720px) { .setting > :global(.choices) { flex: 1 0 100%; } }
   .setting-name { color: var(--color-muted-foreground); font-size: var(--text-sm); }
 
   /* Every child is one control high, so the end is the centre on one row; on a

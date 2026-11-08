@@ -11,7 +11,7 @@ import { fill, strings } from './strings';
 interface AgentMenuOptions {
   /** Its conversation is the one on screen. */
   open: boolean;
-  /** A phone's menu: pin, rename, edit, then pause and archive, as a thread's phone menu. */
+  /** A phone's menu: rename, pin, edit, then pause and archive, as a thread's phone menu. */
   phone?: boolean;
   /** It waits to move to another machine once its turn ends: the move can be cancelled. */
   leaving?: boolean;
@@ -19,8 +19,9 @@ interface AgentMenuOptions {
 
 /**
  * A bot's row menu, cut from the thread menu (`threadMenuItems`): the same
- * groups in the same order, with the same words and glyphs where a thread has
- * the action, and only what a bot has. `store` is the bot's machine. Every
+ * groups in the same order (Open; what it is called and who has it: Rename,
+ * Pin, Edit, Move; where it stands: Pause, Archive; then its tools), with the
+ * same words and glyphs where a thread has the action, and only what a bot has. `store` is the bot's machine. Every
  * action but Open and Copy the path is its owner's, as in the bot's own menu
  * (`AgentHeader`): a paired device keeps those two on a desktop and has no
  * menu on a phone. A built-in bot is never archived: Reset takes its place.
@@ -33,13 +34,13 @@ export function agentMenuItems(store: Store, agent: AgentProfile, options: Agent
   const archive: MenuItem = agent.builtin ? { id: 'reset', label: labels.builtin.reset, glyph: RotateCcw, danger: true } : { id: 'archive', label: labels.archive, glyph: Archive, danger: true };
   const rename: MenuItem = { id: 'rename', label: strings.common.rename, glyph: PencilLine };
   const edit: MenuItem = { id: 'edit', label: labels.edit, glyph: Settings2 };
-  if (options.phone) return owner ? [pin, rename, edit, separator('sep-archive'), status, archive] : [];
+  if (options.phone) return owner ? [rename, pin, edit, separator('sep-archive'), status, archive] : [];
   // Like "Move to project": a picker opens where the menu stood. A move that waits for the turn's end is cancelled instead.
   const move: MenuItem[] = options.leaving ? [{ id: 'move-cancel', label: strings.threadMove.cancelMove, glyph: X }]
     : moveMachines(store).others.length > 0 ? [{ id: 'move', label: labels.move.menu, glyph: ArrowRightLeft }] : [];
   return [
     { id: 'open', label: strings.common.open, glyph: MessageSquare, disabled: options.open },
-    ...(owner ? [pin, separator('sep-archive'), status, archive, separator('sep-organize'), rename, edit, ...move] : []),
+    ...(owner ? [separator('sep-open'), rename, pin, edit, ...move, separator('sep-archive'), status, archive] : []),
     separator('sep-tools'),
     { id: 'copy', label: strings.sidebar.copyPath, glyph: Copy }
   ];

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
-  import { Brain, CalendarDays, Check, ChevronRight, LoaderCircle, Monitor, Pencil, TriangleAlert } from '@lucide/svelte';
+  import { Brain, CalendarDays, Check, ChevronRight, Monitor, Pencil, TriangleAlert } from '@lucide/svelte';
   import type { AgentBrain } from '@boite/contracts';
   import { AgentsView, agentOfThread, liveState, liveStep, statusOf, waitingOn } from '../../lib/agents.svelte';
   import { calendarDay, memoryNotes, runningTurn, turnSteps } from '../../lib/agent-desk';
@@ -12,6 +12,7 @@
   import { fill, strings } from '../../lib/strings';
   import { toolLine } from '../../lib/tool-groups';
   import Elapsed from '../Elapsed.svelte';
+  import Spinner from '../Spinner.svelte';
   import ProviderLogo from '../ProviderLogo.svelte';
   import AgentAvatar from './AgentAvatar.svelte';
   import AgentBrainEditor from './AgentBrainEditor.svelte';
@@ -20,10 +21,11 @@
   import './agents.css';
 
   /**
-   * The open bot's info panel, one calm column: who it is (picture, name,
-   * what it is for, its model, machine and age), Now while it has a turn in
-   * hand, its routines and its memory. On a desktop's Bots page its threads
-   * are in the page's column; elsewhere, and on a phone, they follow here.
+   * The open bot's info panel, one calm column that inspects: who it is
+   * (picture, name, what it is for, its model, machine and age), its routines
+   * and its memory. On a desktop's Bots page the column chooses its threads and
+   * the conversation reads what it does now, so neither is repeated here;
+   * elsewhere, and on a phone, Now and its threads follow here.
    */
   let { store }: { store: Store } = $props();
   const view = AgentsView.of(untrack(() => store));
@@ -44,8 +46,6 @@
   const recent = $derived(steps.slice(-4));
   const step = $derived(liveStep(status, thread));
   const since = $derived(thread?.runningSince ?? turn?.startedAt ?? null);
-  /** Now is drawn while the bot has something in hand: a turn, a queue, a question, a failure, a pause. */
-  const busy = $derived(standing !== 'idle' && standing !== 'archived');
 
   const machine = $derived(workspace.machinesOr(store).find(entry => entry.store === store) ?? null);
   const model = $derived(agent ? (agent.selection.model
@@ -53,6 +53,8 @@
     : store.providers.find(entry => entry.id === agent.selection.providerId)?.name ?? agent.selection.providerId) : '');
   /** The work list goes where no column holds it. */
   const listsWork = $derived(phone.current || store.page !== 'agents');
+  /** Now is drawn while the bot has something in hand (a turn, a queue, a question, a failure, a pause) and no conversation beside the desk says it. */
+  const busy = $derived(listsWork && standing !== 'idle' && standing !== 'archived');
 
   // The snapshot carries the open agent's desk only; the Agents page asks for it too, this asks wherever the desk is drawn.
   $effect(() => { const id = agent?.id; if (id) untrack(() => view.showDesk(id)); });
@@ -96,7 +98,7 @@
       {#if busy}
         <section class="desk-card desk-now" data-state={standing} data-testid="desk-now" aria-live="polite">
           <p class="desk-label">
-            {#if standing === 'working'}<LoaderCircle size={13} strokeWidth={2} class="bot-spin" />{:else if standing === 'error'}<TriangleAlert size={13} strokeWidth={1.75} />{/if}
+            {#if standing === 'working'}<Spinner size={11} />{:else if standing === 'error'}<TriangleAlert size={13} strokeWidth={1.75} />{/if}
             <span>{t.now}</span>
             {#if standing === 'working' && since !== null}<span class="desk-label-value"><Elapsed startedAt={since} finishedAt={null} active /></span>{/if}
           </p>
@@ -121,7 +123,7 @@
                   {@const line = toolLine(part)}
                   <li data-status={part.status}>
                     <span class="desk-step-mark" aria-hidden="true">
-                      {#if part.status === 'running'}<LoaderCircle size={12} strokeWidth={1.75} />{:else if part.status === 'error'}<TriangleAlert size={12} strokeWidth={1.75} />{:else}<Check size={12} strokeWidth={1.75} />{/if}
+                      {#if part.status === 'running'}<Spinner size={10} />{:else if part.status === 'error'}<TriangleAlert size={12} strokeWidth={1.75} />{:else}<Check size={12} strokeWidth={1.75} />{/if}
                     </span>
                     <span class="desk-step-text" class:mono={line.mono} title={line.title}>{line.text}</span>
                   </li>

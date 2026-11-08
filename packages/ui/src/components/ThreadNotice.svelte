@@ -70,7 +70,7 @@
   .line :global(.info-tip), .line :global(button) { flex: none; }
   .title { color: var(--color-foreground); font-weight: 550; }
   .lead { color: var(--color-foreground); }
-  .sub { font-size: var(--text-xs); color: var(--color-subtle); }
+  .sub { color: var(--color-subtle); }
   .sub :global(a) { margin-left: 6px; color: inherit; text-decoration: underline; text-underline-offset: 2px; }
   .sub :global(a:hover) { color: var(--color-foreground); }
   .actions { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: auto; }

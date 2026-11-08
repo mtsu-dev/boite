@@ -60,6 +60,8 @@ test('a finished turn reads how long it worked, when it was done and what it spe
   expect(text('turn-finished-at')).toBe(`done ${clockTime(STARTED + 281_000)}`);
   expect(text('turn-tokens')).toContain('tokens');
   expect(document.querySelector('[data-testid=turn-background]')).toBeNull();
+  // Settled: no working mark, and no tick either, the time already says it ended.
+  expect(document.querySelector('[data-testid=turn-summary] :is(.spinner, svg.lucide-check)')).toBeNull();
 });
 
 test('a failed turn keeps its duration and timestamps without claiming it completed successfully', () => {

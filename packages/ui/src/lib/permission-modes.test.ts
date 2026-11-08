@@ -35,7 +35,9 @@ describe('permission modes', () => {
     expect(modeLabel('default', provider('claude-sdk'))).toBe('Ask');
     expect(modeLabel('bypassPermissions', provider('claude-sdk'))).toBe('Auto');
     expect(modeHint('bypassPermissions', null)).toContain('anywhere on this computer');
-    expect(modeLabel('yolo', provider('claude-sdk'))).toBe('YOLO');
+    // A plain name; the technical one stays in the hint.
+    expect(modeLabel('yolo', provider('claude-sdk'))).toBe('No limits');
+    expect(modeHint('yolo', null)).toContain('(YOLO)');
     expect(modeHint('yolo', null)).toContain('skips Claude and Codex hooks');
   });
 

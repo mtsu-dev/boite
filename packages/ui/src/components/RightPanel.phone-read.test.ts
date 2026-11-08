@@ -54,16 +54,19 @@ test('a phone walks the changes one diff at a time, against HEAD only', async ()
   const panel = query('[data-testid=changes-panel]')!;
   expect(panel.classList.contains('reading')).toBe(true);
   expect(query('[data-testid=diff-view]')?.getAttribute('data-path')).toBe(rows[0]!.dataset.path);
-  // The file outline holds every changed file, the open one marked; one tap reads another.
-  const outline = () => Array.from(document.querySelectorAll<HTMLButtonElement>('[data-testid=changes-outline-file]'));
-  expect(outline().map((file) => file.dataset.path)).toEqual(rows.map((row) => row.dataset.path));
-  expect(outline()[0]!.getAttribute('aria-current')).toBe('true');
+  // The bar's file menu holds every changed file, the open one marked; one tap reads another.
+  const outline = async () => {
+    if (!query('[data-testid=changes-pager-menu]')) { button('changes-pager').click(); await settle(); }
+    return Array.from(document.querySelectorAll<HTMLButtonElement>('[data-testid=changes-outline-file]'));
+  };
+  expect((await outline()).map((file) => file.dataset.value)).toEqual(rows.map((row) => row.dataset.path));
+  expect((await outline())[0]!.getAttribute('aria-checked')).toBe('true');
 
-  outline()[1]!.click(); await settle();
+  (await outline())[1]!.click(); await settle();
   expect(store.panel.active?.path).toBe(rows[1]!.dataset.path);
-  expect(outline()[1]!.getAttribute('aria-current')).toBe('true');
-  expect(outline()[0]!.hasAttribute('aria-current')).toBe(false);
-  outline()[0]!.click(); await settle();
+  expect((await outline())[1]!.getAttribute('aria-checked')).toBe('true');
+  expect((await outline())[0]!.getAttribute('aria-checked')).toBe('false');
+  (await outline())[0]!.click(); await settle();
   expect(store.panel.active?.path).toBe(rows[0]!.dataset.path);
 
   button('changes-back').click(); await settle();

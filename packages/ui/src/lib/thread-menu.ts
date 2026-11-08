@@ -18,46 +18,40 @@ interface ThreadMenuOptions {
   prLoading?: boolean;
   tools?: MenuItem[];
   /**
-   * A phone's menu: pin, rename, the view's tools, archive and delete. A new
+   * A phone's menu: rename, pin, the view's tools, archive and delete. A new
    * title by the agent, a move, the path and the pull request stay on the desktop.
    */
   phone?: boolean;
 }
 
-/** The same action groups in row, title and phone menus, with Archive available on every thread that can be kept. */
+/**
+ * One menu for a thread wherever it opens (a row, its header, the phone's
+ * long press, the header's menu): the shared actions keep one name, one order
+ * and one grouping. What it is called and who has it (Rename, Pin, Hand off),
+ * then where it stands (Mark done, Archive), then Delete apart. The desktop
+ * adds Open first and its own tools before Delete; Archive is on every thread
+ * that can be kept.
+ */
 export function threadMenuItems(store: Store, thread: ThreadSummary, options: ThreadMenuOptions = {}): MenuItem[] {
   const retitling = store.retitling.includes(thread.id);
   // An incognito conversation lives on its own screen only: nothing pins, files
   // or moves it, and deleting it is what leaving does anyway.
   const kept = !thread.incognito;
-  if (options.phone) {
-    const items: MenuItem[] = [
-      ...(kept ? [{ id: 'pin', label: thread.pinned ? strings.sidebar.unpin : strings.sidebar.pin, glyph: thread.pinned ? PinOff : Pin }] : []),
-      { id: 'rename', label: strings.common.rename, glyph: PencilLine },
-      ...(options.tools ?? []),
-      ...entrustItems(store, thread),
-      ...(kept ? [
-        separator('sep-archive'),
-        ...(options.showDone ? [{ id: 'done', label: strings.sidebar.markDone, glyph: Check, disabled: !canMarkDone(store, thread) }] : []),
-        { id: 'archive', label: strings.sidebar.archive, glyph: Archive }
-      ] : [])
-    ];
-    if (canDeleteThread(thread)) items.push(separator('sep-delete'), { id: 'delete', label: strings.common.delete, glyph: Trash2, danger: true });
-    return items;
-  }
-  const items: MenuItem[] = [
-    ...(options.open === undefined ? [] : [{ id: 'open', label: strings.common.open, glyph: MessageSquare, disabled: options.open }]),
-    ...(kept ? [
-      { id: 'pin', label: thread.pinned ? strings.sidebar.unpin : strings.sidebar.pin, glyph: thread.pinned ? PinOff : Pin },
-      separator('sep-archive'),
-      ...(options.showDone ? [{ id: 'done', label: strings.sidebar.markDone, glyph: Check, disabled: !canMarkDone(store, thread) }] : []),
-      { id: 'archive', label: strings.sidebar.archive, glyph: Archive },
-      separator('sep-organize')
-    ] : []),
-    { id: 'rename', label: strings.common.rename, glyph: PencilLine },
+  const rename: MenuItem = { id: 'rename', label: strings.common.rename, glyph: PencilLine };
+  const pin: MenuItem[] = kept ? [{ id: 'pin', label: thread.pinned ? strings.sidebar.unpin : strings.sidebar.pin, glyph: thread.pinned ? PinOff : Pin }] : [];
+  const standing: MenuItem[] = kept ? [
+    separator('sep-archive'),
+    ...(options.showDone ? [{ id: 'done', label: strings.sidebar.markDone, glyph: Check, disabled: !canMarkDone(store, thread) }] : []),
+    { id: 'archive', label: strings.sidebar.archive, glyph: Archive }
+  ] : [];
+  const items: MenuItem[] = options.phone ? [rename, ...pin, ...(options.tools ?? []), ...entrustItems(store, thread), ...standing] : [
+    ...(options.open === undefined ? [] : [{ id: 'open', label: strings.common.open, glyph: MessageSquare, disabled: options.open }, separator('sep-open')]),
+    rename,
     { id: 'retitle', label: retitling ? strings.sidebar.retitling : strings.sidebar.retitle, glyph: Sparkles, disabled: retitling },
-    ...(canMove(thread) ? moveItems(store, thread).map(item => ({ ...item, glyph: item.id === 'move-cancel' ? X : FolderInput })) : []),
+    ...pin,
     ...entrustItems(store, thread),
+    ...(canMove(thread) ? moveItems(store, thread).map(item => ({ ...item, glyph: item.id === 'move-cancel' ? X : FolderInput })) : []),
+    ...standing,
     separator('sep-tools'),
     { id: 'copy', label: strings.sidebar.copyPath, glyph: Copy, title: thread.cwd },
     ...(options.prLoading === undefined || !thread.branch || thread.branch === 'HEAD' ? [] : [{ id: 'pr', label: strings.machines.refreshPr, glyph: GitPullRequest, disabled: options.prLoading }]),

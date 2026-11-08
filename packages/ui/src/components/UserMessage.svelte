@@ -215,7 +215,7 @@
 <MessageReceipts text={copyText} at={message.createdAt} {edit} {accepted} {responded} agent={!!startedBy} />
 
 <style>
-  .text-omitted { margin: 4px 0 0; font-size: var(--text-xs); color: var(--color-muted-foreground); }
+  .text-omitted { margin: 4px 0 0; font-size: var(--text-sm); color: var(--color-muted-foreground); }
 
   .command { color: var(--color-accent); font-weight: 600; }
 
@@ -237,7 +237,7 @@
   }
   .agent-from { display: flex; align-items: flex-start; gap: 9px; margin-bottom: 8px; color: var(--color-muted-foreground); }
   .agent-icon { display: flex; flex: none; margin-top: 2px; color: var(--color-foreground); }
-  .agent-source { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; font-size: var(--text-xs); }
+  .agent-source { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; font-size: var(--text-sm); }
   .agent-source strong, .agent-link { color: var(--color-foreground); font-size: var(--text-sm); font-weight: 600; overflow-wrap: anywhere; white-space: normal; text-align: left; }
   .agent-link { height: auto; padding: 0; border: 0; border-radius: var(--radius-sm); background: transparent; }
   .agent-link:hover { text-decoration: underline; }
@@ -258,7 +258,7 @@
   .file-attachment:hover { background: var(--color-surface); }
   .file-attachment > span { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
   .file-attachment > span > span { overflow-wrap: anywhere; font-size: var(--text-sm); }
-  .file-attachment small { color: var(--color-muted-foreground); font-size: var(--text-xs); }
+  .file-attachment small { color: var(--color-muted-foreground); font-size: var(--text-sm); }
   .images {
     position: relative;
     display: flex;

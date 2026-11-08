@@ -77,7 +77,7 @@ function restoreLayout(): void {
 
 let running: Record<string, unknown> | null = null;
 
-test('the parent timeline retains one team row, updates completion counts and opens the whole team', async ({ createStore }) => {
+test('the parent timeline leaves a team at work to the strip, then keeps one row with its counts that opens the whole team', async ({ createStore }) => {
   const { store: owner, client } = createStore({ delayMs: 0, delegationDemo: true });
   owner.attach(client);
   await owner.connect();
@@ -85,10 +85,26 @@ test('the parent timeline retains one team row, updates completion counts and op
   await owner.loadDelegation();
   running = mount(MessageList, { target: document.body, props: { store: owner, threadId: 't-trace', messages: owner.openThread!.messages } });
   flushSync();
+  // One at work and one waiting on its background run: the strip above the composer names them, the stream has no row yet.
+  expect(document.querySelector('[data-testid=delegation-activity]')).toBeNull();
+  const settle = (id: string) => {
+    const agent = owner.delegation!.agents.find(agent => agent.thread.id === id)!;
+    agent.thread.status = 'idle';
+    agent.thread.backgroundWait = null;
+    agent.lastTurn!.status = 'done';
+    agent.lastTurn!.finishedAt = agent.thread.createdAt + 60_000;
+  };
+  settle('t-team-waiting');
+  flushSync();
+  expect(document.querySelector('[data-testid=delegation-activity]')).toBeNull();
+  settle('t-team-running');
+  flushSync();
+  expect(document.querySelectorAll('[data-testid=delegation-activity]')).toHaveLength(1);
   const row = document.querySelector<HTMLButtonElement>('[data-testid=delegation-activity]')!;
   expect(row.textContent).toContain('Started 4 subagents');
-  // The one waiting on its own background work is not completed; the interrupted one says so.
-  expect(row.textContent).toContain('1/4 completed');
+  // The two settled here join the one done before.
+  expect(row.textContent).toContain('3/4 completed');
+  // The interrupted one says so.
   expect(row.textContent).toContain('1 interrupted');
   await owner.selectDelegatedAgent('t-team-running');
   // A workflow graph left open in the agents tab gives way to the team, the way the dock opens it.
@@ -98,14 +114,6 @@ test('the parent timeline retains one team row, updates completion counts and op
   expect(owner.panel.isOpen).toBe(true);
   expect(owner.delegationSelectedAgentId).toBeNull();
   expect(owner.panel.state.surfaces.find(surface => surface.id === graph.id)?.runId).toBeUndefined();
-  const agent = owner.delegation!.agents.find(agent => agent.thread.id === 't-team-running')!;
-  agent.thread.status = 'idle';
-  agent.lastTurn!.status = 'done';
-  agent.lastTurn!.finishedAt = agent.thread.createdAt + 60_000;
-  flushSync();
-  expect(document.querySelectorAll('[data-testid=delegation-activity]')).toHaveLength(1);
-  expect(row.textContent).toContain('2/4 completed');
-  expect(row.querySelector('[data-testid=agent-elapsed]')?.textContent).toContain('1');
   // A child transcript must not claim that it launched its siblings.
   await unmount(running); running = null;
   await owner.open('t-team-done');
@@ -181,7 +189,7 @@ const store = {
   workflowsOf: () => []
 } as unknown as Store;
 
-test('a workflow the thread started is one card that opens its graph, and a step shows none', async ({ createStore }) => {
+test('a workflow the thread started is left to the strip while it runs, then is one card that opens its graph, and a step shows none', async ({ createStore }) => {
   const { store: owner, client } = createStore({ delayMs: 0, delegationDemo: true });
   owner.attach(client);
   try {
@@ -190,9 +198,14 @@ test('a workflow the thread started is one card that opens its graph, and a step
     await owner.loadWorkflows('t-trace');
     running = mount(MessageList, { target: document.body, props: { store: owner, threadId: 't-trace', messages: owner.openThread!.messages } });
     flushSync();
+    const run = owner.workflowsOf('t-trace')[0]!;
+    expect(run.status).toBe('running');
+    // Running, it is the strip's entry by name: the stream does not say it twice.
+    expect(document.querySelector('[data-testid=workflow-activity]')).toBeNull();
+    run.status = 'failed';
+    flushSync();
     const cards = document.querySelectorAll<HTMLButtonElement>('[data-testid=workflow-activity]');
     expect(cards).toHaveLength(1);
-    const run = owner.workflowsOf('t-trace')[0]!;
     expect(cards[0]!.textContent).toContain('Review the parser');
     expect(cards[0]!.textContent).toContain('1/5 steps');
     expect(cards[0]!.querySelectorAll('.phases i')).toHaveLength(4);

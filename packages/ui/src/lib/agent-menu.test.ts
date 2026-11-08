@@ -53,7 +53,7 @@ const flush = () => new Promise(resolve => setTimeout(resolve, 10));
 
 test('the desktop menu has the thread menu\'s groups, words and glyphs, cut to what a bot has', () => {
   const items = agentMenuItems(alone(), agent(), { open: false });
-  expect(items.map(item => item.id)).toEqual(['open', 'pin', 'sep-archive', 'pause', 'archive', 'sep-organize', 'rename', 'edit', 'sep-tools', 'copy']);
+  expect(items.map(item => item.id)).toEqual(['open', 'sep-open', 'rename', 'pin', 'edit', 'sep-archive', 'pause', 'archive', 'sep-tools', 'copy']);
   // Where a thread has the same action, the bot's row reads and looks the same.
   const thread = threadMenuItems({ owner: true, retitling: [], composerStates: {}, threads: [], moveBlocked: () => false } as unknown as Store,
     { id: 't1', title: 'Port', cwd: '/w', projectId: null, parentThreadId: null, agentSessionId: null, archived: false, incognito: false, pinned: false, status: 'idle' } as never, { open: false });
@@ -70,8 +70,8 @@ test('the desktop menu has the thread menu\'s groups, words and glyphs, cut to w
   expect(agentMenuItems(alone(), agent({ builtin: 'contacts' }), { open: false }).filter(item => item.danger).map(item => [item.id, item.label])).toEqual([['reset', strings.agents.builtin.reset]]);
 });
 
-test('a phone keeps pin, rename and edit, then pause and archive; a paired device keeps only what reads', () => {
-  expect(agentMenuItems(alone(), agent(), { open: false, phone: true }).map(item => item.id)).toEqual(['pin', 'rename', 'edit', 'sep-archive', 'pause', 'archive']);
+test('a phone keeps rename, pin and edit, then pause and archive; a paired device keeps only what reads', () => {
+  expect(agentMenuItems(alone(), agent(), { open: false, phone: true }).map(item => item.id)).toEqual(['rename', 'pin', 'edit', 'sep-archive', 'pause', 'archive']);
   // Saving a profile is the owner's: a paired desktop opens and copies, a paired phone has no menu.
   expect(agentMenuItems(alone(false), agent(), { open: false }).filter(item => !item.separator).map(item => item.id)).toEqual(['open', 'copy']);
   expect(agentMenuItems(alone(false), agent(), { open: false, phone: true })).toEqual([]);
@@ -156,7 +156,7 @@ test('Move to a machine opens the group\'s machines where the menu stood, the of
   ];
   const items = agentMenuItems(first.store, bot, { open: false });
   expect(items.find(item => item.id === 'move')).toMatchObject({ label: strings.agents.move.menu });
-  expect(items.map(item => item.id).slice(items.findIndex(item => item.id === 'sep-organize'))).toEqual(['sep-organize', 'rename', 'edit', 'move', 'sep-tools', 'copy']);
+  expect(items.map(item => item.id).slice(items.findIndex(item => item.id === 'sep-open'))).toEqual(['sep-open', 'rename', 'pin', 'edit', 'move', 'sep-archive', 'pause', 'reset', 'sep-tools', 'copy']);
   // While it waits to leave at the end of its turn, the menu cancels that move instead, as a thread's does.
   const waiting = agentMenuItems(first.store, bot, { open: false, leaving: true }).filter(item => item.id.startsWith('move'));
   expect(waiting.map(item => [item.id, item.label])).toEqual([['move-cancel', strings.threadMove.cancelMove]]);

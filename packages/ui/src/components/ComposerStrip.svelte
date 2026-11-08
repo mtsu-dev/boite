@@ -8,7 +8,8 @@
    * timeline: the thread's subagents and workflows, each by name, and at its
    * right end the way back to the latest message. A thread keeps the row
    * reserved, so neither coming and going moves the timeline; the queue and
-   * the asks live inside the box, the undo in the corner above this row.
+   * the asks live inside the box. On a wide window the undo and error
+   * toasts keep room at its top, at its right end (`toastSlot`).
    */
   let { store, thread }: { store: Store; thread: Store['openThread'] } = $props();
 </script>
@@ -26,11 +27,11 @@
     width: 100%;
     max-width: var(--content);
     margin: 0 auto;
-    /* The undo toast's room over the thread's column (lib/notify-corner.ts). */
+    /* The toasts' room, kept while one is up (lib/notify-corner.ts). */
     padding-top: var(--corner-room, 0px);
   }
 
   .strip.reserved, .strip:has(> :global(*)) { min-height: 34px; padding-bottom: 6px; }
-  /* The dock's rows take the width; the way back keeps the right end. */
+  /* The dock's line takes the width; the way back keeps the right end. */
   .strip :global(.jump) { margin-left: auto; }
 </style>

@@ -188,7 +188,7 @@ test('the reasoning row names each level, sets the effort of the picked model, a
   expect(effortDots()).toEqual(['low', 'medium', 'high', 'xhigh', 'max', 'ultrathink']);
   // Every level by its name, in the model's order, inline in the popover: no second menu.
   expect(Array.from(document.querySelectorAll('[data-testid=composer-effort-menu] [data-value]')).map((el) => el.textContent?.trim()))
-    .toEqual(['Low', 'Medium', 'High', 'Xhigh', 'Max', 'Ultrathink']);
+    .toEqual(['Low', 'Medium', 'High', 'Extra high', 'Max', 'Deepest']);
   // Nothing chosen yet, so the model's own default reads as the active one.
   expect(effortPicked()).toBe('high');
 
@@ -198,7 +198,7 @@ test('the reasoning row names each level, sets the effort of the picked model, a
   expect(document.querySelector('[data-testid=composer-effort-menu]')).not.toBeNull();
   // The level reads on its own row; the chip's label names the model alone.
   expect(query('[data-testid=composer-picker]').textContent).toContain('Opus 5.5');
-  expect(query('[data-testid=composer-picker]').textContent).not.toContain('Xhigh');
+  expect(query('[data-testid=composer-picker]').textContent).not.toContain('Extra high');
   // One live choice, and no other.
   expect(document.querySelectorAll('[data-testid=composer-effort-menu] [aria-checked=true]')).toHaveLength(1);
 

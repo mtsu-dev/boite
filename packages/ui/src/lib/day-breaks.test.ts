@@ -13,6 +13,12 @@ test('a divider opens each new local day, and the first message only when it is 
   expect([...dayBreaks(timeline.slice(3), NOW).keys()]).toEqual([]);
 });
 
+test('a message stamped before the one above it opens no day: Yesterday never follows Today', () => {
+  const timeline = [{ id: 'a', createdAt: at(31, 0) }, { id: 'b', createdAt: at(30, 23) }, { id: 'c', createdAt: at(31, 1) }];
+  expect([...dayBreaks(timeline, NOW).keys()]).toEqual([]);
+  expect([...dayBreaks([{ id: 'x', createdAt: at(29, 9) }, ...timeline], NOW).keys()]).toEqual(['x', 'a']);
+});
+
 test('a day reads today, yesterday, or spelled out with its year when it is another', () => {
   expect(dayLabel(at(31, 9), NOW)).toBe('Today');
   expect(dayLabel(at(30, 23), NOW)).toBe('Yesterday');

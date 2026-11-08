@@ -94,7 +94,7 @@
   }
 
   .glyph { display: inline-flex; flex: none; width: var(--activity-glyph); justify-content: center; color: var(--color-subtle); }
-  .took { flex: none; color: var(--color-subtle); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+  .took { flex: none; color: var(--color-subtle); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
   /* A finished thought's time is read on demand, like a finished step's (ToolCard). */
   .took.settled { opacity: 0; transition: opacity var(--dur-2); }
   .head:hover > .took.settled, .head:focus-visible > .took.settled, .head[aria-expanded='true'] > .took.settled { opacity: 1; }

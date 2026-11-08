@@ -106,8 +106,8 @@
   let surfaces = $derived(panel.surfaces);
   let active = $derived(panel.active);
   let empty = $derived(surfaces.length === 0);
-  /** A bot's info alone in a docked panel needs no tab strip: its controls float at the top right. */
-  let bare = $derived(!phone && !rightPanel.floating && surfaces.length === 1 && surfaces[0]!.kind === 'desk');
+  /** A bot's desk alone keeps the side card's form, at a column's width. */
+  let deskOnly = $derived(!phone && !rightPanel.floating && surfaces.length === 1 && surfaces[0]!.kind === 'desk');
   /** A bot's desk alone stays a side column at any panel width: the chat beside it is the page. */
   const DESK_MAX = 380;
 
@@ -303,15 +303,13 @@
 ></button>
 
 <aside
-  class="panel"
-  class:framed={!bare}
-  class:flush={bare}
+  class="panel framed"
   class:maximized={rightPanel.maximized}
   class:floating={rightPanel.floating}
   class:dragging
   class:closing
   class:entered
-  style="--panel-width: {bare ? Math.min(docked, DESK_MAX) : docked}px"
+  style="--panel-width: {deskOnly ? Math.min(docked, DESK_MAX) : docked}px"
   data-testid="right-panel"
   bind:this={root}
   use:attach
@@ -326,7 +324,7 @@
 >
   {#if !rightPanel.floating}<PanelResizeHandle {store} bind:dragging />{/if}
 
-  <header class="strip" class:bare data-panel-move data-testid="panel-titlebar">
+  <header class="strip" data-panel-move data-testid="panel-titlebar">
     {#if rightPanel.floating}
       <button type="button" class="ghost small icon move-handle" data-panel-move data-testid="panel-move"
         title={strings.browser.move} aria-label={strings.browser.move} disabled={rightPanel.maximized}>
@@ -718,10 +716,6 @@
 
   /* The bot's info alone: the strip leaves the flow without its tabs; add,
      expand and close show under the pointer, or always without one. */
-  .strip.bare { position: absolute; top: 0; right: 0; z-index: 2; border-bottom: none; opacity: 0; transition: opacity var(--dur-2) var(--ease-out-quint); }
-  .panel:hover .strip.bare, .strip.bare:focus-within { opacity: 1; }
-  @media (hover: none) { .strip.bare { opacity: 1; } }
-  .strip.bare :is(.tabs, .chev, .spacer) { display: none; }
 
   .body {
     flex: 1;
@@ -748,10 +742,6 @@
       overflow: clip;
       border-radius: 0 0 calc(var(--radius-frame) - 1px) calc(var(--radius-frame) - 1px);
     }
-
-    /* A bot's desk alone sits flush on the window beside the framed chat: the
-       chat's own edge is the one line between them, no second card. */
-    .panel.flush .body { border-radius: 0; }
   }
 
   .sheet-scrim {

@@ -275,7 +275,7 @@
   .prose :global(p) {
     white-space: pre-wrap;
     text-wrap: pretty;
-    margin: 0 0 12px;
+    margin: 0 0 var(--chat-block-gap);
   }
 
   .prose :global(p:last-child) {
@@ -305,7 +305,7 @@
 
   .prose :global(ul),
   .prose :global(ol) {
-    margin: 0 0 12px;
+    margin: 0 0 var(--chat-block-gap);
     padding-left: 24px;
   }
 
@@ -327,7 +327,7 @@
   }
 
   .prose :global(pre) {
-    margin: 6px 0 10px;
+    margin: 0 0 var(--chat-block-gap);
     padding: 12px 14px;
     font-size: var(--text-sm);
     line-height: 1.6;
@@ -400,7 +400,7 @@
   }
 
   .prose :global(blockquote) {
-    margin: 0 0 12px;
+    margin: 0 0 var(--chat-block-gap);
     padding: 2px 0 2px 12px;
     border-left: 2px solid var(--color-edge);
     color: var(--color-muted-foreground);
@@ -431,7 +431,7 @@
     max-width: 100%;
     overflow-x: auto;
     overscroll-behavior-x: contain;
-    margin: 6px 0 12px;
+    margin: 0 0 var(--chat-block-gap);
     border-collapse: separate;
     border-spacing: 0;
     border: 1px solid var(--color-border);
@@ -465,7 +465,7 @@
     border-bottom: none;
   }
 
-  .paragraph + .paragraph { margin-top: 12px; }
+  .paragraph + .paragraph { margin-top: var(--chat-block-gap); }
   /* Only a paragraph the answer is writing now eases in. One mounted from the
      history, as a scroll brings its message back into the window, is already
      there: animating it made every scroll restyle each paragraph it reached. */

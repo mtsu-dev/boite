@@ -9,13 +9,17 @@
   import { longPress } from '../lib/long-press';
   import Menu from './Menu.svelte';
   import ThreadHeadline from './ThreadHeadline.svelte';
+  import ThreadState from './ThreadState.svelte';
+  import { threadState } from '../lib/thread-state';
 
   /**
    * A phone's thread row, the desktop row's grammar at a finger's size: the
-   * title on one line and the state at its end. The title gets the width:
-   * the pull request waits in the thread, the pin under the slide. `compact` is the flat lists' form (Recent, Activity): the
-   * project's tile first. Activity (the phone's screen and the desktop's page) adds `reason`, what the thread wants and
-   * when, under the title, and `nested` steps a sub-agent in under its parent.
+   * title gets the width, two lines of it before any ellipsis, then its state
+   * and its time on the line under it, so neither cuts the title. The pull
+   * request waits in the thread, the pin under the slide. `compact` is the flat lists' form (Recent, Activity): the
+   * project's tile first. Activity (the phone's screen and the desktop's page) is one title line with since when at its
+   * end, then `reason`, what the thread wants, after its state when the section does not say it; `nested` steps a
+   * sub-agent in under its parent.
    * The row menu has no button of its own: a long press opens it, a slide
    * left shows pin and archive. Its trigger stays for the keyboard, drawn
    * only while focused.
@@ -27,6 +31,8 @@
   const owner = $derived(machine.store);
   const pin = $derived(items.find(item => item.id === 'pin'));
   const archive = $derived(items.find(item => item.id === 'archive'));
+  const kind = $derived(threadState(thread, owner.subagents(thread.id)));
+  const away = $derived(owner.connection !== 'ready');
   let menu = $state<HTMLElement>();
   /** A long press, or Android's own, opens the row's menu where its hidden trigger stands. */
   function openMenu(event: MouseEvent) {
@@ -48,9 +54,15 @@
   <!-- The row's contextmenu (a long press, Android's, a right click) opens the menu wherever it lands; the button inside stays the keyboard's target. -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="body" use:swipeRow oncontextmenu={openMenu}>
-    <button class="ghost thread" class:offline={owner.connection !== 'ready'} data-testid="mobile-thread-{thread.id}" title={thread.branch ? `${thread.title}\n${thread.branch}` : thread.title} onclick={onopen} use:longPress>
-      <ThreadHeadline {owner} {thread} {now} tile={compact && !nested ? project : undefined} />
-      {#if reason !== undefined}<span class="why" data-testid="mobile-row-reason"><span class="text ui-label">{reason}</span>{#if at !== undefined}<time class="ui-label" title={exactTime(at)}>{ago(at, now)}</time>{/if}</span>{/if}
+    <button class="ghost thread" class:offline={away} class:stated={kind !== null} data-testid="mobile-thread-{thread.id}" title={thread.branch ? `${thread.title}\n${thread.branch}` : thread.title} onclick={onopen} use:longPress>
+      {#if reason !== undefined}
+        <span class="feed-head"><ThreadHeadline {owner} {thread} tile={compact && !nested ? project : undefined} />{#if at !== undefined}<time class="ui-label" title={exactTime(at)}>{ago(at, now)}</time>{/if}</span>
+        <span class="why" data-testid="mobile-row-reason">{#if kind !== null && kind !== 'waiting'}<ThreadState {thread} {now} subagents={owner.subagents(thread.id)} {away} /><span class="sep" aria-hidden="true">·</span>{/if}<span class="text">{reason}</span></span>
+      {:else}
+        <ThreadHeadline {owner} {thread} tile={compact && !nested ? project : undefined} />
+        <!-- The state, then the time; a thread at rest has its time alone. -->
+        <span class="meta" data-testid="mobile-row-meta"><ThreadState {thread} {now} subagents={owner.subagents(thread.id)} {away} />{#if kind !== null}<span class="sep" aria-hidden="true">·</span><time title={exactTime(thread.lastUserMessageAt ?? thread.createdAt)}>{ago(thread.lastUserMessageAt ?? thread.createdAt, now)}</time>{/if}</span>
+      {/if}
     </button>
     <span class="row-menu" bind:this={menu}><Menu {items} onpick={onaction} label={strings.sidebar.threadMenu} heading={thread.title} placement="bottom" variant="ghost" testid="mobile-thread-menu-{thread.id}"><Ellipsis size={18} /></Menu></span>
   </div>
@@ -65,30 +77,33 @@
   .swipe .ui-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .body { position: relative; touch-action: pan-y; transform: translateX(var(--swipe, 0px)); transition: transform var(--dur-3) var(--ease-out-quint); background: var(--row-background, var(--color-background)); }
   .body:global(.dragging) { transition: none; }
-  /* One line of 44 px, a finger's height. */
-  .thread { display: block; width: 100%; min-height: var(--touch-target); height: auto; padding: 12px 12px; border-radius: 0; text-align: left; font-size: var(--text-reading); color: var(--color-foreground); }
-  /* Activity's reason under the title, from the title's edge; the reason gives way, its time does not. */
-  .why { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: var(--text-sm); line-height: 1.4; color: var(--color-muted-foreground); }
-  .tiled .why { margin-left: 26px; }
-  .why .text { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  /* The time under the state, at the row's end. */
-  .why time { flex: none; margin-left: auto; font-size: inherit; color: var(--color-subtle); font-variant-numeric: tabular-nums; }
-  .reason .thread { padding: 10px 12px; }
+  /* The title, then its state and time under it: well over a finger's 44 px. */
+  .thread { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 4px; width: 100%; min-height: var(--touch-target); height: auto; padding: 10px 12px; border-radius: 0; text-align: left; font-size: var(--text-reading); color: var(--color-foreground); }
+  /* The second line, in the list's quiet ink, from the title's edge. */
+  .meta, .why { display: flex; align-items: baseline; gap: 6px; min-width: 0; font-size: var(--text-sm); line-height: 1.4; color: var(--color-muted-foreground); }
+  .tiled :is(.meta, .why) { margin-left: 26px; }
+  .meta time { flex: none; color: var(--color-subtle); font-variant-numeric: tabular-nums; }
+  .sep { flex: none; color: var(--color-subtle); }
+  .meta :global(.when), .why :global(.when) { font-size: inherit; }
+  .meta > :global(.when:not(.state)) { font-weight: 400; }
+  /* Activity: since when ends the title's line; the reason reads whole under it. */
+  .feed-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .feed-head :global(.headline) { flex: 1; }
+  .feed-head time { flex: none; font-size: var(--text-sm); color: var(--color-subtle); font-variant-numeric: tabular-nums; }
+  .why .text { flex: 0 1 auto; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
   /* A sub-agent under its parent: stepped in, a hairline where the tile was. */
   .nested .thread { padding-left: 40px; }
   .nested .body::before { content: ''; position: absolute; left: 20px; top: 0; bottom: 0; width: 1px; background: var(--color-border); }
-  .thread :global(.headline) { gap: 10px; }
-  /* A phone reads every title at full ink: the state at the end says which rows need the user. */
+  .thread :global(.headline) { gap: 10px; align-items: flex-start; }
+  .thread:not(:has(.feed-head)) :global(.headline > .tile) { margin-top: 3px; }
+  /* A phone reads every title at full ink: the line under it says which rows need the user. Two lines of it
+     before the ellipsis; Activity's rows keep to one, their reason under it. */
   .thread :global(.headline .title) { color: var(--color-foreground); font-weight: 400; }
-  .thread :global(.headline .when) { font-size: var(--text-sm); }
+  .thread:not(:has(.feed-head)) :global(.headline .title) { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; }
   .thread.offline { opacity: 0.55; }
   .thread :global(.headline .pin) { display: none; }
   /* One status per row: a state outranks the unsent draft's mark, which the thread shows once open. */
-  .thread :global(.headline:has(> .state) > .draft) { display: none; }
-  /* At 360 px a plain time goes before the title is cut; a state keeps its mark and word. */
-  @media (max-width: 380px) {
-    .thread :global(.headline .when:not(.state)), .thread :global(.headline .when .elapsed) { display: none; }
-  }
+  .thread.stated :global(.headline > .draft) { display: none; }
   /* The menu's trigger, out of sight until the keyboard reaches it; the popover hangs under the row's end. */
   .row-menu { position: absolute; top: 0; right: 4px; bottom: 0; display: flex; align-items: center; pointer-events: none; }
   .row-menu :global(.trigger) { opacity: 0; background: var(--row-background, var(--color-background)); }

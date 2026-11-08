@@ -8,12 +8,13 @@ function thread(id: string, fields: Partial<ThreadSummary>): ThreadSummary {
   return { id, title: id, status: 'idle', unread: false, parentThreadId: null, projectId: null, updatedAt: NOW - 60_000, ...fields } as ThreadSummary;
 }
 
-test('Activity lists what needs the user, then failures, then news, each with its reason; sub-agents sit under their parent', () => {
+test('Activity lists what needs the user, failures included, then the updates, each with its reason; sub-agents sit under their parent', () => {
   const questions = [{ id: 'q', threadId: 'asks', text: 'Which retry policy?\nThe second line stays out.', options: [], createdAt: NOW - 5 * 60_000 }] as unknown as QuestionRequest[];
   const permissions = [{ id: 'p', threadId: 'push', toolName: 'Bash', input: { command: 'git push' }, description: null, createdAt: NOW - 60_000 }] as unknown as PermissionRequest[];
   const threads = [
     thread('done', { unread: true, updatedAt: NOW - 1_000 }),
     thread('failed', { status: 'error', updatedAt: NOW - 2_000 }),
+    thread('stopped', { status: 'idle', unread: true, backgroundWait: { state: 'interrupted', for: 'tests', reason: 'core-restarted', at: NOW }, updatedAt: NOW - 500 }),
     thread('asks', { status: 'waiting', openQuestions: 1, updatedAt: NOW - 30_000 }),
     thread('push', { status: 'waiting', updatedAt: NOW - 3_000 }),
     thread('busy', { status: 'running' }),
@@ -29,7 +30,9 @@ test('Activity lists what needs the user, then failures, then news, each with it
   const feed = activityFeed(threads.map(t => ({ machine, thread: t, project: undefined })));
 
   // The user's turn first, newest first; a parent pulled in by an asking child ranks with it, the child right under it.
-  expect(feed.map(row => row.thread.id)).toEqual(['push', 'asks', 'parent', 'child', 'failed', 'done']);
+  expect(feed.map(row => row.thread.id)).toEqual(['push', 'asks', 'parent', 'child', 'failed', 'stopped', 'done']);
+  // Two sections: the user acts on asks and failures, reads what finished or stopped short; a child keeps its parent's.
+  expect(feed.map(row => row.section)).toEqual(['needs', 'needs', 'needs', 'needs', 'needs', 'updates', 'updates']);
   expect(feed.find(row => row.thread.id === 'child')?.nested).toBe(true);
   expect(feed.filter(row => row.nested)).toHaveLength(1);
   // Work in progress, threads at rest and a bot's own conversation are not news.

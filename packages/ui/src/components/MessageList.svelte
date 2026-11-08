@@ -18,6 +18,7 @@
   import { groupTimeline } from '../lib/timeline-group';
   import { agentMailFor } from '../lib/agent-mail';
   import { timelineCards } from '../lib/timeline-cards';
+  import { asksDocked, failureCarded, settledCards } from '../lib/one-status';
   import UserMessage from './UserMessage.svelte';
   import Deferred, { parts } from './Deferred.svelte';
   import { provideViewerHost, type Gallery } from '../lib/media-gallery';
@@ -77,8 +78,10 @@
     const account = store.accountOf(thread.accountId);
     return account?.status === 'unauthenticated' && store.usableAccountOf(account.providerId, account.id) === null ? account : null;
   });
-  /** Launches, workflow runs and contact requests, each a card where it happened (`timelineCards`). */
-  const cards = $derived(timelineCards(store, threadId, messages));
+  /** Launches, workflow runs and contact requests, each a card where it happened (`timelineCards`); the strip holds the live ones (`settledCards`). */
+  const cards = $derived(settledCards(store, threadId, timelineCards(store, threadId, messages)));
+  /** An ask docked in the composer is the turn's status: the stream drops the running summary meanwhile, and its rows drop their own line for it. */
+  const asking = $derived(asksDocked(store, threadId));
   /** The turns of the thread this list shows, open or delegated. */
   const shownTurns = $derived(store.openThread?.id === threadId ? store.openThread.turns : store.delegationThread?.id === threadId ? store.delegationThread.turns : []);
   const grouped = $derived.by(() => groupTimeline(messages, threadId, shownTurns, mail, cards));
@@ -790,6 +793,8 @@
           {#if turn && closes}
             {@const files = filesOf(turn)}
             {#if files}<TurnFiles {store} {...files} loadDiffs={() => Promise.all(files.deferred.map(source => store.loadToolOutput(threadId, source.messageId, source.toolId))).then(() => {})} />{/if}
+            <!-- A failure's card holds its cause and its one Retry; a docked ask is a running turn's status. -->
+            {#if !failureCarded(turn, messages) && !(asking && turn.status === 'running')}
             <MessageTurnSummary {store} {threadId} {turn} turns={shownTurns} message={source ?? message} {messages} pointed={pointed === turn.id}
               {...summaryMarks(shaped, turn.id, () => store.panel.open('desk'))}>
               {#snippet actions()}
@@ -800,6 +805,7 @@
                 />
               {/snippet}
             </MessageTurnSummary>
+            {/if}
           {/if}
         </article>
         {/if}
@@ -839,6 +845,10 @@
     /* Balance the outline rail on both sides; keep room below for the activity overlay. */
     padding: 20px var(--outline-room) calc(var(--dock-room, 0px) + 20px);
     overscroll-behavior: contain;
+    /* A phone's toast sits under the header in room taken from the top of the
+       timeline (notify-corner.ts), so it covers no line of the thread. */
+    margin-top: var(--corner-room, 0px);
+    transition: margin-top var(--dur-2) var(--ease-out-quint);
   }
 
   /* Where the timeline meets the band, it fades into its own background

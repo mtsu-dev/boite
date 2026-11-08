@@ -9,10 +9,12 @@ test('the composer wears the context meter, a compaction is a divider, and a tur
   await waitFor(() => store.openThread?.id === 't-descriptors');
 
   // 31k of 200k, just compacted: under half full, the ring leaves the bar for
-  // the model chip's menu, where it reads 16 percent; the divider says what went.
+  // the model chip's menu, behind its More row, where it reads 16 percent; the divider says what went.
   await waitFor(() => document.querySelector('[data-testid=composer-picker]') !== null);
   expect(document.querySelector('[data-testid=composer] .bar [data-testid=context-meter]')).toBeNull();
   query<HTMLButtonElement>('[data-testid=composer-picker]').click();
+  await waitFor(() => document.querySelector('[data-testid=composer-picker-more]') !== null);
+  query<HTMLButtonElement>('[data-testid=composer-picker-more]').click();
   await waitFor(() => document.querySelector('[data-testid=context-meter]') !== null);
   const meter = query('[data-testid=context-meter]');
   expect(meter.closest('[data-testid=composer]')).not.toBeNull();
@@ -49,6 +51,8 @@ test('the composer wears the context meter, a compaction is a divider, and a tur
   field.dispatchEvent(new Event('input', { bubbles: true }));
   await waitFor(() => query('[data-testid=composer-picker]').querySelector('.label') !== null);
   query<HTMLButtonElement>('[data-testid=composer-picker]').click();
+  await waitFor(() => document.querySelector('[data-testid=composer-picker-more]') !== null);
+  query<HTMLButtonElement>('[data-testid=composer-picker-more]').click();
   await waitFor(() => document.querySelector('[data-testid=context-trigger]') !== null);
   expect(query('[data-testid=context-trigger]').textContent?.trim()).toBe('');
   query<HTMLButtonElement>('[data-testid=context-trigger]').click();

@@ -1,3 +1,8 @@
+<script module lang="ts">
+  /** Under this width two columns of code are too narrow to read: one column, and no switch. A pane that draws the switch itself reads it. */
+  export const SPLIT_MIN_WIDTH = 560;
+</script>
+
 <script lang="ts">
   import { Columns2, Space } from '@lucide/svelte';
   import { diffCounts, diffRows, diffRowsOf, splitRows, type DiffRow, type DiffSource } from '../lib/diff';
@@ -28,9 +33,6 @@
 
   /** Rows drawn before the show-all button: the box shows about fourteen. */
   const FIRST_ROWS = 300;
-  /** Under this width two columns of code are too narrow to read: one column, and no switch. */
-  const SPLIT_MIN_WIDTH = 560;
-
   let width = $state(0);
   let rows = $derived(doc ? diffRowsOf(doc, diffPrefs.ignoreWhitespace) : diffRows(oldText, newText, { ignoreWhitespace: diffPrefs.ignoreWhitespace }));
   let counts = $derived(diffCounts(rows));

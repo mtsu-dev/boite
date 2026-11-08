@@ -10,6 +10,7 @@
   import { linuxShell } from '../lib/shell-platform';
   import { dragWindow, shellWindow, toggleMaximize } from '../lib/window-drag';
   import { titleSlot } from '../lib/title-slot.svelte';
+  import { needsAnAI } from '../lib/first-run';
   import { inbox } from '../lib/inbox.svelte';
   import { contactsShown } from '../lib/contacts-rail.svelte';
   import WindowResizeHandles from './WindowResizeHandles.svelte';
@@ -100,7 +101,9 @@
   let heading = $derived(store.page === 'settings' ? strings.settings.heading : store.openProject ? projectName(store.openProject) : '');
   /** Desktop Activity takes the chat's card (App.svelte): the bar names it, not the draft left under it. */
   let activity = $derived(inbox.open && !mobile.current && store.page === 'chat');
-  let threadHeader = $derived(store.page === 'chat' && !activity && (store.openThread || store.draft));
+  /** The first run's screen is no thread yet: no "New thread" crumb over it, and no project name either. */
+  let firstRun = $derived(store.page === 'chat' && !activity && !store.openThread && needsAnAI(store));
+  let threadHeader = $derived(store.page === 'chat' && !activity && !firstRun && (store.openThread || store.draft));
   /** The dev install runs beside the stable one, so the bar has to say which is open. */
   let dev = $derived(store.core?.channel === 'dev');
 
@@ -122,6 +125,8 @@
     {#key store}<ThreadHeader {store} />{/key}
   {:else if (store.page === 'agents' || store.page === 'settings') && titleSlot.current && !mobile.current}
     {@render titleSlot.current()}
+  {:else if firstRun}
+    <span class="name" aria-hidden="true"></span>
   {:else}
     <span class="name ui-label">{activity ? strings.mobile.activity : store.page === 'agents' ? strings.agents.heading : store.page === 'home' ? strings.contacts.heading : heading}</span>
   {/if}

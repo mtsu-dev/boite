@@ -245,10 +245,11 @@
      near black, the work inset in panels of the page colour with a hairline. */
   --color-frame: #0b0b0c;
   --color-frame-edge: rgba(255, 255, 255, 0.075);
-  --color-surface: #161617;
-  /* The two raised fills: a chip, a card, the composer; then a pressed or selected raise. */
-  --color-surface-2: #1a1a1c;
-  --color-surface-3: #222225;
+  --color-surface: #171719;
+  /* The two raised fills: a chip, a card, the composer; then a pressed or selected raise.
+     The first sits a clear step over the page, so a card and the composer read off the timeline. */
+  --color-surface-2: #1d1d20;
+  --color-surface-3: #252528;
   /* The two hairlines: a quiet separator, and an edge that must read. */
   --color-border: rgba(255, 255, 255, 0.075);
   --color-edge: rgba(255, 255, 255, 0.11);
@@ -258,8 +259,8 @@
   --color-foreground: #ededef;
   /* Both text tiers clear 4.5:1 on every surface in both themes, subtle above 5.7:1 even on
      surface-3: it carries times and states, which must read as well as any secondary line (lib/contrast.test.ts). */
-  --color-muted-foreground: #cbcbd0;
-  --color-subtle: #b3b3b9;
+  --color-muted-foreground: #d4d4d8;
+  --color-subtle: #bbbbc1;
   /* Below reading contrast: a disabled mark, a placeholder glyph, never words that must be read. */
   --color-faint: #4a4a50;
   /* A switch: a dark track off; on takes the accent, the one surface it may fill, so on and off never differ by grey alone. */
@@ -369,7 +370,10 @@
   --face-plex: 'IBM Plex Sans', var(--font-fallback);
   --face-atkinson: 'Atkinson Hyperlegible Next', var(--font-fallback);
   --face-source: 'Source Sans 3', var(--font-fallback);
-  --face-system: 'Segoe UI Variable Text', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* Each OS's own interface face by name, then the sans faces any Linux ships:
+     `system-ui` always matches, and a Linux without font aliases resolves it,
+     and `sans-serif`, to its first face, often a monospace one. */
+  --face-system: 'Segoe UI Variable Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Adwaita Sans', Cantarell, Ubuntu, 'Noto Sans', Roboto, 'DejaVu Sans', 'Liberation Sans', Arial, sans-serif;
   --face-mono-geist: 'Geist Mono', var(--font-mono-fallback);
   --face-mono-jetbrains: 'JetBrains Mono', var(--font-mono-fallback);
   --face-mono-system: var(--font-mono-fallback);
@@ -1650,6 +1654,21 @@ tr:last-child td {
 .settings .page > .card.flush {
   padding: 0;
   overflow: hidden;
+}
+
+/* In the desktop's inset card a settings section is a plain group, its title
+   over its rows: no second card inside the card. A failure, a loading ghost
+   and the search's floating results keep their own fill. A phone keeps its
+   grouped cards on the bare screen. */
+.settings .framed > .page > .card:not(.failed, .ghost-card, .results),
+.settings .framed > .page > :is(form, section, .settings-stack) > .card:not(.failed, .ghost-card, .results) {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0;
+  overflow: visible;
+  margin-bottom: var(--space-8);
 }
 
 .settings .page .card h2 {

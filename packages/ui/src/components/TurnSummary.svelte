@@ -8,7 +8,7 @@
 
 <script lang="ts">
   import { page } from '../lib/page-hidden.svelte';
-  import { Brain, Check, ChevronRight, LoaderCircle, Square, CircleAlert } from '@lucide/svelte';
+  import { Brain, ChevronRight, Square, CircleAlert } from '@lucide/svelte';
   import { stepsLabel } from '../lib/agent-turns';
   import { compactionMark, compactionText, type CompactionPart } from '../lib/tool-groups';
   import type { BackgroundTask, ThreadProgress, Turn } from '@boite/contracts';
@@ -19,6 +19,7 @@
   import { secondClock } from '../lib/clock.svelte';
   import type { Snippet } from 'svelte';
   import InfoTip from './InfoTip.svelte';
+  import Spinner from './Spinner.svelte';
   let { turn, workedBefore = 0, clockOffset = 0, progress, waiting = false, activeTool = false, activeContent = false, background = [], stop, pointed = false, steps, memory, compactions = [], actions }: {
     turn: Turn;
     /**
@@ -102,7 +103,7 @@
 {#if turn.status !== 'queued' && !(running && activeTool && !waiting && background.length === 0 && !observed && !compacting)}
   <div class="summary" class:compacting class:settled class:pointed class:marked class:paused={hidden || waiting} data-testid="turn-summary" data-status={turn.status} role="status" aria-label={label} title={label}>
     {#if compacting}
-      <LoaderCircle size={18} class="spinner compaction-icon" aria-hidden="true" />
+      <span class="compaction-icon"><Spinner size={16} paused={hidden || waiting} /></span>
       <div class="compaction-copy">
         <span class="compaction-title ui-label">{strings.chat.compacting}</span>
         {#if compactionSpent !== null}
@@ -110,7 +111,8 @@
         {/if}
       </div>
     {:else}
-    {#if turn.status === 'done'}<Check size={14} />{:else if turn.status === 'error'}<CircleAlert size={14} />{:else if turn.status === 'stopped'}<Square size={12} />{:else if !activeContent && !activeTool}<LoaderCircle size={16} class="spinner" />{/if}
+    <!-- A finished turn needs no tick: its time and the answer above already say it ended; only a failure or a stop is marked. -->
+    {#if turn.status === 'error'}<CircleAlert size={14} />{:else if turn.status === 'stopped'}<Square size={12} />{:else if turn.status !== 'done' && !activeContent && !activeTool}<Spinner size={12} paused={hidden || waiting} />{/if}
     {#if spent !== null}
       <span class="ui-label meta" data-testid="turn-elapsed" title={ownLabel}>{fill(elapsedLabel, { time: elapsed(spent) })}</span>
     {/if}
@@ -174,7 +176,7 @@
 {/if}
 
 <style>
-  .summary { --lead: 10px; display: flex; flex-wrap: wrap; align-self: stretch; align-items: center; gap: 4px 6px; margin: 12px 0 0 4px; font-size: var(--text-xs); color: var(--color-muted-foreground); font-variant-numeric: tabular-nums; }
+  .summary { --lead: 10px; display: flex; flex-wrap: wrap; align-self: stretch; align-items: center; gap: 4px 6px; margin: var(--chat-block-gap) 0 0 4px; font-size: var(--text-sm); color: var(--color-muted-foreground); font-variant-numeric: tabular-nums; }
   /* A metric carries its dot, so a dot never ends a line. A line that starts
      with one starts --lead to the left, where the clip hides that dot; whatever
      starts a line without a dot steps back in by --lead. */
@@ -214,7 +216,7 @@
   .compaction-copy { min-width: 0; }
   .compaction-title { display: block; color: var(--color-foreground); font-size: var(--text-sm); font-weight: 500; }
   .compaction-elapsed { display: block; margin-top: 8px; color: var(--color-muted-foreground); }
-  .summary :global(.compaction-icon) { flex: none; margin-top: 1px; }
+  .compaction-icon { display: inline-flex; flex: none; margin-top: 2px; }
   .dot { display: inline-block; width: calc(var(--lead) - 6px); text-align: center; opacity: .6; }
   [data-testid='turn-progress'] { min-width: 0; overflow-wrap: anywhere; }
   .quiet { color: var(--color-muted-foreground); }
@@ -223,9 +225,6 @@
   .paused .pulse { animation-play-state: paused; }
   .stop-background { display: inline-grid; place-items: center; width: 18px; height: 18px; padding: 0; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: transparent; color: var(--color-muted-foreground); cursor: pointer; }
   .stop-background:hover { color: var(--color-danger); border-color: currentColor; }
-  .summary :global(.spinner) { animation: spin 1.5s steps(90) infinite var(--loops); }
-  .paused :global(.spinner) { animation-play-state: paused; }
-  @media (prefers-reduced-motion: reduce) { .summary :global(.spinner), .pulse { animation: none; } }
-  :global(html[data-motion='reduced']) .summary :global(.spinner),
+  @media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }
   :global(html[data-motion='reduced']) .summary .pulse { animation: none; }
 </style>

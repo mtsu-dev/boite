@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Archive, LoaderCircle, MessageCircleQuestionMark } from '@lucide/svelte';
+  import { Archive, LoaderCircle } from '@lucide/svelte';
   import type { ProjectEntry } from '../lib/project-view.svelte';
   import { archiveCount, projectThreadView, type ProjectThreadKind } from '../lib/project-threads.svelte';
   import { count as formatCount, projectName } from '../lib/format';
@@ -25,7 +25,7 @@
 
 <div class="counters {part}">
   {#if part === 'head' && waiting > 0}
-    <span class="counter waiting" data-testid="project-waiting-count" data-count={waiting} role="img" title={waitingLabel} aria-label={waitingLabel}><MessageCircleQuestionMark size={12} aria-hidden="true" /><span class="ui-label">{formatCount(waiting)}</span></span>
+    <span class="counter waiting" data-testid="project-waiting-count" data-count={waiting} role="img" title={waitingLabel} aria-label={waitingLabel}><span class="ui-label word">{strings.sidebar.state.waiting}</span><span class="ui-label">{formatCount(waiting)}</span></span>
   {/if}
   {#each kinds as kind (kind)}
     {@const total = kind === 'working' ? working : archiveCount(entry.project, kind)}
@@ -49,11 +49,12 @@
   .counter { font-variant-numeric: tabular-nums; }
   .counter:disabled { opacity: 1; }
 
-  /* The card's small tags, each a glyph and its count, the word in the tooltip; the user's turn in its amber, no fill. */
+  /* The card's small tags, each a glyph and its count, the word in the tooltip. The user's turn is the one with its
+     word, in amber, the rows' own mark; its count stays grey like the others. */
   .head, .foot { gap: 2px; }
   .head .counter, .foot .counter { display: inline-flex; align-items: center; height: 22px; min-width: 0; padding: 0 6px; gap: 4px; border: none; border-radius: var(--radius-sm);
     background: transparent; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; }
-  .head .counter.waiting { color: var(--color-live); }
+  .head .counter.waiting .word { color: var(--color-live); }
   .head .working :global(.spinner) { color: var(--color-accent); animation: spin 1s steps(60) infinite var(--loops); }
   .head .working.away :global(.spinner) { color: inherit; animation: none; }
   .head .counter:hover:not(:disabled), .foot .counter:hover:not(:disabled) { background: var(--color-hover); color: var(--color-foreground); }

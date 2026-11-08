@@ -4,7 +4,7 @@
   // a download for the rest. "Show in folder" hands the path to the system file
   // manager, only in the shell on its own core, and never opens the file itself.
   import { errorText } from '../lib/errors';
-  import { ChevronRight, ChevronsDownUp, ChevronsUpDown, FileDiff, FilePenLine, FilePlus2, FileMinus2, Folder, FolderOpen, GitCompareArrows } from '@lucide/svelte';
+  import { ChevronRight, ChevronsDownUp, ChevronsUpDown, FileDiff, FilePenLine, FilePlus2, FileMinus2, Folder, FolderOpen, PanelRightOpen } from '@lucide/svelte';
   import { revealFile } from '../lib/links';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
@@ -89,9 +89,10 @@
           <FileDiff size={14} /><span class="ui-label">{showDiff ? strings.chat.hideTurnDiff : strings.chat.showTurnDiff}</span>
         </button>
       {/if}
+      <!-- Not a second diff toggle: it opens the folder's whole change set in the side panel, so its mark is the panel. -->
       {#if repository}
         <button type="button" class="ghost small icon" data-testid="turn-all-changes" title={strings.chat.allChanges} aria-label={strings.chat.allChanges}
-          onclick={() => store.panel.openChanges()}><GitCompareArrows size={14} /></button>
+          onclick={() => store.panel.openChanges()}><PanelRightOpen size={14} /></button>
       {/if}
     </span>
   </header>

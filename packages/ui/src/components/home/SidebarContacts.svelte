@@ -83,7 +83,7 @@
   .toggle:focus-visible .mark > :global(svg) { opacity: 0; }
   .toggle:focus-visible .mark .fold-caret { opacity: 1; }
   .title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; text-align: left; white-space: nowrap; font-weight: 600; color: var(--color-foreground); }
-  .waiting { flex: none; padding: 0 6px; border-radius: var(--radius-full); background: color-mix(in oklch, var(--color-live) 18%, transparent); color: var(--color-live); font-size: var(--text-xs); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .waiting { flex: none; padding: 0 6px; border-radius: var(--radius-full); background: var(--color-surface-3); color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; font-variant-numeric: tabular-nums; }
   .add { flex: none; opacity: 0; }
   .head:hover .add, .head:focus-within .add { opacity: 1; }
   .row { --tone: var(--color-subtle); display: flex; align-items: center; justify-content: flex-start; gap: 8px; width: 100%; min-height: var(--row); padding: 0 10px; border-radius: var(--radius-md); background: transparent; }
@@ -91,12 +91,12 @@
   .row:active:not(:disabled) { transform: none; }
   .row.current { background: var(--color-active); }
   .row[data-link='connected'] { --tone: var(--color-success); }
-  .row[data-link='connecting'] { --tone: var(--color-live); }
+  .row[data-link='connecting'] { --tone: var(--color-muted-foreground); }
   .avatar { position: relative; display: grid; flex: none; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--color-active); color: var(--color-foreground); font-size: var(--text-xs); font-weight: 700; }
   .dot { position: absolute; right: -1px; bottom: -1px; width: 7px; height: 7px; border-radius: 50%; background: var(--tone); box-shadow: 0 0 0 2px var(--color-surface); }
   .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; color: var(--color-foreground); }
   .state { flex: none; color: var(--color-subtle); font-size: var(--text-xs); }
-  .state.asks { color: var(--color-live); font-weight: 500; }
+  .state.asks { color: var(--color-muted-foreground); font-weight: 500; }
   .empty { color: var(--color-muted-foreground); }
   .empty .name { color: inherit; }
   @media (prefers-reduced-motion: reduce) { .mark > :global(*) { transition: none; } }

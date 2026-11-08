@@ -6,5 +6,9 @@ export const fr: Translation = {
     heading: 'Ouvrir un projet',
     deviceBody: "Les projets s'ouvrent depuis l'application où tourne le cœur. Ceux qu'il détient apparaissent ici.",
     pathPlaceholder: 'Chemin absolu du dossier',
+    agents: 'Agents',
+    installed: 'Installé',
+    go: 'Continuer avec {provider}',
+    otherMachine: 'Utiliser une IA sur une autre machine',
   }
 };

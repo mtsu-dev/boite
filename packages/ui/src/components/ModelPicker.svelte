@@ -5,6 +5,7 @@
   import ProviderLogo from './ProviderLogo.svelte';
   import Deferred, { parts } from './Deferred.svelte';
   import type ModelPickerMenu from './ModelPickerMenu.svelte';
+  import type PickerMore from './PickerMore.svelte';
   import { Closing } from '../lib/closing.svelte';
   import { strings } from '../lib/strings';
   import type { Choice, PickPatch, Store } from '../lib/store.svelte';
@@ -44,7 +45,8 @@
     compact?: boolean;
     /** What the popover opens above: the chip, or the whole composer while an ask is docked in it, so it never covers the ask. */
     anchor?: () => HTMLElement | null;
-    settings?: Snippet;
+    /** The rows under the models; the menu hands them its More row, which loads with it. */
+    settings?: Snippet<[typeof PickerMore]>;
     trailing?: Snippet;
     onpick: (patch: PickPatch) => void;
   } = $props();
@@ -68,12 +70,19 @@
     return account && account.isolationDir !== null ? account.label : null;
   });
 
-  /** Opens the popover, then brings one of its rows (`composer-effort`, `composer-mode`) to the keyboard. */
+  /** Opens the popover, then brings one of its rows (`composer-effort`, `composer-mode`, `effort-speed`) to the keyboard. */
   export async function reveal(testid?: string) {
     if (!popover.open) toggle();
     await parts.ModelPickerMenu.load().catch(() => undefined);
     await tick();
-    const row = testid ? root?.querySelector<HTMLElement>(`[data-testid="composer-picker-menu"] [data-testid="${testid}"]`) : null;
+    const find = () => testid ? root?.querySelector<HTMLElement>(`[data-testid="composer-picker-menu"] [data-testid="${testid}"]`) : null;
+    let row = find();
+    // Speed and permissions wait behind the More row: unfold it to reach them.
+    if (testid && !row) {
+      root?.querySelector<HTMLElement>('[data-testid="composer-picker-more"][aria-expanded="false"]')?.click();
+      await tick();
+      row = find();
+    }
     row?.scrollIntoView?.({ block: 'nearest' });
     // A row of named choices takes the focus on its picked one; a button row opens.
     if (row && !(row instanceof HTMLButtonElement)) (row.querySelector<HTMLElement>('[role=radio][tabindex="0"]') ?? row).focus();

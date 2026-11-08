@@ -43,5 +43,15 @@
   .choice { flex: 1 0 auto; height: var(--control-sm); padding: 0 10px; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 500; box-shadow: none; }
   .choice:hover { background: var(--color-hover); color: var(--color-foreground); }
   .choice[aria-checked='true'] { background: var(--color-active); color: var(--color-foreground); font-weight: 600; }
-  @media (max-width: 720px) { .choice { height: var(--touch-target); padding: 0 8px; } }
+  @media (max-width: 720px) {
+    /* A regular grid of equal cells, never one left alone on a row: up to
+       three on one row, four as two by two, five or six as rows of three,
+       more as rows of four. Counted in CSS, so the entry chunk carries none of it. */
+    .choices { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+    .choices:has(> :nth-child(4):last-child) { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .choices:has(> :nth-child(5)) { grid-auto-flow: row; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .choices:has(> :nth-child(7)) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .choice { min-width: 0; height: var(--touch-target); padding: 0 6px; }
+    .choice .ui-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  }
 </style>

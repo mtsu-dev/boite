@@ -15,7 +15,7 @@ const titles = (section: 'handling' | 'done') => {
 };
 const card = (title: string) => [...document.querySelectorAll<HTMLElement>('[data-testid=desk-card]')].find(node => node.querySelector('.desk-card-title')?.textContent === title);
 
-test('Nova\'s desk is one column: who it is, its live step, its routines and its notes, and no spend', async ({ ready }) => {
+test('Nova\'s desk is one column: who it is, its routines and its notes, its live step only away from its conversation, and no spend', async ({ ready }) => {
   setExperiment('resident-agents', true);
   let desk: ReturnType<typeof mount> | null = null;
   try {
@@ -26,7 +26,7 @@ test('Nova\'s desk is one column: who it is, its live step, its routines and its
     store.showAgents();
     await openAgent(store, nova.id);
     desk = mount(AgentDesk, { target: document.body, props: { store } });
-    await vi.waitFor(() => expect(document.querySelector('[data-testid=desk-now-step]')).not.toBeNull());
+    await vi.waitFor(() => expect(document.querySelector('[data-testid=desk-ident]')).not.toBeNull());
     flushSync();
 
     // Who it is: its name, what it is for, its model, its machine and since when; no tabs and no day's spend.
@@ -38,10 +38,13 @@ test('Nova\'s desk is one column: who it is, its live step, its routines and its
     expect(document.querySelector('[role=tablist]')).toBeNull();
     expect(document.querySelector('[data-testid=desk-today]')).toBeNull();
     expect(document.body.textContent).not.toContain('$');
-    // On the Bots page of a desktop, the threads are in the column, not here.
+    // On the Bots page of a desktop, the threads are in the column and the live step in the conversation, not here.
     expect(document.querySelector('[data-testid=desk-work]')).toBeNull();
+    expect(document.querySelector('[data-testid=desk-now]')).toBeNull();
 
-    // Now: the step its turn is on, live, and the calls so far on the rail.
+    // Away from that page the desk carries Now: the step its turn is on, live, and the calls so far on the rail.
+    store.page = 'chat';
+    await vi.waitFor(() => expect(document.querySelector('[data-testid=desk-now-step]')).not.toBeNull());
     expect(document.querySelector('[data-testid=desk-now]')?.getAttribute('data-state')).toBe('working');
     expect(document.querySelector('[data-testid=desk-now-step]')?.textContent).toBe('Run the UI tests');
     expect(document.querySelector('[data-testid=desk-now]')?.textContent).toContain('4 steps so far');

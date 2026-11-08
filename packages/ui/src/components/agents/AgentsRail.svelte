@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Component } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
-  import { Bot, Brain, FilePen, FileText, Globe, Hourglass, Layers, MessageCircleQuestionMark, Moon, PenLine, Play, Plus, RotateCw, Search, SquareTerminal, TriangleAlert, Wrench, X } from '@lucide/svelte';
+  import { Bot, Brain, FilePen, FileText, Globe, Hourglass, Layers, MessageCircleQuestionMark, Moon, PenLine, Play, Plus, RotateCw, Search, SquareTerminal, TriangleAlert, Wrench } from '@lucide/svelte';
   import type { AgentProfile, AgentStatus, Team, ThreadSummary } from '@boite/contracts';
   import { agentMenuItems, pickAgentAction, saveAgent } from '../../lib/agent-menu';
   import { botLeaving, leavingLine } from '../../lib/agent-move-flow';
@@ -13,13 +13,13 @@
   import { strings } from '../../lib/strings';
   import { listNames, watchTeams, type TeamRow } from '../../lib/teams.svelte';
   import { workspace, type Machine } from '../../lib/workspace.svelte';
-  import Menu from '../Menu.svelte';
   import RailFrame from '../RailFrame.svelte';
   import AgentAvatar from './AgentAvatar.svelte';
   import AgentRow from './AgentRow.svelte';
   import BotColumn from './BotColumn.svelte';
   import BotColumnHead from './BotColumnHead.svelte';
   import { minuteClock } from '../../lib/clock.svelte';
+  import { tabHeader } from '../../lib/tab-header.svelte';
 
   /**
    * The Bots page's column. On a desktop the window's rail lists the bots, so
@@ -29,7 +29,8 @@
    *
    * On a phone there is no rail: the column is the Bots screen, the agents
    * listed the way a messenger lists its chats in the thread list's frame
-   * (`RailFrame`) under the page's heading, search and New bot: one card of rows,
+   * (`RailFrame`) under the phone header, which this page lends its search and
+   * its one "+" (`tabHeader`): one card of rows,
    * each with its robot by state, its name, what it does this second or the
    * last thing it said, the missed answers or the time, and its next wake.
    * Like the thread list, it holds every connected machine's agents, pinned
@@ -78,8 +79,6 @@
 
   const labels = $derived(strings.agents);
   const uid = $props.id();
-  let query = $state('');
-  let searching = $state(false);
   const now = $derived(minuteClock.now);
 
   const phone = new MediaQuery('(max-width: 720px)');
@@ -88,7 +87,8 @@
   const multi = $derived(workspace.machinesOr(view.store).length > 1);
   /** A row names its machine only when the bot lives on another one, or its own is out of reach: on this window's machine the glyph says nothing. */
   const elsewhere = (machine: Machine) => multi && (machine.store !== workspace.primary || machine.store.connection !== 'ready') ? machine : undefined;
-  const needle = $derived(query.trim().toLowerCase());
+  /** The phone header's search, which this page lent it; a desktop column has none. */
+  const needle = $derived(tabHeader.query.trim().toLowerCase());
   const rows = $derived(lists
     .flatMap(list => agentRows(list.view.snapshot).filter(row => !needle || row.profile.name.toLowerCase().includes(needle)).map(row => ({ ...list, row })))
     .sort((a, b) => Number(b.row.profile.pinned === true) - Number(a.row.profile.pinned === true) || b.row.at - a.row.at || a.row.profile.name.localeCompare(b.row.profile.name)));
@@ -179,37 +179,27 @@
     const agent = owner.snapshot?.profiles.find(p => p.id === id);
     if (next && agent && next !== agent.name) void saveAgent(owner, id, { name: next }, view.store);
   }
-  let searchToggle = $state<HTMLButtonElement>();
-  /** The field unmounts under the focus: it goes back to the button that opened it. */
-  function closeSearch() { searching = false; query = ''; searchToggle?.focus(); }
+  // On a phone the page's search and its one "+" (a bot, or a team in its menu) are the header's, as on every tab.
+  $effect(() => {
+    if (!phone.current) return;
+    const owner = view.store.owner, both = teamsOn && !!onnewteam;
+    return tabHeader.lend({
+      searchLabel: labels.search,
+      searchTestid: 'agents-search-toggle',
+      create: owner ? {
+        label: labels.newAgent,
+        testid: 'agents-create',
+        items: both ? [{ id: 'bot', label: labels.newAgent, glyph: Bot, testid: 'agents-create-bot' }, { id: 'team', label: strings.teamChat.newTeam, glyph: Layers, testid: 'agents-new-team' }] : undefined,
+        onpick: id => (id === 'team' ? newTeam() : oncreate()),
+      } : null,
+    });
+  });
 </script>
 
 <RailFrame store={view.store} kind="agents-rail" label={phone.current ? labels.heading : agent?.name ?? team?.name ?? labels.heading}>
   {#snippet head()}
     {#if !phone.current}
       <BotColumnHead {view} {agent} {status} {thread} {team} {onpane} {onengine} onopen={pane => agent && here && onopen(here, agent.id, pane)} />
-    {:else}
-      <div class="agents-phone-head">
-        <h2 class="agents-phone-title">{labels.heading}</h2>
-        <button type="button" class="ghost icon small" bind:this={searchToggle} class:active={searching} aria-pressed={searching} title={labels.search} aria-label={labels.search} onclick={() => (searching ? closeSearch() : (searching = true))} data-testid="agents-search-toggle"><Search size={16} /></button>
-        {#if view.store.owner && teamsShown && onnewteam}
-          <!-- One "+" per screen: a bot or a team, picked in its menu. -->
-          <Menu items={[{ id: 'bot', label: labels.newAgent, glyph: Bot, testid: 'agents-create-bot' }, { id: 'team', label: strings.teamChat.newTeam, glyph: Layers, testid: 'agents-new-team' }]}
-            onpick={id => (id === 'team' ? newTeam() : oncreate())} label={labels.newAgent} placement="bottom" align="end" variant="ghost" testid="agents-create"><Plus size={16} /></Menu>
-        {:else if view.store.owner}
-          <button type="button" class="ghost icon small" title={labels.newAgent} aria-label={labels.newAgent} onclick={oncreate} data-testid="agents-create"><Plus size={16} /></button>
-        {/if}
-      </div>
-    {/if}
-  {/snippet}
-
-  {#snippet subhead()}
-    {#if phone.current && searching}
-      <label class="agents-search"><Search size={14} strokeWidth={1.75} />
-        <!-- svelte-ignore a11y_autofocus -->
-        <input type="search" bind:value={query} aria-label={labels.search} placeholder={labels.search} autofocus onkeydown={e => { if (e.key === 'Escape') closeSearch(); }} />
-        <button type="button" class="ghost icon small" aria-label={strings.common.close} onclick={closeSearch}><X size={13} /></button>
-      </label>
     {/if}
   {/snippet}
 

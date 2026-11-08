@@ -61,10 +61,10 @@
       {#if failed !== undefined}
         <span class="state error" data-testid="composer-outbox-failed" title={fill(strings.composer.outboxFailed, { reason: failed })}>{fill(strings.composer.outboxFailed, { reason: failed })}</span>
       {:else if entry.request}
-        <span class="state" data-testid="composer-outbox-pending"><Clock size={13} />{at < outgoing ? strings.composer.outboxSending
-          : connected ? strings.composer.outboxNext : fill(strings.composer.outboxWaiting, { machine })}</span>
+        <span class="state" data-testid="composer-outbox-pending"><Clock size={13} /><span class="word">{at < outgoing ? strings.composer.outboxSending
+          : connected ? strings.composer.outboxNext : fill(strings.composer.outboxWaiting, { machine })}</span></span>
       {:else}
-        <span class="state"><Clock size={13} />{strings.composer.queuedLabel}</span>
+        <span class="state"><Clock size={13} /><span class="word">{strings.composer.queuedLabel}</span></span>
       {/if}
       <button type="button" class="text"
         title={strings.composer.editQueued}
@@ -155,4 +155,7 @@
 
   .send-now { align-self: flex-start; height: 26px; padding: 0 8px; margin-left: -8px; border-radius: var(--radius-md); font-size: var(--text-sm); font-weight: 550; }
   @media (max-width: 720px) { .line { height: 36px; } .remove { width: 36px; height: 36px; } }
+  /* A 360 px phone keeps the line for the prompt: the clock says it waits, the
+     word stays for screen readers, the "i" says why. */
+  @media (max-width: 400px) { .word { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; } }
 </style>

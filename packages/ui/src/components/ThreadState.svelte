@@ -16,9 +16,13 @@
    * ended long ago. The row says so instead of spinning and counting time.
    * One grammar in every list (rows, Recent, the palette, the phone,
    * Activity): the user's turn and a failure as words, work as a moving mark
-   * and its time, news as a check and its word. No dot stands alone.
+   * and its word, news as a check and its word. How long work has run lives
+   * in the thread and in the tooltip, never as a clock on the row.
+   * `mark`: the desktop list's narrow end, where the title gets the width:
+   * the user's turn is a dot and work its ring alone, their words in the
+   * tooltip and the accessible name. Only this file draws that dot.
    */
-  let { thread, now, subagents = null, away = false }: { thread: Pick<ThreadSummary, 'status' | 'unread' | 'runningSince' | 'requestSince' | 'backgroundWork' | 'openQuestions' | 'lastUserMessageAt' | 'createdAt'> & Partial<Pick<ThreadSummary, 'backgroundWait' | 'pullRequestWatches'>>; now: number; subagents?: WorkingChildren | null; away?: boolean } = $props();
+  let { thread, now, subagents = null, away = false, mark = false }: { thread: Pick<ThreadSummary, 'status' | 'unread' | 'runningSince' | 'requestSince' | 'backgroundWork' | 'openQuestions' | 'lastUserMessageAt' | 'createdAt'> & Partial<Pick<ThreadSummary, 'backgroundWait' | 'pullRequestWatches'>>; now: number; subagents?: WorkingChildren | null; away?: boolean; mark?: boolean } = $props();
 
   function earliest(a: number | null | undefined, b: number | null | undefined): number | null {
     return a == null ? b ?? null : b == null ? a : Math.min(a, b);
@@ -48,6 +52,8 @@
     : live ? thread.backgroundWork?.since ?? (wait?.state === 'waiting' ? wait.since : null) : null);
   /** Counting time reads the second clock, only while the agent works: the list's clock ticks far slower. */
   let spent = $derived(since === null ? null : elapsed(Math.max(secondClock.now, now) - since));
+  /** The desktop list's end draws the user's turn and work as their mark alone. */
+  let bare = $derived(mark && (live || kind === 'waiting'));
   let label = $derived.by(() => {
     if (kind === null) return null;
     if (kind === 'working') return spent === null ? strings.sidebar.state.working : fill(strings.sidebar.state.workingFor, { elapsed: spent });
@@ -81,15 +87,16 @@
 {:else if kind === null}
   <span class="when" title={exactTime(thread.lastUserMessageAt ?? thread.createdAt)}>{ago(thread.lastUserMessageAt ?? thread.createdAt, now)}</span>
 {:else}
-  <span class="when state {kind}" data-testid="thread-state" data-state={kind} title={label} aria-label={label}>
-    {#if kind === 'working'}<LoaderCircle size={11} class="spinner" aria-hidden="true" /><span class="ui-label elapsed">{spent ?? strings.sidebar.state.working}</span>
-    {:else if kind === 'delegating'}<LoaderCircle size={11} class="pulse" aria-hidden="true" /><span class="ui-label elapsed" data-testid="thread-state-text">{spent ?? strings.sidebar.state.delegating}</span>
-    {:else if kind === 'monitoring'}<Radar size={11} class="pulse" aria-hidden="true" /><span class="ui-label elapsed">{spent ?? strings.sidebar.state.monitoring}</span>
-    {:else if kind === 'background'}<LoaderCircle size={11} class="pulse" aria-hidden="true" /><span class="ui-label elapsed">{spent ?? strings.sidebar.state.background}</span>
-    {:else if kind === 'watching'}<GitPullRequest size={11} class="pulse" aria-hidden="true" /><span class="ui-label elapsed">{spent ?? strings.sidebar.state.watching}</span>
-    {:else if kind === 'interrupted'}<CircleAlert size={11} aria-hidden="true" /><span class="ui-label">{strings.sidebar.state.interrupted}</span>
-    {:else if kind === 'done'}<Check size={12} aria-hidden="true" /><span class="ui-label">{label}</span>
-    {:else}<span class="ui-label">{label}</span>{/if}
+  <!-- A mark alone stands for its word: an image named by it. -->
+  <span class="when state {kind}" class:mark={bare} data-testid="thread-state" data-state={kind} title={label} aria-label={label} role={bare ? 'img' : undefined}>
+    {#if kind === 'working'}<LoaderCircle size={11} class="spinner" aria-hidden="true" />
+    {:else if kind === 'delegating' || kind === 'background'}<LoaderCircle size={11} class="pulse" aria-hidden="true" />
+    {:else if kind === 'monitoring'}<Radar size={11} class="pulse" aria-hidden="true" />
+    {:else if kind === 'watching'}<GitPullRequest size={11} class="pulse" aria-hidden="true" />
+    {:else if kind === 'interrupted'}<CircleAlert size={11} aria-hidden="true" />
+    {:else if kind === 'done'}<Check size={12} aria-hidden="true" />
+    {:else if kind === 'waiting' && bare}<span class="needs-dot" aria-hidden="true"></span>{/if}
+    {#if !bare}<span class="ui-label" data-testid={kind === 'delegating' ? 'thread-state-text' : undefined}>{strings.sidebar.state[kind]}</span>{/if}
   </span>
 {/if}
 
@@ -108,7 +115,7 @@
     gap: 5px;
     font-weight: 500;
   }
-  /* The words of a state that asks for the user read bold; work reads as plain time beside the accent spinner. */
+  /* The words of a state that asks for the user read bold; work reads as its quiet word beside the accent spinner. */
   .waiting, .error, .interrupted, .done { font-weight: 600; }
   .working {
     color: var(--color-muted-foreground);
@@ -117,6 +124,8 @@
   .waiting {
     color: var(--color-live);
   }
+  /* The user's turn on the desktop list: the one amber dot, the size of the ring beside work. */
+  .needs-dot { width: 7px; height: 7px; margin: 0 2px; border-radius: var(--radius-full); background: var(--color-live); }
   .error {
     color: var(--color-danger);
   }

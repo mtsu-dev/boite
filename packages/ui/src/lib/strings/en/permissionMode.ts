@@ -4,7 +4,7 @@ export const strings = {
     default: 'Ask',
     acceptEdits: 'Edit freely',
     bypassPermissions: 'Auto',
-    yolo: 'YOLO',
+    yolo: 'No limits',
     plan: 'Plan',
     dontAsk: 'Auto-deny'
   }

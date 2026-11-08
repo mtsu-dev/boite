@@ -4,10 +4,10 @@
   import { strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import { workspace } from '../lib/workspace.svelte';
-  import { notifyCorner } from '../lib/notify-corner';
+  import { toastSlot } from '../lib/notify-corner';
 
   /**
-   * The active machine's error as a card in the notification corner, with Open thread
+   * The active machine's error as a card in the toasts' home (`toastSlot`), with Open thread
    * when a thread failed. A minor error with no thread clears itself after
    * five seconds.
    */
@@ -68,11 +68,11 @@
 
 {#if toast.shown}
   <div
-    class="toast notify-corner"
+    class="toast toast-slot"
     class:closing={toast.closing}
     role="alert"
     use:toast.attach
-    use:notifyCorner
+    use:toastSlot
     onanimationend={toast.end}
     data-testid="error-toast"
   >
@@ -86,7 +86,7 @@
 {/if}
 
 <style>
-  .toast { animation: rise var(--dur-3) var(--ease-out-quint); }
+  .toast { width: min(340px, calc(100vw - 24px)); animation: rise var(--dur-3) var(--ease-out-quint); }
 
   .toast.closing {
     animation: fade-out var(--dur-2) var(--ease-out-quint);

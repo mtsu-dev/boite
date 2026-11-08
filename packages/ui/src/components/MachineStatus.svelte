@@ -2,6 +2,7 @@
   import { machineName, listedName, isThisPC, machineHealth, workspace } from '../lib/workspace.svelte';
   import { Gauge, Monitor, TriangleAlert } from '@lucide/svelte';
   import { strings } from '../lib/strings';
+  import type { Snippet } from 'svelte';
   import type { Store } from '../lib/store.svelte';
   import Menu from './Menu.svelte';
   import { separator, type MenuItem } from '../lib/menu';
@@ -15,7 +16,11 @@
    * machine that is merely switched off is grey in the menu and raises no
    * warning (`machineHealth`).
    */
-  let { store, filter = null, onfilter, limits, testid = 'machine-status' }: { store: Store; filter?: string | null; onfilter?: (id: string | null) => void; limits?: () => void; testid?: string } = $props();
+  let { store, filter = null, onfilter, limits, testid = 'machine-status', card }: {
+    store: Store; filter?: string | null; onfilter?: (id: string | null) => void; limits?: () => void; testid?: string;
+    /** The rail's name card, drawn beside the button in place of the native tooltip: the name, then the trouble or the machine it filters on. */
+    card?: Snippet<[string, string | null]>;
+  } = $props();
 
   const machines = $derived([...workspace.machinesOr(store)]
     .sort((a, b) => Number(isThisPC(b)) - Number(isThisPC(a))));
@@ -25,7 +30,8 @@
   const chosen = $derived(filter === null ? null : machines.find(m => m.id === filter) ?? null);
   const shown = $derived(limits !== undefined || machines.length > 1 || issues > 0 || chosen !== null);
   const name = $derived(limits ? strings.app.rail.utilities : strings.machines.filter);
-  const label = $derived(issues > 0 ? `${name} · ${issues} ${strings.connection.issues}` : name);
+  const trouble = $derived(issues > 0 ? `${issues} ${strings.connection.issues}` : null);
+  const label = $derived(trouble ? `${name} · ${trouble}` : name);
   const items = $derived<MenuItem[]>([
     ...(machines.length > 1 ? [
       { id: 'all', label: strings.machines.all, active: filter === null, hideActiveMark: true },
@@ -45,10 +51,11 @@
 <!-- The wrapper stays, empty, so the connection state is always readable on it. -->
 <div class="machines" class:problem={issues > 0} class:filtered={chosen !== null} data-testid={testid === 'machine-status' ? 'status-connection' : `${testid}-status`} data-state={store.connection} aria-live="polite">
   {#if shown}
-    <Menu {items} onpick={choose} {label} variant="ghost" {testid}>
+    <Menu {items} onpick={choose} {label} variant="ghost" {testid} titled={!card}>
       {#if issues}<TriangleAlert size={16} />{:else if limits && chosen === null}<Gauge size={16} />{:else}<Monitor size={16} />{/if}
       {#if chosen}<span class="name ui-label">{machineName(chosen)}</span>{/if}
     </Menu>
+    {@render card?.(name, trouble ?? (chosen ? machineName(chosen) : null))}
   {/if}
 </div>
 

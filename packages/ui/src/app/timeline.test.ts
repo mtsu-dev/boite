@@ -43,7 +43,7 @@ test('a thinking part is folded, opens on its toggle, and a new turn shows it be
   expect(document.querySelectorAll('[data-testid=thinking-part]').length).toBe(2);
 });
 
-test('an async question waits in the dock above the composer, stacked, and the timeline keeps a line to it', async ({ app: _app }) => {
+test('an async question waits in the dock above the composer, stacked, and the timeline draws no line for it meanwhile', async ({ app: _app }) => {
   query<HTMLButtonElement>('[data-testid=new-thread]').click();
   await waitFor(() => store.draft !== null);
 
@@ -61,9 +61,9 @@ test('an async question waits in the dock above the composer, stacked, and the t
   query<HTMLButtonElement>('[data-testid=activity-question-toggle]').click();
   await waitFor(() => query('[data-testid=activity-question-toggle]').getAttribute('aria-expanded') === 'true');
 
-  // New arrivals leave the oldest up; the timeline holds a line per question, no card.
+  // New arrivals leave the oldest up; the dock is their one copy: no line, no card in the timeline.
   expect(query('[data-testid=activity-question-index]').textContent).toBe('1/2');
-  expect(document.querySelectorAll('[data-testid=question-docked]').length).toBe(2);
+  expect(document.querySelectorAll('[data-testid=question-docked]').length).toBe(0);
   expect(document.querySelector('[data-testid=timeline] [data-testid=question-card]')).toBeNull();
   const visible = () => Array.from(document.querySelectorAll<HTMLElement>('[data-testid=activity-question]')).filter((el) => !el.hidden);
   expect(visible().length).toBe(1);
@@ -82,12 +82,13 @@ test('an async question waits in the dock above the composer, stacked, and the t
   first.querySelector<HTMLButtonElement>('[data-testid=question-submit]')?.click();
   await waitFor(() => document.querySelectorAll('[data-testid=activity-question]').length === 1);
   expect(document.querySelector('[data-testid=activity-question-index]')).toBeNull();
-  await waitFor(() => document.querySelectorAll('[data-testid=question-docked]').length === 1);
+  await waitFor(() => document.querySelectorAll('[data-testid=timeline] [data-testid=question-verdict]').length === 1);
+  expect(document.querySelector('[data-testid=question-docked]')).toBeNull();
 
-  // Folded, a click on its line in the timeline opens it again.
+  // Folded, its toggle opens it again.
   query<HTMLButtonElement>('[data-testid=activity-question-toggle]').click();
   await waitFor(() => query('[data-testid=activity-question-toggle]').getAttribute('aria-expanded') === 'false');
-  query<HTMLButtonElement>('[data-testid=question-docked]').click();
+  query<HTMLButtonElement>('[data-testid=activity-question-toggle]').click();
   await waitFor(() => query('[data-testid=activity-question-toggle]').getAttribute('aria-expanded') === 'true');
 
   // Passing the remaining question removes the dock without sending another prompt.

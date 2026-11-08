@@ -23,7 +23,8 @@
    * title takes the width, then an unsent draft, the pin, the pull request
    * when there is one, and the state or the time at the end. The thread's
    * header names its agent, so the row carries no provider glyph; a flat list
-   * (`tile`) shows the project's tile first, since no card names it.
+   * (`tile`) shows the project's tile first, since no card names it. `mark`
+   * draws the state as the desktop list's narrow mark (ThreadState.svelte).
    */
   let {
     owner,
@@ -31,7 +32,8 @@
     now,
     open = false,
     tile,
-    pullRequest = null
+    pullRequest = null,
+    mark = false
   }: {
     owner: Store;
     thread: ThreadSummary;
@@ -43,6 +45,7 @@
     tile?: Project;
     /** The thread's pull request, looked up by the row. */
     pullRequest?: ThreadSummary['pullRequest'];
+    mark?: boolean;
   } = $props();
   let draft = $derived(!open && hasUnsentDraft(owner.composerStates[thread.id]));
   const prLabel = $derived(pullRequest && pullRequestLabel(pullRequest));
@@ -67,7 +70,7 @@
       {#if pullRequest.state === 'MERGED'}<GitMerge size={12} aria-hidden="true" />{:else if pullRequest.state === 'CLOSED'}<GitPullRequestClosed size={12} aria-hidden="true" />{:else}<GitPullRequest size={12} aria-hidden="true" />{/if}<span class="ui-label">#{pullRequest.number}</span>
     </span>
   {/if}
-  {#if now !== undefined}<ThreadState {thread} {now} subagents={owner.subagents(thread.id)} away={owner.connection !== 'ready'} />{/if}
+  {#if now !== undefined}<ThreadState {thread} {now} subagents={owner.subagents(thread.id)} away={owner.connection !== 'ready'} {mark} />{/if}
 </span>
 
 <style>

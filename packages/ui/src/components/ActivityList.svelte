@@ -11,10 +11,10 @@
 
   /**
    * Desktop Activity, the main card's page while the rail has it on
-   * (App.svelte): what contacts ask, then the threads that need the user,
-   * failed or finished, each with why and since when, as the phone's Activity
-   * lists them (lib/activity-feed.ts), in the list's own rows (menu, drag,
-   * rename). Every machine, as the rail's count. It loads on its own, out of
+   * (App.svelte), as triage in two sections: Needs you (what contacts ask,
+   * then the threads that ask or failed), then Updates (finished or stopped
+   * short), each with why and since when, as the phone's Activity lists them
+   * (lib/activity-feed.ts), in the list's own rows (menu, drag, rename). Every machine, as the rail's count. It loads on its own, out of
    * the entry chunk.
    */
   let { store }: { store: Store } = $props();
@@ -23,6 +23,8 @@
     const byId = new Map(machine.store.projects.map(project => [project.id, project]));
     return machine.store.threads.filter(feedThread).map(thread => ({ machine, thread, project: thread.projectId === null ? undefined : byId.get(thread.projectId) }));
   }), feedPlace));
+  const needs = $derived(rows.filter(row => row.section === 'needs'));
+  const updates = $derived(rows.filter(row => row.section === 'updates'));
   const now = $derived(minuteClock.now);
 
   let ContactInboxRows = $state<typeof import('./home/ContactInboxRows.svelte').default>();
@@ -49,8 +51,13 @@
 <section class="activity-page" data-testid="activity-list" aria-labelledby="activity-heading">
   <div class="column">
     <h1 id="activity-heading">{strings.mobile.activity}</h1>
+    {#if needs.length > 0 || inbox.contacts > 0}<h2 class="section-label" data-testid="activity-needs">{strings.sidebar.state.waiting}</h2>{/if}
     {#if ContactInboxRows && contactsShown(store)}<ContactInboxRows {store} />{/if}
-    {#each rows as row (`${row.machine.id}:${row.thread.id}`)}
+    {#each needs as row (`${row.machine.id}:${row.thread.id}`)}
+      <ThreadCard machine={row.machine} project={row.project} thread={row.thread} {now} compact reason={row.reason} at={row.at} nested={row.nested} />
+    {/each}
+    {#if updates.length > 0}<h2 class="section-label" data-testid="activity-updates">{strings.mobile.feed.updates}</h2>{/if}
+    {#each updates as row (`${row.machine.id}:${row.thread.id}`)}
       <ThreadCard machine={row.machine} project={row.project} thread={row.thread} {now} compact reason={row.reason} at={row.at} nested={row.nested} />
     {/each}
     {#if rows.length === 0 && inbox.contacts === 0}
@@ -65,6 +72,9 @@
   /* A reading column, as the chat's: rows of a thread's width read better than rows of the screen's. */
   .column { display: flex; flex-direction: column; gap: 2px; width: min(100%, 720px); min-height: 100%; margin: 0 auto; padding: var(--space-8) var(--space-6) var(--space-6); }
   h1 { margin: 0 0 var(--space-4) var(--space-3); font-size: var(--text-lg); font-weight: 650; letter-spacing: -0.015em; color: var(--color-foreground); }
+  /* A section's name over its rows, from the rows' text edge; the next section stands off the last row. */
+  h2 { margin: 0 0 var(--space-2) var(--space-3); }
+  h2 ~ h2 { margin-top: var(--space-6); }
   /* A reading column's rows: a step taller than the list's. */
   .column :global([data-testid=thread-row] .row) { padding-block: 8px; }
 </style>

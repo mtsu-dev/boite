@@ -28,6 +28,7 @@
   import { keepaliveRun } from '../lib/message-order';
   import { AgentsView, agentOfThread } from '../lib/agents.svelte';
   import { experimentOn } from '../lib/experiments.svelte';
+  import { asksDocked, dockedRun, questionDocked } from '../lib/one-status';
 
   /**
    * An assistant or system message in the timeline: the model that wrote it,
@@ -67,6 +68,8 @@
   }
 
   const execution = $derived(store.openThread?.turns.find((turn) => turn.id === message.turnId)?.execution);
+  /** An ask docked in the composer is its one copy: the stream draws no line for it meanwhile (`lib/one-status.ts`). */
+  const asking = $derived(asksDocked(store, threadId));
   /** The persistent agent whose own thread this is: its answers carry its name. */
   const agentName = $derived(store.openThread?.id === threadId && store.openThread.agentSessionId ? agentOfThread(AgentsView.of(store).snapshot, threadId)?.name ?? null : null);
   /** Boite's ping of the prompt cache: one line in place of its message (`quietKeepalives`). */
@@ -131,7 +134,7 @@
       {@const lastAt = run.indices.at(-1) ?? -1}
       {@const tail = message.parts[lastAt]}
       {@const thinkingLive = message.state === 'streaming' && lastAt === message.parts.length - 1 && tail?.type === 'thinking' && tail.finishedAt == null}
-      {#if activityShown(activity, thinkingLive)}
+      {#if activityShown(activity, thinkingLive) && !(asking && dockedRun(activity, thinkingLive, (requestId) => store.permissionRequests[requestId] !== undefined))}
       <div class="part" data-kind={activity.every((part) => part.type === 'thinking') ? 'thinking' : 'tool'}>
         <ToolGroup parts={activity} {compactions} {thinkingLive} {isBackground} {store} {threadId}
           loadOutput={toolId => store.loadToolOutput(threadId, message.id, toolId)}
@@ -146,7 +149,7 @@
     {@const part = message.parts[run.index]!}
     {@const shownText = part.type === 'text' ? shownTextOf(message, part) : ''}
     {@const narrated = part.type === 'text' && message.role === 'assistant' && narrates(index, shownText.trim())}
-    {#if (part.type !== 'text' || shownText.trim().length > 0) && ((part.type !== 'council' && part.type !== 'debate') || experimentOn(COUNCIL_EXPERIMENT))}
+    {#if (part.type !== 'text' || shownText.trim().length > 0) && ((part.type !== 'council' && part.type !== 'debate') || experimentOn(COUNCIL_EXPERIMENT)) && !(asking && part.type === 'question' && questionDocked(store, part))}
     <!-- Narration is a class, not another branch: the paragraphs already drawn stay the same nodes when a step arrives after them. -->
     <div class="part" class:narration={narrated} data-kind={part.type} data-testid={narrated ? 'narration' : undefined}>
       {#if part.type === 'text'}
@@ -261,17 +264,16 @@
 
 <style>
   /* On the same 4 px rest as the parts it names. */
-  .model-attribution { color: var(--color-muted-foreground); font-size: var(--text-xs); margin-bottom: calc(var(--chat-block-gap) - var(--chat-part-gap)); padding-left: var(--activity-padding); opacity: 0; transition: opacity var(--dur-2); }
+  .model-attribution { color: var(--color-muted-foreground); font-size: var(--text-sm); margin-bottom: calc(var(--chat-block-gap) - var(--chat-part-gap)); padding-left: var(--activity-padding); opacity: 0; transition: opacity var(--dur-2); }
   /* Read on demand, as a message's time and buttons are. */
   :global(.message:hover) .model-attribution, :global(.message:focus-within) .model-attribution { opacity: 1; }
   @media (hover: none) { .model-attribution { opacity: 1; } }
-  /* Narration between calls: the agent thinking aloud, quieter than an answer. */
+  /* Narration between calls: the agent thinking aloud, read at the answer's size and quieter only by its colour. */
   .part.narration { padding: 0 2px; color: var(--color-muted-foreground); }
-  .part.narration :global(.prose) { font-size: var(--text-sm); line-height: 1.55; }
   .system-event { display: flex; align-items: flex-start; gap: 8px; color: var(--color-muted-foreground); }
   .system-event > :global(svg) { flex: none; margin-top: 3px; color: var(--color-subtle); }
   .system-copy { min-width: 0; }
-  .system-copy :global(.prose) { font-size: var(--text-sm); line-height: 1.6; }
+  .system-copy :global(.prose) { font-size: var(--text-sm); line-height: 1.5; }
 
   /* A 4 px rest on the left so an answer does not kiss the column's edge. */
   .parts {
@@ -309,7 +311,7 @@
   }
 
 
-  .omitted { margin-top: 4px; font-size: var(--text-xs); color: var(--color-muted-foreground); }
+  .omitted { margin-top: 4px; font-size: var(--text-sm); color: var(--color-muted-foreground); }
 
   /* A compaction is a divider between what the agent still holds and what it let go. */
   .compaction {
@@ -318,7 +320,7 @@
     gap: 10px;
     /* With the parts' gap, a block's rest on either side, like a paragraph. */
     margin: calc(var(--chat-block-gap) - var(--chat-part-gap)) 0;
-    font-size: var(--text-xs);
+    font-size: var(--text-sm);
     color: var(--color-muted-foreground);
   }
 
@@ -367,7 +369,7 @@
 
   .hook .event {
     flex: none;
-    font-size: var(--text-xs);
+    font-size: var(--text-sm);
     color: var(--color-subtle);
   }
 </style>

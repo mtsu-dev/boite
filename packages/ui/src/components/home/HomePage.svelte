@@ -91,7 +91,7 @@
 <style>
   .contacts { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .contacts .page { flex: 1; min-height: 0; animation: fade var(--dur-2) var(--ease-out-quint); }
-  .count { margin-left: 8px; padding: 1px 8px; border-radius: var(--radius-full); background: color-mix(in oklch, var(--color-live) 18%, transparent); color: var(--color-live); font-size: var(--text-xs); font-weight: 600; }
+  .count { margin-left: 8px; padding: 1px 8px; border-radius: var(--radius-full); background: var(--color-surface-3); color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; }
   .banner { display: flex; align-items: center; justify-content: space-between; gap: 10px; max-width: var(--settings-width); margin: 0 0 16px; padding: 8px 8px 8px 12px; border-radius: var(--radius-md); background: color-mix(in oklch, var(--color-danger) 12%, transparent); color: var(--color-danger); font-size: var(--text-sm); }
   .banner.quiet { background: var(--color-surface-2); color: var(--color-muted-foreground); }
   .decided { margin-top: 4px; }

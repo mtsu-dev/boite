@@ -3,7 +3,7 @@
   import { tick } from 'svelte';
   import MobileSettings from './MobileSettings.svelte';
   import BrainPage from './BrainPage.svelte';
-  import { Activity, Brain, ChevronRight, Coins, FlaskConical, Gauge, House, Keyboard, Mic, Monitor, Palette, Puzzle, Settings2, ShieldCheck, SlidersHorizontal, Stethoscope, Users } from '@lucide/svelte';
+  import { Activity, Brain, ChevronRight, Coins, FlaskConical, Gauge, Keyboard, Mic, Monitor, Palette, Puzzle, Settings2, ShieldCheck, SlidersHorizontal, Stethoscope, Users } from '@lucide/svelte';
   import KeyboardPage from './KeyboardPage.svelte';
   import LimitsPage from './LimitsPage.svelte';
   import PluginsPage from './PluginsPage.svelte';
@@ -156,9 +156,9 @@
 
   let tabs = $derived(all.filter((tab) => store.owner || !ownerOnly(tab.id)));
   /**
-   * The nav's eight entries (`SETTINGS_GROUPS`): each opens the first page of
-   * its group this window may open, and lists the group's other pages under it
-   * while one of them is shown. The search still finds every card of every page.
+   * The nav's eight groups (`SETTINGS_GROUPS`), each led by the first page of
+   * it this window may open, its other pages listed right under it. The home's
+   * tiles open the leads; the search still finds every card of every page.
    */
   let groups = $derived(SETTINGS_GROUPS
     .map((ids) => ids.flatMap((id) => tabs.filter((entry) => entry.id === id)))
@@ -302,39 +302,27 @@
 {:else}
 <div class="settings" data-testid="settings">
   <nav aria-label={strings.settings.heading} style:--list-width={`${store.sidebarWidth}px`}>
-    <h2 class="title">{strings.settings.heading}</h2>
-    <button type="button" class="ghost tab" class:active={tab === 'home'} data-testid="settings-tab-home" aria-current={tab === 'home' ? 'page' : undefined} onclick={() => store.showSettings('home')}>
-      <House size={16} strokeWidth={1.75} />
-      <span class="ui-label">{strings.settings.tabs.home}</span>
+    <!-- The list's head is the way to Settings' home: no Home row under it. -->
+    <button type="button" class="ghost title" class:active={tab === 'home'} data-testid="settings-tab-home" aria-current={tab === 'home' ? 'page' : undefined} title={strings.settings.tabs.home} onclick={() => store.showSettings('home')}>
+      <span class="ui-label">{strings.settings.heading}</span>
     </button>
+    <!-- Every page in view, its group's pages right under the one that leads it: nothing to unfold. -->
     {#each groups as entry (entry.id)}
-      {@const Icon = entry.icon}
-      {@const open = group?.id === entry.id}
-      {#if entry.id === 'appearance' || entry.id === 'accounts' || entry.id === 'machines'}<div class="rule" role="separator"></div>{/if}
-      <div class="category">
-      <button
-        type="button"
-        class="ghost tab"
-        class:active={tab === entry.id}
-        class:open={open && tab !== entry.id}
-        data-testid="settings-tab-{entry.id}"
-        aria-current={tab === entry.id ? 'page' : undefined}
-        aria-expanded={entry.members.length > 0 ? open : undefined}
-        onclick={() => store.showSettings(entry.id)}
-      >
-        <Icon size={16} strokeWidth={1.75} />
-        <span class="ui-label">{entry.label}</span>
-        {#if entry.members.length > 0}<ChevronRight size={14} class={open ? 'fold-caret open' : 'fold-caret'} />{/if}
-      </button>
-      {#if entry.members.length > 0}
-        <div class="subcategories disclosure-fold" class:open inert={!open}>
-          <div>
-            {#each entry.members as member (member.id)}
-              <button type="button" class="ghost subsection" class:chosen={tab === member.id} data-testid="settings-tab-{member.id}" aria-current={tab === member.id ? 'page' : undefined} onclick={() => store.showSettings(member.id)}><span class="ui-label">{member.label}</span></button>
-            {/each}
-          </div>
-        </div>
-      {/if}
+      <div class="category" role="group" aria-label={entry.label}>
+        {#each [entry, ...entry.members] as page (page.id)}
+          {@const Icon = page.icon}
+          <button
+            type="button"
+            class="ghost tab"
+            class:active={tab === page.id}
+            data-testid="settings-tab-{page.id}"
+            aria-current={tab === page.id ? 'page' : undefined}
+            onclick={() => store.showSettings(page.id)}
+          >
+            <Icon size={16} strokeWidth={1.75} />
+            <span class="ui-label">{page.label}</span>
+          </button>
+        {/each}
       </div>
     {/each}
   </nav>
@@ -400,15 +388,10 @@
     .framed.with-bar > :global(.page) { padding-top: 16px; }
     .framed > :global(.policy-banner) { margin: 16px 16px 0; }
   }
-  .category { flex: none; }
-  .rule { flex: none; height: 1px; margin: 8px 10px; background: var(--color-border); }
+  /* A group's pages stand together; the air between groups is their only divider. */
+  .category { flex: none; display: flex; flex-direction: column; gap: 2px; }
+  .category + .category { margin-top: var(--space-3); }
   .tab span { flex: 1; text-align: left; }
-  .tab :global(.fold-caret) { color: inherit; }
-  /* Block rather than flex, and a label longer than the rail wraps onto a second
-     line: French says most of these in more letters, and a cut label hides the word
-     that tells two sections apart. */
-  .subsection { display: block; text-align: left; white-space: normal; text-wrap: pretty; height: auto; min-height: var(--control); padding-block: 5px; line-height: 1.3; width: calc(100% - 24px); margin-left: 24px; padding-left: 15px; border-left: 1px solid var(--color-edge); border-radius: 0; color: var(--color-muted-foreground); font-size: var(--text-sm); transition: color var(--dur-2), border-color var(--dur-2), background var(--dur-2); }
-  .subsection.chosen { color: var(--color-foreground); border-left-color: var(--color-foreground); background: var(--color-hover); }
 
   /* The pages' list stands in the thread list's column, on the chrome, and
      the page in the inset card beside it, as in the rest of the frame. */
@@ -430,8 +413,10 @@
     overflow-y: auto;
   }
 
-  /* The thread list's head: same height, size and inset, so the switch reads as one column changing. */
-  .title { flex: none; height: 36px; margin: 16px 4px 4px; padding-left: 8px; display: flex; align-items: center; font-size: 15px; font-weight: 650; letter-spacing: -0.015em; color: var(--color-foreground); }
+  /* The thread list's head: same height, size and inset, so the switch reads as one column changing.
+     It is a button too, to Settings' home, so it only lights under the pointer. */
+  .title { flex: none; justify-content: flex-start; height: 36px; margin: 16px 4px 4px; padding: 0 8px; font-size: 15px; font-weight: 650; letter-spacing: -0.015em; color: var(--color-foreground); }
+  .title:hover:not(:disabled) { background: var(--color-hover); }
 
   .crumb { display: flex; align-items: center; gap: 4px; min-width: 0; padding-left: 10px; color: var(--color-subtle); font-size: var(--text-sm); }
   .crumb :global(svg) { flex: none; }
@@ -460,9 +445,6 @@
     background: var(--color-active);
     color: var(--color-foreground);
   }
-
-  /* The group of the page shown under it: its name lit, the fill on the page's own row. */
-  .tab.open { color: var(--color-foreground); }
 
   section {
     flex: 1;
@@ -495,9 +477,11 @@
     }
 
     .settings { gap: 0; }
-    .title { display: none; }
-    .rule { width: 1px; height: auto; align-self: stretch; margin: 6px 4px; }
-    .subcategories { display: none; }
-    .category { min-width: 0; }
+    /* In a row, the head is the first chip and each group a run of chips. */
+    .title { height: var(--control); margin: 0; font-size: var(--text-sm); white-space: nowrap; }
+    .title.active { background: var(--color-active); }
+    .category { flex-direction: row; min-width: 0; }
+    .category + .category { margin: 0 0 0 var(--space-3); }
+    .tab { width: auto; white-space: nowrap; }
   }
 </style>

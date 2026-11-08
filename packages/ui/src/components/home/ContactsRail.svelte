@@ -103,7 +103,7 @@
   .row:active:not(:disabled) { transform: none; }
   .row.current { background: var(--color-active); }
   .row[data-link='connected'] { --tone: var(--color-success); }
-  .row[data-link='connecting'] { --tone: var(--color-live); }
+  .row[data-link='connecting'] { --tone: var(--color-muted-foreground); }
   .avatar { position: relative; display: grid; flex: none; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--color-active); color: var(--color-foreground); font-size: var(--text-xs); font-weight: 700; letter-spacing: 0.02em; }
   .avatar.add { background: var(--color-surface-2); color: var(--color-muted-foreground); }
   .dot { position: absolute; right: -1px; bottom: -1px; width: 9px; height: 9px; border-radius: 50%; background: var(--tone); box-shadow: 0 0 0 2px var(--color-frame); }
@@ -111,7 +111,7 @@
   .name, .state { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .name { color: var(--color-foreground); font-size: var(--text-sm); font-weight: 500; }
   .state { color: var(--color-subtle); font-size: var(--text-xs); }
-  .state.asks { color: var(--color-live); font-weight: 500; }
+  .state.asks { color: var(--color-muted-foreground); font-weight: 500; }
   .empty .state { white-space: normal; }
   @media (prefers-reduced-motion: reduce) { .contacts-rail, .contacts-rail.collapsed { transition: none; } }
   :global(html[data-motion='reduced']) .contacts-rail, :global(html[data-motion='reduced']) .contacts-rail.collapsed { transition: none; }

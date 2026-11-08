@@ -9,7 +9,9 @@
   /*
    * Above the composer of a project whose folder was deleted, moved or renamed
    * outside Boite. The core refuses a new thread or a turn there; this says so
-   * before the send, and offers the two ways out as buttons a phone can reach.
+   * before the send and what still works, then the two ways out as buttons a
+   * phone can reach: checking again once the folder is back leads, removing
+   * the project stays quiet. The path sits behind the "i".
    */
   let { store, project }: { store: Store; project: Project } = $props();
   let checking = $state(false);
@@ -20,10 +22,10 @@
   }
 </script>
 
-<ThreadNotice icon={FolderX} tone="danger" testid="folder-gone" title={strings.sidebar.projectMissing} detail={project.path}
+<ThreadNotice icon={FolderX} tone="danger" testid="folder-gone" title={strings.sidebar.projectMissing} detail={strings.sidebar.projectMissingLive}
   info={fill(strings.sidebar.projectMissingBody, { path: project.path })} docked>
   {#snippet actions()}
-    <button type="button" class="ghost small" data-testid="folder-gone-check" disabled={checking} onclick={check}><span class="ui-label">{strings.sidebar.projectMissingCheck}</span></button>
+    <button type="button" class="small primary" data-testid="folder-gone-check" disabled={checking} onclick={check}><span class="ui-label">{strings.sidebar.projectMissingCheck}</span></button>
     {#if store.owner}<button type="button" class="ghost small danger" data-testid="folder-gone-remove" onclick={() => confirmRemoveProject(store, project)}><span class="ui-label">{strings.sidebar.removeProject}</span></button>{/if}
   {/snippet}
 </ThreadNotice>

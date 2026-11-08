@@ -71,17 +71,18 @@ function phone() {
   }));
 }
 
-/** The Bots page with Bots on, where the teams are listed while Teams is on. */
+/** The Bots page with Bots on, where the teams are listed while Teams is on; a phone's under its header, which holds the page's search. */
 function botsPage(store: Store, narrow: boolean) {
   if (narrow) phone();
   setExperiment('resident-agents', true);
   store.showAgents();
+  if (narrow) mounted.push(mount(MobileNavigation, { target: document.body, props: { store, screen: 'threads' } }));
   mounted.push(mount(AgentsPage, { target: document.body, props: { store } }));
   flushSync();
 }
 
 function search(text: string) {
-  const field = query<HTMLInputElement>('.agents-search input');
+  const field = query<HTMLInputElement>('[data-testid=mobile-search]');
   field.value = text;
   field.dispatchEvent(new Event('input', { bubbles: true }));
   flushSync();

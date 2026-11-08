@@ -107,7 +107,8 @@
   .failed { font-size: var(--text-xs); color: var(--color-danger); overflow-wrap: anywhere; }
   .details { margin-left: auto; color: var(--color-muted-foreground); }
   .open { flex: none; align-self: center; }
-  .count { color: var(--color-live); }
+  /* Grey: amber is the "Needs you" word alone. */
+  .count { color: var(--color-foreground); }
   @media (max-width: 720px) { .open { min-height: var(--touch-target); } }
   @media (prefers-reduced-motion: reduce) { .notice { animation-duration: 1ms; } }
   :global(html[data-motion='reduced']) .notice { animation-duration: 1ms; }

@@ -42,7 +42,11 @@ test('project menus keep Mark done separate from Archive, which can stop pending
   row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 60 }));
   await waitFor(() => document.querySelector('[data-testid=context-menu]') !== null);
   const labels = Array.from(document.querySelectorAll('[data-testid=context-menu] [data-row]')).map((el) => el.textContent?.trim());
-  expect(labels).toEqual(['Open', 'Pin', 'Mark done', 'Archive', 'Rename', 'Regenerate title', 'Move to project', 'Copy path', 'Delete']);
+  // The one thread menu's order: Open, then what it is called and who has it, where it stands, the desktop's tools, Delete apart.
+  expect(labels).toEqual(['Open', 'Rename', 'Regenerate title', 'Pin', 'Move to project', 'Mark done', 'Archive', 'Copy path', 'Delete']);
+  const groups = Array.from(query('[data-testid=context-menu]').querySelectorAll('[data-row], [role=separator]'))
+    .map(el => el.getAttribute('role') === 'separator' ? '|' : el.textContent?.trim()).join(',');
+  expect(groups).toBe('Open,|,Rename,Regenerate title,Pin,Move to project,|,Mark done,Archive,|,Copy path,|,Delete');
   expect(query('[data-testid=context-menu] [data-value=copy]').getAttribute('title')).toBe('C:\\src\\boite');
   // t-bench waits on a permission: its turn still runs, and a move would wait for it to end.
   expect(query<HTMLButtonElement>('[data-testid=context-menu] [data-value=move]').disabled).toBe(false);

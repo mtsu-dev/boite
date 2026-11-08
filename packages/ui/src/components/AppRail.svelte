@@ -38,6 +38,8 @@
 
   const machines = $derived(workspace.machinesOr(store));
   const stores = $derived(machines.map(machine => machine.store));
+  /** A bot's name card says its machine once there are two. */
+  const several = $derived(machines.length > 1);
   const botsOn = $derived(experimentOn('resident-agents'));
   const teamsOn = $derived(botsOn && experimentOn('teams'));
   const contactsOn = $derived(contactsShown(store));
@@ -143,6 +145,8 @@
   const footButton = (): HTMLElement | null => foot?.querySelector<HTMLElement>('[data-testid=machine-status]') ?? null;
   const showLimits = () => void glance?.open();
   let limits = $derived(work.shows('sidebar.limits'));
+  /** Settings' shortcut, from the keybindings table: its name card shows it and the button's description reads it. */
+  const settingsKey = $derived(store.keyLabel('settings'));
 
   let ContactRequestNotice = $state<typeof import('./home/ContactRequestNotice.svelte').default>();
   $effect(() => {
@@ -151,35 +155,44 @@
   });
 </script>
 
+<!-- Its name beside a rail button under the pointer or the keyboard, and its key when it has one: the button's
+     own accessible name already says it, so the label is drawn for the eye alone. -->
+{#snippet railName(label: string, key: string | null = null, note: string | null = null, keyId: string | undefined = undefined)}
+  <span class="rail-name" aria-hidden="true"><span class="ui-label">{label}</span>{#if note}<span class="ui-label note">{note}</span>{/if}{#if key}<span class="kbd" id={keyId}>{key}</span>{/if}</span>
+{/snippet}
+{#snippet statusName(label: string, note: string | null)}{@render railName(label, null, note)}{/snippet}
+
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <nav class="app-rail" class:mac={macShell} aria-label={strings.app.rail.label} data-testid="app-rail" onmousedown={dragWindow}>
   <div class="slot" class:selected={onThreads}>
     <span class="pip" aria-hidden="true"></span>
     <button type="button" class="rail-button" class:on={onThreads} aria-current={onThreads ? 'page' : undefined}
-      title={strings.sidebar.threads} aria-label={strings.sidebar.threads}
+      aria-label={strings.sidebar.threads}
       data-testid="view-threads" onclick={showThreads}>
       <MessageSquare size={19} strokeWidth={1.75} />
     </button>
+    {@render railName(strings.sidebar.threads)}
   </div>
   <div class="slot" class:selected={onActivity}>
     <span class="pip" aria-hidden="true"></span>
     <button type="button" class="rail-button" class:on={onActivity} aria-current={onActivity ? 'page' : undefined}
-      title={waiting ? `${strings.mobile.activity}\n${waitingLabel}` : strings.mobile.activity} aria-label={waiting ? `${strings.mobile.activity}, ${waitingLabel}` : strings.mobile.activity}
+      aria-label={waiting ? `${strings.mobile.activity}, ${waitingLabel}` : strings.mobile.activity}
       data-testid="nav-activity" onclick={showActivity}>
       <Activity size={19} strokeWidth={1.75} />
       {#if waiting}<span class="count" data-testid="rail-activity-waiting">{count(waiting)}</span>{/if}
     </button>
+    {@render railName(strings.mobile.activity, null, waiting ? waitingLabel : null)}
   </div>
   {#if contactsOn}
     {@const open = onList && !contactsRail.folded}
     <div class="slot">
       <button type="button" class="rail-button" class:on={open}
         aria-label={contactsRail.folded ? strings.contacts.rail.show : strings.contacts.rail.hide}
-        title={contactsRail.folded ? strings.contacts.rail.show : strings.contacts.rail.hide}
         aria-expanded={open} data-testid="contacts-toggle" onclick={showContacts}>
         <Users size={19} strokeWidth={1.75} />
         {#if contactsRail.folded && contactsRail.waiting}<span class="dot" data-testid="contacts-toggle-waiting"></span>{/if}
       </button>
+      {@render railName(contactsRail.folded ? strings.contacts.rail.show : strings.contacts.rail.hide)}
     </div>
     <!-- Its toast only: what contacts ask is listed in Activity. -->
     {#if ContactRequestNotice}<ContactRequestNotice {store} />{/if}
@@ -194,7 +207,7 @@
         {@const unread = (bot.row.status?.unread ?? 0) > 0}
         <div class="slot" class:selected class:unread={unread && !selected} role="listitem">
           <span class="pip" aria-hidden="true"></span>
-          <button type="button" class="bot" class:dim={state === 'paused'} title={bot.row.profile.name} aria-label={labelOf(bot.row.profile.name, state)}
+          <button type="button" class="bot" class:dim={state === 'paused'} aria-label={labelOf(bot.row.profile.name, state)}
             aria-current={selected ? 'page' : undefined} data-testid="rail-bot" data-agent-id={bot.row.profile.id} data-state={state}
             onclick={() => workspace.showAgents(bot.machine.store, bot.row.profile.id)}>
             <AgentAvatar kind="profile" id={bot.row.profile.id} name={bot.row.profile.name} avatar={bot.row.profile.avatar} size={44} squircle={selected} />
@@ -202,22 +215,25 @@
             {:else if state === 'failed'}<span class="count failed">!</span>
             {:else if state === 'working'}<span class="work" aria-hidden="true"><svg viewBox="0 0 14 14"><circle class="track" cx="7" cy="7" r="5" /><circle class="arc" cx="7" cy="7" r="5" pathLength="100" /></svg></span>{/if}
           </button>
+          {@render railName(bot.row.profile.name, null, several ? bot.machine.label : null)}
         </div>
       {/each}
       {#each teams as row (`${row.machine.id}:${row.team.id}`)}
         {@const selected = row.machine.store === store && openTeam === row.team.id}
         <div class="slot" class:selected class:unread={!!row.chat?.unread && !selected} role="listitem">
           <span class="pip" aria-hidden="true"></span>
-          <button type="button" class="bot team" title={row.team.name} aria-label={row.team.name} aria-current={selected ? 'page' : undefined}
+          <button type="button" class="bot team" aria-label={row.team.name} aria-current={selected ? 'page' : undefined}
             data-testid="rail-team" data-team-id={row.team.id} onclick={() => openTeamChat(row)}>
             <AgentAvatar kind="team" id={row.team.id} name={row.team.name} members={pictures(row)} size={44} squircle />
           </button>
+          {@render railName(row.team.name)}
         </div>
       {/each}
     </div>
     <div class="slot">
-      <button type="button" class="rail-button add" title={strings.app.rail.add} aria-label={strings.app.rail.add} aria-haspopup="menu"
+      <button type="button" class="rail-button add" aria-label={strings.app.rail.add} aria-haspopup="menu"
         data-testid="rail-add" onclick={(event) => addMenu(event.currentTarget)}><Plus size={19} strokeWidth={1.75} /></button>
+      {@render railName(strings.app.rail.add)}
     </div>
   {/if}
 
@@ -225,16 +241,19 @@
 
   <!-- The machines and the limits share one button and its menu; its right click still hides Limits from it. -->
   <div class="foot" bind:this={foot}>
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <span class="control" oncontextmenu={(event) => limits && controlMenu(event, store, 'sidebar.limits')}><MachineStatus {store} filter={machineFilter.shown(machines)} onfilter={pickMachine} limits={limits ? showLimits : undefined} /></span>
+    <div class="slot status">
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <span class="control" oncontextmenu={(event) => limits && controlMenu(event, store, 'sidebar.limits')}><MachineStatus {store} filter={machineFilter.shown(machines)} onfilter={pickMachine} limits={limits ? showLimits : undefined} card={statusName} /></span>
+    </div>
     {#if limits}<LimitsGlance bind:this={glance} {store} side="right" anchor={footButton} />{/if}
     <Deferred part={parts.UpdatesNotice} quiet>{#snippet children(UpdatesNotice)}<UpdatesNotice />{/snippet}</Deferred>
     {#if experimentOn('whip')}<WhipButton />{/if}
     <div class="slot" class:selected={store.page === 'settings'}>
       <span class="pip" aria-hidden="true"></span>
       <button type="button" class="ghost icon" class:on={store.page === 'settings'} aria-current={store.page === 'settings' ? 'page' : undefined}
-        title={`${strings.sidebar.settings}${store.keyHint('settings')}`} aria-label={strings.sidebar.settings}
+        aria-label={strings.sidebar.settings} aria-describedby={settingsKey ? 'rail-settings-key' : undefined}
         data-testid="nav-settings" data-preload-view="settings" onclick={() => store.showSettings()}><Settings size={19} strokeWidth={1.75} /></button>
+      {@render railName(strings.sidebar.settings, settingsKey, null, 'rail-settings-key')}
     </div>
   </div>
 </nav>
@@ -306,6 +325,35 @@
   .bot:active:not(:disabled) { transform: translateY(1px); }
   .team :global(.agent-avatar) { background: var(--color-surface-3); }
 
+  /* The name card right of the rail, as a menu's surface: it waits a beat under the pointer, so a sweep down the
+     rail does not flash every name, and shows at once for the keyboard. */
+  .rail-name {
+    position: absolute;
+    left: calc(100% - 4px);
+    top: 50%;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 9px;
+    border: 1px solid var(--overlay-edge);
+    border-radius: var(--radius-sm);
+    background: var(--overlay-surface);
+    box-shadow: var(--shadow-overlay);
+    color: var(--color-foreground);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transform: translate(-4px, -50%);
+    transition: opacity var(--dur-1) var(--ease-out-quint), transform var(--dur-1) var(--ease-out-quint);
+  }
+  .rail-name .note { color: var(--color-muted-foreground); font-weight: 400; }
+  /* Descendants: the machines button and its card sit inside MachineStatus. An open menu keeps its card away. */
+  .slot:hover .rail-name { opacity: 1; transform: translate(0, -50%); transition-delay: 400ms; }
+  .slot:has(:global(:focus-visible)) .rail-name { opacity: 1; transform: translate(0, -50%); }
+  .slot:has(:global([aria-expanded='true'])) .rail-name { opacity: 0; transition-delay: 0ms; }
   .separator { flex: none; width: 28px; height: 1px; background: var(--color-edge); }
   .bots { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%; min-height: 0; }
 
@@ -329,7 +377,8 @@
     line-height: 1;
   }
   .count.failed { background: var(--color-danger); color: var(--color-on-danger); }
-  .dot { position: absolute; right: 8px; top: 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--color-live); box-shadow: 0 0 0 2px var(--color-surface-2); }
+  /* Grey: the rail's amber is the Activity count alone, which already counts what contacts ask. */
+  .dot { position: absolute; right: 8px; top: 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--color-muted-foreground); box-shadow: 0 0 0 2px var(--color-surface-2); }
   /* At work: a small arc of the accent turning, the one moving mark in the rail. */
   .work {
     position: absolute;
@@ -359,6 +408,7 @@
   .foot :global(.machines .trigger) { width: var(--control-touch); height: var(--control-touch); }
   /* One machine says nothing: the wrapper stays, empty, for its connection state. */
   .foot :global(.machines:not(:has(.trigger))) { display: none; }
+  .foot .status:not(:has(:global(.trigger))) { display: none; }
   /* A filter names its machine beside the button: the rail has no room, so the button alone says it, lit. */
   .foot :global(.machines .name) { display: none; }
 

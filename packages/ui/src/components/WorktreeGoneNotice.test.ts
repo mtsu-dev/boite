@@ -40,7 +40,11 @@ test('a thread whose worktree was removed says so while done, and after it is mo
   document.querySelector<HTMLButtonElement>('[data-testid=done-thread-reopen]')!.click();
   await vi.waitFor(() => expect(document.querySelector('[data-testid=done-thread-notice]')).toBeNull());
   flushSync();
-  expect(notice()!.textContent).toContain('A new message here has no folder to run in.');
+  expect(notice()!.textContent).toContain('You can still read and copy this thread. A new message has no folder to run in.');
+  // The way on leads: the new thread button is the notice's primary action.
+  const start = document.querySelector<HTMLButtonElement>('[data-testid=worktree-gone-new]')!;
+  expect(start.classList.contains('primary')).toBe(true);
+  expect(start.textContent).toContain('Start a new thread here');
   await expect(client.call('turns.start', { threadId: thread.id, prompt: 'still there?' })).rejects.toThrow();
 });
 

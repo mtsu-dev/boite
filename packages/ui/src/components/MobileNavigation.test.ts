@@ -47,11 +47,18 @@ test('Activity gives each row its reason and its time, a sub-agent under its par
   await settle();
   const rows = Array.from(document.querySelectorAll<HTMLElement>('[data-testid=mobile-row]'));
   expect(rows.length).toBeGreaterThan(0);
-  for (const row of rows) expect(row.querySelector('[data-testid=mobile-row-reason] time')?.textContent?.trim()).toBeTruthy();
+  for (const row of rows) expect(row.querySelector('.feed-head time')?.textContent?.trim()).toBeTruthy();
   const reasons = rows.map(row => row.querySelector('[data-testid=mobile-row-reason] .text')?.textContent ?? '');
   // A question is its own reason, a permission says what it runs.
   const asked = store.pendingQuestions.map(question => question.text.split('\n')[0]!.trim());
   expect(reasons.some(reason => /^Wants to run /.test(reason) || asked.includes(reason))).toBe(true);
+  // Triage: what asks the user under "Needs you", before the updates' heading when there is one.
+  const needs = document.querySelector<HTMLElement>('[data-testid=activity-needs]')!;
+  expect(needs.textContent).toBe('Needs you');
+  const updates = document.querySelector<HTMLElement>('[data-testid=activity-updates]');
+  const asking = rows.find(row => asked.includes(row.querySelector('[data-testid=mobile-row-reason] .text')?.textContent ?? '') || /^Wants to run /.test(row.textContent ?? ''))!;
+  expect(needs.compareDocumentPosition(asking) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  if (updates) expect(updates.compareDocumentPosition(asking) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
   for (const row of rows.filter(row => row.classList.contains('nested'))) {
     const child = store.threads.find(t => t.id === row.dataset['threadId'])!;
     const above = rows.slice(0, rows.indexOf(row)).reverse().find(other => !other.classList.contains('nested'))!;
@@ -66,7 +73,7 @@ test('selecting a conversation beyond the first mobile window finishes loading i
   vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(400);
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
     const root = document.querySelector<HTMLElement>('[data-testid=mobile-list]');
-    return new DOMRect(0, this === root ? 0 : -(root?.scrollTop ?? 0), 390, this.dataset.windowKey ? 46 : 400);
+    return new DOMRect(0, this === root ? 0 : -(root?.scrollTop ?? 0), 390, this.dataset.windowKey ? 66 : 400);
   });
   client = new FakeClient({ delayMs: 0 });
   store = new Store(); store.attach(client); await store.connect();
@@ -80,7 +87,7 @@ test('selecting a conversation beyond the first mobile window finishes loading i
   const selector = `[data-testid="mobile-thread-${summary.id}"]`;
   expect(document.querySelector(selector)).toBeNull();
   const root = document.querySelector<HTMLElement>('[data-testid=mobile-list]')!;
-  root.scrollTop = 45_700; root.dispatchEvent(new Event('scroll')); await settle();
+  root.scrollTop = 65_700; root.dispatchEvent(new Event('scroll')); await settle();
   expect(document.querySelectorAll('[data-testid^=mobile-thread-]').length).toBeLessThan(50);
   const row = document.querySelector<HTMLButtonElement>(selector)!;
   expect(row).not.toBeNull(); row.click(); await settle();
@@ -194,7 +201,8 @@ test('a parent on another machine shows its working sub-agents, counted, and Rec
     // The Projects list reads the same store: the same radar there. Back in Recent, the filter holds.
     workspace.view = 'projects'; await settle();
     expect(state()?.dataset['state']).toBe('delegating');
-    expect(state()?.querySelector('[data-testid=thread-state-text]')?.textContent).toMatch(/^1m/);
+    expect(state()?.querySelector('[data-testid=thread-state-text]')?.textContent).toBe('Sub-agents');
+    expect(state()?.getAttribute('title')).toMatch(/\n1m/);
     workspace.view = 'recent'; await settle();
     expect(chip()?.getAttribute('aria-pressed')).toBe('true');
     expect(rows()).toEqual([parent.id]);

@@ -14,8 +14,6 @@ export const fr: Translation = {
     subagentPermission: '{title} attend votre autorisation',
     openSubagent: 'Ouvrir',
     openSubagentHint: 'Ouvrir {title}',
-    moreRunning: '+{count}',
-    moreRunningHint: '{count} autres en cours : ouvrir les sous-agents',
     loop: 'Boucle',
     tasks: 'Tâches',
     taskCount: '{done}/{total} tâches',

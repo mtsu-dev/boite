@@ -284,10 +284,8 @@
             <FolderInput size={13} strokeWidth={1.75} /><span class="pending-text ui-label">{pending}</span>
           </span>
         {/if}
-      {:else}
-        <span class="draft-mark"></span>
-        <span class="title draft" data-testid="thread-title"><span class="ui-label">{strings.sidebar.draft}</span></span>
       {/if}
+      <!-- A draft has no name yet: no crumb, only its incognito switch on the right. -->
 
       <span class="spacer"></span>
 
@@ -383,26 +381,12 @@
   .title.team { gap: 6px; margin-left: 0; }
   .title.team > :global(svg) { flex: none; color: var(--color-muted-foreground); }
 
-  .title.draft {
-    color: var(--color-muted-foreground);
-    font-weight: 500;
-  }
-
   /* The field's 1 px border and 10 px padding stand left of its text, so the text starts where the title's did. */
   .rename {
     height: var(--control);
     width: min(420px, 50%);
     margin-left: -11px;
     font-weight: 600;
-  }
-
-  .draft-mark {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    border: 1.5px dashed var(--color-muted-foreground);
-    flex: none;
   }
 
   .spacer {
@@ -476,10 +460,9 @@
     .panel-switch :global(.menu) { display: none; }
     .panel-switch > button { width: var(--touch-target); height: var(--touch-target); }
     .rename { width: 100%; }
-    /* The thread's title button gives way to its menu; a draft's label and a team's name have no menu and stay. */
-    .title:not(.draft):not(.team) { display: none; }
-    .title.draft, .title.team { max-width: none; }
-    .draft-mark { margin: 0 4px 0 6px; }
+    /* The thread's title button gives way to its menu; a team's name has no menu and stays. */
+    .title:not(.team) { display: none; }
+    .title.team { max-width: none; }
     /* Back, the title, then the menu at the row's end, whatever the header draws between. */
     .title-menu { order: 1; }
     .title-menu :global(.trigger) { width: var(--touch-target); height: var(--touch-target); padding: 0; justify-content: center; color: var(--color-muted-foreground); }

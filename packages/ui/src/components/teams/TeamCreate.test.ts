@@ -5,6 +5,7 @@ import { FakeClient } from '../../lib/fake-client';
 import { Store } from '../../lib/store.svelte';
 import { workspace } from '../../lib/workspace.svelte';
 import AgentsPage from '../agents/AgentsPage.svelte';
+import MobileNavigation from '../MobileNavigation.svelte';
 import ConfirmDialog from '../ConfirmDialog.svelte';
 import type { AgentsView } from '../../lib/agents.svelte';
 import { strings } from '../../lib/strings';
@@ -63,10 +64,11 @@ function phone() {
     media, matches: media.includes('max-width'), onchange: null, addListener() {}, removeListener() {}
   }));
 }
-/** The Bots page as a phone draws it: a desktop's bots and teams are in the window's rail, the page's column is the open one's. */
+/** The Bots page as a phone draws it, under the header that holds its "+": a desktop's bots and teams are in the window's rail, the page's column is the open one's. */
 function page(store: Store) {
   phone();
   store.showAgents();
+  mounted.push(mount(MobileNavigation, { target: document.body, props: { store, screen: 'threads' } }));
   mounted.push(mount(AgentsPage, { target: document.body, props: { store } }));
   mounted.push(mount(ConfirmDialog, { target: document.body }));
   flushSync();
@@ -78,7 +80,7 @@ function type(selector: string, value: string) {
   flushSync();
 }
 const member = (botId: string) => query<HTMLButtonElement>(`[data-testid=team-dialog-member][data-bot-id="${botId}"]`);
-/** New team: in the one "+" menu of the owner's phone page, or the greyed button a paired phone keeps under Teams. */
+/** New team: in the one "+" menu the owner's phone page lends the header, or the greyed button a paired phone keeps under Teams. */
 async function newTeam(): Promise<HTMLElement> {
   const plus = document.querySelector<HTMLButtonElement>('[data-testid=agents-create]');
   if (plus && !document.querySelector('[data-testid=agents-new-team]')) { plus.click(); await settle(); }

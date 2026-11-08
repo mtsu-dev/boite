@@ -104,7 +104,8 @@
   .contact-row { display: flex; gap: 10px; padding: 8px; border-radius: var(--radius-md); }
   .contact-row + .contact-row { margin-top: 2px; }
   .contact-row:hover { background: var(--color-hover); }
-  .mark { display: grid; place-items: center; flex: none; width: 16px; height: 20px; color: var(--color-live); }
+  /* Grey: amber is the "Needs you" word alone, and the section above already says it. */
+  .mark { display: grid; place-items: center; flex: none; width: 16px; height: 20px; color: var(--color-muted-foreground); }
   .lines { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
   .head { display: flex; align-items: baseline; gap: 8px; margin: 0; min-height: 20px; }
   .title { display: block; flex: 1; min-width: 0; height: auto; padding: 0; background: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: start; font-weight: 500; color: var(--color-foreground); }

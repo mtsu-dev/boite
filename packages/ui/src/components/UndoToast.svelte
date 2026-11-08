@@ -1,15 +1,15 @@
 <script lang="ts">
   import { X } from '@lucide/svelte';
   import { Closing } from '../lib/closing.svelte';
-  import { notifyCorner } from '../lib/notify-corner';
+  import { toastSlot } from '../lib/notify-corner';
   import { strings } from '../lib/strings';
   import { typing, undo } from '../lib/undo.svelte';
 
   /**
-   * The toast that carries the last archive's way back, in the shared
-   * bottom-right corner, as wide as its text. Over the thread's column it
-   * keeps room of its own above the strip, so it never covers a line being
-   * read. `onerror` hears a restore that failed.
+   * The toast that carries the last archive's way back, in the toasts' one
+   * home (`toastSlot`), as wide as its text: above the strip's right end in
+   * room of its own, or under the header on a phone, so it never covers a line
+   * being read. `onerror` hears a restore that failed.
    */
   let { onerror }: { onerror: (error: unknown) => void } = $props();
 
@@ -38,7 +38,7 @@
 <svelte:window {onkeydown} />
 
 {#if toast.shown}
-  <div class="notify-corner undo-corner" use:notifyCorner={{ reserve: true }}>
+  <div class="toast-slot" use:toastSlot>
     <div class="undo-toast" class:closing={toast.closing} role="status" use:toast.attach onanimationend={toast.end} data-testid="undo-toast">
       <span class="text">{text}</span>
       <button type="button" class="small undo" data-testid="undo-action" title={strings.sidebar.undoHint} onclick={() => void undo.take(onerror)}><span class="ui-label">{strings.sidebar.undo}</span></button>
@@ -48,8 +48,6 @@
 {/if}
 
 <style>
-  .undo-corner { width: max-content; max-width: min(440px, calc(100vw - 24px)); }
-
   .undo-toast {
     position: relative;
     display: flex;

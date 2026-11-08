@@ -10,7 +10,9 @@
   import { describeTool, permissionSentence } from '../lib/tool-summary';
   import ThinkingPart from './ThinkingPart.svelte';
   import ToolCard from './ToolCard.svelte';
+  import Spinner from './Spinner.svelte';
   import type { Store } from '../lib/store.svelte';
+  import { asksDocked } from '../lib/one-status';
 
   /*
    * A run of activity with no answer between it: calls and the reasoning around
@@ -58,8 +60,10 @@
   let pairs = $derived(pairPermissions(parts));
   /** The permission each paired call was asked under, by the call's index. */
   let asked = $derived(new Map([...pairs].map(([at, call]) => [call, parts[at] as PermissionStep])));
-  /** Waiting permissions: each card stands for its call, under the run. */
-  let waiting = $derived(parts.filter((part): part is PermissionStep => part.type === 'permission' && part.decision === null));
+  /** The thread on screen holds its ask in the composer's dock: that card is the one copy (`asksDocked`). */
+  let docked = $derived(store !== undefined && threadId !== undefined && asksDocked(store, threadId));
+  /** Waiting permissions: each card stands for its call, under the run, unless the dock holds it. */
+  let waiting = $derived(parts.filter((part): part is PermissionStep => part.type === 'permission' && part.decision === null && !(docked && permissionRequest(part.requestId))));
   let steps = $derived(parts.flatMap((part, index): { part: ActivityPart; index: number }[] => {
     if (part.type === 'permission') return part.decision !== null && !pairs.has(index) ? [{ part, index }] : [];
     if (part.type === 'tool') return asked.get(index)?.decision === null ? [] : [{ part, index }];
@@ -165,7 +169,7 @@
         <span class="pulse" aria-hidden="true"></span>
       {/if}
       {#if running}
-        <span class="spinner" aria-hidden="true"></span>
+        <Spinner size={11} />
       {/if}
       {#if verdict}
         <span class="verdict" class:denied={verdict === 'deny'} data-testid="tool-group-permission" data-decision={verdict} title={said} aria-label={said}>
@@ -250,7 +254,7 @@
     gap: 3px;
     flex: none;
     color: var(--color-subtle);
-    font-size: var(--text-xs);
+    font-size: var(--text-sm);
   }
 
   .verdict {
@@ -293,17 +297,27 @@
     to { background-position: 0 0; }
   }
 
-  .compacted { flex: none; display: inline-flex; align-items: center; gap: 4px; color: var(--color-subtle); font-size: var(--text-xs); }
+  .compacted { flex: none; display: inline-flex; align-items: center; gap: 4px; color: var(--color-subtle); font-size: var(--text-sm); }
   .took {
     flex: none;
     color: var(--color-subtle);
-    font-size: var(--text-xs);
+    font-size: var(--text-sm);
     font-variant-numeric: tabular-nums;
   }
 
   /* A finished run's time is read on demand: under the pointer, the keyboard or an open run. */
   .took.settled { opacity: 0; transition: opacity var(--dur-2); }
   .head:hover .took.settled, .head:focus-visible .took.settled, .head[aria-expanded='true'] .took.settled { opacity: 1; }
+
+  /* A phone reads the run's line whole: a settled summary wraps rather than
+     ends in an ellipsis, and its time, which no pointer can bring up there,
+     leaves the line its width until the run is opened. */
+  @media (max-width: 720px) {
+    .label:not(.shimmer) { white-space: normal; overflow-wrap: anywhere; text-wrap: balance; }
+  }
+  @media (hover: none) {
+    .head[aria-expanded='false'] .took.settled { display: none; }
+  }
 
   .pulse {
     flex: none;
@@ -312,16 +326,6 @@
     border-radius: 50%;
     background: var(--color-accent);
     animation: pulse 1.6s var(--loop-ease-out-quint-48) infinite var(--loops);
-  }
-
-  .spinner {
-    flex: none;
-    width: 11px;
-    height: 11px;
-    border-radius: 50%;
-    border: 1.5px solid var(--color-edge);
-    border-top-color: var(--color-live);
-    animation: spin 0.9s steps(54) infinite var(--loops);
   }
 
   /* The calls hang off a hairline under the summary's glyph. */
@@ -334,7 +338,7 @@
     border-left: 1px solid var(--color-border);
   }
 
-  @media (prefers-reduced-motion: reduce) { :is(.pulse, .spinner, .label.shimmer) { animation: none; } .label.shimmer { color: var(--color-muted-foreground); background: none; } }
-  :global(html[data-motion='reduced']) :is(.pulse, .spinner, .label.shimmer) { animation: none; }
+  @media (prefers-reduced-motion: reduce) { :is(.pulse, .label.shimmer) { animation: none; } .label.shimmer { color: var(--color-muted-foreground); background: none; } }
+  :global(html[data-motion='reduced']) :is(.pulse, .label.shimmer) { animation: none; }
   :global(html[data-motion='reduced']) .label.shimmer { color: var(--color-muted-foreground); background: none; }
 </style>

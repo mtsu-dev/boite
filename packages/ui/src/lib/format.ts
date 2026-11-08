@@ -97,6 +97,15 @@ export function levelName(level: { id: string; label: string }): string {
   return typeof name === 'string' ? name : level.label;
 }
 
+/** Levels whose name here is a plainer word than the one the agent knows them by. */
+const PLAINED = new Set(['xhigh', 'ultrathink']);
+
+/** A level's tooltip: what it does, and the agent's own word when the name shown is a plainer one. */
+export function levelTitle(level: { id: string; description?: string }): string | undefined {
+  if (!PLAINED.has(level.id)) return level.description;
+  return level.description ? `${level.description} (${level.id})` : level.id;
+}
+
 /** A model's effort level `id` in the app's language; an id the model does not list stays as it is. */
 export function effortName(model: { effort?: { levels: readonly { id: string; label: string }[] } | null } | null | undefined, id: string): string {
   const level = model?.effort?.levels.find((entry) => entry.id === id);

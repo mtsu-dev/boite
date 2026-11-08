@@ -10,11 +10,10 @@ export const strings = {
     filesUnavailable: 'The messages were rewound, but this edit has no complete file backup. The code could not be restored.',
     filesBusy: 'The messages were rewound. Another agent is still working in this folder, so the files were left as they are.',
     editingCancel: 'Stop editing (Esc)',
-    /** A question waits for a written answer: the box writes it, the card above names the question. */
-    replyPlaceholder: 'Or write another answer, with photos or files',
-    /** An ask to run a tool waits above the box: what is written instead refuses it. */
-    permissionPlaceholder: 'Or tell {agent} what to do instead',
-    theAgent: 'the agent',
+    /** A question waits for a written answer: the box writes it, the card above names the question. One line on a 360 px phone. */
+    replyPlaceholder: 'Or write an answer',
+    /** An ask to run a tool waits above the box: what is written instead refuses it. One line on a 360 px phone. */
+    permissionPlaceholder: 'Or say what to do',
     replySend: 'Send the answer',
     replyIgnore: 'Write a message',
     replyIgnoreHint: 'Leave the question waiting and write an ordinary message',
@@ -55,7 +54,7 @@ export const strings = {
     outboxStarts: 'Kept on this device: the conversation starts once {machine} is back',
     outboxWaiting: 'Waiting for {machine}',
     outboxNext: 'Goes out when the thread is free',
-    outboxSending: 'Sending…',
+    outboxSending: 'Sending',
     outboxFailed: 'Not sent: {reason}',
     outboxRetry: 'Send again',
     outboxSettings: 'The model and effort it was written with could not be set again.',
@@ -73,6 +72,8 @@ export const strings = {
     installInSettings: 'Install in Settings',
     effortTitle: 'Reasoning effort',
     speed: 'Response speed',
+    /** The picker's quiet row that opens speed, permissions and context under the effort; it reads their current values. */
+    pickerMore: 'More',
     /** The reasoning chip of a model whose agent keeps its own level until one is picked. */
     effortDefault: 'Default',
     effortDefaultHint: 'Let the agent pick its own level for this model',

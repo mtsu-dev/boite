@@ -198,9 +198,11 @@ async function mountOnFake(search = '/?fake=1'): Promise<void> {
 
 test('Escape on an open context popover closes it and leaves a busy turn running', async () => {
   await mountOnFake();
-  // Under half full, the ring is a row of the model chip's menu.
+  // Under half full, the ring is a row of the model chip's menu, behind its More row.
   await waitFor(() => document.querySelector('[data-testid=composer-picker]') !== null);
   if (!document.querySelector('[data-testid=context-trigger]')) query<HTMLButtonElement>('[data-testid=composer-picker]').click();
+  await waitFor(() => document.querySelector('[data-testid=composer-picker-more]') !== null);
+  if (!document.querySelector('[data-testid=context-trigger]')) query<HTMLButtonElement>('[data-testid=composer-picker-more]').click();
   await waitFor(() => document.querySelector('[data-testid=context-trigger]') !== null);
   query<HTMLButtonElement>('[data-testid=context-trigger]').click();
   await waitFor(() => document.querySelector('[data-testid=context-popup]') !== null);
@@ -355,12 +357,16 @@ test('removing a machine asks first, and cancel keeps its card', async () => {
   await waitFor(() => workspace.machines.length === 2);
   store.showSettings('machines');
   await waitFor(() => document.querySelectorAll('[data-testid=machine-card]').length === 2);
-  const remove = query<HTMLButtonElement>('[data-testid=machine-remove]');
-  remove.focus();
-  remove.click();
+  // The removal sits in the machine's menu: cancelling gives the keyboard back to that menu's button.
+  const remote = workspace.machines.find(machine => machine.store !== store)!;
+  const menu = query<HTMLButtonElement>(`[data-machine-id="${remote.id}"] [data-testid=machine-menu]`);
+  menu.focus();
+  menu.click();
+  await waitFor(() => document.querySelector('[data-testid=machine-remove]') !== null);
+  query<HTMLButtonElement>('[data-testid=machine-remove]').click();
   await waitFor(() => document.activeElement?.getAttribute('data-testid') === 'confirm-cancel');
   query<HTMLButtonElement>('[data-testid=confirm-cancel]').click();
-  await waitFor(() => document.activeElement === remove);
+  await waitFor(() => document.activeElement === menu);
   expect(workspace.machines).toHaveLength(2);
   expect(document.querySelectorAll('[data-testid=machine-card]')).toHaveLength(2);
 });
@@ -450,8 +456,12 @@ test('a folded project keeps saying what its hidden threads do, and the mark goe
   const [first, second] = store.threadsOf(project.id);
   first!.status = 'running';
   second!.status = 'waiting';
-  await waitFor(() => head().querySelector('[data-testid=project-rollup]')?.getAttribute('data-state') === 'waiting');
-  expect(head().querySelector('[data-testid=project-rollup]')!.getAttribute('title')).toBe('1 thread: Needs you');
+  // Needs you is the header's own word, folded or not, so the rollup gives way to it.
+  await waitFor(() => head().parentElement!.querySelector('[data-testid=project-waiting-count]')?.getAttribute('data-count') === '1');
+  expect(head().querySelector('[data-testid=project-rollup]')).toBeNull();
+  second!.status = 'idle';
+  await waitFor(() => head().querySelector('[data-testid=project-rollup]')?.getAttribute('data-state') === 'working');
+  expect(head().querySelector('[data-testid=project-rollup]')!.getAttribute('title')).toBe('1 thread: Working');
   store.toggleProject(project.id);
   await waitFor(() => head().querySelector('[data-testid=project-rollup]') === null);
 });

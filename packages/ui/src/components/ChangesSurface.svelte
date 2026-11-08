@@ -1,10 +1,14 @@
 <script lang="ts">
-  import { ArrowDown, ArrowUp, ChevronLeft, GitBranch, RefreshCw } from '@lucide/svelte';
+  import { ArrowDown, ArrowUp, ChevronDown, ChevronLeft, Columns2, GitBranch, RefreshCw, Space } from '@lucide/svelte';
   import type { GitChange, GitDiff, GitStatus, ThreadId } from '@boite/contracts';
   import type { BoundPanel, Surface } from '../lib/right-panel.svelte';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
-  import DiffView from './DiffView.svelte';
+  import { boxWidth } from '../lib/box-width';
+  import { diffPrefs, setDiffPref } from '../lib/diff-prefs.svelte';
+  import type { MenuItem } from '../lib/menu';
+  import DiffView, { SPLIT_MIN_WIDTH } from './DiffView.svelte';
+  import Menu from './Menu.svelte';
 
   let { store, surface, panel }: { store: Store; surface: Surface; panel: BoundPanel } = $props();
 
@@ -73,12 +77,31 @@
   /** Where the selected file stands in the list, -1 when it is not (or no longer) in it. */
   let at = $derived(selected === null ? -1 : changes.findIndex((change) => change.path === selected));
 
-  /** Keeps the picked file of the outline in view as the selection moves along it. */
-  function current(node: HTMLElement, on: boolean) {
-    const show = (value: boolean) => { if (value) node.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }); };
-    show(on);
-    return { update: show };
+  /** A phone's width with a file open: the diff fills the panel and the bar trades the count for the file choice. */
+  let oneFile = $derived(narrow && selected !== null);
+  let picked = $derived(at < 0 ? null : changes[at]!);
+  /** The status dot's tone in the file menu, the same reading as the list's badge. */
+  const TONES: Record<GitChange['status'], NonNullable<MenuItem['status']>['tone']> = {
+    added: 'success', copied: 'success', modified: 'warning', deleted: 'danger', conflict: 'danger', renamed: 'neutral', untracked: 'neutral'
+  };
+  let files = $derived<MenuItem[]>(changes.map((change) => ({
+    id: change.path,
+    label: base(change.path),
+    title: change.path,
+    hint: [change.additions ? `+${change.additions}` : '', change.deletions ? `-${change.deletions}` : ''].filter(Boolean).join(' ') || undefined,
+    status: { tone: TONES[change.status], label: strings.changes.status[change.status] },
+    checked: change.path === selected,
+    radio: true,
+    testid: 'changes-outline-file'
+  })));
+
+  function pickPath(path: string): void {
+    panel.update(surface.id, { path });
   }
+
+  /** The code's own width: the side by side switch is offered only where two columns can be read. */
+  let codeWidth = $state(0);
+  let textDiff = $derived(selected !== null && diff !== null && !diff.binary);
 
   function back(): void {
     panel.update(surface.id, { path: undefined });
@@ -138,8 +161,14 @@
   });
 </script>
 
-<div class="changes-surface" class:narrow class:reading={narrow && selected !== null} data-testid="changes-panel" bind:clientWidth={width}>
+<div class="changes-surface" class:narrow class:reading={oneFile} data-testid="changes-panel" bind:clientWidth={width}>
+  <!-- One bar: the way back and the file choice when one file fills the panel, the branch, the count or the file's lines, the diff's switches. -->
   <div class="panel-toolbar">
+    {#if oneFile}
+      <button type="button" class="ghost small icon back" data-testid="changes-back" title={strings.changes.backToList} aria-label={strings.changes.backToList} onclick={back}>
+        <ChevronLeft size={16} strokeWidth={1.75} />
+      </button>
+    {/if}
     <span class="branch" title={[status?.branch ?? strings.changes.noBranch, status?.upstream].filter(Boolean).join(' → ')}>
       <GitBranch size={13} strokeWidth={1.75} />
       <span class="branch-name ui-label">{status?.branch ?? strings.changes.noBranch}</span>
@@ -154,14 +183,40 @@
         <ArrowDown size={13} strokeWidth={1.75} /><span class="ui-label">{status.behind}</span>
       </span>
     {/if}
+    {#if oneFile && picked}
+      <span class="picker">
+        <Menu items={files} onpick={pickPath} placement="bottom" variant="text" label={picked.path} testid="changes-pager">
+          <span class="dot" data-status={picked.status} aria-hidden="true"></span>
+          <span class="file-name ui-label">{base(picked.path)}</span>
+          <ChevronDown size={13} strokeWidth={1.75} />
+        </Menu>
+      </span>
+    {/if}
     <span class="spacer"></span>
-    <span class="total" data-testid="changes-count">
-      {status
-        ? status.changes.length === 1
-          ? strings.changes.oneCount
-          : fill(strings.changes.count, { count: String(status.changes.length) })
-        : strings.changes.loading}
-    </span>
+    {#if oneFile && picked}
+      <span class="lines">
+        {#if picked.additions}<span class="count added ui-label">+{picked.additions}</span>{/if}
+        {#if picked.deletions}<span class="count removed ui-label">-{picked.deletions}</span>{/if}
+      </span>
+    {:else}
+      <span class="total" data-testid="changes-count">
+        {status
+          ? status.changes.length === 1
+            ? strings.changes.oneCount
+            : fill(strings.changes.count, { count: String(status.changes.length) })
+          : strings.changes.loading}
+      </span>
+    {/if}
+    {#if textDiff}
+      <button type="button" class="ghost small icon toggle" data-testid="diff-whitespace" aria-pressed={diffPrefs.ignoreWhitespace}
+        title={strings.chat.diffIgnoreWhitespace} aria-label={strings.chat.diffIgnoreWhitespace}
+        onclick={() => setDiffPref('ignoreWhitespace', !diffPrefs.ignoreWhitespace)}><Space size={14} /></button>
+      {#if codeWidth >= SPLIT_MIN_WIDTH}
+        <button type="button" class="ghost small icon toggle" data-testid="diff-split" aria-pressed={diffPrefs.split}
+          title={strings.chat.diffSideBySide} aria-label={strings.chat.diffSideBySide}
+          onclick={() => setDiffPref('split', !diffPrefs.split)}><Columns2 size={14} /></button>
+      {/if}
+    {/if}
     <button
       type="button"
       class="ghost small icon"
@@ -212,22 +267,6 @@
     </div>
 
     <div class="detail">
-      {#if narrow && selected !== null}
-        <!-- The file outline: every changed file one tap away, the list itself one step back. -->
-        <nav class="outline" aria-label={strings.rightPanel.changes} data-testid="changes-pager">
-          <button type="button" class="ghost small back" data-testid="changes-back" title={strings.changes.backToList} onclick={back}>
-            <ChevronLeft size={16} strokeWidth={1.75} /><span class="ui-label">{strings.changes.backToList}</span>
-          </button>
-          <div class="files">
-            {#each changes as change (change.path)}
-              <button type="button" class="ghost small file" class:on={change.path === selected} aria-current={change.path === selected ? 'true' : undefined}
-                data-testid="changes-outline-file" data-path={change.path} title={change.path} use:current={change.path === selected} onclick={() => select(change)}>
-                <span class="dot" data-status={change.status} aria-hidden="true"></span><span class="ui-label">{base(change.path)}</span>
-              </button>
-            {/each}
-          </div>
-        </nav>
-      {/if}
       {#if selected === null}
         <p class="empty">{strings.changes.pick}</p>
       {:else if diff === null}
@@ -238,7 +277,10 @@
         {#if diff.truncated}
           <p class="notice" data-testid="changes-truncated">{strings.changes.truncated}</p>
         {/if}
-        <DiffView path={diff.path} oldText={diff.oldText ?? ''} newText={diff.newText ?? ''} grow />
+        <!-- The bar above names the file and holds the switches: the code starts right under it. -->
+        <div use:boxWidth={(value) => (codeWidth = value)}>
+          <DiffView path={diff.path} oldText={diff.oldText ?? ''} newText={diff.newText ?? ''} headless grow />
+        </div>
       {/if}
     </div>
   </div>
@@ -331,41 +373,34 @@
 
   .narrow .detail {
     display: none;
-    padding: 0 8px 12px;
+    padding: 8px 8px 12px;
     border-top: none;
   }
 
   .narrow.reading .list { display: none; }
   .narrow.reading .detail { display: block; }
 
-  /* The way back to the list, then every file in one line that scrolls sideways. */
-  .outline {
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    display: flex;
-    align-items: center;
-    gap: var(--space-1);
-    margin: 0 -8px 8px;
-    padding: var(--space-1);
-    border-bottom: 1px solid var(--color-border);
-    background: var(--color-surface);
+  /* The back arrow pulls into the bar's edge so its glyph lines up with the rows under it. */
+  .back { flex: none; margin-left: -6px; }
+  /* The file choice gives way to nothing but its own name: the branch shrinks first. */
+  .picker { flex: 0 1 auto; display: flex; min-width: 0; color: var(--color-foreground); }
+  .picker :global(.menu), .picker :global(.trigger) { min-width: 0; max-width: 100%; }
+  .picker :global(.trigger) { height: var(--control-sm); }
+  .file-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .reading .branch { flex-shrink: 4; }
+  /* A phone's bar has room for the file or the branch, not both: the file being read wins, the list shows the branch. */
+  @container (max-width: 480px) {
+    .reading .branch, .reading .track { display: none; }
   }
-
-  .back { flex: none; display: inline-flex; align-items: center; gap: 2px; }
-  .files { flex: 1; min-width: 0; display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
-  .files::-webkit-scrollbar { display: none; }
-  /* The strip fades out where it runs on, so a name at the edge reads as more to scroll, not as cut. */
-  .files { padding-right: var(--space-6); mask-image: linear-gradient(to right, black calc(100% - var(--space-6)), transparent); }
-  .file { flex: none; display: inline-flex; align-items: center; gap: 6px; color: var(--color-muted-foreground); font-weight: 400; }
-  .file.on { background: var(--color-active); color: var(--color-foreground); }
+  .lines { flex: none; display: inline-flex; gap: 6px; }
+  .toggle { flex: none; color: var(--color-subtle); }
+  .toggle[aria-pressed='true'] { color: var(--color-foreground); background: var(--color-surface-2); }
   .dot { width: 6px; height: 6px; flex: none; border-radius: var(--radius-full); background: var(--mark); }
   .dot[data-status='added'], .dot[data-status='copied'] { --mark: var(--color-success); }
   .dot[data-status='modified'] { --mark: var(--color-live); }
   .dot[data-status='deleted'], .dot[data-status='conflict'] { --mark: var(--color-danger); }
   .dot[data-status='renamed'], .dot[data-status='untracked'] { --mark: var(--color-subtle); }
-  /* Fingers, not a pointer: every file of the outline and every row is a full target. */
-  .outline button { min-height: var(--touch-target); }
+  /* Fingers, not a pointer: every row is a full target. */
   .narrow .row { height: auto; min-height: var(--touch-target); }
 
   .row {

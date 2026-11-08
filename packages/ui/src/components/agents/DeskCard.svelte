@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { CircleCheck, CircleX, GitMerge, GitPullRequest, GitPullRequestClosed, LoaderCircle, MessageSquare, X } from '@lucide/svelte';
+  import { CircleCheck, CircleX, GitMerge, GitPullRequest, GitPullRequestClosed, MessageSquare, X } from '@lucide/svelte';
   import type { AgentWatch, Project } from '@boite/contracts';
   import { deskState, deskTone } from '../../lib/agent-desk';
   import { workedTime } from '../../lib/agent-turns';
@@ -7,6 +7,7 @@
   import type { Store } from '../../lib/store.svelte';
   import { fill, strings } from '../../lib/strings';
   import Elapsed from '../Elapsed.svelte';
+  import Spinner from '../Spinner.svelte';
   import ProjectTile from '../ProjectTile.svelte';
 
   /**
@@ -58,7 +59,7 @@
   <div class="desk-row-text">
     <div class="desk-row-head">
       <strong class="desk-card-title">{watch.title}</strong>
-      {#if standing === 'working'}<LoaderCircle size={12} strokeWidth={2} class="desk-row-spin" aria-label={t.state.working} />{:else if standing === 'needs-you' || standing === 'failed'}<span class="desk-row-mark" data-tone={tone} aria-hidden="true"></span>{/if}
+      {#if standing === 'working'}<Spinner size={11} label={t.state.working} />{:else if standing === 'needs-you' || standing === 'failed'}<span class="desk-row-mark" data-tone={tone} aria-hidden="true"></span>{/if}
       <span class="desk-card-when" title={exactTime(watch.lastActivityAt)}>
         {#if standing === 'working' && runningSince !== null}<Elapsed startedAt={runningSince} finishedAt={null} active />{:else}{ago(watch.lastActivityAt, now)}{/if}
       </span>
@@ -76,7 +77,7 @@
             {#if pr.state === 'merged'}<GitMerge size={12} strokeWidth={1.75} />{:else if pr.state === 'closed'}<GitPullRequestClosed size={12} strokeWidth={1.75} />{:else}<GitPullRequest size={12} strokeWidth={1.75} />{/if}
             <span>{fill(t.pr[pr.state], { number: String(pr.number) })}</span>
             {#if pr.checks && pr.state !== 'merged' && pr.state !== 'closed'}
-              {#if pr.checks === 'pending'}<LoaderCircle size={11} strokeWidth={2} class="spin" />{:else if pr.checks === 'passing'}<CircleCheck size={11} strokeWidth={2} />{:else}<CircleX size={11} strokeWidth={2} />{/if}
+              {#if pr.checks === 'pending'}<Spinner size={10} />{:else if pr.checks === 'passing'}<CircleCheck size={11} strokeWidth={2} />{:else}<CircleX size={11} strokeWidth={2} />{/if}
               <span>{t.checks[pr.checks]}</span>
             {/if}
           </span>

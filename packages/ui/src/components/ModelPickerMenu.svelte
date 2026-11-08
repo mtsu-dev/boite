@@ -8,6 +8,7 @@
   import ModelSearch from './ModelSearch.svelte';
   import ProviderLogo from './ProviderLogo.svelte';
   import ProviderTiles from './ProviderTiles.svelte';
+  import PickerMore from './PickerMore.svelte';
   import { floating } from '../lib/floating';
   import { focusInitial } from '../lib/focus';
   import { Closing } from '../lib/closing.svelte';
@@ -24,7 +25,8 @@
    * sit below the name as chips when there is more than one, and its models
    * fill the rest. A click on a model closes the picker; nothing else does.
    * `settings` holds the composer's effort and permission rows under the
-   * models; a phone gets the whole thing as one sheet, providers above the models.
+   * models, handed the More row (`PickerMore`) so its body loads with this
+   * chunk; a phone gets the whole thing as one sheet, providers above the models.
    */
   let {
     store,
@@ -48,7 +50,7 @@
     single?: boolean;
     disabled?: boolean;
     anchor?: () => HTMLElement | null;
-    settings?: Snippet;
+    settings?: Snippet<[typeof PickerMore]>;
     onpick: (patch: PickPatch) => void;
   } = $props();
 
@@ -450,7 +452,7 @@
     {/key}
     {/if}
   </div>
-  {#if settings}<div class="settings" data-picker-settings>{@render settings()}</div>{/if}
+  {#if settings}<div class="settings" data-picker-settings>{@render settings(PickerMore)}</div>{/if}
 </div>
 {#if popover.shown && legacy.shown && !favoritesOpen && !pending && filteredLegacy.length > 0}
 <div class="popover legacy-menu" class:closing={legacy.closing} role="menu" tabindex="-1" data-testid="picker-legacy-menu" aria-label={strings.composer.legacyModels} use:legacy.attach onanimationend={legacy.end} use:floating={{ anchor: () => menu ?? null, side: 'right' }} onkeydown={keydown}>

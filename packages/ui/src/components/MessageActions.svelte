@@ -101,7 +101,7 @@
   .stamp {
     order: 1;
     margin: 0 4px;
-    font-size: var(--text-xs);
+    font-size: var(--text-sm);
     color: var(--color-muted-foreground);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;

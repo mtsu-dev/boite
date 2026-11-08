@@ -15,6 +15,7 @@
     switches = false,
     disabled = false,
     label,
+    titled = true,
     heading,
     testid,
     children
@@ -30,6 +31,8 @@
     switches?: boolean;
     disabled?: boolean;
     label: string;
+    /** False where the caller draws its own name card beside the trigger (the app rail): no native tooltip on top of it. */
+    titled?: boolean;
     /** What the menu acts on, a thread or a project: a phone sheet's title. The label stands in. */
     heading?: string;
     testid?: string;
@@ -66,7 +69,9 @@
 
   function pick(item: MenuItem) {
     if (disabled || item.disabled) return;
-    if (!switches || item.checked === undefined) popover.hide();
+    // The picked row leaves with the list: the keyboard goes back to the trigger first, so a dialog the pick opens
+    // gives it back there, as Escape does.
+    if (!switches || item.checked === undefined) { popover.hide(); trigger?.focus({ preventScroll: true }); }
     onpick(item.id);
   }
 
@@ -125,7 +130,7 @@
     aria-haspopup="menu"
     aria-expanded={popover.open}
     aria-label={label}
-    title={label}
+    title={titled ? label : undefined}
     data-testid={testid}
     bind:this={trigger}
     {disabled}

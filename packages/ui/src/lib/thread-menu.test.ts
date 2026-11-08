@@ -41,9 +41,22 @@ test('a pick from any thread menu, the phone list included, reaches the entrust 
   expect(pickThreadAction(store, thread(), 'coordination', { rename })).toBe(false);
 });
 
-test('a phone menu keeps pin, rename, the view\'s tools, archive and delete, and leaves the desktop rows behind', () => {
+test('a phone menu keeps rename, pin, the view\'s tools, archive and delete, and leaves the desktop rows behind', () => {
   const store = stub();
   const ids = threadMenuItems(store, thread({ branch: 'boite/port' }), { phone: true, showDone: true, prLoading: false, tools: [{ id: 'find', label: 'Find' }] })
     .filter(item => !item.separator).map(item => item.id);
-  expect(ids).toEqual(['pin', 'rename', 'find', 'done', 'archive', 'delete']);
+  expect(ids).toEqual(['rename', 'pin', 'find', 'done', 'archive', 'delete']);
+});
+
+test('the row, header and phone menus share one order and grouping for what they all have', () => {
+  const store = stub();
+  const shared = new Set(['rename', 'pin', 'done', 'archive', 'delete']);
+  const order = (items: ReturnType<typeof threadMenuItems>) => items.filter(item => item.separator || shared.has(item.id))
+    .map(item => item.separator ? '|' : item.id).join(' ').replace(/(\| )+/g, '| ').replace(/^\| |( \|)+$/g, '');
+  const row = order(threadMenuItems(store, thread(), { open: false, showDone: true, prLoading: false }));
+  const header = order(threadMenuItems(store, thread(), { showDone: true }));
+  const phone = order(threadMenuItems(store, thread(), { phone: true, showDone: true }));
+  expect(row).toBe('rename pin | done archive | delete');
+  expect(header).toBe(row);
+  expect(phone).toBe(row);
 });

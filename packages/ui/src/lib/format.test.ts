@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { bytes, clockTime, dayClock, effortName, elapsed, formatTokens, levelName, longDay, millis, quotaResetTime, quotaWindowName, relativeTime } from './format';
+import { bytes, clockTime, dayClock, effortName, elapsed, formatTokens, levelName, levelTitle, longDay, millis, quotaResetTime, quotaWindowName, relativeTime } from './format';
 import { setLocaleSetting } from './i18n.svelte';
 
 test('elapsed reads like a stopwatch', () => {
@@ -40,15 +40,18 @@ test('durations, sizes, effort levels and quota windows follow the language the 
   const friday = new Date(2026, 8, 25, 20, 55).getTime();
   expect(quotaResetTime(friday, friday)).toMatch(/^Friday /);
   expect(millis(38_000)).toBe('38.0 s');
-  // Xhigh reads as the providers spell it, whatever label the core sends.
-  expect(levelName({ id: 'xhigh', label: 'Extra high' })).toBe('Xhigh');
+  // Xhigh and ultrathink read in plain words, whatever label the core sends; the tooltip keeps the agent's word.
+  expect(levelName({ id: 'xhigh', label: 'Xhigh' })).toBe('Extra high');
+  expect(levelName({ id: 'ultrathink', label: 'Ultrathink' })).toBe('Deepest');
+  expect(levelTitle({ id: 'ultrathink', description: 'Extended thinking' })).toBe('Extended thinking (ultrathink)');
+  expect(levelTitle({ id: 'high', description: 'Deeper reasoning' })).toBe('Deeper reasoning');
   await setLocaleSetting('fr');
   try {
     expect(millis(38_000)).toBe('38,0 s');
     expect(bytes(3.5 * 1024 ** 3)).toBe('3,5 Go');
     expect(levelName({ id: 'high', label: 'High' })).toBe('Élevé');
     expect(levelName({ id: 'fast', label: 'Fast' })).toBe('Rapide');
-    expect(levelName({ id: 'xhigh', label: 'Extra high' })).toBe('Xhigh');
+    expect(levelName({ id: 'xhigh', label: 'Extra high' })).toBe('Très élevé');
     // A level the app has no word for keeps the provider's.
     expect(levelName({ id: 'turbo', label: 'Turbo' })).toBe('Turbo');
     expect(quotaWindowName('Weekly')).toBe('Hebdomadaire');

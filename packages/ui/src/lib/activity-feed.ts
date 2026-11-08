@@ -5,18 +5,23 @@ import { threadState, type Delegated, type ThreadState } from './thread-state';
 import { describeTool, permissionSentence } from './tool-summary';
 
 /**
- * Activity: what needs the user, what failed and what finished, each with
- * why and since when. A sub-agent's row sits under its parent's, which is
+ * Activity, as triage: what needs the user (asks, permissions, failures to
+ * act on), then the updates (finished, interrupted), each with why and since
+ * when. A sub-agent's row sits under its parent's, which is
  * listed for it even when the parent itself only waits on it. A bot's own
  * conversation stays out: its picture on the rail already says how it stands.
  */
 export type FeedSource<M> = { machine: M; thread: ThreadSummary; project: Project | undefined };
-export type FeedRow<M> = FeedSource<M> & { reason: string; at: number; nested: boolean };
+/** `needs`: the user acts; `updates`: the user reads. A sub-agent sits in its parent's section. */
+export type FeedSection = 'needs' | 'updates';
+export type FeedRow<M> = FeedSource<M> & { reason: string; at: number; nested: boolean; section: FeedSection };
 type Requests = { pendingQuestions: readonly QuestionRequest[]; pendingPermissions: readonly PermissionRequest[] };
 type Owner = Requests & { subagents: (id: ThreadSummary['id']) => Delegated };
 
-/** The states Activity lists, in its order: the user's turn, then failures, then news. */
-const RANK: Partial<Record<ThreadState, number>> = { waiting: 0, error: 1, interrupted: 1, done: 2 };
+/** The states Activity lists, in its order: the user's turn, then failures, then news, newest first. */
+const RANK: Partial<Record<ThreadState, number>> = { waiting: 0, error: 1, interrupted: 2, done: 2 };
+/** The ranks that ask the user to act. */
+const NEEDS = 1;
 
 /** Why the thread waits on the user, in a few words, and since when; null when its request is not known here. */
 export function waitingReason(owner: Requests, thread: ThreadSummary): { text: string; since: number } | null {
@@ -75,8 +80,11 @@ export function activityFeed<M extends { id: string; store: Owner }>(all: readon
   // A parent ranks with its most urgent child: one that asks lifts it to the top.
   const rank = (entry: FeedSource<M>): number => Math.min(RANK[stateOf(entry)!] ?? 3, ...(children.get(key(entry)) ?? []).map(rank));
   const order = (a: FeedSource<M>, b: FeedSource<M>) => rank(a) - rank(b) || b.thread.updatedAt - a.thread.updatedAt;
-  return [...tops.values()].sort(order).flatMap(top => [
-    { ...top, nested: false, ...reasonOf(top.machine.store, top, stateOf(top), place) },
-    ...(children.get(key(top)) ?? []).sort(order).map(child => ({ ...child, nested: true, ...reasonOf(child.machine.store, child, stateOf(child), place) }))
-  ]);
+  return [...tops.values()].sort(order).flatMap(top => {
+    const section: FeedSection = rank(top) <= NEEDS ? 'needs' : 'updates';
+    return [
+      { ...top, nested: false, section, ...reasonOf(top.machine.store, top, stateOf(top), place) },
+      ...(children.get(key(top)) ?? []).sort(order).map(child => ({ ...child, nested: true, section, ...reasonOf(child.machine.store, child, stateOf(child), place) }))
+    ];
+  });
 }

@@ -22,7 +22,7 @@
   import { rankItems, type PaletteItem } from '../lib/palette';
   import { clearStash, DRAFT_STASH_KEY, readStash, writeStash } from '../lib/prefs';
   import { claudeKeywords, promptSegments } from '../lib/message-display';
-  import { fill, strings } from '../lib/strings';
+  import { strings } from '../lib/strings';
   import type { Choice, Store } from '../lib/store.svelte';
   import { machineName, workspace } from '../lib/workspace.svelte';
   import ComposerAttachments from './ComposerAttachments.svelte';
@@ -171,7 +171,7 @@
   let docked = $derived(target ? undefined : store.pendingQuestions.find((question) => question.id === repliesOf(store).docked && question.threadId === thread?.id));
   $effect(prefetchPermissionCard);
 
-  let placeholder = $derived(permission && !reply ? fill(strings.composer.permissionPlaceholder, { agent: bot ?? provider?.name ?? strings.composer.theAgent })
+  let placeholder = $derived(permission && !reply ? strings.composer.permissionPlaceholder
     : composerPlaceholder({ target, replying: !!reply, bot, offline, onThread: !!thread, draft: !!store.draft,
       machine: machineLabel, project: store.openProject?.name ?? null, provider: provider?.name ?? null }));
 
@@ -911,6 +911,8 @@
   }
 
   textarea { display: block; }
+  /* The hint is one line at any width: a box sized to its content would grow a second line for it. */
+  textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .input-paint { max-height: none; }
   @supports (field-sizing: content) { textarea { field-sizing: content; max-height: min(200px, calc(8lh + 16px)); } }
 

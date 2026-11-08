@@ -2,7 +2,7 @@
   import { tick, untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import WindowList from './WindowList.svelte';
-  import { Check, ChevronRight, CircleAlert, Ellipsis, FolderPlus, FolderX, GripVertical, LoaderCircle, MessageCircleQuestionMark } from '@lucide/svelte';
+  import { Check, ChevronRight, CircleAlert, Ellipsis, FolderPlus, FolderX, GripVertical, LoaderCircle } from '@lucide/svelte';
   import type { Project, ThreadId } from '@boite/contracts';
   import type { Store } from '../lib/store.svelte';
   import { workspace, type Machine } from '../lib/workspace.svelte';
@@ -276,12 +276,12 @@
               {#if projectView.order === 'manual'}<GripVertical size={12} />{/if}<span class="mark"><ProjectTile {project} store={owner} size={18} /><span class="fold-caret" class:open={!collapsed} aria-hidden="true"><ChevronRight size={16} /></span></span
               ><span class="name ui-label" class:gone={project.missing === true}>{projectName(project)}</span
               >{#if multi}<span class="host" data-testid="project-host" class:offline={owner.connection !== 'ready'}
-                title={`${machine.label} · ${strings.connection[owner.connection]}`} aria-label={machine.label}>{machine.label}</span>{/if}{#if project.missing === true}<span class="missing" data-testid="project-missing" title={strings.sidebar.projectMissing} aria-label={strings.sidebar.projectMissing}><FolderX size={13} aria-hidden="true" /></span>{/if}{#if rollup}{@const label = fill(rollup.count === 1 ? strings.sidebar.rollupOne : strings.sidebar.rollupMany, { count: String(rollup.count), state: strings.sidebar.state[rollup.kind] })}<span
+                title={`${machine.label} · ${strings.connection[owner.connection]}`} aria-label={machine.label}>{machine.label}</span>{/if}{#if project.missing === true}<span class="missing" data-testid="project-missing" title={strings.sidebar.projectMissing} aria-label={strings.sidebar.projectMissing}><FolderX size={13} aria-hidden="true" /></span>{/if}{#if rollup && rollup.kind !== 'waiting'}{@const label = fill(rollup.count === 1 ? strings.sidebar.rollupOne : strings.sidebar.rollupMany, { count: String(rollup.count), state: strings.sidebar.state[rollup.kind] })}<span
                   class="rollup {rollup.kind}" data-testid="project-rollup" data-state={rollup.kind} title={label} aria-label={label}
-                  >{#if rollup.kind === 'waiting'}<MessageCircleQuestionMark size={12} aria-hidden="true" />{:else if rollup.kind === 'error' || rollup.kind === 'interrupted'}<CircleAlert size={12} aria-hidden="true" />{:else if rollup.kind === 'done'}<Check size={12} aria-hidden="true" />{:else}<LoaderCircle size={11} class={rollup.kind === 'working' ? 'spinner' : 'pulse'} aria-hidden="true" />{/if}{#if rollup.count > 1}<span class="ui-label">{rollup.count}</span>{/if}</span
+                  >{#if rollup.kind === 'error' || rollup.kind === 'interrupted'}<CircleAlert size={12} aria-hidden="true" />{:else if rollup.kind === 'done'}<Check size={12} aria-hidden="true" />{:else}<LoaderCircle size={11} class={rollup.kind === 'working' ? 'spinner' : 'pulse'} aria-hidden="true" />{/if}{#if rollup.count > 1}<span class="ui-label">{rollup.count}</span>{/if}</span
                 >{/if}
             </button>
-            <ProjectThreadCounters {entry} part="head" working={lists.working.length} waiting={away || rollup ? 0 : waitingCount(entry)} {controls} {collapsed} {away} />
+            <ProjectThreadCounters {entry} part="head" working={lists.working.length} waiting={away || (rollup && rollup.kind !== 'waiting') ? 0 : waitingCount(entry)} {controls} {collapsed} {away} />
             <button
               class="ghost small icon project-actions"
               data-testid="project-menu"
@@ -454,7 +454,8 @@
   /* Its folder left the disk: the name steps back and a mark says why. */
   .name.gone { color: var(--color-muted-foreground); }
   .missing { display: flex; flex: none; color: var(--color-danger); }
-  /* A folded project still says what its threads do: the most urgent state, the count beside it. */
+  /* A folded project still says what its threads do: the most urgent state, the count beside it. The user's turn
+     is the header's own "Needs you" tag (ProjectThreadCounters), folded or not. */
   .rollup {
     display: inline-flex;
     flex: none;
@@ -465,7 +466,6 @@
     font-variant-numeric: tabular-nums;
   }
   .rollup.working, .rollup.delegating, .rollup.monitoring, .rollup.background, .rollup.watching { color: var(--color-muted-foreground); }
-  .rollup.waiting { color: var(--color-live); }
   .rollup.error { color: var(--color-danger); }
   .rollup.done { color: var(--color-success); }
   .rollup.queued { color: var(--color-muted-foreground); }

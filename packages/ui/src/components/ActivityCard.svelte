@@ -3,6 +3,7 @@
   import type { Snippet } from 'svelte';
   import type { HTMLButtonAttributes } from 'svelte/elements';
   import Elapsed from './Elapsed.svelte';
+  import Spinner from './Spinner.svelte';
 
   /**
    * Work the agent started, as one row of the chat where it started, drawn
@@ -34,7 +35,7 @@
     {@render extra?.()}
   </span>
   {#if timing.startedAt !== null}<span class="timing"><Elapsed startedAt={timing.startedAt} finishedAt={timing.finishedAt} active={timing.active} /></span>{/if}
-  {#if live}<span class="spinner" aria-hidden="true"></span>{/if}
+  {#if live}<Spinner size={11} />{/if}
   <span class="caret" aria-hidden="true"><ChevronRight size={12} /></span>
 </button>
 
@@ -64,19 +65,8 @@
   .activity:not(.live) .heading { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .activity:not(.live) .progress { flex: none; flex-wrap: nowrap; white-space: nowrap; }
   .activity:hover .heading { color: var(--color-foreground); }
-  .progress { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; font-size: var(--text-xs); color: var(--color-subtle); }
+  .progress { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; font-size: var(--text-sm); color: var(--color-subtle); }
   .progress::before { content: '·'; }
-  .timing { flex: none; color: var(--color-subtle); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
-  .spinner {
-    flex: none;
-    width: 11px;
-    height: 11px;
-    border-radius: 50%;
-    border: 1.5px solid var(--color-edge);
-    border-top-color: var(--color-live);
-    animation: spin 0.9s steps(54) infinite var(--loops);
-  }
+  .timing { flex: none; color: var(--color-subtle); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
   .caret { display: inline-flex; flex: none; color: var(--color-subtle); }
-  @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
-  :global(html[data-motion='reduced']) .spinner { animation: none; }
 </style>

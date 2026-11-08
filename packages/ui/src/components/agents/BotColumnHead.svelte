@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Brain, Ellipsis, LoaderCircle, Settings2 } from '@lucide/svelte';
+  import { Brain, Ellipsis, Settings2 } from '@lucide/svelte';
   import type { AgentProfile, AgentStatus, Team, ThreadSummary } from '@boite/contracts';
   import { agentMenuItems, pickAgentAction } from '../../lib/agent-menu';
   import { botLeaving } from '../../lib/agent-move-flow';
@@ -10,6 +10,7 @@
   import { listNames } from '../../lib/teams.svelte';
   import Menu from '../Menu.svelte';
   import Elapsed from '../Elapsed.svelte';
+  import Spinner from '../Spinner.svelte';
   import AgentAvatar from './AgentAvatar.svelte';
   import BuiltinBadge from './BuiltinBadge.svelte';
 
@@ -71,7 +72,7 @@
     <div class="bot-head-text">
       <strong class="bot-head-name">{agent.name}{#if agent.builtin}<BuiltinBadge />{/if}</strong>
       <span class="bot-head-live" data-state={state} title={line} aria-live="polite" data-testid="bot-column-live">
-        {#if state === 'working'}<LoaderCircle size={12} strokeWidth={2} class="bot-spin" />{/if}
+        {#if state === 'working'}<span class="bot-spin"><Spinner size={11} /></span>{/if}
         <span class="bot-head-line">{line}</span>
         {#if state === 'working' && since !== null}<span class="bot-head-sep" aria-hidden="true">&nbsp;·&nbsp;</span><span class="bot-head-time"><Elapsed startedAt={since} finishedAt={null} active /></span>{/if}
       </span>

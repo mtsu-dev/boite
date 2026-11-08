@@ -11,6 +11,7 @@
   import { diffCountsOf } from '../lib/diff';
   import Deferred, { parts } from './Deferred.svelte';
   import DocumentView from './DocumentView.svelte';
+  import Spinner from './Spinner.svelte';
   import { chatPrefs } from '../lib/chat-prefs.svelte';
   import type { Store } from '../lib/store.svelte';
 
@@ -201,7 +202,7 @@
       </span>
     {/if}
     {#if status === 'running'}
-      <span class="status" title={strings.chat.toolStatus.running}><span class="spinner"></span></span>
+      <span class="status" title={strings.chat.toolStatus.running}><Spinner size={11} /></span>
     {:else if failed && permission !== 'deny'}
       <!-- A dot and a word: a bare cross at a row's end reads as its close button. -->
       <span class="status failed" data-testid={exitLabel ? 'tool-exit-code' : 'tool-failed'}><span class="dot" aria-hidden="true"></span><span class="ui-label">{exitLabel || strings.chat.toolFailed}</span></span>
@@ -328,11 +329,11 @@
 
   /* A command is set in the code face, a step smaller so it sits on the same line height. */
   .line.mono {
-    font-size: var(--text-xs);
+    font-size: var(--text-sm);
   }
 
   .line.live { color: var(--color-accent); }
-  .error-preview { margin: 0 0 4px; color: var(--color-danger); font-size: var(--text-xs); overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+  .error-preview { margin: 0 0 4px; color: var(--color-danger); font-size: var(--text-sm); overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
 
   .chip {
     flex: none;
@@ -344,7 +345,7 @@
     border-radius: var(--radius-sm);
     background: var(--color-surface-2);
     color: var(--color-muted-foreground);
-    font-size: var(--text-xs);
+    font-size: var(--text-sm);
     font-variant-numeric: tabular-nums;
   }
 
@@ -365,7 +366,7 @@
   .took {
     flex: none;
     color: var(--color-subtle);
-    font-size: var(--text-xs);
+    font-size: var(--text-sm);
     font-variant-numeric: tabular-nums;
   }
 
@@ -379,7 +380,7 @@
     color: var(--color-subtle);
   }
 
-  .status.failed { align-items: center; gap: 5px; color: var(--color-danger); font-size: var(--text-xs); }
+  .status.failed { align-items: center; gap: 5px; color: var(--color-danger); font-size: var(--text-sm); }
   .status.failed .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 
   /* The user's answer to the agent's ask: the shield in the answer's colour. */
@@ -390,15 +391,6 @@
   }
 
   .verdict.denied { color: var(--color-danger); }
-
-  .spinner {
-    width: 11px;
-    height: 11px;
-    border-radius: 50%;
-    border: 1.5px solid var(--color-edge);
-    border-top-color: var(--color-live);
-    animation: spin 0.9s steps(54) infinite var(--loops);
-  }
 
   /* The body sits under the line's words, past the glyph. */
   .body {
@@ -446,7 +438,7 @@
     display: inline-flex;
     flex: none;
     gap: 6px;
-    font-size: var(--text-xs);
+    font-size: var(--text-sm);
     font-variant-numeric: tabular-nums;
   }
 
@@ -481,6 +473,6 @@
   }
 
   /* An endless loop stops under reduced motion; the static mark keeps its colour. */
-  @media (prefers-reduced-motion: reduce) { :is(.pulse, .spinner, .cursor) { animation: none; } }
-  :global(html[data-motion='reduced']) :is(.pulse, .spinner, .cursor) { animation: none; }
+  @media (prefers-reduced-motion: reduce) { :is(.pulse, .cursor) { animation: none; } }
+  :global(html[data-motion='reduced']) :is(.pulse, .cursor) { animation: none; }
 </style>
