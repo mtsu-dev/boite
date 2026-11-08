@@ -22,9 +22,12 @@ test('the theme setting stamps the light palette and remembers the choice', asyn
   expect(window.localStorage.getItem('boite.theme')).toBe('dark');
   expect(query('[data-testid=theme-dark]').getAttribute('aria-pressed')).toBe('true');
 
-  // The store is one module-level singleton: leave the next test on the chat.
-  query<HTMLButtonElement>('[data-testid=view-threads]').click();
+  // The store is one module-level singleton: leave the next test on the chat,
+  // through the settings column's title, which leads back to the threads as the bots column's does.
+  expect(query('[data-testid=settings-back]').textContent?.trim()).toBe('Settings');
+  query<HTMLButtonElement>('[data-testid=settings-back]').click();
   await waitFor(() => document.querySelector('[data-testid=settings]') === null);
+  expect(store.page).toBe('chat');
 });
 
 test('the keybindings file moves a chord, takes one away, and the Keyboard page says so', async ({ app: _app }) => {

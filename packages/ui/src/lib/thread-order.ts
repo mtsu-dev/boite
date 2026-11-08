@@ -1,6 +1,6 @@
 import type { ThreadSummary } from '@boite/contracts';
 import type { Delegated } from './thread-state';
-import { threadRank } from './status-order';
+import { rowAsks, threadRank, type RowSource } from './status-order';
 
 /** What the order reads of a thread: its pin, what its state says (lib/status-order.ts) and when the user last spoke. */
 type Ordered = Pick<ThreadSummary, 'pinned' | 'status' | 'lastUserMessageAt' | 'createdAt'>
@@ -25,11 +25,11 @@ export function threadOrder<T extends Ordered>(delegated: (thread: T) => Delegat
 /** The order without the helpers' questions, for a list that does not know them. */
 export const compareThreads: (a: Ordered, b: Ordered) => number = threadOrder();
 
-type Entry = { thread: Ordered & { id: string }; machine: { store: { subagents(threadId: string): Delegated } } };
+type Entry = { thread: Ordered & { id: string }; machine: { store: RowSource<Delegated> } };
 
 /** The same order for rows of several machines: each reads its helpers through the store that holds it. */
 export function compareEntries(a: Entry, b: Entry): number {
   return Number(b.thread.pinned) - Number(a.thread.pinned)
-    || threadRank(a.thread as ThreadSummary, a.machine.store.subagents(a.thread.id)) - threadRank(b.thread as ThreadSummary, b.machine.store.subagents(b.thread.id))
+    || threadRank(a.thread as ThreadSummary, rowAsks(a.machine.store, a.thread.id)) - threadRank(b.thread as ThreadSummary, rowAsks(b.machine.store, b.thread.id))
     || lastActivity(b.thread) - lastActivity(a.thread);
 }

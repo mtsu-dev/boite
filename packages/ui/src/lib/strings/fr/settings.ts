@@ -166,7 +166,7 @@ export const fr: Translation = {
     coreUrl: 'URL du cœur',
     token: 'Jeton',
     connect: 'Connecter',
-    warmProcessMinutes: 'Minutes de processus gardé chaud',
+    warmProcessMinutes: 'Garder un agent chargé après son tour, minutes',
     listenOnLan: 'Accessible sur le réseau local',
     listenOnLanHint: 'Permet à un téléphone du même réseau d\'atteindre cet ordinateur, à partir du prochain démarrage de Boite. Une option --host ou --lan l\'emporte.',
     agentCpuCapPercent: 'Plafond CPU, %',

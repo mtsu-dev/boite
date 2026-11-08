@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from 'svelte';
+  import { rowAsks, stateForm } from '../lib/status-order';
   import { Archive, Ellipsis, Pin, PinOff } from '@lucide/svelte';
   import type { Project, ThreadSummary } from '@boite/contracts';
   import type { Machine } from '../lib/workspace.svelte';
@@ -12,6 +12,7 @@
   import ThreadHeadline from './ThreadHeadline.svelte';
   import ThreadState from './ThreadState.svelte';
   import { threadState } from '../lib/thread-state';
+  import type { FeedVerb } from '../lib/activity-feed';
 
   /**
    * A phone's thread row, the desktop row's grammar at a finger's size: the
@@ -20,14 +21,14 @@
    * request waits in the thread, the pin under the slide. `compact` is the flat lists' form (Recent, Activity): the
    * project's tile first. Activity (the phone's screen and the desktop's page) is one title line with since when at its
    * end, then its state when the section does not say it and `reason`, what the thread wants, cut to that one line; `nested` steps a
-   * sub-agent in under its parent.
+   * sub-agent in under its parent; `verb` names what a Needs you row asks, a button at the reason line's end.
    * The row menu has no button of its own: a long press opens it, a slide
    * left shows pin and archive. Its trigger stays for the keyboard, drawn
    * only while focused.
    */
-  let { machine, thread, project, now, items, tools, compact = false, reason, at, nested = false, where, onopen, onaction }: {
+  let { machine, thread, project, now, items, tools, compact = false, reason, at, nested = false, verb = null, where, onopen, onaction }: {
     machine: Machine; thread: ThreadSummary; project: Project | undefined; now: number; items: MenuItem[]; compact?: boolean;
-    reason?: string; at?: number; nested?: boolean;
+    reason?: string; at?: number; nested?: boolean; verb?: FeedVerb | null;
     /** Recent: where the row lives, first on its line under the title (lib/row-place.ts). */
     where?: string;
     /** What the menu's All tools (`more`) opens in its place, with a Back (`back`) to `items`. */
@@ -37,7 +38,9 @@
   const owner = $derived(machine.store);
   const pin = $derived(items.find(item => item.id === 'pin'));
   const archive = $derived(items.find(item => item.id === 'archive'));
-  const kind = $derived(threadState(thread, owner.subagents(thread.id)));
+  const kind = $derived(thread.archived ? null : threadState(thread, rowAsks(owner, thread.id)));
+  /** A word and a dot when the user must act, a ring for work, the time alone otherwise (ThreadState draws it then). */
+  const form = $derived(stateForm(kind));
   const away = $derived(owner.connection !== 'ready');
   let menu = $state<HTMLElement>();
   /** A long press, or Android's own, opens the row's menu where its hidden trigger stands. */
@@ -47,18 +50,12 @@
     menu?.querySelector<HTMLButtonElement>('[aria-haspopup=menu]')?.click();
   }
   function swiped(action: string) { closeSwipedRow(); onaction(action); }
-  /** The menu shows All tools' list in place of its own until Back, a pick or a fresh open. */
+  /** The menu shows All tools' list in place of its own until Back, a pick or its close: the menu keeps itself open for both (Menu.svelte). */
   let inTools = $state(false);
-  let reopening = false;
   const shown = $derived(inTools && tools ? tools : items);
-  function reopen(next: boolean) {
-    inTools = next;
-    reopening = true;
-    void tick().then(() => { menu?.querySelector<HTMLButtonElement>('[aria-haspopup=menu]')?.click(); reopening = false; });
-  }
   function pick(action: string) {
-    if (tools && action === 'more') return reopen(true);
-    if (tools && action === 'back') return reopen(false);
+    if (tools && action === 'more') { inTools = true; return; }
+    if (tools && action === 'back') { inTools = false; return; }
     inTools = false;
     onaction(action);
   }
@@ -75,21 +72,22 @@
   <!-- The row's contextmenu (a long press, Android's, a right click) opens the menu wherever it lands; the button inside stays the keyboard's target. -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="body" use:swipeRow oncontextmenu={openMenu}>
-    <button class="ghost thread" class:offline={away} class:stated={kind !== null} data-testid="mobile-thread-{thread.id}" title={[thread.title, reason, thread.branch].filter(Boolean).join('\n')} onclick={onopen} use:longPress>
+    <button class="ghost thread" class:offline={away} class:verbed={verb !== null} class:stated={kind !== null} data-testid="mobile-thread-{thread.id}" title={[thread.title, reason, thread.branch].filter(Boolean).join('\n')} onclick={onopen} use:longPress>
       {#if reason !== undefined}
         <span class="feed-head"><ThreadHeadline {owner} {thread} tile={compact && !nested ? project : undefined} />{#if at !== undefined}<time class="ui-label" title={exactTime(at)}>{ago(at, now)}</time>{/if}</span>
         <!-- The state leads the line under the title, whole; the reason follows on that one line, cut: the state never
              floats beside wrapped words. -->
-        <span class="why" data-testid="mobile-row-reason">{#if kind !== null && kind !== 'waiting'}<ThreadState {thread} {now} subagents={owner.subagents(thread.id)} {away} /><span class="sep" aria-hidden="true">·</span>{/if}<span class="text">{reason}</span></span>
+        <span class="why" data-testid="mobile-row-reason">{#if form !== null && kind !== 'waiting'}<ThreadState {thread} {now} subagents={rowAsks(owner, thread.id)} {away} /><span class="sep" aria-hidden="true">·</span>{/if}<span class="text">{reason}</span></span>
       {:else}
         <ThreadHeadline {owner} {thread} tile={compact && !nested ? project : undefined} />
-        <!-- The state, then the time; a thread at rest has its time alone. -->
-        <span class="meta" data-testid="mobile-row-meta">{#if where}<span class="where" data-testid="mobile-row-where">{where}</span><span class="sep" aria-hidden="true">·</span>{/if}<ThreadState {thread} {now} subagents={owner.subagents(thread.id)} {away} />{#if kind !== null}<span class="sep" aria-hidden="true">·</span><time title={exactTime(thread.lastUserMessageAt ?? thread.createdAt)}>{ago(thread.lastUserMessageAt ?? thread.createdAt, now)}</time>{/if}</span>
+        <!-- The state, then the time: a word only when the user must act, a ring alone for work, news and rest their time alone. -->
+        <span class="meta" data-testid="mobile-row-meta">{#if where}<span class="where" data-testid="mobile-row-where">{where}</span><span class="sep" aria-hidden="true">·</span>{/if}<ThreadState {thread} {now} subagents={rowAsks(owner, thread.id)} {away} />{#if form === 'word'}<span class="sep" aria-hidden="true">·</span>{/if}{#if form !== null}<time title={exactTime(thread.lastUserMessageAt ?? thread.createdAt)}>{ago(thread.lastUserMessageAt ?? thread.createdAt, now)}</time>{/if}</span>
       {/if}
     </button>
+    {#if verb}<button type="button" class="small verb" data-testid="thread-verb" data-verb={verb} onclick={onopen}>{strings.mobile.feed.verb[verb]}</button>{/if}
     <!-- A tap that opens the menu afresh starts it on its own list. -->
     <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-    <span class="row-menu" bind:this={menu} onclickcapture={() => { if (!reopening) inTools = false; }}><Menu items={shown} onpick={pick} label={strings.sidebar.threadMenu} heading={thread.title} placement="bottom" variant="ghost" testid="mobile-thread-menu-{thread.id}"><Ellipsis size={18} /></Menu></span>
+    <span class="row-menu" bind:this={menu}><Menu items={shown} onpick={pick} onclose={() => { inTools = false; }} label={strings.sidebar.threadMenu} heading={thread.title} placement="bottom" variant="ghost" testid="mobile-thread-menu-{thread.id}"><Ellipsis size={18} /></Menu></span>
   </div>
 </div>
 
@@ -118,10 +116,15 @@
   .feed-head :global(.headline) { flex: 1; }
   .feed-head time { flex: none; font-size: var(--text-sm); color: var(--color-subtle); font-variant-numeric: tabular-nums; }
   .why .text { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* The verb ends the row, centred on its two lines, which stop short of it; one width for every verb, as on a desktop. */
+  .verb { position: absolute; top: 50%; right: 12px; transform: translateY(-50%); justify-content: center; min-width: 88px; font-size: var(--text-sm); font-weight: 600; }
+  .thread.verbed { padding-right: 112px; }
   /* A sub-agent under its parent: stepped in, a hairline where the tile was. */
   /* Its words on the parent's text edge: 12 px in, the 16 px tile and its 10 px gap. */
   .nested .thread { padding-left: 38px; }
   .nested .body::before { content: ''; position: absolute; left: 20px; top: 0; bottom: 0; width: 1px; background: var(--color-border); }
+  /* The ring every row draws, inside the box: the list's edge would clip one outside it. */
+  .thread:focus-visible { outline-offset: -2px; }
   .thread :global(.headline) { gap: 10px; align-items: flex-start; }
   .thread:not(:has(.feed-head)) :global(.headline > .tile) { margin-top: 3px; }
   /* A phone reads every title at full ink: the line under it says which rows need the user. Two lines of it

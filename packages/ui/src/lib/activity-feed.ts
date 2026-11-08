@@ -2,7 +2,7 @@ import type { PermissionRequest, Project, QuestionRequest, ThreadSummary } from 
 import { projectName } from './format';
 import { fill, strings } from './strings';
 import { threadState, type Delegated, type ThreadState } from './thread-state';
-import { NEEDS_RANK, statusRank } from './status-order';
+import { NEEDS_RANK, rowAsks, statusRank, type RowSource } from './status-order';
 import { describeTool, permissionSentence } from './tool-summary';
 
 /**
@@ -15,7 +15,9 @@ import { describeTool, permissionSentence } from './tool-summary';
 export type FeedSource<M> = { machine: M; thread: ThreadSummary; project: Project | undefined };
 /** `needs`: the user acts; `updates`: the user reads. A sub-agent sits in its parent's section. */
 export type FeedSection = 'needs' | 'updates';
-export type FeedRow<M> = FeedSource<M> & { reason: string; at: number; nested: boolean; section: FeedSection };
+/** The one thing a Needs you row asks the user to do, offered on the row itself: each opens the thread where it is done. */
+export type FeedVerb = 'answer' | 'allow' | 'review';
+export type FeedRow<M> = FeedSource<M> & { reason: string; at: number; nested: boolean; section: FeedSection; verb: FeedVerb | null };
 type Requests = { pendingQuestions: readonly QuestionRequest[]; pendingPermissions: readonly PermissionRequest[] };
 type Owner = Requests & { subagents: (id: ThreadSummary['id']) => Delegated };
 
@@ -41,6 +43,12 @@ export function waitingReason(owner: Requests, thread: ThreadSummary): { text: s
   return child ? { text: fill(strings.mobile.feed.helperAsks, { title: child.title }), since: thread.updatedAt } : null;
 }
 
+/** A permission alone is allowed; a question, its own or a sub-agent's, is answered; a failure is reviewed. */
+function verbOf(owner: Requests, thread: ThreadSummary, kind: ThreadState | null): FeedVerb | null {
+  if (kind === 'waiting') return owner.pendingPermissions.some(p => p.threadId === thread.id) && !owner.pendingQuestions.some(q => q.threadId === thread.id) ? 'allow' : 'answer';
+  return kind === 'error' || kind === 'interrupted' ? 'review' : null;
+}
+
 /** A thread outside any project: a bot's worker names its bot, through `place`, a draft says Drafts. */
 export type FeedPlace<M> = (entry: FeedSource<M>) => string | null | undefined;
 
@@ -64,9 +72,9 @@ type Top<M> = { top: FeedSource<M>; children: FeedSource<M>[]; rank: number };
  * Activity's top rows in its order, each with its sub-agents and its rank: the one derivation behind the page, its
  * sections, the rail's badge, the phone's tab and a project's "Needs you" count, so none of them can disagree.
  */
-function feedTops<M extends { id: string; store: Pick<Owner, 'subagents'> }>(all: readonly FeedSource<M>[]): Top<M>[] {
+function feedTops<M extends { id: string; store: RowSource<Delegated> }>(all: readonly FeedSource<M>[]): Top<M>[] {
   const entries = all.filter(entry => !entry.thread.agentSessionId);
-  const stateOf = (entry: FeedSource<M>) => threadState(entry.thread, entry.machine.store.subagents(entry.thread.id));
+  const stateOf = (entry: FeedSource<M>) => threadState(entry.thread, rowAsks(entry.machine.store, entry.thread.id));
   const key = (entry: FeedSource<M>, id = entry.thread.id) => `${entry.machine.id}\n${id}`;
   const byKey = new Map(entries.map(entry => [key(entry), entry]));
   const parentOf = (entry: FeedSource<M>) => entry.thread.parentThreadId ? byKey.get(key(entry, entry.thread.parentThreadId)) : undefined;
@@ -96,23 +104,24 @@ function feedTops<M extends { id: string; store: Pick<Owner, 'subagents'> }>(all
 }
 
 /** How many rows Activity's Needs you section lists at its top level: the number its heading and every badge say. */
-export function needsYouCount<M extends { id: string; store: Pick<Owner, 'subagents'> }>(all: readonly FeedSource<M>[]): number {
+export function needsYouCount<M extends { id: string; store: RowSource<Delegated> }>(all: readonly FeedSource<M>[]): number {
   return feedTops(all).filter(({ rank }) => rank <= NEEDS_RANK).length;
 }
 
 /** One machine's Needs you count over some of its threads (a project's, say): the same rows, the same number. */
-export function storeNeedsYou(store: Pick<Owner, 'subagents'>, threads: readonly ThreadSummary[]): number {
+export function storeNeedsYou(store: RowSource<Delegated>, threads: readonly ThreadSummary[]): number {
   const machine = { id: '', store };
   return needsYouCount(threads.filter(feedThread).map(thread => ({ machine, thread, project: undefined })));
 }
 
 export function activityFeed<M extends { id: string; store: Owner }>(all: readonly FeedSource<M>[], place?: FeedPlace<M>): FeedRow<M>[] {
-  const stateOf = (entry: FeedSource<M>) => threadState(entry.thread, entry.machine.store.subagents(entry.thread.id));
+  const stateOf = (entry: FeedSource<M>) => threadState(entry.thread, rowAsks(entry.machine.store, entry.thread.id));
   return feedTops(all).flatMap(({ top, children, rank }) => {
     const section: FeedSection = rank <= NEEDS_RANK ? 'needs' : 'updates';
-    return [
-      { ...top, nested: false, section, ...reasonOf(top.machine.store, top, stateOf(top), place) },
-      ...children.map(child => ({ ...child, nested: true, section, ...reasonOf(child.machine.store, child, stateOf(child), place) }))
-    ];
+    const row = (entry: FeedSource<M>, nested: boolean): FeedRow<M> => {
+      const kind = stateOf(entry);
+      return { ...entry, nested, section, ...reasonOf(entry.machine.store, entry, kind, place), verb: section === 'needs' ? verbOf(entry.machine.store, entry.thread, kind) : null };
+    };
+    return [row(top, false), ...children.map(child => row(child, true))];
   });
 }

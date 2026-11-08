@@ -33,6 +33,9 @@ test('Activity lists what needs the user, failures included, then the updates, e
   expect(feed.map(row => row.thread.id)).toEqual(['push', 'asks', 'parent', 'child', 'failed', 'stopped', 'done']);
   // Two sections: the user acts on asks and failures, reads what finished or stopped short; a child keeps its parent's.
   expect(feed.map(row => row.section)).toEqual(['needs', 'needs', 'needs', 'needs', 'needs', 'updates', 'updates']);
+  // Each Needs you row offers what the user does there: allow a permission, answer a question (a sub-agent's
+  // through its parent), review a failure; a parent pulled in at work has nothing of its own to do.
+  expect(feed.map(row => row.verb)).toEqual(['allow', 'answer', null, 'answer', 'review', null, null]);
   expect(feed.find(row => row.thread.id === 'child')?.nested).toBe(true);
   expect(feed.filter(row => row.nested)).toHaveLength(1);
   // Work in progress, threads at rest and a bot's own conversation are not news.

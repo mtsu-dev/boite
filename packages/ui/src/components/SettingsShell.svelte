@@ -4,7 +4,7 @@
   import MobileSettings from './MobileSettings.svelte';
   import BrainPage from './BrainPage.svelte';
   import InfoTip from './InfoTip.svelte';
-  import { Activity, Brain, Coins, FlaskConical, Gauge, Keyboard, Mic, Monitor, Palette, Puzzle, Plug, Settings, ShieldCheck, Stethoscope, Wrench } from '@lucide/svelte';
+  import { Activity, Brain, ChevronLeft, Coins, FlaskConical, Gauge, Keyboard, Mic, Monitor, Palette, Puzzle, Plug, Settings, ShieldCheck, Stethoscope, Wrench } from '@lucide/svelte';
   import KeyboardPage from './KeyboardPage.svelte';
   import LimitsPage from './LimitsPage.svelte';
   import PluginsPage from './PluginsPage.svelte';
@@ -202,8 +202,9 @@
   /**
    * On a desktop the card carries the screen's one title, a step over the
    * cards' own, as a phone's screen does; the bar above stays empty but for a
-   * page's buttons (UsagePage.svelte). The list's head leads back to Home and
-   * the rail is the way out: no Back button.
+   * page's buttons (UsagePage.svelte). The list's head leads back to the
+   * threads, as the bots column's does (SideHead.svelte); the rail's gear
+   * opens Settings' home: no extra Back button.
    */
   $effect(() => {
     if (!desktopSettings(narrow.current)) return;
@@ -327,9 +328,9 @@
 {:else}
 <div class="settings" data-testid="settings">
   <nav aria-label={strings.settings.heading} style:--list-width={`${store.sidebarWidth}px`}>
-    <!-- The list's head is the way to Settings' home: no Home row under it. -->
-    <button type="button" class="ghost title" class:active={tab === 'home'} data-testid="settings-tab-home" aria-current={tab === 'home' ? 'page' : undefined} title={strings.settings.tabs.home} onclick={() => store.showSettings('home')}>
-      <span class="ui-label">{strings.settings.heading}</span>
+    <!-- The list's head leads back to the threads, like the bots column's; the rail's gear opens Settings' home. -->
+    <button type="button" class="ghost title" data-testid="settings-back" title={strings.settings.back} onclick={() => { store.showChat(); store.sidebarCollapsed = false; }}>
+      <ChevronLeft size={16} aria-hidden="true" /><span class="ui-label">{strings.settings.heading}</span>
     </button>
     <!-- One entry a group, as on a phone: a group's other pages are tabs at the top of its card. -->
     {#each groups as entry (entry.id)}
@@ -418,12 +419,12 @@
 <style>
   /* With the machine bar, the panel scrolls bar and page together, on one column. */
   .framed.with-bar { scrollbar-gutter: stable both-edges; }
-  .framed.with-bar > :global(.machine-bar) { padding: 24px clamp(20px, 4vw, 64px) 0; }
+  .framed.with-bar > :global(.machine-bar) { padding: 24px var(--settings-gutter) 0; }
   .framed.with-bar > :global(.page) { height: auto; overflow: visible; padding-top: 20px; }
-  .framed > :global(.policy-banner) { margin: 24px clamp(20px, 4vw, 64px) 0; }
+  .framed > :global(.policy-banner) { margin: 24px var(--settings-gutter) 0; }
   @media (min-width: 721px) {
-    .framed.with-bar > :global(.machine-bar) { padding-inline: max(clamp(20px, 4vw, 64px), calc((100% - var(--settings-width)) / 2)); max-width: none; }
-    .framed > :global(.policy-banner) { margin-inline: max(clamp(20px, 4vw, 64px), calc((100% - var(--settings-width)) / 2)); }
+    .framed.with-bar > :global(.machine-bar) { padding-inline: max(var(--settings-gutter), calc((100% - var(--settings-width)) / 2)); max-width: none; }
+    .framed > :global(.policy-banner) { margin-inline: max(var(--settings-gutter), calc((100% - var(--settings-width)) / 2)); }
   }
   @media (max-width: 720px) {
     .framed.with-bar > :global(.machine-bar) { padding: 16px 16px 0; }
@@ -439,7 +440,7 @@
     gap: 2px;
     width: fit-content;
     max-width: 100%;
-    margin: var(--space-6) max(clamp(20px, 4vw, 64px), calc((100% - var(--settings-width)) / 2)) 0;
+    margin: var(--space-6) max(var(--settings-gutter), calc((100% - var(--settings-width)) / 2)) 0;
     padding: 2px;
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
@@ -461,7 +462,7 @@
 
   /* A page merged into another reads as its last section: its title a section title, the same column. */
   .merged { min-height: 100%; scroll-margin-top: var(--space-6); }
-  .merged > :global(.page) { height: auto; overflow: visible; padding-top: 0; padding-inline: max(clamp(20px, 4vw, 64px), calc((100% - var(--settings-width)) / 2)); }
+  .merged > :global(.page) { height: auto; overflow: visible; padding-top: 0; padding-inline: max(var(--settings-gutter), calc((100% - var(--settings-width)) / 2)); }
   .merged > :global(.page > header h1) { font-size: var(--text-md); }
 
   /* The bar carries the page's title and its "i": the page's own heading steps aside, and
@@ -496,13 +497,14 @@
   }
 
   /* The thread list's head: same height, size and inset, so the switch reads as one column changing.
-     It is a button too, to Settings' home, so it only lights under the pointer. */
-  .title { flex: none; justify-content: flex-start; height: 36px; margin: 16px 4px 4px; padding: 0 8px; font-size: 15px; font-weight: 600; letter-spacing: -0.015em; color: var(--color-foreground); }
-  .title:hover:not(:disabled) { background: var(--color-hover); }
+     It leads back to the threads (SideHead.svelte's back title), so it only lights under the pointer. */
+  .title { flex: none; justify-content: flex-start; gap: 2px; height: 36px; margin: 16px 4px 4px; padding: 0 8px 0 2px; font-size: 15px; font-weight: 600; letter-spacing: -0.015em; color: var(--color-subtle); }
+  .title .ui-label { color: var(--color-foreground); }
+  .title:hover:not(:disabled) { background: var(--color-hover); color: var(--color-foreground); }
 
   .crumb { flex: 1; min-width: 0; }
   /* The screen's one title, at the top of its card in the settings column, one step over a card's. */
-  .screen { padding: var(--space-8) max(clamp(20px, 4vw, 64px), calc((100% - var(--settings-width)) / 2)) 0; }
+  .screen { padding: var(--space-8) max(var(--settings-gutter), calc((100% - var(--settings-width)) / 2)) 0; }
   .screen h1 { min-width: 0; margin: 0; color: var(--color-foreground); font-size: var(--text-lg); font-weight: 600; line-height: 1.3; letter-spacing: -0.01em; }
   .screen + .pages { margin-top: var(--space-4); }
   .screen + :global(.page) { padding-top: var(--space-5); }
@@ -562,7 +564,6 @@
     .settings { gap: 0; }
     /* In a row, the head is the first chip and each group a run of chips. */
     .title { height: var(--control); margin: 0; font-size: var(--text-sm); white-space: nowrap; }
-    .title.active { background: var(--color-active); }
     .tab { width: auto; white-space: nowrap; }
   }
 </style>

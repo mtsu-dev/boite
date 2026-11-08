@@ -138,17 +138,11 @@
    */
   let phoneItems = $derived(thread ? [...identity, ...(identity.length ? [separator('sep-identity')] : []), ...threadMenuItems(store, thread, { phone: true })] : []);
   let inTools = $state(false);
-  let reopening = false;
-  let titleMenu = $state<HTMLElement>();
   const menuShown = $derived(inTools ? toolItems : mobile.current ? phoneItems : desktopItems);
-  function reopenMenu(next: boolean) {
-    inTools = next;
-    reopening = true;
-    void tick().then(() => { titleMenu?.querySelector<HTMLButtonElement>('[aria-haspopup=menu]')?.click(); reopening = false; });
-  }
+  // Menu.svelte keeps its list open on More and Back and swaps the rows in place; a close puts the first list back.
   function menuPick(action: string) {
-    if (action === 'more') return reopenMenu(true);
-    if (action === 'back') return reopenMenu(false);
+    if (action === 'more') { inTools = true; return; }
+    if (action === 'back') { inTools = false; return; }
     inTools = false;
     titleAction(action);
   }
@@ -226,8 +220,8 @@
           {#if mobile.current}<span class="title-lines"><span class="title-text ui-label">{thread.title}</span>{#if place}<span class="title-place ui-label" data-testid="thread-place">{#if place.project}<span class="place-project">{place.project}</span>{/if}{#if place.project && place.machine}<span aria-hidden="true">·</span>{/if}{#if place.machine}<span class="place-machine">{place.machine}</span>{/if}</span>{/if}</span>{/if}
           <!-- A small chevron exposes thread actions on the desktop. -->
           <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-          <span class="title-menu" bind:this={titleMenu} onclickcapture={() => { if (!reopening) inTools = false; }}>
-            <Menu items={menuShown} onpick={menuPick} label={strings.sidebar.threadMenu} heading={thread?.title} placement="bottom" variant={mobile.current ? 'ghost' : 'text'} testid="thread-menu-trigger">
+          <span class="title-menu">
+            <Menu items={menuShown} onpick={menuPick} label={strings.sidebar.threadMenu} heading={thread?.title} placement="bottom" variant={mobile.current ? 'ghost' : 'text'} testid="thread-menu-trigger" onclose={() => (inTools = false)}>
               {#if mobile.current}<Ellipsis size={20} />{:else}<ChevronDown size={14} />{/if}
             </Menu>
           </span>

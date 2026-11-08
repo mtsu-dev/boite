@@ -15,6 +15,9 @@ export const strings = {
     retryContinueTitle: 'Stopped before its answer',
     retryContinueBody: 'Resumes by itself in {time}, resume {attempt} of {attempts}.',
     contextDetails: 'Context',
+    contextPercentUsed: (percent: string) => `Context ${percent}% used`,
+    /** After the composer meter's percent, which it names; a phone shows the meter's glyph instead. */
+    contextWord: 'context',
     contextInput: 'Input',
     contextCache: 'Cached input',
     contextOutput: 'Output',

@@ -215,6 +215,8 @@ test('an answered card folds to one line and asks nothing more', () => {
 
   expect(query('[data-testid=question-card]').getAttribute('data-state')).toBe('answered');
   expect(query('[data-testid=question-answer]').textContent).toBe('Short: one line please');
+  // One sentence, one space: the label and the answer used to be two flex items with a gap on top of the colon's space.
+  expect(query('[data-testid=question-verdict]').textContent).toBe('You answered: Short: one line please');
   expect(options()).toHaveLength(0);
   expect(document.querySelector('[data-testid=question-submit]')).toBeNull();
   const toggle = query<HTMLButtonElement>('[data-testid=question-toggle]');

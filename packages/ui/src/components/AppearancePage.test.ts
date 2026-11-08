@@ -29,12 +29,23 @@ test('Appearance keeps visual choices only: the behaviour switches live under Ge
   expect(document.querySelector('[data-testid=chat-width-comfortable]')).not.toBeNull();
 });
 
+/** Opens a choice's selector and answers which of its options is checked. */
+function checked(trigger: string): string | undefined {
+  const head = document.querySelector<HTMLButtonElement>(`[data-testid=${trigger}]`)!;
+  if (head.getAttribute('aria-expanded') !== 'true') head.click();
+  flushSync();
+  const on = document.querySelector(`[data-testid=${trigger}-list] [aria-checked=true]`)?.getAttribute('data-testid') ?? undefined;
+  head.click();
+  flushSync();
+  return on;
+}
+
 test('faces picked in another window move the selected buttons here', () => {
   // The page reads only `owner` from the store, to list the owner's own buttons.
   running = mount(AppearancePage, { target: document.body, props: { store: { owner: true } as unknown as Store } });
   flushSync();
-  expect(pressed('font-inter')).toBe('true');
-  expect(pressed('font-mono-geist')).toBe('true');
+  expect(checked('font-current')).toBe('font-inter');
+  expect(checked('font-mono-current')).toBe('font-mono-geist');
 
   localStorage.setItem(FONT_KEY, 'plex');
   localStorage.setItem(MONO_KEY, 'jetbrains');
@@ -42,36 +53,49 @@ test('faces picked in another window move the selected buttons here', () => {
   window.dispatchEvent(new StorageEvent('storage', { key: MONO_KEY }));
   flushSync();
 
-  expect(pressed('font-plex')).toBe('true');
-  expect(pressed('font-inter')).toBe('false');
-  expect(pressed('font-mono-jetbrains')).toBe('true');
-  expect(pressed('font-mono-geist')).toBe('false');
+  expect(document.querySelector('[data-testid=font-current]')!.textContent).toContain('IBM Plex Sans');
+  expect(checked('font-current')).toBe('font-plex');
+  expect(checked('font-mono-current')).toBe('font-mono-jetbrains');
 });
 
-test('the palette tiles stand in one row sized to their count, so no row ends with a hole', () => {
+for (const phone of [false, true]) {
+  test(`a palette and a face read the same on a ${phone ? 'phone' : 'desktop'}: the one in use as a row, a list with a preview each`, () => {
+    const restore = phone ? phoneWidth() : () => {};
+    try {
+      running = mount(AppearancePage, { target: document.body, props: { store: { owner: true } as Store, phone } });
+      flushSync();
+      for (const [trigger, option] of [['palette-current', 'palette-'], ['font-current', 'font-']] as const) {
+        const head = document.querySelector<HTMLButtonElement>(`[data-testid=${trigger}]`)!;
+        // Shut, the row is the whole choice: its preview and its name, no tiles beside it.
+        expect(head.querySelector('.preview')?.childElementCount).toBe(1);
+        expect(document.querySelector(`[data-testid=${trigger}-list]`)).toBeNull();
+        head.click();
+        flushSync();
+        const rows = [...document.querySelectorAll(`[data-testid=${trigger}-list] [role=menuitemradio]`)];
+        expect(rows.length).toBeGreaterThan(2);
+        expect(rows.every((row) => row.getAttribute('data-testid')!.startsWith(option) && row.querySelector('.preview')?.childElementCount === 1)).toBe(true);
+        // The one in use, checked once, by the same name the row shows.
+        const on = rows.filter((row) => row.getAttribute('aria-checked') === 'true');
+        expect(on).toHaveLength(1);
+        expect(head.textContent).toContain(on[0]!.textContent!.trim());
+        on[0]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        flushSync();
+        expect(head.getAttribute('aria-expanded')).toBe('false');
+      }
+    } finally { restore(); }
+  });
+}
+
+test('picking a face from its list applies it, names it in the row and gives the focus back to the row', () => {
   running = mount(AppearancePage, { target: document.body, props: { store: { owner: true } as Store } });
   flushSync();
-  const group = document.querySelector<HTMLElement>('.presets')!;
-  const tiles = group.querySelectorAll('[data-testid^=palette-]').length;
-  // Four columns once left seven tiles as four and three.
-  expect(tiles).toBeGreaterThan(4);
-  expect(group.style.getPropertyValue('--count')).toBe(String(tiles));
-});
-
-test('a phone opens its palette list on the current palette once: the head turns into the list title', () => {
-  const restore = phoneWidth();
-  try {
-    running = mount(AppearancePage, { target: document.body, props: { store: { owner: true } as Store } });
-    flushSync();
-    const head = document.querySelector<HTMLButtonElement>('[data-testid=palette-current]')!;
-    const current = head.textContent!.trim();
-    expect(document.querySelector('.presets')).toBeNull();
-    head.click();
-    flushSync();
-    const colors = document.querySelector('[data-testid=theme-colors]')!.textContent!;
-    // The palette in use, by name, once: in the list, checked, not again in the head row.
-    expect(colors.split(current).length - 1).toBe(1);
-    expect(document.querySelector('[data-testid=palette-current] .preview')).toBeNull();
-    expect(document.querySelector('.presets [aria-pressed=true]')?.textContent).toContain(current);
-  } finally { restore(); }
+  const head = document.querySelector<HTMLButtonElement>('[data-testid=font-current]')!;
+  head.click();
+  flushSync();
+  document.querySelector<HTMLButtonElement>('[data-testid=font-current-list] [data-testid=font-atkinson]')!.click();
+  flushSync();
+  expect(localStorage.getItem(FONT_KEY)).toBe('atkinson');
+  expect(head.textContent).toContain('Atkinson Hyperlegible');
+  expect(head.getAttribute('aria-expanded')).toBe('false');
+  expect(document.activeElement).toBe(head);
 });

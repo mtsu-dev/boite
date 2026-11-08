@@ -185,6 +185,33 @@ test('a turn left running on a machine that went away loses its work mark until 
   expect(state()?.dataset.state).toBe('working');
 });
 
+test('a question or a permission that arrives mid-run turns a working row into Needs you, and an archived one shows no state', async () => {
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  vi.spyOn(client, 'call').mockResolvedValue(null);
+  const thread = store.threads.find(thread => thread.status === 'idle' && !thread.parentThreadId && thread.projectId)!;
+  thread.status = 'running'; thread.runningSince = Date.now() - 60_000; thread.openQuestions = 0;
+  const project = store.projects.find(project => project.id === thread.projectId)!;
+  mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'local', label: 'Local', store }, project, thread, now: Date.now() } });
+  await settle();
+  const state = () => document.querySelector<HTMLElement>('[data-testid=thread-state]');
+  expect(state()?.dataset.state).toBe('working');
+  // The summary has not counted the ask yet: the machine's own request decides.
+  store.pendingQuestions = [{ id: 'q-mid', threadId: thread.id, turnId: 'turn', text: 'Which file?', options: [], allowText: true, multiple: false, async: true } as never];
+  await settle();
+  expect(state()?.dataset.state).toBe('waiting');
+  expect(state()?.querySelector('.dot')).not.toBeNull();
+  store.pendingQuestions = [];
+  store.pendingPermissions = [{ id: 'p-mid', threadId: thread.id, toolName: 'Bash', input: {} } as never];
+  await settle();
+  expect(state()?.dataset.state).toBe('waiting');
+  store.pendingPermissions = [];
+  await settle();
+  expect(state()?.dataset.state).toBe('working');
+  thread.archived = true; await settle();
+  expect(state()).toBeNull();
+});
+
 test('a branchless conversation discovers its linked PR and a merge event updates the badge immediately', async () => {
   client = new FakeClient({ delayMs: 0 });
   store = new Store(); store.attach(client); await store.connect();
@@ -304,4 +331,17 @@ test('a card unmounted with its rename open still writes the title typed so far'
   mounted = undefined;
   await settle();
   expect(rename.mock.calls).toEqual([[thread.id, 'Typed before it left']]);
+});
+
+test('an Activity row that needs the user offers its verb, which opens the thread like the row', async () => {
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  const thread = store.threads.find(thread => !thread.parentThreadId && thread.projectId && thread.id !== store.openThread?.id)!;
+  const project = store.projects.find(project => project.id === thread.projectId)!;
+  mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'local', label: 'Local', store }, project, thread, now: Date.now(), reason: 'Wants to run git push', verb: 'allow' } });
+  await settle();
+  const verb = document.querySelector<HTMLButtonElement>('[data-testid=thread-verb]')!;
+  expect([verb.textContent, verb.dataset.verb]).toEqual(['Allow', 'allow']);
+  verb.click(); await settle();
+  await vi.waitFor(() => expect(store.openThread?.id).toBe(thread.id));
 });

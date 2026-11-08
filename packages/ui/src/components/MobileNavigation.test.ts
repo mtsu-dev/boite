@@ -61,6 +61,12 @@ test('Activity gives each row its reason and its time, a sub-agent under its par
   const asking = rows.find(row => asked.includes(row.querySelector('[data-testid=mobile-row-reason] .text')?.textContent ?? '') || /^Wants to run /.test(row.textContent ?? ''))!;
   expect(needs.compareDocumentPosition(asking) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   if (updates) expect(updates.compareDocumentPosition(asking) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+  // The asking row says what to do there; its verb opens the thread like the row does.
+  const verb = asking.querySelector<HTMLButtonElement>('[data-testid=thread-verb]')!;
+  expect(['Answer', 'Allow']).toContain(verb.textContent);
+  if (updates) for (const row of rows.filter(row => updates.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING)) expect(row.querySelector('[data-testid=thread-verb]')).toBeNull();
+  verb.click(); await settle();
+  expect(store.openThread?.id).toBe(asking.dataset['threadId']);
   for (const row of rows.filter(row => row.classList.contains('nested'))) {
     const child = store.threads.find(t => t.id === row.dataset['threadId'])!;
     const above = rows.slice(0, rows.indexOf(row)).reverse().find(other => !other.classList.contains('nested'))!;
@@ -223,8 +229,9 @@ test('a parent on another machine shows its working sub-agents, counted, and Rec
     // The Projects list reads the same store: the same radar there. Back in Recent, the filter holds.
     workspace.view = 'projects'; await settle();
     expect(state()?.dataset['state']).toBe('delegating');
-    expect(state()?.querySelector('[data-testid=thread-state-text]')?.textContent).toBe('Sub-agents');
-    expect(state()?.getAttribute('title')).toMatch(/\n1m/);
+    // Work is a grey mark alone: its word and how long it has run are in the tooltip.
+    expect(state()?.querySelector('[data-testid=thread-state-text]')).toBeNull();
+    expect(state()?.getAttribute('title')).toMatch(/sub-agents\n1m/);
     workspace.view = 'recent'; await settle();
     expect(chip()?.getAttribute('aria-pressed')).toBe('true');
     expect(rows()).toEqual([parent.id]);

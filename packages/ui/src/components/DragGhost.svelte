@@ -57,6 +57,8 @@
     z-index: 10001;
     pointer-events: none;
     will-change: transform;
+    /* Follows the pointer: reduced motion's blanket transition would paint each step a frame late. */
+    transition-property: none;
   }
   .card {
     display: flex;

@@ -166,7 +166,7 @@ export const fr: Translation = {
     questionAsyncHeading: 'Vous attend',
     questionAsyncHint: 'L\'agent continue. Sans réponse, il poursuit avec un choix par défaut.',
     questionAnswer: 'Répondre',
-    questionAnswered: 'Répondu',
+    questionAnswered: 'Vous avez répondu : {answer}',
     questionCancelled: 'Cette question n’attend plus de réponse',
     questionMore: 'Encore {count}',
     questionSkip: 'Passer',

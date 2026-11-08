@@ -10,7 +10,7 @@ export const fr: Translation = {
     retry: 'Réessayer',
     stale: 'Cette machine est déconnectée : ce qui s\'affiche peut être dépassé.',
     add: 'Ajouter un contact',
-    rail: { show: 'Afficher les contacts', hide: 'Masquer les contacts', home: 'Accueil des contacts' },
+    rail: { show: 'Afficher les contacts à côté des conversations', hide: 'Masquer les contacts à côté des conversations', home: 'Accueil des contacts' },
     waiting: '{count} en attente',
     link: { connected: 'Connecté', connecting: 'Connexion', offline: 'Hors ligne' },
     lastSeen: 'Vu {time}',

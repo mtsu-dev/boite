@@ -532,7 +532,13 @@
   .open-review { margin-top: 4px; padding-inline: 6px; color: var(--color-accent); }
   .error { color: var(--color-danger); margin: 2px 8px 6px; overflow-wrap: anywhere; }
   @media (max-width: 720px) {
+    /* The conversation keeps 40% of the screen: the header (about 60 px), the
+       field and its row (about 110 px), the deck above the card and the
+       bottom gap come out of the other 60%, the decision gets the rest. */
+    .activity { --dock-cap: max(120px, calc(60dvh - 186px - var(--deck-room, 0px))); max-height: var(--dock-cap); }
     .activity-row { gap: 6px; }
+    /* The pager's arrows stay a finger tall but narrow, so the question beside them keeps its words. */
+    .pager .icon { min-width: 32px; width: 32px; }
     .kind .wide { display: none; }
     .kind .narrow { display: inline; }
     .blocker { align-items: flex-start; }

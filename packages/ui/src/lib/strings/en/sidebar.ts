@@ -79,7 +79,6 @@ export const strings = {
     addProject: 'Add a project',
     noProjects: 'No project yet.',
     noThreads: 'No thread yet.',
-    firstRunList: 'Your threads will show here.',
     noMatch: 'Nothing matches.',
     unread: 'Unread',
     collapse: 'Hide sidebar',
@@ -158,6 +157,8 @@ export const strings = {
     /** A folded project's mark for the threads it hides: `2 threads: Needs you`. */
     rollupOne: '1 thread: {state}',
     rollupMany: '{count} threads: {state}',
+    /** The list's foot: what the tightest subscription window has left, `6% left · Weekly`. */
+    quotaLeft: '{percent}% left · {window}',
     pin: 'Pin',
     unpin: 'Unpin',
     archive: 'Archive',

@@ -25,12 +25,14 @@
   import { levelName, levelTitle } from '../lib/format';
   import type { ComposerTarget } from '../lib/composer-target';
   import { desktopSettings } from '../lib/settings-tabs';
+  /** The context's number shows beside the model chip from this percent used. */
+  const CONTEXT_SHOWN_FROM = 70;
 
   /**
    * The row under the composer's box, the same in every state and on every
    * width: one "+" for what adds to the message, one model chip naming the
-   * model (its effort, speed, permission and context rows inside; the ring
-   * beside it once the context is half used), then dictation and one round
+   * model (its effort, speed, permission and context rows inside; the
+   * context's number beside it once it matters), then dictation and one round
    * button that is Send, or Stop while a turn runs and nothing waits to go.
    * Nothing comes or goes with a decision docked above: the row keeps its
    * place and its controls. A pick on a thread is saved at once, after the
@@ -87,6 +89,7 @@
     oncommand?: () => void;
   } = $props();
   let chip = $state<ModelPicker | undefined>(undefined);
+  let meter = $state<ContextControl | undefined>(undefined);
   const askAnchor = () => composer;
   let stopping = $derived(!!(target ? target.busy && target.stop : store.busy));
   /** One round button at the row's end: Stop while a turn runs and nothing waits to go, Send otherwise. */
@@ -98,12 +101,14 @@
   let bound = $derived(!target && store.openThread !== null);
   let contextUsed = $derived(store.openThread?.context ? contextPercent(store.openThread.context, store.settings ? effectiveCompaction(store.settings, store.openThread).autoCompact : null) : null);
   /**
-   * The ring beside the chip only once half the context is used (a nearly full
-   * one whatever the preference); below that it is a row of the chip's menu. A
-   * bot's chip opens nothing, so its ring shows from the first reading, never
-   * as an empty dash.
+   * The number beside the chip only once the context matters (a nearly full
+   * one whatever the preference); below that the row shows nothing there and
+   * the details stay one row away: the chip's menu, or the "+" on a bot's
+   * thread, whose chip opens nothing.
    */
-  let showContext = $derived(contextUsed !== null && (contextLevel(contextUsed) === 'full' || work.shows('header.context') && (contextUsed >= 50 || bot !== null)));
+  let showContext = $derived(contextUsed !== null && (contextLevel(contextUsed) === 'full' || work.shows('header.context') && contextUsed >= CONTEXT_SHOWN_FROM));
+  /** Where the details open while no number is drawn: over the row, or over the composer while an ask is docked. */
+  const meterAnchor = () => composer ?? bar ?? null;
   /** Every agent can read uploaded files through its local tools. */
   let canAttach = $derived(!!target || (provider !== null && provider !== undefined));
 
@@ -277,7 +282,8 @@
 <div class="bar" bind:this={bar}>
   <!-- One "+" at the start: files, a file mention, a command and the draft's worktree. -->
   {#key `${key}:${store.draft?.projectId ?? ''}`}
-  <ComposerOptions worktree={!answering && store.draft && draftRepository ? store.draft.worktree : null} {canAttach} anchor={askAnchor} onattach={() => picker?.click()} onworktree={() => store.setDraftWorktree(!store.draft?.worktree)} {onmention} {oncommand} />
+  <ComposerOptions worktree={!answering && store.draft && draftRepository ? store.draft.worktree : null} {canAttach} anchor={askAnchor} onattach={() => picker?.click()} onworktree={() => store.setDraftWorktree(!store.draft?.worktree)} {onmention} {oncommand}
+    context={bound && bot !== null ? (contextUsed === null ? strings.thread.contextDetails : strings.thread.contextPercentUsed(String(Math.round(contextUsed)))) : null} oncontext={() => meter?.open()} />
   {/key}
   {#if target && !target.selection}
   <div class="chips">{#if target.chips}{@render target.chips()}{/if}</div>
@@ -287,7 +293,7 @@
     {#snippet ring()}
       {#if bound && showContext}
         <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div class="context-control" oncontextmenu={(event) => controlMenu(event, store, 'header.context')}><ContextControl {store} anchor={askAnchor} /></div>
+        <div class="context-control" oncontextmenu={(event) => controlMenu(event, store, 'header.context')}><ContextControl bind:this={meter} {store} anchor={askAnchor} /></div>
       {/if}
     {/snippet}
     {#snippet rows(More: typeof PickerMore)}
@@ -325,6 +331,10 @@
       {:else}
         <span class="chip signed-out" data-testid="composer-provider-off" title={sentence} aria-label={sentence}><span class="ui-label">{strings.providerSettings.off}</span></span>
       {/if}
+    {/if}
+    {#if bound && bot !== null && !showContext}
+      <!-- No number drawn on a bot's thread: its details open from the "+" over the row; the host takes no room. -->
+      <ContextControl bind:this={meter} {store} anchor={meterAnchor} quiet />
     {/if}
     {#if accountRemoved}
       <button type="button" class="chip signed-out" data-testid="composer-account-removed" title={strings.accounts.removedHint} onclick={() => void openChip('composer-picker')}><span class="ui-label">{strings.accounts.removed}</span></button>

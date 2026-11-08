@@ -13,16 +13,25 @@ export const strings = {
     closeOthers: 'Close others',
     closeToRight: 'Close to the right',
     closeAll: 'Close all',
-    trace: 'Trace',
+    trace: 'Processes',
     browser: 'Browser',
     changes: 'Changes',
     files: 'Files',
     file: 'File',
-    tasks: 'Tasks',
+    tasks: 'Task manager',
     device: 'Device',
     window: 'Window',
     ownerOnly: "Only in the owner's app",
     launcher: 'Open a surface in this panel',
-    untitled: 'Browser'
+    untitled: 'Browser',
+    /** The selector's way from the panels in use to every panel, and back. */
+    allPanels: 'All panels', inUse: 'In use',
+    /** The full list's groups. */
+    groups: { work: 'Work', agents: 'Agents', tools: 'Tools' },
+    /** A renamed row's tooltip: the name it had before. */
+    formerly: {
+      trace: 'Formerly Trace', tasks: 'Formerly Tasks', messages: 'Formerly Discussions',
+      coordination: 'Formerly Communication between conversations', customize: 'Formerly Choose the buttons'
+    }
   }
 } as const;

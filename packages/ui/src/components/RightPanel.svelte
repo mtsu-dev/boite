@@ -16,9 +16,10 @@
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import { offeredCards, available as availableTo, label, tooltip } from '../lib/surface-labels';
-  import { CUSTOMIZE, panelChoices } from '../lib/panel-choices';
+  import { ALL_PANELS, CUSTOMIZE, IN_USE, panelChoices, usedPanels } from '../lib/panel-choices';
   import { openCoordination } from '../lib/coordination-request.svelte';
-  import { arriveSurface, leaveSurface } from '../lib/surface-swap';
+  import { arriveSurface } from '../lib/surface-swap';
+  import { providePanelTools } from '../lib/panel-tools.svelte';
   import BrowserSurface from './BrowserSurface.svelte';
   import AgentBrowserSurface from './AgentBrowserSurface.svelte';
   import DelegationSurface from './DelegationSurface.svelte';
@@ -53,6 +54,8 @@
   } = $props();
 
   const inShell = window.__TAURI_INTERNALS__ !== undefined;
+  /** The showing surface's own bar, drawn in the strip (`lib/panel-tools.svelte.ts`). */
+  const tools = providePanelTools();
   const phone = $derived((innerWidth.current ?? window.innerWidth) <= 720);
   /**
    * The docked width: the one asked for, within the room the chat keeps once
@@ -103,7 +106,7 @@
     if (untrack(() => entered)) node.dataset.arriving = '';
   }
 
-  /** A surface a tab switch brings: it waits for the old one to fade out, then fades in (`lib/surface-swap.ts`). */
+  /** A surface a tab switch brings: there in the frame the old one leaves, settling from a high opacity (`lib/surface-swap.ts`). */
   function arriveAfter(node: HTMLElement): void {
     if (untrack(() => entered)) arriveSurface(node);
   }
@@ -288,12 +291,29 @@
 
   /** Every panel kind at once: about 13 rows of 33 px, so the default 360 px cap cut the last one at 900 px tall. */
   const SELECTOR_CAP = 560;
-  /** The panel selector's list: every panel and tool, the one showing marked. */
-  let choices = $derived(panelChoices(store, store.openThread, { phone, available, showing: active?.kind }));
+  /** The selector shows every panel, after "All panels"; it opens on the short list again. */
+  let full = $state(false);
+  /** How many files the open thread changed, read when it opens and when a turn ends: the Changes row joins the short list. */
+  let changed = $state<{ thread: string; count: number } | null>(null);
+  let turnsDone = $derived(store.openThread?.turns.filter((turn) => turn.finishedAt !== null).length ?? 0);
+  $effect(() => {
+    const thread = store.openThread;
+    const id = thread?.id;
+    void turnsDone;
+    // Only a repository has a status to read: anywhere else the read fails out loud.
+    if (!id || !(thread.branch || store.projects?.find((project) => project.id === thread.projectId)?.repository)) return;
+    void store.gitStatus(id).then((status) => {
+      if (store.openThread?.id === id) changed = { thread: id, count: status?.changes.length ?? 0 };
+    });
+  });
+  let used = $derived(usedPanels(store, store.openThread, surfaces.map((surface) => surface.kind), changed?.thread === store.openThread?.id ? (changed?.count ?? null) : null));
+  /** The panel selector's list: the panels in use, then every panel by group (`lib/panel-choices.ts`). */
+  let choices = $derived(panelChoices(store, store.openThread, { phone, available, showing: active?.kind, used, full }));
 
   function pickPanel(id: string): void {
     const thread = store.openThread;
-    if (id === CUSTOMIZE) store.showSettings('appearance', CONTROLS_SECTION);
+    if (id === ALL_PANELS || id === IN_USE) full = id === ALL_PANELS;
+    else if (id === CUSTOMIZE) store.showSettings('appearance', CONTROLS_SECTION);
     else if (id === 'terminal-toggle') store.toggleTerminal();
     else if (id === 'board-toggle' || id === 'coordination') {
       // A phone's sheet covers the chat the board and the dialog belong to.
@@ -364,6 +384,7 @@
 
     <div
       class="tabs"
+      class:held={!!tools.bar && surfaces.length === 1}
       class:hidden-start={overflowing && hiddenStart}
       class:hidden-end={overflowing && hiddenEnd}
       role="tablist"
@@ -411,8 +432,8 @@
             <!-- The panel selector: the showing panel's name opens the list of every panel and tool. -->
             <!-- The tooltip on the trigger, not the tab: the list lives inside the tab and a native tooltip would cover its rows. -->
             <span class="selector">
-              <Menu items={choices} onpick={pickPanel} cap={SELECTOR_CAP} placement="bottom" variant="ghost" label={tooltip(surface)} heading={strings.thread.panelMenu} testid="panel-add">
-                <span class="name ui-label">{label(surface)}</span><ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
+              <Menu items={choices} onpick={pickPanel} cap={SELECTOR_CAP} placement="bottom" variant="ghost" label={tooltip(surface)} heading={strings.thread.panelMenu} testid="panel-add" onclose={() => (full = false)}>
+                {#if !tools.nameless}<span class="name ui-label">{label(surface)}</span>{/if}<ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
               </Menu>
             </span>
           {:else}
@@ -423,7 +444,7 @@
       {#if empty}
         <!-- No panel yet: the selector stands alone, the launcher's title. -->
         <span class="selector alone">
-          <Menu items={choices} onpick={pickPanel} cap={SELECTOR_CAP} placement="bottom" variant="ghost" label={strings.thread.panelMenu} heading={strings.thread.panelMenu} titled={false} testid="panel-add">
+          <Menu items={choices} onpick={pickPanel} cap={SELECTOR_CAP} placement="bottom" variant="ghost" label={strings.thread.panelMenu} heading={strings.thread.panelMenu} titled={false} testid="panel-add" onclose={() => (full = false)}>
             <span class="name ui-label">{strings.thread.panelMenu}</span><ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
           </Menu>
         </span>
@@ -443,7 +464,7 @@
       </button>
     {/if}
 
-    <span class="spacer"></span>
+    {#if tools.bar}{@render tools.bar()}{:else}<span class="spacer"></span>{/if}
 
     {#if rightPanel.floating}
       <button type="button" class="ghost small icon" data-testid="panel-dock"
@@ -477,7 +498,7 @@
       onclick={shut}
     >
       {#if phone}
-        <ArrowLeft size={16} strokeWidth={1.75} /><span class="ui-label">{strings.rightPanel.chat}</span>
+        <ArrowLeft size={16} strokeWidth={1.75} />{#if !tools.compact}<span class="ui-label">{strings.rightPanel.chat}</span>{/if}
       {:else}
         <X size={14} strokeWidth={1.75} />
       {/if}
@@ -488,7 +509,7 @@
     <!-- Keyed on the tab, so picking another one fades the old surface out,
          then the new one in, rather than swapping them in one frame. -->
     {#key active?.id}
-    <div class="surface" use:arriveAfter out:leaveSurface>
+    <div class="surface" use:arriveAfter>
     {#if active?.kind === 'desk'}
       {#if store.openThread?.agentSessionId}
         {#key store.threadKey(store.openThread.id)}<AgentDesk {store} />{/key}
@@ -623,6 +644,8 @@
     flex: none;
   }
 
+  /* One tab beside a surface's bar keeps its size: the bar gives way, not the tab into a scroller. */
+  .tabs.held { flex: none; }
   .tabs {
     display: flex;
     align-items: center;
@@ -777,8 +800,10 @@
   /* Opacity only: a browser tab's page is a native view laid over this box,
      and a moving box would drag it along. */
   .surface:global([data-arriving]) {
-    animation: fade var(--motion-in) both;
+    animation: surface-in var(--dur-2) var(--ease-enter) both;
   }
+  /* From a high opacity, never from nothing: the first frame already reads. */
+  @keyframes surface-in { from { opacity: 0.85; } }
   /* A cut under reduced motion, whatever the duration tokens say. */
   @media (prefers-reduced-motion: reduce) { .surface:global([data-arriving]) { animation: none; } }
   :global(html[data-motion='reduced']) .surface:global([data-arriving]) { animation: none; }

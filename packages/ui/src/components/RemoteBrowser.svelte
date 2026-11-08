@@ -526,7 +526,9 @@
   .screen:active:not(:disabled) { transform: none; }
   .screen:disabled { opacity: 1; } .screen.stale { opacity: .55; }
   img { display: block; width: 100%; height: 100%; object-fit: contain; pointer-events: none; -webkit-user-select: none; user-select: none; }
-  .picker { position: absolute; z-index: 4; overflow: auto; padding: 4px; display: flex; flex-direction: column; background: var(--color-surface-2); border: 1px solid var(--color-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-e3); overscroll-behavior: contain; }
+  .picker { position: absolute; z-index: 4; overflow: auto; padding: 4px; display: flex; flex-direction: column; background: var(--color-surface-2); border: 1px solid var(--color-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-e3); overscroll-behavior: contain;
+    /* Placed under the page's select: reduced motion's blanket transition would slide it there. */
+    transition-property: none; }
   .picker button { flex: none; justify-content: flex-start; min-height: var(--control-sm); padding: 4px 10px; border: 0; border-radius: var(--radius-sm); background: transparent; box-shadow: none; color: var(--color-foreground); font-size: var(--text-sm); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .picker button.grouped { padding-left: 20px; }
   .picker button.active:not(:disabled) { background: var(--color-surface-3); }

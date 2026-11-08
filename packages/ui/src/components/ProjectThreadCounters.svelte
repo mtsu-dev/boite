@@ -10,7 +10,7 @@
    * else the working ones. The rows under it say the rest; the archived ones live in the card's menu
    * (lib/project-menu.ts). While working threads fold under the count (the display menu's grouping), the working
    * count is that fold's toggle, so it stays beside Needs you.
-   * `away`: the machine is not connected, so its last known working count is drawn without the live colour.
+   * `away`: the machine is not connected; its last known working count stays, the counts that ask are not drawn.
    */
   let { entry, working, controls, collapsed = false, searching = false, away = false, waiting = 0 }: {
     entry: ProjectEntry; working: number; controls: string; collapsed?: boolean; searching?: boolean; away?: boolean; waiting?: number;
@@ -42,9 +42,8 @@
     background: transparent; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; font-variant-numeric: tabular-nums; }
   .counter:disabled { opacity: 1; }
   .waiting .number { color: var(--color-live); }
-  /* Work, still: the rows' accent ring. The open thread keeps the one live spinner. */
-  .work-ring { box-sizing: border-box; width: 8px; height: 8px; border: 1.5px solid var(--color-accent); border-radius: var(--radius-full); }
-  .away .work-ring { border-color: currentColor; }
+  /* Work, still: the rows' grey ring. The open thread keeps the one live spinner. */
+  .work-ring { box-sizing: border-box; width: 8px; height: 8px; border: 1.5px solid currentColor; border-radius: var(--radius-full); }
   .counter:hover:not(:disabled) { background: var(--color-hover); color: var(--color-foreground); }
   .counter.active { background: var(--color-active); color: var(--color-foreground); }
 

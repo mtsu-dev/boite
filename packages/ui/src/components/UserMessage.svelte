@@ -302,6 +302,8 @@
     color: var(--color-foreground);
     font-size: var(--text-lg);
     font-weight: 600;
+    /* Placed from script: reduced motion's blanket transition would slide it there. */
+    transition-property: none;
   }
 
   .more:hover {

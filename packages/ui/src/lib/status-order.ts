@@ -1,4 +1,6 @@
+import type { ThreadId } from '@boite/contracts';
 import { threadState, type Delegated, type ThreadState } from './thread-state';
+import type { WorkingChildren } from './thread-rows';
 
 /**
  * The one status order of every list, count and badge: the user's turn, then
@@ -27,4 +29,33 @@ export const NEEDS_RANK = 1;
 /** A thread's rank, its delegated agents read where the list knows them. */
 export function threadRank(thread: Parameters<typeof threadState>[0], delegated: Delegated = 0): number {
   return statusRank(threadState(thread, delegated));
+}
+
+type Asks = readonly { threadId?: ThreadId | null }[];
+/** What a row reads from its machine besides the summary: its delegated agents and the requests held for it. */
+export type RowSource<D> = { subagents(threadId: ThreadId): D; pendingQuestions?: Asks; pendingPermissions?: Asks };
+
+/**
+ * A row's delegated agents, plus one asking when the machine holds a question
+ * or a permission for the thread itself. The summary may not count that ask
+ * yet (a question that came mid-run keeps `running`), and an ask outranks work.
+ */
+export function rowAsks(store: RowSource<WorkingChildren | null>, threadId: ThreadId): WorkingChildren | null;
+export function rowAsks(store: RowSource<Delegated>, threadId: ThreadId): Delegated;
+export function rowAsks(store: RowSource<Delegated | WorkingChildren>, threadId: ThreadId): Delegated | WorkingChildren {
+  const children = store.subagents(threadId);
+  const held = (asks: Asks | undefined) => asks?.some(request => request.threadId === threadId) ?? false;
+  if (!held(store.pendingQuestions) && !held(store.pendingPermissions)) return children;
+  if (typeof children === 'number') return { count: children, asking: 1 };
+  return { count: children?.count ?? 0, since: children && 'since' in children ? children.since : null, asking: (children?.asking ?? 0) + 1 };
+}
+
+/**
+ * How every list says a state: a word beside its mark only when the user must
+ * act (their turn, a failure), the mark alone for work, nothing but the time
+ * for news and rest.
+ */
+export function stateForm(state: ThreadState | null): 'word' | 'mark' | null {
+  if (state === 'waiting' || state === 'error' || state === 'interrupted') return 'word';
+  return state === null || state === 'done' ? null : 'mark';
 }

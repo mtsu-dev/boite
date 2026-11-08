@@ -1,53 +1,104 @@
-import { Network, SquareKanban, SquareTerminal } from '@lucide/svelte';
+import { ChevronLeft, LayoutGrid, Network, SquareKanban, SquareTerminal } from '@lucide/svelte';
 import type { ThreadSummary } from '@boite/contracts';
 import type { Store } from './store.svelte';
 import { separator, type MenuItem } from './menu';
 import type { SurfaceKind } from './right-panel.svelte';
 import { available as availableTo, kindName, offeredCards, unavailable } from './surface-labels';
 import { surfaceGlyph } from './surface-glyphs';
+import { agentMailFor } from './agent-mail';
 import { work } from './work-prefs.svelte';
 import { strings } from './strings';
 
-/** The panels a thread lists first: the ones most threads have something for. The rest follow in the launcher's order. */
-const LEAD: SurfaceKind[] = ['changes', 'agent-browser', 'agents', 'files'];
-
 /** The selector's last row, which no surface kind can be called. */
 export const CUSTOMIZE = 'customize';
+/** The short list's way to every panel, and the full list's way back. */
+export const ALL_PANELS = 'all-panels';
+export const IN_USE = 'panels-in-use';
+
+/** The full list's groups, in order. A kind no group names joins the last. */
+const GROUPS: { name: () => string; ids: string[] }[] = [
+  { name: () => strings.rightPanel.groups.work, ids: ['changes', 'files', 'agent-browser', 'device'] },
+  { name: () => strings.rightPanel.groups.agents, ids: ['desk', 'agents', 'messages', 'coordination'] },
+  { name: () => strings.rightPanel.groups.tools, ids: ['terminal-toggle', 'board-toggle', 'tasks', 'trace'] }
+];
+
+/** A renamed row says its old name on hover, for the hands that knew it. */
+const FORMERLY: Record<string, () => string> = {
+  trace: () => strings.rightPanel.formerly.trace,
+  tasks: () => strings.rightPanel.formerly.tasks,
+  messages: () => strings.rightPanel.formerly.messages,
+  coordination: () => strings.rightPanel.formerly.coordination,
+  [CUSTOMIZE]: () => strings.rightPanel.formerly.customize
+};
 
 /**
- * The one list of every panel and tool a thread can open, the panel
- * selector's (`RightPanel.svelte`), the same on a desktop and a phone: the
- * side panels by kind (the id is the kind), the drawers under the chat
- * (`terminal-toggle`, `board-toggle`), the conversations' coordination, then
- * the way to the Appearance page that hides some of them. The panel showing
- * is marked; a kind this device cannot show stays listed, greyed with why.
+ * The panels this thread has used or has something for: its open tabs, the
+ * drawers it shows, a bot's desk, its subagents and workflows, its letters,
+ * and its changes once `changes` counts some.
  */
-export function panelChoices(store: Store, thread: ThreadSummary | null, options: { phone?: boolean; available?: (kind: SurfaceKind) => boolean; showing?: SurfaceKind } = {}): MenuItem[] {
+export function usedPanels(store: Store, thread: ThreadSummary | null, open: SurfaceKind[], changes: number | null): Set<string> {
+  const used = new Set<string>(open.map((kind) => (kind === 'file' ? 'files' : kind)));
+  if (!thread) return used;
+  if (thread.agentSessionId) used.add('desk');
+  const delegation = store.delegation;
+  if ((delegation?.rootThreadId === thread.id && delegation.agents.length > 0) || store.workflowsOf(thread.id).length > 0) used.add('agents');
+  if (agentMailFor(store, thread.id).length > 0) used.add('messages');
+  if (changes) used.add('changes');
+  if (store.terminalShown(thread.id)) used.add('terminal-toggle');
+  if (store.boardShown) used.add('board-toggle');
+  return used;
+}
+
+/**
+ * The panel selector's list (`RightPanel.svelte`), the same on a desktop and
+ * a phone. Short: the panels in `used`, then one row to every panel. Full
+ * (`full`, or when the short one would hold nothing or everything): every
+ * panel and tool in named groups, then the Appearance page that hides some.
+ * Ids are the kinds, plus the drawers (`terminal-toggle`, `board-toggle`) and
+ * `coordination`. The panel showing is marked; a kind this device cannot show
+ * stays listed, greyed with why.
+ */
+export function panelChoices(store: Store, thread: ThreadSummary | null, options: { phone?: boolean; available?: (kind: SurfaceKind) => boolean; showing?: SurfaceKind; used?: ReadonlySet<string>; full?: boolean } = {}): MenuItem[] {
   const inShell = typeof window !== 'undefined' && window.__TAURI_INTERNALS__ !== undefined;
   const can = options.available ?? ((kind: SurfaceKind) => availableTo(kind, inShell, store.owner));
-  const offered = offeredCards().map((card) => card.kind);
-  const kinds: SurfaceKind[] = [...(thread?.agentSessionId ? ['desk' as const] : []), ...LEAD.filter((kind) => offered.includes(kind)), ...offered.filter((kind) => !LEAD.includes(kind))];
   const showing = 'showing' in options ? options.showing : store.panelOpen ? store.panel.active?.kind : undefined;
   const plain = !!thread && !thread.teamId && !thread.councilId;
   const terminalKey = store.keyLabel('terminal');
-  const tools: MenuItem[] = [
-    ...(!options.phone && store.owner && plain && work.shows('header.terminal') ? [{
-      id: 'terminal-toggle', label: strings.terminal.title, glyph: SquareTerminal, active: !!thread && store.terminalShown(thread.id),
-      title: terminalKey ? `${strings.thread.terminalHint} (${terminalKey})` : strings.thread.terminalHint
-    }] : []),
-    ...(store.boardAvailable() ? [{ id: 'board-toggle', label: strings.board.open, glyph: SquareKanban, active: store.boardShown }] : []),
-    ...(plain && !thread.agentSessionId ? [{ id: 'coordination', label: strings.coordination.heading, glyph: Network }] : [])
-  ];
-  return [
-    ...kinds.map((kind): MenuItem => ({
+  const kinds: SurfaceKind[] = [...(thread?.agentSessionId ? ['desk' as const] : []), ...offeredCards().map((card) => card.kind)];
+  const rows = new Map<string, MenuItem>();
+  for (const kind of kinds) {
+    rows.set(kind, {
       id: kind,
       label: kindName(kind),
       glyph: surfaceGlyph(kind),
       active: kind === showing,
       ...(can(kind) ? {} : { disabled: true, hint: unavailable() })
-    })),
-    ...(tools.length ? [separator('sep-tools'), ...tools] : []),
+    });
+  }
+  if (!options.phone && store.owner && plain && work.shows('header.terminal')) {
+    rows.set('terminal-toggle', {
+      id: 'terminal-toggle', label: strings.terminal.title, glyph: SquareTerminal, active: !!thread && store.terminalShown(thread.id),
+      title: terminalKey ? `${strings.thread.terminalHint} (${terminalKey})` : strings.thread.terminalHint
+    });
+  }
+  if (store.boardAvailable()) rows.set('board-toggle', { id: 'board-toggle', label: strings.board.open, glyph: SquareKanban, active: store.boardShown });
+  if (plain && !thread.agentSessionId) rows.set('coordination', { id: 'coordination', label: strings.coordination.heading, glyph: Network });
+  for (const [id, row] of rows) if (FORMERLY[id] && !row.title) row.title = FORMERLY[id]();
+
+  const grouped = GROUPS.map((group, index) => ({
+    name: group.name(),
+    ids: [...group.ids, ...(index === GROUPS.length - 1 ? [...rows.keys()].filter((id) => !GROUPS.some((one) => one.ids.includes(id))) : [])].filter((id) => rows.has(id))
+  }));
+  const used = options.used ?? new Set<string>();
+  const short = grouped.flatMap((group) => group.ids).filter((id) => used.has(id) || rows.get(id)?.active);
+  if (!options.full && short.length > 0 && short.length < rows.size) {
+    return [...short.map((id) => rows.get(id)!), separator('sep-all'), { id: ALL_PANELS, label: strings.rightPanel.allPanels, glyph: LayoutGrid, submenu: true }];
+  }
+  const back: MenuItem[] = options.full && short.length > 0 && short.length < rows.size ? [{ id: IN_USE, label: strings.rightPanel.inUse, glyph: ChevronLeft, back: true }] : [];
+  return [
+    ...back,
+    ...grouped.filter((group) => group.ids.length > 0).flatMap((group) => [{ ...separator(`sep-${group.ids[0]}`), label: group.name }, ...group.ids.map((id) => rows.get(id)!)]),
     separator('sep-customize'),
-    { id: CUSTOMIZE, label: strings.controls.customize }
+    { id: CUSTOMIZE, label: strings.controls.customize, title: FORMERLY[CUSTOMIZE]!() }
   ];
 }

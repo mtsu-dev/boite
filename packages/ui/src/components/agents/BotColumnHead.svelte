@@ -21,7 +21,8 @@
    * on, why it failed, else what it is for), and its menu:
    * the row menu of the bot lists (`agentMenuItems`), its brain, and the
    * settings all bots share. A team shows its picture, its name and who is in
-   * it; its menu stays over its chat.
+   * it; its menu stays over its chat. Under the column's title
+   * (SideHead.svelte), which leads back to the threads.
    */
   let { view, agent = null, status = null, thread = null, team = null, onopen, onpane, onengine }: {
     view: AgentsView;
@@ -67,6 +68,8 @@
   }
 </script>
 
+<!-- With none picked, the column's head (SideHead.svelte) already names it. -->
+{#if agent || team}
 <header class="bot-head" data-state={state} data-testid="bot-column-head">
   {#if agent}
     <AgentAvatar kind="profile" id={agent.id} name={agent.name} avatar={agent.avatar} size={40} squircle />
@@ -90,7 +93,6 @@
       <span class="bot-head-live"><span class="bot-head-line">{team.archived ? strings.teamChat.archivedShort : team.paused ? strings.teamChat.pausedShort
         : listNames(team.members.map(member => member.name))}</span></span>
     </div>
-  {:else}
-    <div class="bot-head-text"><strong class="bot-head-name">{labels.heading}</strong></div>
   {/if}
 </header>
+{/if}

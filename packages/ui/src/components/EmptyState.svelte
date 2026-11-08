@@ -42,4 +42,6 @@
   .small { gap: var(--space-3); }
   .small .mark { width: 64px; height: 64px; margin-bottom: var(--space-1); }
   .small .line { font-size: var(--text-md); }
+  /* A phone gives the bot a list pane's size: at 96 px it pushed the action toward the fold. */
+  @media (max-width: 720px) { .mark { width: 64px; height: 64px; margin-bottom: 0; } }
 </style>

@@ -726,7 +726,15 @@ test('reconnecting queues a send instead of sending it, and a new thread queues 
   expect(store.draftEntries.find(entry => entry.active)).toMatchObject({ text: 'a new thread', queued: 'waiting' });
 });
 
-test('a queued prompt is a dimmed line in the box with its own edit and remove, not a pill', async ({ queueApp: _app }) => {
+/** Opens the menu at the end of a queued line and picks one of its rows by test id. */
+async function queuedAction(line: Element, testid: 'composer-queued-edit' | 'composer-queued-remove'): Promise<void> {
+  line.querySelector<HTMLButtonElement>('[data-testid=composer-queued-menu]')!.click();
+  flushSync();
+  await waitFor(() => document.querySelector(`[data-testid=composer-queued-menu-menu] [data-testid=${testid}]`) !== null);
+  query<HTMLButtonElement>(`[data-testid=composer-queued-menu-menu] [data-testid=${testid}]`).click();
+}
+
+test('a queued prompt is a dimmed line in the box with one menu for edit and remove, not a pill', async ({ queueApp: _app }) => {
   await store.open('t-trace');
   await store.client!.call('turns.start', { threadId: 't-trace', prompt: 'Wait [permission]' });
   await waitFor(() => store.openThread?.status === 'waiting');
@@ -737,9 +745,10 @@ test('a queued prompt is a dimmed line in the box with its own edit and remove, 
   await waitFor(() => input().value === '' && store.composerStates['t-trace']?.queued.length === 2);
   const lines = Array.from(document.querySelectorAll<HTMLElement>('[data-testid=composer-queued-item]'));
   expect(lines.map((line) => line.classList.contains('line'))).toEqual([true, true]);
-  expect(lines.every((line) => line.querySelector('[data-testid=composer-queued-edit]') && line.querySelector('[data-testid=composer-queued-remove]'))).toBe(true);
+  // One menu button per line in place of three small icons; edit and remove wait inside it.
+  expect(lines.every((line) => line.querySelector('[data-testid=composer-queued-menu]') && !line.querySelector('[data-testid=composer-queued-edit], [data-testid=composer-queued-remove]'))).toBe(true);
   // Edit takes that prompt, and only it, back into the box.
-  lines[0]!.querySelector<HTMLButtonElement>('[data-testid=composer-queued-edit]')!.click();
+  await queuedAction(lines[0]!, 'composer-queued-edit');
   await waitFor(() => input().value === 'first pending');
   expect(store.composerStates['t-trace']!.queued.map((entry) => entry.text)).toEqual(['second pending']);
 });
@@ -858,7 +867,7 @@ test('an outbox prompt the core refuses shows why, holds the next one, and goes 
   await new Promise(resolve => setTimeout(resolve, 20));
   expect(starts.map(start => start.prompt)).toEqual(['First while away']);
   // The last one is cancelled; Send again sends the first under the same id, then the second.
-  document.querySelectorAll<HTMLButtonElement>('[data-testid=composer-queued-remove]')[2]!.click();
+  await queuedAction(document.querySelectorAll('[data-testid=composer-queued-item]')[2]!, 'composer-queued-remove');
   await waitFor(() => store.composerStates['t-descriptors']!.queued.length === 2);
   query<HTMLButtonElement>('[data-testid=composer-outbox-retry]').click();
   await waitFor(() => store.composerStates['t-descriptors']!.queued.length === 0 && !store.busy);

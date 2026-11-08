@@ -2,7 +2,7 @@
   import { tick, untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import WindowList from './WindowList.svelte';
-  import { Check, ChevronRight, CircleAlert, Ellipsis, FolderPlus, FolderX, GripVertical, LoaderCircle } from '@lucide/svelte';
+  import { ChevronRight, Ellipsis, FolderPlus, FolderX, GripVertical, LoaderCircle, PanelRightClose, PanelRightOpen, UserPlus } from '@lucide/svelte';
   import type { Project, ThreadId, ThreadSummary } from '@boite/contracts';
   import type { Store } from '../lib/store.svelte';
   import { workspace, type Machine } from '../lib/workspace.svelte';
@@ -13,7 +13,7 @@
   import { projectRollup, threadState } from '../lib/thread-state';
   import { foldQuiet } from '../lib/card-fold';
   import { storeNeedsYou } from '../lib/activity-feed';
-  import { needsYou } from '../lib/status-order';
+  import { needsYou, rowAsks } from '../lib/status-order';
   import { groupWorkingThread, recentPreferences } from '../lib/recent.svelte';
   import { dropKey as threadDropKey, takesDrop, threadDrag } from '../lib/thread-move.svelte';
   import { sidebarRows } from '../lib/sidebar-rows.svelte';
@@ -38,6 +38,8 @@
   import { minuteClock } from '../lib/clock.svelte';
   import { doneFilter } from '../lib/inbox.svelte';
   import { needsAnAI } from '../lib/first-run';
+  import { contactsRail, contactsShown } from '../lib/contacts-rail.svelte';
+  import SideHead from './agents/SideHead.svelte';
   let { store }: { store: Store } = $props();
   const mobile = new MediaQuery('(max-width: 720px)');
   let scrollRoot = $state<HTMLDivElement>();
@@ -48,6 +50,18 @@
     return measuredRows.get(key)!;
   }
   const showRows = $derived(mobile.current ? store.sidebarOpen : !store.sidebarCollapsed);
+  /**
+   * On a desktop the Contacts page turns the list to its Contacts side, the
+   * Bots column's other side (agents/SideHead.svelte), whose head folds the
+   * contacts column on the right edge. Its rows load with the page.
+   */
+  const contactsSide = $derived(!mobile.current && store.page === 'home' && contactsShown(store));
+  let ContactRows = $state<typeof import('./home/ContactRows.svelte').default>();
+  $effect(() => {
+    if (!contactsSide || ContactRows) return;
+    void import('./home/ContactRows.svelte').then(module => { ContactRows = module.default; }).catch(() => {});
+  });
+  const foldLabel = $derived(contactsRail.folded ? strings.contacts.rail.show : strings.contacts.rail.hide);
   $effect(() => { if (showRows && scrollRoot) void tick().then(() => { if (scrollRoot && showRows) scrollRoot.scrollTop = savedScroll; }); });
   /** The clock the rows' times read: a minute's precision is all they show. */
   const now = $derived(minuteClock.now);
@@ -128,7 +142,7 @@
    */
   let split = $derived.by(() => {
     const active: typeof attention = [], older: typeof attention = [];
-    for (const entry of attention) (entry.thread.pinned || threadState(entry.thread, entry.machine.store.subagents(entry.thread.id)) !== null ? active : older).push(entry);
+    for (const entry of attention) (entry.thread.pinned || threadState(entry.thread, rowAsks(entry.machine.store, entry.thread.id)) !== null ? active : older).push(entry);
     return { active, older };
   });
   const listsFor = projectListMap();
@@ -138,7 +152,7 @@
   function cardRows(entry: ProjectEntry, attention: ThreadSummary[]): { shown: ThreadSummary[]; folded: ThreadSummary[] } {
     const owner = entry.machine.store;
     if (unfolded[projectKey(entry)]) return { shown: attention, folded: [] };
-    return foldQuiet(attention, thread => thread.pinned === true || threadState(thread, owner.subagents(thread.id)) !== null
+    return foldQuiet(attention, thread => thread.pinned === true || threadState(thread, rowAsks(owner, thread.id)) !== null
       || (owner === workspace.active && owner.openThread?.id === thread.id));
   }
   /** Each listed project's sorted rows, shared by its section and by Alt+digit. */
@@ -208,8 +222,23 @@
 </script>
 
 <RailFrame {store} kind="sidebar" label={strings.sidebar.threads} testid="sidebar" drawer bind:scroller={scrollRoot} onscroll={() => { if (showRows && scrollRoot) savedScroll = scrollRoot.scrollTop; }}>
-  {#snippet head()}<ProjectViews entries={groups} {store} quiet={groups.length === 0 && needsAnAI(store) && !loading} />{/snippet}
-    {#if showRows}
+  {#snippet head()}
+    {#if contactsSide}
+      <SideHead {store} current="home">
+        {#snippet actions()}
+          <button type="button" class="ghost icon small" title={strings.contacts.add} aria-label={strings.contacts.add} data-testid="side-contacts-add" onclick={() => store.showHome()}><UserPlus size={16} /></button>
+          <button type="button" class="ghost icon small" title={foldLabel} aria-label={foldLabel} aria-expanded={!contactsRail.folded} data-testid="contacts-toggle" onclick={() => contactsRail.toggle()}>
+            {#if contactsRail.folded}<PanelRightOpen size={16} />{:else}<PanelRightClose size={16} />{/if}
+          </button>
+        {/snippet}
+      </SideHead>
+    {:else}
+      <ProjectViews entries={groups} {store} quiet={groups.length === 0 && needsAnAI(store) && !loading} />
+    {/if}
+  {/snippet}
+    {#if contactsSide}
+      {#if ContactRows}<div class="contact-rows" data-testid="side-contact-rows"><ContactRows {store} /></div>{/if}
+    {:else if showRows}
     {#if groups.length === 0 && !(needsAnAI(store) && !loading)}
       <div class="empty" data-testid="sidebar-empty" role={loading ? 'status' : undefined}>
         {#if loading}<LoaderCircle size={16} class="spinner" aria-hidden="true" /><span class="ui-label">{strings.sidebar.loadingProjects}</span>
@@ -269,7 +298,7 @@
         {@const controls = `sidebar-project-${encodeURIComponent(projectKey(entry))}`}
         {@const collapsed = owner.isCollapsed(project.id)}
         {@const away = owner.connection !== 'ready'}
-        {@const rollup = collapsed && !away ? projectRollup(owner.threadsOf(project.id), thread => owner.subagents(thread.id)) : null}
+        {@const rollup = collapsed && !away ? projectRollup(owner.threadsOf(project.id), thread => rowAsks(owner, thread.id)) : null}
         {@const draftsHere = owner.draftEntries.filter(entry => entry.projectId === project.id)}
         {@const dropKey = threadDropKey(machine.id, project.id)}
         {@const key = projectKey(entry)}
@@ -305,9 +334,9 @@
               {#if projectView.order === 'manual'}<GripVertical size={12} />{/if}<span class="mark"><ProjectTile {project} store={owner} size={18} /><span class="fold-caret" class:open={!collapsed} aria-hidden="true"><ChevronRight size={16} /></span></span
               ><span class="name project-title ui-label" class:gone={project.missing === true}>{projectName(project)}</span
               >{#if elsewhere(machine) || (multi && owner.connection !== 'ready')}<span class="host" data-testid="project-host" class:offline={owner.connection !== 'ready'}
-                title={`${machine.label} · ${strings.connection[owner.connection]}`} aria-label={machine.label}>{machine.label}</span>{/if}{#if project.missing === true}<span class="missing" data-testid="project-missing" title={strings.sidebar.projectMissing} aria-label={strings.sidebar.projectMissing}><FolderX size={13} aria-hidden="true" /></span>{/if}{#if rollup && !needsYou(rollup.kind)}{@const label = fill(rollup.count === 1 ? strings.sidebar.rollupOne : strings.sidebar.rollupMany, { count: String(rollup.count), state: strings.sidebar.state[rollup.kind] })}<span
+                title={`${machine.label} · ${strings.connection[owner.connection]}`} aria-label={machine.label}>{machine.label}</span>{/if}{#if project.missing === true}<span class="missing" data-testid="project-missing" title={strings.sidebar.projectMissing} aria-label={strings.sidebar.projectMissing}><FolderX size={13} aria-hidden="true" /></span>{/if}{#if rollup && !needsYou(rollup.kind) && rollup.kind !== 'done' && lists.working.length === 0}{@const label = fill(rollup.count === 1 ? strings.sidebar.rollupOne : strings.sidebar.rollupMany, { count: String(rollup.count), state: strings.sidebar.state[rollup.kind] })}<span
                   class="rollup {rollup.kind}" data-testid="project-rollup" data-state={rollup.kind} title={label} aria-label={label}
-                  >{#if rollup.kind === 'error' || rollup.kind === 'interrupted'}<CircleAlert size={12} aria-hidden="true" />{:else if rollup.kind === 'done'}<Check size={12} aria-hidden="true" />{:else}<span class="work-ring" aria-hidden="true"></span>{/if}{#if rollup.count > 1}<span class="ui-label">{rollup.count}</span>{/if}</span
+                  >{#if rollup.kind === 'interrupted'}<span class="dot" aria-hidden="true"></span>{:else}<span class="work-ring" aria-hidden="true"></span>{/if}{#if rollup.count > 1}<span class="ui-label">{rollup.count}</span>{/if}</span
                 >{/if}
             </button>
             <ProjectThreadCounters {entry} working={lists.working.length} waiting={away ? 0 : waitingCount(entry)} {controls} {collapsed} {away} />
@@ -379,6 +408,7 @@
 <style>
   /* `sidebar` is the container RailFrame.svelte declares on the column. */
   .recent-folds { margin-top: auto; padding-top: 12px; }
+  .contact-rows { display: flex; flex-direction: column; gap: 2px; }
   .recent-done { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--color-border); }
   .project-folds { margin-top: auto; }
   /* A card is a quiet surface on the inset panel, with no edge of its own: the panel is the one frame. */
@@ -466,6 +496,8 @@
     gap: 8px;
   }
   .toggle:hover:not(:disabled) { background: transparent; }
+  /* The rows' ring, inside the header: the list's scroll edge would clip one outside it. */
+  .toggle:focus-visible { outline-offset: -2px; }
   .toggle:active:not(:disabled) { transform: none; }
   /* The card's title, the user's folder name: it takes what is left after the
      machine and the counters, which stay whole, and ends in an ellipsis. */
@@ -484,8 +516,8 @@
   /* Its folder left the disk: the name steps back and a mark says why. */
   .name.gone { color: var(--color-muted-foreground); }
   .missing { display: flex; flex: none; color: var(--color-danger); }
-  /* A folded project still says what its threads do: the most urgent state, the count beside it. The user's turn
-     is the header's own "Needs you" tag (ProjectThreadCounters), folded or not. */
+  /* A folded project still says what its threads do when its one count (ProjectThreadCounters: Needs you, else
+     working) says nothing: the most urgent other state, its mark and count. News marks nothing. */
   .rollup {
     display: inline-flex;
     flex: none;
@@ -495,13 +527,11 @@
     font-weight: 500;
     font-variant-numeric: tabular-nums;
   }
-  .rollup.working, .rollup.delegating, .rollup.monitoring, .rollup.background, .rollup.watching { color: var(--color-muted-foreground); }
-  .rollup.error { color: var(--color-danger); }
-  .rollup.done { color: var(--color-success); }
-  .rollup.queued { color: var(--color-muted-foreground); }
-  /* Work, still, as on the rows: the open thread keeps the one live spinner. */
-  .rollup .work-ring { box-sizing: border-box; width: 8px; height: 8px; border: 1.5px solid var(--color-accent); border-radius: var(--radius-full); }
-  .rollup:not(.working) .work-ring { border-style: dashed; }
+  .rollup { color: var(--color-muted-foreground); }
+  /* The rows' marks: a grey ring for work (dotted in the queue), a red dot for work that stopped short. */
+  .rollup .work-ring { box-sizing: border-box; width: 8px; height: 8px; border: 1.5px dashed var(--color-muted-foreground); border-radius: var(--radius-full); }
+  .rollup.queued .work-ring { border-style: dotted; }
+  .rollup .dot { width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--color-danger); }
   /* The project's mark and its fold chevron share one slot: the mark gives way
      to the chevron while a pointer or the keyboard is on the header. */
   .mark {

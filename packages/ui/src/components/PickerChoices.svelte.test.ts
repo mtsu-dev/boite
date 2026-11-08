@@ -91,3 +91,17 @@ test('a choice too long for a segment keeps the fold', () => {
   expect(document.querySelector('[data-choices-trigger]')).not.toBeNull();
   expect(document.querySelector<HTMLElement>('[data-testid=mode-menu]')!.hidden).toBe(true);
 });
+
+// Six effort levels side by side were cramped in the phone's model sheet: one row names the level and opens them.
+test('on a phone even short choices fold into one row naming the current one', () => {
+  const width = window.innerWidth;
+  Object.defineProperty(window, 'innerWidth', { value: 390, configurable: true });
+  try {
+    running = mount(PickerChoices, { target: document.body, props: { label: 'Effort', testid: 'effort-menu', items, active: 'high', onpick: () => {} } });
+    flushSync();
+    expect(document.querySelector('.segments')).toBeNull();
+    expect(document.querySelector('[data-choices-trigger]')?.textContent).toContain('High');
+  } finally {
+    Object.defineProperty(window, 'innerWidth', { value: width, configurable: true });
+  }
+});

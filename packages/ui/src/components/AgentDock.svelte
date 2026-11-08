@@ -52,31 +52,31 @@
 <style>
   /* Its rows in the strip, the way back at its right end. */
   .dock { display: contents; }
-  /* Every entry whole at every width: what does not fit one row wraps to the
-     next (never cut at the screen's edge, never folded into a count), and a
-     long run scrolls inside three rows. */
+  /* Every entry its own plain line, whole at every width (never cut at the
+     screen's edge, never folded into a count); a long run scrolls inside
+     three lines. */
   .entries {
     display: flex;
-    flex-wrap: wrap;
-    gap: 2px 4px;
+    flex-direction: column;
+    align-items: flex-start;
     flex: 1 1 0;
     min-width: 0;
-    max-height: calc(3 * 28px + 4px);
+    max-height: calc(3 * 28px);
     overflow-y: auto;
     scrollbar-width: none;
   }
   .entries::-webkit-scrollbar { display: none; }
   /* Quiet secondary entries: no pill, the mark and the name in muted ink; a hover brings the ink and the button. */
-  .entry { flex: 0 1 auto; min-width: 0; max-width: 100%; height: 28px; gap: 6px; padding: 0 8px; border: none; border-radius: var(--radius-md); background: transparent; box-shadow: none; color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 400; overflow: hidden; }
+  .entry { flex: none; min-width: 0; max-width: 100%; height: 28px; gap: 6px; padding: 0 8px; border: none; border-radius: var(--radius-md); background: transparent; box-shadow: none; color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 400; overflow: hidden; }
   .entry:hover { background: var(--color-hover); color: var(--color-foreground); }
   .name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .entry :global(.elapsed) { flex: none; color: var(--color-subtle); font-variant-numeric: tabular-nums; }
   /* A phone gives the names the room: the mark says it runs, the panel says
-     how long. Rows a finger still hits but shorter than a control, so the
-     dock stays under half the screen. */
+     how long. Compact lines a finger still hits (over the 24 px floor), so a
+     question and the deck leave the conversation its share of a 360 screen. */
   @media (max-width: 720px) {
-    .entries { max-height: calc(3 * 36px + 4px); }
-    .entry { height: 36px; padding: 0 6px; }
+    .entries { max-height: calc(3 * 32px); }
+    .entry { height: 32px; padding: 0 6px; }
     .entry :global(.elapsed) { display: none; }
   }
 </style>

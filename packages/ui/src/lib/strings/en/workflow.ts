@@ -18,7 +18,7 @@ export const strings = {
     result: 'Result',
     output: 'Output',
     items: 'Executions',
-    openThread: 'Open conversation',
+    openThread: 'Open thread',
     back: 'Back to the graph',
     close: 'Close details',
     notStarted: 'Not started yet.',

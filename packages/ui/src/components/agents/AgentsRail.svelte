@@ -18,6 +18,7 @@
   import AgentRow from './AgentRow.svelte';
   import BotColumn from './BotColumn.svelte';
   import BotColumnHead from './BotColumnHead.svelte';
+  import SideHead from './SideHead.svelte';
   import { minuteClock } from '../../lib/clock.svelte';
   import { tabHeader } from '../../lib/tab-header.svelte';
 
@@ -199,6 +200,7 @@
 <RailFrame store={view.store} kind="agents-rail" label={phone.current ? labels.heading : agent?.name ?? team?.name ?? labels.heading}>
   {#snippet head()}
     {#if !phone.current}
+      <SideHead store={view.store} current="agents" />
       <BotColumnHead {view} {agent} {status} {thread} {team} {onpane} {onengine} onopen={pane => agent && here && onopen(here, agent.id, pane)} />
     {/if}
   {/snippet}

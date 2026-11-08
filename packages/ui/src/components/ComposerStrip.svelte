@@ -5,16 +5,16 @@
 
   /**
    * The one row above the box, in the flow so it never covers a line of the
-   * timeline: the thread's subagents and workflows, each by name, and at its
-   * right end the way back to the latest message. A thread keeps the row
-   * reserved, so neither coming and going moves the timeline; the queue and
-   * the asks live inside the box. Toasts never land here: their home is the
-   * top of the thread (`toastSlot`).
+   * timeline: the thread's subagents and workflows, each its own line by
+   * name, and at its right end the way back to the latest message, drawn only
+   * while the reader is scrolled up. Empty, it takes no room: a thread at
+   * rest at its end shows no blank band over the box. The queue and the asks
+   * live inside the box; toasts have their own slot above it (`toastSlot`).
    */
-  let { store, thread }: { store: Store; thread: Store['openThread'] } = $props();
+  let { store, thread, height = $bindable(0) }: { store: Store; thread: Store['openThread']; height?: number } = $props();
 </script>
 
-<div class="strip" class:reserved={!!thread} data-testid="composer-strip">
+<div class="strip" data-testid="composer-strip" bind:clientHeight={height}>
   {#if thread}<AgentDock {store} threadId={thread.id} />{/if}
   <JumpLatest />
 </div>
@@ -29,7 +29,7 @@
     margin: 0 auto;
   }
 
-  .strip.reserved, .strip:has(> :global(*)) { min-height: 34px; padding-bottom: 6px; }
+  .strip:has(> :global(*)) { padding-bottom: 6px; }
   /* The dock's line takes the width; the way back keeps the right end. */
   .strip :global(.jump) { margin-left: auto; }
 </style>

@@ -24,7 +24,9 @@ test('an entrusted thread mid-turn counts once among the agents at work', async 
   // Entrusted, and the agent's own work runs in that same thread: one thread, one count.
   agentDirectory(store).snapshot = { ...snapshot, entrusted: [{ threadId: 't-scheduler', agentId: 'agent-1', at: 0 }],
     work: [{ id: 'w-1', agentId: 'agent-1', status: 'running', runId: 'r-1' }], runs: [{ id: 'r-1', threadId: 't-scheduler', startedAt: 0 }] } as never;
-  expect(agentsAtWork([store])).toEqual({ count: 1, waiting: false });
+  // The fake holds a question for this thread that its summary does not count yet: it still counts, in the waiting colour,
+  // as its row shows it (lib/status-order.ts rowAsks), not dropped as neither working nor asking.
+  expect(agentsAtWork([store])).toEqual({ count: 1, waiting: true });
 });
 
 test('an agent whose own thread rests but asks the user counts, in the waiting colour', async () => {

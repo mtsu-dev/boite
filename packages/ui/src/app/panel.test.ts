@@ -47,12 +47,15 @@ test("the panel selector lists the terminal, and a control's right click leads t
   if (!wasOpen) query<HTMLButtonElement>('[data-testid=panel-toggle]').click();
   await waitFor(() => document.querySelector('[data-testid=panel-add]') !== null);
   query<HTMLButtonElement>('[data-testid=panel-add]').click();
+  // A hidden terminal is not in use: it waits in the full list, behind "All panels".
+  await waitFor(() => document.querySelector('[data-testid=panel-add-menu] [data-value=all-panels]') !== null);
+  query<HTMLButtonElement>('[data-testid=panel-add-menu] [data-value=all-panels]').click();
   await waitFor(() => document.querySelector('[data-testid=panel-add-menu] [data-value=terminal-toggle]') !== null);
   query<HTMLButtonElement>('[data-testid=panel-add]').click();
   if (!wasOpen) query<HTMLButtonElement>('[data-testid=panel-toggle]').click();
 
-  // The ring sits beside the model chip once half the context is used.
-  store.openThread!.context = { tokens: 120_000, window: 200_000, at: Date.now() };
+  // The context's number sits beside the model chip once the context matters (ComposerBar's CONTEXT_SHOWN_FROM).
+  store.openThread!.context = { tokens: 150_000, window: 200_000, at: Date.now() };
   await waitFor(() => document.querySelector('.context-control') !== null);
   query('.context-control').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 30 }));
   await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=customize]') !== null);

@@ -588,7 +588,7 @@
         ></button>
       {/if}
       {#if store.page === 'home' && contactsShown(store)}
-        <!-- Contacts take the chat's card; the thread list stays beside them. -->
+        <!-- Contacts take the chat's card; the list column turns to its Contacts side (Sidebar.svelte). -->
         <main><div class="thread-chat framed">
           {#if contacts.HomePage}{#key store}<contacts.HomePage {store} />{/key}{:else}<p class="empty">{contacts.homeError || strings.app.loading}</p>{/if}
         </div></main>
@@ -636,8 +636,9 @@
         {/key}
       {/if}
       {/if}
-      <!-- Not keyed on the machine: the column lists every machine's contacts, and a new one would slide in again. -->
-      {#if contacts.ContactsRail && contactsShown(store) && !narrow.current}<contacts.ContactsRail {store} />{/if}
+      <!-- Not keyed on the machine: the column lists every machine's contacts, and a new one would slide in again.
+           Not on the Contacts page: the list column's Contacts side holds the same rows there. -->
+      {#if contacts.ContactsRail && contactsShown(store) && !narrow.current && store.page !== 'home'}<contacts.ContactsRail {store} />{/if}
     {/if}
   </div>
 

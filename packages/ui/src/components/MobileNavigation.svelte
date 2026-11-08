@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { rowAsks } from '../lib/status-order';
   import { tick } from 'svelte';
   import WindowList from './WindowList.svelte';
   import MobileTabs from './MobileTabs.svelte';
@@ -37,7 +38,7 @@
   import { workingThread } from '../lib/recent.svelte';
   import { compareEntries } from '../lib/thread-order';
   import { rowPlaces } from '../lib/row-place';
-  import { activityFeed, storeNeedsYou } from '../lib/activity-feed';
+  import { activityFeed, storeNeedsYou, type FeedVerb } from '../lib/activity-feed';
   import { tabHeader } from '../lib/tab-header.svelte';
   import EmptyState from './EmptyState.svelte';
   import { threadsNeedingYou } from '../lib/app-rail';
@@ -129,7 +130,7 @@
   let elsewhere = $derived(waiting.filter(e => !(e.machine.store === store && e.thread.id === store.openThread?.id)).length);
   const matches = (e: typeof entries[number]) => !query || [e.thread.title, projectName(e.project), e.thread.branch, e.machine.label].some(value => value?.toLocaleLowerCase().includes(query));
   /** Activity: what needs the user, failures included, then the updates, each with its reason; sub-agents under their parent. */
-  let rows: (typeof entries[number] & { reason?: string; at?: number; nested?: boolean; section?: 'needs' | 'updates' })[] = $derived(listScreen === 'activity'
+  let rows: (typeof entries[number] & { reason?: string; at?: number; nested?: boolean; section?: 'needs' | 'updates'; verb?: FeedVerb | null })[] = $derived(listScreen === 'activity'
     ? activityFeed(entries.filter(matches), feedPlace)
     : entries.filter(e => matches(e) && !e.thread.parentThreadId && !e.project?.archived && (workspace.view !== 'recent' || !selected || (e.machine.id === selected.machine.id && e.thread.projectId === selected.project.id)))
       .sort(compareEntries));
@@ -309,7 +310,7 @@
       </div>
     {/if}
     {#snippet threadRow(row: typeof rows[number], grouped = false)}
-      <MobileThreadRow machine={row.machine} thread={row.thread} project={row.project} {now} compact={!grouped} reason={row.reason} at={row.at} nested={row.nested} where={!grouped && inRecent ? places(row) : undefined} items={rowItems(row.machine.store, row.thread)} tools={rowTools(row.machine.store, row.thread)}
+      <MobileThreadRow machine={row.machine} thread={row.thread} project={row.project} {now} compact={!grouped} reason={row.reason} at={row.at} nested={row.nested} verb={row.verb ?? null} where={!grouped && inRecent ? places(row) : undefined} items={rowItems(row.machine.store, row.thread)} tools={rowTools(row.machine.store, row.thread)}
         onopen={() => { show('chat'); void workspace.select(row.machine.store, row.thread.id); }} onaction={action => rowAction(row.machine.store, row.thread, action, row.machine.id)} />
     {/snippet}
     {#if listScreen === 'threads' && workspace.view === 'projects'}
@@ -321,7 +322,7 @@
         {@const archivedOpen = archiveCount(group.project, 'archived') > 0 && (later || projectThreadView.isOpen(group, 'archived'))}
         {@const workingRows = groupRows.filter(row => workingThread(row.machine.store, row.thread))}
         {@const attentionAll = query || !recentPreferences.groupWorking ? groupRows : groupRows.filter(row => workingOpen ? !workingThread(row.machine.store, row.thread) : !groupWorkingThread(group.machine.store, row.thread))}
-        {@const fold = query || unfolded[projectKey(group)] ? { shown: attentionAll, folded: [] } : foldQuiet(attentionAll, row => row.thread.pinned === true || threadState(row.thread, row.machine.store.subagents(row.thread.id)) !== null)}
+        {@const fold = query || unfolded[projectKey(group)] ? { shown: attentionAll, folded: [] } : foldQuiet(attentionAll, row => row.thread.pinned === true || threadState(row.thread, rowAsks(row.machine.store, row.thread.id)) !== null)}
         {@const attentionRows = fold.shown}
         {@const controls = `mobile-project-${encodeURIComponent(projectKey(group))}`}
         {@const drafts = group.machine.store.draftEntries.filter(entry => entry.projectId === group.project.id)}

@@ -60,46 +60,61 @@ test('a maximized panel stays with its thread: the Contacts page beside the list
   }
 });
 
-test('contacts stand in their own column on the right, folded until the bar unfolds it: the title opens the Contacts page, a row a contact\'s, between the lists', async () => {
-  writeExperiments(['contacts']);
+test('contacts are the Bots column\'s other side: its head folds the column on the right, a row opens a contact, and with Bots off the rail keeps their place', async () => {
+  writeExperiments(['resident-agents', 'contacts']);
   await mountOnFake();
   try {
-    // A first start finds the column folded: the bar's button alone says Chris asks something.
-    await waitFor(() => document.querySelector('[data-testid=contacts-toggle-waiting]') !== null);
-    const rail = query('[data-testid=contacts-rail]');
-    expect(rail.classList.contains('collapsed')).toBe(true);
-    expect(query('[data-testid=contacts-toggle]').getAttribute('aria-expanded')).toBe('false');
-    expect(query('main').compareDocumentPosition(rail) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(document.querySelector('[data-testid=sidebar] [data-testid=sidebar-contacts]')).toBeNull();
+    // A first start finds the column folded, and no contacts button on the rail: Activity counts what they ask.
+    // The Bots page draws no such column: read it afresh each time.
+    const rail = () => query('[data-testid=contacts-rail]');
+    expect(rail().classList.contains('collapsed')).toBe(true);
+    expect(query('main').compareDocumentPosition(rail()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(document.querySelector('[data-testid=rail-contacts]')).toBeNull();
+    expect(document.querySelector('[data-testid=contacts-toggle]')).toBeNull();
 
-    query<HTMLButtonElement>('[data-testid=contacts-toggle]').click();
-    flushSync();
-    expect(rail.classList.contains('collapsed')).toBe(false);
-    expect(window.localStorage.getItem('boite.contacts-rail-folded')).toBe('0');
-    await waitFor(() => document.querySelector('[data-testid=rail-contact]') !== null);
-
-    // The title is the way home: requests, adding a contact and Tailscale.
-    query<HTMLButtonElement>('[data-testid=contacts-rail-home]').click();
+    // The Bots column's switch turns it to Contacts, the Contacts page in the main card.
+    workspace.showAgents(store);
+    await waitFor(() => document.querySelector('[data-testid=side-contacts]') !== null);
+    query<HTMLButtonElement>('[data-testid=side-contacts]').click();
     await waitFor(() => document.querySelector('[data-testid=home-add]') !== null);
     expect([store.page, store.contact]).toEqual(['home', null]);
-    flushSync();
-    expect(query('[data-testid=contacts-rail-home]').getAttribute('aria-current')).toBe('page');
+    await waitFor(() => document.querySelector('[data-testid=sidebar] [data-testid=rail-contact]') !== null);
+    expect(query('[data-testid=sidebar] [data-testid=side-switch]').dataset['view']).toBe('home');
 
-    query<HTMLButtonElement>('[data-testid=rail-contact]').click();
-    await waitFor(() => document.querySelector('[data-testid=contact-remove]') !== null);
-    expect([store.page, store.contact]).toEqual(['home', 'core-chris']);
-    expect(document.querySelector('[data-testid=sidebar]')).not.toBeNull();
-    flushSync();
-    expect(query('[data-testid=rail-contact]').getAttribute('aria-current')).toBe('page');
-    expect(query('[data-testid=contacts-rail-home]').getAttribute('aria-current')).toBeNull();
-
-    // Folded again, the next start finds it folded.
+    // Its head folds the right column, which is not drawn while this side lists the same rows.
     query<HTMLButtonElement>('[data-testid=contacts-toggle]').click();
     flushSync();
-    expect(rail.classList.contains('collapsed')).toBe(true);
-    expect(window.localStorage.getItem('boite.contacts-rail-folded')).toBe('1');
+    expect(query('[data-testid=contacts-toggle]').getAttribute('aria-expanded')).toBe('true');
+    expect(window.localStorage.getItem('boite.contacts-rail-folded')).toBe('0');
+    expect(document.querySelector('[data-testid=contacts-rail]')).toBeNull();
+    query<HTMLButtonElement>('[data-testid=sidebar] [data-testid=rail-contact]').click();
+    await waitFor(() => document.querySelector('[data-testid=contact-remove]') !== null);
+    expect([store.page, store.contact]).toEqual(['home', 'core-chris']);
+    flushSync();
+    expect(query('[data-testid=sidebar] [data-testid=rail-contact]').getAttribute('aria-current')).toBe('page');
+
+    // The title leads back to the threads, the column unfolded beside them; its own title opens the Contacts page.
+    query<HTMLButtonElement>('[data-testid=side-back]').click();
+    flushSync();
+    expect(store.page).toBe('chat');
+    expect(rail().classList.contains('collapsed')).toBe(false);
+    await waitFor(() => document.querySelector('[data-testid=contacts-rail] [data-testid=rail-contact]') !== null);
+    query<HTMLButtonElement>('[data-testid=contacts-rail-home]').click();
+    await waitFor(() => store.page === 'home');
+
+    // With Bots off there is no switch: the rail holds Contacts' place and the side's title alone leads back.
+    writeExperiments(['contacts']);
+    await waitFor(() => document.querySelector('[data-testid=rail-contacts]') !== null);
+    expect(query('[data-testid=rail-contacts]').getAttribute('aria-current')).toBe('page');
+    expect(document.querySelector('[data-testid=side-switch]')).toBeNull();
+    query<HTMLButtonElement>('[data-testid=side-back]').click();
+    flushSync();
+    expect(store.page).toBe('chat');
+    query<HTMLButtonElement>('[data-testid=rail-contacts]').click();
+    await waitFor(() => store.page === 'home');
   } finally {
     if (!contactsRail.folded) contactsRail.toggle();
+    store.showChat();
   }
 });
 
@@ -116,7 +131,8 @@ test('a panel widened while the contacts column was folded gives the chat its ro
     const list = store.sidebarCollapsed ? 0 : store.sidebarWidth;
     const folded = clampPanel(700, window.innerWidth, list);
     expect(width()).toBe(`${folded}px`);
-    query<HTMLButtonElement>('[data-testid=contacts-toggle]').click();
+    // The Contacts side's head unfolds it (the test above); the room is the same either way.
+    contactsRail.toggle();
     flushSync();
     const unfolded = clampPanel(700, window.innerWidth, list + 240);
     expect(unfolded).toBeLessThan(folded);
@@ -160,6 +176,13 @@ test('typed confirmation supports Enter and cancellation restores focus', async 
   press(field, 'Enter');
   expect(await deletion).toBe(true);
 });
+
+/** No question or permission open in the project: a row's state is then its status alone. */
+function quiet(projectId: string) {
+  const ids = new Set(store.threadsOf(projectId).map((thread) => thread.id));
+  store.pendingQuestions = store.pendingQuestions.filter((request) => !ids.has(request.threadId));
+  store.pendingPermissions = store.pendingPermissions.filter((request) => !ids.has(request.threadId));
+}
 
 async function waitFor(check: () => boolean, attempts = 2000): Promise<void> {
   for (let attempt = 0; attempt < attempts; attempt++) {
@@ -378,8 +401,10 @@ test('the sidebar floats a thread that waits on the user, in both views, and Rec
   const rows = () => Array.from(document.querySelectorAll('[data-testid=thread-row]')).map((row) => row.getAttribute('data-thread-id'));
   const project = store.projects.find((p) => store.threadsOf(p.id).length >= 2)!;
   const rowsOf = () => rows().filter((id) => store.threads.find((t) => t.id === id)?.projectId === project.id);
-  // The fake seeds threads that already wait on a question; start from a quiet project.
+  // The fake seeds threads that already wait on a question; start from a quiet project. An open question
+  // says Needs you by itself, whatever the status, so the questions go too.
   for (const thread of store.threadsOf(project.id)) thread.status = 'idle';
+  quiet(project.id);
   await waitFor(() => rowsOf().length >= 2);
   const last = rowsOf().at(-1)!;
   expect(rowsOf()[0]).not.toBe(last);
@@ -448,6 +473,7 @@ test('a folded project keeps saying what its hidden threads do, and the mark goe
   workspace.view = 'projects';
   const project = store.projects.find((p) => store.threadsOf(p.id).length >= 2)!;
   for (const thread of store.threadsOf(project.id)) { thread.status = 'idle'; thread.unread = false; }
+  quiet(project.id);
   const head = () => query(`[data-testid=project-row][data-project-id="${project.id}"]`);
   await waitFor(() => document.querySelector(`[data-testid=project-row][data-project-id="${project.id}"]`) !== null);
   if (!store.isCollapsed(project.id)) store.toggleProject(project.id);
@@ -464,8 +490,8 @@ test('a folded project keeps saying what its hidden threads do, and the mark goe
   second!.status = 'idle';
   await waitFor(() => head().parentElement!.querySelector('[data-testid=project-working-toggle]')?.getAttribute('data-count') === '1');
   expect(head().parentElement!.querySelector('[data-testid=project-waiting-count]')).toBeNull();
-  await waitFor(() => head().querySelector('[data-testid=project-rollup]')?.getAttribute('data-state') === 'working');
-  expect(head().querySelector('[data-testid=project-rollup]')!.getAttribute('title')).toBe('1 thread: Working');
+  // The working count already says it: the folded header draws no second mark for the same thread.
+  expect(head().querySelector('[data-testid=project-rollup]')).toBeNull();
   store.toggleProject(project.id);
   await waitFor(() => head().querySelector('[data-testid=project-rollup]') === null);
 });

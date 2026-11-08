@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { rowAsks } from '../lib/status-order';
   import { tick, untrack } from 'svelte';
   import { Search } from '@lucide/svelte';
   import type { AgentProfile, Project, ProjectId, ThreadSummary } from '@boite/contracts';
@@ -290,7 +291,7 @@
                 </span>
                 <span class="label ui-label">{item.label}</span>
                 {#if place?.thread}
-                  <span class="state"><ThreadState thread={place.thread} {now} subagents={place.machine.store.subagents(place.thread.id)} away={place.machine.store.connection !== 'ready'} /></span>
+                  <span class="state"><ThreadState thread={place.thread} {now} subagents={rowAsks(place.machine.store, place.thread.id)} away={place.machine.store.connection !== 'ready'} /></span>
                 {:else if item.kind === 'project' && place}
                   <span class="meta ui-label">{#if several}<MachineIcon icon={place.machine.icon} os={place.machine.store.core?.os} size={12} />{place.machine.label}{' · '}{/if}{strings.palette.newThread}</span>
                 {:else if item.hint}

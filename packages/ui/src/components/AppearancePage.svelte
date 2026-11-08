@@ -1,7 +1,7 @@
 <script lang="ts">
   import { errorText } from '../lib/errors';
   import InfoTip from './InfoTip.svelte';
-  import { ChevronDown, Minus, Plus } from '@lucide/svelte';
+  import { Minus, Plus } from '@lucide/svelte';
   import { onMount, untrack } from 'svelte';
   import { FONT_KEY, FONTS, MONO_KEY, MONOS, readFont, readMono, setFont, setMono, type Font, type Mono } from '../lib/fonts';
   import { percent } from '../lib/format';
@@ -14,6 +14,7 @@
   import { readChatWidth, setChatWidth, type ChatWidth } from '../lib/chat-width';
   import { matchingPreset, work, type Profile } from '../lib/work-prefs.svelte';
   import ThemeColors from './ThemeColors.svelte';
+  import ChoiceSelect from './ChoiceSelect.svelte';
   import { controlGroups } from '../lib/control-groups';
   import type { Store } from '../lib/store.svelte';
   import SurfaceIcon from './SurfaceIcon.svelte';
@@ -24,7 +25,8 @@
    * starts, the terminal's renderer) lives under General, and the terminal's
    * cursor and the edge scrollbars under Advanced. `phone`: what a phone reads
    * and looks like; the column width and the header's buttons are the desktop's.
-   * A phone shows each choice as one row, the current one, that opens its tiles.
+   * A choice seen before it is picked (a palette, a face) is one row, the one
+   * in use with its preview, that opens the others (`ChoiceSelect`).
    */
   let { store, phone = false }: { store: Store; phone?: boolean } = $props();
   const uid = $props.id();
@@ -55,7 +57,7 @@
   let mono = $state<Mono>(untrack(() => readMono()));
   let faces = $derived(FONTS.map((id) => ({ id, name: id === 'system' ? strings.settings.fontSystem : FONT_NAMES[id] })));
   let monos = $derived(MONOS.map((id) => ({ id, name: id === 'system' ? strings.settings.monoSystem : MONO_NAMES[id] })));
-  function pickFont(next: Font) { font = next; setFont(next); facesOpen = false; }
+  function pickFont(next: Font) { font = next; setFont(next); }
   function pickMono(next: Mono) { mono = next; setMono(next); }
 
   // The zoom is the shell webview's own; a browser tab has its own Ctrl+= already.
@@ -96,10 +98,6 @@
     chatWidth = next;
     setChatWidth(next);
   }
-
-  /** A phone's text font row, open on its tiles. */
-  let facesOpen = $state(false);
-  let current = $derived(faces.find((face) => face.id === font) ?? faces[0]!);
 
   function pickTheme(next: Theme) {
     theme = next;
@@ -229,34 +227,16 @@
 
   <section class="card" id="settings-reading">
     <h2 class="ui-label-box"><span class="ui-label">{strings.settings.reading}</span><InfoTip gather topic={strings.settings.reading} text="" testid="section-info" /></h2>
-    <div class="switch-row faces-row">
+    <!-- Each face is drawn in itself, its name and a sample that tells I, l, 1, O and 0 apart. -->
+    {#snippet sample(id: Font | undefined)}<span class="sample" style:font-family="var(--face-{id})">{strings.settings.fontSample}</span>{/snippet}
+    {#snippet code(id: Mono | undefined)}<span class="sample" style:font-family="var(--face-mono-{id})">{'{ }'}</span>{/snippet}
+    <div class="switch-row choice-row">
       <span class="text ui-label-box"><span class="ui-label">{strings.settings.font}</span><InfoTip topic={strings.settings.font} text={strings.settings.fontHint} /></span>
-      {#if phone}
-        <!-- The face in use, drawn in itself; the others behind it. -->
-        <button type="button" class="current" style:font-family="var(--face-{current.id})" aria-expanded={facesOpen} data-testid="font-current" onclick={() => { facesOpen = !facesOpen; }}>
-          <span class="face-name">{current.name}</span>
-          <span class="face-sample">{strings.settings.fontSample}</span>
-          <ChevronDown size={18} strokeWidth={1.75} />
-        </button>
-      {/if}
-      {#if !phone || facesOpen}
-      <div class="faces" role="group" aria-label={strings.settings.font}>
-        {#each faces as face (face.id)}
-          <button type="button" class="face" style:font-family="var(--face-{face.id})" aria-pressed={font === face.id} data-testid="font-{face.id}" onclick={() => pickFont(face.id)}>
-            <span class="face-name">{face.name}</span>
-            <span class="face-sample">{strings.settings.fontSample}</span>
-          </button>
-        {/each}
-      </div>
-      {/if}
+      <ChoiceSelect label={strings.settings.font} options={faces} value={font} onpick={pickFont} preview={sample} face={(id) => `var(--face-${id})`} testid="font-current" optionTestid={(id) => `font-${id}`} />
     </div>
-    <div class="switch-row">
+    <div class="switch-row choice-row">
       <span class="text ui-label">{strings.settings.monoFont}</span>
-      <div class="segmented monos" role="group" aria-label={strings.settings.monoFont}>
-        {#each monos as option (option.id)}
-          <button type="button" class:on={mono === option.id} style:font-family="var(--face-mono-{option.id})" aria-pressed={mono === option.id} data-testid="font-mono-{option.id}" onclick={() => pickMono(option.id)}><span class="ui-label">{option.name}</span></button>
-        {/each}
-      </div>
+      <ChoiceSelect label={strings.settings.monoFont} options={monos} value={mono} onpick={pickMono} preview={code} face={(id) => `var(--face-mono-${id})`} testid="font-mono-current" optionTestid={(id) => `font-mono-${id}`} />
     </div>
     {#if zoomable}
       <div class="switch-row">
@@ -275,8 +255,10 @@
   <!-- Every optional button in one place, grouped by where it sits. A button's
        own right click hides it and leads here; this is the only way back. -->
   <section class="card" id="settings-buttons" data-testid="settings-buttons">
-    <div class="card-head">
-      <h2 class="ui-label-box"><span class="ui-label">{strings.controls.heading}</span><InfoTip gather topic={strings.controls.heading} text={strings.controls.headingHint} testid="section-info" /></h2>
+    <h2 class="ui-label-box"><span class="ui-label">{strings.controls.heading}</span><InfoTip gather topic={strings.controls.heading} text={strings.controls.headingHint} testid="section-info" /></h2>
+    <!-- The two presets as a row like the others, the "i" saying what each keeps. -->
+    <div class="switch-row presets-row">
+      <span class="text ui-label">{strings.controls.preset}</span>
       <div class="segmented" role="group" aria-label={strings.controls.preset}>
         {#each presets as option (option.id)}
           <button type="button" class:on={preset === option.id} aria-pressed={preset === option.id} data-testid="controls-preset-{option.id}" onclick={() => work.showPreset(option.id)}><span class="ui-label">{option.label}</span></button>
@@ -310,41 +292,12 @@
 </div>
 
 <style>
-  /* The text font's choices are tiles, each drawn in the face it picks, so the
-     choice is made by reading rather than by name. */
-  :global(.settings .page) .faces-row { flex-direction: column; align-items: stretch; gap: var(--space-3); }
-  /* Five faces: one row on a desktop card, none left alone on a second one. */
-  .faces { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: var(--space-2); }
-  .face {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--space-1);
-    height: auto;
-    min-height: 0;
-    padding: var(--space-3);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-surface-2);
-    color: var(--color-foreground);
-    text-align: left;
-    white-space: normal;
-  }
-  @media (hover: hover) { .face:hover:not([aria-pressed='true']) { background: var(--color-surface-3); } }
-  .face[aria-pressed='true'] { border-color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-foreground); }
-  /* Plain text, not trimmed labels: a name that wraps keeps its whole line height, so no tile clips its own words. */
-  .face-name { font-size: var(--text-sm); font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
-  .face-sample { font-size: var(--text-md); line-height: 1.3; color: var(--color-muted-foreground); white-space: nowrap; }
-  /* A phone's current face: one row, its name and sample in the face, a chevron that opens the tiles. */
-  .current { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto; column-gap: var(--space-3); align-items: center; width: 100%; height: auto; min-height: var(--touch-target); padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-2); color: var(--color-foreground); text-align: left; white-space: normal; }
-  .current :global(svg) { grid-column: 2; grid-row: 1 / 3; color: var(--color-muted-foreground); transition: transform var(--dur-2) var(--ease-out-quint); }
-  .current[aria-expanded='true'] :global(svg) { transform: rotate(180deg); }
+  /* A face's sample, in the face it shows, a step quieter than its name. */
+  .sample { min-width: 2.5em; padding-left: var(--space-2); color: var(--color-muted-foreground); font-size: var(--text-md); line-height: 1.2; white-space: nowrap; }
   .zoom button { display: inline-flex; align-items: center; justify-content: center; padding: 0 8px; }
   .zoom-error { margin: 0; color: var(--color-danger); font-size: var(--text-xs); overflow-wrap: anywhere; }
   .zoom .zoom-value { min-width: 56px; font-variant-numeric: tabular-nums; color: var(--color-foreground); }
-  /* The title on the left, the presets on the right, the groups under them. */
-  .card-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); flex-wrap: wrap; margin-bottom: var(--space-4); }
-  .card-head h2 { margin-bottom: 0; }
+  .presets-row { margin-bottom: var(--space-4); }
   .control-group + .control-group { margin-top: var(--space-5); }
   .control-group .section-label { margin-bottom: var(--space-2); }
   /* Each button as a tile that reads like the button itself: its icon and its
@@ -376,15 +329,10 @@
   @media (max-width: 720px) {
     :global(.settings .page) .switch-row:has(.segmented) { flex-direction: column; align-items: stretch; }
     :global(.settings .page) .segmented { display: flex; }
-    .faces { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .face:last-child:nth-child(odd) { grid-column: 1 / -1; }
+    :global(.settings .page) .choice-row { flex-direction: column; align-items: stretch; gap: var(--space-3); }
     /* Each option grows from its own word: equal thirds cut "Soulignement"
        and "Modifications" past their button's edge. */
     .segmented button { flex: 1 1 auto; min-width: 0; padding: 0 6px; }
     .segmented button .ui-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    /* A code face runs wide: each name takes the room it needs, a step smaller. */
-    /* Two classes: the base .segmented button rule comes later and set its size back, so the track ran past the card at 360. */
-    .segmented.monos button { flex: 1 1 auto; min-width: auto; padding: 0 6px; font-size: var(--text-xs); }
-    .card-head .segmented { flex: 1 1 100%; }
   }
 </style>

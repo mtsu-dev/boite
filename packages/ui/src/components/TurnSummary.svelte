@@ -207,11 +207,14 @@
      its buttons; how long it took, when and what it spent wait for the pointer. A
      finger reads them behind the "i" instead, the line's last mark. */
   .details { display: none; }
-  .summary.settled.marked .meta, .summary.settled.marked .marks > .dot:first-child { display: none; }
+  /* The count's dot hides but keeps its room: taken out, the count opened the line under the clip and lost its number. */
+  .summary.settled.marked .meta { display: none; }
+  .summary.settled.marked .marks > .dot:first-child { visibility: hidden; }
   :global(.message:hover) .summary.settled.marked .meta, .summary.settled.marked.pointed .meta, .summary.settled.marked:focus-within .meta { display: inline-flex; }
-  :global(.message:hover) .summary.settled.marked .marks > .dot:first-child, .summary.settled.marked.pointed .marks > .dot:first-child, .summary.settled.marked:focus-within .marks > .dot:first-child { display: inline-block; }
+  :global(.message:hover) .summary.settled.marked .marks > .dot:first-child, .summary.settled.marked.pointed .marks > .dot:first-child, .summary.settled.marked:focus-within .marks > .dot:first-child { visibility: visible; }
   @media (hover: none) {
-    .summary.settled .meta, .summary.settled.marked .meta, .summary.settled.marked .marks > .dot:first-child { display: none; }
+    .summary.settled .meta, .summary.settled.marked .meta { display: none; }
+    .summary.settled.marked .marks > .dot:first-child { visibility: hidden; }
     .details { display: inline-flex; }
   }
   /* The step count and the memory mark: text buttons on the line, no box, the foreground on hover. */

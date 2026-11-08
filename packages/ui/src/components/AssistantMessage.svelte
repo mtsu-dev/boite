@@ -361,6 +361,6 @@
   .hook .event {
     flex: none;
     font-size: var(--text-sm);
-    color: var(--color-subtle);
+    color: var(--color-muted-foreground);
   }
 </style>

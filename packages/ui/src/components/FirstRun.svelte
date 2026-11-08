@@ -89,7 +89,7 @@
   .text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; line-height: 1.3; }
   .name { font-weight: 600; color: var(--color-foreground); }
   .plan { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); color: var(--color-muted-foreground); }
-  .found { flex: none; font-size: var(--text-xs); color: var(--color-subtle); }
+  .found { flex: none; font-size: var(--text-xs); color: var(--color-muted-foreground); }
   .mark { flex: none; display: grid; place-items: center; width: 16px; color: var(--color-foreground); }
   .start { height: var(--control-lg); padding: 0 22px; border-radius: var(--radius-full); }
   @media (hover: hover) { .start:hover:not(:disabled) { background: color-mix(in srgb, var(--color-foreground) 86%, var(--color-background)); } }

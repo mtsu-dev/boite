@@ -257,7 +257,7 @@
     align-items: center;
     gap: 3px;
     flex: none;
-    color: var(--color-subtle);
+    color: var(--color-muted-foreground);
     font-size: var(--text-sm);
   }
 
@@ -301,10 +301,10 @@
     to { background-position: 0 0; }
   }
 
-  .compacted { flex: none; display: inline-flex; align-items: center; gap: 4px; color: var(--color-subtle); font-size: var(--text-sm); }
+  .compacted { flex: none; display: inline-flex; align-items: center; gap: 4px; color: var(--color-muted-foreground); font-size: var(--text-sm); }
   .took {
     flex: none;
-    color: var(--color-subtle);
+    color: var(--color-muted-foreground);
     font-size: var(--text-sm);
     font-variant-numeric: tabular-nums;
   }

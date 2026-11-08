@@ -17,6 +17,8 @@ export const fr: Translation = {
     retryContinueTitle: 'Arrêté avant sa réponse',
     retryContinueBody: 'Reprise automatique dans {time}, reprise {attempt} sur {attempts}.',
     contextDetails: 'Contexte',
+    contextPercentUsed: (percent: string) => `Contexte utilisé à ${percent} %`,
+    contextWord: 'contexte',
     contextInput: 'Entrée',
     contextCache: 'Entrée en cache',
     contextOutput: 'Sortie',

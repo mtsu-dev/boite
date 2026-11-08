@@ -404,9 +404,10 @@
   --text-md: var(--text-title);
   --text-lg: 20px;
   /* What a conversation is read and written in: one step above the chrome,
-     16 px everywhere, so the composer types at the size the prose reads. */
+     16 px everywhere, so the composer types at the size the prose reads. Its
+     lines stand a notch further apart than the chrome's 1.5, so prose reads first. */
   --text-reading: var(--text-md);
-  --leading-reading: 1.6;
+  --leading-reading: 1.65;
 
   /*
    * The agents' robots (components/agents/RobotFace.svelte). A robot is a
@@ -486,7 +487,9 @@
   --radius-bubble: 18px;
   /* Balanced timeline margins, with room for the message outline rail. */
   --outline-room: 38px;
-  --settings-width: 880px;
+  /* Settings' column: the inset card's width less its gutters, up to where a row's label and its control drift apart. */
+  --settings-width: 1040px;
+  --settings-gutter: clamp(var(--space-5), 3vw, 48px);
   --settings-padding: var(--space-6);
   /* The one spacing scale lists, cards, sheets and Settings share: a 4 px step up to
      16, then 20, 24 and 32. A gap, a padding or a margin picks one of these. */
@@ -1671,16 +1674,16 @@ tr:last-child td {
 }
 
 .settings .page {
-  padding: var(--space-8) clamp(var(--space-5), 4vw, 64px);
+  padding: var(--space-8) var(--settings-gutter);
 }
 
-/* A page's root stands its 880 px column in the middle of a wide window rather
+/* A page's root stands its column in the middle of a wide window rather
    than against its left edge, whatever padding the page sets itself. The
    gutter is reserved on both sides, so a scrollbar does not push the column
    off centre. A narrow window keeps each page's own padding. */
 @media (min-width: 721px) {
   .settings .framed > .page {
-    padding-inline: max(clamp(var(--space-5), 4vw, 64px), calc((100% - var(--settings-width)) / 2));
+    padding-inline: max(var(--settings-gutter), calc((100% - var(--settings-width)) / 2));
     scrollbar-gutter: stable both-edges;
   }
 }

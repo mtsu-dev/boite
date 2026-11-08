@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { rowAsks, stateForm } from '../lib/status-order';
   import { tick } from 'svelte';
   import { Check, Ellipsis, FolderInput } from '@lucide/svelte';
   import { type Project, type ThreadSummary } from '@boite/contracts';
@@ -15,6 +16,7 @@
   import { ago, exactTime } from '../lib/format';
   import { trackThreadPullRequest } from '../lib/thread-pull-request.svelte';
   import { canMarkDone, markDone } from '../lib/recent.svelte';
+  import type { FeedVerb } from '../lib/activity-feed';
   import { ThreadRename, commitOnUnmount } from '../lib/thread-rename.svelte';
   let {
     machine,
@@ -27,6 +29,7 @@
     reason,
     at,
     nested = false,
+    verb = null,
     where
   }: {
     machine: Machine;
@@ -44,6 +47,8 @@
     at?: number;
     /** Activity: a sub-agent under its parent's row. */
     nested?: boolean;
+    /** Activity's Needs you: what the user does, a button at the row's end that opens the thread to do it. */
+    verb?: FeedVerb | null;
     /** Recent: where the row lives (its project, its machine among several), when the tile alone may not tell rows apart (lib/row-place.ts). */
     where?: string;
   } = $props();
@@ -58,7 +63,7 @@
   let pending = $derived(pendingLine(thread));
   let doneAllowed = $derived(canMarkDone(owner, thread));
   /** Activity's section already says the user's turn: the reason line names any other state after the reason, as every row reads title, context, state, time. */
-  let feedState = $derived(reason === undefined ? null : threadState(thread, owner.subagents(thread.id)));
+  let feedState = $derived(reason === undefined ? null : threadState(thread, rowAsks(owner, thread.id)));
   /** The details the row only shows under the pointer or the keyboard, in its tooltip at rest: the pull request, the branch, the time. */
   let tip = $derived([thread.title, reason, pullRequest && pullRequestLabel(pullRequest), thread.branch, ago(thread.lastUserMessageAt ?? thread.createdAt, now)].filter(Boolean).join('\n'));
 
@@ -144,9 +149,9 @@
       ondblclick={rename}
     >
       {#if reason !== undefined}
-        <!-- One line per fact: who (the tile and the title), what (the reason, cut, whole in the tooltip), the state
-             when the section does not say it, then since when, the last two on one right edge down the page. -->
-        <span class="feed-head"><ThreadHeadline {owner} {thread} {open} tile={compact && !nested ? project : undefined} {pullRequest} /><span class="reason" data-testid="thread-reason"><span class="text">{reason}</span></span>{#if feedState !== null && feedState !== 'waiting'}<ThreadState {thread} {now} subagents={owner.subagents(thread.id)} away={owner.connection !== 'ready'} />{/if}{#if at !== undefined}<time title={exactTime(at)}>{ago(at, now)}</time>{/if}</span>
+        <!-- One line per fact, each in its column down the page: who (the tile and the title), what (the reason,
+             cut, whole in the tooltip), the state when the section does not say it, then since when. -->
+        <span class="feed-head"><ThreadHeadline {owner} {thread} {open} tile={compact && !nested ? project : undefined} {pullRequest} /><span class="reason" data-testid="thread-reason"><span class="text">{reason}</span></span><span class="feed-state">{#if stateForm(feedState) !== null && feedState !== 'waiting'}<ThreadState {thread} {now} subagents={rowAsks(owner, thread.id)} away={owner.connection !== 'ready'} />{/if}</span><time title={at === undefined ? undefined : exactTime(at)}>{at === undefined ? '' : ago(at, now)}</time></span>
       {:else}
         <ThreadHeadline {owner} {thread} {now} {open} tile={compact && !nested ? project : undefined} {pullRequest} mark />
         {#if where}<span class="where ui-label" data-testid="thread-where">{where}</span>{/if}
@@ -155,6 +160,7 @@
         <span class="pending" data-testid="thread-pending" title={pending}><FolderInput size={12} /><span class="ui-label">{pending}</span></span>
       {/if}
     </button>
+    {#if verb}<button type="button" class="small verb" data-testid="thread-verb" data-verb={verb} onclick={() => void workspace.select(owner, thread.id)}>{strings.mobile.feed.verb[verb]}</button>{/if}
     {#if showDone && doneAllowed}<button type="button" class="ghost small icon done" data-testid="thread-done"
       aria-label={strings.sidebar.markDone} title={strings.sidebar.markDone} onclick={() => void markDone(owner, thread)}><Check size={14} /></button>{/if}
     <button
@@ -226,10 +232,16 @@
   .thread:not(:hover, :has(:focus-visible)) .row :global(.headline > .when:not(.waiting, .error, .interrupted, .working, .delegating, .monitoring, .background, .watching)) { display: none; }
   /* Activity's row: one line, the title first and whole when it can be, the reason giving way, then the state and
      since when in a column of their own (the time's width fixed, so every state ends on one edge). */
-  .feed-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
-  .feed-head :global(.headline) { flex: 0 1 auto; max-width: 60%; }
-  .feed-head time { flex: none; min-width: 6ch; font-size: var(--text-xs); color: var(--color-subtle); text-align: end; font-variant-numeric: tabular-nums; }
-  .reason { display: flex; flex: 1 1 0; min-width: 0; font-size: var(--text-sm); color: var(--color-muted-foreground); text-align: start; }
+  .feed-head { display: grid; grid-template-columns: minmax(0, 36%) minmax(0, 1fr) var(--state-col, 13ch) 6ch; align-items: center; gap: 12px; min-width: 0; }
+  .feed-head :global(.headline) { min-width: 0; }
+  .feed-state { display: flex; justify-content: flex-start; min-width: 0; }
+  .feed-head time { font-size: var(--text-xs); color: var(--color-subtle); text-align: end; font-variant-numeric: tabular-nums; }
+  .reason { display: flex; min-width: 0; font-size: var(--text-sm); color: var(--color-muted-foreground); text-align: start; }
+  /* The section's verb, the row's one framed control: it stands after the time, one width for every verb and
+     the menu's room always kept, so the columns of a section line up and stay put under the pointer. */
+  .thread:has(.verb) { display: flex; align-items: center; }
+  .thread:has(.verb) > .row { flex: 1; min-width: 0; }
+  .verb { flex: none; justify-content: center; min-width: 11ch; margin-right: var(--act-room); height: var(--control-sm); font-size: var(--text-xs); font-weight: 600; }
   .reason .text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* Recent's second line, on the title's edge: where the row lives, when the tile alone may not say it. */
   .where { margin-top: -3px; padding-left: 26px; overflow: hidden; font-size: var(--text-xs); color: var(--color-muted-foreground); text-align: start; text-overflow: ellipsis; white-space: nowrap; }
@@ -274,9 +286,9 @@
   /* While the buttons show, the title's line ends where they begin: the time gives up its place and a state
      steps left, whole, so they never cover a word. */
   .thread:is(:hover, :focus-within) .row > :global(.headline),
-  .thread:is(:hover, :focus-within) .feed-head { margin-right: calc(var(--act-room) + 4px - var(--pad-x)); }
+  .thread:is(:hover, :focus-within):not(:has(.verb)) .feed-head { margin-right: calc(var(--act-room) + 4px - var(--pad-x)); }
   .thread:is(:hover, :focus-within) :global(.headline .when:not(.state)),
-  .thread:is(:hover, :focus-within) .feed-head time { display: none; }
+  .thread:is(:hover, :focus-within):not(:has(.verb)) .feed-head time { visibility: hidden; }
   .rename {
     width: 100%;
     height: 32px;
@@ -284,6 +296,6 @@
   /* A phone has no pointer to wait for: the buttons always show, and the title's line always ends before them. */
   @media (max-width: 720px) {
     .done, .actions { opacity: 1; }
-    .row > :global(.headline), .feed-head { margin-right: calc(var(--act-room) + 4px - var(--pad-x)); }
+    .row > :global(.headline), .thread:not(:has(.verb)) .feed-head { margin-right: calc(var(--act-room) + 4px - var(--pad-x)); }
   }
 </style>

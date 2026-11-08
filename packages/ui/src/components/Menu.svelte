@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick, type Snippet } from 'svelte';
-  import { Check, Settings } from '@lucide/svelte';
+  import { Check, ChevronRight, Settings } from '@lucide/svelte';
   import { Closing } from '../lib/closing.svelte';
   import { floating } from '../lib/floating';
   import type { MenuItem } from '../lib/menu';
@@ -19,6 +19,7 @@
     heading,
     cap,
     testid,
+    onclose,
     children
   }: {
     items: MenuItem[];
@@ -39,6 +40,8 @@
     /** The list's tallest desktop height in px, where the room exists for a long list to show whole (lib/floating.ts). */
     cap?: number;
     testid?: string;
+    /** The list closed: a caller that swapped in a submenu's rows puts its first list back. */
+    onclose?: () => void;
     children: Snippet;
   } = $props();
 
@@ -51,7 +54,7 @@
   /** The keyboard lands on the first item the moment the list is there. A phone
       sheet holds the focus on itself instead: no row, Delete included, opens lit. */
   $effect(() => {
-    if (!popover.open) { sheet = false; return; }
+    if (!popover.open) { sheet = false; onclose?.(); return; }
     void tick().then(() => {
       const list = root?.querySelector<HTMLElement>('[role=menu]');
       sheet = !!list?.dataset['mobileSheet'];
@@ -74,6 +77,12 @@
     if (disabled || item.disabled) return;
     // The picked row leaves with the list: the keyboard goes back to the trigger first, so a dialog the pick opens
     // gives it back there, as Escape does.
+    // A submenu or its way back swaps the rows in place: the list stays, the keys land on its first row.
+    if (item.submenu || item.back) {
+      onpick(item.id);
+      void tick().then(() => rows()[0]?.focus({ preventScroll: true }));
+      return;
+    }
     if (!switches || item.checked === undefined) { popover.hide(); trigger?.focus({ preventScroll: true }); }
     onpick(item.id);
   }
@@ -104,11 +113,16 @@
     if (list.length === 0) return;
     const active = document.activeElement as HTMLElement | null;
     const index = active ? list.indexOf(active) : -1;
-    if (event.key === 'Enter') {
+    const focused = items.find((item) => item.id === active?.dataset['value']);
+    if (event.key === 'Enter' || (event.key === 'ArrowRight' && focused?.submenu)) {
       if (index < 0) return;
       event.preventDefault();
-      const chosen = items.find((item) => item.id === active?.dataset['value']);
-      if (chosen) pick(chosen);
+      if (focused) pick(focused);
+      return;
+    }
+    if (event.key === 'ArrowLeft') {
+      const back = items.find((item) => item.back);
+      if (back) { event.preventDefault(); pick(back); }
       return;
     }
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp' && event.key !== 'Home' && event.key !== 'End') return;
@@ -176,6 +190,7 @@
           class:checkable={item.checked !== undefined}
           class:inline-hint={!switches && !!item.status && !!item.hint}
           class:radio={item.radio}
+          class:submenu={item.submenu}
           role={item.checked === undefined ? 'menuitem' : item.radio ? 'menuitemradio' : 'menuitemcheckbox'}
           aria-checked={item.checked}
           disabled={item.disabled}
@@ -191,8 +206,10 @@
             {#if item.glyph}<span class="glyph" class:live={item.live} aria-hidden="true"><item.glyph size={16} strokeWidth={1.75} /></span>{/if}
             {#if item.status}<span class="status-dot" data-tone={item.status.tone} role="img" aria-label={item.status.label} title={item.status.label}></span>{/if}
             <span class="ui-label">{item.label}</span>
+            {#if item.submenu}<span class="more" aria-hidden="true"><ChevronRight size={14} strokeWidth={1.75} /></span>{/if}
           </span>
-          {#if item.hint}
+          <!-- A submenu row's chevron stands for the context menu's '›' hint: one mark, not two. -->
+          {#if item.hint && !item.submenu}
             <span class="hint ui-label">{item.hint}</span>
           {/if}
           {#if switches && item.checked !== undefined && !item.radio}
@@ -414,6 +431,10 @@
   .label {
     font-weight: 400;
   }
+
+  /* A row that opens more rows: its chevron at the far edge. */
+  .submenu .label { align-self: stretch; }
+  .more { display: inline-flex; margin-left: auto; color: var(--color-subtle); }
 
   .hint {
     font-size: var(--text-sm);

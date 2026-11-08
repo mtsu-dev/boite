@@ -2,6 +2,7 @@ import type { Project, ThreadSummary } from '@boite/contracts';
 import { projectKey, type ProjectEntry } from './project-view.svelte';
 import { groupWorkingThread, recentPreferences, workingThread } from './recent.svelte';
 import { threadOrder } from './thread-order';
+import { rowAsks } from './status-order';
 
 export type ProjectThreadKind = 'working' | 'done' | 'archived';
 /** The two kinds of row in the fold under the project list: projects with no open conversation, and projects put out of the list. */
@@ -102,7 +103,7 @@ export function projectThreadLists(entry: ProjectEntry, threads: ThreadSummary[]
   working: ThreadSummary[]; attention: ThreadSummary[];
 } {
   const store = entry.machine.store;
-  const sorted = threads.slice().sort(threadOrder(thread => store.subagents(thread.id)));
+  const sorted = threads.slice().sort(threadOrder(thread => rowAsks(store, thread.id)));
   return {
     working: sorted.filter(thread => workingThread(entry.machine.store, thread)),
     attention: recentPreferences.groupWorking

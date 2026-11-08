@@ -6,9 +6,10 @@
   /**
    * The one form every thread notice takes: a mark, a plain first line that
    * says what happened to the user's work, the technical name or the next
-   * step on a quieter second line, the rest behind an "i", then its buttons.
-   * It wraps rather than cuts on a narrow column, and the mark stays on the
-   * first line. `docked` gives it the
+   * step on a quieter second line, the rest behind an "i", then its buttons
+   * right after the words, at the end of the sentence rather than alone at
+   * the far edge. It wraps rather than cuts on a narrow column, and the mark
+   * stays on the first line. `docked` gives it the
    * composer's column, for the notices that stand right above it;
    * `replaces` sizes it for the composer's slot (`Composer`'s `notice`),
    * where it stands when the thread cannot run.
@@ -71,7 +72,8 @@
   [data-tone='live'] .mark { color: var(--color-live); }
   [data-tone='danger'] .mark { color: var(--color-danger); }
   [data-tone='quiet'] .mark { color: var(--color-subtle); }
-  .text { display: flex; flex: 1 1 16em; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+  /* The words take their own width, so the buttons follow them inline; a long sentence takes the row and the buttons wrap under it. */
+  .text { display: flex; flex: 0 1 auto; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
   .line { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
   .line :global(.info-tip), .line :global(button) { flex: none; }
   .title { color: var(--color-foreground); font-weight: 550; }
@@ -79,13 +81,13 @@
   .sub { color: var(--color-subtle); }
   .sub :global(a) { margin-left: 6px; color: inherit; text-decoration: underline; text-underline-offset: 2px; }
   .sub :global(a:hover) { color: var(--color-foreground); }
-  .actions { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: auto; }
+  .actions { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: 6px; }
   .actions :global(button) { gap: 6px; }
   @media (max-width: 720px) {
     .docked { width: calc(100% - 24px); }
     .docked.replaces { width: 100%; margin-bottom: max(10px, env(safe-area-inset-bottom)); }
-    /* The words take the row and the buttons go under them, so the first line is not squeezed into a column. */
-    .text { flex-basis: calc(100% - 30px); }
+    /* A sentence too long for the row wraps and the buttons go under it, so the first line is not squeezed into a column. */
+    .text { max-width: calc(100% - 30px); }
     .actions :global(button) { min-height: var(--touch-target); }
   }
 </style>

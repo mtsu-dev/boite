@@ -11,7 +11,7 @@ export const strings = {
     /** The column's button and its empty row. */
     add: 'Add a contact',
     /** The title bar's button that folds the column on the right. */
-    rail: { show: 'Show contacts', hide: 'Hide contacts', home: 'Contacts home' },
+    rail: { show: 'Show contacts beside the threads', hide: 'Hide contacts beside the threads', home: 'Contacts home' },
     waiting: '{count} waiting',
     link: { connected: 'Connected', connecting: 'Connecting', offline: 'Offline' },
     lastSeen: 'Seen {time}',

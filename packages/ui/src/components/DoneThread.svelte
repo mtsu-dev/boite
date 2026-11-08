@@ -13,10 +13,9 @@
   import { longPress } from '../lib/long-press';
   import { archiveKindOf } from '../lib/project-threads.svelte';
   import MachineIcon from './MachineIcon.svelte';
-  import ThreadState from './ThreadState.svelte';
 
   /**
-   * A done or archived conversation, drawn like a thread row: the provider,
+   * A done or archived conversation, drawn like a thread row and on its column: the provider,
    * the title, when it was put away, and under it the pull request it ended
    * with, which opens on the forge. No menu button: a right click, or a long
    * press on a phone, opens the row's menu. Restoring stays one hover away.
@@ -91,7 +90,8 @@
       <span class="title ui-label">{thread.title}</span>
       <!-- The project shows below, outside the button: named here too, so two same-titled threads read apart. -->
       {#if showProject}<span class="visually-hidden">{projectName(entry.project)}</span>{/if}
-      {#if thread.status !== 'idle'}<ThreadState {thread} {now} away={owner.connection !== 'ready'} />{:else}<time datetime={new Date(archivedTime(thread)).toISOString()} title={exactTime(archivedTime(thread))}>{ago(archivedTime(thread), now)}</time>{/if}
+      <!-- Put away, it carries no live state, a turn still running included: when it was put away. -->
+      <time datetime={new Date(archivedTime(thread)).toISOString()} title={exactTime(archivedTime(thread))}>{ago(archivedTime(thread), now)}</time>
     </span>
   </button>
   {#if meta}
@@ -111,7 +111,10 @@
 
 <style>
   .done-thread {
+    /* The thread row's own measures (ThreadCard.svelte), so both lists share one column and one height. */
+    --pad-x: 8px;
     position: relative;
+    font-size: 13.5px;
     border-radius: var(--radius-md);
     transition: background var(--dur-2) var(--ease-out-quint);
     -webkit-touch-callout: none;
@@ -124,16 +127,16 @@
     align-items: stretch;
     width: 100%;
     height: auto;
-    min-height: var(--row);
-    padding: 8px 10px;
-    gap: 7px;
+    min-height: 32px;
+    padding: 6px var(--pad-x);
+    gap: 4px;
     background: transparent;
   }
   /* The pull request line sits over the row's bottom padding, so the whole card stays one target, as on a thread row. */
-  .meta .row { min-height: calc(var(--row) + 22px); padding: 9px 10px 28px; }
+  .meta .row { min-height: 54px; padding: 6px var(--pad-x) 28px; }
   .row:hover:not(:disabled) { background: transparent; }
   .row:active:not(:disabled) { transform: none; }
-  .headline { display: flex; align-items: center; min-width: 0; min-height: 1lh; gap: 8px; }
+  .headline { display: flex; align-items: center; min-width: 0; min-height: 20px; gap: 8px; }
   .machine { display: inline-flex; align-items: center; flex: none; color: var(--color-muted-foreground); }
   /* Finished work reads a step quieter than the live rows above it, and wakes under the pointer. */
   .title {
@@ -144,7 +147,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--color-muted-foreground);
-    font-weight: 400;
+    font-weight: 500;
     transition: color var(--dur-2) var(--ease-out-quint);
   }
   .done-thread:hover .title, .done-thread:focus-within .title, .done-thread.open .title { color: var(--color-foreground); }
@@ -153,9 +156,9 @@
   .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .metadata {
     position: absolute;
-    left: 10px;
-    right: 10px;
-    bottom: 9px;
+    left: var(--pad-x);
+    right: var(--pad-x);
+    bottom: 8px;
     display: flex;
     align-items: center;
     gap: 9px;
@@ -181,7 +184,7 @@
   .pr.closed { color: var(--color-danger); }
   .pr:hover span, .pr:focus-visible span { text-decoration: underline; text-underline-offset: 3px; }
   /* Restoring takes the time's place under the pointer, the way a thread row shows its menu. */
-  .restore { position: absolute; top: 5px; right: 5px; opacity: 0; background: var(--color-surface-2); color: var(--color-muted-foreground); }
+  .restore { position: absolute; top: calc(16px - var(--control-sm) / 2); right: 3px; opacity: 0; background: var(--color-surface-2); color: var(--color-muted-foreground); }
   .done-thread:hover .restore, .done-thread:focus-within .restore { opacity: 1; }
   .done-thread:hover time, .done-thread:focus-within time,
   .done-thread:hover :global(.when), .done-thread:focus-within :global(.when) { opacity: 0; }

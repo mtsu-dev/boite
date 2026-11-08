@@ -22,7 +22,7 @@ afterEach(async () => {
   store?.detach(); client?.close(); document.body.innerHTML = '';
 });
 
-test('the active tab is the panel selector: every panel and tool listed once, a pick that lands and stays, an open kind gone back to', async () => {
+test('the active tab is the panel selector: the panels in use, every panel behind one row, a pick that lands and stays, an open kind gone back to', async () => {
   client = new FakeClient({ delayMs: 0 });
   store = new Store(); store.attach(client); await store.connect();
   await store.open('t-trace');
@@ -39,11 +39,16 @@ test('the active tab is the panel selector: every panel and tool listed once, a 
   expect(selector().textContent?.trim()).toBe('Files');
   selector().click(); await settle();
   const listed = () => Array.from(document.querySelectorAll<HTMLElement>('[data-testid=panel-add-menu] [data-value]')).map((row) => row.dataset['value']);
-  // Every kind, open or not, once; then the coordination and the way to hide some.
-  for (const card of offeredCards()) expect(listed().filter((id) => id === card.kind)).toHaveLength(1);
-  expect(listed()).toEqual(expect.arrayContaining(['coordination', 'customize']));
-  expect(new Set(listed()).size).toBe(listed().length);
+  // Short: the open Files and the thread's changes, then one row to every panel.
+  expect(listed()).toEqual(['changes', 'files', 'all-panels']);
   expect(query('[data-testid=panel-add-menu] [data-value=files]')?.classList.contains('active')).toBe(true);
+  // "All panels" swaps the rows in place: every kind, open or not, once; the coordination and the way to hide some.
+  query<HTMLButtonElement>('[data-testid=panel-add-menu] [data-value=all-panels]')!.click(); await settle();
+  expect(query('[data-testid=panel-add-menu]')).not.toBeNull();
+  for (const card of offeredCards()) expect(listed().filter((id) => id === card.kind)).toHaveLength(1);
+  expect(listed()).toEqual(expect.arrayContaining(['panels-in-use', 'coordination', 'customize']));
+  expect(new Set(listed()).size).toBe(listed().length);
+  expect(Array.from(document.querySelectorAll('[data-testid=panel-add-menu] .section')).map((one) => one.textContent)).toEqual(['Work', 'Agents', 'Tools']);
 
   // The pick lands: its click does not bubble into the old tab and bring it back.
   query<HTMLButtonElement>('[data-testid=panel-add-menu] [data-value=changes]')!.click(); await settle();
@@ -57,8 +62,10 @@ test('the active tab is the panel selector: every panel and tool listed once, a 
   expect(store.panel.active?.kind).toBe('files');
   expect(document.querySelectorAll('[data-testid=panel-tab][data-kind=files]')).toHaveLength(1);
 
-  // The conversations' coordination opens from the same list.
+  // The list opens short again; the thread links open from the full one.
   selector().click(); await settle();
+  expect(listed()).toContain('all-panels');
+  query<HTMLButtonElement>('[data-testid=panel-add-menu] [data-value=all-panels]')!.click(); await settle();
   query<HTMLButtonElement>('[data-testid=panel-add-menu] [data-value=coordination]')!.click(); await settle();
   expect([coordinationRequest.store === store, coordinationRequest.threadId]).toEqual([true, 't-trace']);
   closeCoordination();
@@ -75,4 +82,19 @@ test('an empty panel keeps the selector as its title', async () => {
   query<HTMLButtonElement>('[data-testid=panel-add]')!.click(); await settle();
   query<HTMLButtonElement>('[data-testid=panel-add-menu] [data-value=changes]')!.click(); await settle();
   expect(store.panel.active?.kind).toBe('changes');
+});
+
+// The Changes title row and its branch and file row were two: the bar now sits in the strip beside the tab.
+test('the Changes bar shares the strip with the tabs: one head row', async () => {
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  await store.open('t-trace');
+  store.panel.closeAll();
+  store.panel.openChanges();
+  app = mount(RightPanel, { target: document.body, props: { store, panel: store.panel, attach: () => ({ destroy() {} }), onexit() {} } });
+  await settle();
+  expect(query('[data-testid=panel-titlebar] [data-testid=changes-refresh]')).not.toBeNull();
+  expect(query('[data-testid=changes-panel] .panel-toolbar')).toBeNull();
+  store.panel.openFiles(); await settle();
+  expect(query('[data-testid=changes-refresh]')).toBeNull();
 });

@@ -56,6 +56,9 @@ test('Ctrl+J opens the shell of the thread under the chat, hides it again, and i
     if (!store.panelOpen) query<HTMLButtonElement>('[data-testid=panel-toggle]').click();
     await waitFor(() => document.querySelector('[data-testid=panel-add]') !== null);
     query<HTMLButtonElement>('[data-testid=panel-add]').click();
+    // Shown, it is in use and in the short list; hidden, it waits behind "All panels".
+    await waitFor(() => document.querySelector('[data-testid=panel-add-menu] [data-value]') !== null);
+    document.querySelector<HTMLButtonElement>('[data-testid=panel-add-menu] [data-value=all-panels]')?.click();
     await waitFor(() => document.querySelector('[data-testid=panel-add-menu] [data-value=terminal-toggle]') !== null);
     return query<HTMLButtonElement>('[data-testid=panel-add-menu] [data-value=terminal-toggle]');
   };

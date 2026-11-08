@@ -169,7 +169,7 @@ export const strings = {
     coreUrl: 'Core URL',
     token: 'Token',
     connect: 'Connect',
-    warmProcessMinutes: 'Warm process minutes',
+    warmProcessMinutes: 'Keep an agent loaded after its turn, minutes',
     listenOnLan: 'Reachable on the local network',
     listenOnLanHint: 'Lets a phone on the same network reach this computer, from the next start of Boite. A --host or --lan flag wins over it.',
     agentCpuCapPercent: 'CPU cap, %',

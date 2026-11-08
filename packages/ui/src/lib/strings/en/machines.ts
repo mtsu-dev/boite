@@ -33,7 +33,7 @@ export const strings = {
     browserOriginsHint: 'Machines of the group, and the addresses they are served at, are allowed on their own. Add here only a page served by something outside the group. One exact http(s) origin per line.',
     you: '{machine} (you)', youTag: '(you)',
     pick: 'Machine whose settings these are',
-    home: 'Settings', homeNone: 'Each machine its own', homeBadge: 'Settings',
+    home: 'Settings', homeNone: 'Not shared', homeBadge: 'Settings',
     homeHint: 'The other machines follow the settings of this one: conversations, resources, keyboard and brain switches. A setting changed on another machine stays there and gets a star.',
     homeOlder: 'Update Boite on {machines} to follow the settings machine.',
     bots: 'Bots', botsBadge: 'Bots',

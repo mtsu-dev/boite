@@ -1,11 +1,12 @@
 <script lang="ts">
-  import { Check, CircleAlert, CloudOff, GitPullRequest, Radar } from '@lucide/svelte';
+  import { CloudOff } from '@lucide/svelte';
   import { pullRequestWatchWaits, type ThreadSummary } from '@boite/contracts';
   import { backgroundLabel } from '../lib/background';
   import { secondClock } from '../lib/clock.svelte';
   import { ago, elapsed, exactTime } from '../lib/format';
   import { fill, strings } from '../lib/strings';
   import { threadState } from '../lib/thread-state';
+  import { stateForm } from '../lib/status-order';
   import type { WorkingChildren } from '../lib/thread-rows';
 
   /**
@@ -15,21 +16,22 @@
    * `away`: its machine is not connected, so a turn it last saw at work may have
    * ended long ago. The row says so instead of spinning and counting time.
    * One grammar in every list (rows, Recent, the palette, the phone,
-   * Activity): the user's turn and a failure as words, work as a still ring
-   * and its word, news as a check and its word. Lists hold many rows at work:
-   * their marks stay still, the one live spinner is the open thread's. How long work has run lives
-   * in the thread and in the tooltip, never as a clock on the row.
-   * `mark`: the desktop list's narrow end, where the title gets the width:
-   * the user's turn is a dot and work its ring alone, their words in the
-   * tooltip and the accessible name. Only this file draws that dot; where
-   * the word shows (a phone's row), it stays grey beside the amber dot.
+   * Activity), from `stateForm`: the user's turn is an amber dot and a failure
+   * a red one, with their word only where the row has room (`mark` off); work
+   * is a still grey ring alone; news and rest show the time. Lists hold many
+   * rows at work: their marks stay still, the one live spinner is the open
+   * thread's. How long work has run lives in the thread and the tooltip.
+   * `mark`: the desktop list's narrow end, where every mark stands alone, its
+   * word in the tooltip and the accessible name.
+   * An archived thread carries no live state: its time alone.
    */
-  let { thread, now, subagents = null, away = false, mark = false }: { thread: Pick<ThreadSummary, 'status' | 'unread' | 'runningSince' | 'requestSince' | 'backgroundWork' | 'openQuestions' | 'lastUserMessageAt' | 'createdAt'> & Partial<Pick<ThreadSummary, 'backgroundWait' | 'pullRequestWatches'>>; now: number; subagents?: WorkingChildren | null; away?: boolean; mark?: boolean } = $props();
+  let { thread, now, subagents = null, away = false, mark = false }: { thread: Pick<ThreadSummary, 'status' | 'unread' | 'runningSince' | 'requestSince' | 'backgroundWork' | 'openQuestions' | 'lastUserMessageAt' | 'createdAt'> & Partial<Pick<ThreadSummary, 'backgroundWait' | 'pullRequestWatches' | 'archived'>>; now: number; subagents?: WorkingChildren | null; away?: boolean; mark?: boolean } = $props();
 
   function earliest(a: number | null | undefined, b: number | null | undefined): number | null {
     return a == null ? b ?? null : b == null ? a : Math.min(a, b);
   }
-  let kind = $derived(threadState(thread, subagents));
+  let kind = $derived(thread.archived ? null : threadState(thread, subagents));
+  let form = $derived(stateForm(kind));
   /** A delegated agent's wait on its own background work: what it waits for, or what ended without waking it. */
   let wait = $derived(thread.backgroundWait ?? null);
   /** The states that count time: the turn, its sub-agents, or the work it left running. */
@@ -54,8 +56,8 @@
     : live ? thread.backgroundWork?.since ?? (wait?.state === 'waiting' ? wait.since : null) : null);
   /** Counting time reads the second clock, only while the agent works: the list's clock ticks far slower. */
   let spent = $derived(since === null ? null : elapsed(Math.max(secondClock.now, now) - since));
-  /** The desktop list's end draws the user's turn and work as their mark alone. */
-  let bare = $derived(mark && (live || kind === 'waiting'));
+  /** The word shows only where the user must act and the row has room for it. */
+  let bare = $derived(mark || form === 'mark');
   let label = $derived.by(() => {
     if (kind === null) return null;
     if (kind === 'working') return spent === null ? strings.sidebar.state.working : fill(strings.sidebar.state.workingFor, { elapsed: spent });
@@ -86,18 +88,15 @@
   <span class="when state unreachable" data-testid="thread-state" data-state="unreachable" title={was} aria-label={was}>
     <CloudOff size={11} aria-hidden="true" /><span class="ui-label">{strings.sidebar.state.unreachable}</span>
   </span>
-{:else if kind === null}
-  <span class="when" title={exactTime(thread.lastUserMessageAt ?? thread.createdAt)}>{ago(thread.lastUserMessageAt ?? thread.createdAt, now)}</span>
-{:else}
+{:else if form === null}
+  <!-- News marks nothing: the title's full ink says it, the time stays. -->
+  <span class="when" data-testid={kind === 'done' ? 'thread-state' : undefined} data-state={kind ?? undefined} title={kind === 'done' ? `${strings.sidebar.state.done}\n${exactTime(thread.lastUserMessageAt ?? thread.createdAt)}` : exactTime(thread.lastUserMessageAt ?? thread.createdAt)}>{ago(thread.lastUserMessageAt ?? thread.createdAt, now)}</span>
+{:else if kind !== null}
   <!-- A mark alone stands for its word: an image named by it. -->
   <span class="when state {kind}" class:mark={bare} data-testid="thread-state" data-state={kind} title={label} aria-label={label} role={bare ? 'img' : undefined}>
-    {#if kind === 'working' || kind === 'delegating' || kind === 'background'}<span class="work-ring" aria-hidden="true"></span>
-    {:else if kind === 'monitoring'}<Radar size={11} aria-hidden="true" />
-    {:else if kind === 'watching'}<GitPullRequest size={11} aria-hidden="true" />
-    {:else if kind === 'interrupted'}<CircleAlert size={11} aria-hidden="true" />
-    {:else if kind === 'done'}<Check size={12} aria-hidden="true" />
-    {:else if kind === 'waiting'}<span class="needs-dot" aria-hidden="true"></span>{/if}
-    {#if !bare}<span class="ui-label" data-testid={kind === 'delegating' ? 'thread-state-text' : undefined}>{strings.sidebar.state[kind]}</span>{/if}
+    {#if form === 'mark'}<span class="work-ring" aria-hidden="true"></span>
+    {:else}<span class="dot" class:needs-dot={kind === 'waiting'} aria-hidden="true"></span>{/if}
+    {#if !bare}<span class="ui-label">{strings.sidebar.state[kind]}</span>{/if}
   </span>
 {/if}
 
@@ -114,43 +113,16 @@
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    font-weight: 500;
-  }
-  /* The words of a state that asks for the user read bold; work reads as its quiet word beside the accent ring. */
-  .waiting, .error, .interrupted, .done { font-weight: 600; }
-  .working {
     color: var(--color-muted-foreground);
   }
-  /* Work: a still accent ring, the size of the user's turn's dot; the turn's own work solid, what it left running dashed. */
-  .work-ring { flex: none; box-sizing: border-box; width: 8px; height: 8px; margin: 0 1.5px; border: 1.5px solid var(--color-accent); border-radius: var(--radius-full); }
-  .delegating .work-ring, .background .work-ring { border-style: dashed; }
-  /* Amber is the user's turn's mark, not its words: the dot carries it, the word beside it on a phone stays grey. */
-  .waiting {
-    color: var(--color-muted-foreground);
-  }
-  /* The user's turn: the one amber dot, the size of the ring beside work, alone on the desktop list. */
-  .needs-dot { width: 7px; height: 7px; margin: 0 2px; border-radius: var(--radius-full); background: var(--color-live); }
-  .error {
-    color: var(--color-danger);
-  }
-  /* Its background work ended without waking it: it stopped short and needs a resume. */
-  .interrupted {
-    color: var(--color-danger);
-  }
-  .done {
-    color: var(--color-success);
-  }
-  .queued,
-  .unreachable {
-    color: var(--color-muted-foreground);
-  }
-  /* The turn ended, the agent did not: same colour as working, a slower sign. */
-  .delegating,
-  .monitoring,
-  .background,
-  .watching {
-    color: var(--color-muted-foreground);
-  }
-  .delegating :global(svg), .monitoring :global(svg), .background :global(svg), .watching :global(svg) { color: var(--color-accent); }
+  /* A word shows only when the user must act: it reads bold, in the row's grey; the dot carries the colour. */
+  .waiting, .error, .interrupted { font-weight: 600; }
+  /* Every mark is 8 px. Work: a still grey ring, solid for the turn, dashed for what it left running, dotted in the queue. */
+  .work-ring { flex: none; box-sizing: border-box; width: 8px; height: 8px; border: 1.5px solid var(--color-muted-foreground); border-radius: var(--radius-full); }
+  .delegating .work-ring, .background .work-ring, .monitoring .work-ring, .watching .work-ring { border-style: dashed; }
+  .queued .work-ring { border-style: dotted; }
+  /* The two colours of every list: amber for the user's turn, red for a failure. */
+  .dot { flex: none; width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--color-live); }
+  .error .dot, .interrupted .dot { background: var(--color-danger); }
   .state :global(svg) { flex: none; }
 </style>

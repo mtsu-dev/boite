@@ -8,34 +8,30 @@
   import { agentDirectory, followAgentDirectories } from '../lib/agent-directory.svelte';
   import { agentRows, waitingOn, type AgentRowData } from '../lib/agents.svelte';
   import { watchTeams, type TeamRow } from '../lib/teams.svelte';
-  import { contactsRail, contactsShown } from '../lib/contacts-rail.svelte';
+  import { contactsShown } from '../lib/contacts-rail.svelte';
   import { machineFilter } from '../lib/machine-filter.svelte';
   import { projectView } from '../lib/project-view.svelte';
   import { botEngine, newBot, newTeam } from '../lib/agents-view.svelte';
   import { separator } from '../lib/menu';
   import { contextMenu } from '../lib/context-menu.svelte';
-  import { work } from '../lib/work-prefs.svelte';
-  import { controlMenu } from '../lib/controls';
   import { dragWindow } from '../lib/window-drag';
   import { isMac } from '../lib/keybindings';
   import { railBotState, threadsNeedingYou, type RailBotState } from '../lib/app-rail';
   import { inbox } from '../lib/inbox.svelte';
   import AgentAvatar from './agents/AgentAvatar.svelte';
   import MachineStatus from './MachineStatus.svelte';
-  import LimitsGlance from './LimitsGlance.svelte';
-  import { quotaReader, shownQuotas } from '../lib/quota-reader.svelte';
-  import { lowestLimit } from '../lib/limits-meter';
-  import { untrack } from 'svelte';
   import WhipButton from './WhipButton.svelte';
   import Deferred, { parts } from './Deferred.svelte';
 
   /**
-   * The column down the window's left edge, on a desktop: where to be (the
-   * threads, Activity with what asks, the contacts), then one picture per bot of every
-   * machine and the teams, then one menu for the machines and the limits,
-   * and Settings. It
-   * stands on the window's chrome from top to bottom; a phone keeps its own
-   * navigation and never draws it.
+   * The column down the window's left edge, on a desktop, the same in every
+   * view: where to be (the threads, Activity with what asks), then one picture
+   * per bot of every machine and the teams, then the machines when there is
+   * more than one, and Settings. One edge pip marks the open place; a bot's
+   * news is a badge on its picture. Contacts is the Bots column's other side
+   * (agents/SideHead.svelte), its own place only with Bots off; the limits are a line at the foot of the list column
+   * (QuotaLine.svelte). It stands on the window's chrome from top to bottom;
+   * a phone keeps its own navigation and never draws it.
    */
   let { store }: { store: Store } = $props();
 
@@ -70,8 +66,12 @@
   });
   const openTeam = $derived(store.page === 'agents' ? store.openThread?.teamId ?? null : null);
   const onList = $derived(store.page === 'chat' || store.page === 'home');
-  const onThreads = $derived(onList && !inbox.open);
-  const onActivity = $derived(onList && inbox.open);
+  // The Contacts page is the Bots column's other side, not the threads: neither of these is open there.
+  const onThreads = $derived(store.page === 'chat' && !inbox.open);
+  const onActivity = $derived(store.page === 'chat' && inbox.open);
+  /** With Bots off there is no Bots column to switch: Contacts keeps its own place where the bots stand. */
+  const contactsAlone = $derived(contactsOn && !botsOn);
+  const onContacts = $derived(store.page === 'home');
 
   type Bot = { machine: Machine; row: AgentRowData };
   function stateOf({ machine, row }: Bot): RailBotState {
@@ -101,26 +101,19 @@
     return team.members.map(member => profiles.find(profile => profile.id === member.botId) ?? { id: member.botId, name: member.name, avatar: '' });
   }
 
-  /** The thread list, or the Bots page left for it. */
+  /** The thread list, or the Bots page or its Contacts side left for it. */
   function showThreads() {
     inbox.open = false;
-    if (!onList) store.showChat();
+    if (store.page !== 'chat') store.showChat();
     store.sidebarCollapsed = false;
   }
   /** Activity takes the main card, as the phone's tab takes the screen: the open thread steps back to a draft, its panels with it. */
   function showActivity() {
     inbox.open = true;
+    // The Contacts page holds the main card: Activity takes it back.
+    if (store.page === 'home') store.showChat();
     if (!onList || store.openThread) store.startDraft(undefined, { refresh: false });
     store.sidebarCollapsed = false;
-  }
-  /** The contacts column the title bar folded before: drawn beside the thread list, so it brings the list back first. */
-  function showContacts() {
-    if (!onList) {
-      store.showChat();
-      if (contactsRail.folded) contactsRail.toggle();
-      return;
-    }
-    contactsRail.toggle();
   }
   function openTeamChat({ machine, team }: TeamRow) {
     workspace.showAgents(machine.store);
@@ -142,23 +135,6 @@
     machineFilter.set(id);
   }
 
-  let foot = $state<HTMLElement>();
-  let glance = $state<ReturnType<typeof LimitsGlance>>();
-  /** The glance opens beside the one button it was picked from. */
-  const footButton = (): HTMLElement | null => foot?.querySelector<HTMLElement>('[data-testid=machine-status]') ?? null;
-  const showLimits = () => void glance?.open();
-  let limits = $derived(work.shows('sidebar.limits'));
-  /** The gauge's number, from the reading every limits view shares: kept from the last run, read once when none is, kept current. */
-  const quotas = $derived(quotaReader(store.endpointUrl ?? 'here', store.core));
-  const meter = $derived(limits ? lowestLimit(shownQuotas(quotas.rows ?? [], store.accounts, store.providers)) : null);
-  $effect(() => {
-    const client = store.client;
-    const current = quotas;
-    if (!limits || !client || store.connection !== 'ready') return;
-    const off = client.on('quotas.updated', value => current.accept(value));
-    untrack(() => { if (current.rows === null && !current.loading) void current.read(client, false).catch(() => {}); });
-    return off;
-  });
   /** Settings' shortcut, from the keybindings table: its name card shows it and the button's description reads it. */
   const settingsKey = $derived(store.keyLabel('settings'));
 
@@ -197,20 +173,8 @@
     </button>
     {@render railName(strings.mobile.activity, null, waiting ? waitingLabel : null)}
   </div>
-  {#if contactsOn}
-    {@const open = onList && !contactsRail.folded}
-    <div class="slot">
-      <button type="button" class="rail-button" class:on={open}
-        aria-label={contactsRail.folded ? strings.contacts.rail.show : strings.contacts.rail.hide}
-        aria-expanded={open} data-testid="contacts-toggle" onclick={showContacts}>
-        <Contact size={19} strokeWidth={1.75} />
-        {#if contactsRail.folded && contactsRail.waiting}<span class="dot" data-testid="contacts-toggle-waiting"></span>{/if}
-      </button>
-      {@render railName(contactsRail.folded ? strings.contacts.rail.show : strings.contacts.rail.hide)}
-    </div>
-    <!-- Its toast only: what contacts ask is listed in Activity. -->
-    {#if ContactRequestNotice}<ContactRequestNotice {store} />{/if}
-  {/if}
+  <!-- What contacts ask arrives as a toast; Activity lists it, the Bots list's Contacts side holds the rest. -->
+  {#if contactsOn && ContactRequestNotice}<ContactRequestNotice {store} />{/if}
 
   {#if botsOn}
     <span class="separator" aria-hidden="true"></span>
@@ -219,26 +183,29 @@
         {@const state = stateOf(bot)}
         {@const selected = bot.machine.store === store && openBot === bot.row.profile.id}
         {@const unread = (bot.row.status?.unread ?? 0) > 0}
-        <div class="slot" class:selected class:unread={unread && !selected} role="listitem">
+        <div class="slot" class:selected role="listitem">
           <span class="pip" aria-hidden="true"></span>
-          <button type="button" class="bot" class:dim={state === 'paused'} aria-label={labelOf(bot.row.profile.name, state)}
+          <button type="button" class="bot" class:dim={state === 'paused'} aria-label={unread && !selected ? `${labelOf(bot.row.profile.name, state)}, ${strings.app.rail.unread}` : labelOf(bot.row.profile.name, state)}
             aria-current={selected ? 'page' : undefined} data-testid="rail-bot" data-agent-id={bot.row.profile.id} data-state={state}
             onclick={() => workspace.showAgents(bot.machine.store, bot.row.profile.id)}>
             <AgentAvatar kind="profile" id={bot.row.profile.id} name={bot.row.profile.name} avatar={bot.row.profile.avatar} size={44} squircle={selected} />
             {#if state === 'waiting'}<span class="count">{count(asksOf(bot))}</span>
             {:else if state === 'failed'}<span class="count failed">!</span>
             {:else if state === 'working'}<span class="work" aria-hidden="true"><svg viewBox="0 0 14 14"><circle class="track" cx="7" cy="7" r="5" /></svg></span>{/if}
+            {#if unread && !selected}<span class="news" data-testid="rail-bot-unread" aria-hidden="true"></span>{/if}
           </button>
           {@render railName(bot.row.profile.name, null, several ? bot.machine.label : null)}
         </div>
       {/each}
       {#each teams as row (`${row.machine.id}:${row.team.id}`)}
         {@const selected = row.machine.store === store && openTeam === row.team.id}
-        <div class="slot" class:selected class:unread={!!row.chat?.unread && !selected} role="listitem">
+        {@const news = !!row.chat?.unread && !selected}
+        <div class="slot" class:selected role="listitem">
           <span class="pip" aria-hidden="true"></span>
-          <button type="button" class="bot team" aria-label={row.team.name} aria-current={selected ? 'page' : undefined}
+          <button type="button" class="bot team" aria-label={news ? `${row.team.name}, ${strings.app.rail.unread}` : row.team.name} aria-current={selected ? 'page' : undefined}
             data-testid="rail-team" data-team-id={row.team.id} onclick={() => openTeamChat(row)}>
             <AgentAvatar kind="team" id={row.team.id} name={row.team.name} members={pictures(row)} size={44} squircle />
+            {#if news}<span class="news" aria-hidden="true"></span>{/if}
           </button>
           {@render railName(row.team.name)}
         </div>
@@ -251,15 +218,23 @@
     </div>
   {/if}
 
+  {#if contactsAlone}
+    <span class="separator" aria-hidden="true"></span>
+    <div class="slot" class:selected={onContacts}>
+      <span class="pip" aria-hidden="true"></span>
+      <button type="button" class="rail-button" class:on={onContacts} aria-current={onContacts ? 'page' : undefined} aria-label={strings.contacts.heading}
+        data-testid="rail-contacts" data-preload-view="home" onclick={() => store.showHome()}><Contact size={19} strokeWidth={1.75} /></button>
+      {@render railName(strings.contacts.heading)}
+    </div>
+  {/if}
+
   <span class="grow"></span>
 
-  <!-- The machines and the limits share one button and its menu; its right click still hides Limits from it. -->
-  <div class="foot" bind:this={foot}>
+  <!-- The machines, once there are two or one is in trouble; the limits are the list column's foot. -->
+  <div class="foot">
     <div class="slot status">
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <span class="control" oncontextmenu={(event) => limits && controlMenu(event, store, 'sidebar.limits')}><MachineStatus {store} filter={machineFilter.shown(machines)} onfilter={pickMachine} limits={limits ? showLimits : undefined} {meter} card={statusName} /></span>
+      <MachineStatus {store} filter={machineFilter.shown(machines)} onfilter={pickMachine} card={statusName} />
     </div>
-    {#if limits}<LimitsGlance bind:this={glance} {store} side="right" anchor={footButton} />{/if}
     <Deferred part={parts.UpdatesNotice} quiet>{#snippet children(UpdatesNotice)}<UpdatesNotice />{/snippet}</Deferred>
     {#if experimentOn('whip')}<WhipButton />{/if}
     <div class="slot" class:selected={store.page === 'settings'}>
@@ -305,7 +280,6 @@
     transform: translateY(-50%);
     transition: height var(--dur-2) var(--ease-out-quint);
   }
-  .slot.unread .pip { height: 8px; }
   .slot:hover .pip { height: 18px; }
   .slot.selected .pip { height: 36px; }
 
@@ -391,9 +365,9 @@
     line-height: 1;
   }
   .count.failed { background: var(--color-danger); color: var(--color-on-danger); }
-  /* Grey: the rail's amber is the Activity count alone, which already counts what contacts ask. */
-  .dot { position: absolute; right: 8px; top: 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--color-muted-foreground); box-shadow: 0 0 0 2px var(--color-surface-2); }
-  /* At work: a still accent ring, as on the list rows; the open thread keeps the one live spinner. */
+  /* News on a bot: a badge top right of its picture, in full ink and cut out of the chrome; the edge pip is the open place alone. */
+  .news { position: absolute; right: 0; top: 0; width: 10px; height: 10px; border-radius: 50%; background: var(--color-foreground); box-shadow: 0 0 0 3px var(--color-frame); }
+  /* At work: a still grey ring, as on the list rows; the open thread keeps the one live spinner. */
   .work {
     position: absolute;
     right: -3px;
@@ -407,13 +381,12 @@
   }
   .work svg { width: 14px; height: 14px; overflow: visible; }
   .work circle { fill: none; stroke-width: 2; }
-  .work .track { stroke: var(--color-accent); }
+  .work .track { stroke: var(--color-muted-foreground); }
 
   .foot { display: flex; flex-direction: column; align-items: center; gap: 4px; align-self: stretch; }
   /* Settings marks itself selected like the buttons above, but its hover stays quiet like its neighbours. */
   .foot .slot:not(.selected):hover .pip { height: 0; }
   .foot :global(button.icon.on) { background: var(--color-surface-3); color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-edge); border-radius: var(--radius-rail); }
-  .control { display: contents; }
   .foot :global(button.icon) { width: var(--control-touch); height: var(--control-touch); color: var(--color-subtle); }
   .foot :global(button.icon:hover:not(:disabled)) { color: var(--color-foreground); }
   .foot :global(.machines .trigger) { width: var(--control-touch); height: var(--control-touch); }

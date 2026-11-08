@@ -36,3 +36,16 @@ test('a box with nothing to add and no worktree draws no "+"', () => {
   flushSync();
   expect(document.querySelector('[data-testid=composer-options]')).toBeNull();
 });
+
+test('a bot\'s thread reaches its context details from the "+" while the row draws no number', () => {
+  const oncontext = vi.fn();
+  mounted = mount(ComposerOptions, { target: document.body, props: { worktree: null, canAttach: false, onattach() {}, onworktree() {}, context: 'Context 42% used', oncontext } });
+  flushSync();
+  document.querySelector<HTMLButtonElement>('[data-testid=composer-options]')!.click();
+  flushSync();
+  expect(items()).toEqual(['composer-context']);
+  expect(document.querySelector('[data-testid=composer-context]')!.textContent).toContain('Context 42% used');
+  document.querySelector<HTMLButtonElement>('[data-testid=composer-context]')!.click();
+  flushSync();
+  expect(oncontext).toHaveBeenCalledOnce();
+});

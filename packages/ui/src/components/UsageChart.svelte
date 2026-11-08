@@ -205,6 +205,8 @@
     font-size: var(--text-sm);
     pointer-events: none;
     animation: fade var(--dur-1) var(--ease-out-quint);
+    /* Placed under the pointer: reduced motion's blanket transition would slide it there. */
+    transition-property: none;
   }
   .tooltip strong { display: block; margin-bottom: 6px; font-weight: 600; }
   ul { display: grid; gap: 3px; margin: 0; padding: 0; list-style: none; }

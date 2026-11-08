@@ -8,14 +8,15 @@
   import { pinnedQuotas } from '../lib/pinned-quotas.svelte';
   import Deferred, { parts } from './Deferred.svelte';
   import ResizeHandle from './ResizeHandle.svelte';
+  import QuotaLine from './QuotaLine.svelte';
 
   /**
    * The column right of the app rail, for the thread list and the Bots list
    * alike: one width the user drags, one fold from the title bar, the head on
    * top, an optional subhead that stays put (the Bots search) and the rows in
    * one scroll. On a desktop it reaches the window's top, its head level with
-   * the main column's bar; the limits, the machines and Settings live on the
-   * app rail.
+   * the main column's bar, and its foot holds the limits line, the same under
+   * every list; the machines and Settings live on the app rail.
    *
    * `drawer` is the thread list's phone form, a sheet over the chat; the Agents
    * list is a whole screen on a phone and stays in the flow.
@@ -113,6 +114,8 @@
   {#if (store.page === 'chat' || store.page === 'agents') && dockVisible && experimentOn('pinned-quotas') && pinnedQuotas.current.pinned && pinnedQuotas.wantsDock(store)}
     <Deferred part={parts.PinnedQuota} quiet>{#snippet children(PinnedQuota)}<PinnedQuota {store} dock />{/snippet}</Deferred>
   {/if}
+  <!-- A phone reaches the limits from its Settings tab. -->
+  {#if !phone.current}<QuotaLine {store} />{/if}
   <div class="resize">
     <ResizeHandle
       orientation="vertical"

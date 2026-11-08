@@ -10,6 +10,9 @@
   import DiffView, { SPLIT_MIN_WIDTH } from './DiffView.svelte';
   import Menu from './Menu.svelte';
   import DiffOptions from './DiffOptions.svelte';
+  import { panelTools } from '../lib/panel-tools.svelte';
+  import { shortPaths } from '../lib/short-paths';
+  import { innerWidth } from 'svelte/reactivity/window';
 
   let { store, surface, panel }: { store: Store; surface: Surface; panel: BoundPanel } = $props();
 
@@ -18,7 +21,8 @@
   let loading = $state(false);
 
   let threadId = $derived(store.openThread?.id ?? null);
-  let selected = $derived(surface.path ?? null);
+  // Its bar is drawn in the panel's strip, which can read it once more after the tab is gone.
+  let selected = $derived((surface as Surface | null)?.path ?? null);
   /** Every turn that ended, so the list is read again the moment the agent stops writing. */
   let finished = $derived(store.openThread?.turns.filter((turn) => turn.finishedAt !== null).length ?? 0);
 
@@ -94,9 +98,11 @@
   const TONES: Record<GitChange['status'], NonNullable<MenuItem['status']>['tone']> = {
     added: 'success', copied: 'success', modified: 'warning', deleted: 'danger', conflict: 'danger', renamed: 'neutral', untracked: 'neutral'
   };
+  /** Each file by the shortest tail of its path no other changed file shares: two `+page.svelte` read apart. */
+  let names = $derived(shortPaths(changes.map((change) => change.path)));
   let files = $derived<MenuItem[]>(changes.map((change) => ({
     id: change.path,
-    label: base(change.path),
+    label: names.get(change.path) ?? base(change.path),
     title: change.path,
     hint: ((lines) => [lines.added ? `+${lines.added}` : '', lines.removed ? `-${lines.removed}` : ''].filter(Boolean).join(' ') || undefined)(countsOf(change)),
     status: { tone: TONES[change.status], label: strings.changes.status[change.status] },
@@ -127,6 +133,27 @@
   function back(): void {
     panel.update(surface.id, { path: undefined });
   }
+
+  // The bar goes up into the panel's strip, beside the tab that names it: one head row.
+  const tools = panelTools();
+  let phone = $derived((innerWidth.current ?? 1024) <= 720);
+  /** Reading one file in a panel this narrow, the branch gives its room to the file's name. */
+  let squeezed = $derived(oneFile && width > 0 && width < (tools ? 720 : 480));
+  $effect(() => {
+    if (!tools) return;
+    tools.bar = bar;
+    return () => {
+      if (tools.bar === bar) tools.bar = null;
+      tools.compact = false;
+      tools.nameless = false;
+    };
+  });
+  $effect(() => {
+    if (!tools) return;
+    tools.compact = phone;
+    // The file being read names the panel well enough.
+    tools.nameless = phone && oneFile;
+  });
 
   // On mount, and again on every turn that ends: the working tree is what the
   // agent is changing, so the list is stale the moment a turn finishes.
@@ -182,9 +209,9 @@
   });
 </script>
 
-<div class="changes-surface" class:narrow class:stacked class:reading={oneFile} class:has-file={selected !== null} data-testid="changes-panel" bind:clientWidth={width}>
+{#snippet bar()}
   <!-- One bar: the way back and the file choice when one file fills the panel, the branch, the count or the file's lines, the diff's switches. -->
-  <div class="panel-toolbar">
+  <div class="panel-toolbar head" class:reading={oneFile} class:squeezed class:in-strip={!!tools} class:phone>
     {#if oneFile}
       <button type="button" class="ghost small icon back" data-testid="changes-back" title={strings.changes.backToList} aria-label={strings.changes.backToList} onclick={back}>
         <ChevronLeft size={16} strokeWidth={1.75} />
@@ -208,7 +235,7 @@
       <span class="picker">
         <Menu items={files} onpick={pickPath} placement="bottom" variant="text" label={picked.path} testid="changes-pager">
           <span class="dot" data-status={picked.status} aria-hidden="true"></span>
-          <span class="file-name ui-label">{base(picked.path)}</span>
+          <span class="file-name ui-label">{names.get(picked.path) ?? base(picked.path)}</span>
           <ChevronDown size={13} strokeWidth={1.75} />
         </Menu>
       </span>
@@ -232,7 +259,7 @@
     {#if textDiff}<DiffOptions split={codeWidth >= SPLIT_MIN_WIDTH} />{/if}
     <button
       type="button"
-      class="ghost small icon"
+      class="ghost small icon refresh"
       title={strings.common.refresh}
       aria-label={strings.common.refresh}
       data-testid="changes-refresh"
@@ -242,6 +269,10 @@
       <RefreshCw size={13} strokeWidth={1.75} />
     </button>
   </div>
+{/snippet}
+
+<div class="changes-surface" class:narrow class:stacked class:reading={oneFile} class:has-file={selected !== null} data-testid="changes-panel" bind:clientWidth={width}>
+  {#if !tools}{@render bar()}{/if}
 
   <div class="split">
     <div class="list" role="listbox" aria-label={strings.rightPanel.changes} tabindex="-1">
@@ -387,7 +418,7 @@
   .stacked.reading .list { display: none; }
   .stacked.reading .detail { display: block; border-top: none; }
   /* Beside a desktop chat the chip is the way to the other files: the arrow back is a phone's. */
-  @media (min-width: 721px) { .reading .back { display: none; } }
+  @media (min-width: 721px) { .head.reading .back { display: none; } }
 
   /* The back arrow pulls into the bar's edge so its glyph lines up with the rows under it. */
   .back { flex: none; margin-left: -6px; }
@@ -396,11 +427,16 @@
   .picker :global(.menu), .picker :global(.trigger) { min-width: 0; max-width: 100%; }
   .picker :global(.trigger) { height: var(--control-sm); }
   .file-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .reading .branch { flex-shrink: 4; }
-  /* A phone's bar has room for the file or the branch, not both: the file being read wins, the list shows the branch. */
-  @container (max-width: 480px) {
-    .reading .branch, .reading .track { display: none; }
-  }
+  .head.reading .branch { flex-shrink: 4; }
+  /* A narrow bar has room for the file or the branch, not both: the file being read wins, the list shows the branch. */
+  .squeezed .branch, .squeezed .track { display: none; }
+  /* In the strip: no bar of its own, it takes the room the tabs leave. */
+  .panel-toolbar.in-strip { flex: 1 1 auto; min-width: 0; min-height: 0; padding: 0 0 0 6px; gap: 6px; border-bottom: none; }
+  /* A phone's strip also holds the way back to the chat: the list's count gives way, its rows count themselves. */
+  .in-strip.phone .total { display: none; }
+  /* Reading on a phone, the file's name keeps the room: its lines are in the file menu's rows, and the list's refresh is one tap back. */
+  .in-strip.phone .lines, .in-strip.phone.reading .refresh { display: none; }
+  .in-strip.phone.reading .picker { min-width: min(96px, 100%); }
   .lines { flex: none; display: inline-flex; gap: 6px; }
   .dot { width: 6px; height: 6px; flex: none; border-radius: var(--radius-full); background: var(--mark); }
   .dot[data-status='added'], .dot[data-status='copied'] { --mark: var(--color-success); }

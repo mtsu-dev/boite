@@ -3,7 +3,7 @@ export const strings = {
   devicePanel: {
     cover: 'This agent controls a device on {machine}', coverHint: 'Nothing streams to this device until you show it.',
     show: 'Show', hide: 'Hide', hideHint: 'Stop watching and cover the view again',
-    empty: 'No device is open in this conversation. An agent opens one with boite device open, or open one here.',
+    empty: 'No device is open in this thread. An agent opens one with boite device open, or open one here.',
     onMachine: 'On this machine', add: 'Open a device',
     none: 'No simulators or emulators were found on this machine.',
     starting: 'Starting {name}. This can take a minute.', failed: '{name} did not start',

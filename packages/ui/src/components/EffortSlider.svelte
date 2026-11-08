@@ -312,7 +312,9 @@
 .thumb { position: absolute; top: 50%; width: 28px; height: 28px; transform: translate(-50%, -50%); border-radius: 50%; background: var(--color-reasoning-on); box-shadow: var(--shadow-e1), 0 0 calc(var(--effort-blur) * .8) color-mix(in oklch, var(--color-accent) var(--effort-halo), transparent); z-index: 1; transition: box-shadow var(--dur-3); }
 /* Speed lines: each one crosses the whole popover from right to left, its bright head first. */
 .streaks { position: absolute; inset: 0; z-index: 2; overflow: hidden; border-radius: inherit; pointer-events: none; }
-.streak { position: absolute; left: 0; right: 0; height: var(--thick); transform: translateX(var(--from)); opacity: 0; animation-name: streak; animation-timing-function: cubic-bezier(.3, 0, .7, 1); animation-fill-mode: both; }
+.streak { position: absolute; left: 0; right: 0; height: var(--thick); transform: translateX(var(--from)); opacity: 0; animation-name: streak; animation-timing-function: cubic-bezier(.3, 0, .7, 1); animation-fill-mode: both;
+  /* Placed from script: reduced motion's blanket transition would slide it there. */
+  transition-property: none; }
 .streak::before { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--length); border-radius: 999px; background: linear-gradient(90deg, var(--color-accent), color-mix(in oklch, var(--color-accent) 40%, transparent) 45%, transparent); }
 .strong .streak::before { background: linear-gradient(90deg, color-mix(in oklch, var(--color-accent), var(--color-reasoning-on) 35%), var(--color-accent) 30%, transparent); }
 @keyframes streak {

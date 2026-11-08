@@ -197,7 +197,7 @@ export const strings = {
     questionAsyncHeading: 'Needs you',
     questionAsyncHint: 'The agent keeps working. Without an answer it goes on with a default.',
     questionAnswer: 'Answer',
-    questionAnswered: 'Answered',
+    questionAnswered: 'You answered: {answer}',
     questionCancelled: 'No longer waiting for an answer',
     questionMore: '{count} more',
     questionSkip: 'Skip',

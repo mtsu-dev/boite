@@ -1,18 +1,20 @@
 <script lang="ts">
-  import { Clock, Paperclip, Pencil, X } from '@lucide/svelte';
+  import { Clock, Ellipsis, Paperclip } from '@lucide/svelte';
   import type { Attachment, PreviewReference } from '@boite/contracts';
   import type { OutboxRequest } from '../lib/store/composer.svelte';
+  import type { MenuItem } from '../lib/menu';
   import { fill, strings } from '../lib/strings';
   import InfoTip from './InfoTip.svelte';
+  import Menu from './Menu.svelte';
 
   /**
    * The prompts waiting behind the running turn, one dimmed line each inside
-   * the composer card, over its field: a clock, then its text cut to the line,
-   * then edit and remove. Edit (or a click on the text) takes it back into the
-   * box; Send now, at the end of the last line, sends them all.
+   * the composer card, over its field: a clock, then its text cut to one line
+   * on every width (an ellipsis, never half a word), then one menu that says
+   * why it waits and holds edit and remove. A click on the text also takes it
+   * back into the box; Send now, at the end of the last line, sends them all.
    * One written while the machine was away says so in place of "Queued", or
-   * says why the core refused it, with Send again; the x removes it. Why they
-   * wait is one "i" away.
+   * says why the core refused it, with Send again.
    */
   let {
     queued,
@@ -52,6 +54,14 @@
   } = $props();
 
   let outbox = $derived(queued.length > 0 && queued.every((entry) => entry.request));
+  /** The line's one menu: why the first waits, then edit and remove, each keeping the test id of the button it replaced. */
+  function actions(at: number, start: boolean): MenuItem[] {
+    return [
+      ...at === 0 ? [{ id: 'why', label: why, separator: true }] : [],
+      { id: 'edit', label: strings.composer.queuedEdit, title: strings.composer.editQueued, testid: 'composer-queued-edit', disabled: disabled || start },
+      { id: 'remove', label: strings.composer.queuedRemove, title: strings.composer.removeQueued, testid: 'composer-queued-remove', danger: true, disabled: at < outgoing || start }
+    ];
+  }
   let why = $derived(outbox && starts ? fill(strings.composer.outboxStarts, { machine }) : outbox ? strings.composer.outboxKept : paused ? strings.composer.queuedPaused : strings.composer.queued);
 </script>
 
@@ -74,7 +84,6 @@
         onclick={() => onrestore(at)}>{entry.text || strings.composer.attachAlt}</button>
       {#if entry.attachments.length}<span class="extra"><Paperclip size={12} />{entry.attachments.length}</span>{/if}
       {#if entry.previewReferences?.length}<span class="extra">@{entry.previewReferences.length}</span>{/if}
-      {#if at === 0}<InfoTip text={why} topic={strings.composer.queuedLabel} testid="composer-queued-why" />{/if}
       {#if sendNow && at === queued.length - 1}
         <button type="button" class="ghost small send-now" data-testid="composer-send-now"
           title={sendNow === 'steer' ? strings.composer.sendNowHint : strings.composer.retryQueuedHint}
@@ -83,15 +92,11 @@
       {#if failed !== undefined && onretry}
         <button type="button" class="ghost small" data-testid="composer-outbox-retry" disabled={sending} onclick={() => onretry(at)}><span class="ui-label">{strings.composer.outboxRetry}</span></button>
       {/if}
-      <!-- Answers already given come with no remove: they are not the user's to edit either. -->
+      <!-- Answers already given come with no menu: they are not the user's to edit either, only the "i" says why they wait. -->
       {#if onremove}
-        <button type="button" class="ghost icon tool" data-testid="composer-queued-edit"
-          title={strings.composer.editQueued} aria-label={strings.composer.editQueued}
-          disabled={disabled || !!entry.request?.start} onclick={() => onrestore(at)}><Pencil size={12} /></button>
-        <button type="button" class="ghost icon tool" data-testid="composer-queued-remove"
-          title={strings.composer.removeQueued} aria-label={strings.composer.removeQueued}
-          disabled={at < outgoing || !!entry.request?.start} onclick={() => onremove(at)}><X size={12} /></button>
-      {/if}
+        <span class="tool"><Menu items={actions(at, !!entry.request?.start)} variant="ghost" align="end" label={strings.composer.queuedActions} heading={entry.text || strings.composer.attachAlt} testid="composer-queued-menu"
+          onpick={(id) => { if (id === 'edit') onrestore(at); else if (id === 'remove') onremove(at); }}><Ellipsis size={16} /></Menu></span>
+      {:else if at === 0}<InfoTip text={why} topic={strings.composer.queuedLabel} testid="composer-queued-why" />{/if}
     </div>
   {/each}
 </div>
@@ -99,7 +104,7 @@
 <style>
   /* Dimmed lines inside the card, over its field: no frame and no fill, so the
      decision stays the one card above the text. Each held prompt is cut to one
-     line, its clock before it, edit and remove at its end. */
+     line, its clock before it, its menu at its end. */
   .queued {
     display: flex;
     flex-direction: column;
@@ -155,17 +160,19 @@
 
   .extra { display: inline-flex; align-items: center; gap: 3px; flex: none; font-size: var(--text-xs); }
   .line :global(.info-tip) { flex: none; margin: 0; }
-  .tool { flex: none; width: 22px; height: 22px; border-radius: var(--radius-full); color: inherit; }
-  .tool:hover:not(:disabled) { color: var(--color-foreground); }
+  /* One menu at the line's end, a whole control high: its target is the button, not a 12 px glyph. */
+  .tool { display: flex; flex: none; }
+  .tool :global(.trigger) { width: var(--control-sm); height: var(--control-sm); padding: 0; justify-content: center; border-radius: var(--radius-full); color: inherit; }
+  .tool :global(.trigger:hover), .tool :global(.trigger[aria-expanded='true']) { color: var(--color-foreground); }
   .line .ghost.small { flex: none; height: 22px; padding: 0 6px; font-size: var(--text-xs); }
   /* Send now is the line's one word in ink: it acts on the whole queue. */
   .line .send-now { color: var(--color-foreground); font-weight: 550; }
 
+  /* A phone keeps the same single line, the whole line a target; the text ends in an ellipsis, never half a word on a second line. */
   @media (max-width: 720px) {
     .line { min-height: var(--touch-target); }
-    /* A phone gives the prompt up to two lines rather than cutting it on the first, the whole line a target. */
-    .text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; padding-block: 12px; line-height: 1.3; white-space: normal; overflow-wrap: anywhere; }
-    .tool { width: 32px; height: 32px; }
+    .text { padding-block: 12px; }
+    .tool :global(.trigger) { width: var(--touch-target); height: var(--touch-target); }
     .line .ghost.small { height: 32px; }
   }
   /* A 360 px phone keeps the line for the prompt: the outbox's word goes, the "i" still says why. */

@@ -649,6 +649,8 @@
   .paint { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
   .paint pre { margin: 0; padding: var(--pad) 10px; width: max-content; min-width: 100%;
     font: inherit; line-height: inherit; white-space: pre; tab-size: 2; }
+  /* Follows the editor's scroll: reduced motion's blanket transition would paint each step a frame late. */
+  .code-syntax { transition-property: none; }
   .colored .text { color: transparent; caret-color: var(--color-foreground); }
   .colored .text::selection { color: transparent; background: var(--color-selection); }
 

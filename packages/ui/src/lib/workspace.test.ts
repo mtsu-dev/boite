@@ -850,12 +850,12 @@ test('thread links prefer their owner and preserve explicit machine identity', a
   await w.openThreadLink(a, id, 'm2', other);
   expect(w.active).toBe(b);
   expect(b.openThread?.id).toBe(id);
-  expect(a.error).toBe('No connected machine has this conversation.');
+  expect(a.error).toBe('No connected machine has this thread.');
   a.error = null;
   await w.select(a, id);
   await w.openThreadLink(a, id, null, 'thr_nowhere0000000000');
   expect(w.active).toBe(a);
-  expect(a.error).toBe('No connected machine has this conversation.');
+  expect(a.error).toBe('No connected machine has this thread.');
   // `here` is the reader's machine only, even when another one lists the id.
   await w.openThreadLink(a, id, 'here', other);
   expect(w.active).toBe(a);

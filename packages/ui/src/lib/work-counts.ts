@@ -1,8 +1,9 @@
 import type { ThreadSummary } from '@boite/contracts';
 import type { Store } from './store.svelte';
 import { agentDirectory } from './agent-directory.svelte';
-import { needsUser } from './thread-state';
+import { threadState } from './thread-state';
 import { workingThread } from './recent.svelte';
+import { rowAsks } from './status-order';
 
 /** How many bots are at work, for the phone's Bots tab, and whether one of them waits on the user. */
 export interface WorkCount {
@@ -28,13 +29,15 @@ export function agentsAtWork(stores: readonly Store[]): WorkCount {
       waiting ||= asks;
     };
     const directory = agentDirectory(store);
-    for (const { thread, waiting: asks } of directory.atWork) add(thread, asks || needsUser(thread));
-    const busy = (thread: ThreadSummary) => needsUser(thread) || workingThread(store, thread);
+    // The user's turn as the rows read it: a question or permission the machine holds counts before the summary does.
+    const asking = (thread: ThreadSummary) => threadState(thread, rowAsks(store, thread.id)) === 'waiting';
+    for (const { thread, waiting: asks } of directory.atWork) add(thread, asks || asking(thread));
+    const busy = (thread: ThreadSummary) => asking(thread) || workingThread(store, thread);
     // An agent's own thread at rest can still ask the user (`boite ask`) or keep work in the background.
     for (const thread of store.threads) {
-      if (!thread.archived && thread.agentSessionId && busy(thread) && directory.ownerOf(thread)) add(thread, needsUser(thread));
+      if (!thread.archived && thread.agentSessionId && busy(thread) && directory.ownerOf(thread)) add(thread, asking(thread));
     }
-    for (const { thread } of directory.entrusted) if (busy(thread)) add(thread, needsUser(thread));
+    for (const { thread } of directory.entrusted) if (busy(thread)) add(thread, asking(thread));
   }
   return { count, waiting };
 }

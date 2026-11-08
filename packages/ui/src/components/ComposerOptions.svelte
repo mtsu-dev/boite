@@ -1,14 +1,15 @@
 <script lang="ts">
   // The composer's one "+": every way to add to the message (files, a file
   // mention, a command) and the draft's worktree switch, on both widths. The
-  // model, effort and permission live in the model chip instead.
-  import { AtSign, GitBranch, Paperclip, Plus, SquareSlash } from '@lucide/svelte';
+  // model, effort and permission live in the model chip instead; a bot's
+  // chip opens nothing, so its context's details are a row here.
+  import { AtSign, ChartPie, GitBranch, Paperclip, Plus, SquareSlash } from '@lucide/svelte';
   import { tick } from 'svelte';
   import { Closing } from '../lib/closing.svelte';
   import { floating } from '../lib/floating';
   import { strings } from '../lib/strings';
 
-  let { worktree, canAttach, anchor, onattach, onworktree, onmention, oncommand }: {
+  let { worktree, canAttach, anchor, onattach, onworktree, onmention, oncommand, context = null, oncontext }: {
     /** The draft's worktree switch, or null where a thread keeps its folder. */
     worktree: boolean | null;
     canAttach: boolean;
@@ -18,11 +19,14 @@
     onworktree: () => void;
     onmention?: () => void;
     oncommand?: () => void;
+    /** The context row's words ("Context 59% used"), or null where the model chip's menu holds it. */
+    context?: string | null;
+    oncontext?: () => void;
   } = $props();
   const panel = new Closing();
   let trigger = $state<HTMLButtonElement>();
   let content = $state<HTMLDivElement>();
-  let empty = $derived(!canAttach && !onmention && !oncommand && worktree === null);
+  let empty = $derived(!canAttach && !onmention && !oncommand && worktree === null && context === null);
   function close() { panel.hide(); trigger?.focus({ preventScroll: true }); }
   async function open() {
     panel.show(); await tick();
@@ -61,6 +65,9 @@
       {/if}
       {#if oncommand}
         <button class="row" role="menuitem" data-testid="composer-commands" onclick={() => run(oncommand)}><SquareSlash size={16} strokeWidth={1.75} /><span class="ui-label">{strings.composer.commands}</span></button>
+      {/if}
+      {#if context !== null && oncontext}
+        <button class="row" role="menuitem" data-testid="composer-context" onclick={() => run(oncontext)}><ChartPie size={16} strokeWidth={1.75} /><span class="ui-label">{context}</span></button>
       {/if}
       {#if worktree !== null}
         <button class="row worktree" role="menuitemcheckbox" aria-checked={worktree} data-testid="composer-worktree" title={worktree ? strings.composer.worktreeOn : strings.composer.worktreeOff} onclick={onworktree}><GitBranch size={16} strokeWidth={1.75} /><span class="ui-label">{strings.composer.worktree}</span><span class="switch" class:on={worktree}></span></button>

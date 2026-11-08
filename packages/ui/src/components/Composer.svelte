@@ -73,6 +73,8 @@
   let inputScroll = $state(0);
   let toolbar = $state<ReturnType<typeof ComposerBar> | undefined>(undefined);
   let shell = $state<HTMLDivElement | undefined>(undefined);
+  // The deck's height above the card: a phone's decision gives up as much room so the conversation keeps its share.
+  let deckRoom = $state(0);
   let attachmentStrip = $state<ReturnType<typeof ComposerAttachments> | undefined>();
   let highlightedImage = $state<Attachment | null>(null);
   /** Where ArrowUp stands in this thread's sent prompts, or null outside recall. */
@@ -747,12 +749,12 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="composer-wrap" class:centered class:stopped onkeydowncapture={(event) => {
+<div class="composer-wrap" class:centered class:stopped style:--deck-room="{deckRoom}px" onkeydowncapture={(event) => {
   if (!event.isComposing && event.key === 'Escape' && !mentionOpen && !slashOpen && attachmentStrip?.closePreview()) {
     event.preventDefault(); event.stopPropagation();
   }
 }}>
-  {#if !target}<ComposerStrip {store} {thread} />{/if}
+  {#if !target}<ComposerStrip {store} {thread} bind:height={deckRoom} />{/if}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="composer" class:dictating data-testid="composer" tabindex="-1" bind:this={shell} hidden={stopped} {ondragover} {ondrop} onkeydown={(event) => {
     if (event.target !== event.currentTarget || event.key !== 'Escape') return;
@@ -895,6 +897,8 @@
     white-space: pre-wrap;
     overflow-wrap: break-word;
     color: var(--color-foreground);
+    /* Follows the textarea's scroll: reduced motion's blanket transition would paint each step a frame late. */
+    transition-property: none;
   }
 
   textarea.highlighted { color: transparent; caret-color: var(--color-accent); }

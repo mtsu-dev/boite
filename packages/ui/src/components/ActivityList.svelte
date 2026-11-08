@@ -43,6 +43,11 @@
     if (last && next.some((value, index) => value !== last![index]) && (next[1] || next[2])) inbox.open = false;
     last = next;
   });
+  /** Out of Activity into a fresh draft, as the list's New thread. */
+  function newThread() {
+    inbox.open = false;
+    store.startDraft(undefined, { fresh: true });
+  }
   /** A new thread asked for by its key may land on the draft already behind the page: it leaves the page all the same. */
   function onkeydown(event: KeyboardEvent) {
     if (store.commandForKey(event) === 'new-thread') inbox.open = false;
@@ -57,15 +62,17 @@
     {#if needsCount > 0}<h2 class="section-label" data-testid="activity-needs" data-count={needsCount}>{strings.sidebar.state.waiting}<span class="count">{count(needsCount)}</span></h2>{/if}
     {#if ContactInboxRows && contactsShown(store)}<ContactInboxRows {store} />{/if}
     {#each needs as row (`${row.machine.id}:${row.thread.id}`)}
-      <ThreadCard machine={row.machine} project={row.project} thread={row.thread} {now} compact reason={row.reason} at={row.at} nested={row.nested} />
+      <ThreadCard machine={row.machine} project={row.project} thread={row.thread} {now} compact reason={row.reason} at={row.at} nested={row.nested} verb={row.verb} />
     {/each}
     {#if updates.length > 0}<h2 class="section-label" data-testid="activity-updates">{strings.mobile.feed.updates}</h2>{/if}
     {#each updates as row (`${row.machine.id}:${row.thread.id}`)}
       <ThreadCard machine={row.machine} project={row.project} thread={row.thread} {now} compact reason={row.reason} at={row.at} nested={row.nested} />
     {/each}
     {#if rows.length === 0 && inbox.contacts === 0}
-      <!-- Nothing waits: the app's one empty view, small, with no call to action (the list beside it has New thread). -->
-      <EmptyState line={strings.mobile.emptyActivity} testid="activity-empty" small />
+      <!-- Nothing waits: the app's one empty view, small, with the one thing left to do. -->
+      <EmptyState line={strings.mobile.emptyActivity} testid="activity-empty" small>
+        {#snippet action()}<button type="button" class="primary" data-testid="activity-new-thread" onclick={newThread}>{strings.sidebar.newThread}</button>{/snippet}
+      </EmptyState>
     {/if}
   </div>
 </section>

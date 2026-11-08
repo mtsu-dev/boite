@@ -32,7 +32,7 @@ test('nothing streams before Show; Show watches the picked tab, Hide covers it a
   const frames = () => calls.mock.calls.filter(([method]) => method === 'browser.remoteFrame');
   app = mount(AgentBrowserSurface, { target: document.body, props: { store, threadId: thread } }); await settle();
   // The owner starts on a new tab page, as a browser opens on one.
-  expect(query('agent-browser-start')!.textContent).toMatch(/Open a page in this conversation’s browser on .+/);
+  expect(query('agent-browser-start')!.textContent).toMatch(/Open a page in this thread’s browser on .+/);
 
   const docs = await open('https://example.com/docs');
   const shop = await open('https://shop.example/cart'); await settle();

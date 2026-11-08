@@ -51,6 +51,9 @@ export function floating(node: HTMLElement, options: { anchor: () => HTMLElement
   node.style.position = 'fixed';
   node.style.margin = '0';
   node.style.inset = 'auto';
+  // Placement is set, never animated: a stylesheet's `transition: all` (reduced
+  // motion's 0.01ms included) would let the first measure read the old padding.
+  node.style.transitionProperty = 'none';
   node.showPopover?.();
   const gap = 6;
   const margin = 12;
@@ -99,7 +102,8 @@ export function floating(node: HTMLElement, options: { anchor: () => HTMLElement
     node.style.left = `${Math.max(margin, Math.min(left, width - node.offsetWidth - margin))}px`;
   }
   const observer = new ResizeObserver(place);
-  observer.observe(node);
+  // The border box: a sheet's padding changes its height without touching its content box.
+  observer.observe(node, { box: 'border-box' });
   const anchor = options.anchor();
   if (anchor) observer.observe(anchor);
   anchor?.addEventListener('animationend', place);

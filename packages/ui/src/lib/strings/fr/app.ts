@@ -22,8 +22,8 @@ export const fr: Translation = {
       botFailed: '{name} a échoué',
       botWorking: '{name} travaille',
       botPaused: '{name} est en pause',
-      utilities: 'Limites de compte et machines',
-      /** The Limits gauge's card (MachineStatus.svelte): the least left, the window and the account it is on. */
+      unread: 'nouvelles réponses',
+      /** The list foot's limits line, in its tooltip (QuotaLine.svelte): the least left, the window and the account it is on. */
       limitsLeft: '{percent} % restant : {window}, {account}',
     }
   }

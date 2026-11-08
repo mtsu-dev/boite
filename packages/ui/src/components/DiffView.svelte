@@ -269,7 +269,7 @@
     user-select: none;
   }
 
-  /* Code wraps at every width, so no line is ever cut at the edge. A wrapped
+  /* Code wraps beside a desktop chat, so no line is ever cut at the edge. A wrapped
      line hangs 2ch in under its first, and only the first carries a number,
      so a continuation never reads as a line of its own. */
   .text {
@@ -313,9 +313,14 @@
   }
 
   .row.gap .text { text-indent: 0; }
-  /* A phone's column: a narrower number column leaves the code its width. */
+  /* A phone's column: a narrower number column leaves the code its width.
+     Code keeps its lines whole and the rows scroll sideways together: a line
+     broken mid-word at 360 px read as two. Every row is as wide as the widest,
+     so a changed line's tint runs to the end of the scroll. */
   @media (max-width: 720px) {
     .num { width: 28px; padding-right: 6px; }
     .gutter { width: 12px; }
+    .rows { display: grid; grid-template-columns: minmax(100%, max-content); overflow-x: auto; }
+    .text { flex: 1 0 auto; white-space: pre; overflow-wrap: normal; text-indent: 0; padding-left: 0; }
   }
 </style>

@@ -8,7 +8,7 @@ vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
 test('the composer wears the context meter, a compaction is a divider, and a turn moves the meter', async ({ app: _app }) => {
   await waitFor(() => store.openThread?.id === 't-descriptors');
 
-  // 31k of 200k, just compacted: under half full, the ring leaves the bar for
+  // 31k of 200k, just compacted: under the threshold, the number leaves the bar for
   // the model chip's menu, behind its More row, where it reads 16 percent; the divider says what went.
   await waitFor(() => document.querySelector('[data-testid=composer-picker]') !== null);
   expect(document.querySelector('[data-testid=composer] .bar [data-testid=context-meter]')).toBeNull();
@@ -18,8 +18,10 @@ test('the composer wears the context meter, a compaction is a divider, and a tur
   await waitFor(() => document.querySelector('[data-testid=context-meter]') !== null);
   const meter = query('[data-testid=context-meter]');
   expect(meter.closest('[data-testid=composer]')).not.toBeNull();
-  // A ring and its percent, never a bare disc.
-  expect(query('[data-testid=context-trigger]').textContent?.trim()).toBe('16%');
+  // The number with its measure, named on hover: no arc that reads as a spinner.
+  expect(query('[data-testid=context-trigger]').textContent?.trim()).toBe('16% context');
+  expect(query('[data-testid=context-trigger]').title).toBe('Context 16% used');
+  expect(query('[data-testid=context-trigger]').querySelector('circle')).toBeNull();
   expect(meter.dataset.percent).toBe('16');
   expect(meter.dataset.level).toBe('low');
   query<HTMLButtonElement>('[data-testid=context-trigger]').click();
@@ -38,9 +40,19 @@ test('the composer wears the context meter, a compaction is a divider, and a tur
   // 31_000 + 600 + 13 * 4 = 31_652 of 200_000: still 16 percent, the tooltip moved.
   expect(query('[data-testid=context-meter]').dataset.percent).toBe('16');
 
-  // A thread whose agent never reported shows an empty ring in the menu, never a dash.
+  // From 70 percent the number stands in the bar beside the chip; at 69 the row shows nothing there.
   query<HTMLButtonElement>('[data-testid=composer-picker]').click();
   await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') === null);
+  const bar = () => document.querySelector<HTMLElement>('[data-testid=composer] .bar [data-testid=context-meter]');
+  store.openThread!.context = { ...store.openThread!.context!, tokens: 140_000, window: 200_000 };
+  await waitFor(() => bar() !== null);
+  expect(bar()!.textContent?.trim()).toBe('70% context');
+  expect(bar()!.querySelector('[data-testid=context-trigger]')!.getAttribute('aria-label')).toContain('Context 70% used');
+  store.openThread!.context = { ...store.openThread!.context!, tokens: 138_000, window: 200_000 };
+  await waitFor(() => bar() === null);
+  expect(document.querySelector('[data-testid=composer] .bar [data-testid=context-trigger]')).toBeNull();
+
+  // A thread whose agent never reported shows the meter's glyph in the menu, never a dash.
   query<HTMLButtonElement>('[data-thread-id="t-bench"]').click();
   await waitFor(() => store.openThread?.id === 't-bench');
   // Its pending permission leaves the chip named: the row is the same in every state.

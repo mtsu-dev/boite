@@ -370,7 +370,7 @@
 
   .took {
     flex: none;
-    color: var(--color-subtle);
+    color: var(--color-muted-foreground);
     font-size: var(--text-sm);
     font-variant-numeric: tabular-nums;
   }

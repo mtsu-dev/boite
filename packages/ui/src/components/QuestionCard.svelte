@@ -66,6 +66,7 @@
 
   let sent = $state(false);
   let open = $state(false);
+  const verdict = $derived(strings.chat.questionAnswered.split('{answer}') as [string, string?]);
   let built = $state(false);
   $effect(() => { if (open) built = true; });
 
@@ -142,8 +143,8 @@
   {#if answer !== null}
     <button type="button" class="ghost answered-row" data-testid="question-toggle" aria-expanded={open} onclick={() => (open = !open)}>
       <span class="glyph"><MessageCircleQuestionMark size={15} strokeWidth={1.75} /></span>
-      <span class="verdict ui-label" data-testid="question-verdict">{strings.chat.questionAnswered}</span>
-      <span class="given ui-label" data-testid="question-answer" title={summary(answer)}>{summary(answer)}</span>
+      <!-- One sentence from one template: the answer sits inline in it, so no flex gap doubles the space. -->
+      <span class="given ui-label" data-testid="question-verdict" title={fill(strings.chat.questionAnswered, { answer: summary(answer) })}><span class="verdict">{verdict[0]}</span><span data-testid="question-answer">{summary(answer)}</span><span class="verdict">{verdict[1] ?? ''}</span></span>
       {#if answer.attachments?.length}
         <span class="given-files" data-testid="question-answer-files" title={fileNames(answer)}><Paperclip size={12} strokeWidth={2} />{answer.attachments.length}</span>
       {/if}
@@ -171,7 +172,7 @@
     </button>
   {:else}
   {#if docked}
-    <DecisionHead>
+    <DecisionHead flow>
       <span class="prompt" class:folded data-testid="question-text"><CodeText {text} /></span>
       {#snippet end()}
         {@render head?.()}
@@ -289,15 +290,17 @@
     gap: 8px;
   }
 
-  .docked .prompt { flex: 1; min-width: 0; padding-block: calc((var(--control) - 22px) / 2); font-weight: inherit; }
+  /* A block beside the floated controls: its lines wrap under them; folded, it holds one line. */
+  .docked .prompt { display: block; min-width: 0; padding-block: calc((var(--control) - 22px) / 2); font-weight: inherit; }
   .docked .prompt.folded { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   @media (max-width: 720px) {
     .docked .skip { min-height: var(--touch-target); padding: 0 6px; }
-    /* A phone keeps the whole dock under half the screen: the choices take
-       the room first, about four short rows, then scroll in place, the field
-       under them always in sight. A cut row fades and a line counts the rest. */
+    /* A phone keeps the whole dock in the room its activity gives it
+       (`--dock-cap`, less the head): the choices take it first, then scroll
+       in place, the field under them always in sight. A cut row fades and a
+       line counts the rest. */
     .question.docked { padding: 8px 10px; gap: 4px; }
-    .docked .options { max-height: 30dvh; overflow-y: auto; overscroll-behavior: contain; }
+    .docked .options { max-height: min(30dvh, calc(var(--dock-cap, 30dvh) - 64px)); overflow-y: auto; overscroll-behavior: contain; }
     .docked .options.clipped { mask-image: linear-gradient(to bottom, var(--color-foreground) calc(100% - 24px), transparent); }
   }
   .more { align-self: flex-start; height: 24px; padding: 0 8px; color: var(--color-muted-foreground); font-size: var(--text-sm); }
@@ -353,8 +356,6 @@
   }
 
   .verdict {
-    flex: none;
-    font-size: var(--text-sm);
     color: var(--color-muted-foreground);
   }
 
