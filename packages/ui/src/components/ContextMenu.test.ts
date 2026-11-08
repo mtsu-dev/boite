@@ -22,10 +22,12 @@ test('a scroll beside the row a menu was opened on leaves it open, and one that 
   const sidebar = document.body.appendChild(document.createElement('nav'));
   const row = sidebar.appendChild(document.createElement('div'));
   const timeline = document.body.appendChild(document.createElement('section'));
-  row.addEventListener('contextmenu', event => contextMenu.open(event, [{ id: 'import', label: 'Import' }], () => {}));
+  row.addEventListener('contextmenu', event => contextMenu.open(event, [{ id: 'import', label: 'Import', testid: 'project-import' }], () => {}));
   row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 60, clientY: 60 }));
   await settle();
   expect(document.querySelector('[data-value=import]')).not.toBeNull();
+  // An item keeps the test id its menu gave it.
+  expect(document.querySelector('[data-testid=project-import]')?.getAttribute('data-value')).toBe('import');
 
   // The timeline settles after a view comes back, or follows a streaming answer.
   timeline.dispatchEvent(new Event('scroll'));

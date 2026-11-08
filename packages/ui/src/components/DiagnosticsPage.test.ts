@@ -86,5 +86,5 @@ test('a problem says when it was last seen in one sentence, the relative time ca
   running = mount(DiagnosticsPage, { target: document.body, props: { store } });
   await settle();
   const when = document.querySelector('[data-testid=diagnostics-problem] .when')!.textContent!;
-  expect(when).toMatch(/^last seen 40 min\.? ago$/);
+  expect(when).toBe('last seen 40m ago');
 });

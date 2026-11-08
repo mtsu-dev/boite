@@ -16,6 +16,9 @@
   import { teamsOf } from '../../lib/teams.svelte';
   import { workspace, type Machine } from '../../lib/workspace.svelte';
   import ChatView from '../ChatView.svelte';
+  import { awaitsFirstTask } from '../../lib/bot-first-task';
+  import { focusComposer } from '../../lib/focus';
+  import AgentAvatar from './AgentAvatar.svelte';
   import AgentsRail from './AgentsRail.svelte';
   import AgentHeader from './AgentHeader.svelte';
   import AgentSheet from './AgentSheet.svelte';
@@ -76,6 +79,8 @@
   /** The conversation of an archived agent reads, and takes nothing more. */
   const locked = $derived(agent?.status === 'archived' ? labels.archivedNotice : null);
   const detail = $derived(!!focus || (!!(thread || teamThread) && !listShown));
+  /** A bot with nothing yet: its first task is the page's one prompt, centred over the empty conversation. */
+  const firstTask = $derived(!!agent && !locked && awaitsFirstTask(store, view, agent.id));
 
   onMount(() => { view.start(); return () => view.pause(); });
   // The other machines' snapshots load while their rows are listed.
@@ -249,6 +254,13 @@
       {/if}
       <div class="agents-chat">
         <ChatView {store} {locked} />
+        {#if firstTask && agent}
+          <div class="agent-first-task" data-testid="bot-first-task">
+            <AgentAvatar kind="profile" id={agent.id} name={agent.name} avatar={agent.avatar} size={40} />
+            <p>{labels.deskPanel.workEmpty}</p>
+            {#if store.owner}<button type="button" class="small" data-testid="desk-work-start" onclick={() => focusComposer({ typing: true })}><span class="ui-label">{labels.deskPanel.workStart}</span></button>{/if}
+          </div>
+        {/if}
       </div>
       <AgentSheet {view} {agent} {pane} onclose={() => { pane = null; }} />
     {:else if thread}

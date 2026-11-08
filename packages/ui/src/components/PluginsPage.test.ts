@@ -306,7 +306,7 @@ test('a recommended plugin with an update source says what it last found, and a 
   });
   const bots = () => row('bots')!;
   const line = () => bots().querySelector('[data-testid="plugin-updates-line"]')?.textContent ?? '';
-  expect(line()).toBe('Up to date · checked 3 hr. ago');
+  expect(line()).toBe('Up to date · checked 3h ago');
   expect(bots().querySelector('[data-testid="plugin-update"]')).toBeNull();
 
   (bots().querySelector('[data-testid="plugin-check-updates"]') as HTMLElement).click();

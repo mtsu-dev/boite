@@ -2,6 +2,7 @@
   import { tick, type Snippet } from 'svelte';
   import { ChevronDown, Plug, Sparkles } from '@lucide/svelte';
   import { isNamedModel } from '../lib/model-order';
+  import { levelName } from '../lib/format';
   import ProviderLogo from './ProviderLogo.svelte';
   import Deferred, { parts } from './Deferred.svelte';
   import type ModelPickerMenu from './ModelPickerMenu.svelte';
@@ -70,6 +71,19 @@
     return account && account.isolationDir !== null ? account.label : null;
   });
 
+  /**
+   * A composer's chip names the effort beside the model, the same on every
+   * width and for a bot: "Opus 5.5 · High". The model's own default counts;
+   * a model with no scale, or one whose agent picks, shows none.
+   */
+  let effortLabel = $derived.by(() => {
+    if (!choice || (!settings && !readonly)) return null;
+    const model = store.modelOf(choice);
+    const id = choice.effort ?? model?.effort?.default;
+    const level = id ? model?.effort?.levels.find((entry) => entry.id === id) : undefined;
+    return level ? levelName(level) : null;
+  });
+
   /** Opens the popover, then brings one of its rows (`composer-effort`, `composer-mode`, `effort-speed`) to the keyboard. */
   export async function reveal(testid?: string) {
     if (!popover.open) toggle();
@@ -84,9 +98,12 @@
       row = find();
     }
     row?.scrollIntoView?.({ block: 'nearest' });
-    // A row of named choices takes the focus on its picked one; a button row opens.
-    if (row && !(row instanceof HTMLButtonElement)) (row.querySelector<HTMLElement>('[role=radio][tabindex="0"]') ?? row).focus();
-    else row?.click();
+    // A setting's row unfolds its choices and takes the focus on the picked one; a button row opens.
+    if (row && !(row instanceof HTMLButtonElement)) {
+      row.querySelector<HTMLElement>('[data-choices-trigger][aria-expanded="false"]')?.click();
+      await tick();
+      (row.querySelector<HTMLElement>('[role=radio][tabindex="0"]') ?? row).focus();
+    } else row?.click();
   }
 
   function toggle(event?: MouseEvent) {
@@ -122,6 +139,7 @@
   <span class="chip trigger readonly" data-testid="composer-picker" title={readonlyHint || label}>
     {#if provider}<ProviderLogo providerId={provider.id} size={14} />{/if}
     <span class="label ui-label">{label}</span>
+    {#if effortLabel}<span class="effort ui-label" data-testid="composer-picker-effort">· {effortLabel}</span>{/if}
   </span>
   {:else}
   <button
@@ -130,8 +148,8 @@
     class:compact
     aria-haspopup="menu"
     aria-expanded={popover.open}
-    aria-label={accountLabel ? `${label}, ${accountLabel}` : label}
-    title={locked ? strings.composer.lockedHint : compact ? label : strings.composer.picker}
+    aria-label={[label, effortLabel, accountLabel].filter(Boolean).join(', ')}
+    title={locked ? strings.composer.lockedHint : compact ? [label, effortLabel].filter(Boolean).join(' · ') : strings.composer.picker}
     data-testid="composer-picker"
     {disabled}
     onclick={toggle}
@@ -144,6 +162,7 @@
     {/if}
     {#if !compact}
     <span class="label ui-label">{label}</span>
+    {#if effortLabel}<span class="effort ui-label" data-testid="composer-picker-effort">· {effortLabel}</span>{/if}
     {#if accountLabel}<span class="account ui-label" data-testid="composer-picker-account">{accountLabel}</span>{/if}
     <ChevronDown size={12} strokeWidth={2} />
     {/if}
@@ -190,6 +209,7 @@
     white-space: nowrap;
   }
   .trigger .account { flex: none; color: var(--color-subtle); font-weight: 400; }
+  .trigger .effort { flex: none; color: var(--color-muted-foreground); font-weight: 400; white-space: nowrap; }
   /* A phone keeps the row for the model's whole name: the sheet's head names the login. */
   @media (max-width: 720px) { .trigger .account { display: none; } }
   .trigger.readonly { cursor: default; }

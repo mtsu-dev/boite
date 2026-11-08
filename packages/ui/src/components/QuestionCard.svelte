@@ -183,7 +183,7 @@
             onclick={() => toggle(option.id)}
           >
             {#if docked && index < 9}
-              <kbd aria-hidden="true">{#if multiple && picked.includes(option.id)}<Check size={11} strokeWidth={2.5} />{:else}{index + 1}{/if}</kbd>
+              <kbd class="kbd" aria-hidden="true">{#if multiple && picked.includes(option.id)}<Check size={11} strokeWidth={2.5} />{:else}{index + 1}{/if}</kbd>
             {:else}
             <span class="box" class:round={!multiple} aria-hidden="true">
               {#if multiple && picked.includes(option.id)}
@@ -263,7 +263,12 @@
 
   .docked .prompt { flex: 1; min-width: 0; padding-block: calc((var(--control) - 22px) / 2); font-weight: inherit; }
   .docked .prompt.folded { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-  @media (max-width: 720px) { .docked .skip { min-height: var(--touch-target); padding: 0 6px; } }
+  @media (max-width: 720px) {
+    .docked .skip { min-height: var(--touch-target); padding: 0 6px; }
+    /* A phone keeps the whole dock under half the screen: past two answers or
+       so the list scrolls in place, the field under it always in sight. */
+    .docked .options { max-height: 20dvh; overflow-y: auto; overscroll-behavior: contain; }
+  }
   .skip { height: 24px; padding: 0 8px; border-radius: var(--radius-sm); color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 550; }
 
   .docked .options { gap: 2px; }
@@ -272,8 +277,9 @@
   .docked .option.picked { background: var(--color-hover); border-color: var(--color-edge); }
   .docked .option:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -1px; }
   .docked .label { font-weight: 550; }
-  kbd { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 20px; height: 20px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface-3); color: var(--color-muted-foreground); font-family: var(--font-mono); font-size: var(--text-meta); }
-  .option.picked kbd { color: var(--color-foreground); border-color: var(--color-edge); }
+  /* The shared keycap, one square per option; muted until its option is picked. */
+  .kbd { flex: none; width: 20px; height: 20px; padding: 0; color: var(--color-muted-foreground); }
+  .option.picked .kbd { color: var(--color-foreground); }
   .docked .actions { justify-content: flex-end; }
 
   .waiting-row:disabled { opacity: 1; cursor: default; }

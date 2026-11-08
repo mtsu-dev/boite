@@ -107,7 +107,6 @@ export const fr: Translation = {
     fold: {
       worked: 'A travaillé {time}', workedBare: 'A travaillé',
       stepOne: '1 étape', stepMany: '{count} étapes',
-      seconds: '{count} s', minutes: '{count} min', hours: '{hours} h {minutes} min',
       quiet: 'Vérifié, rien à signaler', quietWith: 'Vérifié : {reason}',
       showSteps: 'Voir les étapes', hideSteps: 'Masquer les étapes',
       showTurn: 'Voir tout le tour', hideTurn: 'Replier ce tour',

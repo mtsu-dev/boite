@@ -112,8 +112,9 @@ test('the header holds the search, opened in place, and the new thread; the bar 
   expect(list()).toBe('Activity');
   id('mobile-conversations')!.click(); await settle();
   expect(list()).toBe('Threads');
-  // The header names the list by its view, Projects or Recent.
-  expect(id('mobile-title')?.textContent).toBe('Projects');
+  // The header names the list by its view, Projects or Recent, and that name is the switch between them.
+  expect(id('mobile-title')?.textContent?.trim()).toBe('Projects');
+  expect(id('mobile-title')?.querySelector('[data-testid=mobile-grouping-options]')?.getAttribute('aria-label')).toBe('Projects, Display options');
   store.showSettings('machines'); await settle();
   expect(list()).toBeUndefined();
   expect(id('mobile-search-open')).toBeNull();
@@ -142,15 +143,26 @@ test('the header holds the search, opened in place, and the new thread; the bar 
   const threadId = row.dataset['threadId'];
   row.querySelector('[data-testid^=mobile-thread-]')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })); await settle();
   expect(id(`mobile-thread-menu-${threadId}-menu`)?.querySelector('[data-value=rename]')).not.toBeNull();
-  // Common actions first; a new title and the rest behind All tools, which opens in place and comes back.
+  // Common actions first; a new title and the rest behind Tools, which opens in place and comes back.
   const menuValues = () => Array.from(id(`mobile-thread-menu-${threadId}-menu`)?.querySelectorAll<HTMLElement>('[data-value]') ?? []).map(item => item.dataset['value']);
   expect(menuValues()).not.toContain('retitle');
   id(`mobile-thread-menu-${threadId}-menu`)!.querySelector<HTMLElement>('[data-value=more]')!.click(); await settle();
   expect(menuValues()[0]).toBe('back');
   expect(menuValues()).toContain('retitle');
   expect(menuValues()).not.toContain('copy');
+  // Tools lists the thread's panels, as its header does.
+  const panel = menuValues().find(value => value?.startsWith('kind:'));
+  expect(panel).toBeDefined();
   id(`mobile-thread-menu-${threadId}-menu`)!.querySelector<HTMLElement>('[data-value=back]')!.click(); await settle();
   expect(menuValues()).toContain('rename');
+  // A panel picked from a row leaves the list for its thread, where the panel shows.
+  id(`mobile-thread-menu-${threadId}-menu`)!.querySelector<HTMLElement>('[data-value=more]')!.click(); await settle();
+  id(`mobile-thread-menu-${threadId}-menu`)!.querySelector<HTMLElement>(`[data-value="${panel}"]`)!.click(); await settle();
+  expect(document.querySelector('.mobile-list')).toBeNull();
+  expect(store.openThread?.id).toBe(threadId);
+  expect(store.panel.active?.kind).toBe(panel!.slice('kind:'.length));
+  id('mobile-back')!.click(); await settle();
+  expect(document.querySelector('.mobile-list')).not.toBeNull();
 
   // The new thread is the header's neutral "+", out of the bottom bar.
   expect(document.querySelector('[data-testid=mobile-tabs] [data-testid=mobile-new]')).toBeNull();

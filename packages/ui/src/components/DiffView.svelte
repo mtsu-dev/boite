@@ -6,6 +6,7 @@
 <script lang="ts">
   import { diffCounts, diffRows, diffRowsOf, splitRows, type DiffRow, type DiffSource } from '../lib/diff';
   import { diffPrefs } from '../lib/diff-prefs.svelte';
+  import { markHtml, markText, wordMarks } from '../lib/diff-words';
   import DiffOptions from './DiffOptions.svelte';
   import { fill, strings } from '../lib/strings';
   import { codeLanguage, highlightCode } from '../lib/code-highlight';
@@ -41,6 +42,8 @@
   let splittable = $derived(width >= SPLIT_MIN_WIDTH);
   let split = $derived(splittable && diffPrefs.split);
   let pairs = $derived(split ? splitRows(shown) : []);
+  /** The changed words of the drawn rows only: a folded tail costs nothing. */
+  let words = $derived(wordMarks(shown));
   const language = $derived(codeLanguage(path));
   /** Highlighted lines, kept with the text and grammar they were read from so a changed text never shows stale colors. */
   type Coded = { text: string; grammar: string | null; lines: string[] | null };
@@ -137,8 +140,9 @@
 
 {#snippet code(row: Exclude<DiffRow, { kind: 'gap' }>)}
   {@const html = codeOf(row)}
-  <!-- highlightCode escapes source text before adding its token spans. -->
-  {#if html !== undefined}{@html html}{:else}{row.text}{/if}
+  {@const marks = words.get(row)}
+  <!-- highlightCode escapes source text before adding its token spans; the marks add only their own tags. -->
+  {#if html !== undefined}{@html marks ? markHtml(html, marks) : html}{:else if marks}{#each markText(row.text, marks) as part, index (index)}{#if part.marked}<mark class="word">{part.text}</mark>{:else}{part.text}{/if}{/each}{:else}{row.text}{/if}
 {/snippet}
 
 {#snippet side(row: Exclude<DiffRow, { kind: 'gap' }> | null, which: 'old' | 'new')}
@@ -283,6 +287,14 @@
     background: color-mix(in srgb, var(--color-danger) 7%, var(--color-surface-2));
     box-shadow: inset 2px 0 0 var(--color-danger);
   }
+
+  /* The words that changed inside a changed line: a deeper wash of the line's own status colour. */
+  .text :global(mark.word) {
+    border-radius: 2px;
+    color: inherit;
+    background: color-mix(in srgb, var(--color-success) 26%, transparent);
+  }
+  .row.remove .text :global(mark.word) { background: color-mix(in srgb, var(--color-danger) 26%, transparent); }
 
   .row.add .gutter { color: var(--color-success); }
   .row.remove .gutter { color: var(--color-danger); }

@@ -62,10 +62,8 @@ export const strings = {
       clean: 'Boite removed this thread\'s worktree {when}: every commit in it was already on another branch.',
       branchDeleted: 'Branch {branch} was deleted.',
       branchKept: 'Branch {branch} is still there.',
-      archived: 'Moved to Recent, this thread has no folder to work in.',
-      /** What still works in the thread, then why a new message cannot run here. */
-      live: 'You can still read and copy this thread. A new message has no folder to run in.',
-      startHere: 'Start a new thread here'
+      startHere: 'Start a new thread here',
+      done: 'This thread is done and its folder was cleaned up.'
     },
     allProjects: 'All projects',
     filterProject: 'Filter by project',
@@ -110,8 +108,6 @@ export const strings = {
     projectMissing: 'Folder not found',
     projectMissingBody: 'The folder {path} does not exist any more: it was deleted, moved or renamed. Put it back to keep working here, or remove the project from Boite.',
     projectMissingCheck: 'Check again',
-    /** What still works in a thread of that project while its folder is gone. */
-    projectMissingLive: 'You can still read and copy this thread. A new message waits for the folder.',
     removeProjectTitle: 'Remove {project} from Boite?',
     removeProjectBody: 'Its threads go with it. Files on disk stay where they are.',
     remove: 'Remove',

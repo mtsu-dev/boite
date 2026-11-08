@@ -215,7 +215,10 @@
     .details { display: inline-flex; }
   }
   /* The step count and the memory mark: text buttons on the line, no box, the foreground on hover. */
-  .mark { display: inline-flex; align-items: center; gap: 2px; height: 18px; padding: 0 2px; margin: -2px 0; border: 0; border-radius: var(--radius-sm); background: none; color: inherit; font-size: inherit; font-variant-numeric: inherit; cursor: pointer; transition: color var(--dur-2) var(--ease-out-quint); }
+  .mark { position: relative; display: inline-flex; align-items: center; gap: 2px; height: 18px; padding: 0 2px; margin: -2px 0; border: 0; border-radius: var(--radius-sm); background: none; color: inherit; font-size: inherit; font-variant-numeric: inherit; cursor: pointer; transition: color var(--dur-2) var(--ease-out-quint); }
+  /* The line stays 18 px; the target reaches 28 px, a pointer's least, over the gap around it. */
+  .mark::after, .stop-background::after { content: ''; position: absolute; inset: -5px; }
+  .mark::after { inset-inline: 0; }
   .mark:hover:not(:disabled), .mark:focus-visible { color: var(--color-foreground); background: none; }
   .mark:disabled { cursor: default; }
   .mark.memory[data-status='running'] { animation: pulse 1.6s var(--loop-ease-in-out-48) infinite var(--loops); }
@@ -234,7 +237,7 @@
   .background { display: inline-flex; align-items: center; gap: 6px; color: var(--color-muted-foreground); }
   .pulse { width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: pulse 1.6s var(--loop-ease-out-quint-48) infinite var(--loops); }
   .paused .pulse { animation-play-state: paused; }
-  .stop-background { display: inline-grid; place-items: center; width: 18px; height: 18px; padding: 0; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: transparent; color: var(--color-muted-foreground); cursor: pointer; }
+  .stop-background { position: relative; display: inline-grid; place-items: center; width: 18px; height: 18px; padding: 0; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: transparent; color: var(--color-muted-foreground); cursor: pointer; }
   .stop-background:hover { color: var(--color-danger); border-color: currentColor; }
   @media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }
   :global(html[data-motion='reduced']) .summary .pulse { animation: none; }

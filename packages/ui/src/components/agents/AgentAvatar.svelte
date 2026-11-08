@@ -17,8 +17,9 @@
    * target. An imported image leaves the disc empty while it
    * loads, and draws the robot its id picks when no machine holds it.
    *
-   * `ring` draws a ring around the disc that says the agent's `mood`: an arc
-   * of the accent turning while it works, the waiting colour pulsing while it
+   * `ring` draws a ring around the disc that says the agent's `mood`: a still
+   * accent ring while it works in a list, an arc of the accent turning where
+   * it is the open bot (`live`), the one place the eye follows its work; the waiting colour pulsing while it
    * needs the user, danger after a failure, a full accent ring over answers not
    * read, a dashed one while it is queued or asleep, a hairline in the
    * robot's own colour at rest. The robot's face moves with it. Without a ring
@@ -28,7 +29,7 @@
    * `squircle` rounds the corners instead of drawing a disc, about a third of
    * the side: the selected bot's picture in its column and on its desk.
    */
-  let { kind, id, name, avatar = '', members = [], status = 'idle', mood, size = 40, ring = false, squircle = false }: {
+  let { kind, id, name, avatar = '', members = [], status = 'idle', mood, size = 40, ring = false, squircle = false, live = false }: {
     kind: 'profile' | 'group' | 'team' | 'mission';
     id: string;
     name: string;
@@ -40,6 +41,7 @@
     size?: number;
     ring?: boolean;
     squircle?: boolean;
+    live?: boolean;
   } = $props();
 
   const grouped = $derived(kind === 'group' || kind === 'team');
@@ -72,11 +74,11 @@
   {#if image}<img class="agent-picture" src={image} alt="" draggable="false" />{:else if own}<Deferred part={parts.RobotFace} quiet>{#snippet children(RobotFace)}<RobotFace robot={own} {state} />{/snippet}</Deferred>{:else if !isAgentPicture(member.avatar)}<span class="ui-label">{avatarText(member.name, member.avatar)}</span>{/if}
 {/snippet}
 
-<span class="agent-avatar" class:robot={!!robot} class:pictured class:squircle style:--avatar-radius={squircle ? `${Math.round(size * 0.32)}px` : null} data-kind={kind} data-ring={ring ? standing : null} style:--size="{size}px" style:--tint={kind === 'mission' ? null : tintOf(id)} style:--ring-tint={ring ? ringTint : null} aria-hidden="true">
+<span class="agent-avatar" class:robot={!!robot} class:pictured class:squircle style:--avatar-radius={squircle ? `${Math.round(size * 0.32)}px` : null} data-kind={kind} data-ring={ring ? standing : null} data-live={live || null} style:--size="{size}px" style:--tint={kind === 'mission' ? null : tintOf(id)} style:--ring-tint={ring ? ringTint : null} aria-hidden="true">
   {#if ring}
     <svg class="avatar-ring" aria-hidden="true">
       <circle class="track" cx="50%" cy="50%" r={radius} pathLength="100" />
-      {#if standing === 'working'}<circle class="arc" cx="50%" cy="50%" r={radius} pathLength="100" />{/if}
+      {#if standing === 'working' && live}<circle class="arc" cx="50%" cy="50%" r={radius} pathLength="100" />{/if}
     </svg>
   {/if}
   {#if grouped && members.length >= 2}
@@ -134,8 +136,9 @@
   /* Every track keeps the 1.5 px hairline: a whole-pixel width snaps off-centre at fractional zoom (tests/e2e/avatar-rings.test.ts). */
   .avatar-ring circle { fill: none; stroke-width: 1.5px; transition: stroke var(--dur-3) var(--ease-out-quint); }
   .track { stroke: color-mix(in srgb, var(--ring-tint) 50%, transparent); }
-  [data-ring='working'] .track { stroke: var(--color-edge); }
-  /* At work: an arc of the accent turns around the disc. */
+  /* At work in a list: a still accent ring. The open bot's turns an accent arc around the disc. */
+  [data-ring='working'] .track { stroke: var(--color-accent); }
+  [data-ring='working'][data-live] .track { stroke: var(--color-edge); }
   .avatar-ring .arc { stroke: var(--color-accent); stroke-linecap: round; stroke-width: 2.5px; stroke-dasharray: 30 70; transform-box: fill-box; transform-origin: center; animation: spin 1.2s steps(72) infinite var(--loops); }
   [data-ring='queued'] .track { stroke: var(--color-muted-foreground); stroke-dasharray: 4 6; opacity: 0.7; }
   /* Needs the user: the waiting colour, pulsing. */

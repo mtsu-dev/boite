@@ -19,7 +19,7 @@
    * and its time on the line under it, so neither cuts the title. The pull
    * request waits in the thread, the pin under the slide. `compact` is the flat lists' form (Recent, Activity): the
    * project's tile first. Activity (the phone's screen and the desktop's page) is one title line with since when at its
-   * end, then `reason`, what the thread wants, after its state when the section does not say it; `nested` steps a
+   * end, then `reason`, what the thread wants, its state after it when the section does not say it; `nested` steps a
    * sub-agent in under its parent.
    * The row menu has no button of its own: a long press opens it, a slide
    * left shows pin and archive. Its trigger stays for the keyboard, drawn
@@ -78,7 +78,7 @@
     <button class="ghost thread" class:offline={away} class:stated={kind !== null} data-testid="mobile-thread-{thread.id}" title={thread.branch ? `${thread.title}\n${thread.branch}` : thread.title} onclick={onopen} use:longPress>
       {#if reason !== undefined}
         <span class="feed-head"><ThreadHeadline {owner} {thread} tile={compact && !nested ? project : undefined} />{#if at !== undefined}<time class="ui-label" title={exactTime(at)}>{ago(at, now)}</time>{/if}</span>
-        <span class="why" data-testid="mobile-row-reason">{#if kind !== null && kind !== 'waiting'}<ThreadState {thread} {now} subagents={owner.subagents(thread.id)} {away} /><span class="sep" aria-hidden="true">·</span>{/if}<span class="text">{reason}</span></span>
+        <span class="why" data-testid="mobile-row-reason"><span class="text">{reason}</span>{#if kind !== null && kind !== 'waiting'}<span class="sep" aria-hidden="true">·</span><ThreadState {thread} {now} subagents={owner.subagents(thread.id)} {away} />{/if}</span>
       {:else}
         <ThreadHeadline {owner} {thread} tile={compact && !nested ? project : undefined} />
         <!-- The state, then the time; a thread at rest has its time alone. -->

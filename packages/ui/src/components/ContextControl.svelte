@@ -131,9 +131,9 @@
   <button type="button" class="trigger ghost" data-testid="context-trigger" aria-label={[percent === null ? strings.thread.contextDetails : `${strings.thread.contextDetails} ${Math.round(percent)}%`, cacheLabel].filter(Boolean).join(', ')} aria-expanded={popup.open} aria-haspopup="dialog" onclick={show}>
     <svg viewBox="0 0 40 40" aria-hidden="true"><circle class="track" cx="20" cy="20" r="15" /><circle class="fill" cx="20" cy="20" r="15" pathLength="100" stroke-dasharray="{percent ?? 0} 100" /></svg>
     <!-- Before the first reading the empty ring stands alone, never a dash; its popup still holds compact and the agent's shape. -->
-    {#if percent !== null}<span class="percent mono" aria-hidden="true">{Math.round(percent)}%</span>{/if}
+    {#if percent !== null}<span class="percent" aria-hidden="true">{Math.round(percent)}%</span>{/if}
     {#if cacheNow}
-      <span class="cache-chip mono" data-testid="prompt-cache" data-state={cacheNow.kind} class:low={cacheNow.kind !== 'cold' && cacheNow.secondsLeft <= 300} aria-hidden="true">
+      <span class="cache-chip num" data-testid="prompt-cache" data-state={cacheNow.kind} class:low={cacheNow.kind !== 'cold' && cacheNow.secondsLeft <= 300} aria-hidden="true">
         <Clock size={13} strokeWidth={1.75} /><span class="ui-label">{cacheNow.kind === 'cold' ? strings.thread.cacheCold : remaining(cacheNow.secondsLeft)}</span>
       </span>
     {/if}
@@ -143,9 +143,9 @@
       use:floating={{ anchor: () => anchor?.() ?? root ?? null, placement: 'top', sheet: anchor?.() ? false : undefined, align: 'end', cap: Infinity, dismiss: () => popup.hide() }}>
       <div class="heading"><span class="title">{strings.thread.contextDetails}
         {#if context}<button type="button" class="reading-info ghost icon" data-testid="context-info" aria-label={fill(strings.common.moreInfo, { topic: strings.thread.contextDetails })} aria-expanded={readingExpanded} aria-controls={readingId} onclick={() => { readingExpanded = !readingExpanded; }}><Info size={14} /></button>{/if}
-      </span>{#if percent !== null}<span class="mono">{percent}%</span>{/if}</div>
+      </span>{#if percent !== null}<span class="num">{percent}%</span>{/if}</div>
       {#if context}
-        <p class="total"><span class="mono">{exact(context.tokens)}{#if limit !== null}{' / '}{exact(limit)}{/if}</span> <span class="unit">{strings.thread.contextTokens}</span></p>
+        <p class="total"><span class="num">{exact(context.tokens)}{#if limit !== null}{' / '}{exact(limit)}{/if}</span> <span class="unit">{strings.thread.contextTokens}</span></p>
         <div class="bar" aria-hidden="true">
           {#each segments as segment (segment.kind)}<span class={segment.kind} style:width={`${Math.min(100, segment.count / Math.max(1, limit ?? context.tokens) * 100)}%`}></span>{/each}
         </div>
@@ -153,15 +153,15 @@
         <div id={readingId} class="reading-detail" hidden={!readingExpanded}>
           {#if compactLimit}<p class="note" data-testid="context-auto-compact">{modelWindow !== null ? strings.thread.contextAutoCompactWindow(exact(modelWindow)) : strings.thread.contextAutoCompact}</p>{/if}
           {#if context.breakdown}
-            <dl>{#each segments as segment (segment.kind)}<div><dt><i class={segment.kind}></i>{segment.name}</dt><dd class="mono">{exact(segment.count)}</dd></div>{/each}</dl>
+            <dl>{#each segments as segment (segment.kind)}<div><dt><i class={segment.kind}></i>{segment.name}</dt><dd class="num">{exact(segment.count)}</dd></div>{/each}</dl>
           {:else}<p class="note">{strings.thread.contextNoBreakdown}</p>{/if}
           <p class="note">{strings.thread.contextMeasured} · {time(context.at)}</p>
         </div>
       {:else}<p class="note">{strings.thread.contextNoReading}</p>{/if}
       {#if stats}
         <dl class="stats" data-testid="context-stats">
-          <div data-testid="context-compactions"><dt>{strings.thread.contextCompactions}</dt><dd class="mono">{exact(stats.compactions)}</dd></div>
-          <div data-testid="context-prompts"><dt>{strings.thread.contextPrompts}</dt><dd class="mono">{exact(stats.prompts)}</dd></div>
+          <div data-testid="context-compactions"><dt>{strings.thread.contextCompactions}</dt><dd class="num">{exact(stats.compactions)}</dd></div>
+          <div data-testid="context-prompts"><dt>{strings.thread.contextPrompts}</dt><dd class="num">{exact(stats.prompts)}</dd></div>
         </dl>
       {/if}
       <button type="button" class="compact" data-testid="context-compact" disabled={reason !== null} title={reason ?? strings.composer.compact} onclick={() => void compact()}><Minimize2 size={14} /><span class="ui-label">{strings.composer.compact}</span></button>
@@ -171,12 +171,12 @@
       {/if}
       {#if cache && cacheNow}
         <div class="cache-detail" data-testid="prompt-cache-detail">
-          <div class="heading"><span>{strings.thread.cacheTitle}</span><span class="mono state" data-state={cacheNow.kind}>{cacheNow.kind === 'warm' ? strings.thread.cacheLeft(remaining(cacheNow.secondsLeft))
+          <div class="heading"><span>{strings.thread.cacheTitle}</span><span class="num state" data-state={cacheNow.kind}>{cacheNow.kind === 'warm' ? strings.thread.cacheLeft(remaining(cacheNow.secondsLeft))
             : cacheNow.kind === 'maybe' ? strings.thread.cacheMaybe(remaining(cacheNow.secondsLeft)) : strings.thread.cacheCold}</span></div>
           <dl>
-            <div><dt>{strings.thread.cacheLifetime}</dt><dd class="mono">{cache.maxSeconds !== undefined ? strings.thread.cacheRange(lifetime(cache.ttlSeconds), lifetime(cache.maxSeconds))
+            <div><dt>{strings.thread.cacheLifetime}</dt><dd class="num">{cache.maxSeconds !== undefined ? strings.thread.cacheRange(lifetime(cache.ttlSeconds), lifetime(cache.maxSeconds))
               : `${lifetime(cache.ttlSeconds)} · ${cache.source === 'reported' ? strings.thread.cacheSourceReported : strings.thread.cacheSourceDocumented}`}</dd></div>
-            {#if cache.readTokens > 0}<div><dt>{strings.thread.cacheReadLast}</dt><dd class="mono">{exact(cache.readTokens)}</dd></div>{/if}
+            {#if cache.readTokens > 0}<div><dt>{strings.thread.cacheReadLast}</dt><dd class="num">{exact(cache.readTokens)}</dd></div>{/if}
           </dl>
           {#if cacheNow.kind === 'cold' && cacheNow.switched}<p class="note">{strings.thread.cacheSwitched}</p>{/if}
         </div>
@@ -187,6 +187,8 @@
 {#if shapeOf && ShapeDialog}<ShapeDialog {store} threadId={shapeOf} onclose={() => { shapeOf = null; }} />{/if}
 
 <style>
+  /* Figures in the sans, on even columns: mono is for code only. */
+  .num { font-variant-numeric: tabular-nums; }
   .context { position: relative; flex: none; color: var(--color-muted-foreground); }
   .trigger { display: flex; align-items: center; gap: 5px; padding: 4px; }
   @media (max-width: 720px) { .trigger { min-width: var(--touch-target); min-height: var(--touch-target); justify-content: center; } }

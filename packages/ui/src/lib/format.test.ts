@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { bytes, clockTime, dayClock, effortName, elapsed, formatTokens, levelName, levelTitle, longDay, millis, quotaResetTime, quotaWindowName, relativeTime } from './format';
+import { ago, bytes, clockTime, dayClock, effortName, elapsed, formatTokens, levelName, levelTitle, longDay, millis, quotaResetTime, quotaWindowName, relativeTime } from './format';
 import { setLocaleSetting } from './i18n.svelte';
 
 test('elapsed reads like a stopwatch', () => {
@@ -11,16 +11,22 @@ test('elapsed reads like a stopwatch', () => {
   expect(elapsed(-5)).toBe('0s');
 });
 
-test('mail ages stay relative across days and clamp clock skew to now', async () => {
+test('one time rule everywhere: now, minutes and hours under a day, then the date, clock skew clamped to now', async () => {
   const now = Date.parse('2026-10-02T12:00:00Z');
   expect(relativeTime(now + 60_000, now)).toBe('now');
   expect(relativeTime(now - 59_999, now)).toBe('now');
-  expect(relativeTime(now - 120_000, now)).toBe('2 min. ago');
-  expect(relativeTime(now - 7_200_000, now)).toBe('2 hr. ago');
-  expect(relativeTime(now - 172_800_000, now)).toBe('2 days ago');
+  expect(relativeTime(now - 120_000, now)).toBe('2m ago');
+  expect(relativeTime(now - 7_200_000, now)).toBe('2h ago');
+  expect(relativeTime(now - 172_800_000, now)).toBe('Sep 30');
+  // A row says the same without "ago", and a day older is a date there too, never a clock.
+  expect(ago(now - 240_000, now)).toBe('4m');
+  expect(ago(now - 7_200_000, now)).toBe('2h');
+  expect(ago(now - 86_400_000, now)).toBe('Oct 1');
+  expect(ago(Date.parse('2025-03-02T12:00:00Z'), now)).toBe('Mar 2, 2025');
   await setLocaleSetting('fr');
   try {
-    expect(relativeTime(now - 120_000, now).replace(/\s/g, ' ')).toBe('il y a 2 min');
+    expect(relativeTime(now - 120_000, now)).toBe('il y a 2 min');
+    expect(ago(now - 7_200_000, now)).toBe('2 h');
     expect(relativeTime(now, now)).toBe("à l'instant");
   } finally { await setLocaleSetting('en'); }
 });
@@ -39,15 +45,18 @@ test('clockTime gives the hour today, a weekday this week and a date beyond', ()
 test('durations, sizes, effort levels and quota windows follow the language the app speaks', async () => {
   const friday = new Date(2026, 8, 25, 20, 55).getTime();
   expect(quotaResetTime(friday, friday)).toMatch(/^Friday /);
-  expect(millis(38_000)).toBe('38.0 s');
+  // One duration style: a trace, an uptime and a turn read alike; under a second keeps its milliseconds.
+  expect(millis(38_000)).toBe('38s');
+  expect(millis(89_000)).toBe('1m 29s');
+  expect(millis(120)).toBe('120 ms');
   // Xhigh and ultrathink read in plain words, whatever label the core sends; the tooltip keeps the agent's word.
   expect(levelName({ id: 'xhigh', label: 'Xhigh' })).toBe('Extra high');
-  expect(levelName({ id: 'ultrathink', label: 'Ultrathink' })).toBe('Think longest');
+  expect(levelName({ id: 'ultrathink', label: 'Ultrathink' })).toBe('Ultra');
   expect(levelTitle({ id: 'ultrathink', description: 'Extended thinking' })).toBe('Extended thinking (ultrathink)');
   expect(levelTitle({ id: 'high', description: 'Deeper reasoning' })).toBe('Deeper reasoning');
   await setLocaleSetting('fr');
   try {
-    expect(millis(38_000)).toBe('38,0 s');
+    expect(millis(38_000)).toBe('38s');
     expect(bytes(3.5 * 1024 ** 3)).toBe('3,5 Go');
     expect(levelName({ id: 'high', label: 'High' })).toBe('Élevé');
     expect(levelName({ id: 'fast', label: 'Fast' })).toBe('Rapide');

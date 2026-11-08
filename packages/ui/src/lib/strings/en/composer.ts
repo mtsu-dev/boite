@@ -29,8 +29,6 @@ export const strings = {
     placeholder: 'Message {name}',
     /** `{name}` in the two placeholders when the provider is unknown. */
     placeholderAgent: 'the agent',
-    /** The thread's folder or worktree is gone: the notice above holds the way out. */
-    placeholderNoFolder: 'This thread has no folder to run in',
     placeholderOffline: '{machine} is offline: messages wait here and go out when it reconnects',
     placeholderOfflineDraft: '{machine} is offline: the conversation starts when it reconnects',
     send: 'Send',
@@ -71,7 +69,8 @@ export const strings = {
     probing: "Reading the agent's models",
     notInstalled: 'Not installed on this machine',
     installInSettings: 'Install in Settings',
-    effortTitle: 'Reasoning effort',
+    /** The picker's row and the slider: one short word, the levels say the rest. */
+    effortTitle: 'Effort',
     speed: 'Response speed',
     /** The picker's quiet row that opens speed, permissions and context under the effort; it reads their current values. */
     pickerMore: 'More',
@@ -88,7 +87,8 @@ export const strings = {
     compactNoSession: 'Send a message before compacting',
     newBadge: 'new',
     lockedHint: 'A thread keeps its provider and account',
-    mode: 'Permissions',
+    /** The picker's row, which names the mode in words beside it. */
+    mode: 'Permission',
     model: 'Model',
     unavailable: 'not installed',
     noAccount: 'no account',

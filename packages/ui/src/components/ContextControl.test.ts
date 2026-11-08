@@ -29,7 +29,7 @@ test('the meter follows the automatic compaction threshold and keeps a smaller m
   const exact = (n: number) => n.toLocaleString();
   expect(meter().dataset.percent).toBe('85');
   expect(meter().dataset.level).toBe('high');
-  expect(popup().querySelector('.total .mono')!.textContent).toBe(`${exact(212_569)} / ${exact(250_000)}`);
+  expect(popup().querySelector('.total .num')!.textContent).toBe(`${exact(212_569)} / ${exact(250_000)}`);
   expect(popup().querySelector('[data-testid="context-remaining"]')!.textContent).toBe(`${exact(37_431)} tokens before auto-compaction`);
   expect(popup().querySelector<HTMLElement>('.bar .input')!.style.width).toBe('60%');
   const info = popup().querySelector<HTMLButtonElement>('[data-testid="context-info"]')!;
@@ -58,7 +58,7 @@ test('the meter follows the automatic compaction threshold and keeps a smaller m
     store.settings = { ...store.settings!, autoCompact: { tokens: threshold, moments: ['turn-end'] } };
     flushSync();
     expect(meter().dataset.percent).toBe(percent);
-    expect(popup().querySelector('.total .mono')!.textContent).toBe(`${exact(212_569)} / ${exact(limit)}`);
+    expect(popup().querySelector('.total .num')!.textContent).toBe(`${exact(212_569)} / ${exact(limit)}`);
     expect(popup().querySelector('[data-testid="context-remaining"]')!.textContent).toBe(notice
       ? strings.thread.contextRemainingCompact(exact(Math.max(0, limit - 212_569)))
       : strings.thread.contextRemaining(exact(Math.max(0, limit - 212_569))));
@@ -68,7 +68,7 @@ test('the meter follows the automatic compaction threshold and keeps a smaller m
   store.settings = { ...store.settings!, autoCompact: null };
   flushSync();
   expect(meter().dataset.percent).toBe('');
-  expect(popup().querySelector('.total .mono')!.textContent).toBe(exact(212_569));
+  expect(popup().querySelector('.total .num')!.textContent).toBe(exact(212_569));
   expect(popup().querySelector('[data-testid="context-remaining"]')).toBeNull();
   expect(popup().querySelector('[data-testid="context-auto-compact"]')).toBeNull();
 });

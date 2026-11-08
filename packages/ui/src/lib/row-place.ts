@@ -6,9 +6,10 @@ type Placed = { machine: { id: string; label: string }; project: Project | undef
 /**
  * Where a flat list's row lives, for its secondary line, once the tile alone may not tell two rows apart: the list
  * spans several projects or machines, or two rows share a title. The project's name, then the machine's when the
- * list holds several; nothing when every row shares one project and one machine and no title repeats.
+ * list holds several and it is not `home`, this app's own machine, which every row would repeat; nothing when every
+ * row shares one project and one machine and no title repeats.
  */
-export function rowPlaces<T extends Placed>(rows: readonly T[]): (row: T) => string | undefined {
+export function rowPlaces<T extends Placed>(rows: readonly T[], home?: string): (row: T) => string | undefined {
   const machines = new Set(rows.map(row => row.machine.id));
   const projects = new Set(rows.map(row => `${row.machine.id}\n${row.project?.id ?? ''}`));
   const titles = new Map<string, number>();
@@ -17,7 +18,7 @@ export function rowPlaces<T extends Placed>(rows: readonly T[]): (row: T) => str
   return row => {
     if (!mixed && (titles.get(row.thread.title) ?? 0) < 2) return undefined;
     const place = row.project ? projectName(row.project) : undefined;
-    const parts = [place, machines.size > 1 ? row.machine.label : undefined].filter((part): part is string => !!part);
+    const parts = [place, machines.size > 1 && row.machine.id !== home ? row.machine.label : undefined].filter((part): part is string => !!part);
     return parts.length ? parts.join(' · ') : undefined;
   };
 }

@@ -175,7 +175,6 @@
   /* Hue says status: work in muted ink, its glyph breathing; the user's turn in the live colour; a failure in danger. */
   [data-tone='working'] .detail-line { color: var(--color-muted-foreground); }
   [data-tone='working'] .detail { font-weight: 500; }
-  [data-tone='working'] .glyph { animation: pulse 1.6s var(--loop-ease-in-out-48) infinite var(--loops); }
   [data-tone='waiting'] .detail-line { color: var(--color-live); }
   [data-tone='waiting'] .detail { font-weight: 500; }
   [data-tone='error'] .detail-line { color: var(--color-danger); }
@@ -195,6 +194,4 @@
   .rename { flex: 1; min-width: 0; height: 22px; padding: 0 6px; }
   /* A long press opens the menu, not the system's link and text callout. */
   .row { -webkit-touch-callout: none; }
-  @media (prefers-reduced-motion: reduce) { [data-tone='working'] .glyph { animation: none; } }
-  :global(html[data-motion='reduced']) [data-tone='working'] .glyph { animation: none; }
 </style>

@@ -36,7 +36,6 @@
   import { TimelineRows, rowEstimate, rowIndexOf, seam, type TimelineRow } from '../lib/timeline-rows';
   import { GapRows, NO_GAPS, READ_AHEAD, RangeAsk, gapHeight, heldNear, loadKeepingReader, wantedRange } from '../lib/history-gaps';
   import TimelineGap from './TimelineGap.svelte';
-  import { dockRoom } from '../lib/question-dock.svelte';
   import { latest } from '../lib/latest.svelte';
   import { glides } from '../lib/motion';
   import { BottomEdge, BottomGlide, PointerHold, keysUp, pointedTurn, typingKey, watchWheel, wheelsUp } from '../lib/timeline-follow';
@@ -260,7 +259,7 @@
     if (at < 0) return 0;
     const total = totals(rows);
     const content = (total[rows.length] ?? 0) - (total[at] ?? 0) - GAP;
-    return Math.max(0, viewHeight - promptInset - 20 - dockRoom.height - content);
+    return Math.max(0, viewHeight - promptInset - 20 - content);
   });
 
   function promptTop(id: string): number {
@@ -675,15 +674,6 @@
     }
   });
 
-  /** Lift a pinned tail for the dock, including a short history that previously fit. */
-  $effect(() => {
-    void dockRoom.height;
-    const box = viewport;
-    if (!box || !pinned) return;
-    edge.follow(box);
-    scrollTop = box.scrollTop;
-  });
-
   /** The window moving under a pinned viewport changes the spacers: take the bottom again. */
   $effect(() => {
     void view;
@@ -735,7 +725,7 @@
 
 </script>
 
-<div class="timeline-wrap" style:--dock-room="{dockRoom.height}px" style:--dock-clearance="{dockRoom.clearance}px">
+<div class="timeline-wrap">
   {#if store.findOpen && FindBar}
     <FindBar {messages} {viewport} request={store.findRequest} jump={(id, part) => jumpToMessage(id, part)}
       rowOf={(id, part) => { const row = rows[rowIndexOf(rows, id, part)]; return row?.failures ? { id: `failure:${id}`, from: 0 } : row ?? { id, from: 0 }; }} onclose={() => (store.findOpen = false)} />
@@ -744,7 +734,7 @@
     hasOlder={store.messagesBefore !== null} loading={store.loadingOlder} loadOlder={() => { if (viewport) { releaseNavigation(); viewport.scrollTop = rows[0]?.gap ? Math.max(0, (totals(rows)[1] ?? 0) - viewport.clientHeight) : 0; pinned = false; loadAbove(viewport); } }} />{/if}
   <!-- Input releases restored and navigation anchors; programmatic corrections keep them. A tap on a phone shows a message's buttons. -->
   <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
-  <div class="timeline" class:behind class:cut={scrollTop > 1} bind:this={viewport} use:watchWheel={onwheel} use:selectionClicks onclick={reveal.tap} {onscroll} ontouchstart={press} onpointerdown={press} onpointerover={(event) => { pointed = pointedTurn(event); }} onpointerleave={() => { pointed = null; }} onkeydown={releaseNavigation} style:padding-top="{20 + promptLead}px" style:overflow-anchor={timeline.at(-1)?.state === 'streaming' ? 'none' : undefined} data-testid="timeline" data-media-gallery data-scroll-root>
+  <div class="timeline" bind:this={viewport} use:watchWheel={onwheel} use:selectionClicks onclick={reveal.tap} {onscroll} ontouchstart={press} onpointerdown={press} onpointerover={(event) => { pointed = pointedTurn(event); }} onpointerleave={() => { pointed = null; }} onkeydown={releaseNavigation} style:padding-top="{20 + promptLead}px" style:overflow-anchor={timeline.at(-1)?.state === 'streaming' ? 'none' : undefined} data-testid="timeline" data-media-gallery data-scroll-root>
     <div class="column" bind:this={column}>
       <!-- paging: the one line the top of the list shows while a page is in flight. -->
       {#if store.loadingOlder}<p class="loading-older" data-testid="loading-older">{strings.chat.loadingOlder}</p>{/if}
@@ -842,31 +832,14 @@
     flex-direction: column;
     overflow: auto;
     scrollbar-gutter: stable both-edges;
-    /* Balance the outline rail on both sides; keep room below for the activity overlay. */
-    padding: 20px var(--outline-room) calc(var(--dock-room, 0px) + 20px);
+    /* Balance the outline rail on both sides. The dock below is in the flow,
+       so the timeline ends where it starts and nothing runs under it. */
+    padding: 20px var(--outline-room);
     overscroll-behavior: contain;
-    /* The toasts sit under the header in room taken from the top of the
-       timeline (notify-corner.ts), so they cover no line of the thread. */
-    margin-top: var(--corner-room, 0px);
-    transition: margin-top var(--dur-2) var(--ease-out-quint);
+    /* The toasts sit in room taken from the timeline's top, or its bottom
+       on a phone (notify-corner.ts and .css), so they cover no line of it. */
+    transition: margin var(--dur-2) var(--ease-out-quint);
   }
-
-  /* Where the timeline meets the band, it fades into its own background
-     instead of stopping on a hard edge, so a card, a table or the day's pill
-     never reads as sliced. The bottom fade ends where the dock above the
-     composer starts (--dock-room), so no line shows half legible behind it;
-     at the end it covers only the bottom padding, and scrolled up, what
-     continues below fades longer. The top fades once something scrolled
-     past it. */
-  .timeline {
-    --fade-top: 0px;
-    --fade-end: 20px;
-    mask-image: linear-gradient(to bottom, transparent, currentColor var(--fade-top), currentColor calc(100% - var(--dock-room, 0px) - var(--fade-end)), transparent calc(100% - var(--dock-room, 0px)));
-  }
-
-  .timeline.cut { --fade-top: 20px; }
-
-  .timeline.behind { --fade-end: 44px; }
 
   .column {
     flex: none;
@@ -876,6 +849,8 @@
     width: 100%;
     max-width: var(--content);
     margin: auto auto 0;
+    /* One reading column: bubbles, prose and cards take the dock's width. */
+    --prose: var(--content);
   }
 
   /* What a long thread's unrendered messages weigh, above and below the window. */

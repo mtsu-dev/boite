@@ -1,30 +1,37 @@
-<script lang="ts">
-  import { FolderMinus, Plus } from '@lucide/svelte';
+<script lang="ts" module>
   import type { ThreadWorktreeRemoval } from '@boite/contracts';
   import { relativeTime } from '../lib/format';
   import { fill, strings } from '../lib/strings';
+
+  /** When and why Boite removed the worktree, and what became of its branch: the text behind the "i". */
+  export function removalInfo(removal: ThreadWorktreeRemoval): string {
+    const t = strings.sidebar.worktreeGone;
+    const when = relativeTime(removal.removedAt);
+    const why = removal.reason === 'pr-merged' && removal.pullRequest
+      ? fill(t.merged, { when, number: String(removal.pullRequest.number) })
+      : fill(t.clean, { when });
+    const branch = removal.branch === null ? '' : fill(removal.branchDeleted ? t.branchDeleted : t.branchKept, { branch: removal.branch });
+    return `${why} ${branch}`.trim();
+  }
+</script>
+
+<script lang="ts">
+  import { FolderMinus, Plus } from '@lucide/svelte';
   import type { Store } from '../lib/store.svelte';
   import ThreadNotice from './ThreadNotice.svelte';
 
   /*
-   * Above the composer, or the done notice, of a thread whose worktree Boite
-   * removed once its work was settled. The line says what still works here and
-   * why the next message cannot run, its one primary button starts the thread
-   * that keeps working in the project; when
-   * and why, and what became of the branch, sit behind the "i".
+   * In the composer's place of a live thread whose worktree Boite removed once
+   * its work was settled: one line and one button that starts the thread that
+   * keeps working in the project. When and why, and what became of the
+   * branch, sit behind the "i". A done thread says it in its done notice.
    */
-  let { store, projectId, removal, archived }: { store: Store; projectId: string | null; removal: ThreadWorktreeRemoval; archived: boolean } = $props();
+  let { store, projectId, removal }: { store: Store; projectId: string | null; removal: ThreadWorktreeRemoval } = $props();
   const t = $derived(strings.sidebar.worktreeGone);
-  const when = $derived(relativeTime(removal.removedAt));
-  const why = $derived(removal.reason === 'pr-merged' && removal.pullRequest
-    ? fill(t.merged, { when, number: String(removal.pullRequest.number) })
-    : fill(t.clean, { when }));
-  const branch = $derived(removal.branch === null ? '' : fill(removal.branchDeleted ? t.branchDeleted : t.branchKept, { branch: removal.branch }));
 </script>
 
-<ThreadNotice icon={FolderMinus} tone="quiet" testid="worktree-gone" title={t.title} detail={archived ? t.archived : t.live} info={`${why} ${branch}`.trim()} docked>
-  {#if removal.pullRequest}<a class="pr" href={removal.pullRequest.url} target="_blank" rel="noopener noreferrer">#{removal.pullRequest.number}</a>{/if}
+<ThreadNotice icon={FolderMinus} tone="quiet" testid="worktree-gone" title={t.title} info={removalInfo(removal)} docked replaces>
   {#snippet actions()}
-    {#if !archived}<button type="button" class="small primary" data-testid="worktree-gone-new" onclick={() => store.startDraft(projectId)}><Plus size={13} strokeWidth={1.75} /><span class="ui-label">{t.startHere}</span></button>{/if}
+    <button type="button" class="small primary" data-testid="worktree-gone-new" onclick={() => store.startDraft(projectId)}><Plus size={13} strokeWidth={1.75} /><span class="ui-label">{t.startHere}</span></button>
   {/snippet}
 </ThreadNotice>

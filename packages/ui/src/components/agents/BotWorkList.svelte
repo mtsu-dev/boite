@@ -7,6 +7,7 @@
   import { GroupLinks } from '../../lib/group-links.svelte';
   import { strings } from '../../lib/strings';
   import { workspace } from '../../lib/workspace.svelte';
+  import { awaitsFirstTask } from '../../lib/bot-first-task';
   import DeskCard from './DeskCard.svelte';
 
   /**
@@ -22,6 +23,8 @@
   const t = $derived(strings.agents.deskPanel);
   const now = $derived(minuteClock.now);
   const sections = $derived(splitDesk(view.snapshot?.watches.filter(w => w.agentId === agentId) ?? []));
+  /** The column beside the chat (`onstart`) leaves a bot with nothing yet to the prompt over the chat; the desk sheet keeps its line. */
+  const first = $derived(!!onstart && awaitsFirstTask(store, view, agentId));
 
   /** A thread of another machine of the group opens there, when this client reaches that machine. */
   function remoteOf(watch: AgentWatch) {
@@ -69,7 +72,7 @@
   {/each}
 {/snippet}
 
-<div class="bot-work" data-testid="desk-work">
+<div class="bot-work" class:idle={!!onstart && !sections.handling.length && !sections.done.length} data-testid="desk-work">
   {#if sections.handling.length || sections.done.length}
     {#if sections.handling.length}
       <h3 class="bot-section" data-testid="bot-handling">{t.handling} <span class="bot-section-count">{sections.handling.length}</span></h3>
@@ -79,8 +82,9 @@
       <h3 class="bot-section" data-testid="bot-done">{t.done} <span class="bot-section-count">{sections.done.length}</span></h3>
       {@render rows(sections.done, true)}
     {/if}
-  {:else}
+  {:else if !first}
+    <!-- An empty desk is one prompt in the column's middle; with no conversation either it moves over the chat (AgentsPage). -->
     <p class="bot-work-empty">{t.workEmpty}</p>
-    {#if onstart && store.owner}<button type="button" class="ghost small bot-work-start" data-testid="desk-work-start" onclick={onstart}><span class="ui-label">{t.workStart}</span></button>{/if}
+    {#if onstart && store.owner}<button type="button" class="small bot-work-start" data-testid="desk-work-start" onclick={onstart}><span class="ui-label">{t.workStart}</span></button>{/if}
   {/if}
 </div>

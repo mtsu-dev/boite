@@ -101,7 +101,7 @@ test('Nova\'s threads: what it handles, needs-you first, then what it is done wi
     expect(titles('done')).toEqual(['Release notes 2.0.4']);
     expect(card('Release notes 2.0.4')?.classList.contains('done')).toBe(true);
     // A second line only when it says something: needs you, a silent turn, a pull request, a machine out of reach.
-    expect(chips()).toEqual(['Needs you', 'silent for 24 min']);
+    expect(chips()).toEqual(['Needs you', expect.stringMatching(/^silent for 24m \d{2}s$/)]);
     expect(card('Fix login redirect loop')?.querySelector('[data-testid=desk-card-pr]')?.textContent).toMatch(/PR #482\s*checks failing/);
     expect(card('Fix login redirect loop')?.querySelector('[data-testid=desk-card-pr]')?.getAttribute('data-checks')).toBe('failing');
     expect(card('Release notes 2.0.4')?.querySelector('[data-testid=desk-card-pr]')?.textContent).toContain('PR #479 merged');

@@ -74,6 +74,8 @@
   const NARROW_MAX = 600;
   let width = $state(0);
   let narrow = $derived(width > 0 && width < NARROW_MAX);
+  /** At a 360 px phone the bar keeps the file's name whole; its line counts stay on its row in the list under the diff. */
+  let tight = $derived(width > 0 && width < 380);
   let changes = $derived(status?.changes ?? []);
   /** Where the selected file stands in the list, -1 when it is not (or no longer) in it. */
   let at = $derived(selected === null ? -1 : changes.findIndex((change) => change.path === selected));
@@ -205,13 +207,13 @@
       </span>
     {/if}
     <span class="spacer"></span>
-    {#if oneFile && picked}
+    {#if oneFile && picked && !tight}
       {@const lines = countsOf(picked)}
       <span class="lines" data-testid="changes-lines">
         {#if lines.added}<span class="count added ui-label">+{lines.added}</span>{/if}
         {#if lines.removed}<span class="count removed ui-label">-{lines.removed}</span>{/if}
       </span>
-    {:else}
+    {:else if !(oneFile && picked)}
       <span class="total" data-testid="changes-count">
         {status
           ? status.changes.length === 1
@@ -250,9 +252,7 @@
           data-testid="changes-row"
           data-path={change.path}
           data-status={change.status}
-          title={change.oldPath
-            ? `${change.path}\n${fill(strings.changes.renamedFrom, { path: change.oldPath })}`
-            : change.path}
+          title={[change.path, change.oldPath ? fill(strings.changes.renamedFrom, { path: change.oldPath }) : '', change.staged ? strings.changes.staged : ''].filter(Boolean).join('\n')}
           onclick={() => select(change)}
         >
           <span class="mark" data-status={change.status} title={strings.changes.status[change.status]}>
@@ -261,9 +261,6 @@
           <span class="path">
             <span class="dir">{directory(change.path)}</span><span class="base">{base(change.path)}</span>
           </span>
-          {#if change.staged}
-            <span class="staged ui-label-box" title={strings.changes.staged}><span class="ui-label">{strings.changes.stagedShort}</span></span>
-          {/if}
           <!-- Both counts keep their column, empty or not, so every row's figures line up. -->
           <span class="count added ui-label">{lines.added ? `+${lines.added}` : ''}</span>
           <span class="count removed ui-label">{lines.removed ? `-${lines.removed}` : ''}</span>
@@ -515,17 +512,6 @@
 
   .row.on .base {
     color: var(--color-foreground);
-  }
-
-  .staged {
-    flex: none;
-    padding: 0 5px;
-    border-radius: var(--radius-sm);
-    background: var(--color-surface-3);
-    color: var(--color-muted-foreground);
-    font-size: var(--text-sm);
-    line-height: 18px;
-    font-weight: 600;
   }
 
   .count {

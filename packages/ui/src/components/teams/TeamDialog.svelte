@@ -161,7 +161,7 @@
         </label>
 
         <div class="field">
-          <div class="members-head"><span id="{uid}-members">{words.members}</span><span class="mono count" data-testid="team-dialog-count">{fill(words.selected, { count: count(picked.length), max: count(TEAM_LIMITS.members) })}</span></div>
+          <div class="members-head"><span id="{uid}-members">{words.members}</span><span class="count" data-testid="team-dialog-count">{fill(words.selected, { count: count(picked.length), max: count(TEAM_LIMITS.members) })}</span></div>
           {#if localBots === 0 && !initial}<p class="note" data-testid="team-dialog-nobots">{words.noBots}</p>{/if}
           <ul class="choices" role="group" aria-labelledby="{uid}-members" data-testid="team-dialog-members">
             {#each choices as choice (choice.key)}

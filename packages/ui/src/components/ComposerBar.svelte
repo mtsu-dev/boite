@@ -49,7 +49,6 @@
     waiting = false,
     answering = false,
     folded = false,
-    blocked = false,
     composer = null,
     sendLabel = strings.composer.send,
     choice = $bindable(),
@@ -75,8 +74,6 @@
     answering?: boolean;
     /** A permission or a question holds the box and nothing is written: the decision reads alone. */
     folded?: boolean;
-    /** Nothing can run here (the thread's folder is gone): the row steps back, and send leaves the accent to the notice's way out. */
-    blocked?: boolean;
     /** The composer while an ask is docked in it: menus open above it, so the ask stays readable. */
     composer?: HTMLElement | null;
     /** What Send does, when it answers a question rather than sending a message. */
@@ -165,9 +162,8 @@
   let effortItems = $derived([...agentDefault ? [{ id: '', label: strings.composer.effortDefault, title: strings.composer.effortDefaultHint }] : [],
     ...effortLevels.map((level) => ({ id: level.id, label: levelName(level), title: levelTitle(level) }))]);
   let speedItems = $derived([{ id: '', label: strings.composer.standardSpeed }, ...speeds.map((entry) => ({ id: entry.id, label: levelName(entry), title: levelTitle(entry) }))]);
-  /** What the picker's More row holds, by its current values: a speed other than the standard one, then the mode. */
-  let moreSummary = $derived([speedItems.find((item) => item.id !== '' && item.id === speedOptions.speed)?.label, modes.length > 0 ? modeItems.find((item) => item.id === displayedMode)?.label : undefined]
-    .filter(Boolean).join(' · '));
+  /** What the picker's More row holds, by its current value: a speed other than the standard one. */
+  let moreSummary = $derived(speedItems.find((item) => item.id !== '' && item.id === speedOptions.speed)?.label ?? '');
 
   /** A null effort runs at the model's own default, not at a preset the client configured. */
   function cacheKey(selection: Choice): CacheKey {
@@ -279,7 +275,7 @@
 
 <svelte:window onstorage={(event) => { if (event.key === VOICE_STORAGE_KEY || event.key === null) voice.load(); }} />
 
-<div class="bar" class:folded class:blocked inert={blocked} bind:this={bar}>
+<div class="bar" class:folded bind:this={bar}>
   <!-- One "+" at the start: files, a file mention, a command and the draft's worktree. -->
   {#if !folded}
   {#key `${key}:${store.draft?.projectId ?? ''}`}
@@ -302,16 +298,16 @@
         <div class="setting" data-testid="composer-effort" tabindex="-1"><span class="setting-name ui-label">{strings.composer.effortTitle}</span>
           <PickerChoices label={strings.composer.effortTitle} testid="composer-effort-menu" items={effortItems} active={activeEffort ?? (agentDefault ? '' : null)} onpick={pickEffort} /></div>
       {/if}
-      {#if speeds.length > 0 || modes.length > 0 || bound}
-        <!-- The rest waits behind one quiet row that reads its values: the first level is the model and its effort. -->
+      {#if modes.length > 0}
+        <div class="setting" data-testid="composer-mode" tabindex="-1"><span class="setting-name ui-label">{strings.composer.mode}</span>
+          <PickerChoices label={strings.composer.mode} testid="composer-mode-menu" items={modeItems} active={displayedMode} onpick={pickMode} /></div>
+      {/if}
+      {#if speeds.length > 0 || bound}
+        <!-- The rest waits behind one quiet row that reads its values: the first level is the model, its effort and its permission. -->
         <More summary={moreSummary}>
           {#if speeds.length > 0}
             <div class="setting" data-testid="effort-speed" tabindex="-1"><span class="setting-name ui-label">{strings.composer.speed}</span>
               <PickerChoices label={strings.composer.speed} testid="effort-speed-menu" items={speedItems} active={speedOptions.speed ?? ''} onpick={(id) => void pick(speedOptions.pick(id || null))} /></div>
-          {/if}
-          {#if modes.length > 0}
-            <div class="setting" data-testid="composer-mode" tabindex="-1"><span class="setting-name ui-label">{strings.composer.mode}</span>
-              <PickerChoices label={strings.composer.mode} testid="composer-mode-menu" items={modeItems} active={displayedMode} onpick={pickMode} /></div>
           {/if}
           {#if bound}
             <div class="setting context-row"><span class="setting-name ui-label">{strings.thread.contextDetails}</span><ContextControl {store} /></div>
@@ -405,9 +401,6 @@
   /* The rows under the models: the setting's name, its choices at the end, or
      under it when the picker is too narrow for both on one line. */
   .setting { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; min-height: var(--row); padding: 2px 2px 2px 8px; outline: none; }
-  .setting > :global(.choices) { flex: 0 1 auto; }
-  /* A phone gives the choices their own full line under the name, on its grid. */
-  @media (max-width: 720px) { .setting > :global(.choices) { flex: 1 0 100%; } }
   .setting-name { color: var(--color-muted-foreground); font-size: var(--text-sm); }
 
   /* Every child is one control high, so the end is the centre on one row; on a
@@ -475,9 +468,6 @@
   }
 
   .send { box-shadow: var(--shadow-send); }
-  /* Blocked, the row reads as off and send is an outline: the notice's button is the one way on. */
-  .bar.blocked > :global(:not(.send)) { opacity: .45; }
-  .bar.blocked .send { background: transparent; border-color: var(--color-edge); color: var(--color-subtle); box-shadow: none; opacity: 1; }
   .send.resting { display: none; }
   .send:not(:disabled):active { transform: scale(.92); }
   .send :global(.spinner) { animation: spin 1s linear infinite var(--loops); }

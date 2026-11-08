@@ -3,18 +3,16 @@
   import { agentDirectory } from '../lib/agent-directory.svelte';
   import { tick } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
-  import { Bot, ChevronDown, Ellipsis, FolderInput, GitBranch, GitPullRequest, Globe, MessagesSquare, Network, PanelRight, Search, SquareKanban, SquareTerminal, UsersRound, VenetianMask } from '@lucide/svelte';
+  import { Bot, ChevronDown, Ellipsis, FolderInput, GitBranch, GitPullRequest, MessagesSquare, Network, PanelRight, Search, UsersRound, VenetianMask } from '@lucide/svelte';
   import { focusOnMount } from '../lib/actions';
   import { needsAnAI } from '../lib/first-run';
   import { contextMenu } from '../lib/context-menu.svelte';
   import { pendingLine } from '../lib/thread-move.svelte';
-  import { pickThreadAction, threadMenuItems, threadToolItems } from '../lib/thread-menu';
+  import { panelItems as sharedPanelItems, pickThreadAction, threadMenuItems, threadToolItems } from '../lib/thread-menu';
   import { separator, type MenuItem } from '../lib/menu';
   import { fill, strings } from '../lib/strings';
   import { work } from '../lib/work-prefs.svelte';
   import type { SurfaceKind } from '../lib/right-panel.svelte';
-  import { available, kindName, offeredCards } from '../lib/surface-labels';
-  import { surfaceGlyph } from '../lib/surface-glyphs';
   import type { Store } from '../lib/store.svelte';
   import { projectName } from '../lib/format';
   import { workspace } from '../lib/workspace.svelte';
@@ -24,7 +22,6 @@
   import ContextModeBadge from './ContextModeBadge.svelte';
   import CoordinationDialog from './CoordinationDialog.svelte';
   let { store }: { store: Store } = $props();
-  const inShell = window.__TAURI_INTERNALS__ !== undefined;
   let thread = $derived(store.openThread);
   const mobile = new MediaQuery('(max-width: 720px)');
   /** Under a phone's title: where the conversation lives, its machine once there are two. */
@@ -105,16 +102,12 @@
     titleButton?.focus({ preventScroll: true });
   }
 
-  let agentsOn = $derived(store.panelOpen && store.panel.active?.kind === 'agents');
   /** The agent this thread was entrusted to, if any. */
   let carrier = $derived(thread ? agentDirectory(store).entrustmentOf(thread.id) : null);
   /** A subagent's header starts with the conversation that started it: "parent / subagent". */
   let parentTitle = $derived(thread?.parentThreadId ? store.threads.find(entry => entry.id === thread!.parentThreadId)?.title ?? strings.delegation.parent : null);
   /** The agent the owner entrusted this thread's project to, when the thread itself is not entrusted. */
   let resident = $derived(thread ? residentOfThread(store, thread) : null);
-
-  /** A labelled rule: the menu draws its words as the start of a section. */
-  const section = (id: string, label: string): MenuItem => ({ ...separator(id), label });
 
   /**
    * What the thread is, first in its menu: the bot that holds or looks after
@@ -132,44 +125,26 @@
     ];
   });
 
+  /** The view's own tools, listed in Tools after the panels. A phone has no Ctrl+F: this list is its way to the find bar. */
   let tools = $derived.by((): MenuItem[] => {
     if (!thread) return [];
     return [
-      // A phone has no Ctrl+F: this sheet is its way to the find bar.
       { id: 'find', label: strings.palette.find, glyph: Search },
-      { id: 'agents', label: strings.delegation.heading, glyph: UsersRound, active: agentsOn },
-      ...(!thread.agentSessionId ? [{ id: 'coordination', label: strings.coordination.heading, glyph: Network }] : [])
+      ...(!thread.agentSessionId ? [{ id: 'coordination', label: strings.coordination.heading, glyph: Network }] : []),
+      // A phone's way back to the panel as it was left, a file or a page included.
+      ...(mobile.current ? [{ id: 'panel', label: strings.thread.panelHint, glyph: PanelRight, active: store.panelOpen }] : [])
     ];
   });
-  let desktopItems = $derived(thread ? [...identity, ...(identity.length ? [separator('sep-identity')] : []), ...threadMenuItems(store, thread, { tools })] : []);
+  let desktopItems = $derived(thread ? [...identity, ...(identity.length ? [separator('sep-identity')] : []), ...threadMenuItems(store, thread, {})] : []);
+  /** The header's rows keep the ids its tests and the phone always knew them by. */
+  const headerIds = $derived<Record<string, string>>(mobile.current
+    ? { 'kind:agents': 'agents', 'kind:changes': 'changes', 'kind:agent-browser': 'phone-browser-toggle', 'board-toggle': 'board' }
+    : { 'kind:agents': 'agents' });
+  /** Tools: every panel and tool of this thread in one list, the same on a desktop, a phone and a row. */
+  let toolItems = $derived(thread ? threadToolItems(store, thread, { tools, phone: mobile.current, panels: true, ids: headerIds }) : []);
 
-  /** Children delegated from this thread, at work or done, its CLI's own agents included: the phone offers Subagents only then. */
-  let delegated = $derived(!!thread && (store.subagents(thread.id) !== null || store.threads.some(row => row.parentThreadId === thread!.id)
-    || (store.delegation?.agents.length ?? 0) > 0 || (store.delegation?.nativeAgents?.length ?? 0) > 0));
-  const shows = (kind: SurfaceKind) => store.panelOpen && store.panel.active?.kind === kind;
-
-  /**
-   * The panels this thread opens beside it, in the header's panel menu: the
-   * bot's desk on its own thread, the cards this device offers, then the
-   * drawers under the chat (the owner's terminal, the project board).
-   */
-  let panelItems = $derived.by((): MenuItem[] => {
-    if (!thread) return [];
-    const kinds: SurfaceKind[] = [...(thread.agentSessionId ? ['desk' as const] : []), ...offeredCards().map(card => card.kind)];
-    const terminalKey = store.keyLabel('terminal');
-    const drawers: MenuItem[] = [
-      ...(store.owner && !thread.teamId && !thread.councilId && work.shows('header.terminal') ? [{
-        id: 'terminal-toggle', label: strings.terminal.title, glyph: SquareTerminal, active: store.terminalShown(thread.id),
-        title: terminalKey ? `${strings.thread.terminalHint} (${terminalKey})` : strings.thread.terminalHint
-      }] : []),
-      ...(store.boardAvailable() ? [{ id: 'board-toggle', label: strings.board.open, glyph: SquareKanban, active: store.boardShown }] : [])
-    ];
-    return [
-      ...kinds.filter(kind => available(kind, inShell, store.owner)).map((kind): MenuItem => ({ id: `kind:${kind}`, label: kindName(kind), glyph: surfaceGlyph(kind), active: shows(kind) })),
-      ...(drawers.length ? [separator('sep-drawers'), ...drawers] : [])
-    ];
-  });
-
+  /** The panel button's own list: the panels and the drawers, the head of Tools. */
+  let panelList = $derived(thread ? sharedPanelItems(store, thread) : []);
   function panelPick(id: string) {
     if (id === 'terminal-toggle') store.toggleTerminal();
     else if (id === 'board-toggle') store.toggleBoard();
@@ -177,41 +152,23 @@
   }
 
   /**
-   * A phone's one header menu, in two labelled sections: where to go (the
-   * thread's main tools, at most six with "All tools", the panel and its
-   * cards, for the rest), then what to do to the thread (its bot, its
-   * watches, pin, rename, hand off, archive, delete). Contact requests live
-   * in the Activity tab.
+   * A phone's header menu is a desktop's: the thread's bot and watches, what
+   * is done to the thread, then Tools, which shows its one list in place
+   * until Back, a pick or a fresh open. Contact requests live in Activity.
    */
-  let phoneItems = $derived.by((): MenuItem[] => {
-    if (!thread) return [];
-    return [
-      section('sec-tools', strings.thread.toolsSection),
-      { id: 'changes', label: strings.rightPanel.changes, glyph: surfaceGlyph('changes'), active: shows('changes') },
-      { id: 'phone-browser-toggle', label: strings.rightPanel.browser, glyph: Globe, active: shows('agent-browser') },
-      ...(delegated || agentsOn ? [{ id: 'agents', label: strings.delegation.heading, glyph: UsersRound, active: agentsOn }] : []),
-      ...(store.boardAvailable() ? [{ id: 'board', label: strings.board.open, glyph: SquareKanban, active: store.boardShown }] : []),
-      { id: 'find', label: strings.palette.find, glyph: Search },
-      { id: 'panel', label: strings.thread.panelMenu, glyph: PanelRight, active: store.panelOpen },
-      section('sec-thread', strings.thread.threadSection),
-      ...identity,
-      // The phone rows' grouping: the common actions, then All tools (`more`) for the rest.
-      ...threadMenuItems(store, thread, { phone: true, grouped: true })
-    ];
-  });
-  /** The phone menu shows All tools' list in its place until Back, a pick or a fresh open, as a phone row does. */
+  let phoneItems = $derived(thread ? [...identity, ...(identity.length ? [separator('sep-identity')] : []), ...threadMenuItems(store, thread, { phone: true })] : []);
   let inTools = $state(false);
   let reopening = false;
   let titleMenu = $state<HTMLElement>();
-  const phoneShown = $derived(inTools && thread ? threadToolItems(store, thread, { phone: true }) : phoneItems);
-  function reopenPhone(next: boolean) {
+  const menuShown = $derived(inTools ? toolItems : mobile.current ? phoneItems : desktopItems);
+  function reopenMenu(next: boolean) {
     inTools = next;
     reopening = true;
     void tick().then(() => { titleMenu?.querySelector<HTMLButtonElement>('[aria-haspopup=menu]')?.click(); reopening = false; });
   }
-  function phonePick(action: string) {
-    if (action === 'more') return reopenPhone(true);
-    if (action === 'back') return reopenPhone(false);
+  function menuPick(action: string) {
+    if (action === 'more') return reopenMenu(true);
+    if (action === 'back') return reopenMenu(false);
     inTools = false;
     titleAction(action);
   }
@@ -239,7 +196,12 @@
 
   function openTitleMenu(event: MouseEvent) {
     if (!store.openThread) return;
-    contextMenu.open(event, desktopItems, titleAction);
+    const pick = (action: string): void => {
+      if (action === 'more') return contextMenu.follow(toolItems, pick);
+      if (action === 'back') return contextMenu.follow(desktopItems, pick);
+      titleAction(action);
+    };
+    contextMenu.open(event, desktopItems, pick);
   }
 </script>
 
@@ -291,7 +253,7 @@
           <!-- A small chevron exposes thread actions on the desktop. -->
           <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
           <span class="title-menu" bind:this={titleMenu} onclickcapture={() => { if (!reopening) inTools = false; }}>
-            <Menu items={mobile.current ? phoneShown : desktopItems} onpick={mobile.current ? phonePick : titleAction} label={strings.sidebar.threadMenu} heading={thread?.title} placement="bottom" variant={mobile.current ? 'ghost' : 'text'} testid="thread-menu-trigger">
+            <Menu items={menuShown} onpick={menuPick} label={strings.sidebar.threadMenu} heading={thread?.title} placement="bottom" variant={mobile.current ? 'ghost' : 'text'} testid="thread-menu-trigger">
               {#if mobile.current}<Ellipsis size={20} />{:else}<ChevronDown size={14} />{/if}
             </Menu>
           </span>
@@ -367,8 +329,8 @@
           >
             <PanelRight size={16} strokeWidth={1.75} />
           </button>
-          {#if panelItems.length}
-            <Menu items={panelItems} onpick={panelPick} label={strings.thread.panelMenu} placement="bottom" align="end" variant="ghost" testid="panel-menu">
+          {#if panelList.length}
+            <Menu items={panelList} onpick={panelPick} label={strings.thread.panelMenu} placement="bottom" align="end" variant="ghost" testid="panel-menu">
               <ChevronDown size={12} strokeWidth={1.75} />
             </Menu>
           {/if}
@@ -416,7 +378,8 @@
   /* The panel button and its list read as one control: one hover, one fill when the panel is open. */
   .panel-switch { display: inline-flex; flex: none; align-items: center; border-radius: var(--radius-md); }
   .panel-switch > button { width: var(--control-sm); height: var(--control-sm); border-radius: var(--radius-md) 0 0 var(--radius-md); }
-  .panel-switch :global(.trigger.ghost) { width: 18px; border-radius: 0 var(--radius-md) var(--radius-md) 0; }
+  /* The list's chevron is a pointer's 28 px wide, as tall as the button it extends. */
+  .panel-switch :global(.trigger.ghost) { width: 28px; height: 32px; border-radius: 0 var(--radius-md) var(--radius-md) 0; }
   .panel-switch:not(:has(.menu)) > button { border-radius: var(--radius-md); }
   .panel-switch.on { background: var(--color-active); }
   .panel-switch.on > button { color: var(--color-foreground); }
@@ -465,6 +428,7 @@
 
   .title { min-width: 0; }
   .title-menu { display: flex; flex: none; }
+  .title-menu :global(.trigger) { min-width: 28px; min-height: 28px; }
   @media (max-width: 720px) {
     /* The title is what tells one conversation from another: the buttons give
        up their words for it, and keep a finger-sized square. */
@@ -489,7 +453,8 @@
     .title-lines ~ .spacer { display: none; }
     /* Two lines stacked: a label's ascender room and its trim to the capitals would pull the second over the first. */
     .title-lines > .ui-label { margin-block: 0; padding-block: 0; text-box: normal; }
-    .title-text { display: block; max-width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* A long title takes a second line rather than losing its end. */
+    .title-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; max-width: 100%; min-width: 0; overflow: hidden; white-space: normal; overflow-wrap: anywhere; line-height: 1.2; }
     .title-place { display: flex; gap: 4px; max-width: 100%; min-width: 0; white-space: nowrap; font-size: var(--text-xs); font-weight: 400; color: var(--color-muted-foreground); }
     /* The machine label stays whole; the project name gives way. */
     .place-project { min-width: 0; overflow: hidden; text-overflow: ellipsis; }

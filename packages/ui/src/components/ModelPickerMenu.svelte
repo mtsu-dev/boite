@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy, type Snippet } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
-  import { ChevronRight, Star, RefreshCw } from '@lucide/svelte';
+  import { Check, ChevronRight, Star, RefreshCw } from '@lucide/svelte';
   import { isNamedModel, orderedModels } from '../lib/model-order';
   import { shortlist, type ShortModel } from '../lib/model-shortlist';
   import type { Account, ModelInfo } from '@boite/contracts';
@@ -165,14 +165,20 @@
     return choice?.providerId === row.providerId && choice.accountId === row.accountId && choiceModel === row.model.id;
   }
 
-  /** The row's quiet text: its provider, the gateway route, and the login when the provider has several. */
+  /** Several providers among the rows: only then does each row name its own. */
+  let mixed = $derived(new Set(home.map((row) => row.providerId)).size > 1);
+  /**
+   * The row's quiet text, only what tells it apart: its provider when the rows
+   * mix several, the gateway route, and a login other than the provider's own
+   * when it has several (the default login is not printed on every row).
+   */
   function sourceOf(row: ShortModel): string {
-    const parts = [store.providerOf(row.providerId)?.name ?? row.providerId];
+    const parts = mixed ? [store.providerOf(row.providerId)?.name ?? row.providerId] : [];
     const route = modelSource(row.model);
     if (route) parts.push(route);
     if (store.accountsOf(row.providerId).length > 1) {
-      const label = store.accountOf(row.accountId)?.label;
-      if (label) parts.push(label);
+      const account = store.accountOf(row.accountId);
+      if (account && account.isolationDir !== null && account.label) parts.push(account.label);
     }
     return parts.join(' · ');
   }
@@ -398,9 +404,9 @@
     {#each home as row (`${row.providerId}:${row.accountId}:${row.model.id}`)}
       <button type="button" class="row model" class:current={isChoice(row)} role="menuitem" data-row data-testid={row.favorite ? 'favorite-model' : 'recent-model'}
         title={row.model.id} disabled={disabled || pickPending || !store.providerOf(row.providerId)?.available} onclick={() => void applyPick(row, row.model.id)}>
-        <span class="mark"></span>
+        <span class="mark" aria-hidden="true">{#if isChoice(row)}<Check size={14} strokeWidth={2.25} />{/if}</span>
         <span class="name ui-label">{row.model.name}</span>
-        <span class="source ui-label">{sourceOf(row)}</span>
+        {#if sourceOf(row)}<span class="source ui-label">{sourceOf(row)}</span>{/if}
       </button>
     {/each}
     <button type="button" class="row fold all" data-row data-testid="picker-all-models" onclick={openAll} onkeydown={(event) => { if (event.key === 'ArrowRight') { event.preventDefault(); openAll(); } }}>
@@ -430,7 +436,7 @@
         disabled={disabled || pickPending}
         onclick={() => pickModel(model)}
       >
-        <span class="mark"></span>
+        <span class="mark" aria-hidden="true">{#if isCurrentModel(model)}<Check size={14} strokeWidth={2.25} />{/if}</span>
         <span class="name ui-label">{model.name}</span>
         {#if model.badge === 'new'}
           <span class="badge ui-label-box"><span class="ui-label">{strings.composer.newBadge}</span></span>
@@ -543,7 +549,7 @@
                 title={model.id}
                 onclick={() => pickModel(model)}
               >
-                <span class="mark"></span>
+                <span class="mark" aria-hidden="true">{#if isCurrentModel(model)}<Check size={14} strokeWidth={2.25} />{/if}</span>
                 <span class="name ui-label">{model.name}</span>
               </button>
               {#if store.owner}
@@ -566,7 +572,11 @@
   .favorite-mark { display: inline-flex; align-items: center; justify-content: center; color: var(--color-foreground); }
   /* The first level stacks its title (phone), its rows and the effort: no grid areas to hold. */
   .popover.home { display: flex; flex-direction: column; }
-  .source { max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); color: var(--color-subtle); }
+  /* The first level has the phone sheet's air: the same rows, a finger tall, and room around them. */
+  .home .short-list { padding: 8px; gap: 2px; }
+  .home .short-list .row { min-height: var(--touch-target); padding: 4px 10px; }
+  .home .settings { padding: 8px; gap: 4px; }
+  .source { flex: 0 1 auto; min-width: 0; text-align: right; font-size: var(--text-sm); color: var(--color-subtle); }
   .all { color: var(--color-muted-foreground); }
   .all .name { flex: 1; font-weight: 400; }
   .sheet-title { display: none; }
@@ -688,16 +698,12 @@
     background: color-mix(in srgb, var(--color-surface-3) 85%, var(--color-foreground));
   }
 
+  /* The current model's check, a small mark in the accent; the other rows keep its room so the names line up. */
   .mark {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
+    display: inline-flex;
+    width: 14px;
     flex: none;
-    background: transparent;
-  }
-
-  .row.current .mark {
-    background: var(--color-foreground);
+    color: var(--color-accent);
   }
 
   .name {

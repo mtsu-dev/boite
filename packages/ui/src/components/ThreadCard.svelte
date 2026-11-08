@@ -57,7 +57,7 @@
   // A move asked for while the turn runs, until the turn ends and applies it.
   let pending = $derived(pendingLine(thread));
   let doneAllowed = $derived(canMarkDone(owner, thread));
-  /** Activity's section already says the user's turn: the reason line names any other state before the reason. */
+  /** Activity's section already says the user's turn: the reason line names any other state after the reason, as every row reads title, context, state, time. */
   let feedState = $derived(reason === undefined ? null : threadState(thread, owner.subagents(thread.id)));
   /** The details the row only shows under the pointer or the keyboard, in its tooltip at rest: the pull request, the branch, the time. */
   let tip = $derived([thread.title, pullRequest && pullRequestLabel(pullRequest), thread.branch, ago(thread.lastUserMessageAt ?? thread.createdAt, now)].filter(Boolean).join('\n'));
@@ -145,7 +145,7 @@
     >
       {#if reason !== undefined}
         <span class="feed-head"><ThreadHeadline {owner} {thread} {open} tile={compact && !nested ? project : undefined} {pullRequest} />{#if at !== undefined}<time title={exactTime(at)}>{ago(at, now)}</time>{/if}</span>
-        <span class="reason" data-testid="thread-reason">{#if feedState !== null && feedState !== 'waiting'}<ThreadState {thread} {now} subagents={owner.subagents(thread.id)} away={owner.connection !== 'ready'} /><span class="sep" aria-hidden="true">·</span>{/if}<span class="text">{reason}</span></span>
+        <span class="reason" data-testid="thread-reason"><span class="text">{reason}</span>{#if feedState !== null && feedState !== 'waiting'}<span class="sep" aria-hidden="true">·</span><ThreadState {thread} {now} subagents={owner.subagents(thread.id)} away={owner.connection !== 'ready'} />{/if}</span>
       {:else}
         <ThreadHeadline {owner} {thread} {now} {open} tile={compact && !nested ? project : undefined} {pullRequest} mark />
         {#if where}<span class="where ui-label" data-testid="thread-where">{where}</span>{/if}
@@ -169,6 +169,10 @@
 
 <style>
   .thread {
+    /* The room the row's own buttons take at its right edge: a 32 px hit area each, a phone's touch target. */
+    --act: max(32px, var(--control-sm));
+    --act-room: calc(var(--act) + 3px);
+    --pad-x: 8px;
     position: relative;
     border-radius: var(--radius-md);
     font-size: 13.5px;
@@ -207,7 +211,7 @@
     width: 100%;
     height: auto;
     min-height: 32px;
-    padding: 6px 8px;
+    padding: 6px var(--pad-x);
     gap: 4px;
     border-radius: inherit;
     background: transparent;
@@ -232,7 +236,7 @@
   .where { margin-top: -3px; padding-left: 26px; overflow: hidden; font-size: var(--text-xs); color: var(--color-subtle); text-align: start; text-overflow: ellipsis; white-space: nowrap; }
   .nested { margin-left: 26px; }
   /* The Recent list: a step wider inside, the project's tile first. */
-  .compact .row { padding: 6px 10px; }
+  .compact { --pad-x: 10px; }
   .compact :global(.headline) { gap: 10px; }
   .row:hover:not(:disabled) {
     background: transparent;
@@ -257,46 +261,30 @@
   .pending :global(svg) {
     flex: none;
   }
-  /* Centred on the title's line, 21 px under the row's 1 px border and top padding: 26 px buttons at 5 px
-     sat 1.5 px above it. A whole pixel keeps the icons sharp, so they stay half a pixel high. */
-  .actions {
+  /* Centred on the title's line, 16 px down the row (6 px of padding, half its 20 px line). Nothing sits
+     under them (the line below makes room), so they need no backing of their own. */
+  .actions, .done {
     position: absolute;
-    right: 3px;
-    top: 3px;
-    opacity: 0;
-    background: var(--color-surface-2);
-  }
-  .done { position: absolute; right: 30px; top: 3px; opacity: 0; background: var(--color-surface-2); color: var(--color-muted-foreground); }
-  .thread:hover .done, .thread:focus-within .done { opacity: 1; }
-  .thread:hover .actions,
-  .thread:focus-within .actions {
-    opacity: 1;
-  }
-  /* The menu button takes the time's place; a state steps left of it and stays. */
-  .thread:hover :global(.headline .when:not(.state)),
-  .thread:focus-within :global(.headline .when:not(.state)),
-  .thread:hover .feed-head time,
-  .thread:focus-within .feed-head time {
+    top: calc(16px - var(--act) / 2);
     opacity: 0;
   }
-  .thread:hover :global(.headline .when.state),
-  .thread:focus-within :global(.headline .when.state) {
-    margin-right: 22px;
-  }
-  .thread:has(.done):hover :global(.headline .when.state), .thread:has(.done):focus-within :global(.headline .when.state) { margin-right: 49px; }
-  .thread:has(.done):hover :global(.headline .when:not(.state)), .thread:has(.done):focus-within :global(.headline .when:not(.state)) { margin-right: 27px; }
+  .actions { right: 3px; }
+  .done { right: calc(3px + var(--act)); color: var(--color-muted-foreground); }
+  .thread:has(.done) { --act-room: calc(2 * var(--act) + 3px); }
+  .thread:is(:hover, :focus-within) .done, .thread:is(:hover, :focus-within) .actions { opacity: 1; }
+  /* While the buttons show, the title's line ends where they begin: the time gives up its place and a state
+     steps left, whole, so they never cover a word. */
+  .thread:is(:hover, :focus-within) .row > :global(.headline),
+  .thread:is(:hover, :focus-within) .feed-head { margin-right: calc(var(--act-room) + 4px - var(--pad-x)); }
+  .thread:is(:hover, :focus-within) :global(.headline .when:not(.state)),
+  .thread:is(:hover, :focus-within) .feed-head time { display: none; }
   .rename {
     width: 100%;
     height: 32px;
   }
+  /* A phone has no pointer to wait for: the buttons always show, and the title's line always ends before them. */
   @media (max-width: 720px) {
-    .done { opacity: 1; }
-    .thread:has(.done) :global(.headline .when) { margin-right: 49px; }
-    .actions {
-      opacity: 1;
-    }
-    .thread :global(.headline .when) {
-      margin-right: 22px;
-    }
+    .done, .actions { opacity: 1; }
+    .row > :global(.headline), .feed-head { margin-right: calc(var(--act-room) + 4px - var(--pad-x)); }
   }
 </style>

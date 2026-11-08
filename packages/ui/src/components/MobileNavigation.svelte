@@ -121,7 +121,9 @@
       .sort(compareEntries));
   const inRecent = $derived(listScreen === 'threads' && workspace.view === 'recent');
   /** Recent's line under the title starts with where the row lives, once the tiles alone may not tell rows apart. */
-  const places = $derived(rowPlaces(rows));
+  /** This app's own machine goes unsaid on Recent's place line and on the cards: the other machines are named. */
+  const home = $derived(machines.find(m => m.store === workspace.primary));
+  const places = $derived(rowPlaces(rows, home?.id));
   /** Recent shows one project or all of them: the filter's choices. */
   const filterItems = $derived([
     { id: 'all', label: strings.sidebar.allProjects, active: !selected },
@@ -166,16 +168,18 @@
     // Activity's own count over the project's threads: the card and the rail's badge never disagree.
     return storeNeedsYou(owner, owner.threadsOf(entry.project.id));
   }
-  /** A phone's row menu: the thread's lifecycle first, the rest behind All tools, as on a desktop row. */
+  /** A phone's row menu: the thread's lifecycle first, the rest behind Tools, as on a desktop row. */
   function rowItems(owner: Store, thread: ThreadSummary): MenuItem[] {
     return threadMenuItems(owner, thread, { showDone: listScreen === 'threads', phone: true, grouped: true });
   }
-  /** What the row menu's All tools opens: a new title, a hand-off, a move, and a way back. */
+  /** What the row menu's Tools opens: the thread's panels, as in its header, then a new title, a move and a way back. */
   function rowTools(owner: Store, thread: ThreadSummary): MenuItem[] {
-    return threadToolItems(owner, thread, { phone: true });
+    return threadToolItems(owner, thread, { phone: true, panels: true });
   }
   /** Thread ids can collide between machines: the row's own store acts, and its pickers hang under the row's own trigger. */
   function rowAction(owner: Store, thread: ThreadSummary, action: string, machineId: string) {
+    // A panel or drawer shows over its thread: the list screen leaves for the chat first.
+    if (action.startsWith('kind:') || action === 'terminal-toggle' || action === 'board-toggle') show('chat');
     pickThreadAction(owner, thread, action, {
       rename: async () => {
         show('chat');
@@ -222,13 +226,12 @@
     return Object.values(sections).find(list => list.some(other => projectKey(other) === key)) ?? groups;
   }
   /** A set-aside project shows its archived conversations as its body, with no pill for them. */
-  const laterLists = ['archived'] as const;
 </script>
 
 <header class="mobile-header" class:chatting={chatting && !firstRun} class:settings={store.page !== 'chat'} data-testid="mobile-header" data-slide={slide.direction} bind:this={header}>
   {#if chatting && !firstRun}
-    <!-- The only way out of a conversation on a phone: it carries the mark of a thread that waits on the user elsewhere. -->
-    <button class="ghost icon back" data-testid="mobile-back" aria-label={elsewhere ? `${strings.sidebar.threads}, ${fill(strings.mobile.waitingElsewhere, { count: String(elsewhere) })}` : strings.sidebar.threads} onclick={() => show('threads')}><ArrowLeft size={20} />{#if elsewhere}<span class="waiting-mark" data-testid="mobile-back-waiting"></span>{/if}</button>
+    <!-- The only way out of a conversation on a phone. A thread that waits elsewhere is in its name and the tab bar's count, not a dot on the arrow. -->
+    <button class="ghost icon back" data-testid="mobile-back" aria-label={elsewhere ? `${strings.sidebar.threads}, ${fill(strings.mobile.waitingElsewhere, { count: String(elsewhere) })}` : strings.sidebar.threads} onclick={() => show('threads')}><ArrowLeft size={20} /></button>
   {:else if recover}
     <img class="brand-icon" src="./icons/icon.svg" alt="" width="30" height="30" />
   {/if}
@@ -246,7 +249,8 @@
   <div class="identity brand">
     <button class="ghost connection" data-testid="mobile-connection" onclick={() => store.showSettings('machines')}><span class="dot" class:ready={store.connection === 'ready'}></span><span class="ui-label">{place}</span><ChevronDown size={12} /></button>
     <!-- The first run's screen says what Boite is: the header keeps the machine alone, the way to its settings. -->
-    {#if !firstRun}<strong data-testid="mobile-title">{title}</strong>{/if}
+    <!-- The thread list's name is its view switch: the word says which view is on, a press opens the display menu. -->
+    {#if !firstRun}<strong data-testid="mobile-title">{#if listScreen === 'threads' && store.page === 'chat' && !recover && groups.length}<DisplayOptions entries={groups} target={undefined} owner={store} prefix="mobile-" compact labelled onaddproject={store.owner ? addProject : undefined} />{:else}{title}{/if}</strong>{/if}
   </div>
   {#if searchable}<button class="ghost icon" data-testid={lent?.searchTestid ?? 'mobile-search-open'} aria-label={lent?.searchLabel ?? strings.mobile.search} title={lent?.searchLabel ?? strings.mobile.search} onclick={() => searching = true}><Search size={20} /></button>{/if}
   {/if}
@@ -307,17 +311,19 @@
         {#if !query || groupRows.length > 0 || doneOpen || archivedOpen}
         <section class="project-group" class:inactive={!activeProject(group)} data-testid="mobile-project-group" data-project-id={group.project.id} data-machine-id={group.machine.id}>
           <div class="project-heading">
-            <ProjectTile project={group.project} store={group.machine.store} /><h2><span class="name">{projectName(group.project)}</span>{#if several}<span class="host">{group.machine.label}</span>{/if}</h2>
-            <ProjectThreadCounters entry={group} part="head" working={group.machine.store.threadsOf(group.project.id).filter(thread => workingThread(group.machine.store, thread)).length} waiting={group.machine.store.connection === 'ready' ? waitingCount(group) : 0} {controls} searching={!!query} away={group.machine.store.connection !== 'ready'} />
+            <ProjectTile project={group.project} store={group.machine.store} /><h2><span class="name">{projectName(group.project)}</span>{#if several && (group.machine !== home || group.machine.store.connection !== 'ready')}<span class="host">{group.machine.label}</span>{/if}</h2>
+            <ProjectThreadCounters entry={group} working={group.machine.store.threadsOf(group.project.id).filter(thread => workingThread(group.machine.store, thread)).length} waiting={group.machine.store.connection === 'ready' ? waitingCount(group) : 0} {controls} searching={!!query} away={group.machine.store.connection !== 'ready'} />
             {#if projectView.order === 'manual'}
               <Menu items={[
                 { id: 'up', label: strings.sidebar.moveProjectUp, disabled: projectKey(foldOf(group)[0]!) === projectKey(group) },
                 { id: 'down', label: strings.sidebar.moveProjectDown, disabled: projectKey(foldOf(group).at(-1)!) === projectKey(group) }
               ]} onpick={action => projectView.step(foldOf(group), projectKey(group), action === 'up' ? -1 : 1)} label={strings.sidebar.customOrder} placement="bottom" variant="ghost" testid="mobile-project-order"><ArrowUpDown size={18} /></Menu>
             {/if}
-            <!-- The desktop header's menu: a new thread here, the path, archived threads, managing the project. -->
+            <!-- The desktop header's menu: a new thread here, the path, archived threads and their switch (a set-aside group always shows them), managing the project. -->
             <button type="button" class="ghost icon project-actions" data-testid="mobile-project-menu" title={strings.sidebar.projectMenu} aria-label={strings.sidebar.projectMenu}
-              onclick={(event) => projectMenu(event, group.machine.store, group.project, undefined, () => show('chat'))}><Ellipsis size={18} /></button>
+              onclick={(event) => projectMenu(event, group.machine.store, group.project, undefined, () => show('chat'), later ? undefined : {
+                count: archiveCount(group.project, 'archived'), open: projectThreadView.isOpen(group, 'archived'), toggle: () => projectThreadView.toggle(group, 'archived')
+              })}><Ellipsis size={18} /></button>
           </div>
           {#if !query}{#each drafts as draft (draft.id)}<DraftRow owner={group.machine.store} entry={draft} onopen={() => show('chat')} />{/each}{/if}
           <WindowList items={attentionRows} keyOf={row => JSON.stringify([row.machine.id, row.thread.id])} {scrollRoot} estimate={66} measurements={measurements(projectKey(group))}>
@@ -340,10 +346,6 @@
             <RecentDone kind="archived" entries={[group]} {scrollRoot} {now} {query} open={archivedOpen && (!later || projectThreadView.laterOpen)} header={false} onopen={() => show('chat')} />
           </div>
           {#if groupRows.length === 0 && !group.project.archivedThreads && drafts.length === 0}<p class="empty">{strings.sidebar.noThreads}</p>{/if}
-          <!-- Archived waits at the group's foot, as on the desktop card: the heading keeps what needs the user now. -->
-          {#if archiveCount(group.project, 'archived') > 0 && !later}
-            <div class="project-foot"><ProjectThreadCounters entry={group} part="foot" working={0} {controls} searching={!!query} away={group.machine.store.connection !== 'ready'} body={later ? laterLists : undefined} /></div>
-          {/if}
         </section>
         {/if}
       {/each}
@@ -397,8 +399,8 @@
       {/if}
     {/if}
     {#if listScreen === 'activity' && rows.length === 0 && (query || inbox.contacts === 0)}
-      <!-- Nothing waits: the app's one empty view, small, as on the desktop page. -->
-      <EmptyState line={strings.mobile.emptyActivity} testid="activity-empty" small />
+      <!-- Nothing waits: the app's one empty view, small, at the screen's optical middle as on the desktop page. -->
+      <div class="activity-empty"><EmptyState line={strings.mobile.emptyActivity} testid="activity-empty" small /></div>
     {:else if listScreen !== 'activity' && rows.length === 0 && (query || workspace.view === 'recent' || groups.length === 0) && !(inRecent && !query && recentGroups.some(entry => entry.project.archivedThreads))}
       <div class="empty-state">
         <span class="empty-icon"><MessageSquare size={24} /></span>
@@ -441,10 +443,12 @@
     .at-work.on { border-color: var(--color-muted-foreground); background: var(--color-surface); }
     .brand-icon { flex: none; border-radius: var(--radius-md); }
     .back { position: relative; flex: none; }
-    /* Grey: amber is the "Needs you" word and the tab's count alone; the dot only says there is somewhere to go back to. */
-    .waiting-mark { position: absolute; top: 9px; right: 8px; width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--color-muted-foreground); box-shadow: 0 0 0 2px var(--color-background); }
     /* The page's name, under the machine it reads. */
-    .brand strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-lg); font-weight: 600; letter-spacing: -0.4px; line-height: 1.15; }
+    .brand strong { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-lg); font-weight: 600; letter-spacing: -0.4px; line-height: 1.15; }
+    /* The view switch's finger-sized target reaches past the line. */
+    .brand strong:has(:global(.named)) { overflow: visible; }
+    /* The place line above overlaps the title's top, so the hit area grows into the free band below it. */
+    .brand strong :global(.named::before) { content: ''; position: absolute; inset: -8px -4px -14px; }
     /* A finger-sized target without growing the header: the line reaches into the header's padding. */
     .connection { position: relative; z-index: 1; display: flex; gap: 5px; height: auto; min-height: var(--touch-target); min-width: var(--touch-target); max-width: 100%; margin: -14px 0 -12px; padding: 0; font-size: var(--text-xs); font-weight: 500; color: var(--color-muted-foreground); }
     .connection > span:not(.dot) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -467,7 +471,8 @@
     /* A whole touch target that eats the heading's padding rather than making it taller. */
     .project-heading .project-actions { flex: none; margin: -8px -8px -8px 0; color: var(--color-muted-foreground); }
     .project-heading :global(.counters) { margin: -8px 0; }
-    .project-foot { display: flex; justify-content: flex-end; margin-top: -6px; padding: 0 6px; }
+    /* The list's content box, the empty view a little above its centre, where the eye lands. */
+    .activity-empty { display: grid; place-items: center; min-height: 100%; padding-bottom: 10%; }
     .empty-state { display: flex; align-items: center; flex-direction: column; text-align: center; padding: 44px 16px; }
     .empty-icon { display: grid; place-items: center; width: 52px; height: 52px; border-radius: var(--radius-xl); border: 1px solid var(--color-edge); background: var(--color-surface-2); color: var(--color-muted-foreground); margin-bottom: 18px; }
     .empty-state h2 { font-size: var(--text-base); font-weight: 600; margin: 0 0 8px; }

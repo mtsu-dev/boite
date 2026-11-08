@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
-  import { ArrowLeft, ArrowRightToLine, ChevronLeft, ChevronRight, Ellipsis, ListX, Maximize2, Minimize2, SquareX, X, GripHorizontal, PanelsTopLeft } from '@lucide/svelte';
+  import { ArrowLeft, ArrowRightToLine, ChevronLeft, ChevronRight, ListX, Plus, Maximize2, Minimize2, SquareX, X, GripHorizontal, PanelsTopLeft } from '@lucide/svelte';
   import { floatingPanel, RESIZE_DIRECTIONS } from '../lib/floating-panel';
   import { browserBridge } from '../lib/browser-bridge';
   import { stripOverflows } from '../lib/strip-overflow';
@@ -101,6 +101,23 @@
    */
   function arrive(node: HTMLElement): void {
     if (untrack(() => entered)) node.dataset.arriving = '';
+  }
+
+  /**
+   * `out:` on a surface a tab switch replaces: it fades over the new one on
+   * `--dur-exit` while that one fades in, so no frame shows an empty panel.
+   * Out of the flow, it keeps the body's box; the new surface takes its place.
+   */
+  function leave(node: HTMLElement): { duration: number; css?: (t: number) => string } {
+    const body = node.parentElement;
+    const token = getComputedStyle(node).getPropertyValue('--dur-exit').trim();
+    const duration = parseFloat(token) * (token.endsWith('ms') ? 1 : 1000) || 0;
+    if (!body || duration === 0) return { duration: 0 };
+    Object.assign(node.style, {
+      position: 'absolute', top: `${body.offsetTop}px`, left: `${body.offsetLeft}px`,
+      width: `${body.clientWidth}px`, height: `${body.clientHeight}px`, zIndex: '1', pointerEvents: 'none',
+    });
+    return { duration, css: (t) => `opacity: ${t}` };
   }
 
   let surfaces = $derived(panel.surfaces);
@@ -271,26 +288,10 @@
 
   /** A persistent agent's own thread has a desk, offered first. */
   const agentThread = $derived(!!store.openThread?.agentSessionId);
-  /**
-   * The few kinds this thread has something for, not open yet: offered in the
-   * strip itself, one press each. Every other kind waits behind More.
-   */
-  let suggested = $derived.by<SurfaceKind[]>(() => {
-    const thread = store.openThread;
-    if (!thread) return [];
-    const open = new Set(surfaces.map((surface) => surface.kind));
-    const offered = new Set(offeredCards().map((card) => card.kind));
-    const kinds: SurfaceKind[] = [];
-    if (agentThread) kinds.push('desk');
-    if (store.threads.some((row) => row.parentThreadId === thread.id)) kinds.push('agents');
-    if ((thread.activity?.tasks.length ?? 0) > 0) kinds.push('tasks');
-    if (store.openProject?.repository) kinds.push('changes');
-    return kinds.filter((kind) => !open.has(kind) && (kind === 'desk' || offered.has(kind)) && available(kind)).slice(0, 2);
-  });
   let menuItems = $derived([
-    ...(agentThread && !suggested.includes('desk') ? [{ id: 'desk', label: kindName('desk'), glyph: surfaceGlyph('desk') }] : []),
-    // What the strip already shows, open or offered, is not listed again.
-    ...offeredCards().filter((card) => !suggested.includes(card.kind) && !surfaces.some((surface) => surface.kind === card.kind)).map((card) => ({
+    ...(agentThread && !surfaces.some((surface) => surface.kind === 'desk') ? [{ id: 'desk', label: kindName('desk'), glyph: surfaceGlyph('desk') }] : []),
+    // The strip shows the open panels only; every other kind waits here, once.
+    ...offeredCards().filter((card) => !surfaces.some((surface) => surface.kind === card.kind)).map((card) => ({
       id: card.kind,
       label: kindName(card.kind),
       glyph: surfaceGlyph(card.kind),
@@ -409,15 +410,6 @@
           <span class="name ui-label">{label(surface)}</span>
         </div>
       {/each}
-      {#if !empty}
-        {#each suggested as kind (kind)}
-          <!-- Not open yet: a quiet tab that opens on one press, the strip's own way to what this thread has. -->
-          <button type="button" class="tab suggested" data-testid="panel-suggested" data-kind={kind} title={kindName(kind)} onclick={() => launch(kind)}>
-            <span class="glyph"><SurfaceIcon {kind} size={14} /></span>
-            <span class="name ui-label">{kindName(kind)}</span>
-          </button>
-        {/each}
-      {/if}
     </div>
 
     {#if overflowing}
@@ -433,6 +425,7 @@
       </button>
     {/if}
 
+    <!-- Its words are on the button: no native tooltip repeating them over the tab beside it. -->
     {#if !empty}
       <Menu
         items={menuItems}
@@ -441,9 +434,10 @@
         align="end"
         variant="ghost"
         label={strings.rightPanel.newSurface}
+        titled={false}
         testid="panel-add"
       >
-        <Ellipsis size={14} strokeWidth={1.75} />
+        <span class="more"><Plus size={14} strokeWidth={1.75} /><span class="ui-label">{strings.rightPanel.newSurface}</span></span>
       </Menu>
     {/if}
 
@@ -489,10 +483,10 @@
   </header>
 
   <div class="body">
-    <!-- Keyed on the tab, so picking another one fades its surface in rather
-         than swapping it in one frame, the way a settings page arrives. -->
+    <!-- Keyed on the tab, so picking another one cross-fades the two surfaces
+         rather than swapping them in one frame. -->
     {#key active?.id}
-    <div class="surface" use:arrive>
+    <div class="surface" use:arrive out:leave>
     {#if active?.kind === 'desk'}
       {#if store.openThread?.agentSessionId}
         {#key store.threadKey(store.openThread.id)}<AgentDesk {store} />{/key}
@@ -604,6 +598,11 @@
     height: var(--control-sm);
     width: var(--control-sm);
   }
+  /* More panels carries its name, so it takes the width of it. */
+  .strip :global(.trigger.ghost[data-testid='panel-add']) {
+    width: auto;
+    padding: 0 8px;
+  }
 
   /* Only the tabs give way. A control that shrank too took part of the room the
      chevrons cost, so the tabs lost less than `measure` counted and the
@@ -673,15 +672,8 @@
     color: var(--color-foreground);
   }
 
-  /* Offered, not open: no fill, a dashed edge, the name at rest. */
-  .tab.suggested {
-    gap: 6px;
-    padding: 0 8px;
-    border: 1px dashed var(--color-border);
-    background: transparent;
-    color: var(--color-subtle);
-  }
-  .tab.suggested:hover { color: var(--color-foreground); background: var(--color-hover); }
+  /* The way to every panel not open: its words beside the plus, quiet like the strip's buttons. */
+  .more { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; color: var(--color-muted-foreground); }
 
   .name {
     overflow: hidden;
@@ -729,8 +721,8 @@
 
   /* The surface's own icon is the close target: it turns into an X under the
      pointer, and under the keyboard too as soon as the tab holds the focus. */
-  .tab:not(.suggested):hover .glyph,
-  .tab:not(.suggested):focus-within .glyph,
+  .tab:hover .glyph,
+  .tab:focus-within .glyph,
   .closer:focus-visible .glyph {
     display: none;
   }
@@ -770,7 +762,7 @@
   /* Opacity only: a browser tab's page is a native view laid over this box,
      and a moving box would drag it along. */
   .surface:global([data-arriving]) {
-    animation: fade var(--dur-3) var(--ease-out-quint);
+    animation: fade var(--motion-in) both;
   }
 
   @media (min-width: 721px) {

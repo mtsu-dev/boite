@@ -85,3 +85,15 @@ test('a pure addition highlights only its new side, and the same diff mounted ag
   expect(highlight).toHaveBeenCalledTimes(1);
   highlight.mockRestore();
 });
+
+test('a changed line marks its changed words, before and after the grammar runs, and keeps its text', async () => {
+  const oldText = 'const limit = 3;\nconst other = "a < b";\n';
+  const newText = 'const limit = 30;\nconst other = "a < c";\n';
+  running = mount(DiffView, { target: document.body, props: { path: 'src/limits.ts', oldText, newText } });
+  flushSync();
+  const marks = () => Array.from(document.querySelectorAll('[data-testid=diff-row] mark.word')).map(mark => mark.textContent);
+  expect(marks()).toEqual(['3', 'b', '30', 'c']);
+  await vi.waitFor(() => expect(document.querySelector('[data-testid=diff-row] .text span')).not.toBeNull());
+  expect(marks().join('')).toContain('30');
+  expect(Array.from(document.querySelectorAll('[data-testid=diff-row] .text')).map(text => text.textContent)).toEqual(['const limit = 3;', 'const other = "a < b";', 'const limit = 30;', 'const other = "a < c";']);
+});

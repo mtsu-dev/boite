@@ -51,11 +51,8 @@ export const strings = {
     panel: 'Panel',
     panelHint: 'Show or hide the side panel',
     panelMenu: 'Panels',
-    /** The phone's thread menu: its tools, then the thread itself. */
+    /** Every thread menu's one entry for the thread's panels and tools. */
     toolsSection: 'Tools',
-    threadSection: 'This thread',
-    /** Opens the side panel on whatever it last showed, its cards when empty. */
-    allTools: 'All tools',
     /** A desktop header's project crumb: back to the thread list, at this thread. */
     backToList: 'Back to the {project} threads',
     terminalHint: "Terminal in this thread's folder",

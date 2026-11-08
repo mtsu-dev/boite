@@ -198,9 +198,9 @@ test('the reasoning row names each level, sets the effort of the picked model, a
   await waitFor(() => effortRow() !== null);
   await waitFor(() => document.querySelector('[data-testid=composer-effort-menu]') !== null);
   expect(effortDots()).toEqual(['low', 'medium', 'high', 'xhigh', 'max', 'ultrathink']);
-  // Every level by its name, in the model's order, inline in the popover: no second menu.
+  // Every level by its name, in the model's order, one per row under the Effort row.
   expect(Array.from(document.querySelectorAll('[data-testid=composer-effort-menu] [data-value]')).map((el) => el.textContent?.trim()))
-    .toEqual(['Low', 'Medium', 'High', 'Extra high', 'Max', 'Think longest']);
+    .toEqual(['Low', 'Medium', 'High', 'Extra high', 'Max', 'Ultra']);
   // Nothing chosen yet, so the model's own default reads as the active one.
   expect(effortPicked()).toBe('high');
 
@@ -208,9 +208,9 @@ test('the reasoning row names each level, sets the effort of the picked model, a
   await waitFor(() => effortPicked() === 'xhigh');
   // Picking a level keeps the popover open: it is a setting of the model, not a choice of its own.
   expect(document.querySelector('[data-testid=composer-effort-menu]')).not.toBeNull();
-  // The level reads on its own row; the chip's label names the model alone.
+  // One chip form everywhere: the model's name, then its effort.
   expect(query('[data-testid=composer-picker]').textContent).toContain('Opus 5.5');
-  expect(query('[data-testid=composer-picker]').textContent).not.toContain('Extra high');
+  expect(query('[data-testid=composer-picker-effort]').textContent).toBe('· Extra high');
   // One live choice, and no other.
   expect(document.querySelectorAll('[data-testid=composer-effort-menu] [aria-checked=true]')).toHaveLength(1);
 
@@ -244,6 +244,12 @@ test('the picker opens on the models in use, one row each, with every provider b
   // The star first, then the current choice, then the latest threads' model; no provider rail on this level, the effort row under it.
   expect(short()).toEqual([['favorite-model', 'claude-sonnet-5-5'], ['recent-model', 'claude-opus-5-5'], ['recent-model', 'echo-1']]);
   expect(query('[data-testid=picker-shortlist] .row.current .source').textContent).toContain(store.providerOf('claude')!.name);
+  // The provider's own login is not printed on its rows, even beside another seat of it.
+  expect(store.accountsOf('claude').length).toBeGreaterThan(1);
+  expect(store.accountOf('a-claude-main')!.isolationDir).toBeNull();
+  expect(query('[data-testid=picker-shortlist] .row.current .source').textContent).not.toContain(store.accountOf('a-claude-main')!.label);
+  // The current row carries the check.
+  expect(query('[data-testid=picker-shortlist] .row.current .mark svg')).not.toBeNull();
   expect(document.querySelector('[data-testid=composer-picker-menu] .rail')).toBeNull();
   expect(document.querySelector('[data-testid=composer-effort-menu]')).not.toBeNull();
   // The keys start on the current row.

@@ -52,11 +52,8 @@ export const fr: Translation = {
     panel: 'Panneau',
     panelHint: 'Afficher ou masquer le panneau',
     panelMenu: 'Panneaux',
-    /** The phone's thread menu: its tools, then the thread itself. */
+    /** Every thread menu's one entry for the thread's panels and tools. */
     toolsSection: 'Outils',
-    threadSection: 'Cette conversation',
-    /** Opens the side panel on whatever it last showed, its cards when empty. */
-    allTools: 'Tous les outils',
     /** A desktop header's project crumb: back to the thread list, at this thread. */
     backToList: 'Revenir aux conversations de {project}',
     terminalHint: 'Terminal dans le dossier de cette conversation',

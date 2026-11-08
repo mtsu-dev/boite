@@ -53,6 +53,8 @@
   let machines = $derived(workspace.machinesOr(store));
   /** One machine says nothing about where a thread runs: its icon only shows once there are two. */
   let multi = $derived(machines.length > 1);
+  /** A card names its machine only when it is not this app's own: the rest is where everything runs by default. */
+  const elsewhere = (machine: Machine) => multi && machine.store !== workspace.primary;
   /** The display menu and the rail's machine button set it (machine-filter.svelte.ts). */
   let shownFilter = $derived(machineFilter.shown(machines));
   let visible = $derived(machines.filter((m) => shownFilter === null || m.id === shownFilter));
@@ -63,8 +65,6 @@
   let sections = $derived(projectSections(groups, recentPreferences.groupOtherProjects, recentPreferences.groupWorking));
   /** The cards in drawn order, the folded sections included: Alt+digit skips the rows a folded section hides. */
   let activeGroups = $derived([...sections.working, ...sections.open, ...sections.later]);
-  /** A set-aside card shows its archived conversations as its body: their pill shows only while it is folded. */
-  const laterLists = ['archived'] as const;
   /** The first card drawn, and the first open one: a prompt can lead either, the Working section sitting above the open cards. */
   const leaders = () => [activeGroups[0], sections.open[0]] as const;
   let previousLeaders: ({ key: string; activity: number } | undefined)[] = [];
@@ -100,8 +100,8 @@
       )
       .sort(compareEntries)
   );
-  /** Recent's second line: where each row lives, once the tiles alone may not tell them apart. */
-  const places = $derived(rowPlaces(recent));
+  /** Recent's second line: where each row lives, once the tiles alone may not tell them apart; this app's own machine goes unsaid. */
+  const places = $derived(rowPlaces(recent, machines.find(machine => machine.store === workspace.primary)?.id));
   let workingOpen = $state(false);
   let doneRows = $state.raw<{ store: Store; threadId: ThreadId }[]>([]);
   let archivedRows = $state.raw<{ store: Store; threadId: ThreadId }[]>([]);
@@ -164,14 +164,25 @@
   const canAddProject = $derived(store.owner && work.shows('sidebar.add-project'));
   /** Nothing listed yet: the list says why, and where the projects come from. */
   const loading = $derived(groups.length === 0 && visible.some(machine => machine.store.connection !== 'ready'));
-  /** `list` is the section the card sits in: a project moves among its neighbours there, as the sections place it themselves. */
-  function openProjectMenu(event: MouseEvent, machine: Machine, project: Project, list: ProjectEntry[]) {
-    const key = projectKey({ machine, project });
+  /**
+   * `list` is the section the card sits in: a project moves among its neighbours there, as the sections place it themselves.
+   * The menu also shows or hides the card's archived threads; a set-aside card's body is them already, so there it folds the card.
+   */
+  function openProjectMenu(event: MouseEvent, machine: Machine, project: Project, list: ProjectEntry[], section: ProjectSection) {
+    const entry = { machine, project };
+    const key = projectKey(entry);
+    const collapsed = machine.store.isCollapsed(project.id);
     projectMenu(event, machine.store, project, projectView.order === 'manual' ? {
       up: list[0] !== undefined && projectKey(list[0]) !== key,
       down: list.at(-1) !== undefined && projectKey(list.at(-1)!) !== key,
       move: direction => projectView.step(list, key, direction)
-    } : undefined);
+    } : undefined, undefined, section === 'later' ? {
+      count: archiveCount(project, 'archived'), open: !collapsed, toggle: () => machine.store.toggleProject(project.id)
+    } : {
+      count: archiveCount(project, 'archived'),
+      open: !collapsed && projectThreadView.isOpen(entry, 'archived'),
+      toggle: () => projectThreadView.toggle(entry, 'archived', collapsed)
+    });
   }
   /** A project header dragged to a new place among the cards of its section, in the manual order; idle projects sit in their fold as rows. */
   function dragProject(event: PointerEvent, entry: ProjectEntry, list: ProjectEntry[]) {
@@ -267,7 +278,7 @@
           aria-label={threadDrag.over === dropKey ? fill(strings.threadMove.dropHere, { project: projectName(project) }) : undefined}
         >
           <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div class="head" oncontextmenu={(e) => openProjectMenu(e, machine, project, list)}>
+          <div class="head" oncontextmenu={(e) => openProjectMenu(e, machine, project, list, section)}>
             <button
               class="ghost toggle"
               class:grab={projectView.order === 'manual'}
@@ -281,19 +292,19 @@
             >
               {#if projectView.order === 'manual'}<GripVertical size={12} />{/if}<span class="mark"><ProjectTile {project} store={owner} size={18} /><span class="fold-caret" class:open={!collapsed} aria-hidden="true"><ChevronRight size={16} /></span></span
               ><span class="name project-title ui-label" class:gone={project.missing === true}>{projectName(project)}</span
-              >{#if multi}<span class="host" data-testid="project-host" class:offline={owner.connection !== 'ready'}
+              >{#if elsewhere(machine) || (multi && owner.connection !== 'ready')}<span class="host" data-testid="project-host" class:offline={owner.connection !== 'ready'}
                 title={`${machine.label} · ${strings.connection[owner.connection]}`} aria-label={machine.label}>{machine.label}</span>{/if}{#if project.missing === true}<span class="missing" data-testid="project-missing" title={strings.sidebar.projectMissing} aria-label={strings.sidebar.projectMissing}><FolderX size={13} aria-hidden="true" /></span>{/if}{#if rollup && !needsYou(rollup.kind)}{@const label = fill(rollup.count === 1 ? strings.sidebar.rollupOne : strings.sidebar.rollupMany, { count: String(rollup.count), state: strings.sidebar.state[rollup.kind] })}<span
                   class="rollup {rollup.kind}" data-testid="project-rollup" data-state={rollup.kind} title={label} aria-label={label}
-                  >{#if rollup.kind === 'error' || rollup.kind === 'interrupted'}<CircleAlert size={12} aria-hidden="true" />{:else if rollup.kind === 'done'}<Check size={12} aria-hidden="true" />{:else}<LoaderCircle size={11} class={rollup.kind === 'working' ? 'spinner' : 'pulse'} aria-hidden="true" />{/if}{#if rollup.count > 1}<span class="ui-label">{rollup.count}</span>{/if}</span
+                  >{#if rollup.kind === 'error' || rollup.kind === 'interrupted'}<CircleAlert size={12} aria-hidden="true" />{:else if rollup.kind === 'done'}<Check size={12} aria-hidden="true" />{:else}<span class="work-ring" aria-hidden="true"></span>{/if}{#if rollup.count > 1}<span class="ui-label">{rollup.count}</span>{/if}</span
                 >{/if}
             </button>
-            <ProjectThreadCounters {entry} part="head" working={lists.working.length} waiting={away ? 0 : waitingCount(entry)} {controls} {collapsed} {away} />
+            <ProjectThreadCounters {entry} working={lists.working.length} waiting={away ? 0 : waitingCount(entry)} {controls} {collapsed} {away} />
             <button
               class="ghost small icon project-actions"
               data-testid="project-menu"
               title={strings.sidebar.projectMenu}
               aria-label={strings.sidebar.projectMenu}
-              onclick={(e) => openProjectMenu(e, machine, project, list)}><Ellipsis size={15} /></button
+              onclick={(e) => openProjectMenu(e, machine, project, list, section)}><Ellipsis size={15} /></button
             >
           </div>
           <div class="disclosure-fold" class:open={!collapsed} inert={collapsed}>
@@ -324,10 +335,6 @@
               </SharedProjectThreads>
             </div>
           </div>
-          <!-- Archived waits at the card's foot: the header keeps what needs the user now. Done is the display menu's filter. -->
-          {#if archiveCount(project, 'archived') > 0 && (!later || collapsed)}
-            <div class="card-foot"><ProjectThreadCounters {entry} part="foot" working={0} {controls} {collapsed} {away} body={later ? laterLists : undefined} /></div>
-          {/if}
         </section>
       {/snippet}
       <!-- Idle projects sit as compact rows in their fold below, so Alt+digit and reordering count only the cards. -->
@@ -365,8 +372,6 @@
   }
   /* Recent's line between the threads with something to say and the ones at rest. */
   .rest-line { height: 1px; margin: 8px 10px; background: var(--color-border); }
-  /* Archived, quiet at the card's right foot. */
-  .card-foot { display: flex; justify-content: flex-end; padding: 2px 2px 0; }
   .empty {
     display: flex;
     flex-direction: column;
@@ -476,11 +481,9 @@
   .rollup.error { color: var(--color-danger); }
   .rollup.done { color: var(--color-success); }
   .rollup.queued { color: var(--color-muted-foreground); }
-  .rollup :global(.pulse) { animation: pulse 1.6s var(--loop-ease-out-quint-48) infinite var(--loops); }
-  .rollup :global(.spinner) { animation: spin 1s steps(60) infinite var(--loops); }
-  @media (prefers-reduced-motion: reduce) { .rollup :global(.pulse), .rollup :global(.spinner) { animation: none; } }
-  :global(html[data-motion='reduced']) .rollup :global(.pulse),
-  :global(html[data-motion='reduced']) .rollup :global(.spinner) { animation: none; }
+  /* Work, still, as on the rows: the open thread keeps the one live spinner. */
+  .rollup .work-ring { box-sizing: border-box; width: 8px; height: 8px; border: 1.5px solid var(--color-accent); border-radius: var(--radius-full); }
+  .rollup:not(.working) .work-ring { border-style: dashed; }
   /* The project's mark and its fold chevron share one slot: the mark gives way
      to the chevron while a pointer or the keyboard is on the header. */
   .mark {

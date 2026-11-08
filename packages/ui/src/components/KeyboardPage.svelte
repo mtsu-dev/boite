@@ -206,7 +206,7 @@
               {#if recording === row.id}
                 <span class="capture" data-testid="keybinding-capture" role="status">
                   {#if held.length > 0}
-                    {#each held as part, index (part)}{#if index > 0}<span class="plus ui-label">+</span>{/if}<kbd><span class="ui-label">{part}</span></kbd>{/each}<span class="plus ui-label">+</span>
+                    {#each held as part, index (part)}{#if index > 0}<span class="plus ui-label">+</span>{/if}<kbd class="kbd">{part}</kbd>{/each}<span class="plus ui-label">+</span>
                   {:else}
                     <span class="ui-label">{strings.keyboard.record}</span>
                   {/if}
@@ -218,7 +218,7 @@
                     {#if row.parts === null}
                       <span class="none ui-label">{strings.keyboard.none}</span>
                     {:else}
-                      {#each row.parts as part, index (index)}{#if index > 0}<span class="plus ui-label">+</span>{/if}<kbd><span class="ui-label">{part}</span></kbd>{/each}
+                      {#each row.parts as part, index (index)}{#if index > 0}<span class="plus ui-label">+</span>{/if}<kbd class="kbd">{part}</kbd>{/each}
                     {/if}
                   </span>
                 </button>
@@ -400,20 +400,10 @@
     color: var(--color-subtle);
     font-size: var(--text-xs);
   }
+  /* The app's one keycap (.kbd); a <kbd> would take the browser's mono, and a lone letter stays square. */
   kbd {
-    display: inline-grid;
-    place-items: center;
-    min-width: 22px;
-    height: 22px;
-    padding: 0 6px;
-    border: 1px solid var(--color-edge);
-    border-bottom-width: 2px;
-    border-radius: var(--radius-sm);
-    background: var(--color-surface-2);
+    min-width: 21px;
     font-family: var(--font-sans);
-    font-size: var(--text-xs);
-    font-weight: 500;
-    color: var(--color-foreground);
   }
   .none {
     font-size: var(--text-sm);

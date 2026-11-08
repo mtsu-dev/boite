@@ -71,10 +71,12 @@
   .entry:hover { background: var(--color-hover); color: var(--color-foreground); }
   .name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .entry :global(.elapsed) { flex: none; color: var(--color-subtle); font-variant-numeric: tabular-nums; }
-  /* A phone gives the names the room: the mark says it runs, the panel says how long. */
+  /* A phone gives the names the room: the mark says it runs, the panel says
+     how long. Rows a finger still hits but shorter than a control, so the
+     dock stays under half the screen. */
   @media (max-width: 720px) {
-    .entries { max-height: calc(3 * var(--touch-target) + 4px); }
-    .entry { height: var(--touch-target); padding: 0 6px; }
+    .entries { max-height: calc(3 * 36px + 4px); }
+    .entry { height: 36px; padding: 0 6px; }
     .entry :global(.elapsed) { display: none; }
   }
 </style>

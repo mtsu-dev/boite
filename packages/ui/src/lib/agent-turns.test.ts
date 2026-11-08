@@ -38,7 +38,7 @@ test('a finished agent turn folds its calls and narration away, counted for the 
   expect(folded[1]!.parts).toEqual([text('Fixed: the redirect now lands home.'), { type: 'error', message: 'one warning' }]);
   const fold = folds.folds.get(`${FOLD_PREFIX}w`)!;
   expect(fold).toMatchObject({ kind: 'worked', steps: 2, ms: 180_000, open: false });
-  expect(foldText(fold)).toBe('Worked 3 min · 2 steps');
+  expect(foldText(fold)).toBe('Worked 3m 00s · 2 steps');
   // Built again on the same data, every row is the same object: nothing is measured again.
   const again = folds.build(timeline, [turn('w')], new Set());
   expect(again[1]).toBe(folded[1]);

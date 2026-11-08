@@ -7,7 +7,7 @@ import { contextMenu } from './context-menu.svelte';
 import { experimentOn } from './experiments.svelte';
 import { separator, type MenuItem } from './menu';
 import { fill, strings } from './strings';
-import { projectName } from './format';
+import { count, projectName } from './format';
 import { undo } from './undo.svelte';
 
 /** Asks before a project leaves Boite, then removes it. Its folder, when there is one left, stays. */
@@ -30,11 +30,14 @@ export async function archiveProjectWithUndo(owner: Store, project: Project): Pr
   });
 }
 
+/** A card's archived threads, shown under its rows or not: the switch and its count live in the card's menu. */
+export type ArchivedInCard = { count: number; open: boolean; toggle: () => void };
+
 export function projectMenu(event: MouseEvent, owner: Store, project: Project, reorder?: {
   up: boolean;
   down: boolean;
   move: (direction: -1 | 1) => void;
-}, opened?: () => void) {
+}, opened?: () => void, archived?: ArchivedInCard) {
   const client = owner.client;
   const clientGeneration = owner.clientGeneration;
   const management: MenuItem[] = [
@@ -74,6 +77,11 @@ export function projectMenu(event: MouseEvent, owner: Store, project: Project, r
     { id: 'new', label: strings.sidebar.newThread, glyph: Plus, disabled: project.missing === true, ...(project.missing === true ? { title: strings.sidebar.projectMissing } : {}) },
     { id: 'copy', label: strings.sidebar.copyPath, title: project.path, glyph: Copy },
     ...(project.kind !== 'drafts' ? [{ id: 'rename', label: strings.common.rename, glyph: PencilLine }] : []),
+    // The card's header keeps one count: its archived threads show under its rows from here, their count beside.
+    ...(archived && archived.count > 0 ? [{
+      id: 'archived-rows', label: strings.sidebar.archivedGroup, hint: count(archived.count), checked: archived.open, testid: 'project-archived-toggle',
+      title: fill(strings.sidebar.projectArchivedThreads, { count: String(archived.count), project: projectName(project) })
+    }] : []),
     { id: 'archived', label: strings.sidebar.viewArchivedThreads, glyph: History },
     ...(owner.owner || project.kind !== 'drafts' || reorder
       ? [separator(), { id: 'manage', label: strings.sidebar.manageProject, glyph: Settings, hint: '›', submenu: true }]
@@ -103,6 +111,7 @@ export function projectMenu(event: MouseEvent, owner: Store, project: Project, r
         });
         if (name !== null && owner.client === client && owner.clientGeneration === clientGeneration) await owner.renameProject(project.id, name);
       }
+      if (action === 'archived-rows') archived?.toggle();
       if (action === 'archived') {
         if (workspace.active !== owner) await workspace.select(owner);
         owner.showSettings('general', 'archived');

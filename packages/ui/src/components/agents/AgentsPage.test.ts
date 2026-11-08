@@ -207,3 +207,27 @@ test("a desktop's column is the open bot's: who it is, its conversation, its thr
     setExperiment('resident-agents', false);
   }
 });
+
+test('an empty desk is one centred prompt in the column, the way into its first task', async ({ ready }) => {
+  setExperiment('resident-agents', true);
+  let page: ReturnType<typeof mount> | null = null;
+  try {
+    const { store, client } = await ready({ delayMs: 0, agentsDemo: true });
+    const view = AgentsView.of(store);
+    const { id: threadId } = await client.call('threads.create', { projectId: 'p-boite', providerId: 'echo', accountId: 'a-echo' });
+    const { agent } = await client.call('agents.create', { threadId, name: 'Scribe' });
+    await view.refresh();
+    store.showAgents(agent.id);
+    page = mount(AgentsPage, { target: document.body, props: { store } });
+    await vi.waitFor(() => expect(store.openThread?.agentSessionId).toBeTruthy());
+    await view.refresh();
+    // A new bot already holds its introduction: the prompt is the column's, centred, and nothing covers the chat.
+    await vi.waitFor(() => { flushSync(); expect(document.querySelector('[data-testid=desk-work].idle [data-testid=desk-work-start]')).not.toBeNull(); });
+    expect(document.querySelector('[data-testid=desk-work]')!.textContent).toContain(strings.agents.deskPanel.workEmpty);
+    expect(document.querySelectorAll('[data-testid=desk-work-start]')).toHaveLength(1);
+    expect(document.querySelector('[data-testid=bot-first-task]')).toBeNull();
+  } finally {
+    if (page) unmount(page);
+    setExperiment('resident-agents', false);
+  }
+});

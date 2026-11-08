@@ -131,7 +131,6 @@ test('another thread\'s question comes up open over one folded here, as many que
   });
   const store = render({ goal: null, loop: null, tasks: [] });
   flushSync(() => { store.pendingQuestions = [question('first', 'thread'), question('second', 'other')]; });
-  expect(document.querySelector('section')!.classList.contains('inline')).toBe(true);
   expect(document.querySelector('[data-testid=composer-reply]')!.getAttribute('data-question')).toBe('first');
   expect(document.querySelector('[data-testid=question-reply-hint], [data-testid=question-submit]')).toBeNull();
   const fold = () => document.querySelector<HTMLButtonElement>('[data-testid=activity-question-toggle]')!;
@@ -183,7 +182,6 @@ test('the chatbar links child questions on their owning machine without taking t
   const bar = document.querySelector('[data-testid=thread-activity]')!;
   expect(bar).not.toBeNull();
   expect(bar.classList.contains('hidden')).toBe(false);
-  expect(bar.classList.contains('inline')).toBe(true);
   const alerts = bar.querySelectorAll<HTMLButtonElement>('[data-testid=subagent-question-alert]');
   expect(alerts).toHaveLength(2);
   expect(alerts[0]!.textContent).toContain('A subagent has a question');

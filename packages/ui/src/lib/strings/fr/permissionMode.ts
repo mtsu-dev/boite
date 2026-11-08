@@ -3,11 +3,11 @@ import type { Translation } from '../../i18n.svelte';
 export const fr: Translation = {
 
   permissionMode: {
-    default: 'Demander d’abord',
-    acceptEdits: 'Modifier librement',
-    bypassPermissions: 'Auto',
+    default: 'Demander avant de modifier ou lancer',
+    acceptEdits: 'Demander avant les commandes',
+    bypassPermissions: 'Tout lancer sans demander',
     yolo: 'Sans limite',
-    plan: 'Plan',
-    dontAsk: 'Tout refuser'
+    plan: 'Plan seulement',
+    dontAsk: 'Refuser ce qui demande'
   }
 };

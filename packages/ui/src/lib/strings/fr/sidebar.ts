@@ -54,9 +54,8 @@ export const fr: Translation = {
       clean: 'Boite a supprimé le worktree de cette conversation {when} : chacun de ses commits était déjà sur une autre branche.',
       branchDeleted: 'La branche {branch} a été supprimée.',
       branchKept: 'La branche {branch} existe toujours.',
-      archived: 'Remise dans Récent, cette conversation n’a plus de dossier où travailler.',
-      live: 'Vous pouvez encore lire et copier cette conversation. Un nouveau message n’a pas de dossier où s’exécuter.',
-      startHere: 'Démarrer une conversation ici'
+      startHere: 'Démarrer une conversation ici',
+      done: 'Cette conversation est terminée et son dossier a été nettoyé.'
     },
     allProjects: 'Tous les projets',
     filterProject: 'Filtrer par projet',
@@ -99,7 +98,6 @@ export const fr: Translation = {
     projectMissing: 'Dossier introuvable',
     projectMissingBody: "Le dossier {path} n'existe plus : il a été supprimé, déplacé ou renommé. Remettez-le en place pour continuer ici, ou retirez le projet de Boite.",
     projectMissingCheck: 'Vérifier à nouveau',
-    projectMissingLive: 'Vous pouvez encore lire et copier cette conversation. Un nouveau message attend le dossier.',
     removeProjectTitle: 'Retirer {project} de Boite ?',
     removeProjectBody: 'Ses conversations partent avec lui. Les fichiers sur le disque restent où ils sont.',
     remove: 'Retirer',

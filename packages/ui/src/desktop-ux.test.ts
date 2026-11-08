@@ -459,7 +459,11 @@ test('a folded project keeps saying what its hidden threads do, and the mark goe
   // Needs you is the header's own word, folded or not, so the rollup gives way to it.
   await waitFor(() => head().parentElement!.querySelector('[data-testid=project-waiting-count]')?.getAttribute('data-count') === '1');
   expect(head().querySelector('[data-testid=project-rollup]')).toBeNull();
+  // One count per header: Needs you stands alone while the working thread waits its turn to be counted.
+  expect(head().parentElement!.querySelector('[data-testid=project-working-toggle]')).toBeNull();
   second!.status = 'idle';
+  await waitFor(() => head().parentElement!.querySelector('[data-testid=project-working-toggle]')?.getAttribute('data-count') === '1');
+  expect(head().parentElement!.querySelector('[data-testid=project-waiting-count]')).toBeNull();
   await waitFor(() => head().querySelector('[data-testid=project-rollup]')?.getAttribute('data-state') === 'working');
   expect(head().querySelector('[data-testid=project-rollup]')!.getAttribute('title')).toBe('1 thread: Working');
   store.toggleProject(project.id);

@@ -87,10 +87,10 @@
       <span class="choices" aria-busy={sending !== null}>
         {#if total > 1}<span class="count ui-label" data-testid="permission-count">{fill(strings.chat.permissionOf, { index: String(index), total: String(total) })}</span>{/if}
         <button type="button" class="ghost choice" data-testid="permission-deny" disabled={sending !== null} onclick={() => void choose('deny')}>
-          <span class="ui-label">{strings.chat.deny}</span><kbd aria-hidden="true">{strings.chat.keyEscape}</kbd>
+          <span class="ui-label">{strings.chat.deny}</span><kbd class="kbd" aria-hidden="true">{strings.chat.keyEscape}</kbd>
         </button>
         <button type="button" class="choice allow" data-testid="permission-allow" disabled={sending !== null || previewMissing} onclick={() => void choose('allow')}>
-          <span class="ui-label">{strings.chat.allow}</span><kbd aria-hidden="true"><CornerDownLeft size={11} strokeWidth={2} /></kbd>
+          <span class="ui-label">{strings.chat.allow}</span><kbd class="kbd" aria-hidden="true"><CornerDownLeft size={11} strokeWidth={2} /></kbd>
         </button>
       </span>
     {/snippet}
@@ -259,6 +259,8 @@
     padding: 10px 12px;
     gap: 8px;
     outline: none;
+    /* It arrives with a short rise; reduced motion keeps only the fade (`--motion`). */
+    animation: rise var(--motion-in) both;
   }
   .docked:focus-visible { box-shadow: inset 0 0 0 2px var(--color-accent); }
   .docked .sentence { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -271,9 +273,13 @@
   /* Neutral ink, never the accent: the accent stays for send. */
   .choice.allow { background: var(--color-foreground); color: var(--color-background); }
   .choice.allow:hover:not(:disabled) { background: var(--color-foreground); opacity: .9; }
-  .choice kbd { display: inline-flex; align-items: center; font-family: var(--font-mono); font-size: 10.5px; opacity: .55; }
+  /* The shared keycap; on the filled Allow it takes the button's ink. */
+  .choice .kbd { padding: 0 4px; line-height: 16px; }
+  .choice.allow .kbd { border-color: color-mix(in srgb, currentColor 30%, transparent); background: transparent; color: inherit; }
   @media (max-width: 720px) {
-    .choice kbd { display: none; }
+    /* The ask is one short sentence: it keeps Deny and Allow on its line at 360. */
+    .permission.docked { --decision-title: 6rem; }
+    .choice .kbd { display: none; }
     .choice { height: var(--touch-target); padding: 0 12px; }
   }
 </style>

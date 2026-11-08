@@ -259,8 +259,8 @@
   --color-foreground: #ededef;
   /* Both text tiers clear 4.5:1 on every surface in both themes, subtle above 5.7:1 even on
      surface-3: it carries times and states, which must read as well as any secondary line (lib/contrast.test.ts). */
-  --color-muted-foreground: #dadade;
-  --color-subtle: #c2c2c8;
+  --color-muted-foreground: #e0e0e3;
+  --color-subtle: #c8c8cd;
   /* Below reading contrast: a disabled mark, a placeholder glyph, never words that must be read. */
   --color-faint: #4a4a50;
   /* A switch: a dark track off; on takes the accent, the one surface it may fill, so on and off never differ by grey alone. */
@@ -1091,12 +1091,16 @@ textarea {
 /* The one focus ring: every focusable thing a keyboard reaches wears the accent.
    A row inside a list, menu or sheet draws it inside its box, so a scroll edge
    never clips it. A component only removes it where a wrapper carries the ring. */
+:root {
+  --focus-ring: 2px solid var(--color-accent);
+}
+
 :focus-visible {
-  outline: 2px solid var(--color-accent);
+  outline: var(--focus-ring);
   outline-offset: 2px;
 }
 
-:where([role=menuitem], [role=menuitemcheckbox], [role=menuitemradio], [role=option], [role=tab], [role=treeitem], summary, [data-mobile-sheet] button):focus-visible {
+:where([role=menuitem], [role=menuitemcheckbox], [role=menuitemradio], [role=option], [role=tab], [role=treeitem], summary, [data-mobile-sheet] button, button.row, a.row):focus-visible {
   outline-offset: -2px;
 }
 
@@ -1572,10 +1576,12 @@ button.chip {
   border-bottom-width: 2px;
   border-radius: var(--radius-sm);
   background: var(--color-surface-2);
-  font-family: var(--font-mono);
+  /* A key's name is a word, not code: the sans, one step above the muted hints around it. */
+  font-family: var(--font-sans);
   font-size: var(--text-xs);
+  font-weight: 500;
   line-height: 18px;
-  color: var(--color-muted-foreground);
+  color: var(--color-foreground);
 }
 
 .empty {

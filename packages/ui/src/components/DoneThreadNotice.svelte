@@ -1,13 +1,15 @@
 <script lang="ts">
   import { Archive, ArchiveRestore } from '@lucide/svelte';
-  import type { ThreadId } from '@boite/contracts';
+  import type { ThreadId, ThreadWorktreeRemoval } from '@boite/contracts';
   import type { Store } from '../lib/store.svelte';
   import { ThreadRestore } from '../lib/thread-restore.svelte';
   import { strings } from '../lib/strings';
   import { patchFields } from '../lib/thread-rows';
   import ThreadNotice from './ThreadNotice.svelte';
+  import { removalInfo } from './WorktreeGoneNotice.svelte';
 
-  let { store, threadId }: { store: Store; threadId: ThreadId } = $props();
+  /** `removal`: Boite also removed its worktree, said in the same sentence, the details behind the "i". */
+  let { store, threadId, removal = null }: { store: Store; threadId: ThreadId; removal?: ThreadWorktreeRemoval | null } = $props();
   const lock = new ThreadRestore();
 
   async function reopen(): Promise<void> {
@@ -19,7 +21,7 @@
 </script>
 
 <div class="done-notice">
-  <ThreadNotice icon={Archive} tone="quiet" testid="done-thread-notice" detail={strings.sidebar.doneNotice} docked>
+  <ThreadNotice icon={Archive} tone="quiet" testid="done-thread-notice" detail={removal ? strings.sidebar.worktreeGone.done : strings.sidebar.doneNotice} info={removal ? removalInfo(removal) : undefined} docked>
     {#snippet actions()}
       <button type="button" class="small" data-testid="done-thread-reopen" disabled={lock.busy || store.connection !== 'ready'} onclick={() => void reopen()}><ArchiveRestore size={14} /><span class="ui-label">{strings.sidebar.reopenThread}</span></button>
     {/snippet}

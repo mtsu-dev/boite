@@ -144,8 +144,8 @@
           {#each entry.live as record (record.pid)}
             <tr>
               <td class="mono" title={record.commandLine ?? record.exe}>{record.exe.split(/[\\/]/).pop()}</td>
-              <td class="mono">{record.pid}</td>
-              <td class="mono">{duration(record.startedAt, null)}</td>
+              <td>{record.pid}</td>
+              <td>{duration(record.startedAt, null)}</td>
             </tr>
           {/each}
         </tbody>
@@ -163,6 +163,8 @@
   form { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
   form label { display: grid; gap: 6px; justify-items: start; }
   form .name { display: inline-flex; align-items: center; font-size: var(--text-sm); color: var(--color-muted-foreground); }
+  /* A PID and a run time are figures, not code: the sans in tabular figures, at the size of the name beside them. */
+  td { font-size: var(--text-sm); }
   td:not(:first-child), th:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
   .process-table { overflow-x: auto; }
   @media (max-width: 720px) { form { grid-template-columns: 1fr; } .head { flex-wrap: wrap; } .load { margin-left: 0; flex-basis: 100%; order: 3; } }

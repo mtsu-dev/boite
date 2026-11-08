@@ -163,6 +163,7 @@
           title={item.title}
           data-row
           data-value={item.id}
+          data-testid={item.testid}
           onclick={() => pick(item)}
         >
           {#if item.glyph}

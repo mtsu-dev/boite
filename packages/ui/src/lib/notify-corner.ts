@@ -8,8 +8,8 @@ import './notify-corner.css';
  * the activity strip on it, the phone's tab bar), so none covers a title or
  * the field being typed in. The lift is `--corner-lift` on each card.
  *
- * The undo and error toasts have a home of their own instead, at the top of
- * the thread, which nothing else shares (`toastSlot`).
+ * The undo and error toasts have a home of their own instead, in room the
+ * page keeps for them, which nothing else shares (`toastSlot`).
  */
 /** Bottom-edge owners. A composer centred in an empty thread is not one. */
 const FLOORS = '[data-testid=composer],[data-testid=thread-activity],[data-testid=mobile-tabs]';
@@ -20,60 +20,74 @@ const toasts: HTMLElement[] = [];
 let timer = 0;
 let roomed: HTMLElement | null = null;
 
-function strip(): HTMLElement | null {
-  const found = document.querySelector<HTMLElement>('[data-testid=composer-strip]');
+/**
+ * Room for the toasts at one edge of `at` (`--corner-room`, drawn by
+ * notify-corner.css), so the page under them gives way and nothing sits
+ * under them.
+ */
+function reserve(at: HTMLElement | null, room: number, edge: 'top' | 'bottom' = 'top'): void {
+  // Cleared then set in one task: an unchanged room is no style change.
+  roomed?.style.removeProperty('--corner-room');
+  delete roomed?.dataset.cornerRoom;
+  roomed = room > 0 ? at : null;
+  roomed?.style.setProperty('--corner-room', `${room}px`);
+  if (roomed) roomed.dataset.cornerRoom = edge;
+}
+
+function shown(selector: string): HTMLElement | null {
+  const found = document.querySelector<HTMLElement>(selector);
   return found && found.getClientRects().length > 0 ? found : null;
 }
 
-/** Room at the top of `at` for the toasts (`--corner-room`), so the timeline gives way and nothing sits under them. */
-function reserve(at: HTMLElement | null, room: number): void {
-  // Cleared then set in one task: an unchanged room is no style change.
-  roomed?.style.removeProperty('--corner-room');
-  roomed = room > 0 ? at : null;
-  roomed?.style.setProperty('--corner-room', `${room}px`);
-}
-
 /**
- * The toast home, the same at every width: under the header, centred on the
- * thread, in room the timeline keeps for it at its top. The timeline gives
- * way, so the toast covers no line of it, and the bottom stack (the strip's
- * subagents, the queue, the composer) stays clear of it. A page with no
+ * The toasts' home, in room the page keeps for them so they cover no line,
+ * row or title. On a desktop thread: under the header, centred on the
+ * timeline, which gives way at its top. On a phone: at the bottom of what
+ * scrolls, the thread or the list over it, right above the composer or the
+ * tab bar, near the thumb that made the change. A desktop page with no
  * timeline keeps the bottom-right corner.
  */
 function placeToasts(): void {
-  const shown = toasts.filter((toast) => toast.offsetHeight > 0);
-  const room = shown.reduce((sum, toast) => sum + toast.offsetHeight + 8, 0);
-  const found = document.querySelector<HTMLElement>('[data-testid=timeline]');
-  const over = found && found.getClientRects().length > 0 ? found : null;
-  reserve(over, room);
+  const up = toasts.filter((toast) => toast.offsetHeight > 0);
+  const room = up.reduce((sum, toast) => sum + toast.offsetHeight + 8, 0);
+  const phone = innerWidth <= 720;
+  // On a phone the list screen lies over the thread, which still lays out under it.
+  const over = (phone && shown('[data-testid=mobile-list]')) || shown('[data-testid=timeline]');
+  const bottom = phone && over !== null;
+  reserve(over, bottom ? room + 8 : room, bottom ? 'bottom' : 'top');
   let top: number, centre: number | null;
   if (over) {
     const box = over.getBoundingClientRect();
-    let under = 0;
-    for (const header of document.querySelectorAll<HTMLElement>(HEADERS)) {
-      const head = header.getBoundingClientRect();
-      if (head.height && head.top < 120 && head.right > box.left && head.left < box.right) under = Math.max(under, head.bottom);
+    const style = getComputedStyle(over);
+    if (bottom) {
+      // The scroller's own bottom, before the room it keeps (its margin, even mid-transition).
+      top = box.bottom + (parseFloat(style.marginBottom) || 0) - room;
+    } else {
+      let under = 0;
+      for (const header of document.querySelectorAll<HTMLElement>(HEADERS)) {
+        const head = header.getBoundingClientRect();
+        if (head.height && head.top < 120 && head.right > box.left && head.left < box.right) under = Math.max(under, head.bottom);
+      }
+      // The timeline's own top, less the room it keeps.
+      top = Math.max(under, box.top - (parseFloat(style.marginTop) || 0)) + 8;
     }
-    // The timeline's own top, less the room it keeps (its margin, even mid-transition).
-    const rest = box.top - (parseFloat(getComputedStyle(over).marginTop) || 0);
-    top = Math.max(under, rest) + 8;
     centre = box.left + box.width / 2;
   } else {
     top = innerHeight - 12 - room + 8;
     centre = null;
   }
-  for (const toast of shown) {
+  for (const toast of up) {
     toast.style.setProperty('--toast-top', `${Math.round(top)}px`);
     if (centre === null) toast.style.removeProperty('--toast-left');
     else toast.style.setProperty('--toast-left', `${Math.round(centre)}px`);
-    toast.dataset.slot = centre === null ? 'end' : 'top';
+    toast.dataset.slot = centre === null ? 'end' : bottom ? 'bottom' : 'top';
     top += toast.offsetHeight + 8;
   }
 }
 
 function placeCards(): void {
   let lift = -1;
-  const bar = strip()?.getBoundingClientRect();
+  const bar = shown('[data-testid=composer-strip]')?.getBoundingClientRect();
   for (const card of cards) {
     // A card hidden on this page (display: none) keeps no room.
     if (!card.offsetHeight) continue;

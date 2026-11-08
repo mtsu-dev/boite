@@ -124,5 +124,7 @@
     /* The phone row's own edge (MobileThreadRow.svelte): 12 px in. */
     .contact-row { padding: 10px 12px; }
     .actions :global(button) { min-height: var(--touch-target); }
+    /* The title line is the row's open button: a finger needs more than its 14 px of text. */
+    .title { padding-block: 6px; margin-block: -6px; }
   }
 </style>

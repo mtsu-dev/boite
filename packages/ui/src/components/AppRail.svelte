@@ -213,7 +213,7 @@
             <AgentAvatar kind="profile" id={bot.row.profile.id} name={bot.row.profile.name} avatar={bot.row.profile.avatar} size={44} squircle={selected} />
             {#if state === 'waiting'}<span class="count">{count(asksOf(bot))}</span>
             {:else if state === 'failed'}<span class="count failed">!</span>
-            {:else if state === 'working'}<span class="work" aria-hidden="true"><svg viewBox="0 0 14 14"><circle class="track" cx="7" cy="7" r="5" /><circle class="arc" cx="7" cy="7" r="5" pathLength="100" /></svg></span>{/if}
+            {:else if state === 'working'}<span class="work" aria-hidden="true"><svg viewBox="0 0 14 14"><circle class="track" cx="7" cy="7" r="5" /></svg></span>{/if}
           </button>
           {@render railName(bot.row.profile.name, null, several ? bot.machine.label : null)}
         </div>
@@ -379,7 +379,7 @@
   .count.failed { background: var(--color-danger); color: var(--color-on-danger); }
   /* Grey: the rail's amber is the Activity count alone, which already counts what contacts ask. */
   .dot { position: absolute; right: 8px; top: 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--color-muted-foreground); box-shadow: 0 0 0 2px var(--color-surface-2); }
-  /* At work: a small arc of the accent turning, the one moving mark in the rail. */
+  /* At work: a still accent ring, as on the list rows; the open thread keeps the one live spinner. */
   .work {
     position: absolute;
     right: -3px;
@@ -393,10 +393,7 @@
   }
   .work svg { width: 14px; height: 14px; overflow: visible; }
   .work circle { fill: none; stroke-width: 2; }
-  .work .track { stroke: var(--color-edge); }
-  .work .arc { stroke: var(--color-accent); stroke-linecap: round; stroke-dasharray: 30 70; transform-box: fill-box; transform-origin: center; animation: spin 1.2s steps(72) infinite var(--loops); }
-  @media (prefers-reduced-motion: reduce) { .work .arc { animation: none; } }
-  :global(html[data-motion='reduced']) .work .arc { animation: none; }
+  .work .track { stroke: var(--color-accent); }
 
   .foot { display: flex; flex-direction: column; align-items: center; gap: 4px; align-self: stretch; }
   /* Settings marks itself selected like the buttons above, but its hover stays quiet like its neighbours. */

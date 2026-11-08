@@ -18,4 +18,6 @@ test('a flat list names the project when it spans several, the machine when it s
   expect(projects.map(rowPlaces(projects))).toEqual(['orbit', 'orbit', 'site']);
   const machines = [...one, { machine: machine('m2'), project: orbit, thread: { id: 'a', title: 'Fix CI' } }];
   expect(machines.map(rowPlaces(machines))).toEqual(['orbit · m1', 'orbit · m1', 'orbit · m2']);
+  // This app's own machine goes unsaid: only the other one is named, on its rows.
+  expect(machines.map(rowPlaces(machines, 'm1'))).toEqual(['orbit', 'orbit', 'orbit · m2']);
 });

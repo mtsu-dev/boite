@@ -4,6 +4,7 @@ import { type RpcMethodName } from '@boite/contracts';
 import { confirm } from '../lib/confirm.svelte';
 import { store } from '../lib/store.svelte';
 import { workspace } from '../lib/workspace.svelte';
+import { machineFilter } from '../lib/machine-filter.svelte';
 import { mountOnFake, query, test, type, waitFor } from '../test/app';
 
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
@@ -183,4 +184,19 @@ test('sending waits for reconnect history to finish loading', async ({ app: _app
     await loading;
     expect(await sending).toBe(true);
   } finally { release(); spy.mockRestore(); }
+});
+
+test('a project card names its machine only when it is not this app\'s own', async () => {
+  await mountOnFake('/?fake=1&machines=1');
+  await waitFor(() => workspace.machines.length === 2);
+  const remote = workspace.machines.find(machine => machine.store !== store)!;
+  workspace.view = 'projects';
+  // Both machines' cards in one list: an earlier test may have left the list on one machine.
+  machineFilter.set(null);
+  const card = (machine: string) => document.querySelector<HTMLElement>(`[data-testid=project][data-machine-id="${machine}"]`);
+  const own = workspace.machines.find(machine => machine.store === store)!;
+  await waitFor(() => card(own.id) !== null && card(remote.id) !== null);
+  // Everything runs here by default: the own machine goes unsaid, the other is named on its cards.
+  expect(card(own.id)!.querySelector('[data-testid=project-host]')).toBeNull();
+  expect(card(remote.id)!.querySelector('[data-testid=project-host]')?.textContent).toBe(remote.label);
 });

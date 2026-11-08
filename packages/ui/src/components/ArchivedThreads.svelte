@@ -142,34 +142,40 @@
   {:else if threads.length === 0}
     <p class="muted" data-testid="archived-empty">{strings.settings.archived.empty}</p>
   {:else}
+    <!-- One group of rows, as the lists draw them: the title, then where it was and why it left, then since when (a merge's own time when one put it away). -->
     <ul class="archived" data-testid="archived-list">
       {#each threads as thread (thread.id)}
+        {@const retention = store.settings?.threadDoneRetentionDays ?? DEFAULT_THREAD_DONE_RETENTION_DAYS}
+        {@const at = thread.archiveReason?.type === 'pr-merged' ? thread.archiveReason.archivedAt : archivedTime(thread)}
         <li data-thread-id={thread.id}>
           <span class="title" title={thread.title}>{thread.title}</span>
-          {#if thread.archiveReason?.type === 'pr-merged'}
-            <span class="archive-reason" data-testid="archive-merged-reason">
-              <a href={thread.archiveReason.url} target="_blank" rel="noopener noreferrer">{fill(strings.settings.archived.mergedReason, { number: String(thread.archiveReason.number) })}</a>
-              <time datetime={new Date(thread.archiveReason.archivedAt).toISOString()} title={exactTime(thread.archiveReason.archivedAt)}>{ago(thread.archiveReason.archivedAt)}</time>
-            </span>
-          {/if}
-          {#if thread.doneAt != null && (store.settings?.threadDoneRetentionDays ?? DEFAULT_THREAD_DONE_RETENTION_DAYS) > 0}
-            <span class="subtle expiry" data-testid="done-expires">{fill(strings.settings.archived.deletesAt, { date: exactTime(thread.doneAt + (store.settings?.threadDoneRetentionDays ?? DEFAULT_THREAD_DONE_RETENTION_DAYS) * 86_400_000) })}</span>
-          {/if}
-          <span class="subtle meta" title={exactTime(archivedTime(thread))}>{projectOf(thread)} · {ago(archivedTime(thread))}</span>
-          {#if restored.includes(thread.id)}
-            <button type="button" class="small" data-testid="archived-open" onclick={() => void workspace.select(store, thread.id)}>
-              <span class="ui-label">{strings.common.open}</span>
-            </button>
-          {:else}
-            <button type="button" class="small" data-testid="archived-restore" disabled={lock.busy} onclick={() => void restore(thread)}>
-              <RotateCcw size={14} /><span class="ui-label">{strings.settings.archived.restore}</span>
-            </button>
-          {/if}
-          {#if canDeleteThread(thread)}
-            <button type="button" class="ghost small danger" data-testid="archived-delete"
-              aria-label={strings.common.delete} title={strings.common.delete} disabled={lock.busy}
-              onclick={() => void remove(thread)}><Trash2 size={14} /><span class="ui-label">{strings.common.delete}</span></button>
-          {/if}
+          <span class="context">
+            {#if projectOf(thread)}<span class="part">{projectOf(thread)}</span><span class="sep" aria-hidden="true">·</span>{/if}
+            {#if thread.archiveReason?.type === 'pr-merged'}
+              <span class="part archive-reason" data-testid="archive-merged-reason"><a href={thread.archiveReason.url} target="_blank" rel="noopener noreferrer">{fill(strings.settings.archived.mergedReason, { number: String(thread.archiveReason.number) })}</a></span><span class="sep" aria-hidden="true">·</span>
+            {/if}
+            {#if thread.doneAt != null && retention > 0}
+              <span class="part" data-testid="done-expires">{fill(strings.settings.archived.deletesAt, { date: exactTime(thread.doneAt + retention * 86_400_000) })}</span><span class="sep" aria-hidden="true">·</span>
+            {/if}
+            <time class="part" datetime={new Date(at).toISOString()} title={exactTime(at)}>{ago(at)}</time>
+          </span>
+          <span class="actions">
+            {#if restored.includes(thread.id)}
+              <button type="button" class="small" data-testid="archived-open" onclick={() => void workspace.select(store, thread.id)}>
+                <span class="ui-label">{strings.common.open}</span>
+              </button>
+            {:else}
+              <button type="button" class="small" data-testid="archived-restore" disabled={lock.busy} onclick={() => void restore(thread)}>
+                <RotateCcw size={14} /><span class="ui-label">{strings.settings.archived.restore}</span>
+              </button>
+            {/if}
+            {#if canDeleteThread(thread)}
+              <!-- The bin alone: its word is its tooltip, so a row's actions stay one button wide. -->
+              <button type="button" class="ghost icon small danger" data-testid="archived-delete"
+                aria-label={strings.common.delete} title={strings.common.delete} disabled={lock.busy}
+                onclick={() => void remove(thread)}><Trash2 size={14} /></button>
+            {/if}
+          </span>
         </li>
       {/each}
     </ul>
@@ -179,52 +185,54 @@
 <DeletedThreads {store} {eager} />
 
 <style>
+  /* One bordered group, rows parted by hairlines, as Recent's and Activity's rows are one list. */
   .archived {
     list-style: none;
     margin: 0;
     padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .archived li {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    align-items: center;
-    gap: 6px 10px;
-    min-height: var(--row);
-    padding: 10px;
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
   }
 
+  .archived li {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 2px 10px;
+    min-height: var(--row);
+    padding: 8px 10px;
+  }
+  .archived li + li { border-top: 1px solid var(--color-border); }
+
   .title {
-    grid-column: 1 / -1;
+    grid-column: 1;
     min-width: 0;
     overflow-wrap: anywhere;
     line-height: 1.5;
   }
 
-  .expiry { grid-column: 1 / -1; font-size: var(--text-sm); }
-
-  .meta {
-    overflow-wrap: anywhere;
-    font-size: var(--text-sm);
-  }
-  .archive-reason {
-    grid-column: 1 / -1;
+  .context {
+    grid-column: 1;
     display: flex;
     flex-wrap: wrap;
-    gap: 4px 8px;
+    align-items: baseline;
+    gap: 2px 6px;
     min-width: 0;
-    overflow-wrap: anywhere;
     font-size: var(--text-sm);
+    color: var(--color-muted-foreground);
   }
+  .part { min-width: 0; overflow-wrap: anywhere; }
+  .sep { color: var(--color-subtle); }
+  .context time { color: var(--color-subtle); }
   .archive-reason a { color: inherit; text-underline-offset: 2px; }
-  .archive-reason time { color: var(--color-subtle); }
 
-  .archived button {
-    gap: 4px;
+  /* The actions sit beside both lines, at the row's right. */
+  .actions {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    display: flex;
+    align-items: center;
+    gap: 2px;
   }
+  .archived button { gap: 4px; }
 </style>

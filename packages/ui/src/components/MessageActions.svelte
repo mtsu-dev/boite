@@ -107,10 +107,13 @@
     white-space: nowrap;
   }
 
+  /* 28 px wide, and 28 px tall through the band around it: a pointer's least
+     target, while the row still draws 20 px under its message. */
   .act {
+    position: relative;
     display: inline-grid;
     place-items: center;
-    width: 24px;
+    width: 28px;
     height: 20px;
     min-height: 0;
     padding: 0;
@@ -119,6 +122,8 @@
     background: transparent;
     color: var(--color-muted-foreground);
   }
+
+  .act::after { content: ''; position: absolute; inset: -4px 0; }
 
   .act:hover:not(:disabled) {
     background: var(--color-surface-3);

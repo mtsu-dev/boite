@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Check, CircleAlert, CloudOff, GitPullRequest, LoaderCircle, Radar } from '@lucide/svelte';
+  import { Check, CircleAlert, CloudOff, GitPullRequest, Radar } from '@lucide/svelte';
   import { pullRequestWatchWaits, type ThreadSummary } from '@boite/contracts';
   import { backgroundLabel } from '../lib/background';
   import { secondClock } from '../lib/clock.svelte';
@@ -15,8 +15,9 @@
    * `away`: its machine is not connected, so a turn it last saw at work may have
    * ended long ago. The row says so instead of spinning and counting time.
    * One grammar in every list (rows, Recent, the palette, the phone,
-   * Activity): the user's turn and a failure as words, work as a moving mark
-   * and its word, news as a check and its word. How long work has run lives
+   * Activity): the user's turn and a failure as words, work as a still ring
+   * and its word, news as a check and its word. Lists hold many rows at work:
+   * their marks stay still, the one live spinner is the open thread's. How long work has run lives
    * in the thread and in the tooltip, never as a clock on the row.
    * `mark`: the desktop list's narrow end, where the title gets the width:
    * the user's turn is a dot and work its ring alone, their words in the
@@ -90,10 +91,9 @@
 {:else}
   <!-- A mark alone stands for its word: an image named by it. -->
   <span class="when state {kind}" class:mark={bare} data-testid="thread-state" data-state={kind} title={label} aria-label={label} role={bare ? 'img' : undefined}>
-    {#if kind === 'working'}<LoaderCircle size={11} class="spinner" aria-hidden="true" />
-    {:else if kind === 'delegating' || kind === 'background'}<LoaderCircle size={11} class="pulse" aria-hidden="true" />
-    {:else if kind === 'monitoring'}<Radar size={11} class="pulse" aria-hidden="true" />
-    {:else if kind === 'watching'}<GitPullRequest size={11} class="pulse" aria-hidden="true" />
+    {#if kind === 'working' || kind === 'delegating' || kind === 'background'}<span class="work-ring" aria-hidden="true"></span>
+    {:else if kind === 'monitoring'}<Radar size={11} aria-hidden="true" />
+    {:else if kind === 'watching'}<GitPullRequest size={11} aria-hidden="true" />
     {:else if kind === 'interrupted'}<CircleAlert size={11} aria-hidden="true" />
     {:else if kind === 'done'}<Check size={12} aria-hidden="true" />
     {:else if kind === 'waiting'}<span class="needs-dot" aria-hidden="true"></span>{/if}
@@ -116,12 +116,14 @@
     gap: 5px;
     font-weight: 500;
   }
-  /* The words of a state that asks for the user read bold; work reads as its quiet word beside the accent spinner. */
+  /* The words of a state that asks for the user read bold; work reads as its quiet word beside the accent ring. */
   .waiting, .error, .interrupted, .done { font-weight: 600; }
   .working {
     color: var(--color-muted-foreground);
   }
-  .working :global(.spinner) { color: var(--color-accent); }
+  /* Work: a still accent ring, the size of the user's turn's dot; the turn's own work solid, what it left running dashed. */
+  .work-ring { flex: none; box-sizing: border-box; width: 8px; height: 8px; margin: 0 1.5px; border: 1.5px solid var(--color-accent); border-radius: var(--radius-full); }
+  .delegating .work-ring, .background .work-ring { border-style: dashed; }
   /* Amber is the user's turn's mark, not its words: the dot carries it, the word beside it on a phone stays grey. */
   .waiting {
     color: var(--color-muted-foreground);
@@ -150,17 +152,5 @@
     color: var(--color-muted-foreground);
   }
   .delegating :global(svg), .monitoring :global(svg), .background :global(svg), .watching :global(svg) { color: var(--color-accent); }
-  .state :global(.spinner) {
-    flex: none;
-    animation: spin 1s steps(60) infinite var(--loops);
-  }
-  /* Work the turn left behind breathes instead of spinning. */
-  .state :global(.pulse) {
-    flex: none;
-    animation: pulse 1.6s var(--loop-ease-out-quint-48) infinite var(--loops);
-  }
-  /* An endless loop stops under reduced motion; the ring keeps its colour. */
-  @media (prefers-reduced-motion: reduce) { .state :global(.spinner), .state :global(.pulse) { animation: none; } }
-  :global(html[data-motion='reduced']) .state :global(.spinner),
-  :global(html[data-motion='reduced']) .state :global(.pulse) { animation: none; }
+  .state :global(svg) { flex: none; }
 </style>

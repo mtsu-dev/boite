@@ -46,3 +46,13 @@ test('faces picked in another window move the selected buttons here', () => {
   expect(pressed('font-mono-jetbrains')).toBe('true');
   expect(pressed('font-mono-geist')).toBe('false');
 });
+
+test('the palette tiles stand in one row sized to their count, so no row ends with a hole', () => {
+  running = mount(AppearancePage, { target: document.body, props: { store: { owner: true } as Store } });
+  flushSync();
+  const group = document.querySelector<HTMLElement>('.presets')!;
+  const tiles = group.querySelectorAll('[data-testid^=palette-]').length;
+  // Four columns once left seven tiles as four and three.
+  expect(tiles).toBeGreaterThan(4);
+  expect(group.style.getPropertyValue('--count')).toBe(String(tiles));
+});

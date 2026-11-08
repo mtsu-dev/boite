@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick, untrack } from 'svelte';
+  import { tick, untrack, type Snippet } from 'svelte';
   import { supportsSideQuestions, type Attachment, type PreviewReference } from '@boite/contracts';
   import { restorePreviewMentions } from '../lib/preview-mentions';
   import { runCommand } from '../lib/commands.svelte';
@@ -42,8 +42,11 @@
   import PreviewReferences from './PreviewReferences.svelte';
   import { chipChoice, queuedChoice, sendToTarget, type ComposerTarget } from '../lib/composer-target';
 
-  /** A centred draft drops the bottom padding so its heading and input form one block. A `target` makes it an agent's box. */
-  let { store, centered = false, target = null }: { store: Store; centered?: boolean; target?: ComposerTarget | null } = $props();
+  /**
+   * A centred draft drops the bottom padding so its heading and input form one block. A `target` makes it an agent's box.
+   * `notice` is what stands in the box's slot, under the strip, while the core runs nothing here (`stopped`).
+   */
+  let { store, centered = false, target = null, notice }: { store: Store; centered?: boolean; target?: ComposerTarget | null; notice?: Snippet } = $props();
 
   const MAX_LINES = 8, sizesItself = selfSizing();
   const side = new ComposerSide();
@@ -54,7 +57,6 @@
   let thread = $derived(target ? null : store.openThread);
   let composer = $derived(store.composerStates[key]);
   /** How tall the strip above the box stands: the band of tasks floats above it, not over it. */
-  let stripRoom = $state(0);
   let text = $derived(composer?.text ?? '');
   let attachments = $derived<Attachment[]>(composer?.attachments ?? []);
   let previewReferences = $derived(composer?.previewReferences ?? []);
@@ -172,13 +174,15 @@
   $effect(prefetchPermissionCard);
 
   /**
-   * The thread's folder or its worktree is gone (the notice above says so and
-   * holds the way out): the core runs nothing here, so the box says why and
-   * takes no message, and its send steps back from the accent.
+   * The core runs nothing here: the thread's folder or worktree is gone, or
+   * contact mail holds it. Its notice takes the box's place with the way out,
+   * so the box is not drawn under it; it stays mounted, keeping what was
+   * written for when the thread runs again.
    */
-  let noFolder = $derived(!target && (!!thread?.worktreeRemoved || (store.openProject?.missing === true && !thread?.agentSessionId)));
+  let stopped = $derived(!target && (!!thread?.worktreeRemoved || (store.openProject?.missing === true && !thread?.agentSessionId)
+    || (!!thread?.contactHold && !thread.archived)));
 
-  let placeholder = $derived(composerPlaceholder({ target, replying: !!reply || !!permission || (!!thread && store.busy), bot, offline, noFolder, onThread: !!thread,
+  let placeholder = $derived(composerPlaceholder({ target, replying: !!reply || !!permission || (!!thread && store.busy), bot, offline, onThread: !!thread,
     machine: machineLabel, provider: provider?.name ?? null }));
 
   // -- the slash menu -----------------------------------------------------------
@@ -387,7 +391,7 @@
   }
 
   async function submit(nextDraft = false) {
-    if (noFolder) return;
+    if (stopped) return;
     if (attachments.some(unresolvedAssetId)) { store.error = strings.errors.draftAttachment; return; }
     if (loadingFiles) { if (sendable) sendWhenLoaded = { store, key, state: stateForInput(), shape: sendShape(text, attachments), nextDraft }; return; }
     if (reply) {
@@ -750,14 +754,14 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="composer-wrap" class:centered onkeydowncapture={(event) => {
+<div class="composer-wrap" class:centered class:stopped onkeydowncapture={(event) => {
   if (!event.isComposing && event.key === 'Escape' && !mentionOpen && !slashOpen && attachmentStrip?.closePreview()) {
     event.preventDefault(); event.stopPropagation();
   }
 }}>
-  {#if !target}<div bind:offsetHeight={stripRoom}><ComposerStrip {store} {thread} /></div>{/if}
+  {#if !target}<ComposerStrip {store} {thread} />{/if}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="composer" class:dictating data-testid="composer" tabindex="-1" bind:this={shell} style:--strip-room="{target ? 0 : stripRoom}px" {ondragover} {ondrop} onkeydown={(event) => {
+  <div class="composer" class:dictating data-testid="composer" tabindex="-1" bind:this={shell} hidden={stopped} {ondragover} {ondrop} onkeydown={(event) => {
     if (event.target !== event.currentTarget || event.key !== 'Escape') return;
     // The touch focus target shares the box's Escape handling, including pending questions.
     onkeydown(event);
@@ -806,7 +810,7 @@
       }}
       onblur={() => { track(); focused = false; }}
       rows="1"
-      disabled={noFolder}
+      disabled={stopped}
       {placeholder}
       aria-label={placeholder}
       data-testid="composer-input"
@@ -833,7 +837,7 @@
 
     <ComposerSpeechPreview status={speechStatus} preview={speechPreview} error={speechError} />
 
-    <ComposerBar bind:this={toolbar} {store} {key} {target} {bot} {provider} canSend={sendable && !noFolder} blocked={noFolder} waiting={sendWhenLoaded !== null} answering={!!reply} {folded} composer={permission || docked ? shell ?? null : null}
+    <ComposerBar bind:this={toolbar} {store} {key} {target} {bot} {provider} canSend={sendable && !stopped} waiting={sendWhenLoaded !== null} answering={!!reply} {folded} composer={permission || docked ? shell ?? null : null}
       onmention={!target && !reply && mentionProject !== null ? startMention : undefined} oncommand={!target && !reply && text.trim() === '' ? startCommand : undefined} sendLabel={reply ? strings.composer.replySend : undefined} bind:choice bind:picking bind:dictating
       onsubmit={() => void submit()}
       onfiles={(files) => void take(files)}
@@ -844,6 +848,7 @@
       }} />
     </div>
   </div>
+  {#if stopped}{@render notice?.()}{/if}
 </div>
 
 <style>
@@ -858,6 +863,10 @@
   .composer-wrap.centered {
     padding: 0 20px;
   }
+
+  /* The notice in the box's place keeps the bottom gap; only the strip stays here. */
+  .composer-wrap.stopped { padding-bottom: 0; }
+  .composer[hidden] { display: none; }
 
   /* A raised neutral surface with a hairline and a faint top light. Focus brightens the hairline: app.css, beside its themes. */
   .composer {
@@ -935,6 +944,7 @@
     .composer-wrap, .composer-wrap.centered {
       padding: 8px 12px max(10px, env(safe-area-inset-bottom));
     }
+    .composer-wrap.stopped { padding-bottom: 0; }
 
     :global(html[data-keyboard='open']) .composer-wrap { padding-bottom: 8px; }
   }

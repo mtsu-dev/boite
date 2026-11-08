@@ -508,9 +508,9 @@ test('the reasoning chip reads the model default level and saves the pick on the
   query<HTMLButtonElement>('[data-testid=composer-effort-menu] [data-value=low]').click();
   await waitFor(() => store.openThread?.effort === 'low');
   expect(update).toHaveBeenCalledWith('t-trace', { accountId: 'a-echo', model: 'echo-1', effort: 'low', speed: null, expectedSelectionVersion: 0 });
-  // The row marks the level that is live, and the picker's own label leaves it alone.
+  // The row marks the level that is live, and the chip names it beside the model.
   await waitFor(() => picked('composer-effort-menu') === 'Low');
-  expect(query('[data-testid=composer-picker]').textContent).not.toContain('Low');
+  expect(query('[data-testid=composer-picker]').textContent).toContain('Low');
 });
 
 test('the reasoning chip remembers the level a draft picks', async ({ app: _app }) => {
@@ -538,7 +538,9 @@ test('the reasoning row names one choice per level and the arrows move it', asyn
   const live = query<HTMLButtonElement>('[data-testid=composer-effort-menu] [aria-checked=true]');
   expect(live.dataset.value).toBe('high');
   expect(live.tabIndex).toBe(0);
-  live.focus();
+  // A folded list's radios take no focus: unfolding the row hands it to the live one.
+  query<HTMLButtonElement>('[data-testid=composer-effort] [data-choices-trigger]').click();
+  await waitFor(() => document.activeElement === live);
 
   const update = vi.spyOn(store, 'update');
   expect(press('ArrowLeft')).toBe(false);
@@ -579,9 +581,9 @@ test('a first run shows the reasoning, mode and worktree chips at their defaults
   await waitFor(() => effortChip() !== null);
   // The built-in entry shows the scale at once; the account's catalog adds the fast mode.
   await waitFor(() => store.modelOf(store.defaultChoice())?.speeds !== undefined);
-  // The first level holds the models and the effort; More folds the rest.
-  expect(document.querySelector('[data-testid=composer-mode]')).toBeNull();
-  expect(inPicker('composer-mode')).not.toBeNull();
+  // The first level holds the models, the effort and the permission; More folds the rest.
+  expect(document.querySelector('[data-testid=composer-mode]')).not.toBeNull();
+  expect(document.querySelector('[data-testid=effort-speed]')).toBeNull();
   expect(plusItem('composer-worktree')?.getAttribute('aria-checked')).toBe('false');
   expect(document.querySelector('[data-testid=composer-more]')).toBeNull();
   expect(document.querySelector('[data-testid=composer-pin-effort]')).toBeNull();
@@ -589,7 +591,7 @@ test('a first run shows the reasoning, mode and worktree chips at their defaults
   // Opus 5.5 has a fast mode: its own row under the levels, behind More, standard first, both by name.
   await waitFor(() => inPicker('effort-speed-menu') !== null);
   const rows = Array.from(query('[data-testid=composer-picker-menu]').querySelectorAll('[data-testid=composer-effort],[data-testid=effort-speed],[data-testid=composer-mode]'));
-  expect(rows.map((row) => row.getAttribute('data-testid'))).toEqual(['composer-effort', 'effort-speed', 'composer-mode']);
+  expect(rows.map((row) => row.getAttribute('data-testid'))).toEqual(['composer-effort', 'composer-mode', 'effort-speed']);
   expect(picked('effort-speed-menu')).toBe('Standard speed');
   query<HTMLButtonElement>('[data-testid=effort-speed-menu] [data-value=fast]').click();
   await waitFor(() => picked('effort-speed-menu') === 'Fast');
@@ -849,18 +851,22 @@ test('an outbox prompt the core refuses shows why, holds the next one, and goes 
   expect(sent.some(parts => parts.includes('Third while away'))).toBe(false);
 });
 
-test('a thread whose worktree is gone takes no message: the box says why and send leaves the accent', async ({ app: _app }) => {
+test('a thread that cannot run draws its notice in the box\'s place, not a disabled box under it', async ({ app: _app }) => {
   await store.open('t-trace');
   await waitFor(() => store.openThread?.id === 't-trace' && !store.busy);
-  expect(input().placeholder).toBe(fill(strings.composer.placeholder, { name: 'Echo' }));
+  const restPlaceholder = fill(strings.composer.placeholder, { name: 'Echo' });
+  expect(input().placeholder).toBe(restPlaceholder);
   await type('one more change');
   const call = vi.spyOn(store.client!, 'call');
+  const card = query<HTMLElement>('[data-testid=composer]');
   store.openThread!.worktreeRemoved = { path: '/workspace/.worktrees/trace', branch: 'trace', branchDeleted: false, reason: 'clean', removedAt: Date.now() };
   await waitFor(() => input().disabled);
-  expect(input().placeholder).toBe(strings.composer.placeholderNoFolder);
-  const send = query<HTMLButtonElement>('[data-testid=composer-send]');
-  expect(send.disabled).toBe(true);
-  expect(send.closest('.bar')?.classList.contains('blocked')).toBe(true);
+  // The notice stands where the box was: the box is not drawn, and its placeholder does not repeat the notice.
+  expect(card.hidden).toBe(true);
+  const notice = query<HTMLElement>('[data-testid=worktree-gone]');
+  expect(notice.classList.contains('replaces')).toBe(true);
+  expect(notice.querySelectorAll('button:not([data-testid$=-info])')).toHaveLength(1);
+  expect(input().placeholder).toBe(restPlaceholder);
   // Enter on the field sends nothing: the notice's button is the way on.
   input().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
   await new Promise(resolve => setTimeout(resolve, 20));
@@ -868,7 +874,15 @@ test('a thread whose worktree is gone takes no message: the box says why and sen
   expect(input().value).toBe('one more change');
   store.openThread!.worktreeRemoved = null;
   await waitFor(() => !input().disabled);
-  expect(send.disabled).toBe(false);
+  expect(card.hidden).toBe(false);
+  expect(query<HTMLButtonElement>('[data-testid=composer-send]').disabled).toBe(false);
+  // Contact mail holding the thread stops it the same way.
+  store.openThread!.contactHold = { contacts: ['Chris'] };
+  await waitFor(() => card.hidden === true);
+  expect(query<HTMLElement>('[data-testid=contact-hold]').classList.contains('replaces')).toBe(true);
+  store.openThread!.contactHold = null;
+  await waitFor(() => !card.hidden);
+  expect(input().value).toBe('one more change');
 });
 
 /** The asks of the open thread; the fixture keeps others waiting elsewhere. */
@@ -1862,18 +1876,18 @@ test('permission menu offers No limits beside Auto and preserves legacy modes un
   await waitFor(() => !store.busy);
   for (const legacy of ['plan', 'dontAsk'] as const) {
     store.openThread!.permissionMode = legacy;
-    await waitFor(() => inPicker('composer-mode') !== null && picked('composer-mode-menu') === (legacy === 'plan' ? 'Plan' : 'Auto-deny'));
+    await waitFor(() => inPicker('composer-mode') !== null && picked('composer-mode-menu') === (legacy === 'plan' ? 'Plan only' : 'Deny what needs asking'));
     expect(store.openThread?.permissionMode).toBe(legacy);
   }
   const names = () => Array.from(query('[data-testid=composer-mode-menu]').querySelectorAll('[data-value]')).map(row => row.textContent?.trim());
   // The live legacy mode keeps a choice of its own at the end until another is picked.
-  expect(names()).toEqual(['No limits', 'Auto', 'Edit freely', 'Ask first', 'Auto-deny']);
-  for (const [mode, label] of [['yolo', 'No limits'], ['bypassPermissions', 'Auto'], ['acceptEdits', 'Edit freely'], ['default', 'Ask first']]) {
+  expect(names()).toEqual(['No limits', 'Run without asking', 'Ask before running commands', 'Ask before edits and commands', 'Deny what needs asking']);
+  for (const [mode, label] of [['yolo', 'No limits'], ['bypassPermissions', 'Run without asking'], ['acceptEdits', 'Ask before running commands'], ['default', 'Ask before edits and commands']]) {
     query(`[data-testid=composer-mode-menu] [data-value="${mode}"]`).click();
     await waitFor(() => store.openThread?.permissionMode === mode);
     await waitFor(() => picked('composer-mode-menu') === label);
   }
-  expect(names()).toEqual(['No limits', 'Auto', 'Edit freely', 'Ask first']);
+  expect(names()).toEqual(['No limits', 'Run without asking', 'Ask before running commands', 'Ask before edits and commands']);
 });
 
 test('a slash lists the agent commands first, filters, and completes the box', async ({ app: _app }) => {

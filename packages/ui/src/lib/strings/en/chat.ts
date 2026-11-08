@@ -126,7 +126,6 @@ export const strings = {
     fold: {
       worked: 'Worked {time}', workedBare: 'Worked',
       stepOne: '1 step', stepMany: '{count} steps',
-      seconds: '{count} s', minutes: '{count} min', hours: '{hours} h {minutes} min',
       quiet: 'Checked, nothing to report', quietWith: 'Checked: {reason}',
       showSteps: 'Show the steps', hideSteps: 'Hide the steps',
       showTurn: 'Show the whole turn', hideTurn: 'Fold this turn',

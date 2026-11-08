@@ -202,10 +202,12 @@
     align-items: center;
     gap: 8px;
     min-height: var(--row);
-    padding: 6px 12px;
+    padding: 3px 12px;
     font-size: var(--text-xs);
     font-weight: 500;
   }
+  /* A pointer gets 28 px on the head's buttons; the row keeps its height. */
+  header button.small { min-height: 28px; }
 
   .count {
     flex: none;

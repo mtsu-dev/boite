@@ -2,6 +2,7 @@ import { SvelteSet } from 'svelte/reactivity';
 import { continuesRequest, queueOrder, type AgentStatus, type Message, type MessagePart, type Turn } from '@boite/contracts';
 import type { CompactionPart } from './tool-groups';
 import { fill, strings } from './strings';
+import { elapsed } from './format';
 import { AgentsView } from './agents.svelte';
 import type { Store } from './store.svelte';
 
@@ -33,21 +34,16 @@ export interface TurnFold {
 /** The folded turns the user opened, for as long as the app runs: turn ids are unique across threads. */
 export const openedTurns = new SvelteSet<string>();
 
-/** `40 s`, `3 min`, `1 h 05 min`: how long a turn worked, said the way a person would. */
+/** How long a turn worked, in the one duration style (`40s`, `3m 00s`, `1h 05m`), never under a second. */
 export function workedTime(ms: number): string {
-  const t = strings.chat.fold;
-  const seconds = Math.round(ms / 1000);
-  if (seconds < 60) return fill(t.seconds, { count: String(Math.max(1, seconds)) });
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return fill(t.minutes, { count: String(minutes) });
-  return fill(t.hours, { hours: String(Math.floor(minutes / 60)), minutes: String(minutes % 60).padStart(2, '0') });
+  return elapsed(Math.max(1000, ms));
 }
 
 export function stepsLabel(count: number): string {
   return count === 1 ? strings.chat.fold.stepOne : fill(strings.chat.fold.stepMany, { count: String(count) });
 }
 
-/** The row's words: "Worked 3 min · 14 steps", or "Checked: <reason> · 3 steps", the work it did first. */
+/** The row's words: "Worked 3m 00s · 14 steps", or "Checked: <reason> · 3 steps", the work it did first. */
 export function foldText(fold: TurnFold): string {
   const t = strings.chat.fold;
   const steps = fold.steps > 0 ? [stepsLabel(fold.steps)] : [];

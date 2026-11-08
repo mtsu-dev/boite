@@ -7,9 +7,9 @@
 
   /**
    * The toast that carries the last archive's way back, in the toasts' one
-   * home (`toastSlot`), as wide as its text: above the strip's right end in
-   * room of its own, or under the header on a phone, so it never covers a line
-   * being read. `onerror` hears a restore that failed.
+   * home (`toastSlot`), as wide as its text: in room the page keeps for it,
+   * under the thread's header on a desktop, above the composer or the tab bar
+   * on a phone, so it never covers a line, a row or a title. `onerror` hears a restore that failed.
    */
   let { onerror }: { onerror: (error: unknown) => void } = $props();
 

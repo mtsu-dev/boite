@@ -57,13 +57,13 @@
     {#if store.core}
       <dl>
         <dt>{strings.settings.version}</dt>
-        <dd class="mono" data-testid="settings-version">{store.core.version}</dd>
+        <dd data-testid="settings-version">{store.core.version}</dd>
         <dt>{strings.settings.protocol}</dt>
-        <dd class="mono">{store.core.protocolVersion}</dd>
+        <dd>{store.core.protocolVersion}</dd>
         <dt>{strings.settings.os}</dt>
-        <dd class="mono">{store.core.os}</dd>
+        <dd>{store.core.os}</dd>
         <dt>{strings.settings.pid}</dt>
-        <dd class="mono">{store.core.pid}</dd>
+        <dd>{store.core.pid}</dd>
         <dt>{strings.settings.endpoint}</dt>
         <dd class="mono" data-testid="settings-endpoint">{store.core.endpoint.host}:{store.core.endpoint.port}</dd>
         <dt>{strings.settings.dataDir}</dt>
@@ -79,5 +79,6 @@
   textarea { display: block; width: 100%; height: auto; min-height: 72px; padding: 8px 10px; margin-bottom: 12px; font-family: var(--font-mono); font-size: var(--text-sm); resize: vertical; }
   dl { display: grid; grid-template-columns: 140px 1fr; gap: 6px 12px; margin: 0; }
   dt { color: var(--color-muted-foreground); font-size: var(--text-sm); padding-top: 2px; }
-  dd { margin: 0; overflow: hidden; text-overflow: ellipsis; overflow-wrap: anywhere; }
+  /* Versions and numbers read in the sans; only an address and a path stay mono. */
+  dd { margin: 0; overflow: hidden; text-overflow: ellipsis; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 </style>

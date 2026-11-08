@@ -187,11 +187,17 @@
     {#if pinnedHere && pinnedQuotas.crowded.get(store) && (thread || sending)}<Deferred part={parts.PinnedQuota} quiet>{#snippet children(PinnedQuota)}<PinnedQuota {store} inline area={discussion} />{/snippet}</Deferred>{/if}
 
     {#if thread}<ThreadRecovery {store} /><ThreadRetry {store} />{/if}
-    {#if store.openProject?.missing === true && !thread?.agentSessionId}<FolderGoneNotice {store} project={store.openProject} />{/if}
-    {#if thread?.worktreeRemoved}<WorktreeGoneNotice {store} projectId={thread.projectId ?? null} removal={thread.worktreeRemoved} archived={thread.archived} />{/if}
-    {#if thread?.contactHold && !thread.archived}<ContactHoldNotice {store} threadId={thread.id} contacts={thread.contactHold.contacts} />{/if}
+    <!-- What stops the core here stands in the box's own slot, under its strip; a done thread says it all in one notice. -->
+    {#snippet stopNotice()}
+      {#if store.openProject?.missing === true && !thread?.agentSessionId}<FolderGoneNotice {store} project={store.openProject} />{/if}
+      {#if thread?.worktreeRemoved}<WorktreeGoneNotice {store} projectId={thread.projectId ?? null} removal={thread.worktreeRemoved} />{/if}
+      {#if thread?.contactHold && !thread.archived}<ContactHoldNotice {store} threadId={thread.id} contacts={thread.contactHold.contacts} />{/if}
+    {/snippet}
     {#if locked}<p class="locked" data-testid="chat-locked">{locked}</p>
-    {:else if thread?.archived}<DoneThreadNotice {store} threadId={thread.id} />{:else}<Composer {store} centered={!thread && !sending} />{/if}
+    {:else if thread?.archived}
+      {#if store.openProject?.missing === true && !thread.agentSessionId}<FolderGoneNotice {store} project={store.openProject} replaces={false} />{/if}
+      <DoneThreadNotice {store} threadId={thread.id} removal={thread.worktreeRemoved ?? null} />
+    {:else}<Composer {store} centered={!thread && !sending} notice={stopNotice} />{/if}
 
     <!-- The draft's heading and composer are one block in the middle of the
          column: the body above and this tail below share the free space. -->

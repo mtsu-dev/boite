@@ -10,7 +10,6 @@ export const fr: Translation = {
     count: '{count} modifiés',
     oneCount: '1 modifié',
     staged: 'Indexé',
-    stagedShort: 'I',
     binary: 'Fichier binaire, rien à montrer ligne par ligne',
     truncated: "Ce fichier a été tronqué : le diff ci-dessous n'est pas le fichier entier.",
     pick: 'Choisissez un fichier pour voir son diff',

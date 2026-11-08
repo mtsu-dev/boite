@@ -9,7 +9,6 @@ export const strings = {
     count: '{count} changed',
     oneCount: '1 changed',
     staged: 'Staged',
-    stagedShort: 'S',
     binary: 'Binary file, nothing to show line by line',
     truncated: 'This file was cut short: the diff below is not the whole file.',
     pick: 'Pick a file to see its diff',

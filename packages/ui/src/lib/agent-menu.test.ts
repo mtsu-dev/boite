@@ -9,7 +9,7 @@ import { FakeClient } from './fake-client';
 import { RpcFailure } from './rpc-error';
 import { Store, store as primary } from './store.svelte';
 import { fill, strings } from './strings';
-import { threadMenuItems } from './thread-menu';
+import { threadMenuItems, threadToolItems } from './thread-menu';
 import { workspace } from './workspace.svelte';
 
 const opened: { store: Store; client: FakeClient }[] = [];
@@ -55,8 +55,10 @@ test('the desktop menu has the thread menu\'s groups, words and glyphs, cut to w
   const items = agentMenuItems(alone(), agent(), { open: false });
   expect(items.map(item => item.id)).toEqual(['open', 'sep-open', 'rename', 'pin', 'edit', 'sep-archive', 'pause', 'archive', 'sep-tools', 'copy']);
   // Where a thread has the same action, the bot's row reads and looks the same.
-  const thread = threadMenuItems({ owner: true, retitling: [], composerStates: {}, threads: [], moveBlocked: () => false } as unknown as Store,
-    { id: 't1', title: 'Port', cwd: '/w', projectId: null, parentThreadId: null, agentSessionId: null, archived: false, incognito: false, pinned: false, status: 'idle' } as never, { open: false });
+  const owner = { owner: true, retitling: [], composerStates: {}, threads: [], moveBlocked: () => false } as unknown as Store;
+  const row = { id: 't1', title: 'Port', cwd: '/w', projectId: null, parentThreadId: null, agentSessionId: null, archived: false, incognito: false, pinned: false, status: 'idle' } as never;
+  // A thread's Copy path waits in its Tools list.
+  const thread = [...threadMenuItems(owner, row, { open: false }), ...threadToolItems(owner, row, { open: false, panels: false })];
   for (const id of ['open', 'pin', 'rename', 'copy']) {
     const mine = items.find(item => item.id === id)!, theirs = thread.find(item => item.id === id)!;
     expect([mine.label, mine.glyph]).toEqual([theirs.label, theirs.glyph]);

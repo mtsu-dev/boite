@@ -11,7 +11,7 @@ export const strings = {
     xhigh: 'Extra high',
     max: 'Max',
     ultra: 'Ultra',
-    ultrathink: 'Think longest',
+    ultrathink: 'Ultra',
     fast: 'Fast'
   }
 } as const;

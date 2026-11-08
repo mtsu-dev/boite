@@ -159,7 +159,13 @@
   .chip .ghost.small { flex: none; height: 22px; font-size: var(--text-xs); }
 
   .send-now { height: 28px; padding: 0 8px; border-radius: var(--radius-full); font-size: var(--text-sm); font-weight: 550; }
-  @media (max-width: 720px) { .chip { height: 36px; } .remove { width: 32px; height: 32px; } .send-now { height: 36px; } }
+  @media (max-width: 720px) {
+    /* A phone gives the prompt up to two lines rather than cutting it on the first. */
+    .chip { height: auto; min-height: 36px; padding-block: 2px; border-radius: var(--radius-lg); }
+    .text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; height: auto; padding-block: 4px; line-height: 1.3; white-space: normal; overflow-wrap: anywhere; }
+    .remove { width: 32px; height: 32px; }
+    .send-now { height: 36px; }
+  }
   /* A 360 px phone keeps the chip for the prompt: the outbox's word goes, the "i" still says why. */
   @media (max-width: 400px) { .word { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; } }
 </style>

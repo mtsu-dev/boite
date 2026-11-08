@@ -39,8 +39,8 @@ test('a parent whose turn ended waits on its working sub-agents, their count in 
 
   const state = draw({ status: 'idle', unread: true, backgroundWork: { kinds: ['shell'], since: NOW } }, working.get('parent' as ThreadId)!);
   expect(state.dataset['state']).toBe('delegating');
-  // The row reads its word beside a breathing ring, never a clock: the count and the time stay in the tooltip, so the title keeps its room.
-  expect(state.querySelector('svg.pulse')).not.toBeNull();
+  // The row reads its word beside a still ring, never a clock: the count and the time stay in the tooltip, so the title keeps its room.
+  expect(state.querySelector('.work-ring')).not.toBeNull();
   expect(state.querySelector('.dot')).toBeNull();
   expect(state.textContent?.replace(/\s+/g, ' ').trim()).toBe('Sub-agents');
   expect(state.getAttribute('title')).toBe('Waiting on 2 sub-agents\n1m 30s');
@@ -170,20 +170,22 @@ test('monitoring and the turn that resumes after it keep counting from the user 
   expect(shell.getAttribute('title')).toBe('In background for 5s\n1 shell still running');
 });
 
-test('a shell left running reads as background work, with a breathing ring rather than a spinning one', () => {
+test('a shell left running reads as background work, with a still ring rather than a spinning one', () => {
   vi.useFakeTimers({ now: NOW });
   const state = draw({ status: 'idle', backgroundWork: { kinds: ['shell', 'monitor'], since: NOW - 5_000 } });
   expect(state.dataset['state']).toBe('background');
-  expect(state.querySelector('svg.spinner')).toBeNull();
-  expect(state.querySelector('svg.pulse')).not.toBeNull();
+  expect(state.querySelector('.spinner, .pulse')).toBeNull();
+  expect(state.querySelector('.work-ring')).not.toBeNull();
   expect(state.getAttribute('title')).toBe('In background for 5s\n1 shell, 1 monitor still running');
 });
 
-test('a working thread spins and counts from its turn start, second by second', () => {
+test('a working row holds a still ring, the open thread the one spinner, and counts from its turn start, second by second', () => {
   vi.useFakeTimers({ now: NOW });
   const state = draw({ status: 'running', runningSince: NOW - 65_000 });
   expect(state.dataset['state']).toBe('working');
-  expect(state.querySelector('svg')).not.toBeNull();
+  // A list holds many rows at work: none of their marks moves.
+  expect(state.querySelector('.work-ring')).not.toBeNull();
+  expect(state.querySelector('svg, .spinner, .pulse')).toBeNull();
   expect(state.textContent?.trim()).toBe('Working');
   expect(state.getAttribute('title')).toBe('Working for 1m 05s');
 

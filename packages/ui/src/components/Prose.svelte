@@ -374,6 +374,9 @@
   }
 
   .prose :global(a:hover) { text-decoration-color: currentColor; }
+  /* A path in a code chip opens the file, yet the chip stays neutral like every
+     other one: its underline says it is a link, not the accent. */
+  .prose :global(code a) { color: inherit; }
   /* A long press opens the link's own menu, not the phone's preview of `#file`. */
   .prose :global(a[data-file-path]), .prose :global(a[data-thread-address]) { -webkit-touch-callout: none; }
 

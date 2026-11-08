@@ -7,7 +7,7 @@
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
   import { permissionSentence } from '../lib/tool-summary';
-  import { dockRoom, questionDock } from '../lib/question-dock.svelte';
+  import { questionDock } from '../lib/question-dock.svelte';
   import { ignoreQuestions, releaseWaiting, replyOf, repliesOf, sendAnswer, writeAnswer } from '../lib/question-reply.svelte';
   import Deferred, { parts } from './Deferred.svelte';
   import InfoTip from './InfoTip.svelte';
@@ -58,7 +58,6 @@
   let shown = $derived(asked.find((question) => question.id === shownId) ?? asked[0]);
   let at = $derived(shown ? asked.indexOf(shown) : 0);
   let questionOpen = $state(true);
-  let inline = $derived(asked.length > 0 || waits.length > 0 || childQuestions.length > 0);
   // Start with the oldest pending question. New arrivals keep the current
   // question, its answers and its folded state; explicit navigation still wins.
   // The dock stays mounted when switching threads, so reset its selection then.
@@ -151,41 +150,6 @@
   });
   const detailsId = $props.id();
 
-  // The dock floats over the timeline's end: the timeline keeps its whole
-  // measured height as room below, open task details included, so its last
-  // block always scrolls clear of them.
-  let height = $state(0);
-  $effect(() => {
-    dockRoom.height = visible && !inline ? height : 0;
-    dockRoom.clearance = visible && !inline ? height : 0;
-  });
-  $effect(() => () => {
-    dockRoom.height = 0;
-    dockRoom.clearance = 0;
-  });
-  function measure(node: HTMLElement): { destroy(): void } | undefined {
-    // jsdom lays nothing out and ships no ResizeObserver.
-    if (typeof ResizeObserver === 'undefined') return;
-    // Taken on the next frame: the margin it moves can bring the timeline's
-    // scrollbar and resize the messages another observer watches, which inside
-    // this callback is a ResizeObserver loop.
-    let frame = 0;
-    const observer = new ResizeObserver(() => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        height = node.offsetHeight;
-      });
-    });
-    observer.observe(node);
-    return {
-      destroy() {
-        observer.disconnect();
-        cancelAnimationFrame(frame);
-        height = 0;
-      }
-    };
-  }
-
   function interval(ms: number) {
     if (ms % 3_600_000 === 0) return `${ms / 3_600_000}h`;
     if (ms % 60_000 === 0) return `${ms / 60_000}m`;
@@ -234,7 +198,7 @@
 {/snippet}
 
 {#if activity || asked.length > 0 || waits.length > 0 || childQuestions.length > 0}
-  <section class="activity" class:inline class:hidden={!visible} use:measure data-testid="thread-activity" aria-label={shown || childQuestions.length ? strings.activity.question : strings.activity.tasks} inert={!visible}>
+  <section class="activity" class:hidden={!visible} data-testid="thread-activity" aria-label={shown || childQuestions.length ? strings.activity.question : strings.activity.tasks} inert={!visible}>
     {#if childQuestions.length > 0 && store.openThread}
       <div class="child-questions"><SubagentQuestions {store} threadId={store.openThread.id} /></div>
     {/if}
@@ -264,7 +228,7 @@
             {#each asked as question (question.id)}
               {@const reply = replyOf(store, question.id)}
               {@const child = children.get(question.threadId)}
-              <div hidden={question.id !== shown.id} data-testid="activity-question" data-question={question.id} data-thread={question.threadId}>
+              <div class="asked" hidden={question.id !== shown.id} data-testid="activity-question" data-question={question.id} data-thread={question.threadId}>
                 {#if child}
                   {@render fromChild(child, 'activity-subagent-question')}
                 {/if}
@@ -475,16 +439,14 @@
 {/if}
 
 <style>
-  /* Four pixels of card around every line: the rows and the toggle carry their
-     own inline padding, so a hover fill sits inset by the same four pixels on
-     every side and the air above the first line equals the air under the last.
-     The subagent bar stands between the timeline and the composer: the band
-     rises by the bar's height, which ChatView sets, into the air the bar keeps
-     above itself, and covers no more of the timeline than the reading room
-     reserves. Over queued prompts it stays in the room they leave it. */
-  .activity { position: absolute; bottom: calc(100% + 4px + var(--strip-room, 0px)); inset-inline: 0; z-index: 5; width: 100%; margin-inline: auto; max-height: 45vh; overflow-y: auto; padding: 4px; border: 1px solid var(--color-border); border-top-color: var(--color-edge); border-radius: var(--radius-lg); background: var(--composer-glaze) var(--color-activity-surface); backdrop-filter: blur(16px) saturate(1.2); -webkit-backdrop-filter: blur(16px) saturate(1.2); box-shadow: var(--shadow-e1); font-size: var(--text-sm); transition: opacity var(--dur-3), transform var(--dur-3); }
-  .activity.hidden { opacity: 0; transform: translateY(8px); pointer-events: none; }
-  .activity.inline { position: relative; bottom: auto; inset-inline: auto; z-index: auto; background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; border: none; border-bottom: 1px solid var(--color-border); border-radius: 0; box-shadow: none; padding: 8px 4px 4px; }
+  /* The head of the composer card, in the flow like the rest of the dock, so
+     the timeline gives way to it and no line of the thread runs under it.
+     Four pixels around every line: the rows carry their own inline padding,
+     so a hover fill sits inset by the same four pixels on every side. */
+  .activity { max-height: 45vh; overflow-y: auto; padding: 8px 4px 4px; border-bottom: 1px solid var(--color-border); font-size: var(--text-sm); }
+  .activity.hidden { display: none; }
+  /* A decision arrives with a short rise; reduced motion keeps only the fade (`--motion`). */
+  .asked, .child-questions { animation: rise var(--motion-in) both; }
   .activity-row { display: flex; align-items: center; gap: 8px; min-height: var(--control); min-width: 0; padding: 0 2px 0 8px; }
   /* The questions sit above the goal, the loop and the tasks, a hairline between. */
   .child-questions + :is(.questions, .entry, .tasks-toggle, .waits), .questions + :is(.entry, .tasks-toggle, .waits), .waits + :is(.entry, .tasks-toggle) { margin-top: 4px; border-top: 1px solid var(--color-border); padding-top: 4px; }

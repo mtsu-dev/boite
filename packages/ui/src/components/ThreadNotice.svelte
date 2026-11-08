@@ -9,9 +9,11 @@
    * step on a quieter second line, the rest behind an "i", then its buttons.
    * It wraps rather than cuts on a narrow column, and the mark stays on the
    * first line. `docked` gives it the
-   * composer's column, for the notices that stand right above it.
+   * composer's column, for the notices that stand right above it;
+   * `replaces` sizes it for the composer's slot (`Composer`'s `notice`),
+   * where it stands when the thread cannot run.
    */
-  let { icon: Icon, tone = 'live', title, detail, info, docked = false, testid, kind, actions, children }: {
+  let { icon: Icon, tone = 'live', title, detail, info, docked = false, replaces = false, testid, kind, actions, children }: {
     icon: typeof Info;
     /** The colour of the mark: waiting on the user, broken, or only said. */
     tone?: 'live' | 'danger' | 'quiet';
@@ -19,6 +21,8 @@
     detail?: string;
     info?: string;
     docked?: boolean;
+    /** Rendered in the composer's slot under the dock's strip: the box's width and the gap it keeps under it. */
+    replaces?: boolean;
     testid: string;
     kind?: string;
     actions?: Snippet;
@@ -27,7 +31,7 @@
   } = $props();
 </script>
 
-<div class="thread-notice" class:docked data-tone={tone} data-testid={testid} data-kind={kind} role="status">
+<div class="thread-notice" class:docked class:replaces data-tone={tone} data-testid={testid} data-kind={kind} role="status">
   <span class="mark" aria-hidden="true"><Icon size={15} strokeWidth={1.75} /></span>
   <span class="text">
     <span class="line">
@@ -60,6 +64,8 @@
   }
   /* The composer's own column, so the notice sits on it rather than across the pane. */
   .docked { flex: none; width: min(calc(100% - 40px), var(--content)); margin: 0 auto 8px; }
+  /* In the composer's slot, under its strip: the box's width and its bottom gap. */
+  .docked.replaces { width: 100%; max-width: var(--content); margin: 0 auto 16px; }
   /* The mark sits on the first line's height, whatever wraps under it. */
   .mark { display: flex; flex: none; align-self: flex-start; align-items: center; height: 1.4em; }
   [data-tone='live'] .mark { color: var(--color-live); }
@@ -76,7 +82,8 @@
   .actions { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: auto; }
   .actions :global(button) { gap: 6px; }
   @media (max-width: 720px) {
-    .docked { width: calc(100% - 20px); }
+    .docked { width: calc(100% - 24px); }
+    .docked.replaces { width: 100%; margin-bottom: max(10px, env(safe-area-inset-bottom)); }
     /* The words take the row and the buttons go under them, so the first line is not squeezed into a column. */
     .text { flex-basis: calc(100% - 30px); }
     .actions :global(button) { min-height: var(--touch-target); }
