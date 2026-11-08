@@ -337,6 +337,11 @@ directories, once before the template's deletions and once after, since
 then goes at the next restart where Windows allows it. Nothing else in the
 install directory is touched.
 
+The installer packs with zlib, not Tauri's default LZMA: it is 70 MB rather
+than 55 MB, and it writes the files in 2.3 seconds rather than 5.2 on the
+machine measured, which is time an in-app update spends with no window
+([app update restart](performance.md#app-update-restart)).
+
 The identifier is fresh, so Boite installs beside Boite Legacy rather than over
 it. To see the exact file list a build produced, read
 `apps/shell/src-tauri/target/release/nsis/x64/installer.nsi` before installing

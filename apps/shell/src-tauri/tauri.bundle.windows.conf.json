@@ -8,6 +8,7 @@
     "windows": {
       "nsis": {
         "template": "windows/installer.nsi",
+        "compression": "zlib",
         "installerHooks": "windows/hooks.nsh"
       }
     }
