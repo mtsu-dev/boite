@@ -5,6 +5,10 @@ import { AgentsView, openAgent } from '../../lib/agents.svelte';
 import { setExperiment } from '../../lib/experiments';
 import AgentDesk from './AgentDesk.svelte';
 import BotWorkList from './BotWorkList.svelte';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+const deskCss = readFileSync(resolve('src/components/agents/agents.css'), 'utf8');
 
 const chips = () => [...document.querySelectorAll('[data-testid=desk-chip]')].map(chip => chip.textContent?.trim());
 const titles = (section: 'handling' | 'done') => {
@@ -112,6 +116,11 @@ test('Nova\'s threads: what it handles, needs-you first, then what it is done wi
     const away = card('Fix the save migration')!;
     expect(away.querySelector('[data-testid=desk-card-machine]')?.textContent).toBe('skoll');
     expect(away.querySelector('[data-testid=desk-card-unreachable]')?.getAttribute('title')).toContain('its events reach you once it is back');
+    // Out of reach is a machine state: the offline machine's grey dot, never the failure red.
+    expect(away.querySelector('[data-testid=desk-card-unreachable] .desk-card-off')).not.toBeNull();
+    expect(deskCss).toMatch(/\.desk-card-unreachable \{[^}]*color: var\(--color-muted-foreground\)/);
+    expect(deskCss).toMatch(/\.desk-card-off \{[^}]*background: var\(--color-subtle\)/);
+    expect(deskCss).not.toMatch(/\.desk-card-(unreachable|off)[^{]*\{[^}]*--color-danger/);
     expect(away.querySelector('.desk-card-open')).toBeNull();
 
     // The question is answered from the row, and leaves it.

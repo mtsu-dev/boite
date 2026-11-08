@@ -119,7 +119,7 @@
       aria-label={expanded ? strings.sidebar.collapse : strings.sidebar.expand}
       title={`${expanded ? strings.sidebar.collapse : strings.sidebar.expand}${store.keyHint('sidebar')}`}
       aria-expanded={expanded} data-testid="sidebar-toggle" onclick={toggleSidebar}>
-      {#if expanded}<PanelLeftClose size={17} strokeWidth={1.75} />{:else}<PanelLeftOpen size={17} strokeWidth={1.75} />{/if}
+      {#if expanded}<PanelLeftClose size={16} strokeWidth={1.75} />{:else}<PanelLeftOpen size={16} strokeWidth={1.75} />{/if}
     </button>
   {/if}
   {#if threadHeader && (inShell || !mobile.current)}

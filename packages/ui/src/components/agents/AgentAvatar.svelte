@@ -19,7 +19,7 @@
    * loads, and draws the robot its id picks when no machine holds it.
    *
    * `ring` draws a ring around the disc that says the agent's `mood`: a still
-   * grey ring while it works in a list, as a thread row's mark (colour is kept
+   * accent ring while it works in a list, as a thread row's mark (colour is kept
    * for asks and failures), an arc of the accent turning where
    * it is the open bot (`live`), the one place the eye follows its work; the waiting colour pulsing while it
    * needs the user, danger after a failure, a full accent ring over answers not
@@ -153,8 +153,8 @@
   /* Every track keeps the 1.5 px hairline: a whole-pixel width snaps off-centre at fractional zoom (tests/e2e/avatar-rings.test.ts). */
   .avatar-ring circle { fill: none; stroke-width: 1.5px; transition: stroke var(--dur-3) var(--ease-out-quint); }
   .track { stroke: color-mix(in srgb, var(--ring-tint) 50%, transparent); }
-  /* At work in a list: a still grey ring, the thread rows' work mark (StatusMark.svelte). The open bot's turns an accent spinner around the disc. */
-  [data-ring='working'] .track { stroke: var(--color-muted-foreground); }
+  /* At work in a list: a still accent ring, the thread rows' work mark (StatusMark.svelte). The open bot's turns an accent spinner around a quiet track. */
+  [data-ring='working'] .track { stroke: var(--color-accent); }
   [data-ring='working'][data-live] .track { stroke: var(--color-edge); }
   .avatar-ring .arc { stroke: var(--color-accent); stroke-linecap: round; stroke-width: 2.5px; stroke-dasharray: 30 70; transform-box: fill-box; transform-origin: center; animation: spin 1.2s steps(72) infinite var(--loops); }
   [data-ring='queued'] .track { stroke: var(--color-muted-foreground); stroke-dasharray: 4 6; opacity: 0.7; }

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ChevronLeft, Plus } from '@lucide/svelte';
+  import { Plus } from '@lucide/svelte';
   import type { ProviderSummary } from '@boite/contracts';
   import ProviderLogo from './ProviderLogo.svelte';
   import { strings } from '../lib/strings';
@@ -8,7 +8,7 @@
 
   /**
    * The model picker's row of providers under "All models", above their
-   * models on every width: the way back to the models in use, then one tile
+   * models on every width: one tile
    * per provider in the order the core listed them, its mark in monochrome
    * beside its name. A tile only moves the list under it.
    */
@@ -17,7 +17,6 @@
     choice,
     locked,
     current,
-    onback,
     onpick,
     onmore
   }: {
@@ -26,8 +25,6 @@
     locked: boolean;
     /** The provider whose column is shown. */
     current: string | null;
-    /** Back to the first level, when it has models to show. */
-    onback?: () => void;
     onpick: (providerId: string) => void;
     /** The last tile, while some providers are left out: Settings, where they are connected. */
     onmore?: () => void;
@@ -76,9 +73,6 @@
   }
 </script>
 
-{#if onback}
-  <button type="button" class="tile back" role="menuitem" data-row data-provider="home" data-testid="picker-back" title={strings.composer.yourModels} onclick={onback}><ChevronLeft size={14} /><span class="tile-name ui-label">{strings.composer.yourModels}</span></button>
-{/if}
 {#each tiles as tile (tile.provider.id)}
   <button
     type="button"
@@ -143,7 +137,6 @@
   }
 
   .tile.more { width: auto; color: var(--color-subtle); }
-  .tile.back { color: var(--color-foreground); }
 
   /* Nothing runs on it: still pickable, so its column can say why. */
   .tile.dim {

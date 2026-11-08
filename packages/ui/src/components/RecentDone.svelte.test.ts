@@ -102,10 +102,15 @@ test('done and archived threads are separate lists with their own counts', async
   expect(document.querySelector('[data-testid=recent-archived-toggle] .fold-count')?.textContent).toBe('1');
   click('[data-testid=recent-archived-toggle]'); await settle();
   expect([...document.querySelectorAll('[data-testid=done-thread]')].map(row => (row as HTMLElement).dataset.threadId)).toEqual(['t-parser']);
+  // Archived or done, both are put away: an archived row is drawn as quietly as a done one, never as a live row.
+  // (`meta` only says whether a second line exists.)
+  const look = () => [...document.querySelector('[data-testid=done-thread]')!.classList].filter(name => name !== 'meta');
+  const archivedLook = look();
   await unmount(mounted);
   mounted = mount(RecentDone, { target: document.body, props: { entries: entries(), now: Date.now() } });
   click('[data-testid=recent-done-toggle]'); await settle();
   expect([...document.querySelectorAll('[data-testid=done-thread]')].map(row => (row as HTMLElement).dataset.threadId)).toEqual(['t-trace']);
+  expect(archivedLook).toEqual(look());
 });
 
 test('archived threads are listed by when they were put away, not by their last change', async () => {

@@ -484,7 +484,7 @@
     .mobile-list.tabbed { padding-bottom: 24px; }
     /* The foot's fade (app.css `.scroll-edges`): 24 px of the ground over the rows while more lies below, gone at the
        end, where the padding leaves the last row whole above the tab bar. */
-    .mobile-list { --scroll-edge: 24px; --scroll-edge-top: 8px; --scroll-edge-bottom: 24px; }
+    .mobile-list { --scroll-edge: 24px; --scroll-edge-top: 8px; --scroll-edge-bottom: 24px; scroll-padding-block: calc(var(--scroll-edge) + 8px); }
     p { font-size: var(--text-sm); }
     /* One frame: a quiet surface, no border and no banded header inside it. */
     .project-group { --row-background: var(--color-surface); border-radius: var(--radius-lg); background: var(--color-surface); margin-bottom: 12px; overflow: hidden; }

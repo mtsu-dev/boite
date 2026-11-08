@@ -213,7 +213,7 @@
           <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
           <span class="title-menu">
             <Menu items={menuShown} onpick={titleAction} cap={MENU_CAP} label={strings.sidebar.threadMenu} heading={thread?.title} placement="bottom" variant={mobile.current ? 'ghost' : 'text'} testid="thread-menu-trigger">
-              {#if mobile.current}<Ellipsis size={20} />{:else}<ChevronDown size={14} />{/if}
+              {#if mobile.current}<Ellipsis size={20} />{:else}<ChevronDown size={16} />{/if}
             </Menu>
           </span>
         {/if}
@@ -329,8 +329,8 @@
 
   /* One fill when the panel is open. */
   .panel-switch { display: inline-flex; flex: none; align-items: center; border-radius: var(--radius-md); }
-  /* 28 px, as the title's menu beside it: the panel's one door from the header. */
-  .panel-switch > button { width: 28px; height: 28px; border-radius: var(--radius-md); }
+  /* 32 px, as the title's menu and the sidebar fold: one square for every header icon. */
+  .panel-switch > button { width: 32px; height: 32px; border-radius: var(--radius-md); }
   .panel-switch.on { background: var(--color-active); }
   .panel-switch.on > button { color: var(--color-foreground); }
   .watch-chip { flex: none; display: inline-flex; color: var(--color-muted-foreground); }
@@ -378,7 +378,7 @@
 
   .title { min-width: 0; }
   .title-menu { display: flex; flex: none; }
-  .title-menu :global(.trigger) { min-width: 28px; min-height: 28px; }
+  .title-menu :global(.trigger) { min-width: 32px; min-height: 32px; justify-content: center; }
   @media (max-width: 720px) {
     /* The title is what tells one conversation from another: the buttons give
        up their words for it, and keep a finger-sized square. */

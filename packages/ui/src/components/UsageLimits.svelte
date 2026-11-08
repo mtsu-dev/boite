@@ -110,6 +110,8 @@
 
 <style>
   .limits { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: 12px; max-width: var(--settings-width); }
+  /* An odd last account takes the whole row, so the grid never ends on an empty right half. */
+  .limits > :last-child:nth-child(odd) { grid-column: 1 / -1; }
   .provider { display: grid; align-content: start; gap: 20px; margin: 0; padding: var(--settings-padding); background: linear-gradient(145deg, var(--color-surface-2), var(--color-surface)); }
   header { display: flex; align-items: center; gap: 11px; min-width: 0; }
   .logo { display: grid; place-items: center; flex: none; width: 38px; height: 38px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface-3); }

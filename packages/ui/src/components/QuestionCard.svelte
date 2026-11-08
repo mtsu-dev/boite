@@ -76,22 +76,44 @@
   const ready = $derived(picked.length > 0 || drafted);
 
   /**
-   * A phone gives the docked choices a bounded height: the ones under its
-   * edge are counted on a line of their own, so the first view says how many
-   * remain even when the cut falls between two rows.
+   * The docked choices get a room from the dock's budget (a CSS max-height,
+   * from the viewport, never from the card's animated height). Whole rows
+   * only: when they do not all fit, the list stops under the last row that
+   * does and a line counts the rest. Settled before the card arrives, so its
+   * growth never reflows the count, and the end frame is the reduced-motion one.
    */
   let list = $state<HTMLDivElement | undefined>(undefined);
   let below = $state(0);
+  /** Where each row ends, from the list's top with no scroll. */
+  function ends(): number[] {
+    if (!list) return [];
+    const top = list.getBoundingClientRect().top - list.scrollTop;
+    return Array.from(list.children).map((row) => row.getBoundingClientRect().bottom - top);
+  }
+  function fit(): void {
+    if (!list || !docked) return;
+    list.style.maxHeight = '';
+    const room = parseFloat(getComputedStyle(list).maxHeight);
+    const rows = ends();
+    if (!Number.isFinite(room) || (rows.at(-1) ?? 0) <= room + 1) { below = 0; return; }
+    const whole = rows.filter((end) => end <= room + 1);
+    list.style.maxHeight = `${Math.ceil(whole.at(-1) ?? rows[0] ?? 0)}px`;
+    measure();
+  }
+  /** The rows under the list's edge, counted from where it is scrolled. */
   function measure(): void {
-    if (!list || list.scrollHeight <= list.clientHeight + 1) { below = 0; return; }
-    const edge = list.getBoundingClientRect().bottom;
-    below = Array.from(list.children).filter((option) => option.getBoundingClientRect().bottom > edge + 1).length;
+    if (!list || !list.style.maxHeight) { below = 0; return; }
+    const edge = list.scrollTop + list.clientHeight + 1;
+    below = ends().filter((end) => end > edge).length;
   }
   $effect(() => {
+    void options.length;
     if (!list || !docked || typeof ResizeObserver !== 'function') return;
-    const watch = new ResizeObserver(measure);
+    // A new width rewraps the rows; a new height changes the room.
+    let width = list.clientWidth;
+    const watch = new ResizeObserver(() => { if (list && list.clientWidth !== width) { width = list.clientWidth; fit(); } });
     watch.observe(list);
-    measure();
+    fit();
     return () => watch.disconnect();
   });
   function more(): void {
@@ -133,6 +155,7 @@
   }
 </script>
 
+<svelte:window onresize={fit} />
 <div
   class="question"
   class:resolved={answer !== null || (!docked && (!async || !pending))}
@@ -288,23 +311,22 @@
     border-left-style: dashed;
   }
 
-  /* At the top of the composer the dock's raised card is the frame (Composer's `.decision-card`). */
+  /* At the top of the composer, on the card's own surface: the dock draws
+     only a hairline under it (Composer's `.decision-card`). */
   .question.docked {
     border: none;
     border-radius: 0;
     background: transparent;
     box-shadow: none;
-    /* One inset on all four sides: the space under the last choice is the
-       space between two (a row's 8px, the 2px gap, then this). */
-    padding: 10px;
+    /* The card's inset on the sides, so the question starts where the field's text does. */
+    padding: 10px var(--dock-inset, 10px);
     gap: 8px;
   }
-  /* The choices are the card's one scroller: the head, the foot and the
-     card's own inset stay in sight however little room the dock gives it
-     (ThreadActivity hands the room down). A cut row fades and a line counts the rest. */
+  /* Nothing in the card shrinks: the choices take the room the dock's budget
+     gives them (`fit`), in whole rows, and the rest scroll in place. A cut
+     row fades and a line counts the rest. */
   .question.docked > :global(*) { flex: none; }
-  .question.docked > .options { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
-  .question.docked > .options > .option { flex: none; }
+  .question.docked > .options { overflow-y: auto; overscroll-behavior: contain; max-height: max(120px, calc(var(--dock-budget, 55dvh) - 230px - var(--deck-room, 0px))); }
   .docked .options.clipped { mask-image: linear-gradient(to bottom, var(--color-foreground) calc(100% - 24px), transparent); }
 
   /* The question's own column beside the compact controls; folded, it holds one line. */
@@ -312,12 +334,10 @@
   .docked .prompt.folded { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   @media (max-width: 720px) {
     .docked .skip { min-height: var(--touch-target); padding: 0 8px; }
-    /* A phone keeps the whole dock in the room its activity gives it
-       (`--dock-cap`, less the head): the choices take it first, then scroll
-       in place, the field under them always in sight. One 8px inset around
-       the card. */
-    .question.docked { padding: 8px; gap: 4px; }
-    .docked .options { max-height: min(30dvh, calc(var(--dock-cap, 30dvh) - 64px)); }
+    /* A phone gives the choices what the card's budget leaves once the
+       head, the field and the bar are counted (`--dock-cap`). */
+    .question.docked { padding: 8px var(--dock-inset, 8px); gap: 4px; }
+    .question.docked > .options { max-height: max(96px, calc(var(--dock-cap, 30dvh) - 96px)); }
   }
   .more { align-self: flex-start; height: 24px; padding: 0 8px; color: var(--color-muted-foreground); font-size: var(--text-sm); }
   .skip { height: var(--control); padding: 0 8px; border-radius: var(--radius-sm); color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 550; }
@@ -332,7 +352,7 @@
   .kbd { flex: none; width: 20px; height: 20px; padding: 0; color: var(--color-muted-foreground); }
   .option.picked .kbd { color: var(--color-foreground); }
   /* A card taller than its room scrolls; the answer stays at its foot, in sight. */
-  .docked .actions { position: sticky; bottom: 0; justify-content: flex-end; background: var(--decision-ground); }
+  .docked .actions { justify-content: flex-end; }
   /* After the rows' own padding, so the phone's tighter one wins. */
   @media (max-width: 720px) { .docked .option { min-height: var(--touch-target); padding: 4px 8px; } }
 

@@ -46,7 +46,7 @@
 {/if}
 
 <style>
-  /* Chips on the box's own surface, at the top of the field: no band of their own. */
-  .held { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 8px 12px 0; }
+  /* Lines on the box's own surface, at the top of the field, starting where its text does: no band of their own. */
+  .held { display: flex; flex-direction: column; gap: 0; min-width: 0; padding: 6px 14px 0; }
   .answers { display: flex; min-width: 0; }
 </style>

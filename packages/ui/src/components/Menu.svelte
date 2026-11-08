@@ -5,6 +5,7 @@
   import { floating } from '../lib/floating';
   import { dangerLast, type MenuItem } from '../lib/menu';
   import ProjectTile from './ProjectTile.svelte';
+  import BackRow from './BackRow.svelte';
 
   let {
     items,
@@ -186,6 +187,9 @@
           <div class="section ui-label" role="presentation">{item.label}</div>
         {:else if item.separator}
           <div class="separator" role="separator"></div>
+        {:else if item.back}
+          <!-- One way back for every second level: it names the level and draws its own rule. -->
+          <BackRow label={item.label} title={item.title} disabled={item.disabled} data-value={item.id} data-testid={item.testid} onclick={() => pick(item)} />
         {:else}
         <button
           type="button"

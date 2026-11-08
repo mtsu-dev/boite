@@ -69,7 +69,7 @@
   {#each queued as entry, at (entry)}
     {@const failed = entry.request?.failed}
     <div class="line" class:failed={failed !== undefined} data-testid="composer-queued-item">
-      <!-- One chip per held prompt: its state, its text (a tap brings it back) and its menu, on the chip. -->
+      <!-- One line per held prompt: its state, its text (a tap brings it back) and its menu. -->
       <span class="pill">
       {#if failed !== undefined}
         <span class="state error" data-testid="composer-outbox-failed" title={fill(strings.composer.outboxFailed, { reason: failed })}>{fill(strings.composer.outboxFailed, { reason: failed })}</span>
@@ -105,9 +105,9 @@
 </div>
 
 <style>
-  /* Small chips inside the field's area, one per held prompt: a fill, no edge,
-     so the decision stays the one raised card above the text. Each chip is
-     cut to one line, its clock before the text, its menu on it. */
+  /* One dimmed line per held prompt over the field, no fill and no edge: the
+     decision stays the card's one head. Each line is cut to one line, its
+     clock before the text, its menu at its end. */
   .queued {
     display: flex;
     flex-direction: column;
@@ -130,16 +130,14 @@
     animation: rise var(--motion-in);
   }
 
+  /* No chip: the clock, the text and its menu on the card's surface. */
   .pill {
     display: inline-flex;
     align-items: center;
     gap: 6px;
     flex: 0 1 auto;
     min-width: 0;
-    height: 26px;
-    padding: 0 10px;
-    border-radius: var(--radius-full);
-    background: var(--color-active);
+    height: var(--control-sm);
   }
 
   .state {
@@ -152,7 +150,7 @@
 
   .state.error { flex: 0 1 auto; min-width: 0; max-width: 50%; overflow: hidden; text-overflow: ellipsis; color: var(--color-danger); }
 
-  /* The text sizes the chip, up to the line's width, then ends in an ellipsis. */
+  /* The text takes the line's width, then ends in an ellipsis. */
   .text {
     display: block;
     flex: 0 1 auto;
@@ -171,28 +169,27 @@
   }
 
   .text:hover:not(:disabled) { background: none; color: var(--color-foreground); }
-  /* Still waiting to go while the box holds other text: the chip stays legible. */
+  /* Still waiting to go while the box holds other text: the line stays legible. */
   .text:disabled { opacity: 1; }
 
   .extra { display: inline-flex; align-items: center; gap: 3px; flex: none; font-size: var(--text-xs); }
-  /* Its menu or its "i", round controls closing the chip's end. */
-  .pill :global(.info-tip) { flex: none; margin: 0 -6px 0 0; }
-  .tool { display: flex; flex: none; margin-right: -8px; }
+  /* Its menu or its "i", round controls closing the line. */
+  .pill :global(.info-tip) { flex: none; }
+  .tool { display: flex; flex: none; }
   .tool :global(.trigger) { position: relative; width: 22px; height: 22px; padding: 0; justify-content: center; border-radius: var(--radius-full); color: inherit; }
   .tool :global(.trigger:hover), .tool :global(.trigger[aria-expanded='true']) { color: var(--color-foreground); }
   .line .ghost.small { flex: none; height: 22px; padding: 0 6px; font-size: var(--text-xs); }
   /* Send now is the line's one word in ink: it acts on the whole queue. */
   .line .send-now { color: var(--color-foreground); font-weight: 550; }
 
-  /* A phone keeps the same single line: a taller chip, its text and its menu
-     each a finger's target through a hit area wider than their ink. Two
-     chips show, more scroll, so the card stays under its share of the screen. */
+  /* A phone keeps the same single line, taller: its text and its menu each
+     a finger's target through a hit area wider than their ink. Two lines
+     show, more scroll, so the card stays under its share of the screen. */
   @media (max-width: 720px) {
-    /* The scroller reaches 6 px past the chips, so the menu's hit area is not clipped at its edge. */
+    /* The scroller reaches 6 px past the lines, so the menu's hit area is not clipped at its edge. */
     .queued { gap: 0; max-height: calc(2 * var(--touch-target) + 12px); margin: -6px; padding: 6px; }
     .line { min-height: var(--touch-target); }
     .pill { height: 34px; }
-    .tool { margin-right: -10px; }
     .text { height: var(--touch-target); }
     .tool :global(.trigger) { width: 34px; height: 34px; }
     .tool :global(.trigger::after) { content: ''; position: absolute; inset: -6px; }

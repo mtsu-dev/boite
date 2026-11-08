@@ -1,4 +1,4 @@
-import { Archive, ArrowLeft, CircleCheck, Copy, FolderInput, GitPullRequest, MessageSquare, PencilLine, Pin, PinOff, Settings2, Sparkles, Trash2, X } from '@lucide/svelte';
+import { Archive, CircleCheck, Copy, FolderInput, GitPullRequest, MessageSquare, PencilLine, Pin, PinOff, Settings2, Sparkles, Trash2, X } from '@lucide/svelte';
 import type { ThreadSummary } from '@boite/contracts';
 import type { Store } from './store.svelte';
 import { separator, type MenuItem } from './menu';
@@ -62,7 +62,8 @@ function manageItems(store: Store, thread: ThreadSummary, options: ThreadMenuOpt
 export function threadToolItems(store: Store, thread: ThreadSummary, options: ThreadMenuOptions = {}): MenuItem[] {
   const manage = manageItems(store, thread, options);
   if (manage.filter(item => !item.separator).length < 2) return [];
-  return [{ id: 'back', label: strings.sidebar.backToThreadMenu, glyph: ArrowLeft, back: true }, separator('back-sep'), ...manage];
+  // The way back names the level it stands on (`BackRow.svelte`), as every second level does.
+  return [{ id: 'back', label: strings.thread.manage, title: strings.sidebar.backToThreadMenu, back: true }, ...manage];
 }
 
 /**

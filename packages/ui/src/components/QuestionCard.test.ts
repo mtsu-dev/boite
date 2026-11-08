@@ -346,17 +346,30 @@ test('code an agent quotes in backticks reads as code in the question and its op
   expect(Array.from(options()[0]!.querySelectorAll('code')).map(code => code.textContent)).toEqual(['retry()', 'bun test']);
 });
 
-test('a docked list cut by its height counts the choices under its edge, and the line scrolls to the first of them', () => {
-  // jsdom has no layout: the list shows 100 px of five 40 px rows, so the third is cut and two more are under it.
-  const restore = [
-    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function (this: HTMLElement) { return this.classList.contains('options') ? 200 : 0; }),
-    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function (this: HTMLElement) { return this.classList.contains('options') ? 100 : 0; }),
+/**
+ * jsdom has no layout: rows are 40 px each, the room is the list's CSS
+ * max-height (`room`), and the list's own box is whatever an ancestor leaves
+ * it (`squeezed`, the arrival's animated height) until `fit` sets its height.
+ */
+function layout(room: string, squeezed: number) {
+  const box = (list: HTMLElement) => list.style.maxHeight ? parseFloat(list.style.maxHeight) : squeezed;
+  const computed = window.getComputedStyle;
+  return [
+    vi.spyOn(window, 'getComputedStyle').mockImplementation((element: Element) => element.classList.contains('options') ? ({ maxHeight: element instanceof HTMLElement && element.style.maxHeight ? element.style.maxHeight : room } as CSSStyleDeclaration) : computed(element)),
+    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function (this: HTMLElement) { return this.classList.contains('options') ? this.children.length * 40 : 0; }),
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function (this: HTMLElement) { return this.classList.contains('options') ? box(this) : 0; }),
     vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
       const at = this.parentElement ? Array.from(this.parentElement.children).indexOf(this) : 0;
-      const bottom = this.classList.contains('options') ? 100 : (at + 1) * 40;
-      return { top: bottom - 40, bottom, left: 0, right: 300, width: 300, height: 40, x: 0, y: bottom - 40, toJSON() {} } as DOMRect;
+      const bottom = this.classList.contains('options') ? box(this as HTMLElement) : (at + 1) * 40;
+      const top = this.classList.contains('options') ? 0 : bottom - 40;
+      return { top, bottom, left: 0, right: 300, width: 300, height: bottom - top, x: 0, y: top, toJSON() {} } as DOMRect;
     })
   ];
+}
+
+test('a docked list taller than its room stops under its last whole row, counts the rest, and the line scrolls to the first of them', () => {
+  // A 100 px room holds two 40 px rows whole: the list ends at 80 px, never on half of the third.
+  const restore = layout('100px', 100);
   const scrolled: string[] = [];
   const original = Element.prototype.scrollIntoView;
   Element.prototype.scrollIntoView = function (this: Element) { scrolled.push((this as HTMLElement).dataset.option ?? ''); };
@@ -371,6 +384,7 @@ test('a docked list cut by its height counts the choices under its edge, and the
       }
     });
     flushSync();
+    expect(query<HTMLElement>('.options').style.maxHeight).toBe('80px');
     expect(query('[data-testid=question-more]').textContent).toBe('3 more');
     expect(query('.options').classList.contains('clipped')).toBe(true);
     query<HTMLButtonElement>('[data-testid=question-more]').click();
@@ -378,6 +392,22 @@ test('a docked list cut by its height counts the choices under its edge, and the
   } finally {
     for (const spy of restore) spy.mockRestore();
     Element.prototype.scrollIntoView = original;
+  }
+});
+
+test('a question whose choices fit its room shows them all while its arrival still squeezes the list: no count line to reflow', () => {
+  // Mid-arrival the dock is 30 px tall; the three rows fit the 300 px room, so the card is laid out once, whole.
+  const restore = layout('300px', 30);
+  try {
+    running = mount(QuestionCard, {
+      target: document.body,
+      props: { text: 'Which shape?', options: ['a', 'b', 'c'].map((id) => ({ id, label: id.toUpperCase() })), allowText: true, multiple: false, answer: null, pending: true, docked: true, submit: () => true }
+    });
+    flushSync();
+    expect(document.querySelector('[data-testid=question-more]')).toBeNull();
+    expect(query<HTMLElement>('.options').style.maxHeight).toBe('');
+  } finally {
+    for (const spy of restore) spy.mockRestore();
   }
 });
 

@@ -487,7 +487,9 @@
 
   /* The tools beside send are quiet and round like the chips, so send stays
      the one solid control of the row. */
-  .bar .stop { color: var(--color-foreground); }
+  /* Stop is send's circle at send's size in a neutral fill: the accent stays send's. */
+  .bar .stop { border-color: transparent; background: var(--color-active); box-shadow: none; color: var(--color-foreground); }
+  .bar .stop:hover:not(:disabled) { background: color-mix(in oklab, var(--color-foreground) 12%, transparent); }
   .bar :global(.microphone:not(.listening)) { border-radius: var(--radius-full); }
   .bar :global(.microphone:not(.listening)) { border-color: transparent; box-shadow: none; }
   .bar :global(.microphone:not(.listening):not(:hover)) { background: transparent; }

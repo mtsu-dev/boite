@@ -246,6 +246,9 @@ test('a row with its own rows opens them in place, its way back and a close both
   query<HTMLButtonElement>('[data-value=more]').click(); await settle();
   expect(ids()).toEqual(['back', 'move']);
   expect(document.activeElement).toBe(items()[0]);
+  // The one back row of every second level: its own form, then its rule.
+  expect(query('[data-value=back]').classList.contains('back-row')).toBe(true);
+  expect(query('[data-value=back]').nextElementSibling?.classList.contains('back-rule')).toBe(true);
   press('ArrowLeft'); await settle();
   expect(ids()).toEqual(['rename', 'more']);
   // Closed on the group, the menu opens again on its first level.

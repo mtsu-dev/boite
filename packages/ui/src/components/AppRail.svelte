@@ -365,7 +365,7 @@
     font-variant-numeric: tabular-nums;
   }
   /* A bot's or a team's one overlay, bottom right of its picture, cut out of the chrome: the amber dot for its turn,
-     the failure's "!", the list rows' still grey arc for work (the open thread keeps the one live spinner), a full
+     the failure's "!", the list rows' still accent arc for work (the open thread keeps the one live spinner), a full
      ink dot for news. */
   .badge {
     position: absolute;
@@ -382,7 +382,7 @@
   .news { background: var(--color-foreground); }
   .work svg { width: 14px; height: 14px; overflow: visible; }
   .work circle { fill: none; stroke-width: 2; }
-  .work .track { stroke: var(--color-muted-foreground); stroke-dasharray: 23.6 31.4; transform: rotate(-45deg); transform-origin: 7px 7px; }
+  .work .track { stroke: var(--color-accent); stroke-dasharray: 23.6 31.4; transform: rotate(-45deg); transform-origin: 7px 7px; }
 
   .foot { display: flex; flex-direction: column; align-items: center; gap: 4px; align-self: stretch; }
   /* Settings marks itself selected like the buttons above, but its hover stays quiet like its neighbours. */

@@ -328,11 +328,13 @@
    * A docked side panel takes the thread list's column on a desktop chat, so
    * the window keeps three zones (rail, chat, panel) instead of squeezing four.
    * The fold is lent, not saved: the list comes back when the panel closes,
-   * and its own button brings it back sooner.
+   * and its own button brings it back sooner. A bot's Desk card lends the
+   * bot column the same way on the Bots page.
    */
   let listLentBy: typeof store | null = null;
   $effect(() => {
-    const take = !narrow.current && store.page === 'chat' && store.panelOpen && panelThread !== null && !rightPanel.floating;
+    const lends = store.page === 'chat' || (store.page === 'agents' && store.panel.active?.kind === 'desk');
+    const take = !narrow.current && lends && store.panelOpen && panelThread !== null && !rightPanel.floating;
     untrack(() => {
       if (listLentBy && (listLentBy !== store || !take)) {
         if (listLentBy.sidebarCollapsed) listLentBy.sidebarCollapsed = false;

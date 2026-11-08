@@ -1,4 +1,4 @@
-import { AppWindow, Archive, ArrowDown, ArrowLeft, ArrowUp, Copy, FolderMinus, GitBranch, History, Import, KeyRound, PencilLine, Plus, RefreshCw, Settings, Trash2 } from '@lucide/svelte';
+import { AppWindow, Archive, ArrowDown, ArrowUp, Copy, FolderMinus, GitBranch, History, Import, KeyRound, PencilLine, Plus, RefreshCw, Settings, Trash2 } from '@lucide/svelte';
 import type { Project } from '@boite/contracts';
 import type { Store } from './store.svelte';
 import { workspace } from './workspace.svelte';
@@ -41,8 +41,8 @@ export function projectMenu(event: MouseEvent, owner: Store, project: Project, r
   const client = owner.client;
   const clientGeneration = owner.clientGeneration;
   const management: MenuItem[] = [
-    { id: 'back', label: strings.sidebar.backToProjectMenu, glyph: ArrowLeft, back: true },
-    separator('back-sep'),
+    // The way back names the level it stands on and draws its own rule (`BackRow.svelte`), as every second level does.
+    { id: 'back', label: strings.sidebar.manageProject, title: strings.sidebar.backToProjectMenu, back: true },
     ...(reorder ? [
       { id: 'move-up', label: strings.sidebar.moveProjectUp, glyph: ArrowUp, disabled: !reorder.up },
       { id: 'move-down', label: strings.sidebar.moveProjectDown, glyph: ArrowDown, disabled: !reorder.down },

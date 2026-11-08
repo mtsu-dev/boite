@@ -50,7 +50,7 @@ test('project menus keep Mark done separate from Archive, which can stop pending
   // The group opens its list in place, no panel in it (the panel selector has them), and Back returns.
   query<HTMLButtonElement>('[data-testid=context-menu] [data-value=more]').click();
   await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=copy]') !== null);
-  expect(groups()).toMatch(/^Back,\|,Regenerate title,Move to project,Copy path$/);
+  expect(groups()).toMatch(/^Manage thread,\|,Regenerate title,Move to project,Copy path$/);
   expect(query('[data-testid=context-menu] [data-value=copy]').getAttribute('title')).toBe('C:\\src\\boite');
   // t-bench waits on a permission: its turn still runs, and a move would wait for it to end.
   expect(query<HTMLButtonElement>('[data-testid=context-menu] [data-value=move]').disabled).toBe(false);
@@ -88,6 +88,11 @@ test('removing a project asks first, and Cancel keeps it', async ({ app: _app })
   await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=manage]') !== null);
   query<HTMLButtonElement>('[data-testid=context-menu] [data-value=manage]').click();
   await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=remove]') !== null);
+  // The second level opens on its name and one rule under it, as the thread's does: no "Back" and no doubled line.
+  const back = query('[data-testid=context-menu] [data-value=back]');
+  expect(back.textContent?.trim()).toBe('Manage project');
+  expect(back.nextElementSibling?.classList.contains('back-rule')).toBe(true);
+  expect(back.nextElementSibling?.nextElementSibling?.getAttribute('role')).not.toBe('separator');
   query<HTMLButtonElement>('[data-testid=context-menu] [data-value=remove]').click();
   await waitFor(() => document.querySelector('[data-testid=confirm-dialog]') !== null);
   expect(document.querySelector('[data-testid=confirm-dialog]')?.textContent).toContain('notes');

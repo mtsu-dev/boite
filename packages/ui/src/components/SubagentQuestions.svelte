@@ -24,7 +24,7 @@
 
 <style>
   /* The decisions' one head, the whole of it the way into the subagent's thread. */
-  :global(button.decision-head.subagent-question) { height: auto; padding: 10px 12px; border-radius: 0; justify-content: flex-start; }
+  :global(button.decision-head.subagent-question) { height: auto; padding: 10px var(--dock-inset, 12px); border-radius: 0; justify-content: flex-start; }
   :global(button.decision-head.subagent-question:disabled) { opacity: .6; }
   .question-label { display: flex; flex-direction: column; flex: 1; min-width: 0; padding-block: calc((var(--control) - 22px) / 2); }
   .question-label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

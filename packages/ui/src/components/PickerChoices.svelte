@@ -105,7 +105,7 @@
 </script>
 
 {#if flat}
-<div class="segments" role="radiogroup" tabindex="-1" aria-label={label} data-testid={testid} bind:this={group} onkeydown={onSegmentsKey}>
+<div class="segments" class:many={items.length > 4} style:--columns={Math.ceil(items.length / 2)} role="radiogroup" tabindex="-1" aria-label={label} data-testid={testid} bind:this={group} onkeydown={onSegmentsKey}>
   {#each items as item (item.id)}
     <!-- The live choice is the picker's row for the keys: up and down stop on it once, not on every segment. -->
     <button type="button" class="segment" class:on={item.id === active} role="radio" aria-checked={item.id === active} tabindex={item.id === home ? 0 : -1}
@@ -125,7 +125,7 @@
     {#each items as item (item.id)}
       <button type="button" class="choice" role="radio" aria-checked={item.id === active} tabindex={item.id === home ? 0 : -1}
         data-value={item.id} title={item.title} onclick={() => choose(item.id)}>
-        <span class="mark" aria-hidden="true">{#if item.id === active}<Check size={14} strokeWidth={2.25} />{/if}</span>
+        <span class="mark" aria-hidden="true">{#if item.id === active}<Check size={14} />{/if}</span>
         <span class="ui-label">{item.label}</span>
       </button>
     {/each}
@@ -142,7 +142,7 @@
   .current[aria-expanded='true'] :global(svg) { transform: rotate(180deg); }
   .list { display: flex; flex: 1 0 100%; flex-direction: column; gap: 1px; padding: 2px 0 4px; animation: rise var(--dur-2) var(--ease-out-quint); }
   .list[hidden] { display: none; }
-  .choice { display: flex; align-items: center; justify-content: flex-start; gap: 8px; width: 100%; min-height: var(--row); padding: 4px 10px 4px 6px; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 400; text-align: left; box-shadow: none; }
+  .choice { display: flex; align-items: center; justify-content: flex-start; gap: 8px; width: 100%; min-height: var(--overlay-row); padding: 4px 10px 4px 6px; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 400; text-align: left; box-shadow: none; }
   @media (hover: hover) { .choice:hover { background: var(--color-hover); color: var(--color-foreground); } }
   .choice[aria-checked='true'] { color: var(--color-foreground); font-weight: 500; }
   .mark { display: inline-flex; flex: none; width: 14px; color: var(--color-accent); }
@@ -156,8 +156,10 @@
   @media (hover: hover) { .segment:hover:not(.on) { background: var(--color-surface-3); color: var(--color-foreground); } }
   @media (max-width: 720px) {
     .current { min-height: var(--touch-target); }
-    .choice { min-height: var(--touch-target); }
     /* A finger wide too: at 360 px a short word (Low, Max) left its segment at 42 px. */
     .segment { height: auto; min-width: var(--touch-target); min-height: var(--touch-target); }
+    /* Past four, two rows of a finger's height: six levels in one row left "Extra high" on two lines at 360 px. */
+    .segments.many { display: grid; grid-template-columns: repeat(var(--columns), minmax(0, 1fr)); }
+    .segments.many .ui-label { white-space: nowrap; }
   }
 </style>

@@ -531,8 +531,8 @@
   }
   .rollup { color: var(--color-muted-foreground); }
   /* The rows' marks: a grey ring for work (dotted in the queue), the failure's "!" for work that stopped short. */
-  .rollup .work-ring { box-sizing: border-box; width: 8px; height: 8px; border: 1.5px dashed var(--color-muted-foreground); border-radius: var(--radius-full); }
-  .rollup.queued .work-ring { border-style: dotted; }
+  .rollup .work-ring { box-sizing: border-box; width: 8px; height: 8px; border: 1.5px dashed var(--color-accent); border-radius: var(--radius-full); }
+  .rollup.queued .work-ring { border-style: dotted; border-color: var(--color-muted-foreground); }
   /* The project's mark and its fold chevron share one slot: the mark gives way
      to the chevron while a pointer or the keyboard is on the header. */
   .mark {

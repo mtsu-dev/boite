@@ -165,7 +165,7 @@
   .search input::-webkit-search-cancel-button { display: none; }
 
   /* Four tiles a row while the longest French label still fits on one line,
-     else two, else one: eight groups never leave one tile alone on a line.
+     else two, else one. Seven groups: at two a row the last tile takes the whole row.
      A row's tiles stretch to its tallest; no row reserves lines it has not. */
   .home { container-type: inline-size; }
 
@@ -222,6 +222,7 @@
      enough for both and a tall one would be mostly empty. */
   @container (max-width: 840px) {
     .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .tile:last-child:nth-child(odd) { grid-column: 1 / -1; }
     .tile { flex-direction: row; align-items: center; }
     .text { align-content: center; }
   }

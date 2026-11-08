@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte';
-  import { Check, Ellipsis, Mail, UserRound, X } from '@lucide/svelte';
+  import { Ellipsis, Mail, UserRound, X } from '@lucide/svelte';
   import type { ContactRequest, HeldContactLetter, Project } from '@boite/contracts';
   import { minuteClock } from '../../lib/clock.svelte';
   import { contactsShown } from '../../lib/contacts-rail.svelte';
@@ -129,11 +129,11 @@
           {@const chosen = acceptProject(row.view.store, request)}
           {@const tip = chosen ? fill(labels.acceptInto, { project: projectName(chosen) }) : labels.accept}
           <button type="button" class="small answer" disabled={busy || !chosen} title={tip} aria-label={tip}
-            onclick={() => chosen && void accept({ ...row, request }, same, chosen.id)} data-testid="activity-accept-{request.id}"><Check size={14} strokeWidth={2.25} /><span class="ui-label">{labels.accept}</span></button>
+            onclick={() => chosen && void accept({ ...row, request }, same, chosen.id)} data-testid="activity-accept-{request.id}"><span class="ui-label">{labels.accept}</span></button>
         {:else if row.letter}
           {@const letter = row.letter}
           <button type="button" class="small answer" disabled={busy} title={fill(strings.contacts.mail.deliverTip, { thread: letter.thread })}
-            onclick={() => answerMail(row, same, true)} data-testid="activity-mail-deliver-{letter.id}"><Check size={14} strokeWidth={2.25} /><span class="ui-label">{strings.contacts.mail.deliver}</span></button>
+            onclick={() => answerMail(row, same, true)} data-testid="activity-mail-deliver-{letter.id}"><span class="ui-label">{strings.contacts.mail.deliver}</span></button>
         {/if}
       </span>
     </div>
@@ -169,7 +169,8 @@
   .contact-row:is(:hover, :focus-within) .top :global(.trigger) { opacity: 1; }
   .contact-row:is(:hover, :focus-within) time { visibility: hidden; }
   .feed-action { display: flex; flex: none; width: var(--feed-verb); }
-  .answer { gap: 5px; width: 100%; justify-content: center; font-weight: 600; }
+  /* Text only, the thread rows' verb (ActivityRow.svelte): one height, one width, one weight. */
+  .answer { width: 100%; height: var(--control-sm); justify-content: center; font-size: var(--text-xs); font-weight: 600; }
   .actions { display: flex; flex: none; align-items: center; gap: 6px; }
   .actions :global(button) { gap: 5px; }
   .refusal { display: flex; flex-direction: column; gap: 6px; margin-top: 2px; }
@@ -177,14 +178,16 @@
   .refusal .actions { justify-content: flex-end; }
   .failed { margin: 0; font-size: var(--text-xs); color: var(--color-danger); overflow-wrap: anywhere; }
   @media (max-width: 720px) {
-    /* The phone row's own edge (MobileThreadRow.svelte): 12 px in; the menu always shows beside the time, the answer
+    /* The phone row's own edge (MobileThreadRow.svelte): 12 px in; the menu always shows before the time, the answer
        at a finger's size and MobileThreadRow.svelte's one verb width, still on the title's line. */
     .contact-row { --feed-pad: 10px; --pad-x: 12px; --feed-time: 32px; --feed-verb: 88px; --side-room: calc(var(--feed-time) + var(--touch-target) + 8px + var(--feed-verb) + var(--pad-x)); }
-    .side { height: calc(22px + 2 * var(--feed-pad)); gap: 4px; }
-    .top { display: flex; gap: 2px; width: auto; }
+    .side { height: calc(22px + 2 * var(--feed-pad)); }
+    /* The menu before the time, so the time stands next to the answer in the thread rows' column. */
+    .top { display: flex; flex-direction: row-reverse; gap: 2px; width: auto; }
     .top :global(.trigger) { opacity: 1; min-width: var(--touch-target); }
     .contact-row:is(:hover, :focus-within) time { visibility: visible; }
     .answer, .actions :global(button) { min-height: var(--touch-target); }
+    .answer { font-size: var(--text-sm); }
     /* The title line is the row's open button: a finger needs 44 px, not its text's height, with no taller row. */
     .title::after { content: ''; position: absolute; inset: 50% 0 auto; height: var(--touch-target); translate: 0 -50%; }
     /* The answer is a finger's height, taller than the title's line: the text under it starts below the button. */

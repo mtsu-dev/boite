@@ -79,7 +79,8 @@
      them: only a decision below is raised. Every entry its own plain line,
      whole at every width (never folded into a count); past three the rows
      scroll in place, past two on a phone. */
-  .dock { flex: none; padding: 4px 4px 0; }
+  /* Their marks line up with the field's text (8 px of row padding inside). */
+  .dock { flex: none; padding: 4px 6px 0; }
   .entries {
     display: flex;
     flex-direction: column;

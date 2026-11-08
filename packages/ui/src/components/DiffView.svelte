@@ -209,11 +209,14 @@
     flex: 1 0 auto;
   }
 
+  /* Each row names its fill once: the fixed number column wears it too, so code scrolling under it never shows through. */
   .row {
+    --row-bg: var(--color-surface-2);
     display: flex;
     align-items: flex-start;
     gap: 0;
     line-height: 1.55;
+    background: var(--row-bg);
   }
 
   .more {
@@ -231,7 +234,7 @@
   }
 
   .row.empty {
-    background: var(--color-surface-3);
+    --row-bg: var(--color-surface-3);
   }
 
   .same {
@@ -249,6 +252,7 @@
     color: var(--color-subtle);
     font-variant-numeric: tabular-nums;
     user-select: none;
+    background: var(--row-bg);
   }
 
   .gutter {
@@ -257,9 +261,10 @@
     text-align: center;
     color: var(--color-subtle);
     user-select: none;
+    background: var(--row-bg);
   }
 
-  /* Code wraps beside a desktop chat, so no line is ever cut at the edge. A wrapped
+  /* Split halves and a phone wrap, so no line is ever cut at the edge. A wrapped
      line hangs 2ch in under its first, and only the first carries a number,
      so a continuation never reads as a line of its own. */
   .text {
@@ -276,14 +281,16 @@
      family has no green or red surface token, so the tint is the status
      colour mixed into the well's own fill rather than a new hex. */
   .row.add {
-    background: color-mix(in srgb, var(--color-success) 7%, var(--color-surface-2));
-    box-shadow: inset 2px 0 0 var(--color-success);
+    --row-bg: color-mix(in srgb, var(--color-success) 7%, var(--color-surface-2));
   }
 
   .row.remove {
-    background: color-mix(in srgb, var(--color-danger) 7%, var(--color-surface-2));
-    box-shadow: inset 2px 0 0 var(--color-danger);
+    --row-bg: color-mix(in srgb, var(--color-danger) 7%, var(--color-surface-2));
   }
+
+  /* The bar rides on the number, which stays put while the code scrolls sideways. */
+  .row.add .num { box-shadow: inset 2px 0 0 var(--color-success); }
+  .row.remove .num { box-shadow: inset 2px 0 0 var(--color-danger); }
 
   /* The words that changed inside a changed line: a deeper wash of the line's own status colour. */
   .text :global(mark.word) {
@@ -297,8 +304,8 @@
   .row.remove .gutter { color: var(--color-danger); }
 
   .row.gap {
+    --row-bg: var(--color-surface-3);
     color: var(--color-subtle);
-    background: var(--color-surface-3);
     font-size: var(--text-sm);
   }
 
@@ -311,5 +318,17 @@
     .num { width: 28px; padding-right: 6px; }
     .gutter { width: 12px; }
     .text { overflow-wrap: break-word; }
+  }
+
+  /* A desktop reads code as code: every line whole on one line, the rows
+     scrolling sideways together under numbers that stay put. The column is
+     as wide as the longest line, so every row's fill reaches the end. Split
+     halves and a phone keep their wrap. */
+  @media (min-width: 721px) {
+    [data-layout='unified'] .rows { display: grid; grid-template-columns: minmax(100%, max-content); align-content: start; overflow-x: auto; }
+    [data-layout='unified'] .text { padding-left: 0; text-indent: 0; white-space: pre; overflow-wrap: normal; }
+    [data-layout='unified'] .num { position: sticky; left: 0; z-index: 1; }
+    [data-layout='unified'] .gutter { position: sticky; left: 34px; z-index: 1; }
+    [data-layout='unified'] .more { justify-self: start; }
   }
 </style>

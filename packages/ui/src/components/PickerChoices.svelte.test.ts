@@ -105,3 +105,12 @@ test('on a phone short choices are the same segmented row as on a desktop', () =
     Object.defineProperty(window, 'innerWidth', { value: width, configurable: true });
   }
 });
+
+test('six levels split into rows of three, so a long level keeps one line at 360 px', () => {
+  const levels = ['Low', 'Medium', 'High', 'Extra high', 'Max', 'Ultra'].map((label) => ({ id: label.toLowerCase(), label }));
+  running = mount(PickerChoices, { target: document.body, props: { label: 'Effort', testid: 'effort-menu', items: levels, active: 'high', onpick: () => {} } });
+  flushSync();
+  const group = document.querySelector<HTMLElement>('[data-testid=effort-menu]')!;
+  expect(group.classList.contains('many')).toBe(true);
+  expect(group.style.getPropertyValue('--columns')).toBe('3');
+});

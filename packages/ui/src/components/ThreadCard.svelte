@@ -227,11 +227,10 @@
      the tooltip; how long work has run lives in the thread. */
   .thread:not(:hover, :has(:focus-visible)) .row :global(.headline > :is(.draft, .pin, .pr)),
   .thread:not(:hover, :has(:focus-visible)) .row :global(.headline > .when:not(.waiting, .error, .interrupted, .working, .delegating, .monitoring, .background, .watching)) { display: none; }
-  /* Activity's row, built like a list row: the title's line ends in since when and the one action, at the same
-     offset on every row; what is asked runs under it to the row's end. `--side-room` keeps that line's end free:
-     the time alone in Updates, the time and the action in Needs you. */
-  .feed { --feed-pad: 8px; --feed-time: 44px; --feed-verb: 92px; --side-room: calc(var(--feed-time) + var(--pad-x)); }
-  .feed:has(:global(.feed-action)) { --side-room: calc(var(--feed-time) + 8px + var(--feed-verb) + var(--pad-x)); }
+  /* Activity's row, built like a list row: the title's line ends in since when and the action's place, at the same
+     offset on every row of both sections; what is asked runs under it to the row's end. `--side-room` keeps that
+     line's end free. */
+  .feed { --feed-pad: 8px; --feed-time: 44px; --feed-verb: 92px; --side-room: calc(var(--feed-time) + 8px + var(--feed-verb) + var(--pad-x)); }
   .feed > .row { padding-block: var(--feed-pad); }
   .feed .row :global(.headline) { align-items: flex-start; margin-right: calc(var(--side-room) - var(--pad-x)); }
   /* A clamped title's second line keeps its untrimmed box: .ui-label's half-em under it showed the top of the third
@@ -243,8 +242,7 @@
   .feed-side { position: absolute; top: 0; right: 0; display: flex; align-items: center; gap: 8px; height: calc(20px + 2 * var(--feed-pad)); padding-right: var(--pad-x); }
   .feed-side time { min-width: var(--feed-time); line-height: 20px; font-size: var(--text-xs); color: var(--color-subtle); text-align: end; font-variant-numeric: tabular-nums; }
   /* The menu takes the time's place, never the action's. */
-  .feed .actions { top: calc(var(--feed-pad) + 10px - var(--act) / 2); }
-  .feed:has(:global(.feed-action)) .actions { right: calc(var(--pad-x) + var(--feed-verb) + 8px); }
+  .feed .actions { top: calc(var(--feed-pad) + 10px - var(--act) / 2); right: calc(var(--pad-x) + var(--feed-verb) + 8px); }
   /* Recent's second line, on the title's edge: where the row lives, when the tile alone may not say it. */
   .where { margin-top: -3px; padding-left: 26px; overflow: hidden; font-size: var(--text-xs); color: var(--color-muted-foreground); text-align: start; text-overflow: ellipsis; white-space: nowrap; }
   /* The Recent list: a step wider inside, the project's tile first. */

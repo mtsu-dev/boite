@@ -166,6 +166,8 @@
        there opened a wider gap under them than between them and the switch. */
     --fade-top: 6px;
     padding: var(--fade-top) 6px var(--fade);
+    /* A row the keyboard reaches scrolls clear of both fades, never read through one. */
+    scroll-padding-block: calc(var(--fade-top) + 4px) calc(var(--fade) + 4px);
     display: flex;
     flex-direction: column;
     mask-image: linear-gradient(to bottom, transparent, black var(--fade-top), black calc(100% - var(--fade)), transparent);

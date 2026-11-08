@@ -154,9 +154,11 @@
 <style>
   .colors { padding: var(--space-2) 0 var(--space-3); }
   /* The palettes in one row of pictures, the one in use ringed. */
-  .palettes { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: var(--space-2); margin-top: var(--space-1); }
+  /* auto-fit: the pictures share the row's whole width, none of it left as an empty right half. */
+  .palettes { display: grid; grid-template-columns: repeat(auto-fit, minmax(88px, 1fr)); gap: var(--space-2); margin-top: var(--space-1); }
   .palette { display: flex; flex-direction: column; align-items: stretch; gap: 6px; height: auto; min-width: 0; padding: var(--space-1); border: 1px solid transparent; border-radius: var(--radius-md); background: transparent; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 400; }
-  .palette .tile { width: 100%; height: 44px; }
+  /* The picture keeps its proportions as the row widens: 44 px tall at the narrowest. */
+  .palette .tile { width: 100%; height: auto; aspect-ratio: 2.1; }
   .palette .ui-label { text-align: center; }
   @media (hover: hover) { .palette:hover { background: var(--color-hover); color: var(--color-foreground); } }
   .palette[aria-pressed='true'] { color: var(--color-foreground); }

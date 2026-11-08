@@ -11,7 +11,7 @@
   import { rewindComposerEdit } from '../lib/composer-edit';
   import { editWhole } from '../lib/reading-window';
   import { fitHeight, selfSizing } from '../lib/composer-size';
-  import { editComposerInput, insertImageReference, removeImageReferences, sameSend, sendShape, touchesImageReference, trackImageSend, type SendShape } from '../lib/composer-images';
+  import { editComposerInput, removeImageReferences, sameSend, sendShape, touchesImageReference, trackImageSend, type SendShape } from '../lib/composer-images';
   import { checkpoint, editKind, recordEdit, resetHistory, settled } from '../lib/composer-history';
   import { boxSelection, closeDraftUndo, copySelection, offerDraftUndo, pasteImages, travel, type EditingHost } from '../lib/composer-editing';
   import { ComposerMentions } from '../lib/composer-mentions.svelte';
@@ -900,32 +900,29 @@
   /* A card the script focused for a touch screen shows no ring: only a key lights it. */
   .composer:not(.keys):focus-visible { outline: none; }
 
-  /* The card's head under one budget: on a desktop the whole dock, field
-     included, keeps to about 40% of the conversation; the subagents' rows
-     keep their size and the decision or the tasks scroll inside the rest.
-     Empty, it takes no room. */
-  .deck { display: flex; flex-direction: column; }
+  /* The card's head under one budget: on a desktop the whole dock keeps to
+     about half of the conversation (`--dock-budget`), room enough for a
+     question's four choices; the subagents' rows keep their size and the
+     rest scrolls inside it. Empty, it takes no room. */
+  .deck { display: flex; flex-direction: column; --dock-inset: 14px; }
   .deck > :global(*) { flex: none; }
   .deck > :global(:is(.activity, .decision-card)) { flex: 0 1 auto; min-height: 0; }
   @media (min-width: 721px) {
-    .deck { max-height: max(160px, calc(40dvh - 126px)); }
+    .deck { --dock-budget: 55dvh; max-height: max(160px, calc(var(--dock-budget) - 126px)); }
   }
-  /* A decision is the one raised thing in the card: its own edge, a lifted
-     surface and a shadow, inset from the card's sides. The subagents' rows,
-     the tasks and the queued chips sit flat on the composer's surface. A long
-     one scrolls inside itself; the ask keeps its head and the question its
-     answer in sight (their own files). */
+  /* A decision is the card's head, on the card's own surface: no frame, no
+     fill of its own, one hairline under it before the field. The subagents'
+     rows above it, the tasks and the queued line sit flat on the same surface. */
   .deck :global(.decision-card) {
-    --decision-ground: color-mix(in oklab, var(--color-surface-2), var(--color-foreground) 4%);
-    margin: 6px 6px 2px;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    border: 1px solid var(--color-edge);
-    border-radius: var(--radius-lg);
-    background: var(--decision-ground);
-    box-shadow: var(--shadow-e1);
+    margin: 0;
+    border: none;
+    border-bottom: 1px solid var(--color-border);
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
   }
-
+  /* A long ask scrolls inside itself, its head and its choices in sight (its own file). */
+  .deck > :global(.decision-card) { overflow-y: auto; overscroll-behavior: contain; }
   /* The bottom gap sits under the box: a textarea scrolls its text through its own padding, up to the bar. */
   .input-wrap { position: relative; margin-bottom: var(--composer-input-gap, 6px); }
   .input-highlight {
@@ -975,10 +972,11 @@
        chips and field, stays under 45% of the screen. The deck gives way
        first; a question's choices scroll in the room left once the rows,
        the head and the field are counted (`--dock-cap`). */
-    .composer { --composer-rest: var(--shadow-e1); border-radius: var(--radius-xl); max-height: 45dvh; }
+    .composer { --composer-rest: var(--shadow-e1); --composer-cap: 45dvh; border-radius: var(--radius-xl); max-height: var(--composer-cap); }
+    /* A docked question with its choices may take a little more, so four of them show whole at 390. */
+    .composer:has(:global(.question.docked)) { --composer-cap: 55dvh; }
     .composer > :global(*) { flex: none; }
-    .composer > .deck { flex: 0 1 auto; min-height: 0; --dock-cap: calc(45dvh - 120px - var(--deck-room, 0px)); }
-    .deck :global(.decision-card) { margin: 4px 4px 2px; }
+    .composer > .deck { flex: 0 1 auto; min-height: 0; --dock-cap: calc(var(--composer-cap) - 120px - var(--deck-room, 0px)); }
     textarea, .input-mirror { font-size: var(--text-md); }
     /* The gap under the field becomes its own padding: the same height on screen, the whole of it a finger's target. */
     .input-wrap { margin-bottom: 0; }

@@ -257,10 +257,11 @@
   --color-hover: rgba(255, 255, 255, 0.045);
   --color-active: rgba(255, 255, 255, 0.075);
   --color-foreground: #ededef;
-  /* Both text tiers clear 4.5:1 on every surface in both themes, subtle above 5.7:1 even on
-     surface-3: it carries times and states, which must read as well as any secondary line (lib/contrast.test.ts). */
+  /* Three text tiers a visible step apart (4 to 7 L*), the faintest still 8:1 on every surface in both
+     themes: subtle carries times, machine names and meta, which must read as well as any secondary line
+     (lib/contrast.test.ts). */
   --color-muted-foreground: #e0e0e3;
-  --color-subtle: #c8c8cd;
+  --color-subtle: #d0d0d4;
   /* Below reading contrast: a disabled mark, a placeholder glyph, never words that must be read. */
   --color-faint: #4a4a50;
   /* A switch: a dark track off, the light track of the foreground on, its knob the ink a primary wears. Neutral: the
@@ -580,7 +581,7 @@
   --palette-dark-oled-surface-low: #000000;
   --palette-dark-oled-surface-high: #15151a;
   --palette-dark-oled-muted-foreground: #adb0ba;
-  --palette-dark-oled-subtle: #878b96;
+  --palette-dark-oled-subtle: #9ea1ac;
   --palette-dark-oled-border: #232329;
   --palette-dark-oled-edge: #363640;
   --palette-dark-oled-frame-edge: #232329;
@@ -603,7 +604,7 @@
   --palette-dark-catppuccin-surface-low: #181825;
   --palette-dark-catppuccin-surface-high: #313244;
   --palette-dark-catppuccin-muted-foreground: #bac2de;
-  --palette-dark-catppuccin-subtle: #a6adc8;
+  --palette-dark-catppuccin-subtle: #abb3ce;
   --palette-dark-catppuccin-border: #313244;
   --palette-dark-catppuccin-edge: #45475a;
   --palette-dark-catppuccin-frame-edge: #313244;
@@ -625,8 +626,8 @@
   --palette-light-catppuccin-accent: #8839ef;
   --palette-light-catppuccin-surface-low: #e6e9ef;
   --palette-light-catppuccin-surface-high: #ccd0da;
-  --palette-light-catppuccin-muted-foreground: #5c5f77;
-  --palette-light-catppuccin-subtle: #6c6f85;
+  --palette-light-catppuccin-muted-foreground: #54566c;
+  --palette-light-catppuccin-subtle: #555869;
   --palette-light-catppuccin-border: #ccd0da;
   --palette-light-catppuccin-edge: #bcc0cc;
   --palette-light-catppuccin-frame-edge: #ccd0da;
@@ -649,7 +650,7 @@
   --palette-dark-tokyo-night-surface-low: #16161e;
   --palette-dark-tokyo-night-surface-high: #24283b;
   --palette-dark-tokyo-night-muted-foreground: #a9b1d6;
-  --palette-dark-tokyo-night-subtle: #737aa2;
+  --palette-dark-tokyo-night-subtle: #9aa2c8;
   --palette-dark-tokyo-night-border: #292e42;
   --palette-dark-tokyo-night-edge: #3b4261;
   --palette-dark-tokyo-night-frame-edge: #292e42;
@@ -671,8 +672,8 @@
   --palette-light-tokyo-night-accent: #2e7de9;
   --palette-light-tokyo-night-surface-low: #d0d5e3;
   --palette-light-tokyo-night-surface-high: #c4c8da;
-  --palette-light-tokyo-night-muted-foreground: #6172b0;
-  --palette-light-tokyo-night-subtle: #68709a;
+  --palette-light-tokyo-night-muted-foreground: #45517d;
+  --palette-light-tokyo-night-subtle: #4d5372;
   --palette-light-tokyo-night-border: #b4b5b9;
   --palette-light-tokyo-night-edge: #8990b3;
   --palette-light-tokyo-night-frame-edge: #b4b5b9;
@@ -695,7 +696,7 @@
   --palette-dark-nord-surface-low: #2e3440;
   --palette-dark-nord-surface-high: #434c5e;
   --palette-dark-nord-muted-foreground: #d8dee9;
-  --palette-dark-nord-subtle: #b4becf;
+  --palette-dark-nord-subtle: #c7cfdd;
   --palette-dark-nord-border: #434c5e;
   --palette-dark-nord-edge: #4c566a;
   --palette-dark-nord-frame-edge: #3b4252;
@@ -741,7 +742,7 @@
   --palette-dark-gruvbox-surface-low: #282828;
   --palette-dark-gruvbox-surface-high: #3c3836;
   --palette-dark-gruvbox-muted-foreground: #d5c4a1;
-  --palette-dark-gruvbox-subtle: #bdae93;
+  --palette-dark-gruvbox-subtle: #c4b597;
   --palette-dark-gruvbox-border: #3c3836;
   --palette-dark-gruvbox-edge: #504945;
   --palette-dark-gruvbox-frame-edge: #3c3836;
@@ -764,7 +765,7 @@
   --palette-light-gruvbox-surface-low: #f2e5bc;
   --palette-light-gruvbox-surface-high: #ebdbb2;
   --palette-light-gruvbox-muted-foreground: #504945;
-  --palette-light-gruvbox-subtle: #665c54;
+  --palette-light-gruvbox-subtle: #5e564f;
   --palette-light-gruvbox-border: #d5c4a1;
   --palette-light-gruvbox-edge: #bdae93;
   --palette-light-gruvbox-frame-edge: #d5c4a1;
@@ -787,7 +788,7 @@
   --palette-dark-amethyst-surface-low: #1d162b;
   --palette-dark-amethyst-surface-high: #302442;
   --palette-dark-amethyst-muted-foreground: #c8b6e0;
-  --palette-dark-amethyst-subtle: #ab98c2;
+  --palette-dark-amethyst-subtle: #b9a7d1;
   --palette-dark-amethyst-border: #3b2a54;
   --palette-dark-amethyst-edge: #574071;
   --palette-dark-amethyst-frame-edge: #332545;
@@ -810,7 +811,7 @@
   --palette-light-amethyst-surface-low: #f3edf9;
   --palette-light-amethyst-surface-high: #ece3f5;
   --palette-light-amethyst-muted-foreground: #635276;
-  --palette-light-amethyst-subtle: #78628c;
+  --palette-light-amethyst-subtle: #725d85;
   --palette-light-amethyst-border: #ded1ec;
   --palette-light-amethyst-edge: #c9b5dd;
   --palette-light-amethyst-frame-edge: #d9c9e9;
@@ -899,7 +900,7 @@ html[data-chat-width='full'] {
   --color-active: rgba(0, 0, 0, 0.07);
   --color-foreground: #1c1c21;
   --color-muted-foreground: #36363e;
-  --color-subtle: #4a4a52;
+  --color-subtle: #42424a;
   --color-faint: #b4b4bb;
   --color-selection: rgba(28, 28, 33, 0.14);
   --color-terminal-background: var(--color-surface-2);
@@ -1096,21 +1097,14 @@ time { font-variant-numeric: tabular-nums; }
   background: var(--color-selection);
 }
 
-.code-syntax .hljs-keyword,
-.code-syntax .hljs-selector-tag,
-.code-syntax .hljs-built_in { color: var(--color-accent); }
-.code-syntax .hljs-string,
-.code-syntax .hljs-regexp,
+/* One quiet palette for code in the diff and the file viewer: two hues at low
+   chroma, names in the text colour, so added and removed tints stay what the
+   eye finds first. */
+.code-syntax :is(.hljs-keyword, .hljs-selector-tag, .hljs-built_in) { color: color-mix(in oklch, var(--color-accent) 55%, var(--color-muted-foreground)); }
+.code-syntax :is(.hljs-title, .hljs-type, .hljs-name, .hljs-attr, .hljs-attribute) { color: var(--color-foreground); }
+.code-syntax :is(.hljs-string, .hljs-regexp, .hljs-number, .hljs-literal) { color: color-mix(in oklch, var(--color-live) 45%, var(--color-muted-foreground)); }
+.code-syntax :is(.hljs-comment, .hljs-meta) { color: var(--color-muted-foreground); }
 .code-syntax .hljs-addition { color: var(--color-success); }
-.code-syntax .hljs-number,
-.code-syntax .hljs-literal,
-.code-syntax .hljs-attr,
-.code-syntax .hljs-attribute { color: var(--color-live); }
-.code-syntax .hljs-title,
-.code-syntax .hljs-type,
-.code-syntax .hljs-name { color: var(--color-accent); }
-.code-syntax .hljs-comment,
-.code-syntax .hljs-meta { color: var(--color-muted-foreground); }
 .code-syntax .hljs-deletion { color: var(--color-danger); }
 
 /* Ctrl+F in a thread: every match, and the one the arrows are on. */

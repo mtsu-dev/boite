@@ -17,8 +17,9 @@
 
 <script lang="ts">
   import { tick } from 'svelte';
-  import { ChevronLeft, ChevronRight } from '@lucide/svelte';
+  import { ChevronRight } from '@lucide/svelte';
   import { strings } from '../lib/strings';
+  import BackRow from './BackRow.svelte';
 
   /**
    * The model picker's named row for speed and context: it reads their
@@ -67,14 +68,18 @@
 </script>
 
 <div class="level" data-picker-more>
-  <button type="button" class="ghost more" class:back={level.open} data-row data-testid="composer-picker-more" aria-expanded={level.open} bind:this={button} onclick={() => toggle(!level.open)} {onkeydown}>
-    {#if level.open}<ChevronLeft size={14} strokeWidth={2} />{/if}
+  {#if level.open}
+    <!-- Open, the row is the level's way back, in the form every second level shares. -->
+    <BackRow label={strings.composer.pickerMore} role={null} data-testid="composer-picker-more" aria-expanded={true} bind:element={button} onclick={() => toggle(false)} {onkeydown} />
+  {:else}
+  <button type="button" class="ghost more" data-row data-testid="composer-picker-more" aria-expanded={false} bind:this={button} onclick={() => toggle(true)} {onkeydown}>
     <span class="text">
       <span class="ui-label name">{strings.composer.pickerMore}</span>
-      {#if !level.open && summary}<span class="summary ui-label" data-testid="composer-picker-more-summary">{summary}</span>{/if}
+      {#if summary}<span class="summary ui-label" data-testid="composer-picker-more-summary">{summary}</span>{/if}
     </span>
-    {#if !level.open}<ChevronRight size={14} strokeWidth={2} />{/if}
+    <ChevronRight size={14} strokeWidth={2} />
   </button>
+  {/if}
   {#if level.open}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="rows" onkeydown={onrowskey}>{@render children()}</div>
@@ -83,14 +88,12 @@
 
 <style>
   .level { display: flex; flex-direction: column; gap: 2px; }
-  .more { display: flex; align-items: center; gap: 6px; width: 100%; min-height: var(--control); padding: 6px 8px; border-radius: var(--radius-md); color: var(--color-foreground); font-size: var(--text-sm); font-weight: 400; justify-content: flex-start; }
+  /* A menu row like the models above it: one height and inset per device (`--overlay-row`). */
+  .more { display: flex; align-items: center; gap: var(--space-2); width: 100%; height: auto; min-height: var(--overlay-row); padding: var(--space-2) var(--overlay-row-pad); border-radius: var(--radius-overlay-row); color: var(--color-foreground); font-size: var(--text-base); font-weight: 400; justify-content: flex-start; }
   .more :global(svg) { flex: none; color: var(--color-muted-foreground); }
   /* The values sit under the name, on their own line: a long permission never runs into it. */
-  .text { display: flex; flex-direction: column; gap: 4px; flex: 1 1 auto; min-width: 0; text-align: left; }
+  .text { display: flex; flex-direction: column; gap: var(--space-2); flex: 1 1 auto; min-width: 0; text-align: left; }
   .name, .summary { overflow-wrap: anywhere; white-space: normal; }
-  /* The way back names the level it stands on, as a menu's group title does. */
-  .more.back { font-weight: 600; padding-left: 4px; }
   .summary { color: var(--color-subtle); font-size: var(--text-xs); }
   .rows { display: flex; flex-direction: column; gap: 2px; animation: rise var(--dur-2) var(--ease-out-quint); }
-  @media (max-width: 720px) { .more { min-height: var(--touch-target); } }
 </style>

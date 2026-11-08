@@ -20,8 +20,9 @@
    * the flat lists' form (Recent, Activity): the project's tile first. Activity (the phone's screen) is the whole
    * title with `reason`, what the thread wants, beside it when both fit and under it when not, whole; a command it
    * asks to run reads in full in a mono block under them. A sub-agent with the same ask is a line of its own
-   * (`helpers`), one event per row, as on the desktop; `verb` names what a Needs you row asks, a button after all of
-   * it at the row's end, Review when the command is too long to read here. `onverb` opens what the verb is for, the row itself unless a sub-agent asks.
+   * (`helpers`), one event per row, as on the desktop; `verb` names what a Needs you row asks, a button at the end
+   * of the title's line after the mark and the time, as on the desktop, Review when the command is too long to read
+   * here. `onverb` opens what the verb is for, the row itself unless a sub-agent asks.
    * The row menu has no button of its own: a long press opens it, a slide
    * left shows pin and archive. Its trigger stays for the keyboard, drawn
    * only while focused.
@@ -68,7 +69,7 @@
   {/if}
   <!-- The row's contextmenu (a long press, Android's, a right click) opens the menu wherever it lands; the button inside stays the keyboard's target. -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="body" class:verbed={action !== null} use:swipeRow oncontextmenu={openMenu}>
+  <div class="body" use:swipeRow oncontextmenu={openMenu}>
     <button class="ghost thread" class:offline={away} class:stated={kind !== null} data-testid="mobile-thread-{thread.id}" title={[thread.title, reason, thread.branch].filter(Boolean).join('\n')} onclick={onopen} use:longPress>
       <!-- One line for every list (ThreadHeadline.svelte): the title, then the mark in the row's one slot and the time
            after it; in Activity what is asked shares that line when it fits. The project's header says how many
@@ -118,10 +119,12 @@
   /* The command as it will run: mono, wrapped, every line; too long, its first lines and Review. */
   .operation { display: block; padding: 6px 8px; border-radius: var(--radius-sm); background: var(--color-code-background); color: var(--color-code-foreground); font-family: var(--font-mono); font-size: var(--text-xs); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
   .operation.long { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; line-clamp: 6; overflow: hidden; }
-  /* The verb comes after what is asked, at the row's end, one width on every row: the title and the ask keep the
-     row's whole width, so neither is cut at 360 px. */
-  .verbed { display: flex; flex-direction: column; }
-  .verb { align-self: flex-end; justify-content: center; width: 88px; min-height: var(--touch-target); margin: -4px 12px 10px; font-size: var(--text-sm); font-weight: 600; }
+  /* The verb ends the title's line after the mark and the time, the desktop's order, one width on every row and a
+     finger's height from the row's top; the title wraps whole beside it (Activity titles are never cut). */
+  .verb { position: absolute; top: 0; right: 12px; justify-content: center; width: var(--verb-width); min-height: var(--touch-target); font-size: var(--text-sm); font-weight: 600; }
+  /* Every Activity row keeps the verb's place, Updates included, so the mark and the time stand in one column. */
+  .reason { --verb-width: 88px; }
+  .reason .thread :global(.headline) { margin-right: calc(var(--verb-width) + 8px); }
   /* The ring every row draws, inside the box: the list's edge would clip one outside it. */
   .thread:focus-visible { outline-offset: -2px; }
   .thread :global(.headline) { gap: 10px; align-items: flex-start; }

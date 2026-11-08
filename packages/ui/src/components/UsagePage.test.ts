@@ -55,13 +55,28 @@ test('a failed initial read stops loading, can be retried and distinguishes miss
   expect(document.querySelector('[data-testid=usage-total]')?.textContent).toBe('No price');
 });
 
-test('a coverage line breaks only between its pieces, each label staying beside its count', async () => {
-  mounted = page({ store: store(vi.fn(async (_method: string, params: { edges: number[] }) => history(params.edges, 'claude'))) });
+test('a provider line says in plain words what was counted over the range, then what the measure misses', async () => {
+  const partial = (edges: number[]): UsageHistory => {
+    const read = history(edges, 'claude');
+    read.rows[0] = { ...read.rows[0]!, turns: 3, reported: 2, priced: 1, usage: { ...read.rows[0]!.usage, inputTokens: 10, costUsdEquivalent: 0.5 } };
+    return read;
+  };
+  mounted = page({ store: store(vi.fn(async (_method: string, params: { edges: number[] }) => partial(params.edges))) });
   await settle();
+  // A line breaks only between its pieces, each count staying beside its words.
   const pieces = (selector: string) => [...document.querySelectorAll(`${selector} .pair`)].map((piece) => piece.textContent);
-  expect(pieces('[data-testid=usage-coverage]')).toEqual(['Tokens 0/2 turns ·', 'Cost 0/2']);
-  expect(pieces('[data-provider=claude] .provider small')).toEqual(['Tokens 0/2 turns ·', 'Cost 0/2']);
-  expect(document.querySelector('[data-testid=usage-coverage]')!.textContent).toBe('Tokens 0/2 turns · Cost 0/2');
+  expect(pieces('[data-provider=claude] .provider small')).toEqual(['3 turns in 30 days ·', '1 with no token count']);
+  expect(document.querySelector('[data-testid=usage-coverage]')!.textContent).toBe('1 turn reported no token count and counts as a turn only');
+  expect(document.querySelector('[data-testid=usage-partial-cost]')).toBeNull();
+  click('[data-testid=usage-metric-cost]');
+  await settle();
+  expect(pieces('[data-provider=claude] .provider small')).toEqual(['3 turns in 30 days ·', '2 with no price']);
+  expect(document.querySelector('[data-testid=usage-partial-cost]')!.textContent).toBe('2 turns have no price and are left out of the estimate');
+  click('[data-testid=usage-metric-turns]');
+  await settle();
+  expect(pieces('[data-provider=claude] .provider small')).toEqual(['3 turns in 30 days']);
+  expect(document.querySelector('[data-testid=usage-coverage]')).toBeNull();
+  expect(document.body.textContent).not.toMatch(/\d+\/\d+/);
 });
 
 test('the refresh stands in the band beside the title on a desktop, and on the title line on a phone', async () => {

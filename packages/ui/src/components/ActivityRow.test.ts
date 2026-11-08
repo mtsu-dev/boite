@@ -70,3 +70,13 @@ test('a command too long to read in the row asks for Review before any Allow', a
   const verb = document.querySelector<HTMLButtonElement>('[data-testid=thread-verb]')!;
   expect([verb.textContent?.trim(), verb.dataset.verb]).toEqual(['Review', 'review']);
 });
+
+test('an Updates row keeps the action\'s place empty, so its time and mark stand in the Needs you rows\' columns', async () => {
+  const { parent, groups } = await rows('bun test');
+  const own = groups.find(group => group.row.thread.id === parent.id)!;
+  mounted = mount(ActivityRow, { target: document.body, props: { ...own, row: { ...own.row, section: 'updates', verb: null }, now: Date.now() } });
+  await settle();
+  const slot = document.querySelector('.feed-side .feed-action');
+  expect(slot).not.toBeNull();
+  expect(slot!.querySelector('[data-testid=thread-verb]')).toBeNull();
+});

@@ -1,4 +1,4 @@
-import { ChevronLeft, LayoutGrid, Network, SquareKanban, SquareTerminal } from '@lucide/svelte';
+import { LayoutGrid, Network, SquareKanban, SquareTerminal } from '@lucide/svelte';
 import type { ThreadSummary } from '@boite/contracts';
 import type { Store } from './store.svelte';
 import { separator, type MenuItem } from './menu';
@@ -94,7 +94,7 @@ export function panelChoices(store: Store, thread: ThreadSummary | null, options
   if (!options.full && short.length > 0 && short.length < rows.size) {
     return [...short.map((id) => rows.get(id)!), separator('sep-all'), { id: ALL_PANELS, label: strings.rightPanel.allPanels, glyph: LayoutGrid, submenu: true }];
   }
-  const back: MenuItem[] = options.full && short.length > 0 && short.length < rows.size ? [{ id: IN_USE, label: strings.rightPanel.inUse, glyph: ChevronLeft, back: true }] : [];
+  const back: MenuItem[] = options.full && short.length > 0 && short.length < rows.size ? [{ id: IN_USE, label: strings.rightPanel.allPanels, title: strings.rightPanel.inUse, back: true }] : [];
   return [
     ...back,
     ...grouped.filter((group) => group.ids.length > 0).flatMap((group) => [{ ...separator(`sep-${group.ids[0]}`), label: group.name }, ...group.ids.map((id) => rows.get(id)!)]),

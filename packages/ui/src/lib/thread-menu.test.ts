@@ -89,7 +89,8 @@ test('a desktop menu keeps seven rows at most on its first level and names its o
   expect(main.find(item => item.id === 'more')).toMatchObject({ submenu: true, label: 'Manage thread' });
   expect(main.some(item => item.label === 'More')).toBe(false);
   const tools = threadToolItems(store, t, options);
-  expect(tools[0]?.back).toBe(true);
+  // The way back names the level it stands on, as the model picker's levels do.
+  expect(tools[0]).toMatchObject({ back: true, label: 'Manage thread' });
   // What is done less often: a new title, the hand-off, then where the thread lives. The panels have their own selector.
   expect(ids(tools)).toEqual(['back', 'retitle', 'entrust', 'move', 'copy', 'pr']);
   // What the header says the thread is leads the group.

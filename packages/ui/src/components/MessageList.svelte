@@ -815,6 +815,17 @@
 {#if viewing}{@const view = viewing}<Deferred part={parts.ImageViewer} floating>{#snippet children(ImageViewer)}<ImageViewer items={view.items} index={view.index} onclose={() => { viewing = null; releaseHeld(); }} />{/snippet}</Deferred>{/if}
 
 <style>
+  /* Chrome on demand: under a pointer, the fold chevrons of the tool rows and
+     the transcript blocks and the turn's "i" show on the row's hover or
+     keyboard focus; the rows stay buttons and the "i" stays in the tab
+     order, so nothing is out of reach. A finger always sees them. */
+  @media (hover: hover) {
+    .timeline :global(:is(.fold-caret, .summary .info-tip)) { opacity: 0; transition: opacity var(--dur-2) var(--ease-out-quint); }
+    .timeline :global(:is(button, summary):is(:hover, :focus-visible) .fold-caret),
+    .timeline :global(.summary:is(:hover, :focus-within) .info-tip),
+    .timeline :global(.info-tip[aria-expanded='true']) { opacity: 1; }
+  }
+
   .timeline-wrap {
     position: relative;
     flex: 1;

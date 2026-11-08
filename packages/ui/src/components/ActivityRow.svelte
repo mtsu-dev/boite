@@ -31,14 +31,13 @@
     {/each}
   {/snippet}
   {#snippet action()}
-    <!-- Every Needs you row keeps the action's place, so the time stands at one offset down the section. -->
-    {#if row.section === 'needs'}
-      <span class="feed-action">
-        {#if target && verb}
-          <button type="button" class="small verb" data-testid="thread-verb" data-verb={verb} onclick={(event) => { leaveForAct(target.machine.store, target.thread.id, event.currentTarget); void workspace.select(target.machine.store, target.thread.id); }}>{strings.mobile.feed.verb[verb]}</button>
-        {/if}
-      </span>
-    {/if}
+    <!-- Every row keeps the action's place, Updates included, so the mark, the time and the actions stand in one
+         column each down the whole page. -->
+    <span class="feed-action">
+      {#if target && verb}
+        <button type="button" class="small verb" data-testid="thread-verb" data-verb={verb} onclick={(event) => { leaveForAct(target.machine.store, target.thread.id, event.currentTarget); void workspace.select(target.machine.store, target.thread.id); }}>{strings.mobile.feed.verb[verb]}</button>
+      {/if}
+    </span>
   {/snippet}
 </ThreadCard>
 

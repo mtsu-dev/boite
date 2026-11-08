@@ -214,6 +214,27 @@
     return totals.priced === 0 ? strings.usage.noPrice : formatMetric('cost', totals.usage.costUsdEquivalent ?? 0);
   }
 
+  /**
+   * The turns the current measure misses: none reported tokens, or none had a price. Zero when every turn
+   * counts, and when none does, since the value then says "Not reported" or "No price" itself.
+   */
+  function gap(totals: UsageTotals): number {
+    const counted = metric === 'tokens' ? totals.reported : metric === 'cost' ? totals.priced : totals.turns;
+    return counted > 0 ? totals.turns - counted : 0;
+  }
+
+  /** The singular or plural form of a line for this count; `{count}` is the count, formatted. */
+  function counts(forms: { one: string; many: string }, count: number, values: Record<string, string>): string {
+    return fill(count === 1 ? forms.one : forms.many, { count: formatMetric('turns', count), ...values });
+  }
+
+  /** A provider's line in plain words: what was counted over the range, then what the measure misses. */
+  function counted(totals: UsageTotals): string {
+    const line = counts(strings.usage.counted, totals.turns, { turns: formatMetric('turns', totals.turns), days: String(range) });
+    const missing = gap(totals);
+    return missing > 0 && metric !== 'turns' ? `${line} · ${fill(strings.usage.gaps[metric], { count: formatMetric('turns', missing) })}` : line;
+  }
+
   function valueOf(totals: UsageTotals & { value: number }): string {
     if (metric === 'cost') return money(totals);
     if (metric === 'tokens' && totals.turns > 0 && totals.reported === 0) return strings.usage.noUsage;
@@ -303,10 +324,8 @@
             tokens: formatMetric('tokens', totalTokens(view.total.usage)),
             cost: money(view.total)
           }))}</small>
-          {#if view.total.turns > 0}
-            <small class="coverage" data-testid="usage-coverage">{@render pairs(fill(strings.usage.coverage, {
-              reported: formatMetric('turns', view.total.reported), priced: formatMetric('turns', view.total.priced), turns: formatMetric('turns', view.total.turns)
-            }))}</small>
+          {#if gap(view.total) > 0 && metric !== 'turns'}
+            <small class="coverage" data-testid="usage-coverage"><span data-testid={metric === 'cost' ? 'usage-partial-cost' : undefined}>{counts(strings.usage.gapsTotal[metric], gap(view.total), {})}</span></small>
           {/if}
         </div>
         {#if view.series.length > 0}
@@ -316,7 +335,7 @@
               {@const share = view.total.value > 0 ? totals.value / view.total.value : 0}
               <li data-provider={serie.key}>
                 <span class="swatch" style:background={serie.color}></span>
-                <span class="provider"><ProviderLogo providerId={serie.key} size={14} /><span>{providerName(serie.key)}{#if totals.turns > 0}<small>{@render pairs(fill(strings.usage.coverage, { reported: formatMetric('turns', totals.reported), priced: formatMetric('turns', totals.priced), turns: formatMetric('turns', totals.turns) }))}</small>{/if}</span></span>
+                <span class="provider"><ProviderLogo providerId={serie.key} size={14} /><span>{providerName(serie.key)}{#if totals.turns > 0}<small>{@render pairs(counted(totals))}</small>{/if}</span></span>
                 <span class="value" class:muted={totals.turns === 0}>{totals.turns === 0 ? strings.usage.noActivity : valueOf(totals)}</span>
                 <span class="share" title={fill(strings.usage.share, { percent: percent.format(share) })}>{totals.turns > 0 && (metric === 'turns' || (metric === 'tokens' ? totals.reported : totals.priced) > 0) ? percent.format(share) : ''}</span>
                 <span class="bar"><span style:width="{share * 100}%" style:background={serie.color}></span></span>
@@ -350,12 +369,6 @@
         {/if}
         {#if metric === 'cost' && view.unpriced.length > 0}
           <p class="aside" data-testid="usage-unpriced">{fill(strings.usage.unpriced, { providers: view.unpriced.map(providerName).join(', ') })}</p>
-        {/if}
-        {#if view.total.turns > view.total.reported}
-          <p class="aside">{fill(strings.usage.unreported, { count: formatMetric('turns', view.total.turns - view.total.reported) })}</p>
-        {/if}
-        {#if metric === 'cost' && view.total.priced > 0 && view.total.priced < view.total.turns}
-          <p class="aside" data-testid="usage-partial-cost">{fill(strings.usage.partialCost, { count: formatMetric('turns', view.total.turns - view.total.priced) })}</p>
         {/if}
       </section>
 

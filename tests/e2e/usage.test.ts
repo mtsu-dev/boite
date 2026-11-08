@@ -106,7 +106,8 @@ test('the desktop page charts each day by provider, reads a column on hover and 
   expect(await attribute('[data-testid=usage-chart]', 'aria-valuemax')).toBe('29');
   expect(await count('[data-testid=usage-providers] li')).toBeGreaterThanOrEqual(8);
   expect(await page.evaluate(`[...document.querySelectorAll('[data-testid=usage-providers] li')].map(li => li.dataset.provider)`)).toEqual(expect.arrayContaining(['claude', 'codex', 'opencode', 'grok', 'antigravity', 'pi', 'muse']));
-  expect(await page.text('[data-testid=usage-coverage]')).toContain('Cost');
+  // The total says in plain words what the token count misses, never a turns ratio.
+  expect(await page.text('[data-testid=usage-coverage]')).toContain('reported no token count');
   expect(await count('[data-testid=usage-threads] li')).toBe(10);
   const cards = await page.evaluate<{ inset: number; gap: number; width: number }>(`(() => {
     const overview = document.querySelector('[data-testid=usage-overview]');

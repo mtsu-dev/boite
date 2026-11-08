@@ -142,7 +142,7 @@
 </div>
 
 <style>
-  .memory-reading { display: flex; flex-wrap: wrap; gap: 16px 32px; margin: 0; padding: var(--space-3) 0; font-size: var(--text-sm); }
+  .memory-reading { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px 32px; margin: 0; padding: var(--space-3) 0; font-size: var(--text-sm); }
   dt { color: var(--color-muted-foreground); }
   dd { margin: 6px 0 0; font-variant-numeric: tabular-nums; }
   dd[data-state="critical"] { color: var(--color-danger); }

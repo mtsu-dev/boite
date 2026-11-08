@@ -17,7 +17,8 @@
     height: var(--spinner-size);
     border-radius: var(--radius-full);
     border: 1.5px solid var(--color-edge);
-    border-top-color: var(--color-live);
+    /* Working is the accent; amber says only that something needs you. */
+    border-top-color: var(--color-accent);
     animation: spin 0.9s steps(54) infinite var(--loops);
   }
 

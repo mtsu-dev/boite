@@ -449,24 +449,21 @@
 <style>
   /* The head of the composer card, in the flow like the rest of the dock, so
      the timeline gives way to it and no line of the thread runs under it. A
-     desktop caps it with the dock's budget (Composer's `.deck`), a phone here.
-     Four pixels around every line: the rows carry their own inline padding,
-     so a hover fill sits inset by the same four pixels on every side. No rule
-     under it: the decisions are the one raised card (Composer's
-     `.decision-card`), the goal, the loop and the tasks plain lines on the
-     composer's surface. The card gives way first when room runs out and
-     scrolls inside itself. */
+     desktop caps it with the dock's budget (Composer's `.deck`), a phone with
+     the card's. Four pixels around every line: the rows carry their own
+     inline padding, so a hover fill sits inset by the same four pixels on
+     every side. The decisions are the card's head on its own surface, edge
+     to edge with one hairline under them (Composer's `.decision-card`); the
+     goal, the loop and the tasks are plain lines under it. Nothing inside
+     shrinks: the question sizes its choices to the budget in whole rows, and
+     this section is the one fallback scroller, so an arriving card is laid
+     out once, before it grows in. */
   .activity { display: flex; flex-direction: column; overflow-y: auto; padding: 4px; font-size: var(--text-sm); }
   .activity > * { flex: none; }
-  .activity > .decision-card { flex: 0 1 auto; min-height: 0; margin: 2px 2px 4px; overflow-y: auto; display: flex; flex-direction: column; }
-  /* The room is handed down to the question's choices, the one part that
-     scrolls: the card's head, its foot and its inset never slide out of the
-     card, so it never ends on a row cut flat at its edge. */
-  .decision-card > * { flex: none; }
-  .decision-card > .questions, .questions > .disclosure-fold, .questions > .disclosure-fold > div, .asked:not([hidden]) { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  .activity > .decision-card { margin: -4px -4px 4px; display: flex; flex-direction: column; }
+  .activity > .decision-card:last-child { margin-bottom: -4px; }
+  .decision-card > *, .questions > *, .asked > :global(*) { flex: none; }
   .questions > .disclosure-fold { display: grid; }
-  .questions > *, .asked > :global(*) { flex: none; }
-  .questions > .disclosure-fold, .asked > :global(.question.docked) { flex: 0 1 auto; min-height: 0; }
   .activity.hidden { display: none; }
   /* A decision arrives by growing the dock from its last height, content and
      box together (`lib/arrival.ts`); reduced motion shows it at once. */
@@ -475,6 +472,8 @@
   .child-questions + :is(.questions, .waits), .questions + .waits { border-top: 1px solid var(--color-border); }
   /* A sub-agent's request: whose it is, muted, and the way into its conversation on the right. */
   .from-child, .wait { display: flex; align-items: center; gap: 8px; min-height: var(--control); min-width: 0; padding: 0 2px 0 8px; }
+  /* Edge to edge in the card, the rows of a decision start where the field's text does. */
+  .decision-card :is(.from-child, .wait, .question-row) { padding-inline: var(--dock-inset, 8px) 4px; }
   .from-child { color: var(--color-muted-foreground); }
   .from-child > :global(svg) { flex: none; margin-inline: 1px; }
   .from-child > .ui-label { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

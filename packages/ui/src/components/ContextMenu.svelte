@@ -5,6 +5,7 @@
   import { contextMenu, type ContextMenuState } from '../lib/context-menu.svelte';
   import { restoreFocus } from '../lib/focus';
   import { dangerLast, type MenuItem } from '../lib/menu';
+  import BackRow from './BackRow.svelte';
 
   const GAP = 6;
 
@@ -152,6 +153,8 @@
         <div class="section ui-label" role="presentation">{item.label}</div>
       {:else if item.separator}
         <div class="rule" role="separator"></div>
+      {:else if item.back}
+        <BackRow label={item.label} title={item.title} disabled={item.disabled} tabindex={-1} data-value={item.id} data-testid={item.testid} onclick={() => pick(item)} />
       {:else}
         <button
           type="button"

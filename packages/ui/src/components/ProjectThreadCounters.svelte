@@ -44,8 +44,8 @@
   .waiting .number { color: var(--color-live); }
   /* The desktop's header says the count alone; the rows under it already carry the word's dot. */
   .waiting .word { display: none; }
-  /* Work, still: the rows' grey arc (ThreadState.svelte). The open thread keeps the one live spinner. */
-  .work-ring { box-sizing: border-box; width: 9px; height: 9px; border: 1.5px solid currentColor; border-top-color: transparent; border-radius: var(--radius-full); transform: rotate(45deg); }
+  /* Work, still: the rows' accent arc (ThreadState.svelte). The open thread keeps the one live spinner. */
+  .work-ring { box-sizing: border-box; width: 9px; height: 9px; border: 1.5px solid var(--color-accent); border-top-color: transparent; border-radius: var(--radius-full); transform: rotate(45deg); }
   .counter:hover:not(:disabled) { background: var(--color-hover); color: var(--color-foreground); }
   .counter.active { background: var(--color-active); color: var(--color-foreground); }
 

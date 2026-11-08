@@ -9,6 +9,7 @@
   import ModelSearch from './ModelSearch.svelte';
   import ProviderLogo from './ProviderLogo.svelte';
   import ProviderTiles from './ProviderTiles.svelte';
+  import BackRow from './BackRow.svelte';
   import PickerMore, { provideMoreLevel, type MoreLevel } from './PickerMore.svelte';
   import { floating } from '../lib/floating';
   import { focusInitial } from '../lib/focus';
@@ -410,7 +411,7 @@
     {#each home as row (`${row.providerId}:${row.accountId}:${row.model.id}`)}
       <button type="button" class="row model" class:current={isChoice(row)} role="menuitem" data-row data-testid={row.favorite ? 'favorite-model' : 'recent-model'}
         title={row.model.id} disabled={disabled || pickPending || !store.providerOf(row.providerId)?.available} onclick={() => void applyPick(row, row.model.id)}>
-        <span class="mark" aria-hidden="true">{#if isChoice(row)}<Check size={14} strokeWidth={2.25} />{/if}</span>
+        <span class="mark" aria-hidden="true">{#if isChoice(row)}<Check size={14} />{/if}</span>
         <span class="name ui-label">{row.model.name}</span>
         {#if sourceOf(row)}<span class="source ui-label">{sourceOf(row)}</span>{/if}
       </button>
@@ -424,9 +425,13 @@
   </div>
   {:else}
   <button class="refresh" type="button" data-testid="picker-refresh" aria-label={strings.composer.refreshModels} title={strings.composer.refreshModels} disabled={disabled || probing || pickPending || needsInstall} onclick={() => void refreshModels()}><RefreshCw size={14} class={probing || pickPending ? 'spin' : ''} /></button>
+  {#if hasHome}
+    <!-- The level's name and its way back to the models in use, as every second level has. -->
+    <div class="back"><BackRow label={strings.composer.allModels} title={strings.composer.yourModels} data-provider="home" data-testid="picker-back" onclick={backHome} /></div>
+  {/if}
   {#if !single}
     <div class="column rail">
-      <ProviderTiles {store} {choice} {locked} current={shown?.id ?? null} onback={hasHome ? backHome : undefined} onpick={pickTile} onmore={providersReachable ? openInstall : undefined} />
+      <ProviderTiles {store} {choice} {locked} current={shown?.id ?? null} onpick={pickTile} onmore={providersReachable ? openInstall : undefined} />
     </div>
   {/if}
 
@@ -444,7 +449,7 @@
         disabled={disabled || pickPending}
         onclick={() => pickModel(model)}
       >
-        <span class="mark" aria-hidden="true">{#if isCurrentModel(model)}<Check size={14} strokeWidth={2.25} />{/if}</span>
+        <span class="mark" aria-hidden="true">{#if isCurrentModel(model)}<Check size={14} />{/if}</span>
         <span class="name ui-label">{model.name}</span>
         {#if model.badge === 'new'}
           <span class="badge ui-label-box"><span class="ui-label">{strings.composer.newBadge}</span></span>
@@ -560,7 +565,7 @@
                 title={model.id}
                 onclick={() => pickModel(model)}
               >
-                <span class="mark" aria-hidden="true">{#if isCurrentModel(model)}<Check size={14} strokeWidth={2.25} />{/if}</span>
+                <span class="mark" aria-hidden="true">{#if isCurrentModel(model)}<Check size={14} />{/if}</span>
                 <span class="name ui-label">{model.name}</span>
               </button>
               {#if store.owner}
@@ -584,10 +589,9 @@
   /* The first level stacks its title (phone), its rows and the effort: no grid areas to hold. */
   .popover.home, .popover.deep { display: flex; flex-direction: column; }
   .deep .settings { border-top: none; }
-  /* The first level has the phone sheet's air: the same rows, a finger tall, and room around them. */
-  .home .short-list { padding: 8px; gap: 2px; }
-  .home .short-list .row { min-height: var(--touch-target); padding: 4px 10px; }
-  .home .settings { padding: 8px; gap: 4px; }
+  /* The first level's rows are every menu's rows: 32 px on a desktop, a finger tall on a phone (`--overlay-row`). */
+  .home .short-list { padding: var(--overlay-pad); gap: 1px; }
+  .home .settings { padding: var(--overlay-pad); gap: 1px; }
   .source { flex: 0 1 auto; min-width: 0; text-align: right; font-size: var(--text-sm); color: var(--color-subtle); }
   .all { color: var(--color-muted-foreground); }
   .all .name { flex: 1; font-weight: 400; }
@@ -603,11 +607,11 @@
     grid-template-columns: minmax(0, 1fr) auto;
     width: min(400px, calc(100vw - 32px));
     /* Floating caps it to the room above. */
-    grid-template-rows: auto auto minmax(0, 1fr) auto;
-    background: var(--color-surface-2);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-e2);
+    grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+    background: var(--overlay-surface);
+    border: 1px solid var(--overlay-edge);
+    border-radius: var(--radius-overlay);
+    box-shadow: var(--shadow-overlay);
     animation: pop var(--dur-2) var(--ease-out-quint);
     transform-origin: top left;
     overflow: hidden;
@@ -622,7 +626,7 @@
     display: flex;
     flex-direction: column;
     gap: 1px;
-    padding: 6px;
+    padding: var(--overlay-pad);
     min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
@@ -630,8 +634,9 @@
   }
 
   /* The providers in a row; on a desktop they wrap, every one in view. */
+  .back { grid-area: 2 / 1 / 3 / 3; display: flex; flex-direction: column; padding: var(--overlay-pad) var(--overlay-pad) 0; }
   .rail {
-    grid-area: 2 / 1;
+    grid-area: 3 / 1;
     flex-direction: row;
     flex-wrap: wrap;
     align-items: center;
@@ -641,18 +646,18 @@
   }
 
   .models > * { flex-shrink: 0; }
-  .main-models { grid-area: 3 / 1 / 4 / 3; overflow: hidden; padding: 0; gap: 0; border-top: 1px solid var(--color-border); }
+  .main-models { grid-area: 4 / 1 / 5 / 3; overflow: hidden; padding: 0; gap: 0; border-top: 1px solid var(--color-border); }
   .main-models .head { gap: 8px; padding: 6px 6px 6px 12px; border-bottom: 1px solid var(--color-border); }
   .main-models .head .provider-name { flex: 1; min-width: 0; }
-  .model-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; padding: 6px; }
+  .model-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; padding: var(--overlay-pad); }
   .model-list { max-height: 300px; }
-  .settings { grid-area: 4 / 1 / 5 / 3; display: flex; flex-direction: column; gap: 2px; padding: 6px; border-top: 1px solid var(--color-border); }
+  .settings { grid-area: 5 / 1 / 6 / 3; display: flex; flex-direction: column; gap: 1px; padding: var(--overlay-pad); border-top: 1px solid var(--color-border); }
   /* One provider: no row of providers, its model list is the whole popover and the refresh sits at its top corner. */
   .popover.single { width: min(320px, calc(100vw - 32px)); }
-  .single .main-models { grid-area: 2 / 1 / 4 / 3; border-top: none; }
+  .single .main-models { grid-area: 3 / 1 / 5 / 3; border-top: none; }
   .single .main-models .head { padding-right: 44px; }
   .single .refresh { position: absolute; top: 6px; right: 6px; margin: 0; width: var(--control-sm); height: var(--control-sm); border: none; background: transparent; }
-  .refresh { grid-area: 2 / 2; align-self: start; margin: 6px 6px 0 0; position: relative; z-index: 3; display: grid; place-items: center; width: var(--control-sm); height: var(--control-sm); padding: 0; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--color-muted-foreground); }
+  .refresh { grid-area: 3 / 2; align-self: start; margin: 6px 6px 0 0; position: relative; z-index: 3; display: grid; place-items: center; width: var(--control-sm); height: var(--control-sm); padding: 0; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--color-muted-foreground); }
   @media (hover: hover) { .refresh:hover:not(:disabled) { background: var(--color-hover); color: var(--color-foreground); } }
   .head {
     display: flex;
@@ -694,10 +699,10 @@
     justify-content: flex-start;
     gap: 8px;
     width: 100%;
-    min-height: var(--row);
-    padding: 3px 8px;
+    min-height: var(--overlay-row);
+    padding: var(--space-1) var(--overlay-row-pad);
     border: none;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-overlay-row);
     background: transparent;
     color: var(--color-foreground);
     text-align: left;
@@ -754,7 +759,6 @@
 
   .fold {
     margin-top: 4px;
-    min-height: var(--control-sm);
   }
 
   p.none {
@@ -797,9 +801,8 @@
     .refresh, .single .refresh { width: var(--touch-target); height: var(--touch-target); }
     /* One provider: no rail, the refresh beside the title. */
     .single .refresh { position: static; grid-area: 1 / 2; align-self: start; margin: calc(var(--space-2) * -1) 6px 0 0; }
-    .single .main-models { grid-area: 2 / 1 / 4 / 3; }
+    .single .main-models { grid-area: 3 / 1 / 5 / 3; }
     .single .main-models .head { padding-right: 6px; }
-    .short-list { padding: 0 8px 8px; }
-    .short-list .row { min-height: var(--touch-target); }
+    .short-list { padding: 0 var(--space-2) var(--space-2); }
   }
 </style>

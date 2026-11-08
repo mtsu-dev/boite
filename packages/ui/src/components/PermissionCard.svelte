@@ -250,8 +250,8 @@
      stays put and the subject under it scrolls, so Deny and Allow are always
      in sight however long the command. */
   .permission.docked {
-    /* One inset on all four sides, the question's own. */
-    padding: 10px;
+    /* The question's inset: the card's on the sides, so the ask starts where the field's text does. */
+    padding: 10px var(--dock-inset, 10px);
     gap: 8px;
     outline: none;
   }
@@ -260,11 +260,18 @@
   .docked:focus-visible { box-shadow: inset 0 0 0 2px var(--color-accent); }
   .docked .sentence { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .docked :global(.info-tip) { flex: none; }
+  /* Under a pointer the raw input's "i" shows on the ask's hover or focus. */
+  @media (hover: hover) {
+    .docked :global(.info-tip) { opacity: 0; transition: opacity var(--dur-2) var(--ease-out-quint); }
+    .docked:is(:hover, :focus-within) :global(.info-tip), .docked :global(.info-tip[aria-expanded='true']) { opacity: 1; }
+  }
   .docked :global(.info-bubble) { font-family: var(--font-mono); font-size: var(--text-xs); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 50vh; overflow: auto; }
   .choices { display: flex; align-items: center; gap: 6px; }
   .count { flex: none; color: var(--color-muted-foreground); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
   /* Squeezed by the dock's budget, it scrolls; a line under its edge fades instead of being cut (app.css `.scroll-edges`). */
-  .docked pre { --scroll-edge-ground: var(--color-surface); --scroll-edge-top: 9px; --scroll-edge-bottom: 9px; max-height: 120px; padding: 9px 12px; border: none; border-radius: var(--radius-md); background: var(--color-surface); font-size: var(--text-meta); }
+  /* The command is one mono line on a faint fill, not a box: a long one
+     scrolls sideways, its whole text behind the "i". */
+  .docked pre { --scroll-edge-ground: var(--color-composer-surface); max-height: 120px; padding: 6px 10px; border: none; border-radius: var(--radius-sm); background: var(--color-hover); font-size: var(--text-meta); white-space: pre; word-break: normal; overflow: auto; scrollbar-width: none; }
   .choice { flex: none; height: 30px; gap: 8px; padding: 0 12px; border-radius: var(--radius-md); font-size: var(--text-sm); font-weight: 600; }
   /* Neutral ink, never the accent: the accent stays for send. */
   .choice.allow { background: var(--color-foreground); color: var(--color-background); }
@@ -274,7 +281,7 @@
   .choice.allow .kbd { border-color: color-mix(in srgb, currentColor 30%, transparent); background: transparent; color: inherit; }
   @media (max-width: 720px) {
     /* The ask is one short sentence: it keeps Deny and Allow on its line at 360. */
-    .permission.docked { --decision-title: 6rem; padding: 8px; }
+    .permission.docked { --decision-title: 6rem; padding: 8px var(--dock-inset, 8px); }
     .choice .kbd { display: none; }
     .choice { height: var(--touch-target); padding: 0 12px; }
   }

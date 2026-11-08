@@ -416,11 +416,14 @@
 
 <style>
   .alert { color: var(--color-danger); max-width: var(--settings-width); margin-bottom: 16px; overflow-wrap: anywhere; }
-  .facts { display: grid; gap: 12px; margin: 0; }
-  .facts > div { display: grid; grid-template-columns: 160px 1fr; gap: 12px; align-items: baseline; }
+  /* The settings row grammar: the name at the start, its value at the end, a hairline between rows. */
+  .facts { display: grid; margin: 0; }
+  .facts > div { display: grid; grid-template-columns: 160px 1fr; gap: 12px; align-items: baseline; padding: 7px 0; }
+  .facts > div + div { border-top: 1px solid var(--color-border); }
   dt { color: var(--color-muted-foreground); font-size: var(--text-sm); }
   dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
-  .counts { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+  .facts dd { text-align: end; }
+  .counts { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px 16px; }
   .count { color: var(--color-muted-foreground); font-size: var(--text-sm); }
   .count strong { color: var(--color-foreground); font-weight: 600; font-variant-numeric: tabular-nums; }
   .count[data-level='error'] strong { color: var(--color-danger); }
@@ -480,6 +483,8 @@
 
   @media (max-width: 720px) {
     .facts > div, .detail > div { grid-template-columns: 1fr; gap: 2px; }
+    .facts dd { text-align: start; }
+    .counts { justify-content: flex-start; }
     .problem { display: grid; grid-template-columns: auto auto minmax(0, 1fr); grid-template-areas: 'chevron level name' '. . meta'; column-gap: 8px; row-gap: 2px; }
     .problem > :global(svg) { grid-area: chevron; }
     .problem .level { grid-area: level; min-width: 0; }

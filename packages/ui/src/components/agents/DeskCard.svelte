@@ -74,7 +74,7 @@
       <p class="desk-card-meta">
         {#if said}{#key standing}<span class="desk-chip" data-testid="desk-chip">{standing === 'stalled' && watch.stalledSince !== null ? fill(t.silent, { time: workedTime(now - watch.stalledSince) }) : t.state[standing]}</span>{/key}{/if}
         {#if watch.machine && (watch.unreachable || !project)}<span class="desk-card-machine" data-testid="desk-card-machine">{watch.machine}</span>{/if}
-        {#if watch.unreachable}<span class="desk-card-unreachable" title={watch.unreachable} data-testid="desk-card-unreachable">{t.unreachable}</span>{/if}
+        {#if watch.unreachable}<span class="desk-card-unreachable" title={watch.unreachable} data-testid="desk-card-unreachable"><span class="desk-card-off" aria-hidden="true"></span>{t.unreachable}</span>{/if}
         {#if pr}
           <span class="desk-card-pr" data-pr={pr.state} data-checks={pr.checks ?? 'none'} data-testid="desk-card-pr">
             {#if pr.state === 'merged'}<GitMerge size={12} strokeWidth={1.75} />{:else if pr.state === 'closed'}<GitPullRequestClosed size={12} strokeWidth={1.75} />{:else}<GitPullRequest size={12} strokeWidth={1.75} />{/if}

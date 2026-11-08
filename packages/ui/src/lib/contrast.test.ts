@@ -7,8 +7,9 @@ const css = readFileSync(resolve('src/app.css'), 'utf8');
 /**
  * The text tiers of `app.css` against every ground they sit on, in both
  * themes. The subtle tier carries paths, timestamps and hints, so it is text
- * and has to clear WCAG AA (4.5:1) on the raised surface-3 too; the muted tier
- * stays a visible step above it.
+ * and has to clear WCAG AA (4.5:1) on the raised surface-3 too. Round 14 lifts
+ * it one step: 8:1 on every ground, and within 7 L* of the muted tier, while
+ * the three tiers stay at least 4 L* apart so the hierarchy still reads.
  */
 
 function block(selector: string): string {
@@ -36,6 +37,12 @@ function ratio(a: string, b: string): number {
   return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
 }
 
+/** CIE lightness (0 to 100): equal steps look equal, which a contrast ratio near white does not. */
+function lightness(hex: string): number {
+  const y = luminance(hex);
+  return y > 216 / 24389 ? 116 * Math.cbrt(y) - 16 : (24389 / 27) * y;
+}
+
 const GROUNDS = ['--color-background', '--color-frame', '--color-surface', '--color-surface-2', '--color-surface-3'];
 
 describe.each([
@@ -48,8 +55,45 @@ describe.each([
     for (const ground of GROUNDS) expect(ratio(token(scope, tier), token(scope, ground)), `${tier} on ${ground}`).toBeGreaterThanOrEqual(4.5);
   });
 
-  test('muted stays a visible step above subtle', () => {
-    expect(ratio(token(scope, '--color-muted-foreground'), token(scope, '--color-subtle'))).toBeGreaterThanOrEqual(1.25);
+  test('subtle, the faintest informational text, clears 8:1 on every ground', () => {
+    for (const ground of GROUNDS) expect(ratio(token(scope, '--color-subtle'), token(scope, ground)), `subtle on ${ground}`).toBeGreaterThanOrEqual(8);
+  });
+
+  test('the three tiers stay a visible step apart, subtle one step under muted', () => {
+    const [primary, muted, subtle] = ['--color-foreground', '--color-muted-foreground', '--color-subtle'].map((name) => lightness(token(scope, name)));
+    expect(Math.abs(primary! - muted!), 'primary to muted').toBeGreaterThanOrEqual(4);
+    expect(Math.abs(muted! - subtle!), 'muted to subtle').toBeGreaterThanOrEqual(4);
+    // More than one step under muted reads as dim (round 13: 8.6 L* in dark, 8.8 in light).
+    expect(Math.abs(muted! - subtle!), 'muted to subtle').toBeLessThanOrEqual(7);
+  });
+});
+
+/**
+ * The curated palettes carry their own text tiers. Their subtle gets the same
+ * lift as the default: 4.5:1 on every ground the palette draws, and within
+ * 7 L* of its muted tier, so tertiary text does not read dim on any theme.
+ * Where a palette's own foreground sits near 4.5:1 on its raised ground
+ * (light Catppuccin, light Tokyo Night), the tiers keep their hues apart.
+ */
+describe('curated palettes', () => {
+  const ids = [...css.matchAll(/--palette-((?:dark|light)-[\w-]+?)-subtle:/g)].map((match) => match[1]!);
+  const PALETTE_GROUNDS = ['background', 'frame', 'surface', 'surface-low', 'surface-high'];
+
+  test('every curated palette is read', () => {
+    expect(ids.length).toBeGreaterThanOrEqual(11);
+  });
+
+  test.each(ids)('%s: muted and subtle clear 4.5:1 on every ground, subtle within 7 L* of muted', (id) => {
+    const value = (name: string) => new RegExp(`--palette-${id}-${name}:\\s*(#[0-9a-f]{6})\\s*;`, 'i').exec(css)?.[1];
+    const grounds = PALETTE_GROUNDS.map(value).filter((hex): hex is string => !!hex);
+    const [muted, subtle] = [value('muted-foreground'), value('subtle')];
+    expect(grounds.length, 'grounds').toBeGreaterThanOrEqual(4);
+    expect(muted && subtle, 'muted and subtle').toBeTruthy();
+    for (const ground of grounds) {
+      expect(ratio(subtle!, ground), `subtle on ${ground}`).toBeGreaterThanOrEqual(4.5);
+      expect(ratio(muted!, ground), `muted on ${ground}`).toBeGreaterThanOrEqual(4.5);
+    }
+    expect(Math.abs(lightness(muted!) - lightness(subtle!)), 'muted to subtle').toBeLessThanOrEqual(7);
   });
 });
 
