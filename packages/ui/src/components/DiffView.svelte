@@ -83,7 +83,7 @@
   }
 </script>
 
-<div class="diff code-syntax" class:grow data-testid="diff-view" data-path={path} data-language={language ?? 'text'} data-layout={split ? 'split' : 'unified'} use:boxWidth={(value) => (width = value)}>
+<div class="diff code-syntax" class:grow data-testid="diff-view" data-path={path} data-language={language ?? 'text'} data-layout={split ? 'split' : diffPrefs.wrap ? 'wrapped' : 'unified'} use:boxWidth={(value) => (width = value)}>
   {#if !headless}
     <div class="head">
       <span class="path mono ui-label" title={path}>{path}</span>
@@ -132,7 +132,7 @@
   <div class="row gap" data-kind="gap">
     <span class="num"></span>
     <span class="gutter"></span>
-    <span class="text">... {fill(strings.chat.diffHidden, { count: String(hidden) })}</span>
+    <span class="text">{fill(strings.chat.diffHidden, { count: String(hidden) })}</span>
   </div>
 {/snippet}
 
@@ -246,7 +246,7 @@
 
   .num {
     flex: none;
-    width: 34px;
+    width: var(--num-w);
     padding-right: 8px;
     text-align: right;
     color: var(--color-subtle);
@@ -264,16 +264,17 @@
     background: var(--row-bg);
   }
 
-  /* Split halves and a phone wrap, so no line is ever cut at the edge. A wrapped
-     line hangs 2ch in under its first, and only the first carries a number,
-     so a continuation never reads as a line of its own. */
+  /* Split halves and the wrapped layout: a line breaks between words first,
+     inside one only when it alone is wider than the column. A wrapped line
+     hangs 2ch in under its first, and only the first carries a number, so a
+     continuation never reads as a line of its own. */
   .text {
     flex: 1;
     min-width: 0;
     padding: 0 10px 0 2ch;
     text-indent: -2ch;
     white-space: pre-wrap;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
   }
 
   /* A changed line keeps its code's own colours on a light tint, marked by a
@@ -310,25 +311,21 @@
   }
 
   .row.gap .text { text-indent: 0; }
-  /* A phone's column: a narrower number column leaves the code its width. Lines
-     wrap as on desktop, hanging under their first, so nothing hides past the
-     screen's edge; a break falls between words first, inside one only when it
-     alone is wider than the screen. */
+  /* A phone's column: a narrower number column leaves the code its width. */
+  .diff { --num-w: 34px; }
   @media (max-width: 720px) {
-    .num { width: 28px; padding-right: 6px; }
+    .diff { --num-w: 28px; }
+    .num { padding-right: 6px; }
     .gutter { width: 12px; }
-    .text { overflow-wrap: break-word; }
   }
 
-  /* A desktop reads code as code: every line whole on one line, the rows
-     scrolling sideways together under numbers that stay put. The column is
-     as wide as the longest line, so every row's fill reaches the end. Split
-     halves and a phone keep their wrap. */
-  @media (min-width: 721px) {
-    [data-layout='unified'] .rows { display: grid; grid-template-columns: minmax(100%, max-content); align-content: start; overflow-x: auto; }
-    [data-layout='unified'] .text { padding-left: 0; text-indent: 0; white-space: pre; overflow-wrap: normal; }
-    [data-layout='unified'] .num { position: sticky; left: 0; z-index: 1; }
-    [data-layout='unified'] .gutter { position: sticky; left: 34px; z-index: 1; }
-    [data-layout='unified'] .more { justify-self: start; }
-  }
+  /* The default reads code as code, on desktop and phone: every line whole on
+     one line, the rows scrolling sideways together under numbers that stay put,
+     so no token is ever cut. The column is as wide as the longest line, so
+     every row's fill reaches the end. "Wrap lines" and side by side wrap. */
+  [data-layout='unified'] .rows { display: grid; grid-template-columns: minmax(100%, max-content); align-content: start; overflow-x: auto; }
+  [data-layout='unified'] .text { padding-left: 0; text-indent: 0; white-space: pre; overflow-wrap: normal; }
+  [data-layout='unified'] .num { position: sticky; left: 0; z-index: 1; }
+  [data-layout='unified'] .gutter { position: sticky; left: var(--num-w); z-index: 1; }
+  [data-layout='unified'] .more { justify-self: start; }
 </style>

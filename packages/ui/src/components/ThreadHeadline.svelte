@@ -18,6 +18,7 @@
   import { threadState } from '../lib/thread-state';
   import { openExternal } from '../lib/links';
   import { ago, exactTime } from '../lib/format';
+  import { wordFit } from '../lib/word-fit';
   import ProjectTile from './ProjectTile.svelte';
   import ThreadState from './ThreadState.svelte';
 
@@ -29,9 +30,9 @@
    * provider glyph; a flat list (`tile`) shows the project's tile first, since
    * no card names it. `mark` draws the state as the narrow mark
    * (ThreadState.svelte). `ask` (Activity) is one line under the title, which
-   * keeps the row's width. `at` is a time of the row's own
-   * (Activity's since when, a phone's last message): it follows the mark, and
-   * stands alone when there is none.
+   * keeps the row's width. `at` is the row's time (its last message in the
+   * lists, since when in Activity): it follows the mark, and stands alone when
+   * there is none. The title is cut between words (lib/word-fit.ts).
    */
   let {
     owner,
@@ -71,7 +72,7 @@
 
 <span class="headline" class:unread={thread.unread} class:hot={open || kind !== null}>
   {#if tile}<ProjectTile project={tile} store={owner} size={16} />{/if}
-  {#if ask}<span class="lead"><span class="title ui-label">{thread.title}</span>{@render ask()}</span>{:else}<span class="title ui-label">{thread.title}</span>{/if}
+  {#if ask}<span class="lead"><span class="title ui-label" use:wordFit={thread.title}></span>{@render ask()}</span>{:else}<span class="title ui-label" use:wordFit={thread.title}></span>{/if}
   {#if draft}<span class="draft" data-testid="thread-draft" title={strings.sidebar.unsentDraft} aria-label={strings.sidebar.unsentDraft}><PencilLine size={12} /></span>{/if}
   {#if thread.pinned}<span class="pin"><Pin size={12} /></span>{/if}
   {#if pullRequest}
@@ -117,10 +118,14 @@
   .lead > .title {
     flex: none;
   }
+  /* The row's time and quiet marks read one step above the subtle ink: small type needs the contrast. */
+  .at,
+  .headline > :global(.when:not(.state)) {
+    color: var(--color-muted-foreground);
+  }
   .at {
     flex: none;
     font-size: var(--text-xs);
-    color: var(--color-subtle);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
@@ -136,7 +141,7 @@
     flex: none;
   }
   .pin {
-    color: var(--color-subtle);
+    color: var(--color-muted-foreground);
   }
   /* A draft left in the box: full ink, the user's own work waiting. */
   .draft {
@@ -148,7 +153,7 @@
     font-size: var(--text-xs);
     font-weight: 500;
     font-variant-numeric: tabular-nums;
-    color: var(--color-subtle);
+    color: var(--color-muted-foreground);
     cursor: pointer;
   }
   .pr:hover { color: var(--color-foreground); }

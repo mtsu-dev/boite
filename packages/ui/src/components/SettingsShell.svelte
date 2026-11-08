@@ -30,7 +30,7 @@
   import SettingsMachineBar from './SettingsMachineBar.svelte';
   import { untrack } from 'svelte';
   import { holdSettingsCard, revealSettingsCard } from '../lib/settings-flash';
-  import { desktopPage, desktopSettings, groupOf, machinePage, movedTo, ownerOnly, pagesOf, sectionsOf, SETTINGS_GROUPS } from '../lib/settings-tabs';
+  import { desktopPage, desktopSettings, groupOf, machinePage, movedTo, navOf, ownerOnly, sectionsOf, SETTINGS_GROUPS } from '../lib/settings-tabs';
   import { titleSlot } from '../lib/title-slot.svelte';
 
   let { store, onopenthread }: { store: Store; onopenthread?: () => void } = $props();
@@ -166,14 +166,17 @@
   /**
    * The nav's seven entries (`SETTINGS_GROUPS`), the same list a phone shows,
    * each led by the first page of it this window may open, its other pages
-   * listed under it: two levels, the nav and the page, nothing between.
+   * and its merged sections listed under it (`navOf`): two levels, the nav and
+   * the page, nothing between.
    */
   let groups = $derived(SETTINGS_GROUPS
-    .map((ids) => pagesOf(ids[0], store.owner).flatMap((id) => tabs.filter((entry) => entry.id === id)))
+    .map((ids) => navOf(ids[0], store.owner).flatMap((id) => tabs.filter((entry) => entry.id === id)))
     .filter((members) => members.length > 0)
     .map(([lead, ...rest]) => ({ ...lead!, members: rest })));
   /** The pages merged into the shown one as its last sections (`lib/settings-tabs.ts`). */
   let merged = $derived(sectionsOf(tab, store.owner));
+  /** The nav entry lit: a merged section's own once its route asked for it, else the page's. */
+  let current = $derived(merged.includes(store.settingsTab) ? store.settingsTab : tab);
 
   /**
    * What each page is for, said once behind the "i" beside the screen's title
@@ -390,7 +393,7 @@
     <!-- One entry a group, as on a phone, its other pages listed under it. -->
     {#each groups as entry (entry.id)}
       {#each [entry, ...entry.members] as page, index (page.id)}
-        {@const here = !searching && tab === page.id}
+        {@const here = !searching && current === page.id}
         <button
           type="button"
           class="ghost tab"

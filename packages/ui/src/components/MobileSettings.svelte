@@ -317,9 +317,11 @@
   .scope { overflow-wrap: anywhere; margin-top: 0; }
   .phone-page :global(.card) { padding: var(--space-4); }
   .detail :global(.page), .detail :global(.machines-page) { padding: var(--space-4); }
-  /* The header already names the screen: its first card starts close under it, its title's room and no more. */
+  /* The header already names the screen: its first card starts close under it, its title's room and no more;
+     a first card without a title (Voice's status) keeps no room for one. */
   .detail > :global(.page) { padding-top: var(--space-2); }
   .detail > :global(.page > :is(header + .card, .card:first-child, header + .settings-stack > .card:first-child)) { margin-top: var(--card-head); }
+  .detail > :global(.page > :is(header + .card, .card:first-child, header + .settings-stack > .card:first-child):not(:has(> h2:first-child))) { margin-top: 0; }
   .bar { padding: var(--space-4) var(--space-4) 0; }
   /* Diagnostics then the task manager, one scroll: neither page scrolls on its own. */
   .stack > :global(.page), .stack > .merged > :global(.page) { height: auto; overflow: visible; }

@@ -8,6 +8,7 @@
   import { closeSwipedRow, swipeRow } from '../lib/swipe-row';
   import { longPress } from '../lib/long-press';
   import Menu from './Menu.svelte';
+  import CommandWords from './CommandWords.svelte';
   import ThreadHeadline from './ThreadHeadline.svelte';
   import { threadState } from '../lib/thread-state';
   import { feedOperation, type FeedVerb } from '../lib/activity-feed';
@@ -17,7 +18,8 @@
    * A phone's thread row, the desktop row's grammar at a finger's size (ThreadHeadline.svelte): the title gets the
    * width, two lines of it before any ellipsis, its mark and its time at the end of its first line, then where it
    * lives under it when the list says so. The pull request waits in the thread, the pin under the slide. `compact` is
-   * the flat lists' form (Recent, Activity): the project's tile first. Activity (the phone's screen) is the whole
+   * the flat lists' form (Recent, Activity): the project's tile first, unless the line under the title names the
+   * project in words. Activity (the phone's screen) is the whole
    * title on the row's width with `reason`, what the thread wants, one line under it; a command it asks to run
    * reads in full in a mono block under them. A sub-agent with the same ask is a line of its own (`helpers`), one
    * event per row, as on the desktop; `verb` names what a Needs you row asks, a button after the content at its text
@@ -59,7 +61,7 @@
 
 {#snippet why()}<span class="why" data-testid="mobile-row-reason"><span class="text">{reason}</span></span>{/snippet}
 
-<div class="row" out:collapseRow|global={() => !owner.threads.some(entry => entry.id === thread.id)} class:reason={reason !== undefined} class:tiled={compact && project !== undefined} data-testid="mobile-row" data-thread-id={thread.id} data-machine-id={machine.id}>
+<div class="row" out:collapseRow|global={() => !owner.threads.some(entry => entry.id === thread.id)} class:reason={reason !== undefined} class:tiled={compact && project !== undefined && where === undefined} data-testid="mobile-row" data-thread-id={thread.id} data-machine-id={machine.id}>
   <!-- Under the row, for a finger that slides it left; the long press offers the same to everyone else. -->
   {#if pin || archive}
     <div class="swipe-actions" data-swipe-actions aria-hidden="true">
@@ -74,10 +76,10 @@
       <!-- One line for every list (ThreadHeadline.svelte): the title, then the mark in the row's one slot and the time
            after it; in Activity what is asked is one line under the title. The project's header says how many need
            the user, so no row repeats the word. -->
-      <ThreadHeadline {owner} {thread} {now} tile={compact ? project : undefined} mark ask={reason === undefined ? undefined : why}
+      <ThreadHeadline {owner} {thread} {now} tile={compact && where === undefined ? project : undefined} mark ask={reason === undefined ? undefined : why}
         at={reason !== undefined ? at : form !== null ? thread.lastUserMessageAt ?? thread.createdAt : undefined} />
       {#if reason !== undefined}
-        {#if operation}<code class="operation" class:long data-testid="thread-operation">{operation}</code>{/if}
+        {#if operation}<code class="operation" class:long data-testid="thread-operation"><CommandWords text={operation} /></code>{/if}
         {#each helpers as helper (helper.thread.id)}
           <span class="why helper" data-testid="thread-helper" data-thread-id={helper.thread.id}><span class="text"><span class="who">{helper.thread.title}</span> <span class="sep" aria-hidden="true">·</span> {helper.reason}</span></span>
         {/each}
@@ -119,7 +121,7 @@
   /* Activity: what is asked, one line under the title; the row's tooltip and the thread hold the whole. */
   .why .text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* The command as it will run: mono, wrapped, every line; too long, its first lines and Review. */
-  .operation { display: block; padding: 6px 8px; border-radius: var(--radius-sm); background: var(--color-code-background); color: var(--color-code-foreground); font-family: var(--font-mono); font-size: var(--text-xs); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .operation { display: block; padding: 6px 8px; border-radius: var(--radius-sm); background: var(--color-code-background); color: var(--color-code-foreground); font-family: var(--font-mono); font-size: var(--text-xs); line-height: 1.5; white-space: pre-wrap; overflow-x: auto; scrollbar-width: none; }
   .operation.long { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; line-clamp: 6; overflow: hidden; }
   /* The verb follows what it answers, at the text's edge under it, one width on every row and a finger's height: the
      title keeps the row's width up to its mark and time, which stand in one column down the page. */

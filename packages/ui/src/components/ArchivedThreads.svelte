@@ -227,7 +227,7 @@
     grid-row: 1;
     justify-self: end;
     font-size: var(--text-xs);
-    color: var(--color-subtle);
+    color: var(--color-muted-foreground);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }

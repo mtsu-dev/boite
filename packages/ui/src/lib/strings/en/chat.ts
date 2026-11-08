@@ -79,9 +79,11 @@ export const strings = {
     imageUnavailable: 'This picture could not be loaded. Scroll back to it to retry.',
     diffHidden: '{count} unchanged lines',
     diffIgnoreWhitespace: 'Ignore whitespace changes',
-    diffSideBySide: 'Old and new side by side',
-    /** The diff's options menu: whitespace and the side by side layout. */
+    /** The diff's layout menu: its trigger names the layout in use. */
     diffView: 'View',
+    diffNoWrap: 'No wrap',
+    diffWrap: 'Wrap lines',
+    diffSplit: 'Side by side',
     /** A diff whose every change was spaces, with whitespace ignored. */
     diffWhitespaceOnly: 'Only whitespace changed.',
     diffShowAll: 'Show all {count} lines',

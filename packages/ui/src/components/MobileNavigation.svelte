@@ -282,8 +282,9 @@
   {/if}
   {#if !recover && !chatting && experimentOn('whip')}<WhipButton mobile />{/if}
   {#if narrow.current && ContactRequestNotice && contactsShown(store)}<ContactRequestNotice {store} />{/if}
-  <!-- One way to create per screen: a page (Bots, Contacts, Settings) owns its own. -->
-  {#if tabbed && !recover && store.page === 'chat' && !(searching && searchable)}
+  <!-- One way to create per screen: a page (Bots, Contacts, Settings) owns its own. Activity answers what is
+       asked, so it creates nothing; the thread list's "+" is one tab away. -->
+  {#if tabbed && !recover && store.page === 'chat' && listScreen === 'threads' && !(searching && searchable)}
     <!-- A new conversation, neutral at the header's end as on the desktop list. -->
     <button class="ghost icon new" data-testid="mobile-new" aria-label={strings.sidebar.newThread} title={strings.sidebar.newThread} disabled={draftOwner.connection !== 'ready'} onclick={() => void newThread()}><Plus size={20} /></button>
   {:else if lent?.create && !(searching && searchable)}

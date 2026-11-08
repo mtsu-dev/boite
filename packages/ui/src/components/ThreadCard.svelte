@@ -37,7 +37,7 @@
     hidden?: boolean;
     /** The quick action puts finished work in Done. */
     showDone?: boolean;
-    /** Recent's flat list: the project's tile leads the row, since no card names it. */
+    /** Recent's flat list: the project's tile leads the row while no place line names the project (`where`). */
     compact?: boolean;
     /** Activity's row (ActivityRow.svelte): since when, at the end of the title's line, before `action`. */
     at?: number;
@@ -144,7 +144,10 @@
       onclick={() => void workspace.select(owner, thread.id)}
       ondblclick={rename}
     >
-      <ThreadHeadline {owner} {thread} {now} {open} tile={compact ? project : undefined} {pullRequest} mark {ask} />
+      <!-- Every list row ends its title's line the same way: the mark when there is one, then the time of the
+           last message. Activity keeps its own since when at the line's end (feed-side). -->
+      <ThreadHeadline {owner} {thread} {now} {open} tile={compact && !where ? project : undefined} {pullRequest} mark {ask}
+        at={detail ? undefined : thread.lastUserMessageAt ?? thread.createdAt} />
       {#if detail}
         <!-- Activity: who asks (the tile and the title, two lines of it) and what, on one line when it fits; the
              mark, the time and the one action end that line; a command runs whole under it. -->
@@ -178,7 +181,7 @@
     --pad-x: 8px;
     position: relative;
     border-radius: var(--radius-md);
-    font-size: 13.5px;
+    font-size: var(--text-body);
     transition: background var(--dur-2) var(--ease-out-quint);
   }
   .thread:hover {
@@ -221,8 +224,8 @@
     background: transparent;
     container: thread-row / inline-size;
   }
-  /* The title wins. At rest a row, the open one included, carries one mark at most: the user's turn as its dot,
-     work as its ring, a failure as its word. The pin, a draft, the pull request, the time and news show under the
+  /* The title wins. At rest a row, the open one included, carries one mark at most (the user's turn as its dot,
+     work as its ring, a failure as its word), then its time. The pin, a draft and the pull request show under the
      pointer or the keyboard (a click's focus does not count: the row just opened would keep them), and stay in
      the tooltip; how long work has run lives in the thread. */
   .thread:not(:hover, :has(:focus-visible)) .row :global(.headline > :is(.draft, .pin, .pr)),
@@ -240,11 +243,11 @@
   /* The mark centred on the title's first 20 px line, like the time and the action beside it. */
   .feed .row :global(.headline > .when) { height: 20px; }
   .feed-side { position: absolute; top: 0; right: 0; display: flex; align-items: center; gap: 8px; height: calc(20px + 2 * var(--feed-pad)); padding-right: var(--pad-x); }
-  .feed-side time { min-width: var(--feed-time); line-height: 20px; font-size: var(--text-xs); color: var(--color-subtle); text-align: end; font-variant-numeric: tabular-nums; }
+  .feed-side time { min-width: var(--feed-time); line-height: 20px; font-size: var(--text-xs); color: var(--color-muted-foreground); text-align: end; font-variant-numeric: tabular-nums; }
   /* The menu takes the time's place, never the action's. */
   .feed .actions { top: calc(var(--feed-pad) + 10px - var(--act) / 2); right: calc(var(--pad-x) + var(--feed-verb) + 8px); }
-  /* Recent's second line, on the title's edge: where the row lives, when the tile alone may not say it. */
-  .where { margin-top: -3px; padding-left: 26px; overflow: hidden; font-size: var(--text-xs); color: var(--color-muted-foreground); text-align: start; text-overflow: ellipsis; white-space: nowrap; }
+  /* Recent's second line, on the title's edge: where the row lives, in words, so no tile repeats it. */
+  .where { margin-top: -3px; overflow: hidden; font-size: var(--text-xs); color: var(--color-muted-foreground); text-align: start; text-overflow: ellipsis; white-space: nowrap; }
   /* The Recent list: a step wider inside, the project's tile first. */
   .compact { --pad-x: 10px; }
   .compact :global(.headline) { gap: 10px; }
@@ -287,6 +290,8 @@
   .thread:not(.feed):is(:hover, :focus-within) .row > :global(.headline) { margin-right: calc(var(--act-room) + 4px - var(--pad-x)); }
   .thread:is(:hover, :focus-within) :global(.headline .when:not(.state)),
   .thread:is(:hover, :focus-within) .feed-side time { visibility: hidden; }
+  /* The time leaves its room to the title rather than to an empty slot. */
+  .thread:not(.feed):is(:hover, :focus-within) :global(.headline > .at) { display: none; }
   .rename {
     width: 100%;
     height: 32px;

@@ -134,8 +134,11 @@ test('the header holds the search, opened in place, and the new thread; the bar 
   const list = () => document.querySelector('[data-testid=mobile-list]')?.getAttribute('aria-label');
   const id = (testid: string) => document.querySelector<HTMLElement>(`[data-testid=${testid}]`);
   expect(list()).toBe('Activity');
+  // Activity answers what is asked: it creates nothing, the thread list's "+" is one tab away.
+  expect(id('mobile-new')).toBeNull();
   id('mobile-conversations')!.click(); await settle();
   expect(list()).toBe('Threads');
+  expect(id('mobile-new')).not.toBeNull();
   // The header names the list's two views, the one on marked, a press switching them; the display menu is beside them.
   const views = () => [...id('mobile-view-switch')!.querySelectorAll('[role=radio]')].map(side => `${side.textContent?.trim()}:${side.getAttribute('aria-checked')}`);
   expect(views()).toEqual(['Projects:true', 'Recent:false']);

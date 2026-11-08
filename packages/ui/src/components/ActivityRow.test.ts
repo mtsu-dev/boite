@@ -51,6 +51,8 @@ test('a permission reads whole under its row, its sub-agent\'s question is a row
   expect(document.querySelector('[data-testid=thread-reason]')?.getAttribute('title')).toBe('Wants to run:');
   // The command whole, both lines, never cut to its first.
   expect(document.querySelector('[data-testid=thread-operation]')?.textContent).toBe(command);
+  // It wraps at spaces only: the branch name is one unbreakable word, never cut at a hyphen.
+  expect([...document.querySelectorAll('[data-testid=thread-operation] .word')].map(word => word.textContent)).toContain('feature/a-branch-name-long-enough-to-wrap-in-the-row');
   expect(document.querySelector('[data-testid=thread-helper]')).toBeNull();
   const verbs = document.querySelectorAll<HTMLButtonElement>('[data-testid=thread-verb]');
   expect([...verbs].map(verb => [verb.textContent?.trim(), verb.dataset.verb])).toEqual([['Allow', 'allow']]);

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { SETTINGS_GROUPS, SETTINGS_TABS, desktopPage, groupOf, movedTo, pagesOf, phonePage, sectionsOf, viewOf } from './settings-tabs';
+import { SETTINGS_GROUPS, SETTINGS_TABS, desktopPage, groupOf, movedTo, navOf, pagesOf, phonePage, sectionsOf, viewOf } from './settings-tabs';
 
 describe('the merged settings', () => {
   test('seven entries hold every page once, the same list on desktop and phone', () => {
@@ -15,9 +15,15 @@ describe('the merged settings', () => {
     expect(groupOf('resources')).toBe('advanced');
   });
 
-  test('the owner\'s desktop shows ten pages, the small ones as sections of their family; a phone keeps Usage and Experiments as pages', () => {
+  test('the owner\'s desktop shows nine pages, the small ones as sections of their family; a phone keeps Voice, Usage and Experiments as pages', () => {
     const pages = SETTINGS_GROUPS.flatMap((group) => pagesOf(group[0], true));
-    expect(pages).toEqual(['general', 'keyboard', 'voice', 'appearance', 'accounts', 'brain', 'limits', 'machines', 'advanced', 'diagnostics']);
+    expect(pages).toEqual(['general', 'keyboard', 'appearance', 'accounts', 'brain', 'limits', 'machines', 'advanced', 'diagnostics']);
+    // Round 16: Voice alone on a page was three cards on an empty screen; it closes General.
+    expect(sectionsOf('general', true)).toEqual(['voice']);
+    expect(desktopPage('voice', true)).toBe('general');
+    expect(desktopPage('voice', false)).toBe('general');
+    expect(phonePage('voice', null, true)).toBe('voice');
+    expect(phonePage('voice', null, false)).toBe('voice');
     expect(sectionsOf('limits', true)).toEqual(['usage']);
     expect(sectionsOf('accounts', true)).toEqual(['plugins']);
     expect(sectionsOf('advanced', true)).toEqual(['experiments']);
@@ -57,9 +63,19 @@ describe('the merged settings', () => {
   });
 
   test('a page that is not merged opens itself', () => {
-    for (const tab of ['keyboard', 'voice', 'limits', 'machines'] as const) expect(desktopPage(tab, true)).toBe(tab);
+    for (const tab of ['keyboard', 'limits', 'machines'] as const) expect(desktopPage(tab, true)).toBe(tab);
     // A desktop has no page between the nav and a page: Home, or a page this window may not open, shows General.
     expect(desktopPage('home', true)).toBe('general');
     expect(desktopPage('resources', false)).toBe('general');
+  });
+
+  test('the desktop nav still names a section merged into its entry\'s page, in the phone\'s order, and leaves out one merged deeper', () => {
+    expect(navOf('general', true)).toEqual(['general', 'keyboard', 'voice']);
+    expect(navOf('limits', true)).toEqual(['limits', 'usage']);
+    expect(navOf('accounts', true)).toEqual(['accounts', 'plugins']);
+    expect(navOf('advanced', true)).toEqual(['advanced', 'experiments', 'diagnostics']);
+    // A paired device: no Diagnostics, so the task manager is its own page; Plugins is the owner's.
+    expect(navOf('advanced', false)).toEqual(['advanced', 'experiments', 'task-manager']);
+    expect(navOf('accounts', false)).toEqual([]);
   });
 });

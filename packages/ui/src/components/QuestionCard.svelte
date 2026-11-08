@@ -311,8 +311,7 @@
     border-left-style: dashed;
   }
 
-  /* At the top of the composer, on the card's own surface: the dock draws
-     only a hairline under it (Composer's `.decision-card`). */
+  /* At the top of the composer, inside the dock's raised tile (Composer's `.decision-card`). */
   .question.docked {
     border: none;
     border-radius: 0;

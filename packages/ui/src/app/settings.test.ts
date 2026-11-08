@@ -157,3 +157,18 @@ test('a desktop has two levels: the gear opens the nav, its search and the first
   query<HTMLButtonElement>('[data-testid=settings-back]').click();
   await waitFor(() => document.querySelector('[data-testid=settings]') === null);
 });
+
+test('Voice closes General on a desktop and keeps its nav entry, which lands on its section and lights', async ({ app: _app }) => {
+  query<HTMLButtonElement>('[data-testid=nav-settings]').click();
+  await waitFor(() => document.querySelector('[data-testid=settings-tab-voice]') !== null);
+  expect(query('[data-testid=settings-tab-voice]').classList.contains('sub')).toBe(true);
+  query<HTMLButtonElement>('[data-testid=settings-tab-voice]').click();
+  await waitFor(() => document.querySelector('#settings-voice [data-testid=voice-settings]') !== null);
+  // One page: General's cards above, Voice its last section.
+  expect(query('[data-testid=settings-crumb] h1').textContent?.trim()).toBe('General');
+  expect(document.querySelector('#settings-conversations')).not.toBeNull();
+  expect(query('[data-testid=settings-tab-voice]').getAttribute('aria-current')).toBe('page');
+  expect(query('[data-testid=settings-tab-general]').getAttribute('aria-current')).toBeNull();
+  query<HTMLButtonElement>('[data-testid=settings-back]').click();
+  await waitFor(() => document.querySelector('[data-testid=settings]') === null);
+});

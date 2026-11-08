@@ -32,10 +32,16 @@ export function shownMode(mode: PermissionMode, provider: ProviderSummary | null
   return 'default';
 }
 
-/** The chip's word for the mode, as this agent actually applies it. */
+/** The plain line under the mode's word in its menu, as this agent actually applies it. */
 export function modeLabel(mode: PermissionMode, provider: ProviderSummary | null | undefined): string {
   if (mode === 'default' && provider?.protocol === 'codex-appserver') return strings.permissionModeCodex.default;
   return strings.permissionMode[mode];
+}
+
+/** The chip's one word for the mode at rest ("Ask"), as this agent actually applies it. */
+export function modeWord(mode: PermissionMode, provider: ProviderSummary | null | undefined): string {
+  if (mode === 'default' && provider?.protocol === 'codex-appserver') return strings.permissionModeShort.codexDefault;
+  return strings.permissionModeShort[mode];
 }
 
 /** The one sentence saying what the mode lets the agent do without asking. */

@@ -5,6 +5,7 @@ import { FONT_KEY, MONO_KEY } from '../lib/fonts';
 import type { Store } from '../lib/store.svelte';
 import { chatPrefs, readChatPrefs } from '../lib/chat-prefs.svelte';
 import { phoneWidth } from '../test/phone-width';
+import { setLocaleSetting } from '../lib/i18n.svelte';
 
 let running: Record<string, unknown> | null = null;
 
@@ -67,8 +68,6 @@ test('a desktop shows every palette as its picture with its name, the one in use
   expect(tiles().length).toBeGreaterThan(2);
   expect(tiles().every((tile) => tile.getAttribute('data-testid')!.startsWith('palette-') && tile.querySelector('.tile') !== null && tile.textContent!.trim() !== '')).toBe(true);
   expect(tiles().filter((tile) => tile.getAttribute('aria-pressed') === 'true').map((tile) => tile.getAttribute('data-testid'))).toEqual(['palette-default']);
-  // No selector to open: the pictures are the choice.
-  expect(document.querySelector('[data-testid=palette-current-list]')).toBeNull();
 });
 
 for (const phone of [false, true]) {
@@ -77,10 +76,9 @@ for (const phone of [false, true]) {
     try {
       running = mount(AppearancePage, { target: document.body, props: { store: { owner: true } as Store, phone } });
       flushSync();
-      if (phone) { document.querySelector<HTMLButtonElement>('[data-testid=palette-current]')!.click(); flushSync(); }
-      const box = phone ? '[data-testid=palette-current-list]' : '[data-testid=palette-current]';
-      const shown = () => [...document.querySelectorAll(`${box} :is([aria-pressed], [role=menuitemradio])`)].map((tile) => tile.getAttribute('data-testid'));
-      const all = () => document.querySelector<HTMLButtonElement>(`[data-testid=${phone ? 'palette-current-all' : 'palette-all'}]`);
+      // The same pictures on a phone, in sight, no sheet to open first.
+      const shown = () => [...document.querySelectorAll('[data-testid=palette-current] [aria-pressed]')].map((tile) => tile.getAttribute('data-testid'));
+      const all = () => document.querySelector<HTMLButtonElement>('[data-testid=palette-all]');
       expect(shown()).toEqual(['palette-default', 'palette-oled', 'palette-catppuccin', 'palette-tokyo-night']);
       expect(all()?.textContent?.trim()).toBe('All themes');
       all()!.click();
@@ -95,19 +93,16 @@ for (const phone of [false, true]) {
 }
 
 for (const phone of [false, true]) {
-  test(`a face reads the same on a ${phone ? 'phone' : 'desktop'}, and a phone's palette too: the one in use as a row, a palette by its preview, a face by its name drawn in it`, () => {
+  test(`a face reads the same on a ${phone ? 'phone' : 'desktop'}: the one in use as a row, its name drawn in it, the list each by its own face`, () => {
     const restore = phone ? phoneWidth() : () => {};
     try {
       running = mount(AppearancePage, { target: document.body, props: { store: { owner: true } as Store, phone } });
       flushSync();
-      for (const [trigger, option] of phone ? [['palette-current', 'palette-'], ['font-current', 'font-']] as const : [['font-current', 'font-']] as const) {
+      for (const [trigger, option] of [['font-current', 'font-'], ['font-mono-current', 'font-mono-']] as const) {
         const head = document.querySelector<HTMLButtonElement>(`[data-testid=${trigger}]`)!;
         // Shut, the row is the whole choice, no tiles beside it: a palette shows its preview, a face only its name,
         // set in that face (no "Il1 O0 rn" specimen).
-        const face = trigger === 'font-current';
-        const shows = (row: Element) => face
-          ? row.querySelector('.preview') === null && (row.querySelector<HTMLElement>('.name')?.style.fontFamily ?? '').startsWith('var(--face-')
-          : row.querySelector('.preview')?.childElementCount === 1;
+        const shows = (row: Element) => row.querySelector('.preview') === null && (row.querySelector<HTMLElement>('.name')?.style.fontFamily ?? '').startsWith('var(--face-');
         expect(shows(head)).toBe(true);
         expect(document.querySelector(`[data-testid=${trigger}-list]`)).toBeNull();
         head.click();
@@ -141,31 +136,50 @@ test('picking a face from its list applies it, names it in the row and gives the
   expect(document.activeElement).toBe(head);
 });
 
-test('a phone reads each short choice as its label and value on one row, the row opening the list; a desktop keeps the segments', () => {
+test('a phone shows each short choice in place as a desktop does: every option of language and theme in sight, the palettes as pictures, the one in use checked; only a face opens a list', () => {
   const restore = phoneWidth();
   try {
     running = mount(AppearancePage, { target: document.body, props: { store: { owner: true } as Store, phone: true } });
     flushSync();
-    // No segment on a phone: language and theme are rows like the faces and the palette.
-    expect(document.querySelector('[data-testid=theme-dark]')).toBeNull();
-    expect(document.querySelector('[data-testid=locale-system]')).toBeNull();
-    for (const trigger of ['locale-current', 'theme-current', 'palette-current', 'font-current', 'font-mono-current']) {
+    // Round 16: a value row hid three or four options behind a sheet; the segments show them all, the one in use lit.
+    for (const [group, options] of [['locale-current', ['locale-system', 'locale-en', 'locale-fr']], ['theme-current', ['theme-system', 'theme-light', 'theme-dark']]] as const) {
+      const box = document.querySelector(`[data-testid=${group}]`)!;
+      expect(box.classList.contains('segmented'), group).toBe(true);
+      expect(box.closest('.value'), group).toBeNull();
+      for (const option of options) expect(box.querySelector(`[data-testid=${option}]`), option).not.toBeNull();
+      expect(box.querySelectorAll('[aria-pressed=true]'), group).toHaveLength(1);
+    }
+    document.querySelector<HTMLButtonElement>('[data-testid=theme-light]')!.click();
+    flushSync();
+    expect(localStorage.getItem('boite.theme')).toBe('light');
+    expect(pressed('theme-light')).toBe('true');
+    expect(pressed('theme-system')).toBe('false');
+    // The palettes: pictures in their own colours, the one in use ringed and checked.
+    const grid = document.querySelector('[data-testid=palette-current]')!;
+    expect(grid.getAttribute('role')).toBe('group');
+    const on = [...grid.querySelectorAll('[aria-pressed=true]')];
+    expect(on.map((tile) => tile.getAttribute('data-testid'))).toEqual(['palette-default']);
+    expect(on[0]!.querySelector('.picked')).not.toBeNull();
+    expect(grid.querySelectorAll('.picked')).toHaveLength(1);
+    // A face, a longer list, stays one row in its own face that opens the others.
+    for (const trigger of ['font-current', 'font-mono-current']) {
       const head = document.querySelector<HTMLButtonElement>(`[data-testid=${trigger}]`)!;
       expect(head.closest('.choice-select')!.classList.contains('row'), trigger).toBe(true);
       expect(head.closest('.value'), trigger).not.toBeNull();
     }
-    const theme = document.querySelector<HTMLButtonElement>('[data-testid=theme-current]')!;
-    theme.click();
-    flushSync();
-    document.querySelector<HTMLButtonElement>('[data-testid=theme-current-list] [data-testid=theme-light]')!.click();
-    flushSync();
-    expect(localStorage.getItem('boite.theme')).toBe('light');
-    expect(theme.textContent).toContain('Light');
-    expect(theme.getAttribute('aria-expanded')).toBe('false');
   } finally { restore(); }
-  unmount(running!, { outro: false });
+});
+
+test('the language segment lights the language set elsewhere (another window, a script), not the one it opened on', async () => {
   running = mount(AppearancePage, { target: document.body, props: { store: { owner: true } as Store } });
   flushSync();
-  expect(pressed('theme-light')).toBe('true');
-  expect(document.querySelector('[data-testid=theme-current]')).toBeNull();
+  expect(pressed('locale-system')).toBe('true');
+  try {
+    await setLocaleSetting('en');
+    flushSync();
+    expect(pressed('locale-en')).toBe('true');
+    expect(pressed('locale-system')).toBe('false');
+  } finally { await setLocaleSetting('system'); }
+  flushSync();
+  expect(pressed('locale-system')).toBe('true');
 });

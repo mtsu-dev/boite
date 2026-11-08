@@ -511,7 +511,7 @@
     text-overflow: ellipsis;
     text-align: left;
     white-space: nowrap;
-    font-size: 13.5px;
+    font-size: var(--text-body);
     font-weight: 620;
     letter-spacing: -0.01em;
     color: var(--color-foreground);
@@ -567,11 +567,11 @@
     white-space: nowrap;
     font-size: var(--text-xs);
     font-weight: 400;
-    color: var(--color-subtle);
+    color: var(--color-muted-foreground);
   }
   /* The rows under it carry no machine icon, so the header says the machine is unreachable in words ("Builder
      offline"), a step brighter than a plain machine name; its rows read dimmed (ThreadCard.svelte). */
-  .host.offline { color: var(--color-muted-foreground); }
+  .host.offline { color: var(--color-foreground); }
   .head :global(.counters) { margin-right: 2px; transition: margin-right var(--dur-2) var(--ease-out-quint); }
   /* The menu appears at the right end on hover and the counters step left of it, as a row's state does. */
   .project-actions {
@@ -588,7 +588,7 @@
   .head:focus-within :global(.counters) {
     margin-right: 28px;
   }
-  /* The folded quiet threads' one line: a row's height, the subtle ink of what is not news, on the titles' edge. */
+  /* The folded quiet threads' one line: a row's height, the list's quiet ink, on the titles' edge. */
   .more-threads {
     display: flex;
     width: 100%;
@@ -597,14 +597,14 @@
     padding: 0 10px;
     justify-content: flex-start;
     border-radius: var(--radius-md);
-    color: var(--color-subtle);
+    color: var(--color-muted-foreground);
     font-size: var(--text-sm);
     font-weight: 400;
   }
-  .more-threads:hover:not(:disabled) { color: var(--color-muted-foreground); }
+  .more-threads:hover:not(:disabled) { color: var(--color-foreground); }
   .none {
     padding: 4px 10px;
-    color: var(--color-subtle);
+    color: var(--color-muted-foreground);
     font-size: var(--text-sm);
   }
   @keyframes leave {

@@ -5,6 +5,7 @@
   import { fill, strings } from '../lib/strings';
   import { describeTool, permissionSentence } from '../lib/tool-summary';
   import CodeText from './CodeText.svelte';
+  import CommandWords from './CommandWords.svelte';
   import Deferred, { parts } from './Deferred.svelte';
   import InfoTip from './InfoTip.svelte';
   import DecisionHead from './DecisionHead.svelte';
@@ -127,7 +128,7 @@
 
   {#if decision === null}
     {#if subjectBlock}
-      <pre class="mono subject" data-testid="permission-subject">{subjectBlock}</pre>
+      <pre class="mono subject" data-testid="permission-subject"><CommandWords text={subjectBlock} /></pre>
     {/if}
     {#if described.change}
       {@const change = described.change}
@@ -226,7 +227,6 @@
     max-height: 200px;
     overflow: auto;
     white-space: pre-wrap;
-    word-break: break-word;
   }
 
   .subject { color: var(--color-foreground); }
@@ -245,7 +245,7 @@
     gap: 6px;
   }
 
-  /* At the top of the composer, the one raised card in it: its edge, surface
+  /* At the top of the composer, the one raised tile in it: its fill, corners
      and height budget are the dock's (Composer's `.decision-card`). Its head
      stays put and the subject under it scrolls, so Deny and Allow are always
      in sight however long the command. */
@@ -272,7 +272,7 @@
   /* The command belongs to the ask's line: right under its title, starting
      where the title's words do (past the dot), with no fill and no edge of
      its own. A long one scrolls sideways, its whole text behind the "i". */
-  .docked pre { --scroll-edge-ground: var(--color-composer-surface); max-height: 120px; margin-top: -6px; padding: 0 0 0 14px; border: none; border-radius: 0; background: none; font-size: var(--text-meta); line-height: 20px; white-space: pre; word-break: normal; overflow: auto; scrollbar-width: none; }
+  .docked pre { --scroll-edge-ground: var(--decision-fill, var(--color-composer-surface)); max-height: 120px; margin-top: -6px; padding: 0 0 0 14px; border: none; border-radius: 0; background: none; font-size: var(--text-meta); line-height: 20px; white-space: pre; word-break: normal; overflow: auto; scrollbar-width: none; }
   .choice { flex: none; height: 30px; gap: 8px; padding: 0 12px; border-radius: var(--radius-md); font-size: var(--text-sm); font-weight: 600; }
   /* Neutral ink, never the accent: the accent stays for send. */
   .choice.allow { background: var(--color-foreground); color: var(--color-background); }

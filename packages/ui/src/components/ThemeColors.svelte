@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, tick, untrack } from 'svelte';
-  import { LayoutGrid, RotateCcw, SlidersHorizontal } from '@lucide/svelte';
+  import { Check, LayoutGrid, RotateCcw, SlidersHorizontal } from '@lucide/svelte';
   import { curated } from '../lib/curated';
   import { ACCENT_PRESETS, readAccent, setAccent } from '../lib/accent';
   import { accentHex, contrast, editPalette, paletteTokens, improvePaletteContrast, type ColorRole, type Palette } from '../lib/color-math';
@@ -8,16 +8,14 @@
   import { colorMode, COLORS_EVENT, hasCustomColors, PALETTES, presetPalette, readPalette, resetColors, setPalette, type ColorMode, type PaletteId } from '../lib/theme-colors';
   import { fill, strings } from '../lib/strings';
   import { tenth } from '../lib/format';
-  import ChoiceSelect from './ChoiceSelect.svelte';
   import ColorPicker from './ColorPicker.svelte';
   import InfoTip from './InfoTip.svelte';
 
   /**
-   * A phone picks from a sheet; a desktop shows the palettes as their pictures,
-   * under the row. Both put the one in use and the first others in front
-   * (`FRONT` in all); "All themes" opens the rest.
+   * The palettes as their pictures under the row, on a phone as on a desktop:
+   * a short list is picked in sight, not from a sheet. The one in use and the
+   * first others stand in front (`FRONT` in all); "All themes" opens the rest.
    */
-  let { phone = false }: { phone?: boolean } = $props();
   const FRONT = 4;
   let everything = $state(false);
   let grid = $state<HTMLElement>();
@@ -87,12 +85,13 @@
   function pickAccent(hue: number) { editingRole = undefined; undo = { ...palette }; setAccent(hue); follow(); }
 </script>
 
-<!-- A palette as a small window drawn in its own colours: the chrome, the page with three lines of text, its accent.
-     Edited colours draw what is in use. -->
-{#snippet tile(id: PaletteId | undefined)}
-  {@const colors = (id && presets.find((preset) => preset.id === id)?.palette) || palette}
-  <span class="tile" style:--tile-frame={colors.frame} style:--tile-page={colors.background} style:--tile-ink={colors.foreground} style:--tile-accent={colors.accent}>
-    <span class="chrome"></span><span class="lines"><i></i><i></i><i></i></span><span class="accent"></span>
+<!-- A palette as a small window drawn in its own five colours: the chrome, the page with lines of its text,
+     a composer on its surface with its accent's send button. Edited colours draw what is in use. -->
+{#snippet tile(id: PaletteId)}
+  {@const colors = presets.find((preset) => preset.id === id)?.palette ?? palette}
+  <span class="tile" style:--tile-frame={colors.frame} style:--tile-page={colors.background} style:--tile-surface={colors.surface} style:--tile-ink={colors.foreground} style:--tile-accent={colors.accent}>
+    <span class="chrome"></span>
+    <span class="body"><span class="lines"><i></i><i></i><i></i></span><span class="composer"><span class="accent"></span></span></span>
   </span>
 {/snippet}
 
@@ -106,31 +105,25 @@
 {/snippet}
 
 <div class="colors" data-testid="theme-colors">
-  <!-- A phone reads the palette in use as its row's value, the row opening the sheet; what edits it goes under. -->
-  <div class="heading" class:value={phone}>
+  <div class="heading">
     <span class="text ui-label-box"><span class="ui-label">{strings.settings.colors.title}</span><InfoTip topic={strings.settings.colors.title} text={strings.settings.colors.hint} /></span>
-    {#if phone}
-      <ChoiceSelect row label={strings.settings.colors.palette} options={choices} value={matching} fallback={strings.settings.colors.custom} onpick={pick} preview={tile} testid="palette-current" optionTestid={(id) => `palette-${id}`} front={FRONT} all={strings.settings.colors.allThemes} />
-    {:else}
-      {@render edits()}
+    {@render edits()}
+  </div>
+  <!-- Each palette by its picture, its name under it, the one in use checked; edited colours check none. -->
+  <div class="palettes" role="group" aria-label={strings.settings.colors.palette} data-testid="palette-current" bind:this={grid}>
+    {#each front as choice (choice.id)}
+      <button type="button" class="palette" aria-pressed={choice.id === matching} data-testid="palette-{choice.id}" onclick={() => pick(choice.id)}>
+        {@render tile(choice.id)}
+        {#if choice.id === matching}<span class="picked" aria-hidden="true"><Check size={12} strokeWidth={2.5} /></span>{/if}
+        <span class="ui-label">{choice.name}</span>
+      </button>
+    {/each}
+    {#if front.length < choices.length}
+      <button type="button" class="palette all" aria-expanded="false" data-testid="palette-all" onclick={() => void openAll()}>
+        <span class="tile more" aria-hidden="true"><LayoutGrid size={16} strokeWidth={1.75} /></span><span class="ui-label">{strings.settings.colors.allThemes}</span>
+      </button>
     {/if}
   </div>
-  {#if phone}{@render edits()}{/if}
-  {#if !phone}
-    <!-- Each palette by its picture, its name under it; edited colours check none. -->
-    <div class="palettes" role="group" aria-label={strings.settings.colors.palette} data-testid="palette-current" bind:this={grid}>
-      {#each front as choice (choice.id)}
-        <button type="button" class="palette" aria-pressed={choice.id === matching} data-testid="palette-{choice.id}" onclick={() => pick(choice.id)}>
-          {@render tile(choice.id)}<span class="ui-label">{choice.name}</span>
-        </button>
-      {/each}
-      {#if front.length < choices.length}
-        <button type="button" class="palette all" aria-expanded="false" data-testid="palette-all" onclick={() => void openAll()}>
-          <span class="tile more" aria-hidden="true"><LayoutGrid size={16} strokeWidth={1.75} /></span><span class="ui-label">{strings.settings.colors.allThemes}</span>
-        </button>
-      {/if}
-    </div>
-  {/if}
   <div class="editor" class:customizing id={editorId}>
     {#if customizing}
     <div class="role-list" role="group" aria-label={strings.settings.colors.edit}>
@@ -165,26 +158,36 @@
   /* The palettes in one row of pictures, the one in use ringed. */
   /* auto-fit: the pictures share the row's whole width, none of it left as an empty right half. */
   .palettes { display: grid; grid-template-columns: repeat(auto-fit, minmax(88px, 1fr)); gap: var(--space-2); margin-top: var(--space-1); }
-  .palette { display: flex; flex-direction: column; align-items: stretch; gap: 6px; height: auto; min-width: 0; padding: var(--space-1); border: 1px solid transparent; border-radius: var(--radius-md); background: transparent; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 400; }
+  .palette { position: relative; display: flex; flex-direction: column; align-items: stretch; gap: 6px; height: auto; min-width: 0; padding: var(--space-1); border: 1px solid transparent; border-radius: var(--radius-md); background: transparent; color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 400; transition: transform var(--motion-duration) var(--motion-curve); }
   /* The picture keeps its proportions as the row widens: 44 px tall at the narrowest. */
   .palette .tile { width: 100%; height: auto; aspect-ratio: 2.1; }
   .palette .ui-label { text-align: center; }
-  @media (hover: hover) { .palette:hover { background: var(--color-hover); color: var(--color-foreground); } }
+  /* A tile lifts under the pointer: a picture invites the click. */
+  @media (hover: hover) { .palette:hover { background: var(--color-hover); color: var(--color-foreground); transform: translateY(-1px); } }
+  .palette .tile { transition: box-shadow var(--motion-duration) var(--motion-curve); }
   .palette[aria-pressed='true'] { color: var(--color-foreground); }
   /* "All themes" stands as one more tile, an empty frame round its mark. */
   .tile.more { align-items: center; justify-content: center; background: transparent; color: var(--color-muted-foreground); box-shadow: inset 0 0 0 1px var(--color-border); }
   .palette[aria-pressed='true'] .tile { box-shadow: inset 0 0 0 1px var(--color-edge), 0 0 0 2px var(--color-accent); }
+  /* The one in use carries a check on its picture's corner, lit like a chosen segment: neutral, the accent stays its ring. */
+  .picked { position: absolute; top: 0; right: 0; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: var(--color-foreground); color: var(--color-on-foreground); box-shadow: 0 0 0 2px var(--color-surface); animation: pop var(--motion-duration) var(--motion-curve); }
   /* A settings row: the words on the left; the palette in use and what edits it on the right. */
   .heading { display: flex; justify-content: space-between; align-items: center; gap: var(--space-5); min-height: 44px; }
   .actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: var(--space-1); min-width: 0; }
   .actions > button { display: inline-flex; align-items: center; gap: 6px; }
-  .tile { position: relative; display: flex; width: 52px; height: 30px; overflow: hidden; border-radius: var(--radius-sm); background: var(--tile-page); box-shadow: inset 0 0 0 1px var(--color-edge); }
-  .chrome { width: 26%; background: var(--tile-frame); }
-  .lines { flex: 1; display: flex; flex-direction: column; gap: 3px; padding: 6px 5px; }
-  .lines i { display: block; height: 3px; border-radius: var(--radius-full); background: color-mix(in oklab, var(--tile-ink) 22%, transparent); }
+  .tile { position: relative; display: flex; overflow: hidden; border-radius: var(--radius-sm); background: var(--tile-page); box-shadow: inset 0 0 0 1px var(--color-edge); }
+  .chrome { width: 22%; background: var(--tile-frame); }
+  /* Sized off the tile's width, so the composer still fits a 84 px tile at 360 px. */
+  .body { flex: 1; display: flex; flex-direction: column; justify-content: space-between; min-width: 0; padding: 8% 8% 7%; }
+  .lines { display: flex; flex-direction: column; gap: 2px; }
+  /* The text in its own ink, read strong enough to tell a warm palette from a cold one. */
+  .lines i { display: block; height: 3px; border-radius: var(--radius-full); background: color-mix(in oklab, var(--tile-ink) 70%, transparent); }
+  .lines i:nth-child(n + 2) { background: color-mix(in oklab, var(--tile-ink) 40%, transparent); }
   .lines i:nth-child(2) { width: 60%; }
   .lines i:nth-child(3) { width: 80%; }
-  .tile .accent { position: absolute; right: 5px; bottom: 5px; width: 7px; height: 7px; border-radius: 50%; background: var(--tile-accent); }
+  /* The composer on the palette's surface, its send button in the palette's accent. */
+  .composer { display: flex; justify-content: flex-end; align-items: center; height: 10px; padding: 0 2px; border-radius: var(--radius-full); background: var(--tile-surface); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--tile-ink) 14%, transparent); }
+  .tile .accent { width: 6px; height: 6px; border-radius: 50%; background: var(--tile-accent); }
   .customize { flex: none; }
   .editor { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; }
   .editor.customizing { grid-template-columns: minmax(150px, .8fr) minmax(0, 1.6fr); margin-top: 16px; }
@@ -203,17 +206,11 @@
   .contrast { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 18px; color: var(--color-muted-foreground); font-size: var(--text-sm); }
   .contrast > span:first-child { color: var(--color-danger); }
   .contrast > span:first-child { display: flex; align-items: center; }
-  /* A phone's palette row: the words, the palette in use at the end, the row its target; Customize under it. */
-  .heading.value { position: relative; gap: var(--space-3); min-height: 52px; }
-  /* The label of a row like Language's and Theme's above it. */
-  .heading.value .text { flex: none; color: var(--color-foreground); font-size: var(--text-base); }
-  .heading.value :global(.info-tip) { position: relative; z-index: 1; }
-  .heading.value :global(.choice-select) { flex: 1; justify-content: flex-end; }
-  .heading.value + .actions { justify-content: flex-start; }
+  .heading .text { color: var(--color-foreground); font-size: var(--text-base); }
   @media (max-width: 720px) {
-    .heading:not(.value) { flex-direction: column; align-items: stretch; gap: var(--space-3); }
-    .actions { flex-direction: column-reverse; align-items: stretch; }
-    .actions > button { justify-content: center; }
+    /* The label and its edits on one line while they fit, the edits under it at 360 px in French. */
+    .heading { flex-wrap: wrap; gap: 0 var(--space-3); }
+    .palettes { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); }
     .editor, .editor.customizing { grid-template-columns: minmax(0, 1fr); gap: 16px; }
     .customize { min-height: var(--touch-target); }
     .role-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }

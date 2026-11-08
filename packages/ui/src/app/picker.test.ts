@@ -1,6 +1,7 @@
 import { expect, vi } from 'vitest';
 import { flushSync } from 'svelte';
 import { store } from '../lib/store.svelte';
+import { strings } from '../lib/strings';
 import { effortDots, effortPicked, groupLabels, press, query, seats, shownModels, test, tiles, type, waitFor } from '../test/app';
 
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
@@ -24,13 +25,14 @@ function foundIn(providerId: string): (string | null)[] {
   return [...document.querySelectorAll(`[data-testid=picker-found] [data-source="${providerId}"] [data-model]`)].map((el) => el.getAttribute('data-model'));
 }
 
-/** The reasoning row lives in the model chip's popover: open it, then find the row. */
+/** The effort chip beside the model chip: open its slider, then hand the chip back. */
 function effortRow(): HTMLElement | null {
-  if (!document.querySelector('[data-testid=composer-picker-menu]')) {
-    document.querySelector<HTMLElement>('[data-testid=composer-picker]')?.click();
+  const chip = document.querySelector<HTMLElement>('[data-testid=composer-effort]');
+  if (chip && !document.querySelector('[data-testid=composer-effort-menu]')) {
+    chip.click();
     flushSync();
   }
-  return document.querySelector<HTMLElement>('[data-testid=composer-effort]');
+  return chip;
 }
 
 test('the picker rails the providers as logos and gives the shown one its accounts and models', async ({ app: _app }) => {
@@ -116,7 +118,7 @@ test('the picker reads an ACP agent models, showing the descriptor and a probing
   expect(query('[data-testid=composer-picker]').textContent).toContain('GPT-5 Codex');
 
   // The reasoning scale comes from the same answer, not from the descriptor, and
-  // it is a row of the model chip that carries it.
+  // the effort chip beside the model carries it.
   await waitFor(() => effortRow() !== null);
   await waitFor(() => document.querySelector('[data-testid=composer-effort-menu]') !== null);
   expect(effortDots()).toEqual(['think', 'think-hard']);
@@ -226,8 +228,8 @@ test('the reasoning row names each level, sets the effort of the picked model, a
   await waitFor(() => effortRow() !== null);
   await waitFor(() => document.querySelector('[data-testid=composer-effort-menu]') !== null);
   expect(effortDots()).toEqual(['low', 'medium', 'high', 'xhigh', 'max', 'ultrathink']);
-  // Every level by its name, in the model's order, one per row under the Effort row.
-  expect(Array.from(document.querySelectorAll('[data-testid=composer-effort-menu] [data-value]')).map((el) => el.textContent?.trim()))
+  // Every level by its name, in the model's order, one dot each on the track.
+  expect(Array.from(document.querySelectorAll('[data-testid=composer-effort-menu] [data-dot]')).map((el) => el.getAttribute('aria-label')))
     .toEqual(['Low', 'Medium', 'High', 'Extra high', 'Max', 'Ultra']);
   // Nothing chosen yet, so the model's own default reads as the active one.
   expect(effortPicked()).toBe('high');
@@ -236,11 +238,13 @@ test('the reasoning row names each level, sets the effort of the picked model, a
   await waitFor(() => effortPicked() === 'xhigh');
   // Picking a level keeps the popover open: it is a setting of the model, not a choice of its own.
   expect(document.querySelector('[data-testid=composer-effort-menu]')).not.toBeNull();
-  // One chip form everywhere: the model's name, then its effort.
+  // Two chips read at rest: the model's name, and the effort chip its level.
   expect(query('[data-testid=composer-picker]').textContent).toContain('Opus 5.5');
-  expect(query('[data-testid=composer-picker-effort]').textContent).toBe('· Extra high');
-  // One live choice, and no other.
-  expect(document.querySelectorAll('[data-testid=composer-effort-menu] [aria-checked=true]')).toHaveLength(1);
+  expect(document.querySelector('[data-testid=composer-picker-effort]')).toBeNull();
+  expect(query('[data-testid=composer-effort]').textContent?.trim()).toBe('Extra high');
+  // The heading names the live level, the line under the track what it costs.
+  expect(query('[data-testid=effort-level]').textContent).toBe('Extra high');
+  expect(query('[data-testid=effort-cost]').textContent).toBe(strings.composer.effortCost.high);
 
   query<HTMLButtonElement>('[data-testid=composer-effort-menu] [data-value=high]').click();
   await waitFor(() => effortPicked() === 'high');
@@ -269,7 +273,7 @@ test('the picker opens on the models in use, one row each, with every provider b
   query<HTMLButtonElement>('[data-testid=composer-picker]').click();
   const short = () => [...document.querySelectorAll<HTMLElement>('[data-testid=picker-shortlist] .row.model')].map((row) => [row.dataset.testid, row.title]);
   await waitFor(() => short().length === 3);
-  // The current choice first, then the star, then the latest threads' model; no provider rail on this level, the effort row under it.
+  // The current choice first, then the star, then the latest threads' model; no provider rail on this level.
   expect(short()).toEqual([['recent-model', 'claude-opus-5-5'], ['favorite-model', 'claude-sonnet-5-5'], ['recent-model', 'echo-1']]);
   // A name alone tells these rows apart: no provider under it, and the provider's own login is not printed, even beside another seat of it.
   expect(store.accountsOf('claude').length).toBeGreaterThan(1);
@@ -278,7 +282,8 @@ test('the picker opens on the models in use, one row each, with every provider b
   // The current row carries the check.
   expect(query('[data-testid=picker-shortlist] .row.current .mark svg')).not.toBeNull();
   expect(document.querySelector('[data-testid=composer-picker-menu] .rail')).toBeNull();
-  expect(document.querySelector('[data-testid=composer-effort-menu]')).not.toBeNull();
+  // The menu picks a model and nothing else: the effort and the permission are chips beside it.
+  expect(document.querySelector('[data-testid=composer-picker-menu] [data-testid=composer-effort], [data-testid=composer-picker-menu] [data-testid=composer-mode], [data-testid=composer-picker-more]')).toBeNull();
   // The keys start in the search field, and the arrows go down into the rows under it.
   expect(document.activeElement).toBe(query('[data-testid=picker-search]'));
   press('ArrowDown');

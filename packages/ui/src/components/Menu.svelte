@@ -268,7 +268,8 @@
   /* One head form for every overlay: the section's (above), the ContextMenu's and the palette's groups. */
   .heading { padding: var(--space-2) var(--overlay-row-pad) var(--space-1); color: var(--color-subtle); font-size: var(--text-xs); font-weight: 600; }
   .popover.switches { width: min(300px, calc(100vw - 24px)); padding: var(--space-2); }
-  .switches .item.checkable { grid-template-columns: minmax(0, 1fr) 36px; min-height: 56px; padding: var(--space-2) var(--space-3); column-gap: var(--space-3); }
+  /* A switch row is a menu row's height (44 px under a finger, app.css); a hint grows it. */
+  .switches .item.checkable { grid-template-columns: minmax(0, 1fr) 36px; min-height: var(--overlay-row); padding: var(--space-1) var(--space-3); column-gap: var(--space-3); }
   .switches .item.radio .check { justify-self: center; }
   .switches .label { gap: 9px; }
   .switches .glyph { margin-right: 0; }

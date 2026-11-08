@@ -904,25 +904,26 @@
      about half of the conversation (`--dock-budget`), room enough for a
      question's four choices; the subagents' rows keep their size and the
      rest scrolls inside it. Empty, it takes no room. */
-  .deck { display: flex; flex-direction: column; --dock-inset: 14px; }
+  .deck { display: flex; flex-direction: column; --dock-inset: 14px; --decision-fill: color-mix(in srgb, var(--color-composer-surface), var(--color-foreground) 6%); }
   .deck > :global(*) { flex: none; }
   .deck > :global(:is(.activity, .decision-card)) { flex: 0 1 auto; min-height: 0; }
   @media (min-width: 721px) {
     .deck { --dock-budget: 55dvh; max-height: max(160px, calc(var(--dock-budget) - 126px)); }
   }
-  /* A decision is the card's head, on the card's own surface: no frame, no
-     fill of its own, one hairline under it before the field. The subagents'
-     rows above it, the tasks and the queued line sit flat on the same surface. */
+  /* The decision is the one raised thing in the card: a soft tile with no
+     edge, inset from the card's sides. The subagents' chips above it, the
+     tasks and the queued line under it sit flat on the card's own surface,
+     with no rule between them and the field. */
   .deck :global(.decision-card) {
-    margin: 0;
     border: none;
-    border-bottom: 1px solid var(--color-border);
-    border-radius: 0;
-    background: transparent;
+    border-radius: var(--radius-lg);
+    background: var(--decision-fill);
     box-shadow: none;
+    --dock-inset: 8px;
   }
   /* A long ask scrolls inside itself, its head and its choices in sight (its own file). */
-  .deck > :global(.decision-card) { overflow-y: auto; overscroll-behavior: contain; }
+  /* A permission sits in the deck itself; a question's tile takes its inset from ThreadActivity's padding. */
+  .deck > :global(.decision-card) { margin: 6px 6px 2px; overflow-y: auto; overscroll-behavior: contain; }
   /* The bottom gap sits under the box: a textarea scrolls its text through its own padding, up to the bar. */
   .input-wrap { position: relative; margin-bottom: var(--composer-input-gap, 6px); }
   .input-highlight {

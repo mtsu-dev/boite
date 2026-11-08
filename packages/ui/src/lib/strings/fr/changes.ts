@@ -12,10 +12,9 @@ export const fr: Translation = {
     staged: 'Indexé',
     binary: 'Fichier binaire, rien à montrer ligne par ligne',
     truncated: "Ce fichier a été tronqué : le diff ci-dessous n'est pas le fichier entier.",
-    pick: 'Choisissez un fichier pour voir son diff',
     loading: 'Lecture de la copie de travail',
     renamedFrom: 'Renommé depuis {path}',
-    backToList: 'Toutes les modifications',
+    fileList: 'Fichiers modifiés',
     status: {
       added: 'Ajouté',
       modified: 'Modifié',

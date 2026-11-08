@@ -23,7 +23,7 @@ const PAGES: Record<SettingsTab, SettingsPage> = {
   general: { machine: true, phone: 'sections' },
   appearance: { phone: 'page' },
   keyboard: { machine: true, phone: 'home' },
-  voice: { machine: true, phone: 'page' },
+  voice: { machine: true, phone: 'page', phoneOwn: true },
   // A phone lists the providers, as the desktop does; plugins stay on the
   // desktop: a phone shows Home, and the window widened again shows the page.
   accounts: { owner: true, machine: true, phone: 'page' },
@@ -74,12 +74,14 @@ export const SETTINGS_GROUPS = [
 
 /**
  * A page shown as a last section of another, once that one may open here, in
- * this order: Usage under Limits, Plugins under Accounts, Experiments under
- * Advanced, then Resources and the task manager, the live half of
- * Diagnostics. A paired device, which may not read the logs, still gets the
- * task manager as a page of its own.
+ * this order: Voice under General (round 16: three cards alone on a desktop
+ * page read as an empty screen), Usage under Limits, Plugins under Accounts,
+ * Experiments under Advanced, then Resources and the task manager, the live
+ * half of Diagnostics. A paired device, which may not read the logs, still
+ * gets the task manager as a page of its own.
  */
 const MERGED: Partial<Record<SettingsTab, SettingsTab>> = {
+  voice: 'general',
   usage: 'limits',
   plugins: 'accounts',
   experiments: 'advanced',
@@ -121,6 +123,18 @@ export function sectionsOf(view: SettingsTab, owner: boolean): SettingsTab[] {
 export function pagesOf(lead: SettingsTab, owner: boolean): SettingsTab[] {
   const group: readonly SettingsTab[] = SETTINGS_GROUPS.find((members) => members[0] === lead) ?? [lead];
   return group.filter((tab) => (owner || !ownerOnly(tab)) && viewOf(tab, owner) === tab);
+}
+
+/**
+ * What the desktop nav lists under a group's entry, in the group's order: its
+ * pages, and a page merged into the entry's own as a jump to that section, so
+ * a section keeps its name in the nav (Voice, Usage, Plugins, Experiments, as
+ * a phone lists them). A page merged into another member (Resources into
+ * Diagnostics) stays out.
+ */
+export function navOf(lead: SettingsTab, owner: boolean): SettingsTab[] {
+  const group: readonly SettingsTab[] = SETTINGS_GROUPS.find((members) => members[0] === lead) ?? [lead];
+  return group.filter((tab) => (owner || !ownerOnly(tab)) && (viewOf(tab, owner) === tab || viewOf(tab, owner) === lead));
 }
 
 export function ownerOnly(tab: SettingsTab): boolean {

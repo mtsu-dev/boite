@@ -12,11 +12,10 @@ export const strings = {
     staged: 'Staged',
     binary: 'Binary file, nothing to show line by line',
     truncated: 'This file was cut short: the diff below is not the whole file.',
-    pick: 'Pick a file to see its diff',
     loading: 'Reading the working tree',
     renamedFrom: 'Renamed from {path}',
-    /** A narrow panel shows the list or one diff: the way back, and the steps between files. */
-    backToList: 'All changes',
+    /** The toolbar's chip: every changed file, a pick scrolls the diff to it. */
+    fileList: 'Changed files',
     status: {
       added: 'Added',
       modified: 'Modified',

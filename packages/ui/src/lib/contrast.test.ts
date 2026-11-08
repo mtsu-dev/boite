@@ -53,14 +53,15 @@ function alpha(scope: string, name: string): number {
 }
 
 /**
- * Round 15 lifts the grey one step: secondary text, the hairline and the edge
- * that must read. The floors below fail on round 14's values (secondary 11.6:1
- * and 9.71:1 at worst, subtle 9.94:1 and 8.08:1, hairline 0.075 and 0.08,
- * edge 0.11 and 0.16).
+ * Round 15 lifted the grey one step: secondary text, the hairline and the edge
+ * that must read (round 14: hairline 0.075 and 0.08, edge 0.11 and 0.16).
+ * Round 16 lifts the text once more, the small meta still read as dim: the
+ * floors below fail on round 15's values (secondary 12.27:1 and 10.61:1 at
+ * worst, subtle 10.75:1 and 9.14:1).
  */
 const FLOORS = {
-  dark: { muted: 12, subtle: 10.5, border: 0.09, edge: 0.13 },
-  light: { muted: 10.5, subtle: 9, border: 0.095, edge: 0.19 }
+  dark: { muted: 12.8, subtle: 11.3, border: 0.09, edge: 0.13 },
+  light: { muted: 11.5, subtle: 10.1, border: 0.095, edge: 0.19 }
 };
 
 describe.each([
@@ -69,7 +70,7 @@ describe.each([
 ] as const)('%s theme', (theme, selector) => {
   const scope = block(selector);
 
-  test('secondary and tertiary text sit one step brighter than round 14', () => {
+  test('secondary and tertiary text sit one step brighter than round 15', () => {
     for (const ground of GROUNDS) {
       expect(ratio(token(scope, '--color-muted-foreground'), token(scope, ground)), `muted on ${ground}`).toBeGreaterThanOrEqual(FLOORS[theme].muted);
       expect(ratio(token(scope, '--color-subtle'), token(scope, ground)), `subtle on ${ground}`).toBeGreaterThanOrEqual(FLOORS[theme].subtle);

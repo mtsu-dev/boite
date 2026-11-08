@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Protocol, ProviderSummary } from '@boite/contracts';
-import { modeHint, modeLabel, modesFor, shownMode } from './permission-modes';
+import { modeHint, modeLabel, modesFor, modeWord, shownMode } from './permission-modes';
 import { defaultPrefs, PREFS_STORAGE_KEY, readPrefs, writePrefs } from './prefs';
 
 const provider = (protocol: Protocol, approvals = true) => ({
@@ -41,6 +41,13 @@ describe('permission modes', () => {
     expect(modeLabel('yolo', provider('claude-sdk'))).toBe('No limits');
     expect(modeHint('yolo', null)).toContain('(YOLO)');
     expect(modeHint('yolo', null)).toContain('skips Claude and Codex hooks');
+  });
+
+  it('reads each mode at rest in one short word, Codex\'s default as the folder it keeps to', () => {
+    expect(modesFor(provider('claude-sdk')).map((mode) => modeWord(mode, provider('claude-sdk')))).toEqual(['YOLO', 'Auto', 'Edit freely', 'Ask']);
+    expect(modeWord('default', provider('codex-appserver'))).toBe('This folder');
+    expect(modeWord('plan', null)).toBe('Plan');
+    expect(modeWord('dontAsk', null)).toBe('Auto-deny');
   });
 
   it('remembers YOLO across reloads', () => {

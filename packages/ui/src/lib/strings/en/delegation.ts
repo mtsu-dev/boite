@@ -34,6 +34,10 @@ export const strings = {
     failed: '{count} failed',
     stopped: '{count} stopped',
     elapsed: 'Elapsed time',
+    /** The dock's last entry when more run than it shows, and its hint. */
+    dockMore: '+{count}',
+    dockMoreHint: '{count} more at work: show them',
+    dockLess: 'Less',
     showTeam: 'View subagents',
     stoppedStatus: 'Stopped',
     failedStatus: 'Failed',

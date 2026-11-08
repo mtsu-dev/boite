@@ -6,15 +6,14 @@
   import { formatTokens, providerName } from '../lib/format';
   import { confirm } from '../lib/confirm.svelte';
   import { switchDropsHistory, switchResetsCache, type CacheKey } from '../lib/switch-warning';
-  import { modeHint, modeLabel, modesFor, shownMode } from '../lib/permission-modes';
+  import { modeHint, modeIcon, modeLabel, modesFor, modeWord, shownMode } from '../lib/permission-modes';
   import { fill, strings } from '../lib/strings';
   import type { Choice, PickPatch, Store } from '../lib/store.svelte';
-  import PickerChoices from './PickerChoices.svelte';
-  // Its body loads with the picker's menu, which hands it to `rows`.
-  import type PickerMore from './PickerMore.svelte';
   import ModelPicker from './ModelPicker.svelte';
+  import EffortSlider from './EffortSlider.svelte';
+  import Menu from './Menu.svelte';
   import Deferred, { parts } from './Deferred.svelte';
-  import ComposerOptions from './ComposerOptions.svelte';
+  import ComposerOptions, { type ModeChoice } from './ComposerOptions.svelte';
   import ContextControl from './ContextControl.svelte';
   import { work } from '../lib/work-prefs.svelte';
   import { voice, VOICE_STORAGE_KEY } from '../lib/voice-prefs.svelte';
@@ -22,17 +21,18 @@
   import { keepFocus } from '../lib/focus';
   import { contextLevel, contextPercent } from '../lib/tokens';
   import { speedControl } from '../lib/model-speeds';
-  import { levelName, levelTitle } from '../lib/format';
   import type { ComposerTarget } from '../lib/composer-target';
   import { desktopSettings } from '../lib/settings-tabs';
   /** The context's number shows beside the model chip from this percent used. */
   const CONTEXT_SHOWN_FROM = 70;
 
   /**
-   * The row under the composer's box, the same in every state and on every
-   * width: one "+" for what adds to the message, one model chip naming the
-   * model (its effort, speed, permission and context rows inside; the
-   * context's number beside it once it matters), then dictation and one round
+   * The row under the composer's box, the same in every state: one "+" for
+   * what adds to the message (and the context's details), then a chip per
+   * setting reading its value at rest: the model (the context's number beside
+   * it once it matters), the effort (a slider, the bolt while fast is on) and
+   * the permission (an icon and a word; on a phone it is the "+"'s first row,
+   * since three chips do not fit 360 px), then dictation and one round
    * button that is Send, or Stop while a turn runs and nothing waits to go
    * (not while it stands on a decision of the owner's).
    * Nothing comes or goes with a decision docked above: the row keeps its
@@ -90,7 +90,9 @@
     oncommand?: () => void;
   } = $props();
   let chip = $state<ModelPicker | undefined>(undefined);
+  let options = $state<ComposerOptions | undefined>(undefined);
   let meter = $state<ContextControl | undefined>(undefined);
+  let slider = $state<EffortSlider | undefined>(undefined);
   const askAnchor = () => composer;
   let stopping = $derived(!!(target ? target.busy && target.stop : store.busy));
   /** The turn stands still on the owner's answer (a permission, a question it stopped for): Deny or Skip is the way out, Escape still stops. */
@@ -106,12 +108,12 @@
   /**
    * The number beside the chip only once the context matters (a nearly full
    * one whatever the preference); below that the row shows nothing there and
-   * the details stay one row away: the chip's menu, or the "+" on a bot's
-   * thread, whose chip opens nothing.
+   * the details stay one row away, in the "+".
    */
   let showContext = $derived(contextUsed !== null && (contextLevel(contextUsed) === 'full' || work.shows('header.context') && contextUsed >= CONTEXT_SHOWN_FROM));
   /** Where the details open while no number is drawn: over the row, or over the composer while an ask is docked. */
   const meterAnchor = () => composer ?? bar ?? null;
+  let contextWords = $derived(contextUsed === null ? strings.thread.contextDetails : strings.thread.contextPercentUsed(String(Math.round(contextUsed))));
   /** Every agent can read uploaded files through its local tools. */
   let canAttach = $derived(!!target || (provider !== null && provider !== undefined));
 
@@ -145,10 +147,16 @@
    */
   let accountRemoved = $derived(!target && store.openThread !== null && store.accounts.length > 0 && store.accountOf(store.openThread.accountId) === null
     && store.usableAccountOf(store.openThread.providerId, store.openThread.accountId) === null);
-  // One word per choice: what the mode allows is said on hover, not printed
-  // three times over. A legacy mode still live (`plan`) keeps its own choice until another is picked.
-  let modeItems = $derived([...modes, ...modes.includes(displayedMode) ? [] : [displayedMode]]
-    .map((mode) => ({ id: mode, label: modeLabel(mode, provider), title: modeHint(mode, provider) })));
+  // One word per mode, one plain line under it, the long sentence on hover.
+  // A legacy mode still live (`plan`) keeps its own choice until another is picked.
+  let modeChoices = $derived<ModeChoice[]>([...modes, ...modes.includes(displayedMode) ? [] : [displayedMode]]
+    .map((mode) => ({ id: mode, label: modeWord(mode, provider), hint: modeLabel(mode, provider), title: modeHint(mode, provider), icon: modeIcon(mode) })));
+  let modeItems = $derived(modeChoices.map((item) => ({ id: item.id, label: item.label, hint: item.hint, title: item.title, checked: item.id === displayedMode, radio: true })));
+  let ModeGlyph = $derived(modeIcon(displayedMode));
+  /** A bot keeps its effort and mode in its settings: its row shows neither. */
+  let ownSettings = $derived(bot === null);
+  /** A phone's row holds the model and the effort at 360 px: the permission moves to the "+". */
+  let modeInPlus = $derived(ownSettings && modes.length > 0 && phoneWidth.current);
   // The worktree switch exists where the core can honour it: a draft on a
   // folder the core found a `.git` in. No answer yet, or an older core that
   // never gives one, is no repository: a switch the core would refuse is noise.
@@ -165,12 +173,6 @@
   let activeEffort = $derived(choice?.effort ?? store.modelOf(choice)?.effort?.default ?? null);
   /** The model has a scale but no default: its agent picks the level until the user does. */
   let agentDefault = $derived(effortLevels.length > 0 && store.modelOf(choice)?.effort?.default === undefined);
-  /** The empty id is the agent's own level, offered first while the model names no default. */
-  let effortItems = $derived([...agentDefault ? [{ id: '', label: strings.composer.effortDefault, title: strings.composer.effortDefaultHint }] : [],
-    ...effortLevels.map((level) => ({ id: level.id, label: levelName(level), title: levelTitle(level) }))]);
-  let speedItems = $derived([{ id: '', label: strings.composer.standardSpeed }, ...speeds.map((entry) => ({ id: entry.id, label: levelName(entry), title: levelTitle(entry) }))]);
-  /** What the picker's More row holds, by its current value: a speed other than the standard one. */
-  let moreSummary = $derived(speedItems.find((item) => item.id !== '' && item.id === speedOptions.speed)?.label ?? '');
 
   /** A null effort runs at the model's own default, not at a preset the client configured. */
   function cacheKey(selection: Choice): CacheKey {
@@ -202,6 +204,7 @@
       picking = true;
       try {
         if (switchDropsHistory(thread, target.accountId)) {
+          slider?.close();
           const from = providerName(store, thread.providerId);
           const to = providerName(store, target.providerId);
           const go = await confirm.ask({
@@ -212,6 +215,8 @@
           });
           if (!go) return;
         } else if (switchResetsCache(thread, cacheKey(choice), cacheKey(target))) {
+          // A phone draws the slider as a sheet over everything: it leaves before the question.
+          slider?.close();
           const go = await confirm.ask({
             title: fill(strings.composer.cacheTitle, { tokens: formatTokens(thread.context?.tokens ?? 0) }),
             body: strings.composer.cacheBody,
@@ -244,7 +249,7 @@
     store.remember(choice);
   }
 
-  function pickEffort(id: string) {
+  function pickEffort(id: string | null) {
     void pick({ effort: id || null });
   }
 
@@ -269,14 +274,13 @@
     onfiles(files);
   }
 
-  /** The chip's own trigger opens its menu: one popover, owned by one component. Effort, speed and mode are rows of the model chip's. */
+  /** The chip's own trigger opens its popover: one popover, owned by one component. The speed is the bolt inside the effort's. */
   export async function openChip(testid: string) {
     await tick();
-    if (testid === 'composer-picker' || testid === 'composer-effort' || testid === 'composer-mode' || testid === 'effort-speed') {
-      await chip?.reveal(testid === 'composer-picker' ? undefined : testid);
-      return;
-    }
-    bar?.closest('[data-testid="composer"]')?.querySelector<HTMLElement>(`[data-testid="${testid}"]`)?.click();
+    if (testid === 'composer-picker') { await chip?.reveal(); return; }
+    if (testid === 'composer-mode' && modeInPlus) { options?.openModes(); return; }
+    const id = testid === 'effort-speed' ? 'composer-effort' : testid;
+    bar?.closest('[data-testid="composer"]')?.querySelector<HTMLElement>(`[data-testid="${id}"]`)?.click();
   }
 </script>
 
@@ -285,8 +289,9 @@
 <div class="bar" bind:this={bar}>
   <!-- One "+" at the start: files, a file mention, a command and the draft's worktree. -->
   {#key `${key}:${store.draft?.projectId ?? ''}`}
-  <ComposerOptions worktree={!answering && store.draft && draftRepository ? store.draft.worktree : null} {canAttach} anchor={askAnchor} onattach={() => picker?.click()} onworktree={() => store.setDraftWorktree(!store.draft?.worktree)} {onmention} {oncommand}
-    context={bound && bot !== null ? (contextUsed === null ? strings.thread.contextDetails : strings.thread.contextPercentUsed(String(Math.round(contextUsed)))) : null} oncontext={() => meter?.open()} />
+  <ComposerOptions bind:this={options} worktree={!answering && store.draft && draftRepository ? store.draft.worktree : null} {canAttach} anchor={askAnchor} onattach={() => picker?.click()} onworktree={() => store.setDraftWorktree(!store.draft?.worktree)} {onmention} {oncommand}
+    context={bound ? contextWords : null} oncontext={() => meter?.open()}
+    mode={modeInPlus && !(target && !target.selection) ? { active: displayedMode, items: modeChoices, onpick: pickMode } : null} />
   {/key}
   {#if target && !target.selection}
   <div class="chips">{#if target.chips}{@render target.chips()}{/if}</div>
@@ -299,31 +304,18 @@
         <div class="context-control" oncontextmenu={(event) => controlMenu(event, store, 'header.context')}><ContextControl bind:this={meter} {store} anchor={askAnchor} /></div>
       {/if}
     {/snippet}
-    {#snippet rows(More: typeof PickerMore)}
-      <!-- Each row names its setting and lays its choices out by name: the same order and words on every width. -->
-      {#if effortLevels.length > 0}
-        <div class="setting" data-testid="composer-effort" tabindex="-1"><span class="setting-name ui-label">{strings.composer.effortTitle}</span>
-          <PickerChoices label={strings.composer.effortTitle} testid="composer-effort-menu" items={effortItems} active={activeEffort ?? (agentDefault ? '' : null)} onpick={pickEffort} /></div>
-      {/if}
-      {#if modes.length > 0}
-        <div class="setting" data-testid="composer-mode" tabindex="-1"><span class="setting-name ui-label">{strings.composer.mode}</span>
-          <PickerChoices label={strings.composer.mode} testid="composer-mode-menu" items={modeItems} active={displayedMode} onpick={pickMode} /></div>
-      {/if}
-      {#if speeds.length > 0 || bound}
-        <!-- Speed and context wait behind one quiet row that reads its value: the first level is the model, its effort and its permission. -->
-        <More summary={moreSummary}>
-          {#if speeds.length > 0}
-            <div class="setting" data-testid="effort-speed" tabindex="-1"><span class="setting-name ui-label">{strings.composer.speed}</span>
-              <PickerChoices label={strings.composer.speed} testid="effort-speed-menu" items={speedItems} active={speedOptions.speed ?? ''} onpick={(id) => void pick(speedOptions.pick(id || null))} /></div>
-          {/if}
-          {#if bound}
-            <div class="setting context-row"><span class="setting-name ui-label">{strings.thread.contextDetails}</span><ContextControl {store} /></div>
-          {/if}
-        </More>
-      {/if}
-    {/snippet}
     <!-- A bot's model is its own setting: its chip names it and changes nothing here. -->
-    <ModelPicker bind:this={chip} {store} {choice} disabled={picking} readonly={bot !== null} readonlyHint={bot ? fill(strings.composer.botModel, { name: bot }) : ''} anchor={askAnchor} settings={bot === null ? rows : undefined} trailing={ring} onpick={pick} />
+    <ModelPicker bind:this={chip} {store} {choice} disabled={picking} readonly={bot !== null} readonlyHint={bot ? fill(strings.composer.botModel, { name: bot }) : ''} anchor={askAnchor} trailing={ring} onpick={pick} />
+    {#if ownSettings && choice && (effortLevels.length > 0 || speeds.length > 0)}
+      <!-- The effort is a slider of its own, read at rest: its level, the bolt while fast is on. -->
+      <EffortSlider bind:this={slider} levels={effortLevels} active={activeEffort} onpick={pickEffort} ondefault={agentDefault ? () => pickEffort(null) : undefined} {speeds} speed={speedOptions.speed} onspeed={(id) => void pick(speedOptions.pick(id))} />
+    {/if}
+    {#if ownSettings && choice && modes.length > 0 && !modeInPlus}
+      <Menu items={modeItems} onpick={pickMode} label={strings.composer.mode} testid="composer-mode">
+        <ModeGlyph size={14} strokeWidth={1.75} />
+        <span class="ui-label" data-testid="composer-mode-value">{modeWord(displayedMode, provider)}</span>
+      </Menu>
+    {/if}
     {#if signedOut && store.owner}
       <button type="button" class="ui-chip signed-out" data-testid="composer-reconnect" title={fill(strings.connect.signedOut, { provider: provider?.name ?? '' })} onclick={() => store.openConnect(signedOut.providerId, signedOut.id)}><span class="ui-label">{strings.connect.reconnect}</span></button>
     {/if}
@@ -335,8 +327,8 @@
         <span class="ui-chip signed-out" data-testid="composer-provider-off" title={sentence} aria-label={sentence}><span class="ui-label">{strings.providerSettings.off}</span></span>
       {/if}
     {/if}
-    {#if bound && bot !== null && !showContext}
-      <!-- No number drawn on a bot's thread: its details open from the "+" over the row; the host takes no room. -->
+    {#if bound && !showContext}
+      <!-- No number drawn: the details open from the "+" over the row; the host takes no room. -->
       <ContextControl bind:this={meter} {store} anchor={meterAnchor} quiet />
     {/if}
     {#if accountRemoved}
@@ -406,11 +398,6 @@
 
   .chips .ui-chip.signed-out { color: var(--color-live); }
 
-  /* The rows under the models: the setting's name, its choices at the end, or
-     under it when the picker is too narrow for both on one line. */
-  .setting { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; min-height: var(--row); padding: 2px 2px 2px 8px; outline: none; }
-  .setting-name { color: var(--color-muted-foreground); font-size: var(--text-sm); }
-
   /* Every child is one control high, so the end is the centre on one row; on a
      composer too narrow for one, the tools sit on the chips' last row. */
   .bar {
@@ -419,6 +406,9 @@
     gap: 8px;
     padding: var(--composer-bar-padding, 4px 8px 8px 10px);
   }
+
+  /* Each mode is a word over its plain line: the row's own air keeps one pair from the next. */
+  .chips :global([data-testid='composer-mode-menu'] .item) { padding-block: var(--space-2); }
 
   .chips {
     flex: 1;
@@ -504,9 +494,9 @@
   @media (max-width: 720px) {
     .bar { gap: 2px; padding: var(--composer-bar-padding, 0 8px 6px); }
     .chips { flex: 1; flex-wrap: nowrap; }
-    .setting { min-height: var(--touch-target); }
     .chips :global(.picker) { min-width: 0; max-width: 100%; }
     .chips :global(.picker > .trigger) { max-width: 100%; height: var(--touch-target); padding: 0 6px; }
+    .chips :global(.effort > .trigger) { flex: none; height: var(--touch-target); padding: 0 6px; gap: 5px; }
     /* The model's name alone, and whole words of it: one line high, a name too long for the row
        wraps its last words onto a second line nobody sees, never half of one. */
     .chips :global(.picker > .trigger > .label) { min-width: 0; max-width: none; height: 1lh; padding-block: 0; margin-block: 0; text-box: normal; overflow: hidden; white-space: normal; overflow-wrap: normal; }
@@ -516,8 +506,12 @@
      and of the context ring's side margin; every control keeps its full height. */
   @media (max-width: 400px) {
     .bar { gap: 0; }
+    .chips { gap: 0; }
     .chips :global(.picker > .trigger) { padding: 0 2px; }
     .chips :global(.picker > .trigger > .lucide-chevron-down) { display: none; }
+    /* The name says whose model it is: its logo gives the room to a whole name ("GPT 6.1 Sol"). */
+    .chips :global(.picker > .trigger:not(.connect) > :is([data-logo], [data-initial], .lucide-sparkles)) { display: none; }
+    .chips :global(.effort > .trigger) { padding: 0 4px; }
     /* At 360 the model's whole name and its effort keep the row: the meter
        is its glyph alone, amber once nearly spent, its number in its label and its details. */
     .context-control :global(.trigger) { min-width: 34px; }

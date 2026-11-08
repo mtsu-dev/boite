@@ -371,11 +371,7 @@
   .paths label { display: grid; gap: 6px; font-size: var(--text-sm); color: var(--color-muted-foreground); }
   details { margin-top: 8px; }
 
-  /* The options in one dark track, the chosen one raised on it, as on Appearance. */
-  .segmented { display: inline-flex; flex: none; gap: 2px; padding: 2px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-frame); }
-  .segmented button { height: var(--control-sm); padding: 0 12px; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: var(--color-muted-foreground); font-size: var(--text-sm); box-shadow: none; }
-  .segmented button:hover:not(.on):not(:disabled) { background: var(--color-surface-3); color: var(--color-foreground); }
-  .segmented button.on { background: var(--color-surface-3); border-color: var(--color-edge); color: var(--color-foreground); box-shadow: var(--shadow-e1); }
+  /* The track and its lit option are app.css's settings segments, as on Appearance; a read-only one stays legible. */
   .segmented button:disabled { opacity: 1; }
 
   @media (max-width: 720px) {

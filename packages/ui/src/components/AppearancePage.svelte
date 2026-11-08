@@ -25,8 +25,9 @@
    * starts, the terminal's renderer) lives under General, and the terminal's
    * cursor and the edge scrollbars under Advanced. `phone`: what a phone reads
    * and looks like; the column width and the header's buttons are the desktop's.
-   * A choice seen before it is picked (a palette, a face) is one row, the one
-   * in use with its preview, that opens the others (`ChoiceSelect`).
+   * A short choice (language, theme, width) is a segmented control and the
+   * palettes are their pictures, every option in sight; only a face, a longer
+   * list, is one row in its own face that opens the others (`ChoiceSelect`).
    */
   let { store, phone = false }: { store: Store; phone?: boolean } = $props();
   const uid = $props.id();
@@ -116,11 +117,8 @@
     ] satisfies { id: Glass; label: string }[]).filter((option) => offered.includes(option.id))
   );
 
-  let locale = $state<LocaleSetting>(untrack(() => localeSetting()));
-  let languages = $derived<{ id: LocaleSetting; name: string }[]>([
-    { id: 'system', name: strings.settings.languageSystem },
-    ...LOCALES.map((id) => ({ id, name: strings.settings.languageNames[id] }))
-  ]);
+  // Follows the language set anywhere (another window, a script); a pick lights at once, before its catalogue loads.
+  let locale = $derived<LocaleSetting>(localeSetting());
   function pickLocale(next: LocaleSetting) {
     locale = next;
     setLocaleSetting(next);
@@ -167,20 +165,10 @@
 
   <section class="card" id="settings-theme">
     <h2 class="ui-label-box"><span class="ui-label">{strings.settings.display}</span><InfoTip gather topic={strings.settings.display} text="" testid="section-info" /></h2>
-    {#if phone}
-      <!-- A phone reads each short choice as a label and its value, the row opening a sheet. -->
-      <div class="switch-row value">
-        <span class="text ui-label">{strings.settings.language}</span>
-        <ChoiceSelect row label={strings.settings.language} options={languages} value={locale} onpick={pickLocale} testid="locale-current" optionTestid={(id) => `locale-${id}`} />
-      </div>
-      <div class="switch-row value">
-        <span class="text ui-label">{strings.settings.theme}</span>
-        <ChoiceSelect row label={strings.settings.theme} options={themes.map((option) => ({ id: option.id, name: option.label }))} value={theme} onpick={pickTheme} testid="theme-current" optionTestid={(id) => `theme-${id}`} />
-      </div>
-    {:else}
+    <!-- Two to four options show every one of them, in place, on a phone as on a desktop: the value in use is the one lit. -->
     <div class="switch-row">
       <span class="text ui-label">{strings.settings.language}</span>
-      <div class="segmented" role="group" aria-label={strings.settings.language}>
+      <div class="segmented" role="group" aria-label={strings.settings.language} data-testid="locale-current">
         <button type="button" class:on={locale === 'system'} aria-pressed={locale === 'system'} data-testid="locale-system" onclick={() => pickLocale('system')}>
           <span class="ui-label">{strings.settings.languageSystem}</span>
         </button>
@@ -193,7 +181,7 @@
     </div>
     <div class="switch-row">
       <span class="text ui-label">{strings.settings.theme}</span>
-      <div class="segmented" role="group" aria-label={strings.settings.theme}>
+      <div class="segmented" role="group" aria-label={strings.settings.theme} data-testid="theme-current">
         {#each themes as option (option.id)}
           <button
             type="button"
@@ -207,8 +195,8 @@
         {/each}
       </div>
     </div>
-    {/if}
-    <ThemeColors {phone} />
+    <!-- The palettes as their pictures, on a phone too: each in its own colours, the one in use checked. -->
+    <ThemeColors />
     {#if !phone}
     <div class="switch-row">
       <span class="text ui-label">{strings.settings.chatWidth}</span>

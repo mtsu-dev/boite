@@ -126,3 +126,49 @@ test('the open file counts the lines its diff draws, not a figure from another r
     store.detach(); client.close(); document.body.innerHTML = '';
   }
 });
+
+test('every changed file reads as one document, each diff read once it nears the screen', async () => {
+  const native = globalThis.IntersectionObserver;
+  const observed: Element[] = [];
+  let fire: IntersectionObserverCallback | null = null;
+  globalThis.IntersectionObserver = class {
+    constructor(callback: IntersectionObserverCallback) { fire = callback; }
+    observe(node: Element) { observed.push(node); }
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof IntersectionObserver;
+  const client = new FakeClient({ delayMs: 0 });
+  const store = new Store();
+  store.attach(client);
+  let component;
+  try {
+    await store.connect();
+    await store.open('t-trace');
+    const reads = gate(store);
+    const surface: Surface = { id: 'changes', kind: 'changes', path: PATH };
+    const panel = { update() {} } as unknown as BoundPanel;
+    component = mount(ChangesSurface, { target: document.body, props: { store, surface, panel } });
+    flushSync();
+    await reads.releaseAll();
+    const headers = [...document.querySelectorAll<HTMLElement>('[data-testid=changes-row]')];
+    expect(headers.length).toBeGreaterThan(1);
+    // Before any file nears the screen, only the one asked for is read.
+    expect([...document.querySelectorAll('[data-testid=diff-view]')].map((view) => view.getAttribute('data-path'))).toEqual([PATH]);
+    fire!(observed.map((target) => ({ target, isIntersecting: true }) as IntersectionObserverEntry), {} as IntersectionObserver);
+    flushSync();
+    await reads.releaseAll();
+    // Each file under its own header, in the list's order, in one scroll.
+    const drawn = [...document.querySelectorAll('[data-file]')].filter((file) => file.querySelector('[data-testid=diff-view]')).map((file) => file.getAttribute('data-file'));
+    expect(drawn.length).toBeGreaterThan(1);
+    expect(drawn).toEqual(headers.map((header) => header.dataset['path']).filter((path) => drawn.includes(path!)));
+    // A header folds its file away.
+    headers[0]!.click();
+    flushSync();
+    expect(headers[0]!.getAttribute('aria-expanded')).toBe('false');
+    expect(headers[0]!.closest('[data-file]')!.querySelector('[data-testid=diff-view]')).toBeNull();
+  } finally {
+    if (component) await unmount(component);
+    store.detach(); client.close(); document.body.innerHTML = '';
+    globalThis.IntersectionObserver = native;
+  }
+});

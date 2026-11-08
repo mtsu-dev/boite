@@ -452,16 +452,16 @@
      desktop caps it with the dock's budget (Composer's `.deck`), a phone with
      the card's. Four pixels around every line: the rows carry their own
      inline padding, so a hover fill sits inset by the same four pixels on
-     every side. The decisions are the card's head on its own surface, edge
-     to edge with one hairline under them (Composer's `.decision-card`); the
+     every side. The decisions are the card's one raised tile, inset by the
+     card's six pixels (Composer's `.decision-card`); the
      goal, the loop and the tasks are plain lines under it. Nothing inside
      shrinks: the question sizes its choices to the budget in whole rows, and
      this section is the one fallback scroller, so an arriving card is laid
      out once, before it grows in. */
   .activity { display: flex; flex-direction: column; overflow-y: auto; padding: 4px; font-size: var(--text-sm); }
   .activity > * { flex: none; }
-  .activity > .decision-card { margin: -4px -4px 4px; display: flex; flex-direction: column; }
-  .activity > .decision-card:last-child { margin-bottom: -4px; }
+  .activity > .decision-card { margin: 2px 2px 4px; display: flex; flex-direction: column; }
+  .activity > .decision-card:last-child { margin-bottom: -2px; }
   .decision-card > *, .questions > *, .asked > :global(*) { flex: none; }
   .questions > .disclosure-fold { display: grid; }
   .activity.hidden { display: none; }

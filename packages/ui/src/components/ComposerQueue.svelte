@@ -182,18 +182,18 @@
   /* Send now is the line's one word in ink: it acts on the whole queue. */
   .line .send-now { color: var(--color-foreground); font-weight: 550; }
 
-  /* A phone keeps the same single line, taller: its text and its menu each
-     a finger's target through a hit area wider than their ink. Two lines
+  /* A phone keeps the same single quiet line, a little taller: its text and
+     its menu each a finger's target through a hit area wider than their ink. Two lines
      show, more scroll, so the card stays under its share of the screen. */
   @media (max-width: 720px) {
     /* The scroller reaches 6 px past the lines, so the menu's hit area is not clipped at its edge. */
-    .queued { gap: 0; max-height: calc(2 * var(--touch-target) + 12px); margin: -6px; padding: 6px; }
-    .line { min-height: var(--touch-target); }
+    .queued { gap: 0; max-height: calc(2 * 36px + 12px); margin: -6px; padding: 6px; }
+    .line { min-height: 36px; }
     .pill { height: 34px; }
-    .text { height: var(--touch-target); }
+    .text { height: 36px; }
     .tool :global(.trigger) { width: 34px; height: 34px; }
     .tool :global(.trigger::after) { content: ''; position: absolute; inset: -6px; }
-    .line .ghost.small { height: var(--touch-target); }
+    .line .ghost.small { height: 36px; }
   }
   /* A 360 px phone keeps the line for the prompt: the outbox's word goes, the "i" still says why. */
   @media (max-width: 400px) { .word { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; } }

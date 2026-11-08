@@ -332,3 +332,25 @@ test('a card unmounted with its rename open still writes the title typed so far'
   await settle();
   expect(rename.mock.calls).toEqual([[thread.id, 'Typed before it left']]);
 });
+
+test('a list row ends its title line with its mark, then its one time, the way a phone row does', async () => {
+  client = new FakeClient({ delayMs: 0 });
+  store = new Store(); store.attach(client); await store.connect();
+  vi.spyOn(client, 'call').mockResolvedValue(null);
+  const thread = store.threads.find(thread => thread.status === 'idle' && !thread.parentThreadId && thread.projectId)!;
+  thread.openQuestions = 0; thread.lastUserMessageAt = Date.now() - 2 * 3_600_000;
+  const project = store.projects.find(project => project.id === thread.projectId)!;
+  mounted = mount(ThreadCard, { target: document.body, props: { machine: { id: 'local', label: 'Local', store }, project, thread, now: Date.now() } });
+  await settle();
+  const headline = () => document.querySelector<HTMLElement>('[data-testid=thread-row] .headline')!;
+  // At rest, a quiet row still says when it last moved.
+  expect(headline().querySelector('time.at')?.textContent).toBe('2h');
+  expect(headline().querySelectorAll('time')).toHaveLength(1);
+  store.pendingQuestions = [{ id: 'q-time', threadId: thread.id, turnId: 'turn', text: 'Which file?', options: [], allowText: true, multiple: false, async: true } as never];
+  await settle();
+  // A mark comes first, the same time after it: one time per row in one place.
+  const state = headline().querySelector('[data-testid=thread-state]')!;
+  expect(state.getAttribute('data-state')).toBe('waiting');
+  expect(state.nextElementSibling?.matches('time.at')).toBe(true);
+  expect(headline().querySelectorAll('time')).toHaveLength(1);
+});

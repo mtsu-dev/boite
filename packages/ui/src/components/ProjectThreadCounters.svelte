@@ -60,9 +60,9 @@
   .counter.active { background: var(--color-active); color: var(--color-foreground); }
   /* The working fold's toggle inside the card, a quiet row over the fold, as the group labels read. */
   .fold-toggle { display: flex; align-items: center; gap: 6px; width: 100%; height: 28px; padding: 0 10px; justify-content: flex-start; border-radius: var(--radius-sm);
-    color: var(--color-subtle); font-size: var(--text-xs); font-weight: 500; }
+    color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 500; }
   .fold-toggle .count { margin-left: auto; font-variant-numeric: tabular-nums; }
-  .fold-toggle:hover:not(:disabled), .fold-toggle.active { color: var(--color-muted-foreground); }
+  .fold-toggle:hover:not(:disabled), .fold-toggle.active { color: var(--color-foreground); }
 
   /* A phone: the tag a 32px target of its own, and a finger's 44px around it. */
   @media (max-width: 720px) {

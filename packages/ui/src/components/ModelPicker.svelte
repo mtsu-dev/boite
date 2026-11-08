@@ -6,7 +6,6 @@
   import ProviderLogo from './ProviderLogo.svelte';
   import Deferred, { parts } from './Deferred.svelte';
   import type ModelPickerMenu from './ModelPickerMenu.svelte';
-  import type PickerMore from './PickerMore.svelte';
   import { Closing } from '../lib/closing.svelte';
   import { strings } from '../lib/strings';
   import type { Choice, PickPatch, Store } from '../lib/store.svelte';
@@ -14,9 +13,9 @@
   /**
    * The model chip. Its popover (`ModelPickerMenu.svelte`) is a chunk of its
    * own that only a click draws: the models in use first, every provider's
-   * list behind "All models". The composer's chip adds its effort row and More
-   * under the models (`settings`) and its context ring beside the name
-   * (`trailing`). Desktop opens it from the chip; a phone as a bottom sheet.
+   * list behind "All models". It picks a model: the effort and the
+   * permission are the composer's chips beside it, its context ring sits
+   * beside the name (`trailing`). Desktop opens it from the chip; a phone as a bottom sheet.
    */
   let {
     store,
@@ -27,7 +26,6 @@
     readonly = false,
     readonlyHint = '',
     anchor,
-    settings,
     trailing,
     onpick
   }: {
@@ -43,8 +41,6 @@
     readonlyHint?: string;
     /** What the desktop popover opens above: the chip, or the whole composer while an ask is docked in it, on the chip's side, so it never covers the ask. */
     anchor?: () => HTMLElement | null;
-    /** The rows under the models; the menu hands them its More row, which loads with it. */
-    settings?: Snippet<[typeof PickerMore]>;
     trailing?: Snippet;
     onpick: (patch: PickPatch) => void;
   } = $props();
@@ -69,38 +65,22 @@
   });
 
   /**
-   * A composer's chip names the effort beside the model, the same on every
-   * width and for a bot: "Opus 5.5 · High". The model's own default counts;
-   * a model with no scale, or one whose agent picks, shows none.
+   * A bot's chip opens nothing, so it names the effort its settings run
+   * beside the model: "Opus 5.5 · High". Elsewhere the effort is its own chip.
    */
   let effortLabel = $derived.by(() => {
-    if (!choice || (!settings && !readonly)) return null;
+    if (!choice || !readonly) return null;
     const model = store.modelOf(choice);
     const id = choice.effort ?? model?.effort?.default;
     const level = id ? model?.effort?.levels.find((entry) => entry.id === id) : undefined;
     return level ? levelName(level) : null;
   });
 
-  /** Opens the popover, then brings one of its rows (`composer-effort`, `composer-mode`, `effort-speed`) to the keyboard. */
-  export async function reveal(testid?: string) {
+  /** Opens the popover once its chunk is there (a slash command, a removed account's chip). */
+  export async function reveal() {
     if (!popover.open) toggle();
     await parts.ModelPickerMenu.load().catch(() => undefined);
     await tick();
-    const find = () => testid ? root?.querySelector<HTMLElement>(`[data-testid="composer-picker-menu"] [data-testid="${testid}"]`) : null;
-    let row = find();
-    // Speed and permissions wait behind the More row: unfold it to reach them.
-    if (testid && !row) {
-      root?.querySelector<HTMLElement>('[data-testid="composer-picker-more"][aria-expanded="false"]')?.click();
-      await tick();
-      row = find();
-    }
-    row?.scrollIntoView?.({ block: 'nearest' });
-    // A setting's row unfolds its choices and takes the focus on the picked one; a button row opens.
-    if (row && !(row instanceof HTMLButtonElement)) {
-      row.querySelector<HTMLElement>('[data-choices-trigger][aria-expanded="false"]')?.click();
-      await tick();
-      (row.querySelector<HTMLElement>('[role=radio][tabindex="0"]') ?? row).focus();
-    } else row?.click();
   }
 
   function toggle(event?: MouseEvent) {
@@ -167,7 +147,7 @@
   {#if popover.shown}
     <Deferred part={parts.ModelPickerMenu} floating>
       {#snippet pending()}{/snippet}
-      {#snippet children(Menu)}<Menu bind:this={body} {store} {choice} {popover} root={() => root} {locked} {single} {disabled} {anchor} {settings} {onpick} />{/snippet}
+      {#snippet children(Menu)}<Menu bind:this={body} {store} {choice} {popover} root={() => root} {locked} {single} {disabled} {anchor} {onpick} />{/snippet}
     </Deferred>
   {/if}
 </div>

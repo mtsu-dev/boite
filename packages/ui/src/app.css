@@ -256,12 +256,13 @@
   /* The lift a hovered or selected row takes: light over the ground, never a new grey. */
   --color-hover: rgba(255, 255, 255, 0.045);
   --color-active: rgba(255, 255, 255, 0.075);
-  --color-foreground: #f4f4f6;
+  --color-foreground: #f8f8f9;
   /* Three text tiers a visible step apart (4 to 7 L*), the faintest still 8:1 on every surface in both
      themes: subtle carries times, machine names and meta, which must read as well as any secondary line
-     (lib/contrast.test.ts). Round 15 lifts all three one step, secondary to 12:1 on every ground. */
-  --color-muted-foreground: #e6e6e9;
-  --color-subtle: #d8d8dc;
+     (lib/contrast.test.ts). Round 15 lifts all three one step, secondary to 12:1 on every ground; round 16
+     lifts them once more (the seats still read the 12 px meta as dim), subtle to 11:1. */
+  --color-muted-foreground: #ebebed;
+  --color-subtle: #dedee2;
   /* Below reading contrast: a disabled mark, a placeholder glyph, never words that must be read. */
   --color-faint: #4a4a50;
   /* A switch: a dark track off, the light track of the foreground on, its knob the ink a primary wears. Neutral: the
@@ -556,11 +557,11 @@
   --palette-dark-default-background: #131314;
   --palette-dark-default-frame: #0b0b0c;
   --palette-dark-default-surface: #1a1a1c;
-  --palette-dark-default-foreground: #f4f4f6;
+  --palette-dark-default-foreground: #f8f8f9;
   --palette-light-default-background: #f3f3f6;
   --palette-light-default-frame: #e7e7ec;
   --palette-light-default-surface: #ffffff;
-  --palette-light-default-foreground: #18181d;
+  --palette-light-default-foreground: #141418;
   --palette-grain-theme-color: #1a1a1e;
 
   /* dark-oled */
@@ -889,9 +890,9 @@ html[data-chat-width='full'] {
   --color-edge: rgba(0, 0, 0, 0.19);
   --color-hover: rgba(0, 0, 0, 0.04);
   --color-active: rgba(0, 0, 0, 0.07);
-  --color-foreground: #18181d;
-  --color-muted-foreground: #303038;
-  --color-subtle: #3a3a42;
+  --color-foreground: #141418;
+  --color-muted-foreground: #2a2a31;
+  --color-subtle: #33333a;
   --color-faint: #b4b4bb;
   --color-selection: rgba(28, 28, 33, 0.14);
   --color-terminal-background: var(--color-surface-2);
@@ -1754,8 +1755,10 @@ tr:last-child td {
   overflow: hidden;
 }
 
-/* A settings choice: the options in one dark track, the chosen one raised on it,
-   a grey step, never a white block. Weak (`:where`), so a page may size it. */
+/* A settings choice: every option in one dark track, the chosen one lit in the
+   text's own colour so the value in use reads at a glance, as the phone's tabs
+   do (round 16: a grey step was too close to its neighbours to tell). Neutral,
+   never the accent. Weak (`:where`), so a page may size it. */
 :where(.settings .page) .segmented {
   display: inline-flex;
   flex: none;
@@ -1774,6 +1777,7 @@ tr:last-child td {
   background: transparent;
   color: var(--color-muted-foreground);
   font-size: var(--text-sm);
+  transition: background var(--motion-duration) var(--motion-curve), color var(--motion-duration) var(--motion-curve);
 }
 
 @media (hover: hover) {
@@ -1784,9 +1788,9 @@ tr:last-child td {
 }
 
 :where(.settings .page) .segmented button.on {
-  background: var(--color-surface-3);
-  border-color: var(--color-edge);
-  color: var(--color-foreground);
+  background: var(--color-foreground);
+  border-color: var(--color-foreground);
+  color: var(--color-on-foreground);
   box-shadow: var(--shadow-e1);
 }
 

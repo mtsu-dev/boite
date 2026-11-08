@@ -263,20 +263,18 @@ async function mountOnFake(search = '/?fake=1'): Promise<void> {
 
 test('Escape on an open context popover closes it and leaves a busy turn running', async () => {
   await mountOnFake();
-  // Under half full, the ring is a row of the model chip's menu, behind its More row.
-  await waitFor(() => document.querySelector('[data-testid=composer-picker]') !== null);
-  if (!document.querySelector('[data-testid=context-trigger]')) query<HTMLButtonElement>('[data-testid=composer-picker]').click();
-  await waitFor(() => document.querySelector('[data-testid=composer-picker-more]') !== null);
-  if (!document.querySelector('[data-testid=context-trigger]')) query<HTMLButtonElement>('[data-testid=composer-picker-more]').click();
-  await waitFor(() => document.querySelector('[data-testid=context-trigger]') !== null);
-  query<HTMLButtonElement>('[data-testid=context-trigger]').click();
+  // Under the threshold, the context is a row of the composer's "+".
+  await waitFor(() => document.querySelector('[data-testid=composer-options]') !== null);
+  query<HTMLButtonElement>('[data-testid=composer-options]').click();
+  await waitFor(() => document.querySelector('[data-testid=composer-context]') !== null);
+  query<HTMLButtonElement>('[data-testid=composer-context]').click();
   await waitFor(() => document.querySelector('[data-testid=context-popup]') !== null);
   vi.spyOn(store, 'busy', 'get').mockReturnValue(true);
   const stop = vi.spyOn(store, 'stop').mockResolvedValue(undefined as never);
   press(document.body, 'Escape');
   flushSync();
   expect(stop).not.toHaveBeenCalled();
-  await waitFor(() => query('[data-testid=context-trigger]').getAttribute('aria-expanded') === 'false');
+  await waitFor(() => document.querySelector('[data-testid=context-popup]') === null);
 });
 
 test('leaving a header rename with Escape hands the focus back to the title, not the page', async () => {
@@ -465,8 +463,11 @@ test('the sidebar floats a thread that waits on the user, in both views, and Rec
 
   workspace.view = 'recent';
   await waitFor(() => rows()[0] === last);
-  // Recent: the project's tile leads each row, still one line with no provider glyph or branch.
-  await waitFor(() => document.querySelectorAll('[data-testid=thread-row] [data-testid=project-tile]').length === rows().length);
+  // Recent: each row says its project once, the name in words under the title or else the tile before it, never
+  // both, with no provider glyph or branch.
+  await waitFor(() => Array.from(document.querySelectorAll('[data-testid=thread-row]')).every((row) =>
+    (row.querySelector('[data-testid=project-tile]') === null) !== (row.querySelector('[data-testid=thread-where]') === null)));
+  expect(document.querySelector('[data-testid=thread-row] [data-testid=thread-where]')).not.toBeNull();
   expect(document.querySelectorAll('[data-testid=thread-provider], [data-testid=thread-branch]')).toHaveLength(0);
   expect(document.querySelector(`[data-thread-id="${last}"] [data-testid=thread-state]`)?.getAttribute('data-state')).toBe('waiting');
 });

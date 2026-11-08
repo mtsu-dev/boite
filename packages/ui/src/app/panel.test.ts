@@ -107,8 +107,10 @@ test('the header button opens the panel on its launcher, which opens the changes
     Array.from(document.querySelectorAll('[data-testid=changes-row]')).map((row) => row.getAttribute('data-status'))
   ).toEqual(['modified', 'added', 'deleted', 'renamed', 'copied', 'untracked', 'conflict']);
 
-  // A row selects, and the selection rides the tab rather than the component.
-  query<HTMLButtonElement>('[data-testid=changes-row][data-path="src/components/RightPanel.svelte"]').click();
+  // A pick in the file chip selects, and the selection rides the tab rather than the component.
+  query<HTMLButtonElement>('[data-testid=changes-pager]').click();
+  await waitFor(() => document.querySelector('[data-testid=changes-outline-file][data-value="src/components/RightPanel.svelte"]') !== null);
+  query<HTMLButtonElement>('[data-testid=changes-outline-file][data-value="src/components/RightPanel.svelte"]').click();
   await waitFor(() => store.panel.active?.path === 'src/components/RightPanel.svelte');
   await waitFor(() => document.querySelector('[data-testid=diff-view]') !== null);
 

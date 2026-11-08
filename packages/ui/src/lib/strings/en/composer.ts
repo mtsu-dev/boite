@@ -69,11 +69,11 @@ export const strings = {
     probing: "Reading the agent's models",
     notInstalled: 'Not installed on this machine',
     installInSettings: 'Install in Settings',
-    /** The picker's row and the slider: one short word, the levels say the rest. */
+    /** The effort chip and its slider: one short word, the levels say the rest. */
     effortTitle: 'Effort',
+    /** The slider's line under the level: what the level gives and what it costs, from the lowest to the highest. */
+    effortCost: { low: 'Quick answers, light on your limits', middle: 'Balanced depth and speed', high: 'Thinks longer, uses more of your limits', top: 'Deepest thinking, slowest and costliest' },
     speed: 'Response speed',
-    /** The picker's named row under the effort that opens the response speed and the context as their own level; it reads their current values. */
-    pickerMore: 'Speed and context',
     /** The reasoning chip of a model whose agent keeps its own level until one is picked. */
     effortDefault: 'Default',
     effortDefaultHint: 'Let the agent pick its own level for this model',
@@ -87,7 +87,7 @@ export const strings = {
     compactNoSession: 'Send a message before compacting',
     newBadge: 'new',
     lockedHint: 'A thread keeps its provider and account',
-    /** The picker's row, which names the mode in words beside it. */
+    /** The permission chip's name; on a phone, the "+" row that reads the mode beside it. */
     mode: 'Permission',
     model: 'Model',
     unavailable: 'not installed',

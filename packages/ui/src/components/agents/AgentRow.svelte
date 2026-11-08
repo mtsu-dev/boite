@@ -1,11 +1,12 @@
 <script lang="ts">
   import { tick, type Component, type Snippet } from 'svelte';
-  import { ArrowRightLeft, Clock3, Pin } from '@lucide/svelte';
+  import { ArrowRightLeft, Pin } from '@lucide/svelte';
   import { focusOnMount } from '../../lib/actions';
   import { longPress } from '../../lib/long-press';
   import { fill, strings } from '../../lib/strings';
-  import { ago, clockTime, elapsed, exactTime } from '../../lib/format';
+  import { ago, elapsed, exactTime } from '../../lib/format';
   import { secondClock } from '../../lib/clock.svelte';
+  import { wordFit } from '../../lib/word-fit';
   import type { Machine } from '../../lib/workspace.svelte';
   import MachineIcon from '../MachineIcon.svelte';
   import StatusMark from '../StatusMark.svelte';
@@ -16,8 +17,9 @@
    * ring beside two lines, its name over what it does this second while it
    * works, what it waits on, else the last thing it said. The picture spans
    * both lines, so the row holds no gap under it. On the right the time it
-   * has worked, the missed answers or the time of the last one, and the next
-   * wake as a small clock while it rests. A row with a menu opens it on a
+   * has worked, the missed answers or the time of the last one: one time per
+   * row, as in the thread lists. The next wake is in the row's tooltip and
+   * the bot's header, not a second time on the row. A row with a menu opens it on a
    * right click or a long press, and renames in place like a thread's row.
    * A move waiting for the turn's end adds a line, as on a thread's row.
    * One signal per state: a coloured mark leads the line under the name (the
@@ -65,8 +67,8 @@
   } = $props();
 
   const missed = $derived(fill(unread === 1 ? strings.agents.missedOne : strings.agents.missedMany, { count: String(unread) }));
-  /** The wake's hour today, its day and hour further out. */
-  const wakeText = $derived(wake ? clockTime(wake.at, now) : '');
+  /** The next wake in words, for the row's tooltip and assistive tech. */
+  const wakeText = $derived(wake ? fill(strings.agents.nextWake, { name: wake.label, when: exactTime(wake.at) }) : '');
   /** Counting time reads the second clock, only while it works: the list's clock ticks far slower. */
   /** The one coloured mark a state wears; rest and sleep wear none. */
   const mark = $derived(tone === 'working' ? 'running' as const : tone === 'waiting' || tone === 'error' ? tone : null);
@@ -109,8 +111,7 @@
       {#if aside}{@render aside()}
       {:else}
         {#if pinned}<span class="pin" data-testid="agent-pinned"><Pin size={12} /></span>{/if}
-        <!-- The next wake sits on the name line, beside the time, so the preview under it keeps the row's width. -->
-        {#if wake}<span class="wake" title={fill(strings.agents.nextWake, { name: wake.label, when: exactTime(wake.at) })} data-testid="agent-row-wake"><Clock3 size={11} strokeWidth={2} />{wakeText}</span>{/if}
+        {#if wake}<span class="visually-hidden" data-testid="agent-row-wake">{wakeText}</span>{/if}
         {#if away && machine}<span class="offline-name" data-testid="agent-row-away">{fill(strings.connection.nameOffline, { name: machine.label })}</span>
         {:else if spent !== null}<span class="spent" data-testid="agent-row-spent">{spent}</span>
         {:else if unread > 0}<span class="unread-count" role="img" title={missed} aria-label={missed} data-testid="agent-unread-count">{unread}</span>
@@ -122,7 +123,7 @@
       <span class="detail-line">
         {#if mark}<span class="state-mark" data-testid="agent-row-mark"><StatusMark tone={mark} label={markLabel} /></span>
         {:else if icon}{@const Glyph = icon}<span class="glyph" data-testid="agent-row-glyph"><Glyph size={13} strokeWidth={2} /></span>{/if}
-        <span class="detail" data-testid="agent-row-detail">{detail}</span>
+        <span class="detail" data-testid="agent-row-detail" use:wordFit={detail}></span>
       </span>
     {/if}
     {#if pending}<span class="pending" data-testid="agent-row-pending" title={pending}><ArrowRightLeft size={12} /><span class="ui-label">{pending}</span></span>{/if}
@@ -144,7 +145,7 @@
       {@render body(field)}
     </div>
   {:else}
-    <button type="button" class="ghost row" bind:this={row} aria-current={open ? 'page' : undefined} title={title} {onclick} oncontextmenu={onmenu} use:press={!!onmenu} data-testid={testid} data-unread={marked ? 'true' : undefined}>
+    <button type="button" class="ghost row" bind:this={row} aria-current={open ? 'page' : undefined} title={wake ? `${title}\n${wakeText}` : title} {onclick} oncontextmenu={onmenu} use:press={!!onmenu} data-testid={testid} data-unread={marked ? 'true' : undefined}>
       {#snippet name()}
         {#if builtin}<span class="name"><span class="title">{title}</span><BuiltinBadge /></span>{:else}<span class="title">{title}</span>{/if}
       {/snippet}
@@ -176,7 +177,7 @@
   /* A built-in bot's name keeps its badge right after it, the time still on the far right. */
   .name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
   .name .title { flex: 0 1 auto; }
-  .when { flex: none; color: var(--color-subtle); font-size: var(--text-xs); }
+  .when { flex: none; color: var(--color-muted-foreground); font-size: var(--text-xs); }
   .spent { flex: none; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; font-variant-numeric: tabular-nums; }
   .detail-line { display: flex; align-items: center; gap: 5px; min-width: 0; font-size: var(--text-xs); color: var(--color-muted-foreground); }
   .glyph { display: inline-flex; flex: none; }
@@ -191,7 +192,6 @@
   [data-tone='error'] .detail { white-space: normal; overflow-wrap: anywhere; line-height: 1.4; }
   [data-tone='asleep'] .detail-line { color: var(--color-subtle); }
   [data-tone='asleep'] .title { color: var(--color-muted-foreground); }
-  .wake { flex: none; display: inline-flex; align-items: center; gap: 3px; color: var(--color-subtle); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
   .pin { display: inline-flex; align-items: center; flex: none; color: var(--color-muted-foreground); }
   /* A move waiting for the turn's end, like a thread's. */
   .pending { display: flex; align-items: center; gap: 4px; min-width: 0; font-size: var(--text-xs); color: var(--color-muted-foreground); }

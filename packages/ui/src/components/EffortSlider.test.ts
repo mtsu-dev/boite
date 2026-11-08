@@ -66,3 +66,31 @@ test('the Default switch is absent while the agent already picks, and for a mode
   open('high', vi.fn());
   expect(document.querySelector('[data-testid=effort-default]')).toBeNull();
 });
+
+test('a hovered dot names its level in the heading and its cost under the track before any click, and leaving puts the live one back', () => {
+  const onpick = vi.fn();
+  open('low', onpick);
+  const level = () => query('[data-testid=effort-level]');
+  const cost = () => query('[data-testid=effort-cost]').textContent;
+  // At rest: the live level, in the middle of the scale, costs the balanced line.
+  expect(level().textContent).toBe('Low');
+  expect(level().classList.contains('previewing')).toBe(false);
+  expect(cost()).toBe('Balanced depth and speed');
+  // jsdom lays nothing out: give the line a width so the pointer lands on the last dot.
+  const line = query('[data-testid=effort-track] .line');
+  line.getBoundingClientRect = () => ({ left: 0, width: 200, top: 0, height: 4, right: 200, bottom: 4, x: 0, y: 0, toJSON() {} }) as DOMRect;
+  const track = query('[data-testid=effort-track]');
+  track.dispatchEvent(Object.assign(new MouseEvent('pointermove', { bubbles: true, clientX: 199 }), { pointerType: 'mouse' }));
+  flushSync();
+  expect(level().textContent).toBe('High');
+  expect(level().classList.contains('previewing')).toBe(true);
+  expect(cost()).toBe('Deepest thinking, slowest and costliest');
+  // A finger has no hover: it previews nothing.
+  track.dispatchEvent(new MouseEvent('pointerleave'));
+  flushSync();
+  track.dispatchEvent(Object.assign(new MouseEvent('pointermove', { bubbles: true, clientX: 0 }), { pointerType: 'touch' }));
+  flushSync();
+  expect(level().textContent).toBe('Low');
+  expect(cost()).toBe('Balanced depth and speed');
+  expect(onpick).not.toHaveBeenCalled();
+});

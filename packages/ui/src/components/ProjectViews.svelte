@@ -56,7 +56,8 @@
   .list-head { display: flex; align-items: center; gap: 4px; min-width: 0; height: 36px; margin-top: 10px; padding: 0 0 0 8px; }
   .title { display: flex; flex: 1; min-width: 0; margin: 0; font-size: 15px; font-weight: 650; letter-spacing: -0.015em; color: var(--color-foreground); }
   .actions { display: flex; align-items: center; gap: 4px; flex: none; }
-  .actions :global(button.icon) { flex: none; width: 28px; height: 28px; border-radius: var(--radius-md); color: var(--color-subtle); }
+  /* A pointer's full 32 px target each. */
+  .actions :global(button.icon) { flex: none; width: 32px; height: 32px; border-radius: var(--radius-md); color: var(--color-muted-foreground); }
   .actions :global(button.icon:hover) { color: var(--color-foreground); }
   /* The one filled button: a new thread is the list's main action. */
   .actions .new.icon { background: var(--color-surface-2); color: var(--color-muted-foreground); }

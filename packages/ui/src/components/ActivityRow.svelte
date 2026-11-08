@@ -5,6 +5,7 @@
   import { strings } from '../lib/strings';
   import { leaveForAct } from '../lib/activity-return.svelte';
   import ThreadCard from './ThreadCard.svelte';
+  import CommandWords from './CommandWords.svelte';
 
   /**
    * One Activity row, desktop (ActivityList.svelte): the list's own row (menu, drag, rename) with who asks, its title
@@ -25,7 +26,7 @@
 <ThreadCard machine={row.machine} project={row.project} thread={row.thread} {now} compact at={row.at}>
   {#snippet ask()}<span class="ask" data-testid="thread-reason" title={row.reason}>{row.reason}</span>{/snippet}
   {#snippet detail()}
-    {#if operation}<code class="operation" class:long data-testid="thread-operation">{operation}</code>{/if}
+    {#if operation}<code class="operation" class:long data-testid="thread-operation"><CommandWords text={operation} /></code>{/if}
     {#each helpers as helper (helper.thread.id)}
       <span class="ask helper" data-testid="thread-helper" data-thread-id={helper.thread.id} title={`${helper.thread.title} · ${helper.reason}`}><span class="who">{helper.thread.title}</span> <span class="sep" aria-hidden="true">·</span> {helper.reason}</span>
     {/each}
@@ -48,8 +49,8 @@
   .helper { display: block; flex: none; padding-left: 26px; }
   .who { color: var(--color-foreground); font-weight: 500; }
   .sep { color: var(--color-subtle); }
-  /* The command as it will run: mono, wrapped, every line of it. */
-  .operation { display: block; margin-left: 26px; padding: 6px 8px; border-radius: var(--radius-sm); background: var(--color-code-background); color: var(--color-code-foreground); font-family: var(--font-mono); font-size: var(--text-xs); line-height: 1.5; text-align: start; white-space: pre-wrap; overflow-wrap: anywhere; }
+  /* The command as it will run: mono, wrapped at spaces only, so a path or a branch name stays whole. */
+  .operation { display: block; margin-left: 26px; padding: 6px 8px; border-radius: var(--radius-sm); background: var(--color-code-background); color: var(--color-code-foreground); font-family: var(--font-mono); font-size: var(--text-xs); line-height: 1.5; text-align: start; white-space: pre-wrap; overflow-x: auto; scrollbar-width: none; }
   /* Too long to read here: its first lines, and Review opens the whole before Allow. */
   .operation.long { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; line-clamp: 6; overflow: hidden; }
   /* One width for every action (ThreadCard's `--feed-verb`), so each starts at the same offset. */

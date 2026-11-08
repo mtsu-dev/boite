@@ -36,6 +36,10 @@ export const fr: Translation = {
     failed: '{count} en erreur',
     stopped: '{count} arrêtés',
     elapsed: 'Temps écoulé',
+    /** The dock's last entry when more run than it shows, and its hint. */
+    dockMore: '+{count}',
+    dockMoreHint: '{count} de plus au travail : les afficher',
+    dockLess: 'Moins',
     showTeam: 'Voir les sous-agents',
     stoppedStatus: 'Arrêté',
     failedStatus: 'Échec',

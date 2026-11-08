@@ -80,3 +80,41 @@ test('a memory pass another machine names leaves this machine\'s subagent of the
     expect(document.querySelectorAll('[data-testid=active-subagent][data-kind=agent]')).toHaveLength(2);
   } finally { view.close(); }
 });
+
+test('more entries than a phone dock shows fold behind a "+N" entry that opens them, never a silent clip', async () => {
+  const before = globalThis.matchMedia;
+  vi.stubGlobal('matchMedia', (media: string) => ({ media, matches: media === '(max-width: 720px)', onchange: null, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent() { return true; } }));
+  try {
+    client = new FakeClient({ delayMs: 0, delegationDemo: true });
+    store = new Store();
+    store.attach(client);
+    await store.connect();
+    await store.open('t-native');
+    const [run] = await client.call('workflows.list', { threadId: 't-trace' });
+    component = mount(AgentDock, { target: document.body, props: { store, threadId: 't-native' } });
+    await vi.waitFor(() => expect(store.workflowsThreadId).toBe('t-native'));
+    const running = (count: number) => Array.from({ length: count }, (_, at) => ({ ...run!, id: `wf-${at}`, name: `Run ${at + 1}`, rootThreadId: 't-native', status: 'running' as const, createdAt: Date.now(), nodes: [] }));
+    const names = () => [...document.querySelectorAll('[data-testid=active-subagent]')].map((entry) => entry.textContent?.trim().split(/\s+/).slice(0, 2).join(' '));
+    const more = () => document.querySelector<HTMLButtonElement>('[data-testid=agent-dock-more]');
+
+    // Four fit: a "+1" would hide a name for the room of one.
+    store.workflows = running(4);
+    await tick();
+    expect(names()).toEqual(['Run 1', 'Run 2', 'Run 3', 'Run 4']);
+    expect(more()).toBeNull();
+
+    // Five: three by name, then the count of the rest, which opens them all in place.
+    store.workflows = running(5);
+    await tick();
+    expect(names()).toEqual(['Run 1', 'Run 2', 'Run 3']);
+    expect(more()?.textContent?.trim()).toBe('+2');
+    expect(more()?.getAttribute('aria-expanded')).toBe('false');
+    more()!.click();
+    await tick();
+    expect(names()).toEqual(['Run 1', 'Run 2', 'Run 3', 'Run 4', 'Run 5']);
+    expect(more()?.getAttribute('aria-expanded')).toBe('true');
+    more()!.click();
+    await tick();
+    expect(names()).toHaveLength(3);
+  } finally { vi.stubGlobal('matchMedia', before); }
+});

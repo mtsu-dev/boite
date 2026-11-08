@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, type Snippet } from 'svelte';
+  import { onDestroy } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import { Check, ChevronDown, ChevronRight, Star, RefreshCw } from '@lucide/svelte';
   import { isNamedModel, orderedModels } from '../lib/model-order';
@@ -9,7 +9,6 @@
   import ModelSearch from './ModelSearch.svelte';
   import ProviderLogo from './ProviderLogo.svelte';
   import ProviderTiles from './ProviderTiles.svelte';
-  import PickerMore, { provideMoreLevel, type MoreLevel } from './PickerMore.svelte';
   import { floating } from '../lib/floating';
   import { focusInitial } from '../lib/focus';
   import { Closing } from '../lib/closing.svelte';
@@ -24,8 +23,8 @@
    * The model picker's popover, its own chunk: only a click on the chip
    * (`ModelPicker.svelte`) draws it. One sheet, read top to bottom: a search
    * row (a query searches every provider's models; beside it the source of the
-   * list), then the list, then `settings` (the composer's effort, permission
-   * and its one More row, `PickerMore`). The list is the models in use (stars,
+   * list), then the list. It picks a model and nothing else: the composer's
+   * effort and permission are chips of their own. The list is the models in use (stars,
    * then the latest threads' models, `lib/model-shortlist.ts`) or one
    * provider's catalogue; the source button unfolds the providers in place,
    * so no level stacks a title over another. A click on a model closes the
@@ -41,7 +40,6 @@
     single = false,
     disabled = false,
     anchor,
-    settings,
     onpick
   }: {
     store: Store;
@@ -54,7 +52,6 @@
     single?: boolean;
     disabled?: boolean;
     anchor?: () => HTMLElement | null;
-    settings?: Snippet<[typeof PickerMore]>;
     onpick: (patch: PickPatch) => void;
   } = $props();
 
@@ -79,9 +76,6 @@
   let level = $state<'home' | 'all'>('all');
   /** The providers unfolded in place under the search row. */
   let choosing = $state(false);
-  /** The settings' named row (speed and context) open as its own level, in place of the rest. */
-  const more = $state<MoreLevel>({ open: false, rows: null });
-  provideMoreLevel(more);
   let pickPending = $state(false);
   // Nothing typed on a long list: its first rows, the current model and a show-all row.
   let expandedFor = $state<string | null>(null);
@@ -91,7 +85,6 @@
   export function reset() {
     shownProviderId = choice?.providerId ?? null;
     level = hasHome ? 'home' : 'all';
-    more.open = false;
     choosing = false;
     legacy.hide();
     modelQuery = '';
@@ -335,7 +328,7 @@
 
   // Desktop can type at once, the arrows going down into the rows. Phones keep their keyboard closed until tapped.
   $effect(() => {
-    if (!popover.open || !searchable || more.open) return;
+    if (!popover.open || !searchable) return;
     focusInitial(searchBox, menu);
   });
 
@@ -432,7 +425,6 @@
   class="popover"
   class:closing={popover.closing}
   class:single
-  class:deep={more.open && !!more.rows}
   role="menu"
   tabindex="-1"
   aria-label={strings.composer.picker}
@@ -470,10 +462,6 @@
     </div>
   {/snippet}
 
-  {#if more.open && more.rows}
-  <!-- The More level alone: its back row is its one header, then speed and context. -->
-  <div class="settings" data-picker-settings><PickerMore summary="">{@render more.rows?.()}</PickerMore></div>
-  {:else}
   <!-- A phone sheet's one title, as on its other sheets; the chip names the model on desktop. -->
   <span class="sheet-title">{strings.composer.model}</span>
   <!-- One row on top: the search across providers, the list's source, and its refresh while a catalogue shows. -->
@@ -623,8 +611,6 @@
     {/key}
     {/if}
   </div>
-  {#if settings}<div class="settings" data-picker-settings>{@render settings(PickerMore)}</div>{/if}
-  {/if}
 </div>
 {#if popover.shown && legacy.shown && level === 'all' && !pending && filteredLegacy.length > 0}
 <div class="popover legacy-menu" class:closing={legacy.closing} role="menu" tabindex="-1" data-testid="picker-legacy-menu" aria-label={strings.composer.legacyModels} use:legacy.attach onanimationend={legacy.end} use:floating={{ anchor: () => menu ?? null, side: 'right' }} onkeydown={keydown}>
@@ -744,8 +730,6 @@
   .source-line { padding: 8px var(--overlay-row-pad) 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .found-source { display: flex; flex-direction: column; gap: 1px; }
   .found-source:first-child .source-line { padding-top: 2px; }
-  .settings { display: flex; flex: none; flex-direction: column; gap: 1px; padding: var(--overlay-pad); border-top: 1px solid var(--color-border); }
-  .deep .settings { border-top: none; }
   /* One provider: its model list is the whole popover. */
   .popover.single { width: min(320px, calc(100vw - 32px)); }
   .refresh { display: grid; flex: none; place-items: center; width: var(--control-sm); height: var(--control-sm); padding: 0; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--color-muted-foreground); }
@@ -888,6 +872,5 @@
     .refresh { width: var(--touch-target); }
     .model-list { max-height: none; }
     .main-models { padding: var(--space-1) var(--space-2); }
-    .settings { padding: var(--space-1) var(--space-2) var(--space-2); }
   }
 </style>

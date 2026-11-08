@@ -112,8 +112,6 @@ export function pickerKeydown(picker: PickerKeyState): (event: KeyboardEvent) =>
     if (!picker.popover.open) return;
     const active = document.activeElement as HTMLElement | null;
     if (event.key === 'Escape') return handleEscape(event);
-    // The effort and permission rows under the models keep their own keys.
-    if (event.target instanceof Element && event.target.closest('[data-picker-settings]')) return;
     if (handleLegacyNavigation(event, active)) return;
     if (handleModelSearch(event, active)) return;
     if (handleAccountNavigation(event, active)) return;

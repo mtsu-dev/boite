@@ -1,6 +1,8 @@
 <script lang="ts">
   import { untrack } from 'svelte';
+  import { MediaQuery } from 'svelte/reactivity';
   import { Check } from '@lucide/svelte';
+  import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import Spinner from './Spinner.svelte';
   import { threadTone, workflowTone } from '../lib/thread-state';
@@ -54,6 +56,16 @@
   });
   // One key, one row: an entry back at work drops its check.
   let rows = $derived([...entries, ...leaving.filter(entry => !entries.some(({ key }) => key === entry.key))]);
+  /**
+   * Past a few entries (two lines of chips on a desktop, three rows on a
+   * phone) the last ones fold behind a "+N" entry that counts them and opens
+   * them in place, so none is ever cut away out of sight.
+   */
+  const phone = new MediaQuery('(max-width: 720px)');
+  let open = $state(false);
+  let limit = $derived(phone.current ? 3 : 6);
+  let folded = $derived(open || rows.length <= limit + 1 ? 0 : rows.length - limit);
+  let shownRows = $derived(folded ? rows.slice(0, limit) : rows);
   let measured = $state(0);
   // Gone, the rows give their room back: a removed element's binding keeps its last height.
   $effect(() => { height = rows.length ? measured : 0; });
@@ -62,7 +74,7 @@
 {#if rows.length > 0}
   <div class="dock" data-testid="agent-dock" bind:clientHeight={measured}>
     <div class="entries" role="group" data-testid="active-subagents" data-count={active.length + native.length} data-runs={runs.length}>
-      {#each rows as entry (entry.key)}
+      {#each shownRows as entry (entry.key)}
         {@const done = entry.doneAt !== undefined}
         <button type="button" class="entry" class:done data-testid="active-subagent" data-kind={entry.kind} data-done={done || undefined} title={entry.name} onclick={entry.open}>
           <span class="mark">{#if done}<Check size={12} strokeWidth={2.25} aria-label={workflowTone('done', true).label} />{:else}<Spinner size={11} label={(entry.workflow ? workflowTone('running', true) : threadTone('running')).label} />{/if}</span>
@@ -70,39 +82,36 @@
           <Elapsed startedAt={entry.startedAt} finishedAt={entry.doneAt ?? null} active={!done} />
         </button>
       {/each}
+      {#if folded || open && rows.length > limit + 1}
+        <button type="button" class="entry more" data-testid="agent-dock-more" aria-expanded={open} title={open ? undefined : fill(strings.delegation.dockMoreHint, { count: String(folded) })} onclick={() => { open = !open; }}>
+          <span class="ui-label">{open ? strings.delegation.dockLess : fill(strings.delegation.dockMore, { count: String(folded) })}</span>
+        </button>
+      {/if}
     </div>
   </div>
 {/if}
 
 <style>
-  /* Quiet rows on the card's top edge, on its own surface with no rule under
-     them: only a decision below is raised. Every entry its own plain line,
-     whole at every width (never folded into a count); past three the rows
-     scroll in place, past two on a phone. */
-  /* Their marks line up with the field's text (8 px of row padding inside). */
-  .dock { flex: none; padding: 4px 6px 0; }
-  .entries {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    max-height: calc(3 * var(--control-sm));
-    overflow-y: auto;
-    scrollbar-width: none;
-  }
-  .entries::-webkit-scrollbar { display: none; }
+  /* Quiet chips on the card's top edge, on its own surface with no rule
+     under them: only a decision below is raised. Every entry keeps its own
+     name, mark and time, side by side while they fit and wrapping when they
+     do not (never folded into a count); past the limit a "+N" entry opens the
+     rest. Their marks line up with the field's text (8 px of chip padding). */
+  .dock { flex: none; padding: 6px 6px 0; }
+  .entries { display: flex; flex-wrap: wrap; align-items: center; gap: 0 4px; }
   /* Muted ink, no pill; a hover brings the ink and the fill. */
-  .entry { flex: none; min-width: 0; max-width: 100%; height: var(--control-sm); gap: 8px; padding: 0 8px; border: none; border-radius: var(--radius-md); background: transparent; box-shadow: none; color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 400; overflow: hidden; }
+  .entry { flex: 0 1 auto; min-width: 0; max-width: 100%; height: var(--control-sm); gap: 6px; padding: 0 8px; border: none; border-radius: var(--radius-md); background: transparent; box-shadow: none; color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 400; overflow: hidden; }
   .entry:hover { background: var(--color-hover); color: var(--color-foreground); }
   /* The mark sits in the box the tool rows give theirs, so a check takes the spinner's place. */
   .mark { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 12px; }
   .done .mark { color: var(--color-success); }
   .name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .entry :global(.elapsed) { flex: none; color: var(--color-subtle); font-variant-numeric: tabular-nums; }
-  /* A phone gives the names the room: the mark says it runs, the panel says
-     how long. Rows a finger still hits (over the 24 px floor). */
+  .more { flex: none; color: var(--color-foreground); font-weight: 600; }
+  /* A phone keeps every name readable on rows a finger still hits (over the
+     28 px floor), the time at the end of each. */
   @media (max-width: 720px) {
-    .entries { max-height: calc(2 * var(--control)); }
-    .entry { height: var(--control); padding: 0 6px; }
-    .entry :global(.elapsed) { display: none; }
+    .entries { gap: 2px 4px; }
+    .entry { height: 30px; padding: 0 6px; }
   }
 </style>
