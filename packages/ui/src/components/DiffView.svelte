@@ -307,7 +307,12 @@
 
   /* A phone's column is too narrow to wrap code: a line broken mid-token
      reads as two. Lines keep their shape and the rows scroll sideways
-     together, one track as wide as the longest, so every tint runs full. */
+     together, one track as wide as the longest, so every tint runs full.
+     The changes panel (`grow`) reads code the same way at any width. */
+  .grow .rows { display: grid; grid-template-columns: minmax(100%, max-content); overflow-x: auto; overscroll-behavior-x: contain; }
+  .grow .text { white-space: pre; word-break: normal; }
+  .grow .row.gap .text { white-space: nowrap; }
+  .grow .more { justify-self: start; }
   @media (max-width: 720px) {
     .rows { display: grid; grid-template-columns: minmax(100%, max-content); overflow-x: auto; overscroll-behavior-x: contain; }
     .text { white-space: pre; word-break: normal; }

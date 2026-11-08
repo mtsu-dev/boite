@@ -197,11 +197,9 @@
 </div>
 
 <style>
-  .separator { height: 1px; background: var(--color-border); margin: var(--space-1) var(--space-2); }
-  .section { padding: var(--space-3) var(--space-2) var(--space-1); font-size: var(--text-xs); font-weight: 600; color: var(--color-subtle); }
+  .separator { height: 1px; background: var(--color-border); margin: var(--space-1) var(--overlay-row-pad); }
+  .section { padding: var(--space-3) var(--overlay-row-pad) var(--space-1); font-size: var(--text-xs); font-weight: 600; color: var(--color-subtle); }
   .section:first-child, .sheet-title + .section { padding-top: var(--space-1); }
-  /* A phone sheet names what it acts on above its rows; a desktop popover sits at its trigger and needs no title. */
-  .popover[data-mobile-sheet='true'] { padding-inline: var(--space-2); }
   /* The list holds the focus only to keep the keys; its rows wear the ring. */
   .popover:focus { outline: none; }
   .sheet-title { padding: 0 var(--space-4) var(--space-3); color: var(--color-muted-foreground); font-size: var(--text-sm); font-weight: 600; line-height: 1.35; text-align: center; overflow-wrap: anywhere; }
@@ -212,8 +210,9 @@
   .item.checkable { display: grid; grid-template-columns: minmax(0, 1fr) 14px; column-gap: 8px; }
   .checkable .hint { grid-column: 1; grid-row: 2; }
   .check { display: flex; grid-column: 2; grid-row: 1 / span 2; align-self: center; }
-  .heading { padding: var(--space-2) var(--space-3); color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 500; }
-  .popover.switches { width: min(300px, calc(100vw - 24px)); padding: var(--space-2); border-radius: var(--radius-lg); }
+  /* One head form for every overlay: the section's (above), the ContextMenu's and the palette's groups. */
+  .heading { padding: var(--space-2) var(--overlay-row-pad) var(--space-1); color: var(--color-subtle); font-size: var(--text-xs); font-weight: 600; }
+  .popover.switches { width: min(300px, calc(100vw - 24px)); padding: var(--space-2); }
   .switches .item.checkable { grid-template-columns: minmax(0, 1fr) 36px; min-height: 56px; padding: var(--space-2) var(--space-3); column-gap: var(--space-3); }
   .switches .item.radio .check { justify-self: center; }
   .switches .label { gap: 9px; }
@@ -300,11 +299,11 @@
     left: 0;
     min-width: 200px;
     max-width: 320px;
-    padding: var(--space-1);
-    background: var(--color-surface-2);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    box-shadow: var(--shadow-e2);
+    padding: var(--overlay-pad);
+    background: var(--overlay-surface);
+    border: 1px solid var(--overlay-edge);
+    border-radius: var(--radius-overlay);
+    box-shadow: var(--shadow-overlay);
     /* The list reads at the body size wherever the trigger sits, a heading
        included: it never inherits the type of the sentence around it. */
     font-size: var(--text-base);
@@ -350,10 +349,10 @@
     justify-content: center;
     gap: var(--space-1);
     height: auto;
-    min-height: var(--control);
-    padding: var(--space-1) var(--space-2);
+    min-height: var(--overlay-row);
+    padding: var(--space-1) var(--overlay-row-pad);
     border: none;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-overlay-row);
     background: transparent;
     color: var(--color-foreground);
     text-align: left;
@@ -391,7 +390,7 @@
   }
 
   .label {
-    font-weight: 500;
+    font-weight: 400;
   }
 
   .hint {

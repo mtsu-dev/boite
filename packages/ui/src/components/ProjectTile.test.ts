@@ -69,7 +69,7 @@ test('an answer for a newer version than the list named still draws, and is aske
   expect(asked.mock.calls.filter(([method]) => method === 'projects.icon')).toHaveLength(1);
 });
 
-test("a project with no logo draws its stack's mark, a black or white one in the foreground colour", async () => {
+test("a project with no logo draws its stack's mark, every mark in the tile's one tone", async () => {
   const { store } = await seeded();
   const notes = store.projects.find((p) => p.id === 'p-notes')!;
   draw(store, notes);
@@ -77,7 +77,8 @@ test("a project with no logo draws its stack's mark, a black or white one in the
   await vi.waitFor(() => expect(tile().dataset['tech']).toBe('python'));
   const path = tile().querySelector('path');
   expect(path?.getAttribute('d')).toBe(techGlyphs.python.path);
-  expect(path?.getAttribute('fill')).toBe(techGlyphs.python.hex);
+  // A brand colour per stack made the list a rainbow: the shape alone tells them apart.
+  expect(path?.getAttribute('fill')).toBe('currentColor');
 
   unmount(running!, { outro: false });
   draw(store, { ...notes, icon: { kind: 'tech', id: 'rust' } });

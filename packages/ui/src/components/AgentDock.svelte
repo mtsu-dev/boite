@@ -7,6 +7,7 @@
   import Elapsed from './Elapsed.svelte';
   import { upkeepOf } from '../lib/agent-upkeep';
   import { fill, strings } from '../lib/strings';
+  import { dockRows } from '../lib/dock-rows';
 
   let { store, threadId }: { store: Store; threadId: string } = $props();
   /**
@@ -35,14 +36,7 @@
     ...runs.map((run) => ({ key: run.id, name: run.name, startedAt: run.createdAt, kind: 'workflow', open: () => store.panel.openWorkflow(run.id), workflow: true }))
   ]);
 
-  /*
-   * The entries fill the strip in order, each at its whole name's width (a
-   * hidden copy measures them, its timer at its widest): an entry that does
-   * not fit the row's rest starts the next row. Two rows at most; what they
-   * cannot hold is one "+N" that opens the subagents. Only a name wider than
-   * the strip itself ends in an ellipsis. Unmeasured (no layout yet), one row.
-   */
-  const GAP = 8, MORE = 48;
+  // Packed by `dockRows`: whole names on two rows, short ones next, a "+N" only for three or more left over.
   let width = $state(0);
   let measurer = $state<HTMLDivElement | undefined>(undefined);
   let natural = $state<number[]>([]);
@@ -55,28 +49,10 @@
     });
     return () => { current = false; };
   });
-  let rows = $derived.by((): Entry[][] => {
-    if (width <= 0 || natural.length !== entries.length) return [entries];
-    const packed: Entry[][] = [[]];
-    let used = 0, at = 0;
-    for (; at < entries.length; at++) {
-      const need = natural[at]!, row = packed[packed.length - 1]!;
-      if (row.length > 0 && used + GAP + need > width) {
-        if (packed.length === 2) break;
-        packed.push([]); used = 0;
-      }
-      used += (packed[packed.length - 1]!.length > 0 ? GAP : 0) + need;
-      packed[packed.length - 1]!.push(entries[at]!);
-    }
-    // The "+N" takes its room on the last row from the entries before it.
-    if (at < entries.length) {
-      const last = packed[packed.length - 1]!;
-      let room = last.reduce((sum, entry) => sum + natural[entries.indexOf(entry)]! + GAP, 0) + MORE;
-      while (last.length > 1 && room > width) room -= natural[entries.indexOf(last.pop()!)]! + GAP;
-    }
-    return packed;
-  });
-  let more = $derived(entries.length - rows.reduce((sum, row) => sum + row.length, 0));
+  // Unmeasured (no layout yet), one row.
+  let packed = $derived(width <= 0 || natural.length !== entries.length ? { rows: [entries.map((_, at) => at)], hidden: 0 } : dockRows(natural, width));
+  let rows = $derived(packed.rows.map((row) => row.map((at) => entries[at]!)));
+  let more = $derived(packed.hidden);
 </script>
 
 {#if entries.length > 0}
@@ -107,15 +83,16 @@
 {/if}
 
 <style>
-  /* Its own row or two in the strip; the queue and the way back go under it. */
+  /* Its own row or two in the strip, the way back at their right end. */
   .dock { display: contents; }
   .measure { position: absolute; visibility: hidden; pointer-events: none; display: flex; gap: 8px; width: max-content; height: 0; overflow: hidden; }
   .measure .entry { display: inline-flex; flex: none; align-items: center; gap: 6px; min-width: 0; max-width: none; white-space: nowrap; }
   .measure .elapsed { flex: none; font-weight: 400; font-variant-numeric: tabular-nums; }
-  .entries { display: flex; flex-direction: column; gap: 8px; flex: 1 1 100%; min-width: 0; }
+  .entries { display: flex; flex-direction: column; gap: 2px; flex: 1 1 0; min-width: 0; }
   .row { display: flex; gap: 8px; min-width: 0; }
-  .entry { flex: 0 1 auto; min-width: 96px; max-width: 100%; height: 30px; gap: 6px; padding: 0 10px; border: 1px solid var(--color-edge); border-radius: var(--radius-lg); background: var(--color-surface-2); color: var(--color-foreground); font-size: var(--text-sm); font-weight: 550; overflow: hidden; }
-  .entry:hover { background: var(--color-surface-3); }
+  /* Quiet one-line entries: no pill, the mark and the name; a hover shows the button. */
+  .entry { flex: 0 1 auto; min-width: 0; max-width: 100%; height: 28px; gap: 6px; padding: 0 8px; border: none; border-radius: var(--radius-md); background: transparent; box-shadow: none; color: var(--color-foreground); font-size: var(--text-sm); font-weight: 500; overflow: hidden; }
+  .entry:hover { background: var(--color-hover); }
   .entry.more { flex: none; min-width: 0; color: var(--color-muted-foreground); font-variant-numeric: tabular-nums; }
   .name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .entry :global(.elapsed) { flex: none; color: var(--color-muted-foreground); font-weight: 400; font-variant-numeric: tabular-nums; }

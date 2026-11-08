@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount, tick, untrack } from 'svelte';
-  import { MESSAGE_PAGE, type MemoryEvent, type Message, type Turn } from '@boite/contracts';
+  import { MESSAGE_PAGE, type Message, type Turn } from '@boite/contracts';
   import { strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import MessageTurnSummary from './MessageTurnSummary.svelte';
@@ -25,8 +25,6 @@
   import FailedAttempts from './FailedAttempts.svelte';
   import MoveMarker from './MoveMarker.svelte';
   import SpawnMarker from './SpawnMarker.svelte';
-  import MemoryRow from './MemoryRow.svelte';
-  import { mergeNoticeRows, placeMemoryEvents } from '../lib/memory-timeline';
   import MessageActions from './MessageActions.svelte';
   import { movedBy, pendingMoveOf, startedFrom, turnAnswer } from '../lib/message-display';
   import { focusComposer } from '../lib/focus';
@@ -83,7 +81,7 @@
   const cards = $derived(timelineCards(store, threadId, messages));
   /** The turns of the thread this list shows, open or delegated. */
   const shownTurns = $derived(store.openThread?.id === threadId ? store.openThread.turns : store.delegationThread?.id === threadId ? store.delegationThread.turns : []);
-  const grouped = $derived.by(() => groupTimeline(messages, threadId, shownTurns, mail, cards, memoryRows));
+  const grouped = $derived.by(() => groupTimeline(messages, threadId, shownTurns, mail, cards));
   /** The pages each turn published: its answer places them, or they go after it once the turn ends (`placeViews`). */
   let shownViews: ReadonlyMap<string, Message[]> | undefined;
   const views = $derived.by(() => (shownViews = turnViews(grouped.timeline, shownViews)));
@@ -93,15 +91,13 @@
   const shaped = $derived(agentTimeline.build(quietKeepalives(placed, shownTurns), shownTurns, memoryPassOf(store, threadId)));
   const timeline = $derived(shaped.timeline);
   const days = $derived(dayBreaks(timeline)); // The messages that open a new day, a divider above each.
-  const memoryPlacement = $derived(placeMemoryEvents(messages, store.openThread?.id === threadId ? store.openThread.memoryEvents ?? [] : store.delegationThread?.id === threadId ? store.delegationThread.memoryEvents ?? [] : []));
-  const memoryRows = $derived(new Map(memoryPlacement.standalone.map((event, index) => [`memory:${event.at}:${event.kind}:${index}`, event])));
   /** What the window lists and measures: a row per message, several for the message of a long turn (lib/timeline-rows.ts). */
   const cut = new TimelineRows(), gapRows = new GapRows();
   /** Where the held messages sit in the thread, on a core that says so: each stretch missing between them is a gap row. */
   const placement = $derived(store.openThread?.id === threadId ? store.messagePlacement?.(threadId, messages) ?? null : null);
   const positional = $derived((placement?.first ?? null) !== null);
   const gapped = $derived.by(() => {
-    const placed = gapRows.place(cut.build(timeline, memoryPlacement.inline, placement?.gaps), messages, placement?.gaps ?? NO_GAPS);
+    const placed = gapRows.place(cut.build(timeline, undefined, placement?.gaps), messages, placement?.gaps ?? NO_GAPS);
     // A row that grew or was cut weighs something else until it is measured.
     if (placed.at(cut.changedFrom) < slots.dirty) slots.dirty = placed.at(cut.changedFrom);
     return placed;
@@ -779,9 +775,6 @@
             <TimelineCard {store} card={cards.get(message.id)!} {mail} />
           {:else if group}
             <AgentMessageGroup {store} {group} />
-          {:else if grouped.notices.has(message.id)}
-            {@const notices = grouped.notices.get(message.id)!}
-            <MemoryRow event={notices[0]!} events={notices} onconfigure={store.owner ? () => store.showSettings('resources', 'limits') : undefined} />
           {:else if movedBy(message)}
             <MoveMarker notice={movedBy(message)!} />
           {:else if startedFrom(message)}
@@ -792,7 +785,7 @@
             <UserMessage {store} {message} {turn} accepted={!!turn} responded={progress.responded(message.turnId)} edit={atRest && !isSending(message) ? () => void editMessage(message) : undefined} />
           {:else}
             <AssistantMessage {store} {threadId} {message} from={row.from} to={row.to} {signedOut} showModel={row.first && firstAssistantInTurn.get(message.turnId) === message.id}
-              latestInTurn={lastInTurn.get(message.turnId) === message.id} memoryEvents={memoryPlacement.inline.get(message.id) ?? []} views={views.get(message.turnId)} />
+              latestInTurn={lastInTurn.get(message.turnId) === message.id} views={views.get(message.turnId)} />
           {/if}
           {#if turn && closes}
             {@const files = filesOf(turn)}
@@ -837,6 +830,10 @@
   .timeline {
     flex: 1;
     min-height: 0;
+    /* A column, so a short thread sits on the composer (the column's auto top
+       margin) instead of leaving a void above the docked ask. */
+    display: flex;
+    flex-direction: column;
     overflow: auto;
     scrollbar-gutter: stable both-edges;
     /* Balance the outline rail on both sides; keep room below for the activity overlay. */
@@ -844,19 +841,26 @@
     overscroll-behavior: contain;
   }
 
-  /* Scrolled up, what continues below fades into the strip instead of
-     stopping on a hard edge, so a table or a card never reads as sliced. */
+  /* Where the timeline meets the band, it fades into its own background
+     instead of stopping on a hard edge, so a card or a table never reads as
+     sliced; at the end the fade only covers the bottom padding. Scrolled up,
+     what continues below fades longer. */
+  .timeline {
+    mask-image: linear-gradient(to bottom, currentColor calc(100% - 20px), transparent);
+  }
+
   .timeline.behind {
-    mask-image: linear-gradient(to bottom, currentColor calc(100% - 28px), transparent);
+    mask-image: linear-gradient(to bottom, currentColor calc(100% - 44px), transparent);
   }
 
   .column {
+    flex: none;
     display: flex;
     flex-direction: column;
     gap: var(--chat-message-gap);
     width: 100%;
     max-width: var(--content);
-    margin: 0 auto;
+    margin: auto auto 0;
   }
 
   /* What a long thread's unrendered messages weigh, above and below the window. */

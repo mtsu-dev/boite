@@ -33,7 +33,7 @@ export const strings = {
     settingsPrivacy: 'Privacy',
     settingsBack: 'Back to settings',
     /** Activity's second line: why the thread is listed. */
-    feed: { asks: 'Asks: {text}', run: 'Wants to run {command}', helperAsks: '{title} asks you' },
+    feed: { run: 'Wants to run {command}', helperAsks: '{title} needs you' },
     navigation: 'Navigation', activity: 'Activity',
     waitingElsewhere: '{count} waiting for you',
     search: 'Find a conversation', noThreads: 'No matching conversations.'

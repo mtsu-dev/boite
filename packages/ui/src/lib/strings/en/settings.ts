@@ -23,7 +23,7 @@ export const strings = {
       accounts: 'Providers',
       plugins: 'Plugins',
       usage: 'Usage',
-      resources: 'Protection',
+      resources: 'Focus and resources',
       experiments: 'Experiments',
       diagnostics: 'Diagnostics'
     },
@@ -110,7 +110,7 @@ export const strings = {
     fontHint: 'No face reads fastest for everyone: in a 2022 study each reader was about 35% faster in their best face than in their worst, and taste seldom picked the fastest. Try each one on its sample.',
     fontSystem: 'System',
     /** Drawn in every face of the picker: mixed case, digits, and the glyphs that get confused (Il1, O0, rn). */
-    fontSample: 'Rerun the 12 failing tests in Il1/O0/rn.ts',
+    fontSample: 'Il1 O0 rn',
     monoFont: 'Code font',
     monoSystem: 'System',
     zoom: 'Interface size',

@@ -57,7 +57,7 @@
 <div class="queued" data-testid="composer-queued">
   {#each queued as entry, at (entry)}
     {@const failed = entry.request?.failed}
-    <div class="chip" class:failed={failed !== undefined} data-testid="composer-queued-item">
+    <div class="line" class:failed={failed !== undefined} data-testid="composer-queued-item">
       {#if failed !== undefined}
         <span class="state error" data-testid="composer-outbox-failed" title={fill(strings.composer.outboxFailed, { reason: failed })}>{fill(strings.composer.outboxFailed, { reason: failed })}</span>
       {:else if entry.request}
@@ -91,33 +91,29 @@
 </div>
 
 <style>
+  /* Quiet lines at the head of the box: each held prompt on its own line, its
+     state muted before it, edit and remove at its end; Send now closes the run. */
   .queued {
     display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
+    flex-direction: column;
+    gap: 0;
     min-width: 0;
     max-width: 100%;
     max-height: 30vh;
     overflow-y: auto;
   }
 
-  /* One line, the height of every row of the strip. */
-  .chip {
+  .line {
     display: flex;
     align-items: center;
     gap: 6px;
     min-width: 0;
-    max-width: min(420px, 100%);
-    height: 30px;
-    padding: 0 4px 0 10px;
-    border: 1px solid var(--color-edge);
-    border-radius: var(--radius-lg);
-    background: var(--color-surface-2);
+    max-width: 100%;
+    height: 28px;
+    padding: 0 2px 0 0;
     font-size: var(--text-sm);
     animation: rise var(--dur-3) var(--ease-out-quint);
   }
-
-  .chip.failed { border-color: var(--color-danger); }
 
   .state {
     display: inline-flex;
@@ -125,7 +121,7 @@
     gap: 5px;
     flex: none;
     color: var(--color-muted-foreground);
-    font-weight: 550;
+    font-weight: 500;
     white-space: nowrap;
   }
 
@@ -139,7 +135,8 @@
     padding: 0;
     border: none;
     background: none;
-    color: var(--color-foreground);
+    box-shadow: none;
+    color: var(--color-muted-foreground);
     font-weight: 400;
     text-align: left;
     overflow: hidden;
@@ -147,14 +144,15 @@
     white-space: nowrap;
   }
 
-  .text:hover:not(:disabled) { background: none; text-decoration: underline; text-decoration-color: var(--color-subtle); }
+  .text:hover:not(:disabled) { background: none; color: var(--color-foreground); text-decoration: underline; text-decoration-color: var(--color-subtle); }
   /* Still waiting to go while the box holds other text: the line stays legible. */
   .text:disabled { opacity: 1; }
 
   .extra { display: inline-flex; align-items: center; gap: 3px; flex: none; color: var(--color-muted-foreground); font-size: var(--text-xs); }
-  .chip :global(.info-tip) { flex: none; margin: 0; }
-  .remove { flex: none; width: 22px; height: 22px; }
-  .chip .ghost.small { flex: none; height: 22px; font-size: var(--text-xs); }
+  .line :global(.info-tip) { flex: none; margin: 0; }
+  .remove { flex: none; width: 22px; height: 22px; margin-left: auto; }
+  .line .ghost.small { flex: none; height: 22px; font-size: var(--text-xs); }
 
-  .send-now { height: 30px; padding: 0 10px; border-radius: var(--radius-lg); font-size: var(--text-sm); font-weight: 550; }
+  .send-now { align-self: flex-start; height: 26px; padding: 0 8px; margin-left: -8px; border-radius: var(--radius-md); font-size: var(--text-sm); font-weight: 550; }
+  @media (max-width: 720px) { .line { height: 36px; } .remove { width: 36px; height: 36px; } }
 </style>

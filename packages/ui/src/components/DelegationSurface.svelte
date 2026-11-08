@@ -1,7 +1,7 @@
 <script lang="ts">
   import ContextModeBadge from './ContextModeBadge.svelte';
   import MachineIcon from './MachineIcon.svelte';
-  import { Pause, Play, Plus, RotateCcw, Settings, Square, Trash2, UsersRound, Workflow } from '@lucide/svelte';
+  import { Pause, Play, Plus, RotateCcw, Settings, Square, Trash2, Workflow } from '@lucide/svelte';
   import { DEFAULT_DELEGATION_CONFIG, threadActive, threadBusy, type DelegationConfig, type DelegationProfile } from '@boite/contracts';
   import type { BoundPanel, Surface } from '../lib/right-panel.svelte';
   import { fill, strings } from '../lib/strings';
@@ -228,8 +228,9 @@
   {#if run}
     <WorkflowRunPane {store} {run} onback={() => showRun(undefined)} />
   {:else}
-    <header class="surface-head">
-      <h2><UsersRound size={17} strokeWidth={1.75} /><span class="ui-label">{strings.delegation.heading}</span></h2>
+    <!-- Every panel's own first row (app.css `.panel-toolbar`): what it holds, then its one set of actions. -->
+    <header class="panel-toolbar surface-head">
+      <h2 class="ui-label">{strings.delegation.heading}</h2>
       {#if view && (!config.enabled || config.paused)}<span class="state ui-label-box" data-testid="delegation-state"><span class="ui-label">{config.enabled ? strings.delegation.paused : strings.delegation.off}</span></span>{/if}
       <span class="spacer"></span>
       {#if busy}
@@ -310,8 +311,7 @@
 
 <style>
   .delegation { container-type: inline-size; height: 100%; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; }
-  .surface-head { flex: none; min-height: 44px; padding: 6px 10px 6px 16px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--color-border); }
-  .surface-head h2 { display: flex; align-items: center; gap: 7px; font-size: var(--text-md); }
+  .surface-head h2 { min-width: 0; color: var(--color-foreground); font-size: inherit; font-weight: 500; }
   .surface-head .on { background: var(--color-active); color: var(--color-foreground); }
   .state { padding: 1px 7px; border-radius: 999px; background: var(--color-surface-3); color: var(--color-muted-foreground); font-size: var(--text-xs); }
   .spacer { flex: 1; }
@@ -330,10 +330,11 @@
   .members { min-height: 0; padding: 4px 8px 10px; overflow-y: auto; }
   .group + .group { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--color-border); }
   .group-head { padding: 10px 9px 6px; display: flex; align-items: center; gap: 6px; color: var(--color-muted-foreground); font-size: var(--text-xs); font-weight: 600; }
-  .group-head .count { padding: 1px 6px; border-radius: 999px; background: var(--color-surface-3); font-variant-numeric: tabular-nums; font-weight: 500; }
-  .member { width: 100%; height: auto; padding: 10px 9px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 0 10px; border: 1px solid transparent; border-radius: var(--radius-md); background: transparent; text-align: left; }
+  .group-head .count { color: var(--color-subtle); font-variant-numeric: tabular-nums; font-weight: 500; }
+  /* The panels' one row form (the changes list's): a quiet fill on hover, no frame. */
+  .member { width: 100%; height: auto; padding: 8px 9px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 0 10px; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; text-align: left; }
   .member + .member { margin-top: 2px; }
-  .member:hover { background: var(--color-hover); border-color: var(--color-border); }
+  .member:hover { background: var(--color-hover); }
   /* On a machine this window is not connected to: it reads, it does not open. */
   .member.away { cursor: default; }
   .member.away:hover { background: transparent; border-color: transparent; }

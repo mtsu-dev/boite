@@ -47,12 +47,17 @@
  * for reading (2026-10-18): Atkinson Hyperlegible Next, IBM Plex Sans and
  * Source Sans 3 tell I, l and 1 apart and keep open shapes; Geist, Figtree and
  * DM Sans went, each a closed or geometric face that repeated another.
+ *
+ * The chrome speaks in two weights, regular and semibold. Each face is declared
+ * twice over the same file, 100 to 400 and 600 to 900, so a 500 anywhere
+ * resolves to the 400 face (CSS font matching looks down from 500 first) and
+ * no medium weight reaches the screen; bold prose still gets its 700.
  */
 
 @font-face {
   font-family: 'Inter';
   font-style: normal;
-  font-weight: 100 900;
+  font-weight: 100 400;
   font-display: swap;
   src: url('/fonts/Inter-latin.woff2') format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
@@ -61,7 +66,25 @@
 @font-face {
   font-family: 'Inter';
   font-style: normal;
-  font-weight: 100 900;
+  font-weight: 600 900;
+  font-display: swap;
+  src: url('/fonts/Inter-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 400;
+  font-display: swap;
+  src: url('/fonts/Inter-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600 900;
   font-display: swap;
   src: url('/fonts/Inter-latin-ext.woff2') format('woff2');
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
@@ -70,7 +93,7 @@
 @font-face {
   font-family: 'IBM Plex Sans';
   font-style: normal;
-  font-weight: 100 900;
+  font-weight: 100 400;
   font-display: swap;
   src: url('/fonts/IBMPlexSans-latin.woff2') format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
@@ -79,7 +102,25 @@
 @font-face {
   font-family: 'IBM Plex Sans';
   font-style: normal;
-  font-weight: 100 900;
+  font-weight: 600 900;
+  font-display: swap;
+  src: url('/fonts/IBMPlexSans-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 100 400;
+  font-display: swap;
+  src: url('/fonts/IBMPlexSans-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 600 900;
   font-display: swap;
   src: url('/fonts/IBMPlexSans-latin-ext.woff2') format('woff2');
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
@@ -88,7 +129,7 @@
 @font-face {
   font-family: 'Atkinson Hyperlegible Next';
   font-style: normal;
-  font-weight: 100 900;
+  font-weight: 100 400;
   font-display: swap;
   src: url('/fonts/AtkinsonHyperlegibleNext-latin.woff2') format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
@@ -97,7 +138,25 @@
 @font-face {
   font-family: 'Atkinson Hyperlegible Next';
   font-style: normal;
-  font-weight: 100 900;
+  font-weight: 600 900;
+  font-display: swap;
+  src: url('/fonts/AtkinsonHyperlegibleNext-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Atkinson Hyperlegible Next';
+  font-style: normal;
+  font-weight: 100 400;
+  font-display: swap;
+  src: url('/fonts/AtkinsonHyperlegibleNext-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'Atkinson Hyperlegible Next';
+  font-style: normal;
+  font-weight: 600 900;
   font-display: swap;
   src: url('/fonts/AtkinsonHyperlegibleNext-latin-ext.woff2') format('woff2');
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
@@ -106,7 +165,7 @@
 @font-face {
   font-family: 'Source Sans 3';
   font-style: normal;
-  font-weight: 100 900;
+  font-weight: 100 400;
   font-display: swap;
   src: url('/fonts/SourceSans3-latin.woff2') format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
@@ -115,7 +174,25 @@
 @font-face {
   font-family: 'Source Sans 3';
   font-style: normal;
-  font-weight: 100 900;
+  font-weight: 600 900;
+  font-display: swap;
+  src: url('/fonts/SourceSans3-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Source Sans 3';
+  font-style: normal;
+  font-weight: 100 400;
+  font-display: swap;
+  src: url('/fonts/SourceSans3-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'Source Sans 3';
+  font-style: normal;
+  font-weight: 600 900;
   font-display: swap;
   src: url('/fonts/SourceSans3-latin-ext.woff2') format('woff2');
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
@@ -181,8 +258,8 @@
   --color-foreground: #ededef;
   /* Both text tiers clear 4.5:1 on every surface in both themes, subtle above 5.7:1 even on
      surface-3: it carries times and states, which must read as well as any secondary line (lib/contrast.test.ts). */
-  --color-muted-foreground: #c4c4ca;
-  --color-subtle: #a9a9af;
+  --color-muted-foreground: #cbcbd0;
+  --color-subtle: #b3b3b9;
   /* Below reading contrast: a disabled mark, a placeholder glyph, never words that must be read. */
   --color-faint: #4a4a50;
   /* A switch: a dark track off; on takes the accent, the one surface it may fill, so on and off never differ by grey alone. */
@@ -248,6 +325,17 @@
   --shadow-e1: 0 1px 2px rgb(0 0 0 / 0.35), inset 0 1px 0 rgb(255 255 255 / 0.05);
   --shadow-e2: 0 8px 24px rgb(0 0 0 / 0.45), 0 0 0 1px rgb(255 255 255 / 0.05);
   --shadow-e3: 0 20px 60px rgb(0 0 0 / 0.55), 0 0 0 1px rgb(255 255 255 / 0.06);
+  /* One overlay card for every menu, sheet, popover, palette and dialog: the
+     same raised fill, readable edge, corner and shadow, and one row form inside
+     (height, inset, corner). A component sizes it; it never restyles it. */
+  --overlay-surface: var(--color-surface-2);
+  --overlay-edge: var(--color-edge);
+  --radius-overlay: var(--radius-lg);
+  --shadow-overlay: 0 12px 36px rgb(0 0 0 / 0.5), 0 1px 2px rgb(0 0 0 / 0.4);
+  --overlay-pad: var(--space-1);
+  --overlay-row: max(32px, var(--control));
+  --overlay-row-pad: var(--space-2);
+  --radius-overlay-row: var(--radius-sm);
   /* The panel's border draws its hairline; then a top light and two shadows that set it in the chrome. */
   --shadow-frame: inset 0 1px 0 rgb(255 255 255 / 0.035), 0 1px 2px rgb(0 0 0 / 0.6), 0 12px 40px rgb(0 0 0 / 0.35);
   /* The left edge of a phone's screen sliding over another (`lib/screen-slide.svelte.ts`). */
@@ -295,9 +383,9 @@
   --text-base: 14px;
   --text-md: 16px;
   --text-lg: 20px;
-  /* What a conversation is read and written in: one step above the chrome, on
-     a 24 px line. A phone reads it at the 16 px its fields already type at. */
-  --text-reading: 15px;
+  /* What a conversation is read and written in: one step above the chrome,
+     16 px everywhere, so the composer types at the size the prose reads. */
+  --text-reading: var(--text-md);
   --leading-reading: 1.6;
 
   /*
@@ -761,8 +849,8 @@ html[data-chat-width='full'] {
   --color-hover: rgba(0, 0, 0, 0.04);
   --color-active: rgba(0, 0, 0, 0.07);
   --color-foreground: #1c1c21;
-  --color-muted-foreground: #3d3d45;
-  --color-subtle: #53535b;
+  --color-muted-foreground: #36363e;
+  --color-subtle: #4a4a52;
   --color-faint: #b4b4bb;
   --color-selection: rgba(28, 28, 33, 0.14);
   --color-terminal-background: var(--color-surface-2);
@@ -801,6 +889,7 @@ html[data-chat-width='full'] {
   --shadow-e1: 0 1px 2px rgb(0 0 0 / 0.08), inset 0 1px 0 rgb(255 255 255 / 0.6);
   --shadow-e2: 0 8px 24px rgb(0 0 0 / 0.12), 0 0 0 1px rgb(0 0 0 / 0.06);
   --shadow-e3: 0 20px 60px rgb(0 0 0 / 0.18), 0 0 0 1px rgb(0 0 0 / 0.08);
+  --shadow-overlay: 0 12px 36px rgb(0 0 0 / 0.14), 0 1px 2px rgb(0 0 0 / 0.08);
   --shadow-frame: inset 0 1px 0 rgb(255 255 255 / 0.6), 0 1px 2px rgb(0 0 0 / 0.06), 0 12px 40px rgb(0 0 0 / 0.06);
   --shadow-screen: -8px 0 24px -6px rgb(0 0 0 / 0.14);
   --color-composer-focus: rgba(0, 0, 0, 0.24);
@@ -1003,6 +1092,9 @@ a {
 /* Controls                                                                   */
 /* ------------------------------------------------------------------------- */
 
+/* Read by a screen reader, not drawn: the full name of a control whose column head says it once. */
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
 /* Centre labels using the font's cap height and alphabetic baseline.
    Apply to the text leaf: trimming does not propagate through flex or grid.
    Padding keeps accents and descenders inside labels that truncate overflow;
@@ -1034,7 +1126,7 @@ button {
   border-radius: var(--radius-md);
   background: var(--control-glaze) var(--color-control-surface);
   color: var(--color-foreground);
-  font-weight: 500;
+  font-weight: 400;
   cursor: pointer;
   white-space: nowrap;
   transition:
@@ -1074,7 +1166,19 @@ button:disabled {
 }
 
 /* A primary action is filled in the text colour: the accent is kept for the send button. */
+/* A primary that cannot act yet is drawn as an outline: a faded filled slab
+   read as heavy grey weight in the middle of a card. */
+button.primary:disabled {
+  background: transparent;
+  border-color: var(--color-edge);
+  color: var(--color-subtle);
+  opacity: 1;
+}
+
+/* Chrome speaks in two weights (see the faces above): regular for every
+   control, semibold for the one action a view leads with. */
 button.primary {
+  font-weight: 600;
   background: var(--control-glaze) var(--color-foreground);
   border-color: var(--color-foreground);
   color: var(--color-on-foreground);
@@ -1146,8 +1250,9 @@ button.small.icon {
 
 /* No icon button under 32 px a side on a desktop, whatever its glyph: a pointer
    needs the room as much as a finger needs its 44 (the phone block below). The
-   glyph keeps its drawn size; only the hit area grows. */
-button.icon {
+   glyph keeps its drawn size; only the hit area grows. Settings name theirs `icon-only`. */
+button.icon,
+button.icon-only {
   min-width: 32px;
   min-height: 32px;
 }
@@ -1181,12 +1286,15 @@ textarea::placeholder {
   color: var(--color-subtle);
 }
 
-/* A field takes the same accent ring, laid over its own border. */
-input:focus-visible,
+/* A text field matches :focus-visible on any focus, a tap or an autofocus
+   included, so the accent ring framed it after every touch. It brightens its
+   own edge instead, as the composer does; the caret carries the accent. Boxes
+   that are not typed into (a switch, a checkbox, a radio) keep the ring. */
+input:not([type=checkbox], [type=radio], [type=range], [type=color]):focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline-offset: -1px;
-  border-color: transparent;
+  outline: none;
+  border-color: var(--color-composer-focus);
 }
 
 /* Forced colors drop the shadows and border tints that mark focus here, so every focused control gets the system's own ring. */
@@ -1235,7 +1343,7 @@ details.disclosure > summary {
   cursor: pointer;
   color: var(--color-muted-foreground);
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: 400;
   transition: color var(--dur-2) var(--ease-out-quint);
 }
 
@@ -1408,7 +1516,7 @@ details[open] > summary .fold-caret {
   background: var(--color-surface-2);
   color: var(--color-muted-foreground);
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: 400;
   white-space: nowrap;
   transition: transform var(--dur-1) var(--ease-out-quint);
 }
@@ -1671,7 +1779,7 @@ tr:last-child td {
   margin: 0;
   color: var(--color-foreground);
   font-size: var(--text-base);
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .settings .page .switch-row .hint {
@@ -2206,7 +2314,7 @@ input[type=checkbox][role=switch]:disabled { opacity: .45; cursor: not-allowed; 
   [data-mobile-sheet='true'].closing { animation-name: sheet-down !important; }
   /* No outline rail on a phone (MessageList.svelte): the timeline's left edge matches its right. */
   :root { --outline-room: 20px; }
-  :root { --text-xs: 12px; --text-reading: var(--text-md); --settings-padding: var(--space-4); --control: var(--touch-target); --control-sm: var(--touch-target); --control-lg: var(--touch-target); --input: var(--touch-target); --row: var(--touch-target); }
+  :root { --text-xs: 12px; --settings-padding: var(--space-4); --control: var(--touch-target); --control-sm: var(--touch-target); --control-lg: var(--touch-target); --input: var(--touch-target); --row: var(--touch-target); }
   input, textarea { font-size: var(--text-md); }
   button.icon { min-width: var(--touch-target); min-height: var(--touch-target); }
   .composer-wrap { padding-bottom: max(10px, env(safe-area-inset-bottom)); }

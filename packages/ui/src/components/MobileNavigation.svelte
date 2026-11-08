@@ -36,6 +36,7 @@
   import { workingThread } from '../lib/recent.svelte';
   import { compareThreads } from '../lib/thread-order';
   import { activityFeed } from '../lib/activity-feed';
+  import { threadsNeedingYou } from '../lib/app-rail';
   import { needsUser, threadState } from '../lib/thread-state';
   import { minuteClock } from '../lib/clock.svelte';
   import { contactsShown } from '../lib/contacts-rail.svelte';
@@ -73,9 +74,9 @@
   const chatting = $derived(screen === 'chat' && !recover && store.page === 'chat');
   /** The bottom bar: on every list and page, the recovery screen too, not in a conversation nor in one a page opened. Only a phone's width draws it. */
   $effect.pre(() => { tabbed = !chatting && !(store.page === 'agents' && mobileChrome.detail); });
-  /** What the header names: the page, or the list on screen. */
+  /** What the header names: the page, or the list on screen; the thread list by its view, so Projects and Recent tell apart. */
   const title = $derived(store.page === 'settings' ? strings.settings.heading : store.page === 'agents' ? strings.agents.heading : store.page === 'home' ? strings.contacts.heading
-    : recover ? 'Boite' : screen === 'activity' ? strings.mobile.activity : strings.sidebar.threads);
+    : recover ? 'Boite' : screen === 'activity' ? strings.mobile.activity : workspace.view === 'recent' ? strings.sidebar.recentView : strings.sidebar.projectsView);
   let scrollRoot = $state<HTMLElement>();
   const scrollPositions = new Map<string, number>();
   const measuredRows = new Map<string, Map<string, number>>();
@@ -235,7 +236,7 @@
 </header>
 
 {#if tabbed || leaving}
-  <MobileTabs {store} screen={listScreen} waiting={waiting.length + inbox.contacts} navigate={show} inert={leaving} />
+  <MobileTabs {store} screen={listScreen} waiting={threadsNeedingYou(machines.map(machine => machine.store)) + inbox.contacts} navigate={show} inert={leaving} />
 {/if}
 
 {#snippet contacts()}

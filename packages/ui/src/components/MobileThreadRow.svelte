@@ -14,7 +14,7 @@
    * A phone's thread row, the desktop row's grammar at a finger's size: the
    * title on one line and the state at its end. The title gets the width:
    * the pull request waits in the thread, the pin under the slide. `compact` is the flat lists' form (Recent, Activity): the
-   * project's tile first. Activity adds `reason`, what the thread wants and
+   * project's tile first. Activity (the phone's screen and the desktop's page) adds `reason`, what the thread wants and
    * when, under the title, and `nested` steps a sub-agent in under its parent.
    * The row menu has no button of its own: a long press opens it, a slide
    * left shows pin and archive. Its trigger stays for the keyboard, drawn
@@ -83,6 +83,8 @@
   .thread :global(.headline .when) { font-size: var(--text-sm); }
   .thread.offline { opacity: 0.55; }
   .thread :global(.headline .pin) { display: none; }
+  /* One status per row: a state outranks the unsent draft's mark, which the thread shows once open. */
+  .thread :global(.headline:has(> .state) > .draft) { display: none; }
   /* At 360 px a plain time goes before the title is cut; a state keeps its mark and word. */
   @media (max-width: 380px) {
     .thread :global(.headline .when:not(.state)), .thread :global(.headline .when .elapsed) { display: none; }

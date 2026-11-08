@@ -1,17 +1,17 @@
 import { expect, vi } from 'vitest';
 import { flushSync } from 'svelte';
 import { store } from '../lib/store.svelte';
-import { effortDots, groupLabels, press, query, seats, shownModels, test, tiles, type, waitFor } from '../test/app';
+import { effortDots, effortPicked, groupLabels, press, query, seats, shownModels, test, tiles, type, waitFor } from '../test/app';
 
 vi.mock('@tauri-apps/plugin-opener', () => import('../test/opener'));
 
 /** The reasoning row lives in the model chip's popover: open it, then find the row. */
-function effortRow(): HTMLButtonElement | null {
+function effortRow(): HTMLElement | null {
   if (!document.querySelector('[data-testid=composer-picker-menu]')) {
     document.querySelector<HTMLElement>('[data-testid=composer-picker]')?.click();
     flushSync();
   }
-  return document.querySelector<HTMLButtonElement>('[data-testid=composer-effort]');
+  return document.querySelector<HTMLElement>('[data-testid=composer-effort]');
 }
 
 test('the picker rails the providers as logos and gives the shown one its accounts and models', async ({ app: _app }) => {
@@ -32,6 +32,8 @@ test('the picker rails the providers as logos and gives the shown one its accoun
   expect(tiles()).toEqual(['favorites', 'claude', 'echo', 'opencode', 'codex', 'pi', 'grok', 'muse', 'more']);
   // Claude is the shown one and has two logins, so they sit beside its name.
   expect(seats()).toEqual(['claude::a-claude-main', 'claude::a-claude-side']);
+  // On the provider's own login the chip names the model alone.
+  expect(document.querySelector('[data-testid=composer-picker-account]')).toBeNull();
   expect(shownModels()).toEqual(['claude-fable-5-1', 'claude-opus-5-5', 'claude-sonnet-5-5']);
 
   // One account: nothing beside the name.
@@ -94,7 +96,6 @@ test('the picker reads an ACP agent models, showing the descriptor and a probing
   // The reasoning scale comes from the same answer, not from the descriptor, and
   // it is a row of the model chip that carries it.
   await waitFor(() => effortRow() !== null);
-  effortRow()!.click();
   await waitFor(() => document.querySelector('[data-testid=composer-effort-menu]') !== null);
   expect(effortDots()).toEqual(['think', 'think-hard']);
   press('Escape');
@@ -177,39 +178,36 @@ test('past twelve models the column gets a search field, prefix groups and keybo
   expect(store.openThread?.model).toBe('anthropic/claude-sonnet-5');
 });
 
-test('the reasoning slider sets the effort of the picked model, and the chip follows', async ({ app: _app }) => {
+test('the reasoning row names each level, sets the effort of the picked model, and the chip follows', async ({ app: _app }) => {
   query<HTMLButtonElement>('[data-testid=new-thread]').click();
   await waitFor(() => store.draft !== null);
   await waitFor(() => query('[data-testid=composer-picker]').textContent?.includes('Opus 5.5') === true);
 
   await waitFor(() => effortRow() !== null);
-  effortRow()!.click();
   await waitFor(() => document.querySelector('[data-testid=composer-effort-menu]') !== null);
   expect(effortDots()).toEqual(['low', 'medium', 'high', 'xhigh', 'max', 'ultrathink']);
+  // Every level by its name, in the model's order, inline in the popover: no second menu.
+  expect(Array.from(document.querySelectorAll('[data-testid=composer-effort-menu] [data-value]')).map((el) => el.textContent?.trim()))
+    .toEqual(['Low', 'Medium', 'High', 'Xhigh', 'Max', 'Ultrathink']);
   // Nothing chosen yet, so the model's own default reads as the active one.
-  const track = query('[data-testid=effort-track]');
-  expect(track.getAttribute('aria-valuenow')).toBe('2');
-  expect(track.getAttribute('aria-valuetext')).toBe('High');
+  expect(effortPicked()).toBe('high');
 
   query<HTMLButtonElement>('[data-testid=composer-effort-menu] [data-value=xhigh]').click();
-  await waitFor(() => query('[data-testid=effort-track]').getAttribute('aria-valuenow') === '3');
+  await waitFor(() => effortPicked() === 'xhigh');
   // Picking a level keeps the popover open: it is a setting of the model, not a choice of its own.
   expect(document.querySelector('[data-testid=composer-effort-menu]')).not.toBeNull();
   // The level reads on its own row; the chip's label names the model alone.
   expect(query('[data-testid=composer-picker]').textContent).toContain('Opus 5.5');
   expect(query('[data-testid=composer-picker]').textContent).not.toContain('Xhigh');
-  await waitFor(() => query('[data-testid=composer-effort]').textContent?.trim() === 'Xhigh');
-
-  // The dots are filled up to the one that is live, and no further.
-  const filled = Array.from(document.querySelectorAll('[data-dot]')).filter((dot) => dot.classList.contains('on'));
-  expect(filled.map((dot) => dot.getAttribute('data-dot'))).toEqual(['low', 'medium', 'high', 'xhigh']);
+  // One live choice, and no other.
+  expect(document.querySelectorAll('[data-testid=composer-effort-menu] [aria-checked=true]')).toHaveLength(1);
 
   query<HTMLButtonElement>('[data-testid=composer-effort-menu] [data-value=high]').click();
-  await waitFor(() => query('[data-testid=composer-effort]').textContent?.trim() === 'High');
+  await waitFor(() => effortPicked() === 'high');
 
   // The draft carries the effort into the thread the first send creates.
   query<HTMLButtonElement>('[data-testid=composer-effort-menu] [data-value=xhigh]').click();
-  await waitFor(() => query('[data-testid=composer-effort]').textContent?.trim() === 'Xhigh');
+  await waitFor(() => effortPicked() === 'xhigh');
   press('Escape');
   const input = query<HTMLTextAreaElement>('[data-testid=composer-input]');
   input.value = 'Think harder about the caps';

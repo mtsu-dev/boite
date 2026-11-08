@@ -10,6 +10,7 @@
   import { linuxShell } from '../lib/shell-platform';
   import { dragWindow, shellWindow, toggleMaximize } from '../lib/window-drag';
   import { titleSlot } from '../lib/title-slot.svelte';
+  import { inbox } from '../lib/inbox.svelte';
   import { contactsShown } from '../lib/contacts-rail.svelte';
   import WindowResizeHandles from './WindowResizeHandles.svelte';
 
@@ -97,7 +98,9 @@
    * took room from the project or the thread.
    */
   let heading = $derived(store.page === 'settings' ? strings.settings.heading : store.openProject ? projectName(store.openProject) : '');
-  let threadHeader = $derived(store.page === 'chat' && (store.openThread || store.draft));
+  /** Desktop Activity takes the chat's card (App.svelte): the bar names it, not the draft left under it. */
+  let activity = $derived(inbox.open && !mobile.current && store.page === 'chat');
+  let threadHeader = $derived(store.page === 'chat' && !activity && (store.openThread || store.draft));
   /** The dev install runs beside the stable one, so the bar has to say which is open. */
   let dev = $derived(store.core?.channel === 'dev');
 
@@ -120,7 +123,7 @@
   {:else if (store.page === 'agents' || store.page === 'settings') && titleSlot.current && !mobile.current}
     {@render titleSlot.current()}
   {:else}
-    <span class="name ui-label">{store.page === 'agents' ? strings.agents.heading : store.page === 'home' ? strings.contacts.heading : heading}</span>
+    <span class="name ui-label">{activity ? strings.mobile.activity : store.page === 'agents' ? strings.agents.heading : store.page === 'home' ? strings.contacts.heading : heading}</span>
   {/if}
   {#if contactNotice && ContactRequestNotice}<ContactRequestNotice {store} />{/if}
   {#if inShell && store.booted && store.page !== 'settings'}

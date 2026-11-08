@@ -252,6 +252,8 @@
 {#if viewing}{@const view = viewing}<Deferred part={parts.ImageViewer} floating>{#snippet children(ImageViewer)}<ImageViewer items={view.items} index={view.index} onclose={closeViewer} />{/snippet}</Deferred>{/if}
 
 <style>
+  /* The answer is the content: it reads one clear step above the tool rows and
+     meta around it, at the size the composer types (app.css). */
   .prose {
     word-break: break-word;
     font-size: var(--text-reading);

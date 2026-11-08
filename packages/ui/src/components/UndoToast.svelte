@@ -7,8 +7,9 @@
 
   /**
    * The toast that carries the last archive's way back, in the shared
-   * bottom-right corner, never over a title nor in the strip above the
-   * composer. `onerror` hears a restore that failed.
+   * bottom-right corner, as wide as its text. Over the thread's column it
+   * keeps room of its own above the strip, so it never covers a line being
+   * read. `onerror` hears a restore that failed.
    */
   let { onerror }: { onerror: (error: unknown) => void } = $props();
 
@@ -37,9 +38,9 @@
 <svelte:window {onkeydown} />
 
 {#if toast.shown}
-  <div class="notify-corner" use:notifyCorner>
+  <div class="notify-corner undo-corner" use:notifyCorner={{ reserve: true }}>
     <div class="undo-toast" class:closing={toast.closing} role="status" use:toast.attach onanimationend={toast.end} data-testid="undo-toast">
-      <span class="text ui-label">{text}</span>
+      <span class="text">{text}</span>
       <button type="button" class="small undo" data-testid="undo-action" title={strings.sidebar.undoHint} onclick={() => void undo.take(onerror)}><span class="ui-label">{strings.sidebar.undo}</span></button>
       <button type="button" class="ghost small icon" aria-label={strings.common.dismiss} title={strings.common.dismiss} onclick={() => undo.dismiss()}><X size={14} /></button>
     </div>
@@ -47,6 +48,8 @@
 {/if}
 
 <style>
+  .undo-corner { width: max-content; max-width: min(440px, calc(100vw - 24px)); }
+
   .undo-toast {
     position: relative;
     display: flex;
@@ -68,11 +71,16 @@
     pointer-events: none;
   }
 
+  /* Two lines before an ellipsis: a long title still reads on a phone. */
   .text {
     min-width: 0;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
   }
 
   .undo {

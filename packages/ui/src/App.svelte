@@ -10,6 +10,8 @@
   import UndoToast from './components/UndoToast.svelte';
   import ErrorToast from './components/ErrorToast.svelte';
   import ChatView from './components/ChatView.svelte';
+  import Deferred from './components/Deferred.svelte';
+  import { activityPage, inbox } from './lib/inbox.svelte';
   import ConfirmDialog from './components/ConfirmDialog.svelte';
   import ContextMenu from './components/ContextMenu.svelte';
   import DragGhost from './components/DragGhost.svelte';
@@ -130,7 +132,9 @@
     TerminalView: () => import('./components/TerminalView.svelte'),
     // The project board, in the same drawer: only once it is asked for.
     BoardDrawer: () => import('./components/BoardDrawer.svelte'),
-    PluginUpdateNotice: () => import('./components/PluginUpdateNotice.svelte')
+    PluginUpdateNotice: () => import('./components/PluginUpdateNotice.svelte'),
+    // A memory stop's corner card: only once a thread is open.
+    MemoryCorner: () => import('./components/MemoryCorner.svelte')
   };
   type Deferred = { [K in keyof typeof deferredLoaders]?: Awaited<ReturnType<(typeof deferredLoaders)[K]>>['default'] };
   let deferred = $state.raw<Deferred>({});
@@ -166,6 +170,8 @@
     if (!store.booted) return;
     return whenIdle(() => { if (!prefetchAllowed()) return need('PluginUpdateNotice'); needAll(); prefetchParts(); warmPages(store, experimentOn('resident-agents')); });
   });
+  // With the first open thread, so the corner is there before a stop lands in it.
+  $effect(() => { if (store.openThread) need('MemoryCorner'); });
   let WhipOverlay = $state<typeof import('./components/WhipOverlay.svelte').default>();
   $effect(() => {
     if (!store.booted || !experimentOn('whip') || WhipOverlay) return;
@@ -589,9 +595,14 @@
       {:else}
       <main>
         <div class="thread-chat framed">
-          {#key store}
-            <ChatView {store} />
-          {/key}
+          <!-- Desktop Activity is the card's page while the rail has it on (lib/inbox.svelte.ts). -->
+          {#if inbox.open && !narrow.current}
+            <Deferred part={activityPage}>{#snippet children(ActivityPage)}<ActivityPage {store} />{/snippet}</Deferred>
+          {:else}
+            {#key store}
+              <ChatView {store} />
+            {/key}
+          {/if}
         </div>
         {#if terminalSlot.shown && store.openThread && deferred.TerminalDrawer}
           {@const TerminalDrawer = deferred.TerminalDrawer}
@@ -654,6 +665,7 @@
   <ErrorToast {store} pairingScreen={!inShell && (narrow.current || wideRecovery) && store.pairingRequired}
     blocked={mobileRecovery && localNetwork.state === 'denied'} onopen={() => { mobileScreen = 'chat'; }} />
   <UndoToast onerror={(error) => (store.error = errorText(error))} />
+  {#if store.page === 'chat' && deferred.MemoryCorner}{@const MemoryCorner = deferred.MemoryCorner}<MemoryCorner {store} />{/if}
   {#if store.booted && experimentOn('whip') && WhipOverlay}
     <WhipOverlay onerror={(error) => (store.error = errorText(error))} />
   {/if}

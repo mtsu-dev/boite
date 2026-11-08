@@ -14,6 +14,7 @@ export const fr: Translation = {
     unreachable: "Injoignable d'ici. Elle est peut-être éteinte, en veille ou sur un autre réseau.",
     insecure: "Cette machine ne donne aucune adresse utilisable par cet appareil, et aucune machine du groupe ne peut l'y mener. Donnez-lui une adresse HTTPS publique.",
     loopback: "Cette machine n'écoute que sur elle-même : les autres ne peuvent pas la joindre. Connectez-la à Tailscale, ou activez l'écoute sur le réseau.",
+    loopbackShort: 'Joignable depuis cette machine seulement',
     copied: 'Copié',
     addDevice: 'Ajouter un appareil', adding: 'Préparation',
     addOlder: "Boite sur {machine} est trop ancien pour ajouter un appareil. Mettez-le à jour dans Mises à jour sur cette page, puis revenez.",

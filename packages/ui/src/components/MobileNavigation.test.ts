@@ -49,7 +49,9 @@ test('Activity gives each row its reason and its time, a sub-agent under its par
   expect(rows.length).toBeGreaterThan(0);
   for (const row of rows) expect(row.querySelector('[data-testid=mobile-row-reason] time')?.textContent?.trim()).toBeTruthy();
   const reasons = rows.map(row => row.querySelector('[data-testid=mobile-row-reason] .text')?.textContent ?? '');
-  expect(reasons.some(reason => /^(Asks: |Wants to run )/.test(reason))).toBe(true);
+  // A question is its own reason, a permission says what it runs.
+  const asked = store.pendingQuestions.map(question => question.text.split('\n')[0]!.trim());
+  expect(reasons.some(reason => /^Wants to run /.test(reason) || asked.includes(reason))).toBe(true);
   for (const row of rows.filter(row => row.classList.contains('nested'))) {
     const child = store.threads.find(t => t.id === row.dataset['threadId'])!;
     const above = rows.slice(0, rows.indexOf(row)).reverse().find(other => !other.classList.contains('nested'))!;
@@ -101,7 +103,8 @@ test('the header holds the search, opened in place, and the new thread; the bar 
   expect(list()).toBe('Activity');
   id('mobile-conversations')!.click(); await settle();
   expect(list()).toBe('Threads');
-  expect(id('mobile-title')?.textContent).toBe('Threads');
+  // The header names the list by its view, Projects or Recent.
+  expect(id('mobile-title')?.textContent).toBe('Projects');
   store.showSettings('machines'); await settle();
   expect(list()).toBeUndefined();
   expect(id('mobile-search-open')).toBeNull();

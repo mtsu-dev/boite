@@ -3,7 +3,7 @@ import type { Translation } from '../../i18n.svelte';
 export const fr: Translation = {
 
   brain: {
-    heading: 'Cerveau', description: 'Les mêmes instructions et skills pour tous vos agents.',
+    heading: 'Instructions et skills', description: 'Les mêmes instructions et skills pour tous vos agents.',
     folder: 'Dossier du cerveau', pathHint: 'Chemin du dossier', save: 'Connecter le dossier', browse: 'Parcourir', useFolder: 'Choisir ce dossier',
     enabled: 'Partager les instructions automatiquement', enabledHint: 'Ajoute les instructions et le catalogue de skills à chaque tour. Les commandes /skill restent disponibles tant que le dossier est connecté.',
     disconnect: 'Déconnecter', sync: 'Synchroniser', working: 'En cours',

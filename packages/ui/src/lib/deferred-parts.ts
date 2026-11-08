@@ -3,10 +3,11 @@ import { LazyComponent } from './lazy-component.svelte';
 /**
  * Components that rows and bars of the first screen hold but do not draw on
  * it: the image viewer, the dictation panel's microphone, a diff, the quota
- * popup's table, question, secret, team and council cards, the coordination settings, the
- * updates card and a robot's face. Each is its own chunk; the place asks when it
- * mounts (`components/Deferred.svelte`), and App fetches them all once the app
- * is idle, so a first open finds its code already here.
+ * popup's table, question, secret, team and council cards, the coordination
+ * settings, the updates card, a robot's face and the model picker's popover.
+ * Each is its own chunk; the place asks when it mounts
+ * (`components/Deferred.svelte`), and App fetches them all once the app is
+ * idle, so a first open finds its code already here.
  */
 export const parts = {
   ImageViewer: new LazyComponent(() => import('../components/ImageViewer.svelte')),
@@ -20,7 +21,8 @@ export const parts = {
   PinnedQuota: new LazyComponent(() => import('../components/PinnedQuota.svelte')),
   CoordinationPanel: new LazyComponent(() => import('../components/CoordinationPanel.svelte')),
   UpdatesNotice: new LazyComponent(() => import('../components/UpdatesNotice.svelte')),
-  RobotFace: new LazyComponent(() => import('../components/agents/RobotFace.svelte'))
+  RobotFace: new LazyComponent(() => import('../components/agents/RobotFace.svelte')),
+  ModelPickerMenu: new LazyComponent(() => import('../components/ModelPickerMenu.svelte'))
 };
 
 /** The idle prefetch of every part (App.svelte). A failure is quiet: the part asks again when drawn. */

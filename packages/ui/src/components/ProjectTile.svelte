@@ -22,7 +22,7 @@
 
   /**
    * A project's mark: the logo the core found in its folder, else the mark of
-   * the stack it reads as, else its initial on a tile. The logo's bytes come
+   * the stack it reads as, else its initial on a tile, all in one grey tone. The logo's bytes come
    * from the Store that owns the project, fetched the first time a tile needs
    * them; until they land, and if they never do, the initial stands.
    */
@@ -45,8 +45,8 @@
     ><img src={url} alt="" draggable="false" decoding="async" onerror={() => (broken = url)} /></span
   >
 {:else if glyph}
-  <span class="tile tech" class:mono={glyph.mono} style:--tile={`${size}px`} data-testid="project-tile" data-kind="tech" data-tech={project.icon?.kind === 'tech' ? project.icon.id : undefined} title={glyph.title}
-    ><svg viewBox="-2 -2 28 28" width={size - 2} height={size - 2} role="img" aria-label={glyph.title}><path d={glyph.path} fill={glyph.mono ? 'currentColor' : glyph.hex} /></svg></span
+  <span class="tile tech" style:--tile={`${size}px`} data-testid="project-tile" data-kind="tech" data-tech={project.icon?.kind === 'tech' ? project.icon.id : undefined} title={glyph.title}
+    ><svg viewBox="-2 -2 28 28" width={size - 2} height={size - 2} role="img" aria-label={glyph.title}><path d={glyph.path} fill="currentColor" /></svg></span
   >
 {:else}
   <span class="tile letter" style:--tile={`${size}px`} data-testid="project-tile" data-kind="letter"><span class="ui-label">{initial}</span></span>
@@ -68,15 +68,17 @@
     color: var(--color-muted-foreground);
     font-size: var(--text-xs);
   }
+  /* Every mark in one tone, as the rail's bots are: a stack's brand colour or a
+     folder logo's own palette made a rainbow down the list. The shape still
+     tells the projects apart. */
   .tech {
     background: var(--color-surface-3);
-  }
-  .tech.mono {
-    color: var(--color-foreground);
+    color: var(--color-muted-foreground);
   }
   .image img {
     width: 100%;
     height: 100%;
     object-fit: contain;
+    filter: grayscale(1);
   }
 </style>

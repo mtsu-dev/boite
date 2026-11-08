@@ -55,7 +55,7 @@
   >
     <span class="glyph"><Brain size={15} strokeWidth={1.75} /></span>
     <span class="label ui-label" data-testid="thinking-label" title={empty ? undefined : label}>{label}</span>
-    {#if took}<span class="took ui-label" data-testid="thinking-elapsed">{took}</span>{/if}
+    {#if took}<span class="took ui-label" class:settled={!live} data-testid="thinking-elapsed">{took}</span>{/if}
     {#if live}
       <span class="dot" aria-label={strings.chat.streaming}></span>
     {/if}
@@ -95,6 +95,9 @@
 
   .glyph { display: inline-flex; flex: none; width: var(--activity-glyph); justify-content: center; color: var(--color-subtle); }
   .took { flex: none; color: var(--color-subtle); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+  /* A finished thought's time is read on demand, like a finished step's (ToolCard). */
+  .took.settled { opacity: 0; transition: opacity var(--dur-2); }
+  .head:hover > .took.settled, .head:focus-visible > .took.settled, .head[aria-expanded='true'] > .took.settled { opacity: 1; }
 
   .head:hover:not(:disabled) {
     color: var(--color-foreground);

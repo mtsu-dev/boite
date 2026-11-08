@@ -4,6 +4,7 @@ import { FakeClient } from '../lib/fake-client';
 import { Store } from '../lib/store.svelte';
 import { strings } from '../lib/strings';
 import { setLocaleSetting } from '../lib/i18n.svelte';
+import MemoryCorner from './MemoryCorner.svelte';
 import MemoryRow from './MemoryRow.svelte';
 import MessageList from './MessageList.svelte';
 
@@ -49,7 +50,7 @@ test.each(['en', 'fr'] as const)('renders a %s throttling notice with its limit 
   expect(row.querySelector('[data-testid=memory-row-info]')).toBeNull();
 });
 
-test('a memory notice stays between the interrupted tool and later output in the same message', async () => {
+test('a stop inside a message leaves the conversation for the notification corner', async () => {
   const client = new FakeClient({ delayMs: 0 }); const store = new Store(); store.attach(client);
   try {
     await store.connect(); await store.open('t-trace');
@@ -64,84 +65,67 @@ test('a memory notice stays between the interrupted tool and later output in the
     mounted = mount(MessageList, { target: document.body, props: { store, threadId: thread.id, messages: thread.messages } });
     flushSync();
     const text = document.querySelector('[data-testid=timeline]')!.textContent!;
-    const stopped = strings.resources.killTitle;
-    expect(text.indexOf(stopped)).toBeGreaterThan(text.indexOf('Before the interruption'));
-    expect(text.indexOf(stopped)).toBeLessThan(text.indexOf('After the interruption'));
+    expect(text).toContain('After the interruption');
+    expect(text).not.toContain(strings.resources.killTitle);
+    const corner = mount(MemoryCorner, { target: document.body, props: { store } });
+    try {
+      flushSync();
+      // A stop the thread already had is history: the corner only carries one that lands while it is open.
+      expect(document.querySelector('[data-testid=memory-corner]')).toBeNull();
+      client.emitMemory({ ...thread.memoryEvents[0]!, at: Date.now() });
+      flushSync();
+      expect(document.querySelector('[data-testid=memory-corner] [data-testid=memory-row] .title')?.textContent).toBe(strings.resources.killTitle);
+    } finally { await unmount(corner); }
   } finally { store.detach(); client.close(); }
 });
 
-test('live stops share one line and stay at their boundary as the answer grows and reopens', async () => {
+test('live stops share one corner card, open the memory settings and stay dismissed after reopening', async () => {
   const client = new FakeClient({ delayMs: 0 }); const store = new Store(); store.attach(client);
   try {
     await store.connect(); await store.open('t-trace');
     const thread = store.openThread!;
     thread.memoryEvents = [];
-    const message = thread.messages.at(-1)!;
-    message.state = 'streaming'; message.parts = [{ type: 'text', text: 'Build started' }];
-    mounted = mount(MessageList, { target: document.body, props: { store, threadId: thread.id, messages: thread.messages } });
-    const at = Date.now();
-    for (const [index, exe] of ['cargo.exe', 'rustc.exe', 'node.exe'].entries()) client.emitMemory({ threadId: thread.id, kind: 'killed', reason: 'machine', limitBytes: 3072 * 1048576, bytes: 100 * 1048576, exe, state: 'critical', at: at + index * 3000, anchor: { messageId: message.id, partIndex: 1 } });
-    store.openThread!.messages.at(-1)!.parts = [...message.parts, { type: 'text', text: 'Build retried with fewer workers\n\n' }];
+    mounted = mount(MemoryCorner, { target: document.body, props: { store } });
     flushSync();
-    const row = document.querySelector('[data-testid=memory-row]')!;
-    expect(document.querySelectorAll('[data-testid=memory-row]')).toHaveLength(1);
-    expect(row.textContent).toContain(strings.resources.killCount(3));
-    expect(row.textContent).not.toContain('rustc.exe');
-    expect(tipText(row)).toContain('cargo.exe (100 MB), rustc.exe (100 MB), node.exe (100 MB)');
-    const text = document.querySelector('[data-testid=timeline]')!.textContent!;
-    expect(text.indexOf(strings.resources.killCount(3))).toBeLessThan(text.indexOf('Build retried'));
-    row.querySelector<HTMLButtonElement>('.configure')!.click();
+    expect(document.querySelector('[data-testid=memory-corner]')).toBeNull();
+    const at = Date.now();
+    for (const [index, exe] of ['cargo.exe', 'rustc.exe', 'node.exe'].entries()) client.emitMemory({ threadId: thread.id, kind: 'killed', reason: 'machine', limitBytes: 3072 * 1048576, bytes: 100 * 1048576, exe, state: 'critical', at: at + index * 3000 });
+    flushSync();
+    const row = () => document.querySelector('[data-testid=memory-corner] [data-testid=memory-row]');
+    expect(document.querySelectorAll('[data-testid=memory-corner] [data-testid=memory-row]')).toHaveLength(1);
+    expect(row()!.textContent).toContain(strings.resources.killCount(3));
+    expect(row()!.textContent).not.toContain('rustc.exe');
+    expect(tipText(row()!)).toContain('cargo.exe (100 MB), rustc.exe (100 MB), node.exe (100 MB)');
+    row()!.querySelector<HTMLButtonElement>('.configure')!.click();
+    flushSync();
     expect(store.settingsTab).toBe('resources');
     expect(store.settingsSection?.id).toBe('limits');
+    // Opening the settings answered the card: it does not come back with the thread.
+    expect(row()).toBeNull();
     await store.open('t-trace'); flushSync();
-    expect(document.body.textContent).toContain(strings.resources.killCount(3));
-    expect(store.openThread!.memoryEvents?.find(event => event.at === at)?.anchor).toEqual({ messageId: message.id, partIndex: 1 });
+    expect(row()).toBeNull();
+    client.emitMemory({ threadId: thread.id, kind: 'budget', state: 'critical', at: at + 60_000 });
+    flushSync();
+    expect(row()).not.toBeNull();
+    row()!.querySelector<HTMLButtonElement>('[data-testid=memory-row-dismiss]')!.click();
+    flushSync();
+    expect(row()).toBeNull();
   } finally { store.detach(); client.close(); }
 });
 
-test('thread history and live notices appear in the timeline and survive reopening', async () => {
+test('neither a stop the thread had nor a live one becomes a row of the timeline', async () => {
   const client = new FakeClient({ delayMs: 0 }); const store = new Store(); store.attach(client);
   try {
     await store.connect(); await store.open('t-trace');
-    expect((await client.call('threads.list', {})).find(thread => thread.id === 't-trace')).not.toHaveProperty('memoryEvents');
+    expect(store.openThread!.memoryEvents?.length).toBeGreaterThan(0);
     mounted = mount(MessageList, { target: document.body, props: { store, threadId: 't-trace', messages: store.openThread!.messages } });
     flushSync();
-    expect(document.querySelectorAll('[data-testid=memory-row]')).toHaveLength(1);
+    const rows = () => document.querySelectorAll('[data-testid=timeline] [data-testid=memory-row]');
+    expect(rows()).toHaveLength(0);
     client.emitMemory({ threadId: 't-trace', kind: 'budget', state: 'critical', at: Date.now() });
-    flushSync(); expect(document.querySelectorAll('[data-testid=memory-row]')).toHaveLength(2);
-    store.openThread!.messages.push({ id: 'after-memory', threadId: 't-trace', turnId: 'after-memory', role: 'user', parts: [{ type: 'text', text: 'Continue after the memory warning' }], state: 'complete', createdAt: Date.now() + 1 });
+    client.emitMemory({ threadId: 't-trace', kind: 'killed', reason: 'machine', limitBytes: 3277 * 1048576, exe: 'link.exe', state: 'critical', at: Date.now() + 1 });
     flushSync();
-    const notice = [...document.querySelectorAll('[data-testid=memory-row]')].at(-1)!;
-    expect(notice.closest('[data-testid=timeline]')).not.toBeNull();
-    expect(notice.closest('article')?.nextElementSibling?.textContent).toContain('Continue after the memory warning');
-    await store.open('t-trace'); flushSync();
-    expect(document.querySelectorAll('[data-testid=memory-row]')).toHaveLength(2);
-  } finally { store.detach(); client.close(); }
-});
-
-test('back-to-back stops share one card until a message or another limit comes between them', async () => {
-  const client = new FakeClient({ delayMs: 0 }); const store = new Store(); store.attach(client);
-  try {
-    await store.connect(); await store.open('t-trace');
-    mounted = mount(MessageList, { target: document.body, props: { store, threadId: 't-trace', messages: store.openThread!.messages } });
-    flushSync();
-    const before = document.querySelectorAll('[data-testid=memory-row]').length;
-    const at = Date.now();
-    const stop = (exe: string, offset: number, limitBytes = 3277 * 1048576) => client.emitMemory({ threadId: 't-trace', kind: 'killed', reason: 'machine', limitBytes, exe, bytes: 700 * 1048576, state: 'critical', at: at + offset });
-    // Linkers stopped a minute apart, with nothing said in between.
-    stop('link.exe', 0); stop('rust-lld.exe', 60_000); stop('rust-lld.exe', 120_000);
-    flushSync();
-    const rows = () => [...document.querySelectorAll('[data-testid=memory-row]')];
-    expect(rows()).toHaveLength(before + 1);
-    expect(rows().at(-1)!.querySelector('.title')?.textContent).toBe(strings.resources.killCount(3));
-    expect(tipText(rows().at(-1)!)).toContain('link.exe (700 MB), rust-lld.exe (700 MB), rust-lld.exe (700 MB)');
-    // Another limit reads differently: its own card.
-    stop('cargo.exe', 130_000, 9728 * 1048576);
-    flushSync(); expect(rows()).toHaveLength(before + 2);
-    store.openThread!.messages.push({ id: 'between-stops', threadId: 't-trace', turnId: 'between-stops', role: 'user', parts: [{ type: 'text', text: 'Build again' }], state: 'complete', createdAt: at + 140_000 });
-    stop('link.exe', 150_000);
-    flushSync(); expect(rows()).toHaveLength(before + 3);
-    expect(rows().at(-1)!.querySelector('.title')?.textContent).toBe(strings.resources.killTitle);
-    expect(rows().at(-1)!.querySelector('.detail')?.textContent).toBe('link.exe, 700 MB');
+    expect(rows()).toHaveLength(0);
+    expect(document.querySelectorAll('[data-testid=timeline] [data-testid=message]').length).toBeGreaterThan(0);
   } finally { store.detach(); client.close(); }
 });

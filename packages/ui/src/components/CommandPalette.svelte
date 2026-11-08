@@ -18,6 +18,7 @@
   import ThreadState from './ThreadState.svelte';
   import AgentAvatar from './agents/AgentAvatar.svelte';
   import { agentDirectory } from '../lib/agent-directory.svelte';
+  import { inbox } from '../lib/inbox.svelte';
 
   let { store }: { store: Store } = $props();
 
@@ -156,6 +157,8 @@
 
   function pick(item: PaletteItem) {
     close();
+    // A thread or a new one takes the main card back from desktop Activity.
+    if (item.kind !== 'command' || item.id === 'new-thread') inbox.open = false;
     if (item.kind === 'thread') {
       if (workspace.machines.length) void workspace.openNotification(item.id.slice('thread:'.length));
       else { store.showChat(); void store.open(item.id.slice('thread:'.length)); }
@@ -331,10 +334,11 @@
     max-height: min(70vh, 520px);
     display: flex;
     flex-direction: column;
-    background: var(--color-surface);
-    border: 1px solid var(--color-edge);
-    border-radius: var(--radius-xl);
-    box-shadow: var(--shadow-e3);
+    /* The overlay card every menu, sheet and dialog wears (app.css). */
+    background: var(--overlay-surface);
+    border: 1px solid var(--overlay-edge);
+    border-radius: var(--radius-overlay);
+    box-shadow: var(--shadow-overlay);
     overflow: hidden;
     animation: pop var(--dur-2) var(--ease-out-quint);
   }
@@ -374,21 +378,27 @@
     outline: none;
   }
 
-  /* A row cut by the foot fades into it instead of meeting a line; the end padding keeps the last row whole. */
+  /* The foot is its own band under a hairline, like the field above. A row
+     the list's end cuts fades out before the line, so it reads as more below,
+     and the end padding is as tall as the fade: scrolled down, the last row
+     sits whole above it. */
   .list {
     flex: 1;
     min-height: 0;
     overflow: auto;
-    padding: 6px 6px 12px;
-    mask-image: linear-gradient(to bottom, black calc(100% - 14px), transparent);
+    padding: var(--overlay-pad) var(--overlay-pad) var(--space-6);
+    scroll-padding-block: var(--overlay-pad) var(--space-6);
+    mask-image: linear-gradient(to bottom, black calc(100% - var(--space-6)), transparent);
   }
 
   .section + .section {
     margin-top: 4px;
   }
 
+  /* The overlay's head form, as Menu's headings. */
   .section-label {
-    padding: 8px 10px 4px;
+    padding: var(--space-2) var(--overlay-row-pad) var(--space-1);
+    color: var(--color-subtle);
   }
 
   /* A project heading reads like the sidebar's: tile, name, then its machine. */
@@ -424,10 +434,10 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    height: var(--row);
-    padding: 0 10px;
+    height: var(--overlay-row);
+    padding: 0 var(--overlay-row-pad);
     border: none;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-overlay-row);
     background: transparent;
     color: var(--color-foreground);
     text-align: left;
@@ -502,7 +512,9 @@
   }
 
   .foot {
-    padding: 2px 14px 8px;
+    padding: var(--space-2) var(--space-4);
+    border-top: 1px solid var(--color-border);
     font-size: var(--text-xs);
+    color: var(--color-subtle);
   }
 </style>

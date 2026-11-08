@@ -54,13 +54,16 @@ test('a phone walks the changes one diff at a time, against HEAD only', async ()
   const panel = query('[data-testid=changes-panel]')!;
   expect(panel.classList.contains('reading')).toBe(true);
   expect(query('[data-testid=diff-view]')?.getAttribute('data-path')).toBe(rows[0]!.dataset.path);
-  expect(query('[data-testid=changes-position]')?.textContent).toBe('1 of 7');
-  expect(button('changes-previous').disabled).toBe(true);
+  // The file outline holds every changed file, the open one marked; one tap reads another.
+  const outline = () => Array.from(document.querySelectorAll<HTMLButtonElement>('[data-testid=changes-outline-file]'));
+  expect(outline().map((file) => file.dataset.path)).toEqual(rows.map((row) => row.dataset.path));
+  expect(outline()[0]!.getAttribute('aria-current')).toBe('true');
 
-  button('changes-next').click(); await settle();
+  outline()[1]!.click(); await settle();
   expect(store.panel.active?.path).toBe(rows[1]!.dataset.path);
-  expect(query('[data-testid=changes-position]')?.textContent).toBe('2 of 7');
-  button('changes-previous').click(); await settle();
+  expect(outline()[1]!.getAttribute('aria-current')).toBe('true');
+  expect(outline()[0]!.hasAttribute('aria-current')).toBe(false);
+  outline()[0]!.click(); await settle();
   expect(store.panel.active?.path).toBe(rows[0]!.dataset.path);
 
   button('changes-back').click(); await settle();

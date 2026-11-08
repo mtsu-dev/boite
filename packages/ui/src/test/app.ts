@@ -82,11 +82,16 @@ export function seats(): (string | null)[] {
   return Array.from(document.querySelectorAll('[data-seat]')).map((el) => el.getAttribute('data-instance'));
 }
 
-/** The levels the open reasoning slider draws a dot for, in the model's order. */
+/** The levels the open picker's reasoning row names, in the model's order (the agent's own default left out). */
 export function effortDots(): (string | null)[] {
-  return Array.from(document.querySelectorAll('[data-testid=composer-effort-menu] [data-dot]')).map((el) =>
-    el.getAttribute('data-dot')
-  );
+  return Array.from(document.querySelectorAll('[data-testid=composer-effort-menu] [data-value]')).map((el) =>
+    el.getAttribute('data-value')
+  ).filter((value) => value !== '');
+}
+
+/** The reasoning choice the picker's row marks as live. */
+export function effortPicked(): string | null {
+  return document.querySelector('[data-testid=composer-effort-menu] [aria-checked=true]')?.getAttribute('data-value') ?? null;
 }
 
 /** The prefix labels the model column groups its matches under, in order. */

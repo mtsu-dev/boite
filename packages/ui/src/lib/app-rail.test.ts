@@ -12,7 +12,7 @@ test("a bot's picture reads its thread first, then its snapshot, a question outr
   expect(railBotState(active, null, null, false)).toBe('idle');
 });
 
-test("the Threads count is the sidebar's waiting rows: a bot's, a team's, a child's and an archived thread count elsewhere", () => {
+test("the needs-you count is Activity's waiting rows: a bot's, a team's, a helper's and an archived thread count elsewhere, a bot's worker for itself", () => {
   const base = { unread: false, backgroundWork: undefined, openQuestions: undefined };
   const waiting = { ...base, status: 'waiting' as const };
   const store = {
@@ -23,8 +23,9 @@ test("the Threads count is the sidebar's waiting rows: a bot's, a team's, a chil
       { id: 'd', ...waiting, agentSessionId: 'bot' },
       { id: 'e', ...waiting, teamId: 'team' },
       { id: 'f', ...waiting, parentThreadId: 'a' },
+      { id: 'g', ...waiting, parentThreadId: 'd' },
     ],
     subagents: (id: string) => (id === 'b' ? { count: 1, asking: 1 } : 0),
   };
-  expect(threadsNeedingYou([store, { threads: [{ id: 'a', ...waiting }], subagents: () => 0 }])).toBe(3);
+  expect(threadsNeedingYou([store, { threads: [{ id: 'a', ...waiting }], subagents: () => 0 }])).toBe(4);
 });

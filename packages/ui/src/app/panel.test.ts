@@ -47,6 +47,8 @@ test("the panel menu lists the terminal, and a control's right click leads to th
   await waitFor(() => document.querySelector('[data-testid=panel-menu-menu] [data-value=terminal-toggle]') !== null);
   query<HTMLButtonElement>('[data-testid=panel-menu]').click();
 
+  // The ring sits beside the model chip once half the context is used.
+  store.openThread!.context = { tokens: 120_000, window: 200_000, at: Date.now() };
   await waitFor(() => document.querySelector('.context-control') !== null);
   query('.context-control').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 30 }));
   await waitFor(() => document.querySelector('[data-testid=context-menu] [data-value=customize]') !== null);

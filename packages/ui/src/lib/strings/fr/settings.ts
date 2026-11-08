@@ -25,7 +25,7 @@ export const fr: Translation = {
       accounts: 'Fournisseurs',
       plugins: 'Extensions',
       usage: 'Consommation',
-      resources: 'Protection',
+      resources: 'Concentration et ressources',
       experiments: 'Expérimentations',
       diagnostics: 'Diagnostic'
     },
@@ -109,7 +109,7 @@ export const fr: Translation = {
     font: 'Police du texte',
     fontHint: 'Aucune police n\'est la plus rapide pour tout le monde : dans une étude de 2022, chaque lecteur lisait environ 35 % plus vite dans sa meilleure police que dans sa pire, et le goût choisissait rarement la plus rapide. Essayez chacune sur son exemple.',
     fontSystem: 'Système',
-    fontSample: 'Relance les 12 tests en échec dans Il1/O0/rn.ts',
+    fontSample: 'Il1 O0 rn',
     monoFont: 'Police du code',
     monoSystem: 'Système',
     zoom: "Taille de l'interface",

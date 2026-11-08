@@ -7,7 +7,8 @@ import { describeTool, permissionSentence } from './tool-summary';
 /**
  * Activity: what needs the user, what failed and what finished, each with
  * why and since when. A sub-agent's row sits under its parent's, which is
- * listed for it even when the parent itself only waits on it.
+ * listed for it even when the parent itself only waits on it. A bot's own
+ * conversation stays out: its picture on the rail already says how it stands.
  */
 export type FeedSource<M> = { machine: M; thread: ThreadSummary; project: Project | undefined };
 export type FeedRow<M> = FeedSource<M> & { reason: string; at: number; nested: boolean };
@@ -20,7 +21,7 @@ const RANK: Partial<Record<ThreadState, number>> = { waiting: 0, error: 1, inter
 /** Why the thread waits on the user, in a few words, and since when; null when its request is not known here. */
 export function waitingReason(owner: Requests, thread: ThreadSummary): { text: string; since: number } | null {
   const question = owner.pendingQuestions.find(q => q.threadId === thread.id);
-  if (question) return { text: fill(strings.mobile.feed.asks, { text: question.text.split('\n')[0]!.trim() }), since: question.createdAt };
+  if (question) return { text: question.text.split('\n')[0]!.trim(), since: question.createdAt };
   const permission = owner.pendingPermissions.find(p => p.threadId === thread.id);
   if (permission) {
     const { family, subject } = describeTool(permission.toolName, permission.input);
@@ -31,7 +32,7 @@ export function waitingReason(owner: Requests, thread: ThreadSummary): { text: s
   return child ? { text: fill(strings.mobile.feed.helperAsks, { title: child.title }), since: thread.updatedAt } : null;
 }
 
-/** A thread outside any project: a bot's names its bot, through `place`, a draft says Drafts. */
+/** A thread outside any project: a bot's worker names its bot, through `place`, a draft says Drafts. */
 export type FeedPlace<M> = (entry: FeedSource<M>) => string | null | undefined;
 
 /** The states of work still going: the parent of a failed sub-agent that is in one of them deals with it. */
@@ -44,11 +45,12 @@ function reasonOf<M>(owner: Owner, entry: FeedSource<M>, kind: ThreadState | nul
   const wait = thread.backgroundWait;
   const stopped = kind === 'interrupted' && wait?.state === 'interrupted' ? fill(strings.sidebar.state.interruptedBy, { what: wait.for, reason: strings.sidebar.state.interruption[wait.reason] }) : null;
   const reason = asked?.text ?? (stopped && stopped.charAt(0).toLocaleUpperCase() + stopped.slice(1))
-    ?? (kind === 'waiting' ? strings.sidebar.state.waiting : project ? projectName(project) : place?.(entry) || (thread.agentSessionId ? strings.agents.heading : strings.drafts.name));
+    ?? (kind === 'waiting' ? strings.sidebar.state.waiting : project ? projectName(project) : place?.(entry) || strings.drafts.name);
   return { reason, at: asked?.since ?? thread.updatedAt };
 }
 
-export function activityFeed<M extends { id: string; store: Owner }>(entries: readonly FeedSource<M>[], place?: FeedPlace<M>): FeedRow<M>[] {
+export function activityFeed<M extends { id: string; store: Owner }>(all: readonly FeedSource<M>[], place?: FeedPlace<M>): FeedRow<M>[] {
+  const entries = all.filter(entry => !entry.thread.agentSessionId);
   const stateOf = (entry: FeedSource<M>) => threadState(entry.thread, entry.machine.store.subagents(entry.thread.id));
   const key = (entry: FeedSource<M>, id = entry.thread.id) => `${entry.machine.id}\n${id}`;
   const byKey = new Map(entries.map(entry => [key(entry), entry]));

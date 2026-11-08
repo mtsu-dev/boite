@@ -47,6 +47,10 @@ export const strings = {
     syncStages: { settings: 'the settings', keybindings: 'the keybindings', brain: 'the brain switches' },
     threadFailed: 'A thread failed here: {thread}',
     groupThreads: 'Threads from the other machines',
+    /** The one head over every machine's two switches: they read under it as columns. */
+    fromOthers: 'From the other machines',
+    threadsColumn: 'Threads',
+    botsColumn: 'Bots',
     groupThreadsHint: 'Agents on the other machines of the group may start threads on this machine, in its projects, on their own agent (boite thread new --machine). Off by default.',
     groupBots: 'Bots from the other machines',
     groupBotsHint: 'A bot of another machine of the group may look after the projects of this machine its owner entrusted to it: list, read and steer their threads and answer their questions. Never tool permissions, deleting threads or this machine\'s settings. Turning it off cuts them off at once. Off by default.',

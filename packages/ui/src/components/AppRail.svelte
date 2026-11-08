@@ -102,10 +102,10 @@
     if (!onList) store.showChat();
     store.sidebarCollapsed = false;
   }
-  /** Activity takes the thread list's column, as the phone's tab does. */
+  /** Activity takes the main card, as the phone's tab takes the screen: the open thread steps back to a draft, its panels with it. */
   function showActivity() {
     inbox.open = true;
-    if (!onList) store.showChat();
+    if (!onList || store.openThread) store.startDraft(undefined, { refresh: false });
     store.sidebarCollapsed = false;
   }
   /** The contacts column the title bar folded before: drawn beside the thread list, so it brings the list back first. */

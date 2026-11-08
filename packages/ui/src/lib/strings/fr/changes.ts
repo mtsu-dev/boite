@@ -17,9 +17,6 @@ export const fr: Translation = {
     loading: 'Lecture de la copie de travail',
     renamedFrom: 'Renommé depuis {path}',
     backToList: 'Toutes les modifications',
-    previousFile: 'Fichier précédent',
-    nextFile: 'Fichier suivant',
-    position: '{index} sur {count}',
     status: {
       added: 'Ajouté',
       modified: 'Modifié',

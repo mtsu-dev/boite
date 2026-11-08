@@ -256,8 +256,8 @@
       <div class="faces" role="group" aria-label={strings.settings.font}>
         {#each faces as face (face.id)}
           <button type="button" class="face" style:font-family="var(--face-{face.id})" aria-pressed={font === face.id} data-testid="font-{face.id}" onclick={() => pickFont(face.id)}>
-            <span class="face-name ui-label">{face.name}</span>
-            <span class="face-sample ui-label">{strings.settings.fontSample}</span>
+            <span class="face-name">{face.name}</span>
+            <span class="face-sample">{strings.settings.fontSample}</span>
           </button>
         {/each}
       </div>
@@ -326,7 +326,7 @@
      choice is made by reading rather than by name. */
   :global(.settings .page) .faces-row { flex-direction: column; align-items: stretch; gap: var(--space-3); }
   /* Five faces: one row on a desktop card, none left alone on a second one. */
-  .faces { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--space-2); }
+  .faces { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: var(--space-2); }
   .face {
     display: flex;
     flex-direction: column;
@@ -344,8 +344,9 @@
   }
   @media (hover: hover) { .face:hover:not([aria-pressed='true']) { background: var(--color-surface-3); } }
   .face[aria-pressed='true'] { border-color: var(--color-foreground); box-shadow: inset 0 0 0 1px var(--color-foreground); }
-  .face-name { font-size: var(--text-sm); font-weight: 600; }
-  .face-sample { font-size: var(--text-base); line-height: 1.45; color: var(--color-muted-foreground); }
+  /* Plain text, not trimmed labels: a name that wraps keeps its whole line height, so no tile clips its own words. */
+  .face-name { font-size: var(--text-sm); font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+  .face-sample { font-size: var(--text-md); line-height: 1.3; color: var(--color-muted-foreground); white-space: nowrap; }
   .zoom button { display: inline-flex; align-items: center; justify-content: center; padding: 0 8px; }
   .zoom-error { margin: 0; color: var(--color-danger); font-size: var(--text-xs); overflow-wrap: anywhere; }
   .zoom .zoom-value { min-width: 56px; font-variant-numeric: tabular-nums; color: var(--color-foreground); }
@@ -390,7 +391,8 @@
     .segmented button { flex: 1 1 auto; min-width: 0; padding: 0 6px; }
     .segmented button .ui-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     /* A code face runs wide: each name takes the room it needs, a step smaller. */
-    .monos button { flex: 1 1 auto; min-width: auto; padding: 0 6px; font-size: var(--text-xs); }
+    /* Two classes: the base .segmented button rule comes later and set its size back, so the track ran past the card at 360. */
+    .segmented.monos button { flex: 1 1 auto; min-width: auto; padding: 0 6px; font-size: var(--text-xs); }
     .card-head .segmented { flex: 1 1 100%; }
   }
   /* The options in one dark track, the chosen one raised on it: a grey step, never a white block. */

@@ -32,7 +32,7 @@
   import ProjectTile from './ProjectTile.svelte';
   import RailFrame from './RailFrame.svelte';
   import { minuteClock } from '../lib/clock.svelte';
-  import { doneFilter, inbox } from '../lib/inbox.svelte';
+  import { doneFilter } from '../lib/inbox.svelte';
   import { needsAnAI } from '../lib/first-run';
   let { store }: { store: Store } = $props();
   const mobile = new MediaQuery('(max-width: 720px)');
@@ -156,12 +156,6 @@
     return owner.threadsOf(entry.project.id).filter(thread => threadState(thread, owner.subagents(thread.id)) === 'waiting').length;
   }
   const canAddProject = $derived(store.owner && work.shows('sidebar.add-project'));
-  /** Desktop Activity takes the list's place while the rail has it open; it loads the first time. */
-  let ActivityList = $state<typeof import('./ActivityList.svelte').default>();
-  $effect(() => {
-    if (!inbox.open || ActivityList) return;
-    void import('./ActivityList.svelte').then(module => { ActivityList = module.default; }).catch(() => {});
-  });
   /** Nothing listed yet: the list says why, and where the projects come from. */
   const loading = $derived(groups.length === 0 && visible.some(machine => machine.store.connection !== 'ready'));
   /** `list` is the section the card sits in: a project moves among its neighbours there, as the sections place it themselves. */
@@ -187,9 +181,7 @@
 
 <RailFrame {store} kind="sidebar" label={strings.sidebar.threads} testid="sidebar" drawer bind:scroller={scrollRoot} onscroll={() => { if (showRows && scrollRoot) savedScroll = scrollRoot.scrollTop; }}>
   {#snippet head()}<ProjectViews entries={groups} {store} />{/snippet}
-    {#if showRows && inbox.open}
-      {#if ActivityList}<ActivityList {store} />{/if}
-    {:else if showRows}
+    {#if showRows}
     {#if groups.length === 0 && !(needsAnAI(store) && !loading)}
       <div class="empty" data-testid="sidebar-empty" role={loading ? 'status' : undefined}>
         {#if loading}<LoaderCircle size={16} class="spinner" aria-hidden="true" /><span class="ui-label">{strings.sidebar.loadingProjects}</span>

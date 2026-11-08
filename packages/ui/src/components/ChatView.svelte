@@ -220,8 +220,10 @@
 
 <style>
   .salon-page { display: flex; flex-direction: column; width: 100%; max-width: var(--content); height: 100%; min-height: 0; margin: 0 auto; }
-  .project-choice { display: inline-flex; max-width: 100%; border: 1px dashed var(--color-muted-foreground); border-radius: var(--radius-md); }
-  .project-choice:hover, .project-choice:focus-within { border-color: var(--color-muted-foreground); }
+  /* The quiet chip every picker wears (app.css .chip, the model chip): a raised
+     fill and a hairline, brighter on hover. A dashed outline was used nowhere else. */
+  .project-choice { display: inline-flex; max-width: 100%; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-2); transition: background var(--dur-2) var(--ease-out-quint), border-color var(--dur-2) var(--ease-out-quint); }
+  .project-choice:hover, .project-choice:focus-within { border-color: var(--color-edge); background: var(--control-glaze) var(--color-control-hover); }
   .project-choice :global(.choice) { min-width: 0; max-width: 100%; }
   .project-choice :global(.trigger) { min-height: var(--row); height: auto; max-width: 100%; padding: 7px 12px; gap: 8px; }
   .project-label { min-width: 0; overflow-wrap: anywhere; }

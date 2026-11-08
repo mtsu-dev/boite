@@ -115,10 +115,11 @@
     display: block;
     max-width: min(340px, calc(100vw - 24px));
     padding: 8px 10px;
-    border: 1px solid var(--color-edge);
-    border-radius: var(--radius-md);
-    background: var(--color-surface-2);
-    box-shadow: var(--shadow-e2);
+    /* The overlay card every menu and popover wears (app.css). */
+    border: 1px solid var(--overlay-edge);
+    border-radius: var(--radius-overlay);
+    background: var(--overlay-surface);
+    box-shadow: var(--shadow-overlay);
     color: var(--color-foreground);
     font-size: var(--text-sm);
     font-weight: 400;

@@ -10,7 +10,7 @@
   import { focusOnMount } from '../lib/actions';
   import { strings } from '../lib/strings';
   import ThreadHeadline, { pullRequestLabel } from './ThreadHeadline.svelte';
-  import { ago } from '../lib/format';
+  import { ago, exactTime } from '../lib/format';
   import { trackThreadPullRequest } from '../lib/thread-pull-request.svelte';
   import { canMarkDone, markDone } from '../lib/recent.svelte';
   import { ThreadRename, commitOnUnmount } from '../lib/thread-rename.svelte';
@@ -23,10 +23,10 @@
     showDone = false,
     compact = false,
     reason,
+    at,
     nested = false
   }: {
     machine: Machine;
-    /** None for a bot's thread, which Activity lists too. */
     project: Project | undefined;
     thread: ThreadSummary;
     now: number;
@@ -36,8 +36,9 @@
     showDone?: boolean;
     /** Recent's flat list: the project's tile leads the row, since no card names it. */
     compact?: boolean;
-    /** Activity's second line: what the thread wants, or where it lives. */
+    /** Activity's second line: what the thread wants, or where it lives, and since when (`at`). */
     reason?: string;
+    at?: number;
     /** Activity: a sub-agent under its parent's row. */
     nested?: boolean;
   } = $props();
@@ -51,7 +52,7 @@
   // A move asked for while the turn runs, until the turn ends and applies it.
   let pending = $derived(pendingLine(thread));
   let doneAllowed = $derived(canMarkDone(owner, thread));
-  /** The details the row only shows under the pointer or open, in its tooltip at rest: the pull request, the branch, the time. */
+  /** The details the row only shows under the pointer or the keyboard, in its tooltip at rest: the pull request, the branch, the time. */
   let tip = $derived([thread.title, pullRequest && pullRequestLabel(pullRequest), thread.branch, ago(thread.lastUserMessageAt ?? thread.createdAt, now)].filter(Boolean).join('\n'));
 
   function rename() {
@@ -108,6 +109,7 @@
     class:unread={thread.unread}
     class:pinned={thread.pinned}
     class:compact
+    class:feed={reason !== undefined}
     class:nested
     class:offline={owner.connection !== 'ready'}
     class:dragging={threadDrag.current?.threadId === thread.id && threadDrag.current.machineId === machine.id}
@@ -130,8 +132,8 @@
       onclick={() => void workspace.select(owner, thread.id)}
       ondblclick={rename}
     >
-      <ThreadHeadline {owner} {thread} {now} {open} tile={compact ? project : undefined} {pullRequest} />
-      {#if reason}<span class="reason" class:tiled={!!project} data-testid="thread-reason">{reason}</span>{/if}
+      <ThreadHeadline {owner} {thread} {now} {open} tile={compact && !nested ? project : undefined} {pullRequest} />
+      {#if reason !== undefined}<span class="reason" data-testid="thread-reason"><span class="text">{reason}</span>{#if at !== undefined}<time title={exactTime(at)}>{ago(at, now)}</time>{/if}</span>{/if}
       {#if pending}
         <span class="pending" data-testid="thread-pending" title={pending}><FolderInput size={12} /><span class="ui-label">{pending}</span></span>
       {/if}
@@ -195,23 +197,18 @@
     background: transparent;
     container: thread-row / inline-size;
   }
-  /* The title wins. At rest a row carries one mark at most, its state when it asks for the user or failed; the
-     pin, a draft, the pull request, the time and work's timer show under the pointer, the keyboard or on the open
-     row, and stay in the tooltip. */
-  .thread:not(:hover, :focus-within, .open) .row :global(.headline > :is(.draft, .pin, .pr, .when:not(.waiting, .error, .interrupted))) { display: none; }
-  /* Activity's second line: why the row is there. */
-  .reason {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    text-align: start;
-    font-size: var(--text-xs);
-    color: var(--color-subtle);
-  }
-  /* Under the title, past the project's tile. */
-  .compact .reason.tiled { padding-left: 26px; }
-  .nested { margin-left: 16px; }
+  /* The title wins. At rest a row, the open one included, carries one mark at most, its state when it asks for the
+     user or failed; the pin, a draft, the pull request, the time and work's timer show under the pointer or the
+     keyboard (a click's focus does not count: the row just opened would keep them), and stay in the tooltip. */
+  .thread:not(:hover, :has(:focus-visible)) .row :global(.headline > :is(.draft, .pin, .pr)),
+  .thread:not(:hover, :has(:focus-visible), .feed) .row :global(.headline > .when:not(.waiting, .error, .interrupted)),
+  .feed .row :global(.headline > .when:not(.state)) { display: none; }
+  /* Activity's row: its state is why it is listed, so it stays; under it, the reason and since when, the row's one time. */
+  .reason { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: var(--text-sm); color: var(--color-muted-foreground); }
+  .reason .text { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: start; }
+  .reason time { flex: none; margin-left: auto; font-size: var(--text-xs); color: var(--color-subtle); font-variant-numeric: tabular-nums; }
+  .compact.feed:not(.nested) .reason { padding-left: 26px; }
+  .nested { margin-left: 26px; }
   /* The Recent list: a step wider inside, the project's tile first. */
   .compact .row { padding: 6px 10px; }
   .compact :global(.headline) { gap: 10px; }

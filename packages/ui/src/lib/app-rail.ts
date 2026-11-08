@@ -22,21 +22,25 @@ export function railBotState(profile: Pick<AgentProfile, 'status'>, status: Agen
 }
 
 interface WaitingStore {
-  threads: readonly (Parameters<typeof threadState>[0] & { id: string; archived?: boolean; agentSessionId?: string | null; teamId?: string | null; parentThreadId?: string | null })[];
+  threads: readonly (Parameters<typeof threadState>[0] & { id: string; archived?: boolean; incognito?: boolean; agentSessionId?: string | null; teamId?: string | null; councilId?: string | null; parentThreadId?: string | null; parentIsBot?: boolean })[];
   subagents(threadId: string): Delegated;
 }
 
 /**
- * The threads of every machine that wait on the user, the count the Threads
- * button carries: the sidebar's own test (`threadState`), so the two never
- * disagree. A bot's or a team's conversation counts on its own picture instead,
- * and a subagent's question once, on its parent.
+ * The threads of every machine that wait on the user: the one count the rail's
+ * Activity, the phone's Activity tab and the list's marks all carry, so they
+ * never disagree. It is Activity's top rows that wait (`threadState`): a bot's
+ * own conversation counts on its picture, a team's or a salon's nowhere, and a
+ * helper's question once, on its parent; a bot's worker has no parent row, so
+ * it counts for itself.
  */
 export function threadsNeedingYou(stores: readonly WaitingStore[]): number {
   let count = 0;
   for (const store of stores) {
+    const bots = new Set(store.threads.filter(thread => thread.agentSessionId).map(thread => thread.id));
     for (const thread of store.threads) {
-      if (thread.archived || thread.agentSessionId || thread.teamId || thread.parentThreadId) continue;
+      if (thread.archived || thread.incognito || thread.agentSessionId || thread.teamId || thread.councilId) continue;
+      if (thread.parentThreadId && !thread.parentIsBot && !bots.has(thread.parentThreadId)) continue;
       if (threadState(thread, store.subagents(thread.id)) === 'waiting') count += 1;
     }
   }

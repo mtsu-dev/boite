@@ -17,9 +17,6 @@ export const strings = {
     renamedFrom: 'Renamed from {path}',
     /** A narrow panel shows the list or one diff: the way back, and the steps between files. */
     backToList: 'All changes',
-    previousFile: 'Previous file',
-    nextFile: 'Next file',
-    position: '{index} of {count}',
     status: {
       added: 'Added',
       modified: 'Modified',

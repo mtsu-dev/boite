@@ -4,6 +4,7 @@
   import { lockedBy } from '../lib/policy';
   import type { Store } from '../lib/store.svelte';
   import { fill, strings } from '../lib/strings';
+  import InfoTip from './InfoTip.svelte';
   import PolicyLock from './PolicyLock.svelte';
 
   /**
@@ -89,9 +90,11 @@
 
 {#if reach}
   <div class="reach" class:row class:mobile data-testid="own-reach" data-state={reach}>
+    <!-- A machine that only listens on itself has nothing to act on here: a short line, the why behind its "i". -->
     <p class="hint" class:warn={reach === 'closed' || reach === 'public' || reach === 'domain'}>
-      {reach === 'ready' ? fill(text.ready, { address: lan ?? '' }) : reach === 'loopback' ? strings.group.loopback : reach === 'policy' ? text.policy
-        : reach === 'public' ? text.public : reach === 'domain' ? text.domain : text.closed}
+      {#if reach === 'loopback'}<span class="ui-label-box"><span class="ui-label">{strings.group.loopbackShort}</span><InfoTip topic={strings.group.loopbackShort} text={strings.group.loopback} /></span>
+      {:else}{reach === 'ready' ? fill(text.ready, { address: lan ?? '' }) : reach === 'policy' ? text.policy
+        : reach === 'public' ? text.public : reach === 'domain' ? text.domain : text.closed}{/if}
       {#if reach === 'policy'}<PolicyLock {store} keys={['network.lan', 'network.groups']} />{/if}
     </p>
     {#if reach === 'closed' && outcome}<p class="hint" data-testid="own-reach-outcome">{outcome}</p>{/if}

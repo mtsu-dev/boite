@@ -2,7 +2,7 @@
   import { Activity, Bot, FishingHook, MessageCircleQuestionMark, Settings2, Users } from '@lucide/svelte';
   import { showDockedQuestion } from '../lib/question-dock.svelte';
   import { replyOf, repliesOf, sendAnswer, writeAnswer } from '../lib/question-reply.svelte';
-  import { COUNCIL_EXPERIMENT, type Account, type MemoryEvent, type Message } from '@boite/contracts';
+  import { COUNCIL_EXPERIMENT, type Account, type Message } from '@boite/contracts';
   import { fill, strings } from '../lib/strings';
   import type { Store } from '../lib/store.svelte';
   import { count, formatTokens, providerName } from '../lib/format';
@@ -21,7 +21,6 @@
   import { MessageRuns } from '../lib/memory-timeline';
   import { chatPrefs } from '../lib/chat-prefs.svelte';
   import { shownText as shownTextOf } from '../lib/timeline-rows';
-  import MemoryRow from './MemoryRow.svelte';
   import KeepaliveMarker from './KeepaliveMarker.svelte';
   import ErrorCard from './ErrorCard.svelte';
   import { retryTurn } from '../lib/composer-edit';
@@ -47,7 +46,6 @@
     signedOut,
     showModel,
     latestInTurn = true,
-    memoryEvents = [],
     views
   }: {
     store: Store;
@@ -58,7 +56,6 @@
     signedOut: Account | null;
     showModel: boolean;
     latestInTurn?: boolean;
-    memoryEvents?: MemoryEvent[];
     views?: readonly Message[];
   } = $props();
 
@@ -95,7 +92,7 @@
   const end = $derived(to ?? message.parts.length);
   // A run over the same parts stays the same object, so a new part does not redraw the groups above it.
   const runList = new MessageRuns();
-  const runs = $derived(ping ? [] : runList.build(message.parts, memoryEvents, from, end, chatPrefs.groupChanges));
+  const runs = $derived(ping ? [] : runList.build(message.parts, [], from, end, chatPrefs.groupChanges));
   const toolRunning = $derived(message.parts.some(part => part.type === 'tool' && part.status === 'running') ||
     latestInTurn && store.openThread?.messages.some(current => current.turnId === message.turnId && current.role === 'assistant' && current.parts.some(part => part.type === 'tool' && part.status === 'running')));
   const isBackground = (toolId: string) => store.openThread?.background?.some((task) => task.toolId === toolId) ?? false;
@@ -127,7 +124,7 @@
 <div class="parts">
   {#each runs as run (run.kind === 'memory' ? run.key : runKey(run))}
     {#if run.kind === 'memory'}
-      <MemoryRow event={run.events[0]!} events={run.events} onconfigure={store.owner ? () => store.showSettings('resources', 'limits') : undefined} />
+      <!-- Never built here (no events go in): a memory stop is machine news for the corner. -->
     {:else if run.kind === 'activity'}
       {@const activity = run.indices.map((at) => message.parts[at]).filter((part): part is ActivityPart => part?.type === 'tool' || part?.type === 'thinking' || part?.type === 'permission')}
       {@const compactions = run.indices.map((at) => message.parts[at]).filter((part): part is CompactionPart => part?.type === 'compaction')}

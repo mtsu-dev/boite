@@ -198,6 +198,9 @@ async function mountOnFake(search = '/?fake=1'): Promise<void> {
 
 test('Escape on an open context popover closes it and leaves a busy turn running', async () => {
   await mountOnFake();
+  // Under half full, the ring is a row of the model chip's menu.
+  await waitFor(() => document.querySelector('[data-testid=composer-picker]') !== null);
+  if (!document.querySelector('[data-testid=context-trigger]')) query<HTMLButtonElement>('[data-testid=composer-picker]').click();
   await waitFor(() => document.querySelector('[data-testid=context-trigger]') !== null);
   query<HTMLButtonElement>('[data-testid=context-trigger]').click();
   await waitFor(() => document.querySelector('[data-testid=context-popup]') !== null);

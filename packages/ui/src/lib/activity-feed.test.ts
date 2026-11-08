@@ -18,6 +18,8 @@ test('Activity lists what needs the user, then failures, then news, each with it
     thread('push', { status: 'waiting', updatedAt: NOW - 3_000 }),
     thread('busy', { status: 'running' }),
     thread('quiet', {}),
+    // A bot's own conversation: its picture on the rail says how it stands.
+    thread('mira', { unread: true, agentSessionId: 'mira' as ThreadSummary['agentSessionId'] }),
     // A parent at work comes in for its sub-agent, which asks.
     thread('parent', { status: 'running', updatedAt: NOW - 90_000 }),
     thread('child', { status: 'waiting', parentThreadId: 'parent' as ThreadSummary['parentThreadId'], updatedAt: NOW - 4_000 })
@@ -30,11 +32,12 @@ test('Activity lists what needs the user, then failures, then news, each with it
   expect(feed.map(row => row.thread.id)).toEqual(['push', 'asks', 'parent', 'child', 'failed', 'done']);
   expect(feed.find(row => row.thread.id === 'child')?.nested).toBe(true);
   expect(feed.filter(row => row.nested)).toHaveLength(1);
-  // Work in progress and threads at rest are not news.
-  expect(feed.some(row => row.thread.id === 'busy' || row.thread.id === 'quiet')).toBe(false);
+  // Work in progress, threads at rest and a bot's own conversation are not news.
+  expect(feed.some(row => ['busy', 'quiet', 'mira'].includes(row.thread.id))).toBe(false);
 
   const row = (id: string) => feed.find(row => row.thread.id === id)!;
-  expect(row('asks').reason).toBe('Asks: Which retry policy?');
+  // A question is its own reason: the row's state already says it waits on the user.
+  expect(row('asks').reason).toBe('Which retry policy?');
   expect(row('push').reason).toBe('Wants to run git push');
   // Since when: the request's own time, not the thread's last change.
   expect(row('asks').at).toBe(NOW - 5 * 60_000);

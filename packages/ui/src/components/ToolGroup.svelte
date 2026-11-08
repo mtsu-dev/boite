@@ -157,7 +157,7 @@
     >
       <span class="glyph"><Glyph size={15} strokeWidth={1.75} /></span>
       <span class="label ui-label" class:shimmer={live} data-testid="tool-group-label" title={label}>{label}</span>
-      {#if took}<span class="took ui-label" data-testid="tool-group-elapsed">{took}</span>{/if}
+      {#if took}<span class="took ui-label" class:settled={!live} data-testid="tool-group-elapsed">{took}</span>{/if}
       {#each compactions as part, at (at)}
         <span class="compacted ui-label" data-testid="tool-group-compaction" title={compactionText(part)}><FoldVertical size={12} strokeWidth={1.75} aria-hidden="true" />{compactionMark(part)}</span>
       {/each}
@@ -300,6 +300,10 @@
     font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
   }
+
+  /* A finished run's time is read on demand: under the pointer, the keyboard or an open run. */
+  .took.settled { opacity: 0; transition: opacity var(--dur-2); }
+  .head:hover .took.settled, .head:focus-visible .took.settled, .head[aria-expanded='true'] .took.settled { opacity: 1; }
 
   .pulse {
     flex: none;

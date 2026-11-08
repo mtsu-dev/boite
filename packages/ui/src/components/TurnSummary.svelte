@@ -18,6 +18,7 @@
   import { backgroundLabel } from '../lib/background';
   import { secondClock } from '../lib/clock.svelte';
   import type { Snippet } from 'svelte';
+  import InfoTip from './InfoTip.svelte';
   let { turn, workedBefore = 0, clockOffset = 0, progress, waiting = false, activeTool = false, activeContent = false, background = [], stop, pointed = false, steps, memory, compactions = [], actions }: {
     turn: Turn;
     /**
@@ -89,10 +90,14 @@
   const memoryTitle = $derived(memory ? [fold.memory[memory.pass.status], ...(memory.pass.summary && memory.pass.status !== 'running' ? [memory.pass.summary] : [])].join(' · ') : '');
   /** A line that counts steps or carries a memory mark reads at rest: it is what the agent did, not a measurement. */
   const marked = $derived(!!steps || !!memory || compactions.length > 0);
+  const finishedLabel = $derived(turn.finishedAt === null ? '' : fill(turn.status === 'error' ? strings.chat.failedAt : strings.chat.finishedAt, { time: clockTime(turn.finishedAt) }));
+  const tokensLabel = $derived(`${formatTokens(total)} ${strings.units.tokens}`);
+  /** A settled line's time and spend, gathered behind one "i" where there is no pointer to show them. */
+  const details = $derived([spent === null ? '' : fill(elapsedLabel, { time: elapsed(spent) }), finishedLabel, total > 0 ? tokensLabel : ''].filter(Boolean).join(' · '));
 </script>
 
-{#snippet metric(id: string, text: string | null, title?: string, quiet = false)}
-  <span class="metric"><span class="dot ui-label" aria-hidden="true">·</span><span class="ui-label" class:quiet data-testid={id} {title}>{text}</span></span>
+{#snippet metric(id: string, text: string | null, title?: string, quiet = false, meta = false)}
+  <span class="metric" class:meta><span class="dot ui-label" aria-hidden="true">·</span><span class="ui-label" class:quiet data-testid={id} {title}>{text}</span></span>
 {/snippet}
 {#if turn.status !== 'queued' && !(running && activeTool && !waiting && background.length === 0 && !observed && !compacting)}
   <div class="summary" class:compacting class:settled class:pointed class:marked class:paused={hidden || waiting} data-testid="turn-summary" data-status={turn.status} role="status" aria-label={label} title={label}>
@@ -107,7 +112,7 @@
     {:else}
     {#if turn.status === 'done'}<Check size={14} />{:else if turn.status === 'error'}<CircleAlert size={14} />{:else if turn.status === 'stopped'}<Square size={12} />{:else if !activeContent && !activeTool}<LoaderCircle size={16} class="spinner" />{/if}
     {#if spent !== null}
-      <span class="ui-label" data-testid="turn-elapsed" title={ownLabel}>{fill(elapsedLabel, { time: elapsed(spent) })}</span>
+      <span class="ui-label meta" data-testid="turn-elapsed" title={ownLabel}>{fill(elapsedLabel, { time: elapsed(spent) })}</span>
     {/if}
     {#if compactOperation && (turn.status === 'error' || turn.status === 'stopped')}
       {@render metric('compaction-result', label)}
@@ -124,11 +129,11 @@
       {/if}
     {/if}
     {#if turn.finishedAt !== null}
-      {@render metric('turn-finished-at', fill(turn.status === 'error' ? strings.chat.failedAt : strings.chat.finishedAt, { time: clockTime(turn.finishedAt) }), exactTime(turn.finishedAt))}
+      {@render metric('turn-finished-at', finishedLabel, exactTime(turn.finishedAt), false, true)}
     {/if}
     {#if (steps || memory) && !running}
       <!-- The count and the memory mark wrap as one, so the mark never starts a line alone. -->
-      <span class="metric">
+      <span class="metric marks">
         {#if steps}
           <span class="dot ui-label" aria-hidden="true">·</span>
           <button type="button" class="mark steps" aria-expanded={steps.open} title={steps.open ? fold.hideSteps : fold.showSteps} onclick={steps.toggle} data-testid="turn-steps">
@@ -147,7 +152,7 @@
       {#each compactions as part, at (at)}{@render metric('turn-compaction', compactionMark(part), compactionText(part), true)}{/each}
     {/if}
     {#if total > 0}
-      {@render metric('turn-tokens', `${formatTokens(total)} ${strings.units.tokens}`, breakdown)}
+      {@render metric('turn-tokens', tokensLabel, breakdown, false, true)}
     {/if}
     {#if still}
       <span class="metric">
@@ -163,6 +168,7 @@
       </span>
     {/if}
     {#if actions && !running}<span class="tail">{@render actions()}</span>{/if}
+    {#if settled && details}<span class="details"><InfoTip text={details} topic={strings.chat.turnDetails} testid="turn-details" /></span>{/if}
     {/if}
   </div>
 {/if}
@@ -179,11 +185,22 @@
   .summary[data-status='running'] { color: var(--color-muted-foreground); }
   /* Read on demand: the message under the pointer or the keyboard shows it, a finger always does. */
   .summary.settled { opacity: 0; transition: opacity var(--dur-2); }
-  :global(.message:hover) .summary.settled, .summary.settled.pointed, .summary.settled:focus-within, .summary.settled:not(:has(button)) { opacity: 1; }
+  :global(.message:hover) .summary.settled, .summary.settled.pointed, .summary.settled:focus-within, .summary.settled:not(:has(.tail)) { opacity: 1; }
   /* Pointed from another message of the turn, its buttons show with it. */
   .summary.settled.pointed :global(.act) { opacity: 1; }
   @media (hover: none) { .summary.settled { opacity: 1; } }
   .summary.settled.marked { opacity: 1; }
+  /* A settled line keeps what the agent did at rest (its steps, a memory mark) and
+     its buttons; how long it took, when and what it spent wait for the pointer. A
+     finger reads them behind the "i" instead, the line's last mark. */
+  .details { display: none; }
+  .summary.settled.marked .meta, .summary.settled.marked .marks > .dot:first-child { display: none; }
+  :global(.message:hover) .summary.settled.marked .meta, .summary.settled.marked.pointed .meta, .summary.settled.marked:focus-within .meta { display: inline-flex; }
+  :global(.message:hover) .summary.settled.marked .marks > .dot:first-child, .summary.settled.marked.pointed .marks > .dot:first-child, .summary.settled.marked:focus-within .marks > .dot:first-child { display: inline-block; }
+  @media (hover: none) {
+    .summary.settled .meta, .summary.settled.marked .meta, .summary.settled.marked .marks > .dot:first-child { display: none; }
+    .details { display: inline-flex; }
+  }
   /* The step count and the memory mark: text buttons on the line, no box, the foreground on hover. */
   .mark { display: inline-flex; align-items: center; gap: 2px; height: 18px; padding: 0 2px; margin: -2px 0; border: 0; border-radius: var(--radius-sm); background: none; color: inherit; font-size: inherit; font-variant-numeric: inherit; cursor: pointer; transition: color var(--dur-2) var(--ease-out-quint); }
   .mark:hover:not(:disabled), .mark:focus-visible { color: var(--color-foreground); background: none; }

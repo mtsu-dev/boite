@@ -92,9 +92,10 @@
     opacity: 1;
   }
 
-  /* A finger has no hover: the buttons and the time stay. */
+  /* A finger has no hover: the buttons stay, the clock leaves the default surface. */
   @media (hover: none) {
-    .act, .stamp { opacity: 1; }
+    .act { opacity: 1; }
+    .stamp { display: none; }
   }
 
   .stamp {

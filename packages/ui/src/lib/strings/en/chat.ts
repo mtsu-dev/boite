@@ -15,6 +15,7 @@ export const strings = {
     compacting: 'Compacting conversation',
     compactionElapsed: 'Elapsed: {time}',
     turnOwnTime: 'This reply alone: {time}',
+    turnDetails: 'this turn',
     compactedFor: 'Compacted in {time}',
     compactionFailed: 'Compaction failed',
     compactionStopped: 'Compaction stopped',
@@ -191,8 +192,8 @@ export const strings = {
     /** The shield on a call's line once the user answered the agent's ask for it. */
     permissionAllowedBy: 'Allowed by you',
     permissionDeniedBy: 'Denied by you',
-    questionHeading: 'Asks you',
-    questionAsyncHeading: 'Question',
+    questionHeading: 'Needs you',
+    questionAsyncHeading: 'Needs you',
     questionAsyncHint: 'The agent keeps working. Without an answer it goes on with a default.',
     questionAnswer: 'Answer',
     questionAnswered: 'Answered',

@@ -30,6 +30,7 @@
   import ComposerBar from './ComposerBar.svelte';
   import ComposerIntent from './ComposerIntent.svelte';
   import ComposerQueueRegion from './ComposerQueueRegion.svelte';
+  import ComposerStrip from './ComposerStrip.svelte';
   import ComposerSpeechPreview from './ComposerSpeechPreview.svelte';
   import MentionMenu from './MentionMenu.svelte';
   import SlashMenu from './SlashMenu.svelte';
@@ -510,6 +511,13 @@
 
   /** Nothing in the box and nothing on its way into it: what a second Enter needs. */
   let boxEmpty = $derived(text.trim().length === 0 && attachments.length === 0 && previewReferences.length === 0 && !dictating);
+  /**
+   * A permission or a question holds the box and nothing is written yet: the
+   * ask is its head, its choices the primary actions, and the field folds to
+   * one line with the tools at its end while "+" and the model chip step back.
+   * The first letter typed brings them back.
+   */
+  let folded = $derived(!target && !!(permission || docked) && boxEmpty && !composer?.editing);
 
   /** What Send now does to the queue: interrupt the running turn, resume a held one, or nothing. */
   let sendNow = $derived(sendNowAction(composer, thread, store));
@@ -740,10 +748,9 @@
     event.preventDefault(); event.stopPropagation();
   }
 }}>
-  <div bind:offsetHeight={stripRoom}><ComposerQueueRegion {store} {key} {thread} {composer} main={!target} machine={machineLabel} {sendNow}
-    blocked={text.length > 0 || attachments.length > 0 || previewReferences.length > 0} onrestore={restoreQueued} onsendnow={sendQueuedNow} /></div>
+  {#if !target}<div bind:offsetHeight={stripRoom}><ComposerStrip {store} {thread} /></div>{/if}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="composer" class:dictating data-testid="composer" tabindex="-1" bind:this={shell} style:--strip-room="{stripRoom}px" {ondragover} {ondrop} onkeydown={(event) => {
+  <div class="composer" class:dictating data-testid="composer" tabindex="-1" bind:this={shell} style:--strip-room="{target ? 0 : stripRoom}px" {ondragover} {ondrop} onkeydown={(event) => {
     if (event.target !== event.currentTarget || event.key !== 'Escape') return;
     // The touch focus target shares the box's Escape handling, including pending questions.
     onkeydown(event);
@@ -751,6 +758,8 @@
   }}>
     {#if permission}{#key permission.id}<Deferred part={permissionCard}>{#snippet children(PermissionCard)}<PermissionCard docked toolName={permission.toolName} decision={null} request={permission} answer={(decision) => store.answer(permission.id, decision)} index={1} total={permissions.length} />{/snippet}</Deferred>{/key}{/if}
     {#if !target}<ThreadActivity {store} />{/if}
+    <ComposerQueueRegion {store} {key} {thread} {composer} machine={machineLabel} {sendNow}
+      blocked={text.length > 0 || attachments.length > 0 || previewReferences.length > 0} onrestore={restoreQueued} onsendnow={sendQueuedNow} />
     <ComposerIntent editing={!!composer?.editing} oncancel={cancelEdit} />
 
     {#if side.current && side.current.threadId === thread?.id}<SideAnswer {...side.current} {store} onclose={() => { side.clear(); focusInitial(box, box?.closest<HTMLElement>('[data-testid=composer]')); }} />{/if}
@@ -758,6 +767,7 @@
       {#key composer}<ComposerAttachments bind:this={attachmentStrip} {attachments} highlighted={highlightedImage} onremove={removeAttachment} onfocus={() => focusInitial(box, box?.closest<HTMLElement>('[data-testid=composer]'))} />{/key}
     {/if}
 
+    <div class="entry" class:folded>
     <div class="input-wrap">
     {#if highlighted}
       <div class="input-highlight" aria-hidden={previewReferences.length || attachments.length ? undefined : true} data-testid="composer-highlight" style:right={`${inputGutter}px`}>
@@ -815,7 +825,7 @@
 
     <ComposerSpeechPreview status={speechStatus} preview={speechPreview} error={speechError} />
 
-    <ComposerBar bind:this={toolbar} {store} {key} {target} {bot} {provider} canSend={sendable} waiting={sendWhenLoaded !== null} answering={!!reply} composer={permission || docked ? shell ?? null : null}
+    <ComposerBar bind:this={toolbar} {store} {key} {target} {bot} {provider} canSend={sendable} waiting={sendWhenLoaded !== null} answering={!!reply} {folded} composer={permission || docked ? shell ?? null : null}
       onmention={!target && !reply && mentionProject !== null ? startMention : undefined} oncommand={!target && !reply && text.trim() === '' ? startCommand : undefined} sendLabel={reply ? strings.composer.replySend : undefined} bind:choice bind:picking bind:dictating
       onsubmit={() => void submit()}
       onfiles={(files) => void take(files)}
@@ -824,6 +834,7 @@
         const current = stateForInput().text;
         put(current + (current && !/\s$/.test(current) ? ' ' : '') + transcript);
       }} />
+    </div>
   </div>
 </div>
 
@@ -864,6 +875,11 @@
 
   /* The bottom gap sits under the box: a textarea scrolls its text through its own padding, up to the bar. */
   .input-wrap { position: relative; margin-bottom: var(--composer-input-gap, 6px); }
+  /* Unfolded, the field and the bar stack as the box's own rows. Folded under
+     a decision, they share one line: the field, then stop, dictation and send. */
+  .entry { display: contents; }
+  .entry.folded { display: flex; align-items: flex-end; min-width: 0; }
+  .entry.folded .input-wrap { flex: 1 1 auto; min-width: 0; }
 
   .input-highlight {
     position: absolute;

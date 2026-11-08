@@ -6,11 +6,10 @@
   import { formatTokens, providerName } from '../lib/format';
   import { confirm } from '../lib/confirm.svelte';
   import { switchDropsHistory, switchResetsCache, type CacheKey } from '../lib/switch-warning';
-  import { modeHint, modeIcon, modeLabel, modesFor, shownMode } from '../lib/permission-modes';
+  import { modeHint, modeLabel, modesFor, shownMode } from '../lib/permission-modes';
   import { fill, strings } from '../lib/strings';
   import type { Choice, PickPatch, Store } from '../lib/store.svelte';
-  import EffortSlider from './EffortSlider.svelte';
-  import Menu from './Menu.svelte';
+  import PickerChoices from './PickerChoices.svelte';
   import ModelPicker from './ModelPicker.svelte';
   import Deferred, { parts } from './Deferred.svelte';
   import ComposerOptions from './ComposerOptions.svelte';
@@ -21,13 +20,18 @@
   import { keepFocus } from '../lib/focus';
   import { contextLevel, contextPercent } from '../lib/tokens';
   import { speedControl } from '../lib/model-speeds';
+  import { levelName } from '../lib/format';
   import type { ComposerTarget } from '../lib/composer-target';
   import { desktopSettings } from '../lib/settings-tabs';
 
   /**
    * The row under the composer's box, the same on every width: one "+" for
-   * what adds to the message, one model chip (its effort and permission rows
-   * inside, its context ring beside the name), then stop, dictation and send. A pick on a thread is saved at once, after the switch warnings; on a
+   * what adds to the message, one model chip naming the model (its effort,
+   * speed, permission and context rows inside; the ring beside it once the
+   * context is half used), then stop, dictation and send. While a decision
+   * holds the box and its field is empty (`folded`), the "+" and the ring step
+   * back, the chip shrinks to the provider's mark, and the tools sit at the
+   * field's end. A pick on a thread is saved at once, after the switch warnings; on a
    * draft the whole choice is remembered. `choice`, `picking` and `dictating`
    * are the composer's, bound here. An agent's box (`target`) keeps stop,
    * attach, dictation and send; its model chips save the agent's own setting,
@@ -42,6 +46,7 @@
     canSend,
     waiting = false,
     answering = false,
+    folded = false,
     composer = null,
     sendLabel = strings.composer.send,
     choice = $bindable(),
@@ -65,6 +70,8 @@
     /** Send was pressed while files were still being read: it goes once they are ready. */
     waiting?: boolean;
     answering?: boolean;
+    /** A permission or a question holds the box and nothing is written: the decision reads alone. */
+    folded?: boolean;
     /** The composer while an ask is docked in it: menus open above it, so the ask stays readable. */
     composer?: HTMLElement | null;
     /** What Send does, when it answers a question rather than sending a message. */
@@ -88,8 +95,14 @@
   let bar = $state<HTMLDivElement | undefined>(undefined);
 
   let bound = $derived(!target && store.openThread !== null);
-  // Keep the stored visibility preference and reveal a nearly full context.
-  let showContext = $derived(work.shows('header.context') || contextLevel(store.openThread?.context ? contextPercent(store.openThread.context, store.settings ? effectiveCompaction(store.settings, store.openThread).autoCompact : null) : null) === 'full');
+  let contextUsed = $derived(store.openThread?.context ? contextPercent(store.openThread.context, store.settings ? effectiveCompaction(store.settings, store.openThread).autoCompact : null) : null);
+  /**
+   * The ring beside the chip only once half the context is used (a nearly full
+   * one whatever the preference); below that it is a row of the chip's menu. A
+   * bot's chip opens nothing, so its ring shows from the first reading, never
+   * as an empty dash.
+   */
+  let showContext = $derived(contextUsed !== null && (contextLevel(contextUsed) === 'full' || work.shows('header.context') && (contextUsed >= 50 || bot !== null)));
   /** Every agent can read uploaded files through its local tools. */
   let canAttach = $derived(!!target || (provider !== null && provider !== undefined));
 
@@ -123,16 +136,10 @@
    */
   let accountRemoved = $derived(!target && store.openThread !== null && store.accounts.length > 0 && store.accountOf(store.openThread.accountId) === null
     && store.usableAccountOf(store.openThread.providerId, store.openThread.accountId) === null);
-  let modeItems = $derived(
-    modes.map((mode) => ({
-      id: mode,
-      label: modeLabel(mode, provider),
-      // One word per row: what the mode allows is said on hover, not printed three times over.
-      title: modeHint(mode, provider),
-      glyph: modeIcon(mode),
-      active: displayedMode === mode
-    }))
-  );
+  // One word per choice: what the mode allows is said on hover, not printed
+  // three times over. A legacy mode still live (`plan`) keeps its own choice until another is picked.
+  let modeItems = $derived([...modes, ...modes.includes(displayedMode) ? [] : [displayedMode]]
+    .map((mode) => ({ id: mode, label: modeLabel(mode, provider), title: modeHint(mode, provider) })));
   // The worktree switch exists where the core can honour it: a draft on a
   // folder the core found a `.git` in. No answer yet, or an older core that
   // never gives one, is no repository: a switch the core would refuse is noise.
@@ -149,6 +156,10 @@
   let activeEffort = $derived(choice?.effort ?? store.modelOf(choice)?.effort?.default ?? null);
   /** The model has a scale but no default: its agent picks the level until the user does. */
   let agentDefault = $derived(effortLevels.length > 0 && store.modelOf(choice)?.effort?.default === undefined);
+  /** The empty id is the agent's own level, offered first while the model names no default. */
+  let effortItems = $derived([...agentDefault ? [{ id: '', label: strings.composer.effortDefault, title: strings.composer.effortDefaultHint }] : [],
+    ...effortLevels.map((level) => ({ id: level.id, label: levelName(level), title: level.description }))]);
+  let speedItems = $derived([{ id: '', label: strings.composer.standardSpeed }, ...speeds.map((entry) => ({ id: entry.id, label: levelName(entry), title: entry.description }))]);
 
   /** A null effort runs at the model's own default, not at a preset the client configured. */
   function cacheKey(selection: Choice): CacheKey {
@@ -222,8 +233,8 @@
     store.remember(choice);
   }
 
-  function pickEffort(id: string | null) {
-    pick({ effort: id });
+  function pickEffort(id: string) {
+    void pick({ effort: id || null });
   }
 
   function pickMode(id: string) {
@@ -260,37 +271,43 @@
 
 <svelte:window onstorage={(event) => { if (event.key === VOICE_STORAGE_KEY || event.key === null) voice.load(); }} />
 
-<div class="bar" bind:this={bar}>
+<div class="bar" class:folded bind:this={bar}>
   <!-- One "+" at the start: files, a file mention, a command and the draft's worktree. -->
+  {#if !folded}
   {#key `${key}:${store.draft?.projectId ?? ''}`}
   <ComposerOptions worktree={!answering && store.draft && draftRepository ? store.draft.worktree : null} {canAttach} anchor={askAnchor} onattach={() => picker?.click()} onworktree={() => store.setDraftWorktree(!store.draft?.worktree)} {onmention} {oncommand} />
   {/key}
+  {/if}
   {#if target && !target.selection}
   <div class="chips">{#if target.chips}{@render target.chips()}{/if}</div>
   {:else if !answering}
   <div class="chips">
     {#snippet ring()}
-      {#if bound && showContext}
+      {#if bound && showContext && !folded}
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div class="context-control" oncontextmenu={(event) => controlMenu(event, store, 'header.context')}><ContextControl {store} anchor={askAnchor} /></div>
       {/if}
     {/snippet}
     {#snippet rows()}
-      {#if effortLevels.length > 0 || speeds.length > 0}
-        <div class="setting"><span class="setting-name ui-label">{strings.composer.effortTitle}</span>
-          <EffortSlider levels={effortLevels} active={activeEffort} onpick={pickEffort} ondefault={agentDefault ? () => pickEffort(null) : undefined} {speeds} speed={speedOptions.speed} onspeed={(speed) => void pick(speedOptions.pick(speed))} /></div>
+      <!-- Each row names its setting and lays its choices out by name: the same order and words on every width. -->
+      {#if effortLevels.length > 0}
+        <div class="setting" data-testid="composer-effort" tabindex="-1"><span class="setting-name ui-label">{strings.composer.effortTitle}</span>
+          <PickerChoices label={strings.composer.effortTitle} testid="composer-effort-menu" items={effortItems} active={activeEffort ?? (agentDefault ? '' : null)} onpick={pickEffort} /></div>
+      {/if}
+      {#if speeds.length > 0}
+        <div class="setting" data-testid="effort-speed" tabindex="-1"><span class="setting-name ui-label">{strings.composer.speed}</span>
+          <PickerChoices label={strings.composer.speed} testid="effort-speed-menu" items={speedItems} active={speedOptions.speed ?? ''} onpick={(id) => void pick(speedOptions.pick(id || null))} /></div>
       {/if}
       {#if modes.length > 0}
-        <div class="setting"><span class="setting-name ui-label">{strings.composer.mode}</span>
-          <Menu items={modeItems} onpick={pickMode} label={strings.composer.mode} testid="composer-mode" align="end" variant="ghost">
-            {@const ModeIcon = modeIcon(displayedMode)}
-            <span class="mode-icon"><ModeIcon size={14} strokeWidth={1.75} /></span>
-            <span class="ui-label">{modeLabel(displayedMode, provider)}</span>
-          </Menu></div>
+        <div class="setting" data-testid="composer-mode" tabindex="-1"><span class="setting-name ui-label">{strings.composer.mode}</span>
+          <PickerChoices label={strings.composer.mode} testid="composer-mode-menu" items={modeItems} active={displayedMode} onpick={pickMode} /></div>
+      {/if}
+      {#if bound}
+        <div class="setting context-row"><span class="setting-name ui-label">{strings.thread.contextDetails}</span><ContextControl {store} /></div>
       {/if}
     {/snippet}
     <!-- A bot's model is its own setting: its chip names it and changes nothing here. -->
-    <ModelPicker bind:this={chip} {store} {choice} disabled={picking} readonly={bot !== null} readonlyHint={bot ? fill(strings.composer.botModel, { name: bot }) : ''} anchor={askAnchor} settings={bot === null ? rows : undefined} trailing={ring} onpick={pick} />
+    <ModelPicker bind:this={chip} {store} {choice} disabled={picking} readonly={bot !== null} compact={folded} readonlyHint={bot ? fill(strings.composer.botModel, { name: bot }) : ''} anchor={askAnchor} settings={bot === null ? rows : undefined} trailing={ring} onpick={pick} />
     {#if signedOut && store.owner}
       <button type="button" class="chip signed-out" data-testid="composer-reconnect" title={fill(strings.connect.signedOut, { provider: provider?.name ?? '' })} onclick={() => store.openConnect(signedOut.providerId, signedOut.id)}><span class="ui-label">{strings.connect.reconnect}</span></button>
     {/if}
@@ -370,11 +387,12 @@
   .context-control { display: flex; flex: none; }
   .bar .chips .context-control :global(.trigger) { padding: 0 8px 0 4px; gap: 5px; }
 
-  .mode-icon { display: inline-flex; }
   .chips .chip.signed-out { color: var(--color-live); }
 
-  /* The effort and permission rows under the models: the setting's name, its control at the end. */
-  .setting { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: var(--row); padding: 0 4px 0 8px; }
+  /* The rows under the models: the setting's name, its choices at the end, or
+     under it when the picker is too narrow for both on one line. */
+  .setting { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; min-height: var(--row); padding: 2px 2px 2px 8px; outline: none; }
+  .setting > :global(.choices) { flex: 0 1 auto; }
   .setting-name { color: var(--color-muted-foreground); font-size: var(--text-sm); }
 
   /* Every child is one control high, so the end is the centre on one row; on a
@@ -427,6 +445,11 @@
     color: var(--color-foreground);
   }
 
+
+  /* Folded beside the field: the model's mark and the tools, centred on its line. */
+  .bar.folded { align-items: center; padding: 0 8px 0 0; }
+  .bar.folded .chips { flex: none; }
+  .bar.folded .chips :global(.picker > .trigger.compact) { width: var(--control); padding: 0; justify-content: center; }
 
   .send,
   .stop {

@@ -130,8 +130,8 @@
 <div class="context" bind:this={root} data-testid="context-meter" data-percent={percent ?? ''} data-level={contextLevel(percent)} onmouseenter={show} onmouseleave={hideLater} onfocusin={show} onfocusout={hideLater}>
   <button type="button" class="trigger ghost" data-testid="context-trigger" aria-label={[percent === null ? strings.thread.contextDetails : `${strings.thread.contextDetails} ${Math.round(percent)}%`, cacheLabel].filter(Boolean).join(', ')} aria-expanded={popup.open} aria-haspopup="dialog" onclick={show}>
     <svg viewBox="0 0 40 40" aria-hidden="true"><circle class="track" cx="20" cy="20" r="15" /><circle class="fill" cx="20" cy="20" r="15" pathLength="100" stroke-dasharray="{percent ?? 0} 100" /></svg>
-    <!-- A dash before the first reading: the ring is labelled even when empty, and its popup still holds compact and the agent's shape. -->
-    <span class="percent mono" aria-hidden="true">{percent === null ? '-' : `${Math.round(percent)}%`}</span>
+    <!-- Before the first reading the empty ring stands alone, never a dash; its popup still holds compact and the agent's shape. -->
+    {#if percent !== null}<span class="percent mono" aria-hidden="true">{Math.round(percent)}%</span>{/if}
     {#if cacheNow}
       <span class="cache-chip mono" data-testid="prompt-cache" data-state={cacheNow.kind} class:low={cacheNow.kind !== 'cold' && cacheNow.secondsLeft <= 300} aria-hidden="true">
         <Clock size={13} strokeWidth={1.75} /><span class="ui-label">{cacheNow.kind === 'cold' ? strings.thread.cacheCold : remaining(cacheNow.secondsLeft)}</span>

@@ -34,7 +34,7 @@ export const fr: Translation = {
     settingsPrivacy: 'Confidentialité',
     settingsBack: 'Retour aux réglages',
     /** Activity's second line: why the thread is listed. */
-    feed: { asks: 'Demande : {text}', run: 'Veut lancer {command}', helperAsks: '{title} vous demande' },
+    feed: { run: 'Veut lancer {command}', helperAsks: '{title} vous attend' },
     navigation: 'Navigation', activity: 'Activité',
     waitingElsewhere: '{count} en attente de vous',
     search: 'Trouver une conversation', noThreads: 'Aucune conversation ne correspond.'

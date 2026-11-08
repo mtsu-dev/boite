@@ -64,6 +64,17 @@
   }
 
 
+  /**
+   * What a tile holds when it has no state to show: its other pages, else the
+   * first cards of its own page, so every tile says what is inside it.
+   */
+  function contents(tile: SettingsGroup): { text: string; tone?: 'call' } | null {
+    const names = tile.members.length > 0
+      ? tile.members.map((member) => member.label)
+      : entries.filter((entry) => entry.tab === tile.id && entry.section !== null && entry.trail === tile.label).slice(0, 3).map((entry) => entry.label);
+    return names.length > 0 ? { text: names.join(' · ') } : null;
+  }
+
   $effect(() => {
     if (store.connection === 'ready') void store.loadSessions();
   });
@@ -118,7 +129,7 @@
       <div class="tiles">
         {#each tiles as tile (tile.id)}
           {@const Icon = tile.icon}
-          {@const line = status(tile.id) ?? (tile.members.length > 0 ? { text: tile.members.map((member) => member.label).join(' · ') } : null)}
+          {@const line = status(tile.id) ?? contents(tile)}
           <button type="button" class="tile" data-testid="settings-home-{tile.id}" onclick={() => onopen({ tab: tile.id, section: null, label: tile.label, trail: '' })}>
             <span class="glyph"><Icon size={18} strokeWidth={1.75} /></span>
             <span class="text">
@@ -146,9 +157,8 @@
     color: var(--color-muted-foreground);
     transition: border-color var(--dur-2);
   }
-  .search:focus-within { border-color: var(--color-foreground); }
-  /* The input draws no ring of its own: the field carries it. */
-  .search:has(input:focus-visible) { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+  /* A field brightens its edge on focus, as every field does (app.css): an autofocused search wore an accent frame. */
+  .search:focus-within { border-color: var(--color-composer-focus); }
   .search input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; box-shadow: none; outline: none; font-size: var(--text-base); }
   .search input::-webkit-search-cancel-button { display: none; }
 
@@ -202,7 +212,7 @@
   .tile:hover .glyph { color: var(--color-foreground); }
 
   .text { display: grid; align-content: start; gap: 2px; width: 100%; min-width: 0; }
-  .label { font-size: var(--text-base); font-weight: 500; line-height: 1.3; overflow-wrap: break-word; }
+  .label { font-size: var(--text-base); font-weight: 600; line-height: 1.3; overflow-wrap: break-word; }
   .status { font-size: var(--text-sm); line-height: 1.35; color: var(--color-muted-foreground); overflow-wrap: break-word; }
   .status.call { color: var(--color-foreground); }
 

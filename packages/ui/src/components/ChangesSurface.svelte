@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, GitBranch, RefreshCw } from '@lucide/svelte';
+  import { ArrowDown, ArrowUp, ChevronLeft, GitBranch, RefreshCw } from '@lucide/svelte';
   import type { GitChange, GitDiff, GitStatus, ThreadId } from '@boite/contracts';
   import type { BoundPanel, Surface } from '../lib/right-panel.svelte';
   import { fill, strings } from '../lib/strings';
@@ -73,9 +73,11 @@
   /** Where the selected file stands in the list, -1 when it is not (or no longer) in it. */
   let at = $derived(selected === null ? -1 : changes.findIndex((change) => change.path === selected));
 
-  function step(by: number): void {
-    const next = changes[at + by];
-    if (next) select(next);
+  /** Keeps the picked file of the outline in view as the selection moves along it. */
+  function current(node: HTMLElement, on: boolean) {
+    const show = (value: boolean) => { if (value) node.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }); };
+    show(on);
+    return { update: show };
   }
 
   function back(): void {
@@ -211,22 +213,19 @@
 
     <div class="detail">
       {#if narrow && selected !== null}
-        <nav class="pager" aria-label={strings.rightPanel.changes} data-testid="changes-pager">
-          <button type="button" class="ghost small back" data-testid="changes-back" onclick={back}>
-            <ChevronLeft size={16} strokeWidth={1.75} /><span>{strings.changes.backToList}</span>
+        <!-- The file outline: every changed file one tap away, the list itself one step back. -->
+        <nav class="outline" aria-label={strings.rightPanel.changes} data-testid="changes-pager">
+          <button type="button" class="ghost small back" data-testid="changes-back" title={strings.changes.backToList} onclick={back}>
+            <ChevronLeft size={16} strokeWidth={1.75} /><span class="ui-label">{strings.changes.backToList}</span>
           </button>
-          <span class="spacer"></span>
-          {#if at >= 0}
-            <span class="position" data-testid="changes-position">{fill(strings.changes.position, { index: String(at + 1), count: String(changes.length) })}</span>
-          {/if}
-          <button type="button" class="ghost small icon" data-testid="changes-previous" disabled={at <= 0}
-            title={strings.changes.previousFile} aria-label={strings.changes.previousFile} onclick={() => step(-1)}>
-            <ChevronLeft size={16} strokeWidth={1.75} />
-          </button>
-          <button type="button" class="ghost small icon" data-testid="changes-next" disabled={at < 0 || at >= changes.length - 1}
-            title={strings.changes.nextFile} aria-label={strings.changes.nextFile} onclick={() => step(1)}>
-            <ChevronRight size={16} strokeWidth={1.75} />
-          </button>
+          <div class="files">
+            {#each changes as change (change.path)}
+              <button type="button" class="ghost small file" class:on={change.path === selected} aria-current={change.path === selected ? 'true' : undefined}
+                data-testid="changes-outline-file" data-path={change.path} title={change.path} use:current={change.path === selected} onclick={() => select(change)}>
+                <span class="dot" data-status={change.status} aria-hidden="true"></span><span class="ui-label">{base(change.path)}</span>
+              </button>
+            {/each}
+          </div>
         </nav>
       {/if}
       {#if selected === null}
@@ -324,7 +323,7 @@
   }
 
   /* A phone's width: the list fills the panel until a row is picked, then the
-     diff does, under a bar that steps back to the list or on to the next file. */
+     diff does, under the file outline that steps to any other file or back to the list. */
   .narrow .list {
     flex: 1;
     max-height: none;
@@ -339,25 +338,35 @@
   .narrow.reading .list { display: none; }
   .narrow.reading .detail { display: block; }
 
-  .pager {
+  /* The way back to the list, then every file in one line that scrolls sideways. */
+  .outline {
     position: sticky;
     top: 0;
     z-index: 1;
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--space-1);
     margin: 0 -8px 8px;
-    padding: 4px 4px;
+    padding: var(--space-1);
     border-bottom: 1px solid var(--color-border);
     background: var(--color-surface);
   }
 
-  /* Fingers, not a pointer: every step of the pager and every row is a full target. */
-  .pager button { min-height: 44px; }
-  .pager .icon { min-width: 44px; }
-  .back { display: inline-flex; align-items: center; gap: 2px; }
-  .position { color: var(--color-muted-foreground); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
-  .narrow .row { height: auto; min-height: 44px; }
+  .back { flex: none; display: inline-flex; align-items: center; gap: 2px; }
+  .files { flex: 1; min-width: 0; display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
+  .files::-webkit-scrollbar { display: none; }
+  /* The strip fades out where it runs on, so a name at the edge reads as more to scroll, not as cut. */
+  .files { padding-right: var(--space-6); mask-image: linear-gradient(to right, black calc(100% - var(--space-6)), transparent); }
+  .file { flex: none; display: inline-flex; align-items: center; gap: 6px; color: var(--color-muted-foreground); font-weight: 400; }
+  .file.on { background: var(--color-active); color: var(--color-foreground); }
+  .dot { width: 6px; height: 6px; flex: none; border-radius: var(--radius-full); background: var(--mark); }
+  .dot[data-status='added'], .dot[data-status='copied'] { --mark: var(--color-success); }
+  .dot[data-status='modified'] { --mark: var(--color-live); }
+  .dot[data-status='deleted'], .dot[data-status='conflict'] { --mark: var(--color-danger); }
+  .dot[data-status='renamed'], .dot[data-status='untracked'] { --mark: var(--color-subtle); }
+  /* Fingers, not a pointer: every file of the outline and every row is a full target. */
+  .outline button { min-height: var(--touch-target); }
+  .narrow .row { height: auto; min-height: var(--touch-target); }
 
   .row {
     display: flex;

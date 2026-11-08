@@ -1,24 +1,19 @@
 <script lang="ts">
   import { textEntries, type ComposerState } from '../lib/composer-queue';
   import type { Store } from '../lib/store.svelte';
-  import AgentDock from './AgentDock.svelte';
   import ComposerQueue from './ComposerQueue.svelte';
-  import JumpLatest from './JumpLatest.svelte';
 
   /**
-   * The strip above the box, one band in the flow so it never covers a line
-   * of the timeline: the thread's subagents and workflows, each by name, on
-   * their own row or two, then the answers held for the turn, the queued
-   * prompts and at the right the way back to the latest message. The
-   * archive's undo is not here: it takes the shared bottom-right corner. An
-   * agent's own box (`main` false) keeps its queue alone.
+   * The head of the box when something waits to go: the answers held for the
+   * turn and the queued prompts, each one quiet line with its edit and remove.
+   * Inside the box, not a row of pills over it; the strip above keeps the
+   * subagents and the way back.
    */
-  let { store, key, thread, composer, main = true, blocked, machine, sendNow, onrestore, onsendnow }: {
+  let { store, key, thread, composer, blocked, machine, sendNow, onrestore, onsendnow }: {
     store: Store;
     key: string;
     thread: Store['openThread'];
     composer: ComposerState | undefined;
-    main?: boolean;
     /** A prompt comes back only into an empty box. */
     blocked: boolean;
     machine: string;
@@ -28,48 +23,30 @@
   } = $props();
 
   const answerEntries = textEntries();
+  let answers = $derived(thread?.pendingAnswers?.length ? thread.pendingAnswers : null);
+  let queued = $derived(composer && composer.queued.length > 0 ? composer : null);
 </script>
 
-<div class="strip" class:reserved={main && !!thread} data-testid="composer-strip">
-  {#if main && thread}<AgentDock {store} threadId={thread.id} />{/if}
-  {#if thread?.pendingAnswers?.length}
-    <div class="answers" data-testid="question-queued">
-      <ComposerQueue queued={answerEntries(thread.pendingAnswers)} disabled={true} paused={false} sendNow={null} onrestore={() => {}} onsendnow={() => {}} />
-    </div>
-  {/if}
-  {#if composer && composer.queued.length > 0}
-    <ComposerQueue queued={composer.queued}
-      disabled={composer.sending || blocked}
-      paused={composer.paused} sending={composer.sending} outgoing={composer.outgoing ?? 0} connected={store.connection === 'ready'} {machine} starts={!thread}
-      {sendNow}
-      {onrestore} onremove={(at) => store.removeQueued(key, at)} onretry={(at) => store.retryQueued(key, at)}
-      {onsendnow} />
-  {/if}
-  {#if main}
-    <span class="spacer"></span>
-    <JumpLatest />
-  {/if}
-</div>
+{#if answers || queued}
+  <div class="held" data-testid="composer-held">
+    {#if answers}
+      <div class="answers" data-testid="question-queued">
+        <ComposerQueue queued={answerEntries(answers)} disabled={true} paused={false} sendNow={null} onrestore={() => {}} onsendnow={() => {}} />
+      </div>
+    {/if}
+    {#if queued}
+      <ComposerQueue queued={queued.queued}
+        disabled={queued.sending || blocked}
+        paused={queued.paused} sending={queued.sending} outgoing={queued.outgoing ?? 0} connected={store.connection === 'ready'} {machine} starts={!thread}
+        {sendNow}
+        {onrestore} onremove={(at) => store.removeQueued(key, at)} onretry={(at) => store.retryQueued(key, at)}
+        {onsendnow} />
+    {/if}
+  </div>
+{/if}
 
 <style>
-  /* Anything in it stands on a 30 px row, 8 px apart, and 8 px above the box:
-     the same step as the rows. A thread keeps one row reserved, so the way
-     back coming and going never moves the timeline; elsewhere an empty strip
-     takes no room. */
-  .strip {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px;
-    width: 100%;
-    max-width: var(--content);
-    margin: 0 auto;
-  }
-
-  .strip.reserved, .strip:has(> :not(.spacer)) { min-height: 38px; padding-bottom: 8px; }
-  .spacer { flex: 1 0 0; }
+  /* The box's own padding, a hairline under it: the head reads apart from the field. */
+  .held { display: flex; flex-direction: column; min-width: 0; padding: 2px 8px 2px 12px; border-bottom: 1px solid var(--color-border); }
   .answers { display: flex; min-width: 0; }
-  /* The queue shares its row with the way back: it takes what is left, its
-     text cut in the chip, so the way back never drops to a row of its own. */
-  .strip > :global(.queued) { flex: 100 1 0; }
 </style>

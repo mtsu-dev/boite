@@ -3,7 +3,7 @@ export const strings = {
   activity: {
     goal: 'Goal',
     /** An agent's question it did not stop for (`boite ask`), docked above the composer like a goal. */
-    question: 'Question',
+    question: 'Needs you',
     questionOf: '{index}/{total}',
     questionPrev: 'Previous question',
     questionNext: 'Next question',

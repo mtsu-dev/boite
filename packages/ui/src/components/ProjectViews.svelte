@@ -11,9 +11,10 @@
   import { inbox } from '../lib/inbox.svelte';
 
   /**
-   * The thread list's head: its name, then the display menu, search and a new
-   * thread; desktop Activity keeps the name only. Recent's project filter and the machine filter live in the display
-   * menu, which marks its button while one of them hides threads.
+   * The thread list's head: the view it shows (Projects or Recent), so the
+   * list says which one is on, then the display menu, search and a new thread.
+   * Recent's project filter and the machine filter live in the display menu,
+   * which marks its button while one of them hides threads.
    */
   let { entries, store }: { entries: ProjectEntry[]; store: Store } = $props();
   const selected = $derived(projectView.selected(entries));
@@ -24,21 +25,21 @@
   const addProject = $derived(store.owner && work.shows('sidebar.add-project') ? () => { store.projectPickerOpen = true; } : undefined);
   /** Always a new draft: one already written stays in the list, where it was. */
   async function create() {
+    inbox.open = false;
     if (workspace.view === 'recent' && selected) await workspace.select(selected.machine.store, undefined, selected.project.id, { fresh: true });
     else store.startDraft(undefined, { fresh: true });
   }
 </script>
 
 <div class="list-head">
-  <h2 class="title">{inbox.open ? strings.mobile.activity : strings.sidebar.threads}</h2>
-  <!-- Activity is one list: the display menu and a new thread belong to the threads. -->
-  {#if !inbox.open}<div class="actions">
+  <h2 class="title" data-testid="list-view-name">{workspace.view === 'recent' ? strings.sidebar.recentView : strings.sidebar.projectsView}</h2>
+  <div class="actions">
     <DisplayOptions {entries} {target} owner={targetOwner} {filtered} onaddproject={addProject} />
     {#if entries.length}
       <button class="ghost icon small" title={`${strings.sidebar.search}${store.keyHint('palette')}`} aria-label={strings.sidebar.search} data-testid="sidebar-search-open" onclick={() => store.paletteOpen = true}><Search size={16} /></button>
       <button class="ghost icon small new" title={`${newLabel}${store.keyHint('new-thread')}`} aria-label={newLabel} data-testid="new-thread" onclick={create}><Plus size={16} /></button>
     {/if}
-  </div>{/if}
+  </div>
 </div>
 
 <style>

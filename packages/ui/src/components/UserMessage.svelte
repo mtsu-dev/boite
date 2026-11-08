@@ -245,6 +245,7 @@
 
   @media (max-width: 720px) { .bubble { max-width: 90%; padding: 10px 14px; } }
 
+  /* A prompt reads at the answer's size (Prose). */
   .user-text {
     white-space: pre-wrap;
     word-break: break-word;

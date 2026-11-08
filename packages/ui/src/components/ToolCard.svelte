@@ -192,7 +192,7 @@
       <span class="chip live" data-testid="tool-background"><span class="pulse" aria-hidden="true"></span><span class="ui-label">{strings.chat.backgroundChip}</span></span>
     {/if}
     {#if took}
-      <span class="took ui-label" data-testid="tool-elapsed">{took}</span>
+      <span class="took ui-label" class:settled={status !== 'running'} data-testid="tool-elapsed">{took}</span>
     {/if}
     {#if permission}
       {@const verdict = permission === 'allow' ? strings.chat.permissionAllowedBy : strings.chat.permissionDeniedBy}
@@ -368,6 +368,10 @@
     font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
   }
+
+  /* A finished step's time is read on demand: under the pointer, the keyboard or an open row. */
+  .took.settled { opacity: 0; transition: opacity var(--dur-2); }
+  .head:hover .took.settled, .head:focus-visible .took.settled, .head[aria-expanded='true'] .took.settled { opacity: 1; }
 
   .status {
     display: inline-flex;

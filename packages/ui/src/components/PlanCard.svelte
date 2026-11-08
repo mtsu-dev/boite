@@ -120,7 +120,8 @@
   @media (hover: none) { .actions { opacity: 1; } }
 
   .body { min-width: 0; padding-right: 4px; color: var(--color-foreground); }
-  .body :global(.prose) { font-size: var(--text-sm); line-height: 1.55; }
+  /* The plan is content: a step under the answer's size, above the tool rows. */
+  .body :global(.prose) { font-size: var(--text-reading); line-height: 1.55; }
   /* Normal weight: the agent's bold lead words read as the step, not as a shout. */
   .body :global(strong) { font-weight: inherit; }
   .body :global(:is(h1, h2, h3, h4, h5, h6)) { font-size: var(--text-sm); font-weight: 600; margin: 10px 0 4px; }

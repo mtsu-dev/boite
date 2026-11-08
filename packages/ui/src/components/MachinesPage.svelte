@@ -19,7 +19,6 @@
   import PairMachine from './PairMachine.svelte';
   import type { Store } from '../lib/store.svelte';
   let { mobile = false, onopenthread }: { mobile?: boolean; onopenthread?: () => void } = $props();
-  const uid = $props.id();
   /**
    * The switches a machine of a group holds for itself: whether the agents of
    * the other machines may start threads there (`groupThreads`), and whether
@@ -158,6 +157,13 @@
     {#if topForm}<PairMachine {mobile} bind:this={pairingForm} />{/if}
     {#each groupStores as owner (owner.group?.id ?? 'ungrouped')}
     <GroupCard store={owner} {mobile} migration={owner === groupStores[0] ? migration : undefined}>
+    {#if machinesOf(owner).some((machine) => groupThreadsShown(machine, owner, GroupLinks.coreOf(machine)))}
+      <div class="switch-head" data-testid="machine-switch-head">
+        <span class="ui-label">{strings.machines.fromOthers}</span>
+        <span class="column ui-label-box"><span class="ui-label">{strings.machines.threadsColumn}</span><InfoTip topic={strings.machines.groupThreads} text={strings.machines.groupThreadsHint} /></span>
+        <span class="column ui-label-box"><span class="ui-label">{strings.machines.botsColumn}</span><InfoTip topic={strings.machines.groupBots} text={strings.machines.groupBotsHint} /></span>
+      </div>
+    {/if}
     <ul class="machines">
       {#each machinesOf(owner) as machine (machine.id)}
         {@const coreId = GroupLinks.coreOf(machine)}
@@ -209,21 +215,26 @@
                 <button class="ghost icon-only remove" data-testid="machine-remove" aria-label={strings.machines.remove} title={strings.machines.remove} onclick={() => void removeMachine(machine, owner)}><Trash2 size={15} /></button>
               {/if}
             </div>
+            <!-- The two switches sit under the list's one head (Threads, Bots): no label repeated per machine. Each keeps its full name for a screen reader. -->
+            {#if groupThreadsShown(machine, owner, coreId)}
+              {@const locked = lockedBy(machine.store.policy, 'network.groups') !== null}
+              <div class="switches">
+                <PolicyLock store={machine.store} keys={['network.groups']} />
+                <label class="switch-cell" data-testid="machine-group-threads">
+                  <span class="visually-hidden">{strings.machines.groupThreads}, {machineName(machine)}</span>
+                  <span class="ghost" aria-hidden="true">{strings.machines.threadsColumn}</span>
+                  <input type="checkbox" role="switch" data-testid="machine-group-threads-switch" checked={machine.store.settings?.groupThreads === true} disabled={locked}
+                    onchange={async (event) => { const input = event.currentTarget; if (!(await machine.store.saveSettings({ groupThreads: input.checked }))) input.checked = machine.store.settings?.groupThreads === true; }} />
+                </label>
+                <label class="switch-cell" data-testid="machine-group-bots">
+                  <span class="visually-hidden">{strings.machines.groupBots}, {machineName(machine)}</span>
+                  <span class="ghost" aria-hidden="true">{strings.machines.botsColumn}</span>
+                  <input type="checkbox" role="switch" data-testid="machine-group-bots-switch" checked={machine.store.settings?.groupBots === true} disabled={locked}
+                    onchange={async (event) => { const input = event.currentTarget; if (!(await machine.store.saveSettings({ groupBots: input.checked }))) input.checked = machine.store.settings?.groupBots === true; }} />
+                </label>
+              </div>
+            {/if}
           </div>
-          {#if groupThreadsShown(machine, owner, coreId)}
-            <label class="group-threads" for="{uid}-threads-{machine.id}" data-testid="machine-group-threads">
-              <span class="ui-label-box"><span class="ui-label" id="{uid}-threads-{machine.id}-name">{strings.machines.groupThreads}</span><InfoTip topic={strings.machines.groupThreads} text={strings.machines.groupThreadsHint} /><PolicyLock store={machine.store} keys={['network.groups']} /></span>
-              <input id="{uid}-threads-{machine.id}" aria-labelledby="{uid}-threads-{machine.id}-name" type="checkbox" role="switch" data-testid="machine-group-threads-switch"
-                checked={machine.store.settings?.groupThreads === true} disabled={lockedBy(machine.store.policy, 'network.groups') !== null}
-                onchange={async (event) => { const input = event.currentTarget; if (!(await machine.store.saveSettings({ groupThreads: input.checked }))) input.checked = machine.store.settings?.groupThreads === true; }} />
-            </label>
-            <label class="group-threads" for="{uid}-bots-{machine.id}" data-testid="machine-group-bots">
-              <span class="ui-label-box"><span class="ui-label" id="{uid}-bots-{machine.id}-name">{strings.machines.groupBots}</span><InfoTip topic={strings.machines.groupBots} text={strings.machines.groupBotsHint} /><PolicyLock store={machine.store} keys={['network.groups']} /></span>
-              <input id="{uid}-bots-{machine.id}" aria-labelledby="{uid}-bots-{machine.id}-name" type="checkbox" role="switch" data-testid="machine-group-bots-switch"
-                checked={machine.store.settings?.groupBots === true} disabled={lockedBy(machine.store.policy, 'network.groups') !== null}
-                onchange={async (event) => { const input = event.currentTarget; if (!(await machine.store.saveSettings({ groupBots: input.checked }))) input.checked = machine.store.settings?.groupBots === true; }} />
-            </label>
-          {/if}
           <div class="disclosure-fold" class:open={customizing === machine.id} inert={customizing !== machine.id}>
             <div>
               <div class="icon-choices" role="group" aria-label={strings.machines.icon}>
@@ -289,18 +300,28 @@
     gap: 12px;
     min-height: 40px;
   }
-  /* Under the machine's name, as wide as its identity column. */
-  .group-threads {
+  /* One head names the two switch columns every machine row ends on. A column
+     is as wide as its word and its "i", the switch centred under it. */
+  .switch-head {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    margin: 6px 0 0 48px;
+    justify-content: flex-end;
+    gap: var(--space-2);
+    padding: var(--space-2) 0 var(--space-1);
+    border-bottom: 1px solid var(--color-border);
     font-size: var(--text-sm);
     color: var(--color-muted-foreground);
-    cursor: pointer;
   }
-  .machine-card.away .group-threads { display: none; }
+  .switch-head > .ui-label { flex: 1; min-width: 0; }
+  /* A column is as wide as its head (the word and its 22 px "i" with its 4 px
+     margin and 2 px gap): each cell holds an unseen copy of the word with that
+     room, so the switches line up under the heads in either language. */
+  .switch-head .column { justify-content: center; gap: 2px; min-width: 44px; }
+  .switches { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); flex: none; margin-left: auto; }
+  .switch-cell { display: grid; justify-items: center; align-items: center; min-width: 44px; cursor: pointer; }
+  .switch-cell > * { grid-area: 1 / 1; }
+  .switch-cell .ghost { height: 0; padding-right: 28px; overflow: hidden; visibility: hidden; font-size: var(--text-sm); white-space: nowrap; }
+  .machine-card.away .switches { visibility: hidden; }
   .logo {
     display: grid;
     place-items: center;
@@ -459,11 +480,17 @@
     .main {
       flex-wrap: wrap;
     }
-    .identity { flex-basis: calc(100% - 48px); }
+    /* The switches keep the name's line while it has room, else wrap under it, still under their heads. */
+    .identity { flex: 1 1 140px; }
+    .switch-head > .ui-label { display: none; }
     .meta { flex-wrap: wrap; gap: 2px 10px; }
     .version::before,
     .updates::before { content: none; }
+    /* The label is the tap target: a finger gets 44 px around the 24 px switch. */
+    .switches { order: 2; }
+    .switch-cell { min-height: 44px; }
     .actions {
+      order: 3;
       width: 100%;
       justify-content: flex-end;
     }

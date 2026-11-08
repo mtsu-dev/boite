@@ -189,11 +189,11 @@
     max-height: calc(100dvh - 12px);
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding: var(--space-1);
-    background: var(--color-surface-2);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    box-shadow: var(--shadow-e2);
+    padding: var(--overlay-pad);
+    background: var(--overlay-surface);
+    border: 1px solid var(--overlay-edge);
+    border-radius: var(--radius-overlay);
+    box-shadow: var(--shadow-overlay);
     display: flex;
     flex-direction: column;
     gap: 1px;
@@ -220,10 +220,10 @@
     gap: var(--space-3);
     width: 100%;
     height: auto;
-    min-height: var(--control);
-    padding: var(--space-1) var(--space-2);
+    min-height: var(--overlay-row);
+    padding: var(--space-1) var(--overlay-row-pad);
     border: none;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-overlay-row);
     background: transparent;
     color: var(--color-foreground);
     text-align: left;
@@ -284,7 +284,7 @@
   .rule {
     flex-shrink: 0;
     height: 1px;
-    margin: var(--space-1) var(--space-2);
+    margin: var(--space-1) var(--overlay-row-pad);
     background: var(--color-border);
   }
 </style>

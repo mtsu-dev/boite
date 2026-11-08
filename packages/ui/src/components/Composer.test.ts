@@ -464,18 +464,16 @@ function effortChip(): HTMLElement | null {
   return inPicker('composer-effort');
 }
 
-/** The level names the open reasoning slider writes under its track, in order. */
+/** The levels the picker's reasoning row names, in order. */
 function effortRows(): (string | null)[] {
   return Array.from(document.querySelectorAll('[data-testid=composer-effort-menu] [data-value]')).map((el) =>
     el.getAttribute('data-value')
   );
 }
 
-/** The dots on that track, one per level. */
-function effortDots(): (string | null)[] {
-  return Array.from(document.querySelectorAll('[data-testid=composer-effort-menu] [data-dot]')).map((el) =>
-    el.getAttribute('data-dot')
-  );
+/** The name of the choice a row of the picker marks as live. */
+function picked(menu: string): string | null {
+  return document.querySelector(`[data-testid=${menu}] [aria-checked=true]`)?.textContent?.trim() ?? null;
 }
 
 async function openDraft(): Promise<void> {
@@ -492,28 +490,23 @@ test('the reasoning chip reads the model default level and saves the pick on the
   // The thread runs the echo model, whose scale is two levels with high as its default.
   expect(store.openThread?.effort).toBeNull();
   await waitFor(() => effortChip() !== null);
-  expect(effortChip()?.textContent?.trim()).toBe('High');
+  expect(picked('composer-effort-menu')).toBe('High');
 
   const update = vi.spyOn(store, 'update');
-  query<HTMLButtonElement>('[data-testid=composer-effort]').click();
-  await waitFor(() => document.querySelector('[data-testid=composer-effort-menu]') !== null);
   expect(effortRows()).toEqual(['low', 'high']);
 
   query<HTMLButtonElement>('[data-testid=composer-effort-menu] [data-value=low]').click();
   await waitFor(() => store.openThread?.effort === 'low');
   expect(update).toHaveBeenCalledWith('t-trace', { accountId: 'a-echo', model: 'echo-1', effort: 'low', speed: null, expectedSelectionVersion: 0 });
-  // The chip names the level that is live, and the picker's own label leaves it alone.
-  await waitFor(() => effortChip()?.textContent?.trim() === 'Low');
+  // The row marks the level that is live, and the picker's own label leaves it alone.
+  await waitFor(() => picked('composer-effort-menu') === 'Low');
   expect(query('[data-testid=composer-picker]').textContent).not.toContain('Low');
 });
 
 test('the reasoning chip remembers the level a draft picks', async ({ app: _app }) => {
   await openDraft();
   await waitFor(() => effortChip() !== null);
-  expect(effortChip()?.textContent?.trim()).toBe('High');
-
-  query<HTMLButtonElement>('[data-testid=composer-effort]').click();
-  await waitFor(() => document.querySelector('[data-testid=composer-effort-menu]') !== null);
+  expect(picked('composer-effort-menu')).toBe('High');
   expect(effortRows()).toEqual(['low', 'medium', 'high', 'xhigh', 'max', 'ultrathink']);
 
   query<HTMLButtonElement>('[data-testid=composer-effort-menu] [data-value=xhigh]').click();
@@ -522,42 +515,34 @@ test('the reasoning chip remembers the level a draft picks', async ({ app: _app 
     model: 'claude-opus-5-5',
     effort: 'xhigh'
   });
-  await waitFor(() => effortChip()?.textContent?.trim() === 'Xhigh');
+  await waitFor(() => picked('composer-effort-menu') === 'Xhigh');
 });
 
-test('the reasoning slider draws one dot per level and the arrows move it', async ({ app: _app }) => {
+test('the reasoning row names one choice per level and the arrows move it', async ({ app: _app }) => {
   await store.open('t-trace');
   await waitFor(() => store.openThread?.id === 't-trace' && !store.busy);
   await waitFor(() => effortChip() !== null);
 
-  query<HTMLButtonElement>('[data-testid=composer-effort]').click();
-  await waitFor(() => document.querySelector('[data-testid=composer-effort-menu]') !== null);
-  // The echo model runs two levels, so the track carries two dots and its value
-  // is the index of the one that is live.
-  expect(effortDots()).toEqual(['low', 'high']);
-  expect(query('[data-testid=effort-track]').getAttribute('aria-valuemax')).toBe('1');
-  expect(query('[data-testid=effort-track]').getAttribute('aria-valuenow')).toBe('1');
-  // The track takes the keyboard the moment the popover is there.
-  await waitFor(() => document.activeElement === query('[data-testid=effort-track]'));
+  // The echo model runs two levels: two named choices, the live one checked and the keyboard's stop.
+  expect(Array.from(document.querySelectorAll('[data-testid=composer-effort-menu] [data-value]')).map((el) => el.textContent?.trim())).toEqual(['Low', 'High']);
+  const live = query<HTMLButtonElement>('[data-testid=composer-effort-menu] [aria-checked=true]');
+  expect(live.dataset.value).toBe('high');
+  expect(live.tabIndex).toBe(0);
+  live.focus();
 
   const update = vi.spyOn(store, 'update');
   expect(press('ArrowLeft')).toBe(false);
   await waitFor(() => store.openThread?.effort === 'low');
   expect(update).toHaveBeenCalledWith('t-trace', { accountId: 'a-echo', model: 'echo-1', effort: 'low', speed: null, expectedSelectionVersion: 0 });
-  await waitFor(() => query('[data-testid=effort-track]').getAttribute('aria-valuenow') === '0');
-  expect(effortChip()?.textContent?.trim()).toBe('Low');
+  await waitFor(() => picked('composer-effort-menu') === 'Low');
+  expect((document.activeElement as HTMLElement).dataset.value).toBe('low');
 
-  // One dot right takes the same save path, and the popover stays open under it.
+  // One step right takes the same save path, and the picker stays open around it.
   press('ArrowRight');
   await waitFor(() => store.openThread?.effort === 'high');
   expect(update).toHaveBeenCalledWith('t-trace', { accountId: 'a-echo', model: 'echo-1', effort: 'high', speed: null, expectedSelectionVersion: 1 });
-  expect(document.querySelector('[data-testid=composer-effort-menu]')).not.toBeNull();
-  await waitFor(() => effortChip()?.textContent?.trim() === 'High');
-
-  press('Home');
-  await waitFor(() => query('[data-testid=effort-track]').getAttribute('aria-valuenow') === '0');
-  press('End');
-  await waitFor(() => query('[data-testid=effort-track]').getAttribute('aria-valuenow') === '1');
+  expect(document.querySelector('[data-testid=composer-picker-menu]')).not.toBeNull();
+  await waitFor(() => picked('composer-effort-menu') === 'High');
 });
 
 test('a model with no reasoning scale gets no chip at all', async ({ app: _app }) => {
@@ -587,56 +572,52 @@ test('a first run shows the reasoning, mode and worktree chips at their defaults
   expect(inPicker('composer-mode')).not.toBeNull();
   expect(plusItem('composer-worktree')?.getAttribute('aria-checked')).toBe('false');
   expect(document.querySelector('[data-testid=composer-more]')).toBeNull();
-
-  effortChip()!.click();
-  await waitFor(() => document.querySelector('[data-testid=composer-effort-menu]') !== null);
   expect(document.querySelector('[data-testid=composer-pin-effort]')).toBeNull();
-  // Opus 5.5 has a fast mode: its switch sits in the popover's heading, before the level.
-  const heading = query('[data-testid=composer-effort-menu] .heading');
-  expect(heading.firstElementChild?.getAttribute('data-testid')).toBe('effort-speed');
-  expect(document.querySelector('[data-testid=effort-fast-mark]')).toBeNull();
-  // A real click focuses the switch, so the Escape after it lands in the effort popover, not the model list.
-  query<HTMLButtonElement>('[data-testid=effort-speed]').focus();
-  query<HTMLButtonElement>('[data-testid=effort-speed]').click();
-  await waitFor(() => document.querySelector('[data-testid=effort-speed-label]')?.textContent === 'Fast');
-  // Switched on, the effort row carries a bolt, so the choice shows with its popover shut.
-  press('Escape');
-  await waitFor(() => document.querySelector('[data-testid=composer-effort-menu]') === null);
-  query('[data-testid=effort-fast-mark]');
+
+  // Opus 5.5 has a fast mode: its own row under the levels, standard first, both by name.
+  await waitFor(() => document.querySelector('[data-testid=effort-speed-menu]') !== null);
+  const rows = Array.from(query('[data-testid=composer-picker-menu]').querySelectorAll('[data-testid=composer-effort],[data-testid=effort-speed],[data-testid=composer-mode]'));
+  expect(rows.map((row) => row.getAttribute('data-testid'))).toEqual(['composer-effort', 'effort-speed', 'composer-mode']);
+  expect(picked('effort-speed-menu')).toBe('Standard speed');
+  query<HTMLButtonElement>('[data-testid=effort-speed-menu] [data-value=fast]').click();
+  await waitFor(() => picked('effort-speed-menu') === 'Fast');
 });
 
-test('the lightning cycles fast, ultrafast and standard in a draft and saves each native tier on a thread', async ({ app: _app }) => {
+test('the speed row picks fast, ultrafast and standard in a draft and saves each native tier on a thread', async ({ app: _app }) => {
   await openDraft();
   const choice = store.defaultChoice()!;
   await store.probeModels(choice.providerId, choice.accountId);
   const model = store.modelOf(choice)!;
   store.probedModels = { ...store.probedModels, [choice.providerId + '::' + choice.accountId]: [{ ...model, speeds: [{ id: 'ultrafast', label: 'Ultrafast' }, { id: 'fast', label: 'Fast' }] }] };
-  effortChip()!.click();
-  await waitFor(() => document.querySelector('[data-testid=effort-speed]') !== null);
+  effortChip();
+  await waitFor(() => document.querySelector('[data-testid=effort-speed-menu]') !== null);
+  // Fast before Ultrafast, whatever order the agent lists them in.
+  expect(Array.from(document.querySelectorAll('[data-testid=effort-speed-menu] [data-value]')).map((el) => el.getAttribute('data-value'))).toEqual(['', 'fast', 'ultrafast']);
   for (const speed of ['fast', 'ultrafast', null]) {
-    query<HTMLButtonElement>('[data-testid=effort-speed]').click();
+    query<HTMLButtonElement>(`[data-testid=effort-speed-menu] [data-value="${speed ?? ''}"]`).click();
     await waitFor(() => store.draftChoice?.speed === speed);
-    expect(document.querySelector('[data-testid=effort-speed-label]')?.textContent ?? null).toBe(speed === null ? null : speed === 'fast' ? 'Fast' : 'Ultrafast');
+    expect(picked('effort-speed-menu')).toBe(speed === null ? 'Standard speed' : speed === 'fast' ? 'Fast' : 'Ultrafast');
   }
   press('Escape');
-  await waitFor(() => document.querySelector('[data-testid=composer-effort-menu]') === null);
+  await waitFor(() => document.querySelector('[data-testid=composer-picker-menu]') === null);
   const account = store.accounts.find(entry => entry.providerId === 'codex')!;
   await store.probeModels('codex', account.id);
   const created = await store.client!.call('threads.create', { projectId: 'p-boite', providerId: 'codex', accountId: account.id, model: 'codex-demo', permissionMode: 'bypassPermissions' });
   await store.open(created.id);
   await waitFor(() => !store.busy && query('[data-testid=composer-picker]').textContent?.includes('demo') === true);
   const update = vi.spyOn(store, 'update');
-  effortChip()!.click();
-  await waitFor(() => document.querySelector('[data-testid=effort-speed]') !== null);
+  effortChip();
+  await waitFor(() => document.querySelector('[data-testid=effort-speed-menu]') !== null);
   for (const speed of ['fast', 'ultrafast', null]) {
-    query<HTMLButtonElement>('[data-testid=effort-speed]').click();
+    await waitFor(() => !document.querySelector('[data-testid=composer-picker]')?.hasAttribute('disabled'));
+    query<HTMLButtonElement>(`[data-testid=effort-speed-menu] [data-value="${speed ?? ''}"]`).click();
     await waitFor(() => store.openThread?.speed === speed);
     expect(update).toHaveBeenLastCalledWith(created.id, expect.objectContaining({ speed }));
     expect((await store.client!.call('threads.get', { threadId: created.id })).speed).toBe(speed);
   }
 });
 
-test('the lightning switches a draft to a separate fast model without losing its effort', async ({ app: _app }) => {
+test('the speed row switches a draft to a separate fast model without losing its effort', async ({ app: _app }) => {
   await openDraft();
   const choice = store.defaultChoice()!;
   await store.probeModels(choice.providerId, choice.accountId);
@@ -645,14 +626,14 @@ test('the lightning switches a draft to a separate fast model without losing its
   store.probedModels = { ...store.probedModels, [choice.providerId + '::' + choice.accountId]: [base, { ...base, id: 'grok-4.7-fast', name: 'Grok 4.7 Fast' }] };
   store.draftChoice = { ...choice, model: base.id, effort: 'high', speed: null };
   await waitFor(() => query('[data-testid=composer-picker]').textContent?.includes('Grok 4.7') === true);
-  effortChip()!.click();
-  await waitFor(() => document.querySelector('[data-testid=effort-speed]') !== null);
-  query<HTMLButtonElement>('[data-testid=effort-speed]').click();
+  effortChip();
+  await waitFor(() => document.querySelector('[data-testid=effort-speed-menu] [data-value="grok-4.7-fast"]') !== null);
+  query<HTMLButtonElement>('[data-testid=effort-speed-menu] [data-value="grok-4.7-fast"]').click();
   await waitFor(() => store.draftChoice?.model === 'grok-4.7-fast');
   expect(store.draftChoice?.effort).toBe('high');
   expect(store.draftChoice?.speed).toBeNull();
-  expect(query('[data-testid=effort-speed]').getAttribute('aria-pressed')).toBe('true');
-  query<HTMLButtonElement>('[data-testid=effort-speed]').click();
+  await waitFor(() => picked('effort-speed-menu') === 'Fast');
+  query<HTMLButtonElement>('[data-testid=effort-speed-menu] [data-value=""]').click();
   await waitFor(() => store.draftChoice?.model === 'grok-4.7');
   expect(store.draftChoice?.effort).toBe('high');
 });
@@ -873,13 +854,27 @@ test('Enter in the emptied composer allows the docked permission, then the input
   // A plain tool line with a quiet mark: no second label, no second copy of the ask.
   expect(query('[data-testid=permission-waiting]').textContent).not.toContain('Needs you');
   expect(query('[data-testid=permission-waiting] [aria-label="Needs you"]')).not.toBeNull();
+  // The decision is the box's head and reads alone: the "+" and the context ring
+  // step back, the model chip keeps only its mark, send and the microphone stay.
+  await waitFor(() => document.querySelector('[data-testid=composer] .entry.folded') !== null);
+  expect(document.querySelector('[data-testid=composer-options]')).toBeNull();
+  expect(document.querySelector('[data-testid=composer] .bar [data-testid=context-meter]')).toBeNull();
+  expect(query('[data-testid=composer-picker]').querySelector('.label')).toBeNull();
+  expect(query('[data-testid=composer-picker]').getAttribute('aria-label')).toBeTruthy();
+  query('[data-testid=composer-send]');
   const rpc = vi.spyOn(store.client!, 'call');
   await type('Now please');
+  // A letter written unfolds the box: its tools are back while there is text to send.
+  await waitFor(() => document.querySelector('[data-testid=composer] .entry.folded') === null && document.querySelector('[data-testid=composer-options]') !== null);
   press('Enter');
   await type('After that');
   press('Enter');
   await waitFor(() => input().value === '' && store.composerStates['t-trace']?.queued.length === 2);
   expect(query('[data-testid=composer-queued]').textContent).toContain('Now please');
+  // The queue is one quiet line per prompt inside the box, under the ask, not a row of pills above it.
+  expect(query('[data-testid=composer-queued]').closest('[data-testid=composer]')).not.toBeNull();
+  expect(query('[data-testid=composer-strip]').querySelector('[data-testid=composer-queued]')).toBeNull();
+  expect(document.querySelectorAll('[data-testid=composer-queued-item]')).toHaveLength(2);
   // Shift+Enter starts a line, never a decision.
   input().focus();
   press('Enter', { shiftKey: true });
@@ -1830,21 +1825,18 @@ test('permission menu offers YOLO beside Auto and preserves legacy modes until p
   await waitFor(() => !store.busy);
   for (const legacy of ['plan', 'dontAsk'] as const) {
     store.openThread!.permissionMode = legacy;
-    await waitFor(() => inPicker('composer-mode')?.textContent?.trim() === (legacy === 'plan' ? 'Plan' : 'Auto-deny'));
+    await waitFor(() => inPicker('composer-mode') !== null && picked('composer-mode-menu') === (legacy === 'plan' ? 'Plan' : 'Auto-deny'));
     expect(store.openThread?.permissionMode).toBe(legacy);
   }
-  inPicker('composer-mode')!.click();
-  await waitFor(() => document.querySelector('[data-testid=composer-mode-menu]') !== null);
-  const menu = query('[data-testid=composer-mode-menu]');
-  expect(Array.from(menu.querySelectorAll('.label')).map(row => row.textContent?.trim())).toEqual(['YOLO', 'Auto', 'Edit freely', 'Ask']);
+  const names = () => Array.from(query('[data-testid=composer-mode-menu]').querySelectorAll('[data-value]')).map(row => row.textContent?.trim());
+  // The live legacy mode keeps a choice of its own at the end until another is picked.
+  expect(names()).toEqual(['YOLO', 'Auto', 'Edit freely', 'Ask', 'Auto-deny']);
   for (const [mode, label] of [['yolo', 'YOLO'], ['bypassPermissions', 'Auto'], ['acceptEdits', 'Edit freely'], ['default', 'Ask']]) {
     query(`[data-testid=composer-mode-menu] [data-value="${mode}"]`).click();
     await waitFor(() => store.openThread?.permissionMode === mode);
-    expect(inPicker('composer-mode')?.textContent?.trim()).toBe(label);
-    await new Promise(resolve => setTimeout(resolve, 180));
-    inPicker('composer-mode')!.click();
-    await waitFor(() => document.querySelector('[data-testid=composer-mode-menu]') !== null);
+    await waitFor(() => picked('composer-mode-menu') === label);
   }
+  expect(names()).toEqual(['YOLO', 'Auto', 'Edit freely', 'Ask']);
 });
 
 test('a slash lists the agent commands first, filters, and completes the box', async ({ app: _app }) => {
